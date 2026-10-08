@@ -25,6 +25,10 @@ import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.SystemPrompts;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
+import de.mhus.vance.brain.thinkengine.loop.EngineLoopProperties;
+import de.mhus.vance.brain.thinkengine.loop.LoopLimits;
+import de.mhus.vance.brain.thinkengine.loop.SafetyStop;
+import de.mhus.vance.brain.thinkengine.loop.ToolLoopSafetyNet;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolErrorPayload;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
@@ -93,7 +97,7 @@ import tools.jackson.databind.ObjectMapper;
 public class Ford implements ThinkEngine {
 
     public static final String NAME = "ford";
-    public static final String VERSION = "0.3.0";
+    public static final String VERSION = "0.4.0";
 
     /**
      * Bare-minimum fallback when no recipe override is in play —
@@ -117,15 +121,6 @@ public class Ford implements ThinkEngine {
     private static final String DEFAULT_PROMPT_PATH = "_vance/prompts/ford-prompt.md";
 
     /**
-     * Safety-net cap on tool-call iterations per turn. Ford ends a turn
-     * by <em>natural stop</em> — an assistant message with no tool call —
-     * so this is only a backstop against a broken model that never stops
-     * calling tools, not a routine limit. A healthy turn natural-stops well
-     * before it. Per-process override via {@code params.maxIterations}.
-     */
-    private static final int MAX_TOOL_ITERATIONS = 40;
-
-    /**
      * Wall-clock safety-net for a single streaming LLM call. A hung provider
      * stream (never fires onCompleteResponse/onError) would otherwise block the
      * lane virtual-thread forever. Matches {@code StructuredActionEngine}.
@@ -139,8 +134,8 @@ public class Ford implements ThinkEngine {
     //   corrects it before accepting the natural stop.
     //
     // The turn ends by natural stop — an assistant message with no tool
-    // call. There is no mandatory terminal tool; awaiting_user_input is
-    // inferred from the role (worker → IDLE, primary → BLOCKED).
+    // call. There is no mandatory terminal tool; an answer leaves the
+    // process IDLE in both modes.
 
     /** Tool result size (chars) above which we expect the data to be
      *  reflected in the reply. */
@@ -177,6 +172,7 @@ public class Ford implements ThinkEngine {
     private final de.mhus.vance.brain.prompt.ClientTurnContextResolver clientTurnContextResolver;
     private final de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry turnContextHandlers;
     private final de.mhus.vance.brain.guard.ShootyGuardService guardService;
+    private final EngineLoopProperties loopProperties;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -350,9 +346,41 @@ public class Ford implements ThinkEngine {
     @Override
     public void runTurn(ThinkProcessDocument process, ThinkEngineContext ctx) {
         while (true) {
+            // Pause contract at the drain head: requestPauseOfInterruptible
+            // sets haltRequested before the PAUSED lane task is queued, so a
+            // drain loop still holding the lane must yield here — otherwise
+            // messages queued during a slow in-flight turn get drained into
+            // a parked turn and are never answered. The flag is left for the
+            // PAUSED lane task to clear; the inbox stays queued for resume.
+            if (thinkProcessService.isHaltRequested(process.getId())) {
+                log.info(
+                        "Ford.runTurn id='{}' halt requested — yielding, pending messages stay queued",
+                        process.getId());
+                return;
+            }
             List<SteerMessage> drained = ctx.drainPending();
             if (drained.isEmpty()) return;
-            runTurnFor(process, ctx, drained);
+            TurnOutcome outcome = runTurnFor(process, ctx, drained);
+            // Stop draining after a turn that closed or parked the process:
+            // a worker closed INCOMPLETE by a safety net, an ESC / pause, or
+            // a terminal state set by someone else. Messages that arrived
+            // mid-turn stay queued — they must not spin another turn on a
+            // closed or paused process.
+            ThinkProcessStatus status = thinkProcessService
+                    .findById(process.getId())
+                    .map(ThinkProcessDocument::getStatus)
+                    .orElse(ThinkProcessStatus.CLOSED);
+            if (outcome.interrupted()
+                    || status == ThinkProcessStatus.CLOSED
+                    || status == ThinkProcessStatus.PAUSED
+                    || status == ThinkProcessStatus.SUSPENDED) {
+                log.info(
+                        "Ford.runTurn id='{}' stopping drain loop (status={}, interrupted={})",
+                        process.getId(),
+                        status,
+                        outcome.interrupted());
+                return;
+            }
         }
     }
 
@@ -377,13 +405,14 @@ public class Ford implements ThinkEngine {
         // Set to outcome.awaitingUserInput() inside the try when the
         // tool-loop returns cleanly.
         boolean awaitingUserInput = false;
-        // True iff this turn exited via the maxIter / LLM-collapse
-        // recovery path (i.e. {@code runToolLoop} returned a
-        // {@code recovered} outcome). For sub-process workers this
-        // triggers a terminal close — a worker that exhausted its budget
-        // cannot make further progress on its own and leaving it BLOCKED
-        // pins the parent's {@code activeDelegationWorkerId} to a dead-end.
-        boolean recoveredFromMaxIter = false;
+        // Set when a safety net ended the turn (see SafetyStop). A worker
+        // then closes INCOMPLETE: parking it BLOCKED would pin the parent's
+        // activeDelegationWorkerId (Arthur auto-forwards the next user
+        // message to a BLOCKED worker) and synchronous drivers (Marvin
+        // CALL_RECIPE, Zaphod heads, process_spawn wait=true) would read
+        // the stop text as a result. A primary parks BLOCKED instead — the
+        // user is right there and can say "continue".
+        boolean workerSafetyStop = false;
         // Set when the tool loop bailed on a mid-loop interrupt (ESC /
         // /pause): no answer is surfaced and the finally leaves the
         // interrupt status as-is (or parks PAUSED for the halt-flag path).
@@ -465,14 +494,14 @@ public class Ford implements ThinkEngine {
                 messages = buildPromptMessages(process, chatLog, extras, modelInfo, effectiveSize, activeSkills, tools);
             }
 
-            int maxIters = paramInt(process, "maxIterations", MAX_TOOL_ITERATIONS);
             boolean validation = paramBool(process, "validation", false);
+            LoopLimits limits = LoopLimits.resolve(process, loopProperties);
             if (validation) {
-                log.info("Ford.turn id='{}' validation=on maxIters={}", process.getId(), maxIters);
+                log.info("Ford.turn id='{}' validation=on limits={}", process.getId(), limits);
             }
             String modelAlias = config.providerInstance() + ":" + config.modelName();
             TurnOutcome outcome =
-                    runToolLoop(aiChat, toolSpecs, tools, messages, ctx, process, maxIters, validation, modelAlias);
+                    runToolLoop(aiChat, toolSpecs, tools, messages, ctx, process, limits, validation, modelAlias);
             if (outcome.interrupted()) {
                 // ESC / /pause bailed the loop: surface no answer, drop
                 // buffered history tags, let the finally park the status.
@@ -485,35 +514,23 @@ public class Ford implements ThinkEngine {
                         interruptForcePause);
                 return outcome;
             }
-            if (outcome.recovered()) {
-                recoveredFromMaxIter = true;
-            }
             awaitingUserInput = outcome.awaitingUserInput();
             String finalText = outcome.finalText();
-
-            // Budget-exhausted worker: the "best free text" is whatever the
-            // model last said mid-task (often a dangling progress note like
-            // "I'm now reading the docs"), which a parent orchestrator can't
-            // tell apart from a real answer and would either silently WAIT on
-            // or — worse — echo forward as its own "let me continue" preamble.
-            //
-            // For a parent watching this worker over the Working WS the
-            // structured FAILED ProcessEvent is SUPPRESSED (live reply already
-            // streams), so this reply text is the parent's ONLY signal about
-            // the worker's fate — it must state the truth unambiguously.
-            // "step budget" read as a soft, resumable shortfall; spell out
-            // that this is a hard force-abort at the iteration cap, the worker
-            // is closed, and the text below is partial-not-answer.
-            if (recoveredFromMaxIter && process.getParentProcessId() != null) {
-                finalText = "⚠️ TASK FAILED — this worker was force-stopped after "
-                        + "hitting its hard limit of " + maxIters + " processing "
-                        + "steps (maxIterations). It is now CLOSED and cannot be "
-                        + "resumed. The task is UNFINISHED: the text below is "
-                        + "PARTIAL progress only, NOT an answer — do not treat it "
-                        + "as done, and do not assume the remaining steps ran. To "
-                        + "carry the task further, start a fresh worker (tighter "
-                        + "scope or a higher step limit).\n\nPartial progress:\n\n"
-                        + finalText;
+            SafetyStop safetyStop = outcome.safetyStop();
+            if (safetyStop != null) {
+                boolean worker = process.getParentProcessId() != null;
+                workerSafetyStop = worker;
+                log.warn(
+                        "Ford id='{}' safety net '{}' ended the turn ({}) — {}",
+                        process.getId(),
+                        safetyStop.reason(),
+                        safetyStop.detail(),
+                        worker ? "worker closes INCOMPLETE" : "primary parks BLOCKED");
+                // The stop text is the only signal the caller gets about why
+                // the turn ended — a parent watching over the Working WS has
+                // the FAILED ProcessEvent suppressed — so it always states
+                // the truth and is never blank.
+                finalText = worker ? safetyStop.workerText() : safetyStop.continuableText();
             }
 
             ChatMessageDocument saved = chatLog.append(ChatMessageDocument.builder()
@@ -538,9 +555,8 @@ public class Ford implements ThinkEngine {
             // REPLY frame. See planning/process-engine-reply-channel.md.
             //
             // Reply is emitted on every Ford turn that produces an
-            // ASSISTANT message, including awaiting=false (worker
-            // closes itself with a final answer) — that's exactly the
-            // case that today's mapStatus(IDLE)→null path swallows.
+            // ASSISTANT message — an IDLE exit has no ProcessEvent
+            // (mapStatus(IDLE) → null), so this is the only signal.
             if (finalText != null && !finalText.isBlank()) {
                 Instant inResponseToAt = lastUserInputAt(inbox);
                 ctx.emitReply(finalText, inResponseToAt, null);
@@ -560,18 +576,14 @@ public class Ford implements ThinkEngine {
                 if (interruptForcePause) {
                     thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.PAUSED);
                 }
-            } else if (recoveredFromMaxIter && process.getParentProcessId() != null) {
-                // Sub-process worker exhausted its iteration budget.
-                // The best Free-Text reply has already been appended to
-                // chat history and emitted on the REPLY channel above;
-                // close terminally so the parent's delegation pointer
-                // releases (ParentNotificationListener turns
-                // CLOSED+DONE into a DONE ProcessEvent on the parent's
-                // inbox). Without this the worker stays BLOCKED and
-                // every subsequent user message auto-forwards into a
-                // dead-end.
+            } else if (workerSafetyStop) {
+                // Sub-process worker ended on a safety net. The stop text
+                // has already been appended to chat history and emitted on
+                // the REPLY channel above; close terminally so the parent's
+                // delegation pointer releases and the parent learns the task
+                // did not finish (CLOSED+INCOMPLETE → FAILED ProcessEvent).
                 log.info(
-                        "Ford id='{}' worker hit maxIter — closing INCOMPLETE so parent '{}' releases delegation pointer and learns the task did not finish",
+                        "Ford id='{}' worker safety stop — closing INCOMPLETE so parent '{}' releases delegation pointer and learns the task did not finish",
                         process.getId(),
                         process.getParentProcessId());
                 thinkProcessService.closeProcess(process.getId(), CloseReason.INCOMPLETE);
@@ -674,30 +686,29 @@ public class Ford implements ThinkEngine {
             String finalText,
             boolean awaitingUserInput,
             /**
-             * {@code true} when the turn ended on the hard-failure path —
-             * the iteration cap was exhausted or the LLM collapsed — rather
-             * than a clean natural stop. Drives the terminal close for
-             * sub-process workers (INCOMPLETE → FAILED ProcessEvent).
+             * Non-null when a safety net ended the turn instead of a clean
+             * natural stop. The shell turns it into the stop text and the
+             * role-specific exit (worker → INCOMPLETE, primary → BLOCKED).
              */
-            boolean recovered,
+            @Nullable SafetyStop safetyStop,
             /** {@code true} when a mid-loop interrupt (ESC / /pause) bailed the loop. */
             boolean interrupted,
             /** Halt-flag interrupt → engine parks PAUSED; status-flip → leave as-is. */
             boolean interruptForcePause) {
 
-        /** Clean natural stop (or respond-less answer): the text is the reply. */
-        static TurnOutcome terminal(String text, boolean awaiting) {
-            return new TurnOutcome(text, awaiting, false, false, false);
+        /** Clean natural stop: the text is the reply; the process goes IDLE. */
+        static TurnOutcome terminal(String text) {
+            return new TurnOutcome(text, false, null, false, false);
         }
 
-        /** Hard-failure recovery (maxIter exhausted / LLM collapse). */
-        static TurnOutcome recovered(String text) {
-            return new TurnOutcome(text, true, true, false, false);
+        /** A safety net ended the turn. */
+        static TurnOutcome safetyStop(SafetyStop stop) {
+            return new TurnOutcome("", true, stop, false, false);
         }
 
         /** Mid-loop interrupt — no answer surfaced. */
         static TurnOutcome interrupted(boolean forcePause) {
-            return new TurnOutcome("", false, false, true, forcePause);
+            return new TurnOutcome("", false, null, true, forcePause);
         }
     }
 
@@ -710,14 +721,16 @@ public class Ford implements ThinkEngine {
      * emits tool calls, the loop dispatches them all and iterates; the
      * first iteration that returns an assistant message with <em>no</em>
      * tool call is the terminal — that text is the reply. There is no
-     * mandatory terminal tool. {@code awaiting_user_input} is inferred
-     * from the role: a worker (has a parent) goes IDLE, a primary goes
-     * BLOCKED.
+     * mandatory terminal tool and no routine round cap. An answer leaves
+     * the process IDLE in both modes; BLOCKED is reserved for the chat-mode
+     * safety stop.
      *
-     * <p>Backstops: a mid-loop ESC / {@code /pause} returns an
-     * {@link TurnOutcome#interrupted}, the {@code maxIters} cap and an
-     * LLM collapse return a {@link TurnOutcome#recovered} (hard-failure)
-     * outcome carrying the best free-text seen.
+     * <p>Every iteration first honours an interrupt (status flip or halt
+     * flag → {@link TurnOutcome#interrupted}). The safety nets return a
+     * {@link TurnOutcome#safetyStop} — they measure being stuck, never
+     * volume: idle-stuck (same tool batch N times; status polls are exempt
+     * and throttled), empty reply, LLM failure, the per-turn wallclock and
+     * the recipe's opt-in {@code maxIterations}.
      */
     private TurnOutcome runToolLoop(
             AiChat aiChat,
@@ -726,21 +739,17 @@ public class Ford implements ThinkEngine {
             List<ChatMessage> messages,
             ThinkEngineContext ctx,
             ThinkProcessDocument process,
-            int maxIters,
+            LoopLimits limits,
             boolean validation,
             String modelAlias) {
-        StringBuilder finalText = new StringBuilder();
         int corrections = 0;
         int toolDataChars = 0;
-        // Best Free-Text seen so far across all iterations. Used as
-        // last-resort `respond.message` when the LLM collapses (e.g.
-        // Gemini "neither text nor function call" after validator
-        // corrections) or maxIters is exhausted — preserves the work
-        // the worker already did (web fetches, recipe synthesis, …)
-        // instead of throwing the turn away and forcing the parent
-        // engine to spawn a new worker from scratch.
+        // Best Free-Text seen so far across all iterations — the partial
+        // progress a safety stop carries out, so the work the model already
+        // did (web fetches, synthesis, …) is not thrown away.
         String bestFreeText = "";
-        for (int iter = 0; iter < maxIters; iter++) {
+        ToolLoopSafetyNet net = new ToolLoopSafetyNet(limits, thinkProcessService, process.getId());
+        for (int iter = 0; ; iter++) {
             // Mid-loop interrupt — checked before the next LLM call so
             // ESC / /pause stops a running tool loop promptly (mirrors
             // FrankieEngine and the StructuredActionEngine action loop).
@@ -761,6 +770,10 @@ public class Ford implements ThinkEngine {
                 thinkProcessService.clearHalt(process.getId());
                 return TurnOutcome.interrupted(true);
             }
+            SafetyStop beforeRound = net.beforeRound(iter, bestFreeText);
+            if (beforeRound != null) {
+                return TurnOutcome.safetyStop(beforeRound);
+            }
 
             ChatRequest.Builder req = ChatRequest.builder().messages(turnContextHandlers.apply(messages, ctx, process));
             if (!toolSpecs.isEmpty()) {
@@ -772,29 +785,16 @@ public class Ford implements ThinkEngine {
                 StreamResult streamed = streamOneIteration(aiChat, req.build(), ctx, process, modelAlias);
                 reply = streamed.message;
             } catch (RuntimeException e) {
-                // LLM collapsed mid-loop (typically: Gemini "neither
-                // text nor function call" after validator pings, or
-                // Resilient-retry budget exhausted). Don't throw —
-                // recover with the best Free-Text we already extracted
-                // so the user still gets the recipe / answer the model
-                // produced before it got confused.
-                if (!bestFreeText.isEmpty()) {
-                    log.warn(
-                            "Ford id='{}' tool-loop LLM failure ({}) — recovering with best Free-Text seen ({} chars)",
-                            process.getId(),
-                            e.toString(),
-                            bestFreeText.length());
-                    return TurnOutcome.recovered(bestFreeText);
-                }
-                log.warn("Ford id='{}' tool-loop LLM failure with no recoverable text", process.getId());
-                throw e;
+                // LLM collapsed mid-loop (typically: Gemini "neither text
+                // nor function call", or the Resilient-retry budget is
+                // exhausted). Never a silent end: the turn always produces
+                // a stop text, carrying the best free text seen so far.
+                return TurnOutcome.safetyStop(SafetyStop.llmFailure(e, bestFreeText));
             }
 
-            // Track the best Free-Text we've seen, regardless of
-            // whether this iteration also has tool-calls. The recipe
-            // / answer typically lives in the FIRST iteration where
-            // the LLM tries to "give a final answer" without `respond`;
-            // later validator-driven retries often produce shorter text.
+            // Track the best Free-Text we've seen, regardless of whether
+            // this iteration also has tool-calls — later validator-driven
+            // retries often produce shorter text.
             String replyText = reply.text();
             if (replyText != null && replyText.length() > bestFreeText.length()) {
                 bestFreeText = replyText;
@@ -805,13 +805,18 @@ public class Ford implements ThinkEngine {
                 // with no tool call — it has nothing more to do, so the
                 // text IS the reply and the turn ends here (Frankie /
                 // Claude-Code style; no mandatory `respond` wrapper).
-                //
+                String text = replyText == null ? "" : replyText;
+                if (text.isBlank()) {
+                    // Neither text nor tool call — not a clean stop but a
+                    // collapse. Accepting it would end the turn without a
+                    // reply, and an asynchronous parent would wait forever.
+                    return TurnOutcome.safetyStop(SafetyStop.emptyReply(bestFreeText));
+                }
                 // One exception — the validation-gated data-relay-gap: if
                 // big tool data is in the conversation but the reply is
                 // thin, the "stop" is premature; correct once and let the
                 // model re-read the tool results before it stops.
-                String text = reply.text();
-                int replyLen = text == null ? 0 : text.length();
+                int replyLen = text.length();
                 if (validation
                         && corrections < MAX_VALIDATION_CORRECTIONS
                         && toolDataChars >= TOOL_DATA_THRESHOLD
@@ -830,43 +835,38 @@ public class Ford implements ThinkEngine {
                     corrections++;
                     continue;
                 }
-                if (text != null) {
-                    finalText.append(text);
-                }
                 if (validation && corrections > 0) {
                     log.info("Ford id='{}' validation: completed after {} correction(s)", process.getId(), corrections);
                 }
-                // awaiting by role: a worker (has a parent) is done → IDLE
-                // so the parent can steer again; a primary (no parent)
-                // awaits the user's next message → BLOCKED.
-                boolean awaiting = process.getParentProcessId() == null;
-                return TurnOutcome.terminal(finalText.toString(), awaiting);
+                // An answer is "done, ready for the next message" → IDLE, in
+                // both modes (Frankie does the same). BLOCKED is reserved
+                // for a real obstacle (a chat-mode safety stop): orchestrators
+                // read it as a question — Magrathea maps it to needs_input,
+                // Arthur auto-forwards the next user message to it.
+                return TurnOutcome.terminal(text);
+            }
+
+            // Idle-stuck net over consecutive batches (status polls exempt).
+            List<ToolExecutionRequest> calls = reply.toolExecutionRequests();
+            SafetyStop stuck = net.onToolBatch(calls, bestFreeText);
+            if (stuck != null) {
+                return TurnOutcome.safetyStop(stuck);
             }
 
             // Tool calls present — dispatch them all and loop; the model
             // decides it's done by NOT calling a tool on a later turn
             // (natural stop above). There is no terminal tool any more.
             messages.add(reply);
-            for (ToolExecutionRequest call : reply.toolExecutionRequests()) {
+            for (ToolExecutionRequest call : calls) {
                 String result = invokeOne(tools, call, process.getId());
                 if (result != null) toolDataChars += result.length();
                 messages.add(ToolExecutionResultMessage.from(call, result));
             }
+
+            // Poll throttle: a batch that only polled a running background
+            // job pauses before the next round (every poll is a model call).
+            net.afterToolBatch(calls);
         }
-        // maxIters exhausted — a genuine runaway at this cap (100).
-        // Don't throw the work away: emit the best Free-Text as a
-        // recovered (hard-failure) outcome; a worker then closes
-        // INCOMPLETE so the parent learns the task did not finish.
-        if (!bestFreeText.isEmpty()) {
-            log.warn(
-                    "Ford id='{}' exceeded {} tool iterations — recovering with best Free-Text seen ({} chars)",
-                    process.getId(),
-                    maxIters,
-                    bestFreeText.length());
-            return TurnOutcome.recovered(bestFreeText);
-        }
-        throw new AiChatException(
-                "Ford exceeded " + maxIters + " tool iterations — no recoverable text, aborting turn.");
     }
 
     /**
@@ -1228,19 +1228,6 @@ public class Ford implements ThinkEngine {
             log.warn("Ford: validator template format failed ({}), using template verbatim", e.toString());
             return template;
         }
-    }
-
-    private static int paramInt(ThinkProcessDocument process, String key, int fallback) {
-        Object v = param(process, key);
-        if (v instanceof Number n) return n.intValue();
-        if (v instanceof String s) {
-            try {
-                return Integer.parseInt(s.trim());
-            } catch (NumberFormatException e) {
-                return fallback;
-            }
-        }
-        return fallback;
     }
 
     private static boolean paramBool(ThinkProcessDocument process, String key, boolean fallback) {

@@ -17,6 +17,10 @@ import de.mhus.vance.brain.thinkengine.EnginePromptResolver;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
+import de.mhus.vance.brain.thinkengine.loop.EngineLoopProperties;
+import de.mhus.vance.brain.thinkengine.loop.LoopLimits;
+import de.mhus.vance.brain.thinkengine.loop.SafetyStop;
+import de.mhus.vance.brain.thinkengine.loop.ToolLoopSafetyNet;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolErrorPayload;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
@@ -93,8 +97,14 @@ public class WowbaggerEngine implements ThinkEngine {
 
     private static final String DEFAULT_PROMPT_PATH = "_vance/prompts/wowbagger-prompt.md";
 
-    /** Same backstop rationale as Ford's. */
-    private static final int MAX_TOOL_ITERATIONS = 40;
+    /**
+     * Status polls exempt from the idle-stuck net: the shared exec polls
+     * plus the agent's own pool status — watching a running pool is
+     * progress-waiting, not a stuck loop.
+     */
+    private static final Set<String> POLLING_TOOLS = java.util.stream.Stream.concat(
+                    ToolLoopSafetyNet.DEFAULT_POLLING_TOOLS.stream(), java.util.stream.Stream.of("wowbagger_status"))
+            .collect(java.util.stream.Collectors.toUnmodifiableSet());
 
     private static final long STREAM_TIMEOUT_MINUTES = 20;
 
@@ -117,6 +127,7 @@ public class WowbaggerEngine implements ThinkEngine {
     private final de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry turnContextHandlers;
     private final de.mhus.vance.brain.guard.ShootyGuardService guardService;
     private final WowbaggerPoolService pool;
+    private final EngineLoopProperties loopProperties;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -198,11 +209,29 @@ public class WowbaggerEngine implements ThinkEngine {
     @Override
     public void runTurn(ThinkProcessDocument process, ThinkEngineContext ctx) {
         while (true) {
+            // Pause contract at the drain head (see Ford.runTurn): yield
+            // before draining; the flag stays for the PAUSED lane task.
+            if (thinkProcessService.isHaltRequested(process.getId())) {
+                log.info("Wowbagger.runTurn id='{}' halt requested — yielding, inbox left queued", process.getId());
+                return;
+            }
             List<SteerMessage> drained = ctx.drainPending();
             if (drained.isEmpty()) {
                 return;
             }
-            runTurnFor(process, ctx, drained);
+            TurnOutcome outcome = runTurnFor(process, ctx, drained);
+            // A turn that closed or parked the process ends the pass —
+            // pool wakeups queued meanwhile must not spin a turn on it.
+            ThinkProcessStatus status = thinkProcessService
+                    .findById(process.getId())
+                    .map(ThinkProcessDocument::getStatus)
+                    .orElse(ThinkProcessStatus.CLOSED);
+            if (outcome.interrupted()
+                    || status == ThinkProcessStatus.CLOSED
+                    || status == ThinkProcessStatus.PAUSED
+                    || status == ThinkProcessStatus.SUSPENDED) {
+                return;
+            }
         }
     }
 
@@ -231,7 +260,7 @@ public class WowbaggerEngine implements ThinkEngine {
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.RUNNING);
         guardService.guardsOnTurnStart(process, inbox);
         boolean awaitingUserInput = false;
-        boolean recoveredFromMaxIter = false;
+        boolean workerSafetyStop = false;
         boolean interrupted = false;
         boolean interruptForcePause = false;
         try {
@@ -265,9 +294,9 @@ public class WowbaggerEngine implements ThinkEngine {
                 messages = buildPromptMessages(process, chatLog, extras, modelInfo, effectiveSize, tools);
             }
 
-            int maxIters = paramInt(process, "maxIterations", MAX_TOOL_ITERATIONS);
+            LoopLimits limits = LoopLimits.resolve(process, loopProperties);
             String modelAlias = config.providerInstance() + ":" + config.modelName();
-            TurnOutcome outcome = runToolLoop(aiChat, toolSpecs, tools, messages, ctx, process, maxIters, modelAlias);
+            TurnOutcome outcome = runToolLoop(aiChat, toolSpecs, tools, messages, ctx, process, limits, modelAlias);
             if (outcome.interrupted()) {
                 interrupted = true;
                 interruptForcePause = outcome.interruptForcePause();
@@ -278,26 +307,30 @@ public class WowbaggerEngine implements ThinkEngine {
                         interruptForcePause);
                 return outcome;
             }
-            if (outcome.recovered()) {
-                recoveredFromMaxIter = true;
-            }
             awaitingUserInput = outcome.awaitingUserInput();
             String finalText = outcome.finalText();
+            SafetyStop safetyStop = outcome.safetyStop();
+            if (safetyStop != null) {
+                // Same exits as Ford (ford-engine.md §4): a worker reports the
+                // failure and closes INCOMPLETE — never parked BLOCKED, which
+                // orchestrators read as a question; a chat parks BLOCKED with
+                // a continuable stop text. The pool is not touched: a running
+                // pool keeps working, the next message resumes the agent.
+                boolean worker = process.getParentProcessId() != null;
+                workerSafetyStop = worker;
+                log.warn(
+                        "Wowbagger id='{}' safety net '{}' ended the turn ({})",
+                        process.getId(),
+                        safetyStop.reason(),
+                        safetyStop.detail());
+                finalText = worker ? safetyStop.workerText() : safetyStop.continuableText();
+            }
 
             // Pool wakeups land in the chat history exactly once — the pool's
             // own "[pool]" note (the drained UserChatInput is skipped in
             // splitInbox). The reply channel is NOT gated on wakeup turns:
             // an agent woken by "run finished" answering with the result
             // pointer is exactly the reply the user wants surfaced.
-            if (recoveredFromMaxIter && process.getParentProcessId() != null) {
-                finalText = "⚠️ TASK FAILED — this worker was force-stopped after "
-                        + "hitting its hard limit of " + maxIters + " processing "
-                        + "steps (maxIterations). It is now CLOSED and cannot be "
-                        + "resumed. The task is UNFINISHED: the text below is "
-                        + "PARTIAL progress only, NOT an answer.\n\nPartial progress:\n\n"
-                        + finalText;
-            }
-
             ChatMessageDocument saved = chatLog.append(ChatMessageDocument.builder()
                     .tenantId(process.getTenantId())
                     .sessionId(process.getSessionId())
@@ -322,8 +355,8 @@ public class WowbaggerEngine implements ThinkEngine {
                 if (interruptForcePause) {
                     thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.PAUSED);
                 }
-            } else if (recoveredFromMaxIter && process.getParentProcessId() != null) {
-                log.info("Wowbagger id='{}' worker hit maxIter — closing INCOMPLETE", process.getId());
+            } else if (workerSafetyStop) {
+                log.info("Wowbagger id='{}' worker safety stop — closing INCOMPLETE", process.getId());
                 thinkProcessService.closeProcess(process.getId(), CloseReason.INCOMPLETE);
             } else {
                 ThinkProcessStatus exitStatus =
@@ -388,23 +421,29 @@ public class WowbaggerEngine implements ThinkEngine {
     private record TurnOutcome(
             String finalText,
             boolean awaitingUserInput,
-            boolean recovered,
+            @Nullable SafetyStop safetyStop,
             boolean interrupted,
             boolean interruptForcePause) {
 
-        static TurnOutcome terminal(String text, boolean waiting) {
-            return new TurnOutcome(text, waiting, false, false, false);
+        /** An answer — the process goes IDLE in both modes (Ford parity). */
+        static TurnOutcome terminal(String text) {
+            return new TurnOutcome(text, false, null, false, false);
         }
 
-        static TurnOutcome recovered(String text) {
-            return new TurnOutcome(text, true, true, false, false);
+        static TurnOutcome safetyStop(SafetyStop stop) {
+            return new TurnOutcome("", true, stop, false, false);
         }
 
         static TurnOutcome interrupted(boolean forcePause) {
-            return new TurnOutcome("", false, false, true, forcePause);
+            return new TurnOutcome("", false, null, true, forcePause);
         }
     }
 
+    /**
+     * The tool loop — Ford's semantics: natural stop ends the turn, no
+     * routine round cap, the shared safety nets ({@link ToolLoopSafetyNet})
+     * catch a stuck loop. Pool status polls are exempt from idle-stuck.
+     */
     private TurnOutcome runToolLoop(
             AiChat aiChat,
             List<ToolSpecification> toolSpecs,
@@ -412,11 +451,11 @@ public class WowbaggerEngine implements ThinkEngine {
             List<ChatMessage> messages,
             ThinkEngineContext ctx,
             ThinkProcessDocument process,
-            int maxIters,
+            LoopLimits limits,
             String modelAlias) {
-        StringBuilder finalText = new StringBuilder();
         String bestFreeText = "";
-        for (int iter = 0; iter < maxIters; iter++) {
+        ToolLoopSafetyNet net = new ToolLoopSafetyNet(limits, thinkProcessService, process.getId(), POLLING_TOOLS);
+        for (int iter = 0; ; iter++) {
             ThinkProcessStatus liveStatus = thinkProcessService
                     .findById(process.getId())
                     .map(ThinkProcessDocument::getStatus)
@@ -432,6 +471,10 @@ public class WowbaggerEngine implements ThinkEngine {
                 thinkProcessService.clearHalt(process.getId());
                 return TurnOutcome.interrupted(true);
             }
+            SafetyStop beforeRound = net.beforeRound(iter, bestFreeText);
+            if (beforeRound != null) {
+                return TurnOutcome.safetyStop(beforeRound);
+            }
 
             ChatRequest.Builder req = ChatRequest.builder().messages(turnContextHandlers.apply(messages, ctx, process));
             if (!toolSpecs.isEmpty()) {
@@ -443,15 +486,7 @@ public class WowbaggerEngine implements ThinkEngine {
                 StreamResult streamed = streamOneIteration(aiChat, req.build(), ctx, process, modelAlias);
                 reply = streamed.message();
             } catch (RuntimeException e) {
-                if (!bestFreeText.isEmpty()) {
-                    log.warn(
-                            "Wowbagger id='{}' tool-loop LLM failure ({}) — recovering with best Free-Text ({} chars)",
-                            process.getId(),
-                            e.toString(),
-                            bestFreeText.length());
-                    return TurnOutcome.recovered(bestFreeText);
-                }
-                throw e;
+                return TurnOutcome.safetyStop(SafetyStop.llmFailure(e, bestFreeText));
             }
 
             String replyText = reply.text();
@@ -460,28 +495,23 @@ public class WowbaggerEngine implements ThinkEngine {
             }
 
             if (!reply.hasToolExecutionRequests()) {
-                String text = reply.text();
-                if (text != null) {
-                    finalText.append(text);
+                if (replyText == null || replyText.isBlank()) {
+                    return TurnOutcome.safetyStop(SafetyStop.emptyReply(bestFreeText));
                 }
-                boolean waiting = process.getParentProcessId() == null;
-                return TurnOutcome.terminal(finalText.toString(), waiting);
+                return TurnOutcome.terminal(replyText);
+            }
+            List<ToolExecutionRequest> calls = reply.toolExecutionRequests();
+            SafetyStop stuck = net.onToolBatch(calls, bestFreeText);
+            if (stuck != null) {
+                return TurnOutcome.safetyStop(stuck);
             }
             messages.add(reply);
-            for (ToolExecutionRequest call : reply.toolExecutionRequests()) {
+            for (ToolExecutionRequest call : calls) {
                 String result = invokeOne(tools, call, process.getId());
                 messages.add(ToolExecutionResultMessage.from(call, result));
             }
+            net.afterToolBatch(calls);
         }
-        if (!bestFreeText.isEmpty()) {
-            log.warn(
-                    "Wowbagger id='{}' exceeded {} tool iterations — recovering with best Free-Text",
-                    process.getId(),
-                    maxIters);
-            return TurnOutcome.recovered(bestFreeText);
-        }
-        throw new AiChatException(
-                "Wowbagger exceeded " + maxIters + " tool iterations — no recoverable text, aborting turn.");
     }
 
     private StreamResult streamOneIteration(
@@ -817,19 +847,6 @@ public class WowbaggerEngine implements ThinkEngine {
     private static @Nullable String paramString(ThinkProcessDocument process, String key, @Nullable String fallback) {
         Object v = param(process, key);
         return v instanceof String s && !s.isBlank() ? s : fallback;
-    }
-
-    private static int paramInt(ThinkProcessDocument process, String key, int fallback) {
-        Object v = param(process, key);
-        if (v instanceof Number n) return n.intValue();
-        if (v instanceof String s && !s.isBlank()) {
-            try {
-                return Integer.parseInt(s.trim());
-            } catch (NumberFormatException e) {
-                return fallback;
-            }
-        }
-        return fallback;
     }
 
     private static boolean isBlank(@Nullable String s) {

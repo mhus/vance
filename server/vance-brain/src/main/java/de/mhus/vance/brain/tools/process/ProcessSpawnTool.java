@@ -3,6 +3,8 @@ package de.mhus.vance.brain.tools.process;
 import de.mhus.vance.api.action.TriggerAction;
 import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.api.chat.ChatRole;
+import de.mhus.vance.api.thinkprocess.CloseReason;
+import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.action.ActionExecutorRegistry;
 import de.mhus.vance.brain.action.ActionOutcome;
 import de.mhus.vance.brain.action.ActionResult;
@@ -195,7 +197,8 @@ public class ProcessSpawnTool implements Tool {
                 + "returns spawn metadata and the worker reports back "
                 + "asynchronously; `wait=true` blocks for one turn and returns "
                 + "the worker's reply under `reply` (for tight script "
-                + "orchestration). Selector mode returns {decision, recipe, "
+                + "orchestration; `failed: true` marks a worker that gave up — "
+                + "its `reply` is then a failure report, not a result). Selector mode returns {decision, recipe, "
                 + "engine, rationale, fallback?, process?}.";
     }
 
@@ -425,6 +428,7 @@ public class ProcessSpawnTool implements Tool {
         ThinkEngineService engineService = thinkEngineServiceProvider.getObject();
         @Nullable String reply;
         String terminalStatus;
+        boolean failed;
         try {
             SteerMessage.UserChatInput message = new SteerMessage.UserChatInput(
                     Instant.now(),
@@ -455,6 +459,12 @@ public class ProcessSpawnTool implements Tool {
             terminalStatus = refreshed.getStatus() == null
                     ? "UNKNOWN"
                     : refreshed.getStatus().name();
+            // A worker that closed itself INCOMPLETE gave up (e.g. a Ford
+            // safety stop): its reply is a failure report, not a result.
+            // Flag it structurally so the caller does not have to parse
+            // the text.
+            failed = refreshed.getStatus() == ThinkProcessStatus.CLOSED
+                    && refreshed.getCloseReason() == CloseReason.INCOMPLETE;
         } finally {
             // Serialize the stop onto the CHILD lane (never off-lane).
             try {
@@ -483,6 +493,7 @@ public class ProcessSpawnTool implements Tool {
         out.put("engine", child.getThinkEngine());
         if (child.getRecipeName() != null) out.put("recipe", child.getRecipeName());
         if (reply != null) out.put("reply", reply);
+        if (failed) out.put("failed", true);
         return out;
     }
 

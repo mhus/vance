@@ -72,8 +72,8 @@ public class BootstrapBrainService {
      * admin is seeded as TENANT-ADMIN. Absent under the allow-all provider or
      * an external governor — {@code ifAvailable} keeps the seed a no-op.
      */
-    private final org.springframework.beans.factory.ObjectProvider<
-            de.mhus.vance.shared.permission.PermissionBootstrap> permissionBootstrapProvider;
+    private final org.springframework.beans.factory.ObjectProvider<de.mhus.vance.shared.permission.PermissionBootstrap>
+            permissionBootstrapProvider;
 
     @PostConstruct
     void init() {
@@ -95,8 +95,7 @@ public class BootstrapBrainService {
         // standard password-login endpoint to mint its JWT —
         // {serviceAccount=true, loginEnabled=true} is a valid combo
         // since the two flags are orthogonal.
-        ensureUser(ACME_TENANT, "_acme-automaton", "Acme Automaton",
-                "automaton@acme.invalid", "anvils-fall-down");
+        ensureUser(ACME_TENANT, "_acme-automaton", "Acme Automaton", "automaton@acme.invalid", "anvils-fall-down");
         userService.setLoginEnabled(ACME_TENANT, "_acme-automaton", true);
 
         ensureProjectGroup(ACME_TENANT, "gravity-ignorance", "Department of Gravity Ignorance");
@@ -115,7 +114,10 @@ public class BootstrapBrainService {
         ensureProject(ACME_TENANT, "cloud-delivery", "Cloud Delivery", "anvil-logistics");
 
         ensureTeam(ACME_TENANT, "rd-propulsion", "R&D & Propulsion", List.of("wile.coyote"));
-        ensureTeam(ACME_TENANT, "field-testing-qa", "Field Testing & Quality Assurance",
+        ensureTeam(
+                ACME_TENANT,
+                "field-testing-qa",
+                "Field Testing & Quality Assurance",
                 List.of("wile.coyote", "road.runner"));
 
         // Seed sensible demo grants once a grant-storing provider (Simple-Auth)
@@ -126,8 +128,8 @@ public class BootstrapBrainService {
         // wile.coyote (in both teams) reaches everything. Idempotent per boot.
         permissionBootstrapProvider.ifAvailable(pb -> {
             pb.grantTenantAdmin(ACME_TENANT, "marvin.acme");
-            for (String project : List.of("instant-hole", "dehydrated-boulders",
-                    "rocket-powered-skates", "giant-slingshot")) {
+            for (String project :
+                    List.of("instant-hole", "dehydrated-boulders", "rocket-powered-skates", "giant-slingshot")) {
                 pb.grantProjectTeamWriter(ACME_TENANT, project, "rd-propulsion");
             }
             for (String project : List.of("invisible-paint", "iron-seed", "cloud-delivery")) {
@@ -207,7 +209,9 @@ public class BootstrapBrainService {
             return;
         }
         documentService.createText(
-                tenantId, tenantProject, docPath,
+                tenantId,
+                tenantProject,
+                docPath,
                 "Agrajag error patterns",
                 List.of("agrajag", "tools", "config"),
                 body,
@@ -217,8 +221,7 @@ public class BootstrapBrainService {
     }
 
     private static @Nullable String readClasspathResource(String resource) {
-        try (InputStream in = BootstrapBrainService.class.getClassLoader()
-                .getResourceAsStream(resource)) {
+        try (InputStream in = BootstrapBrainService.class.getClassLoader().getResourceAsStream(resource)) {
             if (in == null) return null;
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (java.io.IOException e) {
@@ -244,7 +247,9 @@ public class BootstrapBrainService {
 
         if (documentService.findByPath(tenantId, tenantProject, docPath).isEmpty()) {
             documentService.createText(
-                    tenantId, tenantProject, docPath,
+                    tenantId,
+                    tenantProject,
+                    docPath,
                     "Mock OAuth (local)",
                     List.of("oauth", "dev"),
                     MOCK_OAUTH_PROVIDER_YAML,
@@ -253,11 +258,14 @@ public class BootstrapBrainService {
             log.info("Bootstrap: seeded mock OAuth provider document '{}'", docPath);
         }
 
-        boolean hasSecret = settingService.getDecryptedPassword(
-                tenantId, SettingService.SCOPE_PROJECT, tenantProject, secretKey) != null;
+        boolean hasSecret =
+                settingService.getDecryptedPassword(tenantId, SettingService.SCOPE_PROJECT, tenantProject, secretKey)
+                        != null;
         if (!hasSecret) {
             settingService.setEncryptedPassword(
-                    tenantId, SettingService.SCOPE_PROJECT, tenantProject,
+                    tenantId,
+                    SettingService.SCOPE_PROJECT,
+                    tenantProject,
                     secretKey,
                     "dummy-secret-mock-does-not-check");
             log.info("Bootstrap: seeded mock OAuth client secret '{}'", secretKey);
@@ -267,10 +275,16 @@ public class BootstrapBrainService {
     /**
      * Drops two demo documents into the {@code instant-hole} project so the
      * Web-UI document editor has something to show on a fresh database. Both
-     * are inline-text and well under the 4 KB threshold.
+     * are inline-text and well under the 4 KB threshold. They live under
+     * {@code documents/} — the user-document root that {@code doc_list} and
+     * the document views scope to by default; outside it they would be
+     * invisible to an agent asked "which documents are there?".
      */
     private void seedInstantHoleDocuments() {
-        ensureDocument(ACME_TENANT, "instant-hole", "notes/welcome.md",
+        ensureDocument(
+                ACME_TENANT,
+                "instant-hole",
+                "documents/notes/welcome.md",
                 "Welcome to Instant Hole",
                 "text/markdown",
                 List.of("welcome", "demo"),
@@ -295,7 +309,10 @@ public class BootstrapBrainService {
                 """,
                 "marvin.acme");
 
-        ensureDocument(ACME_TENANT, "instant-hole", "specs/deployment-checklist.md",
+        ensureDocument(
+                ACME_TENANT,
+                "instant-hole",
+                "documents/specs/deployment-checklist.md",
                 "Deployment checklist",
                 "text/markdown",
                 List.of("spec", "checklist"),
@@ -351,37 +368,38 @@ public class BootstrapBrainService {
     }
 
     private void ensureUser(String tenantId, String name, String title, @Nullable String email, String plainPassword) {
-        ensureOnce("user '" + name + "'",
-                () -> userService.existsByTenantAndName(tenantId, name),
-                () -> {
-                    String hash = passwordService.hash(plainPassword);
-                    if (name.startsWith(UserService.SERVICE_ACCOUNT_PREFIX)) {
-                        // Service accounts have loginEnabled=false hardcoded by
-                        // createServiceAccount — tokens for them have to be minted
-                        // out-of-band (Anus admin shell). The password hash is
-                        // stored anyway so a future "promote to login-able" flow
-                        // can flip the flag without password reset.
-                        userService.createServiceAccount(tenantId, name, hash, title, email);
-                    } else {
-                        userService.create(tenantId, name, hash, title, email);
-                    }
-                });
+        ensureOnce("user '" + name + "'", () -> userService.existsByTenantAndName(tenantId, name), () -> {
+            String hash = passwordService.hash(plainPassword);
+            if (name.startsWith(UserService.SERVICE_ACCOUNT_PREFIX)) {
+                // Service accounts have loginEnabled=false hardcoded by
+                // createServiceAccount — tokens for them have to be minted
+                // out-of-band (Anus admin shell). The password hash is
+                // stored anyway so a future "promote to login-able" flow
+                // can flip the flag without password reset.
+                userService.createServiceAccount(tenantId, name, hash, title, email);
+            } else {
+                userService.create(tenantId, name, hash, title, email);
+            }
+        });
     }
 
     private void ensureProjectGroup(String tenantId, String name, String title) {
-        ensureOnce("project group '" + name + "'",
+        ensureOnce(
+                "project group '" + name + "'",
                 () -> projectGroupService.existsByTenantAndName(tenantId, name),
                 () -> projectGroupService.create(tenantId, name, title));
     }
 
     private void ensureProject(String tenantId, String name, String title, @Nullable String projectGroupId) {
-        ensureOnce("project '" + name + "'",
+        ensureOnce(
+                "project '" + name + "'",
                 () -> projectService.existsByTenantAndName(tenantId, name),
                 () -> projectService.create(tenantId, name, title, projectGroupId, null));
     }
 
     private void ensureTeam(String tenantId, String name, String title, List<String> members) {
-        ensureOnce("team '" + name + "'",
+        ensureOnce(
+                "team '" + name + "'",
                 () -> teamService.existsByTenantAndName(tenantId, name),
                 () -> teamService.create(tenantId, name, title, members));
     }
@@ -395,7 +413,8 @@ public class BootstrapBrainService {
             List<String> tags,
             String body,
             String createdBy) {
-        ensureOnce("document '" + path + "'",
+        ensureOnce(
+                "document '" + path + "'",
                 () -> documentService.findByPath(tenantId, projectId, path).isPresent(),
                 () -> {
                     byte[] bytes = body.getBytes(java.nio.charset.StandardCharsets.UTF_8);

@@ -1,7 +1,6 @@
 package de.mhus.vance.brain.thinkengine;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -58,8 +57,10 @@ import tools.jackson.databind.json.JsonMapper;
  * The shared control-loop kernel of {@link AbstractEngineSessionLoop}
  * (planning/session-loop-extraction.md, decision F5) — tested once here
  * instead of three times indirectly: exit-status mapping (chat form
- * awaits, worker form goes idle), the status/halt interrupts, the
- * best-free-text recovery, and the iteration backstop. The per-engine
+ * awaits, worker form goes idle), the status/halt interrupts, and the
+ * shared safety nets — no routine round cap; a net parks the identity
+ * BLOCKED with a continuable stop text in either form, because the
+ * engine's machine (run, phases, tree) owns the lifecycle. The per-engine
  * splitInbox tests keep the F3 contract; the engine session tests keep
  * the forks.
  */
@@ -95,7 +96,8 @@ class AbstractEngineSessionLoopTest {
                     turnContextHandlers,
                     mock(ShootyGuardService.class),
                     mock(WorkspaceService.class),
-                    historyStrengthFilter());
+                    historyStrengthFilter(),
+                    new de.mhus.vance.brain.thinkengine.loop.EngineLoopProperties());
         }
 
         @Override
@@ -358,47 +360,72 @@ class AbstractEngineSessionLoopTest {
     }
 
     @Test
-    void llmFailureAfterPartialText_recoversWithTheBestFreeText() {
+    void llmFailure_endsWithAContinuableStopText_carryingTheProgress() {
         chatModel.script(toolCall("doc_read"), text("never reached"));
         chatModel.failAt(2, new IllegalStateException("model exploded"));
 
         AbstractEngineSessionLoop.TurnOutcome out = loop.turnFor(chatProcess(), ctx, List.of(said("go")));
 
-        assertThat(out.finalText()).isEqualTo("thinking out loud");
+        assertThat(out.finalText())
+                .startsWith("⚠️ I stopped this turn")
+                .contains("model exploded")
+                .contains("Progress so far:\n\nthinking out loud");
         assertThat(out.awaitingUserInput()).isTrue();
-        verify(ctx).emitReply(eq("thinking out loud"), any(), any());
+        verify(ctx).emitReply(eq(out.finalText()), any(), any());
     }
 
     @Test
-    void iterationBackstop_throwsWhenNothingRecoverable() {
-        ThinkProcessDocument p = chatProcess();
-        p.setEngineParams(new LinkedHashMap<>(Map.of("maxIterations", 2)));
-        // Tool-call replies without text: nothing recoverable.
-        AiMessage silentToolCall = AiMessage.builder()
-                .toolExecutionRequests(List.of(ToolExecutionRequest.builder()
-                        .id("call-1")
-                        .name("doc_read")
-                        .arguments("{}")
-                        .build()))
-                .build();
-        chatModel.script(silentToolCall, silentToolCall);
+    void noRoutineRoundCap_aLongHealthyTurnRunsToItsAnswer() {
+        AiMessage[] script = new AiMessage[51];
+        for (int i = 0; i < 50; i++) {
+            script[i] = AiMessage.builder()
+                    .toolExecutionRequests(List.of(ToolExecutionRequest.builder()
+                            .id("call-" + i)
+                            .name("doc_read")
+                            .arguments("{\"n\":" + i + "}")
+                            .build()))
+                    .build();
+        }
+        script[50] = text("the report");
+        chatModel.script(script);
 
-        assertThatThrownBy(() -> loop.turnFor(p, ctx, List.of(said("go"))))
-                .isInstanceOf(de.mhus.vance.brain.ai.AiChatException.class)
-                .hasMessageContaining("exceeded 2 tool iterations");
-        assertThat(chatModel.callCount()).isEqualTo(2);
+        AbstractEngineSessionLoop.TurnOutcome out = loop.turnFor(workerProcess(), ctx, List.of(said("go")));
+
+        assertThat(out.finalText()).isEqualTo("the report");
+        assertThat(chatModel.callCount()).isEqualTo(51);
     }
 
     @Test
-    void iterationBackstop_recoversWithTextWhenTheLoopRanHot() {
+    void idleStuck_parksTheWorkerFormBlocked_neverClosesIt() {
+        chatModel.script(toolCall("doc_read")); // the same batch, forever
+
+        AbstractEngineSessionLoop.TurnOutcome out = loop.turnFor(workerProcess(), ctx, List.of(said("go")));
+
+        assertThat(out.finalText()).startsWith("⚠️ I stopped this turn").contains("repeated the same tool call");
+        assertThat(out.awaitingUserInput()).isTrue();
+        verify(processes).updateStatus("proc-1", ThinkProcessStatus.BLOCKED);
+        verify(processes, never()).closeProcess(any(), any());
+    }
+
+    @Test
+    void iterationCap_isOptIn_andEndsWithAStopText() {
         ThinkProcessDocument p = chatProcess();
         p.setEngineParams(new LinkedHashMap<>(Map.of("maxIterations", 2)));
-        AiMessage chatty = toolCall("doc_read"); // carries "thinking out loud"
-        chatModel.script(chatty, chatty);
+        chatModel.script(toolCall("doc_read"), toolCall("doc_list"));
 
         AbstractEngineSessionLoop.TurnOutcome out = loop.turnFor(p, ctx, List.of(said("go")));
 
-        assertThat(out.finalText()).isEqualTo("thinking out loud");
+        assertThat(out.finalText()).contains("step limit (2 rounds (maxIterations))");
         assertThat(chatModel.callCount()).isEqualTo(2);
+    }
+
+    @Test
+    void emptyReply_isAStopText_neverASilentEnd() {
+        chatModel.script(AiMessage.builder().text("").build());
+
+        AbstractEngineSessionLoop.TurnOutcome out = loop.turnFor(chatProcess(), ctx, List.of(said("go")));
+
+        assertThat(out.finalText()).contains("empty response");
+        verify(ctx).emitReply(eq(out.finalText()), any(), any());
     }
 }

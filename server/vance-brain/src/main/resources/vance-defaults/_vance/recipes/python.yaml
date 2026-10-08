@@ -20,7 +20,6 @@ triggers:
 params:
   model: default:python,default:code
   validation: true
-  maxIterations: 40  # safety-net cap only — Ford ends by natural stop
   manualPaths:
     - _vance/manuals/
 allowedToolsAdd:

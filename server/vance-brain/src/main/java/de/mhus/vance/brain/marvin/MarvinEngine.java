@@ -2019,6 +2019,11 @@ public class MarvinEngine implements ThinkEngine {
             reply = readLastAssistantText(process.getTenantId(), process.getSessionId(), child.getId());
             if (reply == null || reply.isBlank()) {
                 reply = "[CALL_RECIPE returned no assistant text]";
+            } else if (closedIncomplete(child.getId())) {
+                // The worker gave up (e.g. a Ford safety stop) — its reply is
+                // a failure report, not a result. Mark it the same way a
+                // failed drive is marked, so REFLECT does not take it as data.
+                reply = "[CALL_RECIPE failed: the worker stopped without finishing]\n" + reply;
             }
         } catch (de.mhus.vance.brain.thinkengine.OrchestratorInterruptedException ie) {
             throw ie;
@@ -2041,6 +2046,14 @@ public class MarvinEngine implements ThinkEngine {
             }
         }
         appendCallReply(process, node, recipe, reply);
+    }
+
+    /** Whether the child closed itself as INCOMPLETE — a worker that gave up. */
+    private boolean closedIncomplete(String childId) {
+        return thinkProcessService
+                .findById(childId)
+                .map(c -> c.getStatus() == ThinkProcessStatus.CLOSED && c.getCloseReason() == CloseReason.INCOMPLETE)
+                .orElse(false);
     }
 
     private void driveSubProcessOnce(ThinkProcessDocument child, String marvinProcessId, String content) {

@@ -35,8 +35,6 @@ params:
   # deep-validate gate defaults ON here (the scheduler recipes keep
   # it off — proven scripts). The agent may lower it per start.
   validateBeforeRun: true
-  # Safety-net cap for the agent's tool loop (Ford-style natural stop).
-  maxIterations: 40
   promptDocument: _vance/prompts/hactar-prompt.md
   manualPaths:
     - _vance/manuals/

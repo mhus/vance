@@ -43,8 +43,7 @@ class PythonRecipeTest {
                         .readAllBytes(),
                 StandardCharsets.UTF_8);
         when(documentService.lookupCascade(any(), any(), eq(RECIPE_PATH)))
-                .thenReturn(Optional.of(new LookupResult(
-                        RECIPE_PATH, content, LookupResult.Source.RESOURCE, null)));
+                .thenReturn(Optional.of(new LookupResult(RECIPE_PATH, content, LookupResult.Source.RESOURCE, null)));
     }
 
     @Test
@@ -63,11 +62,7 @@ class PythonRecipeTest {
 
         assertThat(r.allowedToolsAdd())
                 .containsExactlyInAnyOrder(
-                        "python_create",
-                        "python_install",
-                        "python_uninstall",
-                        "python_run",
-                        "python_set_interpreter");
+                        "python_create", "python_install", "python_uninstall", "python_run", "python_set_interpreter");
         assertThat(r.allowedToolsRemove()).isEmpty();
     }
 
@@ -78,7 +73,9 @@ class PythonRecipeTest {
         Map<String, Object> params = r.params();
         assertThat(params).containsEntry("model", "default:python,default:code");
         assertThat(params).containsEntry("validation", true);
-        assertThat(params).containsKey("maxIterations");
+        // Ford ends by natural stop; a round cap is opt-in for recipes
+        // with an intentional hard bound — a deep-work recipe has none.
+        assertThat(params).doesNotContainKey("maxIterations");
     }
 
     @Test
@@ -103,13 +100,10 @@ class PythonRecipeTest {
     void load_profilesExist() {
         ResolvedRecipe r = loader.load("acme", "proj", RECIPE_NAME).orElseThrow();
 
-        assertThat(r.profiles())
-                .containsKeys("foot", "web", "default");
+        assertThat(r.profiles()).containsKeys("foot", "web", "default");
         // Web/default strip the client_* surface; foot keeps it.
-        assertThat(r.profiles().get("web").allowedToolsRemove())
-                .contains("client_file_read", "client_exec_run");
-        assertThat(r.profiles().get("foot").allowedToolsRemove())
-                .isNullOrEmpty();
+        assertThat(r.profiles().get("web").allowedToolsRemove()).contains("client_file_read", "client_exec_run");
+        assertThat(r.profiles().get("foot").allowedToolsRemove()).isNullOrEmpty();
     }
 
     @Test

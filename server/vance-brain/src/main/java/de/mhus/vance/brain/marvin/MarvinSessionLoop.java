@@ -97,6 +97,7 @@ public class MarvinSessionLoop extends AbstractEngineSessionLoop {
             ShootyGuardService guardService,
             WorkspaceService workspaceService,
             HistoryStrengthFilter historyStrengthFilter,
+            de.mhus.vance.brain.thinkengine.loop.EngineLoopProperties loopProperties,
             MarvinNodeService nodeService,
             MaximegalonService inboxItemService) {
         super(
@@ -117,7 +118,8 @@ public class MarvinSessionLoop extends AbstractEngineSessionLoop {
                 turnContextHandlers,
                 guardService,
                 workspaceService,
-                historyStrengthFilter);
+                historyStrengthFilter,
+                loopProperties);
         this.nodeService = nodeService;
         this.inboxItemService = inboxItemService;
     }

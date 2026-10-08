@@ -90,6 +90,7 @@ public class HactarSessionLoop extends AbstractEngineSessionLoop {
             ShootyGuardService guardService,
             WorkspaceService workspaceService,
             HistoryStrengthFilter historyStrengthFilter,
+            de.mhus.vance.brain.thinkengine.loop.EngineLoopProperties loopProperties,
             HactarRunService runService,
             HactarStateStore stateStore,
             HactarProgressRing progressRing,
@@ -112,7 +113,8 @@ public class HactarSessionLoop extends AbstractEngineSessionLoop {
                 turnContextHandlers,
                 guardService,
                 workspaceService,
-                historyStrengthFilter);
+                historyStrengthFilter,
+                loopProperties);
         this.runService = runService;
         this.stateStore = stateStore;
         this.progressRing = progressRing;

@@ -104,6 +104,7 @@ public class VogonSessionLoop extends AbstractEngineSessionLoop {
             ShootyGuardService guardService,
             WorkspaceService workspaceService,
             HistoryStrengthFilter historyStrengthFilter,
+            de.mhus.vance.brain.thinkengine.loop.EngineLoopProperties loopProperties,
             MagratheaStateProjector projector,
             MagratheaGateChatAnswerService gateChatAnswerService) {
         super(
@@ -124,7 +125,8 @@ public class VogonSessionLoop extends AbstractEngineSessionLoop {
                 turnContextHandlers,
                 guardService,
                 workspaceService,
-                historyStrengthFilter);
+                historyStrengthFilter,
+                loopProperties);
         this.projector = projector;
         this.gateChatAnswerService = gateChatAnswerService;
     }

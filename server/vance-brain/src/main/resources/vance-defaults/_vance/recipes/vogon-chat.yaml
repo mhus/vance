@@ -24,8 +24,6 @@ engine: vogon
 params:
   model: default:ford,default:analyze
   sessionMode: true
-  # Safety-net cap for the agent's tool loop (Ford-style natural stop).
-  maxIterations: 40
   promptDocument: _vance/prompts/vogon-prompt.md
   manualPaths:
     - _vance/manuals/

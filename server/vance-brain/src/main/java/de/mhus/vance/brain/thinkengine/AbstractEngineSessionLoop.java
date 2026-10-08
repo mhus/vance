@@ -18,6 +18,10 @@ import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.prompt.ClientTurnContextResolver;
 import de.mhus.vance.brain.prompt.PromptContextBuilder;
 import de.mhus.vance.brain.prompt.ScratchpadPromptContributor;
+import de.mhus.vance.brain.thinkengine.loop.EngineLoopProperties;
+import de.mhus.vance.brain.thinkengine.loop.LoopLimits;
+import de.mhus.vance.brain.thinkengine.loop.SafetyStop;
+import de.mhus.vance.brain.thinkengine.loop.ToolLoopSafetyNet;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolErrorPayload;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
@@ -62,8 +66,8 @@ import tools.jackson.databind.ObjectMapper;
  * <p>Everything a Ford-adapted agent turn is made of lives here, final:
  * the turn shell (status RUNNING, guards, inbox split, engine-chat
  * bundle, compaction, tool loop, reply persistence and emission, exit
- * status in the finally), the tool loop (status/halt interrupts,
- * best-free-text recovery, iteration backstop), streaming, prompt
+ * status in the finally), the tool loop (status/halt interrupts, the
+ * shared safety nets of {@link ToolLoopSafetyNet}), streaming, prompt
  * assembly and the {@code <process-event>} rendering. The subclasses
  * supply what is genuinely theirs: the engine name (logs, chat factory,
  * prompt builder), the persona fallback prompt and its document path,
@@ -80,9 +84,6 @@ import tools.jackson.databind.ObjectMapper;
  */
 @Slf4j
 public abstract class AbstractEngineSessionLoop {
-
-    /** Same backstop rationale as Ford's/Wowbagger's. */
-    private static final int MAX_TOOL_ITERATIONS = 40;
 
     private static final long STREAM_TIMEOUT_MINUTES = 20;
 
@@ -104,6 +105,7 @@ public abstract class AbstractEngineSessionLoop {
     private final ShootyGuardService guardService;
     private final WorkspaceService workspaceService;
     private final HistoryStrengthFilter historyStrengthFilter;
+    private final EngineLoopProperties loopProperties;
 
     protected AbstractEngineSessionLoop(
             ThinkProcessService thinkProcessService,
@@ -123,7 +125,8 @@ public abstract class AbstractEngineSessionLoop {
             TurnContextHandlerRegistry turnContextHandlers,
             ShootyGuardService guardService,
             WorkspaceService workspaceService,
-            HistoryStrengthFilter historyStrengthFilter) {
+            HistoryStrengthFilter historyStrengthFilter,
+            EngineLoopProperties loopProperties) {
         this.thinkProcessService = thinkProcessService;
         this.objectMapper = objectMapper;
         this.streamingProperties = streamingProperties;
@@ -142,6 +145,7 @@ public abstract class AbstractEngineSessionLoop {
         this.guardService = guardService;
         this.workspaceService = workspaceService;
         this.historyStrengthFilter = historyStrengthFilter;
+        this.loopProperties = loopProperties;
     }
 
     // ──────────────────── Engine hooks ────────────────────
@@ -245,9 +249,9 @@ public abstract class AbstractEngineSessionLoop {
                 messages = buildPromptMessages(process, chatLog, extras, modelInfo, effectiveSize, tools);
             }
 
-            int maxIters = paramInt(process, "maxIterations", MAX_TOOL_ITERATIONS);
+            LoopLimits limits = LoopLimits.resolve(process, loopProperties);
             String modelAlias = config.providerInstance() + ":" + config.modelName();
-            ToolLoopResult result = runToolLoop(aiChat, toolSpecs, tools, messages, ctx, process, maxIters, modelAlias);
+            ToolLoopResult result = runToolLoop(aiChat, toolSpecs, tools, messages, ctx, process, limits, modelAlias);
             if (result.interrupted()) {
                 interrupted = true;
                 ctx.historyTagSink().discard();
@@ -260,6 +264,22 @@ public abstract class AbstractEngineSessionLoop {
             }
             awaitingUserInput = result.awaitingUserInput();
             String finalText = result.finalText();
+            SafetyStop safetyStop = result.safetyStop();
+            if (safetyStop != null) {
+                // The identity is an operator over a machine (run, phases,
+                // tree) that owns the lifecycle — a stuck agent turn must not
+                // close anything, in either form. It parks BLOCKED with a
+                // continuable stop text; the machine keeps running and the
+                // next message resumes the agent.
+                awaitingUserInput = true;
+                log.warn(
+                        "{} id='{}' safety net '{}' ended the agent turn ({})",
+                        engineName(),
+                        process.getId(),
+                        safetyStop.reason(),
+                        safetyStop.detail());
+                finalText = safetyStop.continuableText();
+            }
 
             ChatMessageDocument saved = chatLog.append(ChatMessageDocument.builder()
                     .tenantId(process.getTenantId())
@@ -355,7 +375,11 @@ public abstract class AbstractEngineSessionLoop {
     // ──────────────────── Tool loop ────────────────────
 
     private record ToolLoopResult(
-            String finalText, boolean awaitingUserInput, boolean interrupted, boolean interruptForcePause) {}
+            String finalText,
+            boolean awaitingUserInput,
+            @Nullable SafetyStop safetyStop,
+            boolean interrupted,
+            boolean interruptForcePause) {}
 
     private ToolLoopResult runToolLoop(
             AiChat aiChat,
@@ -364,12 +388,12 @@ public abstract class AbstractEngineSessionLoop {
             List<ChatMessage> messages,
             ThinkEngineContext ctx,
             ThinkProcessDocument process,
-            int maxIters,
+            LoopLimits limits,
             String modelAlias) {
         String engine = engineName();
-        StringBuilder finalText = new StringBuilder();
         String bestFreeText = "";
-        for (int iter = 0; iter < maxIters; iter++) {
+        ToolLoopSafetyNet net = new ToolLoopSafetyNet(limits, thinkProcessService, process.getId());
+        for (int iter = 0; ; iter++) {
             ThinkProcessStatus liveStatus = thinkProcessService
                     .findById(process.getId())
                     .map(ThinkProcessDocument::getStatus)
@@ -378,7 +402,7 @@ public abstract class AbstractEngineSessionLoop {
                     || liveStatus == ThinkProcessStatus.PAUSED
                     || liveStatus == ThinkProcessStatus.CLOSED) {
                 log.info("{} id='{}' tool-loop interrupt (status={}) — exiting", engine, process.getId(), liveStatus);
-                return new ToolLoopResult("", false, true, false);
+                return new ToolLoopResult("", false, null, true, false);
             }
             if (thinkProcessService.isHaltRequested(process.getId())) {
                 log.info("{} id='{}' tool-loop halt requested — exiting (PAUSED)", engine, process.getId());
@@ -390,7 +414,11 @@ public abstract class AbstractEngineSessionLoop {
                 // re-drain any message that arrived mid-turn into a fresh
                 // LLM turn despite the pause (the Live-Fund 7 race, back
                 // door).
-                return new ToolLoopResult("", false, true, true);
+                return new ToolLoopResult("", false, null, true, true);
+            }
+            SafetyStop beforeRound = net.beforeRound(iter, bestFreeText);
+            if (beforeRound != null) {
+                return safetyStop(beforeRound);
             }
 
             ChatRequest.Builder req = ChatRequest.builder().messages(turnContextHandlers.apply(messages, ctx, process));
@@ -403,16 +431,9 @@ public abstract class AbstractEngineSessionLoop {
                 StreamResult streamed = streamOneIteration(aiChat, req.build(), ctx, process, modelAlias);
                 reply = streamed.message();
             } catch (RuntimeException e) {
-                if (!bestFreeText.isEmpty()) {
-                    log.warn(
-                            "{} id='{}' tool-loop LLM failure ({}) — recovering with best Free-Text ({} chars)",
-                            engine,
-                            process.getId(),
-                            e.toString(),
-                            bestFreeText.length());
-                    return new ToolLoopResult(bestFreeText, true, false, false);
-                }
-                throw e;
+                // Never a silent end: the turn always produces a stop text,
+                // carrying the best free text seen so far.
+                return safetyStop(SafetyStop.llmFailure(e, bestFreeText));
             }
 
             String replyText = reply.text();
@@ -421,31 +442,30 @@ public abstract class AbstractEngineSessionLoop {
             }
 
             if (!reply.hasToolExecutionRequests()) {
-                String text = reply.text();
-                if (text != null) {
-                    finalText.append(text);
+                if (replyText == null || replyText.isBlank()) {
+                    return safetyStop(SafetyStop.emptyReply(bestFreeText));
                 }
                 // A chat-form identity awaits its user; a steered worker
                 // answers the parent and goes back to idle.
                 boolean waiting = process.getParentProcessId() == null;
-                return new ToolLoopResult(finalText.toString(), waiting, false, false);
+                return new ToolLoopResult(replyText, waiting, null, false, false);
+            }
+            List<ToolExecutionRequest> calls = reply.toolExecutionRequests();
+            SafetyStop stuck = net.onToolBatch(calls, bestFreeText);
+            if (stuck != null) {
+                return safetyStop(stuck);
             }
             messages.add(reply);
-            for (ToolExecutionRequest call : reply.toolExecutionRequests()) {
+            for (ToolExecutionRequest call : calls) {
                 String result = invokeOne(tools, call, process.getId());
                 messages.add(ToolExecutionResultMessage.from(call, result));
             }
+            net.afterToolBatch(calls);
         }
-        if (!bestFreeText.isEmpty()) {
-            log.warn(
-                    "{} id='{}' exceeded {} tool iterations — recovering with best Free-Text",
-                    engine,
-                    process.getId(),
-                    maxIters);
-            return new ToolLoopResult(bestFreeText, true, false, false);
-        }
-        throw new AiChatException(
-                engine + " exceeded " + maxIters + " tool iterations — no recoverable text, aborting turn.");
+    }
+
+    private static ToolLoopResult safetyStop(SafetyStop stop) {
+        return new ToolLoopResult("", true, stop, false, false);
     }
 
     private StreamResult streamOneIteration(
@@ -738,18 +758,5 @@ public abstract class AbstractEngineSessionLoop {
     private static @Nullable String paramString(ThinkProcessDocument process, String key, @Nullable String fallback) {
         Object v = param(process, key);
         return v instanceof String s && !s.isBlank() ? s : fallback;
-    }
-
-    private static int paramInt(ThinkProcessDocument process, String key, int fallback) {
-        Object v = param(process, key);
-        if (v instanceof Number n) return n.intValue();
-        if (v instanceof String s && !s.isBlank()) {
-            try {
-                return Integer.parseInt(s.trim());
-            } catch (NumberFormatException e) {
-                return fallback;
-            }
-        }
-        return fallback;
     }
 }

@@ -891,7 +891,22 @@ public class ZaphodEngine implements ThinkEngine {
             driveHeadTurn(child, process.getId(), steerContent);
             String reply = readLastAssistantText(process.getTenantId(), process.getSessionId(), child.getId());
 
-            if (reply == null || reply.isBlank()) {
+            if (reply != null && !reply.isBlank() && closedIncomplete(child.getId())) {
+                // The head's worker gave up (e.g. a Ford safety stop): its
+                // reply is a failure report, not a perspective — never count
+                // it as a contribution to the synthesis.
+                head.setStatus(HeadStatus.FAILED);
+                head.setFailureReason("worker stopped without finishing in round " + state.getCurrentRound());
+                log.warn(
+                        "Zaphod id='{}' head '{}' round {} worker closed INCOMPLETE",
+                        process.getId(),
+                        head.getName(),
+                        state.getCurrentRound());
+                appendChatNote(
+                        process,
+                        headRoundHeader(state.getPattern(), head, state.getCurrentRound()) + " — FAILED",
+                        reply);
+            } else if (reply == null || reply.isBlank()) {
                 head.setStatus(HeadStatus.FAILED);
                 head.setFailureReason("worker produced no assistant reply in round " + state.getCurrentRound());
                 log.warn(
@@ -1261,6 +1276,14 @@ public class ZaphodEngine implements ThinkEngine {
             log.warn("Zaphod id='{}' consensus-check failed: {}", process.getId(), e.toString());
             return new ConsensusResult(false, "check failed: " + e.getMessage());
         }
+    }
+
+    /** Whether the child closed itself as INCOMPLETE — a worker that gave up. */
+    private boolean closedIncomplete(String childId) {
+        return thinkProcessService
+                .findById(childId)
+                .map(c -> c.getStatus() == ThinkProcessStatus.CLOSED && c.getCloseReason() == CloseReason.INCOMPLETE)
+                .orElse(false);
     }
 
     private @Nullable String readLastAssistantText(String tenantId, String sessionId, String workerProcessId) {

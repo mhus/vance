@@ -65,6 +65,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
     InitSettingsProperties.class,
     de.mhus.vance.shared.schema.SchemaMigrationProperties.class,
     FordProperties.class,
+    de.mhus.vance.brain.thinkengine.loop.EngineLoopProperties.class,
     ArthurProperties.class,
     MarvinProperties.class,
     BrainTransferProperties.class,

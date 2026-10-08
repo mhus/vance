@@ -31,8 +31,6 @@ engine: wowbagger
 webTheme: wowbagger
 params:
   model: default:ford,default:analyze
-  # Safety-net cap for the agent's tool loop (Ford-style natural stop).
-  maxIterations: 40
   # Agent prompt lives in the document cascade: project → _vance →
   # classpath (vance-defaults/_vance/prompts/). The engine injects a
   # live status block (structure, run state, threads, failures) into

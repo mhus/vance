@@ -109,7 +109,7 @@ public class DocCountTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "text-search", "eddie", "read-only");
+        return Set.of(ToolLabels.WORKER, "text-search", "read-only");
     }
 
     @Override

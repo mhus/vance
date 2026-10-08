@@ -68,7 +68,7 @@ public class IssueSearchTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "read", "document", "issues", "search");
+        return Set.of(ToolLabels.WORKER, "read-only", "document", "issues", "search");
     }
 
     @Override

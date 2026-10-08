@@ -90,7 +90,7 @@ public class LinksValidateTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "read-only", "document", "links");
+        return Set.of(ToolLabels.WORKER, "read-only", "document", "links");
     }
 
     @Override

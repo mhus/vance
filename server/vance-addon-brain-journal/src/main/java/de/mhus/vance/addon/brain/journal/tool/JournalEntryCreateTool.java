@@ -86,7 +86,7 @@ public class JournalEntryCreateTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "journal");
+        return Set.of(ToolLabels.WORKER, "write", "document", "journal");
     }
 
     @Override

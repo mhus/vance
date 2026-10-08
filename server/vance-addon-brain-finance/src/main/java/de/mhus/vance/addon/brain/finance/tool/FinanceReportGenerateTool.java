@@ -96,7 +96,7 @@ public class FinanceReportGenerateTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "finance");
+        return Set.of(ToolLabels.WORKER, "write", "document", "finance");
     }
 
     @Override

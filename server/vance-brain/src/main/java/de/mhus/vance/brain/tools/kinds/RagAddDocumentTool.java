@@ -57,7 +57,7 @@ public class RagAddDocumentTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "rag-bridge", "eddie", "write", "document");
+        return Set.of(ToolLabels.WORKER, "rag-bridge", "write", "document");
     }
 
     @Override

@@ -91,7 +91,7 @@ public class DocVersionRestoreTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "doc-management", "eddie", "write", "document");
+        return Set.of(ToolLabels.WORKER, "doc-management", "write", "document");
     }
 
     @Override

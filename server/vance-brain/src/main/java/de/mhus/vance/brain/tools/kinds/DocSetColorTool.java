@@ -62,7 +62,7 @@ public class DocSetColorTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "color", "eddie", "write", "document");
+        return Set.of(ToolLabels.WORKER, "color", "write", "document");
     }
 
     @Override

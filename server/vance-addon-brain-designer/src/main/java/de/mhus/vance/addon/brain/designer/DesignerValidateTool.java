@@ -68,7 +68,7 @@ public class DesignerValidateTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "read", "document", "designer", "validate");
+        return Set.of(ToolLabels.WORKER, "read-only", "document", "designer", "validate");
     }
 
     @Override

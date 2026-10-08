@@ -118,7 +118,7 @@ public class PdfReadTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "read-only", "document");
+        return Set.of(ToolLabels.WORKER, "read-only", "document");
     }
 
     @Override

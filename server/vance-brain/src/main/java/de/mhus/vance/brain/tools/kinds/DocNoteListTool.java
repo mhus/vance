@@ -56,7 +56,7 @@ public class DocNoteListTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "text-edit", "read", "document", "note");
+        return Set.of(ToolLabels.WORKER, "text-edit", "read-only", "document", "note");
     }
 
     @Override

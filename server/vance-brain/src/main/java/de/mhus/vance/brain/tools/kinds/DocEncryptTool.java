@@ -138,7 +138,7 @@ public class DocEncryptTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "write", "document", "eddie");
+        return Set.of(ToolLabels.WORKER, "write", "document");
     }
 
     @Override

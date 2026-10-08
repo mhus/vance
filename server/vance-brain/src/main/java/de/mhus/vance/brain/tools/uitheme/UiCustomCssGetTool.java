@@ -58,7 +58,7 @@ public class UiCustomCssGetTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.OPERATOR, "uitheme", "read");
+        return Set.of(ToolLabels.OPERATOR, "uitheme", "read-only");
     }
 
     @Override

@@ -30,19 +30,33 @@ import org.springframework.stereotype.Component;
 public class StarredListTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", new LinkedHashMap<String, Object>() {{
-                put("type", Map.of("type", "string",
-                        "description", "Only entries of this app type (e.g. 'links')."));
-                put("kind", Map.of("type", "string",
-                        "description", "Only entries of this document kind (e.g. 'workpage')."));
-            }},
-            "required", List.of());
+            "type",
+            "object",
+            "properties",
+            new LinkedHashMap<String, Object>() {
+                {
+                    put(
+                            "type",
+                            Map.of("type", "string", "description", "Only entries of this app type (e.g. 'links')."));
+                    put(
+                            "kind",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Only entries of this document kind (e.g. 'workpage')."));
+                }
+            },
+            "required",
+            List.of());
 
     private final StarredService starredService;
     private final StarredToolSupport support;
 
-    @Override public String name() { return "starred_list"; }
+    @Override
+    public String name() {
+        return "starred_list";
+    }
 
     @Override
     public String description() {
@@ -52,17 +66,27 @@ public class StarredListTool implements Tool {
                 + "link?) or 'kind' for a document form.";
     }
 
-    @Override public boolean primary() { return false; }
+    @Override
+    public boolean primary() {
+        return false;
+    }
 
-    @Override public boolean deferred() { return true; }
+    @Override
+    public boolean deferred() {
+        return true;
+    }
 
-    @Override public Set<String> labels() {
+    @Override
+    public Set<String> labels() {
         Set<String> labels = new java.util.HashSet<>(StarredToolSupport.BASE_LABELS);
-        labels.add("read");
+        labels.add("read-only");
         return Set.copyOf(labels);
     }
 
-    @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return SCHEMA;
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
@@ -79,17 +103,18 @@ public class StarredListTool implements Tool {
             items = starredService.listResolvable(ctx.tenantId(), user);
         }
 
-        log.trace("StarredListTool user='{}' type='{}' kind='{}' returned={}",
-                user, type, kind, items.size());
+        log.trace("StarredListTool user='{}' type='{}' kind='{}' returned={}", user, type, kind, items.size());
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("total", items.size());
         result.put("entries", items.stream().map(StarredToolSupport::row).toList());
         if (items.isEmpty()) {
-            result.put("hint", "Nothing starred"
-                    + (type != null ? " of type '" + type + "'" : "")
-                    + (kind != null ? " of kind '" + kind + "'" : "")
-                    + ". A star is set by the person, in the Cortex Actions menu.");
+            result.put(
+                    "hint",
+                    "Nothing starred"
+                            + (type != null ? " of type '" + type + "'" : "")
+                            + (kind != null ? " of kind '" + kind + "'" : "")
+                            + ". A star is set by the person, in the Cortex Actions menu.");
         }
         return result;
     }

@@ -86,7 +86,7 @@ public class SkillClearTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "skill", "process");
+        return Set.of(ToolLabels.WORKER, "skill", "process");
     }
 
     @Override

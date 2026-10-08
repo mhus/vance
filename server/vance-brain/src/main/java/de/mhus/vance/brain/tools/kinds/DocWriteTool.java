@@ -180,7 +180,7 @@ public class DocWriteTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "doc-management", "text-edit", "eddie", "write", "document");
+        return Set.of(ToolLabels.WORKER, "doc-management", "text-edit", "write", "document");
     }
 
     @Override

@@ -107,7 +107,7 @@ public class ResearchDocumentTool implements Tool {
     @Override
     public Set<String> labels() {
         // No "read-only" label → safety() reports MUTATING (this creates a doc).
-        return Set.of(ToolLabels.WORKER, "research", "documents", "write");
+        return Set.of(ToolLabels.WORKER, "research", "document", "write");
     }
 
     @Override

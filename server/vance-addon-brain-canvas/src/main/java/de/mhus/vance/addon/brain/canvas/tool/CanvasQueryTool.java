@@ -74,7 +74,7 @@ public class CanvasQueryTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "read-only", "document", "canvas");
+        return Set.of(ToolLabels.WORKER, "read-only", "document", "canvas");
     }
 
     @Override

@@ -71,7 +71,7 @@ public class GtdAppCreateTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "gtd", "application");
+        return Set.of(ToolLabels.WORKER, "write", "document", "gtd", "application");
     }
 
     @Override

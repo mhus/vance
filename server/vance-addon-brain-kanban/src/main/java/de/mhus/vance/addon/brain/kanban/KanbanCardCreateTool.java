@@ -117,7 +117,7 @@ public class KanbanCardCreateTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "kanban", "card");
+        return Set.of(ToolLabels.WORKER, "write", "document", "kanban", "card");
     }
 
     @Override

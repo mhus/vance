@@ -87,7 +87,7 @@ public class WorkbookAppCreateTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "workbook", "application");
+        return Set.of(ToolLabels.WORKER, "write", "document", "workbook", "application");
     }
 
     @Override

@@ -93,7 +93,7 @@ public class LinksListTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "read", "document", "links");
+        return Set.of(ToolLabels.WORKER, "read-only", "document", "links");
     }
 
     @Override

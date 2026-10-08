@@ -62,7 +62,7 @@ public class WorkPageBlockDeleteTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "workpage");
+        return Set.of(ToolLabels.WORKER, "write", "document", "workpage");
     }
 
     @Override

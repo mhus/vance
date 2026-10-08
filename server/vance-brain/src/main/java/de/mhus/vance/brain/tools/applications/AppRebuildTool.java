@@ -101,7 +101,7 @@ public class AppRebuildTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "application");
+        return Set.of(ToolLabels.WORKER, "write", "document", "application");
     }
 
     @Override

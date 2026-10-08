@@ -46,7 +46,7 @@ public class DocRemoveTagTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "tags", "eddie", "write", "document");
+        return Set.of(ToolLabels.WORKER, "tags", "write", "document");
     }
 
     @Override

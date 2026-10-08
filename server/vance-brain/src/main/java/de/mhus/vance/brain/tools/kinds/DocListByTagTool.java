@@ -65,7 +65,7 @@ public class DocListByTagTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "tags", "eddie", "read-only");
+        return Set.of(ToolLabels.WORKER, "tags", "read-only");
     }
 
     @Override

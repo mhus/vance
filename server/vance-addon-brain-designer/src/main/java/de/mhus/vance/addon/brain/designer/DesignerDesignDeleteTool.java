@@ -73,7 +73,7 @@ public class DesignerDesignDeleteTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "designer", "delete");
+        return Set.of(ToolLabels.WORKER, "write", "document", "designer", "delete");
     }
 
     @Override

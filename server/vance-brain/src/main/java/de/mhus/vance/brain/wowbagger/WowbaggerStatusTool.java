@@ -43,7 +43,7 @@ public class WowbaggerStatusTool extends WowbaggerBaseTool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of(ToolLabels.INTERNAL, "read");
+        return java.util.Set.of(ToolLabels.INTERNAL, "read-only");
     }
 
     @Override

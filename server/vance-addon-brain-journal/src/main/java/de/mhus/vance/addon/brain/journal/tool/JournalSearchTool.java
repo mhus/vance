@@ -85,7 +85,7 @@ public class JournalSearchTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "read", "document", "journal", "search");
+        return Set.of(ToolLabels.WORKER, "read-only", "document", "journal", "search");
     }
 
     @Override

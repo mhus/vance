@@ -87,7 +87,7 @@ public class TeamListTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of(ToolLabels.WORKER, "eddie", "read-only");
+        return java.util.Set.of(ToolLabels.WORKER, "read-only");
     }
 
     @Override

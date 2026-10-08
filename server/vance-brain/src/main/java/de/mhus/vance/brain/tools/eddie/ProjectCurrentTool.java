@@ -54,7 +54,7 @@ public class ProjectCurrentTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.INTERNAL, "eddie", "read-only");
+        return Set.of(ToolLabels.INTERNAL, "read-only");
     }
 
     @Override

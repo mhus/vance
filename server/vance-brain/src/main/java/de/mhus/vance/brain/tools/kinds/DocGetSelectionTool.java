@@ -95,7 +95,7 @@ public class DocGetSelectionTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "text-search", "read-only", "eddie", "cortex");
+        return Set.of(ToolLabels.WORKER, "text-search", "read-only", "cortex");
     }
 
     @Override

@@ -91,7 +91,7 @@ public class BistromathAppCreateTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "bistromath");
+        return Set.of(ToolLabels.WORKER, "write", "document", "bistromath");
     }
 
     @Override

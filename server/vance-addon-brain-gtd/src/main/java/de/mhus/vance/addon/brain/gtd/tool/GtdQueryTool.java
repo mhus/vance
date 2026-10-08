@@ -92,7 +92,7 @@ public class GtdQueryTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "read", "document", "gtd");
+        return Set.of(ToolLabels.WORKER, "read-only", "document", "gtd");
     }
 
     @Override

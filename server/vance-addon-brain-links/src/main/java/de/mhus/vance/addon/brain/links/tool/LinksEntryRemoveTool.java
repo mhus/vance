@@ -59,7 +59,7 @@ public class LinksEntryRemoveTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "links");
+        return Set.of(ToolLabels.WORKER, "write", "document", "links");
     }
 
     @Override

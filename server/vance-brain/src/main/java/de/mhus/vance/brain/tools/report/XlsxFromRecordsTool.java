@@ -198,7 +198,7 @@ public class XlsxFromRecordsTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "write", "document");
+        return Set.of(ToolLabels.WORKER, "write", "document");
     }
 
     @Override

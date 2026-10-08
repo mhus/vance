@@ -137,7 +137,7 @@ public class CalendarAggregateTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "read", "calendar");
+        return Set.of(ToolLabels.WORKER, "read-only", "calendar");
     }
 
     @Override

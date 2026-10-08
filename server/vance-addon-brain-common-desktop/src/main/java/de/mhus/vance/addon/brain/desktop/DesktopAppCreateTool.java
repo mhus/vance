@@ -126,7 +126,7 @@ public class DesktopAppCreateTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "common-desktop", "application");
+        return Set.of(ToolLabels.WORKER, "write", "document", "common-desktop", "application");
     }
 
     @Override

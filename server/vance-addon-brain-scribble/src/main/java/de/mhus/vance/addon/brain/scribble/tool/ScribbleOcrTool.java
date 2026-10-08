@@ -68,7 +68,7 @@ public class ScribbleOcrTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "read", "document", "scribble");
+        return Set.of(ToolLabels.WORKER, "write", "document", "scribble");
     }
 
     @Override

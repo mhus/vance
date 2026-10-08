@@ -58,7 +58,7 @@ public class RecordsFindTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "kind-records", "eddie", "read-only");
+        return Set.of(ToolLabels.WORKER, "kind-records", "read-only");
     }
 
     @Override

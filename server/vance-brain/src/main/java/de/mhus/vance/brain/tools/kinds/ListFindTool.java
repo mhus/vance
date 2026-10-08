@@ -51,7 +51,7 @@ public class ListFindTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "kind-list", "eddie", "read-only");
+        return Set.of(ToolLabels.WORKER, "kind-list", "read-only");
     }
 
     @Override

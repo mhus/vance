@@ -42,7 +42,7 @@ public class SheetAddColumnTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "kind-sheet", "eddie", "write", "document");
+        return Set.of(ToolLabels.WORKER, "kind-sheet", "write", "document");
     }
 
     @Override

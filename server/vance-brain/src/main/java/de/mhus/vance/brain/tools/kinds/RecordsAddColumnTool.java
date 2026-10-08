@@ -50,7 +50,7 @@ public class RecordsAddColumnTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "kind-records", "eddie", "write", "document");
+        return Set.of(ToolLabels.WORKER, "kind-records", "write", "document");
     }
 
     @Override

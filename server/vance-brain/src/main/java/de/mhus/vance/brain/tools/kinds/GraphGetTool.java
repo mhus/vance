@@ -44,7 +44,7 @@ public class GraphGetTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "kind-graph", "eddie", "read-only");
+        return Set.of(ToolLabels.WORKER, "kind-graph", "read-only");
     }
 
     @Override

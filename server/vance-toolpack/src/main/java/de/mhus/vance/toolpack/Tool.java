@@ -56,10 +56,7 @@ public interface Tool {
      * <p>{@code bus} may be {@link ToolBus#NOOP} when no sibling-call
      * surface is bound (typical foot-side scenario).
      */
-    default Map<String, Object> invoke(
-            Map<String, Object> params,
-            ToolInvocationContext ctx,
-            ToolBus bus) {
+    default Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx, ToolBus bus) {
         return invoke(params, ctx);
     }
 
@@ -265,9 +262,7 @@ public interface Tool {
      * happen to be safe to retry).
      */
     default ToolSafety safety() {
-        return labels().contains("read-only")
-                ? ToolSafety.SAFE_PROBE
-                : ToolSafety.MUTATING;
+        return labels().contains(ToolLabels.READ_ONLY) ? ToolSafety.SAFE_PROBE : ToolSafety.MUTATING;
     }
 
     /**

@@ -136,7 +136,7 @@ public class ProjectCreateTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of(ToolLabels.OPERATOR, "eddie", "executive");
+        return java.util.Set.of(ToolLabels.OPERATOR, "executive");
     }
 
     @Override

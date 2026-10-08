@@ -51,7 +51,7 @@ public class DocVersionListTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "doc-management", "eddie", "read", "document");
+        return Set.of(ToolLabels.WORKER, "doc-management", "read-only", "document");
     }
 
     @Override

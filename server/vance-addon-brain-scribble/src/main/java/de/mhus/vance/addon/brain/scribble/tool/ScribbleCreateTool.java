@@ -70,7 +70,7 @@ public class ScribbleCreateTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "scribble");
+        return Set.of(ToolLabels.WORKER, "write", "document", "scribble");
     }
 
     @Override

@@ -107,7 +107,7 @@ public class MountListTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "read-only", "mount", "documents");
+        return Set.of(ToolLabels.WORKER, "read-only", "mount", "document");
     }
 
     @Override

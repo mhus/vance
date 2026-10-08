@@ -89,7 +89,7 @@ public class FeedSourcesTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "read-only", "feeds");
+        return Set.of(ToolLabels.WORKER, "read-only", "feeds");
     }
 
     @Override

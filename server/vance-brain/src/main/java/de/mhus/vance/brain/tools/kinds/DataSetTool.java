@@ -61,7 +61,7 @@ public class DataSetTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "kind-data", "eddie", "write", "document");
+        return Set.of(ToolLabels.WORKER, "kind-data", "write", "document");
     }
 
     @Override

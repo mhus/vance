@@ -46,7 +46,7 @@ public class TreeGetTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "kind-tree", "eddie", "read-only");
+        return Set.of(ToolLabels.WORKER, "kind-tree", "read-only");
     }
 
     @Override

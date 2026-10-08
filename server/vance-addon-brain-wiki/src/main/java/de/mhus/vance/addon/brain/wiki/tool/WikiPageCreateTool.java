@@ -79,7 +79,7 @@ public class WikiPageCreateTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "wiki", "workpage");
+        return Set.of(ToolLabels.WORKER, "write", "document", "wiki", "workpage");
     }
 
     @Override

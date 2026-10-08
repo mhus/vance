@@ -84,7 +84,7 @@ public class IssueUpdateTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "issues");
+        return Set.of(ToolLabels.WORKER, "write", "document", "issues");
     }
 
     @Override

@@ -104,7 +104,7 @@ public class KanbanMoveTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "kanban", "move");
+        return Set.of(ToolLabels.WORKER, "write", "document", "kanban", "move");
     }
 
     @Override

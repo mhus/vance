@@ -67,7 +67,7 @@ public class TreeMoveTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "kind-tree", "eddie", "write", "document");
+        return Set.of(ToolLabels.WORKER, "kind-tree", "write", "document");
     }
 
     @Override

@@ -1,23 +1,13 @@
 package de.mhus.vance.brain.all;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.withSettings;
 
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolLabels;
-import java.lang.reflect.Modifier;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 import org.junit.jupiter.api.Test;
-import org.mockito.Answers;
-import org.springframework.beans.factory.config.BeanDefinition;
-import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
-import org.springframework.core.annotation.AnnotatedElementUtils;
-import org.springframework.core.type.filter.AssignableTypeFilter;
-import org.springframework.stereotype.Component;
 
 /**
  * Every built-in tool states its release decision: exactly one of
@@ -34,9 +24,7 @@ import org.springframework.stereotype.Component;
  * (MCP/REST packs, SMTP/IMAP, scripted and doc-lookup tools) carry the
  * labels the operator configured and are out of scope.
  *
- * <p>The bean is never constructed: a Mockito instance that calls the real
- * {@code labels()} reads the declared set without wiring the tool's
- * collaborators.
+ * <p>Scan and instantiation: {@link BuiltInTools}.
  */
 class ToolReleaseDecisionTest {
 
@@ -44,37 +32,26 @@ class ToolReleaseDecisionTest {
 
     @Test
     void everyBuiltInTool_carriesExactlyOneReleaseDecision() throws ClassNotFoundException {
-        List<Class<? extends Tool>> tools = builtInTools();
+        List<Tool> tools = BuiltInTools.all();
         // Guards the scan itself — an empty classpath would pass vacuously.
         assertThat(tools).hasSizeGreaterThan(300);
 
         Set<String> violations = new TreeSet<>();
-        for (Class<? extends Tool> type : tools) {
-            Tool tool = mock(type, withSettings().defaultAnswer(Answers.CALLS_REAL_METHODS));
+        for (Tool tool : tools) {
             Set<String> labels = tool.labels();
             long decisions = labels == null
                     ? 0
                     : labels.stream().filter(DECISIONS::contains).count();
             if (decisions != 1) {
-                violations.add(type.getName() + " labels=" + labels);
+                violations.add(
+                        org.mockito.Mockito.mockingDetails(tool)
+                                        .getMockCreationSettings()
+                                        .getTypeToMock()
+                                        .getName() + " labels=" + labels);
             }
         }
         assertThat(violations)
                 .as("each tool needs exactly one of %s in labels() — see ToolLabels", DECISIONS)
                 .isEmpty();
-    }
-
-    @SuppressWarnings("unchecked")
-    private static List<Class<? extends Tool>> builtInTools() throws ClassNotFoundException {
-        ClassPathScanningCandidateComponentProvider scanner = new ClassPathScanningCandidateComponentProvider(false);
-        scanner.addIncludeFilter(new AssignableTypeFilter(Tool.class));
-        List<Class<? extends Tool>> out = new ArrayList<>();
-        for (BeanDefinition bd : scanner.findCandidateComponents("de.mhus.vance")) {
-            Class<?> type = Class.forName(bd.getBeanClassName());
-            if (Modifier.isAbstract(type.getModifiers())) continue;
-            if (!AnnotatedElementUtils.hasAnnotation(type, Component.class)) continue;
-            out.add((Class<? extends Tool>) type);
-        }
-        return out;
     }
 }

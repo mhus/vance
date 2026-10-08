@@ -54,7 +54,7 @@ public class GraphAddEdgeTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "kind-graph", "eddie", "write", "document");
+        return Set.of(ToolLabels.WORKER, "kind-graph", "write", "document");
     }
 
     @Override

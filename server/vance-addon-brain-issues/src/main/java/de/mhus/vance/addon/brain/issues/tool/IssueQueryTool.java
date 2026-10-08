@@ -66,7 +66,7 @@ public class IssueQueryTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "read", "document", "issues");
+        return Set.of(ToolLabels.WORKER, "read-only", "document", "issues");
     }
 
     @Override

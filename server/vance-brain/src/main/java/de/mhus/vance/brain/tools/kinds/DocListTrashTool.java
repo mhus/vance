@@ -52,7 +52,7 @@ public class DocListTrashTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "doc-management", "eddie", "read-only");
+        return Set.of(ToolLabels.WORKER, "doc-management", "read-only");
     }
 
     @Override

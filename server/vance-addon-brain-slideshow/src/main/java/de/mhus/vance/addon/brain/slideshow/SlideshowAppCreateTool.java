@@ -127,7 +127,7 @@ public class SlideshowAppCreateTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "slideshow", "application");
+        return Set.of(ToolLabels.WORKER, "write", "document", "slideshow", "application");
     }
 
     @Override

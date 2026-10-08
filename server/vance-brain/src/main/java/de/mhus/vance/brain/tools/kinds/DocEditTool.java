@@ -83,7 +83,7 @@ public class DocEditTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "text-edit", "eddie", "write", "document");
+        return Set.of(ToolLabels.WORKER, "text-edit", "write", "document");
     }
 
     @Override

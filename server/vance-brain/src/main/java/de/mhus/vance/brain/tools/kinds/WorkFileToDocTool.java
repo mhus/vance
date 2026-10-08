@@ -81,7 +81,7 @@ public class WorkFileToDocTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "workspace-bridge", "eddie", "write", "document");
+        return Set.of(ToolLabels.WORKER, "workspace-bridge", "write", "document");
     }
 
     @Override

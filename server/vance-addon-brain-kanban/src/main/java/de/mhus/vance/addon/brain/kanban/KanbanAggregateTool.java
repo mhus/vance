@@ -119,7 +119,7 @@ public class KanbanAggregateTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "read", "document", "kanban", "query");
+        return Set.of(ToolLabels.WORKER, "read-only", "document", "kanban", "query");
     }
 
     @Override

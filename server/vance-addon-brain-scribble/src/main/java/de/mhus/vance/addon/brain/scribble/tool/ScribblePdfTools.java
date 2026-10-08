@@ -57,7 +57,7 @@ public class ScribblePdfTools {
 
         @Override
         public Set<String> labels() {
-            return Set.of(ToolLabels.WORKER, "eddie", "read", "document", "scribble", "export");
+            return Set.of(ToolLabels.WORKER, "write", "document", "scribble", "export");
         }
 
         @Override

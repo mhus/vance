@@ -270,7 +270,7 @@ public class CalendarAppCreateTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "calendar", "application");
+        return Set.of(ToolLabels.WORKER, "write", "document", "calendar", "application");
     }
 
     @Override

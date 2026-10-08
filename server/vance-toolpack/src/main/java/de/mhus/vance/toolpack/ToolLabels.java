@@ -41,4 +41,20 @@ public final class ToolLabels {
      * never through a label pool.
      */
     public static final String INTERNAL = "internal";
+
+    // ── Effect labels: what a tool does. Recipes select on them
+    //    (`allowedToolsDefer: ["@write"]`, plan-mode strips "@executive"),
+    //    and READ_ONLY drives Tool#safety(). ─────────────────────────────
+
+    /** Pure lookup — no state mutation, no external side effect. */
+    public static final String READ_ONLY = "read-only";
+
+    /** Mutates application state (documents, scratchpads, RAG, records). */
+    public static final String WRITE = "write";
+
+    /** Orchestration / process control (spawn, steer, recipe apply). */
+    public static final String EXECUTIVE = "executive";
+
+    /** Observable effect outside Vance (web fetch, shell exec, kit apply). */
+    public static final String SIDE_EFFECT = "side-effect";
 }

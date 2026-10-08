@@ -65,7 +65,7 @@ public class DocPurgeTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.OPERATOR, "doc-management", "eddie", "write", "document");
+        return Set.of(ToolLabels.OPERATOR, "doc-management", "write", "document");
     }
 
     @Override

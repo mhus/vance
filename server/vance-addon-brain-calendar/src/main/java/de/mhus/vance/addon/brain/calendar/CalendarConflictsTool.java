@@ -98,7 +98,7 @@ public class CalendarConflictsTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "calendar");
+        return Set.of(ToolLabels.WORKER, "write", "document", "calendar");
     }
 
     @Override

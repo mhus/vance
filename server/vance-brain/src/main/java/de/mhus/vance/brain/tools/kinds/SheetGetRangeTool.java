@@ -62,7 +62,7 @@ public class SheetGetRangeTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "kind-sheet", "eddie", "read-only");
+        return Set.of(ToolLabels.WORKER, "kind-sheet", "read-only");
     }
 
     @Override

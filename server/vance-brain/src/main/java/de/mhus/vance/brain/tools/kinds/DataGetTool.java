@@ -55,7 +55,7 @@ public class DataGetTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "kind-data", "eddie", "read-only");
+        return Set.of(ToolLabels.WORKER, "kind-data", "read-only");
     }
 
     @Override

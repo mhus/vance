@@ -107,7 +107,7 @@ public class ProjectChatSendTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of(ToolLabels.INTERNAL, "eddie", "executive");
+        return java.util.Set.of(ToolLabels.INTERNAL, "executive");
     }
 
     @Override

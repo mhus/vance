@@ -50,7 +50,7 @@ public class ListAppendTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "kind-list", "eddie", "write", "document");
+        return Set.of(ToolLabels.WORKER, "kind-list", "write", "document");
     }
 
     @Override

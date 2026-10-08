@@ -127,7 +127,7 @@ public class ProcessObserveTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.INTERNAL, "eddie", "executive");
+        return Set.of(ToolLabels.INTERNAL, "executive");
     }
 
     @Override

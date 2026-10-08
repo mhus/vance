@@ -84,7 +84,7 @@ public class BinderAppCreateTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "binder");
+        return Set.of(ToolLabels.WORKER, "write", "document", "binder");
     }
 
     @Override

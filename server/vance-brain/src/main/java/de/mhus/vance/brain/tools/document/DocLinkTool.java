@@ -55,7 +55,7 @@ public class DocLinkTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "document", "link", "read", "eddie", "arthur");
+        return Set.of(ToolLabels.WORKER, "document", "link", "read-only", "arthur");
     }
 
     @Override

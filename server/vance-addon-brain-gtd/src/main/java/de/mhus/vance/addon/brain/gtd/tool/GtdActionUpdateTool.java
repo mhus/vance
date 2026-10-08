@@ -109,7 +109,7 @@ public class GtdActionUpdateTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "gtd");
+        return Set.of(ToolLabels.WORKER, "write", "document", "gtd");
     }
 
     @Override

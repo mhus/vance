@@ -70,7 +70,7 @@ public class ProjectSwitchTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of(ToolLabels.INTERNAL, "eddie", "write");
+        return java.util.Set.of(ToolLabels.INTERNAL, "write");
     }
 
     @Override

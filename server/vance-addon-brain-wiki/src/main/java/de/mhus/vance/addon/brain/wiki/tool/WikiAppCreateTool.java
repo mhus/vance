@@ -80,7 +80,7 @@ public class WikiAppCreateTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "wiki", "application");
+        return Set.of(ToolLabels.WORKER, "write", "document", "wiki", "application");
     }
 
     @Override

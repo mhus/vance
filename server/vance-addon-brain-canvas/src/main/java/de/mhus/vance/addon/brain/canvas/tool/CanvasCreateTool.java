@@ -70,7 +70,7 @@ public class CanvasCreateTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of(ToolLabels.WORKER, "eddie", "write", "document", "canvas");
+        return Set.of(ToolLabels.WORKER, "write", "document", "canvas");
     }
 
     @Override

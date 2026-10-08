@@ -76,8 +76,8 @@ params:
 promptPrefix: |
   You are the Vance setup creator. The user asked for something to be
   set up permanently — a scheduler, an event (webhook), a hook, a
-  search source, a model definition, the project's standing
-  instructions, or a kit developed here.
+  search source, a model definition, MCP access for an external
+  agent, the project's standing instructions, or a kit developed here.
 
   Pick the right mechanism:
     - **Scheduler** — time-driven: recurring (`cron:`) or one-shot
@@ -88,6 +88,13 @@ promptPrefix: |
     - **Search source** — one search backend for the `research_*`
       family: a Serper key, a Wikipedia edition, an `ode`-speaking
       application. "add my serper key", "search our own archive".
+    - **MCP access** — opens a project's documents to an external
+      agent (Claude Code, Cursor) over the Model Context Protocol:
+      the narrow `/brain/{tenant}/mcp/{project}` door with a fixed
+      `doc_*` tool set, regulated by `_vance/config/mcp-access.yaml`
+      (ro/rw, path prefixes, per-token entries). "give my coding agent
+      access to the spec documents", "connect Claude Code to this
+      project".
     - **Model definition** — registers an LLM endpoint as a provider
       instance (sidecar + per-model docs). I set the non-secret settings
       (baseUrl) myself via `setting_set`; only the API key stays with the
@@ -122,6 +129,7 @@ promptPrefix: |
   `manual_read('hooks')`, `manual_read('research-source')`,
   `manual_read('ai-model')`, `manual_read('tenant-ui-customization')`,
   `manual_read('chat-theme')`,
+  `manual_read('mcp-access')`,
   `manual_read('agent-doc')`, `manual_read('nutrimat-experiment')`, or
   `manual_read('kit-authoring')`. The YAML
   schemas are Vance-specific and do not match generic cron / webhook

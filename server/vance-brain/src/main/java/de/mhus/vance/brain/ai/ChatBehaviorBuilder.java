@@ -80,6 +80,28 @@ public final class ChatBehaviorBuilder {
      */
     public static ChatBehavior fromProcess(
             ThinkProcessDocument process, SettingService settings, AiModelResolver resolver) {
+        return build(process, readModelSpec(process), readFallbackAliases(process), settings, resolver);
+    }
+
+    /**
+     * Build a single-entry {@link ChatBehavior} for an explicit model
+     * {@code spec} in the scope of {@code process} — for an engine that
+     * drives a second model next to its primary within one turn (e.g. a
+     * cheap worker model plus a strong answer model). Same scope rules as
+     * {@link #fromProcess} ({@code params.aiScope} pinning included); no
+     * fallback chain — the spec is the whole behaviour.
+     */
+    public static ChatBehavior forSpec(
+            ThinkProcessDocument process, String spec, SettingService settings, AiModelResolver resolver) {
+        return build(process, spec, List.of(), settings, resolver);
+    }
+
+    private static ChatBehavior build(
+            ThinkProcessDocument process,
+            @Nullable String primarySpec,
+            List<String> fallbackAliases,
+            SettingService settings,
+            AiModelResolver resolver) {
         String tenantId = process.getTenantId();
         // A tenant-pinned recipe resolves its whole endpoint (alias,
         // default, apiKey, baseUrl) from the _tenant layer: passing null
@@ -101,12 +123,10 @@ public final class ChatBehaviorBuilder {
         List<ChatBehavior.Entry> entries = new ArrayList<>();
 
         // Primary
-        String primarySpec = readModelSpec(process);
         AiChatConfig primary = resolveOne(primarySpec, tenantId, projectId, processId, settings, resolver);
         entries.add(new ChatBehavior.Entry(primary, "primary"));
 
         // Fallbacks
-        List<String> fallbackAliases = readFallbackAliases(process);
         for (String alias : fallbackAliases) {
             try {
                 AiChatConfig fbConfig = resolveOne(alias, tenantId, projectId, processId, settings, resolver);

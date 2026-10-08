@@ -1,6 +1,6 @@
 ---
-triggers: nutrimat, loop experiment, loop lab, experiment recipe, compare loops, exhausted loop, judge loop, janx, redbull, clubmate, absint, salitos, worker loop variant
-summary: How to author a Nutrimat loop-experiment recipe — a worker recipe that pins one loop nature (janx / redbull / clubmate / absint / salitos) with its own model, budget and prompt. Read this before writing a `_vance/recipes/<name>.yaml` experiment document.
+triggers: nutrimat, loop experiment, loop lab, experiment recipe, compare loops, exhausted loop, judge loop, janx, redbull, clubmate, absint, salitos, filter, cappuccino, espresso, ristretto, mokka, affogato, macchiato, cortado, lungo, worker loop variant
+summary: How to author a Nutrimat loop-experiment recipe — a worker recipe that pins one loop nature (janx, redbull, clubmate, absint, salitos or one of the coffee natures) with its own model, budget and prompt. Read this before writing a `_vance/recipes/<name>.yaml` experiment document.
 ---
 # Nutrimat loop experiments
 
@@ -19,11 +19,22 @@ therefore just a **recipe** that pins one nature plus its knobs.
 | `nutrimat-clubmate` | Budget **with a judge**: at exhaustion a cheap LLM call looks at the work (text and tool calls) and decides "fresh budget, keep going" vs. "synthesize the answer". |
 | `nutrimat-absint` | Every stop is an **account the loop gives itself**: the model must answer with a JSON `{"report": "…"}` — what it did and what came out. The report is the reply, recorded in the loop state and notified to the client. |
 | `nutrimat-salitos` | Every stop is a **decision the loop makes itself**: the model must answer with a JSON `{"done": true/false, "reason": "…", "answer": "…"}`; "not done" sends it back to work with its own reason. Endless by design — no round or decision cap. Every decision is recorded and notified. |
+| `nutrimat-filter` | **Fresh context every round**: the model sees the task, its own running `NOTES:` and only the last round's tool results — older results are dropped. Knob: opt-in `maxIterations`. |
+| `nutrimat-cappuccino` | The redbull budget **made visible**: every round is told "round n of N, x min elapsed", the last one "answer now". No continue-gate. Knob: `maxIterations` (recipe 12, like redbull). |
+| `nutrimat-espresso` | **Plan first**: a tool-less planning round, then step-by-step execution (`STEP n:`), plan revisions reported. Knob: opt-in `maxIterations`. |
+| `nutrimat-ristretto` | The janx loop plus a **mandatory tool-less reflection** every `reflectEvery` tool rounds (default 3). Same safety nets as janx. |
+| `nutrimat-mokka` | **Predict before acting**: every tool round states `EXPECT: …`, the next message judges it `MATCH: yes/no`; a miss streak (`mismatchThreshold`, default 2) forces a reflection round. Knobs: opt-in `maxIterations`, `maxWallclockMinutes`. |
+| `nutrimat-affogato` | An **external critic** (cheap LLM call that sees the tool work) attacks the answer at every stop until it accepts. Knobs: `maxCritiques` (default 3, 0 = unlimited), opt-in `maxIterations`. |
+| `nutrimat-macchiato` | **Two models**: `macchiatoMode: worker-first` — `workerModel` does the tool rounds, `answerModel` writes the answer; `planner-first` — `answerModel` plans, `workerModel` executes and answers. |
+| `nutrimat-cortado` | salitos, but the decision goes through a **mandatory tool** `loop_decide(done, reason, answer)` instead of JSON. Endless by design. |
+| `nutrimat-lungo` | absint, but the model also reports **every round** (`REPORT: …` on each tool round). |
 
 Every nature owns its own loop; `janx` is the reference. A comparison
 between two natures measures their whole loops — `redbull` vs. `clubmate`
-isolates the judge best, `salitos` vs. `absint` the framing (decision vs.
-account). Keep everything else identical when you tune two recipes against
+isolates the judge best, `redbull` vs. `cappuccino` the visible budget,
+`salitos` vs. `cortado` the protocol form (JSON vs. tool), `salitos` vs.
+`affogato` self-decision vs. an external critic, `absint` vs. `lungo` the
+report frequency, `janx` vs. `ristretto`/`mokka` the forced reflection. Keep everything else identical when you tune two recipes against
 each other.
 
 ## Writing an experiment recipe
@@ -68,7 +79,10 @@ Rules of thumb:
   effective budget, where it comes from, and the last turn's loop
   statistics.
 - **Judge cost:** `clubmate` fires one cheap LLM call per exhaustion
-  (`nutrimat-judge-clubmate`, `internal: true` — never spawn it directly).
+  (`nutrimat-judge-clubmate`, `internal: true` — never spawn it directly);
+  `affogato` one per stop until the critic accepts
+  (`nutrimat-critic-affogato`, also internal). `macchiato` runs a second
+  chat model — pick both models deliberately.
   `salitos` and `absint` need no judge: the loop's own JSON answer is the
   decision / the account.
 - **Spawn by explicit recipe name** — `process_spawn(recipe="<name>", …)` or

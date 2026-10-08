@@ -1,0 +1,35 @@
+# Nutrimat loop-lab experiment: nature `filter` — fresh context per
+# round. The working context never grows: every round sees the task, the
+# model's running NOTES and the tool results of the last round only.
+# See specification/public/nutrimat-engine.md.
+title: "Nutrimat filter — fresh context per round, running notes"
+listed: true
+category: experimental
+description: |
+  Experimental loop-lab worker. Nature `filter` runs the natural-stop
+  tool loop, but rebuilds the working context every round: the task, the
+  model's own running notes and the tool results of the previous round
+  only. Older tool results are dropped — whatever the model still needs
+  it must carry forward in a NOTES block. The first message without a
+  tool call is the answer. Compare it with `janx` on long, tool-heavy
+  tasks: does a short, fresh context beat a growing history?
+engine: nutrimat-filter
+# Chat look for sessions on this recipe: warm red transcript with the
+# exclamation-mark frieze (_vance/chat-themes/nutrimat.css) — the shared
+# "this is an experiment" signal. Pure UI metadata, never read by spawn or
+# engine logic. See specification/public/chat-themes.md.
+webTheme: nutrimat
+params:
+  # Primary on the analyze tier. The comma form is an alias-resolution
+  # cascade (first DEFINED alias wins), NOT a runtime fallback — the
+  # chain fallback is the list below, same convention as ford.yaml.
+  model: default:analyze,default:fast
+  # Degraded-but-available fallback: retry on the fast tier when the
+  # analyze-tier model is broken at the provider.
+  fallbackModels:
+    - default:fast
+  # No round cap by default — the notes keep the context small, the loop
+  # runs until the natural stop. Set maxIterations to cap an experiment.
+tags:
+  - nutrimat
+  - experimental

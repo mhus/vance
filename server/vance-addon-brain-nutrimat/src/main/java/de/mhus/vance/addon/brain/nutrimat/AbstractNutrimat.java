@@ -708,6 +708,43 @@ public abstract class AbstractNutrimat implements ThinkEngine {
         return chars;
     }
 
+    /**
+     * Dispatches a single tool call and returns its result for the model —
+     * for a loop that handles some calls itself (a loop-control tool of its
+     * own) and dispatches the rest. Unlike {@link #dispatchTools} it appends
+     * nothing: the nature adds the assistant message and every
+     * {@code ToolExecutionResultMessage} itself. Failures are stringified,
+     * never thrown.
+     */
+    protected final String invokeTool(ThinkProcessDocument process, LoopInputs in, ToolExecutionRequest call) {
+        String result = invokeOne(in.tools(), call, process.getId());
+        return result == null ? "" : result;
+    }
+
+    /**
+     * The same turn inputs driven by a second model — for a loop that runs
+     * two models in one turn (a cheap tool worker plus a strong answer
+     * model, or the reverse). Shares the message list, tools and goal with
+     * {@code in}; only the chat and the tracked model alias differ.
+     * {@code modelSpec} is a model alias or spec as recipes write it
+     * ({@code default:analyze}, {@code provider:model}). Resolution failures
+     * surface as {@link RuntimeException} — what that means is the nature's
+     * call.
+     */
+    protected final LoopInputs withModel(
+            ThinkProcessDocument process, ThinkEngineContext ctx, LoopInputs in, String modelSpec) {
+        EngineChatFactory.EngineChatBundle bundle = engineChatFactory.forModelSpec(process, ctx, name(), modelSpec);
+        AiChatConfig config = bundle.primaryConfig();
+        return new LoopInputs(
+                bundle.chat(),
+                in.toolSpecs(),
+                in.tools(),
+                in.messages(),
+                in.validation(),
+                config.providerInstance() + ":" + config.modelName(),
+                in.userGoal());
+    }
+
     /** Whether ESC / stop raised the out-of-band halt flag — for waits a nature does between rounds. */
     protected final boolean haltRequested(ThinkProcessDocument process) {
         return thinkProcessService.isHaltRequested(process.getId());
@@ -1046,7 +1083,17 @@ public abstract class AbstractNutrimat implements ThinkEngine {
             List<ChatMessage> messages,
             boolean validation,
             String modelAlias,
-            String userGoal) {}
+            String userGoal) {
+
+        /**
+         * The same inputs with another tool surface — e.g. {@code List.of()}
+         * for a tool-less planning or reflection round, or the specs plus a
+         * loop-control tool of the nature's own. Shares the message list.
+         */
+        public LoopInputs withToolSpecs(List<ToolSpecification> specs) {
+            return new LoopInputs(aiChat, specs, tools, messages, validation, modelAlias, userGoal);
+        }
+    }
 
     /** Mid-loop interrupt kinds. */
     protected enum InterruptKind {

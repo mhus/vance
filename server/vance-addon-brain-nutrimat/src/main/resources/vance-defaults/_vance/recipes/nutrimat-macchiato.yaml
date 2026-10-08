@@ -1,0 +1,47 @@
+# Nutrimat loop-lab experiment: nature `macchiato` — two models in one
+# turn. Hypothesis: the quality of a turn comes mostly from the answer (or
+# the plan); the tool work can be done by a small model.
+#
+# Two modes (params.macchiatoMode):
+#   worker-first  (default) — the cheap workerModel runs the natural-stop
+#                 tool loop; at its stop the strong answerModel writes the
+#                 final answer from the work in one tool-less round. A
+#                 failed or blank answer round falls back to the worker's
+#                 draft.
+#   planner-first — the strong answerModel writes a numbered plan in one
+#                 tool-less round; the cheap workerModel executes it and
+#                 its answer is the reply.
+# A missing workerModel / answerModel leaves that role on `model`. See
+# specification/public/nutrimat-engine.md.
+title: "Nutrimat macchiato — a cheap worker, a strong answer"
+listed: true
+category: experimental
+description: |
+  Experimental loop-lab worker. Nature `macchiato` drives two models in
+  one turn. By default a cheap worker model does all the tool rounds and
+  a strong model writes the final answer from that work (worker-first);
+  alternatively the strong model plans and the cheap one executes
+  (planner-first). The comparison with `janx` on either model shows
+  where the strong model actually earns its cost.
+engine: nutrimat-macchiato
+# Chat look for sessions on this recipe: warm red transcript with the
+# exclamation-mark frieze (_vance/chat-themes/nutrimat.css) — the shared
+# "this is an experiment" signal. Pure UI metadata, never read by spawn
+# or engine logic. See specification/public/chat-themes.md.
+webTheme: nutrimat
+params:
+  # Primary — the role a missing workerModel / answerModel falls back to.
+  model: default:fast
+  # Degraded-but-available fallback for the primary chat, same convention
+  # as the other nutrimat recipes.
+  fallbackModels:
+    - default:fast
+  # worker-first | planner-first
+  macchiatoMode: worker-first
+  # The cheap model: tool rounds (worker-first) / execution (planner-first).
+  workerModel: default:fast
+  # The strong model: final answer (worker-first) / plan (planner-first).
+  answerModel: default:analyze
+tags:
+  - nutrimat
+  - experimental

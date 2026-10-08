@@ -1,0 +1,36 @@
+# Nutrimat loop-lab experiment: nature `lungo` — absint stretched over every
+# round: a REPORT line on every tool round plus the JSON {report} at the
+# stop. See specification/public/nutrimat-engine.md.
+title: "Nutrimat lungo — the loop reports every round"
+listed: true
+category: experimental
+description: |
+  Experimental loop-lab worker. Nature `lungo` lets the model call tools
+  as long as it wants, but every message that calls tools must open with
+  a REPORT line — what it did in the last round and what it does now.
+  Each round report is recorded in the process's loop state
+  (`nutrimatState.roundReports`) and pushed to the client as a
+  notification. When the model stops, it answers with a JSON report of
+  the whole loop, which is the reply — the same account as `absint`, plus
+  one per round.
+engine: nutrimat-lungo
+# Chat look for sessions on this recipe: warm red transcript with the
+# exclamation-mark frieze (_vance/chat-themes/nutrimat.css) — the shared
+# "this is an experiment" signal. Applies when this recipe runs as the
+# session chat; worker echoes in other sessions inherit that session's
+# theme. Pure UI metadata, never read by spawn or engine logic. See
+# specification/public/chat-themes.md.
+webTheme: nutrimat
+params:
+  # Primary on the analyze tier. The comma form is an alias-resolution
+  # cascade (first DEFINED alias wins), NOT a runtime fallback — the
+  # chain fallback is the list below, same convention as ford.yaml.
+  model: default:analyze,default:fast
+  # Degraded-but-available fallback: if the analyze-tier model is broken
+  # at the provider (404/rate-limit/5xx), retry on the fast tier rather
+  # than failing the whole turn.
+  fallbackModels:
+    - default:fast
+tags:
+  - nutrimat
+  - experimental

@@ -1,0 +1,34 @@
+# Nutrimat loop-lab experiment: nature `cappuccino` — redbull's hard
+# budget, made visible: every round the model sees its remaining rounds
+# and the elapsed time. See specification/public/nutrimat-engine.md.
+title: "Nutrimat cappuccino — hard budget, visible every round"
+listed: true
+category: experimental
+description: |
+  Experimental loop-lab worker. Nature `cappuccino` runs the same loop
+  as `redbull` — a hard round budget, exhaustion raises the `exhausted`
+  error, no rescue — but the model sees its budget before every round
+  ("round 7 of 12, 5 left, 3 min elapsed"), and the last round is told
+  to answer now. The comparison `redbull` vs. `cappuccino` at the same
+  limit measures whether a visible budget changes the behaviour.
+engine: nutrimat-cappuccino
+# Chat look for sessions on this recipe: warm red transcript with the
+# exclamation-mark frieze (_vance/chat-themes/nutrimat.css) — the shared
+# "this is an experiment" signal. Pure UI metadata, never read by spawn or
+# engine logic. See specification/public/chat-themes.md.
+webTheme: nutrimat
+params:
+  # Primary on the analyze tier. The comma form is an alias-resolution
+  # cascade (first DEFINED alias wins), NOT a runtime fallback — the
+  # chain fallback is the list below, same convention as ford.yaml.
+  model: default:analyze,default:fast
+  # Degraded-but-available fallback: retry on the fast tier when the
+  # analyze-tier model is broken at the provider.
+  fallbackModels:
+    - default:fast
+  # Same hard budget as redbull — the comparison is only fair at the same
+  # limit. Tune both together per experiment.
+  maxIterations: 12
+tags:
+  - nutrimat
+  - experimental

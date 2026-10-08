@@ -1,0 +1,37 @@
+# Nutrimat loop-lab experiment: nature `ristretto` — the janx loop with a
+# mandatory tool-less reflection round every n tool rounds.
+# See specification/public/nutrimat-engine.md.
+title: "Nutrimat ristretto — reflect every few rounds"
+listed: true
+category: experimental
+description: |
+  Experimental loop-lab worker. Nature `ristretto` runs the janx loop —
+  natural stop, the same safety nets (idle-stuck, empty reply, model
+  failure, wallclock) — and adds a mandatory reflection: after every
+  few tool rounds one round without tools in which the model states
+  what worked, where it is stuck and the single next step. The
+  reflection stays in the context and is published to the loop state.
+  The comparison `janx` vs. `ristretto` measures whether regular
+  reflection prevents getting stuck before the nets have to step in.
+engine: nutrimat-ristretto
+# Chat look for sessions on this recipe: the shared "this is an
+# experiment" theme (_vance/chat-themes/nutrimat.css). Pure UI metadata,
+# never read by spawn or engine logic. See
+# specification/public/chat-themes.md.
+webTheme: nutrimat
+params:
+  # Primary on the analyze tier. The comma form is an alias-resolution
+  # cascade (first DEFINED alias wins), NOT a runtime fallback — the
+  # chain fallback is the list below, same convention as ford.yaml.
+  model: default:analyze,default:fast
+  # Degraded-but-available fallback: retry on the fast tier when the
+  # analyze-tier model is broken at the provider.
+  fallbackModels:
+    - default:fast
+  # Tool rounds between two reflection rounds; 0 = off. Keep it below the
+  # idle-stuck threshold (default 5) — otherwise the net fires before a
+  # stuck model ever meets a reflection.
+  reflectEvery: 3
+tags:
+  - nutrimat
+  - experimental

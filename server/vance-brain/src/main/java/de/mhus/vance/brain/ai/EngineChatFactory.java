@@ -97,6 +97,23 @@ public class EngineChatFactory {
     }
 
     /**
+     * A chat for an explicit model {@code spec} next to the process's
+     * primary — for an engine that drives two models within one turn. Same
+     * defaults (notifier, trace/audit, tool-limit learner, metrics,
+     * empty-response diagnostics) and billing attribution as
+     * {@link #forProcess}; the behaviour is the single resolved spec
+     * without a fallback chain (see {@link ChatBehaviorBuilder#forSpec}).
+     */
+    public EngineChatBundle forModelSpec(
+            ThinkProcessDocument process, ThinkEngineContext ctx, String engineName, String modelSpec) {
+        ChatBehavior behavior = ChatBehaviorBuilder.forSpec(process, modelSpec, ctx.settingService(), aiModelResolver);
+        AiChatOptions options = applyDefaults(AiChatOptions.builder().build(), process, ctx, engineName);
+        CallAttribution attribution = CallAttribution.ofProcess(process, engineName);
+        AiChat chat = ctx.aiModelService().createChat(behavior, options, attribution);
+        return new EngineChatBundle(chat, behavior);
+    }
+
+    /**
      * Pair of resolved chat and the underlying behavior chain — engines
      * need both because the {@code ModelCatalog} lookup (size tier,
      * context window) keys off the primary {@link AiChatConfig} that

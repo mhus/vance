@@ -43,12 +43,19 @@ export const IPC = {
   toolsEnabledGet: 'desktop-tools:tools-enabled:get',
 } as const;
 
-/** IPC channels for the shell renderer's release button: get/set per
- *  account + the activity push (planning/desktop-agent-tools.md §6.2). */
+/** IPC channels for the shell renderer: the release button (get/set per
+ *  account + the activity push, planning/desktop-agent-tools.md §6.2) and
+ *  the per-account working directory (§9 — display, change, native picker).
+ *  The account WebViews never see these channels: config writes are
+ *  shell-only, remote content reaches the tools config exclusively through
+ *  the gate in the main process. */
 export const SHELL_IPC = {
   toolsEnabledGet: 'desktop-shell:tools-enabled:get',
   toolsEnabledSet: 'desktop-shell:tools-enabled:set',
   toolsActivity: 'desktop-shell:activity',
+  workdirGet: 'desktop-shell:workdir:get',
+  workdirSet: 'desktop-shell:workdir:set',
+  workdirPick: 'desktop-shell:workdir:pick',
 } as const;
 
 /** Contract version reported through the bridge. Bump on breaking changes. */

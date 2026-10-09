@@ -12,9 +12,9 @@
  * rejected with an error, never a fallthrough. Wire-level tool names
  * map 1:1 (`file.read` ↔ `client_file_read`).
  */
-import { BrowserWindow, ipcMain } from 'electron';
+import { BrowserWindow, dialog, ipcMain } from 'electron';
 
-import { getAccountConfig, setToolsEnabled, accountToolsDir } from './accountConfig';
+import { getAccountConfig, setToolsEnabled, setWorkdir, accountToolsDir } from './accountConfig';
 import { ExecJobs, execJobsRoot } from './execOps';
 import {
   fileCount,
@@ -129,6 +129,37 @@ export class DesktopToolsService {
       if (typeof (o as { enabled?: unknown }).enabled === 'boolean') {
         void setToolsEnabled(accountId, (o as { enabled: boolean }).enabled);
       }
+    });
+    ipcMain.handle(SHELL_IPC.workdirGet, (_e, o: unknown) => {
+      const accountId = accountIdOf(o);
+      return accountId === null
+        ? null
+        : getAccountConfig(accountId).then((c) => c.workdir);
+    });
+    ipcMain.handle(SHELL_IPC.workdirSet, (_e, o: unknown) => {
+      const accountId = accountIdOf(o);
+      const workdir =
+        typeof (o as { workdir?: unknown }).workdir === 'string'
+          ? ((o as { workdir: string }).workdir).trim()
+          : '';
+      // Only a non-empty absolute path — the picker guarantees a real
+      // directory; anything else would silently break relative resolution.
+      if (accountId === null || workdir.length === 0 || !path.isAbsolute(workdir)) {
+        return;
+      }
+      void setWorkdir(accountId, workdir);
+    });
+    ipcMain.handle(SHELL_IPC.workdirPick, async (_e, o: unknown) => {
+      const accountId = accountIdOf(o);
+      const win = this.windowProvider();
+      if (accountId === null || !win) return null;
+      const current = await getAccountConfig(accountId);
+      const result = await dialog.showOpenDialog(win, {
+        title: 'Choose the working directory for this account',
+        defaultPath: current.workdir,
+        properties: ['openDirectory', 'dontAddToRecent'],
+      });
+      return result.canceled ? null : (result.filePaths[0] ?? null);
     });
     ipcMain.handle(IPC.invoke, (event, op: unknown, params: unknown) => {
       if (typeof op !== 'string' || typeof params !== 'object' || params === null) {

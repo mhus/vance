@@ -20,6 +20,9 @@ import type {
 const SHELL_TOOLS_GET = 'desktop-shell:tools-enabled:get';
 const SHELL_TOOLS_SET = 'desktop-shell:tools-enabled:set';
 const SHELL_TOOLS_ACTIVITY = 'desktop-shell:activity';
+const SHELL_WORKDIR_GET = 'desktop-shell:workdir:get';
+const SHELL_WORKDIR_SET = 'desktop-shell:workdir:set';
+const SHELL_WORKDIR_PICK = 'desktop-shell:workdir:pick';
 
 // The renderer-facing bridge. Shape must match the FaceliftDesktopBridge
 // interface in facelift-account-webview/src/definitions.ts (formerly in
@@ -70,6 +73,14 @@ const bridge = {
     ipcRenderer.on(SHELL_TOOLS_ACTIVITY, listener);
     return () => ipcRenderer.removeListener(SHELL_TOOLS_ACTIVITY, listener);
   },
+  // Per-account working directory (planning/desktop-agent-tools.md §9) —
+  // the CWD of the agent tools. Pick opens the native directory chooser.
+  workdirGet: (o: { accountId: string }): Promise<string> =>
+    ipcRenderer.invoke(SHELL_WORKDIR_GET, o),
+  workdirSet: (o: { accountId: string; workdir: string }): Promise<void> =>
+    ipcRenderer.invoke(SHELL_WORKDIR_SET, o),
+  workdirPick: (o: { accountId: string }): Promise<string | null> =>
+    ipcRenderer.invoke(SHELL_WORKDIR_PICK, o),
 };
 
 contextBridge.exposeInMainWorld('faceliftDesktop', bridge);

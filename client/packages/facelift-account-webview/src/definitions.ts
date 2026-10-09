@@ -235,6 +235,16 @@ export interface FaceliftDesktopBridge {
    * direction. The shell renders the activity state (pulsing icon).
    */
   onToolsActivity(callback: (event: ToolsActivityEvent) => void): () => void;
+  /**
+   * Per-account working directory of the desktop agent tools
+   * (planning/desktop-agent-tools.md §9): the CWD relative file
+   * paths and relative policy globs resolve against, and the
+   * {@code cwd} of the client context. Shell-only API like the
+   * release above. Pick opens the native directory chooser.
+   */
+  workdirGet(options: { accountId: string }): Promise<string>;
+  workdirSet(options: { accountId: string; workdir: string }): Promise<void>;
+  workdirPick(options: { accountId: string }): Promise<string | null>;
 }
 
 declare global {

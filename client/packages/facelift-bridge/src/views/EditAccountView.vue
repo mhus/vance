@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { VanceAccountWebView } from '@vance/facelift-account-webview';
 import { getAccount, updateAccount } from '@/accounts/accountStore';
 import { verifyVanceUrl } from '@/accounts/verifyVanceUrl';
+import { isDesktop } from '@/platform';
 
 const route = useRoute();
 const router = useRouter();
@@ -14,6 +15,12 @@ const displayName = ref<string>('');
 const submitting = ref(false);
 const error = ref<string | null>(null);
 const notFound = ref(false);
+
+// Desktop only: the per-account working directory of the agent tools
+// (planning/desktop-agent-tools.md §9). Shell-side config like the
+// release button — the hosted web UI never sees this section.
+const isDesktopApp = isDesktop();
+const workdir = ref('');
 
 onMounted(async () => {
   const id = String(route.params.id ?? '');
@@ -29,7 +36,21 @@ onMounted(async () => {
   accountId.value = account.id;
   faceUrl.value = account.faceUrl;
   displayName.value = account.displayName;
+  if (isDesktopApp) {
+    workdir.value = (await window.faceliftDesktop?.workdirGet({ accountId: account.id })) ?? '';
+  }
 });
+
+/** Open the native directory chooser and persist the pick. The main
+ *  process validates the path; changes apply with the next agent
+ *  request (the config is read per invoke). */
+async function chooseWorkdir(): Promise<void> {
+  if (!isDesktopApp || accountId.value === '') return;
+  const picked = await window.faceliftDesktop?.workdirPick({ accountId: accountId.value });
+  if (picked === null || picked === undefined) return;
+  await window.faceliftDesktop?.workdirSet({ accountId: accountId.value, workdir: picked });
+  workdir.value = picked;
+}
 
 async function onSubmit(): Promise<void> {
   if (submitting.value) return;
@@ -141,6 +162,31 @@ function onCancel(): void {
           class="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 outline-none focus:border-blue-400"
         />
       </label>
+      <div
+        v-if="isDesktopApp"
+        class="block rounded border border-gray-800 p-3"
+      >
+        <span class="mb-1 block text-xs uppercase tracking-wide text-gray-400">Agent tools</span>
+        <div class="flex items-center gap-2">
+          <code
+            class="min-w-0 flex-1 truncate rounded bg-gray-800 px-2 py-2 text-sm text-gray-300"
+            :title="workdir"
+          >
+            {{ workdir || '—' }}
+          </code>
+          <button
+            type="button"
+            class="shrink-0 rounded bg-gray-800 px-3 py-2 text-sm text-blue-400"
+            @click="chooseWorkdir"
+          >
+            Choose…
+          </button>
+        </div>
+        <p class="mt-1 text-xs text-gray-500">
+          Working directory for the agent tools — relative paths and the session
+          environment resolve against it. Changes apply with the next agent request.
+        </p>
+      </div>
       <p v-if="error" class="text-sm text-red-400">{{ error }}</p>
     </form>
   </div>

@@ -63,6 +63,18 @@ export async function getAccountConfig(accountId: string): Promise<AccountToolsC
   };
 }
 
+/** Change the account's working directory (planning §9). Takes effect
+ *  with the next invoke — the config is read per operation — and with the
+ *  next session bind via the client context. */
+export async function setWorkdir(accountId: string, workdir: string): Promise<void> {
+  const all = await readAll();
+  const accounts = all.accounts ?? {};
+  const current = accounts[accountId] ?? {};
+  accounts[accountId] = { ...current, workdir };
+  all.accounts = accounts;
+  await writeAll(all);
+}
+
 export async function setToolsEnabled(accountId: string, enabled: boolean): Promise<void> {
   const all = await readAll();
   const accounts = all.accounts ?? {};

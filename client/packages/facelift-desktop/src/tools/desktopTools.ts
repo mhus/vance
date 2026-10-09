@@ -14,7 +14,13 @@
  */
 import { BrowserWindow, dialog, ipcMain } from 'electron';
 
-import { getAccountConfig, setToolsEnabled, setWorkdir, accountToolsDir } from './accountConfig';
+import {
+  getAccountConfig,
+  setConfineToWorkdir,
+  setToolsEnabled,
+  setWorkdir,
+  accountToolsDir,
+} from './accountConfig';
 import { ExecJobs, execJobsRoot } from './execOps';
 import {
   fileCount,
@@ -30,7 +36,13 @@ import {
 import { PermissionGate } from './permissionGate';
 import {
   canonicalize,
+  addRule,
   loadPolicy,
+  readRules,
+  removeRule,
+  resetPolicy,
+  denyFloor,
+  type PermissionDomain,
   type AskSubject,
   type PermissionPolicy,
   type Verdict,
@@ -161,12 +173,62 @@ export class DesktopToolsService {
       });
       return result.canceled ? null : (result.filePaths[0] ?? null);
     });
+    ipcMain.handle(SHELL_IPC.confineGet, (_e, o: unknown) => {
+      const accountId = accountIdOf(o);
+      return accountId === null
+        ? false
+        : getAccountConfig(accountId).then((c) => c.confineToWorkdir);
+    });
+    ipcMain.handle(SHELL_IPC.confineSet, (_e, o: unknown) => {
+      const accountId = accountIdOf(o);
+      if (accountId !== null && typeof (o as { confined?: unknown }).confined === 'boolean') {
+        void setConfineToWorkdir(accountId, (o as { confined: boolean }).confined);
+      }
+    });
+    ipcMain.handle(SHELL_IPC.policyGet, (_e, o: unknown) => {
+      const accountId = accountIdOf(o);
+      if (accountId === null) return null;
+      return readRules(this.policyFileOf(accountId)).then((rules) => ({
+        ...rules,
+        denyFloor: denyFloor(),
+      }));
+    });
+    ipcMain.handle(SHELL_IPC.policyAddRule, (_e, o: unknown) => {
+      const request = policyRuleOf(o);
+      if (request === null) return null;
+      return addRule(
+        this.policyFileOf(request.accountId),
+        request.domain,
+        request.list,
+        request.rule,
+      ).then((rules) => ({ ...rules, denyFloor: denyFloor() }));
+    });
+    ipcMain.handle(SHELL_IPC.policyRemoveRule, (_e, o: unknown) => {
+      const request = policyRuleOf(o);
+      if (request === null) return null;
+      return removeRule(
+        this.policyFileOf(request.accountId),
+        request.domain,
+        request.list,
+        request.rule,
+      ).then((rules) => ({ ...rules, denyFloor: denyFloor() }));
+    });
+    ipcMain.handle(SHELL_IPC.policyReset, (_e, o: unknown) => {
+      const accountId = accountIdOf(o);
+      if (accountId === null) return;
+      void resetPolicy(this.policyFileOf(accountId));
+    });
     ipcMain.handle(IPC.invoke, (event, op: unknown, params: unknown) => {
       if (typeof op !== 'string' || typeof params !== 'object' || params === null) {
         return fail('Malformed invoke: op must be a string, params an object');
       }
       return this.invoke(event.sender.id, op, params as Record<string, unknown>);
     });
+  }
+
+/** The account's policy file path — same location the gate reads. */
+  private policyFileOf(accountId: string): string {
+    return path.join(accountToolsDir(accountId), 'permissions.yaml');
   }
 
   /** One operation: resolve the account, gate it, run it. */
@@ -205,7 +267,7 @@ export class DesktopToolsService {
       // exec job inspection is always permitted.
       if (isFileOp) {
         const rawPath = typeof params.path === 'string' && params.path.length > 0 ? params.path : '.';
-        const policy = await this.policyFor(rt, workdir);
+        const policy = await this.policyFor(rt, workdir, config.confineToWorkdir);
         const canonical = await canonicalize(rawPath, workdir);
         const isDelete = op === DELETE_OP;
         const verdict = policy.evaluatePath(canonical, isDelete);
@@ -224,7 +286,7 @@ export class DesktopToolsService {
       }
       if (isExecRun) {
         const command = typeof params.command === 'string' ? params.command : '';
-        const policy = await this.policyFor(rt, workdir);
+        const policy = await this.policyFor(rt, workdir, config.confineToWorkdir);
         const verdict = policy.evaluateCommand(command);
         const allowed = await this.resolveVerdict(
           policy,
@@ -314,9 +376,13 @@ export class DesktopToolsService {
   /** Policy per account, loaded lazily and reloaded after "always" writes
    *  (persistAlways mutates the in-memory copy; the next fresh load for
    *  the *other* account's or a future session's view picks it up). */
-  private async policyFor(rt: AccountRuntime, workdir: string): Promise<PermissionPolicy> {
+  private async policyFor(
+    rt: AccountRuntime,
+    workdir: string,
+    confineToWorkdir: boolean,
+  ): Promise<PermissionPolicy> {
     const policyFile = path.join(accountToolsDir(rt.accountId), 'permissions.yaml');
-    const policy = await loadPolicy(policyFile, workdir);
+    const policy = await loadPolicy(policyFile, workdir, { confineToWorkdir });
     rt.policy = policy;
     return policy;
   }
@@ -342,6 +408,29 @@ function accountIdOf(payload: unknown): string | null {
   if (typeof payload !== 'object' || payload === null) return null;
   const id = (payload as { accountId?: unknown }).accountId;
   return typeof id === 'string' && id.length > 0 ? id : null;
+}
+
+/** Validated policy-rule request for the shell management handlers.
+ * Rejects anything the UI did not explicitly send as a known
+ * domain/list — the policy file is never mutated with guessed keys. */
+interface PolicyRuleRequest {
+  accountId: string;
+  domain: PermissionDomain;
+  list: 'allow' | 'deny';
+  rule: string;
+}
+
+function policyRuleOf(payload: unknown): PolicyRuleRequest | null {
+  if (typeof payload !== 'object' || payload === null) return null;
+  const accountId = accountIdOf(payload);
+  const domain = (payload as { domain?: unknown }).domain;
+  const list = (payload as { list?: unknown }).list;
+  const rule = (payload as { rule?: unknown }).rule;
+  if (accountId === null) return null;
+  if (domain !== 'paths' && domain !== 'commands' && domain !== 'delete') return null;
+  if (list !== 'allow' && list !== 'deny') return null;
+  if (typeof rule !== 'string' || rule.trim().length === 0) return null;
+  return { accountId, domain, list, rule };
 }
 function fail(error: string, denyReason?: string): InvokeResult {
   return { ok: false, error, ...(denyReason !== undefined ? { denyReason } : {}) };

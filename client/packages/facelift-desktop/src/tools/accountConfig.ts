@@ -23,6 +23,7 @@ function defaultConfig(): AccountToolsConfig {
   return {
     toolsEnabled: false,
     workdir: app.getPath('home'),
+    confineToWorkdir: false,
   };
 }
 
@@ -60,6 +61,7 @@ export async function getAccountConfig(accountId: string): Promise<AccountToolsC
   return {
     toolsEnabled: stored.toolsEnabled ?? defaults.toolsEnabled,
     workdir: stored.workdir ?? defaults.workdir,
+    confineToWorkdir: stored.confineToWorkdir ?? defaults.confineToWorkdir,
   };
 }
 
@@ -71,6 +73,20 @@ export async function setWorkdir(accountId: string, workdir: string): Promise<vo
   const accounts = all.accounts ?? {};
   const current = accounts[accountId] ?? {};
   accounts[accountId] = { ...current, workdir };
+  all.accounts = accounts;
+  await writeAll(all);
+}
+
+/** Confinement switch (§9): on = paths outside the working directory
+ *  deny instead of asking. Read per invoke with the policy. */
+export async function setConfineToWorkdir(
+  accountId: string,
+  confineToWorkdir: boolean,
+): Promise<void> {
+  const all = await readAll();
+  const accounts = all.accounts ?? {};
+  const current = accounts[accountId] ?? {};
+  accounts[accountId] = { ...current, confineToWorkdir };
   all.accounts = accounts;
   await writeAll(all);
 }

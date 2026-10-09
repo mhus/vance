@@ -34,6 +34,31 @@ export interface ToolsActivityEvent {
   active: boolean;
 }
 
+/** Rule lists of one sandbox domain (shell policy management, §5). */
+export interface AgentPolicyRules {
+  allow: string[];
+  deny: string[];
+}
+
+/** Snapshot of an account's sandbox policy for the shell UI — the
+ *  static deny floor rides along so the UI can show it as permanent. */
+export interface AgentPolicy {
+  sandbox: boolean;
+  paths: AgentPolicyRules;
+  commands: AgentPolicyRules;
+  delete: AgentPolicyRules;
+  denyFloor: string[];
+}
+
+/** One add/remove request against the policy file. The main process
+ *  validates domain/list before the file is touched. */
+export interface AgentRuleRequest {
+  accountId: string;
+  domain: 'paths' | 'commands' | 'delete';
+  list: 'allow' | 'deny';
+  rule: string;
+}
+
 export interface BiometricAvailability {
   available: boolean;
   biometryType: 'faceID' | 'touchID' | 'none';

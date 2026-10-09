@@ -31,6 +31,8 @@ export interface AccountToolsConfig {
   toolsEnabled: boolean;
   /** Working directory relative paths resolve against. Default: home. */
   workdir: string;
+  /** Confinement: paths outside the workdir deny instead of asking. */
+  confineToWorkdir: boolean;
 }
 
 /** IPC channel names used by the tools bridge (preload ↔ main). */
@@ -56,6 +58,12 @@ export const SHELL_IPC = {
   workdirGet: 'desktop-shell:workdir:get',
   workdirSet: 'desktop-shell:workdir:set',
   workdirPick: 'desktop-shell:workdir:pick',
+  confineGet: 'desktop-shell:confine:get',
+  confineSet: 'desktop-shell:confine:set',
+  policyGet: 'desktop-shell:policy:get',
+  policyAddRule: 'desktop-shell:policy:add-rule',
+  policyRemoveRule: 'desktop-shell:policy:remove-rule',
+  policyReset: 'desktop-shell:policy:reset',
 } as const;
 
 /** Contract version reported through the bridge. Bump on breaking changes. */

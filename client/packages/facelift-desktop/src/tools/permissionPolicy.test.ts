@@ -11,11 +11,15 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
+  addRule,
   canonicalize,
   globToRegex,
   loadPolicy,
   matchesGlob,
   PermissionPolicy,
+  readRules,
+  removeRule,
+  resetPolicy,
 } from './permissionPolicy';
 
 const WORKDIR = path.join(os.tmpdir(), 'desktop-agent-policy-test');
@@ -158,10 +162,126 @@ describe('loadPolicy', () => {
   });
 });
 
+describe('confinement (confineToWorkdir)', () => {
+  const OUTSIDE = path.join(os.homedir(), 'elsewhere', 'file.txt');
+
+  it('without confinement an outside path asks', () => {
+    const policy = policyOf({});
+    expect(policy.evaluatePath(OUTSIDE, false)).toBe('ASK');
+  });
+
+  it('confined: outside denies, inside still asks', () => {
+    const policy = policyOf({}, { confineToWorkdir: true });
+    expect(policy.evaluatePath(OUTSIDE, false)).toBe('DENY');
+    expect(policy.evaluatePath(path.join(WORKDIR, 'x'), false)).toBe('ASK');
+  });
+
+  it('confined: the workdir itself counts as within', () => {
+    const policy = policyOf({}, { confineToWorkdir: true });
+    expect(policy.evaluatePath(WORKDIR, false)).toBe('ASK');
+  });
+
+  it('confined: an explicit allow still reaches outside', () => {
+    const policy = policyOf(
+      { paths: { allow: [OUTSIDE], deny: [] } },
+      { confineToWorkdir: true },
+    );
+    expect(policy.evaluatePath(OUTSIDE, false)).toBe('ALLOW');
+  });
+
+  it('confined: a deny stays a deny regardless of location', () => {
+    const policy = policyOf(
+      { paths: { allow: [path.join(WORKDIR, 'secret')], deny: [] } },
+      { confineToWorkdir: true },
+    );
+    expect(policy.evaluatePath(path.join(WORKDIR, 'secret'), false)).toBe('ALLOW');
+  });
+
+  it('confined: the deny floor still wins inside and outside', () => {
+    const policy = policyOf(
+      { paths: { allow: ['~/**'], deny: [] } },
+      { confineToWorkdir: true },
+    );
+    for (const floor of FLOOR_PATHS) {
+      expect(policy.evaluatePath(floor, false)).toBe('DENY');
+    }
+  });
+
+  it('confined: delete outside denies instead of asking', () => {
+    const policy = policyOf({}, { confineToWorkdir: true });
+    expect(policy.evaluatePath(OUTSIDE, true)).toBe('DENY');
+    expect(policy.evaluatePath(path.join(WORKDIR, 'x'), true)).toBe('ASK');
+  });
+
+  it('loadPolicy threads the option', async () => {
+    const file = path.join(WORKDIR, 'confine.yaml');
+    const policy = await loadPolicy(file, WORKDIR, { confineToWorkdir: true });
+    expect(policy.evaluatePath(OUTSIDE, false)).toBe('DENY');
+  });
+});
+
+describe('policy management', () => {
+  const FILE = path.join(WORKDIR, 'manage.yaml');
+
+  it('readRules on a missing file yields empty lists and sandbox on', async () => {
+    await rm(FILE, { force: true });
+    const rules = await readRules(FILE);
+    expect(rules).toEqual({
+      sandbox: true,
+      paths: { allow: [], deny: [] },
+      commands: { allow: [], deny: [] },
+      delete: { allow: [], deny: [] },
+    });
+  });
+
+  it('add/remove persist through the file; add is idempotent', async () => {
+    await rm(FILE, { force: true });
+    let rules = await addRule(FILE, 'paths', 'deny', '~/Documents/**');
+    expect(rules.paths.deny).toEqual(['~/Documents/**']);
+    // idempotent
+    rules = await addRule(FILE, 'paths', 'deny', '~/Documents/**');
+    expect(rules.paths.deny).toEqual(['~/Documents/**']);
+    rules = await addRule(FILE, 'commands', 'allow', '^git status$');
+    expect(rules.commands.allow).toEqual(['^git status$']);
+    // revoke the "Allow always"
+    rules = await removeRule(FILE, 'commands', 'allow', '^git status$');
+    expect(rules.commands.allow).toEqual([]);
+    expect(rules.paths.deny).toEqual(['~/Documents/**']);
+  });
+
+  it('remove keeps the other fields of the file intact', async () => {
+    const policy = await loadPolicy(FILE, WORKDIR);
+    await policy.persistAlways(
+      { toolName: 'file.read', domain: 'paths', subject: '/tmp/granted.txt' },
+      true,
+    );
+    let rules = await readRules(FILE);
+    expect(rules.paths.allow).toContain('/tmp/granted.txt');
+    rules = await removeRule(FILE, 'paths', 'allow', '/tmp/granted.txt');
+    expect(rules.paths.allow).not.toContain('/tmp/granted.txt');
+    expect(rules.paths.deny).toEqual(['~/Documents/**']);
+  });
+
+  it('resetPolicy empties everything (back to all-ask)', async () => {
+    await resetPolicy(FILE);
+    const rules = await readRules(FILE);
+    expect(rules.paths.deny).toEqual([]);
+    expect(rules.commands.allow).toEqual([]);
+  });
+});
+
 type PolicyShape = ConstructorParameters<typeof PermissionPolicy>[2];
 
-function policyOf(permissions: PolicyShape['permissions']): PermissionPolicy {
-  return new PermissionPolicy(path.join(WORKDIR, 'unused.yaml'), WORKDIR, { permissions });
+function policyOf(
+  permissions: PolicyShape['permissions'],
+  options?: { confineToWorkdir?: boolean },
+): PermissionPolicy {
+  return new PermissionPolicy(
+    path.join(WORKDIR, 'unused.yaml'),
+    WORKDIR,
+    { permissions },
+    options,
+  );
 }
 
 beforeAll(async () => {

@@ -9,6 +9,8 @@ import type {
   NavigateHomeOptions,
   PresentOptions,
   RemoveOptions,
+  AgentPolicy,
+  AgentRuleRequest,
   ToolsActivityEvent,
   UrlOpenEvent,
 } from './types';
@@ -23,6 +25,12 @@ const SHELL_TOOLS_ACTIVITY = 'desktop-shell:activity';
 const SHELL_WORKDIR_GET = 'desktop-shell:workdir:get';
 const SHELL_WORKDIR_SET = 'desktop-shell:workdir:set';
 const SHELL_WORKDIR_PICK = 'desktop-shell:workdir:pick';
+const SHELL_CONFINE_GET = 'desktop-shell:confine:get';
+const SHELL_CONFINE_SET = 'desktop-shell:confine:set';
+const SHELL_POLICY_GET = 'desktop-shell:policy:get';
+const SHELL_POLICY_ADD = 'desktop-shell:policy:add-rule';
+const SHELL_POLICY_REMOVE = 'desktop-shell:policy:remove-rule';
+const SHELL_POLICY_RESET = 'desktop-shell:policy:reset';
 
 // The renderer-facing bridge. Shape must match the FaceliftDesktopBridge
 // interface in facelift-account-webview/src/definitions.ts (formerly in
@@ -81,6 +89,20 @@ const bridge = {
     ipcRenderer.invoke(SHELL_WORKDIR_SET, o),
   workdirPick: (o: { accountId: string }): Promise<string | null> =>
     ipcRenderer.invoke(SHELL_WORKDIR_PICK, o),
+  // Confinement: paths outside the workdir deny instead of asking.
+  confineGet: (o: { accountId: string }): Promise<boolean> =>
+    ipcRenderer.invoke(SHELL_CONFINE_GET, o),
+  confineSet: (o: { accountId: string; confined: boolean }): Promise<void> =>
+    ipcRenderer.invoke(SHELL_CONFINE_SET, o),
+  // Sandbox policy management: view, add, revoke, reset (§5).
+  policyGet: (o: { accountId: string }): Promise<AgentPolicy | null> =>
+    ipcRenderer.invoke(SHELL_POLICY_GET, o),
+  policyAddRule: (o: AgentRuleRequest): Promise<AgentPolicy | null> =>
+    ipcRenderer.invoke(SHELL_POLICY_ADD, o),
+  policyRemoveRule: (o: AgentRuleRequest): Promise<AgentPolicy | null> =>
+    ipcRenderer.invoke(SHELL_POLICY_REMOVE, o),
+  policyReset: (o: { accountId: string }): Promise<void> =>
+    ipcRenderer.invoke(SHELL_POLICY_RESET, o),
 };
 
 contextBridge.exposeInMainWorld('faceliftDesktop', bridge);

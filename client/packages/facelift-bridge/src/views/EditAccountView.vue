@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { VanceAccountWebView } from '@vance/facelift-account-webview';
 import { getAccount, updateAccount } from '@/accounts/accountStore';
 import { verifyVanceUrl } from '@/accounts/verifyVanceUrl';
 import { isDesktop } from '@/platform';
+import type { AgentPolicy, AgentPolicyRules } from '@vance/facelift-account-webview';
 
 const route = useRoute();
 const router = useRouter();
@@ -21,6 +22,11 @@ const notFound = ref(false);
 // release button — the hosted web UI never sees this section.
 const isDesktopApp = isDesktop();
 const workdir = ref('');
+const confined = ref(false);
+const policy = ref<AgentPolicy | null>(null);
+const addDomain = ref<'paths' | 'commands' | 'delete'>('paths');
+const addList = ref<'allow' | 'deny'>('deny');
+const addRule = ref('');
 
 onMounted(async () => {
   const id = String(route.params.id ?? '');
@@ -37,7 +43,10 @@ onMounted(async () => {
   faceUrl.value = account.faceUrl;
   displayName.value = account.displayName;
   if (isDesktopApp) {
-    workdir.value = (await window.faceliftDesktop?.workdirGet({ accountId: account.id })) ?? '';
+    const bridge = window.faceliftDesktop;
+    workdir.value = (await bridge?.workdirGet({ accountId: account.id })) ?? '';
+    confined.value = (await bridge?.confineGet({ accountId: account.id })) ?? false;
+    policy.value = (await bridge?.policyGet({ accountId: account.id })) ?? null;
   }
 });
 
@@ -51,6 +60,70 @@ async function chooseWorkdir(): Promise<void> {
   await window.faceliftDesktop?.workdirSet({ accountId: accountId.value, workdir: picked });
   workdir.value = picked;
 }
+
+/** Confinement: paths outside the workdir deny instead of asking. */
+async function toggleConfined(): Promise<void> {
+  if (!isDesktopApp || accountId.value === '') return;
+  const next = !confined.value;
+  await window.faceliftDesktop?.confineSet({ accountId: accountId.value, confined: next });
+  confined.value = next;
+}
+
+async function addPolicyRule(): Promise<void> {
+  if (!isDesktopApp || accountId.value === '' || addRule.value.trim() === '') return;
+  policy.value =
+    (await window.faceliftDesktop?.policyAddRule({
+      accountId: accountId.value,
+      domain: addDomain.value,
+      list: addList.value,
+      rule: addRule.value.trim(),
+    })) ?? policy.value;
+  addRule.value = '';
+}
+
+/** Revoke one rule (an "Allow always" or a hand-added deny). */
+async function revokePolicyRule(
+  domain: 'paths' | 'commands' | 'delete',
+  list: 'allow' | 'deny',
+  rule: string,
+): Promise<void> {
+  if (!isDesktopApp || accountId.value === '') return;
+  policy.value =
+    (await window.faceliftDesktop?.policyRemoveRule({
+      accountId: accountId.value,
+      domain,
+      list,
+      rule,
+    })) ?? policy.value;
+}
+
+/** Delete the policy file — everything asks again. */
+async function resetPolicy(): Promise<void> {
+  if (!isDesktopApp || accountId.value === '') return;
+  await window.faceliftDesktop?.policyReset({ accountId: accountId.value });
+  policy.value = (await window.faceliftDesktop?.policyGet({ accountId: accountId.value })) ?? null;
+}
+
+/** Non-empty rule lists of the loaded policy, for rendering. */
+const policyGroups = computed(() => {
+  const p = policy.value;
+  if (p === null) return [];
+  const groups: { domain: 'paths' | 'commands' | 'delete'; list: 'allow' | 'deny'; label: string; rules: string[] }[] = [];
+  const seen: [AgentPolicyRules, 'paths' | 'commands' | 'delete'][] = [
+    [p.paths, 'paths'],
+    [p.commands, 'commands'],
+    [p.delete, 'delete'],
+  ];
+  for (const [rules, domain] of seen) {
+    if (rules.allow.length > 0) {
+      groups.push({ domain, list: 'allow', label: `${domain} — allow`, rules: rules.allow });
+    }
+    if (rules.deny.length > 0) {
+      groups.push({ domain, list: 'deny', label: `${domain} — deny`, rules: rules.deny });
+    }
+  }
+  return groups;
+});
 
 async function onSubmit(): Promise<void> {
   if (submitting.value) return;
@@ -185,6 +258,95 @@ function onCancel(): void {
         <p class="mt-1 text-xs text-gray-500">
           Working directory for the agent tools — relative paths and the session
           environment resolve against it. Changes apply with the next agent request.
+        </p>
+        <label class="mt-3 flex items-start gap-2">
+          <input
+            type="checkbox"
+            class="mt-1"
+            :checked="confined"
+            @change="toggleConfined"
+          />
+          <span>
+            <span class="text-sm text-gray-300">Restrict to workdir</span>
+            <span class="block text-xs text-gray-500">
+              Paths outside the working directory are denied without asking. Explicit
+              policy rules below still win.
+            </span>
+          </span>
+        </label>
+      </div>
+
+      <div
+        v-if="isDesktopApp"
+        class="block rounded border border-gray-800 p-3"
+      >
+        <span class="mb-1 block text-xs uppercase tracking-wide text-gray-400">Sandbox policy</span>
+        <div v-if="policyGroups.length === 0" class="text-xs text-gray-500">
+          No rules yet — everything outside the deny floor asks. "Allow always" answers
+          from the dialogs collect here.
+        </div>
+        <div v-else class="space-y-2">
+          <div v-for="group in policyGroups" :key="group.label">
+            <span class="text-xs text-gray-400">{{ group.label }}</span>
+            <ul class="mt-0.5 space-y-1">
+              <li v-for="rule in group.rules" :key="rule" class="flex items-center gap-2">
+                <code class="min-w-0 flex-1 truncate rounded bg-gray-800 px-2 py-1 text-xs text-gray-300">{{ rule }}</code>
+                <button
+                  type="button"
+                  class="shrink-0 rounded bg-gray-800 px-2 py-1 text-xs text-red-400"
+                  @click="revokePolicyRule(group.domain, group.list, rule)"
+                >
+                  Revoke
+                </button>
+              </li>
+            </ul>
+          </div>
+        </div>
+        <p class="mt-2 text-xs text-gray-600">
+          Always denied (not removable):
+          {{ policy?.denyFloor?.join(', ') }}
+        </p>
+        <div class="mt-3 flex flex-wrap items-center gap-2">
+          <select
+            v-model="addDomain"
+            class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs"
+          >
+            <option value="paths">paths</option>
+            <option value="commands">commands</option>
+            <option value="delete">delete</option>
+          </select>
+          <select
+            v-model="addList"
+            class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs"
+          >
+            <option value="deny">deny</option>
+            <option value="allow">allow</option>
+          </select>
+          <input
+            v-model="addRule"
+            type="text"
+            placeholder="e.g. ~/Documents/** or ^rm .*"
+            class="min-w-0 flex-1 rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs"
+            @keyup.enter="addPolicyRule"
+          />
+          <button
+            type="button"
+            class="rounded bg-gray-800 px-3 py-1 text-xs text-blue-400"
+            @click="addPolicyRule"
+          >
+            Add rule
+          </button>
+          <button
+            v-if="policyGroups.length > 0"
+            type="button"
+            class="rounded bg-gray-800 px-3 py-1 text-xs text-red-400"
+            @click="resetPolicy"
+          >
+            Reset policy
+          </button>
+        </div>
+        <p class="mt-1 text-xs text-gray-500">
+          Path rules are globs, command rules are regular expressions.
         </p>
       </div>
       <p v-if="error" class="text-sm text-red-400">{{ error }}</p>

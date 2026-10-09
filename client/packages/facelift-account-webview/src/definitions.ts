@@ -59,6 +59,29 @@ export interface UrlOpenEvent {
  * (planning/desktop-agent-tools.md §6.2) — the shell turns the release
  * button red/pulsing while the agent works on that account's machine.
  */
+/** Rule lists of one sandbox domain (shell policy management). */
+export interface AgentPolicyRules {
+  allow: string[];
+  deny: string[];
+}
+
+/** Snapshot of an account's sandbox policy for the shell UI. */
+export interface AgentPolicy {
+  sandbox: boolean;
+  paths: AgentPolicyRules;
+  commands: AgentPolicyRules;
+  delete: AgentPolicyRules;
+  denyFloor: string[];
+}
+
+/** One add/remove request against the policy file. */
+export interface AgentRuleRequest {
+  accountId: string;
+  domain: 'paths' | 'commands' | 'delete';
+  list: 'allow' | 'deny';
+  rule: string;
+}
+
 export interface ToolsActivityEvent {
   accountId: string;
   active: boolean;
@@ -245,6 +268,23 @@ export interface FaceliftDesktopBridge {
   workdirGet(options: { accountId: string }): Promise<string>;
   workdirSet(options: { accountId: string; workdir: string }): Promise<void>;
   workdirPick(options: { accountId: string }): Promise<string | null>;
+  /**
+   * Confinement (planning/desktop-agent-tools.md §9): with confinement
+   * on, file paths outside the working directory deny instead of asking
+   * — the workdir becomes the visible boundary of the agent. Explicit
+   * policy rules still win.
+   */
+  confineGet(options: { accountId: string }): Promise<boolean>;
+  confineSet(options: { accountId: string; confined: boolean }): Promise<void>;
+  /**
+   * Sandbox policy management (§5): view the account's rule lists,
+   * add/revoke single rules, reset to the empty policy (everything
+   * asks again). The static deny floor rides along read-only.
+   */
+  policyGet(options: { accountId: string }): Promise<AgentPolicy | null>;
+  policyAddRule(options: AgentRuleRequest): Promise<AgentPolicy | null>;
+  policyRemoveRule(options: AgentRuleRequest): Promise<AgentPolicy | null>;
+  policyReset(options: { accountId: string }): Promise<void>;
 }
 
 declare global {

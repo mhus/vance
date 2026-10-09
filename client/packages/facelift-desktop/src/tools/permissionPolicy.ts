@@ -12,11 +12,11 @@
  * machine-central {@code ~/.vancetope/permissions.yaml}, and relative
  * globs resolve against the account's workdir, not a process CWD.
  */
-import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import yaml from 'js-yaml';
+import { dump as yamlDump, load as yamlLoad } from 'js-yaml';
 
 /** Domains the gate knows — see foot-sandbox.md §3/§3.1. */
 export type PermissionDomain = 'paths' | 'commands' | 'delete';
@@ -31,7 +31,7 @@ export interface AskSubject {
   subject: string;
 }
 
-interface DomainRules {
+export interface DomainRules {
   allow: string[];
   deny: string[];
 }
@@ -54,9 +54,19 @@ interface PolicyFileShape {
  */
 const DENY_FLOOR = ['~/.ssh/**', '~/.aws/**', '~/.gnupg/**', '~/.vancetope/**'];
 
+/** Options the account config contributes to the verdict (§9): with
+ *  confinement on, a path outside the working directory denies instead
+ *  of asking — the workdir becomes the visible boundary of the agent.
+ *  Explicit rules still win: a deny stays a deny, an explicit allow
+ *  (operator-granted) reaches even outside the workdir. */
+export interface PolicyOptions {
+  confineToWorkdir?: boolean;
+}
+
 /** Compiled policy. Holds the loaded rules; "always" answers mutate them. */
 export class PermissionPolicy {
   private readonly sandbox: boolean;
+  private readonly confineToWorkdir: boolean;
   private readonly paths: DomainRules;
   private readonly commands: DomainRules;
   private readonly deleteRules: DomainRules;
@@ -65,9 +75,11 @@ export class PermissionPolicy {
     private readonly policyFile: string,
     private readonly workdir: string,
     shape: PolicyFileShape,
+    options: PolicyOptions = {},
   ) {
     const permissions = shape.permissions ?? {};
     this.sandbox = permissions.sandbox !== false;
+    this.confineToWorkdir = options.confineToWorkdir === true;
     this.paths = normalize(permissions.paths);
     this.commands = normalize(permissions.commands);
     this.deleteRules = normalize(permissions.delete);
@@ -89,13 +101,25 @@ export class PermissionPolicy {
       }
       if (this.matchesAny(this.deleteRules.deny, canonicalPath)) return 'DENY';
       if (this.matchesAny(this.deleteRules.allow, canonicalPath)) return 'ALLOW';
+      if (this.confineToWorkdir && !this.isWithinWorkdir(canonicalPath)) {
+        return 'DENY';
+      }
       return 'ASK';
     }
     if (this.matchesAny([...this.paths.deny, ...DENY_FLOOR], canonicalPath)) {
       return 'DENY';
     }
     if (this.matchesAny(this.paths.allow, canonicalPath)) return 'ALLOW';
+    if (this.confineToWorkdir && !this.isWithinWorkdir(canonicalPath)) {
+      return 'DENY';
+    }
     return 'ASK';
+  }
+
+  /** Canonical prefix check — the workdir itself counts as within. */
+  private isWithinWorkdir(canonicalPath: string): boolean {
+    if (canonicalPath === this.workdir) return true;
+    return canonicalPath.startsWith(this.workdir + path.sep);
   }
 
   /** Evaluate an exec command against the regex rules (stage 2). */
@@ -138,7 +162,7 @@ export class PermissionPolicy {
       },
     };
     await mkdir(path.dirname(this.policyFile), { recursive: true });
-    await writeFile(this.policyFile, yaml.dump(shape), 'utf-8');
+    await writeFile(this.policyFile, yamlDump(shape), 'utf-8');
   }
 
   private matchesAny(rules: string[], canonicalPath: string): boolean {
@@ -173,17 +197,25 @@ export async function canonicalize(raw: string, workdir: string): Promise<string
 
 /** Load an account's policy file. Missing/corrupt file → empty policy —
  *  the deny floor + ASK defaults still protect. Never throws. */
-export async function loadPolicy(policyFile: string, workdir: string): Promise<PermissionPolicy> {
+export async function loadPolicy(
+  policyFile: string,
+  workdir: string,
+  options: PolicyOptions = {},
+): Promise<PermissionPolicy> {
   let shape: PolicyFileShape = {};
   try {
-    const loaded = yaml.load(await readFile(policyFile, 'utf-8'));
+    const loaded = yamlLoad(await readFile(policyFile, 'utf-8'));
     if (typeof loaded === 'object' && loaded !== null) {
       shape = loaded as PolicyFileShape;
     }
   } catch {
     shape = {};
   }
-  return new PermissionPolicy(policyFile, workdir, shape);
+  // Canonical (realpath) form: evaluatePath matches canonical paths and
+  // the confinement check is a prefix test — a symlinked workdir (macOS
+  // /tmp → /private/tmp) would silently fail both otherwise.
+  const canonicalWorkdir = await canonicalize(workdir, workdir);
+  return new PermissionPolicy(policyFile, canonicalWorkdir, shape, options);
 }
 
 // ─── Matching ──────────────────────────────────────────────────────────
@@ -275,4 +307,99 @@ function escapeRegex(raw: string): string {
 
 function toPosix(p: string): string {
   return p.replace(/\\/g, '/');
+}
+
+// ─── Policy management (shell UI) ─────────────────────────────────────
+
+/** Rule lists of a policy file, structured for display/management. */
+export interface PolicyRules {
+  sandbox: boolean;
+  paths: DomainRules;
+  commands: DomainRules;
+  delete: DomainRules;
+}
+
+/** The static deny floor — shown by the UI as non-removable context. */
+export function denyFloor(): string[] {
+  return [...DENY_FLOOR];
+}
+
+async function readShape(policyFile: string): Promise<PolicyFileShape> {
+  try {
+    const loaded = yamlLoad(await readFile(policyFile, 'utf-8'));
+    if (typeof loaded === 'object' && loaded !== null) {
+      return loaded as PolicyFileShape;
+    }
+  } catch {
+    // corrupt file — treat as empty, the next write heals it
+  }
+  return {};
+}
+
+async function writeShape(policyFile: string, shape: PolicyFileShape): Promise<void> {
+  await mkdir(path.dirname(policyFile), { recursive: true });
+  await writeFile(policyFile, yamlDump(shape), 'utf-8');
+}
+
+function normalizedShape(shape: PolicyFileShape): PolicyFileShape {
+  const permissions = shape.permissions ?? {};
+  return {
+    permissions: {
+      sandbox: permissions.sandbox !== false,
+      paths: normalize(permissions.paths),
+      commands: normalize(permissions.commands),
+      delete: normalize(permissions.delete),
+    },
+  };
+}
+
+/** Current rules of the account's policy file (empty lists when absent). */
+export async function readRules(policyFile: string): Promise<PolicyRules> {
+  const shape = normalizedShape(await readShape(policyFile));
+  const permissions = shape.permissions!;
+  return {
+    sandbox: permissions.sandbox!,
+    paths: permissions.paths!,
+    commands: permissions.commands!,
+    delete: permissions.delete!,
+  };
+}
+
+/** Add one rule to a domain/list. Idempotent; returns the new state. */
+export async function addRule(
+  policyFile: string,
+  domain: PermissionDomain,
+  list: 'allow' | 'deny',
+  rule: string,
+): Promise<PolicyRules> {
+  const trimmed = rule.trim();
+  if (trimmed.length === 0) return readRules(policyFile);
+  const shape = normalizedShape(await readShape(policyFile));
+  const rules = shape.permissions?.[domain];
+  if (rules) {
+    if (!rules[list].includes(trimmed)) rules[list].push(trimmed);
+    await writeShape(policyFile, shape);
+  }
+  return readRules(policyFile);
+}
+
+/** Remove one exact rule (revoke an "Allow always", drop a deny). */
+export async function removeRule(
+  policyFile: string,
+  domain: PermissionDomain,
+  list: 'allow' | 'deny',
+  rule: string,
+): Promise<PolicyRules> {
+  const shape = normalizedShape(await readShape(policyFile));
+  const rules = shape.permissions?.[domain];
+  if (rules) {
+    rules[list] = rules[list].filter((r) => r !== rule);
+    await writeShape(policyFile, shape);
+  }
+  return readRules(policyFile);
+}
+
+/** Delete the policy file — back to the empty policy (everything asks). */
+export async function resetPolicy(policyFile: string): Promise<void> {
+  await rm(policyFile, { force: true });
 }

@@ -7,16 +7,17 @@
  * `_tenant`, the run view and the chat picker opened on nothing at all.
  * Switching editor therefore meant re-picking the same project, every time.
  *
- * <h3>Why sessionStorage and not the server</h3>
+ * <h3>Why browser-tab storage and not the server</h3>
  *
  * <p>Sidebar collapse state lives on the server (`me/ui-state/sidebar`)
  * because it is a lasting preference. This is the opposite kind of thing: it
  * is where the reader happens to be *right now*, and two browser tabs are
  * routinely in two different projects — that is what tabs are for. A shared
  * store would make the second tab overwrite the first one's context, which is
- * exactly the annoyance this is meant to remove. `sessionStorage` is per tab
- * and survives the full page loads between the standalone editors, which is
- * the whole span that needs covering.
+ * exactly the annoyance this is meant to remove. Tab-scoped storage survives
+ * the full page loads between the standalone editors, which is the whole
+ * span that needs covering — and inside the desktop app it moves to
+ * `localStorage`, see {@link backingStore}.
  *
  * <p>Keyed by tenant and user, so signing into a different account in the
  * same tab does not inherit the previous one's project. That is belt to the
@@ -33,9 +34,36 @@
  * project the one the next editor opens in.
  */
 
+
+import { getDesktopTools } from '@vance/shared';
 import { getSessionData } from './webUiSession';
 
 const KEY_PREFIX = 'vance.lastProject';
+
+/**
+ * Where the memory physically lives.
+ *
+ * <p><b>Browser: `sessionStorage`</b> — the per-tab design below.
+ *
+ * <p><b>Desktop app: `localStorage`</b> — the app has no tabs. One
+ * WebContentsView per account IS the tab, and it dies with the app:
+ * quitting and relaunching Vancetope started every editor on a blank
+ * project while everything `localStorage`-backed (the Cortex
+ * auto-reveal flag, …) survived in the persistent partition — the
+ * memory became the *only* thing the app forgot. In a browser the same
+ * user keeps a tab open for days (or restores the session, which
+ * restores `sessionStorage` too), so the asymmetry never shows there.
+ * There is no cross-tab bleed inside the app because the partition is
+ * per account — same isolation the per-tab design buys in the browser.
+ *
+ * <p>The bridge is the gate, not the UA string: `getDesktopTools()`
+ * answers "am I inside the app" the same way the client-tools code
+ * does, so a desktop webview silently running an old build without the
+ * preload keeps the browser behavior.
+ */
+function backingStore(): Storage {
+  return getDesktopTools() ? window.localStorage : window.sessionStorage;
+}
 
 /**
  * Storage key for the signed-in account. Falls back to a shared key when
@@ -66,7 +94,7 @@ function storageKey(): string {
 export function rememberProject(name: string | null | undefined): void {
   if (!name) return;
   try {
-    window.sessionStorage.setItem(storageKey(), name);
+    backingStore().setItem(storageKey(), name);
   } catch {
     // Private-mode browsers and storage-partitioned WebViews can throw on
     // write. The memory is a convenience; losing it must never break the page.
@@ -89,7 +117,7 @@ export function rememberProject(name: string | null | undefined): void {
 export function recallProject(selectable?: readonly string[]): string | null {
   let stored: string | null;
   try {
-    stored = window.sessionStorage.getItem(storageKey());
+    stored = backingStore().getItem(storageKey());
   } catch {
     return null;
   }

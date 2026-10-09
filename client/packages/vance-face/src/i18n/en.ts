@@ -1705,18 +1705,7 @@ export default {
     inventoryHint: 'The connector\'s own declaration — agent tools and MCP packs, no session needed.',
     inventoryEmpty: 'The app has nothing to offer — enable the agent tools for this account.',
     packFailed: 'Pack "{pack}" failed to start:',
-
-    show: 'Show client tools',
-    hide: 'Hide client tools',
-    refresh: 'Refresh',
-    hint: 'All tools the connected clients registered — foot, desktop app, web UI (live registry view).',
     loading: 'Loading client tools…',
-    emptyHeadline: 'No client tools registered',
-    emptyBody: 'No client pushed a client-tool-register yet — connect a foot or the desktop app and bind a session. Note: in the desktop app, navigate to this page in a BROWSER while the app keeps its session bound — navigating the app\'s own view away unbinds it.',
-    summary: '{sessions} session(s) with {tools} client tool(s)',
-    bound: 'bound',
-    editor: 'editor {id}',
-    toolCount: '{n} tool(s)',
   },
   liveTools: {
       pickSession: 'Select a session to inspect its live client tools.',

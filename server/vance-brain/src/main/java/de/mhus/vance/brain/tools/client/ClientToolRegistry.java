@@ -142,16 +142,6 @@ public class ClientToolRegistry {
         return Optional.empty();
     }
 
-    /** All currently registered sessions with their live entries —
-     * e.g. for the insights aggregate. The copy is shallow-safe:
-     * {@link Entry#tools()} is immutable and {@code Entry} is a record.
-     * Sessions the caller's tenant does not own are filtered by the
-     * endpoint, not here — the registry itself is pod-local.
-     */
-    public Map<String, Entry> snapshot() {
-        return Map.copyOf(bySession);
-    }
-
     /** Routing info for invocation — caller writes to the WebSocket. */
     public Optional<Entry> entry(String sessionId) {
         return Optional.ofNullable(bySession.get(sessionId));

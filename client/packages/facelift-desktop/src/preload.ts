@@ -111,7 +111,7 @@ const bridge = {
     ipcRenderer.invoke(SHELL_POLICY_SANDBOX, o),
   // Tool packs: drop the cache and reconnect — the connect option for
   // mcp.json edits and restarted MCP servers. Returns the fresh counts.
-  packsReload: (o: { accountId: string }): Promise<{ servers: number; tools: number } | null> =>
+  packsReload: (o: { accountId: string }): Promise<{ servers: number; tools: number; errors: number } | null> =>
     ipcRenderer.invoke(SHELL_PACKS_RELOAD, o),
 };
 

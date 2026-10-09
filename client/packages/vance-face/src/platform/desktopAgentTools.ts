@@ -514,11 +514,21 @@ export class DesktopAgentToolService {
    * empty — navigating the webview to this page unbinds the very
    * session the registry would show.
    */
-  static async inventory(): Promise<DesktopToolSpec[]> {
+  static async inventory(): Promise<{
+    tools: DesktopToolSpec[];
+    packErrors: { pack: string; error: string }[];
+  }> {
     const bridge = getDesktopTools();
     const statics = [...desktopFileTools(), ...desktopExecTools()].map((t) => t.spec);
-    const packEntries = (await bridge?.packs?.list().catch((): [] => [])) ?? [];
-    return [...statics, ...(packEntries.map((e) => e.spec) as DesktopToolSpec[])];
+    const packList =
+      (await bridge?.packs?.list().catch(() => ({ tools: [], errors: [] }))) ?? {
+        tools: [],
+        errors: [],
+      };
+    return {
+      tools: [...statics, ...(packList.tools.map((e) => e.spec) as DesktopToolSpec[])],
+      packErrors: packList.errors,
+    };
   }
 
   /** Create the service when the bridge exists, else an inert placeholder
@@ -548,8 +558,12 @@ export class DesktopAgentToolService {
     // Tool packs (MCP): the specs come from the main process — the face
     // never sees pack files or servers, only the mapped tool surface.
     // A missing `packs` member (older app build) means an empty toolbox.
-    const packEntries = (await this.bridge.packs?.list().catch((): [] => [])) ?? [];
-    for (const entry of packEntries) {
+    const packList =
+      (await this.bridge.packs?.list().catch(() => ({ tools: [], errors: [] }))) ?? {
+        tools: [],
+        errors: [],
+      };
+    for (const entry of packList.tools) {
       tools.push({
         op: 'pack_invoke',
         spec: entry.spec as DesktopToolSpec,

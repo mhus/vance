@@ -43,8 +43,14 @@ interface RunningServer {
   tools: { name: string; description?: string; inputSchema?: unknown }[];
 }
 
+interface PackError {
+  pack: string;
+  error: string;
+}
+
 interface AccountPacks {
   tools: PackToolEntry[];
+  errors: PackError[];
   servers: Map<string, RunningServer>;
   /** In-flight materialization — concurrent callers await the same run. */
   materializing: Promise<void> | null;
@@ -70,7 +76,7 @@ export class PackService {
    *  project pack asks its trust question again (the dialog waits,
    *  bounded — this call can take as long). The next bind re-registers
    *  the fresh tool set. */
-  async reload(accountId: string): Promise<{ servers: number; tools: number }> {
+  async reload(accountId: string): Promise<{ servers: number; tools: number; errors: number }> {
     const cached = this.accounts.get(accountId);
     if (cached !== undefined) {
       for (const running of cached.servers.values()) {
@@ -81,14 +87,22 @@ export class PackService {
       this.accounts.delete(accountId);
     }
     const fresh = await this.materialize(accountId);
-    return { servers: fresh.servers.size, tools: fresh.tools.length };
+    return {
+      servers: fresh.servers.size,
+      tools: fresh.tools.length,
+      errors: fresh.errors.length,
+    };
   }
 
-  /** The account's pack tools for registration — empty until (and
-   *  after a failed) materialization. Triggers one lazily. */
-  async listTools(accountId: string): Promise<PackToolEntry[]> {
+  /** The account's pack tools and per-pack failures — the UI shows both:
+   *  a pack that fails to start (missing npx, broken command) must be
+   *  visible, not silently absent. Triggers a materialization lazily. */
+  async listTools(accountId: string): Promise<{
+    tools: PackToolEntry[];
+    errors: PackError[];
+  }> {
     const packs = await this.materialize(accountId);
-    return packs.tools;
+    return { tools: packs.tools, errors: packs.errors };
   }
 
   /** One `pack_invoke` (ungated in v1 — foot parity, §9). */
@@ -126,7 +140,7 @@ export class PackService {
     if (existing !== undefined) return existing;
     let packs = this.accounts.get(accountId);
     if (packs === undefined) {
-      packs = { tools: [], servers: new Map(), materializing: null };
+      packs = { tools: [], errors: [], servers: new Map(), materializing: null };
       this.accounts.set(accountId, packs);
     }
     if (packs.materializing !== null) {
@@ -158,6 +172,7 @@ export class PackService {
 
     const trusted = parseTrustedPacks(trustedRaw);
     const tools: PackToolEntry[] = [];
+    const errors: PackError[] = [];
     for (const server of servers) {
       const command = server.config.command ?? [];
       if (command.length === 0) continue; // no transport fields yet (http = Stufe 2)
@@ -196,15 +211,16 @@ export class PackService {
           tools.push(buildPackToolEntry(server.name, server.config.labels ?? [], tool));
         }
       } catch (e) {
-        // One broken pack never blocks the toolbox — the agent simply
-        // does not see its tools (and the log says why).
-        console.warn(
-          `[packs] MCP server '${server.name}' failed to start:`,
-          e instanceof Error ? e.message : String(e),
-        );
+        // One broken pack never blocks the toolbox — but it must be
+        // VISIBLE that it is missing (the log alone is invisible in a
+        // Finder-launched app).
+        const message = e instanceof Error ? e.message : String(e);
+        console.warn(`[packs] MCP server '${server.name}' failed to start:`, message);
+        errors.push({ pack: server.name, error: message });
       }
     }
     packs.tools = tools;
+    packs.errors = errors;
   }
 
   /** Native trust dialog (§5) — Load once / Always for this workdir / No.

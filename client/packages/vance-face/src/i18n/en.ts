@@ -1704,6 +1704,7 @@ export default {
     showInventory: 'Show this app\'s tool inventory',
     inventoryHint: 'The connector\'s own declaration — agent tools and MCP packs, no session needed.',
     inventoryEmpty: 'The app has nothing to offer — enable the agent tools for this account.',
+    packFailed: 'Pack "{pack}" failed to start:',
 
     show: 'Show client tools',
     hide: 'Hide client tools',

@@ -30,13 +30,16 @@ const clientToolsOpen = ref(false);
 // tab this section stays away and only the registry view remains.
 const inDesktopApp = getDesktopTools() !== null;
 const localInventory = ref<DesktopToolSpec[]>([]);
+const localPackErrors = ref<{ pack: string; error: string }[]>([]);
 const localLoading = ref(false);
 
 async function loadLocalInventory(): Promise<void> {
   if (!inDesktopApp || localLoading.value) return;
   localLoading.value = true;
   try {
-    localInventory.value = await DesktopAgentToolService.inventory();
+    const result = await DesktopAgentToolService.inventory();
+    localInventory.value = result.tools;
+    localPackErrors.value = result.packErrors;
   } finally {
     localLoading.value = false;
   }
@@ -289,6 +292,15 @@ const filteredTools = computed<EffectiveToolDto[]>(() => {
       >
         {{ $t('insights.clientTools.inventoryEmpty') }}
       </div>
+      <ul v-if="localPackErrors.length > 0" class="mt-2 space-y-1">
+        <li
+          v-for="e in localPackErrors"
+          :key="e.pack"
+          class="text-xs text-red-500"
+        >
+          {{ $t('insights.clientTools.packFailed', { pack: e.pack }) }} {{ e.error }}
+        </li>
+      </ul>
     </div>
 
     <!-- Client-tool inspector — tenant-wide, no project needed -->

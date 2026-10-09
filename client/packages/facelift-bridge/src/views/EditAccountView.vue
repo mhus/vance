@@ -134,7 +134,8 @@ async function reloadPacks(): Promise<void> {
   packsStatus.value =
     result === null || result === undefined
       ? '—'
-      : `${result.servers} server(s), ${result.tools} tool(s)`;
+      : `${result.servers} server(s), ${result.tools} tool(s)`
+        + (result.errors > 0 ? `, ${result.errors} failed` : '');
 }
 
 async function setSandbox(sandbox: boolean): Promise<void> {

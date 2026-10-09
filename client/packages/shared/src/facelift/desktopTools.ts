@@ -62,8 +62,16 @@ export interface DesktopToolsBridge {
    * failed) materialization; a bad server never blocks the rest.
    */
   packs: {
-    list(): Promise<DesktopPackToolEntry[]>;
+    list(): Promise<DesktopPackListResult>;
   };
+}
+
+/** Pack list result: the materialized tools plus the packs that FAILED
+ *  to start (missing npx, broken command) — the UI shows both; a broken
+ *  pack must be visible, not silently absent. */
+export interface DesktopPackListResult {
+  tools: DesktopPackToolEntry[];
+  errors: { pack: string; error: string }[];
 }
 
 /** One pack tool from {@link DesktopToolsBridge.packs}: the spec the

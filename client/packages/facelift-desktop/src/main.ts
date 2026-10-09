@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process';
 import { app, BrowserWindow, protocol } from 'electron';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -16,6 +17,34 @@ let tools: DesktopToolsService | null = null;
  * makes `/assets/…` resolve to the bundle root again, without touching the
  * shared bridge build config.
  */
+/**
+ * macOS apps launched from Finder/Dock get a minimal PATH
+ * (/usr/bin:/bin:…) — npx, node, homebrew binaries are invisible to
+ * spawned processes. That breaks MCP pack servers (npx …) and
+ * exec_run commands with user binaries. Resolve the user's real PATH
+ * from a login shell, exactly once at startup. No-op when the app
+ * already inherits a rich PATH (terminal launch, dev runs).
+ */
+function extendPathForPackagedLaunch(): void {
+  if (process.platform !== 'darwin') return;
+  if ((process.env.PATH ?? '').includes('/opt/homebrew/bin')
+      || (process.env.PATH ?? '').includes('/usr/local/bin')) {
+    return;
+  }
+  try {
+    const shellPath = execSync('/bin/zsh -l -c echo $PATH', {
+      encoding: 'utf8',
+      timeout: 3000,
+    }).trim();
+    if (shellPath.includes('/bin')) {
+      process.env.PATH = shellPath;
+    }
+  } catch {
+    // Keep the default — a login shell is a best-effort convenience.
+  }
+}
+extendPathForPackagedLaunch();
+
 const RENDERER_SCHEME = 'vance-facelift-app';
 const RENDERER_HOST = 'shell';
 

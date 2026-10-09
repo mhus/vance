@@ -299,7 +299,7 @@ export interface FaceliftDesktopBridge {
    * their trust question again (the call waits for the dialog).
    * Returns the fresh server/tool counts.
    */
-  packsReload(options: { accountId: string }): Promise<{ servers: number; tools: number } | null>;
+  packsReload(options: { accountId: string }): Promise<{ servers: number; tools: number; errors: number } | null>;
 }
 
 declare global {

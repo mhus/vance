@@ -147,11 +147,21 @@ export class AccountViewManager {
     const wc = view.webContents;
     wc.setUserAgent(`${wc.getUserAgent()} ${USER_AGENT_SUFFIX} ${DESKTOP_USER_AGENT_TOKEN}`);
 
-    // Grant in-WebView media capture (voice STT / photo) at the partition
-    // level; the OS still owns the actual device permission.
+    // Grant in-WebView permissions the web UI actually needs; everything
+    // else stays denied (no silent prompt-free grants). The OS still owns
+    // the actual device permission for media.
+    //   media — voice STT / photo capture
+    //   clipboard-sanitized-write — the copy buttons (navigator.clipboard
+    //     .writeText); a browser auto-grants this, a deny-by-default
+    //     handler made every copy button fail silently in the app
+    //   clipboard-read — SheetView paste (navigator.clipboard.readText)
     session.fromPartition(partition).setPermissionRequestHandler(
       (_wc, permission, callback) => {
-        callback(permission === 'media');
+        callback(
+          permission === 'media' ||
+          permission === 'clipboard-sanitized-write' ||
+          permission === 'clipboard-read',
+        );
       },
     );
 

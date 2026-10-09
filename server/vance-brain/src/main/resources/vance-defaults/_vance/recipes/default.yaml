@@ -130,14 +130,8 @@ profiles:
   # would always fail. See specification/recipes.md §6a.
   web:
     allowedToolsRemove:
-      - client_file_read
-      - client_file_write
-      - client_file_edit
-      - client_file_list
-      - client_exec_run
-      - client_exec_kill
-      - client_exec_status
-      - client_javascript
+      # Family selector — covers every client_* tool, current and future.
+      - client_*
     promptPrefixAppend: |
       ## Client context — web browser
 
@@ -151,14 +145,8 @@ profiles:
   # client_* until the profile gets an explicit block of its own.
   default:
     allowedToolsRemove:
-      - client_file_read
-      - client_file_write
-      - client_file_edit
-      - client_file_list
-      - client_exec_run
-      - client_exec_kill
-      - client_exec_status
-      - client_javascript
+      # Family selector — covers every client_* tool, current and future.
+      - client_*
     promptPrefixAppend: |
       ## Client context — non-CLI client
 

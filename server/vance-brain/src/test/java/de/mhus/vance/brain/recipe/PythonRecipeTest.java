@@ -101,8 +101,10 @@ class PythonRecipeTest {
         ResolvedRecipe r = loader.load("acme", "proj", RECIPE_NAME).orElseThrow();
 
         assertThat(r.profiles()).containsKeys("foot", "web", "default");
-        // Web/default strip the client_* surface; foot keeps it.
-        assertThat(r.profiles().get("web").allowedToolsRemove()).contains("client_file_read", "client_exec_run");
+        // Web/default strip the client_* surface — as one family selector
+        // since recipes may address whole tool families; an explicit client
+        // tool name satisfies the same intent. Foot keeps the surface.
+        assertThat(r.profiles().get("web").allowedToolsRemove()).contains("client_*");
         assertThat(r.profiles().get("foot").allowedToolsRemove()).isNullOrEmpty();
     }
 

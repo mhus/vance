@@ -20,18 +20,8 @@ description: |
 engine: ford
 
 allowedToolsDefer:
-  - client_file_read
-  - client_file_write
-  - client_file_edit
-  - client_file_list
-  - client_file_find
-  - client_file_grep
-  - client_file_head_tail
-  - client_file_count
-  - client_exec_run
-  - client_exec_status
-  - client_exec_tail
-  - client_exec_kill
+  # Family selector — covers every client_* tool, current and future.
+  - client_*
   - work_file_read
   - work_file_write
   - work_file_edit

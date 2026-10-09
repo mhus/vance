@@ -830,6 +830,53 @@ class ContextToolsApiClassifyTest {
         assertThat(withSkill.discoveryBlockMarkdown()).doesNotContain("skill_alpha");
     }
 
+    @Test
+    void filterRemovePattern_stripsWholeFamily() {
+        stubResolve("client_file_read", false);
+        stubResolve("client_file_grep", false);
+        stubResolve("doc_read", false);
+
+        RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(List.of("client_*"), List.of(), List.of());
+        ContextToolsApi.Classification c = ContextToolsApi.classify(
+                dispatcher, ctx, Set.of("client_file_read", "client_file_grep", "doc_read"), filter, Set.of());
+
+        assertThat(c.allowed()).containsExactly("doc_read");
+        assertThat(c.primary()).containsExactly("doc_read");
+    }
+
+    @Test
+    void filterDeferPattern_defersWholeFamily() {
+        stubResolve("client_file_read", false);
+        stubResolve("client_exec_run", false);
+        stubResolve("doc_read", false);
+
+        RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(List.of(), List.of(), List.of("client_*"));
+        ContextToolsApi.Classification c = ContextToolsApi.classify(
+                dispatcher, ctx, Set.of("client_file_read", "client_exec_run", "doc_read"), filter, Set.of());
+
+        assertThat(c.deferred()).containsExactlyInAnyOrder("client_file_read", "client_exec_run");
+        assertThat(c.primary()).containsExactly("doc_read");
+    }
+
+    @Test
+    void filterAddPattern_admitsMatchingToolsOutsideBase() {
+        when(dispatcher.resolveAll(any()))
+                .thenReturn(List.of(
+                        resolved("doc_read"),
+                        resolved("client_file_read"),
+                        resolved("client_exec_run"),
+                        resolved("calendar_create")));
+        stubResolve("doc_read", false);
+        stubResolve("client_file_read", false);
+        stubResolve("client_exec_run", false);
+
+        RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(List.of(), List.of("client_*"), List.of());
+        ContextToolsApi.Classification c =
+                ContextToolsApi.classify(dispatcher, ctx, Set.of("doc_read"), filter, Set.of());
+
+        assertThat(c.allowed()).containsExactlyInAnyOrder("doc_read", "client_file_read", "client_exec_run");
+    }
+
     private void stubResolve(String name, boolean deferred) {
         when(dispatcher.resolve(eq(name), any())).thenReturn(Optional.of(resolved(name, deferred)));
     }

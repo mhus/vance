@@ -91,7 +91,13 @@ class BenjyRecipeConsistencyTest {
                     .isFalse();
             @SuppressWarnings("unchecked")
             List<String> defer = (List<String>) spec.get("allowedToolsDefer");
-            assertThat(defer).as("%s deferred backends", doer).contains("work_exec_run", "client_exec_run");
+            // The client backends arrive as one family selector (client_*) since
+            // recipes may address whole tool families — an explicit
+            // client_exec_run entry satisfies the same intent.
+            assertThat(defer).as("%s deferred backends", doer).contains("work_exec_run");
+            assertThat(defer.contains("client_exec_run") || defer.contains("client_*"))
+                    .as("%s defers the client exec backend", doer)
+                    .isTrue();
         }
     }
 

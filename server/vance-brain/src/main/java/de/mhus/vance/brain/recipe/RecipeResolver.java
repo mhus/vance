@@ -92,6 +92,35 @@ public class RecipeResolver {
         public boolean isEmpty() {
             return remove.isEmpty() && add.isEmpty() && defer.isEmpty() && keep.isEmpty() && dropFirst.isEmpty();
         }
+
+        /**
+         * Exact name first, then a trailing-{@code *} prefix pattern
+         * ({@code client_*}). The pattern form lets a recipe address a whole
+         * tool family without spelling out every member — a family that grows
+         * (new client tools, new pack tools) is covered automatically.
+         * {@code *} cannot occur in a tool name, so the two forms never
+         * collide. Same rule as the budget hints
+         * ({@code ToolTriage.Hints}).
+         */
+        public static boolean matches(String entry, String toolName) {
+            if (entry.equals(toolName)) return true;
+            return entry.length() > 1
+                    && entry.endsWith("*")
+                    && toolName.startsWith(entry.substring(0, entry.length() - 1));
+        }
+
+        /** Any list entry hitting {@code toolName} (see {@link #matches}). */
+        public static boolean anyMatch(java.util.Collection<String> entries, String toolName) {
+            for (String entry : entries) {
+                if (matches(entry, toolName)) return true;
+            }
+            return false;
+        }
+
+        /** {@code true} when the entry is a trailing-{@code *} pattern. */
+        public static boolean isPattern(String entry) {
+            return entry.length() > 1 && entry.endsWith("*");
+        }
     }
 
     /**
@@ -377,8 +406,18 @@ public class RecipeResolver {
             return null;
         }
         Set<String> effective = new LinkedHashSet<>(engineDefault);
-        if (addPresent) effective.addAll(add);
-        if (removePresent) remove.forEach(effective::remove);
+        // Pattern add entries cannot expand here — spawn has no dispatch
+        // universe and no session for family members to resolve against.
+        // They stay per-turn, where classify() widens the pool via the
+        // dispatcher. Literals merge as before.
+        if (addPresent) {
+            for (String entry : add) {
+                if (!ToolFilter.isPattern(entry)) effective.add(entry);
+            }
+        }
+        if (removePresent) {
+            effective.removeIf(name -> ToolFilter.anyMatch(remove, name));
+        }
         // Compare to engine default for the same content.
         if (effective.equals(engineDefault)) {
             return null;

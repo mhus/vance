@@ -4,6 +4,7 @@ import de.mhus.vance.api.toolhealth.ToolHealthStatus;
 import de.mhus.vance.api.tools.ToolSpec;
 import de.mhus.vance.brain.history.HistoryTagBuilder;
 import de.mhus.vance.brain.history.HistoryTagSink;
+import de.mhus.vance.brain.recipe.RecipeResolver.ToolFilter;
 import de.mhus.vance.brain.tools.budget.ToolBudget;
 import de.mhus.vance.brain.tools.budget.ToolTriage;
 import de.mhus.vance.shared.toolhealth.ToolHealthDocument;
@@ -1489,11 +1490,25 @@ public final class ContextToolsApi implements ToolBus {
         }
 
         Set<String> admittedByAdd = new LinkedHashSet<>();
-        for (String name : add) {
-            if (pool.contains(name)) continue;
-            if (dispatcher.resolve(name, ctx).isEmpty()) continue;
-            pool.add(name);
-            admittedByAdd.add(name);
+        for (String entry : add) {
+            if (ToolFilter.isPattern(entry)) {
+                // Family selector (client_*): admit every dispatchable tool
+                // matching the prefix — the same widening the literal path
+                // does per name, against the live per-turn universe
+                // (session client tools included).
+                for (ToolDispatcher.Resolved r : dispatcher.resolveAll(ctx)) {
+                    String name = r.tool().name();
+                    if (pool.contains(name) || !ToolFilter.matches(entry, name)) continue;
+                    if (!rolesPermit(r, effectiveRoles)) continue;
+                    pool.add(name);
+                    admittedByAdd.add(name);
+                }
+                continue;
+            }
+            if (pool.contains(entry)) continue;
+            if (dispatcher.resolve(entry, ctx).isEmpty()) continue;
+            pool.add(entry);
+            admittedByAdd.add(entry);
         }
 
         // Engine-role gate (Remove pre-step): drop tools whose
@@ -1525,9 +1540,11 @@ public final class ContextToolsApi implements ToolBus {
             });
         }
 
-        // Effective dispatch pool = profileFiltered − remove
+        // Effective dispatch pool = profileFiltered − remove.
+        // Family selectors in the remove list (client_*) match by
+        // prefix — see ToolFilter.matches.
         Set<String> effective = new LinkedHashSet<>(profileFiltered);
-        effective.removeAll(remove);
+        effective.removeIf(name -> ToolFilter.anyMatch(remove, name));
 
         // Resolve each tool to consult its default deferred() flag.
         // Order: explicit allowedToolsAdd wins over allowedToolsDefer
@@ -1546,9 +1563,9 @@ public final class ContextToolsApi implements ToolBus {
         Set<String> deferred = new LinkedHashSet<>();
         for (String name : effective) {
             boolean isDeferred;
-            if (add.contains(name) && !admittedByAdd.contains(name)) {
+            if (ToolFilter.anyMatch(add, name) && !admittedByAdd.contains(name)) {
                 isDeferred = false;
-            } else if (defer.contains(name) || admittedByPool.contains(name)) {
+            } else if (ToolFilter.anyMatch(defer, name) || admittedByPool.contains(name)) {
                 isDeferred = true;
             } else {
                 isDeferred = dispatcher

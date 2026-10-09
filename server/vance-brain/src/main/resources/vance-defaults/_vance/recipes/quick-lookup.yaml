@@ -35,27 +35,15 @@ profiles:
 
   web:
     allowedToolsRemove:
-      - client_file_read
-      - client_file_write
-      - client_file_edit
-      - client_file_list
-      - client_exec_run
-      - client_exec_kill
-      - client_exec_status
-      - client_javascript
+      # Family selector — covers every client_* tool, current and future.
+      - client_*
     promptPrefixAppend: |
       Web client — use `workspace_*` for project files; no local FS.
 
   default:
     allowedToolsRemove:
-      - client_file_read
-      - client_file_write
-      - client_file_edit
-      - client_file_list
-      - client_exec_run
-      - client_exec_kill
-      - client_exec_status
-      - client_javascript
+      # Family selector — covers every client_* tool, current and future.
+      - client_*
     promptPrefixAppend: |
       Non-CLI client — use `workspace_*` for project files.
 tags:

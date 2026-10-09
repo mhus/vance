@@ -31,8 +31,22 @@ public final class Profiles {
     /** Terminal client ({@code vance-foot}). Has shell + FS tools + client-side {@code agent.md} manual. */
     public static final String FOOT = "foot";
 
-    /** Browser-based UI ({@code @vance/vance-face}). No local tools, no client manual. Wire default. */
+    /**
+     * Browser-based UI ({@code @vance/vance-face}). Registers UI-state tools
+     * via {@code client-tool-register}, never the local file/exec families.
+     * Wire default when {@code ?profile=} is omitted.
+     */
     public static final String WEB = "web";
+
+    /**
+     * Facelift desktop app (Electron, {@code @vance/facelift-desktop}) — the
+     * hosted web UI behind an Electron bridge. Registers the
+     * {@code client_file_*} / {@code client_exec_*} families on its session when
+     * the bridge is present and the user enabled them per account; execution and
+     * the permission gate run entirely in the app's main process (see
+     * {@code planning/desktop-agent-tools.md}).
+     */
+    public static final String DESKTOP = "desktop";
 
     /** Mobile app (future). Restricted tool set, shorter sessions. */
     public static final String MOBILE = "mobile";
@@ -80,6 +94,5 @@ public final class Profiles {
      */
     public static final String PATTERN = "^[a-z][a-z0-9_-]{0,31}$";
 
-    private Profiles() {
-    }
+    private Profiles() {}
 }

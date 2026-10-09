@@ -127,9 +127,14 @@ public class VanceHandshakeInterceptor implements HandshakeInterceptor {
                 locationService.getPodIp());
         ctx.setClientContext(parseClientContext(request));
         attributes.put(ATTR_CONNECTION, ctx);
-        log.debug("Handshake ok: user='{}' tenant='{}' profile={} clientName='{}' editorId='{}' podIp='{}'",
-                claims.username(), claims.tenantId(), profile, clientName,
-                ctx.getEditorId(), ctx.getPodIp());
+        log.debug(
+                "Handshake ok: user='{}' tenant='{}' profile={} clientName='{}' editorId='{}' podIp='{}'",
+                claims.username(),
+                claims.tenantId(),
+                profile,
+                clientName,
+                ctx.getEditorId(),
+                ctx.getPodIp());
         return true;
     }
 
@@ -145,19 +150,26 @@ public class VanceHandshakeInterceptor implements HandshakeInterceptor {
     /**
      * Parses the optional {@link HandshakeHeaders#CLIENT_CONTEXT} header
      * into a {@link ClientContext}. A missing, blank or malformed value
-     * yields {@code null} — it must never fail the handshake (the header
-     * is purely informational, sent only by CLI clients).
+     * yields {@code null} — it must never fail the handshake. Purely
+     * informational: CLI clients send it as the
+     * {@link HandshakeHeaders#CLIENT_CONTEXT} header, browser-based clients
+     * (Facelift desktop app) as the
+     * {@link HandshakeHeaders#CLIENT_CONTEXT_PARAM} query parameter.
      */
     private @Nullable ClientContext parseClientContext(ServerHttpRequest request) {
         String raw = firstHeader(request, HandshakeHeaders.CLIENT_CONTEXT);
+        if (isBlank(raw)) {
+            // Browser-based clients (Facelift desktop app) cannot set custom
+            // headers on the WS upgrade — same payload as a query parameter.
+            raw = firstQueryParam(request, HandshakeHeaders.CLIENT_CONTEXT_PARAM);
+        }
         if (isBlank(raw)) {
             return null;
         }
         try {
             return objectMapper.readValue(raw, ClientContext.class);
         } catch (RuntimeException e) {
-            log.debug("Ignoring malformed {} header: {}",
-                    HandshakeHeaders.CLIENT_CONTEXT, e.getMessage());
+            log.debug("Ignoring malformed client context (header or query param): {}", e.getMessage());
             return null;
         }
     }

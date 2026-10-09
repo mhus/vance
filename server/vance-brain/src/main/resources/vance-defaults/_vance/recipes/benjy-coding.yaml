@@ -57,6 +57,21 @@ params:
   workTarget:
     kind: WORK
 
+# Facelift desktop app — CLIENT dispatch like the foot profile of the
+# frankie coding recipe: the desktop app registers the client_file_* /
+# client_exec_* backends on its session when the user released them per
+# account. The default (web) stays on the Brain-server workspace.
+profiles:
+  desktop:
+    params:
+      workTarget:
+        kind: CLIENT
+    promptPrefixAppend: |
+      You are connected to the Facelift desktop app. The CLIENT work
+      target is the user's machine through the app's sandboxed tool
+      bridge: every file or exec call may surface a native permission
+      dialog the user has to approve — a denied call reports
+      denyReason, so respect it instead of retrying.
 tags:
   - worker
   - coding

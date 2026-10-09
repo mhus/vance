@@ -340,6 +340,24 @@ profiles:
       # USE_CLIENT_AGENT_DOC_PARAM and ClientAgentDocService.
       useClientAgentDoc: true
 
+  # Facelift desktop app — the web UI behind the Electron tool bridge.
+  # Same CLIENT dispatch as foot: the desktop registers the
+  # client_file_* / client_exec_* backends on its session (when the
+  # user released them per account), and the WorkTargetDispatcher routes
+  # the generic wrappers there. No useClientAgentDoc — the desktop app
+  # uploads no agent.md.
+  desktop:
+    params:
+      workTarget:
+        kind: CLIENT
+    promptPrefixAppend: |
+      You are connected to the Facelift desktop app. The CLIENT work
+      target is the user's machine through the app's sandboxed tool
+      bridge: every file or exec call may surface a native permission
+      dialog the user has to approve — a denied call reports
+      denyReason, so respect it instead of retrying. Relative paths
+      resolve against the user's configured working directory for this
+      account.
 tags:
   - worker
   - coding

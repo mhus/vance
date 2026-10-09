@@ -54,6 +54,15 @@ public final class HandshakeHeaders {
     /** Query-parameter fallback for {@link #CLIENT_NAME}. */
     public static final String CLIENT_NAME_PARAM = "name";
 
-    private HandshakeHeaders() {
-    }
+    /**
+     * Query-parameter fallback for {@link #CLIENT_CONTEXT} — same JSON
+     * payload, URL-encoded. The Facelift desktop app uses this path: its web
+     * views run in a browser WebSocket that cannot set custom headers, but
+     * the agent can still drive the client-side file/exec tools there, so
+     * the LLM needs the platform context. A malformed value is ignored,
+     * never fatal.
+     */
+    public static final String CLIENT_CONTEXT_PARAM = "clientContext";
+
+    private HandshakeHeaders() {}
 }

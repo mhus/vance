@@ -106,22 +106,28 @@ export class InboxClientToolService {
   private async onInvoke(ws: BrainWsApi, req: ClientToolInvokeRequest): Promise<void> {
     const correlationId = req.correlationId;
     const handler = this.handlers.get(req.name);
-    let response: ClientToolInvokeResponse;
+    // One connection can host several tool providers (the desktop app:
+    // this service AND the agent tools). Answering for a tool this
+    // service did not register races the real owner's reply — the
+    // brain completes the invocation on the first result. Stay
+    // silent; a tool no service owns surfaces through the brain-side
+    // invocation timeout.
     if (!handler) {
-      response = { correlationId, result: {}, error: `Unknown client tool: ${req.name}` };
-    } else {
-      this.beginExecuting();
-      try {
-        response = { correlationId, result: await handler(req.params ?? {}) };
-      } catch (e) {
-        response = {
-          correlationId,
-          result: {},
-          error: e instanceof Error ? e.message : String(e),
-        };
-      } finally {
-        this.endExecuting();
-      }
+      console.warn('Ignoring client-tool-invoke for an unowned tool:', req.name);
+      return;
+    }
+    let response: ClientToolInvokeResponse;
+    this.beginExecuting();
+    try {
+      response = { correlationId, result: await handler(req.params ?? {}) };
+    } catch (e) {
+      response = {
+        correlationId,
+        result: {},
+        error: e instanceof Error ? e.message : String(e),
+      };
+    } finally {
+      this.endExecuting();
     }
     ws.sendNoReply('client-tool-result', response);
   }

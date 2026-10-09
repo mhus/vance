@@ -9,8 +9,17 @@ import type {
   NavigateHomeOptions,
   PresentOptions,
   RemoveOptions,
+  ToolsActivityEvent,
   UrlOpenEvent,
 } from './types';
+
+// Shell agent-tools IPC channels — inlined as literals like every other
+// channel above: a sandboxed preload cannot require sibling modules, only
+// the whitelisted `electron` subset (see preload-tools.ts for the same
+// discipline). Canonical constants live in tools/types.ts SHELL_IPC.
+const SHELL_TOOLS_GET = 'desktop-shell:tools-enabled:get';
+const SHELL_TOOLS_SET = 'desktop-shell:tools-enabled:set';
+const SHELL_TOOLS_ACTIVITY = 'desktop-shell:activity';
 
 // The renderer-facing bridge. Shape must match the FaceliftDesktopBridge
 // interface in facelift-account-webview/src/definitions.ts (formerly in
@@ -47,6 +56,19 @@ const bridge = {
       callback(event);
     ipcRenderer.on('facelift:urlOpen', listener);
     return () => ipcRenderer.removeListener('facelift:urlOpen', listener);
+  },
+  // Agent-tools release button (planning/desktop-agent-tools.md §6.2):
+  // get/set per account + the activity push. Shell-only — the account
+  // WebViews get a separate, read-only bridge.
+  toolsEnabledGet: (o: { accountId: string }): Promise<boolean> =>
+    ipcRenderer.invoke(SHELL_TOOLS_GET, o),
+  toolsEnabledSet: (o: { accountId: string; enabled: boolean }): Promise<void> =>
+    ipcRenderer.invoke(SHELL_TOOLS_SET, o),
+  onToolsActivity: (callback: (event: ToolsActivityEvent) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, event: ToolsActivityEvent): void =>
+      callback(event);
+    ipcRenderer.on(SHELL_TOOLS_ACTIVITY, listener);
+    return () => ipcRenderer.removeListener(SHELL_TOOLS_ACTIVITY, listener);
   },
 };
 

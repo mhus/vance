@@ -2,6 +2,7 @@ import { computed, reactive, ref, watch, type ComputedRef, type Ref } from 'vue'
 import {
   BrainWebSocket,
   type BrainWsApi,
+  getDesktopTools,
   getRestConfig,
   getTenantId,
   setActiveSessionId,
@@ -340,11 +341,17 @@ function wireBrowserResumeListeners(): void {
 }
 
 function openRaw(opts: { tenant: string; jwt?: string }): Promise<BrainWebSocket> {
+  // Inside the Facelift desktop app the connection carries the `desktop`
+  // profile (recipe-profile-blocks arm the local tool families only
+  // there) plus the platform context the bridge reports — plain
+  // browsers stay `web` with no context.
+  const desktopTools = getDesktopTools();
   return BrainWebSocket.connect({
     tenant: opts.tenant,
-    profile: PROFILE,
+    profile: desktopTools ? 'desktop' : PROFILE,
     clientVersion: CLIENT_VERSION,
     jwt: opts.jwt,
+    clientContext: desktopTools ? desktopTools.getContext() : undefined,
   });
 }
 

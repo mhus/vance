@@ -46,6 +46,12 @@ import ChatComposer, {
 export interface ChatPanelToolService {
   attach(ws: BrainWsApi): Promise<void>;
   detach(): void;
+  /**
+   * Optional: let the service refresh a host-side release switch
+   * (the desktop agent tools' per-account toggle) right before it
+   * attaches — so a flip takes effect on the next bind.
+   */
+  refreshAndAttach?(ws: BrainWsApi): Promise<void>;
 }
 
 interface Props {
@@ -57,6 +63,12 @@ interface Props {
    * through the same connection. Omit when the host exposes no client tools.
    */
   toolService?: ChatPanelToolService | null;
+  /**
+   * Optional second client-tool surface: the Facelift desktop
+   * agent tools. Attached on the same socket/bind lifecycle as
+   * {@link toolService}; absent (no bridge) outside the desktop app.
+   */
+  desktopToolService?: ChatPanelToolService | null;
   /**
    * Document bound to the chat this turn (the host's `bind file` affordance).
    * Forwarded to the composer so every steer carries it as LLM context.
@@ -218,7 +230,7 @@ let attachedToolSocket: typeof socket.value = null;
 watch(
   [socket, sessionBound],
   ([next, bound]) => {
-    if (!props.toolService) return;
+    if (!props.toolService && !props.desktopToolService) return;
     if (!next || !bound) {
       // Socket gone (reconnect) or session not bound yet — nothing to
       // attach to. Clear the marker so the next ready socket re-attaches.
@@ -228,7 +240,13 @@ watch(
     if (next === attachedToolSocket) return;
     const target = next;
     attachedToolSocket = target;
-    props.toolService.attach(target).catch((regError) => {
+    // The desktop agent tools refresh their per-account release switch
+    // right before attaching — the toggle takes effect on the next bind.
+    const attachAll = async (): Promise<void> => {
+      await props.desktopToolService?.refreshAndAttach?.(target);
+      await props.toolService?.attach(target);
+    };
+    attachAll().catch((regError) => {
       // Register failed (stale socket swapped out under us, transient
       // error) — drop the marker so a fresh ready socket retries.
       if (attachedToolSocket === target) attachedToolSocket = null;
@@ -307,6 +325,7 @@ onBeforeUnmount(() => {
   turnProgressUnsubscribe?.();
   turnProgressUnsubscribe = null;
   props.toolService?.detach();
+  props.desktopToolService?.detach();
   // 10s grace timer — if the user comes back to a panel for the same
   // session within 10s, the bind survives and no roundtrip is made.
   leaveChat();

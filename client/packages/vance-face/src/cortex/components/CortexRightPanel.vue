@@ -24,6 +24,7 @@ import SessionPickerPanel from '@/components/SessionPickerPanel.vue';
 import CortexThreadsPanel from './CortexThreadsPanel.vue';
 import CortexHelpPanel from './CortexHelpPanel.vue';
 import type { CortexClientToolService } from '../clientToolService';
+import type { ChatPanelToolService } from '@/chat/ChatSidePanel.vue';
 
 interface Props {
   /**
@@ -36,6 +37,9 @@ interface Props {
   sessionId: string | null;
   projectId: string;
   toolService?: CortexClientToolService | null;
+  /** Facelift desktop agent tools — attached by the chat panel on the
+   *  same socket/bind lifecycle; absent outside the desktop app. */
+  desktopToolService?: ChatPanelToolService | null;
   activeDocument: CortexDocument | null;
   boundDocumentId?: string | null;
   /**
@@ -130,6 +134,7 @@ defineExpose({ insertPrompt });
           :session-id="sessionId"
           :project-id="projectId"
           :tool-service="toolService ?? null"
+          :desktop-tool-service="desktopToolService ?? null"
           :bound-document-id="boundDocumentId ?? null"
           :app-selection="appSelection ?? null"
         />

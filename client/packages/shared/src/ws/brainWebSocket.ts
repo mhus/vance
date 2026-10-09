@@ -1,6 +1,7 @@
 import type { LiveEnvelope, PingData, PongData, WelcomeData } from '@vance/generated';
 import { setCurrentEditorId } from '../auth/jwtStorage';
 import { brainBaseUrl } from '../rest/restClient';
+import type { DesktopClientContext } from '../facelift/desktopTools';
 import {
   WebSocketClosedError,
   WebSocketRequestError,
@@ -48,6 +49,15 @@ export interface BrainWebSocketOptions {
    */
   profile: string;
   clientVersion: string;
+  /**
+   * Platform context for exec-capable clients (os/arch/shell/cwd/
+   * sandboxEnabled/timezone), JSON-encoded as the {@code ?clientContext=}
+   * query parameter — the browser-WS equivalent of foot's
+   * {@code X-Vance-Client-Context} handshake header. The Facelift
+   * desktop app fills it from its Electron bridge; plain browser
+   * connections omit it. Spoofable by design and carries no authority
+   */
+  clientContext?: DesktopClientContext;
   /** Optional override for tests. */
   url?: string;
 }
@@ -444,6 +454,13 @@ function buildBrainWsUrl(options: BrainWebSocketOptions): string {
   // browser WebSocket constructor cannot set custom headers.
   if (options.jwt) {
     params.set('token', options.jwt);
+  }
+  // Platform context for exec-capable clients — the Facelift desktop
+  // app cannot set handshake headers from its web view, so the same
+  // JSON payload travels as a query parameter (parsed identically
+  // server-side, handshake-final, never fatal).
+  if (options.clientContext) {
+    params.set('clientContext', JSON.stringify(options.clientContext));
   }
   return `${wsOrigin}/brain/${encodeURIComponent(options.tenant)}/ws?${params}`;
 }

@@ -9,6 +9,7 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "start": "tsc && electron .",
     "dist:mac": "tsc && electron-builder --mac",
@@ -17,11 +18,13 @@
     "clean": "rm -rf dist renderer *.tsbuildinfo"
   },
   "dependencies": {
-    "@vance/facelift-bridge": "workspace:*"
+    "@vance/facelift-bridge": "workspace:*",
+    "js-yaml": "^5.4.1"
   },
   "devDependencies": {
     "@types/node": "^26.5.1",
     "electron": "44.3.0",
+    "vitest": "^5.0.0",
     "electron-builder": "^26.0.0",
     "typescript": "7.0.2"
   }

@@ -44,6 +44,7 @@ import {
   type FollowUpConversationContext,
 } from '@composables/useFollowUpSuggestion';
 import { ChatClientToolService } from './chatClientToolService';
+import { DesktopAgentToolService } from '@/platform/desktopAgentTools';
 import { parseSkillCommand, sendSkillCommand } from './skillCommand';
 
 const { t } = useI18n();
@@ -327,25 +328,29 @@ const rightPanelRef = ref<InstanceType<typeof ChatRightPanel> | null>(null);
 // the WS only once the session is server-bound (registering on a bare socket
 // earns a 403 "requires a bound session" — the same gate ChatSidePanel uses).
 const clientToolService = new ChatClientToolService();
+// Desktop agent tools: registers the client_file_* family when the
+// Facelift desktop bridge exists AND the user released the tools for
+// this account. In every other host this stays an inert no-op.
+const desktopAgentTools = DesktopAgentToolService.create();
 let attachedToolSocket: typeof socket.value = null;
 watch(
   [socket, () => mode.value === 'live'],
-  ([next, live]) => {
-    if (!live) {
-      if (attachedToolSocket) attachedToolSocket = null;
-      return;
-    }
-    if (!next) {
+  async ([next, live]) => {
+    if (!live || !next) {
       if (attachedToolSocket) attachedToolSocket = null;
       return;
     }
     if (next === attachedToolSocket) return;
     const target = next;
     attachedToolSocket = target;
-    clientToolService.attach(target).catch((regError) => {
+    try {
+      await desktopAgentTools.refreshEnabled();
+      await desktopAgentTools.attach(target);
+      await clientToolService.attach(target);
+    } catch (regError) {
       if (attachedToolSocket === target) attachedToolSocket = null;
       console.warn('[chat] Failed to register client tools', regError);
-    });
+    }
   },
   { immediate: true },
 );
@@ -810,6 +815,7 @@ onBeforeUnmount(() => {
   switchToUnsubscribe?.();
   progressUnsubscribe?.();
   clientToolService.detach();
+  desktopAgentTools.detach();
   // Don't close the singleton socket — the store owns it and may share
   // it across HMR / future-SPA navigations. Just let the session go.
   void unbindNow();

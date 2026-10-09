@@ -53,6 +53,17 @@ export interface UrlOpenEvent {
   url: string;
 }
 
+/**
+ * Activity push for the desktop agent tools: the main process emits
+ * this when an account's in-flight tool invocation count crosses zero
+ * (planning/desktop-agent-tools.md §6.2) — the shell turns the release
+ * button red/pulsing while the agent works on that account's machine.
+ */
+export interface ToolsActivityEvent {
+  accountId: string;
+  active: boolean;
+}
+
 export interface BiometricAvailability {
   available: boolean;
   biometryType: 'faceID' | 'touchID' | 'none';
@@ -209,6 +220,21 @@ export interface FaceliftDesktopBridge {
    * (URLSession) path.
    */
   httpGet(options: HttpGetOptions): Promise<HttpGetResult>;
+  /**
+   * Per-account release state of the desktop agent tools
+   * (planning/desktop-agent-tools.md §6). Shell-only API: the web UI
+   * never flips the release — remote content can honor it via the
+   * account-WebView bridge's read-only accessor, but the write path
+   * lives with the trusted shell renderer.
+   */
+  toolsEnabledGet(options: { accountId: string }): Promise<boolean>;
+  toolsEnabledSet(options: { accountId: string; enabled: boolean }): Promise<void>;
+  /**
+   * Push subscription: fired by the main process when the account's
+   * in-flight agent-tool invocation count crosses zero in either
+   * direction. The shell renders the activity state (pulsing icon).
+   */
+  onToolsActivity(callback: (event: ToolsActivityEvent) => void): () => void;
 }
 
 declare global {

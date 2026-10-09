@@ -3,9 +3,10 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { AccountViewManager } from './account-view-manager';
+import { DesktopToolsService } from './tools/desktopTools';
 import { registerIpc } from './ipc';
-
 let manager: AccountViewManager | null = null;
+let tools: DesktopToolsService | null = null;
 
 /**
  * Custom scheme for the shell renderer. The facelift-bridge Vite build
@@ -80,7 +81,7 @@ function registerRendererProtocol(): void {
   });
 }
 
-function createWindow(): void {
+function createWindow(toolService: DesktopToolsService): void {
   const win = new BrowserWindow({
     // Desktop-sized, not a phone frame. Sensible minimums so the shell +
     // account webview stay usable when the user shrinks the window.
@@ -97,7 +98,7 @@ function createWindow(): void {
     },
   });
 
-  manager = new AccountViewManager(win);
+  manager = new AccountViewManager(win, toolService);
   win.on('closed', () => {
     manager = null;
   });
@@ -111,17 +112,42 @@ function createWindow(): void {
   void win.loadURL(`${RENDERER_SCHEME}://${RENDERER_HOST}/index.html`);
 }
 
-app.whenReady().then(() => {
-  registerRendererProtocol();
-  // IPC handlers are global; register once. They resolve the current
-  // window's manager lazily via the getter.
-  registerIpc(() => manager);
-  createWindow();
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+// Single instance: two processes on the same userData directory cannot
+// share Chromium's profile lock — the second one comes up with an empty
+// storage (looks like "no accounts"). A second launch focuses the running
+// app instead of starting broken.
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    const [win] = BrowserWindow.getAllWindows();
+    if (win) {
+      if (win.isMinimized()) win.restore();
+      win.show();
+      win.focus();
+    }
   });
-});
+
+  app.whenReady().then(() => {
+    registerRendererProtocol();
+    // IPC handlers are global; register once. They resolve the current
+    // window's manager lazily via the getter.
+    registerIpc(() => manager);
+    tools = new DesktopToolsService(() => BrowserWindow.getAllWindows()[0] ?? null);
+    tools.registerIpc();
+    createWindow(tools);
+    // No orphaned subprocesses: running exec jobs die with the app
+    // (planning/desktop-agent-tools.md §4.2).
+    app.on('will-quit', () => tools?.killAll());
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0 && tools !== null) {
+        createWindow(tools);
+      }
+    });
+  });
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

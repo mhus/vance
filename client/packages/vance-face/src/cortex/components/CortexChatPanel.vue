@@ -11,6 +11,7 @@ import type { ComposerCurrentFileSource } from '@/chat/ChatComposer.vue';
 import { useCortexStore } from '../stores/cortexStore';
 import { useViewEditMode } from '../useViewEditMode';
 import type { CortexClientToolService } from '../clientToolService';
+import type { ChatPanelToolService } from '@/chat/ChatSidePanel.vue';
 import { navigateTo } from '@/platform/navigate';
 
 /**
@@ -31,6 +32,9 @@ interface Props {
    * Cortex view.
    */
   toolService?: CortexClientToolService | null;
+  /** Facelift desktop agent tools — attached on the same socket/bind
+   *  lifecycle as {@link toolService}; absent outside the desktop app. */
+  desktopToolService?: ChatPanelToolService | null;
   /**
    * Document currently bound to the chat (the `bind file` affordance,
    * owned by EditorApp).
@@ -162,6 +166,7 @@ defineExpose({
     :session-id="sessionId"
     :project-id="projectId"
     :tool-service="toolService ?? null"
+    :desktop-tool-service="desktopToolService ?? null"
     :bound-document-id="boundDocumentId ?? null"
     :bound-doc-selection="boundDocSelection"
     :active-app="activeApp"

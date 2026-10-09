@@ -5,16 +5,18 @@ import {
   shell,
   type Event as ElectronEvent,
 } from 'electron';
+import path from 'node:path';
 
+import { DesktopToolsService } from './tools/desktopTools';
 import {
   URL_SCHEME,
   USER_AGENT_SUFFIX,
+  DESKTOP_USER_AGENT_TOKEN,
   type AccountWebViewBounds,
   type NavigateHomeOptions,
   type PresentOptions,
   type RemoveOptions,
 } from './types';
-
 /**
  * Manages one isolated {@link WebContentsView} per account, layered over
  * the shell renderer inside the main window. Each view is bound to its own
@@ -24,14 +26,15 @@ import {
  */
 export class AccountViewManager {
   private readonly win: BrowserWindow;
+  private readonly tools: DesktopToolsService;
   private readonly views = new Map<string, WebContentsView>();
   private readonly homeHosts = new Map<string, string>();
   private activeAccountId: string | null = null;
 
-  constructor(win: BrowserWindow) {
+  constructor(win: BrowserWindow, tools: DesktopToolsService) {
     this.win = win;
+    this.tools = tools;
   }
-
   private partitionFor(accountId: string): string {
     return `persist:vance-${accountId}`;
   }
@@ -109,6 +112,7 @@ export class AccountViewManager {
     if (view) {
       this.win.contentView.removeChildView(view);
       view.webContents.close();
+      this.tools.unregisterView(view.webContents.id);
       this.views.delete(accountId);
       if (this.activeAccountId === accountId) this.activeAccountId = null;
     }
@@ -127,16 +131,21 @@ export class AccountViewManager {
     const partition = this.partitionFor(accountId);
 
     // Remote content — lock it down: sandboxed, isolated, no Node.
+    // Remote content — lock it down: sandboxed, isolated, no Node. The
+    // tools preload is the only capability surface: a request-only
+    // bridge into the main process (see preload-tools.ts).
     const view = new WebContentsView({
       webPreferences: {
         partition,
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,
+        preload: path.join(__dirname, 'preload-tools.js'),
       },
     });
+    this.tools.registerView(accountId, accountId, view.webContents.id);
     const wc = view.webContents;
-    wc.setUserAgent(`${wc.getUserAgent()} ${USER_AGENT_SUFFIX}`);
+    wc.setUserAgent(`${wc.getUserAgent()} ${USER_AGENT_SUFFIX} ${DESKTOP_USER_AGENT_TOKEN}`);
 
     // Grant in-WebView media capture (voice STT / photo) at the partition
     // level; the OS still owns the actual device permission.

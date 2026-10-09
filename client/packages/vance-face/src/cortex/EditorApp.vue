@@ -68,6 +68,7 @@ import { resolveDocumentIdByPath } from './resolveDocumentPath';
 import { useViewEditMode } from './useViewEditMode';
 import { resolveHelpPath } from './help';
 import { CortexClientToolService, type AppAgentApi } from './clientToolService';
+import { DesktopAgentToolService } from '@/platform/desktopAgentTools';
 import { useDocumentInvalidate } from './composables/useDocumentInvalidate';
 import FileTreeSidebar from './components/FileTreeSidebar.vue';
 import EditorTabs from './components/EditorTabs.vue';
@@ -1336,6 +1337,11 @@ const bindIconTooltip = computed<string>(() => {
  * it without a full page reload), a fresh {@code CortexClientToolService}
  * is created so the new session's tool surface starts clean.
  */
+
+// Facelift desktop agent tools — one instance for the page lifetime;
+// inert (no bridge) outside the desktop app. The chat panel attaches it
+// on the same socket/bind lifecycle as the Cortex surface above.
+const desktopAgentTools = DesktopAgentToolService.create();
 const clientToolService = computed<CortexClientToolService | null>(() => {
   if (!sessionId.value) return null;
   return new CortexClientToolService({
@@ -1744,6 +1750,7 @@ onBeforeUnmount(() => {
     autoSaveTimer = null;
   }
   void store.saveAllDirty();
+  desktopAgentTools.detach();
 });
 
 const bootReadyKey = computed(() => !!projectId.value);
@@ -2271,6 +2278,7 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
         :session-id="hasSession && sessionId && clientToolService ? sessionId : null"
         :project-id="projectId"
         :tool-service="clientToolService"
+        :desktop-tool-service="desktopAgentTools.available ? desktopAgentTools : null"
         :active-document="activeTab"
         :bound-document-id="chatBoundDocumentId"
         :app-selection="activeAppSelection"

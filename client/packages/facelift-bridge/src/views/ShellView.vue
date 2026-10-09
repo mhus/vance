@@ -11,6 +11,7 @@ import {
   setActiveAccountId,
 } from '@/accounts/accountStore';
 import AccountSwitcherSheet from '@/components/AccountSwitcherSheet.vue';
+import { isDesktop } from '@/platform';
 
 /**
  * The main view of the app — a persistent native header on top of a
@@ -37,6 +38,50 @@ const active = computed<Account | null>(() => {
   return accounts.value.find((a) => a.id === activeId.value) ?? null;
 });
 
+/**
+ * Desktop agent-tools release button (planning/desktop-agent-tools.md
+ * §6.2): the switch for the *active* account lives in the app's own
+ * frame — remote web content can honor the release but never flip it.
+ * Dual-purpose: button background = on/off, icon color = activity
+ * (red + pulsing while an invoke is in flight).
+ */
+const isDesktopApp = isDesktop();
+const toolsEnabled = ref(false);
+const toolsActive = ref(false);
+let toolsActivityUnsub: (() => void) | null = null;
+
+const toolsTitle = computed(() => {
+  if (toolsActive.value) return 'Agent is working on your machine…';
+  return toolsEnabled.value
+    ? 'Agent tools: on (click to disable)'
+    : 'Agent tools: off (click to enable)';
+});
+
+async function refreshToolsEnabled(): Promise<void> {
+  if (!isDesktopApp || activeId.value === null) {
+    toolsEnabled.value = false;
+    return;
+  }
+  toolsEnabled.value =
+    (await window.faceliftDesktop?.toolsEnabledGet({
+      accountId: activeId.value,
+    })) ?? false;
+}
+
+async function toggleTools(): Promise<void> {
+  if (!isDesktopApp || activeId.value === null) return;
+  const next = !toolsEnabled.value;
+  await window.faceliftDesktop?.toolsEnabledSet({
+    accountId: activeId.value,
+    enabled: next,
+  });
+  toolsEnabled.value = next;
+}
+
+watch(activeId, () => {
+  void refreshToolsEnabled();
+});
+
 let resizeObserver: ResizeObserver | null = null;
 let urlOpenListener: PluginListenerHandle | null = null;
 
@@ -55,6 +100,16 @@ onMounted(async () => {
     void handleFaceliftUrl(event.url);
   });
   await presentActive();
+  // Agent-tools activity: the main process pushes zero-crossings per
+  // account; we only render the state of the account on screen.
+  if (isDesktopApp) {
+    toolsActivityUnsub = window.faceliftDesktop?.onToolsActivity((event) => {
+      if (event.accountId === activeId.value) {
+        toolsActive.value = event.active;
+      }
+    }) ?? null;
+    await refreshToolsEnabled();
+  }
 });
 
 onBeforeUnmount(async () => {
@@ -63,6 +118,8 @@ onBeforeUnmount(async () => {
     await urlOpenListener.remove();
     urlOpenListener = null;
   }
+  toolsActivityUnsub?.();
+  toolsActivityUnsub = null;
   await VanceAccountWebView.dismiss();
 });
 
@@ -239,6 +296,32 @@ async function goAdd(): Promise<void> {
         <span class="text-xs text-gray-400">v</span>
       </button>
       <span v-else class="flex-1 py-2 text-sm text-gray-400">Vancetope</span>
+      <!-- Agent-tools release button — dual-purpose: background = on/off,
+           icon = activity (red + pulsing while an invoke is in flight).
+           Desktop only; acts on the active account. -->
+      <button
+        v-if="isDesktopApp && active !== null"
+        type="button"
+        class="flex h-9 w-9 items-center justify-center rounded"
+        :class="toolsEnabled ? 'bg-blue-600' : 'bg-gray-800'"
+        :title="toolsTitle"
+        :aria-label="toolsTitle"
+        @click="toggleTools"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          class="h-5 w-5"
+          :class="toolsActive ? 'animate-pulse text-red-400' : toolsEnabled ? 'text-white' : 'text-gray-500'"
+        >
+          <polyline points="4 17 10 11 4 5" />
+          <line x1="12" y1="19" x2="20" y2="19" />
+        </svg>
+      </button>
       <button
         v-if="active !== null"
         type="button"

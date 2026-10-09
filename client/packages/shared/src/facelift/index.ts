@@ -2,18 +2,22 @@
  * Facelift detection + action helpers.
  *
  * The Vance Web-UI is hosted unchanged inside the `vance-facelift`
- * Capacitor wrapper (see `repos/vance/client/packages/facelift-bridge`).
- * The wrapper signals its presence by appending a token to the
- * default Safari User-Agent — `VanceFacelift/<version>` — and listens
- * for `vance-facelift://*` navigations to trigger wrapper-side
- * actions like switching accounts or returning to the account picker.
+ * Capacitor wrapper (see `repos/vance/client/packages/facelift-bridge`)
+ * and the Electron desktop wrapper (`facelift-desktop`). Both signal
+ * their presence by appending tokens to the default User-Agent —
+ * `VanceFacelift/<version>` everywhere, plus `VanceFaceliftDesktop/<version>`
+ * on the desktop only — and listen for `vance-facelift://*` navigations
+ * to trigger wrapper-side actions like switching accounts or returning
+ * to the account picker.
  *
  * Code that adapts UI to "we're inside the wrapper" should branch on
- * {@link isFacelift}; never depend on the exact version unless you
- * know what range of behaviour you require.
+ * {@link isFacelift}; code that must not activate on iPad/iPhone branches
+ * on {@link isFaceliftDesktop}. Never depend on the exact version unless
+ * you know what range of behaviour you require.
  */
 
 const FACELIFT_UA_RE = /\bVanceFacelift\/(\S+)/;
+const FACELIFT_DESKTOP_UA_RE = /\bVanceFaceliftDesktop\/(\S+)/;
 
 /** True when the page is running inside the Facelift wrapper. */
 export function isFacelift(): boolean {
@@ -27,6 +31,25 @@ export function isFacelift(): boolean {
 export function getFaceliftVersion(): string | null {
   if (typeof navigator === 'undefined') return null;
   const match = FACELIFT_UA_RE.exec(navigator.userAgent);
+  return match === null ? null : match[1];
+}
+
+/** True when the page is running inside the Facelift **desktop**
+ *  (Electron) wrapper — implies {@link isFacelift}. Gate desktop-only
+ *  extensions (features that make no sense on iPad/iPhone) on this,
+ *  never on device-string sniffing of the surrounding UA. */
+export function isFaceliftDesktop(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return FACELIFT_DESKTOP_UA_RE.test(navigator.userAgent);
+}
+
+/** Desktop wrapper version string (e.g. `"0.1.0"`), or `null` when
+ *  not in the desktop wrapper. Use sparingly — feature-detect via
+ *  {@link isFaceliftDesktop} instead of comparing versions when
+ *  possible. */
+export function getFaceliftDesktopVersion(): string | null {
+  if (typeof navigator === 'undefined') return null;
+  const match = FACELIFT_DESKTOP_UA_RE.exec(navigator.userAgent);
   return match === null ? null : match[1];
 }
 
@@ -58,3 +81,5 @@ export function requestAddAccount(): void {
   if (!isFacelift()) return;
   requestAction('add-account');
 }
+
+export * from './desktopTools';

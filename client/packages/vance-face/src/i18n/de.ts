@@ -1708,7 +1708,7 @@ export default {
     hint: 'Alle Tools, die verbundene Clients registriert haben — Foot, Desktop-App, Web-UI (Live-Registry-Ansicht).',
     loading: 'Client-Tools werden geladen…',
     emptyHeadline: 'Keine Client-Tools registriert',
-    emptyBody: 'Noch kein Client hat ein client-tool-register gesendet — verbinde eine Foot oder die Desktop-App und binde eine Session.',
+    emptyBody: 'Noch kein Client hat ein client-tool-register gesendet — verbinde eine Foot oder die Desktop-App und binde eine Session. Hinweis: Öffne diese Seite in der Desktop-App im BROWSER, während die App ihre Session gebunden hält — wenn die App-Ansicht selbst wegnavigiert, wird die Bindung gelöst.',
     summary: '{sessions} Session(s) mit {tools} Client-Tool(s)',
     bound: 'gebunden',
     editor: 'Editor {id}',

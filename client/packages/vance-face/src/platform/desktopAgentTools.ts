@@ -29,7 +29,7 @@ import {
 
 type ToolSafety = 'SAFE_PROBE' | 'MUTATING';
 
-interface ToolSpec {
+export interface DesktopToolSpec {
   name: string;
   description: string;
   primary: boolean;
@@ -57,7 +57,7 @@ interface ClientToolInvokeResponse {
 
 interface DesktopTool {
   op: string;
-  spec: ToolSpec;
+  spec: DesktopToolSpec;
   /** Optional param remap — pack tools all ride `pack_invoke` with
    *  {pack, tool, args} built from the request params. */
   paramsAdapter?: (params: Record<string, unknown>) => Record<string, unknown>;
@@ -468,7 +468,7 @@ function spec(
   safety: ToolSafety,
   searchHint: string,
   labels: string[],
-): ToolSpec {
+): DesktopToolSpec {
   return {
     name,
     description,
@@ -505,6 +505,22 @@ export class DesktopAgentToolService {
     this.available = bridge !== null;
   }
 
+  /**
+   * The app's full local tool inventory — the 14 static agent tools
+   * plus the materialized MCP pack tools. No session needed: what the
+   * app WOULD register on the next bind, read straight from the bridge
+   * (the connector's own declaration). Powers the insights inspector
+   * inside the desktop app, where the session-bound registry is always
+   * empty — navigating the webview to this page unbinds the very
+   * session the registry would show.
+   */
+  static async inventory(): Promise<DesktopToolSpec[]> {
+    const bridge = getDesktopTools();
+    const statics = [...desktopFileTools(), ...desktopExecTools()].map((t) => t.spec);
+    const packEntries = (await bridge?.packs?.list().catch((): [] => [])) ?? [];
+    return [...statics, ...(packEntries.map((e) => e.spec) as DesktopToolSpec[])];
+  }
+
   /** Create the service when the bridge exists, else an inert placeholder
    *  that never registers anything. */
   static create(): DesktopAgentToolService {
@@ -536,7 +552,7 @@ export class DesktopAgentToolService {
     for (const entry of packEntries) {
       tools.push({
         op: 'pack_invoke',
-        spec: entry.spec as ToolSpec,
+        spec: entry.spec as DesktopToolSpec,
         paramsAdapter: (params) => ({
           pack: entry.pack,
           tool: entry.tool,

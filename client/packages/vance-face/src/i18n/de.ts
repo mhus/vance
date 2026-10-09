@@ -1702,6 +1702,10 @@ export default {
       cost: 'Kosten',
     },
     clientTools: {
+    showInventory: 'Tool-Inventar dieser App anzeigen',
+    inventoryHint: 'Die eigene Deklaration des Connectors — Agent-Tools und MCP-Packs, ohne Session.',
+    inventoryEmpty: 'Die App hat nichts anzubieten — aktiviere die Agent-Tools für diesen Account.',
+
     show: 'Client-Tools anzeigen',
     hide: 'Client-Tools ausblenden',
     refresh: 'Aktualisieren',

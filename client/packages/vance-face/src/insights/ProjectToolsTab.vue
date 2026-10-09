@@ -7,6 +7,8 @@ import type {
 } from '@vance/generated';
 import { VAlert, VButton, VCheckbox, VEmptyState, VInput } from '@/components';
 import { useAllClientTools } from '@/composables/useInsights';
+import { getDesktopTools } from '@vance/shared';
+import { DesktopAgentToolService, type DesktopToolSpec } from '@/platform/desktopAgentTools';
 import { useEffectiveTools, useToolHealth } from '@/composables/useProjectInsights';
 import { useI18n } from 'vue-i18n';
 
@@ -22,6 +24,23 @@ const health = useToolHealth();
 // desktop app, web UI state tools. Live from the registry.
 const clientTools = useAllClientTools();
 const clientToolsOpen = ref(false);
+
+// The desktop app's own inventory — read from the connector (bridge),
+// no session needed. Only exists inside Vancetope: in a plain browser
+// tab this section stays away and only the registry view remains.
+const inDesktopApp = getDesktopTools() !== null;
+const localInventory = ref<DesktopToolSpec[]>([]);
+const localLoading = ref(false);
+
+async function loadLocalInventory(): Promise<void> {
+  if (!inDesktopApp || localLoading.value) return;
+  localLoading.value = true;
+  try {
+    localInventory.value = await DesktopAgentToolService.inventory();
+  } finally {
+    localLoading.value = false;
+  }
+}
 
 function toggleClientTools(): void {
   clientToolsOpen.value = !clientToolsOpen.value;
@@ -218,6 +237,60 @@ const filteredTools = computed<EffectiveToolDto[]>(() => {
 
 <template>
   <div class="flex flex-col gap-3 p-4">
+    <!-- Desktop app inventory — the connector's own declaration, no
+         session needed. Hidden in a plain browser (no bridge). -->
+    <div v-if="inDesktopApp" class="rounded border border-base-300 p-3">
+      <div class="flex items-center gap-3">
+        <VButton @click="loadLocalInventory">
+          {{ $t('insights.clientTools.showInventory') }}
+        </VButton>
+        <span class="text-xs opacity-60">{{ $t('insights.clientTools.inventoryHint') }}</span>
+      </div>
+      <div v-if="localLoading" class="mt-3 text-sm opacity-60">
+        {{ $t('insights.clientTools.loading') }}
+      </div>
+      <table v-else-if="localInventory.length > 0" class="table table-sm mt-3">
+        <thead>
+          <tr>
+            <th class="w-56">{{ $t('insights.liveTools.colName') }}</th>
+            <th class="w-44">{{ $t('insights.liveTools.colPrimary') }}</th>
+            <th>{{ $t('insights.liveTools.colDescription') }}</th>
+            <th class="w-48">{{ $t('insights.liveTools.colParams') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="tool in localInventory" :key="tool.name">
+            <td class="font-mono">
+              {{ tool.name }}
+              <span
+                v-if="tool.labels?.length"
+                class="ml-1 text-[0.65rem] opacity-60"
+              >{{ tool.labels.join(' · ') }}</span>
+            </td>
+            <td>
+              <span v-if="tool.primary" class="badge-primary-tool">
+                {{ $t('insights.liveTools.primary') }}
+              </span>
+              <span v-else class="opacity-50 text-xs">
+                {{ $t('insights.liveTools.secondary') }}
+              </span>
+            </td>
+            <td class="text-xs opacity-80">{{ tool.description }}</td>
+            <td class="text-xs font-mono opacity-80">
+              <span v-if="paramNamesOf(tool.paramsSchema).length === 0" class="opacity-50">—</span>
+              <span v-else>{{ paramNamesOf(tool.paramsSchema).join(', ') }}</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <div
+        v-else-if="localInventory.length === 0 && !localLoading"
+        class="mt-3 text-sm opacity-60"
+      >
+        {{ $t('insights.clientTools.inventoryEmpty') }}
+      </div>
+    </div>
+
     <!-- Client-tool inspector — tenant-wide, no project needed -->
     <div class="rounded border border-base-300 p-3">
       <div class="flex items-center gap-3">

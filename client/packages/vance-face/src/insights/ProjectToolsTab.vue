@@ -6,6 +6,7 @@ import type {
   ToolHealthEntryDto,
 } from '@vance/generated';
 import { VAlert, VButton, VCheckbox, VEmptyState, VInput } from '@/components';
+import { useAllClientTools } from '@/composables/useInsights';
 import { useEffectiveTools, useToolHealth } from '@/composables/useProjectInsights';
 import { useI18n } from 'vue-i18n';
 
@@ -15,6 +16,30 @@ const props = defineProps<{ projectId: string | null }>();
 
 const state = useEffectiveTools();
 const health = useToolHealth();
+
+// Client-tool inspector (tenant-wide, independent of the project picker):
+// every session whose client pushed a client-tool-register — foot,
+// desktop app, web UI state tools. Live from the registry.
+const clientTools = useAllClientTools();
+const clientToolsOpen = ref(false);
+
+function toggleClientTools(): void {
+  clientToolsOpen.value = !clientToolsOpen.value;
+  if (clientToolsOpen.value && clientTools.sessions.value.length === 0) {
+    void clientTools.load();
+  }
+}
+
+function clientToolCount(): number {
+  return clientTools.sessions.value.reduce((n, s) => n + (s.tools?.length ?? 0), 0);
+}
+
+function paramNamesOf(schema: Record<string, unknown> | undefined): string[] {
+  if (!schema || typeof schema !== 'object') return [];
+  const props = (schema as { properties?: Record<string, unknown> }).properties;
+  if (!props || typeof props !== 'object') return [];
+  return Object.keys(props);
+}
 
 watch(
   () => props.projectId,
@@ -193,6 +218,94 @@ const filteredTools = computed<EffectiveToolDto[]>(() => {
 
 <template>
   <div class="flex flex-col gap-3 p-4">
+    <!-- Client-tool inspector — tenant-wide, no project needed -->
+    <div class="rounded border border-base-300 p-3">
+      <div class="flex items-center gap-3">
+        <VButton @click="toggleClientTools">
+          {{ clientToolsOpen
+            ? $t('insights.clientTools.hide')
+            : $t('insights.clientTools.show') }}
+        </VButton>
+        <span class="text-xs opacity-60">
+          {{ $t('insights.clientTools.hint') }}
+        </span>
+      </div>
+
+      <div v-if="clientToolsOpen" class="mt-3 flex flex-col gap-3">
+        <div v-if="clientTools.loading.value" class="text-sm opacity-60">
+          {{ $t('insights.clientTools.loading') }}
+        </div>
+        <VAlert v-else-if="clientTools.error.value" variant="error">
+          {{ clientTools.error.value }}
+        </VAlert>
+        <VEmptyState
+          v-else-if="clientTools.sessions.value.length === 0"
+          :headline="$t('insights.clientTools.emptyHeadline')"
+          :body="$t('insights.clientTools.emptyBody')"
+        />
+        <template v-else>
+          <div class="text-xs opacity-70">
+            {{ $t('insights.clientTools.summary', {
+              sessions: clientTools.sessions.value.length,
+              tools: clientToolCount(),
+            }) }}
+          </div>
+          <div
+            v-for="s in clientTools.sessions.value"
+            :key="s.sessionId"
+            class="rounded border border-base-300 p-2"
+          >
+            <div class="flex flex-wrap items-center gap-2 text-xs">
+              <span class="font-mono">{{ s.sessionId }}</span>
+              <span class="px-1.5 py-0.5 rounded badge-bound">
+                {{ $t('insights.clientTools.bound') }}
+              </span>
+              <span v-if="s.editorId" class="font-mono opacity-70">
+                {{ $t('insights.clientTools.editor', { id: s.editorId }) }}
+              </span>
+              <span class="opacity-60">
+                {{ $t('insights.clientTools.toolCount', { n: s.tools?.length ?? 0 }) }}
+              </span>
+            </div>
+            <table class="table table-sm mt-2">
+              <thead>
+                <tr>
+                  <th class="w-56">{{ $t('insights.liveTools.colName') }}</th>
+                  <th class="w-44">{{ $t('insights.liveTools.colPrimary') }}</th>
+                  <th>{{ $t('insights.liveTools.colDescription') }}</th>
+                  <th class="w-48">{{ $t('insights.liveTools.colParams') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="tool in s.tools" :key="tool.name">
+                  <td class="font-mono">
+                    {{ tool.name }}
+                    <span
+                      v-if="tool.labels?.length"
+                      class="ml-1 text-[0.65rem] opacity-60"
+                    >{{ tool.labels.join(' · ') }}</span>
+                  </td>
+                  <td>
+                    <span v-if="tool.primary" class="badge-primary-tool">
+                      {{ $t('insights.liveTools.primary') }}
+                    </span>
+                    <span v-else class="opacity-50 text-xs">
+                      {{ $t('insights.liveTools.secondary') }}
+                    </span>
+                  </td>
+                  <td class="text-xs opacity-80">{{ tool.description }}</td>
+                  <td class="text-xs font-mono opacity-80">
+                    <span v-if="paramNamesOf(tool.paramsSchema).length === 0" class="opacity-50">—</span>
+                    <span v-else>{{ paramNamesOf(tool.paramsSchema).join(', ') }}</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </template>
+      </div>
+    </div>
+
     <div v-if="!projectId" class="opacity-60 text-sm">
       {{ $t('insights.projectTools.pickProject') }}
     </div>

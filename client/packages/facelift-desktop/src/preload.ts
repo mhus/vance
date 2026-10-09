@@ -32,6 +32,7 @@ const SHELL_POLICY_ADD = 'desktop-shell:policy:add-rule';
 const SHELL_POLICY_REMOVE = 'desktop-shell:policy:remove-rule';
 const SHELL_POLICY_RESET = 'desktop-shell:policy:reset';
 const SHELL_POLICY_SANDBOX = 'desktop-shell:policy:set-sandbox';
+const SHELL_PACKS_RELOAD = 'desktop-shell:packs:reload';
 
 // The renderer-facing bridge. Shape must match the FaceliftDesktopBridge
 // interface in facelift-account-webview/src/definitions.ts (formerly in
@@ -108,6 +109,10 @@ const bridge = {
   // The UI guards this with an explicit two-step confirmation.
   policySetSandbox: (o: { accountId: string; sandbox: boolean }): Promise<AgentPolicy | null> =>
     ipcRenderer.invoke(SHELL_POLICY_SANDBOX, o),
+  // Tool packs: drop the cache and reconnect — the connect option for
+  // mcp.json edits and restarted MCP servers. Returns the fresh counts.
+  packsReload: (o: { accountId: string }): Promise<{ servers: number; tools: number } | null> =>
+    ipcRenderer.invoke(SHELL_PACKS_RELOAD, o),
 };
 
 contextBridge.exposeInMainWorld('faceliftDesktop', bridge);

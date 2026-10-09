@@ -89,6 +89,22 @@ class ClientToolRegistryTest {
     }
 
     @Test
+    @DisplayName("snapshot() exposes every registered session for the insights aggregate")
+    void snapshotListsAllRegisteredSessions() {
+        WebSocketSession ws = mock(WebSocketSession.class);
+        registry.register("s1", "ed1", ws, List.of(spec("client_file_read", "desktop")));
+        registry.register("s2", "ed1", ws, List.of(spec("location_get", "chat")));
+
+        var snapshot = registry.snapshot();
+        assertThat(snapshot.keySet()).containsExactlyInAnyOrder("s1", "s2");
+        assertThat(snapshot.get("s1").tools().keySet()).containsExactly("client_file_read");
+        assertThat(snapshot.get("s2").tools().keySet()).containsExactly("location_get");
+        // live picture: a later registration is NOT in the earlier snapshot
+        registry.register("s3", "ed1", ws, List.of(spec("client_exec_run", "desktop")));
+        assertThat(snapshot).doesNotContainKey("s3");
+    }
+
+    @Test
     @DisplayName("find() resolves across the merged groups")
     void findAcrossGroups() {
         WebSocketSession ws = mock(WebSocketSession.class);

@@ -1700,7 +1700,19 @@ export default {
       tokensOut: 'Tokens out',
       cost: 'Cost',
     },
-    liveTools: {
+    clientTools: {
+    show: 'Show client tools',
+    hide: 'Hide client tools',
+    hint: 'All tools the connected clients registered — foot, desktop app, web UI (live registry view).',
+    loading: 'Loading client tools…',
+    emptyHeadline: 'No client tools registered',
+    emptyBody: 'No client pushed a client-tool-register yet — connect a foot or the desktop app and bind a session.',
+    summary: '{sessions} session(s) with {tools} client tool(s)',
+    bound: 'bound',
+    editor: 'editor {id}',
+    toolCount: '{n} tool(s)',
+  },
+  liveTools: {
       pickSession: 'Select a session to inspect its live client tools.',
       loading: 'Loading client tools…',
       bound: 'bound',

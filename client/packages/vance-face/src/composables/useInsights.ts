@@ -278,6 +278,42 @@ export function useProcessPrakRuns(): {
   return { runs, loading, error, load, clear };
 }
 
+/** All client-registered tools across the tenant's sessions — the
+ *  aggregate behind the insights Tools tab inspector. Live picture of
+ *  the registry (pod-local view). */
+export function useAllClientTools(): {
+  sessions: Ref<SessionClientToolsDto[]>;
+  loading: Ref<boolean>;
+  error: Ref<string | null>;
+  load: () => Promise<void>;
+  clear: () => void;
+} {
+  const sessions = ref<SessionClientToolsDto[]>([]);
+  const loading = ref(false);
+  const error = ref<string | null>(null);
+
+  function clear(): void {
+    sessions.value = [];
+    error.value = null;
+  }
+
+  async function load(): Promise<void> {
+    loading.value = true;
+    error.value = null;
+    try {
+      sessions.value = await brainFetch<SessionClientToolsDto[]>(
+        'GET', 'admin/insights/client-tools');
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to load client tools.';
+      sessions.value = [];
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  return { sessions, loading, error, load, clear };
+}
+
 export function useSessionClientTools(): {
   data: Ref<SessionClientToolsDto | null>;
   loading: Ref<boolean>;

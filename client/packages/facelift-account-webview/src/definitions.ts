@@ -292,6 +292,14 @@ export interface FaceliftDesktopBridge {
    * disable step explicitly.
    */
   policySetSandbox(options: { accountId: string; sandbox: boolean }): Promise<AgentPolicy | null>;
+  /**
+   * Tool packs (MCP): drop the account's cached materialization and
+   * reconnect — mcp.json edits, revoked trust and restarted servers
+   * become visible without an app restart. New project packs ask
+   * their trust question again (the call waits for the dialog).
+   * Returns the fresh server/tool counts.
+   */
+  packsReload(options: { accountId: string }): Promise<{ servers: number; tools: number } | null>;
 }
 
 declare global {

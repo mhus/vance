@@ -26,6 +26,7 @@ const confined = ref(false);
 const policy = ref<AgentPolicy | null>(null);
 const addDomain = ref<'paths' | 'commands' | 'delete'>('paths');
 const sandboxArmed = ref(false);
+const packsStatus = ref<string | null>(null);
 const sandboxDisarm = ref<(() => void) | null>(null);
 const addList = ref<'allow' | 'deny'>('deny');
 const addRule = ref('');
@@ -122,6 +123,18 @@ function disarmSandbox(): void {
   sandboxDisarm.value?.();
   sandboxDisarm.value = null;
   sandboxArmed.value = false;
+}
+
+/** Tool packs (MCP): drop the cache and reconnect — mcp.json edits and
+ *  restarted servers become visible without an app restart. The next
+ *  session bind registers the fresh tool set. */
+async function reloadPacks(): Promise<void> {
+  if (!isDesktopApp || accountId.value === '') return;
+  const result = await window.faceliftDesktop?.packsReload({ accountId: accountId.value });
+  packsStatus.value =
+    result === null || result === undefined
+      ? '—'
+      : `${result.servers} server(s), ${result.tools} tool(s)`;
 }
 
 async function setSandbox(sandbox: boolean): Promise<void> {
@@ -293,6 +306,19 @@ function onCancel(): void {
           Working directory for the agent tools — relative paths and the session
           environment resolve against it. Changes apply with the next agent request.
         </p>
+        <div class="mt-3 flex items-center gap-2">
+          <button
+            type="button"
+            class="rounded bg-gray-800 px-3 py-1.5 text-xs text-blue-400"
+            @click="reloadPacks"
+          >
+            Reload tool packs
+          </button>
+          <span v-if="packsStatus" class="text-xs text-gray-400">{{ packsStatus }}</span>
+          <span v-else class="text-xs text-gray-500">
+            MCP servers from ~/.vancetope/mcp.json — reload after editing.
+          </span>
+        </div>
         <label class="mt-3 flex items-start gap-2">
           <input
             type="checkbox"

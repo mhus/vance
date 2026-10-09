@@ -66,6 +66,7 @@ export const SHELL_IPC = {
   policyRemoveRule: 'desktop-shell:policy:remove-rule',
   policyReset: 'desktop-shell:policy:reset',
   policySetSandbox: 'desktop-shell:policy:set-sandbox',
+  packsReload: 'desktop-shell:packs:reload',
 } as const;
 
 /** Contract version reported through the bridge. Bump on breaking changes. */

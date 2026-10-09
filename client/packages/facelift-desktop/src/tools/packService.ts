@@ -64,6 +64,26 @@ export class PackService {
     this.windowProvider = windowProvider;
   }
 
+  /** Drop the cached materialization and rebuild it — the connect
+   *  option: mcp.json edits, revoked trust and restarted servers become
+   *  visible without an app restart. Running servers die first; a new
+   *  project pack asks its trust question again (the dialog waits,
+   *  bounded — this call can take as long). The next bind re-registers
+   *  the fresh tool set. */
+  async reload(accountId: string): Promise<{ servers: number; tools: number }> {
+    const cached = this.accounts.get(accountId);
+    if (cached !== undefined) {
+      for (const running of cached.servers.values()) {
+        running.client.close().catch(() => {
+          // best effort — the process dies with the transport anyway
+        });
+      }
+      this.accounts.delete(accountId);
+    }
+    const fresh = await this.materialize(accountId);
+    return { servers: fresh.servers.size, tools: fresh.tools.length };
+  }
+
   /** The account's pack tools for registration — empty until (and
    *  after a failed) materialization. Triggers one lazily. */
   async listTools(accountId: string): Promise<PackToolEntry[]> {

@@ -1701,7 +1701,19 @@ export default {
       tokensOut: 'Tokens raus',
       cost: 'Kosten',
     },
-    liveTools: {
+    clientTools: {
+    show: 'Client-Tools anzeigen',
+    hide: 'Client-Tools ausblenden',
+    hint: 'Alle Tools, die verbundene Clients registriert haben — Foot, Desktop-App, Web-UI (Live-Registry-Ansicht).',
+    loading: 'Client-Tools werden geladen…',
+    emptyHeadline: 'Keine Client-Tools registriert',
+    emptyBody: 'Noch kein Client hat ein client-tool-register gesendet — verbinde eine Foot oder die Desktop-App und binde eine Session.',
+    summary: '{sessions} Session(s) mit {tools} Client-Tool(s)',
+    bound: 'gebunden',
+    editor: 'Editor {id}',
+    toolCount: '{n} Tool(s)',
+  },
+  liveTools: {
       pickSession: 'Eine Session wählen, um ihre Live-Client-Tools zu sehen.',
       loading: 'Lädt Client-Tools…',
       bound: 'gebunden',

@@ -232,6 +232,11 @@ export class DesktopToolsService {
         denyFloor: denyFloor(),
       }));
     });
+    ipcMain.handle(SHELL_IPC.packsReload, (_e, o: unknown) => {
+      const accountId = accountIdOf(o);
+      if (accountId === null) return null;
+      return this.packs.reload(accountId);
+    });
     ipcMain.handle(IPC.packsList, (event) => {
       const rt = this.viewAccounts.get(event.sender.id);
       if (!rt) return [];

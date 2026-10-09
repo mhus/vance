@@ -1001,6 +1001,36 @@ public class InsightsAdminController {
         }
     }
 
+    /**
+     * Client-provided tools across ALL registered sessions of the
+     * tenant — the aggregate behind the insights Tools tab button:
+     * every session whose client pushed a {@code client-tool-register}
+     * (foot, desktop app, web UI state tools), with editor and tool
+     * list. Tenant-scoped: sessions of other tenants never reach the
+     * wire. Pod-local view: the registry lives on the pod that owns
+     * each session's bind — in multi-pod operation other pods'
+     * registrations are not visible here (the per-session endpoint
+     * below forwards to the owning pod instead).
+     */
+    @GetMapping("/insights/client-tools")
+    public List<SessionClientToolsDto> listAllClientTools(
+            @PathVariable("tenant") String tenant, HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
+        return clientToolRegistry.snapshot().entrySet().stream()
+                .flatMap(e -> sessionService
+                        .findBySessionId(e.getKey())
+                        .filter(s -> tenant.equals(s.getTenantId()))
+                        .map(s -> SessionClientToolsDto.builder()
+                                .sessionId(e.getKey())
+                                .bound(true)
+                                .editorId(e.getValue().editorId())
+                                .tools(List.copyOf(e.getValue().tools().values()))
+                                .build())
+                        .stream())
+                .sorted(Comparator.comparing(SessionClientToolsDto::getSessionId))
+                .toList();
+    }
+
     // ─── Live client-tools per session ─────────────────────────────────────
 
     /**

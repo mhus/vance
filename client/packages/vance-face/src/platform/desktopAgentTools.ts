@@ -58,6 +58,9 @@ interface ClientToolInvokeResponse {
 interface DesktopTool {
   op: string;
   spec: ToolSpec;
+  /** Optional param remap — pack tools all ride `pack_invoke` with
+   *  {pack, tool, args} built from the request params. */
+  paramsAdapter?: (params: Record<string, unknown>) => Record<string, unknown>;
 }
 
 const READ_ONLY = ['read-only', 'filesystem', 'client'];
@@ -526,6 +529,21 @@ export class DesktopAgentToolService {
   async attach(ws: BrainWsApi): Promise<void> {
     if (!this.bridge || !this.enabled.value) return;
     const tools = [...desktopFileTools(), ...desktopExecTools()];
+    // Tool packs (MCP): the specs come from the main process — the face
+    // never sees pack files or servers, only the mapped tool surface.
+    // A missing `packs` member (older app build) means an empty toolbox.
+    const packEntries = (await this.bridge.packs?.list().catch((): [] => [])) ?? [];
+    for (const entry of packEntries) {
+      tools.push({
+        op: 'pack_invoke',
+        spec: entry.spec as ToolSpec,
+        paramsAdapter: (params) => ({
+          pack: entry.pack,
+          tool: entry.tool,
+          args: params,
+        }),
+      });
+    }
     await ws.send('client-tool-register', { tools: tools.map((t) => t.spec) });
     this.invokeUnsub = ws.on<ClientToolInvokeRequest>('client-tool-invoke', (req) => {
       void this.onInvoke(ws, req, tools);
@@ -559,7 +577,7 @@ export class DesktopAgentToolService {
     try {
       const outcome: DesktopToolInvokeResult = await this.bridge!.invoke(
         tool.op,
-        req.params ?? {},
+        tool.paramsAdapter ? tool.paramsAdapter(req.params ?? {}) : (req.params ?? {}),
       );
       response = outcome.ok
         ? { correlationId, result: outcome.result }

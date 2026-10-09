@@ -34,6 +34,7 @@ import {
   fileWrite,
 } from './fileOps';
 import { PermissionGate } from './permissionGate';
+import { PackService } from './packService';
 import {
   canonicalize,
   addRule,
@@ -85,6 +86,7 @@ const EXEC_OPS: Record<
 };
 
 const EXEC_RUN_OP = 'exec.run';
+const PACK_INVOKE_OP = 'pack_invoke';
 
 /** Per-account runtime: config + cached policy + exec jobs + ask label. */
 interface AccountRuntime {
@@ -101,9 +103,11 @@ export class DesktopToolsService {
   /** In-flight invoke count per account — drives the shell's activity push. */
   private readonly inflight = new Map<string, number>();
   private readonly windowProvider: () => BrowserWindow | null;
+  private readonly packs: PackService;
 
   constructor(windowProvider: () => BrowserWindow | null) {
     this.windowProvider = windowProvider;
+    this.packs = new PackService(windowProvider);
     this.gate = new PermissionGate(windowProvider);
   }
 
@@ -228,6 +232,11 @@ export class DesktopToolsService {
         denyFloor: denyFloor(),
       }));
     });
+    ipcMain.handle(IPC.packsList, (event) => {
+      const rt = this.viewAccounts.get(event.sender.id);
+      if (!rt) return [];
+      return this.packs.listTools(rt.accountId);
+    });
     ipcMain.handle(IPC.invoke, (event, op: unknown, params: unknown) => {
       if (typeof op !== 'string' || typeof params !== 'object' || params === null) {
         return fail('Malformed invoke: op must be a string, params an object');
@@ -260,7 +269,8 @@ export class DesktopToolsService {
     const isFileOp = op in FILE_OPS || op === DELETE_OP;
     const isExecRun = op === EXEC_RUN_OP;
     const isExecInspection = op in EXEC_OPS;
-    if (!isFileOp && !isExecRun && !isExecInspection) {
+    const isPackInvoke = op === PACK_INVOKE_OP;
+    if (!isFileOp && !isExecRun && !isExecInspection && !isPackInvoke) {
       return fail(`Unknown desktop tool op: ${op}`);
     }
 
@@ -292,6 +302,26 @@ export class DesktopToolsService {
             `Permission denied: ${op} on ${canonical} was not granted`,
             'denied by policy or user',
           );
+        }
+      }
+      // Pack invocations are ungated in v1 — foot parity (planning §9):
+      // the user has explicitly loaded the pack; the trust gate already
+      // guarded starting the server. Activity tracking applies as usual.
+      if (isPackInvoke) {
+        const pack = typeof params.pack === 'string' ? params.pack : '';
+        const tool = typeof params.tool === 'string' ? params.tool : '';
+        const args =
+          typeof params.args === 'object' && params.args !== null
+            ? (params.args as Record<string, unknown>)
+            : {};
+        if (pack === '' || tool === '') {
+          return fail('Malformed pack_invoke: pack and tool are required');
+        }
+        try {
+          const result = await this.packs.invoke(rt.accountId, pack, tool, args);
+          return { ok: true, result };
+        } catch (e) {
+          return fail(e instanceof Error ? e.message : String(e));
         }
       }
       if (isExecRun) {
@@ -376,11 +406,12 @@ export class DesktopToolsService {
     return rt.exec;
   }
 
-  /** Kill all running jobs of every account — the app-quit hook. */
+  /** Kill all running jobs AND MCP pack servers — the app-quit hook. */
   killAll(): void {
     for (const rt of this.viewAccounts.values()) {
       rt.exec?.killAll();
     }
+    this.packs.killAll();
   }
 
   /** Policy per account, loaded lazily and reloaded after "always" writes

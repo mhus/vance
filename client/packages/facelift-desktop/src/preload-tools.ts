@@ -19,12 +19,16 @@ import { contextBridge, ipcRenderer } from 'electron';
 const IPC_INVOKE = 'desktop-tools:invoke';
 const IPC_GET_CONTEXT = 'desktop-tools:get-context';
 const IPC_TOOLS_ENABLED_GET = 'desktop-tools:tools-enabled:get';
+const IPC_PACKS_LIST = 'desktop-tools:packs:list';
 
 contextBridge.exposeInMainWorld('vanceDesktopTools', {
   version: '1',
   getContext: (): Promise<Record<string, unknown>> => ipcRenderer.invoke(IPC_GET_CONTEXT),
   toolsEnabled: {
     get: (): Promise<boolean> => ipcRenderer.invoke(IPC_TOOLS_ENABLED_GET),
+  },
+  packs: {
+    list: (): Promise<unknown[]> => ipcRenderer.invoke(IPC_PACKS_LIST),
   },
   invoke: (
     op: string,

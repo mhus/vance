@@ -43,6 +43,7 @@ export const IPC = {
   invoke: 'desktop-tools:invoke',
   getContext: 'desktop-tools:get-context',
   toolsEnabledGet: 'desktop-tools:tools-enabled:get',
+  packsList: 'desktop-tools:packs:list',
 } as const;
 
 /** IPC channels for the shell renderer: the release button (get/set per

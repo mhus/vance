@@ -56,6 +56,35 @@ export interface DesktopToolsBridge {
    * unknown ops are rejected with an error, never a fallthrough.
    */
   invoke(op: string, params: Record<string, unknown>): Promise<DesktopToolInvokeResult>;
+  /**
+   * Tool packs (MCP): the pack tools the account materialized — specs for
+   * the registration plus the routing pair. Empty until (and after a
+   * failed) materialization; a bad server never blocks the rest.
+   */
+  packs: {
+    list(): Promise<DesktopPackToolEntry[]>;
+  };
+}
+
+/** One pack tool from {@link DesktopToolsBridge.packs}: the spec the
+ *  face registers (`<pack>__<tool>`, labels incl. `mcp`/`mcp:<pack>`) +
+ *  the routing pair for `pack_invoke`. */
+export interface DesktopPackToolEntry {
+  spec: {
+    name: string;
+    description: string;
+    primary: boolean;
+    source: string;
+    paramsSchema: Record<string, unknown>;
+    labels: string[];
+    allowedProfiles: string[];
+    deferred: boolean;
+    searchHint: string;
+    safety: string;
+    requiresEngineRoles: string[];
+  };
+  pack: string;
+  tool: string;
 }
 
 const BRIDGE_KEY = 'vanceDesktopTools';
@@ -80,6 +109,12 @@ function isBridge(value: unknown): value is DesktopToolsBridge {
     typeof candidate.toolsEnabled === 'object' &&
     candidate.toolsEnabled !== null &&
     typeof candidate.toolsEnabled.get === 'function' &&
-    typeof candidate.invoke === 'function'
+    typeof candidate.invoke === 'function' &&
+    // packs arrived with the tool-pack stage — an app build without it
+    // still counts as a bridge (the face treats it as an empty toolbox)
+    (candidate.packs === undefined ||
+      (typeof candidate.packs === 'object' &&
+        candidate.packs !== null &&
+        typeof candidate.packs.list === 'function'))
   );
 }

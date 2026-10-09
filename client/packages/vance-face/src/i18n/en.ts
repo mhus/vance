@@ -1703,6 +1703,7 @@ export default {
     clientTools: {
     show: 'Show client tools',
     hide: 'Hide client tools',
+    refresh: 'Refresh',
     hint: 'All tools the connected clients registered — foot, desktop app, web UI (live registry view).',
     loading: 'Loading client tools…',
     emptyHeadline: 'No client tools registered',

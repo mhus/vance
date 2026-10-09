@@ -1704,6 +1704,7 @@ export default {
     clientTools: {
     show: 'Client-Tools anzeigen',
     hide: 'Client-Tools ausblenden',
+    refresh: 'Aktualisieren',
     hint: 'Alle Tools, die verbundene Clients registriert haben — Foot, Desktop-App, Web-UI (Live-Registry-Ansicht).',
     loading: 'Client-Tools werden geladen…',
     emptyHeadline: 'Keine Client-Tools registriert',

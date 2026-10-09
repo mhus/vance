@@ -226,6 +226,9 @@ const filteredTools = computed<EffectiveToolDto[]>(() => {
             ? $t('insights.clientTools.hide')
             : $t('insights.clientTools.show') }}
         </VButton>
+        <VButton v-if="clientToolsOpen" @click="clientTools.load()">
+          {{ $t('insights.clientTools.refresh') }}
+        </VButton>
         <span class="text-xs opacity-60">
           {{ $t('insights.clientTools.hint') }}
         </span>

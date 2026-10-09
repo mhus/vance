@@ -19,12 +19,12 @@
   },
   "dependencies": {
     "@vance/facelift-bridge": "workspace:*",
-    "js-yaml": "^5.4.1"
+    "js-yaml": "^5.4.3"
   },
   "devDependencies": {
-    "@types/node": "^26.5.1",
-    "electron": "44.3.0",
-    "vitest": "^5.0.0",
+    "@types/node": "^26.6.4",
+    "electron": "44.5.1",
+    "vitest": "^5.0.3",
     "electron-builder": "^26.0.0",
     "typescript": "7.0.2"
   }

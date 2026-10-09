@@ -32,10 +32,10 @@
     "vue": "^3.5.0"
   },
   "devDependencies": {
-    "@module-federation/vite": "^1.21.6",
-    "@vitejs/plugin-vue": "^6.0.8",
-    "vite": "^8.3.0",
-    "vue": "^3.5.42",
-    "vue-tsc": "^3.3.11"
+    "@module-federation/vite": "^1.23.2",
+    "@vitejs/plugin-vue": "^6.0.9",
+    "vite": "^8.3.3",
+    "vue": "^3.5.43",
+    "vue-tsc": "^3.3.12"
   }
 }

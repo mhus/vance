@@ -37,19 +37,39 @@ public class ClientToolRegistry {
     private final Map<String, Pending> pending = new ConcurrentHashMap<>();
     private final AtomicLong correlationSeq = new AtomicLong();
 
-    /** Overwrites any prior registration for {@code sessionId}. */
-    public void register(
-            String sessionId,
-            String editorId,
-            WebSocketSession wsSession,
-            List<ToolSpec> tools) {
+    /**
+     * Stores the tool registration for {@code sessionId}.
+     *
+     * <p>One connection can host several tool providers: a desktop-app
+     * WebView registers its agent tools AND the web UI's state tools over
+     * the same WebSocket. A registration therefore replaces only the
+     * {@link ToolSpec#getSource()} groups it declares — tools from other
+     * sources survive (the chat page's UI-state tools carry
+     * {@code source: "chat"}, the desktop agent tools their own source).
+     * Clients that register one flat list (foot: no source set) keep the
+     * old behaviour — their re-registration replaces exactly their group.
+     * A registration from a <em>different</em> editor replaces the whole
+     * entry, as before.
+     */
+    public void register(String sessionId, String editorId, WebSocketSession wsSession, List<ToolSpec> tools) {
+        Entry existing = bySession.get(sessionId);
         Map<String, ToolSpec> byName = new java.util.LinkedHashMap<>();
+        if (existing != null && existing.editorId.equals(editorId)) {
+            java.util.Set<String> incomingSources = new java.util.HashSet<>();
+            for (ToolSpec t : tools) {
+                incomingSources.add(t.getSource());
+            }
+            for (ToolSpec t : existing.tools.values()) {
+                if (!incomingSources.contains(t.getSource())) {
+                    byName.put(t.getName(), t);
+                }
+            }
+        }
         for (ToolSpec t : tools) {
             byName.put(t.getName(), t);
         }
         bySession.put(sessionId, new Entry(editorId, wsSession, Map.copyOf(byName)));
-        log.info("ClientToolRegistry session='{}' registered {} tools: {}",
-                sessionId, byName.size(), byName.keySet());
+        log.info("ClientToolRegistry session='{}' registered {} tools: {}", sessionId, byName.size(), byName.keySet());
     }
 
     /**
@@ -64,9 +84,7 @@ public class ClientToolRegistry {
         pending.values().removeIf(p -> {
             if (p.sessionId.equals(sessionId)) {
                 p.future.completeExceptionally(
-                        new IllegalStateException(
-                                "Client disconnected before answering tool '"
-                                        + p.toolName + "'"));
+                        new IllegalStateException("Client disconnected before answering tool '" + p.toolName + "'"));
                 return true;
             }
             return false;
@@ -86,9 +104,12 @@ public class ClientToolRegistry {
         Entry current = bySession.get(sessionId);
         if (current == null) return false;
         if (!current.editorId.equals(editorId)) {
-            log.debug("ClientToolRegistry session='{}' close from non-owner "
+            log.debug(
+                    "ClientToolRegistry session='{}' close from non-owner "
                             + "editor='{}' — keeping owner-bound tools (owner-editor='{}')",
-                    sessionId, editorId, current.editorId);
+                    sessionId,
+                    editorId,
+                    current.editorId);
             return false;
         }
         unregister(sessionId);
@@ -129,8 +150,7 @@ public class ClientToolRegistry {
     /** Allocates a new correlation id and a future to wait on. */
     public Pending beginInvocation(String sessionId, String toolName) {
         String id = "ct-" + correlationSeq.incrementAndGet();
-        Pending p = new Pending(id, sessionId, toolName,
-                new CompletableFuture<>(), Instant.now());
+        Pending p = new Pending(id, sessionId, toolName, new CompletableFuture<>(), Instant.now());
         pending.put(id, p);
         return p;
     }
@@ -152,12 +172,15 @@ public class ClientToolRegistry {
         // connection's editorId (ExecutionRouter) — so match either against the
         // delivering connection. Mismatch → reject WITHOUT removing/completing so
         // the real owner can still deliver (a forgery must not cancel it either).
-        boolean owns = p.sessionId.equals(deliveringSessionId)
-                || p.sessionId.equals(deliveringEditorId);
+        boolean owns = p.sessionId.equals(deliveringSessionId) || p.sessionId.equals(deliveringEditorId);
         if (!owns) {
-            log.warn("client-tool result correlation='{}' delivered by session='{}'/editor='{}' but "
-                    + "owned by '{}' — rejected", correlationId, deliveringSessionId,
-                    deliveringEditorId, p.sessionId);
+            log.warn(
+                    "client-tool result correlation='{}' delivered by session='{}'/editor='{}' but "
+                            + "owned by '{}' — rejected",
+                    correlationId,
+                    deliveringSessionId,
+                    deliveringEditorId,
+                    p.sessionId);
             return Optional.empty();
         }
         pending.remove(correlationId);
@@ -227,13 +250,16 @@ public class ClientToolRegistry {
             Pending removed = pending.remove(p.correlationId);
             if (removed == null) continue;
             long ageMs = Duration.between(removed.createdAt, Instant.now()).toMillis();
-            log.warn("ClientToolRegistry leak: pending '{}' tool='{}' session='{}' "
+            log.warn(
+                    "ClientToolRegistry leak: pending '{}' tool='{}' session='{}' "
                             + "older than {} (age {} ms) — completing exceptionally",
-                    removed.correlationId, removed.toolName, removed.sessionId,
-                    STALE_AFTER, ageMs);
+                    removed.correlationId,
+                    removed.toolName,
+                    removed.sessionId,
+                    STALE_AFTER,
+                    ageMs);
             removed.future.completeExceptionally(
-                    new ClientToolFailureException(
-                            "Stale pending swept after " + STALE_AFTER));
+                    new ClientToolFailureException("Stale pending swept after " + STALE_AFTER));
         }
     }
 
@@ -241,10 +267,7 @@ public class ClientToolRegistry {
     private static final Duration STALE_AFTER = Duration.ofMinutes(2);
 
     /** Per-session routing data. Package-private so the source can read it. */
-    public record Entry(
-            String editorId,
-            WebSocketSession wsSession,
-            Map<String, ToolSpec> tools) {}
+    public record Entry(String editorId, WebSocketSession wsSession, Map<String, ToolSpec> tools) {}
 
     /** A tool invocation awaiting a reply. */
     public record Pending(

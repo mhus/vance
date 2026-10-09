@@ -470,6 +470,11 @@ function spec(
     name,
     description,
     primary: false,
+    // Provider discriminator for the server-side registration merge: one
+    // WebView registers these AND the web UI's state tools (source
+    // "chat") over the same socket — a re-registration replaces only
+    // the tools of the sources it declares, so both groups coexist.
+    source: 'desktop',
     paramsSchema: { type: 'object', properties, required },
     labels,
     allowedProfiles: ['desktop'],

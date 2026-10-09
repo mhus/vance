@@ -31,6 +31,7 @@ const SHELL_POLICY_GET = 'desktop-shell:policy:get';
 const SHELL_POLICY_ADD = 'desktop-shell:policy:add-rule';
 const SHELL_POLICY_REMOVE = 'desktop-shell:policy:remove-rule';
 const SHELL_POLICY_RESET = 'desktop-shell:policy:reset';
+const SHELL_POLICY_SANDBOX = 'desktop-shell:policy:set-sandbox';
 
 // The renderer-facing bridge. Shape must match the FaceliftDesktopBridge
 // interface in facelift-account-webview/src/definitions.ts (formerly in
@@ -103,6 +104,10 @@ const bridge = {
     ipcRenderer.invoke(SHELL_POLICY_REMOVE, o),
   policyReset: (o: { accountId: string }): Promise<void> =>
     ipcRenderer.invoke(SHELL_POLICY_RESET, o),
+  // Master switch (foot's --no-sandbox equivalent): off = ungated.
+  // The UI guards this with an explicit two-step confirmation.
+  policySetSandbox: (o: { accountId: string; sandbox: boolean }): Promise<AgentPolicy | null> =>
+    ipcRenderer.invoke(SHELL_POLICY_SANDBOX, o),
 };
 
 contextBridge.exposeInMainWorld('faceliftDesktop', bridge);

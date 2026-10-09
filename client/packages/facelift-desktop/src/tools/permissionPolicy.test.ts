@@ -19,6 +19,7 @@ import {
   PermissionPolicy,
   readRules,
   removeRule,
+  setSandbox,
   resetPolicy,
 } from './permissionPolicy';
 
@@ -260,6 +261,20 @@ describe('policy management', () => {
     rules = await removeRule(FILE, 'paths', 'allow', '/tmp/granted.txt');
     expect(rules.paths.allow).not.toContain('/tmp/granted.txt');
     expect(rules.paths.deny).toEqual(['~/Documents/**']);
+  });
+
+  it('setSandbox persists the master switch and survives a reload', async () => {
+    let rules = await setSandbox(FILE, false);
+    expect(rules.sandbox).toBe(false);
+    rules = await readRules(FILE);
+    expect(rules.sandbox).toBe(false);
+    // off = ungated, floor included (foot-sandbox.md §2)
+    const policy = await loadPolicy(FILE, WORKDIR);
+    for (const floor of FLOOR_PATHS) {
+      expect(policy.evaluatePath(floor, false)).toBe('ALLOW');
+    }
+    rules = await setSandbox(FILE, true);
+    expect(rules.sandbox).toBe(true);
   });
 
   it('resetPolicy empties everything (back to all-ask)', async () => {

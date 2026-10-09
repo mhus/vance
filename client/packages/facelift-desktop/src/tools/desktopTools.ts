@@ -41,6 +41,7 @@ import {
   readRules,
   removeRule,
   resetPolicy,
+  setSandbox,
   denyFloor,
   type PermissionDomain,
   type AskSubject,
@@ -218,6 +219,15 @@ export class DesktopToolsService {
       if (accountId === null) return;
       void resetPolicy(this.policyFileOf(accountId));
     });
+    ipcMain.handle(SHELL_IPC.policySetSandbox, (_e, o: unknown) => {
+      const accountId = accountIdOf(o);
+      const sandbox = (o as { sandbox?: unknown }).sandbox;
+      if (accountId === null || typeof sandbox !== 'boolean') return null;
+      return setSandbox(this.policyFileOf(accountId), sandbox).then((rules) => ({
+        ...rules,
+        denyFloor: denyFloor(),
+      }));
+    });
     ipcMain.handle(IPC.invoke, (event, op: unknown, params: unknown) => {
       if (typeof op !== 'string' || typeof params !== 'object' || params === null) {
         return fail('Malformed invoke: op must be a string, params an object');
@@ -391,12 +401,17 @@ export class DesktopToolsService {
    *  handshake payload (os/arch/shell/cwd/sandboxEnabled/timezone). */
   private async contextFor(rt: AccountRuntime | undefined): Promise<DesktopClientContext> {
     const config = rt ? await getAccountConfig(rt.accountId) : null;
+    // The environment block must be honest: with the sandbox off the
+    // agent runs ungated — the context says so (foot-sandbox.md §2).
+    const sandboxEnabled = rt
+      ? await readRules(this.policyFileOf(rt.accountId)).then((r) => r.sandbox)
+      : true;
     return {
       os: normalizeOs(),
       arch: process.arch,
       shell: process.platform === 'win32' ? 'cmd.exe' : '/bin/sh',
       cwd: config?.workdir ?? os.homedir(),
-      sandboxEnabled: true,
+      sandboxEnabled,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'UTC',
     };
   }

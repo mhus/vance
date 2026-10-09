@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { VanceAccountWebView } from '@vance/facelift-account-webview';
 import { getAccount, updateAccount } from '@/accounts/accountStore';
@@ -25,6 +25,8 @@ const workdir = ref('');
 const confined = ref(false);
 const policy = ref<AgentPolicy | null>(null);
 const addDomain = ref<'paths' | 'commands' | 'delete'>('paths');
+const sandboxArmed = ref(false);
+const sandboxDisarm = ref<(() => void) | null>(null);
 const addList = ref<'allow' | 'deny'>('deny');
 const addRule = ref('');
 
@@ -104,6 +106,34 @@ async function resetPolicy(): Promise<void> {
   policy.value = (await window.faceliftDesktop?.policyGet({ accountId: accountId.value })) ?? null;
 }
 
+/** Disable sandbox is destructive: first click arms (auto-disarms after
+ *  5 s), second click confirms. */
+function armDisableSandbox(): void {
+  disarmSandbox();
+  sandboxArmed.value = true;
+  const timer = setTimeout(() => {
+    sandboxArmed.value = false;
+    sandboxDisarm.value = null;
+  }, 5000);
+  sandboxDisarm.value = () => clearTimeout(timer);
+}
+
+function disarmSandbox(): void {
+  sandboxDisarm.value?.();
+  sandboxDisarm.value = null;
+  sandboxArmed.value = false;
+}
+
+async function setSandbox(sandbox: boolean): Promise<void> {
+  if (!isDesktopApp || accountId.value === '') return;
+  disarmSandbox();
+  policy.value =
+    (await window.faceliftDesktop?.policySetSandbox({
+      accountId: accountId.value,
+      sandbox,
+    })) ?? policy.value;
+}
+
 /** Non-empty rule lists of the loaded policy, for rendering. */
 const policyGroups = computed(() => {
   const p = policy.value;
@@ -178,6 +208,10 @@ async function onSubmit(): Promise<void> {
     submitting.value = false;
   }
 }
+
+onBeforeUnmount(() => {
+  disarmSandbox();
+});
 
 function onCancel(): void {
   void router.back();
@@ -347,6 +381,47 @@ function onCancel(): void {
         </div>
         <p class="mt-1 text-xs text-gray-500">
           Path rules are globs, command rules are regular expressions.
+        </p>
+
+        <div class="mt-3 flex items-center gap-2 border-t border-gray-800 pt-3">
+          <span class="text-xs text-gray-500">
+            Sandbox:
+            <span :class="policy?.sandbox ? 'text-green-400' : 'text-red-400'">
+              {{ policy?.sandbox ? 'on' : 'OFF' }}
+            </span>
+          </span>
+          <button
+            v-if="policy?.sandbox && !sandboxArmed"
+            type="button"
+            class="rounded bg-gray-800 px-3 py-1 text-xs text-red-400"
+            @click="armDisableSandbox"
+          >
+            Disable sandbox…
+          </button>
+          <button
+            v-if="policy?.sandbox && sandboxArmed"
+            type="button"
+            class="rounded bg-red-900 px-3 py-1 text-xs text-red-200"
+            @click="setSandbox(false)"
+          >
+            Confirm: disable sandbox
+          </button>
+          <button
+            v-if="policy && !policy.sandbox"
+            type="button"
+            class="rounded bg-gray-800 px-3 py-1 text-xs text-green-400"
+            @click="setSandbox(true)"
+          >
+            Enable sandbox
+          </button>
+        </div>
+        <p
+          v-if="policy && !policy.sandbox"
+          class="mt-1 rounded border border-red-900 bg-red-950 px-2 py-1 text-xs text-red-400"
+        >
+          The sandbox is disabled: every file operation and shell command runs
+          without confirmation — the deny floor included. Only for accounts
+          you fully trust.
         </p>
       </div>
       <p v-if="error" class="text-sm text-red-400">{{ error }}</p>

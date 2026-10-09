@@ -403,3 +403,14 @@ export async function removeRule(
 export async function resetPolicy(policyFile: string): Promise<void> {
   await rm(policyFile, { force: true });
 }
+
+/** The master switch (foot's --no-sandbox equivalent, per account):
+ *  off = the gate allows everything without asking — including the deny
+ *  floor, mirroring foot-sandbox.md §2. Written by the shell UI only,
+ *  behind an explicit two-step confirmation. */
+export async function setSandbox(policyFile: string, sandbox: boolean): Promise<PolicyRules> {
+  const shape = normalizedShape(await readShape(policyFile));
+  shape.permissions!.sandbox = sandbox;
+  await writeShape(policyFile, shape);
+  return readRules(policyFile);
+}

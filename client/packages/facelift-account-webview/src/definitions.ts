@@ -285,6 +285,13 @@ export interface FaceliftDesktopBridge {
   policyAddRule(options: AgentRuleRequest): Promise<AgentPolicy | null>;
   policyRemoveRule(options: AgentRuleRequest): Promise<AgentPolicy | null>;
   policyReset(options: { accountId: string }): Promise<void>;
+  /**
+   * Master switch (foot's {@code --no-sandbox} equivalent, per
+   * account): off = the gate allows everything without asking,
+   * including the deny floor. Shell-only; the UI confirms the
+   * disable step explicitly.
+   */
+  policySetSandbox(options: { accountId: string; sandbox: boolean }): Promise<AgentPolicy | null>;
 }
 
 declare global {

@@ -268,6 +268,35 @@ profiles:
       stores anything in the project workspace). Your work target is
       the foot host. Do not push the user to upload local files into
       the project workspace when they're already on disk.
+  # The Facelift desktop app is the foot's GUI peer: same local
+  # capabilities (files, shell) through the Electron bridge, sandboxed
+  # per account. No useClientAgentDoc here — the desktop app does not
+  # upload an agent.md. See specification/public/desktop-agent-tools.md §3.
+  desktop:
+    session:
+      onDisconnect: KEEP_OPEN
+      onIdle: SUSPEND
+      onSuspend: KEEP
+      idleTimeoutMs: 3600000            # 1h
+      suspendKeepDurationMs: 86400000   # 24h
+    promptPrefixAppend: |
+      ## Client context — Facelift desktop app
+
+      You are reachable from the Facelift desktop app — the user's
+      machine is the work target. Reach local files through the
+      desktop-bound file/exec tools — only the ones your current
+      tool manifest actually lists.{% if has_tool.file_read and
+      has_tool.file_list and has_tool.file_write and
+      has_tool.exec_run %} Local access: `file_read` / `file_list` /
+      `file_write` / `exec_run` — they land on the user's disk, no
+      explicit `client_*` variants needed.{% endif %} A tool that
+      is not in your manifest does not exist this turn: never call
+      it by name — activate it via `tool_description(names=["<name>",
+      ...])` first, or use what the manifest lists (`doc_write`
+      stores anything in the project workspace). Do not push the
+      user to upload local files into the project workspace when
+      they're already on disk.
+
 
   # Browser clients can't host filesystem / shell / JS tools — strip
   # them from the allowed list so the LLM doesn't propose calls that

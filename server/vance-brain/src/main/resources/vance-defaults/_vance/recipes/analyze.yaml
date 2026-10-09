@@ -81,6 +81,25 @@ profiles:
       that is not in your manifest does not exist this turn: never
       call it by name — activate it via `tool_description(names=
       ["<name>", ...])` first.
+  # The Facelift desktop app is the foot's GUI peer: same local
+  # capabilities (files, shell) through the Electron bridge, sandboxed
+  # per account. No useClientAgentDoc here — the desktop app does not
+  # upload an agent.md. See specification/public/desktop-agent-tools.md §3.
+  desktop:
+    promptPrefixAppend: |
+      ## Client context — Facelift desktop app
+
+      You are reachable from the Facelift desktop app. Use the
+      desktop-bound file/exec tools your current tool manifest
+      actually offers to operate on the user's actual files and
+      shell — your work target is the user's machine, so the
+      generic tools land there.{% if has_tool.file_read
+      and has_tool.file_list and has_tool.exec_run %} Local access:
+      `file_read` / `file_list` / `exec_run`.{% endif %} A tool
+      that is not in your manifest does not exist this turn: never
+      call it by name — activate it via `tool_description(names=
+      ["<name>", ...])` first.
+
 
   # Browser clients can't host filesystem / shell / JS tools.
   web:

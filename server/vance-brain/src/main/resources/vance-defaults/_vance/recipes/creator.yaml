@@ -235,6 +235,26 @@ profiles:
       list does not exist right now: never call or assume it —
       activate it via `tool_description(names=["<name>", ...])`
       first.
+  # The Facelift desktop app is the foot's GUI peer: same local
+  # capabilities (files, shell) through the Electron bridge, sandboxed
+  # per account. No useClientAgentDoc here — the desktop app does not
+  # upload an agent.md. See specification/public/desktop-agent-tools.md §3.
+  desktop:
+    params:
+      # Override the recipe's WORK default: from the desktop app the
+      # user's own machine is the natural exec/file target.
+      workTarget: { kind: CLIENT }
+    promptPrefixAppend: |
+      ## Client context — Facelift desktop app
+
+      You are reachable from the Facelift desktop app. The client
+      file/exec tools — the ones your tool list actually offers —
+      operate on the user's actual machine, but automation you
+      create runs server-side in the brain. A client tool missing
+      from the list does not exist right now: never call or assume
+      it — activate it via `tool_description(names=["<name>", ...])`
+      first.
+
 
   # Browser clients can't host filesystem / shell / JS tools.
   web:

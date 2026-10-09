@@ -106,6 +106,15 @@ profiles:
     promptPrefixAppend: |
       Foot client — `client_*` tools also available if the user
       wants to save findings into local files.
+  # The Facelift desktop app is the foot's GUI peer: same local
+  # capabilities (files, shell) through the Electron bridge, sandboxed
+  # per account. No useClientAgentDoc here — the desktop app does not
+  # upload an agent.md. See specification/public/desktop-agent-tools.md §3.
+  desktop:
+    promptPrefixAppend: |
+      Desktop app — `client_*` tools also available if the user
+      wants to save findings into local files.
+
 
   web:
     allowedToolsRemove:

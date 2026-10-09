@@ -181,6 +181,14 @@ profiles:
     params:
       workTarget:
         kind: CLIENT
+  # The Facelift desktop app is the foot's GUI peer: same local
+  # capabilities (files, shell) through the Electron bridge, sandboxed
+  # per account. No useClientAgentDoc here — the desktop app does not
+  # upload an agent.md. See specification/public/desktop-agent-tools.md §3.
+  desktop:
+    params:
+      workTarget:
+        kind: CLIENT
 
 tags:
   - trillian

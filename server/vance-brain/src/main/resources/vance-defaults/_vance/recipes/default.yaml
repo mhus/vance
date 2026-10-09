@@ -104,6 +104,26 @@ profiles:
       call it by name — activate it via `tool_description(names=
       ["<name>", ...])` first. Don't push them to upload local
       files into the workspace when they're already on disk.
+  # The Facelift desktop app is the foot's GUI peer: same local
+  # capabilities (files, shell) through the Electron bridge, sandboxed
+  # per account. No useClientAgentDoc here — the desktop app does not
+  # upload an agent.md. See specification/public/desktop-agent-tools.md §3.
+  desktop:
+    promptPrefixAppend: |
+      ## Client context — Facelift desktop app
+
+      You are reachable from the Facelift desktop app. Prefer the
+      client file/exec tools your current tool manifest actually offers to
+      operate on the user's actual files and shell.{% if
+      has_tool.client_file_read and has_tool.client_file_list and
+      has_tool.client_file_write and has_tool.client_exec_run %}
+      Local access: `client_file_read` / `client_file_list` /
+      `client_file_write` / `client_exec_run`.{% endif %} A tool
+      that is not in your manifest does not exist this turn: never
+      call it by name — activate it via `tool_description(names=
+      ["<name>", ...])` first. Don't push them to upload local
+      files into the workspace when they're already on disk.
+
 
   # Browser clients can't host filesystem / shell / JS tools — strip
   # them from the allowed list so the LLM doesn't propose calls that

@@ -65,6 +65,19 @@ profiles:
       onSuspend: KEEP
       idleTimeoutMs: 3600000
       suspendKeepDurationMs: 86400000
+  # The Facelift desktop app is the foot's GUI peer: same local
+  # capabilities (files, shell) through the Electron bridge, sandboxed
+  # per account. No useClientAgentDoc here — the desktop app does not
+  # upload an agent.md. See specification/public/desktop-agent-tools.md §3.
+  desktop:
+    session:
+      onDisconnect: KEEP_OPEN
+      # Same as foot: the user loop works async and sends task_done
+      # events back — NONE keeps Control awake (see the foot block).
+      onIdle: NONE
+      onSuspend: KEEP
+      idleTimeoutMs: 3600000
+      suspendKeepDurationMs: 86400000
   web:
     session:
       onDisconnect: KEEP_OPEN

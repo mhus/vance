@@ -262,7 +262,7 @@ class TrillianEngineInterruptTest {
 
     private static TrillianWakeupClaimService leaseGranting() {
         TrillianWakeupClaimService claims = mock(TrillianWakeupClaimService.class);
-        lenient().when(claims.acquireLease(any(), any())).thenReturn(true);
+        lenient().when(claims.acquireLease(any(), any())).thenReturn("lease-token");
         return claims;
     }
 

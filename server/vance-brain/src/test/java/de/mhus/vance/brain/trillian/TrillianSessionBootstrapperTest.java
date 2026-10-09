@@ -128,7 +128,7 @@ class TrillianSessionBootstrapperTest {
                 permissionBootstrapProvider);
 
         when(activationGate.loopsEnabled(anyString(), any(), any())).thenReturn(true);
-        when(claimService.acquireLease(anyString(), any())).thenReturn(true);
+        when(claimService.acquireLease(anyString(), any())).thenReturn("lease-token");
         when(userService.existsByTenantAndName(anyString(), anyString())).thenReturn(false);
         de.mhus.vance.shared.project.ProjectDocument home = new de.mhus.vance.shared.project.ProjectDocument();
         home.setName(PROJECT);
@@ -589,7 +589,7 @@ class TrillianSessionBootstrapperTest {
 
     @Test
     void aBootstrapHeldElsewhere_isLeftToItsHolder() {
-        when(claimService.acquireLease(anyString(), any())).thenReturn(false);
+        when(claimService.acquireLease(anyString(), any())).thenReturn(null);
 
         bootstrap(controlSession(), controlProcess());
 

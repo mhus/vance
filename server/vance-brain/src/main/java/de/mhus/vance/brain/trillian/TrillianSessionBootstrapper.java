@@ -246,14 +246,15 @@ public class TrillianSessionBootstrapper {
             return;
         }
         String lease = bootstrapLeaseKey(controlProcess);
-        if (!claimService.acquireLease(lease, BOOTSTRAP_LEASE_TTL)) {
+        String leaseToken = claimService.acquireLease(lease, BOOTSTRAP_LEASE_TTL);
+        if (leaseToken == null) {
             log.debug("Trillian bootstrap of control id='{}' is running elsewhere — skipping", controlProcess.getId());
             return;
         }
         try {
             bootstrapLeased(controlSession, controlProcess.getId());
         } finally {
-            claimService.releaseLease(lease);
+            claimService.releaseLease(lease, leaseToken);
         }
     }
 
@@ -801,7 +802,8 @@ public class TrillianSessionBootstrapper {
             return false;
         }
         String lease = bootstrapLeaseKey(controlProcess);
-        if (!claimService.acquireLease(lease, BOOTSTRAP_LEASE_TTL)) {
+        String leaseToken = claimService.acquireLease(lease, BOOTSTRAP_LEASE_TTL);
+        if (leaseToken == null) {
             // Someone else is building (or checking) this pair right now;
             // answer from what is wired at this moment and do not rebuild.
             return thinkProcessService
@@ -835,7 +837,7 @@ public class TrillianSessionBootstrapper {
                     .filter(TrillianSessionBootstrapper::isAlive)
                     .isPresent();
         } finally {
-            claimService.releaseLease(lease);
+            claimService.releaseLease(lease, leaseToken);
         }
     }
 

@@ -19,7 +19,8 @@ import org.jspecify.annotations.Nullable;
  * @param process       the guarded process
  * @param point         the runtime point of this run — one of
  *                      {@link GuardPoint#START}, {@link GuardPoint#COMMAND},
- *                      {@link GuardPoint#STOP}, {@link GuardPoint#TERMINATE}
+ *                      {@link GuardPoint#TOOL}, {@link GuardPoint#STOP},
+ *                      {@link GuardPoint#TERMINATE}
  *                      ({@link GuardPoint#BOTH} is a config alias, never a
  *                      runtime point)
  * @param task          the {@code vance.guard.task}: the turn's genuine

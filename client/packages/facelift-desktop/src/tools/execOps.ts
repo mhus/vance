@@ -16,7 +16,7 @@
  * app has no client→brain push channel, so long jobs must be polled via
  * {@code exec.status}.
  */
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -32,6 +32,12 @@ const DEFAULT_TAIL_LINES = 10;
 const MAX_TAIL_LINES = 500;
 /** foot caps its registry at 32 jobs; finished jobs are pruned first. */
 const MAX_JOBS = 32;
+/**
+ * Foot's `ClientExecutorService.KILL_GRACE_MS` twin — after a tree SIGTERM,
+ * survivors (a shell that traps TERM, a build that ignores it) get SIGKILL
+ * after this window. 0 skips the escalation and hard-kills at once.
+ */
+const KILL_GRACE_MS = 10_000;
 
 type JobStatus = 'RUNNING' | 'COMPLETED' | 'FAILED' | 'KILLED';
 
@@ -59,9 +65,11 @@ export class ExecJobs {
 
   constructor(
     private readonly jobsRoot: string,
-  /** The account workdir this registry spawns against — readable so the
-   *  service layer can detect workdir changes between invokes. */
-  readonly workdir: string,
+    /** The account workdir this registry spawns against — readable so the
+     *  service layer can detect workdir changes between invokes. */
+    readonly workdir: string,
+    /** Test seam for {@link KILL_GRACE_MS} — production uses the default. */
+    private readonly killGraceMs = KILL_GRACE_MS,
   ) {}
 
   /** {@code client_exec_run} — spawn, wait inline (capped), render. */
@@ -147,10 +155,16 @@ export class ExecJobs {
     return out;
   }
 
-  /** Kill every running job — the app-quit hook. Never throws. */
+  /** Kill every running job — the app-quit hook. Hard-kill (SIGKILL /
+   *  taskkill /F): the graceful path escalates on a timer, and timers die
+   *  with the app — the quit path must not leave the decision to a process
+   *  that is about to be gone. Never throws. */
   killAll(): void {
     for (const job of this.jobs.values()) {
-      if (job.status === 'RUNNING') this.killJob(job);
+      if (job.status === 'RUNNING') {
+        this.signalTree(job, 'SIGKILL');
+        this.settle(job, 'KILLED', job.exitCode);
+      }
     }
   }
 
@@ -186,6 +200,11 @@ export class ExecJobs {
       cwd: this.workdir,
       env: { ...process.env, VANCE_EXEC_ENV: 'container-client' },
       stdio: ['ignore', 'pipe', 'pipe'],
+      // POSIX: own process group, so signalTree's negative-pid signal
+      // reaches every descendant — killing only the shell would orphan
+      // its children (they inherit the log pipes and keep writing). Off
+      // on Windows: taskkill /T walks the tree there instead.
+      detached: process.platform !== 'win32',
     });
     job.process = child;
     child.stdout?.on('data', (chunk: Buffer) => {
@@ -208,8 +227,9 @@ export class ExecJobs {
 
     if (typeof deadlineSeconds === 'number' && deadlineSeconds > 0) {
       job.watchdog = setTimeout(() => {
-        // Deadline reached: SIGTERM now, hard-kill after a grace period
-        // — the command does NOT finish, output stays partial.
+        // Deadline reached: SIGTERM to the whole tree now — killJob
+        // escalates to SIGKILL after the grace period. The command does
+        // NOT finish, output stays partial.
         if (job.status === 'RUNNING') {
           this.killJob(job);
         }
@@ -230,9 +250,48 @@ export class ExecJobs {
 
   private killJob(job: ExecJob): boolean {
     if (job.status !== 'RUNNING') return false;
-    const killed = job.process?.kill(process.platform === 'win32' ? undefined : 'SIGTERM') ?? false;
+    // Foot parity (ClientExecutorService.terminateTree): signal the whole
+    // process TREE, then SIGKILL whatever survives the grace window. A job
+    // runs as a shell command; killing only the shell would leave its
+    // children (build, train, server) orphaned on the user's machine.
+    this.signalTree(job, 'SIGTERM');
+    if (this.killGraceMs <= 0) {
+      this.signalTree(job, 'SIGKILL');
+    } else {
+      // Non-blocking escalation, foot-style — the timer must not hold the
+      // app open at quit (killAll hard-kills instead).
+      setTimeout(() => this.signalTree(job, 'SIGKILL'), this.killGraceMs).unref();
+    }
     this.settle(job, 'KILLED', job.exitCode);
-    return killed;
+    return true;
+  }
+
+  /**
+   * Signal every process of the job's tree. POSIX: the child leads its own
+   * process group (spawn detached), so the negative pid addresses the whole
+   * group. Windows: no signals — `taskkill /T /F` terminates the tree
+   * (the TerminateProcess equivalent of Java's destroyForcibly).
+   */
+  private signalTree(job: ExecJob, signal: 'SIGTERM' | 'SIGKILL'): void {
+    const pid = job.process?.pid;
+    if (pid === undefined) return;
+    if (process.platform === 'win32') {
+      execFile('taskkill', ['/pid', String(pid), '/T', '/F'], () => {
+        // best effort — a dead pid just fails
+      });
+      return;
+    }
+    try {
+      process.kill(-pid, signal);
+    } catch {
+      // Group already gone (or never formed) — the direct child is the
+      // last resort; a dead one rejects again, which is fine here.
+      try {
+        job.process?.kill(signal);
+      } catch {
+        // already dead
+      }
+    }
   }
 
   private waitFor(job: ExecJob, waitMs: number): Promise<void> {

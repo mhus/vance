@@ -8,6 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.UpdateResult;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
@@ -45,11 +46,16 @@ class TrillianWakeupClaimServiceTest {
     }
 
     @Test
-    void acquireLease_freeLease_isTaken() {
-        assertThat(service.acquireLease("turn/acme/loop-1", Duration.ofMinutes(5)))
-                .isTrue();
+    void acquireLease_freeLease_isTakenWithHolderToken() {
+        String token = service.acquireLease("turn/acme/loop-1", Duration.ofMinutes(5));
+
+        assertThat(token).isNotBlank();
         verify(mongoTemplate, never())
                 .updateFirst(any(Query.class), any(Update.class), eq(TrillianWakeupClaimDocument.class));
+        // The token is what the claim document stores — releaseLease matches it.
+        ArgumentCaptor<TrillianWakeupClaimDocument> doc = ArgumentCaptor.forClass(TrillianWakeupClaimDocument.class);
+        verify(mongoTemplate).insert(doc.capture());
+        assertThat(doc.getValue().getHolder()).isEqualTo(token);
     }
 
     @Test
@@ -59,7 +65,7 @@ class TrillianWakeupClaimServiceTest {
                 .thenReturn(UpdateResult.acknowledged(0, 0L, null));
 
         assertThat(service.acquireLease("turn/acme/loop-1", Duration.ofMinutes(5)))
-                .isFalse();
+                .isNull();
     }
 
     @Test
@@ -71,15 +77,35 @@ class TrillianWakeupClaimServiceTest {
                 .thenReturn(UpdateResult.acknowledged(1, 1L, null));
 
         assertThat(service.acquireLease("turn/acme/loop-1", Duration.ofMinutes(5)))
-                .isTrue();
+                .isNotBlank();
     }
 
     @Test
-    void releaseLease_removesTheLeaseDocument() {
-        service.releaseLease("turn/acme/loop-1");
+    void releaseLease_byItsHolder_removesTheLeaseDocument() {
+        when(mongoTemplate.remove(any(Query.class), eq(TrillianWakeupClaimDocument.class)))
+                .thenReturn(DeleteResult.acknowledged(1));
+        service.releaseLease("turn/acme/loop-1", "token-1");
 
         ArgumentCaptor<Query> query = ArgumentCaptor.forClass(Query.class);
         verify(mongoTemplate).remove(query.capture(), eq(TrillianWakeupClaimDocument.class));
         assertThat(query.getValue().getQueryObject().get("_id")).isEqualTo("lease/turn/acme/loop-1");
+        // Owner-checked: the removal query carries the holder token, so only
+        // the acquirer's release can take the lease down.
+        assertThat(query.getValue().getQueryObject().get("holder")).isEqualTo("token-1");
+    }
+
+    @Test
+    void releaseLease_afterATakeover_isIgnored() {
+        // Review-20 finding: a holder that outlives its TTL (GC pause) wakes
+        // up after another pod took the stale lease — its release must not
+        // free the successor's lease document.
+        when(mongoTemplate.remove(any(Query.class), eq(TrillianWakeupClaimDocument.class)))
+                .thenReturn(DeleteResult.acknowledged(0));
+
+        service.releaseLease("turn/acme/loop-1", "stale-token");
+
+        // A no-op: the remove ran, matched nothing, and the successor's
+        // lease document survives.
+        verify(mongoTemplate).remove(any(Query.class), eq(TrillianWakeupClaimDocument.class));
     }
 }

@@ -50,6 +50,15 @@ describe('globToRegex', () => {
   it('a trailing dir/** also matches the directory itself', () => {
     expect(globToRegex('/a/b/**').test('/a/b')).toBe(true);
   });
+
+  it('a backslash escape quotes wildcard syntax', () => {
+    // persistAlways relies on this: an escaped `*` matches a file that is
+    // actually named `*` — and nothing else (Review-20 finding).
+    expect(globToRegex('/w/report\\*v2.md').test('/w/report*v2.md')).toBe(true);
+    expect(globToRegex('/w/report\\*v2.md').test('/w/reportXv2.md')).toBe(false);
+    expect(globToRegex('/w/answ\\?r.txt').test('/w/answer.txt')).toBe(false);
+    expect(globToRegex('/w/answ\\?r.txt').test('/w/answ?r.txt')).toBe(true);
+  });
 });
 
 describe('matchesGlob', () => {
@@ -248,6 +257,21 @@ describe('policy management', () => {
     rules = await removeRule(FILE, 'commands', 'allow', '^git status$');
     expect(rules.commands.allow).toEqual([]);
     expect(rules.paths.deny).toEqual(['~/Documents/**']);
+  });
+
+  it('persistAlways pins a file whose name contains a glob wildcard', async () => {
+    // The stored rule must be quoted: a literal `*` in the file name would
+    // otherwise turn the "always" answer into a wildcard allow.
+    const policy = await loadPolicy(FILE, WORKDIR);
+    const starred = path.join(WORKDIR, 'report*v2.md');
+    await policy.persistAlways({ toolName: 'file.read', domain: 'paths', subject: starred }, true);
+
+    expect(policy.evaluatePath(starred, false)).toBe('ALLOW');
+    // …and the wildcard-looking sibling does not inherit the answer.
+    expect(policy.evaluatePath(path.join(WORKDIR, 'reportXv2.md'), false)).toBe('ASK');
+
+    const rules = await readRules(FILE);
+    expect(rules.paths.allow).toContain(`${starred.replace('*', '\\*')}`);
   });
 
   it('remove keeps the other fields of the file intact', async () => {

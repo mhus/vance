@@ -88,11 +88,10 @@ const EXEC_OPS: Record<
 const EXEC_RUN_OP = 'exec.run';
 const PACK_INVOKE_OP = 'pack_invoke';
 
-/** Per-account runtime: config + cached policy + exec jobs + ask label. */
+/** Per-account runtime: ask label + exec jobs, resolved per invoke. */
 interface AccountRuntime {
   accountId: string;
   displayName: string;
-  policy: PermissionPolicy | null;
   exec: ExecJobs | null;
 }
 
@@ -114,7 +113,7 @@ export class DesktopToolsService {
   /** Register a newly created account WebView. The webContents id is the
    *  isolation key every invoke is resolved through. */
   registerView(accountId: string, displayName: string, webContentsId: number): void {
-    this.viewAccounts.set(webContentsId, { accountId, displayName, policy: null, exec: null });
+    this.viewAccounts.set(webContentsId, { accountId, displayName, exec: null });
   }
 
   unregisterView(webContentsId: number): void {
@@ -419,18 +418,16 @@ export class DesktopToolsService {
     this.packs.killAll();
   }
 
-  /** Policy per account, loaded lazily and reloaded after "always" writes
-   *  (persistAlways mutates the in-memory copy; the next fresh load for
-   *  the *other* account's or a future session's view picks it up). */
+  /** Policy per account, loaded fresh per invoke — after an "always" write
+   *  the next invoke (this view's, the other account's, a future session's)
+   *  picks the persisted rule up without a reload dance. */
   private async policyFor(
     rt: AccountRuntime,
     workdir: string,
     confineToWorkdir: boolean,
   ): Promise<PermissionPolicy> {
     const policyFile = path.join(accountToolsDir(rt.accountId), 'permissions.yaml');
-    const policy = await loadPolicy(policyFile, workdir, { confineToWorkdir });
-    rt.policy = policy;
-    return policy;
+    return loadPolicy(policyFile, workdir, { confineToWorkdir });
   }
 
   /** Platform context reported to the hosted web UI — mirrors foot's

@@ -5,6 +5,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -36,4 +37,14 @@ public class TrillianWakeupClaimDocument {
     /** Claim timestamp; TTL-reaped after an hour (well past any handover). */
     @Indexed(expireAfterSeconds = 3600)
     private Instant claimedAt;
+
+    /**
+     * Holder identity of a lease ({@code TrillianWakeupClaimService#acquireLease})
+     * — the token the acquirer must present on release. {@code null} on
+     * plain wake-slot claims (they are won by insert, never released).
+     * Written on every lease takeover, so a holder that outlives its TTL
+     * (GC pause, network partition) cannot free its successor's lease.
+     */
+    @Nullable
+    private String holder;
 }

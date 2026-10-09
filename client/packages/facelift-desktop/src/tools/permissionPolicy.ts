@@ -133,8 +133,8 @@ export class PermissionPolicy {
 
   /**
    * Persist an "always" answer as an exact rule in this account's policy
-   * file — mirrors foot-sandbox.md §8: exact match only (glob without
-   * wildcards for paths, fully anchored escaped regex for commands),
+   * file — mirrors foot-sandbox.md §8: exact match only (a path rule with
+   * its glob syntax quoted, fully anchored escaped regex for commands),
    * idempotent write. Broader rules are hand-written by the operator.
    */
   async persistAlways(subject: AskSubject, allowed: boolean): Promise<void> {
@@ -145,10 +145,10 @@ export class PermissionPolicy {
       rule = `^${escapeRegex(subject.subject)}$`;
       domain = this.commands;
     } else if (subject.domain === 'delete') {
-      rule = subject.subject;
+      rule = quoteGlob(subject.subject);
       domain = this.deleteRules;
     } else {
-      rule = subject.subject;
+      rule = quoteGlob(subject.subject);
       domain = this.paths;
     }
     if (domain[listName].includes(rule)) return;
@@ -245,7 +245,9 @@ export function expandHome(raw: string): string {
 export function matchesGlob(glob: string, canonicalPath: string, workdir: string): boolean {
   const expanded = expandHome(glob);
   const absolute = path.isAbsolute(expanded) ? expanded : path.join(workdir, expanded);
-  const pattern = toPosix(path.normalize(absolute));
+  // Escape-preserving separator translation: a blanket backslash→slash pass
+  // would turn an escaped `\`* (a literal `*`) into a bare `*` (a wildcard).
+  const pattern = toPosixPreservingEscapes(path.normalize(absolute));
   const target = toPosix(canonicalPath);
   return globToRegex(pattern).test(target);
 }
@@ -258,7 +260,13 @@ export function globToRegex(pattern: string): RegExp {
   let i = 0;
   while (i < pattern.length) {
     const c = pattern[i];
-    if (c === '*') {
+    if (c === '\\' && i + 1 < pattern.length) {
+      // Escape sequence — the next character is glob syntax, not a
+      // wildcard (`\*` matches a file actually named `*`). persistAlways
+      // relies on this to pin an "always" answer to exactly one file.
+      re += `\\${pattern[i + 1]}`;
+      i += 2;
+    } else if (c === '*') {
       if (pattern[i + 1] === '*') {
         i += 2;
         // Trailing `/**` also matches the directory itself.
@@ -305,8 +313,37 @@ function escapeRegex(raw: string): string {
   return raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/**
+ * Quote glob syntax (`*`, `?`) in a canonical path so a persisted rule
+ * matches exactly this file — a literal `*` in a file name would otherwise
+ * widen the "always" answer into a wildcard rule (Review-20 finding). The
+ * matched engine is `globToRegex`, which reads a backslash as an escape.
+ */
+function quoteGlob(raw: string): string {
+  return raw.replace(/[*?]/g, (c) => `\\${c}`);
+}
+
 function toPosix(p: string): string {
   return p.replace(/\\/g, '/');
+}
+
+/**
+ * POSIX-normalise separators while keeping `\X` escape sequences intact —
+ * same job as {@link toPosix}, but `\`* stays `\`* (a literal `*` in
+ * globToRegex) instead of becoming `/*` (a wildcard).
+ */
+function toPosixPreservingEscapes(p: string): string {
+  let out = '';
+  for (let i = 0; i < p.length; i++) {
+    const c = p[i]!;
+    if (c === '\\' && i + 1 < p.length && '\\*?'.includes(p[i + 1]!)) {
+      out += c + p[i + 1]!;
+      i++;
+    } else {
+      out += c === '\\' ? '/' : c;
+    }
+  }
+  return out;
 }
 
 // ─── Policy management (shell UI) ─────────────────────────────────────

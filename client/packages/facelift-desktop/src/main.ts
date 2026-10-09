@@ -34,10 +34,14 @@ function extendPathForPackagedLaunch(): void {
   try {
     // The inner command MUST be single-quoted: the outer /bin/sh expands
     // $PATH itself without them, and zsh would echo an empty line.
-    const shellPath = execSync("/bin/zsh -l -c 'echo $PATH'", {
+    const shellOutput = execSync("/bin/zsh -l -c 'echo $PATH'", {
       encoding: 'utf8',
       timeout: 3000,
     }).trim();
+    // A login shell can print extra lines (zprofile hooks, banners) — the
+    // PATH is the last colon-delimited line, not the whole output.
+    const shellPath =
+      shellOutput.split('\n').filter((line) => line.includes(':')).pop() ?? '';
     if (shellPath.includes('/bin')) {
       process.env.PATH = shellPath;
     } else {

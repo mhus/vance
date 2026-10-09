@@ -41,18 +41,23 @@ public class ExecDangerHandler implements GuardHandler {
      * catastrophic" bar each one had to clear.
      */
     private static final List<String> DEFAULT_PATTERNS = List.of(
-            // rm with recursive+force flags aimed at /, ~, $HOME or *
-            "\\brm\\s+(?:-{1,2}[a-zA-Z]+\\s+)*-{1,2}[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*\\s+(?:--\\s+)?(?:/|~|\\$HOME|\\*)",
-            // ... and the reversed flag order (-fr)
-            "\\brm\\s+(?:-{1,2}[a-zA-Z]+\\s+)*-{1,2}[a-zA-Z]*f[a-zA-Z]*r[a-zA-Z]*\\s+(?:--\\s+)?(?:/|~|\\$HOME|\\*)",
+            // rm with recursive AND force — in ANY flag form: one token
+            // (-rf/-fr), split tokens (-r -f), long form (--recursive
+            // --force), flags after the operand (rm / -r -f is valid rm
+            // syntax). The two lookaheads each demand one of the flags
+            // somewhere in the command segment; the target must be a
+            // top-level path: /, ~, $HOME or *.
+            "\\brm\\b(?=[^;|&]*\\s-{1,2}[a-zA-Z]*r)(?=[^;|&]*\\s-{1,2}[a-zA-Z]*f)[^;|&]*\\s(?:--\\s+)?(?:/|~|\\$HOME|\\*)",
             // fork bomb
             ":\\(\\)\\s*\\{.*\\|.*&.*\\}\\s*;",
             // raw-device writes: dd to a device, mkfs, redirect to a disk
             "\\bdd\\b[^|;&]*\\bof=/dev/",
             "\\bmkfs\\b",
             ">\\s*/dev/(?:sd|nvme|hd|vd)",
-            // remote payload piped straight into a shell
-            "\\b(?:curl|wget)\\b[^|;&]*\\|\\s*(?:ba|z|fi|da)?sh\\b",
+            // remote payload piped straight into a shell — bare, behind
+            // sudo/doas, or by absolute path (/bin/sh); the shell prefixes
+            // stay enumerated so 'wash'/'fishing' style words cannot match
+            "\\b(?:curl|wget)\\b[^|;&]*\\|\\s*(?:(?:sudo|doas)\\s+)*(?:[^\\s|;&]*\\/)?(?:ba|z|fi|da)?sh\\b",
             // power control
             "\\b(?:shutdown|reboot|halt|poweroff)\\b");
 

@@ -81,6 +81,28 @@ describe('ExecJobs', () => {
     expect(String(stat.stdoutPath)).toContain('stdout.log');
   });
 
+  it('a kill escalates to SIGKILL for a tree that ignores SIGTERM', async () => {
+    // Review-20 finding: the shell AND its child trap TERM — a lone SIGTERM
+    // to the shell would leave the group running (and writing logs) while
+    // the job reports KILLED. The grace escalation must clear the group.
+    const registry = new ExecJobs(JOBS_ROOT, workdir, 150);
+    const run = await registry.run({
+      command: `trap '' TERM; (trap '' TERM; while :; do sleep 1; done) & wait`,
+      waitMs: 150,
+    });
+    const id = String(run.id);
+    const pid = (
+      registry as unknown as { jobs: Map<string, { process: { pid: number } }> }
+    ).jobs.get(id)!.process.pid;
+
+    expect(await registry.kill({ id })).toEqual({ id, killed: true });
+    // The SIGTERM-ignoring group survives the signal …
+    expect(() => process.kill(-pid, 0)).not.toThrow();
+    // … and the SIGKILL escalation clears it.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(() => process.kill(-pid, 0)).toThrow();
+  }, 10_000);
+
   it('the deadline watchdog kills an over-running job', async () => {
     const registry = jobs();
     const run = await registry.run({ command: 'sleep 5', waitMs: 100, deadlineSeconds: 1 });

@@ -319,7 +319,8 @@ public class TrillianUserEngine implements ThinkEngine {
         // lease makes it one turn at a time cluster-wide. A pod that does
         // not get it leaves its inbox to the running turn, which drains it.
         String lease = turnLeaseKey(process);
-        if (!claimService.acquireLease(lease, TURN_LEASE_TTL)) {
+        String leaseToken = claimService.acquireLease(lease, TURN_LEASE_TTL);
+        if (leaseToken == null) {
             log.debug("TrillianUser id='{}' is turning on another pod — leaving the inbox to it", process.getId());
             return;
         }
@@ -328,7 +329,7 @@ public class TrillianUserEngine implements ThinkEngine {
             runTurnLeased(process, ctx);
             completed = true;
         } finally {
-            claimService.releaseLease(lease);
+            claimService.releaseLease(lease, leaseToken);
             // Something may have arrived after the last drain while another
             // pod skipped its turn on this lease; nobody else will look.
             // Only after a turn that completed — a failing turn would

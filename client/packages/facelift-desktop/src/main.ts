@@ -32,12 +32,22 @@ function extendPathForPackagedLaunch(): void {
     return;
   }
   try {
-    const shellPath = execSync('/bin/zsh -l -c echo $PATH', {
+    // The inner command MUST be single-quoted: the outer /bin/sh expands
+    // $PATH itself without them, and zsh would echo an empty line.
+    const shellPath = execSync("/bin/zsh -l -c 'echo $PATH'", {
       encoding: 'utf8',
       timeout: 3000,
     }).trim();
     if (shellPath.includes('/bin')) {
       process.env.PATH = shellPath;
+    } else {
+      // Login shell unavailable — prepend the usual dev locations so
+      // npx/node/homebrew stay reachable for MCP spawns and exec_run.
+      process.env.PATH = [
+        '/opt/homebrew/bin',
+        '/usr/local/bin',
+        process.env.PATH ?? '',
+      ].join(':');
     }
   } catch {
     // Keep the default — a login shell is a best-effort convenience.

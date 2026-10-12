@@ -98,6 +98,19 @@ public class WowbaggerState {
     private boolean mergeIntoRecord;
 
     /**
+     * Script worker: a script file in the run's RootDir the agent wrote —
+     * runs with the bundled {@code wowbagger-script-worker} profile when no
+     * {@link #workerRecipe} is set. {@code null} = no script worker.
+     */
+    private @Nullable String workerScript;
+
+    /**
+     * Script worker budget: at most this many {@code vance.llm}/{@code vance.zem}
+     * calls per record (counted per chunk). Default 3 — route-first needs 2.
+     */
+    private int maxCallsPerRecord = 3;
+
+    /**
      * The run's persistent RootDir ({@code wowbagger-<processId-prefix>} by
      * default) — source and results live here, decoupled from the process-wide
      * workTarget. Auto-assigned on first configure/start, adopted on resume.

@@ -144,9 +144,29 @@ public class WowbaggerConfigureTool extends WowbaggerBaseTool {
                                 "string",
                                 "description",
                                 "The worker — a LightLlm profile (internal: true; one LLM call per "
-                                        + "chunk, uses 'task') or a Zem decision profile (engine: zem; one "
-                                        + "decision per record, the profile's questions are the task). "
-                                        + "Default: wowbagger-worker.")),
+                                        + "chunk, uses 'task'), a Zem decision profile (engine: zem; one "
+                                        + "decision per record, the profile's questions are the task) or a "
+                                        + "worker-script profile (engine: hactar, internal: true). Default: "
+                                        + "wowbagger-worker, or wowbagger-script-worker when workerScript is "
+                                        + "set.")),
+                Map.entry(
+                        "workerScript",
+                        Map.of(
+                                "type",
+                                "string",
+                                "description",
+                                "Script worker: a JavaScript file in the run's RootDir. One run per "
+                                        + "chunk; vance.params.records (objects for jsonl, strings for lines), "
+                                        + ".task, .chunk in — return a list with one result per record. "
+                                        + "May use vance.llm, vance.zem and vance.tools.call; every model "
+                                        + "call must hit an approved model. Empty string clears it.")),
+                Map.entry(
+                        "maxCallsPerRecord",
+                        Map.of(
+                                "type",
+                                "integer",
+                                "description",
+                                "Script worker budget: vance.llm/vance.zem calls per record " + "(default 3).")),
                 Map.entry(
                         "mergeIntoRecord",
                         Map.of(
@@ -289,6 +309,19 @@ public class WowbaggerConfigureTool extends WowbaggerBaseTool {
                 String v = stringParam(params, "workerRecipe", false);
                 s.setWorkerRecipe(v == null || v.isBlank() ? null : v);
                 applied.put("workerRecipe", s.getWorkerRecipe() == null ? "(default)" : s.getWorkerRecipe());
+            }
+            if (params != null && params.containsKey("workerScript")) {
+                String v = stringParam(params, "workerScript", false);
+                s.setWorkerScript(v == null || v.isBlank() ? null : v.trim());
+                applied.put("workerScript", s.getWorkerScript() == null ? "(none)" : s.getWorkerScript());
+            }
+            if (params != null && params.containsKey("maxCallsPerRecord")) {
+                int v = intParam(params, "maxCallsPerRecord", s.getMaxCallsPerRecord());
+                if (v < 1) {
+                    throw new ToolException("maxCallsPerRecord must be >= 1");
+                }
+                s.setMaxCallsPerRecord(v);
+                applied.put("maxCallsPerRecord", v);
             }
             if (params != null && params.containsKey("mergeIntoRecord")) {
                 s.setMergeIntoRecord(booleanParam(params, "mergeIntoRecord", false));

@@ -11,6 +11,7 @@ import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.zem.ZemDecideRequest;
 import de.mhus.vance.brain.zem.ZemDecisionJson;
 import de.mhus.vance.brain.zem.ZemException;
+import de.mhus.vance.brain.zem.ZemPreparedCall;
 import de.mhus.vance.brain.zem.ZemProfileParser;
 import de.mhus.vance.brain.zem.ZemService;
 import de.mhus.vance.shared.document.DocumentDocument;
@@ -552,10 +553,8 @@ public final class VanceScriptApi {
     }
 
     /**
-     * 15-arg canonical constructor — adds {@code zemService}, the backing
-     * for {@code vance.zem}. Every other constructor delegates here.
-     * {@code GraaljsScriptExecutor} builds it from its beans plus
-     * {@code ScriptRequest#workflowRun}.
+     * 15-arg constructor — adds {@code zemService}, the backing for
+     * {@code vance.zem}. Delegates without a {@link ScriptCallPolicy}.
      */
     public VanceScriptApi(
             ContextToolsApi toolsApi,
@@ -573,6 +572,49 @@ public final class VanceScriptApi {
             @Nullable ScriptGuardApi guardApi,
             @Nullable ScriptWorkflowHost workflowHost,
             @Nullable ZemService zemService) {
+        this(
+                toolsApi,
+                recipeName,
+                deniedToolNames,
+                documentService,
+                progressEmitter,
+                notificationEmitter,
+                paramsMap,
+                lightLlmService,
+                settingService,
+                documentBasePath,
+                contextFactory,
+                secretResolver,
+                guardApi,
+                workflowHost,
+                zemService,
+                /*callPolicy*/ null);
+    }
+
+    /**
+     * 16-arg canonical constructor — adds {@code callPolicy}, checked inside
+     * {@code vance.llm} and {@code vance.zem} before every provider call
+     * (the Wowbagger script worker's model gate). Every other constructor
+     * delegates here. {@code GraaljsScriptExecutor} builds it from its beans
+     * plus the request.
+     */
+    public VanceScriptApi(
+            ContextToolsApi toolsApi,
+            @Nullable String recipeName,
+            Set<String> deniedToolNames,
+            @Nullable DocumentService documentService,
+            @Nullable BiConsumer<String, @Nullable Map<String, Object>> progressEmitter,
+            @Nullable BiConsumer<String, @Nullable NotificationSeverity> notificationEmitter,
+            @Nullable Map<String, Object> paramsMap,
+            @Nullable LightLlmService lightLlmService,
+            @Nullable SettingService settingService,
+            @Nullable String documentBasePath,
+            de.mhus.vance.brain.permission.@Nullable SecurityContextFactory contextFactory,
+            @Nullable SecretResolver secretResolver,
+            @Nullable ScriptGuardApi guardApi,
+            @Nullable ScriptWorkflowHost workflowHost,
+            @Nullable ZemService zemService,
+            @Nullable ScriptCallPolicy callPolicy) {
         this.tools = new ScriptToolsApi(toolsApi, deniedToolNames);
         this.files = new ScriptFilesApi(this.tools);
         this.context = new ScriptContextView(toolsApi.scope(), recipeName);
@@ -583,8 +625,9 @@ public final class VanceScriptApi {
         this.documents = documentService == null
                 ? null
                 : new ScriptDocumentApi(documentService, toolsApi.scope(), documentBasePath, contextFactory);
-        this.llm = lightLlmService == null ? null : new ScriptLightLlmApi(lightLlmService, toolsApi.scope());
-        this.zem = zemService == null ? null : new ScriptZemApi(zemService, toolsApi.scope());
+        this.llm =
+                lightLlmService == null ? null : new ScriptLightLlmApi(lightLlmService, toolsApi.scope(), callPolicy);
+        this.zem = zemService == null ? null : new ScriptZemApi(zemService, toolsApi.scope(), callPolicy);
         this.settings = settingService == null ? null : new ScriptSettingsApi(settingService, toolsApi.scope());
         this.secret = secretResolver == null ? null : new ScriptSecretApi(secretResolver, toolsApi.scope());
         this.guard = guardApi;
@@ -1687,10 +1730,16 @@ public final class VanceScriptApi {
 
         private final ZemService service;
         private final ToolInvocationContext scope;
+        private final @Nullable ScriptCallPolicy policy;
 
         ScriptZemApi(ZemService service, ToolInvocationContext scope) {
+            this(service, scope, null);
+        }
+
+        ScriptZemApi(ZemService service, ToolInvocationContext scope, @Nullable ScriptCallPolicy policy) {
             this.service = service;
             this.scope = scope;
+            this.policy = policy;
         }
 
         /** Decide {@code state} with a saved profile (recipe {@code engine: zem}). */
@@ -1720,9 +1769,16 @@ public final class VanceScriptApi {
                         .profile(profile)
                         .questions(ZemProfileParser.questions(label, plainQuestions))
                         .build();
-                return ZemDecisionJson.answers(service.decide(request, plainState));
+                ZemPreparedCall prepared = service.prepare(request);
+                if (policy != null) {
+                    policy.beforeDecision(prepared.config().providerInstance() + ":"
+                            + prepared.config().modelName());
+                }
+                return ZemDecisionJson.answers(service.decide(prepared, plainState, null));
             } catch (ZemException e) {
                 throw new ScriptHostException(label + " failed [" + e.reason().wire() + "]: " + e.getMessage(), e);
+            } catch (IllegalStateException e) {
+                throw new ScriptHostException(label + " refused: " + e.getMessage(), e);
             }
         }
     }
@@ -1731,10 +1787,12 @@ public final class VanceScriptApi {
 
         private final LightLlmService service;
         private final ToolInvocationContext scope;
+        private final @Nullable ScriptCallPolicy policy;
 
-        ScriptLightLlmApi(LightLlmService service, ToolInvocationContext scope) {
+        ScriptLightLlmApi(LightLlmService service, ToolInvocationContext scope, @Nullable ScriptCallPolicy policy) {
             this.service = service;
             this.scope = scope;
+            this.policy = policy;
         }
 
         /**
@@ -1845,6 +1903,13 @@ public final class VanceScriptApi {
             }
             if (scope.tenantId() == null || scope.tenantId().isBlank()) {
                 throw new ScriptHostException("vance.llm requires a tenant-scoped run", null);
+            }
+            if (policy != null) {
+                try {
+                    policy.beforeLlmCall(recipeName);
+                } catch (IllegalStateException e) {
+                    throw new ScriptHostException("vance.llm(" + recipeName + ") refused: " + e.getMessage(), e);
+                }
             }
         }
 

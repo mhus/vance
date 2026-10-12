@@ -69,7 +69,9 @@ class ZemWorkerTest {
     private PreparedWorker prepare(boolean jsonl, boolean merge) {
         return new ZemWorker(zem, MAPPER)
                 .prepare(new WorkerSetup(
-                        process, new WorkerSpec("ticket-triage", "ignored", null, jsonl, merge), recipe));
+                        process,
+                        new WorkerSpec("ticket-triage", "ignored", null, jsonl, merge, null, null, 3, null),
+                        recipe));
     }
 
     private static ZemDecisionDto decision(String choice) {

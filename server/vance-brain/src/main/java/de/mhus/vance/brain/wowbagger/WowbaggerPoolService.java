@@ -693,14 +693,25 @@ public class WowbaggerPoolService {
 
     // ──────────────────── Worker + model gate ────────────────────
 
-    /** The worker part of the structure, with the default recipe applied. */
-    static WorkerSpec workerSpec(WowbaggerState state) {
+    /**
+     * The worker part of the structure, with the default recipe applied: the
+     * explicit {@code workerRecipe}, else the script-worker profile when a
+     * {@code workerScript} is set, else the bundled LightLlm worker.
+     */
+    WorkerSpec workerSpec(ThinkProcessDocument process, WowbaggerState state) {
+        String defaultRecipe = isBlank(state.getWorkerScript())
+                ? DEFAULT_WORKER_RECIPE
+                : de.mhus.vance.brain.wowbagger.worker.ScriptWorker.DEFAULT_RECIPE;
         return new WorkerSpec(
-                firstNonBlank(state.getWorkerRecipe(), DEFAULT_WORKER_RECIPE),
+                firstNonBlank(state.getWorkerRecipe(), defaultRecipe),
                 state.getTask(),
                 state.getMaxTokens(),
                 FORMAT_JSONL.equals(inputFormatOf(state)),
-                state.isMergeIntoRecord());
+                state.isMergeIntoRecord(),
+                isBlank(state.getWorkerScript()) ? null : state.getWorkerScript(),
+                state.getWorkTargetName(),
+                state.getMaxCallsPerRecord(),
+                allowedModels(process));
     }
 
     /**
@@ -716,7 +727,7 @@ public class WowbaggerPoolService {
      *                               model not approved
      */
     public PreparedWorker prepareWorker(ThinkProcessDocument process, WowbaggerState state) {
-        PreparedWorker worker = workerRegistry.prepare(process, workerSpec(state));
+        PreparedWorker worker = workerRegistry.prepare(process, workerSpec(process, state));
         state.setWorkerKind(worker.kind());
         state.setResolvedWorkerModel(worker.resolvedModel());
         gate(process, worker);
@@ -731,7 +742,7 @@ public class WowbaggerPoolService {
      */
     public boolean taskRequired(ThinkProcessDocument process, WowbaggerState state) {
         try {
-            return workerRegistry.prepare(process, workerSpec(state)).usesTask();
+            return workerRegistry.prepare(process, workerSpec(process, state)).usesTask();
         } catch (RuntimeException e) {
             return true;
         }
@@ -749,7 +760,7 @@ public class WowbaggerPoolService {
      */
     public boolean isWorkerModelApproved(ThinkProcessDocument process, WowbaggerState state) {
         try {
-            gate(process, workerRegistry.prepare(process, workerSpec(state)));
+            gate(process, workerRegistry.prepare(process, workerSpec(process, state)));
             return true;
         } catch (RuntimeException e) {
             return false;
@@ -1028,7 +1039,7 @@ public class WowbaggerPoolService {
         Boolean approved = null;
         boolean taskRequired = true;
         try {
-            PreparedWorker worker = workerRegistry.prepare(process, workerSpec(state));
+            PreparedWorker worker = workerRegistry.prepare(process, workerSpec(process, state));
             kind = worker.kind();
             taskRequired = worker.usesTask();
             model = worker.resolvedModel();

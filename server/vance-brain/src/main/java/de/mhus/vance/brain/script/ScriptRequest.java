@@ -39,7 +39,8 @@ public record ScriptRequest(
         @Nullable String documentBasePath,
         VanceScriptApi.@Nullable ScriptGuardApi guardApi,
         @Nullable ScriptWorkflowRun workflowRun,
-        java.util.function.@Nullable Consumer<String> consoleLineConsumer) {
+        java.util.function.@Nullable Consumer<String> consoleLineConsumer,
+        @Nullable ScriptCallPolicy callPolicy) {
 
     public ScriptRequest {
         if (!"js".equals(language)) {
@@ -64,6 +65,43 @@ public record ScriptRequest(
         if (scopeLevel == null) {
             throw new IllegalArgumentException("scopeLevel must not be null");
         }
+    }
+
+    /**
+     * The 14-arg shape without a call policy — every caller except the
+     * Wowbagger script worker.
+     */
+    public ScriptRequest(
+            String language,
+            String code,
+            @Nullable String sourceName,
+            ContextToolsApi tools,
+            Duration timeout,
+            Map<String, @Nullable Object> bindings,
+            @Nullable String recipeName,
+            ScopeLevel scopeLevel,
+            @Nullable BiConsumer<String, @Nullable Map<String, Object>> progressEmitter,
+            @Nullable BiConsumer<String, @Nullable NotificationSeverity> notificationEmitter,
+            @Nullable String documentBasePath,
+            VanceScriptApi.@Nullable ScriptGuardApi guardApi,
+            @Nullable ScriptWorkflowRun workflowRun,
+            java.util.function.@Nullable Consumer<String> consoleLineConsumer) {
+        this(
+                language,
+                code,
+                sourceName,
+                tools,
+                timeout,
+                bindings,
+                recipeName,
+                scopeLevel,
+                progressEmitter,
+                notificationEmitter,
+                documentBasePath,
+                guardApi,
+                workflowRun,
+                consoleLineConsumer,
+                null);
     }
 
     /**
@@ -315,7 +353,8 @@ public record ScriptRequest(
                 dir,
                 guardApi,
                 workflowRun,
-                consoleLineConsumer);
+                consoleLineConsumer,
+                callPolicy);
     }
 
     /**
@@ -339,7 +378,8 @@ public record ScriptRequest(
                 documentBasePath,
                 guardApi,
                 run,
-                consoleLineConsumer);
+                consoleLineConsumer,
+                callPolicy);
     }
 
     /**
@@ -363,6 +403,31 @@ public record ScriptRequest(
                 documentBasePath,
                 api,
                 workflowRun,
-                consoleLineConsumer);
+                consoleLineConsumer,
+                callPolicy);
+    }
+
+    /**
+     * Copy with a {@link ScriptCallPolicy} — checked inside
+     * {@code vance.llm}/{@code vance.zem} before every provider call. Set by
+     * the Wowbagger script worker; every other script run leaves it null.
+     */
+    public ScriptRequest withCallPolicy(@Nullable ScriptCallPolicy policy) {
+        return new ScriptRequest(
+                language,
+                code,
+                sourceName,
+                tools,
+                timeout,
+                bindings,
+                recipeName,
+                scopeLevel,
+                progressEmitter,
+                notificationEmitter,
+                documentBasePath,
+                guardApi,
+                workflowRun,
+                consoleLineConsumer,
+                policy);
     }
 }

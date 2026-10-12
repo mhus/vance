@@ -38,7 +38,9 @@ class LightLlmWorkerTest {
 
         PreparedWorker worker = new LightLlmWorker(llm, models)
                 .prepare(new WorkerSetup(
-                        process, new WorkerSpec("wowbagger-worker", "upper-case", 512, false, false), recipe));
+                        process,
+                        new WorkerSpec("wowbagger-worker", "upper-case", 512, false, false, null, null, 3, null),
+                        recipe));
         WorkerReply reply = worker.process(List.of("a", "b"), new ChunkContext(3, 6));
 
         assertThat(reply.lines()).containsExactly("A", "B");

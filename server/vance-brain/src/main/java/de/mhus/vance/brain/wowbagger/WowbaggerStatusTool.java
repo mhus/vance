@@ -82,6 +82,8 @@ public class WowbaggerStatusTool extends WowbaggerBaseTool {
         out.put("maxTokens", s.getMaxTokens());
         out.put("sourceBackupMb", s.getSourceBackupMb());
         out.put("workerKind", s.getWorkerKind());
+        out.put("workerScript", s.getWorkerScript());
+        out.put("maxCallsPerRecord", s.getMaxCallsPerRecord());
         out.put("resolvedWorkerModel", s.getResolvedWorkerModel());
         out.put("modelApproved", pool.isWorkerModelApproved(process, s));
         out.put("finished", s.isFinished());

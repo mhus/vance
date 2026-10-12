@@ -309,7 +309,8 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                 secretResolver,
                 request.guardApi(),
                 new ScriptWorkflowHost(workflowProjector, request.workflowRun()),
-                zemService);
+                zemService,
+                request.callPolicy());
         // Resource bounds enforceable on GraalVM CE / HotSpot:
         //   - statementLimit bounds the *number* of statements executed, and
         //   - the wall-clock watchdog below (ctx.close(true) on timeout) bounds

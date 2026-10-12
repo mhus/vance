@@ -1,0 +1,20 @@
+# Internal profile for Wowbagger script workers — never spawned
+# (internal: true; Hactar is the script engine, the pool runs the script
+# itself, one run per chunk). Used when the run's structure names a
+# `workerScript` (a file in the run's RootDir) and no workerRecipe.
+#
+# Contract: vance.params.records / .task / .chunk in, a list with one
+# result per record out. Every vance.llm / vance.zem call inside is gated
+# against wowbagger.allowed-models and counted (maxCallsPerRecord).
+# Own profiles: copy this file, set `script:` to a document path and adjust
+# the timeout.
+description: |
+  Internal profile for Wowbagger script workers (never spawned): one
+  script run per chunk — records in, one result per record out.
+engine: hactar
+internal: true
+params:
+  timeoutSeconds: 120
+tags:
+  - internal
+  - wowbagger

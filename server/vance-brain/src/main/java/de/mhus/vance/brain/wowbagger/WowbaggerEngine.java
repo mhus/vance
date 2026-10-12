@@ -769,9 +769,19 @@ public class WowbaggerEngine implements ThinkEngine {
             }
         }
         sb.append("worker model: ")
-                .append(s.getResolvedWorkerModel() == null ? "(not resolved yet)" : s.getResolvedWorkerModel())
+                .append(
+                        s.getResolvedWorkerModel() != null
+                                ? s.getResolvedWorkerModel()
+                                : de.mhus.vance.brain.wowbagger.worker.ScriptWorker.KIND.equals(s.getWorkerKind())
+                                        ? "(per call — every vance.llm/vance.zem call is gated, max "
+                                                + s.getMaxCallsPerRecord() + " per record)"
+                                        : "(not resolved yet)")
                 .append(" (recipe: ")
-                .append(s.getWorkerRecipe() == null ? "wowbagger-worker" : s.getWorkerRecipe())
+                .append(
+                        s.getWorkerRecipe() != null
+                                ? s.getWorkerRecipe()
+                                : s.getWorkerScript() != null ? "wowbagger-script-worker" : "wowbagger-worker")
+                .append(s.getWorkerScript() == null ? "" : ", script: " + s.getWorkerScript())
                 .append(s.getWorkerKind() == null ? "" : ", worker type: " + s.getWorkerKind())
                 .append(", approved: ")
                 .append(pool.isWorkerModelApproved(process, s))

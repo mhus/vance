@@ -52,8 +52,8 @@ class WowbaggerWorkerRegistryTest {
     void internal_light_profile_becomes_an_llm_worker_with_its_model() {
         recipe("wowbagger-worker", "jeltz", true);
 
-        PreparedWorker worker =
-                registry.prepare(process, new WorkerSpec("wowbagger-worker", "classify", null, false, false));
+        PreparedWorker worker = registry.prepare(
+                process, new WorkerSpec("wowbagger-worker", "classify", null, false, false, null, null, 3, null));
 
         assertThat(worker.kind()).isEqualTo(LightLlmWorker.KIND);
         assertThat(worker.recipeName()).isEqualTo("wowbagger-worker");
@@ -64,7 +64,8 @@ class WowbaggerWorkerRegistryTest {
     void spawnable_engine_recipe_is_refused_with_the_supported_types() {
         recipe("vogon-plan", "vogon", false);
 
-        assertThatThrownBy(() -> registry.prepare(process, new WorkerSpec("vogon-plan", "x", null, false, false)))
+        assertThatThrownBy(() -> registry.prepare(
+                        process, new WorkerSpec("vogon-plan", "x", null, false, false, null, null, 3, null)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("'vogon-plan' (engine vogon)")
                 .hasMessageContaining("light workers only")
@@ -75,7 +76,8 @@ class WowbaggerWorkerRegistryTest {
     void internal_profiles_of_claimed_engines_are_not_taken_by_the_llm_worker() {
         recipe("triage", "zem", true);
 
-        assertThatThrownBy(() -> registry.prepare(process, new WorkerSpec("triage", null, null, false, false)))
+        assertThatThrownBy(() -> registry.prepare(
+                        process, new WorkerSpec("triage", null, null, false, false, null, null, 3, null)))
                 .hasMessageContaining("is not a Wowbagger worker");
     }
 
@@ -83,7 +85,8 @@ class WowbaggerWorkerRegistryTest {
     void missing_recipe_is_named() {
         when(recipes.resolve(any(), any(), eq("nope"))).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> registry.prepare(process, new WorkerSpec("nope", null, null, false, false)))
+        assertThatThrownBy(() -> registry.prepare(
+                        process, new WorkerSpec("nope", null, null, false, false, null, null, 3, null)))
                 .hasMessageContaining("'nope' not found");
     }
 }

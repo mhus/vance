@@ -8,6 +8,11 @@ import de.mhus.vance.brain.ai.light.LightLlmRequest;
 import de.mhus.vance.brain.ai.light.LightLlmService;
 import de.mhus.vance.brain.ai.light.SchemaValidationException;
 import de.mhus.vance.brain.tools.ContextToolsApi;
+import de.mhus.vance.brain.zem.ZemDecideRequest;
+import de.mhus.vance.brain.zem.ZemDecisionJson;
+import de.mhus.vance.brain.zem.ZemException;
+import de.mhus.vance.brain.zem.ZemProfileParser;
+import de.mhus.vance.brain.zem.ZemService;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.magrathea.MagratheaStateProjector;
@@ -192,6 +197,15 @@ public final class VanceScriptApi {
     public final @Nullable ScriptLightLlmApi llm;
 
     /**
+     * Decision surface exposed as {@code vance.zem} — typed questions about
+     * a state, answered by a System-One model with probabilities. {@code null}
+     * when no {@link ZemService} was wired (unit-test stubs). See
+     * {@link ScriptZemApi}.
+     */
+    @HostAccess.Export
+    public final @Nullable ScriptZemApi zem;
+
+    /**
      * Settings-cascade surface exposed as {@code vance.settings}.
      * Cascade {@code think-process → project → _vance} (user-layer
      * deliberately excluded). {@code null} when no
@@ -299,6 +313,7 @@ public final class VanceScriptApi {
         this.documents =
                 documentService == null ? null : new ScriptDocumentApi(documentService, toolsApi.scope(), null, null);
         this.llm = null;
+        this.zem = null;
         this.settings = null;
         this.secret = null;
         this.guard = null;
@@ -498,12 +513,10 @@ public final class VanceScriptApi {
     }
 
     /**
-     * 14-arg canonical constructor — adds {@code workflowHost}, the
-     * backing for {@code vance.workflow}: the journal projector (for
-     * {@code status}) and the enclosing run (for {@code current}). Every
-     * other constructor delegates here. {@code GraaljsScriptExecutor}
-     * builds it from its projector bean plus
-     * {@code ScriptRequest#workflowRun}.
+     * 14-arg constructor — adds {@code workflowHost}, the backing for
+     * {@code vance.workflow}: the journal projector (for {@code status})
+     * and the enclosing run (for {@code current}). Delegates with no
+     * {@link ZemService} ({@code vance.zem} is then {@code null}).
      */
     public VanceScriptApi(
             ContextToolsApi toolsApi,
@@ -520,6 +533,46 @@ public final class VanceScriptApi {
             @Nullable SecretResolver secretResolver,
             @Nullable ScriptGuardApi guardApi,
             @Nullable ScriptWorkflowHost workflowHost) {
+        this(
+                toolsApi,
+                recipeName,
+                deniedToolNames,
+                documentService,
+                progressEmitter,
+                notificationEmitter,
+                paramsMap,
+                lightLlmService,
+                settingService,
+                documentBasePath,
+                contextFactory,
+                secretResolver,
+                guardApi,
+                workflowHost,
+                /*zemService*/ null);
+    }
+
+    /**
+     * 15-arg canonical constructor — adds {@code zemService}, the backing
+     * for {@code vance.zem}. Every other constructor delegates here.
+     * {@code GraaljsScriptExecutor} builds it from its beans plus
+     * {@code ScriptRequest#workflowRun}.
+     */
+    public VanceScriptApi(
+            ContextToolsApi toolsApi,
+            @Nullable String recipeName,
+            Set<String> deniedToolNames,
+            @Nullable DocumentService documentService,
+            @Nullable BiConsumer<String, @Nullable Map<String, Object>> progressEmitter,
+            @Nullable BiConsumer<String, @Nullable NotificationSeverity> notificationEmitter,
+            @Nullable Map<String, Object> paramsMap,
+            @Nullable LightLlmService lightLlmService,
+            @Nullable SettingService settingService,
+            @Nullable String documentBasePath,
+            de.mhus.vance.brain.permission.@Nullable SecurityContextFactory contextFactory,
+            @Nullable SecretResolver secretResolver,
+            @Nullable ScriptGuardApi guardApi,
+            @Nullable ScriptWorkflowHost workflowHost,
+            @Nullable ZemService zemService) {
         this.tools = new ScriptToolsApi(toolsApi, deniedToolNames);
         this.files = new ScriptFilesApi(this.tools);
         this.context = new ScriptContextView(toolsApi.scope(), recipeName);
@@ -531,6 +584,7 @@ public final class VanceScriptApi {
                 ? null
                 : new ScriptDocumentApi(documentService, toolsApi.scope(), documentBasePath, contextFactory);
         this.llm = lightLlmService == null ? null : new ScriptLightLlmApi(lightLlmService, toolsApi.scope());
+        this.zem = zemService == null ? null : new ScriptZemApi(zemService, toolsApi.scope());
         this.settings = settingService == null ? null : new ScriptSettingsApi(settingService, toolsApi.scope());
         this.secret = secretResolver == null ? null : new ScriptSecretApi(secretResolver, toolsApi.scope());
         this.guard = guardApi;
@@ -1611,6 +1665,68 @@ public final class VanceScriptApi {
      * scope. Setting cascades therefore honour per-project and
      * per-process overrides automatically.
      */
+    /**
+     * {@code vance.zem} — decisions by a System-One model, the cheap
+     * alternative to {@code vance.llm.callForJson} when the answer is a
+     * yes/no, one-of-N or a rating:
+     *
+     * <pre>
+     * const d = vance.zem.decide("command-safety", {command: name, args: args});
+     * if (d.unsafe.noul &gt;= 0.5) vance.guard.deny("unsafe (p=" + d.unsafe.noul + ")");
+     * </pre>
+     *
+     * The result is keyed by question name ({@link ZemDecisionJson}). A
+     * failure throws — scripts that gate must treat that as "deny"
+     * (fail-closed); the message starts with the reason in brackets, e.g.
+     * {@code [rate_limited]}.
+     */
+    public static final class ScriptZemApi {
+
+        private static final long MAX_NODES = 10_000L;
+        private static final int MAX_DEPTH = 32;
+
+        private final ZemService service;
+        private final ToolInvocationContext scope;
+
+        ScriptZemApi(ZemService service, ToolInvocationContext scope) {
+            this.service = service;
+            this.scope = scope;
+        }
+
+        /** Decide {@code state} with a saved profile (recipe {@code engine: zem}). */
+        @HostAccess.Export
+        public Map<String, Object> decide(String profile, @Nullable Object state) {
+            return decide(profile, state, null);
+        }
+
+        /**
+         * Decide with a profile plus inline questions (System-One shape:
+         * {@code {name, type, instructions, criteria}}); inline replaces
+         * profile questions of the same name. {@code profile} may be
+         * {@code null} when the inline questions are complete.
+         */
+        @HostAccess.Export
+        public Map<String, Object> decide(
+                @Nullable String profile, @Nullable Object state, @Nullable Object questions) {
+            String label = "vance.zem.decide(" + (profile == null ? "inline" : profile) + ")";
+            Object plainState = ScriptValueMarshaller.toStorable(state, MAX_NODES, MAX_DEPTH);
+            Object plainQuestions = ScriptValueMarshaller.toStorable(questions, MAX_NODES, MAX_DEPTH);
+            try {
+                ZemDecideRequest request = ZemDecideRequest.builder()
+                        .tenantId(scope.tenantId())
+                        .projectId(scope.projectId())
+                        .processId(scope.processId())
+                        .userId(scope.userId())
+                        .profile(profile)
+                        .questions(ZemProfileParser.questions(label, plainQuestions))
+                        .build();
+                return ZemDecisionJson.answers(service.decide(request, plainState));
+            } catch (ZemException e) {
+                throw new ScriptHostException(label + " failed [" + e.reason().wire() + "]: " + e.getMessage(), e);
+            }
+        }
+    }
+
     public static final class ScriptLightLlmApi {
 
         private final LightLlmService service;

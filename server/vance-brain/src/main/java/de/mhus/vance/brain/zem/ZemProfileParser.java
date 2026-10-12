@@ -26,7 +26,7 @@ import org.jspecify.annotations.Nullable;
  * Shape errors only — limits are checked later against the resolved
  * model by {@link ZemQuestionValidator}.
  */
-final class ZemProfileParser {
+public final class ZemProfileParser {
 
     private ZemProfileParser() {}
 
@@ -40,7 +40,7 @@ final class ZemProfileParser {
     }
 
     /** Questions from a list of maps — the shape recipes and tool input share. */
-    static List<ZemQuestionDto> questions(String source, @Nullable Object raw) {
+    public static List<ZemQuestionDto> questions(String source, @Nullable Object raw) {
         if (raw == null) {
             return List.of();
         }

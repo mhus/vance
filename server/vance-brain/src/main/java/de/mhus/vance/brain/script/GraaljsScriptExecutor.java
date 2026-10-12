@@ -95,6 +95,14 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
     @Autowired(required = false)
     private de.mhus.vance.shared.magrathea.@Nullable MagratheaStateProjector workflowProjector;
 
+    /**
+     * Optional — backs {@code vance.zem} (decisions). Field-injected for the
+     * same reason as {@link #secretResolver}; test-constructed executors leave
+     * it null and {@code vance.zem} is withheld.
+     */
+    @Autowired(required = false)
+    private de.mhus.vance.brain.zem.@Nullable ZemService zemService;
+
     @Autowired
     public GraaljsScriptExecutor(
             Engine engine,
@@ -300,7 +308,8 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                 securityContextFactory,
                 secretResolver,
                 request.guardApi(),
-                new ScriptWorkflowHost(workflowProjector, request.workflowRun()));
+                new ScriptWorkflowHost(workflowProjector, request.workflowRun()),
+                zemService);
         // Resource bounds enforceable on GraalVM CE / HotSpot:
         //   - statementLimit bounds the *number* of statements executed, and
         //   - the wall-clock watchdog below (ctx.close(true) on timeout) bounds

@@ -127,6 +127,10 @@ Common messages:
   Arthur. `vance.llm` is stateless per call.
 - **You want streaming output** — `vance.llm` returns when the LLM
   finished. Use a real engine for live streaming UX.
+- **The answer is yes/no, one-of-N or a rating** — use
+  `vance.zem.decide(...)` instead: a decision model answers with
+  calibrated probabilities in ~0.1–0.7 s for a fraction of the cost.
+  `manual_read('zem')`.
 
 `vance.llm` is the "small-LLM-helper" surface — for the moments
 where you'd otherwise have spawned a whole engine just to ask one

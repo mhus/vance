@@ -4,6 +4,7 @@ import { hydrateIdentity } from './webUiSession';
 import { applyTheme, ensurePrintLightTheme } from './themeWeb';
 import { applyTenantCustomCss } from './tenantCustomCss';
 import { storageWeb } from './storageWeb';
+import { installSwipeHistory } from './swipeHistory';
 import {
   onDocumentChanged,
   onDocumentChangedPrefix,
@@ -92,3 +93,7 @@ ensurePrintLightTheme();
 // after applyTheme so the tenant sheet is the last one in the head and
 // wins the cascade against the theme of equal specificity.
 void applyTenantCustomCss();
+// Two-finger trackpad swipe = back/forward, desktop app only (the
+// module gates on the bridge; browsers keep their native swipe).
+// Every editor page boots through here, so the swipe works everywhere.
+installSwipeHistory();

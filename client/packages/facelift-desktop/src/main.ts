@@ -7,17 +7,6 @@ import { AccountViewManager } from './account-view-manager';
 import { DesktopToolsService } from './tools/desktopTools';
 import { registerIpc } from './ipc';
 
-// Two-finger trackpad swipe back/forward — browser feel. Chromium's
-// overscroll history navigation is CONTENT-layer code (the same machinery
-// Chrome uses; the flag people use to disable it in Chrome proves it is
-// wired for touchpads), but off in Electron embeds by default. Enabling
-// the feature gives the real thing per webContents — each tab navigates
-// its OWN history, page-drag preview included. Must run before app ready.
-// (The window-level 'swipe' handler further down covers the 3-finger
-// NSEvent case; Electron has no released native two-finger history
-// navigation of its own.)
-app.commandLine.appendSwitch('enable-features', 'OverscrollHistoryNavigation');
-
 let manager: AccountViewManager | null = null;
 let tools: DesktopToolsService | null = null;
 

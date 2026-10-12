@@ -19,6 +19,8 @@ import {
   reachOf,
   serializeTrustedPacks,
   packSpawnEnv,
+  collectSecretRefs,
+  resolveEnvRefs,
 } from './packs';
 
 const GLOBAL = JSON.stringify({
@@ -184,5 +186,39 @@ describe('packSpawnEnv', () => {
     expect(env.WEIRD).toBeUndefined();
     expect('WEIRD' in env).toBe(false);
     expect(env.OK).toBe('1');
+  });
+});
+
+describe('secret references (planning/desktop-pack-secrets.md)', () => {
+  it('resolves references against the store, literals pass through', () => {
+    const { env, missing } = resolveEnvRefs(
+      {
+        JIRA_URL: 'https://acme.example',
+        JIRA_TOKEN: '${secret:jira.token}',
+        AUTH: 'Bearer ${secret:jira.token}',
+      },
+      (name) => (name === 'jira.token' ? 'hunter2' : undefined),
+    );
+    expect(env.JIRA_URL).toBe('https://acme.example');
+    expect(env.JIRA_TOKEN).toBe('hunter2');
+    expect(env.AUTH).toBe('Bearer hunter2');
+    expect(missing).toEqual([]);
+  });
+
+  it('reports missing names instead of guessing', () => {
+    const { env, missing } = resolveEnvRefs(
+      { A: '${secret:one}', B: 'x${secret:two}y' },
+      () => undefined,
+    );
+    expect(missing).toEqual(['one', 'two']);
+    expect(env.A).toBe('');
+  });
+
+  it('collects referenced names for the UI rows', () => {
+    const refs = collectSecretRefs({
+      command: ['x'],
+      env: { A: '${secret:gh.token}', B: 'plain ${secret:gh.token}', C: 'no ref' },
+    });
+    expect(refs).toEqual(['gh.token']);
   });
 });

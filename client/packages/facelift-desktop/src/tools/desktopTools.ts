@@ -12,7 +12,7 @@
  * rejected with an error, never a fallthrough. Wire-level tool names
  * map 1:1 (`file.read` ↔ `client_file_read`).
  */
-import { BrowserWindow, dialog, ipcMain } from 'electron';
+import { BrowserWindow, dialog, ipcMain, safeStorage } from 'electron';
 
 import {
   accountToolsDir,
@@ -110,6 +110,16 @@ export class DesktopToolsService {
   constructor(windowProvider: () => BrowserWindow | null) {
     this.windowProvider = windowProvider;
     this.packs = new PackService(windowProvider);
+    // Pack credentials: OS keychain crypto (safeStorage). When the
+    // keychain is unavailable the store refuses writes — never silent
+    // plaintext (planning/desktop-pack-secrets.md §3).
+    this.packs.useSecretStore(
+      {
+        encrypt: (value: string) => safeStorage.encryptString(value),
+        decrypt: (blob: Buffer) => safeStorage.decryptString(blob),
+      },
+      accountToolsDir,
+    );
     this.gate = new PermissionGate(windowProvider);
   }
 
@@ -286,6 +296,35 @@ export class DesktopToolsService {
       if (accountId === null || typeof req.key !== 'string') return;
       await removePackHomeForProject(accountId, req.key);
       await this.packs.reResolve(accountId);
+    });
+    // Pack credentials (planning/desktop-pack-secrets.md §4): the shell
+    // UI lists references + set-state, writes go through the main into
+    // the keychain-backed store — a value never enters this channel in
+    // the clear from remote content (the account bridge has no part in
+    // these channels at all).
+    ipcMain.handle(SHELL_IPC.packSecretsGet, (_e, o: unknown) => {
+      const accountId = accountIdOf(o);
+      return accountId === null ? [] : this.packs.credentialReport(accountId);
+    });
+    ipcMain.handle(SHELL_IPC.packSecretSet, (_e, o: unknown) => {
+      const accountId = accountIdOf(o);
+      const req = o as { name?: unknown; value?: unknown };
+      if (
+        accountId === null ||
+        typeof req.name !== 'string' ||
+        req.name.length === 0 ||
+        typeof req.value !== 'string' ||
+        req.value.length === 0
+      ) {
+        return;
+      }
+      return this.packs.setCredential(accountId, req.name, req.value);
+    });
+    ipcMain.handle(SHELL_IPC.packSecretClear, (_e, o: unknown) => {
+      const accountId = accountIdOf(o);
+      const req = o as { name?: unknown };
+      if (accountId === null || typeof req.name !== 'string' || req.name.length === 0) return;
+      return this.packs.clearCredential(accountId, req.name);
     });
     ipcMain.handle(SHELL_IPC.packsReload, (_e, o: unknown) => {
       const accountId = accountIdOf(o);

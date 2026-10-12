@@ -18,6 +18,12 @@ export interface McpServerConfig {
   labels?: string[];
   enabled?: boolean;
   disabledSubTools?: string[];
+  /** Extra spawn env for the server process. Values may reference the
+   *  account secret store via `${secret:NAME}` (planning/
+   *  desktop-pack-secrets.md §2) — literals for anything else. Never
+   *  put plain tokens here: the file may be synced or shipped with a
+   *  repo; the store is the only home for values. */
+  env?: Record<string, string>;
 }
 
 export interface McpConfigFile {
@@ -218,6 +224,47 @@ export function filterSubTools<T extends { name: string }>(tools: T[], pack: str
   if (!Array.isArray(disabled) || disabled.length === 0) return tools;
   const deny = new Set(disabled.map((t) => packToolName(pack, t)).concat(disabled));
   return tools.filter((t) => !deny.has(t.name));
+}
+
+/** Matches `${secret:NAME}` anywhere in a value (prefix/suffix allowed:
+ * `"Bearer ${secret:jira.token}"`). NAME may contain letters, digits,
+ * dots, dashes, underscores. */
+const SECRET_REF = /\$\{secret:([A-Za-z0-9_.-]+)\}/g;
+
+/** The secret names a server's env block references (for the UI rows). */
+export function collectSecretRefs(config: McpServerConfig): string[] {
+  const names = new Set<string>();
+  for (const value of Object.values(config.env ?? {})) {
+    for (const m of value.matchAll(SECRET_REF)) names.add(m[1]);
+  }
+  return [...names];
+}
+
+/**
+ * Resolve `${secret:NAME}` references in a server's env block against
+ * the account secret store (planning/desktop-pack-secrets.md §2).
+ * Returns the resolved env plus the missing names — a missing secret is
+ * the CALLER's decision (the service surfaces it as a visible pack
+ * error instead of spawning a server that will 401 at call time).
+ * Values without references pass through unchanged.
+ */
+export function resolveEnvRefs(
+  env: Record<string, string> | undefined,
+  lookup: (name: string) => string | undefined,
+): { env: Record<string, string>; missing: string[] } {
+  const out: Record<string, string> = {};
+  const missing = new Set<string>();
+  for (const [key, raw] of Object.entries(env ?? {})) {
+    out[key] = raw.replace(SECRET_REF, (_all, name: string) => {
+      const value = lookup(name);
+      if (value === undefined) {
+        missing.add(name);
+        return '';
+      }
+      return value;
+    });
+  }
+  return { env: out, missing: [...missing] };
 }
 
 /**

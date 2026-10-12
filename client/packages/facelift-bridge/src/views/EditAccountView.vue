@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { VanceAccountWebView } from '@vance/facelift-account-webview';
 import { getAccount, updateAccount } from '@/accounts/accountStore';
@@ -26,6 +26,14 @@ const confined = ref(false);
 // Pack home (planning/desktop-pack-home-per-project.md): default + per
 // `tenant/project`, plus the last reported project for the live row.
 const packHome = ref<string | null>(null);
+// Pack credentials (planning/desktop-pack-secrets.md §4): one row per
+// `${secret:NAME}` the account's packs reference; values are write-only.
+const packSecrets = ref<{ name: string; packs: string[]; set: boolean }[]>([]);
+const secretDraft = ref<{ name: string; value: string } | null>(null);
+const secretInput = ref<HTMLInputElement | null>(null);
+watch(secretDraft, (draft) => {
+  if (draft !== null) void nextTick(() => secretInput.value?.focus());
+});
 const packHomeByProject = ref<Record<string, string>>({});
 const currentProject = ref<string | null>(null);
 const currentTenant = ref<string | null>(null);
@@ -56,6 +64,7 @@ onMounted(async () => {
     workdir.value = (await bridge?.workdirGet({ accountId: account.id })) ?? '';
     confined.value = (await bridge?.confineGet({ accountId: account.id })) ?? false;
     await refreshPackHome();
+    await refreshPackSecrets();
     policy.value = (await bridge?.policyGet({ accountId: account.id })) ?? null;
   }
 });
@@ -127,6 +136,28 @@ async function addPackHomeForCurrentProject(): Promise<void> {
   const key = `${currentTenant.value ?? ''}/${currentProject.value}`;
   await window.faceliftDesktop?.packHomeByProjectSet({ accountId: accountId.value, key, home: picked });
   packHomeByProject.value = { ...packHomeByProject.value, [key]: picked };
+}
+
+async function refreshPackSecrets(): Promise<void> {
+  if (!isDesktopApp || accountId.value === '') return;
+  packSecrets.value = (await window.faceliftDesktop?.packSecretsGet({ accountId: accountId.value })) ?? [];
+}
+
+function askSecret(name: string): void {
+  secretDraft.value = { name, value: '' };
+}
+
+async function submitSecret(): Promise<void> {
+  if (secretDraft.value === null || secretDraft.value.value.length === 0) return;
+  const { name, value } = secretDraft.value;
+  secretDraft.value = null;
+  await window.faceliftDesktop?.packSecretSet({ accountId: accountId.value, name, value });
+  await refreshPackSecrets();
+}
+
+async function clearSecret(name: string): Promise<void> {
+  await window.faceliftDesktop?.packSecretClear({ accountId: accountId.value, name });
+  await refreshPackSecrets();
 }
 
 async function removePackHomeFor(key: string): Promise<void> {
@@ -440,6 +471,47 @@ function onCancel(): void {
             Add home for “{{ currentProject }}”…
           </button>
         </div>
+        <div class="mt-4 border-t border-gray-800 pt-3">
+          <span class="mb-1 block text-xs uppercase tracking-wide text-gray-400">Pack credentials</span>
+          <p v-if="packSecrets.length === 0" class="text-xs text-gray-500">
+            None of your tool packs needs a login. Packs that do list their credentials here.
+          </p>
+          <div v-else class="space-y-1">
+            <div
+              v-for="s in packSecrets"
+              :key="s.name"
+              class="flex items-center gap-2"
+            >
+              <code class="w-44 shrink-0 truncate rounded bg-gray-800 px-2 py-1 text-xs" :class="s.set ? 'text-gray-300' : 'text-amber-400'">
+                {{ s.name }}
+              </code>
+              <span class="min-w-0 flex-1 truncate text-xs text-gray-500" :title="s.packs.join(', ')">
+                {{ s.packs.join(', ') }}
+              </span>
+              <span
+                class="shrink-0 rounded px-2 py-0.5 text-[10px] uppercase"
+                :class="s.set ? 'bg-green-900/40 text-green-400' : 'bg-amber-900/40 text-amber-400'"
+              >
+                {{ s.set ? 'set' : 'missing' }}
+              </span>
+              <button
+                type="button"
+                class="shrink-0 rounded bg-gray-800 px-2 py-1 text-xs text-blue-400"
+                @click="askSecret(s.name)"
+              >
+                {{ s.set ? 'Change…' : 'Set…' }}
+              </button>
+              <button
+                v-if="s.set"
+                type="button"
+                class="shrink-0 rounded bg-gray-800 px-2 py-1 text-xs text-red-400"
+                @click="clearSecret(s.name)"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        </div>
         <div class="mt-3 flex items-center gap-2">
           <button
             type="button"
@@ -586,5 +658,44 @@ function onCancel(): void {
       </div>
       <p v-if="error" class="text-sm text-red-400">{{ error }}</p>
     </form>
+
+    <!-- Credential entry: the value goes to the main via IPC and never
+         back. Enter submits, Escape cancels. -->
+    <div
+      v-if="secretDraft !== null"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      @keydown.esc="secretDraft = null"
+    >
+      <div class="w-96 rounded border border-gray-700 bg-gray-900 p-4">
+        <p class="mb-2 text-sm text-gray-300">
+          Credential <code class="text-blue-400">{{ secretDraft.name }}</code> —
+          stored encrypted in your OS keychain.
+        </p>
+        <input
+          ref="secretInput"
+          v-model="secretDraft.value"
+          type="password"
+          autocomplete="off"
+          class="mb-3 w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm outline-none focus:border-blue-400"
+          @keydown.enter="submitSecret"
+        />
+        <div class="flex justify-end gap-2">
+          <button
+            type="button"
+            class="rounded bg-gray-800 px-3 py-1.5 text-xs text-gray-400"
+            @click="secretDraft = null"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="rounded bg-blue-600 px-3 py-1.5 text-xs text-white"
+            @click="submitSecret"
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>

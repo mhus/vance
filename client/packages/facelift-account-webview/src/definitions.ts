@@ -321,6 +321,14 @@ export interface FaceliftDesktopBridge {
   packHomeSet(options: { accountId: string; home: string | null }): Promise<void>;
   packHomeByProjectSet(options: { accountId: string; key: string; home: string }): Promise<void>;
   packHomeByProjectRemove(options: { accountId: string; key: string }): Promise<void>;
+
+  /** Pack credentials (planning/desktop-pack-secrets.md): referenced
+   *  secret names + set-state for the UI; values are write-only. */
+  packSecretsGet(options: {
+    accountId: string;
+  }): Promise<{ name: string; packs: string[]; set: boolean }[]>;
+  packSecretSet(options: { accountId: string; name: string; value: string }): Promise<void>;
+  packSecretClear(options: { accountId: string; name: string }): Promise<void>;
 }
 
 declare global {

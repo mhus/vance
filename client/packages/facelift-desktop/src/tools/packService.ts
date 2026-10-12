@@ -18,6 +18,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { BrowserWindow, dialog } from 'electron';
 
 import { accountToolsDir, getAccountConfig } from './accountConfig';
+import { PackSecretStore, type PackSecretCrypto } from './packSecrets';
 import {
   applySelection,
   buildPackToolEntry,
@@ -26,6 +27,8 @@ import {
   mergeServers,
   parseMcpJson,
   parseToolPacksSelection,
+  collectSecretRefs,
+  resolveEnvRefs,
   parseTrustedPacks,
   reachOf,
   serializeTrustedPacks,
@@ -70,9 +73,17 @@ type TrustAnswer = 'once' | 'always' | 'no';
 export class PackService {
   private readonly accounts = new Map<string, AccountPacks>();
   private readonly windowProvider: () => BrowserWindow | null;
+  /** Pack credentials (planning/desktop-pack-secrets.md) — injected from
+   *  main with safeStorage-backed crypto; testable with a fake. */
+  private secrets: PackSecretStore | null = null;
 
   constructor(windowProvider: () => BrowserWindow | null) {
     this.windowProvider = windowProvider;
+  }
+
+  /** Main wires the account secret store (safeStorage-backed). */
+  useSecretStore(crypto: PackSecretCrypto, dirFor: (accountId: string) => string): void {
+    this.secrets = new PackSecretStore(crypto, dirFor);
   }
 
   /** Drop the cached materialization and rebuild it — the connect
@@ -189,6 +200,46 @@ export class PackService {
     });
   }
 
+  /**
+   * Credential report for the shell UI (planning/desktop-pack-secrets.md
+   * §4): every `${secret:NAME}` the account's effective packs reference,
+   * which packs want it, and whether the account store holds a value.
+   * Config-only — no spawn, no trust dialog; the live pack state is not
+   * needed to list what the user should fill in.
+   */
+  async credentialReport(accountId: string): Promise<
+    { name: string; packs: string[]; set: boolean }[]
+  > {
+    const config = await getAccountConfig(accountId);
+    const servers = await this.loadServerConfigs(config.workdir);
+    const byName = new Map<string, string[]>();
+    for (const server of servers) {
+      for (const ref of collectSecretRefs(server.config)) {
+        const packs = byName.get(ref) ?? [];
+        packs.push(server.name);
+        byName.set(ref, packs);
+      }
+    }
+    const stored = this.secrets !== null ? new Set(await this.secrets.names(accountId)) : new Set<string>();
+    return [...byName.entries()]
+      .map(([name, packs]) => ({ name, packs, set: stored.has(name) }))
+      .sort((a, b) => Number(a.set) - Number(b.set) || a.name.localeCompare(b.name));
+  }
+
+  /** Set/clear a credential (shell-only writes) — respawns so the pack
+   *  that was waiting for this value comes up with it. */
+  async setCredential(accountId: string, name: string, value: string): Promise<void> {
+    if (this.secrets === null) return;
+    await this.secrets.set(accountId, name, value);
+    await this.reResolve(accountId);
+  }
+
+  async clearCredential(accountId: string, name: string): Promise<void> {
+    if (this.secrets === null) return;
+    await this.secrets.clear(accountId, name);
+    await this.reResolve(accountId);
+  }
+
   /** Effective pack home for the account's current project report. */
   private effectiveHome(accountId: string, config: AccountToolsConfig): string {
     const reported = this.projects.get(accountId);
@@ -229,9 +280,25 @@ export class PackService {
     return packs;
   }
 
+  /** Config-only load: the effective pack definitions (global + project
+   *  mcp.json merged, `toolPacks:` selection applied). No spawn, no trust
+   *  dialog — the credential report and the materialization share it. */
+  private async loadServerConfigs(workdir: string): Promise<MergedServer[]> {
+    const [globalRaw, projectRaw, configRaw] = await Promise.all([
+      readTextOrNull(path.join(os.homedir(), '.vancetope', 'mcp.json')),
+      readTextOrNull(path.join(workdir, '.vancetope', 'mcp.json')),
+      readTextOrNull(path.join(workdir, '.vancetope', 'config.yaml')),
+    ]);
+    return applySelection(
+      mergeServers(parseMcpJson(globalRaw ?? ''), parseMcpJson(projectRaw ?? '')),
+      parseToolPacksSelection(configRaw),
+    );
+  }
+
   private async doMaterialize(accountId: string, packs: AccountPacks): Promise<void> {
     const config = await getAccountConfig(accountId);
     const workdir = config.workdir;
+    const servers = await this.loadServerConfigs(workdir);
     // The spawn home: per-project override, default override, or the
     // real user home (planning §5/§6 — the npm/npx cache stays pinned to
     // the real home inside packSpawnEnv, so npx never re-downloads per
@@ -244,19 +311,17 @@ export class PackService {
     await mkdir(packs.home, { recursive: true }).catch(() => {});
     const spawnEnv = packSpawnEnv(packs.home, os.homedir(), process.env);
 
-    const [globalRaw, projectRaw, configRaw, trustedRaw] = await Promise.all([
-      readTextOrNull(path.join(os.homedir(), '.vancetope', 'mcp.json')),
-      readTextOrNull(path.join(workdir, '.vancetope', 'mcp.json')),
-      readTextOrNull(path.join(workdir, '.vancetope', 'config.yaml')),
-      readTextOrNull(this.trustedFile(accountId)),
-    ]);
-
-    const servers = applySelection(
-      mergeServers(parseMcpJson(globalRaw ?? ''), parseMcpJson(projectRaw ?? '')),
-      parseToolPacksSelection(configRaw),
-    );
-
+    const trustedRaw = await readTextOrNull(this.trustedFile(accountId));
     const trusted = parseTrustedPacks(trustedRaw);
+    // Credentials for this run: the whole account store in one read —
+    // the resolver lookup is synchronous by design (pure function).
+    const secretLookup = new Map<string, string>();
+    if (this.secrets !== null) {
+      for (const name of await this.secrets.names(accountId)) {
+        const value = await this.secrets.get(accountId, name);
+        if (value !== undefined) secretLookup.set(name, value);
+      }
+    }
     const tools: PackToolEntry[] = [];
     const errors: PackError[] = [];
     for (const server of servers) {
@@ -272,6 +337,21 @@ export class PackService {
           }
         }
       }
+      // Resolve `${secret:…}` env references against the account store —
+      // a missing credential is a VISIBLE pack error, not a silent 401 at
+      // call time (planning/desktop-pack-secrets.md §3).
+      let serverEnv: Record<string, string> | undefined = server.config.env;
+      if (server.config.env !== undefined) {
+        const resolved = resolveEnvRefs(server.config.env, (name) => secretLookup.get(name));
+        if (resolved.missing.length > 0) {
+          errors.push({
+            pack: server.name,
+            error: `waiting for credential '${resolved.missing.join("', '")}' — set it in the app (Manage accounts → Edit)`,
+          });
+          continue;
+        }
+        serverEnv = resolved.env;
+      }
       try {
         const client = new Client(
           { name: 'vancetope-desktop', version: '1' },
@@ -280,7 +360,8 @@ export class PackService {
         const transport = new StdioClientTransport({
           command: command[0],
           args: command.slice(1),
-          env: spawnEnv,
+          // Server env wins over the base spawn env (HOME/cache pins stay)
+          env: { ...spawnEnv, ...(serverEnv ?? {}) },
           cwd: packs.home,
         });
         await client.connect(transport);

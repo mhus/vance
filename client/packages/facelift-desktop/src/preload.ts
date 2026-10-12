@@ -39,6 +39,9 @@ const SHELL_PACK_HOME_PICK = 'desktop-shell:pack-home:pick';
 const SHELL_PACK_HOME_SET = 'desktop-shell:pack-home:set';
 const SHELL_PACK_HOME_BY_PROJECT_SET = 'desktop-shell:pack-home-by-project:set';
 const SHELL_PACK_HOME_BY_PROJECT_REMOVE = 'desktop-shell:pack-home-by-project:remove';
+const SHELL_PACK_SECRETS_GET = 'desktop-shell:pack-secrets:get';
+const SHELL_PACK_SECRET_SET = 'desktop-shell:pack-secrets:set';
+const SHELL_PACK_SECRET_CLEAR = 'desktop-shell:pack-secrets:clear';
 
 // The renderer-facing bridge. Shape must match the FaceliftDesktopBridge
 // interface in facelift-account-webview/src/definitions.ts (formerly in
@@ -141,6 +144,17 @@ const bridge = {
     ipcRenderer.invoke(SHELL_PACK_HOME_BY_PROJECT_SET, o),
   packHomeByProjectRemove: (o: { accountId: string; key: string }): Promise<void> =>
     ipcRenderer.invoke(SHELL_PACK_HOME_BY_PROJECT_REMOVE, o),
+  // Pack credentials: report rows + write/clear. The VALUE travels
+  // renderer→main only (the shell is our own UI; remote content has no
+  // channel for it) and never comes back — the report says "set", not what.
+  packSecretsGet: (o: {
+    accountId: string;
+  }): Promise<{ name: string; packs: string[]; set: boolean }[]> =>
+    ipcRenderer.invoke(SHELL_PACK_SECRETS_GET, o),
+  packSecretSet: (o: { accountId: string; name: string; value: string }): Promise<void> =>
+    ipcRenderer.invoke(SHELL_PACK_SECRET_SET, o),
+  packSecretClear: (o: { accountId: string; name: string }): Promise<void> =>
+    ipcRenderer.invoke(SHELL_PACK_SECRET_CLEAR, o),
 };
 
 contextBridge.exposeInMainWorld('faceliftDesktop', bridge);

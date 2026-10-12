@@ -90,6 +90,9 @@ export const SHELL_IPC = {
   packHomeSet: 'desktop-shell:pack-home:set',
   packHomeByProjectSet: 'desktop-shell:pack-home-by-project:set',
   packHomeByProjectRemove: 'desktop-shell:pack-home-by-project:remove',
+  packSecretsGet: 'desktop-shell:pack-secrets:get',
+  packSecretSet: 'desktop-shell:pack-secrets:set',
+  packSecretClear: 'desktop-shell:pack-secrets:clear',
 } as const;
 
 /** Contract version reported through the bridge. Bump on breaking changes. */

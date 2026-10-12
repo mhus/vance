@@ -141,6 +141,7 @@ const packsProjects = ref(new Map<string, { project: string | null; tenant: stri
 let toolsActivityUnsub: (() => void) | null = null;
 let packsProjectUnsub: (() => void) | null = null;
 let tabUrlUnsub: (() => void) | null = null;
+let tabShortcutUnsub: (() => void) | null = null;
 
 const toolsTitle = computed(() => {
   const context = activeId.value !== null ? packsProjects.value.get(activeId.value) : undefined;
@@ -205,6 +206,16 @@ onMounted(async () => {
         toolsActive.value = event.active;
       }
     }) ?? null;
+    tabShortcutUnsub = window.faceliftDesktop?.onTabShortcut((event) => {
+      // The main intercepted Meta/Ctrl+digit before any page hotkey — we
+      // only translate the index (0 = the 10th tab, browser convention).
+      if (activeId.value !== event.accountId) return;
+      const list = tabsByAccount.value.get(event.accountId);
+      if (list === undefined || list.length === 0) return;
+      const index = event.digit === '0' ? 9 : Number(event.digit) - 1;
+      const tab = list[index];
+      if (tab !== undefined && tab.id !== activeTabId.value) void switchTab(tab.id);
+    }) ?? null;
     tabUrlUnsub = window.faceliftDesktop?.onTabUrl((event) => {
       const list = tabsByAccount.value.get(event.accountId);
       const tab = list?.find((t) => t.id === event.tabId);
@@ -237,6 +248,8 @@ onBeforeUnmount(async () => {
   packsProjectUnsub = null;
   tabUrlUnsub?.();
   tabUrlUnsub = null;
+  tabShortcutUnsub?.();
+  tabShortcutUnsub = null;
   await VanceAccountWebView.dismiss();
 });
 

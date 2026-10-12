@@ -42,6 +42,14 @@ export interface TabUrlEvent {
   url: string;
 }
 
+/** Meta/Ctrl+1..0 tab-switch request (planning/desktop-profile-tabs.md):
+ *  intercepted in the MAIN on before-input-event — page-level hotkeys and
+ *  a focused webview never see it first. digit '0' = the 10th tab. */
+export interface TabShortcutEvent {
+  accountId: string;
+  digit: '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9';
+}
+
 export interface UrlOpenEvent {
   url: string;
 }

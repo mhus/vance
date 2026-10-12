@@ -256,6 +256,9 @@ export interface FaceliftDesktopBridge {
   /** Subscribe to vance-facelift:// url events; returns an unsubscribe fn. */
   onUrlOpen(callback: (event: UrlOpenEvent) => void): () => void;
   onTabUrl(callback: (event: TabUrlEvent) => void): () => void;
+  onTabShortcut(
+    callback: (event: { accountId: string; digit: '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' }) => void,
+  ): () => void;
   /**
    * Perform a CORS-free HTTP GET via the Electron main process.
    *

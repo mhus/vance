@@ -10,6 +10,7 @@ import type {
   NavigateHomeOptions,
   PresentOptions,
   RemoveOptions,
+  TabShortcutEvent,
   TabUrlEvent,
   AgentPolicy,
   AgentRuleRequest,
@@ -79,6 +80,12 @@ const bridge = {
     ipcRenderer.invoke('facelift:authenticateBiometric', o),
   httpGet: (o: HttpGetOptions): Promise<HttpGetResult> =>
     ipcRenderer.invoke('facelift:httpGet', o),
+  onTabShortcut: (callback: (event: TabShortcutEvent) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, event: TabShortcutEvent): void =>
+      callback(event);
+    ipcRenderer.on('facelift:tab-shortcut', listener);
+    return () => ipcRenderer.removeListener('facelift:tab-shortcut', listener);
+  },
   onTabUrl: (callback: (event: TabUrlEvent) => void): (() => void) => {
     const listener = (_e: IpcRendererEvent, event: TabUrlEvent): void =>
       callback(event);

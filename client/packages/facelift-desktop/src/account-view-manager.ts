@@ -61,6 +61,32 @@ export class AccountViewManager {
   constructor(win: BrowserWindow, tools: DesktopToolsService) {
     this.win = win;
     this.tools = tools;
+    // Meta/Ctrl+1..0 while the SHELL has focus — the same interception the
+    // account views get (below); one path, two focus homes.
+    this.win.webContents.on('before-input-event', (event, input) => {
+      this.onTabShortcutInput(event, input, () => this.activeAccountId);
+    });
+  }
+
+  /** Tab-switch shortcut (planning/desktop-profile-tabs.md). Runs in the
+   *  main process on before-input-event — BEFORE the page's own hotkeys —
+   *  and forwards the intent to the shell, which owns the tab list. */
+  private onTabShortcutInput(
+    event: { preventDefault(): void },
+    input: { type: string; key: string; control: boolean; meta: boolean },
+    accountOf: () => string | null,
+  ): void {
+    if (input.type !== 'keyDown' || input.key.length !== 1 || !/^[0-9]$/.test(input.key)) return;
+    // Apple key on macOS, Ctrl elsewhere — the browser-tab convention.
+    const modifier = process.platform === 'darwin' ? input.meta : input.control;
+    if (!modifier) return;
+    const accountId = accountOf();
+    if (accountId === null) return;
+    event.preventDefault();
+    this.win.webContents.send('facelift:tab-shortcut', {
+      accountId,
+      digit: input.key as '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9',
+    });
   }
   private partitionFor(accountId: string): string {
     return `persist:vance-${accountId}`;
@@ -226,6 +252,11 @@ export class AccountViewManager {
       if (navUrl.startsWith('http')) {
         this.win.webContents.send('facelift:tab-url', { accountId, tabId, url: navUrl });
       }
+    });
+    // Tab shortcut while THIS view has focus (the normal case — the user
+    // interacts with the web content, not the shell).
+    wc.on('before-input-event', (event, input) => {
+      this.onTabShortcutInput(event, input, () => accountId);
     });
     wc.on('will-navigate', (event: ElectronEvent, navUrl: string) => {
       if (this.handleNavigation(accountId, navUrl)) event.preventDefault();

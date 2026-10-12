@@ -159,8 +159,28 @@ export class AccountViewManager {
     this.activeTab.set(accountId, tabId);
   }
 
+  /** Trackpad swipe navigation (browser parity): back/forward in the
+   *  ACTIVE TAB's page history — the account view, never the shell (its
+   *  hash history is not what a swipe should move). No-ops when the
+   *  history has nothing to go to, like a browser tab. */
+  navigateBackward(): void {
+    const view = this.activeView();
+    if (view !== undefined && view.navigationHistory.canGoBack()) view.navigationHistory.goBack();
+  }
+
+  navigateForward(): void {
+    const view = this.activeView();
+    if (view !== undefined && view.navigationHistory.canGoForward()) view.navigationHistory.goForward();
+  }
+
+  private activeView(): Electron.WebContents | undefined {
+    if (this.activeAccountId === null) return undefined;
+    const tab = this.activeTab.get(this.activeAccountId) ?? DEFAULT_TAB;
+    return this.views.get(tabKey(this.activeAccountId, tab))?.webContents;
+  }
+
   /** Destroy one tab's view (planning §2). If it was on screen the shell
-   *  immediately presents the next tab — the min-1 rule is the shell's. */
+   *  immediately presents the next tab — the min-1 rule is the shell's */
   closeTab(options: CloseTabOptions): void {
     const key = tabKey(options.accountId, options.tabId);
     const view = this.views.get(key);

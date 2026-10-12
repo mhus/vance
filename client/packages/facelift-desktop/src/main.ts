@@ -146,6 +146,20 @@ function createWindow(toolService: DesktopToolsService): void {
     manager = null;
   });
 
+  // Two-finger trackpad swipe = back/forward in the active tab (browser
+  // parity). The 'swipe' event is the macOS NSEvent swipe chain — it fires
+  // once Trackpad > 'Swipe between pages' is set to 'with two or three
+  // fingers' (the browser-like config users have in Chrome anyway). The
+  // account view does not claim the gesture (Electron has no Chromium
+  // history-swiper), so it bubbles to the window and lands here. Electron
+  // has no released two-finger history navigation of its own (the
+  // swipeToNavigate PRs sit unmerged on a fork) — this is the supported
+  // path. Routed to the ACTIVE TAB's view, never the shell's hash history.
+  win.on('swipe', (_event, direction) => {
+    if (direction === 'left') manager?.navigateBackward();
+    if (direction === 'right') manager?.navigateForward();
+  });
+
   // Surface renderer load failures instead of a silent blank window.
   win.webContents.on('did-fail-load', (_e, code, desc, url) => {
     console.error(

@@ -5,6 +5,8 @@
 
 import { SkillTriggerDto } from './SkillTriggerDto';
 import { SkillReferenceDocDto } from './SkillReferenceDocDto';
+import { SkillActivation } from './SkillActivation';
+import { SkillActivationSource } from './SkillActivationSource';
 import { SkillScriptDto } from './SkillScriptDto';
 import { SkillScope } from './SkillScope';
 import { SkillArgumentDto } from './SkillArgumentDto';
@@ -19,6 +21,9 @@ export interface SkillSummaryDto {
   triggers: SkillTriggerDto[];
   lifecycle: string;
   tools: string[];
+  activation: SkillActivation;
+  activationSource: SkillActivationSource;
+  activationOverrideScope?: SkillScope;
   manualPaths: string[];
   arguments: SkillArgumentDto[];
   referenceDocs: SkillReferenceDocDto[];

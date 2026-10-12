@@ -34,4 +34,11 @@ public record ProviderListingRequest(
         }
         if (apiKey == null) apiKey = "";
     }
+
+    /** Never prints the key — a request ends up in log lines and exceptions. */
+    @Override
+    public String toString() {
+        return "ProviderListingRequest[" + providerInstance + ", baseUrl=" + baseUrl + ", key="
+                + (apiKey.isBlank() ? "none" : "***") + ", insecureTls=" + insecureTls + "]";
+    }
 }

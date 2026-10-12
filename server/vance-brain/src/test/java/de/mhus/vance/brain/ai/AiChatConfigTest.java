@@ -26,8 +26,7 @@ class AiChatConfigTest {
 
     @Test
     void fourArg_defaultsInstanceToProvider() {
-        AiChatConfig cfg = new AiChatConfig(
-                "openai", "gpt-4o-mini", "sk-test", "https://gw.example.com/v1");
+        AiChatConfig cfg = new AiChatConfig("openai", "gpt-4o-mini", "sk-test", "https://gw.example.com/v1");
 
         assertThat(cfg.providerInstance()).isEqualTo("openai");
         assertThat(cfg.baseUrl()).isEqualTo("https://gw.example.com/v1");
@@ -36,8 +35,7 @@ class AiChatConfigTest {
     @Test
     void fiveArg_canonicalNamedInstance() {
         AiChatConfig cfg = new AiChatConfig(
-                "openai", "deepseek-direct", "deepseek-v4-flash",
-                "sk-deepseek", "https://api.deepseek.com/v1");
+                "openai", "deepseek-direct", "deepseek-v4-flash", "sk-deepseek", "https://api.deepseek.com/v1");
 
         assertThat(cfg.provider()).isEqualTo("openai");
         assertThat(cfg.providerInstance()).isEqualTo("deepseek-direct");
@@ -48,9 +46,19 @@ class AiChatConfigTest {
 
     @Test
     void blankInstance_rejected() {
-        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
-                new AiChatConfig("openai", "  ", "gpt-4o-mini", "sk", null))
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> new AiChatConfig("openai", "  ", "gpt-4o-mini", "sk", null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("providerInstance");
+    }
+
+    @Test
+    void toString_masksTheApiKey() {
+        AiChatConfig cfg = new AiChatConfig("openai", "work", "gpt-4o-mini", "sk-secret-123", null);
+
+        assertThat(cfg.toString())
+                .doesNotContain("sk-secret-123")
+                .contains("key=***")
+                .contains("work:gpt-4o-mini");
     }
 }

@@ -62,4 +62,11 @@ public record AiAudioConfig(
     public ProviderType providerType() {
         return ProviderType.requireWireName(provider);
     }
+
+    /** Never prints the key — a config ends up in log lines and exceptions. */
+    @Override
+    public String toString() {
+        return "AiAudioConfig[" + fullName() + ", protocol=" + provider + ", baseUrl=" + baseUrl + ", key="
+                + (apiKey == null ? "none" : "***") + ", timeout=" + timeoutSeconds + "s]";
+    }
 }

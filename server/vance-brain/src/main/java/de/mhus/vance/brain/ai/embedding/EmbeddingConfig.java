@@ -20,4 +20,11 @@ public record EmbeddingConfig(
     public EmbeddingConfig(String provider, String modelName, String apiKey) {
         this(provider, modelName, apiKey, null);
     }
+
+    /** Never prints the key — a config ends up in log lines and exceptions. */
+    @Override
+    public String toString() {
+        return "EmbeddingConfig[" + provider + ":" + modelName + ", baseUrl=" + baseUrl + ", key="
+                + (apiKey.isBlank() ? "none" : "***") + "]";
+    }
 }

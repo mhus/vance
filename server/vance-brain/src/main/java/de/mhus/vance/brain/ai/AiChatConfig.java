@@ -100,4 +100,11 @@ public record AiChatConfig(
     public ProviderType providerType() {
         return ProviderType.requireWireName(provider);
     }
+
+    /** Never prints the key — a config ends up in log lines and exceptions. */
+    @Override
+    public String toString() {
+        return "AiChatConfig[" + fullName() + ", protocol=" + provider + ", baseUrl=" + baseUrl + ", key=***"
+                + ", insecureTls=" + insecureTls + "]";
+    }
 }

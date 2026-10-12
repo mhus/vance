@@ -62,8 +62,7 @@ public record AiImageConfig(
             throw new IllegalArgumentException("aspectRatio is blank");
         }
         if (timeoutSeconds <= 0) {
-            throw new IllegalArgumentException(
-                    "timeoutSeconds must be > 0, got " + timeoutSeconds);
+            throw new IllegalArgumentException("timeoutSeconds must be > 0, got " + timeoutSeconds);
         }
         if (baseUrl != null && baseUrl.isBlank()) {
             baseUrl = null;
@@ -78,5 +77,12 @@ public record AiImageConfig(
     /** Typed view of {@link #provider()}. */
     public ProviderType providerType() {
         return ProviderType.requireWireName(provider);
+    }
+
+    /** Never prints the key — a config ends up in log lines and exceptions. */
+    @Override
+    public String toString() {
+        return "AiImageConfig[" + fullName() + ", protocol=" + provider + ", baseUrl=" + baseUrl + ", key=***"
+                + ", aspectRatio=" + aspectRatio + ", timeout=" + timeoutSeconds + "s]";
     }
 }

@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process';
-import { app, BrowserWindow, protocol } from 'electron';
+import { app, BrowserWindow, Menu, protocol } from 'electron';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -179,6 +179,42 @@ if (!gotLock) {
     registerIpc(() => manager);
     tools = new DesktopToolsService(() => BrowserWindow.getAllWindows()[0] ?? null);
     tools.registerIpc();
+// Minimal application menu (planning/desktop-profile-tabs.md shortcuts):
+// the DEFAULT Electron menu claims Cmd+W (close window — wrong for a
+// tabbed app, only Cmd+Q may quit) and Cmd+R (reload). We drop those
+// roles and bind both ourselves on before-input-event (tab close / tab
+// reload). The Edit roles stay — on macOS the menu bar owns the key
+// equivalents, and a menu-less app loses Cmd+C/V/A/Z. Non-macOS needs
+// no menu (shortcuts live in the webContents there).
+if (process.platform === 'darwin') {
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      { role: 'appMenu' },
+      {
+        role: 'editMenu',
+        submenu: [
+          { role: 'undo' },
+          { role: 'redo' },
+          { type: 'separator' },
+          { role: 'cut' },
+          { role: 'copy' },
+          { role: 'paste' },
+          { role: 'pasteAndMatchStyle' },
+          { role: 'delete' },
+          { type: 'separator' },
+          { role: 'selectAll' },
+        ],
+      },
+      {
+        role: 'windowMenu',
+        submenu: [{ role: 'minimize' }, { role: 'zoom' }],
+      },
+    ]),
+  );
+} else {
+  Menu.setApplicationMenu(null);
+}
+
     createWindow(tools);
     // No orphaned subprocesses: running exec jobs die with the app
     // (planning/desktop-agent-tools.md §4.2).

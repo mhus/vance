@@ -64,29 +64,45 @@ export class AccountViewManager {
     // Meta/Ctrl+1..0 while the SHELL has focus — the same interception the
     // account views get (below); one path, two focus homes.
     this.win.webContents.on('before-input-event', (event, input) => {
-      this.onTabShortcutInput(event, input, () => this.activeAccountId);
+      this.onTabShortcutInput(event, input, () => this.activeAccountId, () => this.reload());
     });
   }
 
-  /** Tab-switch shortcut (planning/desktop-profile-tabs.md). Runs in the
-   *  main process on before-input-event — BEFORE the page's own hotkeys —
-   *  and forwards the intent to the shell, which owns the tab list. */
+  /** Tab shortcuts (planning/desktop-profile-tabs.md): Meta/Ctrl+digit
+   *  switches tabs, +R reloads the focused view, +W closes the active
+   *  tab (the shell owns the list and enforces min-1). Runs in the main
+   *  process on before-input-event — BEFORE any page-level hotkey — and
+   *  works no matter which webContents has focus. The default Electron
+   *  menu is gone (main.ts), so nothing else claims W/R. */
   private onTabShortcutInput(
     event: { preventDefault(): void },
     input: { type: string; key: string; control: boolean; meta: boolean },
     accountOf: () => string | null,
+    reloadTarget: () => void,
   ): void {
-    if (input.type !== 'keyDown' || input.key.length !== 1 || !/^[0-9]$/.test(input.key)) return;
+    if (input.type !== 'keyDown') return;
     // Apple key on macOS, Ctrl elsewhere — the browser-tab convention.
     const modifier = process.platform === 'darwin' ? input.meta : input.control;
     if (!modifier) return;
     const accountId = accountOf();
     if (accountId === null) return;
-    event.preventDefault();
-    this.win.webContents.send('facelift:tab-shortcut', {
-      accountId,
-      digit: input.key as '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9',
-    });
+    if (input.key.length === 1 && /^[0-9]$/.test(input.key)) {
+      event.preventDefault();
+      this.win.webContents.send('facelift:tab-shortcut', {
+        accountId,
+        digit: input.key as '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9',
+      });
+      return;
+    }
+    if (input.key.toLowerCase() === 'r') {
+      event.preventDefault();
+      reloadTarget();
+      return;
+    }
+    if (input.key.toLowerCase() === 'w') {
+      event.preventDefault();
+      this.win.webContents.send('facelift:tab-close-request', { accountId });
+    }
   }
   private partitionFor(accountId: string): string {
     return `persist:vance-${accountId}`;
@@ -256,7 +272,7 @@ export class AccountViewManager {
     // Tab shortcut while THIS view has focus (the normal case — the user
     // interacts with the web content, not the shell).
     wc.on('before-input-event', (event, input) => {
-      this.onTabShortcutInput(event, input, () => accountId);
+      this.onTabShortcutInput(event, input, () => accountId, () => wc.reload());
     });
     wc.on('will-navigate', (event: ElectronEvent, navUrl: string) => {
       if (this.handleNavigation(accountId, navUrl)) event.preventDefault();

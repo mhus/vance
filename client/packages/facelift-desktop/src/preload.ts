@@ -80,6 +80,12 @@ const bridge = {
     ipcRenderer.invoke('facelift:authenticateBiometric', o),
   httpGet: (o: HttpGetOptions): Promise<HttpGetResult> =>
     ipcRenderer.invoke('facelift:httpGet', o),
+  onTabCloseRequest: (callback: (event: { accountId: string }) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, event: { accountId: string }): void =>
+      callback(event);
+    ipcRenderer.on('facelift:tab-close-request', listener);
+    return () => ipcRenderer.removeListener('facelift:tab-close-request', listener);
+  },
   onTabShortcut: (callback: (event: TabShortcutEvent) => void): (() => void) => {
     const listener = (_e: IpcRendererEvent, event: TabShortcutEvent): void =>
       callback(event);

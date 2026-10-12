@@ -142,6 +142,7 @@ let toolsActivityUnsub: (() => void) | null = null;
 let packsProjectUnsub: (() => void) | null = null;
 let tabUrlUnsub: (() => void) | null = null;
 let tabShortcutUnsub: (() => void) | null = null;
+let tabCloseUnsub: (() => void) | null = null;
 
 const toolsTitle = computed(() => {
   const context = activeId.value !== null ? packsProjects.value.get(activeId.value) : undefined;
@@ -206,6 +207,14 @@ onMounted(async () => {
         toolsActive.value = event.active;
       }
     }) ?? null;
+    tabCloseUnsub = window.faceliftDesktop?.onTabCloseRequest((event) => {
+      // Meta/Ctrl+W from the main — min-1 is OUR rule (closeTab no-ops on
+      // the last tab); the window never closes on W (the default menu's
+      // close role is gone, only Cmd+Q quits).
+      if (activeId.value !== event.accountId) return;
+      const current = activeTabId.value;
+      if (current !== null) void closeTab(current);
+    }) ?? null;
     tabShortcutUnsub = window.faceliftDesktop?.onTabShortcut((event) => {
       // The main intercepted Meta/Ctrl+digit before any page hotkey — we
       // only translate the index (0 = the 10th tab, browser convention).
@@ -250,6 +259,8 @@ onBeforeUnmount(async () => {
   tabUrlUnsub = null;
   tabShortcutUnsub?.();
   tabShortcutUnsub = null;
+  tabCloseUnsub?.();
+  tabCloseUnsub = null;
   await VanceAccountWebView.dismiss();
 });
 

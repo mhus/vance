@@ -1,0 +1,6 @@
+{
+ "error": {
+  "message": "Model typesafe/does-not-exist does not exist",
+  "code": 400
+ }
+}

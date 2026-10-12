@@ -477,3 +477,9 @@ export * from './megadodo/MegadodoSeverity';
 export * from './megadodo/MegadodoRefType';
 export * from './megadodo/MegadodoEventDto';
 export * from './megadodo/MegadodoPageDto';
+
+export * from './zem/ZemQuestionType';
+export * from './zem/ZemAnswerType';
+export * from './zem/ZemQuestionDto';
+export * from './zem/ZemAnswerDto';
+export * from './zem/ZemDecisionDto';

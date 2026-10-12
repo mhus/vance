@@ -1,0 +1,39 @@
+{
+ "model": "nimble",
+ "answers": {
+  "is_billing": {
+   "type": "noul",
+   "noul": 0.9975273768433653
+  },
+  "intent": {
+   "type": "choice",
+   "choice": "duplicate_charge",
+   "probabilities": {
+    "refund": 0.0075425768732384,
+    "duplicate_charge": 0.9878826189999033,
+    "other": 0.004574804126858538
+   },
+   "confidence": 0.9330509678708652
+  },
+  "urgency": {
+   "type": "score",
+   "score": 0.9831195925317586,
+   "legend": {
+    "0": "Can wait",
+    "1": "Needs attention soon",
+    "2": "Urgent"
+   },
+   "probabilities": {
+    "0": 0.14365925528383935,
+    "1": 0.7295618969005628,
+    "2": 0.1267788478155979
+   },
+   "confidence": 0.29855113793017296
+  }
+ },
+ "usage": {
+  "input_tokens": 1124,
+  "output_tokens": 0
+ },
+ "prompt_eval_cached_count": 1124
+}

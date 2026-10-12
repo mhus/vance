@@ -1,0 +1,19 @@
+# Bespoke Labs nimble (9B) via local Ollama — System-One decision model
+# (Zem). Wire: POST /v1/systemone (Ollama ≥ 0.35). Runs locally: no key,
+# no vendor bill, no data leaves the host.
+#
+# Live-verified 2026-10-12 on Apple Silicon (planning/zem-engine.md §10a):
+# choice needs 2–26 candidates, at most 64 questions, criteria
+# descriptions must be strings (objects → 400), unknown model → 404.
+# Cold start 3.8 s, warm ~100–220 ms for 1–3 questions, latency grows
+# with every question (40 → ~3 s). Calls are served one at a time —
+# parallel calls only queue up, hence maxConcurrentCalls: 1. Raise it
+# together with OLLAMA_NUM_PARALLEL on hardware that can take it.
+kind: decision
+timeoutSeconds: 30
+maxQuestions: 64
+maxChoiceOptions: 26
+maxScoreLevels: 10
+structuredCriteria: false
+maxConcurrentCalls: 1
+costPerMillionInput: 0.0

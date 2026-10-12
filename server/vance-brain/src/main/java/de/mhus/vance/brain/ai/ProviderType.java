@@ -44,6 +44,14 @@ public enum ProviderType {
     OPENAI_EXPERIMENTAL("openai-experimental", true),
     /** Local, non-network backend (e.g. the faster-whisper adapter). */
     LOCAL("local", false),
+    /**
+     * Decision-only endpoint speaking TypeSafe's System-One API
+     * ({@code /v1/systemone}): TypeSafe direct, Upstage, Venice's alias
+     * route, a local {@code laya-serve}. Has no chat wire — like
+     * {@link #LOCAL}, no {@code AiModelProvider} is registered for it, so
+     * the chat dispatch refuses such an instance instead of guessing.
+     */
+    SYSTEMONE("systemone", true),
     /** Test-only deterministic stub provider (qa/ai-test). */
     SCRIPTED("scripted", false);
 

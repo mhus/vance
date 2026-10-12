@@ -4,6 +4,7 @@ import de.mhus.vance.brain.ai.audio.AuModelInfo;
 import de.mhus.vance.brain.ai.audio.MusicModelInfo;
 import de.mhus.vance.brain.ai.audio.SttModelInfo;
 import de.mhus.vance.brain.ai.audio.TtsModelInfo;
+import de.mhus.vance.brain.ai.decision.DecisionModelInfo;
 import de.mhus.vance.brain.ai.image.ImageModelInfo;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -278,6 +279,24 @@ public class ModelCatalog {
         return Optional.of(buildAuInfo(provider, modelName, spec));
     }
 
+    /**
+     * Decision-model lookup — only {@code kind: decision} entries answer
+     * (Zem, System-One models). Decision models have no chat wire and no
+     * chat twin, so the {@code au}-style key collision does not arise.
+     */
+    public Optional<DecisionModelInfo> lookupDecision(
+            @Nullable String tenantId, @Nullable String projectId, String provider, String modelName) {
+        if (provider == null || modelName == null) {
+            return Optional.empty();
+        }
+        Map<String, Map<String, Object>> view = snapshot.viewFor(tenantId, projectId);
+        Map<String, Object> spec = view.get(key(provider, modelName));
+        if (spec == null || !isKind(spec, "decision")) {
+            return Optional.empty();
+        }
+        return Optional.of(buildDecisionInfo(provider, modelName, spec));
+    }
+
     public ModelInfo lookupOrDefault(
             @Nullable String tenantId, @Nullable String projectId, String provider, String modelName) {
         return lookup(tenantId, projectId, provider, modelName)
@@ -391,6 +410,19 @@ public class ModelCatalog {
             String[] parts = splitKey(entry.getKey());
             if (parts == null) continue;
             out.add(buildAuInfo(parts[0], originalCaseName(spec, parts[1]), spec));
+        }
+        return out;
+    }
+
+    public List<DecisionModelInfo> listAllDecision(@Nullable String tenantId, @Nullable String projectId) {
+        Map<String, Map<String, Object>> view = snapshot.viewFor(tenantId, projectId);
+        List<DecisionModelInfo> out = new ArrayList<>();
+        for (Map.Entry<String, Map<String, Object>> entry : view.entrySet()) {
+            Map<String, Object> spec = entry.getValue();
+            if (!isKind(spec, "decision")) continue;
+            String[] parts = splitKey(entry.getKey());
+            if (parts == null) continue;
+            out.add(buildDecisionInfo(parts[0], originalCaseName(spec, parts[1]), spec));
         }
         return out;
     }
@@ -852,6 +884,24 @@ public class ModelCatalog {
         return new AuModelInfo(provider, modelName, formats, maxDuration, costPerSecond, timeout);
     }
 
+    private static DecisionModelInfo buildDecisionInfo(String provider, String modelName, Map<String, Object> spec) {
+        Double rps = readDouble(spec.get("rateLimitRps"));
+        Object concurrent = spec.get("maxConcurrentCalls");
+        Object stateTokens = spec.get("maxStateTokens");
+        return new DecisionModelInfo(
+                provider,
+                modelName,
+                readInt(spec.get("timeoutSeconds"), DecisionModelInfo.DEFAULT_TIMEOUT_SECONDS),
+                readInt(spec.get("maxQuestions"), DecisionModelInfo.DEFAULT_MAX_QUESTIONS),
+                readInt(spec.get("maxChoiceOptions"), DecisionModelInfo.DEFAULT_MAX_CHOICE_OPTIONS),
+                readInt(spec.get("maxScoreLevels"), DecisionModelInfo.MAX_SCORE_LEVELS),
+                readBoolean(spec.get("structuredCriteria"), false),
+                stateTokens == null ? null : readInt(stateTokens, 0),
+                readDouble(spec.get("costPerMillionInput")),
+                rps,
+                concurrent == null ? null : readInt(concurrent, 0));
+    }
+
     /**
      * Voice-list parser — accepts the short form (list of voice-id
      * strings) and the long form (list of maps with id / locale /
@@ -933,6 +983,15 @@ public class ModelCatalog {
             "costPerSecond",
             "costPerMinute",
             "costPerTrack",
+            // Decision (Zem: System-One models)
+            "maxQuestions",
+            "maxChoiceOptions",
+            "maxScoreLevels",
+            "structuredCriteria",
+            "maxStateTokens",
+            "costPerMillionInput",
+            "rateLimitRps",
+            "maxConcurrentCalls",
             // Discovery markers (informational)
             "discoveredBy",
             "discoveredAt");

@@ -1,0 +1,21 @@
+# TypeSafe Jev 1.13 via OpenRouter — System-One decision model (Zem).
+# Wire: POST /api/v1/systemone (OpenRouter passes the TypeSafe schema
+# through; /api/alpha/decisions answers identically). Not listed in
+# OpenRouter's /api/v1/models, so this document is the only way into
+# the catalog — there is no discovery path for decision models.
+#
+# Live-verified 2026-10-12 (planning/zem-engine.md §10a): response model
+# id typesafe/jev-1.13-20260917, 256 choice options → 400, 11 score
+# levels → 400, 256 questions accepted (64 is our own cap — the service
+# splits above it), structured criteria accepted, usage.cost reported
+# (input tokens only). Latency 330–750 ms, nearly flat in the number of
+# questions; throughput scales with parallel calls.
+kind: decision
+timeoutSeconds: 10
+maxQuestions: 64
+maxChoiceOptions: 255
+maxScoreLevels: 10
+structuredCriteria: true
+maxStateTokens: 32000
+costPerMillionInput: 0.042
+rateLimitRps: 80

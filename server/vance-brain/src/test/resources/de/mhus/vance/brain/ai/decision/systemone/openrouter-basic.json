@@ -1,0 +1,41 @@
+{
+ "model": "typesafe/jev-1.13-20260917",
+ "answers": {
+  "is_billing": {
+   "type": "noul",
+   "noul": 0.99
+  },
+  "intent": {
+   "type": "choice",
+   "choice": "duplicate_charge",
+   "probabilities": {
+    "refund": 0.06,
+    "duplicate_charge": 0.94,
+    "other": 0
+   },
+   "confidence": 0.91
+  },
+  "urgency": {
+   "type": "score",
+   "score": 1.17,
+   "legend": {
+    "0": "Can wait",
+    "1": "Needs attention soon",
+    "2": "Urgent"
+   },
+   "probabilities": {
+    "0": 0,
+    "1": 0.82,
+    "2": 0.18
+   },
+   "confidence": 0.73
+  }
+ },
+ "usage": {
+  "input_tokens": 456,
+  "output_tokens": 74,
+  "cost": 1.9152e-05
+ },
+ "id": "gen-dec-1791790144-Ozs1hkNgvnlBhCucvvHA",
+ "provider": "TypeSafe"
+}

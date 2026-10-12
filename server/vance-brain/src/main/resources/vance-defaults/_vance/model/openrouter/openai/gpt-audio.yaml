@@ -1,0 +1,13 @@
+# OpenAI GPT-Audio via OpenRouter — audio understanding (text
+# answers about audio input). Wire: chat completions with a text
+# block FIRST and an input_audio block second — for this model the
+# order is contract, not style: it refuses to describe audio that
+# arrives before the question (live check 2026-10-12). gpt-audio-mini
+# refused the analysis outright and is deliberately not bundled.
+# Live-verified 2026-10-12: usage.cost non-streaming, ~10 audio
+# tokens per second of input.
+kind: au
+timeoutSeconds: 300
+maxDurationSeconds: 1800
+supportedFormats: [mp3, wav]
+costPerSecond: 0.00032

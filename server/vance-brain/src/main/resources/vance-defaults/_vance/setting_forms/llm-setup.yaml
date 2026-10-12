@@ -131,8 +131,8 @@ fields:
       key: "ai.alias.default.image-high"
 
   # ─── Audio aliases (Hotblack) ───────────────────────────────────
-  # See planning/hotblack-audio.md. The choices come from dedicated
-  # catalog views that only list `kind: tts` / `stt` / `music` entries,
+  # See planning/hotblack-audio.md and planning/audio-analyze.md. The
+  # catalog views that only list `kind: tts` / `stt` / `music` / `au`
   # so the pickers don't mix chat models in.
 
   - name: aliasTts
@@ -173,6 +173,19 @@ fields:
     choicesFrom: ai-music-models
     bindsTo:
       key: "ai.alias.default.music"
+
+  - name: aliasAu
+    type: select
+    label:
+      de: "Alias `default:au`"
+      en: "Alias `default:au`"
+    help:
+      de: "Audio-Analyse (Audio beschreiben lassen) — Default für `audio_analyze`."
+      en: "Audio analysis (have audio described) — default for `audio_analyze`."
+    allowCustom: true
+    choicesFrom: ai-au-models
+    bindsTo:
+      key: "ai.alias.default.au"
 
   # ─── Default fallback — used when an alias is unset ────────────────
 

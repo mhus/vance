@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.ai;
 
+import de.mhus.vance.brain.ai.audio.AuModelInfo;
 import de.mhus.vance.brain.ai.audio.MusicModelInfo;
 import de.mhus.vance.brain.ai.audio.SttModelInfo;
 import de.mhus.vance.brain.ai.audio.TtsModelInfo;
@@ -256,6 +257,27 @@ public class ModelCatalog {
         return Optional.of(buildMusicInfo(provider, modelName, spec));
     }
 
+    /**
+     * Audio-understanding counterpart of {@link #lookupStt} — only
+     * {@code kind: au} entries answer. Kept disjunct from chat docs on
+     * purpose: one model id is one catalog key, so an {@code au} doc
+     * must reference an audio-native model that carries no chat doc,
+     * or a chat override would silently replace it (see
+     * planning/audio-analyze.md §4.2).
+     */
+    public Optional<AuModelInfo> lookupAu(
+            @Nullable String tenantId, @Nullable String projectId, String provider, String modelName) {
+        if (provider == null || modelName == null) {
+            return Optional.empty();
+        }
+        Map<String, Map<String, Object>> view = snapshot.viewFor(tenantId, projectId);
+        Map<String, Object> spec = view.get(key(provider, modelName));
+        if (spec == null || !isKind(spec, "au")) {
+            return Optional.empty();
+        }
+        return Optional.of(buildAuInfo(provider, modelName, spec));
+    }
+
     public ModelInfo lookupOrDefault(
             @Nullable String tenantId, @Nullable String projectId, String provider, String modelName) {
         return lookup(tenantId, projectId, provider, modelName)
@@ -356,6 +378,19 @@ public class ModelCatalog {
             String[] parts = splitKey(entry.getKey());
             if (parts == null) continue;
             out.add(buildMusicInfo(parts[0], originalCaseName(spec, parts[1]), spec));
+        }
+        return out;
+    }
+
+    public List<AuModelInfo> listAllAu(@Nullable String tenantId, @Nullable String projectId) {
+        Map<String, Map<String, Object>> view = snapshot.viewFor(tenantId, projectId);
+        List<AuModelInfo> out = new ArrayList<>();
+        for (Map.Entry<String, Map<String, Object>> entry : view.entrySet()) {
+            Map<String, Object> spec = entry.getValue();
+            if (!isKind(spec, "au")) continue;
+            String[] parts = splitKey(entry.getKey());
+            if (parts == null) continue;
+            out.add(buildAuInfo(parts[0], originalCaseName(spec, parts[1]), spec));
         }
         return out;
     }
@@ -809,6 +844,14 @@ public class ModelCatalog {
                 provider, modelName, formats, maxDuration, languages, costPerSecond, costPerTrack, timeout);
     }
 
+    private static AuModelInfo buildAuInfo(String provider, String modelName, Map<String, Object> spec) {
+        Set<String> formats = readStringList(spec.get("supportedFormats"));
+        int maxDuration = readInt(spec.get("maxDurationSeconds"), AuModelInfo.DEFAULT_MAX_DURATION_SECONDS);
+        Double costPerSecond = readDouble(spec.get("costPerSecond"));
+        int timeout = readInt(spec.get("timeoutSeconds"), AuModelInfo.DEFAULT_TIMEOUT_SECONDS);
+        return new AuModelInfo(provider, modelName, formats, maxDuration, costPerSecond, timeout);
+    }
+
     /**
      * Voice-list parser — accepts the short form (list of voice-id
      * strings) and the long form (list of maps with id / locale /
@@ -879,7 +922,7 @@ public class ModelCatalog {
             "maxPromptChars",
             "costPerImage",
             "maxInputReferences",
-            // Audio (Hotblack: tts / stt / music)
+            // Audio (Hotblack: tts / stt / music / au)
             "supportedVoices",
             "supportedLanguages",
             "supportedFormats",

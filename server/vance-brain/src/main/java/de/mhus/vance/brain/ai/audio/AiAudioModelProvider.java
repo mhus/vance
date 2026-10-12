@@ -19,7 +19,7 @@ import org.jspecify.annotations.Nullable;
  * voice, language, reported cost) through the typed setters. The
  * provider does not know how the bytes are persisted.
  *
- * <p>One interface, three operations — a provider implements the ones
+ * <p>One interface, four operations — a provider implements the ones
  * its backend actually offers. The unimplemented ones keep their
  * default, which fails closed with
  * {@link AiAudioException#unsupportedOperation}: the service maps that
@@ -89,5 +89,21 @@ public interface AiAudioModelProvider {
     default void generateMusic(
             AiAudioConfig config, String prompt, int durationSeconds, AudioDestinationStream destination) {
         throw AiAudioException.unsupportedOperation(getName(), "music generation");
+    }
+
+    /**
+     * Analyze {@code source} — describe the audio itself (genre,
+     * instrumentation, tempo, mood, structure) instead of transcribing
+     * it. The {@code prompt} is the caller's question about the audio,
+     * the returned text is the model's answer. Distinct from
+     * {@link #transcribe}: different wire (chat completions with an
+     * {@code input_audio} content block), different catalog kind
+     * ({@code au}), different result semantics.
+     *
+     * @throws AiAudioException on provider error, timeout, or decoding
+     *                         failure
+     */
+    default AnalysisResult analyze(AiAudioConfig config, AudioSource source, String prompt) {
+        throw AiAudioException.unsupportedOperation(getName(), "audio analysis");
     }
 }

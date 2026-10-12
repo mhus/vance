@@ -86,6 +86,13 @@ public class SettingFormService {
      *  {@code default:music} alias picker. */
     public static final String CHOICES_FROM_AI_MUSIC_MODELS = "ai-music-models";
 
+    /** Audio-understanding counterpart of {@link #CHOICES_FROM_AI_MODELS}
+     *  — populates a select with the {@code kind: au} entries (audio
+     *  models that describe/analyze audio input, e.g. Voxtral, GPT-Audio).
+     *  Used by the Hotblack {@code default:au} alias picker for
+     *  {@code audio_analyze}. */
+    public static final String CHOICES_FROM_AI_AU_MODELS = "ai-au-models";
+
     /**
      * Research-source counterpart of {@link #CHOICES_FROM_AI_MODELS} —
      * populates a select with the configured search-source instance ids
@@ -294,6 +301,7 @@ public class SettingFormService {
         @Nullable List<FormChoiceDto> aiTtsModelChoices = null;
         @Nullable List<FormChoiceDto> aiSttModelChoices = null;
         @Nullable List<FormChoiceDto> aiMusicModelChoices = null;
+        @Nullable List<FormChoiceDto> aiAuModelChoices = null;
         List<FormFieldDto> out = new ArrayList<>(fields.size());
         for (FormFieldDto f : fields) {
             String src = f.getChoicesFrom();
@@ -327,6 +335,11 @@ public class SettingFormService {
                     aiMusicModelChoices = buildAiMusicModelChoices(tenantId, projectId);
                 }
                 out.add(f.toBuilder().choices(aiMusicModelChoices).build());
+            } else if (CHOICES_FROM_AI_AU_MODELS.equals(src)) {
+                if (aiAuModelChoices == null) {
+                    aiAuModelChoices = buildAiAuModelChoices(tenantId, projectId);
+                }
+                out.add(f.toBuilder().choices(aiAuModelChoices).build());
             } else if (CHOICES_FROM_RESEARCH_SOURCES.equals(src)) {
                 if (researchSourceChoices == null) {
                     researchSourceChoices = buildResearchSourceChoices(tenantId, projectId);
@@ -419,6 +432,13 @@ public class SettingFormService {
     /** Music-model counterpart: only {@code kind: music} entries. */
     private List<FormChoiceDto> buildAiMusicModelChoices(String tenantId, @Nullable String projectId) {
         return audioModelChoices(modelCatalog.listAllMusic(tenantId, projectId).stream()
+                .map(m -> m.provider() + ":" + m.modelName())
+                .toList());
+    }
+
+    /** Audio-understanding counterpart: only {@code kind: au} entries. */
+    private List<FormChoiceDto> buildAiAuModelChoices(String tenantId, @Nullable String projectId) {
+        return audioModelChoices(modelCatalog.listAllAu(tenantId, projectId).stream()
                 .map(m -> m.provider() + ":" + m.modelName())
                 .toList());
     }

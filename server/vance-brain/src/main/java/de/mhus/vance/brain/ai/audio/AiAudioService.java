@@ -65,6 +65,11 @@ public class AiAudioService {
         providerFor(config).generateMusic(config, prompt, durationSeconds, destination);
     }
 
+    /** Audio analysis. See {@link AiAudioModelProvider#analyze}. */
+    public AnalysisResult analyze(AiAudioConfig config, AudioSource source, String prompt) {
+        return providerFor(config).analyze(config, source, prompt);
+    }
+
     /**
      * Instance dispatch first, protocol dispatch second — see the class
      * doc for why the OpenRouter audio adapter cannot hang off the

@@ -1,0 +1,13 @@
+# Mistral Voxtral Small 24B (2507) via OpenRouter — audio
+# understanding. Wire: chat completions with a text block first and
+# an input_audio block second (the adapter fixes that order — this
+# model accepts either). Live-verified 2026-10-12: an 8-s sine chord
+# came back as a free-text description (genre/instruments/mood),
+# usage.cost non-streaming, ~1 audio token per second of input.
+# The provider accepts arbitrary format strings silently — the
+# supportedFormats list below is the only real format gate.
+kind: au
+timeoutSeconds: 120
+maxDurationSeconds: 1800
+supportedFormats: [mp3, wav]
+costPerSecond: 0.0001

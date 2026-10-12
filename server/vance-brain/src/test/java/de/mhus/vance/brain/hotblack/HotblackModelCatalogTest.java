@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelQuirks;
+import de.mhus.vance.brain.ai.audio.AuModelInfo;
 import de.mhus.vance.brain.ai.audio.MusicModelInfo;
 import de.mhus.vance.brain.ai.audio.SttModelInfo;
 import de.mhus.vance.brain.ai.audio.TtsModelInfo;
@@ -70,6 +71,20 @@ class HotblackModelCatalogTest {
     }
 
     @Test
+    void bundled_au_models_pin_the_analysis_contract() {
+        AuModelInfo voxtral = catalog.lookupAu(null, null, "openrouter", "mistralai/voxtral-small-24b-2507")
+                .orElseThrow();
+        assertThat(voxtral.supportsFormat("mp3")).isTrue();
+        assertThat(voxtral.supportsFormat("wav")).isTrue();
+        assertThat(voxtral.costPerSecond()).isEqualTo(0.0001);
+
+        AuModelInfo gptAudio =
+                catalog.lookupAu(null, null, "openrouter", "openai/gpt-audio").orElseThrow();
+        assertThat(gptAudio.supportsFormat("wav")).isTrue();
+        assertThat(gptAudio.maxDurationSeconds()).isEqualTo(1800);
+    }
+
+    @Test
     void bundled_local_whisper_models_are_stt() {
         assertThat(catalog.lookupStt(null, null, "local", "faster-whisper-small"))
                 .isPresent();
@@ -87,8 +102,21 @@ class HotblackModelCatalogTest {
                 .isEmpty();
         assertThat(catalog.lookupTts(null, null, "openrouter", "openai/gpt-transcribe"))
                 .isEmpty();
+        // …au entries are their own pool, disjoint from stt/music/chat:
+        // audio_analyze must never resolve to a transcription or music
+        // model (and an au doc must not shadow a chat picker entry).
+        assertThat(catalog.lookupAu(null, null, "openrouter", "openai/gpt-transcribe"))
+                .isEmpty();
+        assertThat(catalog.lookupAu(null, null, "openrouter", "google/lyria-3-clip-preview"))
+                .isEmpty();
+        assertThat(catalog.lookupStt(null, null, "openrouter", "mistralai/voxtral-small-24b-2507"))
+                .isEmpty();
+        assertThat(catalog.lookupMusic(null, null, "openrouter", "openai/gpt-audio"))
+                .isEmpty();
         // …and audio entries never show up as chat models.
         assertThat(catalog.lookup(null, null, "openrouter", "google/lyria-3-clip-preview"))
+                .isEmpty();
+        assertThat(catalog.lookup(null, null, "openrouter", "mistralai/voxtral-small-24b-2507"))
                 .isEmpty();
     }
 }

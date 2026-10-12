@@ -8,6 +8,8 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.ai.audio.AiAudioConfig;
 import de.mhus.vance.brain.ai.audio.AiAudioException;
+import de.mhus.vance.brain.ai.audio.AnalysisResult;
+import de.mhus.vance.brain.ai.audio.AudioSource;
 import de.mhus.vance.brain.ai.audio.TtsRequest;
 import de.mhus.vance.shared.document.AudioDestinationStream;
 import java.io.ByteArrayOutputStream;
@@ -73,6 +75,103 @@ class OpenRouterAudioProviderTest {
         byte[] committed = stream.bytes.toByteArray();
         assertThat(committed).hasSizeGreaterThan(pcm.length);
         assertThat(new String(committed, 0, 4, StandardCharsets.US_ASCII)).isEqualTo("RIFF");
+    }
+
+    // ──── analysis ──────────────────────────────────────────────────────
+
+    private static final AiAudioConfig AU_CONFIG =
+            new AiAudioConfig("openai", "openrouter", "mistralai/voxtral-small-24b-2507", "sk-or-test", null, 120);
+
+    private static final AudioSource AUDIO_SOURCE = new AudioSource(new byte[] {1, 2, 3, 4}, "mp3", "clip.mp3");
+
+    @Test
+    void analysis_sends_text_first_audio_last_and_returns_cost() throws Exception {
+        HttpClient http = mock(HttpClient.class);
+        List<String> bodies = new java.util.ArrayList<>();
+        HttpResponse<byte[]> okResponse = jsonResponse(
+                200, "{\"choices\":[{\"message\":{\"content\":\"A calm piece.\"}}]," + "\"usage\":{\"cost\":0.00081}}");
+        when(http.<byte[]>send(any(HttpRequest.class), any())).thenAnswer(invocation -> {
+            HttpRequest request = invocation.getArgument(0);
+            bodies.add(captureBody(request));
+            return okResponse;
+        });
+        OpenRouterAudioProvider provider = new OpenRouterAudioProvider("", http);
+
+        AnalysisResult result = provider.analyze(AU_CONFIG, AUDIO_SOURCE, "Describe the audio.");
+
+        assertThat(result.text()).isEqualTo("A calm piece.");
+        assertThat(result.reportedCostUsd()).isEqualTo(0.00081);
+        // Content order is contract, not style: GPT-Audio refuses audio
+        // that arrives before the question, so text must be block 0.
+        String body = bodies.get(0);
+        assertThat(body.indexOf("\"type\":\"text\"")).isLessThan(body.indexOf("\"type\":\"input_audio\""));
+        assertThat(body).contains("\"stream\":false");
+        assertThat(body).contains("\"format\":\"mp3\"");
+        assertThat(body).contains(java.util.Base64.getEncoder().encodeToString(AUDIO_SOURCE.data()));
+        assertThat(body).contains("\"model\":\"mistralai/voxtral-small-24b-2507\"");
+    }
+
+    @Test
+    void analysis_maps_provider_errors_verbosely() throws Exception {
+        HttpClient http = mock(HttpClient.class);
+        HttpResponse<byte[]> error = jsonResponse(400, "{\"error\":{\"message\":\"not a valid model ID\"}}");
+        when(http.<byte[]>send(any(HttpRequest.class), any())).thenReturn(error);
+        OpenRouterAudioProvider provider = new OpenRouterAudioProvider("", http);
+
+        assertThatThrownBy(() -> provider.analyze(AU_CONFIG, AUDIO_SOURCE, "Describe the audio."))
+                .isInstanceOf(AiAudioException.class)
+                .hasMessageContaining("audio analysis failed (HTTP 400)")
+                .hasMessageContaining("not a valid model ID");
+    }
+
+    @Test
+    void analysis_without_text_fails_closed() throws Exception {
+        HttpClient http = mock(HttpClient.class);
+        HttpResponse<byte[]> empty = jsonResponse(200, "{\"choices\":[{\"message\":{\"content\":\"\"}}]}");
+        when(http.<byte[]>send(any(HttpRequest.class), any())).thenReturn(empty);
+        OpenRouterAudioProvider provider = new OpenRouterAudioProvider("", http);
+
+        assertThatThrownBy(() -> provider.analyze(AU_CONFIG, AUDIO_SOURCE, "Describe the audio."))
+                .isInstanceOf(AiAudioException.class)
+                .hasMessageContaining("returned no text");
+    }
+
+    /** Drains the request's {@code BodyPublisher} into a String so the
+     *  wire body is assertable — the provider builds it via
+     *  {@code HttpRequest.BodyPublishers.ofString}. */
+    private static String captureBody(HttpRequest request) {
+        try {
+            java.net.http.HttpRequest.BodyPublisher publisher =
+                    request.bodyPublisher().orElseThrow();
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            var flow = (java.util.concurrent.Flow.Publisher<java.nio.ByteBuffer>) publisher;
+            java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+            flow.subscribe(new java.util.concurrent.Flow.Subscriber<java.nio.ByteBuffer>() {
+                @Override
+                public void onSubscribe(java.util.concurrent.Flow.Subscription s) {
+                    s.request(Long.MAX_VALUE);
+                }
+
+                @Override
+                public void onNext(java.nio.ByteBuffer item) {
+                    byte[] b = new byte[item.remaining()];
+                    item.get(b);
+                    out.write(b, 0, b.length);
+                }
+
+                @Override
+                public void onError(Throwable t) {}
+
+                @Override
+                public void onComplete() {
+                    done.countDown();
+                }
+            });
+            done.await(5, java.util.concurrent.TimeUnit.SECONDS);
+            return out.toString(StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     // ──── helpers ──────────────────────────────────────────────────────

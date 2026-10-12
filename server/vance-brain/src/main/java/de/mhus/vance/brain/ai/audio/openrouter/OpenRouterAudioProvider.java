@@ -4,6 +4,7 @@ import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ai.audio.AiAudioConfig;
 import de.mhus.vance.brain.ai.audio.AiAudioException;
 import de.mhus.vance.brain.ai.audio.AiAudioModelProvider;
+import de.mhus.vance.brain.ai.audio.AnalysisResult;
 import de.mhus.vance.brain.ai.audio.AudioMimeTypeSniffer;
 import de.mhus.vance.brain.ai.audio.AudioSource;
 import de.mhus.vance.brain.ai.audio.PcmWav;
@@ -35,7 +36,8 @@ import tools.jackson.databind.node.ObjectNode;
  * OpenAI wire the instance declares for chat. Dispatch hangs off
  * {@link #getInstanceName()} ({@code "openrouter"}).
  *
- * <p>Three operations, three wire shapes (all verified live 2026-10-05):
+ * <p>Four operations, four wire shapes (TTS/STT/Music verified live
+ * 2026-10-05, Analysis 2026-10-12):
  *
  * <ul>
  *   <li><b>TTS</b> — {@code POST /api/v1/audio/speech}
@@ -57,6 +59,13 @@ import tools.jackson.databind.node.ObjectNode;
  *       .data}; {@code usage.cost} rides the closing chunk. Lyria
  *       answers a {@code format:"wav"} request with MP3 bytes, so the
  *       committed mime is sniffed, never assumed.</li>
+ *   <li><b>Analysis</b> — {@code POST /api/v1/chat/completions} with a
+ *       text block first and an {@code input_audio} block second
+ *       ({@code stream:false}; text-only output). Content order is
+ *       contract, not style: GPT-Audio refuses to describe the audio when
+ *       the audio block comes first, Voxtral accepts both — so the adapter
+ *       always sends text first, audio last. {@code usage.cost} rides the
+ *       non-stream response and is passed back to the caller.</li>
  * </ul>
  *
  * <p>Failures arrive as {@code {error:{message}}} with an HTTP status;
@@ -314,6 +323,46 @@ public class OpenRouterAudioProvider implements AiAudioModelProvider {
                 }
             }
         }
+    }
+
+    // ──────────────────── Analysis ────────────────────
+
+    /**
+     * Audio understanding via chat completions: one user message with
+     * a text block first and an {@code input_audio} block second. The
+     * order is contract — GPT-Audio refuses to describe audio that
+     * arrives before the question (live check 2026-10-12), Voxtral
+     * accepts either order, so text-first is the only shape that works
+     * for both. Note this deliberately deviates from the chat
+     * attachment convention (attachments before the question): this is
+     * a provider wire, not a chat turn, and the model-facing contract
+     * wins over internal symmetry.
+     */
+    @Override
+    public AnalysisResult analyze(AiAudioConfig config, AudioSource source, String prompt) {
+        ObjectNode body = MAPPER.createObjectNode();
+        body.put("model", config.modelName());
+        var content = body.putArray("messages").addObject().put("role", "user").putArray("content");
+        content.addObject().put("type", "text").put("text", prompt);
+        ObjectNode inputAudio = content.addObject().put("type", "input_audio").putObject("input_audio");
+        inputAudio.put("data", Base64.getEncoder().encodeToString(source.data()));
+        inputAudio.put("format", source.format());
+        body.put("stream", false);
+
+        HttpResponse<byte[]> response = execute(config, "/chat/completions", body);
+        if (response.statusCode() != 200) {
+            throw new AiAudioException("OpenRouter audio analysis failed (HTTP " + response.statusCode() + "): "
+                    + errorMessage(response.body()));
+        }
+        JsonNode root = MAPPER.readTree(response.body());
+        String text =
+                root.path("choices").path(0).path("message").path("content").asString(null);
+        if (text == null || text.isBlank()) {
+            throw new AiAudioException("OpenRouter audio analysis returned no text for " + config.fullName());
+        }
+        JsonNode usage = root.path("usage");
+        Double cost = usage.has("cost") ? usage.path("cost").asDouble() : null;
+        return new AnalysisResult(text, cost);
     }
 
     // ──────────────────── shared HTTP ────────────────────

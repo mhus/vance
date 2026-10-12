@@ -1,11 +1,12 @@
 ---
-triggers: audio, speech, voice, text to speech, TTS, speak, vorlesen, Sprache erzeugen, Audiodatei, transcribe, transcription, speech to text, STT, transkribieren, Diktat, Untertitel, music, Musik, compose, komponieren, song, sound bed, jingle, audio_speak, audio_transcribe, audio_music, audio_voices, Hotblack
-summary: How to produce speech, transcribe recordings, and compose music with the audio_* tool family — tool contracts, languages, voices, costs, anti-patterns.
+triggers: audio, speech, voice, text to speech, TTS, speak, vorlesen, Sprache erzeugen, Audiodatei, transcribe, transcription, speech to text, STT, transkribieren, Diktat, Untertitel, music, Musik, compose, komponieren, song, sound bed, jingle, audio_speak, audio_transcribe, audio_music, audio_voices, analyze, describe audio, beschreiben, wie ist das Stueck, audio_analyze, Hotblack
+summary: How to produce speech, transcribe recordings, compose music, and have audio described/analyzed with the audio_* tool family — tool contracts, languages, voices, costs, anti-patterns.
 ---
 # Audio — Hotblack
 
-The `audio_*` family produces and consumes **audio documents**:
-speech (TTS), transcripts (STT), and music / sound beds. Generated
+The `audio_*` family produces, consumes and **describes** audio
+documents: speech (TTS), transcripts (STT), music / sound beds, and
+audio analysis. Generated
 files land in the document store like any other document — link them
 with Markdown (`[listen](path)`), they are playable in the UI.
 
@@ -15,6 +16,7 @@ with Markdown (`[listen](path)`), they are playable in the UI.
 |---|---|---|
 | `audio_speak` | text → speech document (mp3/wav) | 2–10 s |
 | `audio_transcribe` | audio document → transcript text | ~real-time factor |
+| `audio_analyze` | audio document + question → description (genre, instruments, mood) | 2–15 s |
 | `audio_music` | prompt → music / sound clip | 30 s – a few min |
 | `audio_voices` | list the voices a TTS model offers | instant |
 | `audio_info` | probe duration / format of an audio document | instant |
@@ -23,7 +25,7 @@ with Markdown (`[listen](path)`), they are playable in the UI.
 | `audio_concat` | join clips in order, optional crossfade | instant |
 | `audio_convert` | re-encode to mp3/wav, resample, normalise | instant |
 
-The first four tools **generate** audio through providers; the last five **edit
+The first five tools **generate** or **consume** audio through providers; the last five **edit
 existing audio documents locally (ffmpeg) — instant, free, no quota. The
 generation tools are all **synchronous**: one call, one blocking wait, one document.
 Do NOT loop to "improve" a result — every call costs money. For bulk
@@ -50,9 +52,9 @@ Errors carry `error` / `message` / `retryable` like the generation tools.
 ## Working with audio the user provides
 
 - The user **drops an audio file into the chat** (or names one in the
-  project): that is `audio_transcribe` material — the attachment hint
-  carries the document id, pass it as `documentId`. Nothing else can
-  consume audio yet (no audio understanding in chat).
+  project): the attachment hint carries the document id, pass it as
+  `documentId`. Two consumers: `audio_transcribe` for the spoken words,
+  `audio_analyze` for what the audio IS (see below).
 - A **YouTube link** is `video_transcript`, not `audio_transcribe`
   (caption track first — cheaper, faster, better).
 - **Long recordings:** tell the user cost and latency before you
@@ -64,6 +66,27 @@ Errors carry `error` / `message` / `retryable` like the generation tools.
   user just asked "what did they say".
 - Generated audio is a document like any other — link it in your
   reply (`[listen](path)`), don't describe it at length.
+
+## Analyzing audio
+
+`audio_analyze` sends the clip to an audio-understanding model and
+returns a free-text answer to your `prompt` — in the conversation
+language by default. Transcribe vs. analyze is the core distinction:
+
+- **"What did they say?"** → `audio_transcribe`.
+- **"What kind of music is this? Which instruments? What mood?
+  Does it fit as a calm intro bed?"** → `audio_analyze`.
+
+The model **describes, it does not transcribe** — a song's analysis
+contains no lyrics. Use it to:
+
+- describe music the user dropped ("wie ist das Stück?"),
+- check your own `audio_music` output ("is this really calm piano?"),
+- judge recordings ("is this a good take, any background noise?").
+
+Costs scale with clip duration (fractions of a cent per minute for the
+bundled models). Analysis answers a question — loop to "look again" is
+wasted money; ask precisely instead.
 
 ## Language
 
@@ -87,6 +110,9 @@ set `ai.hotblack.default-voice` in the Hotblack settings form instead.
 - Speech: priced per character (fractions of a cent per sentence).
 - Transcription: priced per second/minute of audio — a one-hour
   recording is real money; ask before transcribing very long files.
+- Analysis: priced per second of input audio, but cheap (well below a
+  cent per minute for the bundled models); still worth telling the user
+  before analyzing hour-long material.
 - Music: priced **per clip** (~$0.04 and up) — the most expensive tool
   here. Generate once. If the user wants variations, say what each
   regeneration costs.

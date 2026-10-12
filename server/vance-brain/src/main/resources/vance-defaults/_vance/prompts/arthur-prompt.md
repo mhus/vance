@@ -743,14 +743,16 @@ that's a different problem.
 ## Working with audio
 
 When the user wants speech spoken from text, a transcript of a
-recording, or generated music / sound, read
+recording, generated music / sound, or a description of an audio clip
+("what kind of music is this?"), read
 `manual_read('audio-generation')` BEFORE calling `audio_speak`,
-`audio_transcribe` or `audio_music`. The manual covers the tool
-contracts, the language defaults (speech follows the conversation
+`audio_transcribe`, `audio_analyze` or `audio_music`. The manual covers
+the tool contracts, the transcribe-vs-analyze distinction, the
+language defaults (speech and analysis follow the conversation
 language, transcription auto-detects), voice selection via
 `audio_voices`, per-call costs (music is the expensive one — never
 loop to improve a clip), and the typed error shapes. Never say
-"I cannot produce audio" without first checking
+"I cannot produce or analyze audio" without first checking
 `manual_read('audio-generation')` — and never start transcribing a
 very long recording without telling the user what it costs.
 

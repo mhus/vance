@@ -50,6 +50,8 @@ public class AudioCallTracker {
     public static final String SETTING_MONTHLY_STT = "ai.hotblack.monthly-stt-calls";
     public static final String SETTING_DAILY_MUSIC = "ai.hotblack.daily-music-calls";
     public static final String SETTING_MONTHLY_MUSIC = "ai.hotblack.monthly-music-calls";
+    public static final String SETTING_DAILY_AU = "ai.hotblack.daily-au-calls";
+    public static final String SETTING_MONTHLY_AU = "ai.hotblack.monthly-au-calls";
 
     /** Outcome marker for a reserved-but-not-yet-finalized call row. */
     public static final String OUTCOME_PENDING = "pending";
@@ -215,6 +217,7 @@ public class AudioCallTracker {
         return switch (modality) {
             case "tts" -> SETTING_DAILY_TTS;
             case "stt" -> SETTING_DAILY_STT;
+            case "au" -> SETTING_DAILY_AU;
             default -> SETTING_DAILY_MUSIC;
         };
     }
@@ -223,6 +226,7 @@ public class AudioCallTracker {
         return switch (modality) {
             case "tts" -> SETTING_MONTHLY_TTS;
             case "stt" -> SETTING_MONTHLY_STT;
+            case "au" -> SETTING_MONTHLY_AU;
             default -> SETTING_MONTHLY_MUSIC;
         };
     }

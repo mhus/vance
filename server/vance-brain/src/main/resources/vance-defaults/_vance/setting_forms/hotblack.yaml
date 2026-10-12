@@ -75,6 +75,21 @@ fields:
     bindsTo:
       key: "ai.hotblack.music.enabled"
 
+  - name: auEnabled
+    type: boolean
+    defaultValue: "true"
+    label:
+      de: "Audio-Analyse aktiviert"
+      en: "Audio analysis enabled"
+    help:
+      de: "Schaltet `audio_analyze` frei oder sperrt es (Audio beschreiben
+           lassen — Musik, Sounds, Stimmung; kein Transkript)."
+      en: "Enables or suspends `audio_analyze` (have audio described —
+           music, sounds, mood; not a transcript)."
+    showIf: "enabled"
+    bindsTo:
+      key: "ai.hotblack.au.enabled"
+
   # ─── Defaults ────────────────────────────────────────────────────
 
   - name: defaultVoice
@@ -211,6 +226,34 @@ fields:
     showIf: "enabled"
     bindsTo:
       key: "ai.hotblack.monthly-music-calls"
+
+  - name: dailyAuCalls
+    type: number
+    defaultValue: "0"
+    label:
+      de: "Analyse-Aufrufe pro Tag (tenant-weit)"
+      en: "Analysis calls per day (tenant-wide)"
+    help:
+      de: "0 = unbegrenzt. Audio-Analyse kostet pro Clip nach Dauer —
+           begrenzen, wenn unbeteiligte Accounts mitreden dürfen."
+      en: "0 = unlimited. Audio analysis is priced per clip duration —
+           cap it if uninvolved accounts get a say."
+    showIf: "enabled"
+    bindsTo:
+      key: "ai.hotblack.daily-au-calls"
+
+  - name: monthlyAuCalls
+    type: number
+    defaultValue: "0"
+    label:
+      de: "Analyse-Aufrufe pro Monat (tenant-weit)"
+      en: "Analysis calls per month (tenant-wide)"
+    help:
+      de: "0 = unbegrenzt."
+      en: "0 = unlimited."
+    showIf: "enabled"
+    bindsTo:
+      key: "ai.hotblack.monthly-au-calls"
 
   # ─── Performance ─────────────────────────────────────────────────
 

@@ -12,6 +12,8 @@ import de.mhus.vance.brain.ai.attachment.ResolvedAttachment;
 import de.mhus.vance.brain.ai.audio.AiAudioConfig;
 import de.mhus.vance.brain.ai.audio.AiAudioException;
 import de.mhus.vance.brain.ai.audio.AiAudioService;
+import de.mhus.vance.brain.ai.audio.AnalysisResult;
+import de.mhus.vance.brain.ai.audio.AuModelInfo;
 import de.mhus.vance.brain.ai.audio.AudioSource;
 import de.mhus.vance.brain.ai.audio.DocumentAudioDestinationStream;
 import de.mhus.vance.brain.ai.audio.MusicModelInfo;
@@ -55,7 +57,8 @@ import org.springframework.stereotype.Service;
 /**
  * Entry point of the Hotblack audio stack — the synchronous,
  * single-shot service behind {@code audio_speak}, {@code
- * audio_transcribe} and {@code audio_music}: alias resolution, quota,
+ * audio_transcribe}, {@code audio_music} and {@code audio_analyze}: alias
+ * resolution, quota,
  * title generation, provider dispatch through {@link AiAudioService},
  * and the commit of the generated audio to the document store.
  *
@@ -64,9 +67,10 @@ import org.springframework.stereotype.Service;
  * booking) and the same synchronous contract: the caller's lane lock
  * is the only serialisation.
  *
- * <p>Language is first-class: synthesis defaults to the
- * {@code chat.language} cascade (the assistant speaks the language it
- * answers in), transcription defaults to provider auto-detect (the
+ * <p>Language is first-class: synthesis and analysis default to the
+ * {@code chat.language} cascade (user-facing text — the assistant speaks
+ * and writes the language it answers in), transcription defaults to
+ * provider auto-detect (the
  * user speaks what they speak), music carries the lyric language.
  */
 @Service
@@ -77,11 +81,13 @@ public class HotblackService {
     public static final String DEFAULT_TTS_ALIAS = "default:tts";
     public static final String DEFAULT_STT_ALIAS = "default:stt";
     public static final String DEFAULT_MUSIC_ALIAS = "default:music";
+    public static final String DEFAULT_AU_ALIAS = "default:au";
 
     public static final String SETTING_ENABLED = "ai.hotblack.enabled";
     public static final String SETTING_TTS_ENABLED = "ai.hotblack.tts.enabled";
     public static final String SETTING_STT_ENABLED = "ai.hotblack.stt.enabled";
     public static final String SETTING_MUSIC_ENABLED = "ai.hotblack.music.enabled";
+    public static final String SETTING_AU_ENABLED = "ai.hotblack.au.enabled";
     public static final String SETTING_TIMEOUT = "ai.hotblack.timeout";
     public static final String SETTING_HEARTBEAT = "ai.hotblack.heartbeat-interval-sec";
     public static final String SETTING_DEFAULT_VOICE = "ai.hotblack.default-voice";
@@ -92,6 +98,7 @@ public class HotblackService {
     public static final String MODALITY_TTS = "tts";
     public static final String MODALITY_STT = "stt";
     public static final String MODALITY_MUSIC = "music";
+    public static final String MODALITY_AU = "au";
 
     public static final int DEFAULT_HEARTBEAT_INTERVAL_SECONDS = 30;
 
@@ -499,6 +506,175 @@ public class HotblackService {
                 .build();
     }
 
+    // ──────────────────── Audio analysis ────────────────────
+
+    /**
+     * Analyze an audio document (or raw audio bytes from internal
+     * callers) — the model answers {@code prompt} about the audio
+     * itself (genre, instrumentation, tempo, mood, structure).
+     * Answer language defaults to the {@code chat.language} cascade
+     * (the analysis is user-facing text); the composed prompt fixes
+     * the role: describe, never transcribe. Optionally commits the
+     * analysis as a text document.
+     */
+    public AnalyzeAudioResult analyze(AnalyzeAudioRequest request) {
+        validateScope(request.getTenantId(), request.getPrompt(), "prompt");
+        ensureEnabled(
+                MODALITY_AU, SETTING_AU_ENABLED, request.getTenantId(), request.getProjectId(), request.getProcessId());
+
+        AudioSource source = resolveAudioSource(request);
+
+        ResolvedModel resolved = resolveModel(
+                request.getAlias() == null || request.getAlias().isBlank() ? DEFAULT_AU_ALIAS : request.getAlias(),
+                MODALITY_AU,
+                request.getTenantId(),
+                request.getProjectId(),
+                request.getProcessId());
+        AuModelInfo modelInfo = modelCatalog
+                .lookupAu(
+                        request.getTenantId(),
+                        request.getProjectId(),
+                        resolved.resolved().providerInstance(),
+                        resolved.resolved().modelName())
+                .or(() -> modelCatalog.lookupAu(
+                        request.getTenantId(),
+                        request.getProjectId(),
+                        resolved.resolved().provider(),
+                        resolved.resolved().modelName()))
+                .orElseThrow(() -> new HotblackException(
+                        HotblackException.Reason.INVALID_CHOICE,
+                        "No au model entry for " + resolved.resolved().provider() + ":"
+                                + resolved.resolved().modelName()
+                                + " — add it to the model catalog with kind: au"));
+
+        if (!acceptsAudioFormat(modelInfo.supportedFormats(), source.format())) {
+            throw new HotblackException(
+                    HotblackException.Reason.UNSUPPORTED_FORMAT,
+                    "Model " + modelInfo.provider() + ":" + modelInfo.modelName()
+                            + " does not accept audio format '" + source.format() + "' — it accepts "
+                            + modelInfo.supportedFormats());
+        }
+
+        String language = request.getLanguage() != null
+                        && !request.getLanguage().isBlank()
+                ? request.getLanguage().trim()
+                : languageResolver.chatLanguage(
+                        request.getTenantId(), request.getUserId(), request.getProjectId(), request.getProcessId());
+        String analysisPrompt = composeAnalysisPrompt(request.getPrompt(), language);
+
+        long callStart = System.currentTimeMillis();
+        AiAudioConfig config = buildConfig(
+                resolved,
+                modelInfo.timeoutSeconds(),
+                request.getTenantId(),
+                request.getProjectId(),
+                request.getProcessId());
+        ThinkProcessDocument process = loadProcess(request.getProcessId());
+        interruptChecker.throwIfHalted(process == null ? null : process.getId());
+
+        String reserveId = reserve(
+                MODALITY_AU,
+                request.getTenantId(),
+                request.getUserId(),
+                request.getProjectId(),
+                request.getProcessId(),
+                request.getAlias());
+        ScheduledFuture<?> heartbeat = startHeartbeat(
+                process,
+                "audio analysis (" + resolved.alias() + ")",
+                callStart,
+                request.getTenantId(),
+                request.getProjectId(),
+                request.getProcessId());
+
+        AnalysisResult result;
+        try {
+            result = audioService.analyze(config, source, analysisPrompt);
+        } catch (AiAudioException e) {
+            cancelHeartbeat(heartbeat);
+            recordFailure(
+                    reserveId,
+                    request.getTenantId(),
+                    request.getUserId(),
+                    request.getProjectId(),
+                    request.getProcessId(),
+                    resolved.alias(),
+                    config,
+                    MODALITY_AU,
+                    callStart,
+                    0,
+                    e);
+            throw mapProviderError(e, config);
+        } catch (RuntimeException e) {
+            cancelHeartbeat(heartbeat);
+            recordFailure(
+                    reserveId,
+                    request.getTenantId(),
+                    request.getUserId(),
+                    request.getProjectId(),
+                    request.getProcessId(),
+                    resolved.alias(),
+                    config,
+                    MODALITY_AU,
+                    callStart,
+                    0,
+                    e);
+            throw new HotblackException(
+                    HotblackException.Reason.PROVIDER_ERROR,
+                    "Audio analysis failed for " + config.fullName() + ": " + e.getMessage(),
+                    e);
+        }
+        cancelHeartbeat(heartbeat);
+
+        long durationMs = System.currentTimeMillis() - callStart;
+        Double cost = result.reportedCostUsd();
+        recordSuccess(
+                reserveId,
+                request.getTenantId(),
+                request.getUserId(),
+                request.getProjectId(),
+                request.getProcessId(),
+                resolved.alias(),
+                config,
+                MODALITY_AU,
+                callStart,
+                durationMs,
+                0,
+                cost);
+        bookUsage(
+                request.getTenantId(),
+                request.getProjectId(),
+                request.getProcessId(),
+                config,
+                cost,
+                UsageOutcome.SUCCESS,
+                durationMs);
+
+        String analysisPath = null;
+        if (request.getPath() != null && !request.getPath().isBlank()) {
+            analysisPath = request.getPath().trim();
+            documentService.createOrReplaceBinary(
+                    request.getTenantId(),
+                    resolveProjectId(request),
+                    analysisPath,
+                    result.text().getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                    "text/markdown",
+                    "Audio analysis — " + (source.name() == null ? config.fullName() : source.name()),
+                    List.of("text", "ai-generated", "hotblack"),
+                    Map.of("model", config.fullName()),
+                    request.getUserId(),
+                    contextFactory.writeActor(request.getTenantId(), request.getUserId(), analysisPath));
+        }
+
+        return AnalyzeAudioResult.builder()
+                .analysis(result.text())
+                .language(language)
+                .modelUsed(config.fullName())
+                .costUsd(cost)
+                .analysisPath(analysisPath)
+                .durationMs(durationMs)
+                .build();
+    }
     // ──────────────────── Music ────────────────────
 
     /**
@@ -939,6 +1115,31 @@ public class HotblackService {
         return out.toString();
     }
 
+    /**
+     * Wrap the caller's question in the analysis role: describe the
+     * audio, never transcribe it, and answer in the effective language.
+     * The role block is fixed (not a setting): analysis vs. transcription
+     * is the tool's core distinction, and the answer language must hang
+     * on the runtime setting, not on the prompt author.
+     */
+    static String composeAnalysisPrompt(String question, @Nullable String language) {
+        StringBuilder out =
+                new StringBuilder("You are listening to an audio clip. Answer the question below about what "
+                        + "you hear — genre, instruments, tempo, mood, structure, recording "
+                        + "quality, whatever the question asks. Describe the audio; do not "
+                        + "transcribe it.");
+        if (language != null && !language.isBlank()) {
+            String display = Locale.forLanguageTag(language.trim()).getDisplayLanguage(Locale.ENGLISH);
+            out.append(" Write the answer in ")
+                    .append(display)
+                    .append(" (")
+                    .append(language.trim())
+                    .append(")");
+        }
+        out.append("\n\nQuestion: ").append(question.trim());
+        return out.toString();
+    }
+
     // ──────────────────── shared: config + stream ────────────────────
 
     private AiAudioConfig buildConfig(
@@ -1001,30 +1202,55 @@ public class HotblackService {
     }
 
     private AudioSource resolveAudioSource(TranscribeAudioRequest request) {
-        boolean hasDoc =
-                request.getDocumentId() != null && !request.getDocumentId().isBlank();
-        boolean hasData = request.getAudioData() != null && request.getAudioData().length > 0;
+        return resolveAudioSource(
+                request.getDocumentId(),
+                request.getAudioData(),
+                request.getAudioFormat(),
+                request.getAudioName(),
+                request.getTenantId(),
+                request.getProjectId(),
+                "audio_transcribe");
+    }
+
+    private AudioSource resolveAudioSource(AnalyzeAudioRequest request) {
+        return resolveAudioSource(
+                request.getDocumentId(),
+                request.getAudioData(),
+                request.getAudioFormat(),
+                request.getAudioName(),
+                request.getTenantId(),
+                request.getProjectId(),
+                "audio_analyze");
+    }
+
+    /**
+     * Exactly one audio source: a project document (tool path — through
+     * the attachment pipeline, so scope check, MIME validation and size
+     * caps all live in one authority) or raw bytes (internal callers).
+     */
+    private AudioSource resolveAudioSource(
+            @Nullable String documentId,
+            byte @Nullable [] audioData,
+            @Nullable String audioFormat,
+            @Nullable String audioName,
+            String tenantId,
+            @Nullable String projectId,
+            String toolName) {
+        boolean hasDoc = documentId != null && !documentId.isBlank();
+        boolean hasData = audioData != null && audioData.length > 0;
         if (hasDoc == hasData) {
             throw new HotblackException(
                     HotblackException.Reason.INVALID_CHOICE,
-                    "audio_transcribe needs exactly one audio source: documentId or audioData");
+                    toolName + " needs exactly one audio source: documentId or audioData");
         }
         if (hasData) {
-            String format =
-                    request.getAudioFormat() == null || request.getAudioFormat().isBlank()
-                            ? "wav"
-                            : request.getAudioFormat().trim();
-            return new AudioSource(request.getAudioData(), format, request.getAudioName());
+            String format = audioFormat == null || audioFormat.isBlank() ? "wav" : audioFormat.trim();
+            return new AudioSource(audioData, format, audioName);
         }
-        // Tool path: resolve through the attachment pipeline — scope check,
-        // MIME validation and size caps all live there, one authority for
-        // chat attachments and transcription input.
         List<ResolvedAttachment> resolved;
         try {
             resolved = attachmentResolver.resolveAll(
-                    List.of(new AttachmentRef(request.getDocumentId())),
-                    request.getTenantId(),
-                    resolveProjectId(request.getProjectId()));
+                    List.of(new AttachmentRef(documentId)), tenantId, resolveProjectId(projectId));
         } catch (AttachmentException e) {
             throw new HotblackException(
                     HotblackException.Reason.INVALID_CHOICE, "Audio document rejected: " + e.getMessage(), e);
@@ -1301,6 +1527,10 @@ public class HotblackService {
     }
 
     private static String resolveProjectId(TranscribeAudioRequest request) {
+        return resolveProjectId(request.getProjectId());
+    }
+
+    private static String resolveProjectId(AnalyzeAudioRequest request) {
         return resolveProjectId(request.getProjectId());
     }
 

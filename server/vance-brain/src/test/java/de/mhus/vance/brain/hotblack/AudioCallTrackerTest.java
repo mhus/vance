@@ -86,6 +86,18 @@ class AudioCallTrackerTest {
     }
 
     @Test
+    void au_modality_counts_against_its_own_limit() {
+        stubLimit(AudioCallTracker.SETTING_DAILY_AU, "1");
+        when(repository.countByTenantIdAndModalityAndAtGreaterThanEqual(eq(TENANT), eq("au"), any(Instant.class)))
+                .thenReturn(2L);
+        when(repository.countByTenantIdAndModalityAndAtGreaterThanEqual(eq(TENANT), eq("stt"), any(Instant.class)))
+                .thenReturn(0L);
+
+        assertThat(tracker.reserve("au", TENANT, USER, PROJECT, null)).isInstanceOf(AudioCallTracker.Denied.class);
+        assertThat(tracker.reserve("stt", TENANT, USER, PROJECT, null)).isInstanceOf(AudioCallTracker.Granted.class);
+    }
+
+    @Test
     void non_numeric_limit_is_treated_as_unlimited() {
         stubLimit(AudioCallTracker.SETTING_DAILY_STT, "banana");
 

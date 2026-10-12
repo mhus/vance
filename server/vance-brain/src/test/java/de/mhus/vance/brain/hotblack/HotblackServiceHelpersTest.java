@@ -33,6 +33,25 @@ class HotblackServiceHelpersTest {
         assertThat(HotblackService.slugify(null)).isEqualTo("audio");
     }
 
+    // ──── composeAnalysisPrompt ────────────────────────────────────────
+
+    @Test
+    void analysis_prompt_fixes_the_describe_role() {
+        String prompt = HotblackService.composeAnalysisPrompt("Describe the mood.", null);
+        assertThat(prompt).contains("Describe the audio").contains("do not");
+        assertThat(prompt).contains("transcribe");
+        assertThat(prompt).endsWith("Question: Describe the mood.");
+        // no language requested -> no language instruction (provider default)
+        assertThat(prompt).doesNotContain("Write the answer in");
+    }
+
+    @Test
+    void analysis_prompt_carries_the_effective_language() {
+        String prompt = HotblackService.composeAnalysisPrompt("Genre?", "de");
+        assertThat(prompt).contains("Write the answer in German (de)");
+        assertThat(prompt).endsWith("Question: Genre?");
+    }
+
     // ──── effectiveCostUsd ─────────────────────────────────────────────
 
     @Test

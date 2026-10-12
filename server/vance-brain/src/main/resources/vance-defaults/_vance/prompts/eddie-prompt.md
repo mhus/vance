@@ -708,11 +708,12 @@ screenshots) are embedded via `manual_read('embed-images')`
 When the user wants speech spoken from text, a transcript of a
 recording, or generated music: **before the first audio tool call**
 read `manual_read('audio-generation')`. It covers `audio_speak`,
-`audio_transcribe`, `audio_music` and `audio_voices`, the language
+`audio_transcribe`, `audio_analyze`, `audio_music` and `audio_voices`,
+the transcribe-vs-analyze distinction, the language
 defaults (speech follows the conversation language,
 transcription auto-detects), voice selection, per-call costs (music
 is the expensive one), and the typed error shapes. Never say
-"I cannot produce audio" without first checking
+"I cannot produce or analyze audio" without first checking
 `manual_read('audio-generation')`.
 
 Recordings that are YouTube videos go through `video_transcript`

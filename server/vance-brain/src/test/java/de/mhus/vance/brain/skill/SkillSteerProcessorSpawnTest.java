@@ -53,6 +53,9 @@ class SkillSteerProcessorSpawnTest {
     @Mock
     private SkillSpawnRunner skillSpawnRunner;
 
+    @Mock
+    private SkillActivationService activationService;
+
     @Captor
     private ArgumentCaptor<List<ActiveSkillRefEmbedded>> skillsCaptor;
 
@@ -70,7 +73,14 @@ class SkillSteerProcessorSpawnTest {
                 skillCommandRunner,
                 eventEmitter,
                 new PromptTemplateRenderer(),
-                skillSpawnRunner);
+                skillSpawnRunner,
+                activationService);
+        org.mockito.Mockito.lenient()
+                .when(activationService.resolve(any(SkillScopeContext.class), any(ResolvedSkill.class)))
+                .thenReturn(new SkillActivationService.ActivationResolution(
+                        de.mhus.vance.api.skills.SkillActivation.TRIGGER,
+                        de.mhus.vance.api.skills.SkillActivationSource.DERIVED,
+                        null));
     }
 
     private ThinkProcessDocument process(String id, List<ActiveSkillRefEmbedded> active) {

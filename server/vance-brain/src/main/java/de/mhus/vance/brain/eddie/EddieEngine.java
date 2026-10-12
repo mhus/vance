@@ -2569,6 +2569,13 @@ public class EddieEngine extends StructuredActionEngine {
             messages.add(SystemMessage.from(skillSection));
         }
 
+        // Agent advertising — one card per 'agent'-mode skill, directly
+        // behind the active-skills section (same cache reasoning as
+        // Arthur). Null (no message at all) when nothing is advertised.
+        String advertisedSkills = skillTurnSupport.advertiseSection(process, activeSkills);
+        if (advertisedSkills != null) {
+            messages.add(SystemMessage.from(advertisedSkills));
+        }
         // Current-date block (recipe-param promptDateGranularity:
         // auto/day/hour, default none). DYNAMIC — date rollover stays
         // behind the cache marker. See PromptDateBlock.

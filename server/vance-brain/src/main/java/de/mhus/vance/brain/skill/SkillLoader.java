@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.skill;
 
+import de.mhus.vance.api.skills.SkillActivation;
 import de.mhus.vance.api.skills.SkillReferenceDocLoadMode;
 import de.mhus.vance.api.skills.SkillScope;
 import de.mhus.vance.api.skills.SkillTriggerType;
@@ -323,6 +324,7 @@ public class SkillLoader {
         List<String> manualPaths = parseManualPaths(spec.get("manualPaths"), stem);
         List<String> tags = stringList(spec.get("tags"), stem, "tags");
         String category = parseCategory(spec.get("category"), stem);
+        SkillActivation declaredActivation = parseActivation(spec.get("activation"), stem);
         boolean enabled = !(spec.get("enabled") instanceof Boolean b) || b;
         String promptExtension = fm.body.isBlank() ? null : fm.body.strip();
         List<ResolvedSkill.ReferenceDoc> refDocs =
@@ -370,7 +372,8 @@ public class SkillLoader {
                 args.consumes(),
                 args.declared(),
                 action,
-                run);
+                run,
+                declaredActivation);
     }
 
     /**
@@ -581,6 +584,28 @@ public class SkillLoader {
                 throw new IllegalStateException(
                         "skill '" + stem + "': unknown lifecycle '" + s + "' (expected sticky|shot)");
         };
+    }
+
+    /**
+     * Parses the optional {@code activation:} frontmatter mode
+     * (skills.md §2, planning/skill-activation-levels.md §3.4). Absent
+     * means {@code null} — the effective mode then derives from
+     * {@code triggers:} (see {@link ResolvedSkill#frontmatterActivation()}).
+     * An unknown value fails the load like {@code lifecycle:} does: a
+     * typo would otherwise silently hide the skill ("manual") or
+     * advertise a skill the author never meant to offer.
+     */
+    private static @Nullable SkillActivation parseActivation(Object raw, String stem) {
+        if (raw == null) return null;
+        if (!(raw instanceof String s)) {
+            throw new IllegalStateException("skill '" + stem + "': 'activation' must be a string");
+        }
+        SkillActivation parsed = SkillActivation.parse(s);
+        if (parsed == null) {
+            throw new IllegalStateException(
+                    "skill '" + stem + "': unknown activation '" + s + "' (expected manual|trigger|agent)");
+        }
+        return parsed;
     }
 
     /**

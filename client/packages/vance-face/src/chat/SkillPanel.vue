@@ -2,7 +2,14 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { BrainWsApi } from '@vance/shared';
-import { ProcessSkillCommand, SkillTriggerType } from '@vance/generated';
+import {
+  ProcessSkillCommand,
+  SkillActivation,
+  SkillActivationSource,
+  SkillScope,
+  SkillTriggerType,
+} from '@vance/generated';
+import { brainFetch } from '@vance/shared';
 import type {
   ActiveSkillRefDto,
   ProcessSkillRequest,
@@ -18,10 +25,16 @@ interface Props {
   socket: BrainWsApi;
   /** Process name of the active chat session — skills are process-scoped. */
   sessionKey?: string;
+  /**
+   * Project of the chat — the mode write resolves the skill in this
+   * project's cascade; without it only tenant-level skills resolve.
+   */
+  projectId?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   sessionKey: undefined,
+  projectId: undefined,
 });
 
 const emit = defineEmits<{
@@ -98,6 +111,8 @@ const rows = computed(() => {
           tags: [],
           triggers: [],
           lifecycle: '',
+          activation: SkillActivation.MANUAL,
+          activationSource: SkillActivationSource.DERIVED,
           tools: [],
           manualPaths: [],
           arguments: [],
@@ -157,6 +172,62 @@ async function clear(name: string): Promise<void> {
     error.value = err instanceof Error ? err.message : String(err);
   } finally {
     clearing.value = null;
+  }
+}
+
+/**
+ * Sets the skill's activation mode via the REST write path — scope
+ * configuration, no process involved (planning/skill-activation-levels.md
+ * §3.5). The panel writes the USER tier: the personal decision. Wider
+ * tiers are the foot command's job (`/skill mode <name> <mode> <scope>`).
+ */
+const modeSaving = ref(false);
+
+async function setMode(mode: SkillActivation): Promise<void> {
+  const d = detail.value;
+  if (!d || modeSaving.value || mode === d.activation) return;
+  modeSaving.value = true;
+  error.value = null;
+  try {
+    const query = props.projectId ? `?projectId=${encodeURIComponent(props.projectId)}` : '';
+    await brainFetch('POST', `skills/${encodeURIComponent(d.name)}/activation${query}`, {
+      body: { mode, scope: 'USER' },
+    });
+    if (detail.value) {
+      detail.value = {
+        ...detail.value,
+        activation: mode,
+        activationSource: SkillActivationSource.OVERRIDE,
+        activationOverrideScope: SkillScope.USER,
+      };
+    }
+    // The row list carries the same summaries — refresh keeps them honest.
+    await refresh();
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    modeSaving.value = false;
+  }
+}
+
+/**
+ * Localised label of an activation mode (skills.md §2): the monotone
+ * manual ⊂ trigger ⊂ agent ladder.
+ */
+function modeLabel(mode: SkillActivation): string {
+  switch (mode) {
+    case SkillActivation.MANUAL: return t('chat.skills.modeManual');
+    case SkillActivation.TRIGGER: return t('chat.skills.modeTrigger');
+    case SkillActivation.AGENT: return t('chat.skills.modeAgent');
+  }
+}
+
+/** i18n key of the short mode badge in the row list. */
+function modeBadgeKey(mode: SkillActivation): string {
+  switch (mode) {
+    case SkillActivation.MANUAL: return 'chat.skills.modeBadgeManual';
+    case SkillActivation.TRIGGER: return 'chat.skills.modeBadgeTrigger';
+    case SkillActivation.AGENT: return 'chat.skills.modeBadgeAgent';
   }
 }
 
@@ -256,6 +327,15 @@ watch(() => props.sessionKey, refresh);
               <VBadge v-if="isMacro(row.summary)" variant="warning" size="xs" outline>
                 {{ t('chat.skills.macroBadge') }}
               </VBadge>
+              <VBadge
+                v-if="row.summary.activation"
+                :variant="row.summary.activation === SkillActivation.AGENT ? 'success' : 'neutral'"
+                size="xs"
+                outline
+                :title="modeLabel(row.summary.activation)"
+              >
+                {{ t(modeBadgeKey(row.summary.activation)) }}
+              </VBadge>
               <VBadge variant="neutral" size="xs" outline>
                 {{ row.summary.source }}
               </VBadge>
@@ -314,6 +394,28 @@ watch(() => props.sessionKey, refresh);
         <div v-if="detail.description" class="opacity-80">{{ detail.description }}</div>
         <div class="text-xs opacity-60">
           {{ isMacro(detail) ? t('chat.skills.lifecycleShotHint') : t('chat.skills.lifecycleStickyHint') }}
+        </div>
+
+        <div class="flex items-center gap-2">
+          <label for="skill-mode-select" class="text-xs uppercase tracking-wide opacity-60 font-semibold">
+            {{ t('chat.skills.modeLabel') }}
+          </label>
+          <select
+            id="skill-mode-select"
+            class="rounded border bg-transparent px-2 py-1 text-sm"
+            :value="detail.activation"
+            :disabled="modeSaving"
+            @change="setMode(($event.target as HTMLSelectElement).value as SkillActivation)"
+          >
+            <option :value="SkillActivation.MANUAL">{{ modeLabel(SkillActivation.MANUAL) }}</option>
+            <option :value="SkillActivation.TRIGGER">{{ modeLabel(SkillActivation.TRIGGER) }}</option>
+            <option :value="SkillActivation.AGENT">{{ modeLabel(SkillActivation.AGENT) }}</option>
+          </select>
+          <span class="text-xs opacity-60">
+            {{ detail.activationSource === 'OVERRIDE'
+              ? t('chat.skills.modeOverrideHint', { scope: detail.activationOverrideScope ?? 'USER' })
+              : t('chat.skills.modeAuthorHint') }}
+          </span>
         </div>
 
         <div v-if="triggerTokens(detail).length">

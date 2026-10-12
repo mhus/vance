@@ -3,12 +3,13 @@ package de.mhus.vance.brain.skill;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.skills.SkillScope;
+import de.mhus.vance.brain.recipe.RecipeResolver;
+import de.mhus.vance.brain.recipe.ResolvedRecipe;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
@@ -21,9 +22,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.beans.factory.ObjectProvider;
 
 /**
  * The per-turn skill hand-off shared by every skill-aware engine.
@@ -40,15 +43,31 @@ class SkillTurnSupportTest {
     private static final String TENANT = "acme";
     private static final String SESSION = "sess-1";
 
-    @Mock private SkillResolver skillResolver;
-    @Mock private SkillPromptComposer composer;
-    @Mock private SessionService sessionService;
+    @Mock
+    private SkillResolver skillResolver;
+
+    @Mock
+    private SkillPromptComposer composer;
+
+    @Mock
+    private SessionService sessionService;
+
+    @Mock
+    private SkillActivationService activationService;
+
+    @Mock
+    private RecipeResolver recipeResolver;
+
+    @Mock
+    private ObjectProvider<RecipeResolver> recipeResolverProvider;
 
     private SkillTurnSupport support;
 
     @BeforeEach
     void setUp() {
-        support = new SkillTurnSupport(skillResolver, composer, sessionService);
+        when(recipeResolverProvider.getIfAvailable()).thenReturn(recipeResolver);
+        support = new SkillTurnSupport(
+                skillResolver, composer, sessionService, activationService, recipeResolverProvider);
     }
 
     private ThinkProcessDocument processWith(ActiveSkillRefEmbedded... skills) {
@@ -74,10 +93,25 @@ class SkillTurnSupportTest {
 
     private static ResolvedSkill resolved(String name) {
         return new ResolvedSkill(
-                name, name, "desc", "1.0.0",
-                List.of(), "body", List.of(), List.of(), List.of(), List.of(),
-                List.of(), true, SkillScope.VANCE, List.of(), List.of(),
-                SkillLifecycle.STICKY, false, List.of(), null);
+                name,
+                name,
+                "desc",
+                "1.0.0",
+                List.of(),
+                "body",
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                true,
+                SkillScope.VANCE,
+                List.of(),
+                List.of(),
+                SkillLifecycle.STICKY,
+                false,
+                List.of(),
+                null);
     }
 
     // ─── resolveActive ───────────────────────────────────────────────
@@ -97,11 +131,9 @@ class SkillTurnSupportTest {
         // skill is acceptable; losing the turn is not.
         sessionIs("wile.coyote", "proj");
         when(skillResolver.resolve(any(), eq("gone"))).thenReturn(Optional.empty());
-        when(skillResolver.resolve(any(), eq("kept")))
-                .thenReturn(Optional.of(resolved("kept")));
+        when(skillResolver.resolve(any(), eq("kept"))).thenReturn(Optional.of(resolved("kept")));
 
-        List<ResolvedSkill> out = support.resolveActive(
-                processWith(ref("gone", null), ref("kept", null)));
+        List<ResolvedSkill> out = support.resolveActive(processWith(ref("gone", null), ref("kept", null)));
 
         assertThat(out).extracting(ResolvedSkill::name).containsExactly("kept");
     }
@@ -109,13 +141,10 @@ class SkillTurnSupportTest {
     @Test
     void unknownSkillException_isSkippedNotFatal() {
         sessionIs("wile.coyote", "proj");
-        when(skillResolver.resolve(any(), eq("broken")))
-                .thenThrow(new UnknownSkillException("broken"));
-        when(skillResolver.resolve(any(), eq("kept")))
-                .thenReturn(Optional.of(resolved("kept")));
+        when(skillResolver.resolve(any(), eq("broken"))).thenThrow(new UnknownSkillException("broken"));
+        when(skillResolver.resolve(any(), eq("kept"))).thenReturn(Optional.of(resolved("kept")));
 
-        List<ResolvedSkill> out = support.resolveActive(
-                processWith(ref("broken", null), ref("kept", null)));
+        List<ResolvedSkill> out = support.resolveActive(processWith(ref("broken", null), ref("kept", null)));
 
         assertThat(out).extracting(ResolvedSkill::name).containsExactly("kept");
     }
@@ -172,8 +201,8 @@ class SkillTurnSupportTest {
 
     @Test
     void rawArgs_mapSkillNameToItsInvocationText() {
-        Map<String, String> args = SkillTurnSupport.rawArgsByName(
-                processWith(ref("review", "--strict src/"), ref("plain", null)));
+        Map<String, String> args =
+                SkillTurnSupport.rawArgsByName(processWith(ref("review", "--strict src/"), ref("plain", null)));
 
         assertThat(args).containsExactly(Map.entry("review", "--strict src/"));
     }
@@ -194,5 +223,255 @@ class SkillTurnSupportTest {
         support.composeSection(process, skills, pebble);
 
         verify(composer).compose(skills, pebble, Map.of("review", "--strict"));
+    }
+
+    // ─── advertiseSection ───────────────────────────────────────────
+
+    private static ResolvedSkill agentSkill(String name) {
+        return new ResolvedSkill(
+                name,
+                name,
+                "Use when " + name,
+                "1.0.0",
+                List.of(),
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                null,
+                true,
+                SkillScope.VANCE,
+                List.of(),
+                List.of(),
+                SkillLifecycle.STICKY,
+                false,
+                List.of(),
+                null,
+                SkillRun.INLINE,
+                de.mhus.vance.api.skills.SkillActivation.AGENT);
+    }
+
+    private void advertiseCandidates(ResolvedSkill... skills) {
+        sessionIs("wile.coyote", "proj");
+        when(skillResolver.listAvailable(any())).thenReturn(List.of(skills));
+        when(activationService.overrides(any())).thenReturn(SkillActivationService.ActivationOverrides.EMPTY);
+        when(activationService.resolve(any(SkillActivationService.ActivationOverrides.class), any(ResolvedSkill.class)))
+                .thenAnswer(inv -> {
+                    ResolvedSkill s = inv.getArgument(1);
+                    return new SkillActivationService.ActivationResolution(
+                            s.frontmatterActivation(),
+                            s.declaredActivation() == null
+                                    ? de.mhus.vance.api.skills.SkillActivationSource.DERIVED
+                                    : de.mhus.vance.api.skills.SkillActivationSource.FRONTMATTER,
+                            null);
+                });
+    }
+
+    @Test
+    void advertise_agentModeSkillsBecomeCards_manualAndTriggerDoNot() {
+        advertiseCandidates(
+                agentSkill("alpha"),
+                resolved("derived-manual"), // no triggers, no declaration → manual
+                new ResolvedSkill(
+                        "declared-trigger",
+                        "declared-trigger",
+                        "desc",
+                        "1.0.0",
+                        List.of(),
+                        null,
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        null,
+                        true,
+                        SkillScope.VANCE,
+                        List.of(),
+                        List.of(),
+                        SkillLifecycle.STICKY,
+                        false,
+                        List.of(),
+                        null,
+                        SkillRun.INLINE,
+                        de.mhus.vance.api.skills.SkillActivation.TRIGGER));
+
+        String section = support.advertiseSection(processWith(), List.of());
+
+        assertThat(section).isNotNull();
+        assertThat(section).contains("## Available skills — activate with the skill_activate tool");
+        assertThat(section).contains("- alpha: Use when alpha\n");
+        assertThat(section).doesNotContain("derived-manual");
+        assertThat(section).doesNotContain("declared-trigger");
+    }
+
+    @Test
+    void advertise_respectsTheRecipeWhitelist_andDropsActiveSkills() {
+        advertiseCandidates(agentSkill("alpha"), agentSkill("beta"), agentSkill("gamma"));
+        ThinkProcessDocument process = processWith(ref("alpha", null));
+        process.setAllowedSkillsOverride(java.util.Set.of("alpha", "gamma"));
+
+        String section = support.advertiseSection(process, List.of(resolved("alpha")));
+
+        // Active skills leave the list — offering what already runs makes no sense.
+        assertThat(section).contains("- gamma:");
+        assertThat(section).doesNotContain("alpha");
+        assertThat(section).doesNotContain("beta");
+    }
+
+    @Test
+    void advertise_onlyActiveSkillsEligible_yieldsNull() {
+        advertiseCandidates(agentSkill("alpha"));
+
+        assertThat(support.advertiseSection(processWith(ref("alpha", null)), List.of(resolved("alpha"))))
+                .isNull();
+    }
+
+    @Test
+    void advertise_recipeSelectsManualSkillsByLabelAndName() {
+        advertiseCandidates(
+                tagged("code-review", "code", "coding"),
+                tagged("lint-rules", "Coding"),
+                tagged("pinned-by-name"),
+                tagged("unrelated", "docs"));
+        recipeAdvertises("coder", "@coding", "pinned-by-name");
+        ThinkProcessDocument process = processWith();
+        process.setRecipeName("coder");
+
+        String section = support.advertiseSection(process, List.of());
+
+        // All three are 'manual' by derivation — the recipe offers them anyway.
+        assertThat(section).contains("- code-review:", "- lint-rules:", "- pinned-by-name:");
+        assertThat(section).doesNotContain("unrelated");
+    }
+
+    @Test
+    void advertise_recipeSelectionStillRespectsWhitelistAndDisabled() {
+        ResolvedSkill disabledTagged = new ResolvedSkill(
+                "off",
+                "off",
+                "desc",
+                "1.0.0",
+                List.of(),
+                "body",
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of("coding"),
+                null,
+                false,
+                SkillScope.VANCE,
+                List.of(),
+                List.of(),
+                SkillLifecycle.STICKY,
+                false,
+                List.of(),
+                null,
+                SkillRun.INLINE,
+                null);
+        advertiseCandidates(tagged("code-review", "coding"), tagged("locked-out", "coding"), disabledTagged);
+        recipeAdvertises("coder", "@coding");
+        ThinkProcessDocument process = processWith();
+        process.setRecipeName("coder");
+        process.setAllowedSkillsOverride(java.util.Set.of("code-review", "off"));
+
+        String section = support.advertiseSection(process, List.of());
+
+        assertThat(section).contains("- code-review:");
+        assertThat(section).doesNotContain("locked-out").doesNotContain("- off:");
+    }
+
+    @Test
+    void advertise_recipeThatNoLongerResolves_fallsBackToAgentSkills() {
+        advertiseCandidates(agentSkill("alpha"), tagged("code-review", "coding"));
+        when(recipeResolver.resolve(any(), any(), eq("gone"))).thenThrow(new IllegalStateException("broken yaml"));
+        ThinkProcessDocument process = processWith();
+        process.setRecipeName("gone");
+
+        String section = support.advertiseSection(process, List.of());
+
+        assertThat(section).contains("- alpha:").doesNotContain("code-review");
+    }
+
+    private static ResolvedSkill tagged(String name, String... tags) {
+        return new ResolvedSkill(
+                name,
+                name,
+                "Use when " + name,
+                "1.0.0",
+                List.of(),
+                "body",
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(tags),
+                null,
+                true,
+                SkillScope.VANCE,
+                List.of(),
+                List.of(),
+                SkillLifecycle.STICKY,
+                false,
+                List.of(),
+                null,
+                SkillRun.INLINE,
+                null);
+    }
+
+    private void recipeAdvertises(String recipeName, String... selectors) {
+        ResolvedRecipe recipe = Mockito.mock(ResolvedRecipe.class);
+        when(recipe.advertisedSkills()).thenReturn(List.of(selectors));
+        when(recipeResolver.resolve(any(), any(), eq(recipeName))).thenReturn(Optional.of(recipe));
+    }
+
+    @Test
+    void advertise_isSortedByName_forCacheStableRenders() {
+        advertiseCandidates(agentSkill("zulu"), agentSkill("alpha"));
+
+        String section = support.advertiseSection(processWith(), List.of());
+
+        int alpha = section.indexOf("- alpha:");
+        int zulu = section.indexOf("- zulu:");
+        assertThat(alpha).isLessThan(zulu);
+    }
+
+    @Test
+    void advertise_nothingEligible_yieldsNullSoNoMessageIsAdded() {
+        advertiseCandidates(resolved("plain"));
+
+        assertThat(support.advertiseSection(processWith(), List.of())).isNull();
+    }
+
+    @Test
+    void advertise_disabledSkillsAreNeverAdvertised() {
+        ResolvedSkill disabled = new ResolvedSkill(
+                "off",
+                "off",
+                "desc",
+                "1.0.0",
+                List.of(),
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                null,
+                false,
+                SkillScope.VANCE,
+                List.of(),
+                List.of(),
+                SkillLifecycle.STICKY,
+                false,
+                List.of(),
+                null,
+                SkillRun.INLINE,
+                de.mhus.vance.api.skills.SkillActivation.AGENT);
+        advertiseCandidates(disabled);
+        assertThat(support.advertiseSection(processWith(), List.of())).isNull();
     }
 }

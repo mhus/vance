@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import de.mhus.vance.api.skills.ActiveSkillRefDto;
 import de.mhus.vance.api.skills.ScriptTarget;
+import de.mhus.vance.api.skills.SkillActivation;
+import de.mhus.vance.api.skills.SkillActivationSource;
 import de.mhus.vance.api.skills.SkillReferenceDocLoadMode;
 import de.mhus.vance.api.skills.SkillScope;
 import de.mhus.vance.api.skills.SkillSummaryDto;
@@ -85,7 +87,8 @@ class ProcessSkillHandlerTest {
                         new ResolvedSkill.Argument("language", "string", "Language to review", false),
                         new ResolvedSkill.Argument("focus", "string", "Focus area", true)),
                 null,
-                SkillRun.INLINE);
+                SkillRun.INLINE,
+                null);
 
         SkillSummaryDto dto = ProcessSkillHandler.toSummary(skill);
 
@@ -94,6 +97,9 @@ class ProcessSkillHandlerTest {
         assertThat(dto.isEnabled()).isTrue();
         assertThat(dto.getSource()).isEqualTo(SkillScope.PROJECT);
         assertThat(dto.getTriggers()).hasSize(2);
+        assertThat(dto.getActivation()).isEqualTo(SkillActivation.TRIGGER);
+        assertThat(dto.getActivationSource()).isEqualTo(SkillActivationSource.DERIVED);
+        assertThat(dto.getActivationOverrideScope()).isNull();
         assertThat(dto.getTriggers().get(0).getType()).isEqualTo(SkillTriggerType.KEYWORDS);
         assertThat(dto.getTriggers().get(0).getKeywords()).containsExactly("review", "code review");
         assertThat(dto.getTriggers().get(1).getType()).isEqualTo(SkillTriggerType.PATTERN);

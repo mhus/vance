@@ -48,6 +48,9 @@ class SkillSteerProcessorCommandTest {
     @Mock
     private SkillSpawnRunner skillSpawnRunner;
 
+    @Mock
+    private SkillActivationService activationService;
+
     @Captor
     private ArgumentCaptor<de.mhus.vance.shared.thinkprocess.PendingMessageDocument> pendingCaptor;
 
@@ -62,7 +65,8 @@ class SkillSteerProcessorCommandTest {
                 skillCommandRunner,
                 eventEmitter,
                 new PromptTemplateRenderer(),
-                skillSpawnRunner);
+                skillSpawnRunner,
+                activationService);
         when(sessionService.findBySessionId(anyString())).thenReturn(Optional.empty());
     }
 
@@ -455,5 +459,19 @@ class SkillSteerProcessorCommandTest {
         processor.clear(p, "s");
 
         verify(skillCommandRunner).run(eq(p), eq(deactivate), eq("deactivate"), eq("s"));
+    }
+
+    @Test
+    void activate_agentRoute_activatesManualModeSkill() {
+        // The activation mode decides where a skill is offered, not who may
+        // activate it — an agent that found a 'manual' skill via how_do_i
+        // activates it like any other. Only disabled skills refuse.
+        ResolvedSkill manual = skill("s", SkillLifecycle.STICKY, List.of(), List.of(), null);
+        when(skillResolver.resolve(any(), eq("s"))).thenReturn(Optional.of(manual));
+        ThinkProcessDocument p = process(List.of());
+
+        processor.activate(p, "s", false, ActivationRoute.AGENT, null, null);
+
+        verify(thinkProcessService).replaceActiveSkills(anyString(), any());
     }
 }

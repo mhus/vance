@@ -52,6 +52,8 @@ class LightLlmServiceImplTest {
     private AiModelService aiModelService;
     private ScriptedChatModel chatModel;
     private de.mhus.vance.brain.ai.ModelCatalog modelCatalog;
+    private de.mhus.vance.brain.skill.SkillResolver skillResolver;
+    private de.mhus.vance.brain.skill.SkillPromptComposer skillPromptComposer;
     private LightLlmServiceImpl service;
 
     @BeforeEach
@@ -83,6 +85,8 @@ class LightLlmServiceImplTest {
         when(templateRenderer.render(any(), any())).thenReturn("rendered system prompt");
 
         modelCatalog = org.mockito.Mockito.mock(de.mhus.vance.brain.ai.ModelCatalog.class);
+        skillResolver = org.mockito.Mockito.mock(de.mhus.vance.brain.skill.SkillResolver.class);
+        skillPromptComposer = org.mockito.Mockito.mock(de.mhus.vance.brain.skill.SkillPromptComposer.class);
         service = new LightLlmServiceImpl(
                 recipeLoader,
                 templateRenderer,
@@ -92,7 +96,8 @@ class LightLlmServiceImplTest {
                 JsonMapper.builder().build(),
                 metricService,
                 org.mockito.Mockito.mock(de.mhus.vance.shared.audit.AuditService.class),
-                modelCatalog);
+                modelCatalog,
+                new de.mhus.vance.brain.skill.SingleShotSkillComposer(skillResolver, skillPromptComposer));
     }
 
     // ──────────────────── extractJson static helper ────────────────────
@@ -473,5 +478,151 @@ class LightLlmServiceImplTest {
                     .aiMessage(AiMessage.from(responses.pop()))
                     .build();
         }
+    }
+    // ──────────────────── Skill composition funnel (planning/skill-activation-levels.md §3.6) ────────────────────
+
+    private static de.mhus.vance.brain.skill.ResolvedSkill composableSkill(String name) {
+        return new de.mhus.vance.brain.skill.ResolvedSkill(
+                name,
+                name,
+                "desc",
+                "1.0.0",
+                java.util.List.of(),
+                "Methodology body.",
+                java.util.List.of(),
+                java.util.List.of(),
+                java.util.List.of(),
+                java.util.List.of(),
+                java.util.List.of(),
+                null,
+                true,
+                de.mhus.vance.api.skills.SkillScope.VANCE,
+                java.util.List.of(),
+                java.util.List.of(),
+                de.mhus.vance.brain.skill.SkillLifecycle.STICKY,
+                false,
+                java.util.List.of(),
+                null,
+                de.mhus.vance.brain.skill.SkillRun.INLINE,
+                null);
+    }
+
+    @Test
+    void call_appendsComposedSkillSectionToTheSystemPrompt() {
+        when(recipeLoader.load(any(), any(), any())).thenReturn(Optional.of(stubRecipe("how-do-i", true)));
+        when(skillResolver.resolve(any(), eq("review-method")))
+                .thenReturn(java.util.Optional.of(composableSkill("review-method")));
+        when(skillPromptComposer.compose(
+                        org.mockito.ArgumentMatchers.<java.util.List<de.mhus.vance.brain.skill.ResolvedSkill>>any()))
+                .thenReturn("## Skills section");
+        chatModel.script(java.util.List.of("ok"));
+
+        LightLlmRequest req =
+                baseRequestBuilder().skills(java.util.List.of("review-method")).build();
+        String out = service.call(req);
+
+        assertThat(out).isEqualTo("ok");
+        // The composition happens between render and model call — verifying
+        // the composer input pins the funnel; the ScriptedChatModel has no
+        // request capture, so the prompt assertion lives with the composer.
+        verify(skillPromptComposer)
+                .compose(org.mockito.ArgumentMatchers.<java.util.List<de.mhus.vance.brain.skill.ResolvedSkill>>any());
+    }
+
+    @Test
+    void call_withoutSkills_neverTouchesTheSkillResolver() {
+        when(recipeLoader.load(any(), any(), any())).thenReturn(Optional.of(stubRecipe("how-do-i", true)));
+        chatModel.script(java.util.List.of("ok"));
+
+        service.call(baseRequest());
+
+        verify(skillResolver, never()).resolve(any(), any());
+    }
+
+    @Test
+    void call_unknownSkill_failsFastWithAClearMessage() {
+        when(recipeLoader.load(any(), any(), any())).thenReturn(Optional.of(stubRecipe("how-do-i", true)));
+        when(skillResolver.resolve(any(), eq("ghost"))).thenReturn(java.util.Optional.empty());
+        LightLlmRequest req =
+                baseRequestBuilder().skills(java.util.List.of("ghost")).build();
+
+        assertThatThrownBy(() -> service.call(req))
+                .isInstanceOf(LightLlmException.class)
+                .hasMessageContaining("ghost")
+                .hasMessageContaining("does not resolve");
+    }
+
+    @Test
+    void call_skillWithNothingComposable_failsFast() {
+        when(recipeLoader.load(any(), any(), any())).thenReturn(Optional.of(stubRecipe("how-do-i", true)));
+        // tools/manualPaths/activate have no effect in a single shot — a
+        // stage skill that only carries them must fail loudly, not compose
+        // an empty prompt that silently does nothing.
+        de.mhus.vance.brain.skill.ResolvedSkill toolsOnly = new de.mhus.vance.brain.skill.ResolvedSkill(
+                "tools-only",
+                "tools-only",
+                "desc",
+                "1.0.0",
+                java.util.List.of(),
+                null,
+                java.util.List.of("file_read"),
+                java.util.List.of(),
+                java.util.List.of(),
+                java.util.List.of(),
+                java.util.List.of(),
+                null,
+                true,
+                de.mhus.vance.api.skills.SkillScope.VANCE,
+                java.util.List.of(),
+                java.util.List.of(),
+                de.mhus.vance.brain.skill.SkillLifecycle.STICKY,
+                false,
+                java.util.List.of(),
+                null,
+                de.mhus.vance.brain.skill.SkillRun.INLINE,
+                null);
+        when(skillResolver.resolve(any(), eq("tools-only"))).thenReturn(java.util.Optional.of(toolsOnly));
+        LightLlmRequest req =
+                baseRequestBuilder().skills(java.util.List.of("tools-only")).build();
+
+        assertThatThrownBy(() -> service.call(req))
+                .isInstanceOf(LightLlmException.class)
+                .hasMessageContaining("no body and no INLINE reference docs");
+    }
+
+    @Test
+    void call_skillWithOnDemandDocs_failsFast() {
+        when(recipeLoader.load(any(), any(), any())).thenReturn(Optional.of(stubRecipe("how-do-i", true)));
+        de.mhus.vance.brain.skill.ResolvedSkill onDemand = new de.mhus.vance.brain.skill.ResolvedSkill(
+                "lazy",
+                "lazy",
+                "desc",
+                "1.0.0",
+                java.util.List.of(),
+                "Body.",
+                java.util.List.of(),
+                java.util.List.of(),
+                java.util.List.of(new de.mhus.vance.brain.skill.ResolvedSkill.ReferenceDoc(
+                        "Checklist", "content", de.mhus.vance.api.skills.SkillReferenceDocLoadMode.ON_DEMAND, null)),
+                java.util.List.of(),
+                java.util.List.of(),
+                null,
+                true,
+                de.mhus.vance.api.skills.SkillScope.VANCE,
+                java.util.List.of(),
+                java.util.List.of(),
+                de.mhus.vance.brain.skill.SkillLifecycle.STICKY,
+                false,
+                java.util.List.of(),
+                null,
+                de.mhus.vance.brain.skill.SkillRun.INLINE,
+                null);
+        when(skillResolver.resolve(any(), eq("lazy"))).thenReturn(java.util.Optional.of(onDemand));
+        LightLlmRequest req =
+                baseRequestBuilder().skills(java.util.List.of("lazy")).build();
+
+        assertThatThrownBy(() -> service.call(req))
+                .isInstanceOf(LightLlmException.class)
+                .hasMessageContaining("ON_DEMAND");
     }
 }

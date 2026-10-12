@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.skill;
 
+import de.mhus.vance.api.skills.SkillActivation;
 import de.mhus.vance.api.skills.SkillTriggerType;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
@@ -60,6 +61,7 @@ public class SkillTriggerMatcher {
     private final SkillResolver skillResolver;
     private final SkillSteerProcessor skillSteerProcessor;
     private final SessionService sessionService;
+    private final SkillActivationService activationService;
 
     /** Compiled regex cache keyed by the raw pattern string. */
     private final ConcurrentMap<String, Pattern> patternCache = new ConcurrentHashMap<>();
@@ -81,11 +83,15 @@ public class SkillTriggerMatcher {
         Set<String> alreadyActive = activeSkillNames(process);
         Set<String> whitelist = process.getAllowedSkillsOverride();
         String lowered = userText.toLowerCase();
+        // Activation-mode overrides are read once per call, not per skill —
+        // a manual mode disarms this skill's triggers entirely (§3.1).
+        SkillActivationService.ActivationOverrides activationOverrides = activationService.overrides(scope);
         List<String> activated = new ArrayList<>();
         for (ResolvedSkill skill : all) {
             if (!skill.enabled()) continue;
             if (alreadyActive.contains(skill.name())) continue;
             if (whitelist != null && !whitelist.contains(skill.name())) continue;
+            if (activationService.resolve(activationOverrides, skill).mode() == SkillActivation.MANUAL) continue;
             if (skill.triggers() == null || skill.triggers().isEmpty()) continue;
             if (!anyTriggerMatches(skill, lowered)) continue;
 

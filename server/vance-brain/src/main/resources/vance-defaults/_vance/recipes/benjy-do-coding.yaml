@@ -19,6 +19,14 @@ description: |
 
 engine: ford
 
+advertisedSkills:
+  # Group selector (skills.md §7e): every enabled skill tagged `coding` is
+  # listed under "Available skills" in the doer's context — offered, not
+  # activated; the doer picks what fits its item via skill_activate. A
+  # tenant adding its own coding skills needs no recipe override. Empty
+  # group is fine (not every instance has tagged skills).
+  - "@coding"
+
 allowedToolsDefer:
   # Family selector — covers every client_* tool, current and future.
   - client_*

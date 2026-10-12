@@ -131,4 +131,62 @@ class BenjyFeatureConfigTest {
         assertThat(cfg.chainFor(BenjyFeatureConfig.TASK_TYPE_PLANNING))
                 .containsExactly(BenjyTaskTypes.DO, BenjyTaskTypes.CLOSE_ITEM);
     }
+    // ─── stage skills (planning/skill-activation-levels.md §3.6.2) ───
+
+    @Test
+    void stageSkills_parsePerStage_andDefaultToEmpty() {
+        Map<String, Object> params = validParams();
+        ((Map<String, Object>) params.get("features"))
+                .put("evaluate", Map.of("recipe", "benjy-evaluate", "skills", java.util.List.of("review-method")));
+        BenjyFeatureConfig cfg = BenjyFeatureConfig.fromParams(params, PID);
+
+        assertThat(cfg.skillsFor("evaluate")).containsExactly("review-method");
+        assertThat(cfg.skillsFor("interpret")).isEmpty();
+        assertThat(cfg.skillsFor("route")).isEmpty();
+        assertThat(cfg.skillsFor("reflect")).isEmpty();
+    }
+
+    @Test
+    void stageSkills_onNonLlmStage_failFast() {
+        // check is mechanical, escalation delegates to a worker recipe —
+        // a skills entry there would silently compose nothing.
+        Map<String, Object> params = validParams();
+        ((Map<String, Object>) params.get("features"))
+                .put("check", Map.of("command", "mvn test", "skills", java.util.List.of("x")));
+
+        assertThatThrownBy(() -> BenjyFeatureConfig.fromParams(params, PID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("check.skills is not supported");
+    }
+
+    @Test
+    void stageSkills_blankEntries_failFast() {
+        Map<String, Object> params = validParams();
+        ((Map<String, Object>) params.get("features"))
+                .put("reflect", Map.of("recipe", "benjy-reflect", "skills", java.util.List.of("  ")));
+
+        assertThatThrownBy(() -> BenjyFeatureConfig.fromParams(params, PID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("non-blank skill names");
+    }
+
+    @Test
+    void stageSkills_labelSelector_failFast() {
+        // A stage skill is composed into the call — a deliberate, named
+        // choice. Labels only select what is advertised (skills.md §7e).
+        Map<String, Object> params = validParams();
+        ((Map<String, Object>) params.get("features"))
+                .put("interpret", Map.of("recipe", "benjy-interpret", "skills", List.of("@coding")));
+
+        assertThatThrownBy(() -> BenjyFeatureConfig.fromParams(params, PID))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("'@coding' is a label selector");
+    }
+
+    @Test
+    void stageSkills_unsetMeansNoComposition_anywhere() {
+        BenjyFeatureConfig cfg = BenjyFeatureConfig.fromParams(validParams(), PID);
+
+        assertThat(cfg.skillsFor("interpret")).isEmpty();
+    }
 }

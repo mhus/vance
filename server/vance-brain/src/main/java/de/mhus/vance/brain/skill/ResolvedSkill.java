@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.skill;
 
 import de.mhus.vance.api.skills.ScriptTarget;
+import de.mhus.vance.api.skills.SkillActivation;
 import de.mhus.vance.api.skills.SkillReferenceDocLoadMode;
 import de.mhus.vance.api.skills.SkillScope;
 import de.mhus.vance.api.skills.SkillTriggerType;
@@ -74,7 +75,31 @@ public record ResolvedSkill(
          * process (default) or in a freshly spawned worker. See
          * {@link SkillRun}.
          */
-        SkillRun run) {
+        SkillRun run,
+        /**
+         * Declared {@code activation:} frontmatter mode (skills.md §2,
+         * planning/skill-activation-levels.md §3.4) — {@code null} means
+         * "not declared", in which case the effective mode derives from
+         * {@link #triggers()} (empty → {@link SkillActivation#MANUAL},
+         * else {@link SkillActivation#TRIGGER}); see
+         * {@link #frontmatterActivation()}. Scope-level overrides from
+         * {@code _vance/config/skill_activation.yaml} apply on top and
+         * are resolved by {@code SkillActivationService}, never carried
+         * here — a resolved skill is tier-pinned, the override is not.
+         */
+        @Nullable SkillActivation declaredActivation) {
+
+    /**
+     * The skill's activation mode at the frontmatter level: the declared
+     * value, or the derivation for skills without an {@code activation:}
+     * field ({@code triggers:} present → {@code trigger}, else
+     * {@code manual}). Scope-level override docs are resolved separately
+     * by {@code SkillActivationService} — this method never sees them.
+     */
+    public SkillActivation frontmatterActivation() {
+        if (declaredActivation != null) return declaredActivation;
+        return triggers == null || triggers.isEmpty() ? SkillActivation.MANUAL : SkillActivation.TRIGGER;
+    }
 
     /**
      * Backward-compatible constructor for call sites that predate the
@@ -122,7 +147,8 @@ public record ResolvedSkill(
                 consumesArgs,
                 arguments,
                 action,
-                run);
+                run,
+                /*declaredActivation*/ null);
     }
     /**
      * Backward-compatible constructor for call sites that predate the
@@ -169,7 +195,8 @@ public record ResolvedSkill(
                 consumesArgs,
                 arguments,
                 action,
-                SkillRun.INLINE);
+                SkillRun.INLINE,
+                /*declaredActivation*/ null);
     }
 
     /**

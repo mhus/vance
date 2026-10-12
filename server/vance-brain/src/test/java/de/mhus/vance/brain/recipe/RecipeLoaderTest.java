@@ -522,6 +522,76 @@ class RecipeLoaderTest {
                 .hasMessageContaining("'projectKind' must be a string");
     }
 
+    @Test
+    void load_advertisedSkills_takesNamesAndLabelSelectors() {
+        // advertisedSkills only decides what the "Available skills" list
+        // offers (skills.md §7e) — membership resolves per turn, so parse
+        // validates shape only and the whitelist is not consulted.
+        stubRecipe("""
+                description: Labelled
+                engine: eddie
+                advertisedSkills: ["@coding", code-review]
+                allowedSkills: [code-review]
+                """);
+
+        ResolvedRecipe recipe = loader.load("acme", "p-1", "analyze").orElseThrow();
+
+        assertThat(recipe.advertisedSkills()).containsExactly("@coding", "code-review");
+        assertThat(recipe.defaultActiveSkills()).isEmpty();
+    }
+
+    @Test
+    void load_advertisedSkills_absent_isEmpty() {
+        stubRecipe("""
+                description: Plain
+                engine: eddie
+                """);
+
+        assertThat(loader.load("acme", "p-1", "analyze").orElseThrow().advertisedSkills())
+                .isEmpty();
+    }
+
+    @Test
+    void load_advertisedSkills_emptyLabelSelector_isRejected() {
+        stubRecipe("""
+                description: Bad label
+                engine: eddie
+                advertisedSkills: ["@"]
+                """);
+
+        assertThatThrownBy(() -> loader.load("acme", "p-1", "analyze"))
+                .isInstanceOf(RecipeLoader.RecipeParseException.class)
+                .hasMessageContaining("empty '@' label selector in advertisedSkills");
+    }
+
+    @Test
+    void load_defaultActiveSkills_labelSelector_isRejected() {
+        // Labels never activate — defaultActiveSkills stays exact names.
+        stubRecipe("""
+                description: Auto-activating label
+                engine: eddie
+                defaultActiveSkills: ["@coding"]
+                """);
+
+        assertThatThrownBy(() -> loader.load("acme", "p-1", "analyze"))
+                .isInstanceOf(RecipeLoader.RecipeParseException.class)
+                .hasMessageContaining("labels select advertised skills");
+    }
+
+    @Test
+    void load_defaultActiveSkills_plainNameOutsideWhitelist_isStillRejected() {
+        stubRecipe("""
+                description: Still strict
+                engine: eddie
+                defaultActiveSkills: [review-method]
+                allowedSkills: [code-review]
+                """);
+
+        assertThatThrownBy(() -> loader.load("acme", "p-1", "analyze"))
+                .isInstanceOf(RecipeLoader.RecipeParseException.class)
+                .hasMessageContaining("is not in allowedSkills");
+    }
+
     private void stubRecipe(String yaml) {
         LookupResult hit = new LookupResult(
                 RecipeLoader.RECIPE_PATH_PREFIX + "analyze" + RecipeLoader.RECIPE_PATH_SUFFIX,

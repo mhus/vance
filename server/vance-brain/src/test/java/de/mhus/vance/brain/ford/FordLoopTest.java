@@ -120,6 +120,7 @@ class FordLoopTest {
                 mock(SkillResolver.class),
                 mock(SkillPromptComposer.class),
                 mock(SkillTriggerMatcher.class),
+                mock(de.mhus.vance.brain.skill.SkillTurnSupport.class),
                 mock(SessionService.class),
                 mock(PromptDateContextResolver.class),
                 mock(ScratchpadPromptContributor.class),

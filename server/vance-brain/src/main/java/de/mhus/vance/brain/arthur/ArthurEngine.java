@@ -2532,6 +2532,14 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             messages.add(SystemMessage.from(skillSection));
         }
 
+        // Agent advertising — one card per 'agent'-mode skill, directly
+        // behind the active-skills section: both change together, so one
+        // cache break instead of two. Null (no message at all) when
+        // nothing is advertised.
+        String advertisedSkills = skillTurnSupport.advertiseSection(process, activeSkills);
+        if (advertisedSkills != null) {
+            messages.add(SystemMessage.from(advertisedSkills));
+        }
         // Current-date block (recipe-param promptDateGranularity:
         // auto/day/hour, default none). DYNAMIC — date rollover stays
         // behind the cache marker. See PromptDateBlock.

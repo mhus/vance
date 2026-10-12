@@ -52,6 +52,9 @@ public class BenjyFeatureConfig {
     private static final Set<String> KNOWN_FEATURES =
             Set.of("interpret", "route", "check", "evaluate", "reflect", "escalation");
 
+    /** The LLM controller stages that accept a {@code skills:} list, in run order. */
+    static final List<String> SKILL_STAGES = List.of("interpret", "route", "evaluate", "reflect");
+
     private final String interpretRecipe;
     private final @Nullable String routeRecipe;
     private final @Nullable String checkCommand;
@@ -61,6 +64,16 @@ public class BenjyFeatureConfig {
     private final String doRecipe;
     private final Set<String> taskTypes;
     private final List<String> criteriaSources;
+    /**
+     * Skill names composed into a stage's LightLm system prompt
+     * (planning/skill-activation-levels.md §3.6.2) — a deliberate
+     * recipe decision like {@code defaultActiveSkills}, independent of
+     * the skills' own activation modes. Keyed by stage name
+     * (interpret/route/evaluate/reflect); empty lists everywhere when
+     * the recipe configures none. The engine folds the process's
+     * {@code allowedSkills} whitelist in before passing them on.
+     */
+    private final Map<String, List<String>> stageSkills;
 
     /**
      * Parses and validates the feature config from the effective engine
@@ -115,6 +128,7 @@ public class BenjyFeatureConfig {
                 }
             }
         }
+        Map<String, List<String>> stageSkills = parseStageSkills(features, processId);
         return new BenjyFeatureConfig(
                 interpret,
                 featureRecipe(features, "route", processId),
@@ -124,7 +138,61 @@ public class BenjyFeatureConfig {
                 featureRecipe(features, "escalation", processId),
                 doRecipe,
                 Set.copyOf(taskTypes),
-                List.copyOf(sources));
+                List.copyOf(sources),
+                stageSkills);
+    }
+
+    /**
+     * Parses {@code features.<stage>.skills: [names]} — stage skill
+     * composition for the controller LightLm calls. Only the four LLM
+     * stages accept skills; {@code check} is mechanical and
+     * {@code escalation} delegates to a worker recipe (whose own
+     * {@code defaultActiveSkills} is the right place) — both fail fast
+     * instead of silently composing nothing.
+     */
+    private static Map<String, List<String>> parseStageSkills(Map<String, Object> features, String processId) {
+        Map<String, List<String>> out = new java.util.LinkedHashMap<>();
+        for (String stage : SKILL_STAGES) {
+            Object raw = features.get(stage);
+            if (!(raw instanceof Map<?, ?> m) || !(m.get("skills") instanceof List<?> list)) {
+                continue;
+            }
+            List<String> names = new java.util.ArrayList<>();
+            for (Object e : list) {
+                if (!(e instanceof String s) || s.isBlank()) {
+                    throw new IllegalArgumentException("Benjy id='" + processId + "' params.features." + stage
+                            + ".skills entries must be non-blank skill names");
+                }
+                if (s.strip().startsWith("@")) {
+                    // Labels select what is advertised (recipe advertisedSkills),
+                    // never what is composed — a stage skill is a deliberate choice.
+                    throw new IllegalArgumentException("Benjy id='" + processId + "' params.features." + stage
+                            + ".skills entry '" + s.strip() + "' is a label selector — stage skills are exact"
+                            + " skill names (labels belong in the recipe's advertisedSkills)");
+                }
+                names.add(s.trim());
+            }
+            out.put(stage, List.copyOf(names));
+        }
+        // A skills entry on a non-LLM stage is a config error the author
+        // must hear about — silently ignoring it would look like it worked.
+        for (Object key : features.keySet()) {
+            String stage = String.valueOf(key);
+            if (KNOWN_FEATURES.contains(stage)
+                    && !SKILL_STAGES.contains(stage)
+                    && features.get(stage) instanceof Map<?, ?> m
+                    && m.containsKey("skills")) {
+                throw new IllegalArgumentException("Benjy id='" + processId + "' params.features." + stage
+                        + ".skills is not supported — only " + SKILL_STAGES + " compose skills into "
+                        + "their LightLm prompt (a worker recipe uses defaultActiveSkills)");
+            }
+        }
+        return out;
+    }
+
+    /** Skill names configured for one controller stage; empty when none. */
+    public List<String> skillsFor(String stage) {
+        return stageSkills.getOrDefault(stage, List.of());
     }
 
     private static @Nullable String featureRecipe(Map<String, Object> features, String name, String processId) {

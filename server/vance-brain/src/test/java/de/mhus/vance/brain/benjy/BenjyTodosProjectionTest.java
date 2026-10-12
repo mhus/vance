@@ -12,6 +12,7 @@ import de.mhus.vance.api.thinkprocess.TodoItem;
 import de.mhus.vance.api.thinkprocess.TodoStatus;
 import de.mhus.vance.brain.ai.light.LightLlmService;
 import de.mhus.vance.brain.arthur.PlanModeEventEmitter;
+import de.mhus.vance.brain.skill.SingleShotSkillComposer;
 import de.mhus.vance.brain.tools.worktarget.WorkTargetService;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -50,7 +51,9 @@ class BenjyTodosProjectionTest {
                 mock(MetricService.class),
                 mock(WorkTargetService.class),
                 mock(WorkspaceService.class),
-                emitter);
+                emitter,
+                mock(de.mhus.vance.shared.session.SessionService.class),
+                mock(SingleShotSkillComposer.class));
     }
 
     private static ThinkProcessDocument doc(List<TodoItem> todos) {

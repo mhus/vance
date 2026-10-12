@@ -63,6 +63,7 @@ class RecipeDescribeToolTest {
                 .profiles(Map.of())
                 .defaultActiveSkills(List.of())
                 .allowedSkills(null)
+                .advertisedSkills(List.of())
                 .triggerKeywords(List.of())
                 .guards(List.of())
                 .tags(List.of())
@@ -109,6 +110,7 @@ class RecipeDescribeToolTest {
                                 null)))
                 .defaultActiveSkills(List.of("skill-y"))
                 .allowedSkills(List.of("skill-y", "skill-z"))
+                .advertisedSkills(List.of("@coding", "skill-x"))
                 .triggerKeywords(List.of("analyse"))
                 .locked(true)
                 .internal(false)
@@ -148,6 +150,7 @@ class RecipeDescribeToolTest {
                         "profiles",
                         "defaultActiveSkills",
                         "allowedSkills",
+                        "advertisedSkills",
                         "triggerKeywords",
                         "guards",
                         "tenants",

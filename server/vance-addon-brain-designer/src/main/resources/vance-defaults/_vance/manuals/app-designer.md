@@ -72,13 +72,15 @@ Rules that matter:
 
 Skills tagged **`design`** are design blueprints: activating one puts its
 authoring workflow and style assets into your turn. Before designing from
-scratch, check whether a design skill fits the brief — activate it yourself
-with `skill_activate(name=…)` and let it drive the structure. (The user can
-also activate one with `/skill <name>`; either path, the effect is the
-same from the next turn on.) The addon bundles one **example**, `design-blueprint` — visible in
-`/skill list` but without triggers, so it only runs when called
-explicitly (`/skill design-blueprint`). Copy and adapt it for a house
-style; installed kits may carry more.
+scratch, check the **Available skills** section in your context — design
+skills are advertised there (`activation: agent`), so activate a fitting
+one yourself with `skill_activate(name=…)` and let it drive the
+structure. (The user can also activate one with `/skill <name>`; either
+path, the effect is the same from the next turn on.) The addon bundles
+one **example**, `design-blueprint` — visible in `/skill list` and in
+your Available-skills section, but without triggers: it activates when
+you or the user pick it, never on a keyword match. Copy and adapt it for
+a house style; installed kits may carry more.
 
 **The `style.css` convention.** A design skill carries its house stylesheet
 as a `style.css` sibling of its `SKILL.md` — the same file name a design

@@ -18,6 +18,9 @@ import org.springframework.stereotype.Component;
  *   <li>{@code /skill list} — print active and available skills</li>
  *   <li>{@code /skill clear} — remove all non-recipe skills</li>
  *   <li>{@code /skill clear &lt;name&gt;} — remove one named skill</li>
+ *   <li>{@code /skill mode &lt;name&gt; &lt;mode&gt; [scope]} — set the activation mode
+ *       (manual | trigger | agent) in the user override tier, or in the
+ *       project/tenant tier when named</li>
  * </ul>
  *
  * <p>See {@code specification/skills.md} §6.
@@ -40,8 +43,9 @@ public class SkillSlashCommand implements SlashCommand {
 
     @Override
     public String description() {
-        return "Activate, clear or list skills on the active process. "
-                + "Args: list | clear [name] | <name> [--once] [args...]";
+        return "Activate, clear, list or re-mode skills on the active process. "
+                + "Args: list | clear [name] | mode <name> <manual|trigger|agent> [scope]"
+                + " | <name> [--once] [args...]";
     }
 
     @Override
@@ -49,19 +53,30 @@ public class SkillSlashCommand implements SlashCommand {
         // Mixed ENUM+SKILL: the first token is "list", "clear", or a skill
         // name. We surface the static subcommands here; users can still
         // type a skill name freely (the brain validates).
-        return List.of(ArgSpec.enumOf("subcommand", List.of("list", "clear")));
+        return List.of(ArgSpec.enumOf("subcommand", List.of("list", "clear", "mode")));
     }
 
     @Override
     public void execute(List<String> args) throws Exception {
         if (args.isEmpty()) {
-            terminal.error("Usage: /skill list | clear [name] | <name> [--once] [args...]");
+            terminal.error(
+                    "Usage: /skill list | clear [name] | mode <name> <mode> [scope] | <name> [--once] [args...]");
+            return;
+        }
+        String head = args.get(0);
+        // The mode is scope configuration, not process state — it needs no
+        // active process, only the bound session's project.
+        if (head.equalsIgnoreCase("mode")) {
+            if (args.size() < 3) {
+                terminal.error("Usage: /skill mode <name> <manual|trigger|agent> [user|project|tenant]");
+                return;
+            }
+            helper.setMode(args.get(1), args.get(2), args.size() > 3 ? args.get(3) : null);
             return;
         }
         String processName = helper.requireActiveProcess();
         if (processName == null) return;
 
-        String head = args.get(0);
         switch (head.toLowerCase()) {
             case "list" -> helper.list(processName);
             case "clear" -> helper.clear(processName, args.size() > 1 ? args.get(1) : null);

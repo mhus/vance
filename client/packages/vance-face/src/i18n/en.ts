@@ -872,6 +872,15 @@ export default {
       info: 'Show details',
       macroBadge: 'macro',
       stickyBadge: 'sticky',
+      modeLabel: 'Activation',
+      modeManual: 'Not offered',
+      modeTrigger: 'Word activation',
+      modeAgent: 'Offered to the AI (Available skills)',
+      modeBadgeManual: 'manual',
+      modeBadgeTrigger: 'trigger',
+      modeBadgeAgent: 'agent',
+      modeAuthorHint: 'Set by the skill author — switching it here writes your personal override.',
+      modeOverrideHint: 'Personal override (tier: {scope}).',
       lifecycleStickyHint:
         'Activation persists until the skill is cleared or the session ends — the skill body is injected into every turn.',
       lifecycleShotHint:

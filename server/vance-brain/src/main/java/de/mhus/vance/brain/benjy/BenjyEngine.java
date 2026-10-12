@@ -12,6 +12,8 @@ import de.mhus.vance.brain.ai.light.LightLlmRequest;
 import de.mhus.vance.brain.ai.light.LightLlmService;
 import de.mhus.vance.brain.ai.light.SchemaValidationException;
 import de.mhus.vance.brain.arthur.PlanModeEventEmitter;
+import de.mhus.vance.brain.skill.SingleShotSkillComposer;
+import de.mhus.vance.brain.skill.SkillScopeContext;
 import de.mhus.vance.brain.thinkengine.ParentReport;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
@@ -19,6 +21,8 @@ import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.metric.MetricService;
+import de.mhus.vance.shared.session.SessionService;
+import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.thinkprocess.TodoPatch;
@@ -31,6 +35,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -151,6 +156,8 @@ public class BenjyEngine implements ThinkEngine {
     private final de.mhus.vance.brain.tools.worktarget.WorkTargetService workTargetService;
     private final WorkspaceService workspaceService;
     private final PlanModeEventEmitter planModeEventEmitter;
+    private final SessionService sessionService;
+    private final SingleShotSkillComposer singleShotSkillComposer;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -231,7 +238,56 @@ public class BenjyEngine implements ThinkEngine {
             }
             persistState(process, state);
         }
+        // Stage skills are checked once here, not on the first controller
+        // call: a misconfigured recipe must fail before the run starts
+        // (planning/skill-activation-levels.md §3.6).
+        String stageSkillProblem = stageSkillPreflight(process, ctx, state);
+        if (stageSkillProblem != null) {
+            blockWith(process, ctx, state, "Stage skill configuration: " + stageSkillProblem);
+            return;
+        }
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
+    }
+
+    /**
+     * Validates the recipe's {@code features.<stage>.skills} against this
+     * process's scope (§3.6) and journals the skills its {@code allowedSkills}
+     * whitelist refuses (§3.7) — once per run instead of silently on every
+     * controller call ({@link #callLlm} keeps filtering).
+     *
+     * @return the diagnosis when a stage skill cannot compose into a
+     *     single-shot prompt, {@code null} when the configuration is usable
+     */
+    private @Nullable String stageSkillPreflight(
+            ThinkProcessDocument process, ThinkEngineContext ctx, BenjyState state) {
+        BenjyFeatureConfig features;
+        try {
+            features = BenjyFeatureConfig.fromParams(EngineChatFactory.effectiveParams(process), process.getId());
+        } catch (IllegalArgumentException e) {
+            return e.getMessage();
+        }
+        Set<String> whitelist = process.getAllowedSkillsOverride();
+        SkillScopeContext scope =
+                SkillScopeContext.of(process.getTenantId(), userIdFor(process), process.getProjectId());
+        for (String stage : BenjyFeatureConfig.SKILL_STAGES) {
+            List<String> allowed = allowedStageSkills(features.skillsFor(stage), whitelist);
+            List<String> refused = features.skillsFor(stage).stream()
+                    .filter(name -> !allowed.contains(name))
+                    .toList();
+            if (!refused.isEmpty()) {
+                journal(
+                        ctx,
+                        process,
+                        state,
+                        stage + ": recipe whitelist refused stage skill(s): " + String.join(", ", refused));
+            }
+            try {
+                singleShotSkillComposer.resolveComposable(scope, allowed);
+            } catch (IllegalArgumentException e) {
+                return "stage '" + stage + "': " + e.getMessage();
+            }
+        }
+        return null;
     }
 
     @Override
@@ -743,7 +799,8 @@ public class BenjyEngine implements ThinkEngine {
                                                 "The first 1-3 concrete work items. Never a full plan — "
                                                         + "decomposition continues incrementally at branches.")),
                 "required", List.of("interpretedGoal", "taskType", "acceptanceCriteria", "initialItems"));
-        Map<String, Object> answer = callLlm(process, state, features.getInterpretRecipe(), prompt.toString(), schema);
+        Map<String, Object> answer = callLlm(
+                process, state, "interpret", features.getInterpretRecipe(), prompt.toString(), schema, features);
 
         state.setInterpretedGoal(stringValue(answer.get("interpretedGoal"), goal));
         String taskType = stringValue(answer.get("taskType"), BenjyFeatureConfig.TASK_TYPE_INFO);
@@ -882,7 +939,8 @@ public class BenjyEngine implements ThinkEngine {
                                 "question", Map.of("type", "string"),
                                 "reason", Map.of("type", "string")),
                 "required", List.of("action", "reason"));
-        Map<String, Object> answer = callLlm(process, state, features.getRouteRecipe(), digest, schema);
+        Map<String, Object> answer =
+                callLlm(process, state, "route", features.getRouteRecipe(), digest, schema, features);
 
         String action = stringValue(answer.get("action"), "blocked");
         String reason = stringValue(answer.get("reason"), "(no reason given)");
@@ -1126,8 +1184,29 @@ public class BenjyEngine implements ThinkEngine {
             extraParams.put("workTarget", Map.of("kind", WorkTargetKind.WORK.name(), "targetName", workTargetName));
         }
 
+        // Hub skill inheritance (§3.6.5): sticky active skills on the Benjy
+        // hub ride along into the doer, with their invocation args. One-shot
+        // refs stay hub-local — they were armed for a hub turn, not for the
+        // worker's lifetime.
+        List<ActiveSkillRefEmbedded> inheritedSkills = new ArrayList<>();
+        if (process.getActiveSkills() != null) {
+            for (ActiveSkillRefEmbedded ref : process.getActiveSkills()) {
+                if (ref.getName() != null && !ref.getName().isBlank() && !ref.isOneShot()) {
+                    inheritedSkills.add(ref);
+                }
+            }
+        }
         String prompt = buildDoPrompt(state, item, context);
-        String workerId = workerSpawner.spawn(process, recipe, extraParams, prompt);
+        BenjyWorkerSpawner.DoerSpawn doer = workerSpawner.spawn(process, recipe, extraParams, prompt, inheritedSkills);
+        String workerId = doer.processId();
+        if (!doer.droppedSkills().isEmpty()) {
+            journal(
+                    ctx,
+                    process,
+                    state,
+                    "do #" + item.getId() + ": doer recipe '" + recipe + "' whitelist refused inherited skill(s): "
+                            + String.join(", ", doer.droppedSkills()));
+        }
         BenjyState.InFlight inFlight = new BenjyState.InFlight();
         inFlight.setTaskId(task.getId());
         inFlight.setWorkerProcessId(workerId);
@@ -1215,7 +1294,8 @@ public class BenjyEngine implements ThinkEngine {
                                                 "description",
                                                         "Ids of acceptance criteria this result does not satisfy.")),
                 "required", List.of("verdict"));
-        Map<String, Object> answer = callLlm(process, state, features.getEvaluateRecipe(), view, schema);
+        Map<String, Object> answer =
+                callLlm(process, state, "evaluate", features.getEvaluateRecipe(), view, schema, features);
 
         String verdict = stringValue(answer.get("verdict"), "fail");
         List<String> reasons = new ArrayList<>();
@@ -1291,7 +1371,8 @@ public class BenjyEngine implements ThinkEngine {
                                                         "Concrete uncovered aspects — new items can be built from these."),
                                 "recommendation", Map.of("type", "string")),
                 "required", List.of("achieved"));
-        Map<String, Object> answer = callLlm(process, state, features.getReflectRecipe(), digest, schema);
+        Map<String, Object> answer =
+                callLlm(process, state, "reflect", features.getReflectRecipe(), digest, schema, features);
         String achieved = stringValue(answer.get("achieved"), "no");
         List<String> gaps = new ArrayList<>();
         for (Object g : listValue(answer.get("gaps"))) {
@@ -1768,21 +1849,51 @@ public class BenjyEngine implements ThinkEngine {
         return sb.toString();
     }
 
+    /**
+     * The hub process's session user — the USER tier of the skill cascade
+     * for stage skill composition (§3.6.1). Null for system-driven runs,
+     * same convention every other skill consumer applies.
+     */
+    private @Nullable String userIdFor(ThinkProcessDocument process) {
+        return sessionService
+                .findBySessionId(process.getSessionId())
+                .map(s -> s.getUserId() == null || s.getUserId().isBlank() ? null : s.getUserId())
+                .orElse(null);
+    }
+
+    /** Stage skills the process's {@code allowedSkills} whitelist admits ({@code null} = no lock). */
+    private static List<String> allowedStageSkills(List<String> stageSkills, @Nullable Set<String> whitelist) {
+        if (whitelist == null) return stageSkills;
+        return stageSkills.stream().filter(whitelist::contains).toList();
+    }
+
     private Map<String, Object> callLlm(
             ThinkProcessDocument process,
             BenjyState state,
+            String stage,
             String recipe,
             String userPrompt,
-            Map<String, Object> schema) {
+            Map<String, Object> schema,
+            BenjyFeatureConfig features) {
         state.getCounters().setLlmCalls(state.getCounters().getLlmCalls() + 1);
-        LightLlmJsonAnswer answer = lightLlmService.callForJsonWithModel(LightLlmRequest.builder()
+        // Stage skill composition (§3.6): the recipe's deliberate choice,
+        // gated by the process's allowedSkills whitelist so a stage can
+        // never widen what the spawning recipe locked down (§3.7). The
+        // refused names were journaled once by stageSkillPreflight.
+        String userId = userIdFor(process);
+        List<String> stageSkills = allowedStageSkills(features.skillsFor(stage), process.getAllowedSkillsOverride());
+        LightLlmRequest.LightLlmRequestBuilder builder = LightLlmRequest.builder()
                 .recipeName(recipe)
                 .userPrompt(userPrompt)
                 .schema(schema)
                 .tenantId(process.getTenantId())
                 .projectId(process.getProjectId())
                 .processId(process.getId())
-                .build());
+                .userId(userId);
+        if (!stageSkills.isEmpty()) {
+            builder.skills(stageSkills);
+        }
+        LightLlmJsonAnswer answer = lightLlmService.callForJsonWithModel(builder.build());
         if (answer.usage() != null) {
             long in = answer.usage().inputTokens() == null ? 0 : answer.usage().inputTokens();
             long out =

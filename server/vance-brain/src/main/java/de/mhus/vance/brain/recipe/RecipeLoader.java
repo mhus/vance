@@ -7,6 +7,7 @@ import de.mhus.vance.api.session.SuspendPolicy;
 import de.mhus.vance.api.thinkprocess.PromptMode;
 import de.mhus.vance.brain.prompt.PromptTemplateException;
 import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
+import de.mhus.vance.brain.skill.SkillLabelSelector;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
 import de.mhus.vance.shared.home.HomeBootstrapService;
@@ -253,7 +254,10 @@ public class RecipeLoader {
         Map<String, RecipeModeBlock> baseModes = parseModes(spec.get("modes"), "modes");
         Map<String, ProfileBlock> profiles = parseProfiles(spec.get("profiles"), renderer);
         List<String> defaultActiveSkills = stringList(spec.get("defaultActiveSkills"), "defaultActiveSkills");
+        rejectLabelSelectors(name, defaultActiveSkills);
         List<String> allowedSkills = parseAllowedSkills(spec.get("allowedSkills"));
+        List<String> advertisedSkills = stringList(spec.get("advertisedSkills"), "advertisedSkills");
+        validateAdvertisedSkills(name, advertisedSkills);
         validateDefaultsAreAllowed(name, defaultActiveSkills, allowedSkills);
         List<String> triggerKeywords = parseTriggerKeywords(spec.get("triggers"));
         boolean locked = spec.get("locked") instanceof Boolean b && b;
@@ -289,6 +293,7 @@ public class RecipeLoader {
                 profiles,
                 defaultActiveSkills,
                 allowedSkills,
+                advertisedSkills,
                 triggerKeywords,
                 locked,
                 internal,
@@ -481,6 +486,38 @@ public class RecipeLoader {
             if (!allowedSkills.contains(name)) {
                 throw new IllegalStateException(
                         "recipe '" + recipeName + "': defaultActiveSkill '" + name + "' is not in allowedSkills");
+            }
+        }
+    }
+
+    /**
+     * {@code defaultActiveSkills} activates — and activation is always a
+     * deliberate, named choice. A label selector there would activate
+     * whatever happens to carry the tag; labels only select what is
+     * <em>advertised</em> (skills.md §7e).
+     */
+    private static void rejectLabelSelectors(String recipeName, List<String> defaultActiveSkills) {
+        for (String entry : defaultActiveSkills) {
+            if (SkillLabelSelector.isLabelSelector(entry)) {
+                throw new IllegalStateException("recipe '" + recipeName + "': defaultActiveSkills entry '"
+                        + entry.strip() + "' is a label selector — labels select advertised skills"
+                        + " (advertisedSkills), never activated ones");
+            }
+        }
+    }
+
+    /**
+     * Validates the shape of {@code advertisedSkills} entries: exact names
+     * or {@code @label} selectors. A blank label ("@") is a config error the
+     * author must hear about; an unknown label is not (groups may be empty,
+     * and the scope decides membership anyway).
+     */
+    private static void validateAdvertisedSkills(String recipeName, List<String> selectors) {
+        for (String entry : selectors) {
+            if (SkillLabelSelector.isLabelSelector(entry)
+                    && SkillLabelSelector.labelOf(entry).isBlank()) {
+                throw new IllegalStateException(
+                        "recipe '" + recipeName + "': empty '@' label selector in advertisedSkills");
             }
         }
     }

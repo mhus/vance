@@ -48,6 +48,7 @@ class BundledRecipeStructureTest {
             "allowedToolsDropFirst",
             "defaultActiveSkills",
             "allowedSkills",
+            "advertisedSkills",
             "triggers",
             "tags",
             "modes",

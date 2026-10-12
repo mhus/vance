@@ -53,7 +53,9 @@ public class SkillActivateTool implements Tool {
                                     "type",
                                     "string",
                                     "description",
-                                    "Skill name, e.g. 'design-blueprint'. Use how_do_i " + "to discover what exists."));
+                                    "Skill name, e.g. 'design-blueprint'. Skills advertised "
+                                            + "under 'Available skills' in your context are yours to "
+                                            + "activate; how_do_i discovers the rest."));
                     put(
                             "args",
                             Map.of(
@@ -97,7 +99,9 @@ public class SkillActivateTool implements Tool {
                 + "'design' skill before creating web designs in a designer app) "
                 + "instead of working without it. Recipe allowedSkills locks, "
                 + "argument declarations and disabled skills are enforced exactly "
-                + "as on the /skill surface.";
+                + "as on the /skill surface. Skills offered for the current "
+                + "work are listed under 'Available skills' in your context; "
+                + "how_do_i discovers the rest.";
     }
 
     @Override

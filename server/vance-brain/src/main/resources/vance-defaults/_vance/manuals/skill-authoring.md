@@ -35,7 +35,7 @@ layer wins, so a user copy overrides the project's.
 title: Code Review
 description: Review the current changes
 version: 1.0.0
-tags: [code, review]
+tags: [code, coding]
 lifecycle: shot
 arguments: true
 ---
@@ -128,6 +128,36 @@ is a body does nothing on the trigger path *and* nothing on a bare agent
 activation — give it `activate:` commands, make it `sticky`, or expect
 explicit invocation only.
 
+## Activation mode (`activation:`)
+
+Where the skill is offered — a monotone ladder, one frontmatter field.
+It is not a permission: the user (`/skill`), the agent (`skill_activate` /
+`skill_fire`) and recipe defaults can activate any enabled skill at every
+level; only `enabled: false` blocks activation.
+
+| Mode | Auto-trigger | Listed under "Available skills" in the agent's context |
+|---|---|---|
+| `manual` | off | no — unless a recipe selects it via `advertisedSkills` |
+| `trigger` | armed (your `triggers:` block) | no — unless a recipe selects it |
+| `agent` | armed if `triggers:` present | **yes**, in every context |
+
+When the field is absent it derives from `triggers:`: present →
+`trigger`, absent → `manual`. Declare `activation: agent` on skills the
+model should be offered everywhere (like `design-blueprint`); for skills
+that only fit certain work, tag them instead and let the recipe for that
+work select the tag (see `tags` below).
+
+Users can override the mode per scope without forking your SKILL.md —
+`_vance/config/skill_activation.yaml` (`skills: { <name>: manual }`) in
+the tenant, the project or their own user project. The three documents
+merge **per entry**: for each skill the innermost entry wins (user →
+project → tenant), and a skill no document mentions keeps your
+declaration. Overrides win over your declaration.
+
+Keep listed skills honest: the list shows only the name and the
+description (the title when there is none), so write the description as
+"use when …". A skill that is already active drops out of the list.
+
 ## Running in a fresh worker (`run.target: spawn`)
 
 A skill acts in the calling process by default. Sometimes that is exactly
@@ -189,7 +219,8 @@ literal `{% %}` in them must survive.
 | `manualPaths` | Folders the skill contributes to `manual_read` / `manual_list` while active |
 | `referenceDocs` | Sibling files, `loadMode: INLINE` (into the prompt) or `ON_DEMAND` (listed for `manual_read`) |
 | `enabled: false` | Hides the skill — including a same-named one from an outer cascade layer |
-| `tags` | Discovery hints |
+| `tags` | Discovery hints **plus group membership**: each tag is a selectable `@label` — a recipe saying `advertisedSkills: ["@coding"]` lists every enabled skill tagged `coding` under "Available skills", where the agent can activate it. Tagging never activates anything. Tag by domain (what you contribute to), not by activity — a recipe asks for "coding skills", not "reviewing". Tags have no other effect: trigger, activation and tool logic never read them |
+| `activation` | Who may activate: `manual` (user-only, agent refused) / `trigger` (word activation armed) / `agent` (advertised to the LLM). Absent → derived from `triggers:` (see above) |
 
 `title`, `description`, `version` are required. `description` doubles as
 what the model and the skill picker see, so write it as "use when …".

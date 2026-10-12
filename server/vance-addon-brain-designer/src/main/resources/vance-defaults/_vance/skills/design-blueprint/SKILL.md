@@ -6,10 +6,16 @@ description: |
   Design skill (label: design) — a landing-page blueprint for the designer
   app: section structure, a ready-made responsive stylesheet (light/dark)
   as a reference file, and authoring rules. Bundled EXAMPLE: no triggers,
-  so it never activates on its own — call it explicitly with
+  activation is agent-advertised — the LLM can pick it up on its own when
+  a design brief fits, and the user can always call it with
   /skill design-blueprint. Copy the folder and adapt it for a house style.
 tags: [design, landing-page, css, example]
 category: design
+# Agent-advertised, trigger-less: the LLM sees it under "Available
+# skills" before creating a design; without this declaration the derived
+# default would be 'manual' and the agent would only find it via how_do_i
+# (planning/skill-activation-levels.md §3.4 breaking change).
+activation: agent
 enabled: true
 action: |
   The design-blueprint skill is now active. Apply its workflow and style
@@ -26,8 +32,9 @@ You are operating in **design-blueprint mode**: create a polished landing-page
 design in a designer app (`app: designer`).
 
 > This is the bundled example skill — a template to copy, not a hidden
-> default. It carries no triggers, so it only ever runs when somebody
-> calls it explicitly. Copy the folder (project or tenant layer) and edit
+> default. It carries no triggers and is agent-advertised (`activation:
+> agent`): the LLM may activate it when a brief fits, the user may always
+> call it explicitly. Copy the folder (project or tenant layer) and edit
 > it to the user's house style.
 
 ## Workflow

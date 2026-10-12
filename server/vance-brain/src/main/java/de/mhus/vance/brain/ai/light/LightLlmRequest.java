@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.ai.light;
 
+import java.util.List;
 import java.util.Map;
 import lombok.Builder;
 import lombok.Value;
@@ -73,6 +74,15 @@ public class LightLlmRequest {
     String projectId;
 
     /**
+     * Optional. User scope for cascade lookups — most importantly the
+     * USER tier of the skill cascade when {@link #skills} is set.
+     * {@code null} (system spawns) skips the user tier, same as every
+     * other skill consumer.
+     */
+    @Nullable
+    String userId;
+
+    /**
      * Optional. Innermost setting-cascade scope. Light-LLM calls
      * typically run from a tool invoked by a process, so passing the
      * caller's processId lets per-process setting overrides apply.
@@ -94,4 +104,18 @@ public class LightLlmRequest {
     /** MIME type of {@link #imageData}; required when an image is set. */
     @Nullable
     String imageMime;
+    /**
+     * Optional. Skill names whose bodies compose into this call's
+     * system prompt (planning/skill-activation-levels.md §3.6) — the
+     * composition funnel for single-shot calls that have no tool
+     * loop and therefore no use for skill_activate advertising. Only
+     * the body and INLINE reference docs compose; skills that would
+     * contribute nothing (tools-only) or declare ON_DEMAND docs (no
+     * manual_read available in a single shot) fail the call fast. The
+     * activation mode is irrelevant here — the caller makes a
+     * deliberate configuration decision, like a recipe's
+     * defaultActiveSkills.
+     */
+    @Nullable
+    List<String> skills;
 }

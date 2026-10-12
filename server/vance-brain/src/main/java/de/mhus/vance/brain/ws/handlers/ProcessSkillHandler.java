@@ -5,8 +5,11 @@ import de.mhus.vance.api.skills.ProcessSkillCommand;
 import de.mhus.vance.api.skills.ProcessSkillRequest;
 import de.mhus.vance.api.skills.ProcessSkillResponse;
 import de.mhus.vance.api.skills.ScriptParamDto;
+import de.mhus.vance.api.skills.SkillActivation;
+import de.mhus.vance.api.skills.SkillActivationSource;
 import de.mhus.vance.api.skills.SkillArgumentDto;
 import de.mhus.vance.api.skills.SkillReferenceDocDto;
+import de.mhus.vance.api.skills.SkillScope;
 import de.mhus.vance.api.skills.SkillScriptDto;
 import de.mhus.vance.api.skills.SkillSummaryDto;
 import de.mhus.vance.api.skills.SkillTriggerDto;
@@ -16,6 +19,8 @@ import de.mhus.vance.brain.command.EngineCommand;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.skill.ResolvedSkill;
+import de.mhus.vance.brain.skill.SkillActivationService;
+import de.mhus.vance.brain.skill.SkillActivationService.ActivationResolution;
 import de.mhus.vance.brain.skill.SkillCategoriesService;
 import de.mhus.vance.brain.skill.SkillSteerProcessor;
 import de.mhus.vance.brain.skill.UnknownSkillException;
@@ -60,6 +65,7 @@ public class ProcessSkillHandler implements WsHandler {
     private final ThinkProcessService thinkProcessService;
     private final SkillSteerProcessor skillSteerProcessor;
     private final SkillCategoriesService skillCategoriesService;
+    private final SkillActivationService skillActivationService;
     private final RequestAuthority authority;
     private final LaneScheduler laneScheduler;
 
@@ -201,9 +207,14 @@ public class ProcessSkillHandler implements WsHandler {
         }
 
         if (command == ProcessSkillCommand.LIST) {
+            // Effective activation modes fold in the scope's override
+            // document — read once for the whole listing, then per skill
+            // without another document read.
+            SkillActivationService.ActivationOverrides activationOverrides =
+                    skillSteerProcessor.activationOverrides(process);
             List<SkillSummaryDto> available = new ArrayList<>();
             for (ResolvedSkill skill : skillSteerProcessor.listAvailable(process)) {
-                available.add(toSummary(skill));
+                available.add(toSummary(skill, skillActivationService.resolve(activationOverrides, skill)));
             }
             SkillCategoriesService.Arrangement arranged =
                     skillCategoriesService.arrange(process.getTenantId(), process.getProjectId(), available);
@@ -250,8 +261,30 @@ public class ProcessSkillHandler implements WsHandler {
      * same reason as {@link #toActiveDtoList} — the full projection
      * (triggers, lifecycle, arguments, command sequences) is DTO
      * contract, tested directly.
+     *
+     * @param activation the effective activation mode with provenance, as
+     *   resolved against the scope's override document; {@code null} falls
+     *   back to the frontmatter-level mode (frontmatter declaration or
+     *   {@code triggers:} derivation, no override)
      */
     static SkillSummaryDto toSummary(ResolvedSkill skill) {
+        return toSummary(skill, null);
+    }
+
+    static SkillSummaryDto toSummary(ResolvedSkill skill, @Nullable ActivationResolution activation) {
+        SkillActivation effectiveMode;
+        SkillActivationSource effectiveSource;
+        SkillScope overrideScope = null;
+        if (activation != null) {
+            effectiveMode = activation.mode();
+            effectiveSource = activation.source();
+            overrideScope = activation.overrideScope();
+        } else {
+            effectiveMode = skill.frontmatterActivation();
+            effectiveSource = skill.declaredActivation() != null
+                    ? SkillActivationSource.FRONTMATTER
+                    : SkillActivationSource.DERIVED;
+        }
         return SkillSummaryDto.builder()
                 .name(skill.name())
                 .title(skill.title())
@@ -261,6 +294,9 @@ public class ProcessSkillHandler implements WsHandler {
                 .triggers(toTriggerDtos(skill.triggers()))
                 .category(skill.category())
                 .lifecycle(skill.lifecycle().name().toLowerCase())
+                .activation(effectiveMode)
+                .activationSource(effectiveSource)
+                .activationOverrideScope(overrideScope)
                 .tools(skill.tools())
                 .manualPaths(skill.manualPaths())
                 .arguments(toArgumentDtos(skill.arguments()))

@@ -89,6 +89,7 @@ public class SkillSteerProcessor {
     private final ProcessEventEmitter eventEmitter;
     private final PromptTemplateRenderer templateRenderer;
     private final SkillSpawnRunner skillSpawnRunner;
+    private final SkillActivationService activationService;
 
     /**
      * Explicit activation, user route ({@code /skill <name>} /
@@ -599,6 +600,17 @@ public class SkillSteerProcessor {
         String userId = session != null && !session.getUserId().isBlank() ? session.getUserId() : null;
         String projectId = session != null && !session.getProjectId().isBlank() ? session.getProjectId() : null;
         return SkillScopeContext.of(process.getTenantId(), userId, projectId);
+    }
+
+    /**
+     * Scope-level activation-mode overrides for this process's scope —
+     * read once per consumer (LIST response, turn advertising), never per
+     * skill. Exposed so callers that already hold the process (the WS
+     * handler) share the same scope derivation as activations do, instead
+     * of re-deriving it — and reading the override document — per skill.
+     */
+    public SkillActivationService.ActivationOverrides activationOverrides(ThinkProcessDocument process) {
+        return activationService.overrides(scopeFor(process));
     }
 
     private static List<ActiveSkillRefEmbedded> mutableActive(ThinkProcessDocument process) {

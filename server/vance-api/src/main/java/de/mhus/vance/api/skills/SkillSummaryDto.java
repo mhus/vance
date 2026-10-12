@@ -67,6 +67,30 @@ public class SkillSummaryDto {
     @Builder.Default
     private List<String> tools = new ArrayList<>();
 
+    /**
+     * Effective activation mode (skills.md §2, planning/
+     * skill-activation-levels.md §3.1): which surfaces offer this
+     * skill — {@code manual} (none), {@code trigger} (word activation
+     * armed) or {@code agent} (listed in every turn context for the agent
+     * to activate). Scope-level
+     * overrides from {@code _vance/config/skill_activation.yaml} are
+     * already folded in.
+     */
+    private SkillActivation activation;
+
+    /**
+     * Provenance of {@link #activation} — frontmatter declaration,
+     * {@code triggers:}-based derivation or scope-level override.
+     */
+    private SkillActivationSource activationSource;
+
+    /**
+     * Override tier that produced the effective mode — only set when
+     * {@link #activationSource} is {@code OVERRIDE}, {@code null}
+     * otherwise.
+     */
+    private @Nullable SkillScope activationOverrideScope;
+
     /** Manual folder paths the skill contributes to {@code manual_read} while active. */
     @Builder.Default
     private List<String> manualPaths = new ArrayList<>();

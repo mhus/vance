@@ -43,6 +43,24 @@ describe('parseSkillCommand', () => {
     expect(parseSkillCommand('/skill').command).toBeNull();
     expect(parseSkillCommand('/skill   ').command).toBeNull();
   });
+
+  it('parses the mode subcommand, with and without a scope', () => {
+    const m = parseSkillCommand('/skill mode code-review agent');
+    expect(m.command).toBe('mode');
+    expect(m.skillName).toBe('code-review');
+    expect(m.mode).toBe('agent');
+    expect(m.scope).toBeUndefined();
+
+    const m2 = parseSkillCommand('/skill mode code-review manual tenant');
+    expect(m2.command).toBe('mode');
+    expect(m2.skillName).toBe('code-review');
+    expect(m2.mode).toBe('manual');
+    expect(m2.scope).toBe('tenant');
+  });
+
+  it('flags a mode line without a mode value as usage', () => {
+    expect(parseSkillCommand('/skill mode code-review').command).toBeNull();
+  });
 });
 
 describe('renderSkillReply (activate branches)', () => {

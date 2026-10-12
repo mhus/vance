@@ -235,6 +235,22 @@ public class BrainRestClientService {
 
     // ─── Documents ────────────────────────────────────────────────
 
+    /**
+     * {@code POST /brain/{tenant}/skills/{name}/activation?projectId=…} — set
+     * a skill's activation mode (scope configuration, no process involved).
+     * {@code projectId} scopes the skill resolution and the project tier;
+     * without it only tenant-level skills resolve.
+     */
+    public de.mhus.vance.api.skills.SkillModeResponse setSkillMode(
+            String skillName, @Nullable String projectId, de.mhus.vance.api.skills.SkillModeRequest request)
+            throws Exception {
+        String path = "/brain/" + config.getAuth().getTenant() + "/skills/" + urlEncode(skillName) + "/activation";
+        if (projectId != null && !projectId.isBlank()) {
+            path += "?projectId=" + urlEncode(projectId);
+        }
+        return post(path, request, de.mhus.vance.api.skills.SkillModeResponse.class);
+    }
+
     /** {@code GET /brain/{tenant}/documents?projectId=…} — list. */
     public DocumentListResponse listDocuments(String projectId, @Nullable String pathPrefix, @Nullable String kind)
             throws Exception {

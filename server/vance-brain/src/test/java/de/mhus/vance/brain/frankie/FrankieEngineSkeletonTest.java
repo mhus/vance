@@ -175,6 +175,7 @@ class FrankieEngineSkeletonTest {
                 systemPromptComposer,
                 skillResolver,
                 skillPromptComposer,
+                mock(de.mhus.vance.brain.skill.SkillTurnSupport.class),
                 sessionService,
                 mock(de.mhus.vance.brain.context.PromptDateContextResolver.class),
                 mock(de.mhus.vance.brain.prompt.ScratchpadPromptContributor.class),

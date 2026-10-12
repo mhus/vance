@@ -165,6 +165,7 @@ public class Ford implements ThinkEngine {
     private final SkillResolver skillResolver;
     private final SkillPromptComposer skillPromptComposer;
     private final de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher;
+    private final de.mhus.vance.brain.skill.SkillTurnSupport skillTurnSupport;
     private final SessionService sessionService;
     private final de.mhus.vance.brain.context.PromptDateContextResolver promptDateContextResolver;
     private final de.mhus.vance.brain.prompt.ScratchpadPromptContributor scratchpadPromptContributor;
@@ -980,6 +981,15 @@ public class Ford implements ThinkEngine {
                 activeSkills, ctxBuilder.build(), de.mhus.vance.brain.skill.SkillTurnSupport.rawArgsByName(process));
         if (skillSection != null && !skillSection.isBlank()) {
             messages.add(SystemMessage.from(skillSection));
+        }
+
+        // Agent advertising — one card per 'agent'-mode skill, directly
+        // behind the active-skills section: both change together, one
+        // cache break instead of two. Null (no message) when nothing is
+        // advertised.
+        String advertisedSkills = skillTurnSupport.advertiseSection(process, activeSkills);
+        if (advertisedSkills != null) {
+            messages.add(SystemMessage.from(advertisedSkills));
         }
         // Compaction summaries first: these are plain SystemMessages, which
         // the Anthropic mapper tags STATIC, and the cache marker goes on the

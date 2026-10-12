@@ -43,6 +43,7 @@ class FrankieTodoBlockTest {
                 mock(SystemPromptComposer.class),
                 mock(SkillResolver.class),
                 mock(SkillPromptComposer.class),
+                mock(de.mhus.vance.brain.skill.SkillTurnSupport.class),
                 mock(SessionService.class),
                 mock(de.mhus.vance.brain.context.PromptDateContextResolver.class),
                 mock(de.mhus.vance.brain.prompt.ScratchpadPromptContributor.class),

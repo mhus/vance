@@ -1,9 +1,7 @@
 package de.mhus.vance.brain.action;
 
-import de.mhus.vance.api.action.TriggerKind;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
@@ -12,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.action.TriggerAction;
+import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.api.thinkprocess.PromptMode;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
@@ -43,8 +42,8 @@ class SpawnActionExecutorTest {
     private ParentContextSpawnHelper parentContextSpawnHelper;
     private SpawnActionExecutor exec;
 
-    private final TriggerContext ctxWithSession = TriggerContext.sessioned(
-            "t1", "p1", "alice", "corr-1", "scheduler:morning", "sess-1", null);
+    private final TriggerContext ctxWithSession =
+            TriggerContext.sessioned("t1", "p1", "alice", "corr-1", "scheduler:morning", "sess-1", null);
 
     @BeforeEach
     void setUp() {
@@ -54,13 +53,11 @@ class SpawnActionExecutorTest {
         processService = mock(ThinkProcessService.class);
         messageRouter = mock(EngineMessageRouter.class);
         parentContextSpawnHelper = mock(ParentContextSpawnHelper.class);
-        when(parentContextSpawnHelper.wrap(any(), any(), any()))
-                .thenAnswer(inv -> inv.getArgument(2));
+        when(parentContextSpawnHelper.wrap(any(), any(), any())).thenAnswer(inv -> inv.getArgument(2));
         de.mhus.vance.brain.tools.worktarget.WorkTargetService workTargetService =
                 mock(de.mhus.vance.brain.tools.worktarget.WorkTargetService.class);
         // Pass-through: no inheritance unless the test wires it up.
-        when(workTargetService.resolveSpawnParams(any(), any())).thenAnswer(
-                inv -> inv.getArgument(0));
+        when(workTargetService.resolveSpawnParams(any(), any())).thenAnswer(inv -> inv.getArgument(0));
         exec = new SpawnActionExecutor(
                 recipeResolver,
                 recipeLoader,
@@ -102,12 +99,9 @@ class SpawnActionExecutorTest {
         when(messageRouter.dispatch(isNull(), eq("proc-7"), any())).thenReturn(true);
 
         exec.execute(new ActionInvocation<>(
-                TriggerAction.Recipe.of("analyze", "Hello there", null, null),
-                ctxWithSession,
-                TriggerKind.SCHEDULER));
+                TriggerAction.Recipe.of("analyze", "Hello there", null, null), ctxWithSession, TriggerKind.SCHEDULER));
 
-        ArgumentCaptor<PendingMessageDocument> msgCaptor =
-                ArgumentCaptor.forClass(PendingMessageDocument.class);
+        ArgumentCaptor<PendingMessageDocument> msgCaptor = ArgumentCaptor.forClass(PendingMessageDocument.class);
         verify(messageRouter).dispatch(isNull(), eq("proc-7"), msgCaptor.capture());
         assertThat(msgCaptor.getValue().getContent()).isEqualTo("Hello there");
         assertThat(msgCaptor.getValue().getFromUser()).isEqualTo("scheduler:morning");
@@ -120,9 +114,7 @@ class SpawnActionExecutorTest {
         stubCreateReturnsProcess("proc-1");
 
         exec.execute(new ActionInvocation<>(
-                TriggerAction.Recipe.of("analyze", "   ", null, null),
-                ctxWithSession,
-                TriggerKind.SCHEDULER));
+                TriggerAction.Recipe.of("analyze", "   ", null, null), ctxWithSession, TriggerKind.SCHEDULER));
 
         verify(messageRouter, never()).dispatch(any(), any(), any());
     }
@@ -133,9 +125,9 @@ class SpawnActionExecutorTest {
     void already_exists_returns_soft_success_with_hint() {
         stubRecipe("analyze", "arthur");
         stubEngine("arthur", "1.0");
-        when(processService.create(any(), any(), any(), any(), any(), any(),
-                any(), any(), any(), any(), any(), any(), any(), any(), any(),
-                any(), any(), any(), any()))
+        when(processService.create(
+                        any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
+                        any(), any(), any(), any(), any(), any()))
                 .thenThrow(new ThinkProcessService.ThinkProcessAlreadyExistsException(
                         "Think-process 'dup' already exists"));
         ThinkProcessDocument existing = ThinkProcessDocument.builder()
@@ -148,8 +140,7 @@ class SpawnActionExecutorTest {
         when(processService.findByName("t1", "sess-1", "dup")).thenReturn(Optional.of(existing));
 
         ActionResult r = exec.execute(new ActionInvocation<>(
-                new TriggerAction.Recipe(
-                        "analyze", "dup", null, null, null, null, null, null, null),
+                new TriggerAction.Recipe("analyze", "dup", null, null, null, null, null, null, null),
                 ctxWithSession,
                 TriggerKind.TOOL));
 
@@ -168,15 +159,12 @@ class SpawnActionExecutorTest {
     void unknown_recipe_returns_failure_with_suggestions() {
         when(recipeResolver.applyDefaulting(any(), any(), eq("ghost"), any(), any()))
                 .thenThrow(new RecipeResolver.UnknownRecipeException("ghost"));
-        when(recipeLoader.listAll(any(), any())).thenReturn(List.of(
-                stubResolvedRecipe("analyze"),
-                stubResolvedRecipe("research"),
-                stubResolvedRecipe("ghosts")));
+        when(recipeLoader.listAll(any(), any()))
+                .thenReturn(List.of(
+                        stubResolvedRecipe("analyze"), stubResolvedRecipe("research"), stubResolvedRecipe("ghosts")));
 
         ActionResult r = exec.execute(new ActionInvocation<>(
-                TriggerAction.Recipe.of("ghost", null, null, null),
-                ctxWithSession,
-                TriggerKind.SCHEDULER));
+                TriggerAction.Recipe.of("ghost", null, null, null), ctxWithSession, TriggerKind.SCHEDULER));
 
         assertThat(r.outcome()).isEqualTo(ActionOutcome.TECHNICAL_ERROR);
         assertThat(r.errorMessage()).contains("ghost");
@@ -194,13 +182,10 @@ class SpawnActionExecutorTest {
 
     @Test
     void standalone_context_returns_technical_error() {
-        TriggerContext noSession = TriggerContext.standalone(
-                "t1", "p1", "alice", null, null, null);
+        TriggerContext noSession = TriggerContext.standalone("t1", "p1", "alice", null, null, null);
 
         ActionResult r = exec.execute(new ActionInvocation<>(
-                TriggerAction.Recipe.of("analyze", null, null, null),
-                noSession,
-                TriggerKind.SCHEDULER));
+                TriggerAction.Recipe.of("analyze", null, null, null), noSession, TriggerKind.SCHEDULER));
 
         assertThat(r.outcome()).isEqualTo(ActionOutcome.TECHNICAL_ERROR);
         assertThat(r.errorMessage()).contains("Sessioned");
@@ -212,9 +197,7 @@ class SpawnActionExecutorTest {
                 .thenThrow(new RuntimeException("cascade broken"));
 
         ActionResult r = exec.execute(new ActionInvocation<>(
-                TriggerAction.Recipe.of("analyze", null, null, null),
-                ctxWithSession,
-                TriggerKind.SCHEDULER));
+                TriggerAction.Recipe.of("analyze", null, null, null), ctxWithSession, TriggerKind.SCHEDULER));
 
         assertThat(r.outcome()).isEqualTo(ActionOutcome.TECHNICAL_ERROR);
         assertThat(r.errorMessage()).contains("resolution");
@@ -226,9 +209,7 @@ class SpawnActionExecutorTest {
         when(engineService.resolve("ghost-engine")).thenReturn(Optional.empty());
 
         ActionResult r = exec.execute(new ActionInvocation<>(
-                TriggerAction.Recipe.of("analyze", null, null, null),
-                ctxWithSession,
-                TriggerKind.SCHEDULER));
+                TriggerAction.Recipe.of("analyze", null, null, null), ctxWithSession, TriggerKind.SCHEDULER));
 
         assertThat(r.outcome()).isEqualTo(ActionOutcome.TECHNICAL_ERROR);
         assertThat(r.errorMessage()).contains("ghost-engine");
@@ -238,15 +219,13 @@ class SpawnActionExecutorTest {
     void thinkProcessService_throwing_maps_to_technical_error() {
         stubRecipe("analyze", "arthur");
         stubEngine("arthur", "1.0");
-        when(processService.create(any(), any(), any(), any(), any(), any(),
-                any(), any(), any(), any(), any(), any(), any(), any(), any(),
-                any(), any(), any(), any()))
+        when(processService.create(
+                        any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
+                        any(), any(), any(), any(), any(), any()))
                 .thenThrow(new RuntimeException("mongo timeout"));
 
         ActionResult r = exec.execute(new ActionInvocation<>(
-                TriggerAction.Recipe.of("analyze", null, null, null),
-                ctxWithSession,
-                TriggerKind.SCHEDULER));
+                TriggerAction.Recipe.of("analyze", null, null, null), ctxWithSession, TriggerKind.SCHEDULER));
 
         assertThat(r.outcome()).isEqualTo(ActionOutcome.TECHNICAL_ERROR);
         assertThat(r.errorMessage()).contains("process_create");
@@ -264,18 +243,33 @@ class SpawnActionExecutorTest {
         stubRecipe("analyze", "arthur");
         stubEngine("arthur", "1.0");
         stubCreateReturnsProcess("proc-x");
-        TriggerContext ctxWithParent = TriggerContext.sessioned(
-                "t1", "p1", "alice", null, "tool:x", "sess-1", "parent-proc");
+        TriggerContext ctxWithParent =
+                TriggerContext.sessioned("t1", "p1", "alice", null, "tool:x", "sess-1", "parent-proc");
 
         exec.execute(new ActionInvocation<>(
-                TriggerAction.Recipe.of("analyze", null, null, null),
-                ctxWithParent,
-                TriggerKind.TOOL));
+                TriggerAction.Recipe.of("analyze", null, null, null), ctxWithParent, TriggerKind.TOOL));
 
-        verify(processService).create(
-                eq("t1"), eq("p1"), eq("sess-1"), any(), eq("arthur"), eq("1.0"),
-                any(), any(), eq("parent-proc"), any(), any(), any(), any(), any(),
-                any(), any(), any(), any(), any());
+        verify(processService)
+                .create(
+                        eq("t1"),
+                        eq("p1"),
+                        eq("sess-1"),
+                        any(),
+                        eq("arthur"),
+                        eq("1.0"),
+                        any(),
+                        any(),
+                        eq("parent-proc"),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any());
     }
 
     @Test
@@ -285,15 +279,31 @@ class SpawnActionExecutorTest {
         stubCreateReturnsProcess("proc-named");
 
         exec.execute(new ActionInvocation<>(
-                new TriggerAction.Recipe(
-                        "analyze", "explicit-name", null, null, null, null, null, null, null),
+                new TriggerAction.Recipe("analyze", "explicit-name", null, null, null, null, null, null, null),
                 ctxWithSession,
                 TriggerKind.TOOL));
 
-        verify(processService).create(
-                any(), any(), any(), eq("explicit-name"), any(), any(),
-                any(), any(), any(), any(), any(), any(), any(), any(),
-                any(), any(), any(), any(), any());
+        verify(processService)
+                .create(
+                        any(),
+                        any(),
+                        any(),
+                        eq("explicit-name"),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any());
     }
 
     @Test
@@ -304,17 +314,14 @@ class SpawnActionExecutorTest {
         when(messageRouter.dispatch(any(), any(), any())).thenReturn(true);
         when(parentContextSpawnHelper.wrap(any(), eq("parent-proc"), eq("the goal")))
                 .thenReturn("## Parent context …\n\n## Your task\n\nthe goal");
-        TriggerContext ctxWithParent = TriggerContext.sessioned(
-                "t1", "p1", "alice", null, "tool:x", "sess-1", "parent-proc");
+        TriggerContext ctxWithParent =
+                TriggerContext.sessioned("t1", "p1", "alice", null, "tool:x", "sess-1", "parent-proc");
 
         exec.execute(new ActionInvocation<>(
-                TriggerAction.Recipe.of("analyze", "the goal", null, null),
-                ctxWithParent,
-                TriggerKind.TOOL));
+                TriggerAction.Recipe.of("analyze", "the goal", null, null), ctxWithParent, TriggerKind.TOOL));
 
         verify(parentContextSpawnHelper).wrap(any(), eq("parent-proc"), eq("the goal"));
-        ArgumentCaptor<PendingMessageDocument> capt =
-                ArgumentCaptor.forClass(PendingMessageDocument.class);
+        ArgumentCaptor<PendingMessageDocument> capt = ArgumentCaptor.forClass(PendingMessageDocument.class);
         verify(messageRouter).dispatch(eq("parent-proc"), eq("proc-wrap"), capt.capture());
         assertThat(capt.getValue().getContent()).contains("Parent context");
     }
@@ -323,7 +330,8 @@ class SpawnActionExecutorTest {
 
     private void stubRecipe(String recipeName, String engineName) {
         AppliedRecipe applied = new AppliedRecipe(
-                recipeName, engineName,
+                recipeName,
+                engineName,
                 Map.of("model", "default:fast"),
                 /*promptOverride*/ null,
                 /*promptOverrideAppend*/ null,
@@ -351,7 +359,8 @@ class SpawnActionExecutorTest {
         stubCreateReturnsProcess(processId, "arthur", "analyze");
     }
 
-    private void stubCreateReturnsProcess(String processId, String engine, @org.jspecify.annotations.Nullable String recipe) {
+    private void stubCreateReturnsProcess(
+            String processId, String engine, @org.jspecify.annotations.Nullable String recipe) {
         ThinkProcessDocument doc = ThinkProcessDocument.builder()
                 .id(processId)
                 .tenantId("t1")
@@ -364,22 +373,24 @@ class SpawnActionExecutorTest {
                 .status(ThinkProcessStatus.IDLE)
                 .build();
         // 12-arg overload (engine-direct path)
-        when(processService.create(any(), any(), any(), any(), any(), any(),
-                any(), any(), any(), any()))
+        when(processService.create(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(doc);
         // 19-arg overload (recipe-driven path)
-        when(processService.create(any(), any(), any(), any(), any(), any(),
-                any(), any(), any(), any(), any(), any(), any(), any(), any(),
-                any(), any(), any(), any()))
+        when(processService.create(
+                        any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
+                        any(), any(), any(), any(), any(), any()))
                 .thenReturn(doc);
         when(processService.findById(processId)).thenReturn(Optional.of(doc));
     }
 
     private static de.mhus.vance.brain.recipe.ResolvedRecipe stubResolvedRecipe(String name) {
         return new de.mhus.vance.brain.recipe.ResolvedRecipe(
-                name, /*description*/ "", /*engine*/ "arthur",
+                name, /*description*/
+                "", /*engine*/
+                "arthur",
                 /*params*/ Map.of(),
-                /*promptPrefix*/ null, PromptMode.APPEND,
+                /*promptPrefix*/ null,
+                PromptMode.APPEND,
                 /*dataRelayCorrection*/ null,
                 /*allowedToolsAdd*/ List.of(),
                 /*allowedToolsRemove*/ List.of(),
@@ -394,7 +405,8 @@ class SpawnActionExecutorTest {
                 /*listed*/ false,
                 /*title*/ null,
                 /*tags*/ List.of(),
-                List.of(), RecipeSource.PROJECT);
+                List.of(),
+                RecipeSource.PROJECT);
     }
 
     @SuppressWarnings("unchecked")

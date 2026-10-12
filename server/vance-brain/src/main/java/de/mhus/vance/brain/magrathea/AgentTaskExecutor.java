@@ -176,8 +176,13 @@ public class AgentTaskExecutor implements MagratheaTypeExecutor {
                     withoutToolPool(applied.params()),
                     applied.name(),
                     applied.promptOverride(),
+                    applied.promptOverrideAppend(),
                     applied.promptMode(),
-                    withoutDelegation(applied, engine));
+                    applied.dataRelayCorrection(),
+                    withoutDelegation(applied, engine),
+                    applied.connectionProfile(),
+                    applied.defaultActiveSkills(),
+                    applied.allowedSkills() == null ? null : java.util.Set.copyOf(applied.allowedSkills()));
         } catch (RuntimeException ex) {
             log.warn("Magrathea agent_task '{}' ThinkProcess create failed: {}", state.name(), ex.getMessage());
             return Optional.of(TaskOutcome.failure("ThinkProcess create failed: " + ex.getMessage()));

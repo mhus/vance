@@ -218,6 +218,7 @@ public class FrankieEngine implements ThinkEngine {
     private final SystemPromptComposer systemPromptComposer;
     private final SkillResolver skillResolver;
     private final SkillPromptComposer skillPromptComposer;
+    private final de.mhus.vance.brain.skill.SkillTurnSupport skillTurnSupport;
     private final SessionService sessionService;
     private final de.mhus.vance.brain.context.PromptDateContextResolver promptDateContextResolver;
     private final de.mhus.vance.brain.prompt.ScratchpadPromptContributor scratchpadPromptContributor;
@@ -944,6 +945,14 @@ public class FrankieEngine implements ThinkEngine {
                 activeSkills, ctxBuilder.build(), de.mhus.vance.brain.skill.SkillTurnSupport.rawArgsByName(process));
         if (skillSection != null && !skillSection.isBlank()) {
             messages.add(SystemMessage.from(skillSection));
+        }
+
+        // Agent advertising — one card per 'agent'-mode skill, directly
+        // behind the active-skills section (same cache reasoning as the
+        // other engines). Null (no message) when nothing is advertised.
+        String advertisedSkills = skillTurnSupport.advertiseSection(process, activeSkills);
+        if (advertisedSkills != null) {
+            messages.add(SystemMessage.from(advertisedSkills));
         }
         // Current-date block (recipe-param promptDateGranularity:
         // auto/day/hour). DYNAMIC so date rollover doesn't bust the

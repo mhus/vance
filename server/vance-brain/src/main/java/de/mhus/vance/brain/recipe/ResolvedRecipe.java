@@ -76,6 +76,17 @@ public record ResolvedRecipe(
          */
         @Nullable List<String> allowedSkills,
         /**
+         * Skill selectors for the turn context's "Available skills" list
+         * (skills.md §7e): exact skill names or {@code @label} selectors
+         * matching the skills' {@code tags:}. Pure discovery — a listed
+         * skill is offered to the agent via {@code skill_activate}, never
+         * activated. Resolved per turn against the process scope, so a
+         * newly tagged skill shows up without touching the recipe. Empty
+         * list means "the recipe advertises nothing beyond the skills that
+         * declare {@code activation: agent} themselves".
+         */
+        List<String> advertisedSkills,
+        /**
          * Trigger keywords parsed from the YAML {@code triggers.keywords}
          * block. Used by {@link de.mhus.vance.brain.delegate.RecipeSelectorService}
          * for the deterministic pre-check that fires before any LLM call.
@@ -207,6 +218,75 @@ public record ResolvedRecipe(
             if (allowed != null && allowed.trim().equalsIgnoreCase(tenantId)) return true;
         }
         return false;
+    }
+
+    /**
+     * Backward-compatible constructor for call sites that predate
+     * {@code advertisedSkills} — passes the empty list: a call site that
+     * does not know about the field means a recipe that advertises nothing
+     * of its own.
+     */
+    public ResolvedRecipe(
+            String name,
+            String description,
+            String engine,
+            Map<String, Object> params,
+            @Nullable String promptPrefix,
+            PromptMode promptMode,
+            @Nullable String dataRelayCorrection,
+            List<String> allowedToolsAdd,
+            List<String> allowedToolsRemove,
+            List<String> allowedToolsDefer,
+            List<String> allowedToolsKeep,
+            List<String> allowedToolsDropFirst,
+            Map<String, RecipeModeBlock> modes,
+            Map<String, ProfileBlock> profiles,
+            List<String> defaultActiveSkills,
+            @Nullable List<String> allowedSkills,
+            List<String> triggerKeywords,
+            boolean locked,
+            boolean internal,
+            boolean listed,
+            boolean web,
+            RecipeProjectKind projectKind,
+            @Nullable String title,
+            @Nullable String category,
+            @Nullable String webTheme,
+            List<String> tags,
+            List<GuardConfig> guards,
+            List<String> tenants,
+            RecipeSource source) {
+        this(
+                name,
+                description,
+                engine,
+                params,
+                promptPrefix,
+                promptMode,
+                dataRelayCorrection,
+                allowedToolsAdd,
+                allowedToolsRemove,
+                allowedToolsDefer,
+                allowedToolsKeep,
+                allowedToolsDropFirst,
+                modes,
+                profiles,
+                defaultActiveSkills,
+                allowedSkills,
+                List.of(),
+                triggerKeywords,
+                locked,
+                internal,
+                listed,
+                web,
+                projectKind,
+                title,
+                category,
+                webTheme,
+                tags,
+                guards,
+                tenants,
+                source);
     }
 
     /**

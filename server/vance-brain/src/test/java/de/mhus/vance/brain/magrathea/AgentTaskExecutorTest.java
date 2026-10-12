@@ -92,7 +92,7 @@ class AgentTaskExecutorTest {
         spawned.setId("proc-1");
         when(thinkProcessService.create(
                         any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
-                        any()))
+                        any(), any(), any(), any(), any(), any()))
                 .thenReturn(spawned);
 
         Optional<TaskOutcome> outcome =
@@ -183,7 +183,12 @@ class AgentTaskExecutorTest {
                         any(),
                         any(),
                         any(),
-                        tools.capture()))
+                        any(),
+                        any(),
+                        tools.capture(),
+                        any(),
+                        any(),
+                        any()))
                 .thenReturn(spawned);
 
         executor.execute(ctx(agentState("ford", Map.of())));
@@ -220,6 +225,11 @@ class AgentTaskExecutorTest {
                         any(),
                         any(),
                         any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
                         any()))
                 .thenReturn(spawned);
 
@@ -228,6 +238,49 @@ class AgentTaskExecutorTest {
         assertThat(params.getValue())
                 .containsEntry(ThinkEngine.PARAM_TOOL_POOL, Boolean.FALSE)
                 .containsEntry("model", "default:fast");
+    }
+
+    @Test
+    void spawn_passesRecipeSkillConfig_throughToTheProcess() {
+        // Regression for the mid-overload gap: defaultActiveSkills/allowedSkills
+        // from the recipe were silently dropped, so a recipe pinning skills had
+        // no effect on agent_task spawns (planning/skill-activation-levels.md §1.3.3).
+        stubResolver("ford", Map.of("model", "default:fast"), List.of("code-review"), List.of("code-review", "x"));
+        ThinkEngine engine = mockEngine("ford", "1");
+        when(thinkEngineService.resolve("ford")).thenReturn(Optional.of(engine));
+        SessionDocument session = new SessionDocument();
+        session.setSessionId("sess-1");
+        when(sessionResolver.resolve(any(), any(), any(), any())).thenReturn(session);
+        ThinkProcessDocument spawned = new ThinkProcessDocument();
+        spawned.setId("proc-1");
+        var defaults = org.mockito.ArgumentCaptor.forClass(java.util.List.class);
+        var whitelist = org.mockito.ArgumentCaptor.forClass(java.util.Set.class);
+        when(thinkProcessService.create(
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        defaults.capture(),
+                        whitelist.capture()))
+                .thenReturn(spawned);
+
+        executor.execute(ctx(agentState("ford", Map.of())));
+
+        assertThat(defaults.getValue()).containsExactly("code-review");
+        assertThat(whitelist.getValue()).containsExactlyInAnyOrder("code-review", "x");
     }
 
     @Test
@@ -315,7 +368,7 @@ class AgentTaskExecutorTest {
         spawned.setId("proc-1");
         when(thinkProcessService.create(
                         any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
-                        any()))
+                        any(), any(), any(), any(), any(), any()))
                 .thenReturn(spawned);
         doThrow(new RuntimeException("engine start failed"))
                 .when(thinkEngineService)
@@ -344,7 +397,7 @@ class AgentTaskExecutorTest {
         spawned.setId("proc-1");
         when(thinkProcessService.create(
                         any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
-                        any()))
+                        any(), any(), any(), any(), any(), any()))
                 .thenReturn(spawned);
     }
 
@@ -353,6 +406,14 @@ class AgentTaskExecutorTest {
     }
 
     private void stubResolver(String recipeName, Map<String, Object> params) {
+        stubResolver(recipeName, params, List.of(), null);
+    }
+
+    private void stubResolver(
+            String recipeName,
+            Map<String, Object> params,
+            List<String> defaultActiveSkills,
+            java.util.@org.jspecify.annotations.Nullable List<String> allowedSkills) {
         AppliedRecipe applied = new AppliedRecipe(
                 recipeName,
                 recipeName,
@@ -363,8 +424,8 @@ class AgentTaskExecutorTest {
                 /*dataRelayCorrection*/ null,
                 /*effectiveAllowedTools*/ null,
                 /*connectionProfile*/ null,
-                /*defaultActiveSkills*/ List.of(),
-                /*allowedSkills*/ null,
+                /*defaultActiveSkills*/ defaultActiveSkills,
+                /*allowedSkills*/ allowedSkills,
                 RecipeSource.PROJECT,
                 /*overriddenParamKeys*/ List.of(),
                 /*sessionLifecycleConfig*/ null);

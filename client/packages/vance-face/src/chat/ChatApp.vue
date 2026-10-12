@@ -463,7 +463,7 @@ async function onSkillCommandFromComposer(line: string): Promise<void> {
     chatViewRef.value?.pushCommandActivity(`${line} → no active process`);
     return;
   }
-  const reply = await sendSkillCommand(sock, process, parseSkillCommand(line));
+  const reply = await sendSkillCommand(sock, process, parseSkillCommand(line), chatProjectId.value || undefined);
   chatViewRef.value?.pushCommandActivity(reply);
 }
 function onWizardDeepLinkFromView(detail: { name: string; prefill: Record<string, string> }): void {

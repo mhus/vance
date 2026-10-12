@@ -872,6 +872,15 @@ export default {
       info: 'Details anzeigen',
       macroBadge: 'Makro',
       stickyBadge: 'Dauerhaft',
+      modeLabel: 'Aktivierung',
+      modeManual: 'Nicht angeboten',
+      modeTrigger: 'Wort-Aktivierung',
+      modeAgent: 'Der KI angeboten (Available skills)',
+      modeBadgeManual: 'manuell',
+      modeBadgeTrigger: 'Trigger',
+      modeBadgeAgent: 'KI',
+      modeAuthorHint: 'Vom Skill-Autor gesetzt — ein Wechsel hier schreibt deinen persönlichen Override.',
+      modeOverrideHint: 'Persönlicher Override (Tier: {scope}).',
       lifecycleStickyHint:
         'Aktivierung bleibt bestehen, bis der Skill deaktiviert wird oder die Session endet — der Skill-Body geht in jeden Turn.',
       lifecycleShotHint:

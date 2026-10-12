@@ -354,7 +354,7 @@ async function onSkillCommand(line: string): Promise<void> {
     chatViewRef.value?.pushCommandActivity(`${line} → no active process`);
     return;
   }
-  const reply = await sendSkillCommand(sock, CHAT_PROCESS_NAME, parseSkillCommand(line));
+  const reply = await sendSkillCommand(sock, CHAT_PROCESS_NAME, parseSkillCommand(line), props.projectId);
   chatViewRef.value?.pushCommandActivity(reply);
 }
 

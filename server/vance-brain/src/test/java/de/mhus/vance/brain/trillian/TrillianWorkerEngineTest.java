@@ -146,6 +146,7 @@ class TrillianWorkerEngineTest {
                 mock(de.mhus.vance.brain.thinkengine.SystemPromptComposer.class),
                 mock(de.mhus.vance.brain.skill.SkillResolver.class),
                 mock(de.mhus.vance.brain.skill.SkillPromptComposer.class),
+                mock(de.mhus.vance.brain.skill.SkillTurnSupport.class),
                 mock(de.mhus.vance.shared.session.SessionService.class),
                 mock(de.mhus.vance.brain.context.PromptDateContextResolver.class),
                 mock(de.mhus.vance.brain.prompt.ScratchpadPromptContributor.class),

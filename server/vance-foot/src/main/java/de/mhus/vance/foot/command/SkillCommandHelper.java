@@ -4,9 +4,15 @@ import de.mhus.vance.api.skills.ActiveSkillRefDto;
 import de.mhus.vance.api.skills.ProcessSkillCommand;
 import de.mhus.vance.api.skills.ProcessSkillRequest;
 import de.mhus.vance.api.skills.ProcessSkillResponse;
+import de.mhus.vance.api.skills.SkillActivation;
+import de.mhus.vance.api.skills.SkillActivationSource;
+import de.mhus.vance.api.skills.SkillModeRequest;
+import de.mhus.vance.api.skills.SkillModeResponse;
+import de.mhus.vance.api.skills.SkillModeScope;
 import de.mhus.vance.api.skills.SkillSummaryDto;
 import de.mhus.vance.api.skills.SkillTriggerDto;
 import de.mhus.vance.api.ws.MessageType;
+import de.mhus.vance.foot.connection.BrainRestClientService;
 import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.session.SessionService;
 import de.mhus.vance.foot.ui.ChatTerminal;
@@ -14,6 +20,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
@@ -33,11 +40,14 @@ public class SkillCommandHelper {
     private final ConnectionService connection;
     private final ChatTerminal terminal;
     private final SessionService sessions;
+    private final BrainRestClientService rest;
 
-    public SkillCommandHelper(ConnectionService connection, ChatTerminal terminal, SessionService sessions) {
+    public SkillCommandHelper(
+            ConnectionService connection, ChatTerminal terminal, SessionService sessions, BrainRestClientService rest) {
         this.connection = connection;
         this.terminal = terminal;
         this.sessions = sessions;
+        this.rest = rest;
     }
 
     /** Returns the active process name or {@code null} after printing the error. */
@@ -80,10 +90,25 @@ public class SkillCommandHelper {
             String marker = activeNames.contains(dto.getName()) ? "  ✓ " : "    ";
             terminal.info(marker + dto.getName()
                     + "  [" + dto.getSource() + "]"
+                    + "  " + modeLabel(dto)
                     + ("shot".equals(dto.getLifecycle()) ? "  (macro)" : "")
                     + "  — " + dto.getDescription()
                     + autoTriggerSuffix(dto));
         }
+    }
+
+    /**
+     * The activation mode column of {@code /skill list}: the effective mode,
+     * plus the override tier when a scope document set it — e.g.
+     * {@code mode:agent} or {@code mode:manual(user)}.
+     */
+    static String modeLabel(SkillSummaryDto dto) {
+        if (dto.getActivation() == null) return "mode:?";
+        String label = "mode:" + dto.getActivation().wireName();
+        if (dto.getActivationSource() == SkillActivationSource.OVERRIDE && dto.getActivationOverrideScope() != null) {
+            label += "(" + dto.getActivationOverrideScope().name().toLowerCase(Locale.ROOT) + ")";
+        }
+        return label;
     }
 
     /**
@@ -105,6 +130,47 @@ public class SkillCommandHelper {
                 .skillName(skillName)
                 .build());
         terminal.info(clearMessage(skillName, response));
+    }
+
+    /**
+     * Sets a skill's activation mode via REST — scope configuration, no
+     * process involved (which is why this is not a process-skill
+     * command). Reserved subcommand word under {@code /skill}: a skill
+     * literally named "mode" cannot be activated by that word — the same
+     * trade-off "list" and "clear" already make.
+     *
+     * <p>The mode lands in the user's own override tier by default;
+     * {@code /skill mode <name> <mode> [project|tenant]} targets a wider
+     * tier (write access enforced server-side).
+     */
+    public void setMode(String skillName, String mode, @Nullable String scope) throws Exception {
+        SkillActivation parsed = SkillActivation.parse(mode);
+        if (parsed == null) {
+            terminal.error("Unknown mode '" + mode + "' — expected manual | trigger | agent");
+            return;
+        }
+        SkillModeScope targetScope;
+        switch (scope == null ? "user" : scope.toLowerCase()) {
+            case "user" -> targetScope = SkillModeScope.USER;
+            case "project" -> targetScope = SkillModeScope.PROJECT;
+            case "tenant" -> targetScope = SkillModeScope.TENANT;
+            default -> {
+                terminal.error("Unknown scope '" + scope + "' — expected user | project | tenant");
+                return;
+            }
+        }
+        SkillModeRequest request =
+                SkillModeRequest.builder().scope(targetScope).mode(parsed).build();
+        try {
+            SessionService.BoundSession bound = sessions.current();
+            SkillModeResponse response =
+                    rest.setSkillMode(skillName, bound == null ? null : bound.projectId(), request);
+            terminal.info("→ skill '" + skillName + "' mode: "
+                    + response.getActivation().wireName() + " (override tier: " + response.getActivationOverrideScope()
+                    + ") — effective from the next turn");
+        } catch (Exception e) {
+            terminal.error("/skill mode failed: " + e.getMessage());
+        }
     }
 
     /**

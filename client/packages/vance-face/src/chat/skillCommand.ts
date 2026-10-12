@@ -19,15 +19,31 @@ import {
   ProcessSkillCommand,
   ProcessSkillRequest,
   ProcessSkillResponse,
+  SkillModeResponse,
 } from '@vance/generated';
-import type { BrainWsApi } from '@vance/shared';
+import { brainFetch, type BrainWsApi } from '@vance/shared';
 
-/** A parsed `/skill` line; `null` command means "usage error" (reply says so). */
+/**
+ * Marker for the mode subcommand — scope configuration over REST, not a
+ * process-skill WS command (no process involved, which is the whole point
+ * of the separate surface).
+ */
+export const MODE = 'mode' as const;
+
+/**
+ * A parsed `/skill` line; `null` command means "usage error" (reply says
+ * so). `MODE` means "set the activation mode" (REST write, user tier by
+ * default).
+ */
 export interface ParsedSkillCommand {
-  command: ProcessSkillCommand | null;
+  command: ProcessSkillCommand | typeof MODE | null;
   skillName?: string;
   oneShot: boolean;
   args?: string;
+  /** For MODE: manual | trigger | agent. */
+  mode?: string;
+  /** For MODE: user (default) | project | tenant. */
+  scope?: string;
 }
 
 export function parseSkillCommand(line: string): ParsedSkillCommand {
@@ -59,6 +75,9 @@ export function parseSkillCommand(line: string): ParsedSkillCommand {
       oneShot: false,
     };
   }
+  if (sub === 'mode') {
+    return parseMode(parts.slice(2));
+  }
   return {
     command: ProcessSkillCommand.ACTIVATE,
     skillName: sub,
@@ -67,8 +86,23 @@ export function parseSkillCommand(line: string): ParsedSkillCommand {
   };
 }
 
+/** `/skill mode <name> <manual|trigger|agent> [user|project|tenant]`. */
+function parseMode(parts: string[]): ParsedSkillCommand {
+  if (parts.length < 2) {
+    return { command: null, oneShot: false };
+  }
+  return {
+    command: MODE,
+    skillName: parts[0],
+    oneShot: false,
+    mode: parts[1],
+    scope: parts[2],
+  };
+}
+
 export const SKILL_USAGE =
-  '/skill → usage: /skill list | clear [name] | <name> [--once] [args…]';
+  '/skill → usage: /skill list | clear [name] | mode <name> <manual|trigger|agent> [scope]'
+  + ' | <name> [--once] [args…]';
 
 /**
  * Round-trips the parsed command and returns the activity line to render.
@@ -79,9 +113,13 @@ export async function sendSkillCommand(
   sock: BrainWsApi,
   processName: string,
   parsed: ParsedSkillCommand,
+  projectId?: string,
 ): Promise<string> {
   if (parsed.command === null) {
     return SKILL_USAGE;
+  }
+  if (parsed.command === MODE) {
+    return sendModeCommand(parsed, projectId);
   }
   try {
     const reply = await sock.send<ProcessSkillRequest, ProcessSkillResponse>('process-skill', {
@@ -126,4 +164,38 @@ export function renderSkillReplyForTest(
     return `/skill → fired ${skillName} (macro)`;
   }
   return `/skill → activated ${skillName} — instructions in effect from the next turn`;
+}
+
+/**
+ * The mode write — REST, not the process-skill WS channel: the mode is
+ * scope configuration that applies to every future turn of every process,
+ * so there is no process to steer (planning/skill-activation-levels.md
+ * §3.5). The write lands in the user's own override tier by default;
+ * project/tenant target the wider tiers (write access enforced server
+ * side).
+ */
+async function sendModeCommand(parsed: ParsedSkillCommand, projectId?: string): Promise<string> {
+  const mode = (parsed.mode ?? '').toLowerCase();
+  if (!['manual', 'trigger', 'agent'].includes(mode)) {
+    return '/skill mode → usage: /skill mode <name> <manual|trigger|agent> [user|project|tenant]';
+  }
+  const scope = (parsed.scope ?? 'user').toLowerCase();
+  if (!['user', 'project', 'tenant'].includes(scope)) {
+    return `/skill mode → unknown scope '${parsed.scope}' — expected user | project | tenant`;
+  }
+  try {
+    const name = parsed.skillName ?? '';
+    const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : '';
+    const reply = await brainFetch<SkillModeResponse>(
+      'POST',
+      `skills/${encodeURIComponent(name)}/activation${query}`,
+      { body: { mode: mode.toUpperCase(), scope: scope.toUpperCase() } },
+    );
+    return `/skill mode → ${name}: ${reply.activation.toLowerCase()}`
+      + ` (override tier: ${(reply.activationOverrideScope ?? 'user').toLowerCase()})`
+      + ' — effective from the next turn';
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return `/skill mode → error: ${msg}`;
+  }
 }

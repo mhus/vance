@@ -99,6 +99,7 @@ function onPanelPromptReady(prompt: string): void {
         v-else
         :socket="socket"
         :session-key="sessionKey"
+        :project-id="projectId"
         @prompt-ready="onPanelPromptReady"
       />
     </div>

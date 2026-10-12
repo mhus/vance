@@ -13,6 +13,9 @@ import de.mhus.vance.brain.ai.ThinkingLevel;
 import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
 import de.mhus.vance.brain.recipe.RecipeLoader;
 import de.mhus.vance.brain.recipe.ResolvedRecipe;
+import de.mhus.vance.brain.skill.ResolvedSkill;
+import de.mhus.vance.brain.skill.SingleShotSkillComposer;
+import de.mhus.vance.brain.skill.SkillScopeContext;
 import de.mhus.vance.shared.llmusage.CallAttribution;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.settings.SettingService;
@@ -87,6 +90,7 @@ public class LightLlmServiceImpl implements LightLlmService {
     private final MetricService metricService;
     private final de.mhus.vance.shared.audit.AuditService auditService;
     private final ModelCatalog modelCatalog;
+    private final SingleShotSkillComposer singleShotSkillComposer;
 
     @Override
     public String call(LightLlmRequest req) {
@@ -298,12 +302,46 @@ public class LightLlmServiceImpl implements LightLlmService {
         if (req.getPebbleVars() != null) {
             ctx.putAll(req.getPebbleVars());
         }
+        String rendered;
         try {
-            return templateRenderer.render(template, ctx);
+            rendered = templateRenderer.render(template, ctx);
         } catch (RuntimeException e) {
             throw new LightLlmException(
                     "Pebble render failed for recipe '" + req.getRecipeName() + "': " + e.getMessage(), e);
         }
+        return appendSkillSection(rendered, req);
+    }
+
+    /**
+     * Appends the composed {@link LightLlmRequest#getSkills()} section to
+     * the rendered system prompt (planning/skill-activation-levels.md
+     * §3.6) — the composition funnel for single-shot calls: no tool loop,
+     * so no advertising and no {@code skill_activate}; the bodies and
+     * INLINE reference docs travel with the prompt instead.
+     *
+     * <p>Fail-fast, never silent: a configured skill that resolves to
+     * nothing composable (tools-only value) or declares {@code ON_DEMAND}
+     * docs (no {@code manual_read} exists in a single shot) fails the
+     * call with a clear message. {@code tools:}, {@code manualPaths:} and
+     * {@code activate:} are documented no-ops here — the single-shot
+     * contract has neither a tool loop nor a lane.
+     */
+    private String appendSkillSection(String renderedPrompt, LightLlmRequest req) {
+        if (req.getSkills() == null || req.getSkills().isEmpty()) {
+            return renderedPrompt;
+        }
+        List<ResolvedSkill> resolved;
+        try {
+            resolved = singleShotSkillComposer.resolveComposable(
+                    SkillScopeContext.of(req.getTenantId(), req.getUserId(), req.getProjectId()), req.getSkills());
+        } catch (IllegalArgumentException e) {
+            throw new LightLlmException("light-llm " + e.getMessage() + " (recipe '" + req.getRecipeName() + "')", e);
+        }
+        String section = singleShotSkillComposer.compose(resolved);
+        if (section == null || section.isBlank()) {
+            return renderedPrompt;
+        }
+        return renderedPrompt + "\n\n" + section;
     }
 
     // ──────────────────── ChatModel build ────────────────────

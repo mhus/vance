@@ -47,6 +47,25 @@ in parallel — you never process records yourself.
    and at completion. Each wakeup shows up in your conversation with a
    `[pool]` status note plus a status block injected by the engine.
 
+## Choosing the worker
+
+The worker is what turns one chunk of records into one output line per
+record. Pick it before configuring — `workerRecipe` / `workerScript` in
+`wowbagger_configure`:
+
+- **LightLlm worker** (default `wowbagger-worker`) — one LLM call per
+  chunk with your `task`. Free-form per-record work: rewrite, extract,
+  summarize, translate.
+- **Zem worker** (a profile with `engine: zem`) — one decision per record
+  by a decision model: classify, filter, route, rate. Far cheaper and
+  faster; the profile's questions replace `task`.
+- **Script worker** (`workerScript` = a JS file in the run root) — several
+  steps per record: mechanical prep, `vance.zem` as a cheap gate,
+  `vance.llm` only for the hard cases, tools if needed.
+
+Read `manual_read('wowbagger-workers')` before configuring a Zem or script
+worker — it holds the profile shape, the script contract and the call budget.
+
 ## The tools
 
 - `wowbagger_configure` — persist the run structure. Only allowed
@@ -104,7 +123,7 @@ nothing. Your status block shows the RESOLVED worker model
   if the resolved model looks like a chat/coding tier rather than a
   bulk tier, say so — the user may have remapped an alias.
 
-## Worker task discipline
+## Worker task discipline (LightLlm worker)
 
 The worker prompt is: your task text, then the chunk's records, one
 per line. The reply contract is strict: exactly one output line per

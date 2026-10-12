@@ -226,18 +226,21 @@ export class PackService {
       .sort((a, b) => Number(a.set) - Number(b.set) || a.name.localeCompare(b.name));
   }
 
-  /** Set/clear a credential (shell-only writes) — respawns so the pack
-   *  that was waiting for this value comes up with it. */
+  /** Set/clear a credential (shell-only writes) — always respawns: the
+   *  effective home does not change, but a pack skipped for a missing
+   *  credential only comes up through a fresh materialization (reResolve
+   *  would correctly see "home unchanged" and leave the waiting pack
+   *  waiting — the home is not the only spawn input). */
   async setCredential(accountId: string, name: string, value: string): Promise<void> {
     if (this.secrets === null) return;
     await this.secrets.set(accountId, name, value);
-    await this.reResolve(accountId);
+    await this.reload(accountId);
   }
 
   async clearCredential(accountId: string, name: string): Promise<void> {
     if (this.secrets === null) return;
     await this.secrets.clear(accountId, name);
-    await this.reResolve(accountId);
+    await this.reload(accountId);
   }
 
   /** Effective pack home for the account's current project report. */

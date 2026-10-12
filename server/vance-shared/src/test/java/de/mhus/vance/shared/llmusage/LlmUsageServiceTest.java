@@ -143,6 +143,81 @@ class LlmUsageServiceTest {
     }
 
     @Test
+    void audioCall_booksTheFlatAmountAndCountsAsPriced() {
+        // Hotblack knows the cost of a TTS/STT/music call (vendor-reported or
+        // catalog estimate). The ledger used to price only IMAGE flat and
+        // booked audio as cost 0 + unpriced although the amount was known.
+        LlmUsageService.UsageWrite w = audioBuilder().imageCost(0.0123).build();
+
+        LlmUsageDocument d = LlmUsageService.build(w);
+        assertThat(d.getCostInput()).isCloseTo(0.0123, within(1e-9));
+        assertThat(d.getCostTotal()).isCloseTo(0.0123, within(1e-9));
+        assertThat(d.getCurrency()).isEqualTo("USD");
+        assertThat(w.priced()).isTrue();
+    }
+
+    @Test
+    void audioCall_withoutAnAmountIsUnpriced() {
+        LlmUsageService.UsageWrite w = audioBuilder().build();
+
+        assertThat(LlmUsageService.build(w).getCostTotal()).isZero();
+        assertThat(w.priced()).isFalse();
+    }
+
+    @Test
+    void audioCall_dayBucketCarriesTheAmountAndNoUnpricedCount() {
+        MongoTemplate mongo = mock(MongoTemplate.class);
+        ArgumentCaptor<Update> update = ArgumentCaptor.forClass(Update.class);
+        LlmUsageService service = new LlmUsageService(mongo, mock(RetentionSettingCache.class), 0, 60, 14);
+
+        service.record(audioBuilder().imageCost(0.25).build());
+
+        verify(mongo).upsert(any(), update.capture(), eq(LlmUsageDailyDocument.class));
+        Document inc = update.getValue().getUpdateObject().get("$inc", Document.class);
+        assertThat(inc.get("costTotalMicros")).isEqualTo(250_000L);
+        assertThat(inc.get("costInputMicros")).isEqualTo(250_000L);
+        assertThat(inc.get("images")).isEqualTo(1);
+        assertThat(inc).doesNotContainKey("unpricedCalls");
+        Document setOnInsert = update.getValue().getUpdateObject().get("$setOnInsert", Document.class);
+        assertThat(setOnInsert.get("currency")).isEqualTo("USD");
+    }
+
+    @Test
+    void flatAmount_isIgnoredForTokenPricedKinds() {
+        // DECISION (Zem) is token-priced like EMBEDDING: a stray flat amount
+        // must neither replace the token cost nor make an unpriced call priced.
+        for (UsageKind kind : new UsageKind[] {UsageKind.CHAT, UsageKind.EMBEDDING, UsageKind.DECISION}) {
+            LlmUsageService.UsageWrite priced = baseBuilder()
+                    .kind(kind)
+                    .tokensIn(10_000)
+                    .priceInputPerMTok(3.00)
+                    .imageCost(9.99)
+                    .currency("USD")
+                    .build();
+            assertThat(LlmUsageService.build(priced).getCostTotal())
+                    .as(kind.name())
+                    .isCloseTo(0.03, within(1e-9));
+            assertThat(priced.priced()).as(kind.name()).isTrue();
+
+            LlmUsageService.UsageWrite unpriced =
+                    baseBuilder().kind(kind).tokensIn(10_000).imageCost(9.99).build();
+            assertThat(LlmUsageService.build(unpriced).getCostTotal())
+                    .as(kind.name())
+                    .isZero();
+            assertThat(unpriced.priced()).as(kind.name()).isFalse();
+        }
+    }
+
+    @Test
+    void flatPriced_coversExactlyImageAndAudio() {
+        assertThat(UsageKind.IMAGE.flatPriced()).isTrue();
+        assertThat(UsageKind.AUDIO.flatPriced()).isTrue();
+        assertThat(UsageKind.CHAT.flatPriced()).isFalse();
+        assertThat(UsageKind.EMBEDDING.flatPriced()).isFalse();
+        assertThat(UsageKind.DECISION.flatPriced()).isFalse();
+    }
+
+    @Test
     void priced_isFalseWhenTheModelHasNoRateAtAll() {
         // The distinction that keeps the invoice honest: a model with no
         // `pricing:` block is unknown, not free. The report has to say so
@@ -244,6 +319,18 @@ class LlmUsageServiceTest {
         assertThat(inc.get("cacheWriteTokens")).isEqualTo(8_000);
         assertThat(inc.get("cacheWrite1hTokens")).isEqualTo(3_000);
         assertThat(inc.get("cacheReadTokens")).isEqualTo(20_000);
+    }
+
+    private static LlmUsageService.UsageWrite.UsageWriteBuilder audioBuilder() {
+        return LlmUsageService.UsageWrite.builder()
+                .attribution(CallAttribution.ofService("acme", "demo", LlmUsageService.CALLER_HOTBLACK))
+                .kind(UsageKind.AUDIO)
+                .providerInstance("openrouter")
+                .providerType("openrouter")
+                .providerModel("tts-1")
+                .images(1)
+                .currency("USD")
+                .createdAt(Instant.parse("2026-06-24T12:00:00Z"));
     }
 
     private static LlmUsageService.UsageWrite.UsageWriteBuilder baseBuilder() {

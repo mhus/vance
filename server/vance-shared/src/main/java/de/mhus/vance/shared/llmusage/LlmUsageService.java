@@ -33,7 +33,9 @@ import org.springframework.stereotype.Service;
  * <h2>Cost math</h2>
  *
  * {@code tokens / 1_000_000 × rate} for each of input/output/cacheRead/
- * cacheWrite, plus a flat per-image amount for {@link UsageKind#IMAGE}.
+ * cacheWrite — or, for a {@linkplain UsageKind#flatPriced() flat-priced}
+ * kind ({@link UsageKind#IMAGE}, {@link UsageKind#AUDIO}), the flat per-call
+ * amount the caller already knows.
  * The components are persisted individually so reports can break them down
  * without joining back to the rate snapshot.
  *
@@ -380,10 +382,10 @@ public class LlmUsageService {
     record Costs(double input, double output, double cacheRead, double cacheWrite) {
 
         static Costs of(UsageWrite w) {
-            if (w.kind() == UsageKind.IMAGE) {
-                // Images are priced per generated image, not per token. The
-                // amount lands in the input bucket so `costTotal` stays the
-                // one number every report sums.
+            if (w.kind().flatPriced()) {
+                // Images and audio calls are priced per call, not per token.
+                // The amount lands in the input bucket so `costTotal` stays
+                // the one number every report sums.
                 double amount = w.imageCost() == null ? 0.0 : w.imageCost();
                 return new Costs(amount, 0.0, 0.0, 0.0);
             }
@@ -461,9 +463,17 @@ public class LlmUsageService {
              * provider-measured {@link #cacheReadTokens}.
              */
             int implicitCacheReadTokens,
-            /** Generated images; {@link UsageKind#IMAGE} only. */
+            /**
+             * Unit count of a non-token call: generated images
+             * ({@link UsageKind#IMAGE}), calls ({@link UsageKind#AUDIO}),
+             * decisions ({@link UsageKind#DECISION}).
+             */
             int images,
-            /** Flat amount for an image call; {@link UsageKind#IMAGE} only. */
+            /**
+             * Flat amount of the call in {@link #currency}; only read for a
+             * {@linkplain UsageKind#flatPriced() flat-priced} kind. {@code null}
+             * there means the cost is unknown — the call counts as unpriced.
+             */
             @Nullable Double imageCost,
             @Nullable Double priceInputPerMTok,
             @Nullable Double priceOutputPerMTok,
@@ -493,7 +503,7 @@ public class LlmUsageService {
          * so "no block" means "price missing" and nothing else.
          */
         public boolean priced() {
-            if (kind == UsageKind.IMAGE) {
+            if (kind.flatPriced()) {
                 return imageCost != null;
             }
             return priceInputPerMTok != null || priceOutputPerMTok != null;

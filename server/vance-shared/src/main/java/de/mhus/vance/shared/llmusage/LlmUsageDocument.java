@@ -158,7 +158,10 @@ public class LlmUsageDocument {
      */
     private int attempt;
 
-    /** Number of images generated; only meaningful for {@link UsageKind#IMAGE}. */
+    /**
+     * Unit count of a non-token call: generated images ({@link UsageKind#IMAGE}),
+     * calls ({@link UsageKind#AUDIO}), decisions ({@link UsageKind#DECISION}).
+     */
     private int images;
 
     /**

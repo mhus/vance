@@ -58,7 +58,12 @@ public record UsageMeasurement(
          * decisions ({@link UsageKind#DECISION}).
          */
         int images,
-        /** Flat amount for an image call, {@link UsageKind#IMAGE} only. */
+        /**
+         * Flat per-call amount; only read for a
+         * {@linkplain UsageKind#flatPriced() flat-priced} kind
+         * ({@link UsageKind#IMAGE}, {@link UsageKind#AUDIO}). {@code null}
+         * there means the cost is unknown and the call books as unpriced.
+         */
         @Nullable Double imageCost,
         /** Currency of {@link #imageCost}; token pricing carries its own. */
         @Nullable String imageCurrency,
@@ -265,9 +270,12 @@ public record UsageMeasurement(
         return providerInstance + ":" + providerModel;
     }
 
-    /** Currency for this row: the rate snapshot's, or the image currency. */
+    /**
+     * Currency for this row: the flat amount's for a flat-priced kind, the
+     * rate snapshot's otherwise.
+     */
     public @Nullable String resolvedCurrency() {
-        if (kind == UsageKind.IMAGE) return imageCurrency;
+        if (kind.flatPriced()) return imageCurrency;
         return pricing == null ? null : pricing.currency();
     }
 

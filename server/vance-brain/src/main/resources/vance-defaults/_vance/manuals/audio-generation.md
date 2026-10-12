@@ -25,9 +25,10 @@ with Markdown (`[listen](path)`), they are playable in the UI.
 | `audio_concat` | join clips in order, optional crossfade | instant |
 | `audio_convert` | re-encode to mp3/wav, resample, normalise | instant |
 
-The first five tools **generate** or **consume** audio through providers; the last five **edit
-existing audio documents locally (ffmpeg) — instant, free, no quota. The
-generation tools are all **synchronous**: one call, one blocking wait, one document.
+The first five tools **generate** or **consume** audio through providers;
+the last five **edit** existing audio documents locally (ffmpeg) — instant,
+free, no quota. The generation tools are all **synchronous**: one call, one
+blocking wait, one document.
 Do NOT loop to "improve" a result — every call costs money. For bulk
 voice-over, spawn one child per item (Marvin plan).
 
@@ -94,6 +95,8 @@ wasted money; ask precisely instead.
   `language` only when the text differs from the chat language.
 - `audio_transcribe` **auto-detects** — pass `language` to pin it
   (helps with short or noisy recordings).
+- `audio_analyze` answers in the **conversation language** — the
+  analysis is user-facing text; pass `language` only to override.
 - `audio_music` takes `language` for the lyrics; pass
   `language: "none"` for instrumental.
 
@@ -124,8 +127,8 @@ The tool result reports `costUsd` when the vendor reports a price.
 The tools return `{error, message, retryable}` — never a stack trace.
 
 - `quota_exceeded` — daily/monthly limit; tell the user, don't retry.
-- `content_policy` — the provider refused the prompt (music); rephrase,
-  do not retry verbatim.
+- `content_policy` — the provider refused the prompt (music, analysis);
+  rephrase, do not retry verbatim.
 - `unsupported_language` / `invalid_choice` — model/voice mismatch;
   check `audio_voices` or pick another alias.
 - `timeout` — retryable once; long recordings need patience.
@@ -139,3 +142,6 @@ The tools return `{error, message, retryable}` — never a stack trace.
 - Transcribing audio the user only wants "summarized" — if the audio is
   a YouTube video, use `video_transcript` instead (it prefers the
   caption track and only falls back to ASR).
+- Using `audio_transcribe` to answer "what kind of music is this?" —
+  a transcript of a song contains no genre, no instruments, no mood;
+  that is `audio_analyze`.

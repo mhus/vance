@@ -284,7 +284,7 @@ public class WowbaggerConfigureTool extends WowbaggerBaseTool {
             // Cost gate: refuse a structure whose worker model is not approved
             // (setting wowbagger.allowed-models) — before the agent can start it.
             try {
-                pool.checkModelApproval(process, s);
+                pool.checkWorker(process, s);
             } catch (RuntimeException e) {
                 throw new ToolException(e.getMessage(), e);
             }

@@ -78,7 +78,7 @@ class WowbaggerConfigureToolTest {
         assertThat(out.get("workTarget")).isEqualTo("wowbagger-run");
         // One serialization path: the tool writes through the pool, and the
         // model gate ran before the persist.
-        verify(pool).checkModelApproval(process, state);
+        verify(pool).checkWorker(process, state);
         verify(pool).persistStructure(process, state);
         assertThat(state.getTask()).isEqualTo("classify each record");
     }

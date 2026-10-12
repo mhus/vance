@@ -2,9 +2,12 @@ package de.mhus.vance.brain.wowbagger;
 
 import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
-import de.mhus.vance.brain.ai.light.LightLlmRequest;
-import de.mhus.vance.brain.ai.light.LightLlmService;
 import de.mhus.vance.brain.tools.worktarget.WorkTargetService;
+import de.mhus.vance.brain.wowbagger.worker.ChunkContext;
+import de.mhus.vance.brain.wowbagger.worker.PreparedWorker;
+import de.mhus.vance.brain.wowbagger.worker.WorkerReply;
+import de.mhus.vance.brain.wowbagger.worker.WorkerSpec;
+import de.mhus.vance.brain.wowbagger.worker.WowbaggerWorkerRegistry;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.document.DocumentDocument;
@@ -126,6 +129,8 @@ public class WowbaggerPoolService {
         volatile long lastFailureWakeupAtMs;
         /** Force re-run: workers overwrite published chunk docs instead of adopting. */
         volatile boolean forceRun;
+        /** The run's worker, prepared once at (re)start; read by every worker thread. */
+        volatile @Nullable PreparedWorker worker;
 
         final AtomicLong sequence = new AtomicLong();
         final List<Worker> workers = new ArrayList<>();
@@ -160,39 +165,33 @@ public class WowbaggerPoolService {
     private final Map<String, Handle> runs = new ConcurrentHashMap<>();
 
     private final ThinkProcessService thinkProcessService;
-    private final LightLlmService lightLlmService;
+    private final WowbaggerWorkerRegistry workerRegistry;
     private final DocumentService documentService;
     private final WorkspaceService workspaceService;
     private final WorkTargetService workTargetService;
     private final MetricService metricService;
     private final ObjectMapper objectMapper;
     private final ChatMessageService chatMessageService;
-    private final de.mhus.vance.brain.recipe.RecipeResolver recipeResolver;
-    private final de.mhus.vance.brain.ai.AiModelResolver aiModelResolver;
     private final de.mhus.vance.shared.settings.SettingService settingService;
 
     public WowbaggerPoolService(
             ThinkProcessService thinkProcessService,
-            LightLlmService lightLlmService,
+            WowbaggerWorkerRegistry workerRegistry,
             DocumentService documentService,
             WorkspaceService workspaceService,
             WorkTargetService workTargetService,
             MetricService metricService,
             ObjectMapper objectMapper,
             ChatMessageService chatMessageService,
-            de.mhus.vance.brain.recipe.RecipeResolver recipeResolver,
-            de.mhus.vance.brain.ai.AiModelResolver aiModelResolver,
             de.mhus.vance.shared.settings.SettingService settingService) {
         this.thinkProcessService = thinkProcessService;
-        this.lightLlmService = lightLlmService;
+        this.workerRegistry = workerRegistry;
         this.documentService = documentService;
         this.workspaceService = workspaceService;
         this.workTargetService = workTargetService;
         this.metricService = metricService;
         this.objectMapper = objectMapper;
         this.chatMessageService = chatMessageService;
-        this.recipeResolver = recipeResolver;
-        this.aiModelResolver = aiModelResolver;
         this.settingService = settingService;
     }
 
@@ -258,13 +257,13 @@ public class WowbaggerPoolService {
             handle.stopRequested = false;
             handle.runError = null;
             handle.forceRun = force;
-            // Cost gate (§ Model approval): the worker model must be on the
-            // operator's allowlist before a single record is processed — and
+            // Worker + cost gate (§ Model approval): the worker is prepared and
+            // its model approved before a single record is processed — and
             // before `running` flips true, so a refusal leaves the pool idle.
             // The resolution is persisted even on refusal so the agent (and
             // the user) see WHAT was refused.
             try {
-                checkModelApproval(process, state);
+                handle.worker = prepareWorker(process, state);
             } catch (RuntimeException e) {
                 persist(process, state);
                 throw e;
@@ -317,9 +316,10 @@ public class WowbaggerPoolService {
             state.setFailedChunks(new ArrayList<>());
             state.setFailureCount(0); // the agent acknowledged the failures
             state.setFinished(false);
-            // The same cost gate as start: a re-run must not become a bypass.
+            // The same worker gate as start: a re-run must not become a bypass.
+            PreparedWorker worker;
             try {
-                checkModelApproval(process, state);
+                worker = prepareWorker(process, state);
             } catch (RuntimeException e) {
                 persist(process, state);
                 throw e;
@@ -327,6 +327,7 @@ public class WowbaggerPoolService {
             persist(process, state);
             if (!handle.running) {
                 handle.live = state;
+                handle.worker = worker;
                 handle.running = true;
                 handle.stopRequested = false;
                 handle.runError = null;
@@ -621,8 +622,12 @@ public class WowbaggerPoolService {
         while (true) {
             try {
                 validateInputRecords(objectMapper, handle.live, claim.records(), chunk);
-                List<String> reply = callWorker(process, handle.live, claim.records());
+                List<String> reply = callWorker(handle, chunk, claim.records());
                 publishChunk(process, handle.live, chunk, reply);
+                PreparedWorker worker = handle.worker;
+                if (worker != null) {
+                    worker.onCommit();
+                }
                 synchronized (handle.lock) {
                     handle.live.getWave().remove(chunk);
                     handle.live.setRecordsDone(handle.live.getRecordsDone() + chunk.getRecordCount());
@@ -686,34 +691,59 @@ public class WowbaggerPoolService {
         return true;
     }
 
-    // ──────────────────── Worker model gate ────────────────────
+    // ──────────────────── Worker + model gate ────────────────────
 
-    /**
-     * Resolves the worker model exactly as the LightLm call would: recipe →
-     * {@code params.model} → alias cascade. Pure read — callers persist
-     * {@code state.resolvedWorkerModel} when they want the transparency trail.
-     */
-    public String resolveWorkerModel(ThinkProcessDocument process, WowbaggerState state) {
-        String recipeName = firstNonBlank(state.getWorkerRecipe(), DEFAULT_WORKER_RECIPE);
-        de.mhus.vance.brain.recipe.ResolvedRecipe recipe = recipeResolver
-                .resolve(process.getTenantId(), process.getProjectId(), recipeName)
-                .orElseThrow(() -> new IllegalStateException(
-                        "worker recipe '" + recipeName + "' not found in the recipe cascade"));
-        String spec = de.mhus.vance.brain.ai.AiModelResolver.parseModelSpec(recipe.params());
-        de.mhus.vance.brain.ai.AiModelResolver.Resolved resolved =
-                aiModelResolver.resolveOrDefault(spec, process.getTenantId(), process.getProjectId(), process.getId());
-        return resolved.providerInstance() + ":" + resolved.modelName();
+    /** The worker part of the structure, with the default recipe applied. */
+    static WorkerSpec workerSpec(WowbaggerState state) {
+        return new WorkerSpec(
+                firstNonBlank(state.getWorkerRecipe(), DEFAULT_WORKER_RECIPE), state.getTask(), state.getMaxTokens());
     }
 
     /**
-     * The cost gate: refuses a run whose resolved worker model is not on the
-     * allowlist (setting {@value #ALLOWED_MODELS_KEY}). Called at start and on
-     * re-configure — approval is the operator's setting, never the agent's own
-     * decision.
+     * Prepares the run's worker and applies the cost gate: the worker type is
+     * chosen from the recipe ({@link WowbaggerWorkerRegistry}), and a worker
+     * with one fixed model must have it on the allowlist (setting
+     * {@value #ALLOWED_MODELS_KEY}). Records {@code workerKind} and
+     * {@code resolvedWorkerModel} on the structure — also on a model refusal,
+     * so the agent and the user see WHAT was refused. Approval is the operator's
+     * setting, never the agent's own decision.
+     *
+     * @throws IllegalStateException recipe not a worker, preparation failed, or
+     *                               model not approved
      */
-    public void checkModelApproval(ThinkProcessDocument process, WowbaggerState state) {
-        String model = resolveWorkerModel(process, state);
-        state.setResolvedWorkerModel(model);
+    public PreparedWorker prepareWorker(ThinkProcessDocument process, WowbaggerState state) {
+        PreparedWorker worker = workerRegistry.prepare(process, workerSpec(state));
+        state.setWorkerKind(worker.kind());
+        state.setResolvedWorkerModel(worker.resolvedModel());
+        gate(process, worker);
+        return worker;
+    }
+
+    /** {@link #prepareWorker} for callers that only need the verdict (configure). */
+    public void checkWorker(ThinkProcessDocument process, WowbaggerState state) {
+        prepareWorker(process, state);
+    }
+
+    /**
+     * Non-throwing variant for status views and the {@code //wowbagger}
+     * diagnostic. Read-only: the structure is not touched (status views read
+     * the live state without the pool lock).
+     */
+    public boolean isWorkerModelApproved(ThinkProcessDocument process, WowbaggerState state) {
+        try {
+            gate(process, workerRegistry.prepare(process, workerSpec(state)));
+            return true;
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /** The allowlist check for workers with one fixed model; others gate per call at runtime. */
+    private void gate(ThinkProcessDocument process, PreparedWorker worker) {
+        String model = worker.resolvedModel();
+        if (model == null) {
+            return;
+        }
         String allowlist = allowedModels(process);
         if (!modelApproved(model, allowlist)) {
             throw new IllegalStateException("worker model '" + model
@@ -726,15 +756,6 @@ public class WowbaggerPoolService {
                             ? "; currently NO allowlist is set (fail-closed)"
                             : "; current allowlist: '" + allowlist + "'")
                     + ")");
-        }
-    }
-
-    /** Non-throwing variant for status views and the {@code //wowbagger} diagnostic. */
-    public boolean isWorkerModelApproved(ThinkProcessDocument process, WowbaggerState state) {
-        try {
-            return modelApproved(resolveWorkerModel(process, state), allowedModels(process));
-        } catch (RuntimeException e) {
-            return false;
         }
     }
 
@@ -988,15 +1009,21 @@ public class WowbaggerPoolService {
             }
         }
         String model = null;
+        String kind = null;
         Boolean approved = null;
         try {
-            model = resolveWorkerModel(process, state);
-            approved = modelApproved(model, allowedModels(process));
-            if (!approved) {
-                problems.add("worker model '" + model + "' is not approved (setting " + ALLOWED_MODELS_KEY + ")");
+            PreparedWorker worker = workerRegistry.prepare(process, workerSpec(state));
+            kind = worker.kind();
+            model = worker.resolvedModel();
+            try {
+                gate(process, worker);
+                approved = true;
+            } catch (IllegalStateException e) {
+                approved = false;
+                problems.add(e.getMessage());
             }
         } catch (RuntimeException e) {
-            problems.add("worker model resolution failed: " + describeError(e));
+            problems.add("worker not runnable: " + describeError(e));
         }
         report.put("ready", problems.isEmpty());
         report.put("problems", problems);
@@ -1017,6 +1044,7 @@ public class WowbaggerPoolService {
                         : state.getSourceBackupMb() > 0
                                 ? "enabled but no backup yet (threshold " + state.getSourceBackupMb() + " MB)"
                                 : "off (sourceBackupMb=0 — pod-local only)");
+        report.put("workerKind", kind);
         report.put("workerModel", model);
         report.put("modelApproved", approved);
         report.put(
@@ -1196,41 +1224,27 @@ public class WowbaggerPoolService {
         return firstNonBlank(state.getOutputFormat(), state.getInputFormat(), FORMAT_JSONL);
     }
 
-    /** Calls the worker recipe with the chunk's records; validation on the worker thread. */
-    private List<String> callWorker(ThinkProcessDocument process, WowbaggerState state, List<String> records)
+    /**
+     * Runs the chunk through the run's prepared worker and validates the
+     * reply contract (one line per record, JSONL objects when the output is
+     * JSONL) — on the worker thread, for every worker type alike.
+     */
+    private List<String> callWorker(Handle handle, WowbaggerState.WaveChunk chunk, List<String> records)
             throws WorkerReplyException {
-        StringBuilder prompt = new StringBuilder("## Task\n")
-                .append(state.getTask())
-                .append("\n\n## Records (")
-                .append(records.size())
-                .append(" total, one per line, in order)\n")
-                .append(String.join("\n", records));
-        metricService.counter(METRIC_LLM_CALLS).increment();
-        state.getCounters().setWorkerCalls(state.getCounters().getWorkerCalls() + 1);
-        de.mhus.vance.brain.ai.light.LightLlmTextAnswer answered =
-                lightLlmService.callWithUsage(LightLlmRequest.builder()
-                        .recipeName(firstNonBlank(state.getWorkerRecipe(), DEFAULT_WORKER_RECIPE))
-                        .maxTokens(
-                                state.getMaxTokens() != null && state.getMaxTokens() > 0 ? state.getMaxTokens() : null)
-                        .userPrompt(prompt.toString())
-                        .tenantId(process.getTenantId())
-                        .projectId(process.getProjectId())
-                        .processId(process.getId())
-                        .build());
-        if (answered.usage() != null) {
-            if (answered.usage().inputTokens() != null) {
-                state.getCounters()
-                        .setTokensIn(state.getCounters().getTokensIn()
-                                + answered.usage().inputTokens());
-            }
-            if (answered.usage().outputTokens() != null) {
-                state.getCounters()
-                        .setTokensOut(state.getCounters().getTokensOut()
-                                + answered.usage().outputTokens());
-            }
+        PreparedWorker worker = handle.worker;
+        if (worker == null) {
+            throw new IllegalStateException("no prepared worker — the pool was not started through start()");
         }
-        return validateWorkerReply(
-                answered.text(), records.size(), FORMAT_JSONL.equals(outputFormat(state)), objectMapper);
+        WorkerReply reply = worker.process(records, new ChunkContext(chunk.getIndex(), chunk.getStartRecord()));
+        metricService.counter(METRIC_LLM_CALLS).increment(reply.calls());
+        synchronized (handle.lock) {
+            WowbaggerState.Counters counters = handle.live.getCounters();
+            counters.setWorkerCalls(counters.getWorkerCalls() + reply.calls());
+            counters.setTokensIn(counters.getTokensIn() + reply.tokensIn());
+            counters.setTokensOut(counters.getTokensOut() + reply.tokensOut());
+        }
+        return validateWorkerLines(
+                reply.lines(), records.size(), FORMAT_JSONL.equals(outputFormat(handle.live)), objectMapper);
     }
 
     /**
@@ -1262,8 +1276,13 @@ public class WowbaggerPoolService {
     /** Validates a worker reply: one output line per record; JSONL per line an object. */
     static List<String> validateWorkerReply(String reply, int expectedCount, boolean jsonl, ObjectMapper om)
             throws WorkerReplyException {
-        List<String> lines =
-                reply.lines().map(String::trim).filter(s -> !s.isEmpty()).toList();
+        return validateWorkerLines(
+                reply.lines().map(String::trim).filter(s -> !s.isEmpty()).toList(), expectedCount, jsonl, om);
+    }
+
+    /** {@link #validateWorkerReply} for workers that hand back lines already split. */
+    static List<String> validateWorkerLines(List<String> lines, int expectedCount, boolean jsonl, ObjectMapper om)
+            throws WorkerReplyException {
         if (lines.size() != expectedCount) {
             throw new WorkerReplyException("expected " + expectedCount + " output lines, got " + lines.size());
         }

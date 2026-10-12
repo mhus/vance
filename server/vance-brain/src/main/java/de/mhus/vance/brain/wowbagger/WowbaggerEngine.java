@@ -767,6 +767,7 @@ public class WowbaggerEngine implements ThinkEngine {
                 .append(s.getResolvedWorkerModel() == null ? "(not resolved yet)" : s.getResolvedWorkerModel())
                 .append(" (recipe: ")
                 .append(s.getWorkerRecipe() == null ? "wowbagger-worker" : s.getWorkerRecipe())
+                .append(s.getWorkerKind() == null ? "" : ", worker type: " + s.getWorkerKind())
                 .append(", approved: ")
                 .append(pool.isWorkerModelApproved(process, s))
                 .append(")\n");

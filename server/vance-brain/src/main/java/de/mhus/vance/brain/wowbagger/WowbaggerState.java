@@ -85,6 +85,13 @@ public class WowbaggerState {
     private @Nullable String resolvedWorkerModel;
 
     /**
+     * Worker type of the last preparation ({@code llm}, {@code zem}, …),
+     * refreshed on configure/start — display-only, like
+     * {@link #resolvedWorkerModel}.
+     */
+    private @Nullable String workerKind;
+
+    /**
      * The run's persistent RootDir ({@code wowbagger-<processId-prefix>} by
      * default) — source and results live here, decoupled from the process-wide
      * workTarget. Auto-assigned on first configure/start, adopted on resume.

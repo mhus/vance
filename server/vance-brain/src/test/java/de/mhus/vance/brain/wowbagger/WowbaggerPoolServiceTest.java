@@ -83,22 +83,28 @@ class WowbaggerPoolServiceTest {
         de.mhus.vance.brain.ai.AiModelResolver aiModelResolver = mock(de.mhus.vance.brain.ai.AiModelResolver.class);
         settingService = mock(de.mhus.vance.shared.settings.SettingService.class);
 
+        de.mhus.vance.brain.wowbagger.worker.WowbaggerWorkerRegistry workers =
+                new de.mhus.vance.brain.wowbagger.worker.WowbaggerWorkerRegistry(
+                        List.of(new de.mhus.vance.brain.wowbagger.worker.LightLlmWorker(
+                                lightLlmService, aiModelResolver)),
+                        recipeResolver);
         pool = new WowbaggerPoolService(
                 thinkProcessService,
-                lightLlmService,
+                workers,
                 documentService,
                 workspaceService,
                 workTargetService,
                 metricService,
                 om,
                 chatLog,
-                recipeResolver,
-                aiModelResolver,
                 settingService);
 
         // Worker-model resolution: recipe → params.model spec → resolved model.
         de.mhus.vance.brain.recipe.ResolvedRecipe workerRecipe = mock(de.mhus.vance.brain.recipe.ResolvedRecipe.class);
         lenient().when(workerRecipe.params()).thenReturn(Map.of("model", "spec-fast"));
+        lenient().when(workerRecipe.name()).thenReturn("wowbagger-worker");
+        lenient().when(workerRecipe.engine()).thenReturn("jeltz");
+        lenient().when(workerRecipe.internal()).thenReturn(true);
         lenient()
                 .when(recipeResolver.resolve(eq(TENANT), eq(PROJECT), anyString()))
                 .thenReturn(Optional.of(workerRecipe));

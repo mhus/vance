@@ -160,6 +160,7 @@ public class WowbaggerCommandHandler implements EngineCommandHandler {
         }
         msg.append("\nWorker: recipe ")
                 .append(s.getWorkerRecipe() == null ? "wowbagger-worker" : s.getWorkerRecipe())
+                .append(s.getWorkerKind() == null ? "" : " [" + s.getWorkerKind() + "]")
                 .append(" → ")
                 .append(s.getResolvedWorkerModel() == null ? "(not resolved yet)" : s.getResolvedWorkerModel())
                 .append(" (approved: ")
@@ -232,6 +233,7 @@ public class WowbaggerCommandHandler implements EngineCommandHandler {
         value.put("chunksTotal", s.getChunksTotal());
         value.put("workerRecipe", s.getWorkerRecipe() == null ? "wowbagger-worker" : s.getWorkerRecipe());
         value.put("maxTokens", s.getMaxTokens());
+        value.put("workerKind", s.getWorkerKind());
         value.put("resolvedWorkerModel", s.getResolvedWorkerModel());
         value.put("modelApproved", pool.isWorkerModelApproved(process, s));
         value.put("wakeEveryRecords", s.getWakeEveryRecords());

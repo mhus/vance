@@ -39,11 +39,28 @@ export interface AccountToolsConfig {
 /** IPC channel names used by the account-WebView tools bridge (preload ↔
  *  main). The account bridge is read-only for the release switch — the
  *  write path is shell-only (see {@link SHELL_IPC}). */
+export interface AccountToolsConfig {
+  /** Release switch — default off, fail-safe. */
+  toolsEnabled: boolean;
+  /** Working directory relative paths resolve against. Default: home. */
+  workdir: string;
+  /** Confinement: paths outside the workdir deny instead of asking. */
+  confineToWorkdir: boolean;
+  /** Pack processes' HOME/cwd. null = the real user home. */
+  packHome: string | null;
+  /** Per-project pack home, keyed `tenant/project`. */
+  packHomeByProject: Record<string, string>;
+}
+
+/** IPC channel names used by the account-WebView tools bridge (preload ↔
+ *  main). The account bridge is read-only for the release switch — the
+ *  write path is shell-only (see {@link SHELL_IPC}). */
 export const IPC = {
   invoke: 'desktop-tools:invoke',
   getContext: 'desktop-tools:get-context',
   toolsEnabledGet: 'desktop-tools:tools-enabled:get',
   packsList: 'desktop-tools:packs:list',
+  packsSetProject: 'desktop-tools:packs:set-project',
 } as const;
 
 /** IPC channels for the shell renderer: the release button (get/set per
@@ -67,6 +84,12 @@ export const SHELL_IPC = {
   policyReset: 'desktop-shell:policy:reset',
   policySetSandbox: 'desktop-shell:policy:set-sandbox',
   packsReload: 'desktop-shell:packs:reload',
+  packsProject: 'desktop-shell:packs-project',
+  packHomeGet: 'desktop-shell:pack-home:get',
+  packHomePick: 'desktop-shell:pack-home:pick',
+  packHomeSet: 'desktop-shell:pack-home:set',
+  packHomeByProjectSet: 'desktop-shell:pack-home-by-project:set',
+  packHomeByProjectRemove: 'desktop-shell:pack-home-by-project:remove',
 } as const;
 
 /** Contract version reported through the bridge. Bump on breaking changes. */

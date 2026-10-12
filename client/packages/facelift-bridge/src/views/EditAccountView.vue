@@ -23,6 +23,12 @@ const notFound = ref(false);
 const isDesktopApp = isDesktop();
 const workdir = ref('');
 const confined = ref(false);
+// Pack home (planning/desktop-pack-home-per-project.md): default + per
+// `tenant/project`, plus the last reported project for the live row.
+const packHome = ref<string | null>(null);
+const packHomeByProject = ref<Record<string, string>>({});
+const currentProject = ref<string | null>(null);
+const currentTenant = ref<string | null>(null);
 const policy = ref<AgentPolicy | null>(null);
 const addDomain = ref<'paths' | 'commands' | 'delete'>('paths');
 const sandboxArmed = ref(false);
@@ -49,6 +55,7 @@ onMounted(async () => {
     const bridge = window.faceliftDesktop;
     workdir.value = (await bridge?.workdirGet({ accountId: account.id })) ?? '';
     confined.value = (await bridge?.confineGet({ accountId: account.id })) ?? false;
+    await refreshPackHome();
     policy.value = (await bridge?.policyGet({ accountId: account.id })) ?? null;
   }
 });
@@ -70,6 +77,64 @@ async function toggleConfined(): Promise<void> {
   const next = !confined.value;
   await window.faceliftDesktop?.confineSet({ accountId: accountId.value, confined: next });
   confined.value = next;
+}
+
+async function refreshPackHome(): Promise<void> {
+  if (!isDesktopApp || accountId.value === '') return;
+  const config = await window.faceliftDesktop?.packHomeGet({ accountId: accountId.value });
+  if (config === null || config === undefined) return;
+  packHome.value = config.packHome;
+  packHomeByProject.value = { ...config.packHomeByProject };
+  currentProject.value = config.current.project;
+  currentTenant.value = config.current.tenant;
+}
+
+/** The live row: the reported project, keyed `tenant/project`. */
+const currentKey = computed(() => {
+  const entries = Object.keys(packHomeByProject.value);
+  if (currentProject.value === null) return null;
+  return (
+    entries.find((k) => k.endsWith(`/${currentProject.value}`)) ?? null
+  );
+});
+
+async function choosePackHome(): Promise<void> {
+  if (!isDesktopApp || accountId.value === '') return;
+  const picked = await window.faceliftDesktop?.packHomePick({ accountId: accountId.value });
+  if (picked === null || picked === undefined) return;
+  await window.faceliftDesktop?.packHomeSet({ accountId: accountId.value, home: picked });
+  packHome.value = picked;
+}
+
+async function clearPackHome(): Promise<void> {
+  if (!isDesktopApp || accountId.value === '') return;
+  await window.faceliftDesktop?.packHomeSet({ accountId: accountId.value, home: null });
+  packHome.value = null;
+}
+
+async function choosePackHomeFor(key: string): Promise<void> {
+  if (!isDesktopApp || accountId.value === '') return;
+  const picked = await window.faceliftDesktop?.packHomePick({ accountId: accountId.value });
+  if (picked === null || picked === undefined) return;
+  await window.faceliftDesktop?.packHomeByProjectSet({ accountId: accountId.value, key, home: picked });
+  packHomeByProject.value = { ...packHomeByProject.value, [key]: picked };
+}
+
+async function addPackHomeForCurrentProject(): Promise<void> {
+  if (!isDesktopApp || accountId.value === '' || currentProject.value === null) return;
+  const picked = await window.faceliftDesktop?.packHomePick({ accountId: accountId.value });
+  if (picked === null || picked === undefined) return;
+  const key = `${currentTenant.value ?? ''}/${currentProject.value}`;
+  await window.faceliftDesktop?.packHomeByProjectSet({ accountId: accountId.value, key, home: picked });
+  packHomeByProject.value = { ...packHomeByProject.value, [key]: picked };
+}
+
+async function removePackHomeFor(key: string): Promise<void> {
+  if (!isDesktopApp || accountId.value === '') return;
+  await window.faceliftDesktop?.packHomeByProjectRemove({ accountId: accountId.value, key });
+  const next = { ...packHomeByProject.value };
+  delete next[key];
+  packHomeByProject.value = next;
 }
 
 async function addPolicyRule(): Promise<void> {
@@ -307,6 +372,74 @@ function onCancel(): void {
           Working directory for the agent tools — relative paths and the session
           environment resolve against it. Changes apply with the next agent request.
         </p>
+        <div class="mt-4 border-t border-gray-800 pt-3">
+          <span class="mb-1 block text-xs uppercase tracking-wide text-gray-400">Pack home</span>
+          <div class="flex items-center gap-2">
+            <code
+              class="min-w-0 flex-1 truncate rounded bg-gray-800 px-2 py-2 text-sm text-gray-300"
+              :title="packHome ?? ''"
+            >
+              {{ packHome || '— (your real home)' }}
+            </code>
+            <button
+              type="button"
+              class="shrink-0 rounded bg-gray-800 px-3 py-2 text-sm text-blue-400"
+              @click="choosePackHome"
+            >
+              Choose…
+            </button>
+            <button
+              v-if="packHome"
+              type="button"
+              class="shrink-0 rounded bg-gray-800 px-3 py-2 text-xs text-gray-400"
+              @click="clearPackHome"
+            >
+              Reset
+            </button>
+          </div>
+          <p class="mt-1 text-xs text-gray-500">
+            HOME for MCP pack processes (profiles, session data) — the npm cache
+            stays on your real home. The current project
+            <template v-if="currentProject">is <strong>{{ currentProject }}</strong></template>
+            <template v-else>reports here once you select one in the app</template>.
+          </p>
+          <div v-if="Object.keys(packHomeByProject).length > 0" class="mt-2 space-y-1">
+            <div
+              v-for="(home, key) in packHomeByProject"
+              :key="key"
+              class="flex items-center gap-2"
+            >
+              <code class="w-40 shrink-0 truncate rounded bg-gray-800 px-2 py-1 text-xs" :class="key === currentKey ? 'text-blue-400' : 'text-gray-400'">
+                {{ key }}
+              </code>
+              <code class="min-w-0 flex-1 truncate rounded bg-gray-800 px-2 py-1 text-xs text-gray-300" :title="home">
+                {{ home }}
+              </code>
+              <button
+                type="button"
+                class="shrink-0 rounded bg-gray-800 px-2 py-1 text-xs text-blue-400"
+                @click="choosePackHomeFor(String(key))"
+              >
+                …
+              </button>
+              <button
+                type="button"
+                class="shrink-0 rounded bg-gray-800 px-2 py-1 text-xs text-red-400"
+                @click="removePackHomeFor(String(key))"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+          <button
+            v-if="currentProject !== null"
+            type="button"
+            class="mt-2 rounded bg-gray-800 px-3 py-1.5 text-xs text-blue-400"
+            @click="addPackHomeForCurrentProject"
+          >
+            Add home for “{{ currentProject }}”…
+          </button>
+        </div>
         <div class="mt-3 flex items-center gap-2">
           <button
             type="button"

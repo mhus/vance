@@ -33,6 +33,12 @@ const SHELL_POLICY_REMOVE = 'desktop-shell:policy:remove-rule';
 const SHELL_POLICY_RESET = 'desktop-shell:policy:reset';
 const SHELL_POLICY_SANDBOX = 'desktop-shell:policy:set-sandbox';
 const SHELL_PACKS_RELOAD = 'desktop-shell:packs:reload';
+const SHELL_PACKS_PROJECT = 'desktop-shell:packs-project';
+const SHELL_PACK_HOME_GET = 'desktop-shell:pack-home:get';
+const SHELL_PACK_HOME_PICK = 'desktop-shell:pack-home:pick';
+const SHELL_PACK_HOME_SET = 'desktop-shell:pack-home:set';
+const SHELL_PACK_HOME_BY_PROJECT_SET = 'desktop-shell:pack-home-by-project:set';
+const SHELL_PACK_HOME_BY_PROJECT_REMOVE = 'desktop-shell:pack-home-by-project:remove';
 
 // The renderer-facing bridge. Shape must match the FaceliftDesktopBridge
 // interface in facelift-account-webview/src/definitions.ts (formerly in
@@ -113,6 +119,28 @@ const bridge = {
   // mcp.json edits and restarted MCP servers. Returns the fresh counts.
   packsReload: (o: { accountId: string }): Promise<{ servers: number; tools: number; errors: number } | null> =>
     ipcRenderer.invoke(SHELL_PACKS_RELOAD, o),
+  // Pack home (planning/desktop-pack-home-per-project.md): the face
+  // reports the effective project; the main resolves the home and
+  // pushes the context here for the tools-toggle tooltip.
+  onPacksProject: (callback: (event: { accountId: string; project: string | null; tenant: string | null; home: string | null }) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, event: { accountId: string; project: string | null; tenant: string | null; home: string | null }): void =>
+      callback(event);
+    ipcRenderer.on(SHELL_PACKS_PROJECT, listener);
+    return () => ipcRenderer.removeListener(SHELL_PACKS_PROJECT, listener);
+  },
+  packHomeGet: (o: { accountId: string }): Promise<{
+    packHome: string | null;
+    packHomeByProject: Record<string, string>;
+    current: { project: string | null; tenant: string | null; home: string | null };
+  } | null> => ipcRenderer.invoke(SHELL_PACK_HOME_GET, o),
+  packHomePick: (o: { accountId: string }): Promise<string | null> =>
+    ipcRenderer.invoke(SHELL_PACK_HOME_PICK, o),
+  packHomeSet: (o: { accountId: string; home: string | null }): Promise<void> =>
+    ipcRenderer.invoke(SHELL_PACK_HOME_SET, o),
+  packHomeByProjectSet: (o: { accountId: string; key: string; home: string }): Promise<void> =>
+    ipcRenderer.invoke(SHELL_PACK_HOME_BY_PROJECT_SET, o),
+  packHomeByProjectRemove: (o: { accountId: string; key: string }): Promise<void> =>
+    ipcRenderer.invoke(SHELL_PACK_HOME_BY_PROJECT_REMOVE, o),
 };
 
 contextBridge.exposeInMainWorld('faceliftDesktop', bridge);

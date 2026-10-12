@@ -99,6 +99,24 @@ export function rememberProject(name: string | null | undefined): void {
     // Private-mode browsers and storage-partitioned WebViews can throw on
     // write. The memory is a convenience; losing it must never break the page.
   }
+  reportProjectToDesktop(name);
+}
+
+/**
+ * Tell the desktop app which project is now effective
+ * (planning/desktop-pack-home-per-project.md §3) — it resolves the pack
+ * home per project. Optional bridge member: an older app build simply has
+ * no `setProject`, and in a browser there is no bridge at all.
+ */
+function reportProjectToDesktop(name: string): void {
+  const bridge = getDesktopTools();
+  if (bridge?.packs?.setProject === undefined) return;
+  const s = getSessionData();
+  try {
+    void bridge.packs.setProject({ tenant: s ? s.tenantId : null, project: name });
+  } catch {
+    // A reporting hiccup must never break the selection it reports.
+  }
 }
 
 /**

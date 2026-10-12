@@ -15,11 +15,14 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron';
 
 import {
+  accountToolsDir,
   getAccountConfig,
+  removePackHomeForProject,
   setConfineToWorkdir,
+  setPackHome,
+  setPackHomeForProject,
   setToolsEnabled,
   setWorkdir,
-  accountToolsDir,
 } from './accountConfig';
 import { ExecJobs, execJobsRoot } from './execOps';
 import {
@@ -231,6 +234,59 @@ export class DesktopToolsService {
         denyFloor: denyFloor(),
       }));
     });
+    // Pack home config (shell-only writes, like the workdir). get also
+    // carries the last reported project so the UI can mark the live row.
+    ipcMain.handle(SHELL_IPC.packHomeGet, (_e, o: unknown) => {
+      const accountId = accountIdOf(o);
+      if (accountId === null) return null;
+      return getAccountConfig(accountId).then((c) => ({
+        packHome: c.packHome,
+        packHomeByProject: c.packHomeByProject,
+        current: this.packs.currentProject(accountId),
+      }));
+    });
+    ipcMain.handle(SHELL_IPC.packHomePick, async (_e, o: unknown) => {
+      const accountId = accountIdOf(o);
+      const win = this.windowProvider();
+      if (accountId === null || !win) return null;
+      const current = await getAccountConfig(accountId);
+      const result = await dialog.showOpenDialog(win, {
+        title: 'Choose the home directory for tool packs',
+        defaultPath: current.packHome ?? current.workdir,
+        properties: ['openDirectory', 'dontAddToRecent'],
+      });
+      return result.canceled ? null : (result.filePaths[0] ?? null);
+    });
+    ipcMain.handle(SHELL_IPC.packHomeSet, async (_e, o: unknown) => {
+      const accountId = accountIdOf(o);
+      const req = o as { home?: unknown };
+      if (accountId === null) return;
+      const home = typeof req.home === 'string' && path.isAbsolute(req.home) ? req.home : null;
+      await setPackHome(accountId, home);
+      await this.packs.reResolve(accountId);
+    });
+    ipcMain.handle(SHELL_IPC.packHomeByProjectSet, async (_e, o: unknown) => {
+      const accountId = accountIdOf(o);
+      const req = o as { key?: unknown; home?: unknown };
+      if (
+        accountId === null ||
+        typeof req.key !== 'string' ||
+        req.key.length === 0 ||
+        typeof req.home !== 'string' ||
+        !path.isAbsolute(req.home)
+      ) {
+        return;
+      }
+      await setPackHomeForProject(accountId, req.key, req.home);
+      await this.packs.reResolve(accountId);
+    });
+    ipcMain.handle(SHELL_IPC.packHomeByProjectRemove, async (_e, o: unknown) => {
+      const accountId = accountIdOf(o);
+      const req = o as { key?: unknown };
+      if (accountId === null || typeof req.key !== 'string') return;
+      await removePackHomeForProject(accountId, req.key);
+      await this.packs.reResolve(accountId);
+    });
     ipcMain.handle(SHELL_IPC.packsReload, (_e, o: unknown) => {
       const accountId = accountIdOf(o);
       if (accountId === null) return null;
@@ -240,6 +296,17 @@ export class DesktopToolsService {
       const rt = this.viewAccounts.get(event.sender.id);
       if (!rt) return [];
       return this.packs.listTools(rt.accountId);
+    });
+    // Effective project selection, reported by the face on every change
+    // (planning/desktop-pack-home-per-project.md §3). Validates like the
+    // other report payloads: strings or null, nothing else.
+    ipcMain.handle(IPC.packsSetProject, (event, o: unknown) => {
+      const rt = this.viewAccounts.get(event.sender.id);
+      if (!rt) return;
+      const report = o as { tenant?: unknown; project?: unknown };
+      const tenant = typeof report.tenant === 'string' ? report.tenant : null;
+      const project = typeof report.project === 'string' ? report.project : null;
+      return this.packs.setProject(rt.accountId, tenant, project);
     });
     ipcMain.handle(IPC.invoke, (event, op: unknown, params: unknown) => {
       if (typeof op !== 'string' || typeof params !== 'object' || params === null) {

@@ -219,3 +219,26 @@ export function filterSubTools<T extends { name: string }>(tools: T[], pack: str
   const deny = new Set(disabled.map((t) => packToolName(pack, t)).concat(disabled));
   return tools.filter((t) => !deny.has(t.name));
 }
+
+/**
+ * Spawn environment for a pack server running under a project home
+ * (planning/desktop-pack-home-per-project.md §6): `HOME` moves so the
+ * server keeps its profile/session data per project, but the npm/npx
+ * cache stays pinned to the real user directories — otherwise every
+ * project home would re-download every `npx …` package, and the feature
+ * would look broken on exactly its first use.
+ */
+export function packSpawnEnv(
+  home: string,
+  realHome: string,
+  baseEnv: Record<string, string | undefined>,
+): Record<string, string> {
+  const merged: Record<string, string | undefined> = {
+    ...baseEnv,
+    HOME: home,
+    npm_config_cache: baseEnv.npm_config_cache ?? `${realHome}/.npm`,
+    XDG_CACHE_HOME: baseEnv.XDG_CACHE_HOME ?? `${realHome}/.cache`,
+  };
+  // child_process skips undefined env vars; the SDK's env type is strict.
+  return Object.fromEntries(Object.entries(merged).filter((e): e is [string, string] => e[1] !== undefined));
+}

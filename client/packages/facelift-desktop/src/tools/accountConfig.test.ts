@@ -9,7 +9,11 @@ vi.mock('electron', () => ({
 
 import { rm } from 'node:fs/promises';
 
-import { getAccountConfig, setConfineToWorkdir, setToolsEnabled, setWorkdir } from './accountConfig';
+import { getAccountConfig, setConfineToWorkdir, setToolsEnabled, setWorkdir,
+  setPackHome,
+  setPackHomeForProject,
+  removePackHomeForProject,
+} from './accountConfig';
 
 const TMP_DIR = '/tmp/vitest-vance-account-config';
 
@@ -20,7 +24,13 @@ describe('accountConfig', () => {
 
   it('defaults to disabled tools and the home directory', async () => {
     const config = await getAccountConfig('acc-1');
-    expect(config).toEqual({ toolsEnabled: false, workdir: '/home/tester', confineToWorkdir: false });
+    expect(config).toEqual({
+      toolsEnabled: false,
+      workdir: '/home/tester',
+      confineToWorkdir: false,
+      packHome: null,
+      packHomeByProject: {},
+    });
   });
 
   it('persists the working directory per account', async () => {
@@ -36,6 +46,8 @@ describe('accountConfig', () => {
       toolsEnabled: true,
       workdir: '/Users/tester/sources',
       confineToWorkdir: false,
+      packHome: null,
+      packHomeByProject: {},
     });
 
     await setToolsEnabled('acc-1', false);
@@ -43,6 +55,8 @@ describe('accountConfig', () => {
       toolsEnabled: false,
       workdir: '/Users/tester/sources',
       confineToWorkdir: false,
+      packHome: null,
+      packHomeByProject: {},
     });
   });
 
@@ -54,6 +68,8 @@ describe('accountConfig', () => {
       toolsEnabled: true,
       workdir: '/Users/tester/sources',
       confineToWorkdir: true,
+      packHome: null,
+      packHomeByProject: {},
     });
   });
 
@@ -62,5 +78,32 @@ describe('accountConfig', () => {
     await setWorkdir('acc-2', '/b');
     expect((await getAccountConfig('acc-1')).workdir).toBe('/a');
     expect((await getAccountConfig('acc-2')).workdir).toBe('/b');
+  });
+});
+
+describe('pack home', () => {
+  it('defaults to the real home (null) and an empty per-project map', async () => {
+    const c = await getAccountConfig('acc-pk');
+    expect(c.packHome).toBeNull();
+    expect(c.packHomeByProject).toEqual({});
+  });
+
+  it('persists the default home independently of the per-project entries', async () => {
+    await setPackHome('acc-pk', '/data/pack-home');
+    await setPackHomeForProject('acc-pk', 'acme/atlas', '/data/atlas-home');
+    const c = await getAccountConfig('acc-pk');
+    expect(c.packHome).toBe('/data/pack-home');
+    expect(c.packHomeByProject['acme/atlas']).toBe('/data/atlas-home');
+    // unrelated fields untouched
+    expect(c.toolsEnabled).toBe(false);
+  });
+
+  it('removes a single per-project entry, keeps the rest', async () => {
+    await setPackHomeForProject('acc-pk', 'acme/atlas', '/data/atlas-home');
+    await setPackHomeForProject('acc-pk', 'acme/borealis', '/data/other');
+    await removePackHomeForProject('acc-pk', 'acme/atlas');
+    const c = await getAccountConfig('acc-pk');
+    expect(c.packHomeByProject['acme/atlas']).toBeUndefined();
+    expect(c.packHomeByProject['acme/borealis']).toBe('/data/other');
   });
 });

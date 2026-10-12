@@ -18,6 +18,7 @@ import {
   parseTrustedPacks,
   reachOf,
   serializeTrustedPacks,
+  packSpawnEnv,
 } from './packs';
 
 const GLOBAL = JSON.stringify({
@@ -153,5 +154,35 @@ describe('filterSubTools', () => {
     const tools = [{ name: 'chrome__a' }];
     expect(filterSubTools(tools, 'chrome', undefined)).toEqual(tools);
     expect(filterSubTools(tools, 'chrome', [])).toEqual(tools);
+  });
+});
+
+describe('packSpawnEnv', () => {
+  it('moves HOME but pins the npx cache to the real home', () => {
+    const env = packSpawnEnv('/data/proj-homes/atlas', '/Users/mhus', {
+      PATH: '/usr/bin:/bin',
+      HOME: '/Users/mhus',
+    });
+    expect(env.HOME).toBe('/data/proj-homes/atlas');
+    expect(env.npm_config_cache).toBe('/Users/mhus/.npm');
+    expect(env.XDG_CACHE_HOME).toBe('/Users/mhus/.cache');
+    expect(env.PATH).toBe('/usr/bin:/bin');
+  });
+
+  it('keeps an explicit cache override instead of guessing', () => {
+    const env = packSpawnEnv('/p/home', '/Users/mhus', {
+      npm_config_cache: '/custom/cache',
+    });
+    expect(env.npm_config_cache).toBe('/custom/cache');
+  });
+
+  it('drops undefined entries (child_process skips them anyway)', () => {
+    const env = packSpawnEnv('/p/home', '/Users/mhus', {
+      WEIRD: undefined,
+      OK: '1',
+    });
+    expect(env.WEIRD).toBeUndefined();
+    expect('WEIRD' in env).toBe(false);
+    expect(env.OK).toBe('1');
   });
 });

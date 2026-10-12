@@ -48,13 +48,23 @@ const active = computed<Account | null>(() => {
 const isDesktopApp = isDesktop();
 const toolsEnabled = ref(false);
 const toolsActive = ref(false);
+// Pack context (planning/desktop-pack-home-per-project.md §4): the last
+// reported project and the effective pack home, per account — the tooltip
+// shows whichever account is on screen.
+const packsProjects = ref(new Map<string, { project: string | null; tenant: string | null; home: string | null }>());
 let toolsActivityUnsub: (() => void) | null = null;
+let packsProjectUnsub: (() => void) | null = null;
 
 const toolsTitle = computed(() => {
+  const context = activeId.value !== null ? packsProjects.value.get(activeId.value) : undefined;
   if (toolsActive.value) return 'Agent is working on your machine…';
-  return toolsEnabled.value
+  const state = toolsEnabled.value
     ? 'Agent tools: on (click to disable)'
     : 'Agent tools: off (click to enable)';
+  if (context === undefined) return state;
+  const project = context.project !== null ? context.project : '—';
+  const home = context.home !== null ? context.home : '—';
+  return `${state} · Project: ${project} · Pack home: ${home}`;
 });
 
 async function refreshToolsEnabled(): Promise<void> {
@@ -108,6 +118,14 @@ onMounted(async () => {
         toolsActive.value = event.active;
       }
     }) ?? null;
+    packsProjectUnsub = window.faceliftDesktop?.onPacksProject((event) => {
+      packsProjects.value.set(event.accountId, {
+        project: event.project,
+        tenant: event.tenant,
+        home: event.home,
+      });
+      packsProjects.value = new Map(packsProjects.value);
+    }) ?? null;
     await refreshToolsEnabled();
   }
 });
@@ -120,6 +138,8 @@ onBeforeUnmount(async () => {
   }
   toolsActivityUnsub?.();
   toolsActivityUnsub = null;
+  packsProjectUnsub?.();
+  packsProjectUnsub = null;
   await VanceAccountWebView.dismiss();
 });
 

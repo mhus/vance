@@ -29,9 +29,11 @@ import {
   parseTrustedPacks,
   reachOf,
   serializeTrustedPacks,
+  packSpawnEnv,
   type MergedServer,
   type PackToolEntry,
 } from './packs';
+import { SHELL_IPC, type AccountToolsConfig } from './types';
 
 /** Same constant as the permission gate — a trust question nobody answers
  *  is a rejection, never a silent load (fail-closed, §5). */
@@ -54,6 +56,9 @@ interface AccountPacks {
   servers: Map<string, RunningServer>;
   /** In-flight materialization — concurrent callers await the same run. */
   materializing: Promise<void> | null;
+  /** The HOME the servers were spawned under (change detection for
+   *  setProject). Empty until the first materialization. */
+  home: string;
 }
 
 /**
@@ -132,6 +137,76 @@ export class PackService {
     return { content, ...(text !== '' ? { text } : {}) };
   }
 
+  /** The last reported project per account — `tenant/project` keyed at
+   *  resolution time. Survives reload (the reported context outlives a
+   *  respawn); the face re-reports on every editor mount anyway.
+   *  planning/desktop-pack-home-per-project.md §3. */
+  private readonly projects = new Map<string, { tenant: string | null; project: string }>();
+
+  /** Face-side project report. Resolves the effective pack home
+   *  (`packHomeByProject['tenant/project'] ?? packHome ?? real home`) and
+   *  respawns the running servers when it CHANGED — a project switch
+   *  without its own home entry costs nothing. Pushes the new context to
+   *  the shell (tooltip). */
+  async setProject(accountId: string, tenant: string | null, project: string | null): Promise<void> {
+    if (project === null || project === '') {
+      this.projects.delete(accountId);
+    } else {
+      this.projects.set(accountId, { tenant, project });
+    }
+    const config = await getAccountConfig(accountId);
+    const home = this.effectiveHome(accountId, config);
+    const cached = this.accounts.get(accountId);
+    if (cached !== undefined && cached.home !== '' && cached.home !== home) {
+      await this.reload(accountId);
+    } else if (cached !== undefined && cached.home === '') {
+      // not materialized yet — stamp the home so the first spawn uses it
+      cached.home = home;
+    }
+    this.pushProject(accountId, home);
+  }
+
+  /** Re-resolve the home after a config write (default or per-project
+   *  changed) — keeps the reported project, respawns when the effective
+   *  home moved. The face is not involved; the shell UI wrote the config. */
+  async reResolve(accountId: string): Promise<void> {
+    const config = await getAccountConfig(accountId);
+    const home = this.effectiveHome(accountId, config);
+    const cached = this.accounts.get(accountId);
+    if (cached !== undefined && cached.home !== '' && cached.home !== home) {
+      await this.reload(accountId);
+    }
+    this.pushProject(accountId, home);
+  }
+
+  /** Tooltip context push — per account, the shell shows the one on screen. */
+  private pushProject(accountId: string, home: string): void {
+    this.windowProvider()?.webContents.send(SHELL_IPC.packsProject, {
+      accountId,
+      project: this.projects.get(accountId)?.project ?? null,
+      tenant: this.projects.get(accountId)?.tenant ?? null,
+      home,
+    });
+  }
+
+  /** Effective pack home for the account's current project report. */
+  private effectiveHome(accountId: string, config: AccountToolsConfig): string {
+    const reported = this.projects.get(accountId);
+    const key = reported ? `${reported.tenant ?? ''}/${reported.project}` : null;
+    return (key !== null ? config.packHomeByProject[key] : undefined) ?? config.packHome ?? os.homedir();
+  }
+
+  /** The context the shell tooltip shows (last report + effective home). */
+  currentProject(accountId: string): { project: string | null; tenant: string | null; home: string | null } {
+    const reported = this.projects.get(accountId);
+    const cached = this.accounts.get(accountId);
+    return {
+      project: reported?.project ?? null,
+      tenant: reported?.tenant ?? null,
+      home: cached && cached.home !== '' ? cached.home : null,
+    };
+  }
+
   /** Read config, merge, select, trust, connect, list tools. Idempotent —
    *  concurrent calls share one run. A failing server never blocks the
    *  others; a missing config is simply an empty toolbox. */
@@ -140,7 +215,7 @@ export class PackService {
     if (existing !== undefined) return existing;
     let packs = this.accounts.get(accountId);
     if (packs === undefined) {
-      packs = { tools: [], errors: [], servers: new Map(), materializing: null };
+      packs = { tools: [], errors: [], servers: new Map(), materializing: null, home: '' };
       this.accounts.set(accountId, packs);
     }
     if (packs.materializing !== null) {
@@ -157,6 +232,17 @@ export class PackService {
   private async doMaterialize(accountId: string, packs: AccountPacks): Promise<void> {
     const config = await getAccountConfig(accountId);
     const workdir = config.workdir;
+    // The spawn home: per-project override, default override, or the
+    // real user home (planning §5/§6 — the npm/npx cache stays pinned to
+    // the real home inside packSpawnEnv, so npx never re-downloads per
+    // project).
+    packs.home = this.effectiveHome(accountId, config);
+    // A deleted home dir would fail the spawn with a misleading
+    // "spawn <command> ENOENT" — the chooser only picks existing dirs, but
+    // the directory can vanish between config write and respawn. Best
+    // effort; a real failure surfaces as a visible pack error either way.
+    await mkdir(packs.home, { recursive: true }).catch(() => {});
+    const spawnEnv = packSpawnEnv(packs.home, os.homedir(), process.env);
 
     const [globalRaw, projectRaw, configRaw, trustedRaw] = await Promise.all([
       readTextOrNull(path.join(os.homedir(), '.vancetope', 'mcp.json')),
@@ -194,6 +280,8 @@ export class PackService {
         const transport = new StdioClientTransport({
           command: command[0],
           args: command.slice(1),
+          env: spawnEnv,
+          cwd: packs.home,
         });
         await client.connect(transport);
         const listed = await client.listTools();

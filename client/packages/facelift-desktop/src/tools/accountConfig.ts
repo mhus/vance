@@ -24,6 +24,8 @@ function defaultConfig(): AccountToolsConfig {
     toolsEnabled: false,
     workdir: app.getPath('home'),
     confineToWorkdir: false,
+    packHome: null,
+    packHomeByProject: {},
   };
 }
 
@@ -62,6 +64,8 @@ export async function getAccountConfig(accountId: string): Promise<AccountToolsC
     toolsEnabled: stored.toolsEnabled ?? defaults.toolsEnabled,
     workdir: stored.workdir ?? defaults.workdir,
     confineToWorkdir: stored.confineToWorkdir ?? defaults.confineToWorkdir,
+    packHome: stored.packHome ?? defaults.packHome,
+    packHomeByProject: stored.packHomeByProject ?? defaults.packHomeByProject,
   };
 }
 
@@ -96,6 +100,45 @@ export async function setToolsEnabled(accountId: string, enabled: boolean): Prom
   const accounts = all.accounts ?? {};
   const current = accounts[accountId] ?? {};
   accounts[accountId] = { ...current, toolsEnabled: enabled };
+  all.accounts = accounts;
+  await writeAll(all);
+}
+
+/** Default pack home (null = the real user home). Takes effect with the
+ *  next project report or packs reload. */
+export async function setPackHome(accountId: string, home: string | null): Promise<void> {
+  const all = await readAll();
+  const accounts = all.accounts ?? {};
+  const current = accounts[accountId] ?? {};
+  accounts[accountId] = { ...current, packHome: home };
+  all.accounts = accounts;
+  await writeAll(all);
+}
+
+/** Per-project pack home. Key is `tenant/project` — project names are only
+ *  unique per tenant. Takes effect with the next project report. */
+export async function setPackHomeForProject(
+  accountId: string,
+  key: string,
+  home: string,
+): Promise<void> {
+  const all = await readAll();
+  const accounts = all.accounts ?? {};
+  const current = accounts[accountId] ?? {};
+  const byProject = current.packHomeByProject ?? {};
+  byProject[key] = home;
+  accounts[accountId] = { ...current, packHomeByProject: byProject };
+  all.accounts = accounts;
+  await writeAll(all);
+}
+
+export async function removePackHomeForProject(accountId: string, key: string): Promise<void> {
+  const all = await readAll();
+  const accounts = all.accounts ?? {};
+  const current = accounts[accountId] ?? {};
+  const byProject = current.packHomeByProject ?? {};
+  delete byProject[key];
+  accounts[accountId] = { ...current, packHomeByProject: byProject };
   all.accounts = accounts;
   await writeAll(all);
 }

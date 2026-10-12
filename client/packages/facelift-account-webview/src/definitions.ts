@@ -300,6 +300,27 @@ export interface FaceliftDesktopBridge {
    * Returns the fresh server/tool counts.
    */
   packsReload(options: { accountId: string }): Promise<{ servers: number; tools: number; errors: number } | null>;
+
+  /** Pack home (planning/desktop-pack-home-per-project.md): the face
+   *  reports the effective project; the main resolves the home per
+   *  project and pushes the context for the tools-toggle tooltip. */
+  onPacksProject(
+    callback: (event: {
+      accountId: string;
+      project: string | null;
+      tenant: string | null;
+      home: string | null;
+    }) => void,
+  ): () => void;
+  packHomeGet(options: { accountId: string }): Promise<{
+    packHome: string | null;
+    packHomeByProject: Record<string, string>;
+    current: { project: string | null; tenant: string | null; home: string | null };
+  } | null>;
+  packHomePick(options: { accountId: string }): Promise<string | null>;
+  packHomeSet(options: { accountId: string; home: string | null }): Promise<void>;
+  packHomeByProjectSet(options: { accountId: string; key: string; home: string }): Promise<void>;
+  packHomeByProjectRemove(options: { accountId: string; key: string }): Promise<void>;
 }
 
 declare global {

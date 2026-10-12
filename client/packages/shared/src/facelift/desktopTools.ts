@@ -63,6 +63,10 @@ export interface DesktopToolsBridge {
    */
   packs: {
     list(): Promise<DesktopPackListResult>;
+    /** Report the effective project selection (pack home per project,
+     *  planning/desktop-pack-home-per-project.md). Optional: older app
+     *  builds don't have it — the face must call defensively. */
+    setProject?(project: { tenant: string | null; project: string | null }): Promise<void>;
   };
 }
 

@@ -10,6 +10,7 @@ vi.mock('./webUiSession', () => ({ getSessionData: () => getSessionData() }));
 // the desktop app (localStorage — the app has no tabs, and its WebContents
 // dies on every app restart).
 const getDesktopTools = vi.fn<() => unknown>();
+const setProject = vi.fn();
 vi.mock('@vance/shared', () => ({ getDesktopTools: () => getDesktopTools() }));
 
 const { recallProject, rememberProject } = await import('./lastProject');
@@ -75,5 +76,24 @@ describe('lastProject', () => {
     expect(window.localStorage.getItem('vance.lastProject.acme.mhus')).toBe('atlas');
     expect(window.sessionStorage.length).toBe(0);
     expect(recallProject()).toBe('atlas');
+  });
+
+  // The desktop app gets the effective project reported on every change —
+  // optional bridge member, so an older app build (no setProject) is skipped.
+  it('desktopBridge_reportsTheProjectToTheApp', () => {
+    getDesktopTools.mockReturnValue({ version: '1', packs: { setProject } });
+    rememberProject('atlas');
+    expect(setProject).toHaveBeenCalledWith({ tenant: 'acme', project: 'atlas' });
+  });
+
+  it('desktopBridgeWithoutSetProject_reportsNothing', () => {
+    getDesktopTools.mockReturnValue({ version: '1' });
+    rememberProject('atlas');
+    expect(setProject).not.toHaveBeenCalled();
+  });
+
+  it('browser_neverReports', () => {
+    rememberProject('atlas');
+    expect(setProject).not.toHaveBeenCalled();
   });
 });

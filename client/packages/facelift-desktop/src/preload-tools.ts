@@ -20,6 +20,7 @@ const IPC_INVOKE = 'desktop-tools:invoke';
 const IPC_GET_CONTEXT = 'desktop-tools:get-context';
 const IPC_TOOLS_ENABLED_GET = 'desktop-tools:tools-enabled:get';
 const IPC_PACKS_LIST = 'desktop-tools:packs:list';
+const IPC_PACKS_SET_PROJECT = 'desktop-tools:packs:set-project';
 
 contextBridge.exposeInMainWorld('vanceDesktopTools', {
   version: '1',
@@ -29,6 +30,10 @@ contextBridge.exposeInMainWorld('vanceDesktopTools', {
   },
   packs: {
     list: (): Promise<unknown[]> => ipcRenderer.invoke(IPC_PACKS_LIST),
+    setProject: (project: {
+      tenant: string | null;
+      project: string | null;
+    }): Promise<void> => ipcRenderer.invoke(IPC_PACKS_SET_PROJECT, project),
   },
   invoke: (
     op: string,

@@ -1,0 +1,30 @@
+# Zem profile: is an engine command safe to run? One noul question —
+# the shape the Shooty COMMAND guard needs (fail-closed: a decision
+# failure must deny, see specification/public/shooty.md §4.3).
+#
+# The model is pinned, not an alias: the guard compares p(unsafe)
+# against a threshold, and thresholds do not carry over between
+# decision models (measured 2026-10-12: on the same clear cases Jev
+# answers with confidence ~1.00, nimble with ~0.92). Override the
+# profile per tenant to pin a different model — and re-check the
+# threshold when you do.
+description: |
+  Zem decision profile (internal): judges whether an engine command
+  deletes, overwrites or exfiltrates data, or changes permissions.
+  State: the command name and its arguments.
+engine: zem
+internal: true
+params:
+  model: openrouter:typesafe/jev-1.13
+  questions:
+    - name: unsafe
+      type: noul
+      instructions: >-
+        Does the command in the state delete, overwrite or exfiltrate data,
+        or change permissions?
+      criteria:
+        "true": The command is destructive, sends data out, or escalates rights.
+        "false": The command only reads, or makes a local, reversible change.
+tags:
+  - internal
+  - zem

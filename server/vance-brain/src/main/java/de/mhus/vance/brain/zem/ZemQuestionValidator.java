@@ -30,6 +30,9 @@ import org.jspecify.annotations.Nullable;
  *   <li>NOUL criteria are both sides or none (OpenRouter rejects one side,
  *       Ollama accepts it — the stricter rule keeps profiles portable)</li>
  *   <li>at least 2 choice options and 2 score levels</li>
+ *   <li>choice option keys contain no {@code '.'} and do not start with
+ *       {@code '$'} — they come back as answer and probability keys, which
+ *       the engine persists in Mongo maps</li>
  * </ul>
  * The question count is not limited here — the service splits above
  * {@link DecisionModelInfo#maxQuestions()}.
@@ -121,6 +124,10 @@ final class ZemQuestionValidator {
             String option = e.getKey() == null ? "" : String.valueOf(e.getKey()).trim();
             if (option.isEmpty()) {
                 throw invalid("choice question '" + name + "' has a blank option key");
+            }
+            if (option.indexOf('.') >= 0 || option.startsWith("$")) {
+                throw invalid("choice question '" + name + "' option '" + option
+                        + "' must not contain '.' or start with '$' (answers are stored as Mongo map keys)");
             }
             if (e.getValue() != null) {
                 requireDescription(

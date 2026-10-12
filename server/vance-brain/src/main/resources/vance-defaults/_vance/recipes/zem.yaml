@@ -1,0 +1,16 @@
+description: |
+  Single-shot decision engine (System One). Caller provides `state`
+  (string, object or list) plus either a `profile` (name of an
+  `engine: zem` recipe) or inline `questions` (noul / choice / score),
+  optionally `model` and `stateSelect`. Zem answers with calibrated
+  probabilities instead of text, writes `{success, data}` (or
+  `{success: false, error, message, retryable}`) as the final assistant
+  message, then closes with CloseReason.DONE. Use it for classifying,
+  routing, yes/no gates and ratings — never for prose.
+engine: zem
+# No params on purpose: a `model` here would override the model a
+# spawned `profile` pins (spawn params = recipe params + caller params).
+# Without one the service falls back to `default:decision`.
+tags:
+  - decision
+  - engine-default

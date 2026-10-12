@@ -18,8 +18,10 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessStatusChangedEvent;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -40,10 +42,10 @@ import tools.jackson.databind.ObjectMapper;
  * <h3>Outcome mapping</h3>
  * <ul>
  *   <li>{@code closeReason == DONE} / {@code AUTO_CLOSE} →
- *       {@code success} for non-Jeltz engines; for Jeltz the last
- *       assistant message is parsed as the Jeltz wrapper
- *       ({@code success/attempts/data/error}) and the wrapper drives
- *       the outcome.</li>
+ *       {@code success} for most engines; for the single-shot wrapper
+ *       engines (Jeltz, Zem) the last assistant message is parsed as the
+ *       result wrapper ({@code success/data/error/message}) and the
+ *       wrapper drives the outcome.</li>
  *   <li>{@code closeReason == STALE} → {@code technical_error}</li>
  *   <li>{@code closeReason == STOPPED} / {@code ARCHIVED} /
  *       {@code USER_DELETE} / {@code ABANDONED} → {@code cancelled}</li>
@@ -51,7 +53,8 @@ import tools.jackson.databind.ObjectMapper;
  * </ul>
  *
  * <h3>Turn-end mapping</h3>
- * Engines other than Jeltz never close themselves, so the listener also
+ * Engines other than the single-shot ones (Jeltz, Zem) never close
+ * themselves, so the listener also
  * completes a task when the agent merely finished its turn — see
  * {@link #completeAfterTurn}. {@code RUNNING → IDLE} is {@code success},
  * {@code RUNNING → BLOCKED} is {@code needs_input}.
@@ -62,7 +65,13 @@ import tools.jackson.databind.ObjectMapper;
 @Slf4j
 public class MagratheaThinkProcessCompletionListener {
 
-    private static final String ENGINE_JELTZ = "jeltz";
+    /**
+     * Single-shot engines that close themselves and leave a result wrapper
+     * ({@code {success, data}} / {@code {success: false, error, message}})
+     * as their last assistant message: Jeltz (schema-validated JSON) and Zem
+     * (decision, {@code data} = the decision).
+     */
+    private static final Set<String> WRAPPER_ENGINES = Set.of("jeltz", "zem");
 
     /**
      * Outcome for an agent that ended its turn with a question. Not an
@@ -103,7 +112,8 @@ public class MagratheaThinkProcessCompletionListener {
      * Finish the task when the agent finished its turn — the completion
      * criterion for every engine that does not end itself.
      *
-     * <p>Only Jeltz closes on its own; it is single-shot by construction.
+     * <p>Only the wrapper engines (Jeltz, Zem) close on their own; they
+     * are single-shot by construction.
      * Ford, Vogon, Marvin and Arthur end a turn at {@code IDLE} or
      * {@code BLOCKED} and wait for the next message, which inside a
      * workflow never comes. Waiting for {@code CLOSED} therefore asks the
@@ -380,11 +390,11 @@ public class MagratheaThinkProcessCompletionListener {
                 chatMessageService.history(process.getTenantId(), process.getSessionId(), process.getId());
         Optional<ChatMessageDocument> lastAssistant = lastAssistant(history);
 
-        if (ENGINE_JELTZ.equalsIgnoreCase(engineName)) {
-            mapJeltzOutcome(task, lastAssistant, durationMs);
+        if (engineName != null && WRAPPER_ENGINES.contains(engineName.toLowerCase(Locale.ROOT))) {
+            mapWrapperOutcome(task, engineLabel(engineName), lastAssistant, durationMs);
             return;
         }
-        // Non-Jeltz engine: last assistant text is the output.
+        // Any other engine: last assistant text is the output.
         JsonNode output = lastAssistant
                 .map(ChatMessageDocument::getContent)
                 .<JsonNode>map(objectMapper::valueToTree)
@@ -392,10 +402,15 @@ public class MagratheaThinkProcessCompletionListener {
         publish(task, TaskCompletedEvent.OUTCOME_SUCCESS, output, null, durationMs, null);
     }
 
-    private void mapJeltzOutcome(
-            MagratheaTaskDocument task, Optional<ChatMessageDocument> lastAssistant, long durationMs) {
+    private static String engineLabel(String engineName) {
+        return Character.toUpperCase(engineName.charAt(0))
+                + engineName.substring(1).toLowerCase(Locale.ROOT);
+    }
+
+    private void mapWrapperOutcome(
+            MagratheaTaskDocument task, String engine, Optional<ChatMessageDocument> lastAssistant, long durationMs) {
         if (lastAssistant.isEmpty()) {
-            publish(task, "agent_error", null, "Jeltz closed without an assistant message", durationMs, null);
+            publish(task, "agent_error", null, engine + " closed without an assistant message", durationMs, null);
             return;
         }
         String body = lastAssistant.get().getContent();
@@ -405,14 +420,14 @@ public class MagratheaThinkProcessCompletionListener {
                     task,
                     "agent_error",
                     null,
-                    "Jeltz assistant body is not a JSON object: " + truncate(body, 200),
+                    engine + " assistant body is not a JSON object: " + truncate(body, 200),
                     durationMs,
                     null);
             return;
         }
         JsonNode successNode = wrapper.get("success");
         if (successNode == null || !successNode.isBoolean()) {
-            publish(task, "agent_error", null, "Jeltz wrapper missing 'success' boolean", durationMs, null);
+            publish(task, "agent_error", null, engine + " wrapper missing 'success' boolean", durationMs, null);
             return;
         }
         if (successNode.asBoolean()) {
@@ -420,11 +435,11 @@ public class MagratheaThinkProcessCompletionListener {
             publish(task, TaskCompletedEvent.OUTCOME_SUCCESS, data, null, durationMs, null);
             return;
         }
-        // Jeltz failure path — wrapper carries the error reason.
+        // Failure path — the wrapper carries the error reason (Jeltz adds lastInvalid).
         String reason = wrapper.path("error").asString("schema_violation");
-        String message = wrapper.path("message").asString("Jeltz returned success=false");
+        String message = wrapper.path("message").asString(engine + " returned success=false");
         JsonNode lastInvalid = wrapper.get("lastInvalid");
-        publish(task, "agent_error", lastInvalid, "Jeltz " + reason + ": " + message, durationMs, null);
+        publish(task, "agent_error", lastInvalid, engine + " " + reason + ": " + message, durationMs, null);
     }
 
     private @Nullable JsonNode parseJsonOrNull(String body) {

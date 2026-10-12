@@ -94,6 +94,16 @@ class ZemQuestionValidatorTest {
     }
 
     @Test
+    void option_keys_must_be_mongo_safe() {
+        assertThatThrownBy(() -> ZemQuestionValidator.validate(
+                        List.of(q("v", ZemQuestionType.CHOICE, Map.of("v1.2", "old", "v2", "new"))), JEV))
+                .hasMessageContaining("'v1.2' must not contain '.'");
+        assertThatThrownBy(() -> ZemQuestionValidator.validate(
+                        List.of(q("v", ZemQuestionType.CHOICE, Map.of("$set", "x", "b", "y"))), JEV))
+                .hasMessageContaining("'$set'");
+    }
+
+    @Test
     void structured_criteria_only_where_the_model_takes_them() {
         List<ZemQuestionDto> structured =
                 List.of(q("urgency", ZemQuestionType.SCORE, List.of(Map.of("label", "low"), Map.of("label", "high"))));

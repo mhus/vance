@@ -36,16 +36,20 @@ class MagratheaThinkProcessCompletionListenerTest {
 
     private final de.mhus.vance.shared.magrathea.MagratheaJournalService journalService =
             mock(de.mhus.vance.shared.magrathea.MagratheaJournalService.class);
+
     @SuppressWarnings("unchecked")
     private final org.springframework.beans.factory.ObjectProvider<
-            de.mhus.vance.brain.enginemessage.EngineMessageRouter> messageRouterProvider =
-            mock(org.springframework.beans.factory.ObjectProvider.class);
+                    de.mhus.vance.brain.enginemessage.EngineMessageRouter>
+            messageRouterProvider = mock(org.springframework.beans.factory.ObjectProvider.class);
 
-    private final MagratheaThinkProcessCompletionListener listener =
-            new MagratheaThinkProcessCompletionListener(
-                    taskService, eventBus, thinkProcessService,
-                    chatMessageService, objectMapper,
-                    journalService, messageRouterProvider);
+    private final MagratheaThinkProcessCompletionListener listener = new MagratheaThinkProcessCompletionListener(
+            taskService,
+            eventBus,
+            thinkProcessService,
+            chatMessageService,
+            objectMapper,
+            journalService,
+            messageRouterProvider);
 
     @Test
     void non_terminal_status_change_is_ignored() {
@@ -79,10 +83,8 @@ class MagratheaThinkProcessCompletionListenerTest {
 
         var ev = org.mockito.ArgumentCaptor.forClass(TaskCompletedEvent.class);
         verify(eventBus).publish(ev.capture());
-        assertThat(ev.getValue().outcome())
-                .isEqualTo(MagratheaThinkProcessCompletionListener.OUTCOME_NEEDS_INPUT);
-        assertThat(ev.getValue().output().asString())
-                .isEqualTo("which environment should I deploy to?");
+        assertThat(ev.getValue().outcome()).isEqualTo(MagratheaThinkProcessCompletionListener.OUTCOME_NEEDS_INPUT);
+        assertThat(ev.getValue().output().asString()).isEqualTo("which environment should I deploy to?");
         verify(thinkProcessService).closeProcess("p-ask", CloseReason.INCOMPLETE);
     }
 
@@ -93,8 +95,7 @@ class MagratheaThinkProcessCompletionListenerTest {
         wireRunningTask("p-boot", "unused");
 
         listener.onStatusChanged(new ThinkProcessStatusChangedEvent(
-                "p-boot", "acme", "sess-1", null,
-                ThinkProcessStatus.INIT, ThinkProcessStatus.IDLE));
+                "p-boot", "acme", "sess-1", null, ThinkProcessStatus.INIT, ThinkProcessStatus.IDLE));
 
         verify(eventBus, never()).publish(any());
     }
@@ -127,8 +128,7 @@ class MagratheaThinkProcessCompletionListenerTest {
     @Test
     void jeltz_wrapper_success_yields_success_outcome_with_data_output() {
         wireTask("ford-jeltz", "jeltz");
-        wireChatHistory("ford-jeltz",
-                "{\"success\":true,\"attempts\":1,\"data\":{\"risk\":\"low\"}}");
+        wireChatHistory("ford-jeltz", "{\"success\":true,\"attempts\":1,\"data\":{\"risk\":\"low\"}}");
 
         listener.onStatusChanged(event("ford-jeltz", ThinkProcessStatus.CLOSED));
 
@@ -140,7 +140,8 @@ class MagratheaThinkProcessCompletionListenerTest {
     @Test
     void jeltz_wrapper_failure_yields_agent_error_with_lastInvalid_output() {
         wireTask("p-fail", "jeltz");
-        wireChatHistory("p-fail",
+        wireChatHistory(
+                "p-fail",
                 "{\"success\":false,\"attempts\":3,\"error\":\"schema_violation\","
                         + "\"message\":\"missing 'risk'\",\"lastInvalid\":{\"foo\":\"bar\"}}");
 
@@ -150,6 +151,36 @@ class MagratheaThinkProcessCompletionListenerTest {
         assertThat(ev.outcome()).isEqualTo("agent_error");
         assertThat(ev.output().get("foo").asString()).isEqualTo("bar");
         assertThat(ev.errorMessage()).contains("schema_violation").contains("missing");
+    }
+
+    @Test
+    void zem_wrapper_success_yields_the_decision_as_output() {
+        wireTask("p-zem", "zem");
+        wireChatHistory(
+                "p-zem",
+                "{\"success\":true,\"data\":{\"model\":\"nimble\",\"answers\":"
+                        + "[{\"name\":\"unsafe\",\"type\":\"NOUL\",\"noul\":0.03}]}}");
+
+        listener.onStatusChanged(event("p-zem", ThinkProcessStatus.CLOSED));
+
+        TaskCompletedEvent ev = capturePublished();
+        assertThat(ev.outcome()).isEqualTo(TaskCompletedEvent.OUTCOME_SUCCESS);
+        assertThat(ev.output().path("answers").get(0).path("noul").asDouble()).isEqualTo(0.03);
+    }
+
+    @Test
+    void zem_wrapper_failure_names_zem_and_the_reason() {
+        wireTask("p-zem-fail", "zem");
+        wireChatHistory(
+                "p-zem-fail",
+                "{\"success\":false,\"error\":\"invalid_question\",\"message\":\"30 options\","
+                        + "\"retryable\":false}");
+
+        listener.onStatusChanged(event("p-zem-fail", ThinkProcessStatus.CLOSED));
+
+        TaskCompletedEvent ev = capturePublished();
+        assertThat(ev.outcome()).isEqualTo("agent_error");
+        assertThat(ev.errorMessage()).startsWith("Zem invalid_question").contains("30 options");
     }
 
     @Test
@@ -167,8 +198,7 @@ class MagratheaThinkProcessCompletionListenerTest {
     @Test
     void jeltz_no_assistant_message_yields_agent_error() {
         wireTask("p-empty", "jeltz");
-        when(chatMessageService.history(any(), any(), eq("p-empty")))
-                .thenReturn(List.of());
+        when(chatMessageService.history(any(), any(), eq("p-empty"))).thenReturn(List.of());
 
         listener.onStatusChanged(event("p-empty", ThinkProcessStatus.CLOSED));
 
@@ -240,22 +270,19 @@ class MagratheaThinkProcessCompletionListenerTest {
     }
 
     private static ThinkProcessStatusChangedEvent event(String processId, ThinkProcessStatus status) {
-        return new ThinkProcessStatusChangedEvent(
-                processId, "acme", "sess-1", null, null, status);
+        return new ThinkProcessStatusChangedEvent(processId, "acme", "sess-1", null, null, status);
     }
 
     /** Turn-end event: the prior status is what separates "finished a turn"
      *  from "started up and has not worked yet". */
-    private static ThinkProcessStatusChangedEvent turnEnd(
-            String processId, ThinkProcessStatus status) {
+    private static ThinkProcessStatusChangedEvent turnEnd(String processId, ThinkProcessStatus status) {
         return new ThinkProcessStatusChangedEvent(
                 processId, "acme", "sess-1", null, ThinkProcessStatus.RUNNING, status);
     }
 
     /** A live (non-closed) agent process with one assistant reply. */
     private void wireRunningTask(String processId, String reply) {
-        when(taskService.findBySubProcessId(eq(processId)))
-                .thenReturn(Optional.of(task(processId, "ford")));
+        when(taskService.findBySubProcessId(eq(processId))).thenReturn(Optional.of(task(processId, "ford")));
         ThinkProcessDocument process = new ThinkProcessDocument();
         process.setId(processId);
         process.setTenantId("acme");
@@ -315,8 +342,7 @@ class MagratheaThinkProcessCompletionListenerTest {
         assistantMsg.setRole(ChatRole.ASSISTANT);
         assistantMsg.setContent(assistantBody);
         assistantMsg.setCreatedAt(Instant.parse("2024-01-01T00:00:01Z"));
-        when(chatMessageService.history(any(), any(), eq(processId)))
-                .thenReturn(List.of(userMsg, assistantMsg));
+        when(chatMessageService.history(any(), any(), eq(processId))).thenReturn(List.of(userMsg, assistantMsg));
     }
 
     private TaskCompletedEvent capturePublished() {

@@ -146,4 +146,78 @@ class WowbaggerCommandHandlerTest {
         assertThat(result.outcome()).isEqualTo(EngineCommandOutcome.ERROR);
         assertThat(result.message()).contains("Unknown subcommand 'nuke'");
     }
+
+    // ──── worker ───────────────────────────────────────────────────────
+
+    private EngineCommandResult run(String text) {
+        return handler.handle(process, new EngineCommand("wowbagger", Map.of("text", text)));
+    }
+
+    @Test
+    void workerWithoutArgumentsShowsTheCurrentWorker() {
+        WowbaggerState s = configuredState();
+        s.setWorkerKind("llm");
+        when(pool.structure("proc1")).thenReturn(s);
+        when(pool.isWorkerModelApproved(any(), any())).thenReturn(true);
+
+        EngineCommandResult result = run("worker");
+
+        assertThat(result.outcome()).isEqualTo(EngineCommandOutcome.OK);
+        assertThat(result.message())
+                .contains("Worker: llm — recipe wowbagger-worker")
+                .contains("model coding-proxy:some-model")
+                .contains("//wowbagger worker <recipe>");
+        org.mockito.Mockito.verify(pool, org.mockito.Mockito.never())
+                .switchWorker(any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
+    }
+
+    @Test
+    void workerRecipeSwitchesAndKeepsTheScript() {
+        WowbaggerState s = configuredState();
+        s.setWorkerScript("triage.js");
+        when(pool.structure("proc1")).thenReturn(s);
+        when(pool.switchWorker(process, "ticket-triage", "triage.js", false))
+                .thenReturn(new WowbaggerPoolService.WorkerSwitch(
+                        "ticket-triage", "triage.js", "zem", "ollama:nimble", true));
+
+        EngineCommandResult result = run("worker ticket-triage");
+
+        assertThat(result.outcome()).isEqualTo(EngineCommandOutcome.OK);
+        assertThat(result.message()).startsWith("Worker switched: zem worker — recipe ticket-triage");
+    }
+
+    @Test
+    void scriptDefaultAndCheckVariants() {
+        when(pool.structure("proc1")).thenReturn(configuredState());
+        when(pool.switchWorker(any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean()))
+                .thenReturn(new WowbaggerPoolService.WorkerSwitch("x", null, "llm", "m", false));
+
+        run("worker --script triage.js --check");
+        run("worker default");
+        run("worker --check");
+
+        org.mockito.Mockito.verify(pool).switchWorker(process, null, "triage.js", true);
+        org.mockito.Mockito.verify(pool).switchWorker(process, null, null, false);
+        org.mockito.Mockito.verify(pool).switchWorker(process, null, null, true);
+    }
+
+    @Test
+    void refusalIsAnErrorWithTheReason() {
+        when(pool.structure("proc1")).thenReturn(configuredState());
+        when(pool.switchWorker(any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean()))
+                .thenThrow(new IllegalStateException("the pool is running — stop it first"));
+
+        EngineCommandResult result = run("worker vogon-plan");
+
+        assertThat(result.outcome()).isNotEqualTo(EngineCommandOutcome.OK);
+        assertThat(result.message()).contains("Worker switch refused: the pool is running");
+    }
+
+    @Test
+    void malformedWorkerArgumentsAreRejected() {
+        when(pool.structure("proc1")).thenReturn(configuredState());
+
+        assertThat(run("worker --script").message()).contains("usage");
+        assertThat(run("worker a b").message()).contains("usage");
+    }
 }

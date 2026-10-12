@@ -343,6 +343,49 @@ class WowbaggerPoolServiceTest {
     }
 
     @Test
+    void switchWorkerPersistsTheCheckedWorkerAndRefusesWhileRunningOrUnapproved() throws IOException {
+        // check only: nothing persisted
+        WowbaggerPoolService.WorkerSwitch checked = pool.switchWorker(process, "other-worker", null, true);
+        assertThat(checked.applied()).isFalse();
+        assertThat(checked.kind()).isEqualTo("llm");
+        assertThat(persistedState().getWorkerRecipe()).isNull();
+
+        // applied: persisted with kind/model
+        WowbaggerPoolService.WorkerSwitch applied = pool.switchWorker(process, "other-worker", null, false);
+        assertThat(applied.applied()).isTrue();
+        assertThat(persistedState().getWorkerRecipe()).isEqualTo("other-worker");
+        assertThat(persistedState().getWorkerKind()).isEqualTo("llm");
+        assertThat(persistedState().getResolvedWorkerModel()).isEqualTo("cortecs:deepseek-v4-flash-0731");
+
+        // unapproved model: refused, structure untouched
+        lenient()
+                .when(settingService.getStringValue(
+                        eq(TENANT),
+                        eq(de.mhus.vance.shared.settings.SettingService.SCOPE_PROJECT),
+                        eq(PROJECT),
+                        eq(WowbaggerPoolService.ALLOWED_MODELS_KEY)))
+                .thenReturn("*gpt*");
+        assertThatThrownBy(() -> pool.switchWorker(process, "third-worker", null, false))
+                .hasMessageContaining("not approved");
+        assertThat(persistedState().getWorkerRecipe()).isEqualTo("other-worker");
+    }
+
+    @Test
+    void switchWorkerRefusesWhileThePoolRuns() throws IOException {
+        stubEchoWorker();
+        when(lightLlmService.callWithUsage(any(LightLlmRequest.class))).thenAnswer(inv -> {
+            Thread.sleep(300); // keep the pool busy
+            return echoAnswerFor(inv.getArgument(0), "x");
+        });
+        pool.start(process);
+
+        assertThatThrownBy(() -> pool.switchWorker(process, "other-worker", null, false))
+                .hasMessageContaining("the pool is running");
+        pool.stop(PROC_ID);
+        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+    }
+
+    @Test
     void rotationPublishesPerChunkAndMergesAtFinish() throws IOException {
         stubEchoWorker();
 

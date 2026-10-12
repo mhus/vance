@@ -62,4 +62,6 @@ chunks, the token cost, and the result document path. Failed chunks are
 never silently dropped — they sit in a ledger and the agent re-runs
 them (`wowbagger_start reRunFailed`) after fixing the cause. For the
 raw numbers at any time, the user can ask the run's process for
-`//wowbagger state` (one-liner) or `//wowbagger info` (full picture).
+`//wowbagger state` (one-liner) or `//wowbagger info` (full picture);
+`//wowbagger worker <recipe>` switches the run's worker while the pool is
+stopped (same checks as `wowbagger_configure`).

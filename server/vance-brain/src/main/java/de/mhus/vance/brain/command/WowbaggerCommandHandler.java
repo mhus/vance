@@ -11,11 +11,12 @@ import java.util.Locale;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
- * Read-only Wowbagger diagnostics — the {@code //wowbagger} engine-command
- * verb: everything about a run without waking the agent.
+ * Wowbagger diagnostics and the worker switch — the {@code //wowbagger}
+ * engine-command verb: everything about a run without waking the agent.
  *
  * <p>Surface:
  * <ul>
@@ -26,6 +27,13 @@ import org.springframework.stereotype.Component;
  *   <li>{@code //wowbagger state} — the one-liner glance:
  *       {@code 100/20000 processed (1%), 4 threads, running} — for quick
  *       status checks where the detail view is noise.</li>
+ *   <li>{@code //wowbagger worker} — the current worker (recipe, script,
+ *       type, model, approval); {@code worker <recipe>} switches the worker
+ *       recipe, {@code worker --script <path>} runs a script from the run's
+ *       RootDir, {@code worker default} returns to the bundled LightLlm
+ *       worker; {@code --check} only verifies. Switching needs a stopped
+ *       pool and passes the same preparation and gates as
+ *       {@code wowbagger_configure}.</li>
  * </ul>
  *
  * <p>{@link #runsOnLane()} is {@code false} (Zaphod argument): a diagnostic
@@ -37,7 +45,10 @@ import org.springframework.stereotype.Component;
  *
  * <p>State comes from the pool (live handle while running, persisted
  * structure otherwise) — the same source the agent's status block renders.
- * The handler never mutates: pool reads are pure queries.
+ * The only write, {@code worker <…>}, goes through
+ * {@link WowbaggerPoolService#switchWorker}, which checks, sets and persists
+ * under the pool lock — the same serialization the agent's configure tool
+ * gets — so the verb stays usable behind a hung agent turn.
  */
 @Component
 @RequiredArgsConstructor
@@ -46,6 +57,10 @@ public class WowbaggerCommandHandler implements EngineCommandHandler {
 
     private static final String SUB_INFO = "info";
     private static final String SUB_STATE = "state";
+    private static final String SUB_WORKER = "worker";
+    private static final String FLAG_CHECK = "--check";
+    private static final String FLAG_SCRIPT = "--script";
+    private static final String WORKER_DEFAULT = "default";
     private static final int TASK_PREVIEW_CHARS = 160;
     private static final int ERROR_PREVIEW_CHARS = 200;
     private static final int FAILED_CHUNK_LIMIT = 5;
@@ -71,9 +86,12 @@ public class WowbaggerCommandHandler implements EngineCommandHandler {
         }
         String[] tokens = splitFirstToken(argText(command));
         String sub = tokens[0].isEmpty() ? SUB_INFO : tokens[0].toLowerCase(Locale.ROOT);
+        if (SUB_WORKER.equals(sub)) {
+            return worker(process, tokens[1]);
+        }
         if (!SUB_INFO.equals(sub) && !SUB_STATE.equals(sub)) {
             return EngineCommandResult.error(
-                    "Unknown subcommand '" + sub + "' — known: " + SUB_INFO + ", " + SUB_STATE);
+                    "Unknown subcommand '" + sub + "' — known: " + SUB_INFO + ", " + SUB_STATE + ", " + SUB_WORKER);
         }
         WowbaggerState state = pool.structure(process.getId());
         boolean running = pool.isRunning(process.getId());
@@ -81,6 +99,90 @@ public class WowbaggerCommandHandler implements EngineCommandHandler {
             return EngineCommandResult.ok(renderState(state, running), stateValue(state, running));
         }
         return EngineCommandResult.ok(renderInfo(process, state, running), infoValue(process, state, running));
+    }
+
+    // ──────────────────── worker ────────────────────
+
+    /**
+     * {@code worker} shows, {@code worker <recipe> | --script <path> | default
+     * [--check]} switches. Refusals (pool running, worker not runnable, model
+     * not approved) change nothing and say why.
+     */
+    private EngineCommandResult worker(ThinkProcessDocument process, String args) {
+        List<String> words =
+                new ArrayList<>(args.isBlank() ? List.of() : List.of(args.trim().split("\\s+")));
+        boolean checkOnly = words.remove(FLAG_CHECK);
+        WowbaggerState current = pool.structure(process.getId());
+        if (words.isEmpty()) {
+            if (checkOnly) {
+                return switchTo(process, current.getWorkerRecipe(), current.getWorkerScript(), true);
+            }
+            return EngineCommandResult.ok(renderWorker(process, current), workerValue(process, current));
+        }
+        if (FLAG_SCRIPT.equals(words.getFirst())) {
+            if (words.size() != 2) {
+                return EngineCommandResult.error("usage: //wowbagger worker --script <path in the run's RootDir>");
+            }
+            return switchTo(process, null, words.get(1), checkOnly);
+        }
+        if (words.size() != 1) {
+            return EngineCommandResult.error(
+                    "usage: //wowbagger worker [<recipe> | --script <path> | default] [--check]");
+        }
+        if (WORKER_DEFAULT.equalsIgnoreCase(words.getFirst())) {
+            return switchTo(process, null, null, checkOnly);
+        }
+        return switchTo(process, words.getFirst(), current.getWorkerScript(), checkOnly);
+    }
+
+    private EngineCommandResult switchTo(
+            ThinkProcessDocument process, @Nullable String recipe, @Nullable String script, boolean checkOnly) {
+        WowbaggerPoolService.WorkerSwitch result;
+        try {
+            result = pool.switchWorker(process, recipe, script, checkOnly);
+        } catch (IllegalStateException e) {
+            return EngineCommandResult.error(
+                    "Worker " + (checkOnly ? "check" : "switch") + " refused: " + e.getMessage());
+        }
+        String what = result.kind() + " worker — recipe " + result.recipeName()
+                + (result.workerScript() == null ? "" : ", script " + result.workerScript())
+                + (result.model() == null ? ", model gated per call" : ", model " + result.model() + " (approved)");
+        Map<String, Object> value = new LinkedHashMap<>();
+        value.put("applied", result.applied());
+        value.put("workerKind", result.kind());
+        value.put("workerRecipe", result.recipeName());
+        value.put("workerScript", result.workerScript());
+        value.put("resolvedWorkerModel", result.model());
+        return EngineCommandResult.ok((result.applied() ? "Worker switched: " : "Worker check passed: ") + what, value);
+    }
+
+    private String renderWorker(ThinkProcessDocument process, WowbaggerState s) {
+        return "Worker: " + (s.getWorkerKind() == null ? "(not prepared yet)" : s.getWorkerKind()) + " — recipe "
+                + workerRecipeLabel(s)
+                + (s.getWorkerScript() == null ? "" : ", script " + s.getWorkerScript())
+                + ", model "
+                + (s.getResolvedWorkerModel() == null ? "(per call / not resolved)" : s.getResolvedWorkerModel())
+                + ", approved: " + pool.isWorkerModelApproved(process, s)
+                + "\nSwitch: //wowbagger worker <recipe> | --script <path> | default [--check] (pool stopped)";
+    }
+
+    private Map<String, Object> workerValue(ThinkProcessDocument process, WowbaggerState s) {
+        Map<String, Object> value = new LinkedHashMap<>();
+        value.put("workerKind", s.getWorkerKind());
+        value.put("workerRecipe", workerRecipeLabel(s));
+        value.put("workerScript", s.getWorkerScript());
+        value.put("resolvedWorkerModel", s.getResolvedWorkerModel());
+        value.put("modelApproved", pool.isWorkerModelApproved(process, s));
+        return value;
+    }
+
+    private static String workerRecipeLabel(WowbaggerState s) {
+        if (s.getWorkerRecipe() != null) {
+            return s.getWorkerRecipe();
+        }
+        return s.getWorkerScript() == null
+                ? "wowbagger-worker"
+                : de.mhus.vance.brain.wowbagger.worker.ScriptWorker.DEFAULT_RECIPE;
     }
 
     // ──────────────────── state (one-liner) ────────────────────

@@ -748,6 +748,57 @@ public class WowbaggerPoolService {
         }
     }
 
+    /** Outcome of {@link #switchWorker}: the worker that now runs (or would run, on a check). */
+    public record WorkerSwitch(
+            String recipeName,
+            @Nullable String workerScript,
+            String kind,
+            @Nullable String model,
+            boolean applied) {}
+
+    /**
+     * The {@code //wowbagger worker} command's write path: sets the worker
+     * recipe/script on the structure — same preparation and gates as
+     * {@code wowbagger_configure} — and records a {@code [pool]} note in the
+     * history (no wakeup — the agent sees the switch on its next turn). Runs
+     * under the pool lock, so it neither races the agent's tools nor needs
+     * the process lane (decision F4, planning/wowbagger-workers.md §7a).
+     *
+     * @param recipe    worker recipe, {@code null} = default for the script setting
+     * @param script    worker script in the run's RootDir, {@code null} = none
+     * @param checkOnly prepare and gate only, change nothing
+     * @throws IllegalStateException pool running, or the worker is refused —
+     *                               the structure stays untouched
+     */
+    public WorkerSwitch switchWorker(
+            ThinkProcessDocument process, @Nullable String recipe, @Nullable String script, boolean checkOnly) {
+        Handle handle = handle(process.getId());
+        synchronized (handle.lock) {
+            if (handle.running) {
+                throw new IllegalStateException("the pool is running — stop it first (wowbagger_stop); a switch"
+                        + " mid-run would mix two workers in one result. To redo everything with the new"
+                        + " worker, start again with force: true.");
+            }
+            WowbaggerState state = loadState(process);
+            state.setWorkerRecipe(recipe);
+            state.setWorkerScript(script);
+            PreparedWorker worker = prepareWorker(process, state);
+            WorkerSwitch result = new WorkerSwitch(
+                    worker.recipeName(), state.getWorkerScript(), worker.kind(), worker.resolvedModel(), !checkOnly);
+            if (!checkOnly) {
+                persist(process, state);
+                handle.live = state;
+                historyNote(
+                        process,
+                        "the user switched the worker (//wowbagger worker): " + worker.kind() + " — recipe "
+                                + worker.recipeName()
+                                + (state.getWorkerScript() == null ? "" : ", script " + state.getWorkerScript())
+                                + (worker.resolvedModel() == null ? "" : ", model " + worker.resolvedModel()));
+            }
+            return result;
+        }
+    }
+
     /** {@link #prepareWorker} for callers that only need the verdict (configure). */
     public void checkWorker(ThinkProcessDocument process, WowbaggerState state) {
         prepareWorker(process, state);
@@ -1441,6 +1492,19 @@ public class WowbaggerPoolService {
         if (liveStatus(process.getId()) == ThinkProcessStatus.CLOSED) {
             return;
         }
+        historyNote(process, note);
+        try {
+            PendingMessageDocument message = new PendingMessageDocument();
+            message.setContent("[pool] " + note);
+            message.setFromUser(WAKEUP_SENDER);
+            thinkProcessService.appendPending(process.getId(), message, "");
+        } catch (RuntimeException e) {
+            log.warn("Wowbagger pool id='{}' wakeup failed: {}", process.getId(), e.toString());
+        }
+    }
+
+    /** A {@code [pool]} note in the chat history only — the agent sees it on its next turn, no wakeup. */
+    private void historyNote(ThinkProcessDocument process, String note) {
         try {
             chatMessageService.append(ChatMessageDocument.builder()
                     .tenantId(process.getTenantId())
@@ -1451,14 +1515,6 @@ public class WowbaggerPoolService {
                     .build());
         } catch (RuntimeException e) {
             log.warn("Wowbagger pool id='{}' chat note failed: {}", process.getId(), e.toString());
-        }
-        try {
-            PendingMessageDocument message = new PendingMessageDocument();
-            message.setContent("[pool] " + note);
-            message.setFromUser(WAKEUP_SENDER);
-            thinkProcessService.appendPending(process.getId(), message, "");
-        } catch (RuntimeException e) {
-            log.warn("Wowbagger pool id='{}' wakeup failed: {}", process.getId(), e.toString());
         }
     }
 

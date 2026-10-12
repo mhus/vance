@@ -414,6 +414,7 @@ public class SettingFormLoader {
                     SettingFormService.CHOICES_FROM_AI_STT_MODELS,
                     SettingFormService.CHOICES_FROM_AI_MUSIC_MODELS,
                     SettingFormService.CHOICES_FROM_AI_AU_MODELS,
+                    SettingFormService.CHOICES_FROM_AI_DECISION_MODELS,
                     SettingFormService.CHOICES_FROM_RESEARCH_SOURCES);
             if (!knownChoicesFrom.contains(choicesFrom)) {
                 throw new IllegalStateException("'" + path + ".choicesFrom' unknown source: '" + choicesFrom

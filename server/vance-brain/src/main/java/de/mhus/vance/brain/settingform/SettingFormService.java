@@ -93,6 +93,12 @@ public class SettingFormService {
      *  {@code audio_analyze}. */
     public static final String CHOICES_FROM_AI_AU_MODELS = "ai-au-models";
 
+    /** Decision-model counterpart of {@link #CHOICES_FROM_AI_MODELS} —
+     *  populates a select with the {@code kind: decision} entries
+     *  (System-One models). Used by the Zem {@code default:decision}
+     *  alias picker. */
+    public static final String CHOICES_FROM_AI_DECISION_MODELS = "ai-decision-models";
+
     /**
      * Research-source counterpart of {@link #CHOICES_FROM_AI_MODELS} —
      * populates a select with the configured search-source instance ids
@@ -302,6 +308,7 @@ public class SettingFormService {
         @Nullable List<FormChoiceDto> aiSttModelChoices = null;
         @Nullable List<FormChoiceDto> aiMusicModelChoices = null;
         @Nullable List<FormChoiceDto> aiAuModelChoices = null;
+        @Nullable List<FormChoiceDto> aiDecisionModelChoices = null;
         List<FormFieldDto> out = new ArrayList<>(fields.size());
         for (FormFieldDto f : fields) {
             String src = f.getChoicesFrom();
@@ -340,6 +347,11 @@ public class SettingFormService {
                     aiAuModelChoices = buildAiAuModelChoices(tenantId, projectId);
                 }
                 out.add(f.toBuilder().choices(aiAuModelChoices).build());
+            } else if (CHOICES_FROM_AI_DECISION_MODELS.equals(src)) {
+                if (aiDecisionModelChoices == null) {
+                    aiDecisionModelChoices = buildAiDecisionModelChoices(tenantId, projectId);
+                }
+                out.add(f.toBuilder().choices(aiDecisionModelChoices).build());
             } else if (CHOICES_FROM_RESEARCH_SOURCES.equals(src)) {
                 if (researchSourceChoices == null) {
                     researchSourceChoices = buildResearchSourceChoices(tenantId, projectId);
@@ -417,33 +429,40 @@ public class SettingFormService {
     /** TTS-model counterpart of {@link #buildAiModelChoices}: only
      *  {@code kind: tts} entries via {@link ModelCatalog#listAllTts}. */
     private List<FormChoiceDto> buildAiTtsModelChoices(String tenantId, @Nullable String projectId) {
-        return audioModelChoices(modelCatalog.listAllTts(tenantId, projectId).stream()
+        return plainModelChoices(modelCatalog.listAllTts(tenantId, projectId).stream()
                 .map(m -> m.provider() + ":" + m.modelName())
                 .toList());
     }
 
     /** STT-model counterpart: only {@code kind: stt} entries. */
     private List<FormChoiceDto> buildAiSttModelChoices(String tenantId, @Nullable String projectId) {
-        return audioModelChoices(modelCatalog.listAllStt(tenantId, projectId).stream()
+        return plainModelChoices(modelCatalog.listAllStt(tenantId, projectId).stream()
                 .map(m -> m.provider() + ":" + m.modelName())
                 .toList());
     }
 
     /** Music-model counterpart: only {@code kind: music} entries. */
     private List<FormChoiceDto> buildAiMusicModelChoices(String tenantId, @Nullable String projectId) {
-        return audioModelChoices(modelCatalog.listAllMusic(tenantId, projectId).stream()
+        return plainModelChoices(modelCatalog.listAllMusic(tenantId, projectId).stream()
                 .map(m -> m.provider() + ":" + m.modelName())
                 .toList());
     }
 
     /** Audio-understanding counterpart: only {@code kind: au} entries. */
     private List<FormChoiceDto> buildAiAuModelChoices(String tenantId, @Nullable String projectId) {
-        return audioModelChoices(modelCatalog.listAllAu(tenantId, projectId).stream()
+        return plainModelChoices(modelCatalog.listAllAu(tenantId, projectId).stream()
                 .map(m -> m.provider() + ":" + m.modelName())
                 .toList());
     }
 
-    private static List<FormChoiceDto> audioModelChoices(List<String> values) {
+    /** Decision-model counterpart: only {@code kind: decision} entries. */
+    private List<FormChoiceDto> buildAiDecisionModelChoices(String tenantId, @Nullable String projectId) {
+        return plainModelChoices(modelCatalog.listAllDecision(tenantId, projectId).stream()
+                .map(m -> m.provider() + ":" + m.modelName())
+                .toList());
+    }
+
+    private static List<FormChoiceDto> plainModelChoices(List<String> values) {
         List<FormChoiceDto> out = new ArrayList<>(values.size());
         for (String value : values) {
             out.add(FormChoiceDto.builder()

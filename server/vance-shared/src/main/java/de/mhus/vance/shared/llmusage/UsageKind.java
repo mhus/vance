@@ -27,5 +27,13 @@ public enum UsageKind {
      * music. Priced per character, per second of audio, or per clip —
      * never per token, which is why it is its own kind.
      */
-    AUDIO
+    AUDIO,
+
+    /**
+     * Decision call (Zem, System-One models): priced per input token like
+     * {@link #EMBEDDING}, but the unit that matters is the number of
+     * decisions, which rides the {@code images} counter of the bucket
+     * (one write may book many decisions — bulk callers aggregate).
+     */
+    DECISION
 }

@@ -187,6 +187,19 @@ fields:
     bindsTo:
       key: "ai.alias.default.au"
 
+  - name: aliasDecision
+    type: select
+    label:
+      de: "Alias `default:decision`"
+      en: "Alias `default:decision`"
+    help:
+      de: "Entscheidungsmodell (System One, z. B. Jev oder lokal nimble) — Default für Zem-Entscheidungen."
+      en: "Decision model (System One, e.g. Jev or local nimble) — default for Zem decisions."
+    allowCustom: true
+    choicesFrom: ai-decision-models
+    bindsTo:
+      key: "ai.alias.default.decision"
+
   # ─── Default fallback — used when an alias is unset ────────────────
 
   - name: provider

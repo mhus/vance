@@ -52,6 +52,7 @@ class BundledSettingFormsTest {
                         "aliasStt",
                         "aliasMusic",
                         "aliasAu",
+                        "aliasDecision",
                         "provider",
                         "embeddingProvider",
                         "embeddingModel",

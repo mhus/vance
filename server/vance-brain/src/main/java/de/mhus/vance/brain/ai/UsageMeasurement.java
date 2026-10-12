@@ -52,7 +52,11 @@ public record UsageMeasurement(
          * provider-measured {@link #cacheReadTokens}.
          */
         int implicitCacheReadTokens,
-        /** Generated images, {@link UsageKind#IMAGE} only. */
+        /**
+         * Unit count of a non-token call: generated images
+         * ({@link UsageKind#IMAGE}), calls ({@link UsageKind#AUDIO}),
+         * decisions ({@link UsageKind#DECISION}).
+         */
         int images,
         /** Flat amount for an image call, {@link UsageKind#IMAGE} only. */
         @Nullable Double imageCost,
@@ -177,6 +181,45 @@ public record UsageMeasurement(
                 1,
                 cost,
                 currency,
+                durationMs);
+    }
+
+    /**
+     * Decision calls (Zem) — priced per input token; output is free on
+     * every System-One provider. {@code decisions} rides the {@code images}
+     * slot as the unit count, the way {@link #audio} books "one call":
+     * a bulk caller books many decisions in one write.
+     *
+     * @param pricing catalog rate snapshot, {@code null} when the model
+     *                document carries no price
+     */
+    public static UsageMeasurement decision(
+            String providerInstance,
+            String providerType,
+            String providerModel,
+            ModelInfo.@Nullable Pricing pricing,
+            int tokensIn,
+            int decisions,
+            UsageOutcome outcome,
+            long durationMs) {
+        return new UsageMeasurement(
+                providerInstance,
+                providerType,
+                providerModel,
+                pricing,
+                null,
+                UsageKind.DECISION,
+                outcome,
+                1,
+                tokensIn,
+                0,
+                0,
+                0,
+                0,
+                0,
+                decisions,
+                null,
+                null,
                 durationMs);
     }
 

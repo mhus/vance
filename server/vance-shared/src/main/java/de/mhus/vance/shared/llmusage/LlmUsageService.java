@@ -77,6 +77,9 @@ public class LlmUsageService {
     /** Audio calls (TTS / transcription / music) issued by Hotblack. */
     public static final String CALLER_HOTBLACK = "_hotblack";
 
+    /** Decision calls (System-One models) issued by Zem. */
+    public static final String CALLER_ZEM = "_zem";
+
     /** Embedding batches issued by the RAG service. */
     public static final String CALLER_RAG = "_rag";
 

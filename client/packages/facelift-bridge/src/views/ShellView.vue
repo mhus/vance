@@ -508,7 +508,7 @@ async function goAdd(): Promise<void> {
           <span class="truncate">{{ tab.title }}</span>
           <span
             v-if="tabs.length > 1"
-            class="ml-1 hidden rounded px-0.5 text-[10px] text-gray-500 hover:bg-gray-700 hover:text-red-400 group-hover:block"
+            class="ml-1 rounded px-0.5 text-[10px] text-gray-500 hover:bg-gray-700 hover:text-red-400"
             @click.stop="closeTab(tab.id)"
           >
             ✕

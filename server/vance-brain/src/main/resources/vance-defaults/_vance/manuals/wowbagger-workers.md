@@ -36,9 +36,10 @@ Write the script into the run root, then `wowbagger_configure workerScript:
 ```js
 // in:  vance.params.records — objects (jsonl) or strings (lines)
 //      vance.params.task, vance.params.chunk.{index,startRecord}
-// out: a list with one result per record, in order
-//      (strings = the line as-is, objects = one JSON line)
-return vance.params.records.map(rec => {
+// out: the script's LAST EXPRESSION — a list with one result per record,
+//      in order (strings = the line as-is, objects = one JSON line).
+//      No top-level `return` (a syntax error in scripts).
+vance.params.records.map(rec => {
   const d = vance.zem.decide("ticket-triage", rec);
   if (d.intent.confidence >= 0.8) return {...rec, intent: d.intent.choice};
   return {...rec, ...vance.llm.callForJson("ticket-deep", JSON.stringify(rec))};

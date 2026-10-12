@@ -167,7 +167,7 @@ class ScriptWorkerTest {
 
         when(executor.run(any(ScriptRequest.class))).thenReturn(new ScriptResult("nope", Duration.ZERO, ""));
         assertThatThrownBy(() -> prepared.process(List.of("a"), new ChunkContext(0, 0)))
-                .hasMessageContaining("must return a list");
+                .hasMessageContaining("must evaluate to a list");
 
         when(executor.run(any(ScriptRequest.class))).thenReturn(new ScriptResult(List.of("a"), Duration.ZERO, ""));
         assertThatThrownBy(() -> prepared.process(List.of("a", "b"), new ChunkContext(0, 0)))

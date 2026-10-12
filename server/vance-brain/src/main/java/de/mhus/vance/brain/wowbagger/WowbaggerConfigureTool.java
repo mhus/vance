@@ -157,7 +157,7 @@ public class WowbaggerConfigureTool extends WowbaggerBaseTool {
                                 "description",
                                 "Script worker: a JavaScript file in the run's RootDir. One run per "
                                         + "chunk; vance.params.records (objects for jsonl, strings for lines), "
-                                        + ".task, .chunk in — return a list with one result per record. "
+                                        + ".task, .chunk in — its last expression is a list with one result per record (no top-level return). "
                                         + "May use vance.llm, vance.zem and vance.tools.call; every model "
                                         + "call must hit an approved model. Empty string clears it.")),
                 Map.entry(

@@ -45,8 +45,10 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p>Contract: {@code vance.params.records} (JSONL records as objects, lines
  * as strings), {@code vance.params.task}, {@code vance.params.chunk}
- * ({@code index}, {@code startRecord}); the return value is a list of the same
- * length — strings become the line as-is, objects/lists one JSON line.
+ * ({@code index}, {@code startRecord}); the script's value — its last
+ * expression, as for every script here (a top-level {@code return} is a
+ * syntax error) — is a list of the same length: strings become the line
+ * as-is, objects/lists one JSON line.
  *
  * <p>Tools: the script sees its process's tool surface, like any
  * process-scoped script — what it does with it is the caller's call.
@@ -254,7 +256,8 @@ public class ScriptWorker implements WowbaggerWorker {
 
         private List<String> lines(@Nullable Object value, int expected) {
             if (!(value instanceof List<?> list)) {
-                throw new IllegalStateException("worker script must return a list with one result per record, got "
+                throw new IllegalStateException("worker script must evaluate to a list with one result per record"
+                        + " (its last expression), got "
                         + (value == null ? "nothing" : value.getClass().getSimpleName()));
             }
             if (list.size() != expected) {

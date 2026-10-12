@@ -75,7 +75,7 @@ profile that relies on a threshold pins a concrete model
 
 ## Profiles
 
-A profile is a recipe with `engine: zem` (usually `internal: true`):
+A profile is a recipe with `engine: zem` (usually `internal: true`) and, like every recipe, a `description`:
 `params.model`, `params.questions` (System-One shape, `criteria`),
 optional `params.stateSelect`. Bundled example: `command-safety`.
 

@@ -48,12 +48,99 @@ const active = computed<Account | null>(() => {
 const isDesktopApp = isDesktop();
 const toolsEnabled = ref(false);
 const toolsActive = ref(false);
+// Live tabs (planning/desktop-profile-tabs.md): one WebView per
+// (account, tab), state in the shell's RAM — nothing persists, a fresh
+// app run starts with the single default tab. The native side caches
+// views by the same key; switching tabs re-attaches without a reload.
+interface TabState {
+  id: string;
+  title: string;
+}
+const MAX_TABS = 10;
+let tabSeq = 0;
+const tabsByAccount = ref(new Map<string, TabState[]>());
+const activeTabByAccount = ref(new Map<string, string>());
+
+const tabs = computed<TabState[]>(() =>
+  activeId.value !== null ? (tabsByAccount.value.get(activeId.value) ?? []) : [],
+);
+const activeTabId = computed<string | null>(
+  () => (activeId.value !== null ? (activeTabByAccount.value.get(activeId.value) ?? null) : null),
+);
+
+function titleFromUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const kinds: Record<string, string> = {
+      chat: 'Chat',
+      documents: 'Documents',
+      cortex: 'Cortex',
+      insights: 'Insights',
+      settings: 'Settings',
+      runs: 'Runs',
+      tools: 'Tools',
+    };
+    const segments = parsed.pathname.split('/').filter((s) => s.length > 0 && !s.includes('.'));
+    const kind = segments.length > 0 ? (kinds[segments[segments.length - 1]] ?? null) : null;
+    const project = parsed.searchParams.get('project');
+    return kind !== null ? (project !== null ? `${kind} · ${project}` : kind) : 'Home';
+  } catch {
+    return 'Tab';
+  }
+}
+
+/** The account's tab list, created lazily on first present. */
+function ensureTabs(accountId: string): TabState[] {
+  const existing = tabsByAccount.value.get(accountId);
+  if (existing !== undefined && existing.length > 0) return existing;
+  const account = accounts.value.find((a) => a.id === accountId);
+  const first: TabState = { id: String(++tabSeq), title: 'Home' };
+  void account;
+  tabsByAccount.value.set(accountId, [first]);
+  activeTabByAccount.value.set(accountId, first.id);
+  tabsByAccount.value = new Map(tabsByAccount.value);
+  return [first];
+}
+
+async function switchTab(tabId: string): Promise<void> {
+  if (active.value === null) return;
+  activeTabByAccount.value.set(active.value.id, tabId);
+  activeTabByAccount.value = new Map(activeTabByAccount.value);
+  await presentActive();
+}
+
+async function newTab(): Promise<void> {
+  if (active.value === null) return;
+  const list = ensureTabs(active.value.id);
+  if (list.length >= MAX_TABS) return; // cap 10 — the + button also disables
+  const tab: TabState = { id: String(++tabSeq), title: 'Home' };
+  list.push(tab);
+  tabsByAccount.value = new Map(tabsByAccount.value);
+  await switchTab(tab.id);
+}
+
+async function closeTab(tabId: string): Promise<void> {
+  if (active.value === null) return;
+  const list = ensureTabs(active.value.id);
+  if (list.length <= 1) return; // min 1 — the × hides on the last tab
+  const idx = list.findIndex((t) => t.id === tabId);
+  if (idx === -1) return;
+  list.splice(idx, 1);
+  tabsByAccount.value = new Map(tabsByAccount.value);
+  await VanceAccountWebView.closeTab({ accountId: active.value.id, tabId });
+  if (activeTabId.value === tabId) {
+    const next = list[Math.min(idx, list.length - 1)];
+    await switchTab(next.id);
+  }
+}
+
 // Pack context (planning/desktop-pack-home-per-project.md §4): the last
 // reported project and the effective pack home, per account — the tooltip
 // shows whichever account is on screen.
 const packsProjects = ref(new Map<string, { project: string | null; tenant: string | null; home: string | null }>());
 let toolsActivityUnsub: (() => void) | null = null;
 let packsProjectUnsub: (() => void) | null = null;
+let tabUrlUnsub: (() => void) | null = null;
 
 const toolsTitle = computed(() => {
   const context = activeId.value !== null ? packsProjects.value.get(activeId.value) : undefined;
@@ -118,6 +205,14 @@ onMounted(async () => {
         toolsActive.value = event.active;
       }
     }) ?? null;
+    tabUrlUnsub = window.faceliftDesktop?.onTabUrl((event) => {
+      const list = tabsByAccount.value.get(event.accountId);
+      const tab = list?.find((t) => t.id === event.tabId);
+      if (tab !== undefined) {
+        tab.title = titleFromUrl(event.url);
+        tabsByAccount.value = new Map(tabsByAccount.value);
+      }
+    }) ?? null;
     packsProjectUnsub = window.faceliftDesktop?.onPacksProject((event) => {
       packsProjects.value.set(event.accountId, {
         project: event.project,
@@ -140,6 +235,8 @@ onBeforeUnmount(async () => {
   toolsActivityUnsub = null;
   packsProjectUnsub?.();
   packsProjectUnsub = null;
+  tabUrlUnsub?.();
+  tabUrlUnsub = null;
   await VanceAccountWebView.dismiss();
 });
 
@@ -241,9 +338,12 @@ function waitForFrame(): Promise<void> {
 
 async function presentActive(): Promise<void> {
   if (active.value === null) return;
+  const list = ensureTabs(active.value.id);
+  const tabId = activeTabByAccount.value.get(active.value.id) ?? list[0].id;
   await VanceAccountWebView.present({
     accountId: active.value.id,
     url: active.value.faceUrl,
+    tabId,
     ...currentBounds(),
   });
 }
@@ -303,7 +403,7 @@ async function goAdd(): Promise<void> {
   <div class="flex h-full flex-col">
     <header
       ref="headerEl"
-      class="flex shrink-0 items-center gap-2 border-b border-gray-800 bg-gray-900 px-3 text-white"
+      class="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-gray-800 bg-gray-900 px-3 text-white"
       style="padding-top: env(safe-area-inset-top, 60px); padding-bottom: 0.5rem; min-height: 110px"
     >
       <button
@@ -383,6 +483,48 @@ async function goAdd(): Promise<void> {
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
         </svg>
       </button>
+
+      <!-- Live tabs (planning/desktop-profile-tabs.md): one WebView per
+           tab, max 10, RAM-only. The header grows → bounds follow via the
+           ResizeObserver. Same markup ships to iOS (stage 2 wires the
+           plugin side). -->
+      <div
+        v-if="active !== null && tabs.length > 0"
+        class="flex w-full items-end gap-1 overflow-x-auto px-1 pb-1"
+      >
+        <button
+          v-for="tab in tabs"
+          :key="tab.id"
+          type="button"
+          class="group flex max-w-44 shrink-0 items-center gap-1 rounded-t px-2 py-1 text-xs"
+          :class="
+            tab.id === activeTabId
+              ? 'bg-gray-800 text-white'
+              : 'bg-gray-950 text-gray-400 hover:text-gray-200'
+          "
+          :title="tab.title"
+          @click="switchTab(tab.id)"
+        >
+          <span class="truncate">{{ tab.title }}</span>
+          <span
+            v-if="tabs.length > 1"
+            class="ml-1 hidden rounded px-0.5 text-[10px] text-gray-500 hover:bg-gray-700 hover:text-red-400 group-hover:block"
+            @click.stop="closeTab(tab.id)"
+          >
+            ✕
+          </span>
+        </button>
+        <button
+          v-if="tabs.length < MAX_TABS"
+          type="button"
+          class="shrink-0 rounded bg-gray-800 px-2 py-1 text-xs text-gray-400 hover:text-white"
+          title="New tab"
+          aria-label="New tab"
+          @click="newTab"
+        >
+          +
+        </button>
+      </div>
     </header>
 
     <main class="relative flex-1 overflow-hidden">

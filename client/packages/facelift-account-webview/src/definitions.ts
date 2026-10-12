@@ -24,6 +24,14 @@ export interface PresentOptions extends AccountWebViewBounds {
    * per account even when two accounts point at the same Brain origin.
    */
   accountId: string;
+  /**
+   * Tab to show (planning/desktop-profile-tabs.md — live tabs per
+   * profile, max 10, RAM-only). Absent = the profile's active tab;
+   * the first present creates tab "1". Each tab is its own WebView
+   * sharing the profile's data store — page state survives tab
+   * switches.
+   */
+  tabId?: string;
   /** Initial URL to load. Ignored if a cached WebView for this
    *  accountId already exists — switching back to a cached account
    *  preserves its in-WebView navigation state. */
@@ -49,6 +57,12 @@ export interface RemoveOptions {
  *
  * The Vue side parses the URL and routes accordingly.
  */
+export interface TabUrlEvent {
+  accountId: string;
+  tabId: string;
+  url: string;
+}
+
 export interface UrlOpenEvent {
   url: string;
 }
@@ -112,6 +126,10 @@ export interface VanceAccountWebViewPlugin {
    */
   present(options: PresentOptions): Promise<void>;
 
+  /** Destroy one tab's WebView (planning/desktop-profile-tabs.md).
+   *  The shell owns the tab list; this drops the tab's native side. */
+  closeTab(options: { accountId: string; tabId: string }): Promise<void>;
+
   /** Hide the currently visible account WebView. Cached state is
    *  retained so a subsequent `present` of the same account resumes
    *  instantly. */
@@ -138,6 +156,10 @@ export interface VanceAccountWebViewPlugin {
   /** Subscribe to `vance-facelift://*` URL events from any of the
    *  account WebViews. The plugin cancels the underlying navigation
    *  and forwards the URL via this callback. */
+  addListener(
+    eventName: 'tabUrl',
+    listener: (event: TabUrlEvent) => void,
+  ): Promise<PluginListenerHandle> & Promise<PluginListenerHandle>;
   addListener(
     eventName: 'urlOpen',
     listener: (event: UrlOpenEvent) => void,
@@ -214,10 +236,11 @@ export interface HttpGetResult {
  */
 export interface FaceliftDesktopBridge {
   present(options: PresentOptions): Promise<void>;
+  closeTab(options: { accountId: string; tabId: string }): Promise<void>;
   dismiss(): Promise<void>;
   setBounds(options: AccountWebViewBounds): Promise<void>;
   reload(): Promise<void>;
-  navigateHome(options: { accountId: string; url: string }): Promise<void>;
+  navigateHome(options: { accountId: string; url: string; tabId?: string }): Promise<void>;
   remove(options: RemoveOptions): Promise<void>;
   setAccountSnapshot(options: { accountsJson: string }): Promise<void>;
   setShareCredentials(options: {
@@ -232,6 +255,7 @@ export interface FaceliftDesktopBridge {
   authenticateBiometric(options: { reason?: string }): Promise<BiometricResult>;
   /** Subscribe to vance-facelift:// url events; returns an unsubscribe fn. */
   onUrlOpen(callback: (event: UrlOpenEvent) => void): () => void;
+  onTabUrl(callback: (event: TabUrlEvent) => void): () => void;
   /**
    * Perform a CORS-free HTTP GET via the Electron main process.
    *

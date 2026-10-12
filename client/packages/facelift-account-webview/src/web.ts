@@ -27,6 +27,9 @@ export class VanceAccountWebViewWeb
     // subscription lives for the whole app session (a single global
     // stream, like the native listener), so the unsubscribe handle is
     // intentionally not retained.
+    window.faceliftDesktop?.onTabUrl((event) => {
+      this.notifyListeners('tabUrl', event);
+    });
     window.faceliftDesktop?.onUrlOpen((event) => {
       this.notifyListeners('urlOpen', event);
     });
@@ -46,6 +49,10 @@ export class VanceAccountWebViewWeb
     return this.bridge().present(options);
   }
 
+  closeTab(options: { accountId: string; tabId: string }): Promise<void> {
+    return this.bridge().closeTab(options);
+  }
+
   dismiss(): Promise<void> {
     return this.bridge().dismiss();
   }
@@ -58,7 +65,7 @@ export class VanceAccountWebViewWeb
     return this.bridge().reload();
   }
 
-  navigateHome(options: { accountId: string; url: string }): Promise<void> {
+  navigateHome(options: { accountId: string; url: string; tabId?: string }): Promise<void> {
     return this.bridge().navigateHome(options);
   }
 

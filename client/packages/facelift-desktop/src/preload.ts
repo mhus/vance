@@ -3,12 +3,14 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import type {
   AccountWebViewBounds,
   BiometricAvailability,
+  CloseTabOptions,
   BiometricResult,
   HttpGetOptions,
   HttpGetResult,
   NavigateHomeOptions,
   PresentOptions,
   RemoveOptions,
+  TabUrlEvent,
   AgentPolicy,
   AgentRuleRequest,
   ToolsActivityEvent,
@@ -49,6 +51,10 @@ const SHELL_PACK_SECRET_CLEAR = 'desktop-shell:pack-secrets:clear';
 const bridge = {
   present: (o: PresentOptions): Promise<void> =>
     ipcRenderer.invoke('facelift:present', o),
+  // Live tabs (planning/desktop-profile-tabs.md): the shell owns the tab
+  // list in RAM; the main keeps one cached WebView per (account, tab).
+  closeTab: (o: CloseTabOptions): Promise<void> =>
+    ipcRenderer.invoke('facelift:close-tab', o),
   dismiss: (): Promise<void> => ipcRenderer.invoke('facelift:dismiss'),
   setBounds: (o: AccountWebViewBounds): Promise<void> =>
     ipcRenderer.invoke('facelift:setBounds', o),
@@ -73,6 +79,12 @@ const bridge = {
     ipcRenderer.invoke('facelift:authenticateBiometric', o),
   httpGet: (o: HttpGetOptions): Promise<HttpGetResult> =>
     ipcRenderer.invoke('facelift:httpGet', o),
+  onTabUrl: (callback: (event: TabUrlEvent) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, event: TabUrlEvent): void =>
+      callback(event);
+    ipcRenderer.on('facelift:tab-url', listener);
+    return () => ipcRenderer.removeListener('facelift:tab-url', listener);
+  },
   onUrlOpen: (callback: (event: UrlOpenEvent) => void): (() => void) => {
     const listener = (_e: IpcRendererEvent, event: UrlOpenEvent): void =>
       callback(event);

@@ -12,6 +12,15 @@ export interface AccountWebViewBounds {
 export interface PresentOptions extends AccountWebViewBounds {
   accountId: string;
   url: string;
+  /** Tab to show (planning/desktop-profile-tabs.md). Absent = the
+   *  account's active tab (first present creates tab "1"). The view is
+   *  cached per (account, tab) — switching tabs keeps page state alive. */
+  tabId?: string;
+}
+
+export interface CloseTabOptions {
+  accountId: string;
+  tabId: string;
 }
 
 export interface RemoveOptions {
@@ -20,6 +29,16 @@ export interface RemoveOptions {
 
 export interface NavigateHomeOptions {
   accountId: string;
+  url: string;
+  /** Target tab; absent = the account's active tab. */
+  tabId?: string;
+}
+
+/** Navigation report for a tab — the shell derives the tab title from
+ *  the URL (planning/desktop-profile-tabs.md §4, Stufe 1). */
+export interface TabUrlEvent {
+  accountId: string;
+  tabId: string;
   url: string;
 }
 

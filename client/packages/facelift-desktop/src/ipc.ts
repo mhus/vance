@@ -9,6 +9,7 @@ import {
 } from './snapshots';
 import type {
   AccountWebViewBounds,
+  CloseTabOptions,
   HttpGetOptions,
   HttpGetResult,
   NavigateHomeOptions,
@@ -31,6 +32,9 @@ export function registerIpc(getManager: () => AccountViewManager | null): void {
 
   ipcMain.handle('facelift:present', (_e, o: PresentOptions) =>
     withManager((m) => m.present(o)),
+  );
+  ipcMain.handle('facelift:close-tab', (_e, o: CloseTabOptions) =>
+    withManager((m) => m.closeTab(o)),
   );
   ipcMain.handle('facelift:dismiss', () => withManager((m) => m.dismiss()));
   ipcMain.handle('facelift:setBounds', (_e, o: AccountWebViewBounds) =>

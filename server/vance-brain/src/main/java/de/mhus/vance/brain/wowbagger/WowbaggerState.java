@@ -92,6 +92,12 @@ public class WowbaggerState {
     private @Nullable String workerKind;
 
     /**
+     * Workers that answer with an object (Zem) hang it into the input record
+     * instead of emitting it alone — JSONL input only. Default {@code false}.
+     */
+    private boolean mergeIntoRecord;
+
+    /**
      * The run's persistent RootDir ({@code wowbagger-<processId-prefix>} by
      * default) — source and results live here, decoupled from the process-wide
      * workTarget. Auto-assigned on first configure/start, adopted on resume.

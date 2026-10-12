@@ -143,9 +143,18 @@ public class WowbaggerConfigureTool extends WowbaggerBaseTool {
                                 "type",
                                 "string",
                                 "description",
-                                "Internal (internal: true) LightLm profile for worker calls — e.g. "
-                                        + "a project-local recipe pinning the worker model tier. Default: "
-                                        + "wowbagger-worker."))));
+                                "The worker — a LightLlm profile (internal: true; one LLM call per "
+                                        + "chunk, uses 'task') or a Zem decision profile (engine: zem; one "
+                                        + "decision per record, the profile's questions are the task). "
+                                        + "Default: wowbagger-worker.")),
+                Map.entry(
+                        "mergeIntoRecord",
+                        Map.of(
+                                "type",
+                                "boolean",
+                                "description",
+                                "Zem workers with jsonl input: write each record back with the "
+                                        + "answers under '_zem' instead of the answers alone."))));
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
         schema.put("properties", properties);
@@ -281,6 +290,10 @@ public class WowbaggerConfigureTool extends WowbaggerBaseTool {
                 s.setWorkerRecipe(v == null || v.isBlank() ? null : v);
                 applied.put("workerRecipe", s.getWorkerRecipe() == null ? "(default)" : s.getWorkerRecipe());
             }
+            if (params != null && params.containsKey("mergeIntoRecord")) {
+                s.setMergeIntoRecord(booleanParam(params, "mergeIntoRecord", false));
+                applied.put("mergeIntoRecord", s.isMergeIntoRecord());
+            }
             // Cost gate: refuse a structure whose worker model is not approved
             // (setting wowbagger.allowed-models) — before the agent can start it.
             try {
@@ -296,7 +309,16 @@ public class WowbaggerConfigureTool extends WowbaggerBaseTool {
         }
         String workRoot = pool.ensureWorkRoot(process, s);
         persistReflection(process, s);
-        List<String> warnings = pool.sourceRootWarnings(process, s);
+        List<String> warnings = new java.util.ArrayList<>(pool.sourceRootWarnings(process, s));
+        if (de.mhus.vance.brain.wowbagger.worker.ZemWorker.KIND.equals(s.getWorkerKind())) {
+            if (s.getTask() != null && !s.getTask().isBlank()) {
+                warnings.add("the Zem worker ignores 'task' — the profile's questions are the task");
+            }
+            if (s.isMergeIntoRecord() && !"jsonl".equals(s.getInputFormat())) {
+                warnings.add("mergeIntoRecord needs inputFormat jsonl — with plain lines the answers are"
+                        + " written alone");
+            }
+        }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("applied", applied);
         out.put("workTarget", workRoot);

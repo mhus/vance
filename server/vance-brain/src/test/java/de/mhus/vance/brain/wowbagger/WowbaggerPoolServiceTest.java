@@ -64,6 +64,7 @@ class WowbaggerPoolServiceTest {
     private ThinkProcessDocument process;
     private WowbaggerPoolService pool;
     private de.mhus.vance.shared.settings.SettingService settingService;
+    private de.mhus.vance.brain.recipe.RecipeResolver recipeResolver;
     private final Map<String, DocumentDocument> docsByPath = new java.util.concurrent.ConcurrentHashMap<>();
     private final Map<String, AtomicInteger> callCounter = new java.util.concurrent.ConcurrentHashMap<>();
     private final Map<String, String> docContents = new java.util.concurrent.ConcurrentHashMap<>();
@@ -78,8 +79,7 @@ class WowbaggerPoolServiceTest {
         ChatMessageService chatLog = mock(ChatMessageService.class);
         MetricService metricService = new MetricService(new SimpleMeterRegistry());
         ObjectMapper om = JsonMapper.builder().build();
-        de.mhus.vance.brain.recipe.RecipeResolver recipeResolver =
-                mock(de.mhus.vance.brain.recipe.RecipeResolver.class);
+        recipeResolver = mock(de.mhus.vance.brain.recipe.RecipeResolver.class);
         de.mhus.vance.brain.ai.AiModelResolver aiModelResolver = mock(de.mhus.vance.brain.ai.AiModelResolver.class);
         settingService = mock(de.mhus.vance.shared.settings.SettingService.class);
 
@@ -244,6 +244,102 @@ class WowbaggerPoolServiceTest {
             return new WowbaggerState();
         }
         return WowbaggerPoolService.normalize(JsonMapper.builder().build().convertValue(raw, WowbaggerState.class));
+    }
+
+    @Test
+    void anyWorkerTypeRunsThroughThePool_withACommitHookPerChunk_andNoTaskOrAllowlistWhenItNeedsNone()
+            throws IOException {
+        AtomicInteger commits = new AtomicInteger();
+        de.mhus.vance.brain.wowbagger.worker.WowbaggerWorker stub =
+                new de.mhus.vance.brain.wowbagger.worker.WowbaggerWorker() {
+                    @Override
+                    public String kind() {
+                        return "stub";
+                    }
+
+                    @Override
+                    public String describe() {
+                        return "test stub";
+                    }
+
+                    @Override
+                    public boolean supports(de.mhus.vance.brain.recipe.ResolvedRecipe recipe) {
+                        return true;
+                    }
+
+                    @Override
+                    public de.mhus.vance.brain.wowbagger.worker.PreparedWorker prepare(
+                            de.mhus.vance.brain.wowbagger.worker.WorkerSetup setup) {
+                        return new de.mhus.vance.brain.wowbagger.worker.PreparedWorker() {
+                            @Override
+                            public String kind() {
+                                return "stub";
+                            }
+
+                            @Override
+                            public String recipeName() {
+                                return setup.spec().recipeName();
+                            }
+
+                            @Override
+                            public @org.jspecify.annotations.Nullable String resolvedModel() {
+                                return null; // gates per call — no allowlist check up front
+                            }
+
+                            @Override
+                            public boolean usesTask() {
+                                return false;
+                            }
+
+                            @Override
+                            public de.mhus.vance.brain.wowbagger.worker.WorkerReply process(
+                                    List<String> records, de.mhus.vance.brain.wowbagger.worker.ChunkContext chunk) {
+                                return new de.mhus.vance.brain.wowbagger.worker.WorkerReply(
+                                        records.stream().map(r -> "done-" + r).toList(), records.size(), 0, 0);
+                            }
+
+                            @Override
+                            public void onCommit() {
+                                commits.incrementAndGet();
+                            }
+                        };
+                    }
+                };
+        WowbaggerPoolService stubPool = new WowbaggerPoolService(
+                thinkProcessService,
+                new de.mhus.vance.brain.wowbagger.worker.WowbaggerWorkerRegistry(List.of(stub), recipeResolver),
+                documentService,
+                workspaceService,
+                workTargetService,
+                new MetricService(new SimpleMeterRegistry()),
+                JsonMapper.builder().build(),
+                mock(ChatMessageService.class),
+                settingService);
+        // No allowlist at all — a worker without a fixed model is not gated up front.
+        lenient()
+                .when(settingService.getStringValue(
+                        eq(TENANT),
+                        eq(de.mhus.vance.shared.settings.SettingService.SCOPE_PROJECT),
+                        anyString(),
+                        eq(WowbaggerPoolService.ALLOWED_MODELS_KEY)))
+                .thenReturn(null);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> raw =
+                (Map<String, Object>) process.getEngineParams().get(WowbaggerPoolService.ENGINE_STATE_KEY);
+        raw.remove("task");
+        assertThat(stubPool.taskRequired(process, persistedState())).isFalse();
+
+        stubPool.start(process);
+
+        verify(documentService, timeout(20_000).times(4))
+                .createText(eq(TENANT), eq(PROJECT), anyString(), any(), any(), anyString(), any(), any());
+        waitFor(20_000, () -> !stubPool.isRunning(PROC_ID));
+        assertThat(commits.get()).as("one commit hook per published chunk").isEqualTo(3);
+        WowbaggerState s = persistedState();
+        assertThat(s.getWorkerKind()).isEqualTo("stub");
+        assertThat(s.getResolvedWorkerModel()).isNull();
+        assertThat(s.getCounters().getWorkerCalls()).isEqualTo(5);
+        assertThat(s.getRecordsDone()).isEqualTo(5);
     }
 
     @Test

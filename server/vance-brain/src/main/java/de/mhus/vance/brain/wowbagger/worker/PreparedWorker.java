@@ -30,6 +30,11 @@ public interface PreparedWorker {
      */
     WorkerReply process(List<String> records, ChunkContext chunk);
 
+    /** Whether the run's free-text {@code task} drives this worker (Zem: no — the profile is the task). */
+    default boolean usesTask() {
+        return true;
+    }
+
     /** Called after the chunk's document is committed — book what was accumulated. */
     default void onCommit() {}
 }

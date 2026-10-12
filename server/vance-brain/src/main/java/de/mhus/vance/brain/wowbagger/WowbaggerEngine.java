@@ -705,7 +705,12 @@ public class WowbaggerEngine implements ThinkEngine {
                                         : "idle/ready")
                 .append("\n");
         sb.append("task: ")
-                .append(s.getTask() == null ? "(not set yet — ask the user / analyze the source)" : s.getTask())
+                .append(
+                        de.mhus.vance.brain.wowbagger.worker.ZemWorker.KIND.equals(s.getWorkerKind())
+                                ? "(not used — the Zem worker profile's questions are the task)"
+                                : s.getTask() == null
+                                        ? "(not set yet — ask the user / analyze the source)"
+                                        : s.getTask())
                 .append('\n');
         sb.append("source: ")
                 .append(

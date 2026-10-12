@@ -696,7 +696,11 @@ public class WowbaggerPoolService {
     /** The worker part of the structure, with the default recipe applied. */
     static WorkerSpec workerSpec(WowbaggerState state) {
         return new WorkerSpec(
-                firstNonBlank(state.getWorkerRecipe(), DEFAULT_WORKER_RECIPE), state.getTask(), state.getMaxTokens());
+                firstNonBlank(state.getWorkerRecipe(), DEFAULT_WORKER_RECIPE),
+                state.getTask(),
+                state.getMaxTokens(),
+                FORMAT_JSONL.equals(inputFormatOf(state)),
+                state.isMergeIntoRecord());
     }
 
     /**
@@ -717,6 +721,20 @@ public class WowbaggerPoolService {
         state.setResolvedWorkerModel(worker.resolvedModel());
         gate(process, worker);
         return worker;
+    }
+
+    /**
+     * Whether the structure's {@code task} must be set: true unless the
+     * worker resolves to a type that ignores it (Zem). Unresolvable workers
+     * count as task-driven — start then fails on the worker with its own
+     * reason.
+     */
+    public boolean taskRequired(ThinkProcessDocument process, WowbaggerState state) {
+        try {
+            return workerRegistry.prepare(process, workerSpec(state)).usesTask();
+        } catch (RuntimeException e) {
+            return true;
+        }
     }
 
     /** {@link #prepareWorker} for callers that only need the verdict (configure). */
@@ -956,9 +974,6 @@ public class WowbaggerPoolService {
     public Map<String, Object> preflight(ThinkProcessDocument process, WowbaggerState state) {
         Map<String, Object> report = new LinkedHashMap<>();
         List<String> problems = new ArrayList<>();
-        if (state.getTask() == null || state.getTask().isBlank()) {
-            problems.add("task is not set");
-        }
         long records = -1;
         long invalid = 0;
         List<String> invalidSamples = new ArrayList<>();
@@ -1011,9 +1026,11 @@ public class WowbaggerPoolService {
         String model = null;
         String kind = null;
         Boolean approved = null;
+        boolean taskRequired = true;
         try {
             PreparedWorker worker = workerRegistry.prepare(process, workerSpec(state));
             kind = worker.kind();
+            taskRequired = worker.usesTask();
             model = worker.resolvedModel();
             try {
                 gate(process, worker);
@@ -1024,6 +1041,9 @@ public class WowbaggerPoolService {
             }
         } catch (RuntimeException e) {
             problems.add("worker not runnable: " + describeError(e));
+        }
+        if (taskRequired && (state.getTask() == null || state.getTask().isBlank())) {
+            problems.add(0, "task is not set");
         }
         report.put("ready", problems.isEmpty());
         report.put("problems", problems);

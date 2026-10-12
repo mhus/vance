@@ -70,7 +70,7 @@ public class WowbaggerStartTool extends WowbaggerBaseTool {
         ThinkProcessDocument process = process(thinkProcessService, ctx);
         WowbaggerState s = pool.structure(process.getId());
         StringBuilder problems = new StringBuilder();
-        if (s.getTask() == null || s.getTask().isBlank()) {
+        if ((s.getTask() == null || s.getTask().isBlank()) && pool.taskRequired(process, s)) {
             problems.append("- no task — configure the per-record instruction first (wowbagger_configure)\n");
         }
         if (s.getSourcePath() == null || s.getSourcePath().isBlank()) {

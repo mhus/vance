@@ -8,9 +8,16 @@ import org.jspecify.annotations.Nullable;
  * {@link WowbaggerWorker#prepare}; the structure only changes while the pool
  * is stopped, so a prepared worker never goes stale mid-run.
  *
- * @param recipeName the worker recipe (resolved default applied)
- * @param task       the run's free-text task, {@code null} when unset
- * @param maxTokens  per-call output cap override, {@code null} = recipe default
+ * @param recipeName      the worker recipe (resolved default applied)
+ * @param task            the run's free-text task, {@code null} when unset
+ * @param maxTokens       per-call output cap override, {@code null} = recipe default
+ * @param inputJsonl      records are JSON objects ({@code inputFormat: jsonl}) rather than plain lines
+ * @param mergeIntoRecord workers that answer with an object hang it into the
+ *                        input record instead of emitting it alone (JSONL input only)
  */
 public record WorkerSpec(
-        String recipeName, @Nullable String task, @Nullable Integer maxTokens) {}
+        String recipeName,
+        @Nullable String task,
+        @Nullable Integer maxTokens,
+        boolean inputJsonl,
+        boolean mergeIntoRecord) {}

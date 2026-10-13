@@ -26,6 +26,9 @@ relevantSkills:
   # under "Available skills" and activates what fits its item via
   # skill_activate. A tenant's own coding skills need no recipe override.
   - "@coding"
+  # Design skills too: designer-app designs are web files a coding
+  # worker builds (planning/skill-activation-levels.md §7).
+  - "@design"
 
 allowedToolsDefer:
   # Family selector — covers every client_* tool, current and future.

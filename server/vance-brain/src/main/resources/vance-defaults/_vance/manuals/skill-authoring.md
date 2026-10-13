@@ -163,8 +163,8 @@ When the field is absent it derives from `triggers:`: present →
 Recipes select by the **domain labels** in your `tags:` — tag by what
 you contribute to, not by activity: `coding`, `design`, `decision`,
 `writing`, `research`. Chat recipes exclude the coding group
-(`relevantSkills: ["!@coding"]`), coding workers select only it
-(`["@coding"]`), recipes without the field consider everything relevant.
+(`relevantSkills: ["!@coding"]`), coding workers select it plus the design group
+(`["@coding", "@design"]`), recipes without the field consider everything relevant.
 
 Users can override the mode per scope without forking your SKILL.md —
 `_vance/config/skill_activation.yaml` (`skills: { <name>: hidden }`) in

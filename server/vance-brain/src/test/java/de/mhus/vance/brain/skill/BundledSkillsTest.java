@@ -24,6 +24,10 @@ import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
  */
 class BundledSkillsTest {
 
+    /** Domain labels documented in the skill-authoring manual. */
+    private static final java.util.Set<String> DOMAIN_LABELS =
+            java.util.Set.of("coding", "design", "decision", "writing", "research");
+
     private static final PathMatchingResourcePatternResolver RESOLVER = new PathMatchingResourcePatternResolver();
 
     /** Classpath sibling reader — same lookup the loader's resource tier uses. */
@@ -117,8 +121,10 @@ class BundledSkillsTest {
     @Test
     void everyRecipeSkillLabel_matchesABundledSkillTag() throws IOException {
         // A typo'd label ("@codin") silently selects nothing — an inclusion
-        // would hide everything, an exclusion would hide nothing.
-        java.util.Set<String> tags = new java.util.HashSet<>();
+        // would hide everything, an exclusion would hide nothing. Allowed:
+        // tags of the brain's bundled skills plus the documented domain
+        // labels, whose skills may ship in addons (design → designer).
+        java.util.Set<String> tags = new java.util.HashSet<>(DOMAIN_LABELS);
         for (ResolvedSkill skill : bundledSkills().values()) {
             skill.tags().forEach(t -> tags.add(t.strip().toLowerCase(java.util.Locale.ROOT)));
         }
@@ -146,10 +152,38 @@ class BundledSkillsTest {
                     .as(chat)
                     .isTrue();
         }
-        for (String coding : List.of("coding", "benjy-do-coding")) {
+        ResolvedSkill designSkill = new ResolvedSkill(
+                "house-style",
+                "house-style",
+                "desc",
+                "1.0.0",
+                List.of(),
+                "body",
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of("design"),
+                true,
+                SkillScope.RESOURCE,
+                List.of(),
+                List.of(),
+                SkillLifecycle.STICKY,
+                false,
+                List.of(),
+                null,
+                SkillRun.INLINE);
+        for (String coding : List.of("coding", "code-read", "python", "benjy-do-coding")) {
             assertThat(SkillLabelSelector.relevant(recipes.get(coding), codeReview))
                     .as(coding)
                     .isTrue();
+            // Designer designs are web files a coding worker builds.
+            assertThat(SkillLabelSelector.relevant(recipes.get(coding), designSkill))
+                    .as(coding + " design")
+                    .isTrue();
+            assertThat(SkillLabelSelector.relevant(recipes.get(coding), decisionFrame))
+                    .as(coding + " decision")
+                    .isFalse();
         }
     }
 }

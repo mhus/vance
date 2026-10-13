@@ -73,9 +73,11 @@ Rules that matter:
 Skills tagged **`design`** are design blueprints: activating one puts its
 authoring workflow and style assets into your turn. Before designing from
 scratch, check the **Available skills** section in your context — design
-skills are advertised there (`activation: agent`), so activate a fitting
-one yourself with `skill_activate(name=…)` and let it drive the
-structure. (The user can also activate one with `/skill <name>`; either
+skills are listed there (`activation: agent`) wherever the chat's recipe
+considers them relevant (chat and coding recipes do), so activate a
+fitting one yourself with `skill_activate(name=…)` and let it drive the
+structure. Not listed? `skill_activate(name=…)` still works for any
+design skill you know — the list is an offer, not a permission. (The user can also activate one with `/skill <name>`; either
 path, the effect is the same from the next turn on.) The addon bundles
 one **example**, `design-blueprint` — visible in `/skill list` and in
 your Available-skills section, but without triggers: it activates when

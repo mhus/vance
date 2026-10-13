@@ -28,6 +28,9 @@ relevantSkills:
   # skill's own activation level decides how it is offered (the bundled
   # coding skills are `agent` → listed under "Available skills").
   - "@coding"
+  # Design skills too: designer-app designs are web files a coding
+  # worker builds (planning/skill-activation-levels.md §7).
+  - "@design"
 
 # Research surface — useful for "what does library X do", "best
 # practice for Y in language Z", etc. Frankie's engine baseline

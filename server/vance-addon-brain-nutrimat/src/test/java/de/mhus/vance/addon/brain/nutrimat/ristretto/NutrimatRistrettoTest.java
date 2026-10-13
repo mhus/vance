@@ -59,7 +59,8 @@ class NutrimatRistrettoTest {
             null,
             h.turnContextHandlers,
             null,
-            h.notifications);
+            h.notifications,
+            null);
 
     private final LoopInputs in = h.inputs().withToolSpecs(List.of(DOC_READ));
 

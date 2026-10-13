@@ -55,7 +55,8 @@ class NutrimatClubmateTest {
             h.turnContextHandlers,
             null,
             h.notifications,
-            judge);
+            judge,
+            null);
 
     private TurnOutcome run(LoopStats stats) {
         return engine.runLoop(h.process, h.ctx, h.inputs(), stats);

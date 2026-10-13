@@ -90,4 +90,17 @@ class WowbaggerEngineSplitInboxTest {
         assertThat(extras).containsExactly(event);
         verify(chatLog, times(1)).append(any(ChatMessageDocument.class));
     }
+
+    @Test
+    void triggerText_isTheRealUserInput_neverPoolWakeups() {
+        // A wakeup like "[pool] … failed" must not fire a word-trigger skill —
+        // only what the user typed counts.
+        String text = WowbaggerEngine.userText(List.of(
+                user(WowbaggerPoolService.WAKEUP_SENDER, "[pool] debug: chunk 3 failed"),
+                user("marvin", "classify these records"),
+                user("marvin", "  "),
+                user("marvin", "and decide the labels")));
+
+        org.assertj.core.api.Assertions.assertThat(text).isEqualTo("classify these records\nand decide the labels");
+    }
 }

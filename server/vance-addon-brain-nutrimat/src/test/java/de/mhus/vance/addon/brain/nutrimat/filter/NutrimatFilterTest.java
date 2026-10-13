@@ -53,7 +53,8 @@ class NutrimatFilterTest {
             null,
             h.turnContextHandlers,
             null,
-            h.notifications);
+            h.notifications,
+            null);
 
     /** Snapshot of the messages each model call saw. */
     private final List<List<ChatMessage>> requests = new ArrayList<>();

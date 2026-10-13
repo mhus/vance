@@ -531,4 +531,35 @@ class SkillTurnSupportTest {
         advertiseCandidates(resolved("plain"));
         assertThat(support.turnTools(processWith(), List.of())).containsExactly("lint_run");
     }
+
+    @Test
+    void advertise_multiLineDescription_staysOneListLine() {
+        ResolvedSkill multi = new ResolvedSkill(
+                "design",
+                "design",
+                "Design skill — a blueprint\nfor the designer app,\n  with rules.",
+                "1.0.0",
+                List.of(),
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                null,
+                true,
+                SkillScope.VANCE,
+                List.of(),
+                List.of(),
+                SkillLifecycle.STICKY,
+                false,
+                List.of(),
+                null,
+                SkillRun.INLINE,
+                SkillActivation.AGENT);
+        advertiseCandidates(multi);
+
+        assertThat(support.advertiseSection(processWith(), List.of()))
+                .contains("- design: Design skill — a blueprint for the designer app, with rules.\n");
+    }
 }

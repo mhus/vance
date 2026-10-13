@@ -46,7 +46,8 @@ class NutrimatSalitosTest {
             null,
             h.turnContextHandlers,
             null,
-            h.notifications);
+            h.notifications,
+            null);
 
     private static AiMessage decision(boolean done, String reason, String answer) {
         return text("{\"done\": " + done + ", \"reason\": \"" + reason + "\", \"answer\": \"" + answer + "\"}");

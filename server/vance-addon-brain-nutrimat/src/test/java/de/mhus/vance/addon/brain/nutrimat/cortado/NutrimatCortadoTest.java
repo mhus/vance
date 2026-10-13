@@ -68,7 +68,8 @@ class NutrimatCortadoTest {
             null,
             h.turnContextHandlers,
             null,
-            h.notifications);
+            h.notifications,
+            null);
 
     private TurnOutcome run(LoopInputs in) {
         return engine.runLoop(h.process, h.ctx, in, new LoopStats());

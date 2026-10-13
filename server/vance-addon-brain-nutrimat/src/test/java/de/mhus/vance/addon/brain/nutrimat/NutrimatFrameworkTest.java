@@ -24,7 +24,7 @@ class NutrimatFrameworkTest {
         GoodNature() {
             super(
                     null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-                    null, null, null, null, null, null, null);
+                    null, null, null, null, null, null, null, null);
         }
 
         @Override
@@ -49,7 +49,7 @@ class NutrimatFrameworkTest {
         BadNature() {
             super(
                     null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-                    null, null, null, null, null, null, null);
+                    null, null, null, null, null, null, null, null);
         }
 
         @Override

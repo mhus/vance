@@ -59,7 +59,8 @@ class NutrimatPrimitivesTest {
                 null,
                 h.turnContextHandlers,
                 null,
-                h.notifications) {
+                h.notifications,
+                null) {
             @Override
             protected String natureId() {
                 return "janx";

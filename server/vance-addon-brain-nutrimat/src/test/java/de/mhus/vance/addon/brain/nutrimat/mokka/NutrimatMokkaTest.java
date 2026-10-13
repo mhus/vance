@@ -58,7 +58,8 @@ class NutrimatMokkaTest {
             null,
             h.turnContextHandlers,
             null,
-            h.notifications);
+            h.notifications,
+            null);
 
     private static final ToolSpecification DOC_READ =
             ToolSpecification.builder().name("doc_read").build();

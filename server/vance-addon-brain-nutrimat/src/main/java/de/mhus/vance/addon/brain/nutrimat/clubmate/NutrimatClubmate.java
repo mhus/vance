@@ -18,6 +18,7 @@ import de.mhus.vance.brain.prompt.ScratchpadPromptContributor;
 import de.mhus.vance.brain.skill.SkillPromptComposer;
 import de.mhus.vance.brain.skill.SkillResolver;
 import de.mhus.vance.brain.skill.SkillTriggerMatcher;
+import de.mhus.vance.brain.skill.SkillTurnSupport;
 import de.mhus.vance.brain.thinkengine.EnginePromptResolver;
 import de.mhus.vance.brain.thinkengine.SystemPromptComposer;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
@@ -83,7 +84,8 @@ public class NutrimatClubmate extends AbstractNutrimat {
             TurnContextHandlerRegistry turnContextHandlers,
             ShootyGuardService guardService,
             NotificationService notifications,
-            NutrimatJudge judge) {
+            NutrimatJudge judge,
+            SkillTurnSupport skillTurnSupport) {
         super(
                 thinkProcessService,
                 objectMapper,
@@ -107,7 +109,8 @@ public class NutrimatClubmate extends AbstractNutrimat {
                 clientTurnContextResolver,
                 turnContextHandlers,
                 guardService,
-                notifications);
+                notifications,
+                skillTurnSupport);
         this.judge = judge;
     }
 

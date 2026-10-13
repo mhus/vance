@@ -46,7 +46,7 @@ class NutrimatCommandHandlerTest {
         FakeNature() {
             super(
                     null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-                    null, null, null, null, null, null, null);
+                    null, null, null, null, null, null, null, null);
         }
 
         @Override

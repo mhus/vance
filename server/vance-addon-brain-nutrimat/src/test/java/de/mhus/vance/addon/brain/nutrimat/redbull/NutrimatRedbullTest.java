@@ -46,7 +46,8 @@ class NutrimatRedbullTest {
             null,
             h.turnContextHandlers,
             null,
-            h.notifications);
+            h.notifications,
+            null);
 
     private TurnOutcome run() {
         return engine.runLoop(h.process, h.ctx, h.inputs(), new LoopStats());

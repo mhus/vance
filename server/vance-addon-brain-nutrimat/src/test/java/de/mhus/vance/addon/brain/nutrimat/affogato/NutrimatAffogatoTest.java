@@ -66,7 +66,8 @@ class NutrimatAffogatoTest {
             h.turnContextHandlers,
             null,
             h.notifications,
-            critic);
+            critic,
+            null);
 
     private TurnOutcome run(LoopInputs in) {
         return engine.runLoop(h.process, h.ctx, in, new LoopStats());

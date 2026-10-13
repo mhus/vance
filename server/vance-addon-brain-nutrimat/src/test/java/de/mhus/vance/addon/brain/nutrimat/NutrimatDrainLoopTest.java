@@ -70,6 +70,7 @@ class NutrimatDrainLoopTest {
                     null,
                     null,
                     guardService,
+                    null,
                     null) {
                 @Override
                 protected String natureId() {

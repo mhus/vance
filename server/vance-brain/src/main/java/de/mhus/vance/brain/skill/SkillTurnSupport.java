@@ -209,7 +209,7 @@ public class SkillTurnSupport {
             out.append("- ")
                     .append(s.name())
                     .append(": ")
-                    .append(description != null && !description.isBlank() ? description.strip() : s.title())
+                    .append(oneLine(description != null && !description.isBlank() ? description : s.title()))
                     .append('\n');
             shown++;
         }
@@ -218,5 +218,13 @@ public class SkillTurnSupport {
             log.trace("Skill advertising capped at {} shown, {} hidden", shown, hidden);
         }
         return out.toString();
+    }
+
+    /**
+     * Collapses a (YAML folded/literal) description onto one line — every
+     * list entry must stay a single "- name: text" line.
+     */
+    private static String oneLine(@Nullable String text) {
+        return text == null ? "" : text.strip().replaceAll("\\s+", " ");
     }
 }

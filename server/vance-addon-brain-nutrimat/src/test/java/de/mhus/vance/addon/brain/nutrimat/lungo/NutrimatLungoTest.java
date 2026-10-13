@@ -51,7 +51,8 @@ class NutrimatLungoTest {
             null,
             h.turnContextHandlers,
             null,
-            h.notifications);
+            h.notifications,
+            null);
 
     private final LoopInputs in = h.inputs();
 

@@ -82,7 +82,8 @@ class NutrimatMacchiatoTest {
                     null,
                     h.turnContextHandlers,
                     null,
-                    h.notifications) {
+                    h.notifications,
+                    null) {
                 @Override
                 LoopInputs inputsFor(
                         ThinkProcessDocument process,

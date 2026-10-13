@@ -128,6 +128,10 @@ public class WowbaggerEngine implements ThinkEngine {
     private final de.mhus.vance.brain.guard.ShootyGuardService guardService;
     private final WowbaggerPoolService pool;
     private final EngineLoopProperties loopProperties;
+    /** Active skills, their tools and the "Available skills" section (skills.md §4g, §5). */
+    private final de.mhus.vance.brain.skill.SkillTurnSupport skillTurnSupport;
+    /** Word activation on fresh user input — same hook as Ford. */
+    private final de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -266,13 +270,21 @@ public class WowbaggerEngine implements ThinkEngine {
         try {
             ChatMessageService chatLog = ctx.chatMessageService();
             List<SteerMessage> extras = splitInbox(chatLog, process, inbox);
+            // Word activation on the real user input (pool wakeups are not
+            // user words), before the active skills are resolved — a
+            // triggered skill counts for this very turn.
+            String userInput = userText(inbox);
+            if (!userInput.isBlank()) {
+                skillTriggerMatcher.detectAndActivate(process, userInput);
+            }
+            List<de.mhus.vance.brain.skill.ResolvedSkill> activeSkills = skillTurnSupport.resolveActive(process);
 
             de.mhus.vance.brain.ai.EngineChatFactory.EngineChatBundle chatBundle =
                     engineChatFactory.forProcess(process, ctx, NAME);
             AiChat aiChat = chatBundle.chat();
             AiChatConfig config = chatBundle.primaryConfig();
 
-            ContextToolsApi tools = ctx.tools();
+            ContextToolsApi tools = ctx.tools().withAdditional(skillTurnSupport.turnTools(process, activeSkills));
             List<ToolSpecification> toolSpecs = tools.primaryAsLc4j();
             ModelInfo modelInfo = modelCatalog.lookupOrDefault(
                     process.getTenantId(),
@@ -282,7 +294,8 @@ public class WowbaggerEngine implements ThinkEngine {
                     config.modelName());
 
             ModelSize effectiveSize = ModelSize.parseOrAuto(paramString(process, "modelSize", null), modelInfo.size());
-            List<ChatMessage> messages = buildPromptMessages(process, chatLog, extras, modelInfo, effectiveSize, tools);
+            List<ChatMessage> messages =
+                    buildPromptMessages(process, chatLog, extras, modelInfo, effectiveSize, tools, activeSkills);
             de.mhus.vance.brain.memory.CompactionResult compactResult =
                     memoryCompactionService.compactIfNeeded(process, config, messages, modelInfo);
             if (compactResult.compacted()) {
@@ -291,7 +304,7 @@ public class WowbaggerEngine implements ThinkEngine {
                         process.getId(),
                         compactResult.messagesCompacted(),
                         compactResult.summaryChars());
-                messages = buildPromptMessages(process, chatLog, extras, modelInfo, effectiveSize, tools);
+                messages = buildPromptMessages(process, chatLog, extras, modelInfo, effectiveSize, tools, activeSkills);
             }
 
             LoopLimits limits = LoopLimits.resolve(process, loopProperties);
@@ -351,6 +364,9 @@ public class WowbaggerEngine implements ThinkEngine {
             log.info("Wowbagger.steer id='{}' awaiting={} -> '{}'", process.getId(), awaitingUserInput, preview);
             return outcome;
         } finally {
+            // One-shot skills (word triggers) only ever apply to the turn
+            // that activated them.
+            dropOneShotSkills(process);
             if (interrupted) {
                 if (interruptForcePause) {
                     thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.PAUSED);
@@ -375,8 +391,8 @@ public class WowbaggerEngine implements ThinkEngine {
      * itself, and the pending copy carries
      * {@link WowbaggerPoolService#WAKEUP_SENDER} as the wake trigger only —
      * appending it again as a USER message would show every wakeup twice in
-     * the transcript and mislabel pool output as the user's. Wowbagger
-     * carries no skills (§4a.1), so no trigger text is collected.
+     * the transcript and mislabel pool output as the user's. The trigger
+     * text is collected separately ({@link #userText}).
      */
     static List<SteerMessage> splitInbox(
             ChatMessageService chatLog, ThinkProcessDocument process, List<SteerMessage> inbox) {
@@ -400,6 +416,34 @@ public class WowbaggerEngine implements ThinkEngine {
             }
         }
         return extras;
+    }
+
+    /** Joined real user input of the drain — pool wakeups excluded; the word-trigger text. */
+    static String userText(List<SteerMessage> inbox) {
+        StringBuilder out = new StringBuilder();
+        for (SteerMessage m : inbox) {
+            if (m instanceof SteerMessage.UserChatInput uci
+                    && !WowbaggerPoolService.WAKEUP_SENDER.equals(uci.fromUser())
+                    && uci.content() != null
+                    && !uci.content().isBlank()) {
+                if (out.length() > 0) out.append('\n');
+                out.append(uci.content());
+            }
+        }
+        return out.toString();
+    }
+
+    private void dropOneShotSkills(ThinkProcessDocument process) {
+        List<de.mhus.vance.shared.skill.ActiveSkillRefEmbedded> active = process.getActiveSkills();
+        if (active == null || active.stream().noneMatch(de.mhus.vance.shared.skill.ActiveSkillRefEmbedded::isOneShot)) {
+            return;
+        }
+        List<de.mhus.vance.shared.skill.ActiveSkillRefEmbedded> kept = new ArrayList<>(active.size());
+        for (de.mhus.vance.shared.skill.ActiveSkillRefEmbedded ref : active) {
+            if (!ref.isOneShot()) kept.add(ref);
+        }
+        process.setActiveSkills(kept);
+        thinkProcessService.replaceActiveSkills(process.getId(), kept);
     }
 
     private static @Nullable Instant lastUserInputAt(List<SteerMessage> inbox) {
@@ -631,7 +675,8 @@ public class WowbaggerEngine implements ThinkEngine {
             List<SteerMessage> inboxExtras,
             ModelInfo modelInfo,
             ModelSize tier,
-            ContextToolsApi tools) {
+            ContextToolsApi tools,
+            List<de.mhus.vance.brain.skill.ResolvedSkill> activeSkills) {
         List<ChatMessage> messages = new ArrayList<>();
         PromptContextBuilder ctxBuilder =
                 PromptContextBuilder.forProcess(process, modelInfo).tier(tier).engine(NAME);
@@ -655,6 +700,16 @@ public class WowbaggerEngine implements ThinkEngine {
                 hb.append(hints.get(i));
             }
             messages.add(SystemMessage.from(hb.toString()));
+        }
+        // Active skills, then "Available skills" directly behind — both
+        // change together, one cache break instead of two (Ford's order).
+        String skillSection = skillTurnSupport.composeSection(process, activeSkills, ctxBuilder.build());
+        if (skillSection != null && !skillSection.isBlank()) {
+            messages.add(SystemMessage.from(skillSection));
+        }
+        String advertisedSkills = skillTurnSupport.advertiseSection(process, activeSkills);
+        if (advertisedSkills != null) {
+            messages.add(SystemMessage.from(advertisedSkills));
         }
         for (MemoryDocument m : memoryService.activeByProcessAndKind(
                 process.getTenantId(), process.getId(), MemoryKind.ARCHIVED_CHAT)) {

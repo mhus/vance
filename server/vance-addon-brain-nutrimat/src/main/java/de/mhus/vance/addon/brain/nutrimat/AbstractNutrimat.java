@@ -227,6 +227,8 @@ public abstract class AbstractNutrimat implements ThinkEngine {
     private final TurnContextHandlerRegistry turnContextHandlers;
     private final ShootyGuardService guardService;
     private final NotificationService notifications;
+    /** Available-skills section and the turn's skill tool set (skills.md §4g). */
+    private final SkillTurnSupport skillTurnSupport;
 
     protected AbstractNutrimat(
             ThinkProcessService thinkProcessService,
@@ -251,7 +253,8 @@ public abstract class AbstractNutrimat implements ThinkEngine {
             ClientTurnContextResolver clientTurnContextResolver,
             TurnContextHandlerRegistry turnContextHandlers,
             ShootyGuardService guardService,
-            NotificationService notifications) {
+            NotificationService notifications,
+            SkillTurnSupport skillTurnSupport) {
         this.thinkProcessService = thinkProcessService;
         this.objectMapper = objectMapper;
         this.streamingProperties = streamingProperties;
@@ -273,6 +276,7 @@ public abstract class AbstractNutrimat implements ThinkEngine {
         this.historyStrengthFilter = historyStrengthFilter;
         this.clientTurnContextResolver = clientTurnContextResolver;
         this.turnContextHandlers = turnContextHandlers;
+        this.skillTurnSupport = skillTurnSupport;
         this.guardService = guardService;
         this.notifications = notifications;
     }
@@ -505,7 +509,7 @@ public abstract class AbstractNutrimat implements ThinkEngine {
 
             List<ResolvedSkill> activeSkills = resolveActiveSkills(process);
 
-            ContextToolsApi tools = ctx.tools().withAdditional(skillPromptComposer.mergedTools(activeSkills));
+            ContextToolsApi tools = ctx.tools().withAdditional(skillTurnSupport.turnTools(process, activeSkills));
             List<ToolSpecification> toolSpecs = tools.primaryAsLc4j();
             ModelInfo modelInfo = modelCatalog.lookupOrDefault(
                     process.getTenantId(),
@@ -1352,6 +1356,12 @@ public abstract class AbstractNutrimat implements ThinkEngine {
                 skillPromptComposer.compose(activeSkills, ctxBuilder.build(), SkillTurnSupport.rawArgsByName(process));
         if (skillSection != null && !skillSection.isBlank()) {
             messages.add(SystemMessage.from(skillSection));
+        }
+        // "Available skills" — directly behind the active-skills section, one
+        // cache break instead of two (same placement as Ford/Frankie).
+        String advertisedSkills = skillTurnSupport.advertiseSection(process, activeSkills);
+        if (advertisedSkills != null) {
+            messages.add(SystemMessage.from(advertisedSkills));
         }
         // Compaction summaries first — plain SystemMessages, so the cache
         // marker stays on the last static block (prompt-caching.md §5a).

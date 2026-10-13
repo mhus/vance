@@ -18,7 +18,6 @@ import de.mhus.vance.brain.memory.CompactionResult;
 import de.mhus.vance.brain.memory.MemoryCompactionService;
 import de.mhus.vance.brain.memory.MemoryContextLoader;
 import de.mhus.vance.brain.progress.LlmCallTracker;
-import de.mhus.vance.brain.prompt.ForeignPromptText;
 import de.mhus.vance.brain.prompt.PromptContextBuilder;
 import de.mhus.vance.brain.thinkengine.EnginePromptResolver;
 import de.mhus.vance.brain.thinkengine.OrchestratorInterrupt;
@@ -694,21 +693,6 @@ public class TrillianControlEngine implements ThinkEngine {
             if (pe.humanSummary() != null) {
                 sb.append(escapeText(pe.humanSummary()));
             }
-            // The result / reason rides in the payload; the summary is a
-            // truncated headline. Control wants to relay the outcome and a
-            // conversation head has to post the result into its thread —
-            // either way the full text is the content, the summary is the
-            // label. Capped so one runaway worker cannot fill a prompt.
-            String detail = payloadString(pe, TrillianInternalApi.PAYLOAD_KEY_RESULT);
-            if (detail == null) {
-                detail = payloadString(pe, TrillianInternalApi.PAYLOAD_KEY_REASON);
-            }
-            if (detail == null) {
-                detail = payloadString(pe, "question");
-            }
-            if (detail != null) {
-                sb.append("\n\n").append(escapeText(truncateLines(detail, MAX_EVENT_DETAIL_CHARS)));
-            }
             sb.append("</process-event>");
             return sb.toString();
         }
@@ -747,34 +731,6 @@ public class TrillianControlEngine implements ThinkEngine {
             return sb.toString();
         }
         if (m instanceof SteerMessage.ExternalCommand ec) {
-            // A conversation head's commands get their own rendering: the
-            // contribution is foreign text with a named author, and the
-            // provenance note plus «…» quoting is exactly the
-            // injection-hygiene the session-reply path established. The
-            // generic map-dump below would hand the preview over as if it
-            // were this system's own words.
-            if (ec.params() != null && TrillianHeadService.COMMAND_THREAD_MESSAGE.equals(ec.command())) {
-                boolean reminder = Boolean.TRUE.equals(ec.params().get(TrillianHeadService.PARAM_REMINDER));
-                return "<thread-message thread=\""
-                        + escapeAttr(String.valueOf(ec.params().get(TrillianHeadService.PARAM_THREAD_ID)))
-                        + "\" from=\""
-                        + escapeAttr(String.valueOf(ec.params().get(TrillianHeadService.PARAM_FROM)))
-                        + "\""
-                        + (reminder ? " reminder=\"true\"" : "")
-                        + ">"
-                        + ForeignPromptText.PROVENANCE_NOTE
-                        + " "
-                        + escapeText(ForeignPromptText.quoted(
-                                String.valueOf(ec.params().get(TrillianHeadService.PARAM_PREVIEW))))
-                        + "</thread-message>";
-            }
-            if (ec.params() != null && TrillianHeadService.COMMAND_THREAD_CONCLUDE.equals(ec.command())) {
-                return "<thread-conclude thread=\""
-                        + escapeAttr(String.valueOf(ec.params().get(TrillianHeadService.PARAM_THREAD_ID)))
-                        + "\">This conversation is near its message limit. Post a final "
-                        + "note and archive it with inbox_archive; a new conversation starts "
-                        + "a fresh thread.</thread-conclude>";
-            }
             return "<external-command command=\""
                     + escapeAttr(ec.command()) + "\">"
                     + escapeText(ec.params() == null ? "" : ec.params().toString())
@@ -894,20 +850,6 @@ public class TrillianControlEngine implements ThinkEngine {
         return ToolErrorPayload.json(objectMapper, e);
     }
 
-    /**
-     * Cap on the result/reason/question a {@code <process-event>} renders
-     * ({@link #renderForLlm}). The headline summary is truncated anyway; the
-     * detail is content — a result to relay or post — but one runaway
-     * worker must not be able to fill a whole prompt with it.
-     */
-    static final int MAX_EVENT_DETAIL_CHARS = 8000;
-
-    private static String truncateLines(String s, int maxChars) {
-        if (s.length() <= maxChars) {
-            return s;
-        }
-        return s.substring(0, maxChars) + "…";
-    }
     // ──────────────────── Helpers ────────────────────
 
     private ThinkProcessStatus readCurrentStatus(ThinkProcessDocument process) {

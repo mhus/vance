@@ -420,8 +420,7 @@ public class TrillianHeadService {
         }
         Optional<ThinkProcessDocument> head = headOf(loop, item.getId());
         if (messages.size() >= LIMIT_NUDGE) {
-            if (head.isPresent()
-                    && !Boolean.TRUE.equals(head.get().getEngineParamOverrides().get(OVERRIDE_CONCLUDE_NUDGED))) {
+            if (head.isPresent() && !Boolean.TRUE.equals(overrideOf(head.get(), OVERRIDE_CONCLUDE_NUDGED))) {
                 thinkProcessService.setEngineParamOverride(head.get().getId(), OVERRIDE_CONCLUDE_NUDGED, true);
                 SteerMessage.ExternalCommand conclude = new SteerMessage.ExternalCommand(
                         Instant.now(),
@@ -455,8 +454,7 @@ public class TrillianHeadService {
         if (last == null || accountOf(loop).equals(authorOf(last))) {
             return; // answered — nothing owed
         }
-        String nudgedFor =
-                java.util.Objects.toString(head.get().getEngineParamOverrides().get(OVERRIDE_NUDGED_FOR), null);
+        String nudgedFor = java.util.Objects.toString(overrideOf(head.get(), OVERRIDE_NUDGED_FOR), null);
         java.time.Duration age = last.getCreatedAt() == null ? null : Duration.between(last.getCreatedAt(), now);
         if (age == null) {
             return;
@@ -521,6 +519,17 @@ public class TrillianHeadService {
         Object raw =
                 head.getEngineParams() == null ? null : head.getEngineParams().get(PARAM_HEAD_THREAD);
         return raw instanceof String s && !s.isBlank() ? s : null;
+    }
+
+    /**
+     * One sweep marker off a head's overrides — null-safe, because a
+     * freshly loaded process row carries a null map until someone sets a
+     * marker. The sweep reads heads it never wrote to.
+     */
+    private static @Nullable Object overrideOf(ThinkProcessDocument head, String key) {
+        return head.getEngineParamOverrides() == null
+                ? null
+                : head.getEngineParamOverrides().get(key);
     }
 
     private static String accountOf(ThinkProcessDocument loop) {

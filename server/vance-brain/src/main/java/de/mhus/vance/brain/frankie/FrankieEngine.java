@@ -779,7 +779,7 @@ public class FrankieEngine implements ThinkEngine {
      * ToolResults, ExternalCommands) as turn-local extras that get
      * rendered as user-role messages in this turn only.
      */
-    private List<SteerMessage> persistUserInputAndCollectExtras(
+    protected List<SteerMessage> persistUserInputAndCollectExtras(
             ThinkProcessDocument process, ChatMessageService chatLog, List<SteerMessage> inbox) {
         List<SteerMessage> extras = new ArrayList<>();
         for (SteerMessage m : inbox) {
@@ -1273,7 +1273,7 @@ public class FrankieEngine implements ThinkEngine {
         return false;
     }
 
-    private @Nullable String renderForLlm(SteerMessage m) {
+    protected @Nullable String renderForLlm(SteerMessage m) {
         if (m instanceof SteerMessage.UserChatInput) return null;
         if (m instanceof SteerMessage.ProcessEvent pe) {
             StringBuilder sb = new StringBuilder();

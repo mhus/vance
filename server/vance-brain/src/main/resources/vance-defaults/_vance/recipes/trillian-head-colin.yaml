@@ -5,12 +5,13 @@
 # contribution lands, woken per contribution via a
 # <thread-message> command, concluded with its thread.
 #
-# Runs the trillian-control engine (reactive, reply-style, no action
-# schema) with the toolset cut to the conversation surface: the
-# thread family, the archive tool, and the task handover to its own
-# loop. The control-side user_* tools and inbox_post are removed —
-# a head is not the human's half of the pair and must not steer the
-# loop's pause/attributes, nor post asks.
+# Runs the trillian-head engine — Frankie's loop forked into a
+# conversational shape (TrillianHeadEngine, the same extend as
+# TrillianWorkerEngine) — whose allowedTools() IS the conversation
+# surface: the thread family, the archive tool, and the task handover
+# to its own loop. Nothing of the worker core (file/exec/doc) and none
+# of the control-side user_* tools: a head talks, hands over, and
+# concludes.
 #
 # The head's chat log is working memory; the thread is the record.
 # Everything the counterpart gets to see arrives there via
@@ -23,7 +24,7 @@ description: |
   answers in the thread, hands real work to the Trillian's loop as a
   task, archives the conversation when it is settled.
 
-engine: trillian-control
+engine: trillian-head
 
 # Not listed: heads are never picked by a human — TrillianHeadService
 # spawns them by name.
@@ -37,30 +38,21 @@ params:
   fallbackModels:
     - default:fast
 
-allowedToolsRemove:
-  # The human's control surface is not a head's surface.
-  - user_status
-  - user_stop
-  - user_continue
-  - user_reset
-  - user_clear
-  - user_attr_set
-  - user_attr_clear
-  - user_attr_list
-  - user_project_request
-  - user_activity
-  - inbox_post
-  - vance_notify
-
+# Membership is the engine's (TrillianHeadEngine.allowedTools()); this
+# list is classification, not membership: the thread tools are built
+# worker-deferred (adam §7.2), and a head's answer channel must be
+# primary — a model that has to answer must not find its answer tool
+# behind a discovery wall. Same split as trillian-user-adam's thread
+# tools.
 allowedToolsAdd:
   - thread_get
   - thread_message_add
   - inbox_archive
+  - task_enqueue
 
-# promptMode defaults to APPEND — the engine prompt (shared with the
-# human-facing control) first, this after it. Same split as adam's
-# thread doctrine: what follows from the head mechanics belongs in
-# the head recipe, not in the engine prompt.
+# promptMode defaults to APPEND — Frankie's worker prompt first, this
+# after it. The worker doctrine below replaces what doesn't fit a
+# conversation (terminate contract, task framing) with the head's.
 promptPrefix: |
   ## You are a conversation head
 

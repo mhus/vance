@@ -19,10 +19,12 @@ import org.springframework.stereotype.Component;
 /**
  * Enqueues a refined task into the Trillian User process's inbox.
  *
- * <p>Exposed via {@code trillian-control}'s {@code allowedToolsAdd}.
- * The LLM is instructed (recipe prompt) to confirm the task line
- * with the human before calling this — discipline lives in the
- * prompt, not in this tool.
+ * <p>Exposed to the Trillian-side halves that may steer the work loop:
+ * the human-facing Control and the conversation heads both carry the
+ * {@code trillian-control} engine role — a head hands its counterpart's
+ * matter to the same loop, and results return to the requester. The LLM
+ * is instructed (recipe prompt) to confirm the task line before calling
+ * this — discipline lives in the prompt, not in this tool.
  *
  * <p>Returns the generated {@code taskId} so the LLM (and the human
  * later, in {@code user_status} output) can correlate

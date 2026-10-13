@@ -816,14 +816,6 @@ public class TrillianSessionBootstrapper {
         if (controlProcess.getId() == null || !CONTROL_ENGINE_NAME.equals(controlProcess.getThinkEngine())) {
             return false;
         }
-        // A conversation head runs the control engine but is not the human's
-        // half of a pair — it neither owns nor needs a Trillian of its own,
-        // and letting it through here would mint one per head turn. Heads
-        // are spawned against an existing loop (the peer they wire to) and
-        // end with their thread (the head sweep).
-        if (TrillianHeadService.headThreadOf(controlProcess) != null) {
-            return false;
-        }
         Optional<SessionDocument> controlSession = sessionService.findBySessionId(controlProcess.getSessionId());
         if (controlSession.isEmpty()) {
             return false;

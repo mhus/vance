@@ -1,7 +1,9 @@
 package de.mhus.vance.brain.trillian;
 
+import de.mhus.vance.api.inbox.MaximegalonStatus;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
+import de.mhus.vance.brain.ai.AiModelResolver;
 import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.recipe.AppliedRecipe;
 import de.mhus.vance.brain.recipe.RecipeResolver;
@@ -18,13 +20,17 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
 /**
@@ -83,6 +89,15 @@ public class TrillianHeadService {
     private static final String OVERRIDE_CONCLUDE_NUDGED = "headConcludeNudged";
 
     /**
+     * Why the sweep ended this head's conversation ({@link TrillianNature.HeadConclusion}
+     * name) — set before the thread is archived, read by the closing pass,
+     * so {@link TrillianNature#headConcluded} reports the real cause and not
+     * merely "archived". Absent means the head or a person archived it:
+     * {@code COMPLETED}.
+     */
+    private static final String OVERRIDE_CONCLUSION = "headConclusion";
+
+    /**
      * The message-count thresholds for the limit close. The head is nudged at
      * {@link #LIMIT_NUDGE} and the sweep closes mechanically at
      * {@link #LIMIT_CLOSE}; the hard wall remains
@@ -103,6 +118,7 @@ public class TrillianHeadService {
     private final MaximegalonService threads;
     private final TrillianNatureRegistry natureRegistry;
     private final TrillianModelGate modelGate;
+    private final TrillianInternalApi trillianApi;
 
     private final Duration reminderAfter;
     private final Duration fallbackAfter;
@@ -116,6 +132,7 @@ public class TrillianHeadService {
             MaximegalonService threads,
             TrillianNatureRegistry natureRegistry,
             TrillianModelGate modelGate,
+            TrillianInternalApi trillianApi,
             @Value("${vance.trillian.head.reminder-after-ms:300000}") long reminderAfterMs,
             @Value("${vance.trillian.head.fallback-after-ms:3600000}") long fallbackAfterMs,
             @Value("${vance.trillian.head.inactivity-ms:604800000}") long inactivityMs) {
@@ -126,6 +143,7 @@ public class TrillianHeadService {
         this.threads = threads;
         this.natureRegistry = natureRegistry;
         this.modelGate = modelGate;
+        this.trillianApi = trillianApi;
         this.reminderAfter = Duration.ofMillis(reminderAfterMs);
         this.fallbackAfter = Duration.ofMillis(fallbackAfterMs);
         this.inactivityAfter = Duration.ofMillis(inactivityMs);
@@ -140,16 +158,18 @@ public class TrillianHeadService {
      * the turn on the hub's home pod, whatever pod the contribution arrived
      * on.
      *
-     * <p>Refuses silently (one WARN) when no head could be had — the limit
-     * being reached is the only in-mechanics reason. The contribution stays
-     * in the thread; a head freeing up does not replay it, the sweep's
-     * unanswered-fallback eventually answers it mechanically.
+     * <p>When no head can be had (head limit, model gate) the contribution
+     * stays in the thread unanswered; the sweep tries again each round and,
+     * past the reminder window, declines it in the thread
+     * ({@link #sweepLoop}) — nobody waits on silence.
+     *
+     * @return {@code true} when a head took the contribution
      */
-    public void dispatchContribution(
+    public boolean dispatchContribution(
             ThinkProcessDocument loop, TrillianNature nature, MaximegalonDocument item, MaximegalonMessage message) {
         Optional<ThinkProcessDocument> head = ensureHead(loop, nature, item.getId());
         if (head.isEmpty()) {
-            return;
+            return false;
         }
         SteerMessage.ExternalCommand command = new SteerMessage.ExternalCommand(
                 Instant.now(),
@@ -168,14 +188,16 @@ public class TrillianHeadService {
                     item.getId(),
                     head.get().getId());
         }
+        return delivered;
     }
 
     // ──────────────────── Head lifecycle ────────────────────
 
     /**
      * The live head for {@code threadId}, if this loop's session holds one.
-     * The name is the join: {@link #HEAD_NAME_PREFIX}{@code + threadId}, so a
-     * head survives being looked up from anywhere and cannot exist twice.
+     * The join is the {@link #PARAM_HEAD_THREAD} marker; the process name
+     * ({@link #headNameFor}) keeps two pods from spawning the same head
+     * twice.
      */
     public Optional<ThinkProcessDocument> headOf(ThinkProcessDocument loop, String threadId) {
         return liveHeads(loop).stream()
@@ -186,11 +208,10 @@ public class TrillianHeadService {
     /** The live heads of this loop, oldest first — the limit population. */
     public List<ThinkProcessDocument> liveHeads(ThinkProcessDocument loop) {
         return thinkProcessService.findBySession(loop.getTenantId(), loop.getSessionId()).stream()
-                .filter(p -> p.getName() != null && p.getName().startsWith(HEAD_NAME_PREFIX))
+                .filter(p -> headThreadOf(p) != null)
                 .filter(p -> p.getStatus() != ThinkProcessStatus.CLOSED)
-                .sorted(java.util.Comparator.comparing(
-                        ThinkProcessDocument::getCreatedAt,
-                        java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())))
+                .sorted(Comparator.comparing(
+                        ThinkProcessDocument::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())))
                 .toList();
     }
 
@@ -198,20 +219,23 @@ public class TrillianHeadService {
      * Finds or spawns the head for {@code threadId}:
      *
      * <ol>
-     *   <li>a live head exists → it (a crashed-and-rebuilt head re-reads the
-     *       thread — the thread is the record, so nothing is lost);</li>
-     *   <li>the head limit is reached → empty (the conversation waits for
-     *       the sweep's mechanical answer — the entry gate that would refuse
-     *       the conversation outright comes with exposure, Phase 2);</li>
+     *   <li>a live head exists → it;</li>
+     *   <li>the head limit is reached → empty (the sweep retries and
+     *       eventually declines in the thread — the entry gate that would
+     *       refuse the conversation outright comes with exposure, Phase 2);</li>
      *   <li>the Nature's head recipe resolves, the model gate passes → a
      *       fresh head, IDLE, in the loop's session and the hub project,
-     *       wired to the loop as its peer.</li>
+     *       wired to the loop as its peer. A thread whose earlier head was
+     *       closed (force-stopped, crashed, thread re-opened) gets a new one
+     *       under the next free name — it re-reads the thread, which is the
+     *       record, so nothing is lost.</li>
      * </ol>
      *
      * <p>Creation is a plain Mongo write from whatever pod the contribution
      * arrived on; the dispatch routes the first turn to the home pod. Two
-     * pods racing the same fresh thread collide on the process name, and the
-     * loser adopts the winner's head on the next contribution.
+     * pods racing the same thread compute the same name and collide on the
+     * unique index; the loser re-reads and takes the winner's head, so the
+     * contribution in hand is not lost.
      */
     public Optional<ThinkProcessDocument> ensureHead(
             ThinkProcessDocument loop, TrillianNature nature, String threadId) {
@@ -228,7 +252,7 @@ public class TrillianHeadService {
             return Optional.empty();
         }
         String account = accountOf(loop);
-        String headName = HEAD_NAME_PREFIX + threadId;
+        String headName = headNameFor(loop, threadId);
         AppliedRecipe applied = recipeResolver.applyDefaulting(
                 loop.getTenantId(),
                 loop.getProjectId(),
@@ -241,9 +265,9 @@ public class TrillianHeadService {
                     account,
                     loop.getProjectId(),
                     loop.getProjectId(),
-                    de.mhus.vance.brain.ai.AiModelResolver.parseModelSpec(applied.params()));
+                    AiModelResolver.parseModelSpec(applied.params()));
         } catch (IllegalStateException denied) {
-            log.warn("Trillian head: refusing head for thread '{} — {}'", threadId, denied.getMessage());
+            log.warn("Trillian head: refusing head for thread '{}' — {}", threadId, denied.getMessage());
             return Optional.empty();
         }
         ThinkEngine engine = thinkEngineService
@@ -280,10 +304,10 @@ public class TrillianHeadService {
                     applied.effectiveAllowedTools(),
                     applied.connectionProfile(),
                     applied.defaultActiveSkills(),
-                    applied.allowedSkills() == null ? null : java.util.Set.copyOf(applied.allowedSkills()));
-        } catch (ThinkProcessService.ThinkProcessAlreadyExistsException race) {
-            log.debug("Trillian head: '{}' exists already — adopting it on the next contribution", headName);
-            return Optional.empty();
+                    applied.allowedSkills() == null ? null : Set.copyOf(applied.allowedSkills()));
+        } catch (ThinkProcessService.ThinkProcessAlreadyExistsException | DuplicateKeyException race) {
+            log.debug("Trillian head: '{}' was created concurrently — adopting it", headName);
+            return headOf(loop, threadId);
         }
         // IDLE, not started: a head has no greeting turn — its first turn is
         // the contribution that spawned it, and the dispatch schedules it.
@@ -297,38 +321,68 @@ public class TrillianHeadService {
         return Optional.of(head);
     }
 
+    /**
+     * The process name for a new head of {@code threadId}:
+     * {@link #HEAD_NAME_PREFIX}{@code + threadId} for the first, then
+     * {@code -2}, {@code -3}, … — names stay unique per session even for
+     * CLOSED processes, so a thread that outlived its head needs a fresh
+     * one. Deterministic from the session's state: two pods racing the same
+     * thread pick the same name and the unique index decides.
+     */
+    String headNameFor(ThinkProcessDocument loop, String threadId) {
+        long earlier = thinkProcessService.findBySession(loop.getTenantId(), loop.getSessionId()).stream()
+                .filter(p -> threadId.equals(headThreadOf(p)))
+                .count();
+        String base = HEAD_NAME_PREFIX + threadId;
+        return earlier == 0 ? base : base + "-" + (earlier + 1);
+    }
+
     // ──────────────────── Closing ────────────────────
 
     /**
-     * Closes the head of {@code threadId} if one lives — the one funnel for a
-     * concluded conversation. Idempotent by status check, so the sweep can
-     * call it every round without double-firing
-     * {@link TrillianNature#headConcluded}.
+     * Closes a head whose thread ended — the one funnel for a head. Fires
+     * {@link TrillianNature#headConcluded} with the cause the sweep recorded
+     * on the head ({@link #OVERRIDE_CONCLUSION}), {@code COMPLETED} when
+     * nobody did (the head or a person archived the thread). Idempotent by
+     * status check, so the sweep can call it every round without
+     * double-firing. Return addresses still pointing at the head are pruned:
+     * a late report for one of its tasks falls back to the peer.
      */
-    public void closeHeadFor(ThinkProcessDocument loop, String threadId, TrillianNature.HeadConclusion cause) {
-        Optional<ThinkProcessDocument> head = headOf(loop, threadId);
-        if (head.isEmpty()) {
-            return;
-        }
-        closeHead(loop, head.get(), threadId, cause);
-    }
-
     private void closeHead(
-            ThinkProcessDocument loop,
-            ThinkProcessDocument head,
-            String threadId,
-            TrillianNature.HeadConclusion cause) {
+            ThinkProcessDocument loop, TrillianNature nature, ThinkProcessDocument head, String threadId) {
         if (head.getStatus() == ThinkProcessStatus.CLOSED) {
             return;
         }
+        TrillianNature.HeadConclusion cause = conclusionOf(head);
         thinkProcessService.closeProcess(head.getId(), CloseReason.DONE);
         log.info("Trillian head: closed '{}' (thread '{}', cause {})", head.getId(), threadId, cause);
-        try {
-            natureRegistry
-                    .resolve(TrillianSessionBootstrapper.readNature(loop))
-                    .headConcluded(loop.getTenantId(), accountOf(loop), threadId, cause);
-        } catch (RuntimeException e) {
-            log.warn("Trillian head: headConcluded hook for thread '{}' failed: {}", threadId, e.toString());
+        int pruned = trillianApi.pruneRepliesTo(loop.getId(), head.getId());
+        if (pruned > 0) {
+            log.debug("Trillian head: pruned {} open task address(es) of '{}'", pruned, head.getId());
+        }
+        fireConcluded(nature, loop.getTenantId(), accountOf(loop), threadId, cause);
+    }
+
+    /**
+     * Ends a conversation mechanically — closing line, archive — and makes
+     * sure {@link TrillianNature#headConcluded} hears the cause exactly once:
+     * a live head carries it to its closing pass (recorded before the
+     * archive, so the pass cannot read an archive without a cause); a
+     * headless conversation has no closing pass and fires here.
+     */
+    private void endConversation(
+            ThinkProcessDocument loop,
+            TrillianNature nature,
+            MaximegalonDocument item,
+            Optional<ThinkProcessDocument> head,
+            TrillianNature.HeadConclusion cause,
+            String closingText) {
+        if (head.isPresent()) {
+            thinkProcessService.setEngineParamOverride(head.get().getId(), OVERRIDE_CONCLUSION, cause.name());
+        }
+        concludeThread(item.getTenantId(), accountOf(loop), item.getId(), closingText);
+        if (head.isEmpty()) {
+            fireConcluded(nature, item.getTenantId(), accountOf(loop), item.getId(), cause);
         }
     }
 
@@ -348,15 +402,17 @@ public class TrillianHeadService {
     }
 
     /**
-     * Every open conversation of {@code account}: posted over, archived,
-     * head closed. The account-end path (the Trillian's control session is
-     * closing, the loop session's cascade has already taken the heads down).
-     * Counterparts must not write into a thread whose account no longer
-     * exists — the closing line tells them where they stand.
+     * Every open conversation of {@code account}: posted over, archived, and
+     * reported to the Nature as {@code ACCOUNT_ENDED}. The account-end path:
+     * the Trillian's control session is closing, and the loop session's
+     * cascade has already taken the heads down — without a closing pass, so
+     * the conclusion is fired here, once per conversation. Counterparts must
+     * not write into a thread whose account no longer exists — the closing
+     * line tells them where they stand.
      *
      * @return the threads concluded by this call
      */
-    public List<String> concludeOpenThreads(String tenantId, String account) {
+    public List<String> concludeOpenThreads(String tenantId, String account, TrillianNature nature) {
         return openDiscussionsOf(tenantId, account).stream()
                 .map(item -> {
                     concludeThread(
@@ -364,17 +420,44 @@ public class TrillianHeadService {
                             account,
                             item.getId(),
                             "(automated) This agent has been shut down. The conversation is closed.");
+                    fireConcluded(nature, tenantId, account, item.getId(), TrillianNature.HeadConclusion.ACCOUNT_ENDED);
                     return item.getId();
                 })
                 .toList();
+    }
+
+    private static void fireConcluded(
+            TrillianNature nature,
+            String tenantId,
+            String account,
+            String threadId,
+            TrillianNature.HeadConclusion cause) {
+        try {
+            nature.headConcluded(tenantId, account, threadId, cause);
+        } catch (RuntimeException e) {
+            log.warn("Trillian head: headConcluded hook for thread '{}' failed: {}", threadId, e.toString());
+        }
+    }
+
+    private static TrillianNature.HeadConclusion conclusionOf(ThinkProcessDocument head) {
+        Object raw = overrideOf(head, OVERRIDE_CONCLUSION);
+        if (raw instanceof String name) {
+            try {
+                return TrillianNature.HeadConclusion.valueOf(name);
+            } catch (IllegalArgumentException unknown) {
+                log.debug("Trillian head: unknown conclusion '{}' on '{}'", name, head.getId());
+            }
+        }
+        return TrillianNature.HeadConclusion.COMPLETED;
     }
 
     // ──────────────────── Sweep ────────────────────
 
     /**
      * One round of bookkeeping for one multi-headed Trillian: heads whose
-     * thread ended, unanswered contributions (reminder, then mechanical
-     * fallback), the message-limit close, the inactivity close.
+     * thread ended, contributions nobody answered (retry a head, reminder,
+     * mechanical fallback, decline), the message-limit close, the
+     * inactivity close.
      *
      * <p>Safe to run concurrently on several pods — every action is either
      * an idempotent write guarded by a status/marker check or a post the
@@ -384,41 +467,46 @@ public class TrillianHeadService {
     public void sweepLoop(ThinkProcessDocument loop, Instant now) {
         String account = accountOf(loop);
         String tenantId = loop.getTenantId();
+        TrillianNature nature = natureRegistry.resolve(TrillianSessionBootstrapper.readNature(loop));
 
         // Heads first: a thread that ended takes its head down, wherever the
-        // end came from — the head's own archive call, a person, another pod.
+        // end came from — the head's own archive call, a person, this sweep's
+        // last round.
         for (ThinkProcessDocument head : liveHeads(loop)) {
             String threadId = headThreadOf(head);
             if (threadId == null) {
                 continue;
             }
             Optional<MaximegalonDocument> item = threads.findById(tenantId, threadId);
-            if (item.isEmpty() || item.get().getStatus() == de.mhus.vance.api.inbox.MaximegalonStatus.ARCHIVED) {
-                closeHead(loop, head, threadId, TrillianNature.HeadConclusion.COMPLETED);
+            if (item.isEmpty() || item.get().getStatus() == MaximegalonStatus.ARCHIVED) {
+                closeHead(loop, nature, head, threadId);
             }
         }
 
-        // Threads second — headless ones are swept too: a crashed head and no
-        // further contribution is exactly the case nothing else would close.
+        // Threads second — headless ones too: a conversation refused at the
+        // head limit, a head that died, a contribution that arrived while
+        // the loop was down. Nothing else would ever answer those.
         for (MaximegalonDocument item : openDiscussionsOf(tenantId, account)) {
-            sweepThread(loop, item, now);
+            sweepThread(loop, nature, item, now);
         }
     }
 
-    private void sweepThread(ThinkProcessDocument loop, MaximegalonDocument item, Instant now) {
+    private void sweepThread(ThinkProcessDocument loop, TrillianNature nature, MaximegalonDocument item, Instant now) {
         List<MaximegalonMessage> messages = messagesOf(item);
+        Optional<ThinkProcessDocument> head = headOf(loop, item.getId());
         // Message limit: nudge the head near the wall, close mechanically
-        // before the wall makes every further contribution a 500→refusal.
+        // before the wall makes every further contribution a refusal.
         if (messages.size() >= LIMIT_CLOSE) {
-            concludeThread(
-                    item.getTenantId(),
-                    accountOf(loop),
-                    item.getId(),
+            endConversation(
+                    loop,
+                    nature,
+                    item,
+                    head,
+                    TrillianNature.HeadConclusion.LIMIT,
                     "(automated) This conversation reached its message limit and is closed. "
                             + "Please open a new conversation to continue.");
             return;
         }
-        Optional<ThinkProcessDocument> head = headOf(loop, item.getId());
         if (messages.size() >= LIMIT_NUDGE) {
             if (head.isPresent() && !Boolean.TRUE.equals(overrideOf(head.get(), OVERRIDE_CONCLUDE_NUDGED))) {
                 thinkProcessService.setEngineParamOverride(head.get().getId(), OVERRIDE_CONCLUDE_NUDGED, true);
@@ -431,34 +519,36 @@ public class TrillianHeadService {
             }
             return; // near the limit, answering again is what the nudge covers
         }
-        // Inactivity: no contribution from anyone for the configured window
-        // — close, with the head (the sweep's closeHead pass on the next
-        // round, or this round's heads-first pass once archive has landed).
+        // Inactivity: no contribution from anyone for the configured window.
+        // The head goes in the next round's heads-first pass, with the cause.
         Instant lastActivity = messages.isEmpty() ? item.getCreatedAt() : createdAtOf(messages, item);
         if (lastActivity != null && Duration.between(lastActivity, now).compareTo(inactivityAfter) > 0) {
-            concludeThread(
-                    item.getTenantId(),
-                    accountOf(loop),
-                    item.getId(),
+            endConversation(
+                    loop,
+                    nature,
+                    item,
+                    head,
+                    TrillianNature.HeadConclusion.INACTIVITY,
                     "(automated) This conversation has been inactive and is now closed. "
                             + "Please open a new conversation to continue.");
             return;
         }
+        MaximegalonMessage last = messages.isEmpty() ? null : messages.get(messages.size() - 1);
+        if (last == null || accountOf(loop).equals(authorOf(last))) {
+            return; // answered — nothing owed
+        }
+        Duration age = last.getCreatedAt() == null ? null : Duration.between(last.getCreatedAt(), now);
         if (head.isEmpty()) {
+            sweepHeadless(loop, nature, item, last, age);
             return;
         }
         // Unanswered contribution: reminder, then fallback. The marker is the
         // message id, so a *new* contribution resets the ladder — the head
         // gets a fresh chance per contribution, not per thread.
-        MaximegalonMessage last = messages.isEmpty() ? null : messages.get(messages.size() - 1);
-        if (last == null || accountOf(loop).equals(authorOf(last))) {
-            return; // answered — nothing owed
-        }
-        String nudgedFor = java.util.Objects.toString(overrideOf(head.get(), OVERRIDE_NUDGED_FOR), null);
-        java.time.Duration age = last.getCreatedAt() == null ? null : Duration.between(last.getCreatedAt(), now);
         if (age == null) {
             return;
         }
+        String nudgedFor = Objects.toString(overrideOf(head.get(), OVERRIDE_NUDGED_FOR), null);
         if (!last.getId().equals(nudgedFor) && age.compareTo(reminderAfter) > 0) {
             thinkProcessService.setEngineParamOverride(head.get().getId(), OVERRIDE_NUDGED_FOR, last.getId());
             SteerMessage.ExternalCommand reminder = new SteerMessage.ExternalCommand(
@@ -478,18 +568,49 @@ public class TrillianHeadService {
                     "Trillian head: no answer for '{}' in thread '{}' — posting the mechanical fallback",
                     last.getId(),
                     item.getId());
-            try {
-                threads.postMessage(
-                        item.getTenantId(),
-                        item.getId(),
-                        accountOf(loop),
-                        "(automated) No answer was produced. The conversation stays open — "
-                                + "write again and it will be picked up.",
-                        /*parentId*/ null);
-            } catch (RuntimeException e) {
-                log.warn("Trillian head: fallback contribution for thread '{}' failed: {}", item.getId(), e.toString());
-            }
+            postAsTrillian(
+                    loop,
+                    item,
+                    "(automated) No answer was produced. The conversation stays open — "
+                            + "write again and it will be picked up.");
             thinkProcessService.setEngineParamOverride(head.get().getId(), OVERRIDE_NUDGED_FOR, null);
+        }
+    }
+
+    /**
+     * An open conversation with an unanswered contribution and no head:
+     * refused at the head limit, its head died, or the loop was down when it
+     * arrived. Each round tries to give it a head (a slot may have freed);
+     * past the reminder window without one, it is declined in the thread —
+     * an answer of the Trillian's, which also ends the retrying until the
+     * counterpart writes again.
+     */
+    private void sweepHeadless(
+            ThinkProcessDocument loop,
+            TrillianNature nature,
+            MaximegalonDocument item,
+            MaximegalonMessage last,
+            @Nullable Duration age) {
+        if (dispatchContribution(loop, nature, item, last)) {
+            log.info(
+                    "Trillian head: picked up unanswered contribution '{}' in thread '{}'", last.getId(), item.getId());
+            return;
+        }
+        if (age != null && age.compareTo(reminderAfter) > 0) {
+            log.warn("Trillian head: no head for thread '{}' — declining in the thread", item.getId());
+            postAsTrillian(
+                    loop,
+                    item,
+                    "(automated) This agent cannot take on this conversation right now. "
+                            + "Please write again later.");
+        }
+    }
+
+    private void postAsTrillian(ThinkProcessDocument loop, MaximegalonDocument item, String body) {
+        try {
+            threads.postMessage(item.getTenantId(), item.getId(), accountOf(loop), body, /*parentId*/ null);
+        } catch (RuntimeException e) {
+            log.warn("Trillian head: automated contribution for thread '{}' failed: {}", item.getId(), e.toString());
         }
     }
 
@@ -510,8 +631,8 @@ public class TrillianHeadService {
     public static boolean isConversation(MaximegalonDocument item) {
         return !item.isRequiresAction()
                 && item.getEffectType() == null
-                && item.getStatus() != de.mhus.vance.api.inbox.MaximegalonStatus.ARCHIVED
-                && item.getStatus() != de.mhus.vance.api.inbox.MaximegalonStatus.DISMISSED;
+                && item.getStatus() != MaximegalonStatus.ARCHIVED
+                && item.getStatus() != MaximegalonStatus.DISMISSED;
     }
 
     /** The thread a head process belongs to, from its engineParams marker. */

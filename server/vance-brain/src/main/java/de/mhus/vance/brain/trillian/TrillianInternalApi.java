@@ -62,18 +62,31 @@ public class TrillianInternalApi {
      * Task-request payload key: the process the conclusion events
      * ({@code task_done}/{@code task_failed}/{@code task_needs_input}) are
      * routed to instead of the loop's own peer — the conversation head that
-     * handed the task over. Absent on Control-raised tasks.
+     * handed the task over. Absent on Control-raised tasks: their results
+     * go to the peer anyway, so an address would only be bookkeeping.
      */
     public static final String PAYLOAD_KEY_REPLY_TO = "replyTo";
 
     /**
      * engineParams key on the Trillian-User loop: {@code taskId → replyTo
      * process}, recorded when the loop drains a {@code task_request}
-     * carrying a return address, consumed when it reports the task. Written
-     * and read on the loop's own lane only — the loop is the single writer
-     * of its engineParams during its turns.
+     * carrying a return address, consumed when it reports the task, and
+     * pruned when the head it points to closes. Every write is one atomic
+     * entry ({@code ThinkProcessService.setEngineParamEntry}) — Control
+     * writes the same process's {@code attributes} from its own lane, and a
+     * whole-map write from either side would roll back the other's.
      */
     public static final String PARAM_TASK_REPLIES = "taskReplies";
+
+    /**
+     * Engine role of the processes that may hand a task to their own loop
+     * ({@code task_enqueue}): the human-facing Control and the
+     * conversation heads. Its own role, not {@code trillian-control}: a
+     * head carrying the control role would have every {@code user_*} tool
+     * released by role and kept out only by tool membership — one
+     * {@code allowedToolsAdd} away from steering the loop like the human.
+     */
+    public static final String ROLE_TASK_REQUESTER = "trillian-task-requester";
 
     public static final String TASK_EVENT_REQUEST = "task_request";
     public static final String TASK_EVENT_DONE = "task_done";
@@ -357,10 +370,12 @@ public class TrillianInternalApi {
      * task came from. {@code null} keeps the historic behaviour: conclusions
      * go to the loop's peer, the human's Control. Control itself passes its
      * own id or null — both are the same address, so one rule covers both:
-     * <b>results return to the requester.</b>
+     * <b>results return to the requester.</b> An address equal to the loop's
+     * peer is dropped here rather than carried: the report falls back to the
+     * peer anyway, and an entry nobody needs would only grow the loop's map.
      *
-     * <p>The loop records the mapping when it drains the request (it owns the
-     * map, on its own lane) — this payload only carries it.
+     * <p>The loop records the mapping when it drains the request — this
+     * payload only carries it.
      *
      * @return the generated task id, or empty when dispatch failed
      */
@@ -371,7 +386,9 @@ public class TrillianInternalApi {
                 "Task request: " + (description.length() <= 240 ? description : description.substring(0, 237) + "...");
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put(PAYLOAD_KEY_DESCRIPTION, description);
-        if (replyToProcessId != null && !replyToProcessId.isBlank()) {
+        if (replyToProcessId != null
+                && !replyToProcessId.isBlank()
+                && !replyToProcessId.equals(paramString(peer, TrillianSessionBootstrapper.PARAM_PEER_PROCESS_ID))) {
             payload.put(PAYLOAD_KEY_REPLY_TO, replyToProcessId);
         }
         Optional<String> eventId =
@@ -483,42 +500,109 @@ public class TrillianInternalApi {
     }
 
     /**
+     * Records the return addresses of drained task requests on the loop —
+     * one atomic entry per task, so Control's concurrent attribute writes on
+     * the same process can neither lose an address nor be rolled back by
+     * one.
+     *
+     * @param replies {@code taskId → replyTo process id}
+     * @return how many entries could not be written (the process vanished)
+     */
+    public int recordReplyTo(String loopProcessId, Map<String, String> replies) {
+        int failed = 0;
+        for (Map.Entry<String, String> e : replies.entrySet()) {
+            try {
+                if (!thinkProcessService.setEngineParamEntry(
+                        loopProcessId, PARAM_TASK_REPLIES, e.getKey(), e.getValue())) {
+                    failed++;
+                }
+            } catch (IllegalArgumentException notAKey) {
+                // Task ids are generated UUIDs; one that is not a valid map
+                // key did not come from enqueueTask and has no address.
+                failed++;
+            }
+        }
+        return failed;
+    }
+
+    /**
+     * The return address a task was enqueued with, if any, without
+     * removing it — for {@code task_needs_input}: the task is not over, and
+     * its final report must still find its way back to the head that asked.
+     *
+     * @return the reply-to process id, or empty when the task has none
+     */
+    public Optional<String> peekReplyTo(String loopProcessId, String taskId) {
+        return thinkProcessService.findById(loopProcessId).flatMap(loop -> replyToOf(loop, taskId));
+    }
+
+    /**
      * The return address a task was enqueued with, if any — consumed by
      * the reporting tool: the loop's answer to a task raised by a
      * conversation head goes to that head (which posts it into its thread),
      * everything else goes to the peer as before. Removing the entry here
-     * is what keeps the map bounded: a task is reported once.
-     *
-     * <p>Runs inside the loop's turn, on the loop's lane — the same writer
-     * that recorded the entry at drain time, so the read-modify-write is
-     * single-threaded by construction.
+     * keeps the map bounded by the open tasks; what a report never consumes
+     * (a task abandoned after {@code task_needs_input}) is pruned when its
+     * head closes ({@link #pruneRepliesTo}).
      *
      * @return the reply-to process id, or empty when the task has none (or
      *         is unknown — a loop rebuilt with an old inbox lost it; the
      *         report then falls back to the peer, the historic target)
      */
     public Optional<String> consumeReplyTo(String loopProcessId, String taskId) {
-        Optional<ThinkProcessDocument> loopOpt = thinkProcessService.findById(loopProcessId);
-        if (loopOpt.isEmpty()) {
-            return Optional.empty();
+        Optional<String> target = peekReplyTo(loopProcessId, taskId);
+        if (target.isPresent()) {
+            thinkProcessService.setEngineParamEntry(loopProcessId, PARAM_TASK_REPLIES, taskId, null);
         }
-        ThinkProcessDocument loop = loopOpt.get();
-        Map<String, Object> params =
-                loop.getEngineParams() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(loop.getEngineParams());
-        Object raw = params.get(PARAM_TASK_REPLIES);
-        if (!(raw instanceof Map<?, ?> replies) || !replies.containsKey(taskId)) {
-            return Optional.empty();
+        return target;
+    }
+
+    /**
+     * Removes every return address pointing at {@code replyToProcessId} — the
+     * head closed, and a report for one of its tasks has nobody to post it
+     * any more (it falls back to the peer, where a human can still see it).
+     *
+     * @return the number of entries removed
+     */
+    public int pruneRepliesTo(String loopProcessId, String replyToProcessId) {
+        Optional<ThinkProcessDocument> loop = thinkProcessService.findById(loopProcessId);
+        if (loop.isEmpty()) {
+            return 0;
         }
-        Object target = replies.get(taskId);
-        Map<String, Object> updated = new LinkedHashMap<>();
-        for (Map.Entry<?, ?> e : replies.entrySet()) {
-            if (!e.getKey().equals(taskId) && e.getKey() instanceof String k) {
-                updated.put(k, e.getValue());
+        int removed = 0;
+        for (Map.Entry<String, Object> e : taskRepliesOf(loop.get()).entrySet()) {
+            if (replyToProcessId.equals(e.getValue())) {
+                thinkProcessService.setEngineParamEntry(loopProcessId, PARAM_TASK_REPLIES, e.getKey(), null);
+                removed++;
             }
         }
-        params.put(PARAM_TASK_REPLIES, updated);
-        thinkProcessService.replaceEngineParams(loop.getId(), params);
+        return removed;
+    }
+
+    private static Optional<String> replyToOf(ThinkProcessDocument loop, String taskId) {
+        Object target = taskRepliesOf(loop).get(taskId);
         return target instanceof String s && !s.isBlank() ? Optional.of(s) : Optional.empty();
+    }
+
+    private static Map<String, Object> taskRepliesOf(ThinkProcessDocument loop) {
+        Object raw =
+                loop.getEngineParams() == null ? null : loop.getEngineParams().get(PARAM_TASK_REPLIES);
+        Map<String, Object> replies = new LinkedHashMap<>();
+        if (raw instanceof Map<?, ?> map) {
+            for (Map.Entry<?, ?> e : map.entrySet()) {
+                if (e.getKey() instanceof String k) {
+                    replies.put(k, e.getValue());
+                }
+            }
+        }
+        return replies;
+    }
+
+    private static @Nullable String paramString(ThinkProcessDocument process, String key) {
+        Object raw = process.getEngineParams() == null
+                ? null
+                : process.getEngineParams().get(key);
+        return raw instanceof String s && !s.isBlank() ? s : null;
     }
 
     /**
@@ -676,21 +760,11 @@ public class TrillianInternalApi {
     /**
      * Sets a single attribute on the peer (Trillian-User) process.
      *
-     * <p><b>Not atomic.</b> The peer is read, the attribute map rebuilt,
-     * and the whole {@code engineParams} written back with
-     * {@code ThinkProcessService.replaceEngineParams} — a full replace,
-     * no version, no {@code $set} on the nested path. Two writers racing
-     * (the {@code //trillian attr} command runs on the WebSocket receive
-     * thread, {@code user_attr_set} on the Control lane) means last write
-     * wins, and the loser's attribute — or, worse, a concurrent change to
-     * an unrelated {@code engineParams} key such as {@code peerProcessId}
-     * — is silently rolled back to the snapshot this call read.
-     *
-     * <p>Tolerated because Control's tool calls run sequentially within a
-     * turn, so the two paths practically do not overlap. Closing it for
-     * real needs an atomic nested write on
-     * {@code engineParams.attributes.<key>} in {@code ThinkProcessService}
-     * (the dot-sanitising the key needs is already here).
+     * <p>One atomic entry write ({@code engineParams.attributes.<key>}):
+     * the loop writes other keys of the same {@code engineParams} from its
+     * own lane (task return addresses), and a whole-map write-back from here
+     * would roll those back — the race this used to tolerate while Control
+     * was the only writer.
      *
      * @return {@code true} when the peer existed and was updated
      */
@@ -699,31 +773,17 @@ public class TrillianInternalApi {
         if (peerOpt.isEmpty()) {
             return false;
         }
-        ThinkProcessDocument peer = peerOpt.get();
-        Map<String, Object> params = new LinkedHashMap<>();
-        if (peer.getEngineParams() != null) {
-            params.putAll(peer.getEngineParams());
-        }
-        Map<String, Object> attributes = new LinkedHashMap<>(readAttributes(peer));
         // The attribute name is LLM-chosen and lands as a nested Mongo map key;
         // a dot would be read as a path separator (project mongo_map_keys
         // gotcha), so escape it to '_'.
-        attributes.put(MongoKeys.sanitizeKey(name), value);
-        params.put(PARAM_ATTRIBUTES, attributes);
-        boolean written = thinkProcessService.replaceEngineParams(peer.getId(), params);
+        boolean written = thinkProcessService.setEngineParamEntry(
+                peerOpt.get().getId(), PARAM_ATTRIBUTES, MongoKeys.sanitizeKey(name), value);
         if (written) {
-            notifyNature(peer, attributes);
+            notifyNatureFresh(peerOpt.get());
         }
         return written;
     }
 
-    /**
-     * Removes all attributes from the peer (Trillian-User) process.
-     * Sets the attributes map to empty rather than removing the key —
-     * downstream readers can safely assume the key exists.
-     *
-     * @return number of attributes cleared, or -1 when peer is missing
-     */
     /**
      * Removes one attribute from the peer. Returns {@code false} when
      * there is no peer or the key was not set — a delete of something
@@ -735,22 +795,24 @@ public class TrillianInternalApi {
             return false;
         }
         ThinkProcessDocument peer = peerOpt.get();
-        Map<String, Object> attributes = readAttributes(peer);
-        if (attributes.remove(MongoKeys.sanitizeKey(name)) == null) {
+        String key = MongoKeys.sanitizeKey(name);
+        if (!readAttributes(peer).containsKey(key)) {
             return false;
         }
-        Map<String, Object> params = new LinkedHashMap<>();
-        if (peer.getEngineParams() != null) {
-            params.putAll(peer.getEngineParams());
-        }
-        params.put(PARAM_ATTRIBUTES, attributes);
-        boolean written = thinkProcessService.replaceEngineParams(peer.getId(), params);
+        boolean written = thinkProcessService.setEngineParamEntry(peer.getId(), PARAM_ATTRIBUTES, key, null);
         if (written) {
-            notifyNature(peer, attributes);
+            notifyNatureFresh(peer);
         }
         return written;
     }
 
+    /**
+     * Removes all attributes from the peer (Trillian-User) process — entry
+     * by entry, so the map itself stays (downstream readers can assume the
+     * key exists) and nothing else in {@code engineParams} is touched.
+     *
+     * @return number of attributes cleared, or -1 when peer is missing
+     */
     public int clearPeerAttributes(String callerProcessId) {
         Optional<ThinkProcessDocument> peerOpt = findPeer(callerProcessId);
         if (peerOpt.isEmpty()) {
@@ -761,14 +823,21 @@ public class TrillianInternalApi {
         if (existing.isEmpty()) {
             return 0;
         }
-        Map<String, Object> params = new LinkedHashMap<>();
-        if (peer.getEngineParams() != null) {
-            params.putAll(peer.getEngineParams());
+        for (String key : existing.keySet()) {
+            thinkProcessService.setEngineParamEntry(peer.getId(), PARAM_ATTRIBUTES, key, null);
         }
-        params.put(PARAM_ATTRIBUTES, new LinkedHashMap<>());
-        thinkProcessService.replaceEngineParams(peer.getId(), params);
-        notifyNature(peer, Map.of());
+        notifyNatureFresh(peer);
         return existing.size();
+    }
+
+    /**
+     * Notifies the Nature with the attribute map as it stands after the
+     * write — re-read, because an entry write does not hand the whole map
+     * back, and the Nature mirrors the whole map.
+     */
+    private void notifyNatureFresh(ThinkProcessDocument peer) {
+        ThinkProcessDocument fresh = thinkProcessService.findById(peer.getId()).orElse(peer);
+        notifyNature(fresh, readAttributes(fresh));
     }
 
     /**

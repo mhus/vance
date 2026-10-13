@@ -86,9 +86,11 @@ import tools.jackson.databind.ObjectMapper;
  *       human-paced, not autonomous.</li>
  *   <li>carries an {@code engineRoles} marker of
  *       {@value #ROLE_TRILLIAN_CONTROL} so Trillian-specific tools
- *       (task_enqueue, user_*, …) can gate themselves through
+ *       ({@code user_*}, …) can gate themselves through
  *       {@code requiresEngineRoles} instead of leaking into other
- *       chat engines.</li>
+ *       chat engines — plus {@code trillian-task-requester} for
+ *       {@code task_enqueue}, which it shares with the conversation
+ *       heads.</li>
  * </ul>
  */
 @Component
@@ -214,7 +216,7 @@ public class TrillianControlEngine implements ThinkEngine {
 
     @Override
     public Set<String> roles() {
-        return Set.of(ROLE_TRILLIAN_CONTROL);
+        return Set.of(ROLE_TRILLIAN_CONTROL, TrillianInternalApi.ROLE_TASK_REQUESTER);
     }
 
     @Override

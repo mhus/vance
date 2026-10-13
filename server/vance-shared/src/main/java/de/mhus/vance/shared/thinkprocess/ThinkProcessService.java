@@ -705,6 +705,38 @@ public class ThinkProcessService {
     }
 
     /**
+     * Sets or (on {@code null}) removes one entry of a map-valued
+     * {@code engineParams} key — {@code engineParams.<param>.<key>} — as an
+     * atomic {@code $set}/{@code $unset}. Unlike
+     * {@link #replaceEngineParams}, which writes back a whole snapshot, this
+     * cannot roll back what another writer changed in the meantime: two
+     * lanes keeping different keys (or different entries of the same key)
+     * of one process's engineParams stay out of each other's way.
+     *
+     * @param param the map-valued engineParams key, created when absent
+     * @param key the entry key; must not contain {@code '.'} or start with
+     *            {@code '$'} — Mongo would read it as a path or operator
+     * @return {@code true} when the process existed
+     */
+    public boolean setEngineParamEntry(String id, String param, String key, @Nullable Object value) {
+        requirePathSegment(param);
+        requirePathSegment(key);
+        Query query = new Query(Criteria.where("_id").is(id));
+        String path = "engineParams." + param + "." + key;
+        Update update = value == null ? new Update().unset(path) : new Update().set(path, value);
+        return mongoTemplate
+                        .updateFirst(query, update, ThinkProcessDocument.class)
+                        .getMatchedCount()
+                > 0;
+    }
+
+    private static void requirePathSegment(String segment) {
+        if (segment.isBlank() || segment.indexOf('.') >= 0 || segment.startsWith("$")) {
+            throw new IllegalArgumentException("illegal engine-param path segment: '" + segment + "'");
+        }
+    }
+
+    /**
      * Marks a process as hidden from the session chat-panel. Engines
      * that honour the flag (currently Frankie) suppress streaming
      * chunks + the final {@code emitReply} so the worker doesn't

@@ -88,7 +88,9 @@ public class TaskNeedsInputTool implements Tool {
         ThinkProcessDocument peer = peerOpt.get();
         // Results return to the requester — see TaskCompleteTool. A head
         // receiving this asks its counterpart; Control keeps asking the human.
-        String target = api.consumeReplyTo(ctx.processId(), taskId).orElse(peer.getId());
+        // Peeked, not consumed: the task is not over, and its final report
+        // must still reach the head that asked.
+        String target = api.peekReplyTo(ctx.processId(), taskId).orElse(peer.getId());
         Optional<String> eventId = api.dispatchTaskEvent(
                 ctx.processId(),
                 target,

@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.trillian.nature;
 
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 
 /**
  * The multi-headed side of the Nature hierarchy: one conversation process
@@ -16,11 +17,12 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
  * (heads run as the {@code _trillian-*} account in its hub), the context
  * belongs to the conversation, and the thread is the record.
  *
- * <p><b>Heads are recipes, not engine work.</b> A head runs the control
- * engine on the Nature's {@link #headRecipe()}; the recipe carries the
- * thread doctrine and cuts the toolset to the thread family plus the task
- * handover. The machinery — contribution event, listener, head lifecycle,
- * inactivity sweep — lives in {@code TrillianHeadService} and its
+ * <p><b>Heads are a Frankie fork, configured per Nature.</b> A head runs
+ * the {@code trillian-head} engine on the Nature's {@link #headRecipe()};
+ * the engine owns the conversation surface and doctrine, the recipe pins
+ * model and Nature, and {@link #headSystemAddendum} adds who is talking.
+ * The machinery — contribution event, listener, head lifecycle, sweep —
+ * lives in {@code TrillianHeadService} and its
  * listeners, not in the Nature; a concrete Nature on this side decides
  * persona and defaults, not mechanics. See
  * {@code planning/trillian-exposure.md} §3.2/§3.3.
@@ -31,7 +33,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
  */
 public abstract class TrillianNatureMultiHead extends TrillianNatureBase {
 
-    protected TrillianNatureMultiHead(de.mhus.vance.shared.thinkprocess.ThinkProcessService thinkProcessService) {
+    protected TrillianNatureMultiHead(ThinkProcessService thinkProcessService) {
         super(thinkProcessService);
     }
 
@@ -41,24 +43,20 @@ public abstract class TrillianNatureMultiHead extends TrillianNatureBase {
     }
 
     /**
-     * Head-aware prompt addendum dispatch: a head process runs the control
-     * engine, so this is the one hook the engine calls for it — the shared
-     * persona (the loop's attributes, read through the peer link) renders
-     * as for any control process, and the Nature's
-     * {@link #headPromptAddendum(ThinkProcessDocument)} lands next to it.
-     *
-     * <p>Without this dispatch a multi-headed Nature would have to decide in
-     * {@code controlPromptAddendum} whether it is talking to the human's
-     * control session or to a conversation head — a distinction every one of
-     * them would rebuild, and get wrong in its own way. Here, once.
+     * The head's system addendum: the shared persona (the loop's
+     * attributes, read through the head's peer link, exactly as Control
+     * renders them), then the Nature's {@link #headPromptAddendum}.
+     * {@code final} so every multi-headed Nature composes it the same way;
+     * the human's Control keeps {@link #controlPromptAddendum} and never
+     * sees head text.
      */
     @Override
-    public String controlPromptAddendum(ThinkProcessDocument process) {
-        String persona = super.controlPromptAddendum(process);
-        String head = headPromptAddendum(process);
-        if (head == null || head.isBlank()) {
+    public final String headSystemAddendum(ThinkProcessDocument head) {
+        String persona = personaOf(head);
+        String own = headPromptAddendum(head);
+        if (own == null || own.isBlank()) {
             return persona;
         }
-        return persona == null || persona.isBlank() ? head : persona + "\n\n" + head;
+        return persona.isBlank() ? own : persona + "\n\n" + own;
     }
 }

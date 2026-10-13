@@ -104,17 +104,25 @@ public interface TrillianNature {
     /**
      * Nature-specific addendum appended to a conversation head's system
      * prompt. The head doctrine (how to answer a thread, when to hand a
-     * task to the loop, when to conclude) lives in the head *recipe*, not
-     * here — same split as adam's thread tools: what follows from a Nature
-     * finding belongs in the Nature recipe. This hook is for what a
-     * Nature has to say about *itself* in a conversation.
+     * task to the loop, when to conclude) lives in the head engine's
+     * prompt ({@code trillian-head-prompt.md}), not here. This hook is for
+     * what a Nature has to say about *itself* in a conversation.
      *
-     * <p>Called by the multi-head side's prompt addendum dispatch only — a
-     * head runs the control engine, so the base attribute rendering (the
-     * shared persona, read from the loop via the peer link) applies to
-     * heads as well; this lands next to it.
+     * <p>Composed into {@link #headSystemAddendum} on the multi-headed
+     * side, after the shared persona — never into the human's Control.
      */
     default String headPromptAddendum(ThinkProcessDocument head) {
+        return "";
+    }
+
+    /**
+     * Everything this Nature adds to a conversation head's system prompt —
+     * what the head engine appends to its engine prompt. Composed on the
+     * multi-headed side ({@code TrillianNatureMultiHead}: the shared persona
+     * read off the loop, then {@link #headPromptAddendum}); a single-headed
+     * Nature has no heads and adds nothing.
+     */
+    default String headSystemAddendum(ThinkProcessDocument head) {
         return "";
     }
 
@@ -130,7 +138,7 @@ public interface TrillianNature {
 
     /** How a conversation of this Trillian ended — for {@link #headConcluded}. */
     enum HeadConclusion {
-        /** The head (or the sweep) archived the thread as settled. */
+        /** The head (or a person) archived the thread as settled. */
         COMPLETED,
         /** The message limit forced the close — open a new conversation. */
         LIMIT,
@@ -142,17 +150,19 @@ public interface TrillianNature {
 
     /**
      * A conversation of this Trillian ended — whatever ended it: the head
-     * archiving the thread as settled, the message limit, the inactivity
-     * sweep, or the end of the Trillian itself. One funnel, four causes:
-     * whatever a Nature wants to remember about a concluded conversation
-     * (a journal line, a summary to the owner) keys on this hook and needs
-     * no second dispatch.
+     * (or a person) archiving the thread as settled, the message limit, the
+     * inactivity sweep, or the end of the Trillian itself. One funnel, four
+     * causes: whatever a Nature wants to remember about a concluded
+     * conversation (a journal line, a summary to the owner) keys on this
+     * hook and needs no second dispatch.
      *
-     * <p>Never called for a thread that ended without a conversation (a
-     * headless thread archived by hand), and at most once per conversation:
-     * the closing path runs under a status check, so the fast event path and
-     * the sweep backstop do not double-fire. Swallows nothing — called
-     * best-effort from the closing service.
+     * <p>Exactly once per conversation. A conversation with a head reports
+     * when the sweep closes that head (status-checked, with the cause the
+     * sweep recorded on it); one the Trillian ends without a head (limit,
+     * inactivity, account end) reports when it is ended. Not called for a
+     * thread that ended without the Trillian taking part (a headless thread
+     * archived by hand). Best-effort: a throwing hook is logged, never
+     * propagated.
      */
     default void headConcluded(String tenantId, String account, String threadId, HeadConclusion cause) {}
 

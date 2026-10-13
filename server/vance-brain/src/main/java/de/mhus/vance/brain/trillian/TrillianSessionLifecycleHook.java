@@ -138,7 +138,8 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
             try {
                 de.mhus.vance.brain.trillian.nature.TrillianNature nature = natureRegistry.resolve(natureOf(session));
                 if (nature.multiHead()) {
-                    java.util.List<String> concluded = headService.concludeOpenThreads(session.getTenantId(), account);
+                    java.util.List<String> concluded =
+                            headService.concludeOpenThreads(session.getTenantId(), account, nature);
                     if (!concluded.isEmpty()) {
                         log.info("Trillian: archived {} open conversation(s) of '{}'", concluded.size(), account);
                     }

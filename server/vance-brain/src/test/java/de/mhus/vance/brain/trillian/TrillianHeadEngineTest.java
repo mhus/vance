@@ -5,6 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.brain.prompt.ForeignPromptText;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -86,6 +92,61 @@ class TrillianHeadEngineTest {
                 new SteerMessage.ExternalCommand(Instant.now(), null, "some_other_command", Map.of("a", 1));
 
         assertThat(TrillianHeadEngine.renderHeadMessage(other)).isNull();
+    }
+
+    @Test
+    void theHeadPrompt_isAConversationDoctrine_notFrankiesWorkerPrompt() {
+        // Frankie's prompt says "not a chat partner" and "don't ask" — the
+        // opposite of a head. The head names its own document, and that
+        // document must carry the answer channel and the handover.
+        assertThat(TrillianHeadEngine.PROMPT_PATH).endsWith("trillian-head-prompt.md");
+        String prompt = shippedPrompt("trillian-head-prompt.md");
+
+        assertThat(prompt)
+                .contains("thread_message_add")
+                .contains("task_enqueue")
+                .contains("inbox_archive")
+                .contains("reminder=\"true\"")
+                .doesNotContain("not a chat partner")
+                .doesNotContain("{{");
+    }
+
+    @Test
+    void theHead_carriesTheTaskRequesterRole_notTheControlRole() {
+        // task_enqueue is gated on the requester role; the control role would
+        // release every user_* steering tool as well.
+        TrillianHeadEngine engine = newEngine();
+
+        assertThat(engine.roles())
+                .containsExactly(TrillianInternalApi.ROLE_TASK_REQUESTER)
+                .doesNotContain(TrillianControlEngine.ROLE_TRILLIAN_CONTROL);
+        assertThat(engine.allowedTools()).doesNotContain("user_reset", "user_attr_set", "user_stop");
+    }
+
+    private static TrillianHeadEngine newEngine() {
+        return new TrillianHeadEngine(
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null);
+    }
+
+    /** The shipped prompt from {@code target/classes} — see TrillianUserPromptTest#prompt. */
+    private static String shippedPrompt(String name) {
+        Path testClasses;
+        try {
+            testClasses = Path.of(TrillianHeadEngineTest.class
+                    .getProtectionDomain()
+                    .getCodeSource()
+                    .getLocation()
+                    .toURI());
+        } catch (URISyntaxException e) {
+            throw new IllegalStateException("cannot locate target/test-classes", e);
+        }
+        Path file = testClasses.resolveSibling("classes").resolve("vance-defaults/_vance/prompts/" + name);
+        try {
+            return Files.readString(file, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     private static SteerMessage.ExternalCommand contribution(boolean reminder) {

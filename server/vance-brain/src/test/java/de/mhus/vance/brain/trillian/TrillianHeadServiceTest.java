@@ -38,10 +38,11 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 /**
- * The head lifecycle: spawn (wired to its loop, bounded by the limit), the
- * sweep's four mechanical ends, and the one-close guarantee — the fast path
- * and the sweep backstop must not double-fire
- * {@link TrillianNature#headConcluded}.
+ * The head lifecycle: spawn (wired to its loop, bounded by the limit,
+ * rebuilt under a fresh name, race-safe), the sweep's mechanical ends, the
+ * headless conversations nothing else answers, and the conclusion contract —
+ * {@link TrillianNature#headConcluded} once per conversation, with the real
+ * cause.
  */
 class TrillianHeadServiceTest {
 
@@ -62,6 +63,7 @@ class TrillianHeadServiceTest {
     private final MaximegalonService threads = mock(MaximegalonService.class);
     private final TrillianNatureRegistry natureRegistry = mock(TrillianNatureRegistry.class);
     private final TrillianModelGate modelGate = mock(TrillianModelGate.class);
+    private final TrillianInternalApi trillianApi = mock(TrillianInternalApi.class);
 
     private final TrillianNature nature = mock(TrillianNature.class);
     private final TrillianHeadService service = new TrillianHeadService(
@@ -72,6 +74,7 @@ class TrillianHeadServiceTest {
             threads,
             natureRegistry,
             modelGate,
+            trillianApi,
             REMINDER_MS,
             FALLBACK_MS,
             INACTIVITY_MS);
@@ -150,7 +153,7 @@ class TrillianHeadServiceTest {
                         eq(loop.getProjectId()),
                         eq(loop.getSessionId()),
                         eq("trillian-head-" + THREAD),
-                        eq("trillian-control"),
+                        eq("trillian-head"),
                         any(),
                         any(),
                         any(),
@@ -272,6 +275,74 @@ class TrillianHeadServiceTest {
     }
 
     @Test
+    void aThreadWhoseHeadWasClosed_getsANewHead_underTheNextFreeName() {
+        // Names are unique per session even for CLOSED processes: reusing
+        // trillian-head-<thread> would collide forever and the thread would
+        // never be answered again.
+        ThinkProcessDocument closed = headFor(THREAD);
+        closed.setStatus(ThinkProcessStatus.CLOSED);
+        sessionProcesses.add(closed);
+        givenHeadRecipe();
+        ThinkProcessDocument created = head("head-2");
+        when(thinkProcessService.create(
+                        anyString(),
+                        any(),
+                        any(),
+                        eq("trillian-head-" + THREAD + "-2"),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any()))
+                .thenReturn(created);
+
+        assertThat(service.ensureHead(loop, nature, THREAD)).contains(created);
+    }
+
+    @Test
+    void aRaceLostOnTheName_adoptsTheWinnersHead() {
+        givenHeadRecipe();
+        ThinkProcessDocument winner = head("head-other-pod");
+        when(thinkProcessService.create(
+                        anyString(),
+                        any(),
+                        any(),
+                        anyString(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any()))
+                .thenAnswer(inv -> {
+                    // The other pod's insert landed first.
+                    sessionProcesses.add(winner);
+                    throw new org.springframework.dao.DuplicateKeyException("tenant_session_name_idx");
+                });
+
+        assertThat(service.ensureHead(loop, nature, THREAD)).contains(winner);
+    }
+
+    @Test
     void aHeadRefusedByTheModelGate_isNotSpawned() {
         givenHeadRecipe();
         givenNoHeads();
@@ -342,6 +413,102 @@ class TrillianHeadServiceTest {
 
         verify(threads).postMessage(eq(TENANT), eq(THREAD), eq(ACCOUNT), any(), any());
         verify(threads).archive(TENANT, THREAD, ACCOUNT);
+        // Headless: no closing pass will follow, so the cause is reported now.
+        verify(nature).headConcluded(TENANT, ACCOUNT, THREAD, TrillianNature.HeadConclusion.INACTIVITY);
+    }
+
+    @Test
+    void anInactiveConversationWithAHead_reportsInactivity_whenTheHeadCloses() {
+        givenOpenThread(
+                conversationWithMessages(message("m-1", "bob", Instant.now().minus(2, ChronoUnit.HOURS))));
+        ThinkProcessDocument head = headFor(THREAD);
+        sessionProcesses.add(head);
+        when(threads.findById(TENANT, THREAD)).thenReturn(Optional.of(conversationWithMessages()));
+
+        service.sweepLoop(loop, Instant.now());
+
+        verify(threads).archive(TENANT, THREAD, ACCOUNT);
+        verify(nature, never()).headConcluded(any(), any(), any(), any());
+
+        // Next round: the thread is archived, the closing pass reads the cause.
+        when(threads.findById(TENANT, THREAD)).thenReturn(Optional.of(archivedConversation()));
+        when(threads.listForUser(TENANT, ACCOUNT, null)).thenReturn(List.of());
+        service.sweepLoop(loop, Instant.now());
+
+        verify(thinkProcessService).closeProcess("head-1", de.mhus.vance.api.thinkprocess.CloseReason.DONE);
+        verify(nature).headConcluded(TENANT, ACCOUNT, THREAD, TrillianNature.HeadConclusion.INACTIVITY);
+        verify(nature, org.mockito.Mockito.times(1)).headConcluded(any(), any(), any(), any());
+    }
+
+    @Test
+    void aClosingHead_prunesTheTaskAddressesThatPointAtIt() {
+        sessionProcesses.add(headFor(THREAD));
+        when(threads.findById(TENANT, THREAD)).thenReturn(Optional.of(archivedConversation()));
+
+        service.sweepLoop(loop, Instant.now());
+
+        verify(trillianApi).pruneRepliesTo("loop-1", "head-1");
+    }
+
+    // ──────────────────── Sweep: conversations without a head ────────────────────
+
+    @Test
+    void aHeadlessUnansweredContribution_getsAHeadOnceASlotIsFree() {
+        // Refused at the limit when it arrived; now a slot is free.
+        givenOpenThread(
+                conversationWithMessages(message("m-1", "bob", Instant.now().minus(30, ChronoUnit.SECONDS))));
+        givenHeadRecipe();
+        ThinkProcessDocument created = head("head-9");
+        when(thinkProcessService.create(
+                        anyString(),
+                        any(),
+                        any(),
+                        anyString(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any()))
+                .thenReturn(created);
+
+        service.sweepLoop(loop, Instant.now());
+
+        verify(router).dispatch(any(), eq("head-9"), any());
+        verify(threads, never()).postMessage(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void aHeadlessUnansweredContribution_pastTheReminderWindow_isDeclinedInTheThread() {
+        // Still no slot: the conversation is told so, instead of waiting on silence.
+        when(nature.headLimit()).thenReturn(0);
+        givenOpenThread(
+                conversationWithMessages(message("m-1", "bob", Instant.now().minus(5, ChronoUnit.MINUTES))));
+
+        service.sweepLoop(loop, Instant.now());
+
+        verify(threads).postMessage(eq(TENANT), eq(THREAD), eq(ACCOUNT), any(), any());
+        verify(threads, never()).archive(any(), any(), any());
+    }
+
+    @Test
+    void aHeadlessFreshContribution_isNotDeclinedYet() {
+        when(nature.headLimit()).thenReturn(0);
+        givenOpenThread(
+                conversationWithMessages(message("m-1", "bob", Instant.now().minus(10, ChronoUnit.SECONDS))));
+
+        service.sweepLoop(loop, Instant.now());
+
+        verify(threads, never()).postMessage(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -428,10 +595,14 @@ class TrillianHeadServiceTest {
         second.setId("thread-2");
         when(threads.listForUser(TENANT, ACCOUNT, null)).thenReturn(List.of(first, second));
 
-        List<String> concluded = service.concludeOpenThreads(TENANT, ACCOUNT);
+        List<String> concluded = service.concludeOpenThreads(TENANT, ACCOUNT, nature);
 
         assertThat(concluded).containsExactlyInAnyOrder(THREAD, "thread-2");
         verify(threads, org.mockito.Mockito.times(2)).archive(any(), any(), eq(ACCOUNT));
+        // The heads went with the loop session's cascade, without a closing
+        // pass — the account end itself reports each conversation, once.
+        verify(nature).headConcluded(TENANT, ACCOUNT, THREAD, TrillianNature.HeadConclusion.ACCOUNT_ENDED);
+        verify(nature).headConcluded(TENANT, ACCOUNT, "thread-2", TrillianNature.HeadConclusion.ACCOUNT_ENDED);
     }
 
     // ──────────────────── Fixtures ────────────────────
@@ -481,7 +652,7 @@ class TrillianHeadServiceTest {
     private void givenHeadRecipe() {
         AppliedRecipe applied = new AppliedRecipe(
                 "trillian-head-colin",
-                "trillian-control",
+                "trillian-head",
                 Map.of(),
                 null,
                 null,
@@ -496,9 +667,9 @@ class TrillianHeadServiceTest {
                 null);
         when(recipeResolver.applyDefaulting(any(), any(), any(), any(), any())).thenReturn(applied);
         ThinkEngine engine = mock(ThinkEngine.class);
-        when(engine.name()).thenReturn("trillian-control");
+        when(engine.name()).thenReturn("trillian-head");
         when(engine.version()).thenReturn("0.1.0");
-        when(thinkEngineService.resolve("trillian-control")).thenReturn(Optional.of(engine));
+        when(thinkEngineService.resolve("trillian-head")).thenReturn(Optional.of(engine));
     }
 
     private void givenOpenThread(MaximegalonDocument item) {

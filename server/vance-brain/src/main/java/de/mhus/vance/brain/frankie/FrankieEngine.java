@@ -819,6 +819,38 @@ public class FrankieEngine implements ThinkEngine {
      * <p>Blank text is silently skipped (no narration → no point).
      */
     /**
+     * Document-cascade path of the engine-default system prompt; the recipe
+     * param {@code promptDocument} still overrides it per spawn. A fork
+     * whose loop is Frankie's but whose job is not a worker's (the
+     * Trillian conversation head) names its own prompt here — Frankie's
+     * "you are a focused worker, not a chat partner" would contradict it,
+     * and a recipe {@code promptPrefix} can only append, not take that
+     * back.
+     */
+    protected String defaultPromptPath() {
+        return DEFAULT_PROMPT_PATH;
+    }
+
+    /**
+     * The prompt used when neither the document cascade nor the recipe
+     * resolve one — paired with {@link #defaultPromptPath()}, so a fork with
+     * its own prompt does not fall back to the worker wording.
+     */
+    protected String engineFallbackPrompt() {
+        return ENGINE_FALLBACK_PROMPT;
+    }
+
+    /**
+     * Process-specific text appended to the engine-default prompt, before
+     * the recipe overlay composes around it — what a fork knows about the
+     * process that no recipe can (the Trillian head: the shared persona read
+     * off its loop, the Nature's head addendum). Frankie has none.
+     */
+    protected @Nullable String systemPromptAddendum(ThinkProcessDocument process) {
+        return null;
+    }
+
+    /**
      * What a terminating tool call means for a <em>worker</em> process.
      *
      * <p>Frankie closes it: an explicit "done forever" has to release the
@@ -954,8 +986,12 @@ public class FrankieEngine implements ThinkEngine {
         PromptContextBuilder ctxBuilder = clientTurnContextResolver
                 .resolve(process, turnUserInputs)
                 .applyTo(PromptContextBuilder.forProcess(process, modelInfo).engine(NAME));
-        String basePath = paramString(process, "promptDocument", DEFAULT_PROMPT_PATH);
-        String engineDefault = enginePromptResolver.resolve(process, basePath, ENGINE_FALLBACK_PROMPT);
+        String basePath = paramString(process, "promptDocument", defaultPromptPath());
+        String engineDefault = enginePromptResolver.resolve(process, basePath, engineFallbackPrompt());
+        String addendum = systemPromptAddendum(process);
+        if (addendum != null && !addendum.isBlank()) {
+            engineDefault = engineDefault + "\n\n" + addendum;
+        }
         String base = systemPromptComposer.compose(process, engineDefault, ctxBuilder);
         // Project memory: language hints, memory.* settings, project
         // agent.md from the document cascade, foot-uploaded agent.md /

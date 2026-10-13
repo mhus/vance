@@ -55,6 +55,17 @@ public abstract class TrillianNatureBase implements TrillianNature {
      */
     @Override
     public String controlPromptAddendum(ThinkProcessDocument process) {
+        return personaOf(process);
+    }
+
+    /**
+     * The shared persona — the loop's attributes, read through the
+     * caller's peer link. Every process wired to the loop (Control, a
+     * conversation head) renders the same block, so the whole Trillian
+     * speaks as one; kept apart from {@link #controlPromptAddendum} so a
+     * Nature overriding Control's addendum does not reach the heads with it.
+     */
+    protected String personaOf(ThinkProcessDocument process) {
         Optional<ThinkProcessDocument> peer = resolvePeer(process);
         if (peer.isEmpty()) {
             return "";

@@ -1,6 +1,5 @@
 package de.mhus.vance.brain.trillian.tools;
 
-import de.mhus.vance.brain.trillian.TrillianControlEngine;
 import de.mhus.vance.brain.trillian.TrillianInternalApi;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.toolpack.Tool;
@@ -19,12 +18,13 @@ import org.springframework.stereotype.Component;
 /**
  * Enqueues a refined task into the Trillian User process's inbox.
  *
- * <p>Exposed to the Trillian-side halves that may steer the work loop:
+ * <p>Exposed to the Trillian-side halves that may hand work to the loop:
  * the human-facing Control and the conversation heads both carry the
- * {@code trillian-control} engine role — a head hands its counterpart's
- * matter to the same loop, and results return to the requester. The LLM
- * is instructed (recipe prompt) to confirm the task line before calling
- * this — discipline lives in the prompt, not in this tool.
+ * {@code trillian-task-requester} engine role — a head hands its
+ * counterpart's matter to the same loop, and results return to the
+ * requester. The LLM is instructed (recipe prompt) to confirm the task
+ * line before calling this — discipline lives in the prompt, not in this
+ * tool.
  *
  * <p>Returns the generated {@code taskId} so the LLM (and the human
  * later, in {@code user_status} output) can correlate
@@ -80,7 +80,10 @@ public class TaskEnqueueTool implements Tool {
 
     @Override
     public Set<String> requiresEngineRoles() {
-        return Set.of(TrillianControlEngine.ROLE_TRILLIAN_CONTROL);
+        // Its own role, carried by Control and by the conversation heads —
+        // not trillian-control, which would release every user_* tool to a
+        // head as well (TrillianInternalApi#ROLE_TASK_REQUESTER).
+        return Set.of(TrillianInternalApi.ROLE_TASK_REQUESTER);
     }
 
     @Override
@@ -95,7 +98,7 @@ public class TaskEnqueueTool implements Tool {
         Optional<ThinkProcessDocument> peerOpt = api.findPeer(ctx.processId());
         if (peerOpt.isEmpty()) {
             throw new ToolException("No Trillian User peer process found — this tool is only available "
-                    + "inside a Trillian-Control session");
+                    + "inside a Trillian-Control session or a conversation head");
         }
         ThinkProcessDocument peer = peerOpt.get();
         // Shared with the //trillian task command, so a task raised by

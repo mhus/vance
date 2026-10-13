@@ -750,6 +750,46 @@ class ThinkProcessServiceTest {
         assertThat(queryJson).contains("sess-1").contains("acme");
     }
 
+    // ─── setEngineParamEntry (atomic nested map entry) ──────────────────
+
+    @Test
+    void setEngineParamEntry_setsTheNestedPath() {
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class), eq(ThinkProcessDocument.class)))
+                .thenReturn(UpdateResult.acknowledged(1, 1L, null));
+
+        boolean ok = service.setEngineParamEntry("p-1", "taskReplies", "task-1", "head-1");
+
+        assertThat(ok).isTrue();
+        org.mockito.ArgumentCaptor<Update> update = org.mockito.ArgumentCaptor.forClass(Update.class);
+        verify(mongoTemplate).updateFirst(any(Query.class), update.capture(), eq(ThinkProcessDocument.class));
+        assertThat(update.getValue().getUpdateObject().toJson())
+                .contains("\"$set\"")
+                .contains("engineParams.taskReplies.task-1");
+    }
+
+    @Test
+    void setEngineParamEntry_null_unsetsTheNestedPath() {
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class), eq(ThinkProcessDocument.class)))
+                .thenReturn(UpdateResult.acknowledged(1, 1L, null));
+
+        service.setEngineParamEntry("p-1", "taskReplies", "task-1", null);
+
+        org.mockito.ArgumentCaptor<Update> update = org.mockito.ArgumentCaptor.forClass(Update.class);
+        verify(mongoTemplate).updateFirst(any(Query.class), update.capture(), eq(ThinkProcessDocument.class));
+        assertThat(update.getValue().getUpdateObject().toJson())
+                .contains("\"$unset\"")
+                .contains("engineParams.taskReplies.task-1");
+    }
+
+    @Test
+    void setEngineParamEntry_rejectsPathBreakingKeys() {
+        assertThatThrownBy(() -> service.setEngineParamEntry("p-1", "attributes", "a.b", "x"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.setEngineParamEntry("p-1", "attributes", "$where", "x"))
+                .isInstanceOf(IllegalArgumentException.class);
+        verify(mongoTemplate, never()).updateFirst(any(Query.class), any(Update.class), eq(ThinkProcessDocument.class));
+    }
+
     // ─── helpers ─────────────────────────────────────────────────────────
 
     private static ThinkProcessDocument process(String id) {

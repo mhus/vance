@@ -17,9 +17,8 @@ import org.junit.jupiter.api.Test;
 /**
  * The multi-headed side of the axis: what a concrete Nature inherits by
  * extending {@link TrillianNatureMultiHead} — the side itself, and the
- * head-aware prompt addendum dispatch that keeps
- * {@code controlPromptAddendum} from having to know whether it is talking
- * to the human's control session or to a conversation head.
+ * head's system addendum: the shared persona plus the Nature's head text,
+ * kept apart from what the human's Control gets.
  */
 class TrillianNatureMultiHeadTest {
 
@@ -62,13 +61,13 @@ class TrillianNatureMultiHeadTest {
             }
         };
 
-        String addendum = colin.controlPromptAddendum(headProcess());
+        String addendum = colin.headSystemAddendum(headProcess());
 
         assertThat(addendum).contains("persona").contains("In a conversation").contains("Always answer in the thread.");
     }
 
     @Test
-    void theHumansControlSession_getsThePlainPersona_noHeadDoctrine() {
+    void theHumansControlSession_getsThePlainPersona_noHeadText() {
         Map<String, Object> loopParams = new LinkedHashMap<>();
         loopParams.put("attributes", Map.of("persona", "cheerful and literal"));
         ThinkProcessDocument loop = new ThinkProcessDocument();
@@ -76,7 +75,13 @@ class TrillianNatureMultiHeadTest {
         loop.setEngineParams(loopParams);
         when(thinkProcessService.findById(any())).thenReturn(Optional.of(loop));
 
-        TrillianNatureColin colin = new TrillianNatureColin(thinkProcessService);
+        // Even a Nature with head text keeps it out of Control's prompt.
+        TrillianNatureColin colin = new TrillianNatureColin(thinkProcessService) {
+            @Override
+            public String headPromptAddendum(ThinkProcessDocument head) {
+                return "## In a conversation\nAlways answer in the thread.";
+            }
+        };
 
         Map<String, Object> controlParams = new LinkedHashMap<>();
         controlParams.put(TrillianSessionBootstrapper.PARAM_PEER_PROCESS_ID, "loop-1");
@@ -85,7 +90,13 @@ class TrillianNatureMultiHeadTest {
 
         String addendum = colin.controlPromptAddendum(control);
 
-        assertThat(addendum).contains("persona").doesNotContain("thread");
+        assertThat(addendum).contains("persona").doesNotContain("In a conversation");
+    }
+
+    @Test
+    void aSingleHeadedNature_addsNothingToAHead() {
+        assertThat(new TrillianNatureVoid(thinkProcessService).headSystemAddendum(headProcess()))
+                .isEmpty();
     }
 
     private static ThinkProcessDocument headProcess() {

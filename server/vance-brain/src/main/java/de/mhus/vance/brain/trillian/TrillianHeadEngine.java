@@ -1,14 +1,20 @@
 package de.mhus.vance.brain.trillian;
 
+import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.brain.ai.EngineChatFactory;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer;
+import de.mhus.vance.brain.context.PromptDateContextResolver;
+import de.mhus.vance.brain.events.StreamingProperties;
 import de.mhus.vance.brain.frankie.FrankieEngine;
 import de.mhus.vance.brain.frankie.FrankieProperties;
+import de.mhus.vance.brain.guard.ShootyGuardService;
 import de.mhus.vance.brain.memory.MemoryCompactionService;
 import de.mhus.vance.brain.memory.MemoryContextLoader;
 import de.mhus.vance.brain.progress.LlmCallTracker;
+import de.mhus.vance.brain.prompt.ClientTurnContextResolver;
 import de.mhus.vance.brain.prompt.ForeignPromptText;
+import de.mhus.vance.brain.prompt.ScratchpadPromptContributor;
 import de.mhus.vance.brain.skill.SkillPromptComposer;
 import de.mhus.vance.brain.skill.SkillResolver;
 import de.mhus.vance.brain.skill.SkillTriggerMatcher;
@@ -17,11 +23,13 @@ import de.mhus.vance.brain.thinkengine.EnginePromptResolver;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.SystemPromptComposer;
 import de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry;
+import de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -49,15 +57,20 @@ import tools.jackson.databind.ObjectMapper;
  * allowedTools()} is the engine's own small surface; a recipe trims
  * prompts and models, not membership.
  *
- * <p><b>What changes.</b> Three seams, none of Frankie's protocol:
+ * <p><b>What changes.</b> Four seams, none of Frankie's protocol:
  * <ol>
  *   <li>{@link #allowedTools()} / {@link #toolPoolLabels()} / {@link
  *       #roles()}: the conversation surface ({@code thread_get}, {@code
  *       thread_message_add}, {@code inbox_archive}, {@code task_enqueue}
  *       plus discovery and scratchpad), nothing demoted by worker-pool
- *       labels, and the {@code trillian-control} role that gates
- *       {@code task_enqueue} — the head carries it for the same reason
- *       Control does: it steers its own loop.</li>
+ *       labels, and the {@code trillian-task-requester} role that gates
+ *       {@code task_enqueue} — the one claim a head shares with Control.
+ *       Not the control role itself, which would release the
+ *       {@code user_*} steering tools.</li>
+ *   <li>{@link #defaultPromptPath()} / {@link #systemPromptAddendum}: the
+ *       head's own engine prompt ({@code trillian-head-prompt.md}) instead
+ *       of Frankie's worker prompt, plus the Nature's head addendum (the
+ *       shared persona, then what the Nature says about itself).</li>
  *   <li>{@link #renderForLlm}: contributions are foreign text with a
  *       named author — the provenance note and «…» quoting of the
  *       session-reply path, not a generic command dump — and task
@@ -117,7 +130,7 @@ public class TrillianHeadEngine extends FrankieEngine {
         base.add("inbox_archive");
         // The handover to the loop
         base.add("task_enqueue");
-        HEAD_TOOLS = java.util.Collections.unmodifiableSet(base);
+        HEAD_TOOLS = Collections.unmodifiableSet(base);
     }
 
     /**
@@ -128,12 +141,29 @@ public class TrillianHeadEngine extends FrankieEngine {
      */
     static final int MAX_EVENT_DETAIL_CHARS = 8000;
 
+    /**
+     * The head's engine prompt — the conversation doctrine. Its own
+     * document, not Frankie's: Frankie's prompt says "you are a focused
+     * worker, not a chat partner, don't ask questions", the opposite of a
+     * head, and a recipe {@code promptPrefix} can only append to it.
+     */
+    static final String PROMPT_PATH = "_vance/prompts/trillian-head-prompt.md";
+
+    private static final String FALLBACK_PROMPT =
+            "You are one conversation of this Trillian. Read each contribution with "
+                    + "thread_get and answer it in the thread with thread_message_add — "
+                    + "plain text here reaches nobody. Hand real work to your loop with "
+                    + "task_enqueue and post its result into the thread. When the matter "
+                    + "is settled, post a closing line and archive the thread with inbox_archive.";
+
+    private final TrillianNatureRegistry natureRegistry;
+
     public TrillianHeadEngine(
             ThinkProcessService thinkProcessService,
             FrankieProperties properties,
             EngineChatFactory engineChatFactory,
             LlmCallTracker llmCallTracker,
-            de.mhus.vance.brain.events.StreamingProperties streamingProperties,
+            StreamingProperties streamingProperties,
             ObjectMapper objectMapper,
             EnginePromptResolver enginePromptResolver,
             SystemPromptComposer systemPromptComposer,
@@ -141,16 +171,17 @@ public class TrillianHeadEngine extends FrankieEngine {
             SkillPromptComposer skillPromptComposer,
             SkillTurnSupport skillTurnSupport,
             SessionService sessionService,
-            de.mhus.vance.brain.context.PromptDateContextResolver promptDateContextResolver,
-            de.mhus.vance.brain.prompt.ScratchpadPromptContributor scratchpadPromptContributor,
+            PromptDateContextResolver promptDateContextResolver,
+            ScratchpadPromptContributor scratchpadPromptContributor,
             MemoryContextLoader memoryContextLoader,
             ModelCatalog modelCatalog,
             MemoryCompactionService memoryCompactionService,
             TurnContextHandlerRegistry turnContextHandlers,
-            de.mhus.vance.brain.guard.ShootyGuardService completionGuardService,
+            ShootyGuardService completionGuardService,
             AttachedUserMessageComposer attachedUserMessageComposer,
-            de.mhus.vance.brain.prompt.ClientTurnContextResolver clientTurnContextResolver,
-            SkillTriggerMatcher skillTriggerMatcher) {
+            ClientTurnContextResolver clientTurnContextResolver,
+            SkillTriggerMatcher skillTriggerMatcher,
+            TrillianNatureRegistry natureRegistry) {
         super(
                 thinkProcessService,
                 properties,
@@ -174,6 +205,7 @@ public class TrillianHeadEngine extends FrankieEngine {
                 attachedUserMessageComposer,
                 clientTurnContextResolver,
                 skillTriggerMatcher);
+        this.natureRegistry = natureRegistry;
     }
 
     @Override
@@ -220,16 +252,43 @@ public class TrillianHeadEngine extends FrankieEngine {
     }
 
     /**
-     * The head carries the {@code trillian-control} role: it has the same
-     * legitimate claim as the human's half — handing a task to its own
-     * loop ({@code task_enqueue} is role-gated on it). Everything the
-     * role would additionally release ({@code user_*}) stays invisible
-     * through {@link #allowedTools()} membership, which is the head's
-     * actual surface.
+     * The head may hand a task to its own loop — the one claim it shares
+     * with the human's Control ({@code task_enqueue} is gated on
+     * {@link TrillianInternalApi#ROLE_TASK_REQUESTER}). Deliberately not
+     * {@code trillian-control}: that role releases the {@code user_*}
+     * steering tools, and a head must not get them even through a recipe's
+     * {@code allowedToolsAdd}.
      */
     @Override
     public Set<String> roles() {
-        return Set.of(TrillianControlEngine.ROLE_TRILLIAN_CONTROL);
+        return Set.of(TrillianInternalApi.ROLE_TASK_REQUESTER);
+    }
+
+    @Override
+    protected String defaultPromptPath() {
+        return PROMPT_PATH;
+    }
+
+    @Override
+    protected String engineFallbackPrompt() {
+        return FALLBACK_PROMPT;
+    }
+
+    /**
+     * Who is talking: the Nature's head addendum — the shared persona read
+     * off the loop plus whatever the Nature says about itself in a
+     * conversation ({@code TrillianNature#headSystemAddendum}).
+     */
+    @Override
+    protected @Nullable String systemPromptAddendum(ThinkProcessDocument process) {
+        try {
+            return natureRegistry
+                    .resolve(TrillianSessionBootstrapper.readNature(process))
+                    .headSystemAddendum(process);
+        } catch (RuntimeException e) {
+            log.warn("Trillian head id='{}': nature addendum failed: {}", process.getId(), e.toString());
+            return null;
+        }
     }
 
     /**
@@ -327,7 +386,7 @@ public class TrillianHeadEngine extends FrankieEngine {
                             .tenantId(process.getTenantId())
                             .sessionId(process.getSessionId())
                             .thinkProcessId(process.getId())
-                            .role(de.mhus.vance.api.chat.ChatRole.USER)
+                            .role(ChatRole.USER)
                             .content(uci.content())
                             .build());
                 }
@@ -339,7 +398,7 @@ public class TrillianHeadEngine extends FrankieEngine {
                         .tenantId(process.getTenantId())
                         .sessionId(process.getSessionId())
                         .thinkProcessId(process.getId())
-                        .role(de.mhus.vance.api.chat.ChatRole.USER)
+                        .role(ChatRole.USER)
                         .content(rendered)
                         .build());
             }

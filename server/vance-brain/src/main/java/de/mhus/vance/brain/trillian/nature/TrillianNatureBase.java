@@ -21,8 +21,12 @@ import lombok.RequiredArgsConstructor;
  * derive later Natures from it directly. That conflates two different
  * things: "what every Trillian does" and "what generation zero does".
  * The moment Nature void gains something of its own — or loses something as
- * an experiment — every descendant would inherit it silently. Natures
- * extend this class; Nature void is one of them.
+ * an experiment — every descendant would inherit it silently.
+ *
+ * <p><b>Concrete Natures do not extend this class directly</b> but one side
+ * of the head axis ({@link TrillianNature#multiHead()}):
+ * {@link TrillianNatureSingleHead} today. Nature void and adam are both
+ * single-headed siblings there — neither derives from the other.
  *
  * <p>Subclasses supply {@link #id()} and {@link #title()} and override
  * whichever hooks their generation actually changes.
@@ -39,9 +43,7 @@ public abstract class TrillianNatureBase implements TrillianNature {
      */
     @Override
     public String userPromptAddendum(ThinkProcessDocument process) {
-        return renderAttributes(
-                TrillianInternalApi.readAttributes(process),
-                "set by Control");
+        return renderAttributes(TrillianInternalApi.readAttributes(process), "set by Control");
     }
 
     /**
@@ -56,17 +58,14 @@ public abstract class TrillianNatureBase implements TrillianNature {
         if (peer.isEmpty()) {
             return "";
         }
-        return renderAttributes(
-                TrillianInternalApi.readAttributes(peer.get()),
-                "currently active on this Trillian");
+        return renderAttributes(TrillianInternalApi.readAttributes(peer.get()), "currently active on this Trillian");
     }
 
     private Optional<ThinkProcessDocument> resolvePeer(ThinkProcessDocument process) {
         if (process.getEngineParams() == null) {
             return Optional.empty();
         }
-        Object raw = process.getEngineParams()
-                .get(TrillianSessionBootstrapper.PARAM_PEER_PROCESS_ID);
+        Object raw = process.getEngineParams().get(TrillianSessionBootstrapper.PARAM_PEER_PROCESS_ID);
         if (!(raw instanceof String peerId) || peerId.isBlank()) {
             return Optional.empty();
         }
@@ -86,8 +85,11 @@ public abstract class TrillianNatureBase implements TrillianNature {
                 .append("the User-Loop, so the whole Trillian behaves as one.")
                 .append("\n\n");
         for (Map.Entry<String, Object> e : attrs.entrySet()) {
-            sb.append("- **").append(e.getKey()).append(":** ")
-                    .append(formatValue(e.getValue())).append('\n');
+            sb.append("- **")
+                    .append(e.getKey())
+                    .append(":** ")
+                    .append(formatValue(e.getValue()))
+                    .append('\n');
         }
         return sb.toString();
     }

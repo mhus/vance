@@ -7,7 +7,8 @@ import org.springframework.stereotype.Component;
  * Trillian Nature {@code void} — the architecture-proof baseline.
  *
  * <p>Deliberately empty beyond its identity: everything it does lives in
- * {@link TrillianNatureBase}, and everything it does not do is what makes
+ * {@link TrillianNatureBase} and its single-headed branch
+ * {@link TrillianNatureSingleHead}, and everything it does not do is what makes
  * it the baseline. No personality, no reflexion, no persistence — the
  * attribute map is rendered into both prompts and dies with the process
  * rows.
@@ -22,7 +23,7 @@ import org.springframework.stereotype.Component;
  * default-alias also pins {@code void} today.
  */
 @Component
-public class TrillianNatureVoid extends TrillianNatureBase {
+public class TrillianNatureVoid extends TrillianNatureSingleHead {
 
     public static final String ID = "void";
 

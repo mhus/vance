@@ -308,6 +308,11 @@ class TrillianSessionBootstrapperTest {
                     }
 
                     @Override
+                    public boolean multiHead() {
+                        return false;
+                    }
+
+                    @Override
                     public Map<String, Object> initialAttributes(String tenantId, String projectId, String account) {
                         return Map.of("name", "Ada");
                     }
@@ -490,6 +495,11 @@ class TrillianSessionBootstrapperTest {
                     @Override
                     public String title() {
                         return "test";
+                    }
+
+                    @Override
+                    public boolean multiHead() {
+                        return false;
                     }
 
                     @Override

@@ -34,16 +34,14 @@ class TrillianNatureRegistryTest {
 
     @Test
     void anUppercaseId_isRefused() {
-        assertThatThrownBy(() -> registryOf(new FakeNature("Alpha")))
-                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> registryOf(new FakeNature("Alpha"))).isInstanceOf(IllegalStateException.class);
     }
 
     @Test
     void anEmptyId_isRefused() {
         // Previously skipped with a warning, which left the Nature
         // unreachable and looking broken rather than misconfigured.
-        assertThatThrownBy(() -> registryOf(new FakeNature("")))
-                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> registryOf(new FakeNature(""))).isInstanceOf(IllegalStateException.class);
     }
 
     @Test
@@ -54,8 +52,7 @@ class TrillianNatureRegistryTest {
         assertThatThrownBy(() -> registryOf(new FakeNature("user")))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("trillian-user");
-        assertThatThrownBy(() -> registryOf(new FakeNature("worker")))
-                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> registryOf(new FakeNature("worker"))).isInstanceOf(IllegalStateException.class);
     }
 
     @Test
@@ -77,6 +74,11 @@ class TrillianNatureRegistryTest {
         @Override
         public String title() {
             return "Fake " + id;
+        }
+
+        @Override
+        public boolean multiHead() {
+            return false;
         }
     }
 }

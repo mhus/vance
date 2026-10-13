@@ -4,6 +4,7 @@ import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.command.EngineCommand;
 import de.mhus.vance.brain.command.EngineCommandHandler;
 import de.mhus.vance.brain.command.EngineCommandResult;
+import de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.time.Duration;
@@ -47,6 +48,7 @@ public class TrillianCommandHandler implements EngineCommandHandler {
     private final org.springframework.beans.factory.ObjectProvider<TrillianSessionBootstrapper> sessionBootstrapper;
     private final ThinkProcessService thinkProcessService;
     private final de.mhus.vance.shared.user.UserService userService;
+    private final TrillianNatureRegistry natureRegistry;
 
     @Override
     public String verb() {
@@ -121,7 +123,17 @@ public class TrillianCommandHandler implements EngineCommandHandler {
         controlInfo.put("status", nameOf(control.getStatus()));
         controlInfo.put("sessionId", control.getSessionId());
         controlInfo.put("projectId", control.getProjectId());
-        controlInfo.put("nature", param(control, TrillianSessionBootstrapper.PARAM_NATURE));
+        Object nature = param(control, TrillianSessionBootstrapper.PARAM_NATURE);
+        controlInfo.put("nature", nature);
+        // Resolved, not read: an unknown nature id falls back to void, and
+        // the head axis of what actually runs is the one worth showing.
+        controlInfo.put(
+                "heads",
+                natureRegistry
+                                .resolve(nature == null ? null : nature.toString())
+                                .multiHead()
+                        ? "multi"
+                        : "single");
         out.put("control", controlInfo);
 
         Map<String, Object> workerInfo = new LinkedHashMap<>();
@@ -346,9 +358,12 @@ public class TrillianCommandHandler implements EngineCommandHandler {
     private String renderSummary(Map<String, Object> worker, Map<String, Object> all) {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> workers = (List<Map<String, Object>>) all.get("workers");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> control = (Map<String, Object>) all.get("control");
         return "worker " + worker.get("account") + " " + worker.get("status")
                 + ", inbox " + worker.get("pendingInbox")
-                + ", " + workers.size() + " running task worker(s)";
+                + ", " + workers.size() + " running task worker(s)"
+                + ", " + control.get("heads") + "-headed";
     }
 
     private @org.jspecify.annotations.Nullable Object param(ThinkProcessDocument process, String key) {

@@ -10,6 +10,7 @@ import de.mhus.vance.api.command.EngineCommandOutcome;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.command.EngineCommand;
 import de.mhus.vance.brain.command.EngineCommandResult;
+import de.mhus.vance.brain.trillian.nature.TrillianNatureVoid;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -40,6 +41,9 @@ class TrillianCommandHandlerTest {
     @Mock
     de.mhus.vance.shared.thinkprocess.ThinkProcessService thinkProcessService;
 
+    @Mock
+    de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry natureRegistry;
+
     @InjectMocks
     TrillianCommandHandler handler;
 
@@ -51,6 +55,17 @@ class TrillianCommandHandlerTest {
             return new TrillianInternalApi.PeerStateSnapshot(p.getId(), p.getName(), p.getStatus(), 3L);
         });
         when(api.listTaskWorkers(any())).thenReturn(List.of());
+        when(natureRegistry.resolve(any())).thenReturn(new TrillianNatureVoid(thinkProcessService));
+    }
+
+    @Test
+    void info_reportsTheHeadAxisOfTheResolvedNature() {
+        EngineCommandResult result = handler.handle(control(), command("info"));
+
+        // The control carries an id the registry does not know ("0"); what
+        // is shown is the axis of the Nature that actually runs.
+        assertThat(control(result)).containsEntry("heads", "single");
+        assertThat(result.message()).contains("single-headed");
     }
 
     @Test
@@ -403,6 +418,11 @@ class TrillianCommandHandlerTest {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> value(EngineCommandResult result) {
         return (Map<String, Object>) result.value();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> control(EngineCommandResult result) {
+        return (Map<String, Object>) value(result).get("control");
     }
 
     @SuppressWarnings("unchecked")

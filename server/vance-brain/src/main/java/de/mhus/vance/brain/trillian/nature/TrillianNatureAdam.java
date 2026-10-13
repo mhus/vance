@@ -22,9 +22,10 @@ import org.springframework.stereotype.Component;
 /**
  * Trillian Nature-A, {@code adam} — the first persistent Trillian.
  *
- * <p>Adds to {@link TrillianNatureBase}, not to Nature void: the attribute
- * map and how it renders into both prompts are shared mechanics, not
- * generation-zero behaviour to inherit. What distinguishes adam is
+ * <p>Adds to {@link TrillianNatureSingleHead}, not to Nature void: the
+ * attribute map and how it renders into both prompts are shared mechanics,
+ * not generation-zero behaviour to inherit. Single-headed because its loop
+ * reads its own inbox (the {@code inbox_unread} finding below). What distinguishes adam is
  * that its attributes <b>outlive the process rows</b>.
  *
  * <p>Under Nature void an attribute lives in {@code engineParams} and dies
@@ -45,7 +46,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @Slf4j
-public class TrillianNatureAdam extends TrillianNatureBase {
+public class TrillianNatureAdam extends TrillianNatureSingleHead {
 
     public static final String ID = "adam";
 

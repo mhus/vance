@@ -37,6 +37,22 @@ public interface TrillianNature {
     /** Short display title for logs and UI. */
     String title();
 
+    // ─── Structure ────────────────────────────────────────────────
+
+    /**
+     * Whether this Nature runs a separate head per conversation thread
+     * ({@code true}) or carries everything on its one loop ({@code false}).
+     *
+     * <p>This is an axis of the class hierarchy, not a per-Nature switch:
+     * {@link TrillianNatureSingleHead} answers it {@code final}, so a
+     * concrete Nature picks its side by what it extends and cannot flip it
+     * by overriding. Deliberately without a default — a Nature that
+     * implements this interface directly has to say which side it is on.
+     * The multi-head side is planned in {@code planning/trillian-a2a.md}
+     * §3.3; today every Nature is single-headed.
+     */
+    boolean multiHead();
+
     // ─── Prompt overlays ──────────────────────────────────────────
 
     /**

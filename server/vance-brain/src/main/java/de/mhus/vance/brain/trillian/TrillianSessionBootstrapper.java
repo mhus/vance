@@ -7,6 +7,8 @@ import de.mhus.vance.api.session.SessionLifecycleConfig;
 import de.mhus.vance.api.session.SessionStatus;
 import de.mhus.vance.api.session.SuspendPolicy;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
+import de.mhus.vance.brain.project.ProjectLifecycleService;
+import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.brain.recipe.AppliedRecipe;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
@@ -207,6 +209,10 @@ public class TrillianSessionBootstrapper {
     /** Cross-pod lease: one bootstrap per control process at a time. */
     private final TrillianWakeupClaimService claimService;
 
+    private final TrillianOwnerRequirement ownerRequirement;
+    /** Lazy: the lifecycle service sits on a long bean chain. */
+    private final ObjectProvider<ProjectLifecycleService> lifecycleProvider;
+
     /** P2/D8: relaxed model gate for the unattended loop. */
     private final TrillianModelGate modelGate;
 
@@ -316,12 +322,6 @@ public class TrillianSessionBootstrapper {
             suppressLoop(controlSession, controlProcess, TrillianActivationGate.refusalMessage());
             return;
         }
-        // 0. Placement: the user-loop lives in the Trillian's own hub
-        //    (_user_<trillian>), which is podless by design. Self-waking no
-        //    longer assumes a home pod — the heartbeat claims its wake slot
-        //    cross-pod (see TrillianHeartbeatTick), so a podless home is as
-        //    workable as a placed one. No refusal here (D2, 2026-10-04).
-
         // 1. Which Nature this pair runs. It lives in
         //    controlProcess.engineParams.nature; DEFAULT_NATURE covers a
         //    recipe that didn't pin one. Read first, because both the
@@ -515,6 +515,20 @@ public class TrillianSessionBootstrapper {
             // behind it would be an empty loop session in the hub forever.
             sessionService.delete(userSession.getSessionId());
             return;
+        }
+
+        // 5b. Placement: the loop lives in the Trillian's own hub, which is
+        //     placed through a lease like any project. A live loop is waiting
+        //     work, so the hub is marked as needing an owner (the distributor
+        //     keeps it placed), and the heartbeat of the hub's home pod wakes
+        //     the loop. Brought here right away rather than waiting for the
+        //     distributor; when another pod already holds the hub, that pod
+        //     does the waking.
+        ownerRequirement.recompute(controlSession.getTenantId(), homeProject);
+        try {
+            lifecycleProvider.getObject().bring(controlSession.getTenantId(), homeProject);
+        } catch (ProjectManagerService.ClaimRejectedException e) {
+            log.debug("Trillian hub '{}' is held by another pod: {}", homeProject, e.getMessage());
         }
 
         // Link the user-process as the user-session's chatProcessId so

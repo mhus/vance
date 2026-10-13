@@ -24,8 +24,8 @@ import org.springframework.stereotype.Service;
  * <p>Three flavours:
  * <ul>
  *   <li>HOMELESS — returns {@link Location#endpoint()} {@code empty}; the
- *       caller knows to handle the project pod-locally (the existing
- *       podless paths).</li>
+ *       tenant project is never placed and nothing runs there, so there is
+ *       nowhere to route to.</li>
  *   <li>Valid lease — resolves and returns the holder's endpoint.</li>
  *   <li>Expired or absent lease — depending on
  *       {@code autoStart}: a blocking placement through
@@ -69,40 +69,51 @@ public class ProjectLocator {
      *     the bring itself failed
      */
     public Location locate(String tenantId, String projectName, boolean autoStart) {
-        ProjectDocument project = projectService.findByTenantAndName(tenantId, projectName)
+        ProjectDocument project = projectService
+                .findByTenantAndName(tenantId, projectName)
                 .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
                         "Project '" + projectName + "' not found in tenant '" + tenantId + "'"));
 
         if (project.getLifecycleType() == LifecycleType.HOMELESS) {
-            return new Location(tenantId, projectName, Optional.empty(),
-                    LifecycleType.HOMELESS, project.getStatus(), null);
+            return new Location(
+                    tenantId, projectName, Optional.empty(), LifecycleType.HOMELESS, project.getStatus(), null);
         }
 
         // Live home-node — resolve and return.
         Optional<String> liveEndpoint = liveEndpointOf(project);
         if (liveEndpoint.isPresent()) {
-            return new Location(tenantId, projectName, liveEndpoint,
-                    project.getLifecycleType(), project.getStatus(), project.getHomeNode());
+            return new Location(
+                    tenantId,
+                    projectName,
+                    liveEndpoint,
+                    project.getLifecycleType(),
+                    project.getStatus(),
+                    project.getHomeNode());
         }
 
         if (!autoStart) {
-            return new Location(tenantId, projectName, Optional.empty(),
-                    project.getLifecycleType(), project.getStatus(), project.getHomeNode());
+            return new Location(
+                    tenantId,
+                    projectName,
+                    Optional.empty(),
+                    project.getLifecycleType(),
+                    project.getStatus(),
+                    project.getHomeNode());
         }
 
         // autoStart=true — place it and wait for the bring to finish.
         placementService.place(project, PlacementTrigger.LOCATE);
-        ProjectDocument fresh = projectService.findByTenantAndName(tenantId, projectName)
+        ProjectDocument fresh = projectService
+                .findByTenantAndName(tenantId, projectName)
                 .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
                         "Project '" + projectName + "' vanished during autoStart"));
         Optional<String> endpoint = liveEndpointOf(fresh);
-        return new Location(tenantId, projectName, endpoint,
-                fresh.getLifecycleType(), fresh.getStatus(), fresh.getHomeNode());
+        return new Location(
+                tenantId, projectName, endpoint, fresh.getLifecycleType(), fresh.getStatus(), fresh.getHomeNode());
     }
 
     private Optional<String> liveEndpointOf(ProjectDocument project) {
-        return ProjectOwnership
-                .liveOwnerPodId(project, Instant.now(), clusterService.leaseTtl())
+        return ProjectOwnership.liveOwnerPodId(project, Instant.now(), clusterService.leaseTtl())
                 .flatMap(clusterService::resolveEndpointByPodId);
     }
 }

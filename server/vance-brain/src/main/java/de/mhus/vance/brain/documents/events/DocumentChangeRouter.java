@@ -34,8 +34,8 @@ import org.springframework.stereotype.Component;
  *       It is the only broadcast case: {@code _vance} stopped being a
  *       {@code projectId} in commit {@code 4f9532f7b}.</li>
  *   <li>Lease held by a remote pod → self plus that pod.</li>
- *   <li>Lease held by self, no valid lease at all, podless project, unknown
- *       project → self only.</li>
+ *   <li>Lease held by self, no valid lease at all, unknown project → self
+ *       only.</li>
  * </ul>
  *
  * <p><b>Why self is unconditional.</b> This used to drop the event entirely
@@ -130,14 +130,6 @@ public class DocumentChangeRouter {
         // a stale cascade-view if it has loaded any project in this tenant.
         if (HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
             return broadcast();
-        }
-
-        // _user_<login> hub projects are podless by design (per memory
-        // user_projects_no_home_pod): Eddie sits on a random WS-pod, so there
-        // is no remote holder to notify — but this pod is very likely the one
-        // Eddie runs on, so the local refresh matters.
-        if (projectId != null && projectId.startsWith(HomeBootstrapService.HUB_PROJECT_NAME_PREFIX)) {
-            return Classification.selfOnly();
         }
 
         Optional<ProjectDocument> projectOpt = projectService.findByTenantAndName(event.tenantId(), projectId);

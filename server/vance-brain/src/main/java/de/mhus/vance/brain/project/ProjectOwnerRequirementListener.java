@@ -47,8 +47,12 @@ public class ProjectOwnerRequirementListener {
             // whatever wrote the document. The next change to any activation
             // source recomputes, and the value only decides whether a
             // recovery tick picks the project up.
-            log.warn("Owner-requirement re-derivation failed for {}/{} after '{}': {}",
-                    event.tenantId(), event.projectId(), event.path(), e.toString());
+            log.warn(
+                    "Owner-requirement re-derivation failed for {}/{} after '{}': {}",
+                    event.tenantId(),
+                    event.projectId(),
+                    event.path(),
+                    e.toString());
         }
     }
 
@@ -58,7 +62,7 @@ public class ProjectOwnerRequirementListener {
      * <p>Both loaders resolve through the cascade {@code project → _tenant}, so
      * an entry written to {@code _tenant} applies to every project of the
      * tenant. The derivation below deliberately does <b>not</b> follow that
-     * cascade: {@code _tenant} is podless and cannot itself be kept on a pod,
+     * cascade: {@code _tenant} is homeless and cannot itself be kept on a pod,
      * and following it would mean a single document pinning an entire tenant's
      * projects to pods forever — the same "pin everything" outcome that kit
      * provisioning was excluded for, only larger.
@@ -70,10 +74,12 @@ public class ProjectOwnerRequirementListener {
      */
     private static void warnIfTenantLevel(DocumentChangedEvent event) {
         if (!HomeBootstrapService.TENANT_PROJECT_NAME.equals(event.projectId())) return;
-        log.warn("'{}' was written to {}/_tenant: it will fire in every project that is "
+        log.warn(
+                "'{}' was written to {}/_tenant: it will fire in every project that is "
                         + "currently running and will not bring a dormant one up. "
                         + "Put it in the project it should run in, or pin that project with "
                         + "lifecycleType=PERMANENT.",
-                event.path(), event.tenantId());
+                event.path(),
+                event.tenantId());
     }
 }

@@ -67,7 +67,7 @@ public class ProjectClusterService {
     public enum Holder {
         /** A live lease, and the pod behind it is known. */
         HELD,
-        /** Nobody holds it — including the podless case, see {@link HomeLookup#detail}. */
+        /** Nobody holds it — including the homeless tenant project, see {@link HomeLookup#detail}. */
         NONE,
         /** The brain did not answer, or answered an error. */
         UNREACHABLE,
@@ -83,7 +83,7 @@ public class ProjectClusterService {
     /**
      * @param detail the brain's own words — for {@link Holder#NONE} it says
      *     <em>why</em> nobody holds it, which is not the same answer for a
-     *     never-placed project and for a podless one
+     *     never-placed project and for the homeless tenant project
      */
     public record HomeLookup(
             Holder holder,
@@ -107,15 +107,14 @@ public class ProjectClusterService {
             // A brain that does not answer is the same answer as one that
             // answers an error: we do not know who holds the project. Left
             // uncaught this used to abort the command with a stack trace.
-            return new HomeLookup(Holder.UNREACHABLE, null, null,
-                    String.valueOf(e.getMessage()));
+            return new HomeLookup(Holder.UNREACHABLE, null, null, String.valueOf(e.getMessage()));
         }
         if (response.statusCode() == 404) {
             return new HomeLookup(Holder.NONE, null, null, response.body());
         }
         if (!response.isSuccess()) {
-            return new HomeLookup(Holder.UNREACHABLE, null, null,
-                    "HTTP " + response.statusCode() + " " + response.body());
+            return new HomeLookup(
+                    Holder.UNREACHABLE, null, null, "HTTP " + response.statusCode() + " " + response.body());
         }
         try {
             var parsed = objectMapper.readTree(response.body());
@@ -164,16 +163,16 @@ public class ProjectClusterService {
      * load decide.
      */
     public PlacementAttempt place(String tenant, String name) {
-        Response response = brainClient.internal(
-                "/internal/cluster/place", "POST", json(tenant, name));
-        PlacementOutcome outcome = switch (response.statusCode()) {
-            case 200 -> PlacementOutcome.PLACED;
-            case 409 -> PlacementOutcome.ALREADY_RUNNING;
-            case 503 -> PlacementOutcome.UNSCHEDULABLE;
-            case 502 -> PlacementOutcome.BRING_FAILED;
-            case 404 -> PlacementOutcome.NOT_FOUND;
-            default -> PlacementOutcome.ERROR;
-        };
+        Response response = brainClient.internal("/internal/cluster/place", "POST", json(tenant, name));
+        PlacementOutcome outcome =
+                switch (response.statusCode()) {
+                    case 200 -> PlacementOutcome.PLACED;
+                    case 409 -> PlacementOutcome.ALREADY_RUNNING;
+                    case 503 -> PlacementOutcome.UNSCHEDULABLE;
+                    case 502 -> PlacementOutcome.BRING_FAILED;
+                    case 404 -> PlacementOutcome.NOT_FOUND;
+                    default -> PlacementOutcome.ERROR;
+                };
         return new PlacementAttempt(outcome, response.statusCode(), response.body());
     }
 
@@ -209,23 +208,22 @@ public class ProjectClusterService {
     public DrainOutcome drain(String tenant, String name) {
         HomeLookup home = home(tenant, name);
         if (home.holder() == Holder.NONE) {
-            return new DrainOutcome(Placement.NOT_PLACED, true,
-                    "nothing to drain — " + home.detail());
+            return new DrainOutcome(Placement.NOT_PLACED, true, "nothing to drain — " + home.detail());
         }
         if (home.holder() == Holder.UNREACHABLE) {
-            return new DrainOutcome(Placement.UNKNOWN, false,
-                    "(cannot resolve the home pod: " + home.detail() + ")");
+            return new DrainOutcome(Placement.UNKNOWN, false, "(cannot resolve the home pod: " + home.detail() + ")");
         }
         if (home.holder() == Holder.UNREADABLE) {
-            return new DrainOutcome(Placement.UNKNOWN, false,
-                    "(unreadable home-pod response: " + home.detail() + ")");
+            return new DrainOutcome(Placement.UNKNOWN, false, "(unreadable home-pod response: " + home.detail() + ")");
         }
         String nodeName = home.nodeName() == null ? String.valueOf(home.endpoint()) : home.nodeName();
         Response released;
         try {
             released = brainClient.internalAt(
                     normaliseBase(String.valueOf(home.endpoint())),
-                    "/internal/cluster/release", "POST", json(tenant, name));
+                    "/internal/cluster/release",
+                    "POST",
+                    json(tenant, name));
         } catch (BrainCallException e) {
             // The holder is unreachable — which is exactly the situation the
             // whole "refuse unless --force" policy exists for, and it used to
@@ -233,25 +231,28 @@ public class ProjectClusterService {
             // this is the common case, not an exotic one. Reported as PLACED
             // and not released, so drainBefore blocks and the operator gets the
             // sentence naming --force.
-            return new DrainOutcome(Placement.PLACED, false,
-                    "(drain failed on '" + nodeName + "': " + e.getMessage() + ")");
+            return new DrainOutcome(
+                    Placement.PLACED, false, "(drain failed on '" + nodeName + "': " + e.getMessage() + ")");
         }
         if (released.statusCode() == 409) {
             // The lease moved or expired between the lookup and here. Not a
             // clean hand-off and not a safe "nobody owns it": another pod may
             // have taken it. Reported as unknown so a caller that needs the
             // project quiet stops rather than guessing.
-            return new DrainOutcome(Placement.UNKNOWN, false,
+            return new DrainOutcome(
+                    Placement.UNKNOWN,
+                    false,
                     "pod '" + nodeName + "' does not hold it (any more) — nothing drained,"
                             + " retry to reach the current holder");
         }
         if (!released.isSuccess()) {
-            return new DrainOutcome(Placement.PLACED, false,
-                    "(drain failed on '" + nodeName + "': HTTP " + released.statusCode()
-                            + " " + released.body() + ")");
+            return new DrainOutcome(
+                    Placement.PLACED,
+                    false,
+                    "(drain failed on '" + nodeName + "': HTTP " + released.statusCode() + " " + released.body() + ")");
         }
-        return new DrainOutcome(Placement.PLACED, true,
-                "drained from '" + nodeName + "' — status unchanged, nobody owns it now");
+        return new DrainOutcome(
+                Placement.PLACED, true, "drained from '" + nodeName + "' — status unchanged, nobody owns it now");
     }
 
     // ─── drain as a precondition ────────────────────────────────────────────
@@ -274,7 +275,9 @@ public class ProjectClusterService {
      * @param outcome the attempt itself, {@code null} when it was skipped
      */
     public record DrainDecision(
-            DrainVerdict verdict, boolean wasPlaced, @Nullable DrainOutcome outcome) {
+            DrainVerdict verdict,
+            boolean wasPlaced,
+            @Nullable DrainOutcome outcome) {
 
         /** Whether the operation this ran ahead of must stop. */
         public boolean abort() {
@@ -313,11 +316,9 @@ public class ProjectClusterService {
         }
         DrainOutcome outcome = drain(tenant, name);
         if (outcome.released()) {
-            return new DrainDecision(DrainVerdict.RELEASED,
-                    outcome.placement() == Placement.PLACED, outcome);
+            return new DrainDecision(DrainVerdict.RELEASED, outcome.placement() == Placement.PLACED, outcome);
         }
-        return new DrainDecision(
-                force ? DrainVerdict.FORCED : DrainVerdict.BLOCKED, false, outcome);
+        return new DrainDecision(force ? DrainVerdict.FORCED : DrainVerdict.BLOCKED, false, outcome);
     }
 
     // ─── placement selector ─────────────────────────────────────────────────
@@ -344,10 +345,7 @@ public class ProjectClusterService {
      *     it alone
      */
     public SelectorWrite writePlacement(
-            String tenant,
-            String name,
-            @Nullable Map<String, String> selector,
-            @Nullable Integer score) {
+            String tenant, String name, @Nullable Map<String, String> selector, @Nullable Integer score) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("tenantId", tenant);
         payload.put("projectName", name);
@@ -358,8 +356,7 @@ public class ProjectClusterService {
             payload.put("homeResourceScore", score);
         }
         Response response = brainClient.internal(
-                "/internal/cluster/projects/placement", "POST",
-                objectMapper.writeValueAsString(payload));
+                "/internal/cluster/projects/placement", "POST", objectMapper.writeValueAsString(payload));
         return new SelectorWrite(response.isSuccess(), response.statusCode(), response.body());
     }
 
@@ -386,8 +383,7 @@ public class ProjectClusterService {
         payload.put("projectName", name);
         payload.put("lifecycleType", lifecycleType);
         Response response = brainClient.internal(
-                "/internal/cluster/projects/lifecycle-type", "POST",
-                objectMapper.writeValueAsString(payload));
+                "/internal/cluster/projects/lifecycle-type", "POST", objectMapper.writeValueAsString(payload));
         return new LifecycleWrite(response.isSuccess(), response.statusCode(), response.body());
     }
 
@@ -433,7 +429,6 @@ public class ProjectClusterService {
 
     /** {@code host:port} from a pod row to an absolute URL. */
     private static String normaliseBase(String endpoint) {
-        return endpoint.startsWith("http://") || endpoint.startsWith("https://")
-                ? endpoint : "http://" + endpoint;
+        return endpoint.startsWith("http://") || endpoint.startsWith("https://") ? endpoint : "http://" + endpoint;
     }
 }

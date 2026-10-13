@@ -80,12 +80,8 @@ public class ProjectPlacementService {
      * to place a project before it has seen itself in {@code brain_pods}.
      */
     public PlacementDecision decide(ProjectDocument project, PlacementTrigger trigger) {
-        if (livesWhereverAsked(project)) {
-            return new PlacementDecision.Here();
-        }
-        if (trigger.prefersLocal()
-                && isEligibleHere(project)
-                && localHeadroom() >= project.getHomeResourceScore()) {
+        requirePlaceable(project);
+        if (trigger.prefersLocal() && isEligibleHere(project) && localHeadroom() >= project.getHomeResourceScore()) {
             return new PlacementDecision.Here();
         }
         return record(project, evaluate(project));
@@ -103,9 +99,7 @@ public class ProjectPlacementService {
      * merely looked.
      */
     public PlacementDecision evaluate(ProjectDocument project) {
-        if (livesWhereverAsked(project)) {
-            return new PlacementDecision.Here();
-        }
+        requirePlaceable(project);
         List<BrainPodDocument> pods = clusterService.liveClusterPods();
         int[] projected = currentScores(pods);
         return pick(pods, projected, project);
@@ -132,10 +126,7 @@ public class ProjectPlacementService {
         int[] projected = currentScores(pods);
         List<PlacementDecision> decisions = new ArrayList<>(projects.size());
         for (ProjectDocument project : projects) {
-            if (livesWhereverAsked(project)) {
-                decisions.add(new PlacementDecision.Here());
-                continue;
-            }
+            requirePlaceable(project);
             PlacementDecision decision = record(project, pick(pods, projected, project));
             if (decision instanceof PlacementDecision.On on) {
                 // Reserve: the pod we just chose counts as that much fuller for
@@ -158,7 +149,8 @@ public class ProjectPlacementService {
     public PlacementDecision place(ProjectDocument project, PlacementTrigger trigger) {
         PlacementDecision decision = decide(project, trigger);
         if (decision instanceof PlacementDecision.Unschedulable unschedulable) {
-            throw new ClusterFullException(unschedulable.gap(),
+            throw new ClusterFullException(
+                    unschedulable.gap(),
                     "Cannot place project '" + project.getTenantId() + "/" + project.getName()
                             + "' (score=" + project.getHomeResourceScore() + "): "
                             + unschedulable.gap());
@@ -184,13 +176,17 @@ public class ProjectPlacementService {
                     bringLocally(tenantId, name, target.getNodeName());
                 } else {
                     bringClient.requestBring(target.getEndpoint(), tenantId, name);
-                    log.info("Placed '{}/{}' on remote pod '{}' ({})",
-                            tenantId, name, target.getNodeName(), target.getEndpoint());
+                    log.info(
+                            "Placed '{}/{}' on remote pod '{}' ({})",
+                            tenantId,
+                            name,
+                            target.getNodeName(),
+                            target.getEndpoint());
                 }
             }
-            case PlacementDecision.Unschedulable unschedulable -> throw new IllegalStateException(
-                    "Cannot dispatch an unschedulable decision for '" + tenantId + "/" + name
-                            + "' (" + unschedulable.gap() + ") — check the decision first");
+            case PlacementDecision.Unschedulable unschedulable ->
+                throw new IllegalStateException("Cannot dispatch an unschedulable decision for '" + tenantId + "/"
+                        + name + "' (" + unschedulable.gap() + ") — check the decision first");
         }
     }
 
@@ -213,15 +209,17 @@ public class ProjectPlacementService {
      * would be worse than the overrun the spec already calls acceptable
      * ({@code ClusterProperties} {@code resources.maxScore}).
      *
-     * <p>{@code true} when this pod has no registry row yet. "I cannot see
+     * <p>{@code false} for the homeless tenant project — it runs nowhere.
+     * {@code true} when this pod has no registry row yet. "I cannot see
      * myself" must not read as "I am not allowed" — a booting pod has to be
      * able to serve, and the same reasoning governs {@link #localHeadroom}.
      */
     public boolean isEligibleHere(ProjectDocument project) {
-        if (livesWhereverAsked(project)) {
-            return true;
+        if (project.getLifecycleType() == LifecycleType.HOMELESS) {
+            return false;
         }
-        return clusterService.selfPod()
+        return clusterService
+                .selfPod()
                 .map(pod -> PodSelector.isEligible(project, pod))
                 .orElse(true);
     }
@@ -232,15 +230,14 @@ public class ProjectPlacementService {
      * the caller's own not-found path is the right place to report it.
      */
     public boolean isEligibleHere(String tenantId, String projectName) {
-        return projectService.findByTenantAndName(tenantId, projectName)
+        return projectService
+                .findByTenantAndName(tenantId, projectName)
                 .map(this::isEligibleHere)
                 .orElse(true);
     }
 
     public int localHeadroom() {
-        return clusterService.selfPod()
-                .map(BrainPodCapacity::headroom)
-                .orElse(Integer.MAX_VALUE);
+        return clusterService.selfPod().map(BrainPodCapacity::headroom).orElse(Integer.MAX_VALUE);
     }
 
     /**
@@ -260,17 +257,26 @@ public class ProjectPlacementService {
         if (!(decision instanceof PlacementDecision.Unschedulable unschedulable)) {
             return decision;
         }
-        metricService.counter("vance.cluster.placement.unschedulable",
-                "gap", unschedulable.gap().name().toLowerCase()).increment();
+        metricService
+                .counter(
+                        "vance.cluster.placement.unschedulable",
+                        "gap",
+                        unschedulable.gap().name().toLowerCase())
+                .increment();
         try {
-            if (projectService.markPendingPlacement(
-                    project.getTenantId(), project.getName(), Instant.now())) {
-                log.info("Project '{}/{}' is waiting for a pod ({})",
-                        project.getTenantId(), project.getName(), unschedulable.gap());
+            if (projectService.markPendingPlacement(project.getTenantId(), project.getName(), Instant.now())) {
+                log.info(
+                        "Project '{}/{}' is waiting for a pod ({})",
+                        project.getTenantId(),
+                        project.getName(),
+                        unschedulable.gap());
             }
         } catch (RuntimeException e) {
-            log.warn("Could not mark '{}/{}' as pending placement: {}",
-                    project.getTenantId(), project.getName(), e.toString());
+            log.warn(
+                    "Could not mark '{}/{}' as pending placement: {}",
+                    project.getTenantId(),
+                    project.getName(),
+                    e.toString());
         }
         return decision;
     }
@@ -286,23 +292,21 @@ public class ProjectPlacementService {
     }
 
     /**
-     * Projects with no pod affinity at all — the podless system projects
-     * ({@code _vance}, {@code _user_<login>}) and anything an operator pinned
-     * to {@link LifecycleType#HOMELESS}. They take no lease and live on
-     * whichever pod the client's WS landed on, so there is nothing to decide.
-     *
-     * <p>Both conditions are checked although SYSTEM projects get HOMELESS at
-     * create time: legacy documents exist where the two disagree, and routing
-     * such a project to a remote pod would send it somewhere it can never be
-     * owned (see {@code ProjectManagerServicePodlessTest}).
+     * The homeless tenant project is never placed — nothing runs there (see
+     * {@code ProjectService.isHomeless}). Asking where it should run is a
+     * caller bug, not a decision with an answer.
      */
-    private static boolean livesWhereverAsked(ProjectDocument project) {
-        return project.getLifecycleType() == LifecycleType.HOMELESS
-                || ProjectService.isPodless(project.getName());
+    private static void requirePlaceable(ProjectDocument project) {
+        if (project.getLifecycleType() == LifecycleType.HOMELESS) {
+            throw new IllegalArgumentException("Project '" + project.getTenantId() + "/" + project.getName()
+                    + "' is homeless — it is never placed");
+        }
     }
 
     private static int[] currentScores(List<BrainPodDocument> pods) {
-        return pods.stream().mapToInt(BrainPodDocument::getResourcesCurrentScore).toArray();
+        return pods.stream()
+                .mapToInt(BrainPodDocument::getResourcesCurrentScore)
+                .toArray();
     }
 
     /**
@@ -321,8 +325,7 @@ public class ProjectPlacementService {
      * the two former copies of this loop behaved differently on a pod row with
      * an unset {@code resourcesMaxScore}: one had it, one did not.
      */
-    private static PlacementDecision pick(
-            List<BrainPodDocument> pods, int[] projected, ProjectDocument project) {
+    private static PlacementDecision pick(List<BrainPodDocument> pods, int[] projected, ProjectDocument project) {
         int score = project.getHomeResourceScore();
         boolean anyEligible = false;
         for (int i = 0; i < pods.size(); i++) {

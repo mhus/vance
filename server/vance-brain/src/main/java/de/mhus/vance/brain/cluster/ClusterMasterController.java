@@ -32,8 +32,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/internal/cluster/master")
-@ConditionalOnProperty(name = "vance.cluster.master.enabled", havingValue = "true",
-        matchIfMissing = true)
+@ConditionalOnProperty(name = "vance.cluster.master.enabled", havingValue = "true", matchIfMissing = true)
 @RequiredArgsConstructor
 @Slf4j
 public class ClusterMasterController {
@@ -65,28 +64,34 @@ public class ClusterMasterController {
         }
         ProjectDocument project;
         try {
-            project = projectService.findByTenantAndName(req.tenantId(), req.projectName())
+            project = projectService
+                    .findByTenantAndName(req.tenantId(), req.projectName())
                     .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
-                            "Project '" + req.projectName() + "' not found in tenant '"
-                                    + req.tenantId() + "'"));
+                            "Project '" + req.projectName() + "' not found in tenant '" + req.tenantId() + "'"));
         } catch (ProjectService.ProjectNotFoundException e) {
             return ResponseEntity.status(404).body(new MessageResponse(e.getMessage()));
         }
         try {
-            PlacementDecision decision =
-                    placementService.place(project, PlacementTrigger.REMOTE_REQUEST);
-            return ResponseEntity.ok(switch (decision) {
-                case PlacementDecision.On on -> new HttpClusterBringClient.SpawnResponse(
-                        on.pod().getNodeName(), on.pod().getEndpoint());
-                // Podless / HOMELESS: there is no pod row to name, and the
-                // project now runs here. Answer with our own identity rather
-                // than inventing a document.
-                default -> new HttpClusterBringClient.SpawnResponse(
-                        clusterService.selfNodeName(), clusterService.selfEndpoint());
-            });
+            PlacementDecision decision = placementService.place(project, PlacementTrigger.REMOTE_REQUEST);
+            return ResponseEntity.ok(
+                    switch (decision) {
+                        case PlacementDecision.On on ->
+                            new HttpClusterBringClient.SpawnResponse(
+                                    on.pod().getNodeName(), on.pod().getEndpoint());
+                        // Here: no pod row to name yet (this pod is still registering),
+                        // and the project now runs here. Answer with our own identity rather
+                        // than inventing a document.
+                        default ->
+                            new HttpClusterBringClient.SpawnResponse(
+                                    clusterService.selfNodeName(), clusterService.selfEndpoint());
+                    });
         } catch (ClusterFullException e) {
-            log.warn("Master spawn rejected ({}) for '{}/{}': {}",
-                    e.getGap(), req.tenantId(), req.projectName(), e.getMessage());
+            log.warn(
+                    "Master spawn rejected ({}) for '{}/{}': {}",
+                    e.getGap(),
+                    req.tenantId(),
+                    req.projectName(),
+                    e.getMessage());
             return ResponseEntity.status(503).body(new MessageResponse(e.getMessage()));
         }
     }
@@ -107,13 +112,15 @@ public class ClusterMasterController {
     }
 
     private ResponseEntity<?> notMasterRedirect() {
-        String currentMaster = masterService.currentLease()
+        String currentMaster = masterService
+                .currentLease()
                 .map(ClusterMasterDocument::getCurrentEndpoint)
                 .orElse("");
-        return ResponseEntity.status(421).body(new MessageResponse(
-                currentMaster.isBlank()
-                        ? "No master available — retry shortly"
-                        : "Not master, current master at " + currentMaster));
+        return ResponseEntity.status(421)
+                .body(new MessageResponse(
+                        currentMaster.isBlank()
+                                ? "No master available — retry shortly"
+                                : "Not master, current master at " + currentMaster));
     }
 
     public record StatusResponse(

@@ -5,24 +5,19 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.jspecify.annotations.Nullable;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 /**
- * Cross-pod wake claim for one self-check slot of a Trillian user-loop. The
- * {@code _id} is {@code tenant/loopId/dueEpochMillis}, so an atomic insert
- * lets exactly one pod wake the loop for a given appointment — the loser
- * hits a duplicate-key and skips (see {@link TrillianWakeupClaimService}).
+ * One cluster-wide lease of the Trillian loop (see
+ * {@link TrillianWakeupClaimService}). The {@code _id} is
+ * {@code lease/<key>}; the insert is the acquire, the owner-checked delete
+ * the release.
  *
- * <p>Mirror of {@code ursascheduler.FireClaimDocument}: same arbiter trick,
- * different subsystem. The claim replaces the old "only the home pod scans"
- * rule, which a podless hub cannot provide (D2).
- *
- * <p>A short TTL on {@code claimedAt} reaps old slots — so a pod that dies
- * between claiming and waking loses one round, not the appointment: the
- * slot is free again within the hour and the loop is still due.
+ * <p>A short TTL on {@code claimedAt} reaps leases whose holder died without
+ * releasing — well past any takeover, which happens after the caller's own,
+ * much shorter TTL.
  */
 @Document(collection = "trillian_wakeup_claims")
 @Data
@@ -34,17 +29,15 @@ public class TrillianWakeupClaimDocument {
     @Id
     private String id;
 
-    /** Claim timestamp; TTL-reaped after an hour (well past any handover). */
+    /** Acquire timestamp; TTL-reaped after an hour (well past any takeover). */
     @Indexed(expireAfterSeconds = 3600)
     private Instant claimedAt;
 
     /**
-     * Holder identity of a lease ({@code TrillianWakeupClaimService#acquireLease})
-     * — the token the acquirer must present on release. {@code null} on
-     * plain wake-slot claims (they are won by insert, never released).
-     * Written on every lease takeover, so a holder that outlives its TTL
-     * (GC pause, network partition) cannot free its successor's lease.
+     * Holder identity ({@code TrillianWakeupClaimService#acquireLease}) — the
+     * token the acquirer must present on release. Written on every takeover,
+     * so a holder that outlives its TTL (GC pause, network partition) cannot
+     * free its successor's lease.
      */
-    @Nullable
     private String holder;
 }

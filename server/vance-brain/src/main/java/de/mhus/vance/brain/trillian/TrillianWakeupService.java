@@ -273,8 +273,8 @@ public class TrillianWakeupService {
 
     /**
      * Every live loop process in the cluster — the only processes that wake
-     * themselves. One indexed query per tick, independent of how many
-     * projects exist (the loops sit in podless hubs, D2).
+     * themselves. One indexed query per tick; the heartbeat keeps the ones in
+     * hubs its pod holds.
      */
     public List<ThinkProcessDocument> liveLoops(int limit) {
         return thinkProcessService.findLiveByEngine(TrillianUserEngine.NAME, limit);

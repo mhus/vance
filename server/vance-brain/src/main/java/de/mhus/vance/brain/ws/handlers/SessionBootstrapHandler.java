@@ -19,6 +19,7 @@ import de.mhus.vance.brain.progress.PlanStateInitialPusher;
 import de.mhus.vance.brain.progress.ProcessCountsPusher;
 import de.mhus.vance.brain.progress.WorkingProjectPusher;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
+import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.session.SessionChatBootstrapper;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
@@ -52,9 +53,10 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p>Runs on a session-less connection (creates/binds a session). If
  * the request carries a {@code sessionId}, the session is resumed;
- * otherwise a new one is created on {@code projectId} (or auto-resumed
- * from the user's most-recent OPEN+unbound session when neither is
- * supplied).
+ * otherwise a new one is created on {@code projectId}. When neither is
+ * supplied, the user's most-recent OPEN+unbound session is auto-resumed,
+ * else a session is created in the user's hub. The same decision routes the
+ * frame to the project's home pod ({@link SessionBootstrapTargets}).
  *
  * <p>Processes are built in list order. Each spec is dispatched through
  * the central {@link ActionExecutorRegistry} as a
@@ -76,7 +78,6 @@ public class SessionBootstrapHandler implements WsHandler {
     private final ObjectMapper objectMapper;
     private final WebSocketSender sender;
     private final SessionService sessionService;
-    private final ProjectService projectService;
     private final ProjectLifecycleService lifecycleService;
     private final ThinkProcessService thinkProcessService;
     private final ThinkEngineService thinkEngineService;
@@ -92,6 +93,7 @@ public class SessionBootstrapHandler implements WsHandler {
     private final RequestAuthority authority;
     private final ActionExecutorRegistry actionRegistry;
     private final LaneScheduler laneScheduler;
+    private final SessionBootstrapTargets bootstrapTargets;
 
     @Override
     public String type() {
@@ -351,19 +353,7 @@ public class SessionBootstrapHandler implements WsHandler {
      * session creation.
      */
     private Optional<SessionDocument> tryAutoResumeLatest(ConnectionContext ctx) {
-        List<SessionDocument> candidates = sessionService.listForUser(ctx.getTenantId(), ctx.getUserId()).stream()
-                .filter(s -> s.getStatus() != SessionStatus.CLOSED)
-                .filter(s -> s.getBoundConnectionId() == null)
-                .filter(s -> profileMatches(ctx, s))
-                .sorted((a, b) -> {
-                    Instant aLa = a.getLastActivityAt();
-                    Instant bLa = b.getLastActivityAt();
-                    if (aLa == null && bLa == null) return 0;
-                    if (aLa == null) return 1;
-                    if (bLa == null) return -1;
-                    return bLa.compareTo(aLa);
-                })
-                .toList();
+        List<SessionDocument> candidates = bootstrapTargets.autoResumeCandidates(ctx);
         for (SessionDocument candidate : candidates) {
             // bring() rather than a bare claim, and *before* the bind:
             //
@@ -384,7 +374,17 @@ public class SessionBootstrapHandler implements WsHandler {
             // A candidate whose bind then loses the race leaves its project
             // brought. That is harmless: it is a project this user holds an
             // open session in, and bring is idempotent.
-            lifecycleService.bring(candidate.getTenantId(), candidate.getProjectId());
+            //
+            // A candidate whose project another pod holds is skipped: the
+            // Face-Pod routed this frame by the newest candidate
+            // (SessionBootstrapTargets), so only a lost race lands here, and
+            // the next candidate is as good an answer as any.
+            try {
+                lifecycleService.bring(candidate.getTenantId(), candidate.getProjectId());
+            } catch (ProjectManagerService.ClaimRejectedException e) {
+                log.debug("session-bootstrap: auto-resume skips '{}': {}", candidate.getSessionId(), e.getMessage());
+                continue;
+            }
             if (sessionService.tryBind(candidate.getSessionId(), ctx.getEditorId())) {
                 return Optional.of(candidate);
             }
@@ -400,20 +400,17 @@ public class SessionBootstrapHandler implements WsHandler {
             throws IOException {
         String projectId = request.getProjectId();
         if (isBlank(projectId)) {
-            // Default to the caller's first *readable* project — never bind
-            // them into one they can't access. Source owns the READ check.
-            List<de.mhus.vance.shared.project.ProjectDocument> all =
-                    projectService.listReadableBy(ctx.getTenantId(), authority.contextOf(ctx));
-            if (all.isEmpty()) {
-                sender.sendError(wsSession, envelope, 404, "No projects found in tenant '" + ctx.getTenantId() + "'");
-                return Optional.empty();
-            }
-            projectId = all.get(0).getName();
+            projectId = bootstrapTargets.defaultProject(ctx);
             log.info("session-bootstrap: defaulted projectId to '{}' (tenant='{}')", projectId, ctx.getTenantId());
-        } else if (homeBootstrapService
+        }
+        if (homeBootstrapService
                 .resolveOrAutoProvision(ctx.getTenantId(), projectId)
                 .isEmpty()) {
             sender.sendError(wsSession, envelope, 404, "Project '" + projectId + "' not found");
+            return Optional.empty();
+        }
+        if (ProjectService.isHomeless(projectId)) {
+            sender.sendError(wsSession, envelope, 409, homelessRefusal(projectId));
             return Optional.empty();
         }
         // Claim *and* activate — see tryAutoResumeLatest for why a bare claim
@@ -455,7 +452,7 @@ public class SessionBootstrapHandler implements WsHandler {
                     wsSession, envelope, 403, "Session '" + request.getSessionId() + "' belongs to another user");
             return Optional.empty();
         }
-        if (!profileMatches(ctx, doc)) {
+        if (!SessionBootstrapTargets.profileMatches(ctx, doc)) {
             sender.sendError(
                     wsSession,
                     envelope,
@@ -516,9 +513,9 @@ public class SessionBootstrapHandler implements WsHandler {
         return s == null || s.isBlank();
     }
 
-    private static boolean profileMatches(ConnectionContext ctx, SessionDocument session) {
-        String sessionProfile = session.getProfile();
-        String ctxProfile = ctx.getProfile();
-        return sessionProfile != null && sessionProfile.equals(ctxProfile);
+    /** The refusal for a session in the tenant project — shared with create/resume. */
+    static String homelessRefusal(String projectId) {
+        return "Project '" + projectId + "' is homeless — it holds the tenant defaults and runs "
+                + "no sessions; work in your hub or in a work project";
     }
 }

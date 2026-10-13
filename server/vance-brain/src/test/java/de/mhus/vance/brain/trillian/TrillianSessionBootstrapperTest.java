@@ -95,6 +95,15 @@ class TrillianSessionBootstrapperTest {
     TrillianWakeupClaimService claimService;
 
     @Mock
+    TrillianOwnerRequirement ownerRequirement;
+
+    @Mock
+    ObjectProvider<de.mhus.vance.brain.project.ProjectLifecycleService> lifecycleProvider;
+
+    @Mock
+    de.mhus.vance.brain.project.ProjectLifecycleService lifecycleService;
+
+    @Mock
     TrillianModelGate modelGate;
 
     @Mock
@@ -123,11 +132,14 @@ class TrillianSessionBootstrapperTest {
                 homeBootstrapService,
                 projectService,
                 claimService,
+                ownerRequirement,
+                lifecycleProvider,
                 modelGate,
                 activationGate,
                 permissionBootstrapProvider);
 
         when(activationGate.loopsEnabled(anyString(), any(), any())).thenReturn(true);
+        when(lifecycleProvider.getObject()).thenReturn(lifecycleService);
         when(claimService.acquireLease(anyString(), any())).thenReturn("lease-token");
         when(userService.existsByTenantAndName(anyString(), anyString())).thenReturn(false);
         de.mhus.vance.shared.project.ProjectDocument home = new de.mhus.vance.shared.project.ProjectDocument();
@@ -334,6 +346,8 @@ class TrillianSessionBootstrapperTest {
                 homeBootstrapService,
                 projectService,
                 claimService,
+                ownerRequirement,
+                lifecycleProvider,
                 modelGate,
                 activationGate,
                 permissionBootstrapProvider);
@@ -351,12 +365,9 @@ class TrillianSessionBootstrapperTest {
     }
 
     @Test
-    void aPodlessProject_getsATrillianWhoseLoopLivesInTheHome() {
-        // _user_* and system projects have no home pod. That is no reason
-        // to refuse a Trillian any more: the heartbeat does not scan by
-        // home node (the wake claim decides who fires), and the loop
-        // session lives in the account's own home, not in the control
-        // project.
+    void aHubAsControlProject_getsATrillianWhoseLoopLivesInItsOwnHome() {
+        // The control session may sit in a human's hub; the loop session
+        // still lives in the account's own home, not in the control project.
         SessionDocument session = controlSession();
         session.setProjectId("_user_marvin");
 
@@ -373,6 +384,26 @@ class TrillianSessionBootstrapperTest {
                         anyString(),
                         any(),
                         eq(true));
+    }
+
+    @Test
+    void bootstrap_placesTheHomeAndMarksItAsNeedingAnOwner() {
+        // A live loop is waiting work: its hub must be kept on a pod, or no
+        // heartbeat ever wakes it after a restart.
+        bootstrap(controlSession(), controlProcess());
+
+        verify(ownerRequirement).recompute(eq(TENANT), startsWith("_user__trillian-"));
+        verify(lifecycleService).bring(eq(TENANT), startsWith("_user__trillian-"));
+    }
+
+    @Test
+    void bootstrap_aHomeHeldByAnotherPod_isNoFailure() {
+        when(lifecycleService.bring(eq(TENANT), startsWith("_user__trillian-")))
+                .thenThrow(new de.mhus.vance.brain.project.ProjectManagerService.ClaimRejectedException("held"));
+
+        bootstrap(controlSession(), controlProcess());
+
+        verify(laneScheduler).submit(anyString(), any(java.util.concurrent.Callable.class));
     }
 
     @Test
@@ -519,6 +550,8 @@ class TrillianSessionBootstrapperTest {
                 homeBootstrapService,
                 projectService,
                 claimService,
+                ownerRequirement,
+                lifecycleProvider,
                 modelGate,
                 activationGate,
                 permissionBootstrapProvider);

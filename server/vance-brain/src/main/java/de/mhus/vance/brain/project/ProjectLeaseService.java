@@ -1,8 +1,8 @@
 package de.mhus.vance.brain.project;
 
 import de.mhus.vance.brain.cluster.ClusterService;
-import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.megadodo.MegadodoService;
+import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import jakarta.annotation.PreDestroy;
 import java.time.Instant;
@@ -32,9 +32,8 @@ import org.springframework.stereotype.Service;
  * the same one.
  *
  * <p>Detection is free: compare the renewal's matched count against the number
- * of <em>lease-holding</em> projects this pod thinks it activated
- * ({@link ProjectActivationRegistry#leaseHoldingSize()} — podless projects are
- * activated too but hold no lease). Equal — the normal case — costs nothing
+ * of projects this pod thinks it activated
+ * ({@link ProjectActivationRegistry#size()}). Equal — the normal case — costs nothing
  * beyond the write. Short means at least one is gone, and only then do we pay
  * for a query to find out which.
  *
@@ -58,7 +57,8 @@ public class ProjectLeaseService {
     private final ApplicationEventPublisher eventPublisher;
     private final MegadodoService megadodoService;
 
-    @Scheduled(fixedDelayString = "${vance.cluster.lease.renew-interval:PT1M}",
+    @Scheduled(
+            fixedDelayString = "${vance.cluster.lease.renew-interval:PT1M}",
             initialDelayString = "${vance.cluster.lease.renew-interval:PT1M}")
     public void tick() {
         try {
@@ -75,17 +75,19 @@ public class ProjectLeaseService {
     void renewAndReconcile() {
         String selfPodId = clusterService.selfPodId();
         long held = projectService.renewLeases(selfPodId, Instant.now());
-        // Podless projects are activated here but never take a lease, so they
-        // are not part of this accounting — counting them made the comparison
-        // permanently short and the warning below meaningless.
-        int expected = activationRegistry.leaseHoldingSize();
+        int expected = activationRegistry.size();
         if (held >= expected) {
-            log.trace("ProjectLeaseService: renewed {} lease(s), {} lease-holding project(s) "
-                    + "activated", held, expected);
+            log.trace(
+                    "ProjectLeaseService: renewed {} lease(s), {} lease-holding project(s) " + "activated",
+                    held,
+                    expected);
             return;
         }
-        log.warn("ProjectLeaseService: hold {} lease(s) but {} lease-holding project(s) are "
-                + "activated here — reconciling", held, expected);
+        log.warn(
+                "ProjectLeaseService: hold {} lease(s) but {} lease-holding project(s) are "
+                        + "activated here — reconciling",
+                held,
+                expected);
         deactivateLostProjects(selfPodId);
     }
 
@@ -106,24 +108,19 @@ public class ProjectLeaseService {
             if (slash <= 0) continue;
             String tenantId = key.substring(0, slash);
             String projectName = key.substring(slash + 1);
-            if (ProjectService.isPodless(projectName)) {
-                // Podless projects never take a lease, so they can never show
-                // up as "lost" — they are simply not part of this accounting.
-                continue;
-            }
             if (activationRegistry.deactivate(tenantId, projectName)) {
-                log.warn("Project '{}/{}' lease lost while active here — unloading local state "
-                        + "(no workspace snapshot: the new owner is authoritative)",
-                        tenantId, projectName);
+                log.warn(
+                        "Project '{}/{}' lease lost while active here — unloading local state "
+                                + "(no workspace snapshot: the new owner is authoritative)",
+                        tenantId,
+                        projectName);
                 // The one involuntary departure that has a witness. A pod
                 // killed outright never gets here — but a pod that is merely
                 // *late* does, and without this row its projects would appear
                 // to have left cleanly or not at all.
                 megadodoService.projectHomeLost(
-                        tenantId, projectName, clusterService.selfNodeName(), selfPodId,
-                        clusterService.selfEndpoint());
-                eventPublisher.publishEvent(
-                        new ProjectEnginesStopRequested(tenantId, projectName));
+                        tenantId, projectName, clusterService.selfNodeName(), selfPodId, clusterService.selfEndpoint());
+                eventPublisher.publishEvent(new ProjectEnginesStopRequested(tenantId, projectName));
             }
         }
     }
@@ -140,15 +137,14 @@ public class ProjectLeaseService {
     void releaseOnShutdown() {
         try {
             long released = projectService.releaseLeases(
-                    clusterService.selfPodId(), clusterService.selfNodeName(),
-                    clusterService.selfEndpoint());
+                    clusterService.selfPodId(), clusterService.selfNodeName(), clusterService.selfEndpoint());
             if (released > 0) {
-                log.info("ProjectLeaseService: released {} project lease(s) on shutdown",
-                        released);
+                log.info("ProjectLeaseService: released {} project lease(s) on shutdown", released);
             }
         } catch (RuntimeException e) {
-            log.warn("ProjectLeaseService: lease release on shutdown failed "
-                    + "(leases will expire on their own): {}", e.toString());
+            log.warn(
+                    "ProjectLeaseService: lease release on shutdown failed " + "(leases will expire on their own): {}",
+                    e.toString());
         }
     }
 }

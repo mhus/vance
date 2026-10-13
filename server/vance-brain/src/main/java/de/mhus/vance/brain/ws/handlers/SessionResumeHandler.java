@@ -150,8 +150,7 @@ public class SessionResumeHandler implements WsHandler {
         // a project resumed here but never brought would own its hooks and
         // schedulers while running none of them, silently and without an
         // error anywhere. bring() is idempotent and short-circuits to a lease
-        // refresh once the project is RUNNING here (and is a no-op-ish local
-        // re-init for podless _user_*/_vance projects), which is exactly what
+        // refresh once the project is RUNNING here, which is exactly what
         // SessionCreateHandler already does after its claim.
         lifecycleService.bring(doc.getTenantId(), doc.getProjectId());
 

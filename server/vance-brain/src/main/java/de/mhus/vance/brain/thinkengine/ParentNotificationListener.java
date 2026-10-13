@@ -91,9 +91,6 @@ public class ParentNotificationListener {
         // not the engine-bind / Mongo-inbox detour the router does.
         // The Working-WS frame handler ({@code EddieChatFrameHandler})
         // is responsible for waking the parent's lane on those frames.
-        // Without this guard, podless parent projects (e.g.
-        // {@code _user_<login>}) try a cross-pod push that has nowhere
-        // to land and the parent never gets woken.
         if (thinkProcessService.findWorkerLink(parentId, event.processId()).isPresent()) {
             log.debug(
                     "Parent {} watches child {} via Working WS — " + "engine-bind notification suppressed (event={})",

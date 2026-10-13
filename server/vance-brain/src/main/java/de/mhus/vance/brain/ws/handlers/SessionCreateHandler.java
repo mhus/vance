@@ -100,6 +100,14 @@ public class SessionCreateHandler implements WsHandler {
             sender.sendError(wsSession, envelope, 404, "Project '" + request.getProjectId() + "' not found");
             return;
         }
+        if (ProjectService.isHomeless(project.get().getName())) {
+            sender.sendError(
+                    wsSession,
+                    envelope,
+                    409,
+                    SessionBootstrapHandler.homelessRefusal(project.get().getName()));
+            return;
+        }
         // Eligibility before claiming — a claim we would then refuse would leave
         // a lease behind that nothing uses. Capacity is deliberately not asked:
         // there is a user waiting, and the score cap is soft
@@ -137,8 +145,7 @@ public class SessionCreateHandler implements WsHandler {
         // engine bootstrap. Without this, the project sits half-claimed
         // and the session attaches to a project whose Prak side-channel,
         // compaction, scheduler etc. never see it.
-        // Idempotent on already-RUNNING and short-circuits to a no-op for
-        // podless (_user_*, _vance) projects.
+        // Idempotent on already-RUNNING.
         claimed = lifecycleService.bring(claimed.getTenantId(), claimed.getName());
 
         SessionDocument created = sessionService.create(

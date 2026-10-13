@@ -25,8 +25,8 @@ import org.springframework.stereotype.Component;
  * <p>Per-pod isolation: {@code projectService.findRunningByPod()}
  * already filters to projects this pod owns, and
  * {@link DocumentService#claimForSummary} is atomic per document —
- * so even when a {@code _user_<name>} project briefly visits another
- * pod, the claim mechanic prevents double-summarisation.
+ * so even during a lease handover, the claim mechanic prevents
+ * double-summarisation.
  *
  * <p>Sequential per tick on purpose — no thread-pool — to keep the
  * LLM pressure predictable. {@code batchSize} bounds the work per
@@ -53,43 +53,51 @@ public class DocumentSummaryScheduler {
     @Value("${vance.auto-summary.claim-ttl-minutes:10}")
     private int claimTtlMinutes;
 
-    @Scheduled(fixedDelayString = "${vance.auto-summary.interval-ms:300000}",
+    @Scheduled(
+            fixedDelayString = "${vance.auto-summary.interval-ms:300000}",
             initialDelayString = "${vance.auto-summary.initial-delay-ms:60000}")
     public void tick() {
         String podId = locationService.getPodAddress();
-        // RUNNING projects this pod holds a lease on, plus podless projects
-        // (system / per-user) which never reach RUNNING but still hold
-        // documents we want to summarise. The per-document claim in
-        // {@link DocumentService#claimForSummary} is atomic, so multiple
-        // pods racing on a podless project is safe — no document is
-        // summarised twice.
-        List<ProjectDocument> projects = new ArrayList<>(
-                projectService.findRunningByHomePodId(clusterService.selfPodId()));
-        projects.addAll(projectService.findPodlessActive());
+        // RUNNING projects this pod holds a lease on, plus the homeless tenant
+        // project, which is never placed but still holds documents we want to
+        // summarise. The per-document claim in
+        // {@link DocumentService#claimForSummary} is atomic, so every pod
+        // sweeping the tenant project is safe — no document is summarised
+        // twice.
+        List<ProjectDocument> projects =
+                new ArrayList<>(projectService.findRunningByHomePodId(clusterService.selfPodId()));
+        projects.addAll(projectService.findHomelessActive());
         if (projects.isEmpty()) return;
 
         Duration claimTtl = Duration.ofMinutes(claimTtlMinutes);
         for (ProjectDocument project : projects) {
             boolean enabled = settingService.getBooleanValueCascade(
-                    project.getTenantId(), project.getName(),
+                    project.getTenantId(),
+                    project.getName(),
                     /*thinkProcessId*/ null,
-                    SETTING_ENABLED, /*default*/ true);
+                    SETTING_ENABLED, /*default*/
+                    true);
             if (!enabled) continue;
 
             List<DocumentDocument> claimed;
             try {
                 claimed = documentService.claimForSummary(
-                        project.getTenantId(), project.getName(),
-                        podId, batchSize, claimTtl);
+                        project.getTenantId(), project.getName(), podId, batchSize, claimTtl);
             } catch (RuntimeException e) {
-                log.warn("Auto-summary claim failed tenant='{}' project='{}': {}",
-                        project.getTenantId(), project.getName(), e.toString());
+                log.warn(
+                        "Auto-summary claim failed tenant='{}' project='{}': {}",
+                        project.getTenantId(),
+                        project.getName(),
+                        e.toString());
                 continue;
             }
             if (claimed.isEmpty()) continue;
 
-            log.debug("Auto-summary tick tenant='{}' project='{}' claimed={}",
-                    project.getTenantId(), project.getName(), claimed.size());
+            log.debug(
+                    "Auto-summary tick tenant='{}' project='{}' claimed={}",
+                    project.getTenantId(),
+                    project.getName(),
+                    claimed.size());
             for (DocumentDocument doc : claimed) {
                 processOne(project, doc);
             }
@@ -100,16 +108,19 @@ public class DocumentSummaryScheduler {
         try {
             driver.run(project, doc);
         } catch (RuntimeException e) {
-            log.warn("Auto-summary run failed tenant='{}' project='{}' doc='{}' path='{}': {}",
-                    project.getTenantId(), project.getName(),
-                    doc.getId(), doc.getPath(), e.toString());
+            log.warn(
+                    "Auto-summary run failed tenant='{}' project='{}' doc='{}' path='{}': {}",
+                    project.getTenantId(),
+                    project.getName(),
+                    doc.getId(),
+                    doc.getPath(),
+                    e.toString());
             // Release the claim so a subsequent tick can retry.
             // summaryDirty stays true — the doc remains a candidate.
             try {
                 documentService.releaseClaim(doc.getId());
             } catch (RuntimeException releaseFail) {
-                log.warn("Auto-summary claim release failed doc='{}': {}",
-                        doc.getId(), releaseFail.toString());
+                log.warn("Auto-summary claim release failed doc='{}': {}", doc.getId(), releaseFail.toString());
             }
         }
     }

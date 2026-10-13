@@ -38,12 +38,11 @@ public final class ProjectOwnership {
      * The pod id currently holding a valid lease, or empty when nobody does —
      * unclaimed, or claimed by a holder that stopped renewing.
      *
-     * <p>Podless projects (see {@link ProjectService#isPodless}) always answer
-     * empty: they are never pinned to a pod and live wherever the WS lands.
-     * Callers must not read that as "the owner died".
+     * <p>The homeless tenant project (see {@link ProjectService#isHomeless})
+     * always answers empty: it is never placed. Callers must not read that as
+     * "the owner died".
      */
-    public static Optional<String> liveOwnerPodId(
-            ProjectDocument project, Instant now, Duration leaseTtl) {
+    public static Optional<String> liveOwnerPodId(ProjectDocument project, Instant now, Duration leaseTtl) {
         String holder = project.getHomePodId();
         if (holder == null || holder.isBlank()) return Optional.empty();
         if (isExpired(project.getClaimedAt(), now, leaseTtl)) return Optional.empty();
@@ -51,8 +50,7 @@ public final class ProjectOwnership {
     }
 
     /** True when {@code podId} holds a valid lease on the project. */
-    public static boolean isOwnedBy(
-            ProjectDocument project, String podId, Instant now, Duration leaseTtl) {
+    public static boolean isOwnedBy(ProjectDocument project, String podId, Instant now, Duration leaseTtl) {
         return liveOwnerPodId(project, now, leaseTtl)
                 .filter(holder -> holder.equals(podId))
                 .isPresent();
@@ -80,8 +78,7 @@ public final class ProjectOwnership {
      *       clock runs behind would be the worse failure.</li>
      * </ul>
      */
-    public static boolean isExpired(
-            @Nullable Instant claimedAt, Instant now, Duration leaseTtl) {
+    public static boolean isExpired(@Nullable Instant claimedAt, Instant now, Duration leaseTtl) {
         if (claimedAt == null) return true;
         return claimedAt.isBefore(now.minus(leaseTtl));
     }

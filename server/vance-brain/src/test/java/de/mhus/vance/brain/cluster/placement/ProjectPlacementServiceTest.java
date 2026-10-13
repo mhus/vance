@@ -13,9 +13,9 @@ import de.mhus.vance.brain.cluster.ClusterBringClient;
 import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.shared.cluster.BrainPodDocument;
+import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.project.LifecycleType;
 import de.mhus.vance.shared.project.ProjectDocument;
-import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.project.ProjectService;
 import java.util.HashMap;
 import java.util.List;
@@ -54,22 +54,28 @@ class ProjectPlacementServiceTest {
         lenient().when(clusterService.selfPod()).thenReturn(Optional.empty());
         lenient().when(clusterService.liveClusterPods()).thenReturn(List.of());
         placement = new ProjectPlacementService(
-                clusterService, projectService,
+                clusterService,
+                projectService,
                 new MetricService(new io.micrometer.core.instrument.simple.SimpleMeterRegistry()),
-                bringClient, lifecycleProvider);
+                bringClient,
+                lifecycleProvider);
     }
 
     private static ProjectDocument project(String name, int score) {
         return ProjectDocument.builder()
-                .tenantId("acme").name(name).homeResourceScore(score)
+                .tenantId("acme")
+                .name(name)
+                .homeResourceScore(score)
                 .lifecycleType(LifecycleType.AUTO)
                 .build();
     }
 
     private static BrainPodDocument pod(String node, int current, int max) {
         return BrainPodDocument.builder()
-                .nodeName(node).endpoint(node + ":9990")
-                .resourcesCurrentScore(current).resourcesMaxScore(max)
+                .nodeName(node)
+                .endpoint(node + ":9990")
+                .resourcesCurrentScore(current)
+                .resourcesMaxScore(max)
                 .build();
     }
 
@@ -77,32 +83,29 @@ class ProjectPlacementServiceTest {
         when(clusterService.selfPod()).thenReturn(Optional.of(pod(SELF_NODE, current, max)));
     }
 
-    // ─── filter: projects without pod affinity ──────────────────────
+    // ─── the homeless tenant project is never placed ────────────────
 
     @Test
-    void decide_homelessProject_staysHereWithoutLookingAtTheCluster() {
+    void decide_homelessProject_isRefusedWithoutLookingAtTheCluster() {
         ProjectDocument homeless = ProjectDocument.builder()
-                .tenantId("acme").name("regular-name")
-                .lifecycleType(LifecycleType.HOMELESS).homeResourceScore(1)
+                .tenantId("acme")
+                .name("_tenant")
+                .lifecycleType(LifecycleType.HOMELESS)
+                .homeResourceScore(1)
                 .build();
 
-        assertThat(placement.decide(homeless, PlacementTrigger.DISTRIBUTOR))
-                .isInstanceOf(PlacementDecision.Here.class);
+        assertThatThrownBy(() -> placement.decide(homeless, PlacementTrigger.DISTRIBUTOR))
+                .isInstanceOf(IllegalArgumentException.class);
         verify(clusterService, never()).liveClusterPods();
     }
 
     @Test
-    void decide_podlessNameWithAutoLifecycle_staysHere() {
-        // Legacy documents exist where kind/lifecycleType disagree with the
-        // name; routing such a project away would send it where it can never
-        // be owned.
-        ProjectDocument legacy = ProjectDocument.builder()
-                .tenantId("acme").name("_user_wile.coyote")
-                .lifecycleType(LifecycleType.AUTO).homeResourceScore(1)
-                .build();
+    void decide_userHub_isPlacedLikeAnyOtherProject() {
+        givenSelfPod(10, 100);
+        when(clusterService.liveClusterPods()).thenReturn(List.of(pod(SELF_NODE, 10, 100)));
+        ProjectDocument hub = project("_user_wile.coyote", 1);
 
-        assertThat(placement.decide(legacy, PlacementTrigger.DISTRIBUTOR))
-                .isInstanceOf(PlacementDecision.Here.class);
+        assertThat(placement.decide(hub, PlacementTrigger.DISTRIBUTOR)).isInstanceOf(PlacementDecision.On.class);
     }
 
     // ─── local preference is the trigger's call ─────────────────────
@@ -110,8 +113,7 @@ class ProjectPlacementServiceTest {
     @Test
     void decide_localPreferringTrigger_withRoom_staysHere() {
         givenSelfPod(10, 100);
-        when(clusterService.liveClusterPods())
-                .thenReturn(List.of(pod("cold-other", 0, 100), pod(SELF_NODE, 10, 100)));
+        when(clusterService.liveClusterPods()).thenReturn(List.of(pod("cold-other", 0, 100), pod(SELF_NODE, 10, 100)));
 
         assertThat(placement.decide(project("p1", 5), PlacementTrigger.CREATE))
                 .as("a project that fits here must not pay a network hop")
@@ -121,8 +123,7 @@ class ProjectPlacementServiceTest {
     @Test
     void decide_distributorTrigger_ignoresLocalPreferenceAndPicksLeastLoaded() {
         givenSelfPod(10, 100);
-        when(clusterService.liveClusterPods())
-                .thenReturn(List.of(pod("cold-other", 0, 100), pod(SELF_NODE, 10, 100)));
+        when(clusterService.liveClusterPods()).thenReturn(List.of(pod("cold-other", 0, 100), pod(SELF_NODE, 10, 100)));
 
         PlacementDecision decision = placement.decide(project("p1", 5), PlacementTrigger.DISTRIBUTOR);
 
@@ -133,8 +134,7 @@ class ProjectPlacementServiceTest {
     @Test
     void decide_localPreferringTrigger_withoutRoom_routesToAnotherPodInsteadOfOverbooking() {
         givenSelfPod(98, 100);
-        when(clusterService.liveClusterPods())
-                .thenReturn(List.of(pod("roomy", 0, 100), pod(SELF_NODE, 98, 100)));
+        when(clusterService.liveClusterPods()).thenReturn(List.of(pod("roomy", 0, 100), pod(SELF_NODE, 98, 100)));
 
         PlacementDecision decision = placement.decide(project("p1", 10), PlacementTrigger.CREATE);
 
@@ -160,8 +160,7 @@ class ProjectPlacementServiceTest {
 
         PlacementDecision decision = placement.decide(project("p1", 1), PlacementTrigger.CREATE);
 
-        assertThat(decision).isEqualTo(
-                new PlacementDecision.Unschedulable(PlacementGap.NO_ELIGIBLE_POD));
+        assertThat(decision).isEqualTo(new PlacementDecision.Unschedulable(PlacementGap.NO_ELIGIBLE_POD));
     }
 
     @Test
@@ -171,7 +170,8 @@ class ProjectPlacementServiceTest {
 
         PlacementDecision decision = placement.decide(project("big", 500), PlacementTrigger.CREATE);
 
-        assertThat(decision).as("eligible pods exist — this is a scale-out, not a new pod kind")
+        assertThat(decision)
+                .as("eligible pods exist — this is a scale-out, not a new pod kind")
                 .isEqualTo(new PlacementDecision.Unschedulable(PlacementGap.NO_CAPACITY));
     }
 
@@ -179,8 +179,7 @@ class ProjectPlacementServiceTest {
     void decide_skipsLighterLoadedPodThatCannotFit() {
         givenSelfPod(100, 100);
         // 'tight' is lighter-loaded but has only 5 units left.
-        when(clusterService.liveClusterPods())
-                .thenReturn(List.of(pod("tight", 95, 100), pod("roomy", 50, 100)));
+        when(clusterService.liveClusterPods()).thenReturn(List.of(pod("tight", 95, 100), pod("roomy", 50, 100)));
 
         PlacementDecision decision = placement.decide(project("p1", 10), PlacementTrigger.DISTRIBUTOR);
 
@@ -203,14 +202,13 @@ class ProjectPlacementServiceTest {
 
     @Test
     void decideBatch_spreadsAcrossPodsInsteadOfOverbookingTheCheapest() {
-        when(clusterService.liveClusterPods())
-                .thenReturn(List.of(pod("a", 0, 10), pod("b", 0, 10)));
+        when(clusterService.liveClusterPods()).thenReturn(List.of(pod("a", 0, 10), pod("b", 0, 10)));
 
-        List<PlacementDecision> decisions = placement.decideBatch(
-                List.of(project("p1", 10), project("p2", 10)));
+        List<PlacementDecision> decisions = placement.decideBatch(List.of(project("p1", 10), project("p2", 10)));
 
         assertThat(decisions).hasSize(2);
-        assertThat(((PlacementDecision.On) decisions.get(0)).pod().getNodeName()).isEqualTo("a");
+        assertThat(((PlacementDecision.On) decisions.get(0)).pod().getNodeName())
+                .isEqualTo("a");
         assertThat(((PlacementDecision.On) decisions.get(1)).pod().getNodeName())
                 .as("p1 already filled 'a' for this round")
                 .isEqualTo("b");
@@ -220,19 +218,17 @@ class ProjectPlacementServiceTest {
     void decideBatch_runsOutOfRoomMidRound_reportsNoCapacityForTheRest() {
         when(clusterService.liveClusterPods()).thenReturn(List.of(pod("a", 0, 10)));
 
-        List<PlacementDecision> decisions = placement.decideBatch(
-                List.of(project("p1", 10), project("p2", 1)));
+        List<PlacementDecision> decisions = placement.decideBatch(List.of(project("p1", 10), project("p2", 1)));
 
-        assertThat(((PlacementDecision.On) decisions.get(0)).pod().getNodeName()).isEqualTo("a");
-        assertThat(decisions.get(1)).isEqualTo(
-                new PlacementDecision.Unschedulable(PlacementGap.NO_CAPACITY));
+        assertThat(((PlacementDecision.On) decisions.get(0)).pod().getNodeName())
+                .isEqualTo("a");
+        assertThat(decisions.get(1)).isEqualTo(new PlacementDecision.Unschedulable(PlacementGap.NO_CAPACITY));
     }
 
     @Test
     void decideBatch_neverPrefersLocal() {
         givenSelfPod(0, 100);
-        when(clusterService.liveClusterPods())
-                .thenReturn(List.of(pod("cold-other", 0, 100), pod(SELF_NODE, 0, 100)));
+        when(clusterService.liveClusterPods()).thenReturn(List.of(pod("cold-other", 0, 100), pod(SELF_NODE, 0, 100)));
 
         List<PlacementDecision> decisions = placement.decideBatch(List.of(project("p1", 1)));
 
@@ -270,7 +266,7 @@ class ProjectPlacementServiceTest {
     @Test
     void dispatch_unschedulable_isAProgrammingError() {
         assertThatThrownBy(() -> placement.dispatch(
-                new PlacementDecision.Unschedulable(PlacementGap.NO_CAPACITY), project("p1", 1)))
+                        new PlacementDecision.Unschedulable(PlacementGap.NO_CAPACITY), project("p1", 1)))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -290,7 +286,9 @@ class ProjectPlacementServiceTest {
 
     private static ProjectDocument requiring(String name, int score, Map<String, String> selector) {
         return ProjectDocument.builder()
-                .tenantId("acme").name(name).homeResourceScore(score)
+                .tenantId("acme")
+                .name(name)
+                .homeResourceScore(score)
                 .lifecycleType(LifecycleType.AUTO)
                 .placementSelector(new HashMap<>(selector))
                 .build();
@@ -299,21 +297,25 @@ class ProjectPlacementServiceTest {
     private static BrainPodDocument labelled(
             String node, int current, int max, Map<String, String> labels, boolean exclusive) {
         return BrainPodDocument.builder()
-                .nodeName(node).endpoint(node + ":9990")
-                .resourcesCurrentScore(current).resourcesMaxScore(max)
-                .labels(new HashMap<>(labels)).exclusive(exclusive)
+                .nodeName(node)
+                .endpoint(node + ":9990")
+                .resourcesCurrentScore(current)
+                .resourcesMaxScore(max)
+                .labels(new HashMap<>(labels))
+                .exclusive(exclusive)
                 .build();
     }
 
     @Test
     void decide_skipsEligibleButWrongLabelledPod_evenWhenItIsTheCheapest() {
         givenSelfPod(100, 100);
-        when(clusterService.liveClusterPods()).thenReturn(List.of(
-                labelled("plain", 0, 100, Map.of(), false),
-                labelled("gpu-pod", 50, 100, Map.of("gpu", "true"), false)));
+        when(clusterService.liveClusterPods())
+                .thenReturn(List.of(
+                        labelled("plain", 0, 100, Map.of(), false),
+                        labelled("gpu-pod", 50, 100, Map.of("gpu", "true"), false)));
 
-        PlacementDecision decision = placement.decide(
-                requiring("trainer", 5, Map.of("gpu", "true")), PlacementTrigger.DISTRIBUTOR);
+        PlacementDecision decision =
+                placement.decide(requiring("trainer", 5, Map.of("gpu", "true")), PlacementTrigger.DISTRIBUTOR);
 
         assertThat(((PlacementDecision.On) decision).pod().getNodeName()).isEqualTo("gpu-pod");
     }
@@ -321,68 +323,68 @@ class ProjectPlacementServiceTest {
     @Test
     void decide_noPodCarriesTheLabels_reportsNoEligiblePodNotNoCapacity() {
         givenSelfPod(100, 100);
-        when(clusterService.liveClusterPods()).thenReturn(List.of(
-                labelled("plain", 0, 10000, Map.of(), false)));
+        when(clusterService.liveClusterPods()).thenReturn(List.of(labelled("plain", 0, 10000, Map.of(), false)));
 
-        PlacementDecision decision = placement.decide(
-                requiring("trainer", 1, Map.of("gpu", "true")), PlacementTrigger.CREATE);
+        PlacementDecision decision =
+                placement.decide(requiring("trainer", 1, Map.of("gpu", "true")), PlacementTrigger.CREATE);
 
-        assertThat(decision).as("there is plenty of room — the missing thing is a kind of pod")
+        assertThat(decision)
+                .as("there is plenty of room — the missing thing is a kind of pod")
                 .isEqualTo(new PlacementDecision.Unschedulable(PlacementGap.NO_ELIGIBLE_POD));
     }
 
     @Test
     void decide_matchingPodsAllFull_reportsNoCapacityNotNoEligiblePod() {
         givenSelfPod(100, 100);
-        when(clusterService.liveClusterPods()).thenReturn(List.of(
-                labelled("plain", 0, 10000, Map.of(), false),
-                labelled("gpu-pod", 100, 100, Map.of("gpu", "true"), false)));
+        when(clusterService.liveClusterPods())
+                .thenReturn(List.of(
+                        labelled("plain", 0, 10000, Map.of(), false),
+                        labelled("gpu-pod", 100, 100, Map.of("gpu", "true"), false)));
 
-        PlacementDecision decision = placement.decide(
-                requiring("trainer", 5, Map.of("gpu", "true")), PlacementTrigger.CREATE);
+        PlacementDecision decision =
+                placement.decide(requiring("trainer", 5, Map.of("gpu", "true")), PlacementTrigger.CREATE);
 
-        assertThat(decision).as("the right kind exists and is full — scale it out")
+        assertThat(decision)
+                .as("the right kind exists and is full — scale it out")
                 .isEqualTo(new PlacementDecision.Unschedulable(PlacementGap.NO_CAPACITY));
     }
 
     @Test
     void decide_exclusivePod_isNotUsedForASelectorlessProject() {
         givenSelfPod(100, 100);
-        when(clusterService.liveClusterPods()).thenReturn(List.of(
-                labelled("reserved", 0, 100, Map.of("gpu", "true"), true)));
+        when(clusterService.liveClusterPods())
+                .thenReturn(List.of(labelled("reserved", 0, 100, Map.of("gpu", "true"), true)));
 
-        PlacementDecision decision = placement.decide(project("ordinary", 1),
-                PlacementTrigger.DISTRIBUTOR);
+        PlacementDecision decision = placement.decide(project("ordinary", 1), PlacementTrigger.DISTRIBUTOR);
 
-        assertThat(decision).isEqualTo(
-                new PlacementDecision.Unschedulable(PlacementGap.NO_ELIGIBLE_POD));
+        assertThat(decision).isEqualTo(new PlacementDecision.Unschedulable(PlacementGap.NO_ELIGIBLE_POD));
     }
 
     @Test
     void decide_localPreference_doesNotOverrideEligibility() {
         // This pod has room but the wrong labels — preferring local here would
         // run the project exactly where its selector excludes it.
-        when(clusterService.selfPod()).thenReturn(Optional.of(
-                labelled(SELF_NODE, 0, 100, Map.of(), false)));
-        when(clusterService.liveClusterPods()).thenReturn(List.of(
-                labelled(SELF_NODE, 0, 100, Map.of(), false),
-                labelled("gpu-pod", 90, 100, Map.of("gpu", "true"), false)));
+        when(clusterService.selfPod()).thenReturn(Optional.of(labelled(SELF_NODE, 0, 100, Map.of(), false)));
+        when(clusterService.liveClusterPods())
+                .thenReturn(List.of(
+                        labelled(SELF_NODE, 0, 100, Map.of(), false),
+                        labelled("gpu-pod", 90, 100, Map.of("gpu", "true"), false)));
 
-        PlacementDecision decision = placement.decide(
-                requiring("trainer", 5, Map.of("gpu", "true")), PlacementTrigger.CREATE);
+        PlacementDecision decision =
+                placement.decide(requiring("trainer", 5, Map.of("gpu", "true")), PlacementTrigger.CREATE);
 
         assertThat(((PlacementDecision.On) decision).pod().getNodeName()).isEqualTo("gpu-pod");
     }
 
     @Test
     void decideBatch_reservesOnlyOnPodsEachProjectCanUse() {
-        when(clusterService.liveClusterPods()).thenReturn(List.of(
-                labelled("plain", 0, 10, Map.of(), false),
-                labelled("gpu-pod", 0, 10, Map.of("gpu", "true"), false)));
+        when(clusterService.liveClusterPods())
+                .thenReturn(List.of(
+                        labelled("plain", 0, 10, Map.of(), false),
+                        labelled("gpu-pod", 0, 10, Map.of("gpu", "true"), false)));
 
-        List<PlacementDecision> decisions = placement.decideBatch(List.of(
-                requiring("trainer", 10, Map.of("gpu", "true")),
-                project("ordinary", 10)));
+        List<PlacementDecision> decisions = placement.decideBatch(
+                List.of(requiring("trainer", 10, Map.of("gpu", "true")), project("ordinary", 10)));
 
         assertThat(((PlacementDecision.On) decisions.get(0)).pod().getNodeName())
                 .isEqualTo("gpu-pod");
@@ -401,8 +403,8 @@ class ProjectPlacementServiceTest {
 
     @Test
     void isEligibleHere_wrongLabels_isFalse() {
-        when(clusterService.selfPod()).thenReturn(Optional.of(
-                labelled(SELF_NODE, 0, 100, Map.of("gpu", "false"), false)));
+        when(clusterService.selfPod())
+                .thenReturn(Optional.of(labelled(SELF_NODE, 0, 100, Map.of("gpu", "false"), false)));
 
         assertThat(placement.isEligibleHere(requiring("trainer", 1, Map.of("gpu", "true"))))
                 .isFalse();
@@ -412,25 +414,32 @@ class ProjectPlacementServiceTest {
     void isEligibleHere_ignoresCapacity() {
         // A full pod is still *eligible*. The attach paths must not refuse a
         // waiting user over a soft score cap.
-        when(clusterService.selfPod()).thenReturn(Optional.of(
-                labelled(SELF_NODE, 100, 100, Map.of("gpu", "true"), false)));
+        when(clusterService.selfPod())
+                .thenReturn(Optional.of(labelled(SELF_NODE, 100, 100, Map.of("gpu", "true"), false)));
 
         assertThat(placement.isEligibleHere(requiring("trainer", 50, Map.of("gpu", "true"))))
                 .isTrue();
     }
 
     @Test
-    void isEligibleHere_podlessProject_isAlwaysTrue() {
-        when(clusterService.selfPod()).thenReturn(Optional.of(
-                labelled(SELF_NODE, 0, 100, Map.of(), true)));
-        ProjectDocument podless = ProjectDocument.builder()
-                .tenantId("acme").name("_user_wile.coyote")
-                .placementSelector(new HashMap<>(Map.of("gpu", "true")))
+    void isEligibleHere_homelessProject_isNeverTrue() {
+        ProjectDocument homeless = ProjectDocument.builder()
+                .tenantId("acme")
+                .name("_tenant")
+                .lifecycleType(LifecycleType.HOMELESS)
                 .build();
 
-        assertThat(placement.isEligibleHere(podless))
-                .as("podless projects live wherever the WS lands — even on an exclusive pod")
-                .isTrue();
+        assertThat(placement.isEligibleHere(homeless))
+                .as("the tenant project runs nowhere")
+                .isFalse();
+    }
+
+    @Test
+    void isEligibleHere_userHub_honoursTheSelectorLikeAnyOtherProject() {
+        when(clusterService.selfPod()).thenReturn(Optional.of(labelled(SELF_NODE, 0, 100, Map.of(), false)));
+        ProjectDocument hub = requiring("_user_wile.coyote", 1, Map.of("gpu", "true"));
+
+        assertThat(placement.isEligibleHere(hub)).isFalse();
     }
 
     @Test
@@ -444,8 +453,7 @@ class ProjectPlacementServiceTest {
 
     @Test
     void isEligibleHere_byName_resolvesTheDocument() {
-        when(clusterService.selfPod()).thenReturn(Optional.of(
-                labelled(SELF_NODE, 0, 100, Map.of(), false)));
+        when(clusterService.selfPod()).thenReturn(Optional.of(labelled(SELF_NODE, 0, 100, Map.of(), false)));
         when(projectService.findByTenantAndName("acme", "trainer"))
                 .thenReturn(Optional.of(requiring("trainer", 1, Map.of("gpu", "true"))));
 
@@ -454,11 +462,12 @@ class ProjectPlacementServiceTest {
 
     // ─── capacity override ──────────────────────────────────────────
 
-    private static BrainPodDocument capped(
-            String node, int current, int max, Integer override) {
+    private static BrainPodDocument capped(String node, int current, int max, Integer override) {
         return BrainPodDocument.builder()
-                .nodeName(node).endpoint(node + ":9990")
-                .resourcesCurrentScore(current).resourcesMaxScore(max)
+                .nodeName(node)
+                .endpoint(node + ":9990")
+                .resourcesCurrentScore(current)
+                .resourcesMaxScore(max)
                 .resourcesMaxScoreOverride(override)
                 .build();
     }
@@ -469,8 +478,7 @@ class ProjectPlacementServiceTest {
         // of the three readers had kept reading the raw field, the pod would
         // still look available and the override would be decoration.
         givenSelfPod(100, 100);
-        when(clusterService.liveClusterPods())
-                .thenReturn(List.of(capped("throttled", 90, 10000, 95)));
+        when(clusterService.liveClusterPods()).thenReturn(List.of(capped("throttled", 90, 10000, 95)));
 
         assertThat(placement.decide(project("p1", 10), PlacementTrigger.DISTRIBUTOR))
                 .isEqualTo(new PlacementDecision.Unschedulable(PlacementGap.NO_CAPACITY));
@@ -478,8 +486,7 @@ class ProjectPlacementServiceTest {
 
     @Test
     void localHeadroom_followsTheOverride() {
-        when(clusterService.selfPod())
-                .thenReturn(Optional.of(capped(SELF_NODE, 90, 10000, 95)));
+        when(clusterService.selfPod()).thenReturn(Optional.of(capped(SELF_NODE, 90, 10000, 95)));
 
         assertThat(placement.localHeadroom()).isEqualTo(5);
     }
@@ -489,14 +496,11 @@ class ProjectPlacementServiceTest {
         // Recalibration upwards is the case the field exists for: the configured
         // value was wrong, not the pod.
         givenSelfPod(100, 100);
-        when(clusterService.liveClusterPods())
-                .thenReturn(List.of(capped("recalibrated", 90, 100, 5000)));
+        when(clusterService.liveClusterPods()).thenReturn(List.of(capped("recalibrated", 90, 100, 5000)));
 
-        PlacementDecision decision = placement.decide(project("p1", 500),
-                PlacementTrigger.DISTRIBUTOR);
+        PlacementDecision decision = placement.decide(project("p1", 500), PlacementTrigger.DISTRIBUTOR);
 
-        assertThat(((PlacementDecision.On) decision).pod().getNodeName())
-                .isEqualTo("recalibrated");
+        assertThat(((PlacementDecision.On) decision).pod().getNodeName()).isEqualTo("recalibrated");
     }
 
     // ─── headroom ───────────────────────────────────────────────────

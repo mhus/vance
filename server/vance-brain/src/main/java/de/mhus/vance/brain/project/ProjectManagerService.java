@@ -60,9 +60,8 @@ public class ProjectManagerService {
      * {@code ProjectLifecycleService}). Throws {@link ClaimRejectedException}
      * when another pod holds a valid lease, and on CLOSED or unknown.
      *
-     * <p>Podless system projects (see {@link ProjectService#isPodless})
-     * are returned unchanged — they live on whichever pod the user's
-     * WS lands on and never take a lease.
+     * <p>The homeless tenant project (see {@link ProjectService#isHomeless})
+     * is refused: it is never placed.
      *
      * <p><b>Owning is not running — do not use this as an entry point.</b>
      * This is the raw lease primitive: it makes the pod the owner and does
@@ -80,25 +79,27 @@ public class ProjectManagerService {
      * short-circuits to a lease refresh once the project runs here.
      */
     public ProjectDocument claimForLocalPod(String tenantId, String projectName) {
-        if (ProjectService.isPodless(projectName)) {
-            return projectService.findByTenantAndName(tenantId, projectName)
-                    .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
-                            "Project '" + projectName + "' not found in tenant '"
-                                    + tenantId + "'"));
+        if (ProjectService.isHomeless(projectName)) {
+            throw new ClaimRejectedException(
+                    "Project '" + tenantId + "/" + projectName + "' is homeless — it is never placed");
         }
-        ProjectDocument doc = projectService.claim(
-                        tenantId, projectName,
-                        clusterService.selfPodId(), clusterService.selfNodeName(),
-                        clusterService.selfEndpoint(), clusterService.leaseTtl())
+        ProjectDocument doc = projectService
+                .claim(
+                        tenantId,
+                        projectName,
+                        clusterService.selfPodId(),
+                        clusterService.selfNodeName(),
+                        clusterService.selfEndpoint(),
+                        clusterService.leaseTtl())
                 .orElseThrow(() -> {
-                    String holder = projectService.findByTenantAndName(tenantId, projectName)
+                    String holder = projectService
+                            .findByTenantAndName(tenantId, projectName)
                             .map(ProjectDocument::getHomeNode)
                             .orElse("<gone>");
-                    return new ClaimRejectedException(
-                            "Project '" + tenantId + "/" + projectName
-                                    + "' is leased by pod '" + holder
-                                    + "', refusing to steal from this pod ('"
-                                    + clusterService.selfNodeName() + "')");
+                    return new ClaimRejectedException("Project '" + tenantId + "/" + projectName
+                            + "' is leased by pod '" + holder
+                            + "', refusing to steal from this pod ('"
+                            + clusterService.selfNodeName() + "')");
                 });
         log.debug("Project '{}/{}' leased by this pod", tenantId, projectName);
         return doc;
@@ -106,13 +107,13 @@ public class ProjectManagerService {
 
     /** Whether this pod currently holds a valid lease on the project. */
     public boolean isOwnedByLocalPod(String tenantId, String projectName) {
-        if (ProjectService.isPodless(projectName)) {
+        if (ProjectService.isHomeless(projectName)) {
             return false;
         }
-        return projectService.findByTenantAndName(tenantId, projectName)
+        return projectService
+                .findByTenantAndName(tenantId, projectName)
                 .map(project -> ProjectOwnership.isOwnedBy(
-                        project, clusterService.selfPodId(),
-                        Instant.now(), clusterService.leaseTtl()))
+                        project, clusterService.selfPodId(), Instant.now(), clusterService.leaseTtl()))
                 .orElse(false);
     }
 
@@ -128,8 +129,10 @@ public class ProjectManagerService {
      */
     public boolean releaseLocalLease(String tenantId, String projectName) {
         return projectService.releaseLease(
-                tenantId, projectName,
-                clusterService.selfPodId(), clusterService.selfNodeName(),
+                tenantId,
+                projectName,
+                clusterService.selfPodId(),
+                clusterService.selfNodeName(),
                 clusterService.selfEndpoint());
     }
 
@@ -144,11 +147,11 @@ public class ProjectManagerService {
      * where its sessions, processes, and workspace live.
      *
      * <p>Returns {@link Optional#empty()} if the project does not exist,
-     * is podless ({@link ProjectService#isPodless}), or holds no valid
+     * is homeless ({@link ProjectService#isHomeless}), or holds no valid
      * ownership lease — never claimed, or claimed by a pod that stopped
      * renewing (crashed, or restarted on a new host IP). Callers that need a
-     * present endpoint should treat the empty case as "lives wherever the WS
-     * lands" or "pending bootstrap" and either retry or surface a
+     * present endpoint should treat the empty case as "not placed" or
+     * "pending bootstrap" and either retry or surface a
      * {@code 409 Conflict} to the user.
      *
      * <p>The lease is what stops a session from becoming permanently
@@ -167,12 +170,12 @@ public class ProjectManagerService {
      * See {@code specification/engine-message-routing.md} §5.
      */
     public Optional<String> findProjectEndpoint(String tenantId, String projectName) {
-        if (ProjectService.isPodless(projectName)) {
+        if (ProjectService.isHomeless(projectName)) {
             return Optional.empty();
         }
-        return projectService.findByTenantAndName(tenantId, projectName)
-                .flatMap(project -> ProjectOwnership.liveOwnerPodId(
-                        project, Instant.now(), clusterService.leaseTtl()))
+        return projectService
+                .findByTenantAndName(tenantId, projectName)
+                .flatMap(project -> ProjectOwnership.liveOwnerPodId(project, Instant.now(), clusterService.leaseTtl()))
                 .flatMap(clusterService::resolveEndpointByPodId);
     }
 
@@ -185,7 +188,8 @@ public class ProjectManagerService {
      * cluster-registry entry for this pod's node-name.
      */
     public boolean isLocalPod(String endpoint) {
-        return clusterService.resolveEndpoint(clusterService.selfNodeName())
+        return clusterService
+                .resolveEndpoint(clusterService.selfNodeName())
                 .map(self -> Objects.equals(self, endpoint))
                 .orElse(false);
     }
@@ -216,34 +220,35 @@ public class ProjectManagerService {
      * dark on the pod that owns them.
      */
     public ClaimResult claimForLocalPodOrRedirect(String tenantId, String projectName) {
-        if (ProjectService.isPodless(projectName)) {
-            // Podless system projects (e.g. _user_<login>, _vance) live
-            // wherever the WS lands — never redirect, never take a lease.
-            return new ClaimResult.Local(claimForLocalPod(tenantId, projectName));
+        if (ProjectService.isHomeless(projectName)) {
+            throw new ClaimRejectedException(
+                    "Project '" + tenantId + "/" + projectName + "' is homeless — it is never placed");
         }
         Optional<ProjectDocument> claimed = projectService.claim(
-                tenantId, projectName,
-                clusterService.selfPodId(), clusterService.selfNodeName(),
-                clusterService.selfEndpoint(), clusterService.leaseTtl());
+                tenantId,
+                projectName,
+                clusterService.selfPodId(),
+                clusterService.selfNodeName(),
+                clusterService.selfEndpoint(),
+                clusterService.leaseTtl());
         if (claimed.isPresent()) {
             return new ClaimResult.Local(claimed.get());
         }
         // CAS rejected — re-read to find the holder and resolve to an endpoint.
-        ProjectDocument current = projectService.findByTenantAndName(tenantId, projectName)
+        ProjectDocument current = projectService
+                .findByTenantAndName(tenantId, projectName)
                 .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
                         "Project '" + projectName + "' vanished between claim and redirect"));
-        String holder = ProjectOwnership
-                .liveOwnerPodId(current, Instant.now(), clusterService.leaseTtl())
-                .orElseThrow(() -> new ClaimRejectedException(
-                        "Project '" + tenantId + "/" + projectName
-                                + "' claim rejected but no live lease holder;"
-                                + " concurrent state change"));
-        String endpoint = clusterService.resolveEndpointByPodId(holder)
-                .orElseThrow(() -> new ClaimRejectedException(
-                        "Project '" + tenantId + "/" + projectName
-                                + "' is leased by pod '" + current.getHomeNode()
-                                + "' but the cluster registry has no live endpoint for it "
-                                + "(row purged, stopped, or not beating)"));
+        String holder = ProjectOwnership.liveOwnerPodId(current, Instant.now(), clusterService.leaseTtl())
+                .orElseThrow(() -> new ClaimRejectedException("Project '" + tenantId + "/" + projectName
+                        + "' claim rejected but no live lease holder;"
+                        + " concurrent state change"));
+        String endpoint = clusterService
+                .resolveEndpointByPodId(holder)
+                .orElseThrow(() -> new ClaimRejectedException("Project '" + tenantId + "/" + projectName
+                        + "' is leased by pod '" + current.getHomeNode()
+                        + "' but the cluster registry has no live endpoint for it "
+                        + "(row purged, stopped, or not beating)"));
         return new ClaimResult.Redirect(endpoint);
     }
 

@@ -47,14 +47,15 @@ public class VanceWebSocketClient implements AutoCloseable {
     /**
      * Tracks {@code envelope.id} → {@code envelope.type} for outgoing
      * requests so the inbound dispatch can auto-update
-     * {@link #currentSessionId} when a {@code session-create} or
-     * {@code session-resume} reply arrives.
+     * {@link #currentSessionId} when a {@code session-create},
+     * {@code session-resume} or {@code session-bootstrap} reply arrives.
      */
     private final Map<String, String> pendingTypes = new ConcurrentHashMap<>();
 
     /**
      * Bound session id, mirrored from the server side. Filled when a
-     * {@code session-create} or {@code session-resume} reply arrives,
+     * {@code session-create}, {@code session-resume} or
+     * {@code session-bootstrap} reply arrives,
      * cleared on {@code session-unbind}. Travels in the outer
      * {@link LiveEnvelope} so the Face-Pod can route session-channel
      * frames to the project's home-pod (see planning/live-ws.md §7).
@@ -82,20 +83,20 @@ public class VanceWebSocketClient implements AutoCloseable {
      * for an invalid JWT), the returned future completes exceptionally.
      */
     public CompletableFuture<Void> connect() {
-        WebSocket.Builder builder = httpClient.newWebSocketBuilder()
+        WebSocket.Builder builder = httpClient
+                .newWebSocketBuilder()
                 .connectTimeout(config.getConnectTimeout())
-                .header(HandshakeHeaders.AUTHORIZATION,
-                        HandshakeHeaders.BEARER_PREFIX + config.getJwtToken())
+                .header(HandshakeHeaders.AUTHORIZATION, HandshakeHeaders.BEARER_PREFIX + config.getJwtToken())
                 .header(HandshakeHeaders.PROFILE, config.getProfile())
                 .header(HandshakeHeaders.CLIENT_VERSION, config.getClientVersion());
         if (config.getClientName() != null && !config.getClientName().isBlank()) {
             builder.header(HandshakeHeaders.CLIENT_NAME, config.getClientName());
         }
-        if (config.getClientContextJson() != null && !config.getClientContextJson().isBlank()) {
+        if (config.getClientContextJson() != null
+                && !config.getClientContextJson().isBlank()) {
             builder.header(HandshakeHeaders.CLIENT_CONTEXT, config.getClientContextJson());
         }
-        return builder.buildAsync(config.getUri(), new JdkListener())
-                .thenAccept(ws -> this.webSocket = ws);
+        return builder.buildAsync(config.getUri(), new JdkListener()).thenAccept(ws -> this.webSocket = ws);
     }
 
     /** Sends a fully-built envelope on the {@code session} channel. */
@@ -132,8 +133,7 @@ public class VanceWebSocketClient implements AutoCloseable {
         }
         String json;
         try {
-            LiveEnvelope wrapped = new LiveEnvelope(
-                    channel, sessionChannel ? currentSessionId : null, envelope);
+            LiveEnvelope wrapped = new LiveEnvelope(channel, sessionChannel ? currentSessionId : null, envelope);
             json = objectMapper.writeValueAsString(wrapped);
         } catch (JacksonException e) {
             CompletableFuture<Void> failed = new CompletableFuture<>();
@@ -142,8 +142,7 @@ public class VanceWebSocketClient implements AutoCloseable {
         }
         // Serialise outbound writes — JDK WebSocket forbids overlapping sendText.
         // Swallow the previous failure (per-send isolation) before chaining the next.
-        return sendChain.updateAndGet(prev -> prev
-                .exceptionally(e -> null)
+        return sendChain.updateAndGet(prev -> prev.exceptionally(e -> null)
                 .thenCompose(ignored -> ws.sendText(json, true).thenApply(w -> null)));
     }
 
@@ -218,18 +217,18 @@ public class VanceWebSocketClient implements AutoCloseable {
                         // unclaimed channel is dropped by the listener, which
                         // keeps a forward-compatible server from breaking an
                         // older client.
-                        WebSocketEnvelope other = objectMapper.convertValue(
-                                outer.getPayload(), WebSocketEnvelope.class);
+                        WebSocketEnvelope other =
+                                objectMapper.convertValue(outer.getPayload(), WebSocketEnvelope.class);
                         listener.onChannelMessage(outer.getChannel(), other);
                         ws.request(1);
                         return null;
                     }
-                    WebSocketEnvelope envelope =
-                            objectMapper.convertValue(outer.getPayload(), WebSocketEnvelope.class);
+                    WebSocketEnvelope envelope = objectMapper.convertValue(outer.getPayload(), WebSocketEnvelope.class);
                     if (envelope.getReplyTo() != null) {
                         String requestType = pendingTypes.remove(envelope.getReplyTo());
                         if (MessageType.SESSION_CREATE.equals(requestType)
-                                || MessageType.SESSION_RESUME.equals(requestType)) {
+                                || MessageType.SESSION_RESUME.equals(requestType)
+                                || MessageType.SESSION_BOOTSTRAP.equals(requestType)) {
                             extractSessionIdInto(envelope);
                         }
                     }

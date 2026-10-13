@@ -8,6 +8,7 @@ import de.mhus.vance.shared.ursascheduler.UrsaSchedulerLoader;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 /**
@@ -72,9 +73,8 @@ public class ProjectOwnerRequirementService {
      * <p>So the line is: <b>waiting</b> work needs a pod, <b>reactive</b> work
      * brings one when it is needed.
      */
-    public static final List<String> ACTIVATION_SOURCE_PREFIXES = List.of(
-            UrsaSchedulerLoader.SCHEDULER_PATH_PREFIX,
-            UrsaHookLoader.HOOK_PATH_ROOT);
+    public static final List<String> ACTIVATION_SOURCE_PREFIXES =
+            List.of(UrsaSchedulerLoader.SCHEDULER_PATH_PREFIX, UrsaHookLoader.HOOK_PATH_ROOT);
 
     /**
      * Only the files the loaders actually read count. A folder marker left by
@@ -85,6 +85,8 @@ public class ProjectOwnerRequirementService {
 
     private final DocumentService documentService;
     private final ProjectService projectService;
+    /** Waiting work that is not a document — see {@link ProjectOwnerRequirementContributor}. */
+    private final ObjectProvider<ProjectOwnerRequirementContributor> contributors;
 
     /** True when {@code path} could change the answer for its project. */
     public static boolean isActivationSourcePath(String path) {
@@ -99,9 +101,10 @@ public class ProjectOwnerRequirementService {
      * Recomputes the flag for one project and persists it if it changed.
      * Returns the value now in effect.
      *
-     * <p>Podless projects are skipped: they never take a lease, so nothing
-     * would read the flag for them, and their background work lives wherever
-     * the user's WS lands by design.
+     * <p>The homeless tenant project never requires an owner: it is never
+     * placed, and its scheduler and hook entries are cascade templates that
+     * fire in the projects that are up (see
+     * {@code ProjectOwnerRequirementListener}).
      *
      * <p>Cost is one {@code exists} query, plus a conditional update that
      * writes nothing when the answer is unchanged — which is the normal case,
@@ -109,12 +112,16 @@ public class ProjectOwnerRequirementService {
      * already there.
      */
     public boolean recompute(String tenantId, String projectId) {
-        if (ProjectService.isPodless(projectId)) return false;
-        boolean required = documentService.existsAnyUnderPrefixes(
-                tenantId, projectId, ACTIVATION_SOURCE_PREFIXES, ACTIVATION_SOURCE_SUFFIX);
+        boolean required = !ProjectService.isHomeless(projectId)
+                && (documentService.existsAnyUnderPrefixes(
+                                tenantId, projectId, ACTIVATION_SOURCE_PREFIXES, ACTIVATION_SOURCE_SUFFIX)
+                        || contributors.orderedStream().anyMatch(c -> c.requiresOwner(tenantId, projectId)));
         if (projectService.setOwnerRequired(tenantId, projectId, required)) {
-            log.info("Project '{}/{}' ownerRequired → {} (waiting work {})",
-                    tenantId, projectId, required,
+            log.info(
+                    "Project '{}/{}' ownerRequired → {} (waiting work {})",
+                    tenantId,
+                    projectId,
+                    required,
                     required ? "present" : "gone");
         }
         return required;
@@ -149,18 +156,6 @@ public class ProjectOwnerRequirementService {
     public int releaseNoLongerQualifying() {
         int released = 0;
         for (ProjectDocument project : projectService.findOwnerRequired()) {
-            if (ProjectService.isPodless(project.getName())) {
-                // A podless project can never take a lease, so the flag says
-                // nothing true about it. It is inert — HOMELESS is never a
-                // recovery candidate — but a field that is permanently wrong
-                // is the kind of thing someone later reads and believes.
-                if (projectService.setOwnerRequired(
-                        project.getTenantId(), project.getName(), false)) {
-                    log.info("Project '{}/{}' is podless — clearing ownerRequired",
-                            project.getTenantId(), project.getName());
-                }
-                continue;
-            }
             if (!recompute(project.getTenantId(), project.getName())) {
                 released++;
             }

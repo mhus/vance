@@ -28,16 +28,17 @@ import org.springframework.data.mongodb.core.mapping.Document;
  */
 @Document(collection = "projects")
 @CompoundIndexes({
-        @CompoundIndex(name = "tenant_name_idx", def = "{ 'tenantId': 1, 'name': 1 }", unique = true),
-        // Backs the per-beat lease renewal (one updateMulti over "everything I
-        // hold") and every ownership query. Renewal cost stays independent of
-        // the number of tenants and projects because of this index.
-        @CompoundIndex(name = "home_pod_idx", def = "{ 'homePodId': 1 }"),
-        // Backs the "who needs an owner but has no live lease" scan run by the
-        // boot self-pull and the master distributor. An index range scan, where
-        // the predecessor had to $nin a list that grew with the cluster.
-        @CompoundIndex(name = "owner_required_idx",
-                def = "{ 'ownerRequired': 1, 'lifecycleType': 1, 'status': 1, 'claimedAt': 1 }")
+    @CompoundIndex(name = "tenant_name_idx", def = "{ 'tenantId': 1, 'name': 1 }", unique = true),
+    // Backs the per-beat lease renewal (one updateMulti over "everything I
+    // hold") and every ownership query. Renewal cost stays independent of
+    // the number of tenants and projects because of this index.
+    @CompoundIndex(name = "home_pod_idx", def = "{ 'homePodId': 1 }"),
+    // Backs the "who needs an owner but has no live lease" scan run by the
+    // boot self-pull and the master distributor. An index range scan, where
+    // the predecessor had to $nin a list that grew with the cluster.
+    @CompoundIndex(
+            name = "owner_required_idx",
+            def = "{ 'ownerRequired': 1, 'lifecycleType': 1, 'status': 1, 'claimedAt': 1 }")
 })
 @Data
 @Builder
@@ -118,10 +119,10 @@ public class ProjectDocument {
 
     /**
      * Drives cluster-wide spawn behaviour — see
-     * {@code specification/cluster-project-management.md} §2. SYSTEM
-     * projects are always {@link LifecycleType#HOMELESS}; NORMAL projects
-     * default to {@link LifecycleType#AUTO}, where {@link #ownerRequired}
-     * decides, and can be pinned either way by an operator.
+     * {@code specification/cluster-project-management.md} §2. The tenant
+     * project is always {@link LifecycleType#HOMELESS}; every other project
+     * starts as {@link LifecycleType#AUTO}, where {@link #ownerRequired}
+     * decides. NORMAL projects can be pinned either way by an operator.
      */
     @Builder.Default
     private LifecycleType lifecycleType = LifecycleType.AUTO;

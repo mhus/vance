@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -22,6 +23,7 @@ import de.mhus.vance.brain.progress.PlanStateInitialPusher;
 import de.mhus.vance.brain.progress.ProcessCountsPusher;
 import de.mhus.vance.brain.progress.WorkingProjectPusher;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
+import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.session.SessionChatBootstrapper;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
@@ -85,9 +87,6 @@ class SessionBootstrapHandlerActivationTest {
     private SessionService sessionService;
 
     @Mock
-    private ProjectService projectService;
-
-    @Mock
     private ProjectLifecycleService lifecycleService;
 
     @Mock
@@ -142,7 +141,6 @@ class SessionBootstrapHandlerActivationTest {
                 JsonMapper.builder().build(),
                 sender,
                 sessionService,
-                projectService,
                 lifecycleService,
                 thinkProcessService,
                 thinkEngineService,
@@ -157,7 +155,8 @@ class SessionBootstrapHandlerActivationTest {
                 homeBootstrapService,
                 authority,
                 actionRegistry,
-                laneScheduler);
+                laneScheduler,
+                new SessionBootstrapTargets(sessionService));
         wsSession = mock(WebSocketSession.class);
         ctx = new ConnectionContext(TENANT, USER, "Wile", PROFILE, "1.0", "cli", "ed-1", "10.0.0.1");
 
@@ -213,6 +212,56 @@ class SessionBootstrapHandlerActivationTest {
         InOrder order = inOrder(lifecycleService, sessionService);
         order.verify(lifecycleService).bring(TENANT, PROJECT);
         order.verify(sessionService).tryBind(eq(SESSION), anyString());
+    }
+
+    @Test
+    void autoResume_skipsACandidateWhoseProjectAnotherPodHolds() throws Exception {
+        SessionDocument elsewhere = session("sess-elsewhere", "held-elsewhere");
+        elsewhere.setLastActivityAt(Instant.now());
+        SessionDocument here = session(SESSION, PROJECT);
+        here.setLastActivityAt(Instant.now().minusSeconds(60));
+        when(sessionService.listForUser(TENANT, USER)).thenReturn(List.of(elsewhere, here));
+        when(lifecycleService.bring(TENANT, "held-elsewhere"))
+                .thenThrow(new ProjectManagerService.ClaimRejectedException("leased by pod 'x'"));
+        when(sessionService.tryBind(eq(SESSION), anyString())).thenReturn(true);
+
+        handler.handle(
+                ctx, wsSession, envelope(SessionBootstrapRequest.builder().build()));
+
+        verify(sessionService, never()).tryBind(eq("sess-elsewhere"), anyString());
+        verify(sessionService).tryBind(eq(SESSION), anyString());
+    }
+
+    @Test
+    void noProjectAndNothingToResume_createsInTheCallersHub() throws Exception {
+        String hub = HomeBootstrapService.hubProjectName(USER);
+        when(sessionService.listForUser(TENANT, USER)).thenReturn(List.of());
+        when(homeBootstrapService.resolveOrAutoProvision(TENANT, hub)).thenReturn(Optional.of(project(hub)));
+        when(sessionService.create(anyString(), anyString(), anyString(), any(), any(), any(), any()))
+                .thenReturn(session(SESSION, hub));
+        when(sessionService.tryBind(eq(SESSION), anyString())).thenReturn(true);
+
+        handler.handle(
+                ctx, wsSession, envelope(SessionBootstrapRequest.builder().build()));
+
+        verify(lifecycleService).bring(TENANT, hub);
+    }
+
+    @Test
+    void createInTheTenantProject_isRefused() throws Exception {
+        when(homeBootstrapService.resolveOrAutoProvision(TENANT, ProjectService.TENANT_PROJECT_NAME))
+                .thenReturn(Optional.of(project(ProjectService.TENANT_PROJECT_NAME)));
+
+        handler.handle(
+                ctx,
+                wsSession,
+                envelope(SessionBootstrapRequest.builder()
+                        .projectId(ProjectService.TENANT_PROJECT_NAME)
+                        .build()));
+
+        verify(sender).sendError(eq(wsSession), any(), eq(409), anyString());
+        verify(lifecycleService, never()).bring(anyString(), anyString());
+        verify(sessionService, never()).create(anyString(), anyString(), anyString(), any(), any(), any(), any());
     }
 
     private static SessionDocument session(String sessionId, String projectId) {

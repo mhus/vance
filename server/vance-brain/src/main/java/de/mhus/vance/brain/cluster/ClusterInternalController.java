@@ -1,15 +1,14 @@
 package de.mhus.vance.brain.cluster;
 
+import de.mhus.vance.brain.cluster.placement.ClusterFullException;
+import de.mhus.vance.brain.cluster.placement.PlacementDecision;
+import de.mhus.vance.brain.cluster.placement.PlacementTrigger;
+import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.shared.cluster.BrainPodCapacity;
 import de.mhus.vance.shared.cluster.BrainPodDocument;
 import de.mhus.vance.shared.cluster.BrainPodService;
-import de.mhus.vance.shared.cluster.PodSelector;
-import de.mhus.vance.brain.cluster.placement.ClusterFullException;
-import de.mhus.vance.brain.cluster.placement.PlacementDecision;
-import de.mhus.vance.brain.cluster.placement.PlacementTrigger;
-import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
 import de.mhus.vance.shared.project.LifecycleType;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectOwnership;
@@ -66,31 +65,28 @@ public class ClusterInternalController {
      */
     @GetMapping("/projects/home")
     public ResponseEntity<?> projectHome(
-            @RequestParam("tenantId") String tenantId,
-            @RequestParam("projectName") String projectName) {
-        Optional<ProjectDocument> project =
-                projectService.findByTenantAndName(tenantId, projectName);
+            @RequestParam("tenantId") String tenantId, @RequestParam("projectName") String projectName) {
+        Optional<ProjectDocument> project = projectService.findByTenantAndName(tenantId, projectName);
         if (project.isEmpty()) {
             return ResponseEntity.status(404).body("no such project");
         }
-        if (ProjectService.isPodless(projectName)) {
-            return ResponseEntity.status(404).body(
-                    "podless project — lives wherever the client's WS landed, holds no lease");
+        if (ProjectService.isHomeless(projectName)) {
+            return ResponseEntity.status(404).body("homeless project — never placed, holds no lease");
         }
-        Optional<String> podId = ProjectOwnership.liveOwnerPodId(
-                project.get(), Instant.now(), clusterService.leaseTtl());
+        Optional<String> podId =
+                ProjectOwnership.liveOwnerPodId(project.get(), Instant.now(), clusterService.leaseTtl());
         if (podId.isEmpty()) {
             return ResponseEntity.status(404).body("no live lease — nobody owns it");
         }
-        return clusterService.resolveEndpointByPodId(podId.get())
-                .<ResponseEntity<?>>map(endpoint -> ResponseEntity.ok(new ProjectHomeResponse(
-                        podId.get(), project.get().getHomeNode(), endpoint)))
+        return clusterService
+                .resolveEndpointByPodId(podId.get())
+                .<ResponseEntity<?>>map(endpoint -> ResponseEntity.ok(
+                        new ProjectHomeResponse(podId.get(), project.get().getHomeNode(), endpoint)))
                 // Lease valid but the pod is not answering: the registry row is
                 // gone, stopped or stale. Distinct from "nobody owns it",
                 // because the two need different actions — wait versus place.
-                .orElseGet(() -> ResponseEntity.status(409).body(
-                        "leased by '" + project.get().getHomeNode()
-                                + "' but that pod has no live endpoint"));
+                .orElseGet(() -> ResponseEntity.status(409)
+                        .body("leased by '" + project.get().getHomeNode() + "' but that pod has no live endpoint"));
     }
 
     public record ProjectHomeResponse(
@@ -126,39 +122,38 @@ public class ClusterInternalController {
         if (req == null || req.tenantId() == null || req.projectName() == null) {
             return ResponseEntity.badRequest().build();
         }
-        Optional<ProjectDocument> found =
-                projectService.findByTenantAndName(req.tenantId(), req.projectName());
+        Optional<ProjectDocument> found = projectService.findByTenantAndName(req.tenantId(), req.projectName());
         if (found.isEmpty()) {
             return ResponseEntity.status(404).body("no such project");
         }
         ProjectDocument project = found.get();
-        Optional<String> owner = ProjectOwnership.liveOwnerPodId(
-                project, Instant.now(), clusterService.leaseTtl());
+        Optional<String> owner = ProjectOwnership.liveOwnerPodId(project, Instant.now(), clusterService.leaseTtl());
         if (owner.isPresent()) {
-            return ResponseEntity.status(409).body(new PlaceResponse(
-                    false, project.getHomeNode(),
-                    clusterService.resolveEndpointByPodId(owner.get()).orElse(null),
-                    null, "already owned by a live pod"));
+            return ResponseEntity.status(409)
+                    .body(new PlaceResponse(
+                            false,
+                            project.getHomeNode(),
+                            clusterService.resolveEndpointByPodId(owner.get()).orElse(null),
+                            null,
+                            "already owned by a live pod"));
         }
         try {
-            PlacementDecision decision =
-                    placementService.place(project, PlacementTrigger.ADMIN);
+            PlacementDecision decision = placementService.place(project, PlacementTrigger.ADMIN);
             String nodeName = decision instanceof PlacementDecision.On on
-                    ? on.pod().getNodeName() : clusterService.selfNodeName();
+                    ? on.pod().getNodeName()
+                    : clusterService.selfNodeName();
             String endpoint = decision instanceof PlacementDecision.On on
-                    ? on.pod().getEndpoint() : clusterService.selfEndpoint();
-            return ResponseEntity.ok(new PlaceResponse(
-                    true, nodeName, endpoint, null, "placed"));
+                    ? on.pod().getEndpoint()
+                    : clusterService.selfEndpoint();
+            return ResponseEntity.ok(new PlaceResponse(true, nodeName, endpoint, null, "placed"));
         } catch (ClusterFullException e) {
-            log.info("Placement refused for '{}/{}': {}",
-                    req.tenantId(), req.projectName(), e.getGap());
-            return ResponseEntity.status(503).body(new PlaceResponse(
-                    false, null, null, e.getGap().name(), e.getMessage()));
+            log.info("Placement refused for '{}/{}': {}", req.tenantId(), req.projectName(), e.getGap());
+            return ResponseEntity.status(503)
+                    .body(new PlaceResponse(false, null, null, e.getGap().name(), e.getMessage()));
         } catch (RuntimeException e) {
-            log.warn("Placement dispatch failed for '{}/{}': {}",
-                    req.tenantId(), req.projectName(), e.toString());
-            return ResponseEntity.status(502).body(new PlaceResponse(
-                    false, null, null, null, "dispatch failed: " + e.getMessage()));
+            log.warn("Placement dispatch failed for '{}/{}': {}", req.tenantId(), req.projectName(), e.toString());
+            return ResponseEntity.status(502)
+                    .body(new PlaceResponse(false, null, null, null, "dispatch failed: " + e.getMessage()));
         }
     }
 
@@ -198,8 +193,8 @@ public class ClusterInternalController {
         try {
             boolean released = lifecycleService.release(req.tenantId(), req.projectName());
             if (!released) {
-                log.info("Cluster release refused for '{}/{}': not held by this pod",
-                        req.tenantId(), req.projectName());
+                log.info(
+                        "Cluster release refused for '{}/{}': not held by this pod", req.tenantId(), req.projectName());
                 return ResponseEntity.status(409).build();
             }
             return ResponseEntity.ok().build();
@@ -223,29 +218,34 @@ public class ClusterInternalController {
      */
     @PatchMapping("/pods/{podId}/placement")
     public ResponseEntity<?> updatePodPlacement(
-            @PathVariable("podId") String podId,
-            @RequestBody PodPlacementRequest req) {
+            @PathVariable("podId") String podId, @RequestBody PodPlacementRequest req) {
         if (req == null) {
             return ResponseEntity.badRequest().build();
         }
         try {
-            return brainPodService.updatePlacement(
-                            podId, req.labels(), req.exclusive(),
+            return brainPodService
+                    .updatePlacement(
+                            podId,
+                            req.labels(),
+                            req.exclusive(),
                             req.maxScoreOverride(),
                             Boolean.TRUE.equals(req.clearMaxScoreOverride()))
                     .<ResponseEntity<?>>map(pod -> {
-                        log.info("Pod '{}' placement updated: labels={} exclusive={} "
-                                        + "maxScore={} override={}",
-                                pod.getNodeName(), pod.getLabels(), pod.isExclusive(),
-                                pod.getResourcesMaxScore(), pod.getResourcesMaxScoreOverride());
+                        log.info(
+                                "Pod '{}' placement updated: labels={} exclusive={} " + "maxScore={} override={}",
+                                pod.getNodeName(),
+                                pod.getLabels(),
+                                pod.isExclusive(),
+                                pod.getResourcesMaxScore(),
+                                pod.getResourcesMaxScoreOverride());
                         // What was just written is what PodSelector and
                         // BrainPodCapacity read, so something unschedulable may
                         // have become schedulable. Published unconditionally
                         // rather than only for label changes: a raised cap
                         // answers NO_CAPACITY, and an operator who raises one
                         // usually has something waiting.
-                        eventPublisher.publishEvent(new PlacementInputChangedEvent(
-                                "placement patched: " + pod.getNodeName()));
+                        eventPublisher.publishEvent(
+                                new PlacementInputChangedEvent("placement patched: " + pod.getNodeName()));
                         return ResponseEntity.ok(PodPlacementResponse.of(pod));
                     })
                     .orElseGet(() -> ResponseEntity.status(404).build());
@@ -284,8 +284,11 @@ public class ClusterInternalController {
 
         static PodPlacementResponse of(BrainPodDocument pod) {
             return new PodPlacementResponse(
-                    pod.getNodeName(), pod.getLabels(), pod.isExclusive(),
-                    pod.getResourcesMaxScore(), pod.getResourcesMaxScoreOverride(),
+                    pod.getNodeName(),
+                    pod.getLabels(),
+                    pod.isExclusive(),
+                    pod.getResourcesMaxScore(),
+                    pod.getResourcesMaxScoreOverride(),
                     BrainPodCapacity.effectiveMaxScore(pod));
         }
     }
@@ -321,9 +324,12 @@ public class ClusterInternalController {
             ProjectDocument project = projectService.setPlacement(
                     req.tenantId(), req.projectName(),
                     req.placementSelector(), req.homeResourceScore());
-            log.info("Project '{}/{}' placement updated: selector={} score={}",
-                    req.tenantId(), req.projectName(),
-                    project.getPlacementSelector(), project.getHomeResourceScore());
+            log.info(
+                    "Project '{}/{}' placement updated: selector={} score={}",
+                    req.tenantId(),
+                    req.projectName(),
+                    project.getPlacementSelector(),
+                    project.getHomeResourceScore());
             // Fixing a selector is the other remedy for an unschedulable
             // project — the cheap one — so it accelerates like providing a pod
             // does. Note this does not move a *running* project (§2.4); the
@@ -332,8 +338,10 @@ public class ClusterInternalController {
             eventPublisher.publishEvent(new PlacementInputChangedEvent(
                     "project selector patched: " + req.tenantId() + "/" + req.projectName()));
             return ResponseEntity.ok(new ProjectPlacementResponse(
-                    project.getTenantId(), project.getName(),
-                    project.getPlacementSelector(), project.getHomeResourceScore(),
+                    project.getTenantId(),
+                    project.getName(),
+                    project.getPlacementSelector(),
+                    project.getHomeResourceScore(),
                     project.getPendingSince()));
         } catch (ProjectService.ProjectNotFoundException e) {
             return ResponseEntity.status(404).body(e.getMessage());
@@ -370,24 +378,24 @@ public class ClusterInternalController {
      */
     @PostMapping("/projects/lifecycle-type")
     public ResponseEntity<?> setLifecycleType(@RequestBody ProjectLifecycleTypeRequest req) {
-        if (req == null || req.tenantId() == null || req.projectName() == null
-                || req.lifecycleType() == null) {
-            return ResponseEntity.badRequest().body(
-                    "tenantId, projectName and lifecycleType are required");
+        if (req == null || req.tenantId() == null || req.projectName() == null || req.lifecycleType() == null) {
+            return ResponseEntity.badRequest().body("tenantId, projectName and lifecycleType are required");
         }
         LifecycleType value;
         try {
             value = LifecycleType.valueOf(req.lifecycleType().trim().toUpperCase());
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(
-                    "Unknown lifecycleType '" + req.lifecycleType()
+            return ResponseEntity.badRequest()
+                    .body("Unknown lifecycleType '" + req.lifecycleType()
                             + "' — expected AUTO, EPHEMERAL or PERMANENT");
         }
         try {
-            ProjectDocument saved =
-                    projectService.setLifecycleType(req.tenantId(), req.projectName(), value);
-            log.info("Project '{}/{}' lifecycleType set to {}",
-                    req.tenantId(), req.projectName(), saved.getLifecycleType());
+            ProjectDocument saved = projectService.setLifecycleType(req.tenantId(), req.projectName(), value);
+            log.info(
+                    "Project '{}/{}' lifecycleType set to {}",
+                    req.tenantId(),
+                    req.projectName(),
+                    saved.getLifecycleType());
             return ResponseEntity.ok(new ProjectLifecycleTypeResponse(
                     saved.getTenantId(), saved.getName(),
                     String.valueOf(saved.getLifecycleType()), saved.isOwnerRequired()));
@@ -401,8 +409,7 @@ public class ClusterInternalController {
         }
     }
 
-    public record ProjectLifecycleTypeRequest(
-            String tenantId, String projectName, String lifecycleType) {}
+    public record ProjectLifecycleTypeRequest(String tenantId, String projectName, String lifecycleType) {}
 
     /**
      * Echoes {@code ownerRequired} alongside the override, because that is the
@@ -448,8 +455,7 @@ public class ClusterInternalController {
             String homeNode = doc.getHomeNode() == null ? "" : doc.getHomeNode();
             return ResponseEntity.ok(new HttpClusterBringClient.BringResponse(homeNode));
         } catch (ProjectManagerService.ClaimRejectedException e) {
-            log.info("Cluster bring rejected for '{}/{}': {}",
-                    req.tenantId(), req.projectName(), e.getMessage());
+            log.info("Cluster bring rejected for '{}/{}': {}", req.tenantId(), req.projectName(), e.getMessage());
             return ResponseEntity.status(409).build();
         }
     }

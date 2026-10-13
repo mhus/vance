@@ -13,7 +13,6 @@ import de.mhus.vance.brain.workspace.access.WorkspaceAccessProperties;
 import de.mhus.vance.brain.workspace.access.WorkspaceRoutingCache;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
-import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.toolpack.ToolException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
@@ -54,13 +53,6 @@ import tools.jackson.databind.ObjectMapper;
  * {@code vance.workspace.access.bypass-proxy=true} to call the
  * registry / router directly (test mode only).
  *
- * <p>Podless system projects ({@code _vance} / {@code _user_<login>},
- * detected via {@link ProjectService#isPodless}) never have a {@code
- * homeNode} — they run on whichever pod processed the WS connection.
- * For those the controller short-circuits straight to the local
- * registry, same as the bypass path; otherwise it would 409 with
- * "not claimed by any pod yet" on every Insights → Executions call.
- *
  * <p>NORMAL projects without an active claim (no live {@code homeNode})
  * also can't have any registered executions — the registry is
  * pod-local and only the owner pod populates it. The controller
@@ -86,13 +78,14 @@ public class ExecutionsController {
     private final RequestAuthority authority;
     private final String internalToken;
 
-    public ExecutionsController(ExecutionRegistryService registry,
-                                ExecutionRouter router,
-                                WorkspaceRoutingCache routingCache,
-                                WorkspaceAccessProperties properties,
-                                ObjectMapper objectMapper,
-                                RequestAuthority authority,
-                                @Value("${vance.internal.token:}") String internalToken) {
+    public ExecutionsController(
+            ExecutionRegistryService registry,
+            ExecutionRouter router,
+            WorkspaceRoutingCache routingCache,
+            WorkspaceAccessProperties properties,
+            ObjectMapper objectMapper,
+            RequestAuthority authority,
+            @Value("${vance.internal.token:}") String internalToken) {
         this.registry = registry;
         this.router = router;
         this.routingCache = routingCache;
@@ -113,7 +106,7 @@ public class ExecutionsController {
             @RequestParam(value = "ownerLabel", required = false) @Nullable String ownerLabel,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.READ);
-        if (properties.isBypassProxy() || ProjectService.isPodless(project)) {
+        if (properties.isBypassProxy()) {
             return listDirect(tenant, project, onlyRunning, ownerLabel);
         }
         ProjectPodKey key = new ProjectPodKey(tenant, project);
@@ -134,8 +127,8 @@ public class ExecutionsController {
         try {
             return objectMapper.readValue(body, new TypeReference<List<ExecutionInsightsDto>>() {});
         } catch (JacksonException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                    "Could not parse execution list from owner pod", e);
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_GATEWAY, "Could not parse execution list from owner pod", e);
         }
     }
 
@@ -146,20 +139,19 @@ public class ExecutionsController {
             @PathVariable("id") String id,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.READ);
-        if (properties.isBypassProxy() || ProjectService.isPodless(project)) {
+        if (properties.isBypassProxy()) {
             return statDirect(tenant, project, id);
         }
         ProjectPodKey key = new ProjectPodKey(tenant, project);
         if (routingCache.lookup(key).isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "Unknown execution: '" + id + "'");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown execution: '" + id + "'");
         }
         String body = proxyGet(key, buildInternalPath(tenant, project, id + "/stat"));
         try {
             return objectMapper.readValue(body, ExecutionInsightsDto.class);
         } catch (JacksonException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                    "Could not parse execution stat from owner pod", e);
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_GATEWAY, "Could not parse execution stat from owner pod", e);
         }
     }
 
@@ -175,13 +167,12 @@ public class ExecutionsController {
         if (n <= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "'n' must be > 0");
         }
-        if (properties.isBypassProxy() || ProjectService.isPodless(project)) {
+        if (properties.isBypassProxy()) {
             return tailDirect(tenant, project, id, n, stream);
         }
         ProjectPodKey key = new ProjectPodKey(tenant, project);
         if (routingCache.lookup(key).isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "Unknown execution: '" + id + "'");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown execution: '" + id + "'");
         }
         StringBuilder qs = new StringBuilder("n=").append(n);
         qs.append("&stream=").append(URLEncoder.encode(stream, StandardCharsets.UTF_8));
@@ -190,8 +181,8 @@ public class ExecutionsController {
         try {
             return objectMapper.readValue(body, ExecutionTailDto.class);
         } catch (JacksonException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                    "Could not parse execution tail from owner pod", e);
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_GATEWAY, "Could not parse execution tail from owner pod", e);
         }
     }
 
@@ -202,7 +193,10 @@ public class ExecutionsController {
     private List<ExecutionInsightsDto> listDirect(
             String tenant, String project, boolean onlyRunning, @Nullable String ownerLabel) {
         ExecutionScopeFilter filter = new ExecutionScopeFilter(
-                tenant, project, null, null,
+                tenant,
+                project,
+                null,
+                null,
                 ownerLabel == null || ownerLabel.isBlank() ? null : ownerLabel,
                 onlyRunning);
         List<ExecutionRegistryEntry> entries = registry.list(filter);
@@ -216,8 +210,7 @@ public class ExecutionsController {
         if (hit.isEmpty()
                 || (hit.get().tenantId() != null && !hit.get().tenantId().equals(tenant))
                 || (hit.get().projectId() != null && !hit.get().projectId().equals(project))) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "Unknown execution: '" + id + "'");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown execution: '" + id + "'");
         }
         return ExecutionInsightsMapper.toDto(hit.get());
     }
@@ -238,9 +231,7 @@ public class ExecutionsController {
                 ? raw.stream().map(String::valueOf).toList()
                 : List.of();
         String resolvedStream = result.get("stream") instanceof String s ? s : stream;
-        return ExecutionTailDto.builder()
-                .id(id)
-                .stream(resolvedStream)
+        return ExecutionTailDto.builder().id(id).stream(resolvedStream)
                 .requested(n)
                 .lines(new ArrayList<>(lines))
                 .build();
@@ -268,19 +259,23 @@ public class ExecutionsController {
             } catch (ConnectException | HttpTimeoutException e) {
                 routingCache.invalidate(key);
                 if (attempt == 1) {
-                    log.warn("Executions proxy gave up after retry for {} {}: {}",
-                            key.tenantId(), key.projectName(), e.toString());
-                    throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                            "Project owner pod unreachable", e);
+                    log.warn(
+                            "Executions proxy gave up after retry for {} {}: {}",
+                            key.tenantId(),
+                            key.projectName(),
+                            e.toString());
+                    throw new ResponseStatusException(
+                            HttpStatus.SERVICE_UNAVAILABLE, "Project owner pod unreachable", e);
                 }
-                log.debug("Executions proxy connect failed (attempt {}); retrying after cache refresh: {}",
-                        attempt + 1, e.toString());
+                log.debug(
+                        "Executions proxy connect failed (attempt {}); retrying after cache refresh: {}",
+                        attempt + 1,
+                        e.toString());
             } catch (IOException | InterruptedException e) {
                 if (e instanceof InterruptedException) {
                     Thread.currentThread().interrupt();
                 }
-                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                        "Executions proxy I/O error", e);
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Executions proxy I/O error", e);
             }
         }
         throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Executions proxy exhausted retries");
@@ -288,9 +283,9 @@ public class ExecutionsController {
 
     private String resolveOrThrow(ProjectPodKey key, int attempt) {
         Optional<String> ip = attempt == 0 ? routingCache.lookup(key) : routingCache.refresh(key);
-        return ip.orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
-                "Project '" + key.tenantId() + "/" + key.projectName()
-                        + "' is not claimed by any pod yet"));
+        return ip.orElseThrow(() -> new ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "Project '" + key.tenantId() + "/" + key.projectName() + "' is not claimed by any pod yet"));
     }
 
     private static String buildInternalPath(String tenant, String project, String op) {
@@ -311,5 +306,4 @@ public class ExecutionsController {
         }
         return new ResponseStatusException(status, body == null ? status.getReasonPhrase() : body);
     }
-
 }

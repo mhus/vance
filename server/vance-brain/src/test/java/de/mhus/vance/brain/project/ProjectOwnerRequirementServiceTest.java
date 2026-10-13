@@ -3,7 +3,6 @@ package de.mhus.vance.brain.project;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -13,8 +12,11 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.project.ProjectService;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 
 /**
  * "Does this project need an owner pod" is derived from the documents that
@@ -28,12 +30,16 @@ class ProjectOwnerRequirementServiceTest {
     private DocumentService documentService;
     private ProjectService projectService;
     private ProjectOwnerRequirementService service;
+    private final List<ProjectOwnerRequirementContributor> contributors = new ArrayList<>();
 
     @BeforeEach
     void setUp() {
         documentService = mock(DocumentService.class);
         projectService = mock(ProjectService.class);
-        service = new ProjectOwnerRequirementService(documentService, projectService);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<ProjectOwnerRequirementContributor> provider = mock(ObjectProvider.class);
+        when(provider.orderedStream()).thenAnswer(inv -> contributors.stream());
+        service = new ProjectOwnerRequirementService(documentService, projectService, provider);
     }
 
     @Test
@@ -55,23 +61,50 @@ class ProjectOwnerRequirementServiceTest {
     }
 
     @Test
-    void podlessProject_isNotTracked() {
-        // Podless projects never take a lease, so nothing would read the flag —
-        // and their background work lives wherever the WS lands by design.
-        assertThat(service.recompute("acme", "_user_marvin")).isFalse();
+    void contributorWithWaitingWork_setsFlagWithoutAnyDocument() {
+        when(documentService.existsAnyUnderPrefixes(eq("acme"), eq("_user__trillian-x"), anyList(), any()))
+                .thenReturn(false);
+        contributors.add((tenant, project) -> "_user__trillian-x".equals(project));
+
+        assertThat(service.recompute("acme", "_user__trillian-x")).isTrue();
+        verify(projectService).setOwnerRequired("acme", "_user__trillian-x", true);
+    }
+
+    @Test
+    void tenantProject_ignoresContributorsToo() {
+        contributors.add((tenant, project) -> true);
+
+        assertThat(service.recompute("acme", "_tenant")).isFalse();
+    }
+
+    @Test
+    void tenantProject_neverRequiresAnOwner() {
+        // Its scheduler and hook entries are cascade templates firing in the
+        // projects that are up — they must not pin the tenant project, which
+        // is never placed.
+        assertThat(service.recompute("acme", "_tenant")).isFalse();
 
         verify(documentService, never()).existsAnyUnderPrefixes(any(), any(), anyList(), any());
-        verify(projectService, never()).setOwnerRequired(anyString(), anyString(), any(Boolean.class));
+        verify(projectService).setOwnerRequired("acme", "_tenant", false);
+    }
+
+    @Test
+    void userHub_withScheduler_requiresAnOwner() {
+        when(documentService.existsAnyUnderPrefixes(eq("acme"), eq("_user_marvin"), anyList(), any()))
+                .thenReturn(true);
+
+        assertThat(service.recompute("acme", "_user_marvin")).isTrue();
+        verify(projectService).setOwnerRequired("acme", "_user_marvin", true);
     }
 
     @Test
     void activationSourcePaths_areTheTwoKindsThatWait() {
         // Both arm something that fires without anyone calling in — a pod
         // holding them is the only reason they happen at all.
-        assertThat(ProjectOwnerRequirementService.isActivationSourcePath(
-                "_vance/scheduler/nightly.yaml")).isTrue();
-        assertThat(ProjectOwnerRequirementService.isActivationSourcePath(
-                "_vance/hooks/document-changed/tag.yaml")).isTrue();
+        assertThat(ProjectOwnerRequirementService.isActivationSourcePath("_vance/scheduler/nightly.yaml"))
+                .isTrue();
+        assertThat(ProjectOwnerRequirementService.isActivationSourcePath("_vance/hooks/document-changed/tag.yaml"))
+                .isTrue();
     }
 
     @Test
@@ -79,8 +112,8 @@ class ProjectOwnerRequirementServiceTest {
         // An event trigger arrives from outside, and the pod that takes the
         // call brings the project up then — a cold start on the first trigger
         // instead of a pod slot all year.
-        assertThat(ProjectOwnerRequirementService.isActivationSourcePath(
-                "_vance/events/inbox.yaml")).isFalse();
+        assertThat(ProjectOwnerRequirementService.isActivationSourcePath("_vance/events/inbox.yaml"))
+                .isFalse();
     }
 
     @Test
@@ -88,18 +121,18 @@ class ProjectOwnerRequirementServiceTest {
         // It runs once at startup and is done — keeping the project placed
         // afterwards buys nothing, and since kits are the ordinary way to set a
         // project up, counting it would pin nearly every project forever.
-        assertThat(ProjectOwnerRequirementService.isActivationSourcePath(
-                "_vance/kits/provisioning.yaml")).isFalse();
+        assertThat(ProjectOwnerRequirementService.isActivationSourcePath("_vance/kits/provisioning.yaml"))
+                .isFalse();
     }
 
     @Test
     void ordinaryPaths_areNotActivationSources() {
-        assertThat(ProjectOwnerRequirementService.isActivationSourcePath(
-                "documents/notes.md")).isFalse();
-        assertThat(ProjectOwnerRequirementService.isActivationSourcePath(
-                "_vance/recipes/analyze.yaml")).isFalse();
-        assertThat(ProjectOwnerRequirementService.isActivationSourcePath(
-                "_vance/kits/installed/some-kit.yaml")).isFalse();
+        assertThat(ProjectOwnerRequirementService.isActivationSourcePath("documents/notes.md"))
+                .isFalse();
+        assertThat(ProjectOwnerRequirementService.isActivationSourcePath("_vance/recipes/analyze.yaml"))
+                .isFalse();
+        assertThat(ProjectOwnerRequirementService.isActivationSourcePath("_vance/kits/installed/some-kit.yaml"))
+                .isFalse();
         assertThat(ProjectOwnerRequirementService.isActivationSourcePath(null)).isFalse();
     }
 }

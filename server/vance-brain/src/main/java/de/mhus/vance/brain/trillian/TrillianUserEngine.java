@@ -313,9 +313,10 @@ public class TrillianUserEngine implements ThinkEngine {
      */
     @Override
     public void runTurn(ThinkProcessDocument process, ThinkEngineContext ctx) {
-        // The loop lives in a podless hub (D2): a self-check claimed on one
-        // pod, a session reply delivered on another — both would run a turn
-        // on their own lane, and the lane serialises per pod only. The
+        // The hub's home pod wakes the loop, but a turn can still start
+        // elsewhere: the bootstrap starts the loop on the control session's
+        // pod, and a message routed while the hub is between holders is
+        // delivered where it arrives. The lane serialises per pod only; the
         // lease makes it one turn at a time cluster-wide. A pod that does
         // not get it leaves its inbox to the running turn, which drains it.
         String lease = turnLeaseKey(process);

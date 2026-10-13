@@ -5,11 +5,12 @@ package de.mhus.vance.shared.project;
  * {@code specification/cluster-project-management.md} §2 and
  * {@code planning/project-ownership-lease-design.md} §5.
  *
- * <p>{@link #HOMELESS} is hard-wired to {@link ProjectKind#SYSTEM} (the
- * {@code _vance} / {@code _user_<login>} projects) and immutable. For
- * {@link ProjectKind#NORMAL} projects {@link #AUTO} is the default and the
- * other two are <b>operator overrides</b>, switchable at runtime via
- * {@code ProjectService.setLifecycleType}.
+ * <p>{@link #HOMELESS} is hard-wired to the tenant project {@code _tenant}
+ * ({@code ProjectService.isHomeless}) and immutable. Every other project —
+ * the personal hubs {@code _user_<login>} included — starts as {@link #AUTO}.
+ * For {@link ProjectKind#NORMAL} projects the other two are <b>operator
+ * overrides</b>, switchable at runtime via {@code ProjectService.setLifecycleType};
+ * SYSTEM projects keep the type they were created with.
  *
  * <p><b>Why a fourth value.</b> The old default was {@link #EPHEMERAL}, which
  * made "nobody chose" indistinguishable from "somebody chose never to
@@ -23,10 +24,11 @@ package de.mhus.vance.shared.project;
 public enum LifecycleType {
 
     /**
-     * No pod-affinity. The {@code homeNode} field stays {@code null}
-     * forever; every pod that touches such a project handles it locally
-     * via the existing "podless" code paths. Set automatically for every
-     * {@link ProjectKind#SYSTEM} project at create time.
+     * Never placed. The {@code homeNode} field stays {@code null} forever,
+     * and nothing runs in the project: no sessions, no lane, no scheduler
+     * runs of its own. Its documents are read straight from Mongo — the tenant
+     * project is a storage place for the cascade. Set at create time for the
+     * tenant project only.
      */
     HOMELESS,
 

@@ -35,23 +35,32 @@ public class ProjectService {
     public static final String SYSTEM_NAME_PREFIX = "_";
 
     /**
-     * Returns {@code true} when {@code projectName} refers to a system
-     * project that intentionally has no Home Pod — currently every
-     * project whose name starts with {@link #SYSTEM_NAME_PREFIX}
-     * ({@code _vance}, {@code _user_<login>}). These projects live
-     * pod-locally on whichever brain process the user's WS lands on
-     * and are never claimed via {@code homeNode}; lifecycle and
-     * pod-claim paths short-circuit on this check.
-     *
-     * <p>Rationale and consequences are spelled out in
-     * {@code specification/eddie-engine.md} §2.4.
+     * Name of the tenant-wide system project. It holds the cascade layer
+     * (settings, recipes, skills, scheduler and hook templates, …) and is
+     * the only {@link LifecycleType#HOMELESS} project.
      */
-    public static boolean isPodless(String projectName) {
-        return projectName != null && projectName.startsWith(SYSTEM_NAME_PREFIX);
+    public static final String TENANT_PROJECT_NAME = "_tenant";
+
+    /**
+     * Returns {@code true} when {@code projectName} is the project that
+     * never takes a lease — the tenant project. It is a storage place for
+     * the cascade, read straight from Mongo: no sessions, no lane, no
+     * scheduler runs of its own. Every other project, the personal hubs
+     * {@code _user_<login>} included, is placed on a pod through a lease.
+     *
+     * <p>{@link #create} derives {@link LifecycleType#HOMELESS} from this
+     * predicate and {@link #setLifecycleType} refuses to change it, so the
+     * name check and the stored lifecycle type always agree. Call sites that
+     * only hold a name use this; call sites that hold the document may read
+     * the lifecycle type instead.
+     */
+    public static boolean isHomeless(@Nullable String projectName) {
+        return TENANT_PROJECT_NAME.equals(projectName);
     }
 
     /** Field names — kept here so atomic queries don't drift. */
     private static final String F_TENANT = "tenantId";
+
     private static final String F_NAME = "name";
     private static final String F_STATUS = "status";
     private static final String F_HOME_POD = "homePodId";
@@ -69,8 +78,8 @@ public class ProjectService {
      * {@code SUSPENDED} express the opposite intent and {@code CLOSED} is
      * terminal; recovery must not overrule any of the three.
      */
-    private static final List<ProjectStatus> WANTS_TO_RUN = List.of(
-            ProjectStatus.INIT, ProjectStatus.RECOVERING, ProjectStatus.RUNNING);
+    private static final List<ProjectStatus> WANTS_TO_RUN =
+            List.of(ProjectStatus.INIT, ProjectStatus.RECOVERING, ProjectStatus.RUNNING);
 
     /**
      * The same "should be live somewhere" question as {@link #WANTS_TO_RUN},
@@ -93,8 +102,8 @@ public class ProjectService {
     private final de.mhus.vance.shared.megadodo.MegadodoService megadodoService;
     /** Lazy — ProjectService is a core bean; resolve the permission layer
      *  on demand to keep it out of this service's construction graph. */
-    private final org.springframework.beans.factory.ObjectProvider<
-            de.mhus.vance.shared.permission.PermissionService> permissionServiceProvider;
+    private final org.springframework.beans.factory.ObjectProvider<de.mhus.vance.shared.permission.PermissionService>
+            permissionServiceProvider;
 
     public Optional<ProjectDocument> findByTenantAndName(String tenantId, String name) {
         return repository.findByTenantIdAndName(tenantId, name);
@@ -130,10 +139,8 @@ public class ProjectService {
      * caller. (permission-system finding #11)
      */
     public List<ProjectDocument> filterReadable(
-            String tenantId, de.mhus.vance.shared.permission.SecurityContext subject,
-            List<ProjectDocument> projects) {
-        de.mhus.vance.shared.permission.PermissionService permissionService =
-                permissionServiceProvider.getObject();
+            String tenantId, de.mhus.vance.shared.permission.SecurityContext subject, List<ProjectDocument> projects) {
+        de.mhus.vance.shared.permission.PermissionService permissionService = permissionServiceProvider.getObject();
         return projects.stream()
                 .filter(p -> permissionService.check(
                         subject,
@@ -183,18 +190,15 @@ public class ProjectService {
             @Nullable List<String> teamIds,
             ProjectKind kind) {
         if (kind == ProjectKind.NORMAL && name.startsWith(SYSTEM_NAME_PREFIX)) {
-            throw new ReservedProjectNameException(
-                    "Project name '" + name + "' starts with the reserved '"
-                            + SYSTEM_NAME_PREFIX + "' prefix — only SYSTEM projects "
-                            + "may use that prefix");
+            throw new ReservedProjectNameException("Project name '" + name + "' starts with the reserved '"
+                    + SYSTEM_NAME_PREFIX + "' prefix — only SYSTEM projects "
+                    + "may use that prefix");
         }
         if (repository.existsByTenantIdAndName(tenantId, name)) {
             throw new ProjectAlreadyExistsException(
                     "Project '" + name + "' already exists in tenant '" + tenantId + "'");
         }
-        LifecycleType lifecycleType = (kind == ProjectKind.SYSTEM)
-                ? LifecycleType.HOMELESS
-                : LifecycleType.AUTO;
+        LifecycleType lifecycleType = isHomeless(name) ? LifecycleType.HOMELESS : LifecycleType.AUTO;
         ProjectDocument project = ProjectDocument.builder()
                 .tenantId(tenantId)
                 .name(name)
@@ -206,9 +210,13 @@ public class ProjectService {
                 .lifecycleType(lifecycleType)
                 .build();
         ProjectDocument saved = repository.save(project);
-        log.info("Created project tenantId='{}' name='{}' kind={} lifecycle={} id='{}'",
-                saved.getTenantId(), saved.getName(), saved.getKind(),
-                saved.getLifecycleType(), saved.getId());
+        log.info(
+                "Created project tenantId='{}' name='{}' kind={} lifecycle={} id='{}'",
+                saved.getTenantId(),
+                saved.getName(),
+                saved.getKind(),
+                saved.getLifecycleType(),
+                saved.getId());
         auditService.projectCreate(tenantId, name);
         megadodoService.projectCreated(tenantId, name, /*actor*/ null);
         return saved;
@@ -239,25 +247,23 @@ public class ProjectService {
             String selfNodeName,
             String selfAddress,
             Duration leaseTtl) {
-        if (isPodless(name)) {
-            throw new IllegalArgumentException(
-                    "Project '" + name + "' is podless — refusing to take a lease. "
-                            + "Use ProjectManagerService.claimForLocalPod() which "
-                            + "short-circuits on isPodless().");
+        if (isHomeless(name)) {
+            throw new IllegalArgumentException("Project '" + name + "' is homeless — it never takes a lease");
         }
-        ProjectDocument current = repository.findByTenantIdAndName(tenantId, name)
-                .orElseThrow(() -> new ProjectNotFoundException(
-                        "Project '" + name + "' not found in tenant '" + tenantId + "'"));
+        ProjectDocument current = repository
+                .findByTenantIdAndName(tenantId, name)
+                .orElseThrow(() ->
+                        new ProjectNotFoundException("Project '" + name + "' not found in tenant '" + tenantId + "'"));
         if (current.getStatus() == ProjectStatus.CLOSED) {
-            throw new ProjectClosedException(
-                    "Project '" + name + "' is CLOSED — cannot claim");
+            throw new ProjectClosedException("Project '" + name + "' is CLOSED — cannot claim");
         }
         Instant now = Instant.now();
         Criteria base = Criteria.where(F_TENANT).is(tenantId).and(F_NAME).is(name);
-        Criteria casPredicate = new Criteria().orOperator(
-                Criteria.where(F_HOME_POD).is(null),
-                Criteria.where(F_HOME_POD).is(selfPodId),
-                expiredLease(now, leaseTtl));
+        Criteria casPredicate = new Criteria()
+                .orOperator(
+                        Criteria.where(F_HOME_POD).is(null),
+                        Criteria.where(F_HOME_POD).is(selfPodId),
+                        expiredLease(now, leaseTtl));
         Query query = new Query(new Criteria().andOperator(base, casPredicate));
         Update update = new Update()
                 .set(F_HOME_POD, selfPodId)
@@ -268,26 +274,38 @@ public class ProjectService {
                 // write path deciding when "placed" happened.
                 .unset(F_PENDING_SINCE);
         ProjectDocument updated = mongoTemplate.findAndModify(
-                query, update,
-                FindAndModifyOptions.options().returnNew(true),
-                ProjectDocument.class);
+                query, update, FindAndModifyOptions.options().returnNew(true), ProjectDocument.class);
         if (updated == null) {
             // The base (tenantId, name) match exists (we just read it above)
             // — so a null here means the CAS predicate failed. Another pod
             // holds a live lease. Caller decides whether to redirect.
-            log.debug("Project '{}/{}' claim rejected: holder='{}' ({}), self='{}'",
-                    tenantId, name, current.getHomeNode(), current.getHomePodId(), selfPodId);
+            log.debug(
+                    "Project '{}/{}' claim rejected: holder='{}' ({}), self='{}'",
+                    tenantId,
+                    name,
+                    current.getHomeNode(),
+                    current.getHomePodId(),
+                    selfPodId);
             return Optional.empty();
         }
         if (!Objects.equals(current.getHomePodId(), selfPodId)) {
-            log.info("Project '{}' leased by pod '{}' (was '{}', status={})",
-                    name, selfNodeName, current.getHomeNode(), current.getStatus());
+            log.info(
+                    "Project '{}' leased by pod '{}' (was '{}', status={})",
+                    name,
+                    selfNodeName,
+                    current.getHomeNode(),
+                    current.getStatus());
             // Only on the transition. Claiming is idempotent and doubles as a
             // lease refresh, so a row per call would be a row every time
             // anybody touched the project.
             megadodoService.projectHomeClaimed(
-                    tenantId, name, selfNodeName, selfPodId, selfAddress,
-                    current.getHomeNode(), current.getClaimedAt());
+                    tenantId,
+                    name,
+                    selfNodeName,
+                    selfPodId,
+                    selfAddress,
+                    current.getHomeNode(),
+                    current.getClaimedAt());
         }
         return Optional.of(updated);
     }
@@ -301,9 +319,10 @@ public class ProjectService {
      */
     private static Criteria expiredLease(Instant now, Duration leaseTtl) {
         Instant cutoff = now.minus(leaseTtl);
-        return new Criteria().orOperator(
-                Criteria.where(F_CLAIMED_AT).is(null),
-                Criteria.where(F_CLAIMED_AT).lt(cutoff));
+        return new Criteria()
+                .orOperator(
+                        Criteria.where(F_CLAIMED_AT).is(null),
+                        Criteria.where(F_CLAIMED_AT).lt(cutoff));
     }
 
     /**
@@ -325,8 +344,7 @@ public class ProjectService {
         if (selfPodId == null || selfPodId.isBlank()) return 0;
         Query query = new Query(Criteria.where(F_HOME_POD).is(selfPodId));
         Update update = new Update().set(F_CLAIMED_AT, now);
-        return mongoTemplate.updateMulti(query, update, ProjectDocument.class)
-                .getMatchedCount();
+        return mongoTemplate.updateMulti(query, update, ProjectDocument.class).getMatchedCount();
     }
 
     /**
@@ -356,23 +374,21 @@ public class ProjectService {
             // for. The batching is what changes, not the cost that matters:
             // this runs once per shutdown and already wrote a feed row per
             // project.
-            Query query = new Query(Criteria.where(F_TENANT).is(project.getTenantId())
-                    .and(F_NAME).is(project.getName())
-                    .and(F_HOME_POD).is(selfPodId));
-            Update update = new Update()
-                    .unset(F_HOME_POD)
-                    .unset(F_HOME_NODE)
-                    .unset(F_CLAIMED_AT);
-            if (mongoTemplate.updateFirst(query, update, ProjectDocument.class)
-                    .getModifiedCount() == 0) {
+            Query query = new Query(Criteria.where(F_TENANT)
+                    .is(project.getTenantId())
+                    .and(F_NAME)
+                    .is(project.getName())
+                    .and(F_HOME_POD)
+                    .is(selfPodId));
+            Update update = new Update().unset(F_HOME_POD).unset(F_HOME_NODE).unset(F_CLAIMED_AT);
+            if (mongoTemplate.updateFirst(query, update, ProjectDocument.class).getModifiedCount() == 0) {
                 // Taken over between the read and here — not ours to release,
                 // and not ours to report.
                 continue;
             }
             released++;
             megadodoService.projectHomeReleased(
-                    project.getTenantId(), project.getName(),
-                    selfNodeName, selfPodId, selfAddress);
+                    project.getTenantId(), project.getName(), selfNodeName, selfPodId, selfAddress);
         }
         return released;
     }
@@ -384,23 +400,24 @@ public class ProjectService {
      * different status. Used by {@code ProjectLifecycleService} (vance-brain)
      * to drive the lifecycle.
      */
-    public ProjectDocument transitionStatus(String tenantId, String name,
-                                            ProjectStatus expected, ProjectStatus target) {
-        Query query = new Query(Criteria.where(F_TENANT).is(tenantId)
-                .and(F_NAME).is(name)
-                .and(F_STATUS).is(expected));
+    public ProjectDocument transitionStatus(
+            String tenantId, String name, ProjectStatus expected, ProjectStatus target) {
+        Query query = new Query(Criteria.where(F_TENANT)
+                .is(tenantId)
+                .and(F_NAME)
+                .is(name)
+                .and(F_STATUS)
+                .is(expected));
         Update update = new Update().set(F_STATUS, target);
         ProjectDocument updated = mongoTemplate.findAndModify(
-                query, update,
-                FindAndModifyOptions.options().returnNew(true),
-                ProjectDocument.class);
+                query, update, FindAndModifyOptions.options().returnNew(true), ProjectDocument.class);
         if (updated == null) {
-            ProjectDocument actual = repository.findByTenantIdAndName(tenantId, name)
+            ProjectDocument actual = repository
+                    .findByTenantIdAndName(tenantId, name)
                     .orElseThrow(() -> new ProjectNotFoundException(
                             "Project '" + name + "' not found in tenant '" + tenantId + "'"));
-            throw new ProjectStatusConflictException(
-                    "Project '" + name + "' status was " + actual.getStatus()
-                            + ", expected " + expected + " for transition to " + target);
+            throw new ProjectStatusConflictException("Project '" + name + "' status was " + actual.getStatus()
+                    + ", expected " + expected + " for transition to " + target);
         }
         log.info("Project '{}' transition {} → {}", name, expected, target);
         return updated;
@@ -421,9 +438,10 @@ public class ProjectService {
             @Nullable String projectGroupId,
             boolean clearProjectGroup,
             @Nullable List<String> teamIds) {
-        ProjectDocument project = repository.findByTenantIdAndName(tenantId, name)
-                .orElseThrow(() -> new ProjectNotFoundException(
-                        "Project '" + name + "' not found in tenant '" + tenantId + "'"));
+        ProjectDocument project = repository
+                .findByTenantIdAndName(tenantId, name)
+                .orElseThrow(() ->
+                        new ProjectNotFoundException("Project '" + name + "' not found in tenant '" + tenantId + "'"));
         if (title != null) {
             project.setTitle(title);
         }
@@ -439,9 +457,13 @@ public class ProjectService {
             project.setTeamIds(new ArrayList<>(teamIds));
         }
         ProjectDocument saved = repository.save(project);
-        log.info("Updated project tenantId='{}' name='{}' title='{}' enabled={} groupId='{}'",
-                saved.getTenantId(), saved.getName(), saved.getTitle(),
-                saved.isEnabled(), saved.getProjectGroupId());
+        log.info(
+                "Updated project tenantId='{}' name='{}' title='{}' enabled={} groupId='{}'",
+                saved.getTenantId(),
+                saved.getName(),
+                saved.getTitle(),
+                saved.isEnabled(),
+                saved.getProjectGroupId());
         return saved;
     }
 
@@ -466,32 +488,29 @@ public class ProjectService {
      * @throws ProjectAlreadyExistsException if {@code newName} is taken
      */
     public ProjectDocument rename(String tenantId, String name, String newName) {
-        ProjectDocument current = repository.findByTenantIdAndName(tenantId, name)
-                .orElseThrow(() -> new ProjectNotFoundException(
-                        "Project '" + name + "' not found in tenant '" + tenantId + "'"));
+        ProjectDocument current = repository
+                .findByTenantIdAndName(tenantId, name)
+                .orElseThrow(() ->
+                        new ProjectNotFoundException("Project '" + name + "' not found in tenant '" + tenantId + "'"));
         if (current.getKind() == ProjectKind.SYSTEM) {
-            throw new SystemProjectProtectedException(
-                    "Project '" + name + "' is SYSTEM — cannot rename");
+            throw new SystemProjectProtectedException("Project '" + name + "' is SYSTEM — cannot rename");
         }
         if (newName.startsWith(SYSTEM_NAME_PREFIX)) {
             throw new ReservedProjectNameException(
-                    "Project name '" + newName + "' starts with the reserved '"
-                            + SYSTEM_NAME_PREFIX + "' prefix");
+                    "Project name '" + newName + "' starts with the reserved '" + SYSTEM_NAME_PREFIX + "' prefix");
         }
         requirePathSafeName(newName);
         if (repository.existsByTenantIdAndName(tenantId, newName)) {
             throw new ProjectAlreadyExistsException(
                     "Project '" + newName + "' already exists in tenant '" + tenantId + "'");
         }
-        Query query = new Query(Criteria.where(F_TENANT).is(tenantId).and(F_NAME).is(name));
+        Query query =
+                new Query(Criteria.where(F_TENANT).is(tenantId).and(F_NAME).is(name));
         Update update = new Update().set(F_NAME, newName);
         ProjectDocument updated = mongoTemplate.findAndModify(
-                query, update,
-                FindAndModifyOptions.options().returnNew(true),
-                ProjectDocument.class);
+                query, update, FindAndModifyOptions.options().returnNew(true), ProjectDocument.class);
         if (updated == null) {
-            throw new ProjectNotFoundException(
-                    "Project '" + name + "' disappeared during rename");
+            throw new ProjectNotFoundException("Project '" + name + "' disappeared during rename");
         }
         log.info("Renamed project tenantId='{}' '{}' → '{}'", tenantId, name, newName);
         auditService.projectRename(tenantId, name, newName);
@@ -520,8 +539,7 @@ public class ProjectService {
             return false;
         }
         if (found.get().getKind() == ProjectKind.SYSTEM) {
-            throw new SystemProjectProtectedException(
-                    "Project '" + name + "' is SYSTEM — cannot delete");
+            throw new SystemProjectProtectedException("Project '" + name + "' is SYSTEM — cannot delete");
         }
         repository.delete(found.get());
         log.info("Deleted project tenantId='{}' name='{}'", tenantId, name);
@@ -547,8 +565,7 @@ public class ProjectService {
      * touch {@code _vance}.
      */
     public static boolean isUserHub(String name) {
-        return name.startsWith(HUB_PROJECT_NAME_PREFIX)
-                && name.length() > HUB_PROJECT_NAME_PREFIX.length();
+        return name.startsWith(HUB_PROJECT_NAME_PREFIX) && name.length() > HUB_PROJECT_NAME_PREFIX.length();
     }
 
     /**
@@ -595,15 +612,13 @@ public class ProjectService {
             throw new ProjectAlreadyExistsException(
                     "Project '" + newName + "' already exists in tenant '" + tenantId + "'");
         }
-        Query query = new Query(Criteria.where(F_TENANT).is(tenantId).and(F_NAME).is(name));
+        Query query =
+                new Query(Criteria.where(F_TENANT).is(tenantId).and(F_NAME).is(name));
         Update update = new Update().set(F_NAME, newName);
         ProjectDocument updated = mongoTemplate.findAndModify(
-                query, update,
-                FindAndModifyOptions.options().returnNew(true),
-                ProjectDocument.class);
+                query, update, FindAndModifyOptions.options().returnNew(true), ProjectDocument.class);
         if (updated == null) {
-            throw new ProjectNotFoundException(
-                    "Hub project '" + name + "' not found in tenant '" + tenantId + "'");
+            throw new ProjectNotFoundException("Hub project '" + name + "' not found in tenant '" + tenantId + "'");
         }
         log.info("Renamed user-hub project tenantId='{}' '{}' → '{}'", tenantId, name, newName);
         auditService.projectRename(tenantId, name, newName);
@@ -613,9 +628,8 @@ public class ProjectService {
 
     private static void requireUserHub(String name, String operation) {
         if (!isUserHub(name)) {
-            throw new IllegalArgumentException(
-                    "Refusing to " + operation + " '" + name + "' as a user hub — only projects"
-                            + " named '" + HUB_PROJECT_NAME_PREFIX + "<login>' qualify");
+            throw new IllegalArgumentException("Refusing to " + operation + " '" + name
+                    + "' as a user hub — only projects" + " named '" + HUB_PROJECT_NAME_PREFIX + "<login>' qualify");
         }
     }
 
@@ -633,27 +647,22 @@ public class ProjectService {
      * @throws SystemProjectProtectedException if the project is SYSTEM
      */
     public ProjectDocument close(String tenantId, String name, String closedGroupId) {
-        ProjectDocument current = repository.findByTenantIdAndName(tenantId, name)
-                .orElseThrow(() -> new ProjectNotFoundException(
-                        "Project '" + name + "' not found in tenant '" + tenantId + "'"));
+        ProjectDocument current = repository
+                .findByTenantIdAndName(tenantId, name)
+                .orElseThrow(() ->
+                        new ProjectNotFoundException("Project '" + name + "' not found in tenant '" + tenantId + "'"));
         if (current.getKind() == ProjectKind.SYSTEM) {
-            throw new SystemProjectProtectedException(
-                    "Project '" + name + "' is SYSTEM — cannot close");
+            throw new SystemProjectProtectedException("Project '" + name + "' is SYSTEM — cannot close");
         }
-        Query query = new Query(Criteria.where(F_TENANT).is(tenantId).and(F_NAME).is(name));
-        Update update = new Update()
-                .set(F_STATUS, ProjectStatus.CLOSED)
-                .set("projectGroupId", closedGroupId);
+        Query query =
+                new Query(Criteria.where(F_TENANT).is(tenantId).and(F_NAME).is(name));
+        Update update = new Update().set(F_STATUS, ProjectStatus.CLOSED).set("projectGroupId", closedGroupId);
         ProjectDocument updated = mongoTemplate.findAndModify(
-                query, update,
-                FindAndModifyOptions.options().returnNew(true),
-                ProjectDocument.class);
+                query, update, FindAndModifyOptions.options().returnNew(true), ProjectDocument.class);
         if (updated == null) {
-            throw new ProjectNotFoundException(
-                    "Project '" + name + "' disappeared during close");
+            throw new ProjectNotFoundException("Project '" + name + "' disappeared during close");
         }
-        log.info("Closed project tenantId='{}' name='{}' → group='{}'",
-                tenantId, name, closedGroupId);
+        log.info("Closed project tenantId='{}' name='{}' → group='{}'", tenantId, name, closedGroupId);
         auditService.projectClose(tenantId, name, closedGroupId);
         megadodoService.projectClosed(tenantId, name, /*actor*/ null);
         return updated;
@@ -669,24 +678,24 @@ public class ProjectService {
      * another pod's projects — use {@code ProjectOwnership} for that.
      */
     public List<ProjectDocument> findRunningByHomePodId(String selfPodId) {
-        Query query = new Query(Criteria.where(F_STATUS).is(ProjectStatus.RUNNING)
-                .and(F_HOME_POD).is(selfPodId));
+        Query query = new Query(Criteria.where(F_STATUS)
+                .is(ProjectStatus.RUNNING)
+                .and(F_HOME_POD)
+                .is(selfPodId));
         return mongoTemplate.find(query, ProjectDocument.class);
     }
 
     /**
-     * Lists podless projects (system + per-user) that are not in a
-     * terminal state. Podless projects never reach {@code RUNNING}
-     * because {@code bringPodless()} leaves the status untouched — so
-     * pod-scoped sweepers (auto-summary, indexers) cannot rely on the
-     * regular {@link #findRunningByHomePodId} filter to see them.
-     * They live on whichever pod the user's WS lands on; any pod may
-     * sweep their documents because per-doc work is gated by an atomic
-     * claim.
+     * Lists the homeless projects (see {@link #isHomeless}) that are not in a
+     * terminal state. They never take a lease and therefore never show up in
+     * {@link #findRunningByHomePodId}, yet their documents still want the
+     * pod-independent per-document work (auto-summary, RAG indexing). Any pod
+     * may sweep them because that work is gated by an atomic claim per
+     * document.
      */
-    public List<ProjectDocument> findPodlessActive() {
-        Query query = new Query(Criteria.where(F_NAME).regex("^" + SYSTEM_NAME_PREFIX)
-                .and(F_STATUS).ne(ProjectStatus.CLOSED));
+    public List<ProjectDocument> findHomelessActive() {
+        Query query = new Query(
+                Criteria.where(F_NAME).is(TENANT_PROJECT_NAME).and(F_STATUS).ne(ProjectStatus.CLOSED));
         return mongoTemplate.find(query, ProjectDocument.class);
     }
 
@@ -758,19 +767,18 @@ public class ProjectService {
      * next round or the distributor picks it up — and much cheaper than a
      * stable cursor over a set that is defined by "nobody owns this right now".
      */
-    public List<ProjectDocument> findProjectsNeedingOwner(
-            Duration leaseTtl, int limit, int skip) {
-        Criteria needsOwner = new Criteria().orOperator(
-                Criteria.where(F_LIFECYCLE_TYPE).is(LifecycleType.PERMANENT),
-                Criteria.where(F_LIFECYCLE_TYPE).is(LifecycleType.AUTO)
-                        .and(F_OWNER_REQUIRED).is(true));
-        Criteria stranded = new Criteria().orOperator(
-                Criteria.where(F_HOME_POD).is(null),
-                expiredLease(Instant.now(), leaseTtl));
-        Query query = new Query(new Criteria().andOperator(
-                        Criteria.where(F_STATUS).in(WANTS_TO_RUN),
-                        needsOwner,
-                        stranded))
+    public List<ProjectDocument> findProjectsNeedingOwner(Duration leaseTtl, int limit, int skip) {
+        Criteria needsOwner = new Criteria()
+                .orOperator(
+                        Criteria.where(F_LIFECYCLE_TYPE).is(LifecycleType.PERMANENT),
+                        Criteria.where(F_LIFECYCLE_TYPE)
+                                .is(LifecycleType.AUTO)
+                                .and(F_OWNER_REQUIRED)
+                                .is(true));
+        Criteria stranded =
+                new Criteria().orOperator(Criteria.where(F_HOME_POD).is(null), expiredLease(Instant.now(), leaseTtl));
+        Query query = new Query(
+                        new Criteria().andOperator(Criteria.where(F_STATUS).in(WANTS_TO_RUN), needsOwner, stranded))
                 .limit(Math.max(1, limit))
                 .skip(Math.max(0, skip));
         return mongoTemplate.find(query, ProjectDocument.class);
@@ -782,8 +790,7 @@ public class ProjectService {
      * not a scan.
      */
     public List<ProjectDocument> findOwnerRequired() {
-        return mongoTemplate.find(
-                new Query(Criteria.where(F_OWNER_REQUIRED).is(true)), ProjectDocument.class);
+        return mongoTemplate.find(new Query(Criteria.where(F_OWNER_REQUIRED).is(true)), ProjectDocument.class);
     }
 
     /**
@@ -797,12 +804,14 @@ public class ProjectService {
      * this writes nothing.
      */
     public boolean setOwnerRequired(String tenantId, String name, boolean value) {
-        Query query = new Query(Criteria.where(F_TENANT).is(tenantId)
-                .and(F_NAME).is(name)
-                .and(F_OWNER_REQUIRED).ne(value));
+        Query query = new Query(Criteria.where(F_TENANT)
+                .is(tenantId)
+                .and(F_NAME)
+                .is(name)
+                .and(F_OWNER_REQUIRED)
+                .ne(value));
         Update update = new Update().set(F_OWNER_REQUIRED, value);
-        return mongoTemplate.updateFirst(query, update, ProjectDocument.class)
-                .getModifiedCount() > 0;
+        return mongoTemplate.updateFirst(query, update, ProjectDocument.class).getModifiedCount() > 0;
     }
 
     /**
@@ -813,8 +822,8 @@ public class ProjectService {
      */
     public int sumScoreByHomePodId(String selfPodId) {
         if (selfPodId == null || selfPodId.isBlank()) return 0;
-        Query query = new Query(Criteria.where(F_HOME_POD).is(selfPodId)
-                .and(F_STATUS).ne(ProjectStatus.CLOSED));
+        Query query =
+                new Query(Criteria.where(F_HOME_POD).is(selfPodId).and(F_STATUS).ne(ProjectStatus.CLOSED));
         int total = 0;
         for (ProjectDocument p : mongoTemplate.find(query, ProjectDocument.class)) {
             total += Math.max(1, p.getHomeResourceScore());
@@ -826,7 +835,8 @@ public class ProjectService {
      * Atomically switches {@code lifecycleType} between {@link
      * LifecycleType#AUTO}, {@link LifecycleType#EPHEMERAL} and {@link
      * LifecycleType#PERMANENT}. Refuses {@link LifecycleType#HOMELESS}
-     * (immutable per SYSTEM-kind) and refuses to mutate SYSTEM projects.
+     * (reserved for the tenant project, see {@link #isHomeless}) and refuses
+     * to mutate SYSTEM projects: their lifecycle type is fixed at create.
      *
      * <p>This is the operator override over the derived
      * {@code ownerRequired}; {@code AUTO} hands the decision back to it.
@@ -834,27 +844,24 @@ public class ProjectService {
     public ProjectDocument setLifecycleType(String tenantId, String name, LifecycleType value) {
         if (value == LifecycleType.HOMELESS) {
             throw new IllegalArgumentException(
-                    "Cannot set lifecycleType=HOMELESS — that is reserved for SYSTEM projects");
+                    "Cannot set lifecycleType=HOMELESS — that is reserved for the tenant project");
         }
-        ProjectDocument current = repository.findByTenantIdAndName(tenantId, name)
-                .orElseThrow(() -> new ProjectNotFoundException(
-                        "Project '" + name + "' not found in tenant '" + tenantId + "'"));
+        ProjectDocument current = repository
+                .findByTenantIdAndName(tenantId, name)
+                .orElseThrow(() ->
+                        new ProjectNotFoundException("Project '" + name + "' not found in tenant '" + tenantId + "'"));
         if (current.getKind() == ProjectKind.SYSTEM) {
-            throw new SystemProjectProtectedException(
-                    "Project '" + name + "' is SYSTEM — lifecycleType is HOMELESS and immutable");
+            throw new SystemProjectProtectedException("Project '" + name + "' is SYSTEM — its lifecycleType is fixed");
         }
-        Query query = new Query(Criteria.where(F_TENANT).is(tenantId).and(F_NAME).is(name));
+        Query query =
+                new Query(Criteria.where(F_TENANT).is(tenantId).and(F_NAME).is(name));
         Update update = new Update().set(F_LIFECYCLE_TYPE, value);
         ProjectDocument updated = mongoTemplate.findAndModify(
-                query, update,
-                FindAndModifyOptions.options().returnNew(true),
-                ProjectDocument.class);
+                query, update, FindAndModifyOptions.options().returnNew(true), ProjectDocument.class);
         if (updated == null) {
-            throw new ProjectNotFoundException(
-                    "Project '" + name + "' disappeared during setLifecycleType");
+            throw new ProjectNotFoundException("Project '" + name + "' disappeared during setLifecycleType");
         }
-        log.info("Project '{}/{}' lifecycleType {} → {}",
-                tenantId, name, current.getLifecycleType(), value);
+        log.info("Project '{}/{}' lifecycleType {} → {}", tenantId, name, current.getLifecycleType(), value);
         return updated;
     }
 
@@ -876,22 +883,20 @@ public class ProjectService {
      * @return {@code true} when the lease was ours and is now gone
      */
     public boolean releaseLease(
-            String tenantId, String name,
-            String selfPodId, String selfNodeName, String selfAddress) {
+            String tenantId, String name, String selfPodId, String selfNodeName, String selfAddress) {
         if (selfPodId == null || selfPodId.isBlank()) return false;
-        Query query = new Query(Criteria.where(F_TENANT).is(tenantId)
-                .and(F_NAME).is(name)
-                .and(F_HOME_POD).is(selfPodId));
-        Update update = new Update()
-                .unset(F_HOME_POD)
-                .unset(F_HOME_NODE)
-                .unset(F_CLAIMED_AT);
-        boolean released = mongoTemplate.updateFirst(query, update, ProjectDocument.class)
-                .getModifiedCount() > 0;
+        Query query = new Query(Criteria.where(F_TENANT)
+                .is(tenantId)
+                .and(F_NAME)
+                .is(name)
+                .and(F_HOME_POD)
+                .is(selfPodId));
+        Update update = new Update().unset(F_HOME_POD).unset(F_HOME_NODE).unset(F_CLAIMED_AT);
+        boolean released =
+                mongoTemplate.updateFirst(query, update, ProjectDocument.class).getModifiedCount() > 0;
         if (released) {
             log.info("Project '{}/{}' lease released by pod '{}'", tenantId, name, selfNodeName);
-            megadodoService.projectHomeReleased(
-                    tenantId, name, selfNodeName, selfPodId, selfAddress);
+            megadodoService.projectHomeReleased(tenantId, name, selfNodeName, selfPodId, selfAddress);
         }
         return released;
     }
@@ -911,12 +916,14 @@ public class ProjectService {
      * @return {@code true} when this call was the one that set it
      */
     public boolean markPendingPlacement(String tenantId, String name, Instant now) {
-        Query query = new Query(Criteria.where(F_TENANT).is(tenantId)
-                .and(F_NAME).is(name)
-                .and(F_PENDING_SINCE).is(null));
+        Query query = new Query(Criteria.where(F_TENANT)
+                .is(tenantId)
+                .and(F_NAME)
+                .is(name)
+                .and(F_PENDING_SINCE)
+                .is(null));
         Update update = new Update().set(F_PENDING_SINCE, now);
-        return mongoTemplate.updateFirst(query, update, ProjectDocument.class)
-                .getModifiedCount() > 0;
+        return mongoTemplate.updateFirst(query, update, ProjectDocument.class).getModifiedCount() > 0;
     }
 
     /**
@@ -936,13 +943,12 @@ public class ProjectService {
      */
     public List<ProjectDocument> findPendingPlacement(Duration leaseTtl, Duration pendingTtl) {
         Instant now = Instant.now();
-        Criteria stranded = new Criteria().orOperator(
-                Criteria.where(F_HOME_POD).is(null),
-                expiredLease(now, leaseTtl));
-        Query query = new Query(new Criteria().andOperator(
-                Criteria.where(F_PENDING_SINCE).ne(null).gt(now.minus(pendingTtl)),
-                Criteria.where(F_STATUS).in(WANTS_TO_RUN),
-                stranded));
+        Criteria stranded = new Criteria().orOperator(Criteria.where(F_HOME_POD).is(null), expiredLease(now, leaseTtl));
+        Query query = new Query(new Criteria()
+                .andOperator(
+                        Criteria.where(F_PENDING_SINCE).ne(null).gt(now.minus(pendingTtl)),
+                        Criteria.where(F_STATUS).in(WANTS_TO_RUN),
+                        stranded));
         return mongoTemplate.find(query, ProjectDocument.class);
     }
 
@@ -972,9 +978,10 @@ public class ProjectService {
             throw new IllegalArgumentException(
                     "homeResourceScore must not be negative (was " + homeResourceScore + ")");
         }
-        ProjectDocument current = repository.findByTenantIdAndName(tenantId, name)
-                .orElseThrow(() -> new ProjectNotFoundException(
-                        "Project '" + name + "' not found in tenant '" + tenantId + "'"));
+        ProjectDocument current = repository
+                .findByTenantIdAndName(tenantId, name)
+                .orElseThrow(() ->
+                        new ProjectNotFoundException("Project '" + name + "' not found in tenant '" + tenantId + "'"));
         Update update = new Update();
         if (placementSelector != null) {
             update.set(F_PLACEMENT_SELECTOR, Map.copyOf(placementSelector));
@@ -985,18 +992,21 @@ public class ProjectService {
         if (update.getUpdateObject().isEmpty()) {
             return current;
         }
-        Query query = new Query(Criteria.where(F_TENANT).is(tenantId).and(F_NAME).is(name));
+        Query query =
+                new Query(Criteria.where(F_TENANT).is(tenantId).and(F_NAME).is(name));
         ProjectDocument updated = mongoTemplate.findAndModify(
-                query, update,
-                FindAndModifyOptions.options().returnNew(true),
-                ProjectDocument.class);
+                query, update, FindAndModifyOptions.options().returnNew(true), ProjectDocument.class);
         if (updated == null) {
-            throw new ProjectNotFoundException(
-                    "Project '" + name + "' disappeared during setPlacement");
+            throw new ProjectNotFoundException("Project '" + name + "' disappeared during setPlacement");
         }
-        log.info("Project '{}/{}' placement: selector {} → {}, score {} → {}",
-                tenantId, name, current.getPlacementSelector(), updated.getPlacementSelector(),
-                current.getHomeResourceScore(), updated.getHomeResourceScore());
+        log.info(
+                "Project '{}/{}' placement: selector {} → {}, score {} → {}",
+                tenantId,
+                name,
+                current.getPlacementSelector(),
+                updated.getPlacementSelector(),
+                current.getHomeResourceScore(),
+                updated.getHomeResourceScore());
         return updated;
     }
 

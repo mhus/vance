@@ -426,10 +426,9 @@ public class ThinkProcessService {
      * Every process running {@code thinkEngine} that is not {@code CLOSED},
      * across all tenants, capped at {@code limit}.
      *
-     * <p>For cluster-wide heartbeats of engines whose processes live in
-     * podless projects (the Trillian user-loop sits in its account's hub):
-     * there is no owner pod to scan per project, and walking every project
-     * to find the handful of live loops costs a query per project per tick.
+     * <p>For heartbeats of self-waking engines (the Trillian user-loop):
+     * one indexed query for the handful of live loops, filtered by the caller
+     * to the projects it holds, instead of a query per held project per tick.
      * Backed by the {@code engine_status_idx}.
      */
     public List<ThinkProcessDocument> findLiveByEngine(String thinkEngine, int limit) {
@@ -439,6 +438,23 @@ public class ThinkProcessService {
                         .ne(ThinkProcessStatus.CLOSED))
                 .limit(Math.max(1, limit));
         return mongoTemplate.find(query, ThinkProcessDocument.class);
+    }
+
+    /**
+     * Whether {@code projectId} holds a process running {@code thinkEngine}
+     * that is not {@code CLOSED} — the "waiting work" test for self-waking
+     * engines. Backed by the {@code engine_status_idx}.
+     */
+    public boolean existsLiveByEngineInProject(String tenantId, String projectId, String thinkEngine) {
+        Query query = new Query(Criteria.where("thinkEngine")
+                .is(thinkEngine)
+                .and("status")
+                .ne(ThinkProcessStatus.CLOSED)
+                .and("tenantId")
+                .is(tenantId)
+                .and("projectId")
+                .is(projectId));
+        return mongoTemplate.exists(query, ThinkProcessDocument.class);
     }
 
     /**

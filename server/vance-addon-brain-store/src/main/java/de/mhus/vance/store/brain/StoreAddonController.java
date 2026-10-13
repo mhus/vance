@@ -3,23 +3,16 @@ package de.mhus.vance.store.brain;
 import de.mhus.vance.api.kit.KitImportMode;
 import de.mhus.vance.api.kit.KitImportRequestDto;
 import de.mhus.vance.api.kit.KitInheritDto;
+import de.mhus.vance.api.kit.KitInstalledRecordDto;
 import de.mhus.vance.api.kit.KitOperationResultDto;
 import de.mhus.vance.api.kit.KitSourceDto;
-import de.mhus.vance.api.kit.KitInstalledRecordDto;
 import de.mhus.vance.api.kit.KitSourceType;
 import de.mhus.vance.brain.kit.KitAccess;
 import de.mhus.vance.brain.kit.KitRecordStore;
 import de.mhus.vance.brain.kit.KitService;
-import de.mhus.vance.brain.kit.KitStoreCredentials;
 import de.mhus.vance.brain.kit.KitSourceRegistry;
+import de.mhus.vance.brain.kit.KitStoreCredentials;
 import de.mhus.vance.brain.permission.RequestAuthority;
-import de.mhus.vance.store.brain.StoreClient.CatalogueEntry;
-import de.mhus.vance.store.brain.StoreClient.Due;
-import de.mhus.vance.store.brain.StoreClient.Fees;
-import de.mhus.vance.store.brain.StoreClient.Release;
-import de.mhus.vance.store.brain.StoreClient.ReleaseRequest;
-import de.mhus.vance.store.brain.StoreClient.Vendor;
-import de.mhus.vance.store.brain.StoreClient.VendorTerms;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.kit.KitException;
@@ -27,6 +20,13 @@ import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.settings.SettingWriteOrigin;
+import de.mhus.vance.store.brain.StoreClient.CatalogueEntry;
+import de.mhus.vance.store.brain.StoreClient.Due;
+import de.mhus.vance.store.brain.StoreClient.Fees;
+import de.mhus.vance.store.brain.StoreClient.Release;
+import de.mhus.vance.store.brain.StoreClient.ReleaseRequest;
+import de.mhus.vance.store.brain.StoreClient.Vendor;
+import de.mhus.vance.store.brain.StoreClient.VendorTerms;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -89,21 +89,29 @@ public class StoreAddonController {
 
     private final Map<String, CachedIdentity> identityCache = new ConcurrentHashMap<>();
 
-
     public record ConnectRequest(
-            String sourceId, String email, String password, @Nullable String label) {}
+            String sourceId,
+            String email,
+            String password,
+            @Nullable String label) {}
 
     public record DisconnectRequest(String sourceId) {}
 
     public record InstallRequest(String sourceId, String path) {}
 
     public record ReviewRequest(
-            String sourceId, String vendor, String kitId,
-            int stars, @Nullable String text) {}
+            String sourceId,
+            String vendor,
+            String kitId,
+            int stars,
+            @Nullable String text) {}
 
     public record BuyRequest(
-            String sourceId, String vendor, String kitId,
-            String email, String password,
+            String sourceId,
+            String vendor,
+            String kitId,
+            String email,
+            String password,
             /** Where the buyer is — the store taxes by it and refuses without it. */
             String billingCountry,
             /** For a business buyer, as given. */
@@ -138,8 +146,13 @@ public class StoreAddonController {
         personalActor(tenant, projectId, request);
         try {
             return connections.connect(
-                    tenant, actor(request), library(tenant, body.sourceId()),
-                    body.email(), body.password(), body.label(), projectId);
+                    tenant,
+                    actor(request),
+                    library(tenant, body.sourceId()),
+                    body.email(),
+                    body.password(),
+                    body.label(),
+                    projectId);
         } catch (KitException e) {
             throw storeError(e);
         }
@@ -190,8 +203,7 @@ public class StoreAddonController {
         // the request into an INSTALL that the installer then refused. The
         // record is here, it is authoritative, and KitService looks it up the
         // same way one line later.
-        boolean installed = recordStore.findByOrigin(
-                tenant, projectId, source.getUrl(), body.path()) != null;
+        boolean installed = recordStore.findByOrigin(tenant, projectId, source.getUrl(), body.path()) != null;
 
         KitImportRequestDto importRequest = KitImportRequestDto.builder()
                 .projectId(projectId)
@@ -202,8 +214,7 @@ public class StoreAddonController {
                 .mode(installed ? KitImportMode.UPDATE : KitImportMode.INSTALL)
                 .build();
         try {
-            return kitService.importKit(
-                    tenant, importRequest, actor(request), SettingWriteOrigin.USER);
+            return kitService.importKit(tenant, importRequest, actor(request), SettingWriteOrigin.USER);
         } catch (KitException e) {
             throw storeError(e);
         }
@@ -229,11 +240,16 @@ public class StoreAddonController {
         personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, body.sourceId());
         try {
-            StoreClient.Session session =
-                    storeClient.login(source, body.email(), body.password());
+            StoreClient.Session session = storeClient.login(source, body.email(), body.password());
             try {
-                return storeClient.order(source, session, body.vendor(), body.kitId(),
-                        body.withdrawalNoticeVersion(), body.billingCountry(), body.vatId());
+                return storeClient.order(
+                        source,
+                        session,
+                        body.vendor(),
+                        body.kitId(),
+                        body.withdrawalNoticeVersion(),
+                        body.billingCountry(),
+                        body.vatId());
             } finally {
                 storeClient.logout(source, session);
             }
@@ -300,24 +316,22 @@ public class StoreAddonController {
 
         personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, body.sourceId());
-        KitAccess access = credentials.resolve(
-                tenant, projectId, actor(request), source.getUrl(), null);
+        KitAccess access = credentials.resolve(tenant, projectId, actor(request), source.getUrl(), null);
         if (access.token() == null || access.token().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "sign in to this store before reviewing");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "sign in to this store before reviewing");
         }
         try {
             // Which version this opinion is about: the install record knows,
             // and the store deliberately cannot — it learns nothing about
             // what runs on an installation. Not installed here means no
             // claim, and the store stamps its newest published instead.
-            KitInstalledRecordDto record = recordStore.findByOrigin(
-                    tenant, projectId, source.getUrl(), body.vendor() + "/" + body.kitId());
+            KitInstalledRecordDto record =
+                    recordStore.findByOrigin(tenant, projectId, source.getUrl(), body.vendor() + "/" + body.kitId());
             String version = record == null || record.getOrigin() == null
                     ? null
                     : stripLibraryPrefix(record.getOrigin().getCommit());
-            return storeClient.review(source, access.token(),
-                    body.vendor(), body.kitId(), body.stars(), body.text(), version);
+            return storeClient.review(
+                    source, access.token(), body.vendor(), body.kitId(), body.stars(), body.text(), version);
         } catch (KitException e) {
             throw storeError(e);
         }
@@ -326,23 +340,37 @@ public class StoreAddonController {
     // ──────────────────── developer ────────────────────
 
     public record ApplyVendorRequest(
-            String sourceId, String email, String password,
-            String name, String displayName, @Nullable String homepage,
+            String sourceId,
+            String email,
+            String password,
+            String name,
+            String displayName,
+            @Nullable String homepage,
             String termsVersion) {}
 
     public record CreateKitRequest(
-            String sourceId, String vendor, String kitId, String displayName,
-            @Nullable String description, long priceCents, @Nullable String currency,
+            String sourceId,
+            String vendor,
+            String kitId,
+            String displayName,
+            @Nullable String description,
+            long priceCents,
+            @Nullable String currency,
             @Nullable List<String> topics) {}
 
     public record PublishRequest(
-            String sourceId, String vendor, String kitId, String version,
+            String sourceId,
+            String vendor,
+            String kitId,
+            String version,
             @Nullable String vaultPassword) {}
 
     public record OperatorRequest(
             String sourceId,
-            @Nullable String vendor, @Nullable String kitId,
-            @Nullable String version, @Nullable String reason) {}
+            @Nullable String vendor,
+            @Nullable String kitId,
+            @Nullable String version,
+            @Nullable String reason) {}
 
     /** Everything the developer screen needs in one answer. */
     public record DeveloperView(
@@ -373,16 +401,21 @@ public class StoreAddonController {
 
         personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, sourceId);
-        String token = credentials.resolve(
-                tenant, projectId, actor(request), source.getUrl(), null).token();
+        String token = credentials
+                .resolve(tenant, projectId, actor(request), source.getUrl(), null)
+                .token();
         try {
             VendorTerms terms = storeClient.vendorTerms(source);
             Fees fees = storeClient.fees(source);
             if (token == null || token.isBlank()) {
-                return new DeveloperView(sourceId, false, terms, fees,
-                        List.of(), List.of(), List.of(), List.of(), null);
+                return new DeveloperView(
+                        sourceId, false, terms, fees, List.of(), List.of(), List.of(), List.of(), null);
             }
-            return new DeveloperView(sourceId, true, terms, fees,
+            return new DeveloperView(
+                    sourceId,
+                    true,
+                    terms,
+                    fees,
                     storeClient.myVendors(source, token),
                     storeClient.myKits(source, token),
                     storeClient.myRequests(source, token),
@@ -391,8 +424,16 @@ public class StoreAddonController {
         } catch (KitException e) {
             // A store that could not be asked is not a store with nothing
             // to say — the screen has to be able to tell those apart.
-            return new DeveloperView(sourceId, token != null && !token.isBlank(),
-                    null, null, List.of(), List.of(), List.of(), List.of(), e.getMessage());
+            return new DeveloperView(
+                    sourceId,
+                    token != null && !token.isBlank(),
+                    null,
+                    null,
+                    List.of(),
+                    List.of(),
+                    List.of(),
+                    List.of(),
+                    e.getMessage());
         }
     }
 
@@ -413,11 +454,10 @@ public class StoreAddonController {
         personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, body.sourceId());
         try {
-            StoreClient.Session session =
-                    storeClient.login(source, body.email(), body.password());
+            StoreClient.Session session = storeClient.login(source, body.email(), body.password());
             try {
-                return storeClient.renewPublishing(source, session, body.vendorName(),
-                        body.billingCountry(), body.vatId());
+                return storeClient.renewPublishing(
+                        source, session, body.vendorName(), body.billingCountry(), body.vatId());
             } finally {
                 storeClient.logout(source, session);
             }
@@ -428,7 +468,10 @@ public class StoreAddonController {
 
     /** What the renew form sends. */
     public record RenewRequest(
-            String sourceId, String vendorName, String email, String password,
+            String sourceId,
+            String vendorName,
+            String email,
+            String password,
             /** Where the vendor is — the store taxes the renewal by it. */
             String billingCountry,
             /** The vendor's VAT id, for the usual reverse-charge case. */
@@ -451,9 +494,12 @@ public class StoreAddonController {
         personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, body.sourceId());
         try {
-            return withSession(source, body.email(), body.password(), session ->
-                    storeClient.applyVendor(source, session, body.name(),
-                            body.displayName(), body.homepage(), body.termsVersion()));
+            return withSession(
+                    source,
+                    body.email(),
+                    body.password(),
+                    session -> storeClient.applyVendor(
+                            source, session, body.name(), body.displayName(), body.homepage(), body.termsVersion()));
         } catch (KitException e) {
             throw storeError(e);
         }
@@ -470,9 +516,16 @@ public class StoreAddonController {
         personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, body.sourceId());
         try {
-            return storeClient.createKit(source, requireToken(tenant, projectId, source, request),
-                    body.vendor(), body.kitId(), body.displayName(),
-                    body.description(), body.priceCents(), body.currency(), body.topics());
+            return storeClient.createKit(
+                    source,
+                    requireToken(tenant, projectId, source, request),
+                    body.vendor(),
+                    body.kitId(),
+                    body.displayName(),
+                    body.description(),
+                    body.priceCents(),
+                    body.currency(),
+                    body.topics());
         } catch (KitException e) {
             throw storeError(e);
         }
@@ -498,9 +551,16 @@ public class StoreAddonController {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
         KitSourceDto source = library(tenant, body.sourceId());
         try {
-            return developerService.publish(tenant, projectId, actor(request), source,
+            return developerService.publish(
+                    tenant,
+                    projectId,
+                    actor(request),
+                    source,
                     requireToken(tenant, projectId, source, request),
-                    body.vendor(), body.kitId(), body.version(), body.vaultPassword());
+                    body.vendor(),
+                    body.kitId(),
+                    body.version(),
+                    body.vaultPassword());
         } catch (KitException e) {
             throw storeError(e);
         }
@@ -555,13 +615,14 @@ public class StoreAddonController {
         List<Connection> out = new ArrayList<>();
         for (KitSourceDto source : sources.configuredSources(tenant)) {
             if (source.getType() != KitSourceType.LIBRARY) continue;
-            String token = credentials.resolve(tenant, projectId, actor, source.getUrl(), null)
+            String token = credentials
+                    .resolve(tenant, projectId, actor, source.getUrl(), null)
                     .token();
             if (token == null || token.isBlank()) {
                 // Not signed in is not a failure — and asking an
                 // unauthenticated store who we are would answer nothing.
-                out.add(new Connection(source.getId(), titleOf(source), source.getUrl(),
-                        true, null, null, false, false));
+                out.add(new Connection(
+                        source.getId(), titleOf(source), source.getUrl(), true, null, null, false, false));
                 continue;
             }
             IdentityAnswer answer = identityOf(source, token);
@@ -569,22 +630,26 @@ public class StoreAddonController {
             if (identity == null) {
                 // This is the one screen where the address and the reason
                 // belong: somebody here can act on them.
-                out.add(new Connection(source.getId(), titleOf(source), source.getUrl(),
-                        false, answer.problem(), null, false, false));
+                out.add(new Connection(
+                        source.getId(), titleOf(source), source.getUrl(), false, answer.problem(), null, false, false));
                 continue;
             }
-            out.add(new Connection(source.getId(), titleOf(source), source.getUrl(),
-                    true, null, identity.accountId(),
-                    identity.operator(), identity.vendor()));
+            out.add(new Connection(
+                    source.getId(),
+                    titleOf(source),
+                    source.getUrl(),
+                    true,
+                    null,
+                    identity.accountId(),
+                    identity.operator(),
+                    identity.vendor()));
         }
         return out;
     }
 
     /** What a person calls this store — its configured title, else its id. */
     private static String titleOf(KitSourceDto source) {
-        return source.getTitle() == null || source.getTitle().isBlank()
-                ? source.getId()
-                : source.getTitle();
+        return source.getTitle() == null || source.getTitle().isBlank() ? source.getId() : source.getTitle();
     }
 
     @GetMapping("/{projectId}/surfaces")
@@ -598,7 +663,8 @@ public class StoreAddonController {
         List<String> developed = new ArrayList<>();
         for (KitSourceDto source : sources.configuredSources(tenant)) {
             if (source.getType() != KitSourceType.LIBRARY) continue;
-            String token = credentials.resolve(tenant, projectId, actor, source.getUrl(), null)
+            String token = credentials
+                    .resolve(tenant, projectId, actor, source.getUrl(), null)
                     .token();
             if (token == null || token.isBlank()) continue;
             IdentityAnswer answer = identityOf(source, token);
@@ -608,8 +674,7 @@ public class StoreAddonController {
                 // error banner over a tab strip. The profile screen is where
                 // that failure is shown, because that is where it can be
                 // acted on.
-                log.debug("StoreAddonController: could not ask '{}' who we are: {}",
-                        source.getId(), answer.problem());
+                log.debug("StoreAddonController: could not ask '{}' who we are: {}", source.getId(), answer.problem());
                 continue;
             }
             if (identity.operator()) operated.add(source.getId());
@@ -662,8 +727,7 @@ public class StoreAddonController {
                 identityCache.clear();
             }
         }
-        identityCache.put(key, new CachedIdentity(
-                answer, now.plusSeconds(IDENTITY_TTL_SECONDS)));
+        identityCache.put(key, new CachedIdentity(answer, now.plusSeconds(IDENTITY_TTL_SECONDS)));
         return answer;
     }
 
@@ -684,16 +748,15 @@ public class StoreAddonController {
 
     /** Either an identity or the reason there is none. */
     private record IdentityAnswer(
-            StoreClient.@Nullable Identity identity, @Nullable String problem) {}
+            StoreClient.@Nullable Identity identity,
+            @Nullable String problem) {}
 
     private record CachedIdentity(IdentityAnswer answer, Instant until) {}
 
     // ──────────────────── operator ────────────────────
 
     /** What is waiting for the switch: vendors, then releases. */
-    public record OperatorView(
-            List<Vendor> pendingVendors,
-            List<Release> submittedReleases) {}
+    public record OperatorView(List<Vendor> pendingVendors, List<Release> submittedReleases) {}
 
     /**
      * The operator's queues.
@@ -751,8 +814,7 @@ public class StoreAddonController {
         personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, sourceId);
         try {
-            return storeClient.payVendor(
-                    source, requireToken(tenant, projectId, source, request), vendorName);
+            return storeClient.payVendor(source, requireToken(tenant, projectId, source, request), vendorName);
         } catch (KitException e) {
             throw storeError(e);
         }
@@ -770,8 +832,7 @@ public class StoreAddonController {
         personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, sourceId);
         try {
-            return storeClient.releasePayout(
-                    source, requireToken(tenant, projectId, source, request), payoutName);
+            return storeClient.releasePayout(source, requireToken(tenant, projectId, source, request), payoutName);
         } catch (KitException e) {
             throw storeError(e);
         }
@@ -788,8 +849,7 @@ public class StoreAddonController {
         personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, sourceId);
         try {
-            return storeClient.reconcilePayouts(
-                    source, requireToken(tenant, projectId, source, request));
+            return storeClient.reconcilePayouts(source, requireToken(tenant, projectId, source, request));
         } catch (KitException e) {
             throw storeError(e);
         }
@@ -806,9 +866,12 @@ public class StoreAddonController {
         personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, body.sourceId());
         try {
-            return storeClient.refund(source,
+            return storeClient.refund(
+                    source,
                     requireToken(tenant, projectId, source, request),
-                    body.orderName(), body.reason(), body.alreadyReturned());
+                    body.orderName(),
+                    body.reason(),
+                    body.alreadyReturned());
         } catch (KitException e) {
             throw storeError(e);
         }
@@ -816,8 +879,7 @@ public class StoreAddonController {
 
     /** What the refund form sends. */
     public record RefundRequest(
-            String sourceId, String orderName,
-            @Nullable String reason, boolean alreadyReturned) {}
+            String sourceId, String orderName, @Nullable String reason, boolean alreadyReturned) {}
 
     /**
      * Sales and notes carrying no usable classification.
@@ -834,8 +896,7 @@ public class StoreAddonController {
         personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, sourceId);
         try {
-            return storeClient.unclassified(
-                    source, requireToken(tenant, projectId, source, request));
+            return storeClient.unclassified(source, requireToken(tenant, projectId, source, request));
         } catch (KitException e) {
             throw storeError(e);
         }
@@ -852,9 +913,12 @@ public class StoreAddonController {
         personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, body.sourceId());
         try {
-            return storeClient.classify(source,
+            return storeClient.classify(
+                    source,
                     requireToken(tenant, projectId, source, request),
-                    body.orderName(), body.billingCountry(), body.vatId());
+                    body.orderName(),
+                    body.billingCountry(),
+                    body.vatId());
         } catch (KitException e) {
             throw storeError(e);
         }
@@ -862,7 +926,10 @@ public class StoreAddonController {
 
     /** What the classification form sends. */
     public record ClassifyRequest(
-            String sourceId, String orderName, String billingCountry, @Nullable String vatId) {}
+            String sourceId,
+            String orderName,
+            String billingCountry,
+            @Nullable String vatId) {}
 
     /** Reverse an unclassifiable note and write it again. */
     @PostMapping("/{projectId}/operator/credit-notes/reissue")
@@ -875,8 +942,8 @@ public class StoreAddonController {
         personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, body.sourceId());
         try {
-            return storeClient.reissueCreditNote(source,
-                    requireToken(tenant, projectId, source, request), body.payoutName());
+            return storeClient.reissueCreditNote(
+                    source, requireToken(tenant, projectId, source, request), body.payoutName());
         } catch (KitException e) {
             throw storeError(e);
         }
@@ -896,8 +963,7 @@ public class StoreAddonController {
         personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, sourceId);
         try {
-            return storeClient.receipts(
-                    source, requireToken(tenant, projectId, source, request));
+            return storeClient.receipts(source, requireToken(tenant, projectId, source, request));
         } catch (KitException e) {
             throw storeError(e);
         }
@@ -921,15 +987,13 @@ public class StoreAddonController {
         personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, sourceId);
         try {
-            return paper(storeClient.invoicePdf(
-                    source, requireToken(tenant, projectId, source, request), orderName));
+            return paper(storeClient.invoicePdf(source, requireToken(tenant, projectId, source, request), orderName));
         } catch (KitException e) {
             throw storeError(e);
         }
     }
 
-    @GetMapping(value = "/{projectId}/documents/credit-note",
-            produces = MediaType.APPLICATION_PDF_VALUE)
+    @GetMapping(value = "/{projectId}/documents/credit-note", produces = MediaType.APPLICATION_PDF_VALUE)
     public ResponseEntity<byte[]> creditNotePdf(
             @PathVariable("tenant") String tenant,
             @PathVariable("projectId") String projectId,
@@ -941,15 +1005,14 @@ public class StoreAddonController {
         personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, sourceId);
         try {
-            return paper(storeClient.creditNotePdf(source,
-                    requireToken(tenant, projectId, source, request), vendorName, number));
+            return paper(storeClient.creditNotePdf(
+                    source, requireToken(tenant, projectId, source, request), vendorName, number));
         } catch (KitException e) {
             throw storeError(e);
         }
     }
 
-    @GetMapping(value = "/{projectId}/documents/tax-report",
-            produces = MediaType.APPLICATION_PDF_VALUE)
+    @GetMapping(value = "/{projectId}/documents/tax-report", produces = MediaType.APPLICATION_PDF_VALUE)
     public ResponseEntity<byte[]> taxReportPdf(
             @PathVariable("tenant") String tenant,
             @PathVariable("projectId") String projectId,
@@ -961,8 +1024,7 @@ public class StoreAddonController {
         personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, sourceId);
         try {
-            return paper(storeClient.taxReportPdf(
-                    source, requireToken(tenant, projectId, source, request), from, to));
+            return paper(storeClient.taxReportPdf(source, requireToken(tenant, projectId, source, request), from, to));
         } catch (KitException e) {
             throw storeError(e);
         }
@@ -988,8 +1050,7 @@ public class StoreAddonController {
         personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, sourceId);
         try {
-            return storeClient.taxReport(
-                    source, requireToken(tenant, projectId, source, request), from, to);
+            return storeClient.taxReport(source, requireToken(tenant, projectId, source, request), from, to);
         } catch (KitException e) {
             throw storeError(e);
         }
@@ -1008,9 +1069,8 @@ public class StoreAddonController {
         personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, body.sourceId());
         try {
-            return storeClient.claimDomain(source,
-                    requireToken(tenant, projectId, source, request),
-                    body.vendorName(), body.domain());
+            return storeClient.claimDomain(
+                    source, requireToken(tenant, projectId, source, request), body.vendorName(), body.domain());
         } catch (KitException e) {
             throw storeError(e);
         }
@@ -1027,8 +1087,8 @@ public class StoreAddonController {
         personalActor(tenant, projectId, request);
         KitSourceDto source = library(tenant, body.sourceId());
         try {
-            return storeClient.verifyDomain(source,
-                    requireToken(tenant, projectId, source, request), body.vendorName());
+            return storeClient.verifyDomain(
+                    source, requireToken(tenant, projectId, source, request), body.vendorName());
         } catch (KitException e) {
             throw storeError(e);
         }
@@ -1083,9 +1143,15 @@ public class StoreAddonController {
         KitSourceDto source = library(tenant, body.sourceId());
         String token = requireToken(tenant, projectId, source, request);
         try {
-            return storeClient.setPayoutAccount(source, token, body.vendorName(),
-                    body.type(), body.handle(), body.holderName(),
-                    body.country(), body.vatId());
+            return storeClient.setPayoutAccount(
+                    source,
+                    token,
+                    body.vendorName(),
+                    body.type(),
+                    body.handle(),
+                    body.holderName(),
+                    body.country(),
+                    body.vatId());
         } catch (KitException e) {
             throw storeError(e);
         }
@@ -1093,8 +1159,13 @@ public class StoreAddonController {
 
     /** What the payout-account form sends. */
     public record PayoutAccountRequest(
-            String sourceId, String vendorName, String type, String handle,
-            @Nullable String holderName, @Nullable String country, @Nullable String vatId) {}
+            String sourceId,
+            String vendorName,
+            String type,
+            String handle,
+            @Nullable String holderName,
+            @Nullable String country,
+            @Nullable String vatId) {}
 
     @GetMapping("/{projectId}/operator/queue")
     public OperatorView operatorQueue(
@@ -1108,8 +1179,7 @@ public class StoreAddonController {
         String token = requireToken(tenant, projectId, source, request);
         try {
             return new OperatorView(
-                    storeClient.pendingVendors(source, token),
-                    storeClient.submittedReleases(source, token));
+                    storeClient.pendingVendors(source, token), storeClient.submittedReleases(source, token));
         } catch (KitException e) {
             throw storeError(e);
         }
@@ -1130,23 +1200,24 @@ public class StoreAddonController {
         try {
             String reason = body.reason() == null ? "" : body.reason();
             switch (decision) {
-                case "approve-vendor" ->
-                        storeClient.approveVendor(source, token, required(body.vendor()));
-                case "reject-vendor" ->
-                        storeClient.rejectVendor(source, token, required(body.vendor()), reason);
+                case "approve-vendor" -> storeClient.approveVendor(source, token, required(body.vendor()));
+                case "reject-vendor" -> storeClient.rejectVendor(source, token, required(body.vendor()), reason);
                 case "approve-release" ->
-                        storeClient.approveRelease(source, token, required(body.vendor()),
-                                required(body.kitId()), required(body.version()));
+                    storeClient.approveRelease(
+                            source, token, required(body.vendor()), required(body.kitId()), required(body.version()));
                 case "reject-release" ->
-                        storeClient.rejectRelease(source, token, required(body.vendor()),
-                                required(body.kitId()), required(body.version()), reason);
-                default -> throw new ResponseStatusException(
-                        HttpStatus.BAD_REQUEST, "unknown decision: " + decision);
+                    storeClient.rejectRelease(
+                            source,
+                            token,
+                            required(body.vendor()),
+                            required(body.kitId()),
+                            required(body.version()),
+                            reason);
+                default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "unknown decision: " + decision);
             }
             // The queues are what the screen shows next.
             return new OperatorView(
-                    storeClient.pendingVendors(source, token),
-                    storeClient.submittedReleases(source, token));
+                    storeClient.pendingVendors(source, token), storeClient.submittedReleases(source, token));
         } catch (KitException e) {
             throw storeError(e);
         }
@@ -1160,7 +1231,9 @@ public class StoreAddonController {
      * same shape {@code StoreConnectionService} uses when linking.
      */
     private <T> T withSession(
-            KitSourceDto source, String email, String password,
+            KitSourceDto source,
+            String email,
+            String password,
             java.util.function.Function<StoreClient.Session, T> work) {
 
         StoreClient.Session session = storeClient.login(source, email, password);
@@ -1173,8 +1246,7 @@ public class StoreAddonController {
 
     private static String required(@Nullable String value) {
         if (value == null || value.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "this decision needs a vendor, kit and version");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "this decision needs a vendor, kit and version");
         }
         return value;
     }
@@ -1203,13 +1275,13 @@ public class StoreAddonController {
      * <p>What still takes {@code Project ADMIN} is what writes into the
      * project: {@link #install} and {@link #publish}.
      */
-    private String personalActor(
-            String tenant, String projectId, HttpServletRequest request) {
+    private String personalActor(String tenant, String projectId, HttpServletRequest request) {
         String actor = actor(request);
-        if (ProjectService.isPodless(projectId)
+        if (projectId.startsWith(ProjectService.SYSTEM_NAME_PREFIX)
                 && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)
                 && !HomeBootstrapService.hubProjectName(actor).equals(projectId)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
                     "'" + projectId + "' is somebody else's — a store credential is used"
                             + " through your own scope, the tenant, or a shared project");
         }
@@ -1218,14 +1290,11 @@ public class StoreAddonController {
     }
 
     /** This installation's link token, or a clear refusal. */
-    private String requireToken(
-            String tenant, String projectId, KitSourceDto source, HttpServletRequest request) {
+    private String requireToken(String tenant, String projectId, KitSourceDto source, HttpServletRequest request) {
 
-        KitAccess access = credentials.resolve(
-                tenant, projectId, actor(request), source.getUrl(), null);
+        KitAccess access = credentials.resolve(tenant, projectId, actor(request), source.getUrl(), null);
         if (access.token() == null || access.token().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "sign in to this store first");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "sign in to this store first");
         }
         return access.token();
     }
@@ -1243,8 +1312,8 @@ public class StoreAddonController {
                 .filter(source -> source.getId().equals(sourceId))
                 .filter(source -> source.getType() == KitSourceType.LIBRARY)
                 .findFirst()
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "no library source '" + sourceId + "'"));
+                .orElseThrow(() ->
+                        new ResponseStatusException(HttpStatus.NOT_FOUND, "no library source '" + sourceId + "'"));
     }
 
     /** {@code library:1.2.0} → {@code 1.2.0}; a git commit hash is no version. */

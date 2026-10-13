@@ -11,8 +11,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.cluster.ClusterService;
-import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.megadodo.MegadodoService;
+import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import java.time.Instant;
 import java.util.List;
@@ -45,8 +45,7 @@ class ProjectLeaseServiceTest {
         eventPublisher = mock(ApplicationEventPublisher.class);
         megadodo = mock(MegadodoService.class);
         when(clusterService.selfPodId()).thenReturn(SELF_POD);
-        service = new ProjectLeaseService(
-                projectService, clusterService, registry, eventPublisher, megadodo);
+        service = new ProjectLeaseService(projectService, clusterService, registry, eventPublisher, megadodo);
     }
 
     private static ProjectDocument project(String name) {
@@ -78,8 +77,7 @@ class ProjectLeaseServiceTest {
 
         assertThat(registry.isActive("acme", "test1")).isTrue();
         assertThat(registry.isActive("acme", "test2")).isFalse();
-        verify(eventPublisher, times(1))
-                .publishEvent(new ProjectEnginesStopRequested("acme", "test2"));
+        verify(eventPublisher, times(1)).publishEvent(new ProjectEnginesStopRequested("acme", "test2"));
     }
 
     @Test
@@ -96,8 +94,7 @@ class ProjectLeaseServiceTest {
 
         service.renewAndReconcile();
 
-        verify(megadodo).projectHomeLost(
-                "acme", "test1", "node-a", SELF_POD, "10.42.0.5:9990");
+        verify(megadodo).projectHomeLost("acme", "test1", "node-a", SELF_POD, "10.42.0.5:9990");
     }
 
     @Test
@@ -127,34 +124,16 @@ class ProjectLeaseServiceTest {
     }
 
     @Test
-    void podlessProjects_areNotCountedAsLost() {
-        // Podless projects never take a lease, so they can never be renewed —
-        // treating them as lost would tear down Eddie's local state on every
-        // beat.
+    void userHub_whoseLeaseIsGone_isUnloadedLikeAnyProject() {
+        // Hubs hold a lease like every project but the tenant one — a hub
+        // another pod took over must not keep running here.
         registry.activate("acme", "_user_marvin");
         when(projectService.renewLeases(eq(SELF_POD), any(Instant.class))).thenReturn(0L);
         when(projectService.findByHomePodId(SELF_POD)).thenReturn(List.of());
 
         service.renewAndReconcile();
 
-        assertThat(registry.isActive("acme", "_user_marvin")).isTrue();
-        verify(eventPublisher, never()).publishEvent(any());
-    }
-
-    @Test
-    void podlessProjects_doNotTriggerReconciliationAtAll() {
-        // Not just "survives reconciliation" — must not reach it. One connected
-        // user used to make the counts disagree forever, so every beat logged
-        // "a lease was taken away" and paid for the query behind it, which then
-        // skipped exactly the project that had raised the alarm.
-        registry.activate("acme", "_user_marvin");
-        registry.activate("acme", "test1");
-        when(projectService.renewLeases(eq(SELF_POD), any(Instant.class))).thenReturn(1L);
-
-        service.renewAndReconcile();
-
-        verify(projectService, never()).findByHomePodId(any());
-        verify(eventPublisher, never()).publishEvent(any());
+        assertThat(registry.isActive("acme", "_user_marvin")).isFalse();
     }
 
     @Test

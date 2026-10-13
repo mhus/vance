@@ -2,13 +2,13 @@ package de.mhus.vance.brain.workspace.access;
 
 import de.mhus.vance.api.projects.WorkspaceNodeType;
 import de.mhus.vance.api.projects.WorkspaceTreeNodeDto;
+import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.project.ProjectLifecycleService;
+import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.shared.location.LocationService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
-import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
-import de.mhus.vance.brain.project.ProjectLifecycleService;
-import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.project.ProjectStatus;
@@ -26,7 +26,6 @@ import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
 import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
@@ -54,11 +53,9 @@ import tools.jackson.databind.ObjectMapper;
  * Layer 1 calls {@link WorkspaceService} directly. See
  * {@code specification/workspace-access.md} §2 / §8.
  *
- * <p>Podless system projects ({@code _vance} / {@code _user_<login>},
- * detected via {@link ProjectService#isPodless}) never have a {@code
- * homeNode} — workspace lives on whichever pod processed the WS
- * connection. The controller short-circuits to the local
- * {@link WorkspaceService} for those, same as the bypass path.
+ * <p>The homeless tenant project ({@link ProjectService#isHomeless}) has
+ * no workspace anywhere — nothing runs there. It is never adopted and
+ * answers like an unowned project.
  *
  * <p>NORMAL projects without an active claim (no live {@code homeNode})
  * have no materialized workspace anywhere — the controller answers
@@ -82,16 +79,17 @@ public class WorkspaceController {
     private final RequestAuthority authority;
     private final String internalToken;
 
-    public WorkspaceController(WorkspaceService workspaceService,
-                               WorkspaceRoutingCache routingCache,
-                               WorkspaceAccessProperties properties,
-                               LocationService locationService,
-                               ProjectLifecycleService lifecycleService,
-                               ProjectService projectService,
-                               ProjectPlacementService placementService,
-                               ObjectMapper objectMapper,
-                               RequestAuthority authority,
-                               @Value("${vance.internal.token:}") String internalToken) {
+    public WorkspaceController(
+            WorkspaceService workspaceService,
+            WorkspaceRoutingCache routingCache,
+            WorkspaceAccessProperties properties,
+            LocationService locationService,
+            ProjectLifecycleService lifecycleService,
+            ProjectService projectService,
+            ProjectPlacementService placementService,
+            ObjectMapper objectMapper,
+            RequestAuthority authority,
+            @Value("${vance.internal.token:}") String internalToken) {
         this.workspaceService = workspaceService;
         this.routingCache = routingCache;
         this.properties = properties;
@@ -119,8 +117,7 @@ public class WorkspaceController {
         // Self-owned → serve locally: the owning pod holds the workspace on its
         // own filesystem, so never proxy to our own advertised endpoint (a pod
         // can't reliably reach itself via it — dev IP change / k8s CNI hairpin).
-        if (properties.isBypassProxy() || ProjectService.isPodless(project)
-                || routingCache.isSelfOwned(key)) {
+        if (properties.isBypassProxy() || routingCache.isSelfOwned(key)) {
             return treeDirect(tenant, project, path, depth);
         }
         if (routingCache.lookup(key).isEmpty()) {
@@ -136,8 +133,8 @@ public class WorkspaceController {
         try {
             return objectMapper.readValue(body, WorkspaceTreeNodeDto.class);
         } catch (JacksonException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                    "Could not parse workspace tree response from owner pod", e);
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_GATEWAY, "Could not parse workspace tree response from owner pod", e);
         }
     }
 
@@ -154,8 +151,7 @@ public class WorkspaceController {
         ProjectPodKey key = new ProjectPodKey(tenant, project);
         // Self-owned → serve locally (see tree()): never self-proxy to our own
         // advertised endpoint, which a pod can't reliably reach via hairpin.
-        if (properties.isBypassProxy() || ProjectService.isPodless(project)
-                || routingCache.isSelfOwned(key)) {
+        if (properties.isBypassProxy() || routingCache.isSelfOwned(key)) {
             return fileDirect(tenant, project, path);
         }
         if (routingCache.lookup(key).isEmpty()) {
@@ -164,8 +160,7 @@ public class WorkspaceController {
             if (tryAdoptLocally(tenant, project)) {
                 return fileDirect(tenant, project, path);
             }
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "Workspace file not found: '" + path + "'");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Workspace file not found: '" + path + "'");
         }
         return proxyFile(key, buildInternalPath(tenant, project, "file", path, -1));
     }
@@ -175,7 +170,7 @@ public class WorkspaceController {
      * can be served locally. The claim inside {@code bring}'s CAS accepts a
      * {@code null} or stale {@code homeNode} and refuses only a claim held by
      * a <em>live</em> other pod — in which case we must not serve local.
-     * Podless projects never reach here (handled before the routing lookup).
+     * The homeless tenant project is never adopted — nothing runs there.
      *
      * <p><b>Adopting means bringing, not just claiming.</b> Two reasons, and
      * the first one is why this used to call {@code claimForLocalPod}
@@ -216,11 +211,14 @@ public class WorkspaceController {
      * propagated to the browser.
      */
     private boolean tryAdoptLocally(String tenant, String project) {
-        ProjectDocument doc = projectService.findByTenantAndName(tenant, project).orElse(null);
+        if (ProjectService.isHomeless(project)) {
+            return false;
+        }
+        ProjectDocument doc =
+                projectService.findByTenantAndName(tenant, project).orElse(null);
         ProjectStatus status = doc == null ? null : doc.getStatus();
         if (!ProjectService.wantsToRun(status)) {
-            log.debug("Workspace adopt skipped for {}/{}: status={} does not want to run",
-                    tenant, project, status);
+            log.debug("Workspace adopt skipped for {}/{}: status={} does not want to run", tenant, project, status);
             return false;
         }
         // Eligibility, not capacity: this pod may be the wrong *kind* of pod for
@@ -229,8 +227,11 @@ public class WorkspaceController {
         // adopting is a read path with a user waiting, and overrun is cheaper
         // than a 404 (planning/project-placement-labels.md §5).
         if (!placementService.isEligibleHere(doc)) {
-            log.debug("Workspace adopt refused for {}/{}: this pod does not satisfy the "
-                    + "project's placement selector", tenant, project);
+            log.debug(
+                    "Workspace adopt refused for {}/{}: this pod does not satisfy the "
+                            + "project's placement selector",
+                    tenant,
+                    project);
             return false;
         }
         try {
@@ -240,8 +241,7 @@ public class WorkspaceController {
             log.debug("Workspace adopt refused for {}/{}: {}", tenant, project, e.getMessage());
             return false;
         } catch (RuntimeException e) {
-            log.warn("Workspace adopt failed for {}/{} — serving as unowned: {}",
-                    tenant, project, e.toString());
+            log.warn("Workspace adopt failed for {}/{} — serving as unowned: {}", tenant, project, e.toString());
             return false;
         }
     }
@@ -276,8 +276,7 @@ public class WorkspaceController {
     private ResponseEntity<byte[]> fileDirect(String tenant, String project, String path) {
         String[] split = WorkspaceInternalController.splitDirAndRelative(path);
         if (split[1] == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "path must point at a file inside a RootDir");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "path must point at a file inside a RootDir");
         }
         byte[] bytes;
         try {
@@ -313,19 +312,23 @@ public class WorkspaceController {
             } catch (ConnectException | HttpTimeoutException e) {
                 routingCache.invalidate(key);
                 if (attempt == 1) {
-                    log.warn("Workspace proxy gave up after retry for {} {}: {}",
-                            key.tenantId(), key.projectName(), e.toString());
-                    throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                            "Workspace owner pod unreachable", e);
+                    log.warn(
+                            "Workspace proxy gave up after retry for {} {}: {}",
+                            key.tenantId(),
+                            key.projectName(),
+                            e.toString());
+                    throw new ResponseStatusException(
+                            HttpStatus.SERVICE_UNAVAILABLE, "Workspace owner pod unreachable", e);
                 }
-                log.debug("Workspace proxy connect failed (attempt {}); retrying after cache refresh: {}",
-                        attempt + 1, e.toString());
+                log.debug(
+                        "Workspace proxy connect failed (attempt {}); retrying after cache refresh: {}",
+                        attempt + 1,
+                        e.toString());
             } catch (IOException | InterruptedException e) {
                 if (e instanceof InterruptedException) {
                     Thread.currentThread().interrupt();
                 }
-                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                        "Workspace proxy I/O error", e);
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Workspace proxy I/O error", e);
             }
         }
         throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Workspace proxy exhausted retries");
@@ -343,7 +346,8 @@ public class WorkspaceController {
             try {
                 HttpResponse<byte[]> resp = httpClient.send(request, BodyHandlers.ofByteArray());
                 if (resp.statusCode() >= 200 && resp.statusCode() < 300) {
-                    String contentType = resp.headers().firstValue(HttpHeaders.CONTENT_TYPE)
+                    String contentType = resp.headers()
+                            .firstValue(HttpHeaders.CONTENT_TYPE)
                             .orElse(MediaType.APPLICATION_OCTET_STREAM_VALUE);
                     return ResponseEntity.ok()
                             .header(HttpHeaders.CONTENT_TYPE, contentType)
@@ -355,17 +359,19 @@ public class WorkspaceController {
             } catch (ConnectException | HttpTimeoutException e) {
                 routingCache.invalidate(key);
                 if (attempt == 1) {
-                    log.warn("Workspace file proxy gave up after retry for {} {}: {}",
-                            key.tenantId(), key.projectName(), e.toString());
-                    throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                            "Workspace owner pod unreachable", e);
+                    log.warn(
+                            "Workspace file proxy gave up after retry for {} {}: {}",
+                            key.tenantId(),
+                            key.projectName(),
+                            e.toString());
+                    throw new ResponseStatusException(
+                            HttpStatus.SERVICE_UNAVAILABLE, "Workspace owner pod unreachable", e);
                 }
             } catch (IOException | InterruptedException e) {
                 if (e instanceof InterruptedException) {
                     Thread.currentThread().interrupt();
                 }
-                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                        "Workspace proxy I/O error", e);
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Workspace proxy I/O error", e);
             }
         }
         throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Workspace proxy exhausted retries");
@@ -373,13 +379,13 @@ public class WorkspaceController {
 
     private String resolveOrThrow(ProjectPodKey key, int attempt) {
         Optional<String> ip = attempt == 0 ? routingCache.lookup(key) : routingCache.refresh(key);
-        return ip.orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
-                "Project '" + key.tenantId() + "/" + key.projectName()
-                        + "' is not claimed by any pod yet"));
+        return ip.orElseThrow(() -> new ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "Project '" + key.tenantId() + "/" + key.projectName() + "' is not claimed by any pod yet"));
     }
 
-    private static String buildInternalPath(String tenant, String project, String op,
-                                            @Nullable String path, int depth) {
+    private static String buildInternalPath(
+            String tenant, String project, String op, @Nullable String path, int depth) {
         StringBuilder sb = new StringBuilder("/internal/workspace/")
                 .append(URLEncoder.encode(tenant, StandardCharsets.UTF_8))
                 .append('/')
@@ -416,8 +422,7 @@ public class WorkspaceController {
             return new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, ex.getMessage(), ex);
         }
         String msg = e.getMessage() == null ? "" : e.getMessage();
-        if (msg.startsWith("Not found") || msg.startsWith("Unknown RootDir")
-                || msg.startsWith("Not a regular file")) {
+        if (msg.startsWith("Not found") || msg.startsWith("Unknown RootDir") || msg.startsWith("Not a regular file")) {
             return new ResponseStatusException(HttpStatus.NOT_FOUND, msg, e);
         }
         if (msg.contains("escapes RootDir") || msg.contains("NUL byte")) {

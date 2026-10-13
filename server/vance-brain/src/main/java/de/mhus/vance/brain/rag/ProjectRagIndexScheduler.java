@@ -51,13 +51,14 @@ public class ProjectRagIndexScheduler {
     @Value("${vance.rag.indexer.claim-ttl-minutes:10}")
     private int claimTtlMinutes;
 
-    @Scheduled(fixedDelayString = "${vance.rag.indexer.interval-ms:30000}",
+    @Scheduled(
+            fixedDelayString = "${vance.rag.indexer.interval-ms:30000}",
             initialDelayString = "${vance.rag.indexer.initial-delay-ms:60000}")
     public void tick() {
         String podId = locationService.getPodAddress();
-        List<ProjectDocument> projects = new ArrayList<>(
-                projectService.findRunningByHomePodId(clusterService.selfPodId()));
-        projects.addAll(projectService.findPodlessActive());
+        List<ProjectDocument> projects =
+                new ArrayList<>(projectService.findRunningByHomePodId(clusterService.selfPodId()));
+        projects.addAll(projectService.findHomelessActive());
         if (projects.isEmpty()) return;
 
         Duration claimTtl = Duration.ofMinutes(claimTtlMinutes);
@@ -77,18 +78,23 @@ public class ProjectRagIndexScheduler {
             List<DocumentDocument> claimed;
             try {
                 claimed = documentService.claimForRagIndex(
-                        project.getTenantId(), project.getName(),
-                        podId, batchSize, claimTtl);
+                        project.getTenantId(), project.getName(), podId, batchSize, claimTtl);
             } catch (RuntimeException e) {
-                log.warn("RAG-index claim failed tenant='{}' project='{}': {}",
-                        project.getTenantId(), project.getName(), e.toString());
+                log.warn(
+                        "RAG-index claim failed tenant='{}' project='{}': {}",
+                        project.getTenantId(),
+                        project.getName(),
+                        e.toString());
                 runCounter("failed").increment();
                 continue;
             }
             if (claimed.isEmpty()) continue;
 
-            log.debug("RAG-index tick tenant='{}' project='{}' claimed={}",
-                    project.getTenantId(), project.getName(), claimed.size());
+            log.debug(
+                    "RAG-index tick tenant='{}' project='{}' claimed={}",
+                    project.getTenantId(),
+                    project.getName(),
+                    claimed.size());
             for (DocumentDocument doc : claimed) {
                 processOne(doc);
             }
@@ -100,22 +106,23 @@ public class ProjectRagIndexScheduler {
             indexer.reindexDocument(doc);
             runCounter("success").increment();
         } catch (RuntimeException e) {
-            log.warn("RAG-index run failed tenant='{}' project='{}' doc='{}' path='{}': {}",
-                    doc.getTenantId(), doc.getProjectId(),
-                    doc.getId(), doc.getPath(), e.toString());
+            log.warn(
+                    "RAG-index run failed tenant='{}' project='{}' doc='{}' path='{}': {}",
+                    doc.getTenantId(),
+                    doc.getProjectId(),
+                    doc.getId(),
+                    doc.getPath(),
+                    e.toString());
             runCounter("failed").increment();
             try {
                 documentService.releaseRagClaim(doc.getId());
             } catch (RuntimeException releaseFail) {
-                log.warn("RAG-index claim release failed doc='{}': {}",
-                        doc.getId(), releaseFail.toString());
+                log.warn("RAG-index claim release failed doc='{}': {}", doc.getId(), releaseFail.toString());
             }
         }
     }
 
     private Counter runCounter(String outcome) {
-        return Counter.builder("vance.rag.indexer.runs")
-                .tag("outcome", outcome)
-                .register(meterRegistry);
+        return Counter.builder("vance.rag.indexer.runs").tag("outcome", outcome).register(meterRegistry);
     }
 }

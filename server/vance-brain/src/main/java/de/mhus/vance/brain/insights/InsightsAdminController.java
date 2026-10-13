@@ -1026,12 +1026,11 @@ public class InsightsAdminController {
                 new Resource.Session(tenant, session.getProjectId(), session.getSessionId()),
                 Action.ADMIN);
 
-        // Bypass mode (used in single-pod tests) and podless system
-        // projects (_vance / _user_<login>, no homeNode by design)
-        // read the local registry directly. In normal multi-pod
-        // operation we forward, so dev and prod exercise the same path.
+        // Bypass mode (used in single-pod tests) reads the local registry
+        // directly. In normal multi-pod operation we forward, so dev and
+        // prod exercise the same path.
         String projectId = session.getProjectId();
-        if (workspaceAccessProperties.isBypassProxy() || ProjectService.isPodless(projectId)) {
+        if (workspaceAccessProperties.isBypassProxy()) {
             return localClientTools(sessionId);
         }
 

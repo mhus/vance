@@ -13,23 +13,17 @@ import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
 /**
- * Cross-pod arbiter for the Trillian loop. The loop homes are podless hubs
- * (D2), so no pod owns a loop, and two things need a referee:
- *
- * <ul>
- *   <li><b>Wake slots</b> ({@link #claim}): the heartbeat runs on every pod;
- *       one {@link TrillianWakeupClaimDocument} keyed by
- *       {@code (tenant, loop, slot)} makes the insert the arbiter. First pod
- *       wins and fires, the others skip.</li>
- *   <li><b>Leases</b> ({@link #acquireLease}/{@link #releaseLease}): a turn of
- *       the loop, and the bootstrap of a pair, must not run on two pods at
- *       once — the lane serialises per pod only. A lease is the same document
- *       with a release; a holder that died is taken over once its lease is
- *       older than the TTL the caller names — and the release is
- *       owner-checked ({@link #releaseLease(String, String)} carries the
- *       acquirer's token), so a holder that outlives its TTL cannot free
- *       its successor's lease.</li>
- * </ul>
+ * Cluster-wide leases for the Trillian loop: a turn of the loop, and the
+ * bootstrap of a pair, must not run on two pods at once — the lane serialises
+ * per pod only. The loop's hub has a home pod that wakes it, but a process
+ * can still be turned elsewhere: a message routed while the hub is between
+ * holders is delivered on the receiving pod, and the bootstrap starts the
+ * loop on the control session's pod. A lease is one
+ * {@link TrillianWakeupClaimDocument} with a release; a holder that died is
+ * taken over once its lease is older than the TTL the caller names — and the
+ * release is owner-checked ({@link #releaseLease(String, String)} carries the
+ * acquirer's token), so a holder that outlives its TTL cannot free its
+ * successor's lease.
  *
  * <p>Owner of {@code trillian_wakeup_claims}; nothing else writes there.
  */
@@ -39,25 +33,6 @@ import org.springframework.stereotype.Service;
 public class TrillianWakeupClaimService {
 
     private final MongoTemplate mongoTemplate;
-
-    /**
-     * Try to claim one wake slot of this loop. Returns {@code true} when this
-     * pod won the slot and should wake the loop. {@code slot} distinguishes
-     * appointments: the ladder's due millis, a schedule's due millis.
-     */
-    public boolean claim(String tenantId, String loopProcessId, String slot) {
-        String id = tenantId + '/' + loopProcessId + '/' + slot;
-        try {
-            mongoTemplate.insert(TrillianWakeupClaimDocument.builder()
-                    .id(id)
-                    .claimedAt(Instant.now())
-                    .build());
-            return true;
-        } catch (DuplicateKeyException e) {
-            log.debug("Trillian wakeup slot '{}' already claimed by another pod — skipping", id);
-            return false;
-        }
-    }
 
     /**
      * Takes the lease {@code key}. Succeeds when nobody holds it, or when the

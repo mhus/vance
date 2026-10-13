@@ -1,27 +1,27 @@
 package de.mhus.vance.brain.ursaeventtrigger;
 
 import de.mhus.vance.api.action.TriggerAction;
+import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.brain.action.ActionExecutorRegistry;
 import de.mhus.vance.brain.action.ActionOutcome;
 import de.mhus.vance.brain.action.ActionResult;
 import de.mhus.vance.brain.action.TriggerContext;
-import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.brain.magrathea.MagratheaWorkflowService;
 import de.mhus.vance.brain.ursascheduler.SystemSessionResolver;
-import de.mhus.vance.shared.ursaevents.UrsaEventLoader;
-import de.mhus.vance.shared.ursaevents.ResolvedUrsaEvent;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.settings.SettingService;
+import de.mhus.vance.shared.ursaevents.ResolvedUrsaEvent;
+import de.mhus.vance.shared.ursaevents.UrsaEventLoader;
 import jakarta.annotation.PreDestroy;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -68,6 +68,7 @@ public class UrsaEventService {
     private final MetricService metricService;
     /** Optional — Magrathea is feature-flagged; when off, workflow-events return 503. */
     private final ObjectProvider<MagratheaWorkflowService> workflowServiceProvider;
+
     private final ActionExecutorRegistry actionExecutorRegistry;
     private final SystemSessionResolver systemSessionResolver;
     /** LLM-facing materialised per-trigger log — see {@link UrsaEventLogService}. */
@@ -78,8 +79,8 @@ public class UrsaEventService {
      * construction.
      */
     private final ObjectProvider<de.mhus.vance.brain.project.ProjectLocator> projectLocatorProvider;
-    private final ObjectProvider<de.mhus.vance.brain.project.ProjectManagerService>
-            projectManagerProvider;
+
+    private final ObjectProvider<de.mhus.vance.brain.project.ProjectManagerService> projectManagerProvider;
     private final UrsaEventForwarder forwarder;
 
     /**
@@ -127,8 +128,8 @@ public class UrsaEventService {
             ObjectProvider<de.mhus.vance.brain.project.ProjectManagerService> projectManagerProvider,
             UrsaEventForwarder forwarder,
             @org.springframework.beans.factory.annotation.Value(
-                    "${vance.events.async.max-concurrent:" + DEFAULT_ASYNC_MAX_CONCURRENT + "}")
-            int asyncMaxConcurrent) {
+                            "${vance.events.async.max-concurrent:" + DEFAULT_ASYNC_MAX_CONCURRENT + "}")
+                    int asyncMaxConcurrent) {
         // The default lives in DEFAULT_ASYNC_MAX_CONCURRENT so the number is
         // stated once; 0 disables the ceiling.
         this.eventLoader = eventLoader;
@@ -142,11 +143,10 @@ public class UrsaEventService {
         this.projectManagerProvider = projectManagerProvider;
         this.forwarder = forwarder;
         this.asyncMaxConcurrent = asyncMaxConcurrent;
-        this.asyncScriptSlots = asyncMaxConcurrent > 0
-                ? new Semaphore(asyncMaxConcurrent)
-                : null;
+        this.asyncScriptSlots = asyncMaxConcurrent > 0 ? new Semaphore(asyncMaxConcurrent) : null;
         if (this.asyncScriptSlots == null) {
-            log.warn("vance.events.async.max-concurrent={} — async script events are unbounded; "
+            log.warn(
+                    "vance.events.async.max-concurrent={} — async script events are unbounded; "
                             + "the event endpoint carries no JWT and no rate limit",
                     asyncMaxConcurrent);
         }
@@ -206,8 +206,7 @@ public class UrsaEventService {
             String httpMethod,
             @Nullable String bearerToken,
             @Nullable Object payload) {
-        return trigger(tenantId, projectId, eventName, httpMethod, bearerToken, payload,
-                /*alreadyForwarded*/ false);
+        return trigger(tenantId, projectId, eventName, httpMethod, bearerToken, payload, /*alreadyForwarded*/ false);
     }
 
     /**
@@ -242,8 +241,7 @@ public class UrsaEventService {
         try {
             ResolvedUrsaEvent event;
             try {
-                event = eventLoader.load(tenantId, projectId, eventName)
-                        .orElse(null);
+                event = eventLoader.load(tenantId, projectId, eventName).orElse(null);
             } catch (RuntimeException ex) {
                 countOutcome(eventName, "bad_payload");
                 outcome = "bad_payload";
@@ -254,57 +252,54 @@ public class UrsaEventService {
                 countOutcome(eventName, "not_found");
                 outcome = "not_found";
                 skipLog = true;
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Event '" + eventName + "' not found");
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Event '" + eventName + "' not found");
             }
             runAs = event.effectiveRunAs();
 
             if (!event.enabled()) {
                 // Treat disabled events as 404 — don't leak that the event
                 // exists. Caller can flip `enabled: true` in the YAML to re-enable.
-                log.debug("Event '{}/{}/{}' disabled — returning 404",
-                        tenantId, projectId, eventName);
+                log.debug("Event '{}/{}/{}' disabled — returning 404", tenantId, projectId, eventName);
                 countOutcome(eventName, "disabled");
                 outcome = "disabled";
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Event '" + eventName + "' not found");
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Event '" + eventName + "' not found");
             }
 
             if (!event.acceptsMethod(httpMethod)) {
                 countOutcome(eventName, "method_not_allowed");
                 outcome = "method_not_allowed";
                 errorMessage = "method " + httpMethod + " not in " + event.methods();
-                throw new ResponseStatusException(HttpStatus.METHOD_NOT_ALLOWED,
-                        "Event '" + eventName + "' does not accept " + httpMethod);
+                throw new ResponseStatusException(
+                        HttpStatus.METHOD_NOT_ALLOWED, "Event '" + eventName + "' does not accept " + httpMethod);
             }
 
             if (event.requiresAuth()) {
                 String expected = resolveExpectedToken(tenantId, projectId, event);
                 if (expected == null || expected.isBlank()) {
-                    log.warn("Event '{}/{}/{}' requires auth but token is unresolved "
-                                    + "(setting '{}' empty)",
-                            tenantId, projectId, eventName, event.tokenSettingKey());
+                    log.warn(
+                            "Event '{}/{}/{}' requires auth but token is unresolved " + "(setting '{}' empty)",
+                            tenantId,
+                            projectId,
+                            eventName,
+                            event.tokenSettingKey());
                     countOutcome(eventName, "auth_misconfigured");
                     outcome = "auth_misconfigured";
                     errorMessage = "tokenSettingKey '" + event.tokenSettingKey() + "' unresolved";
-                    throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                            "Event auth is misconfigured");
+                    throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Event auth is misconfigured");
                 }
                 if (!constantTimeEquals(expected, bearerToken)) {
                     countOutcome(eventName, "unauthorized");
                     outcome = "unauthorized";
                     errorMessage = "bearer token mismatch";
-                    throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
-                            "Invalid or missing bearer token");
+                    throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid or missing bearer token");
                 }
             }
 
             if (!alreadyForwarded) {
                 String owner = bringUpAndFindOwner(tenantId, projectId, eventName);
                 if (owner != null) {
-                    de.mhus.vance.api.ursaevents.EventTriggerResponse remote = forwarder.forward(
-                            owner, tenantId, projectId, eventName,
-                            httpMethod, bearerToken, payload);
+                    de.mhus.vance.api.ursaevents.EventTriggerResponse remote =
+                            forwarder.forward(owner, tenantId, projectId, eventName, httpMethod, bearerToken, payload);
                     countOutcome(eventName, "forwarded");
                     outcome = "forwarded";
                     targetName = remote.getWorkflowName();
@@ -313,21 +308,24 @@ public class UrsaEventService {
                     // request, and the owning pod wrote its own log entry under
                     // its own id.
                     return new UrsaEventTriggerResult(
-                            remote.getWorkflowName(), remote.getWorkflowRunId(),
-                            remote.getOutput(), correlationId, firedAt);
+                            remote.getWorkflowName(),
+                            remote.getWorkflowRunId(),
+                            remote.getOutput(),
+                            correlationId,
+                            firedAt);
                 }
             }
 
-            LogIdentity logIdentity = new LogIdentity(
-                    UrsaEventLogService.TriggerSource.PUBLIC, httpMethod, /*triggeredBy*/ null);
+            LogIdentity logIdentity =
+                    new LogIdentity(UrsaEventLogService.TriggerSource.PUBLIC, httpMethod, /*triggeredBy*/ null);
             // An async script dispatch writes its own log when it finishes,
             // with this same correlationId — writing here too would race it.
             skipLog = asyncDispatch(event);
 
             UrsaEventTriggerResult result;
             try {
-                result = executeAction(tenantId, projectId, eventName, event, payload,
-                        correlationId, firedAt, logIdentity);
+                result = executeAction(
+                        tenantId, projectId, eventName, event, payload, correlationId, firedAt, logIdentity);
             } catch (ResponseStatusException ex) {
                 // executeAction already tagged the metric outcome; copy
                 // it into our log tracking so the document mirrors the
@@ -341,10 +339,16 @@ public class UrsaEventService {
                 throw ex;
             }
             countOutcome(eventName, "success");
-            metricService.timer(METRIC_TRIGGER_DURATION, "event", eventName)
+            metricService
+                    .timer(METRIC_TRIGGER_DURATION, "event", eventName)
                     .record(Duration.ofNanos(System.nanoTime() - startNanos));
-            log.info("Event '{}/{}/{}' fired target='{}' spawnedId='{}'",
-                    tenantId, projectId, eventName, result.workflowName(), result.workflowRunId());
+            log.info(
+                    "Event '{}/{}/{}' fired target='{}' spawnedId='{}'",
+                    tenantId,
+                    projectId,
+                    eventName,
+                    result.workflowName(),
+                    result.workflowRunId());
             outcome = "success";
             targetName = result.workflowName();
             spawnedId = result.workflowRunId();
@@ -357,23 +361,37 @@ public class UrsaEventService {
                 // script's return value to an anonymous caller would have the
                 // control backwards. An authenticated webhook is unaffected,
                 // as specification/public/events.md §8b states.
-                return new UrsaEventTriggerResult(result.workflowName(), result.workflowRunId(),
-                        /*output*/ null, result.correlationId(), result.firedAt());
+                return new UrsaEventTriggerResult(
+                        result.workflowName(),
+                        result.workflowRunId(),
+                        /*output*/ null,
+                        result.correlationId(),
+                        result.firedAt());
             }
             return result;
         } finally {
             if (!skipLog) {
-                long durationMs = Duration.ofNanos(System.nanoTime() - startNanos).toMillis();
-                eventLogService.record(correlationId,
+                long durationMs =
+                        Duration.ofNanos(System.nanoTime() - startNanos).toMillis();
+                eventLogService.record(
+                        correlationId,
                         new UrsaEventLogService.TriggerOutcome(
-                                tenantId, projectId, eventName,
+                                tenantId,
+                                projectId,
+                                eventName,
                                 UrsaEventLogService.TriggerSource.PUBLIC,
-                                httpMethod, /*triggeredBy*/ null,
-                                firedAt, durationMs, outcome,
-                                targetName, spawnedId, runAs,
+                                httpMethod, /*triggeredBy*/
+                                null,
+                                firedAt,
+                                durationMs,
+                                outcome,
+                                targetName,
+                                spawnedId,
+                                runAs,
                                 /*payloadContentType*/ null,
                                 /*payloadSizeBytes*/ -1,
-                                outputSummary, errorMessage));
+                                outputSummary,
+                                errorMessage));
             }
         }
     }
@@ -385,9 +403,14 @@ public class UrsaEventService {
      * both {@link #trigger} and {@link #triggerAdmin}.
      */
     private UrsaEventTriggerResult executeAction(
-            String tenantId, String projectId, String eventName,
-            ResolvedUrsaEvent event, @Nullable Object payload,
-            String correlationId, Instant firedAt, LogIdentity logIdentity) {
+            String tenantId,
+            String projectId,
+            String eventName,
+            ResolvedUrsaEvent event,
+            @Nullable Object payload,
+            String correlationId,
+            Instant firedAt,
+            LogIdentity logIdentity) {
 
         Map<String, Object> mergedParams = new LinkedHashMap<>(event.params());
         if (payload != null) {
@@ -398,22 +421,24 @@ public class UrsaEventService {
         try {
             action = event.toTriggerAction(mergedParams);
         } catch (RuntimeException ex) {
-            log.warn("Event '{}/{}/{}' action build failed: {}",
-                    tenantId, projectId, eventName, ex.toString());
+            log.warn("Event '{}/{}/{}' action build failed: {}", tenantId, projectId, eventName, ex.toString());
             countOutcome(eventName, "bad_payload");
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Event action build failed: " + ex.getMessage(), ex);
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR, "Event action build failed: " + ex.getMessage(), ex);
         }
 
         // Workflow-trigger requires Magrathea — keep the 503 semantics.
-        if (action instanceof TriggerAction.Workflow
-                && workflowServiceProvider.getIfAvailable() == null) {
-            log.warn("Event '{}/{}/{}' wants workflow '{}' but Magrathea is not active "
+        if (action instanceof TriggerAction.Workflow && workflowServiceProvider.getIfAvailable() == null) {
+            log.warn(
+                    "Event '{}/{}/{}' wants workflow '{}' but Magrathea is not active "
                             + "(vance.services.magrathea=false)",
-                    tenantId, projectId, eventName, event.workflow());
+                    tenantId,
+                    projectId,
+                    eventName,
+                    event.workflow());
             countOutcome(eventName, "magrathea_unavailable");
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                    "Magrathea workflow subsystem is not active");
+            throw new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE, "Magrathea workflow subsystem is not active");
         }
 
         // Recipe-trigger needs a system session — same pattern as the
@@ -423,13 +448,14 @@ public class UrsaEventService {
             String runAs = event.effectiveRunAs();
             if (runAs == null) {
                 countOutcome(eventName, "bad_payload");
-                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                throw new ResponseStatusException(
+                        HttpStatus.INTERNAL_SERVER_ERROR,
                         "Event '" + eventName + "' has no runAs (set 'runAs:' or document createdBy)");
             }
-            SessionDocument session = systemSessionResolver.resolve(
-                    tenantId, projectId, "event_" + eventName, runAs);
+            SessionDocument session = systemSessionResolver.resolve(tenantId, projectId, "event_" + eventName, runAs);
             context = TriggerContext.sessioned(
-                    tenantId, projectId,
+                    tenantId,
+                    projectId,
                     event.effectiveRunAs(),
                     correlationId,
                     "event:" + eventName,
@@ -437,7 +463,8 @@ public class UrsaEventService {
                     /*parentProcessId*/ null);
         } else {
             context = TriggerContext.standalone(
-                    tenantId, projectId,
+                    tenantId,
+                    projectId,
                     event.effectiveRunAs(),
                     correlationId,
                     "event:" + eventName,
@@ -445,37 +472,41 @@ public class UrsaEventService {
         }
 
         if (asyncDispatch(event)) {
-            dispatchAsync(tenantId, projectId, eventName, action, context,
-                    correlationId, firedAt, logIdentity, event.effectiveRunAs(),
+            dispatchAsync(
+                    tenantId,
+                    projectId,
+                    eventName,
+                    action,
+                    context,
+                    correlationId,
+                    firedAt,
+                    logIdentity,
+                    event.effectiveRunAs(),
                     event.outputVisibleToAgents());
             return new UrsaEventTriggerResult(
-                    targetNameOf(action, eventName), /*spawnedId*/ null,
-                    /*output*/ null, correlationId, firedAt);
+                    targetNameOf(action, eventName), /*spawnedId*/ null, /*output*/ null, correlationId, firedAt);
         }
 
         ActionResult result;
         try {
             result = actionExecutorRegistry.execute(action, context, TriggerKind.EVENT);
         } catch (RuntimeException ex) {
-            log.warn("Event '{}/{}/{}' executor dispatch failed: {}",
-                    tenantId, projectId, eventName, ex.toString());
+            log.warn("Event '{}/{}/{}' executor dispatch failed: {}", tenantId, projectId, eventName, ex.toString());
             countOutcome(eventName, "spawn_failed");
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                    "Event dispatch failed: " + ex.getMessage(), ex);
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Event dispatch failed: " + ex.getMessage(), ex);
         }
         if (result.outcome().isFailure()) {
-            HttpStatus mapped = result.outcome() == ActionOutcome.PERMISSION_ERROR
-                    ? HttpStatus.FORBIDDEN
-                    : HttpStatus.BAD_GATEWAY;
+            HttpStatus mapped =
+                    result.outcome() == ActionOutcome.PERMISSION_ERROR ? HttpStatus.FORBIDDEN : HttpStatus.BAD_GATEWAY;
             countOutcome(eventName, "spawn_failed");
-            throw new ResponseStatusException(mapped,
+            throw new ResponseStatusException(
+                    mapped,
                     "Event execution failed: "
                             + (result.errorMessage() == null ? result.outcome().name() : result.errorMessage()));
         }
 
         String targetName = targetNameOf(action, eventName);
-        return new UrsaEventTriggerResult(
-                targetName, result.spawnedId(), result.output(), correlationId, firedAt);
+        return new UrsaEventTriggerResult(targetName, result.spawnedId(), result.output(), correlationId, firedAt);
     }
 
     private static String targetNameOf(TriggerAction action, String eventName) {
@@ -516,26 +547,47 @@ public class UrsaEventService {
      * told "not now" can retry, while one that is silently enqueued cannot
      * tell an accepted run from a dropped one. See {@link #asyncScriptSlots}.
      */
-    private void dispatchAsync(String tenantId, String projectId, String eventName,
-            TriggerAction action, TriggerContext context, String correlationId,
-            Instant firedAt, LogIdentity logIdentity, @Nullable String runAs,
+    private void dispatchAsync(
+            String tenantId,
+            String projectId,
+            String eventName,
+            TriggerAction action,
+            TriggerContext context,
+            String correlationId,
+            Instant firedAt,
+            LogIdentity logIdentity,
+            @Nullable String runAs,
             boolean outputVisible) {
 
         Semaphore slots = asyncScriptSlots;
         if (slots != null && !slots.tryAcquire()) {
-            log.warn("Async event '{}/{}/{}' rejected — all {} async slots are in use",
-                    tenantId, projectId, eventName, asyncMaxConcurrent);
+            log.warn(
+                    "Async event '{}/{}/{}' rejected — all {} async slots are in use",
+                    tenantId,
+                    projectId,
+                    eventName,
+                    asyncMaxConcurrent);
             countOutcome(eventName, "throttled");
-            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
-                    "Too many async event scripts are already running");
+            throw new ResponseStatusException(
+                    HttpStatus.TOO_MANY_REQUESTS, "Too many async event scripts are already running");
         }
 
         long startNanos = System.nanoTime();
         try {
             asyncScriptExecutor.submit(() -> {
                 try {
-                    runAsyncAction(tenantId, projectId, eventName, action, context,
-                            correlationId, firedAt, logIdentity, runAs, outputVisible, startNanos);
+                    runAsyncAction(
+                            tenantId,
+                            projectId,
+                            eventName,
+                            action,
+                            context,
+                            correlationId,
+                            firedAt,
+                            logIdentity,
+                            runAs,
+                            outputVisible,
+                            startNanos);
                 } finally {
                     if (slots != null) slots.release();
                 }
@@ -548,20 +600,26 @@ public class UrsaEventService {
     }
 
     /** Body of an async dispatch — see {@link #dispatchAsync}. */
-    private void runAsyncAction(String tenantId, String projectId, String eventName,
-            TriggerAction action, TriggerContext context, String correlationId,
-            Instant firedAt, LogIdentity logIdentity, @Nullable String runAs,
-            boolean outputVisible, long startNanos) {
+    private void runAsyncAction(
+            String tenantId,
+            String projectId,
+            String eventName,
+            TriggerAction action,
+            TriggerContext context,
+            String correlationId,
+            Instant firedAt,
+            LogIdentity logIdentity,
+            @Nullable String runAs,
+            boolean outputVisible,
+            long startNanos) {
         String outcome;
         String errorMessage = null;
         Map<String, Object> output = null;
         try {
-            ActionResult result =
-                    actionExecutorRegistry.execute(action, context, TriggerKind.EVENT);
+            ActionResult result = actionExecutorRegistry.execute(action, context, TriggerKind.EVENT);
             if (result.outcome().isFailure()) {
                 outcome = "spawn_failed";
-                errorMessage = result.errorMessage() == null
-                        ? result.outcome().name() : result.errorMessage();
+                errorMessage = result.errorMessage() == null ? result.outcome().name() : result.errorMessage();
             } else {
                 outcome = "success";
                 output = result.output();
@@ -569,22 +627,31 @@ public class UrsaEventService {
         } catch (RuntimeException ex) {
             outcome = "spawn_failed";
             errorMessage = ex.toString();
-            log.warn("Async event '{}/{}/{}' failed: {}",
-                    tenantId, projectId, eventName, ex.toString());
+            log.warn("Async event '{}/{}/{}' failed: {}", tenantId, projectId, eventName, ex.toString());
         }
         // Deliberately no metric here: the dispatch was already counted
         // as a success by the caller, and counting again would make the
         // per-event totals mean two different things at once.
         long durationMs = Duration.ofNanos(System.nanoTime() - startNanos).toMillis();
-        eventLogService.record(correlationId,
+        eventLogService.record(
+                correlationId,
                 new UrsaEventLogService.TriggerOutcome(
-                        tenantId, projectId, eventName,
-                        logIdentity.source(), logIdentity.httpMethod(),
+                        tenantId,
+                        projectId,
+                        eventName,
+                        logIdentity.source(),
+                        logIdentity.httpMethod(),
                         logIdentity.triggeredBy(),
-                        firedAt, durationMs, outcome,
-                        targetNameOf(action, eventName), /*spawnedId*/ null, runAs,
-                        /*payloadContentType*/ null, /*payloadSizeBytes*/ -1,
-                        summariseOutput(output, outputVisible), errorMessage));
+                        firedAt,
+                        durationMs,
+                        outcome,
+                        targetNameOf(action, eventName), /*spawnedId*/
+                        null,
+                        runAs,
+                        /*payloadContentType*/ null, /*payloadSizeBytes*/
+                        -1,
+                        summariseOutput(output, outputVisible),
+                        errorMessage));
     }
 
     /** Which trigger surface a log entry belongs to. */
@@ -625,14 +692,13 @@ public class UrsaEventService {
         boolean skipLog = false;
 
         try {
-            ResolvedUrsaEvent event = eventLoader.load(tenantId, projectId, eventName)
-                    .orElse(null);
+            ResolvedUrsaEvent event =
+                    eventLoader.load(tenantId, projectId, eventName).orElse(null);
             if (event == null) {
                 countOutcomeAdmin(eventName, "not_found");
                 outcome = "not_found";
                 skipLog = true;
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Event '" + eventName + "' not found");
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Event '" + eventName + "' not found");
             }
             runAs = event.effectiveRunAs();
 
@@ -640,18 +706,18 @@ public class UrsaEventService {
                 countOutcomeAdmin(eventName, "disabled");
                 outcome = "disabled";
                 errorMessage = "event is disabled";
-                throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "Event '" + eventName + "' is disabled — flip enabled: true to trigger");
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT, "Event '" + eventName + "' is disabled — flip enabled: true to trigger");
             }
 
-            LogIdentity logIdentity = new LogIdentity(
-                    UrsaEventLogService.TriggerSource.ADMIN, /*httpMethod*/ null, triggeredBy);
+            LogIdentity logIdentity =
+                    new LogIdentity(UrsaEventLogService.TriggerSource.ADMIN, /*httpMethod*/ null, triggeredBy);
             skipLog = asyncDispatch(event);
 
             UrsaEventTriggerResult result;
             try {
-                result = executeAction(tenantId, projectId, eventName, event, payload,
-                        correlationId, firedAt, logIdentity);
+                result = executeAction(
+                        tenantId, projectId, eventName, event, payload, correlationId, firedAt, logIdentity);
             } catch (ResponseStatusException ex) {
                 // Re-tag the metric outcome under the admin source.
                 skipLog = isThrottled(ex);
@@ -661,10 +727,16 @@ public class UrsaEventService {
                 throw ex;
             }
             countOutcomeAdmin(eventName, "success");
-            metricService.timer(METRIC_TRIGGER_DURATION, "event", eventName)
+            metricService
+                    .timer(METRIC_TRIGGER_DURATION, "event", eventName)
                     .record(Duration.ofNanos(System.nanoTime() - startNanos));
-            log.info("Admin event '{}/{}/{}' fired target='{}' spawnedId='{}' triggeredBy='{}'",
-                    tenantId, projectId, eventName, result.workflowName(), result.workflowRunId(),
+            log.info(
+                    "Admin event '{}/{}/{}' fired target='{}' spawnedId='{}' triggeredBy='{}'",
+                    tenantId,
+                    projectId,
+                    eventName,
+                    result.workflowName(),
+                    result.workflowRunId(),
                     triggeredBy);
             outcome = "success";
             targetName = result.workflowName();
@@ -675,23 +747,37 @@ public class UrsaEventService {
                 // caller never proved anything. Withholding happens here
                 // rather than in the tool so the admin REST test-fire is
                 // covered by the same rule.
-                return new UrsaEventTriggerResult(result.workflowName(), result.workflowRunId(),
-                        /*output*/ null, result.correlationId(), result.firedAt());
+                return new UrsaEventTriggerResult(
+                        result.workflowName(),
+                        result.workflowRunId(),
+                        /*output*/ null,
+                        result.correlationId(),
+                        result.firedAt());
             }
             return result;
         } finally {
             if (!skipLog) {
-                long durationMs = Duration.ofNanos(System.nanoTime() - startNanos).toMillis();
-                eventLogService.record(correlationId,
+                long durationMs =
+                        Duration.ofNanos(System.nanoTime() - startNanos).toMillis();
+                eventLogService.record(
+                        correlationId,
                         new UrsaEventLogService.TriggerOutcome(
-                                tenantId, projectId, eventName,
+                                tenantId,
+                                projectId,
+                                eventName,
                                 UrsaEventLogService.TriggerSource.ADMIN,
-                                /*httpMethod*/ null, triggeredBy,
-                                firedAt, durationMs, outcome,
-                                targetName, spawnedId, runAs,
+                                /*httpMethod*/ null,
+                                triggeredBy,
+                                firedAt,
+                                durationMs,
+                                outcome,
+                                targetName,
+                                spawnedId,
+                                runAs,
                                 /*payloadContentType*/ null,
                                 /*payloadSizeBytes*/ -1,
-                                outputSummary, errorMessage));
+                                outputSummary,
+                                errorMessage));
             }
         }
     }
@@ -719,8 +805,7 @@ public class UrsaEventService {
         if (rendered.length() <= LOG_OUTPUT_MAX_CHARS) {
             return rendered;
         }
-        return rendered.substring(0, LOG_OUTPUT_MAX_CHARS)
-                + "… [truncated, " + rendered.length() + " chars total]";
+        return rendered.substring(0, LOG_OUTPUT_MAX_CHARS) + "… [truncated, " + rendered.length() + " chars total]";
     }
 
     @PreDestroy
@@ -757,22 +842,19 @@ public class UrsaEventService {
      * triggers in the same counter family.
      */
     private void countOutcome(String eventName, String outcome) {
-        metricService.counter(METRIC_TRIGGERS,
-                "event", eventName,
-                "source", "public",
-                "outcome", outcome).increment();
+        metricService
+                .counter(METRIC_TRIGGERS, "event", eventName, "source", "public", "outcome", outcome)
+                .increment();
     }
 
     /** Admin-trigger variant of {@link #countOutcome}. */
     private void countOutcomeAdmin(String eventName, String outcome) {
-        metricService.counter(METRIC_TRIGGERS,
-                "event", eventName,
-                "source", "admin",
-                "outcome", outcome).increment();
+        metricService
+                .counter(METRIC_TRIGGERS, "event", eventName, "source", "admin", "outcome", outcome)
+                .increment();
     }
 
-    private @Nullable String resolveExpectedToken(
-            String tenantId, String projectId, ResolvedUrsaEvent event) {
+    private @Nullable String resolveExpectedToken(String tenantId, String projectId, ResolvedUrsaEvent event) {
         if (event.tokenLiteral() != null) return event.tokenLiteral();
         if (event.tokenSettingKey() != null) {
             // Setting cascade: project → _vance. No think-process scope
@@ -807,11 +889,9 @@ public class UrsaEventService {
      * happened before this existed, and a half-available project is a better
      * answer to a webhook than a 500.
      */
-    private @Nullable String bringUpAndFindOwner(
-            String tenantId, String projectId, String eventName) {
-        if (ProjectService.isPodless(projectId)) return null;
-        de.mhus.vance.brain.project.ProjectLocator locator =
-                projectLocatorProvider.getIfAvailable();
+    private @Nullable String bringUpAndFindOwner(String tenantId, String projectId, String eventName) {
+        if (ProjectService.isHomeless(projectId)) return null;
+        de.mhus.vance.brain.project.ProjectLocator locator = projectLocatorProvider.getIfAvailable();
         if (locator == null) return null;
         try {
             // Blocking by contract: locate(autoStart) returns once the project
@@ -823,16 +903,19 @@ public class UrsaEventService {
                     locator.locate(tenantId, projectId, /*autoStart*/ true);
             String endpoint = location.endpoint().orElse(null);
             if (endpoint == null) return null;
-            de.mhus.vance.brain.project.ProjectManagerService manager =
-                    projectManagerProvider.getIfAvailable();
+            de.mhus.vance.brain.project.ProjectManagerService manager = projectManagerProvider.getIfAvailable();
             if (manager != null && manager.isLocalPod(endpoint)) return null;
             return endpoint;
         } catch (RuntimeException e) {
             // Fail-open to local execution: this is what happened before events
             // were routed at all, and answering a webhook badly beats not
             // answering it.
-            log.warn("Event '{}/{}/{}': could not place the project, running locally: {}",
-                    tenantId, projectId, eventName, e.toString());
+            log.warn(
+                    "Event '{}/{}/{}': could not place the project, running locally: {}",
+                    tenantId,
+                    projectId,
+                    eventName,
+                    e.toString());
             return null;
         }
     }

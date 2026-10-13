@@ -8,12 +8,15 @@ import de.mhus.vance.brain.thinkengine.SteerMessageCodec;
 import de.mhus.vance.brain.trillian.nature.SelfCheckFinding;
 import de.mhus.vance.brain.trillian.nature.TrillianNature;
 import de.mhus.vance.shared.megadodo.MegadodoService;
+import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -38,12 +41,13 @@ import org.springframework.stereotype.Component;
  * on the scan grid, also while a worker runs and the ladder is disarmed — a
  * 09:00 stand-up must not wait for the loop's next look around.
  *
- * <p><b>Every pod scans, one pod fires.</b> The loop homes are podless hubs
- * (D2), so there is no owner pod to scan on behalf of — every pod reads the
- * live loops with one indexed query, and the {@link TrillianWakeupClaimService}
- * decides who wakes one: three pods noticing the same appointment produce one
- * turn, not three. The claim keys on the due slot, so a pod that dies before
- * waking loses that slot for the claim TTL (an hour), not the appointment.
+ * <p><b>The hub's home pod wakes the loop.</b> A loop lives in its account's
+ * hub, which is placed through a lease like any project and kept placed
+ * while the loop is alive ({@link TrillianOwnerRequirement}). Each pod wakes
+ * only the loops in hubs it holds, so three pods produce one turn, not three.
+ * When the holder dies, the hub's lease expires, the distributor places it
+ * again, and the new holder's next round finds the loop still due — the due
+ * times live on the process, not on the pod.
  */
 @Component
 @ConditionalOnProperty(value = "vance.trillian.heartbeat.enabled", havingValue = "true", matchIfMissing = true)
@@ -57,7 +61,7 @@ public class TrillianHeartbeatTick {
     private final ClusterService clusterService;
     private final ThinkProcessService thinkProcessService;
     private final TrillianWakeupService wakeupService;
-    private final TrillianWakeupClaimService wakeupClaimService;
+    private final ProjectService projectService;
     private final TrillianAgendaService agendaService;
     private final ProcessEventEmitter eventEmitter;
     private final de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry natureRegistry;
@@ -74,7 +78,16 @@ public class TrillianHeartbeatTick {
         int adopted = 0;
         int quiet = 0;
         int woken = 0;
+        Set<String> heldHubs = projectService.findRunningByHomePodId(clusterService.selfPodId()).stream()
+                .map(p -> p.getTenantId() + '/' + p.getName())
+                .collect(Collectors.toUnmodifiableSet());
+        if (heldHubs.isEmpty()) {
+            return;
+        }
         for (ThinkProcessDocument loop : wakeupService.liveLoops(MAX_LOOPS)) {
+            if (!heldHubs.contains(loop.getTenantId() + '/' + loop.getProjectId())) {
+                continue;
+            }
             loops++;
             // Overlap-skip: a loop that is mid-turn sees its inbox when the
             // turn drains; a wakeup now would be a second turn for nothing.
@@ -135,13 +148,6 @@ public class TrillianHeartbeatTick {
                     // or removed meanwhile): recompute instead of retrying.
                     agendaService.refreshScheduleMarker(loop);
                 }
-                continue;
-            }
-            // Cross-pod arbiter (D2): exactly one pod turns a due
-            // appointment into a wakeup.
-            Instant slotAt = ladderDue ? wakeupService.nextWakeupAt(loop) : wakeupService.scheduleMarker(loop);
-            String slot = (ladderDue ? "w" : "s") + (slotAt == null ? now.toEpochMilli() : slotAt.toEpochMilli());
-            if (!wakeupClaimService.claim(loop.getTenantId(), loop.getId(), slot)) {
                 continue;
             }
             // Minted here rather than inside wake(): the same id is the

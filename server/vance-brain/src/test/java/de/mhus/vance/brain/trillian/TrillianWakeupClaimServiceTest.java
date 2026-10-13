@@ -19,31 +19,14 @@ import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
 
 /**
- * The cross-pod referee of the Trillian loop: one insert decides a wake
- * slot, and a lease keeps a turn or a bootstrap on one pod at a time — with
- * a dead holder overtaken after its TTL instead of after the hour-long
- * reaper.
+ * The cluster-wide leases of the Trillian loop: a lease keeps a turn or a
+ * bootstrap on one pod at a time — with a dead holder overtaken after its TTL
+ * instead of after the hour-long reaper.
  */
 class TrillianWakeupClaimServiceTest {
 
     private final MongoTemplate mongoTemplate = mock(MongoTemplate.class);
     private final TrillianWakeupClaimService service = new TrillianWakeupClaimService(mongoTemplate);
-
-    @Test
-    void claim_firstInsertWins_withSlotScopedId() {
-        assertThat(service.claim("acme", "loop-1", "w1000")).isTrue();
-
-        ArgumentCaptor<TrillianWakeupClaimDocument> doc = ArgumentCaptor.forClass(TrillianWakeupClaimDocument.class);
-        verify(mongoTemplate).insert(doc.capture());
-        assertThat(doc.getValue().getId()).isEqualTo("acme/loop-1/w1000");
-    }
-
-    @Test
-    void claim_aSlotAnotherPodHolds_isLost() {
-        when(mongoTemplate.insert(any(TrillianWakeupClaimDocument.class))).thenThrow(new DuplicateKeyException("x"));
-
-        assertThat(service.claim("acme", "loop-1", "w1000")).isFalse();
-    }
 
     @Test
     void acquireLease_freeLease_isTakenWithHolderToken() {

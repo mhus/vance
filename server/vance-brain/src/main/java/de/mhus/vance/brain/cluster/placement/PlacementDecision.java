@@ -6,8 +6,8 @@ import de.mhus.vance.shared.cluster.BrainPodDocument;
  * Where a project should run, as decided by {@link ProjectPlacementService}.
  *
  * <p>{@link Here} and {@link On} are not redundant. {@code Here} is the answer
- * when there is no pod document to point at — a podless project, or a pod that
- * has not finished registering itself in {@code brain_pods} yet (boot). Folding
+ * when there is no pod document to point at — a pod that has not finished
+ * registering itself in {@code brain_pods} yet (boot, single-pod dev). Folding
  * it into {@code On(selfPod)} would mean the boot path had to invent a document
  * it does not have.
  */

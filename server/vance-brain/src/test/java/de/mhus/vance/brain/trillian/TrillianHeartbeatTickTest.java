@@ -14,6 +14,8 @@ import de.mhus.vance.brain.trillian.nature.SelfCheckFinding;
 import de.mhus.vance.brain.trillian.nature.TrillianNature;
 import de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry;
 import de.mhus.vance.shared.megadodo.MegadodoService;
+import de.mhus.vance.shared.project.ProjectDocument;
+import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.List;
@@ -60,7 +62,7 @@ class TrillianHeartbeatTickTest {
     MegadodoService megadodoService;
 
     @Mock
-    TrillianWakeupClaimService wakeupClaimService;
+    ProjectService projectService;
 
     @Mock
     TrillianAgendaService agendaService;
@@ -70,7 +72,8 @@ class TrillianHeartbeatTickTest {
     @BeforeEach
     void setUp() {
         when(natureRegistry.resolve(any())).thenReturn(nature);
-        when(wakeupClaimService.claim(any(), any(), any())).thenReturn(true);
+        when(clusterService.selfPodId()).thenReturn("pod-self");
+        when(projectService.findRunningByHomePodId("pod-self")).thenReturn(List.of(hub("proj")));
         when(wakeupService.nextWakeupAt(any())).thenReturn(java.time.Instant.now());
         when(wakeupService.hasScheduleMarker(any())).thenReturn(true);
         when(agendaService.findings(any(), org.mockito.ArgumentMatchers.anyBoolean()))
@@ -79,7 +82,7 @@ class TrillianHeartbeatTickTest {
                 clusterService,
                 thinkProcessService,
                 wakeupService,
-                wakeupClaimService,
+                projectService,
                 agendaService,
                 eventEmitter,
                 natureRegistry,
@@ -212,7 +215,6 @@ class TrillianHeartbeatTickTest {
         tick.tick();
 
         verify(eventEmitter).scheduleTurn(LOOP);
-        verify(wakeupClaimService).claim("acme", LOOP, "s1000");
         verify(agendaService).delivered(any(), eq(due));
         // Only the appointment: the Nature's look-around belongs to the ladder.
         verify(nature, never()).selfCheckFindings(any());
@@ -247,16 +249,34 @@ class TrillianHeartbeatTickTest {
     }
 
     @Test
-    void aLostClaim_wakesNothing() {
-        // Another pod won this slot and fires; this one must not.
+    void aLoopInAHubAnotherPodHolds_isLeftToThatPod() {
+        // The hub's home pod wakes the loop; a second pod waking it too
+        // would be a second turn for the same appointment.
+        when(projectService.findRunningByHomePodId("pod-self")).thenReturn(List.of(hub("other")));
         givenDueLoop();
         when(nature.selfCheckFindings(any())).thenReturn(List.of(finding()));
-        when(wakeupClaimService.claim(any(), any(), any())).thenReturn(false);
 
         tick.tick();
 
+        verify(nature, never()).selfCheckFindings(any());
         verify(thinkProcessService, never()).appendPending(anyString(), any());
         verify(eventEmitter, never()).scheduleTurn(anyString());
+    }
+
+    @Test
+    void aPodHoldingNoHub_doesNotEvenListTheLoops() {
+        when(projectService.findRunningByHomePodId("pod-self")).thenReturn(List.of());
+
+        tick.tick();
+
+        verify(wakeupService, never()).liveLoops(org.mockito.ArgumentMatchers.anyInt());
+    }
+
+    private static ProjectDocument hub(String name) {
+        ProjectDocument doc = new ProjectDocument();
+        doc.setTenantId("acme");
+        doc.setName(name);
+        return doc;
     }
 
     private void givenDueLoop() {

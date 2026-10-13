@@ -123,8 +123,8 @@ public class ProjectLifecycleService {
             @Nullable String createdBy) {
         ProjectDocument created = projectService.create(tenantId, name, title, projectGroupId, teamIds, kind);
         // Where it runs is the placement service's call — local-first when this
-        // pod has room, otherwise the least-loaded pod that does. HOMELESS and
-        // podless projects short-circuit to a local bring inside it.
+        // pod has room, otherwise the least-loaded pod that does. The homeless
+        // tenant project is never placed — the placement service skips it.
         try {
             placementService.place(created, PlacementTrigger.CREATE);
         } catch (ClusterFullException e) {
@@ -263,15 +263,15 @@ public class ProjectLifecycleService {
      * is the <em>normal</em> recovery case and runs the full pass, including
      * the RUNNING → RECOVERING → RUNNING round trip.
      *
-     * <p>Podless system projects (see {@link ProjectService#isPodless})
-     * skip the lease and the status transitions: their lifecycle is
-     * tied to the WS connection, not to ownership. The local
-     * workspace is still initialised and engines are still started so
-     * Eddie has a usable scratch area on this pod.
+     * <p>The homeless tenant project (see {@link ProjectService#isHomeless})
+     * is refused: nothing runs there — no workspace, no engines, no
+     * scheduler. Its documents are the cascade layer and are read from
+     * Mongo by whichever project needs them.
      */
     public ProjectDocument bring(String tenantId, String projectName) {
-        if (ProjectService.isPodless(projectName)) {
-            return bringPodless(tenantId, projectName);
+        if (ProjectService.isHomeless(projectName)) {
+            throw new ProjectService.SystemProjectProtectedException(
+                    "Project '" + projectName + "' is homeless — nothing runs there");
         }
         ProjectDocument doc = projectManager.claimForLocalPod(tenantId, projectName);
         if (doc.getStatus() == ProjectStatus.RUNNING && activationRegistry.isActive(tenantId, projectName)) {
@@ -312,29 +312,6 @@ public class ProjectLifecycleService {
         return doc;
     }
 
-    private ProjectDocument bringPodless(String tenantId, String projectName) {
-        ProjectDocument doc = projectService
-                .findByTenantAndName(tenantId, projectName)
-                .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
-                        "Project '" + projectName + "' not found in tenant '" + tenantId + "'"));
-        try {
-            workspaceService.init(tenantId, projectName);
-        } catch (RuntimeException e) {
-            log.error("Workspace init failed for podless project '{}/{}': {}", tenantId, projectName, e.toString());
-            throw e;
-        }
-        eventPublisher.publishEvent(new ProjectEnginesStartRequested(tenantId, projectName));
-        // Podless projects hold no lease, but they *are* activated here — their
-        // schedulers and hooks live on this pod. The activation-gated document
-        // listeners need to know that, otherwise a scheduler edit in
-        // _user_<login> or _vance would be ignored on the very pod running it.
-        // No short-circuit is derived from this: the branch above returns
-        // before bring's registry check, so a repeated bring still re-inits.
-        activationRegistry.activate(tenantId, projectName);
-        log.debug("Podless project '{}/{}' brought up locally (no lease, status unchanged)", tenantId, projectName);
-        return doc;
-    }
-
     /**
      * Hand the project over: stop running it here and drop the lease, leaving
      * the <em>intent</em> untouched so the next placement picks it up
@@ -362,16 +339,16 @@ public class ProjectLifecycleService {
      * release. Releasing first would let another pod claim and initialise from
      * the old snapshot while this one is still writing the new one.
      *
-     * <p>Podless projects hold no lease and are refused — there is nothing to
-     * hand over, and their lifecycle follows the WS connection.
+     * <p>The homeless tenant project holds no lease and is refused — there is
+     * nothing to hand over.
      *
      * @return {@code false} when this pod does not hold the lease, so a caller
      *     can answer 409 rather than pretend something happened
      */
     public boolean release(String tenantId, String projectName) {
-        if (ProjectService.isPodless(projectName)) {
+        if (ProjectService.isHomeless(projectName)) {
             throw new ProjectService.SystemProjectProtectedException(
-                    "Project '" + projectName + "' is podless — it holds no lease to release");
+                    "Project '" + projectName + "' is homeless — it holds no lease to release");
         }
         if (!activationRegistry.isActive(tenantId, projectName)
                 && !projectManager.isOwnedByLocalPod(tenantId, projectName)) {
@@ -413,12 +390,9 @@ public class ProjectLifecycleService {
                 .findByTenantAndName(tenantId, projectName)
                 .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
                         "Project '" + projectName + "' not found in tenant '" + tenantId + "'"));
-        if (ProjectService.isPodless(projectName)) {
-            // Podless projects (e.g. _user_<login>, _vance) are pod-local
-            // and ephemeral — there is nothing to snapshot to Mongo and
-            // no pod-affinity to release. Engine teardown happens via
-            // SessionLifecycleService cascades.
-            log.debug("Podless project '{}/{}' — suspend is a no-op", tenantId, projectName);
+        if (ProjectService.isHomeless(projectName)) {
+            // Never brought, so there is nothing to stop or snapshot.
+            log.debug("Homeless project '{}/{}' — suspend is a no-op", tenantId, projectName);
             return doc;
         }
         switch (doc.getStatus()) {
@@ -464,13 +438,12 @@ public class ProjectLifecycleService {
      * if needed).
      */
     public ProjectDocument close(String tenantId, String projectName, String closedGroupId) {
-        if (ProjectService.isPodless(projectName)) {
-            // Podless projects are also SYSTEM-kind, so projectService.close
-            // would throw SystemProjectProtectedException anyway — but doing
-            // it here surfaces the right reason and skips the pointless
-            // workspaceService.dispose that runs before that check.
+        if (projectName.startsWith(ProjectService.SYSTEM_NAME_PREFIX)) {
+            // projectService.close refuses SYSTEM projects too, but only after
+            // the workspace below would already be gone — a hub's workspace
+            // must not be disposed by a close that is then refused.
             throw new ProjectService.SystemProjectProtectedException(
-                    "Project '" + projectName + "' is a podless system project — cannot close");
+                    "Project '" + projectName + "' is a system project — cannot close");
         }
         workspaceService.dispose(tenantId, projectName);
         disposeProjectRag(tenantId, projectName);

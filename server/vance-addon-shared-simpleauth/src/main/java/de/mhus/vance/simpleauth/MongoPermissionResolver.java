@@ -48,8 +48,8 @@ public class MongoPermissionResolver implements PermissionResolver {
     private final TeamService teamService;
     private final @Nullable MetricService metricService;
 
-    public MongoPermissionResolver(PermissionGrantService grants, TeamService teamService,
-            @Nullable MetricService metricService) {
+    public MongoPermissionResolver(
+            PermissionGrantService grants, TeamService teamService, @Nullable MetricService metricService) {
         this.grants = grants;
         this.teamService = teamService;
         this.metricService = metricService;
@@ -73,7 +73,8 @@ public class MongoPermissionResolver implements PermissionResolver {
             return;
         }
         try {
-            metricService.counter(METRIC_CHECKS, "outcome", outcome, "resource", resourceName)
+            metricService
+                    .counter(METRIC_CHECKS, "outcome", outcome, "resource", resourceName)
                     .increment();
         } catch (RuntimeException ignore) {
             // metrics are best-effort; never affect the verdict
@@ -87,11 +88,12 @@ public class MongoPermissionResolver implements PermissionResolver {
                 return false;
             }
             return switch (resource) {
-                case Resource.InboxItem i -> inboxAllowed(subject, i);                       // R5
-                case Resource.Document d -> documentAllowed(subject, d, action);             // R4 + R3
+                case Resource.InboxItem i -> inboxAllowed(subject, i); // R5
+                case Resource.Document d -> documentAllowed(subject, d, action); // R4 + R3
                 case Resource.Project p -> roleOnProject(subject, p.tenantId(), p.projectName(), minRole(action));
                 case Resource.Session s -> roleOnProject(subject, s.tenantId(), s.projectName(), minRole(action));
-                case Resource.ThinkProcess tp -> roleOnProject(subject, tp.tenantId(), tp.projectName(), minRole(action));
+                case Resource.ThinkProcess tp ->
+                    roleOnProject(subject, tp.tenantId(), tp.projectName(), minRole(action));
                 case Resource.Setting st -> settingAllowed(subject, st, action);
                 case Resource.Tenant t -> tenantAllowed(subject, t.tenantId(), minRole(action)); // R2
                 case Resource.Team tm -> hasRole(tenantRole(subject, tm.tenantId()), GrantRole.ADMIN);
@@ -99,8 +101,13 @@ public class MongoPermissionResolver implements PermissionResolver {
             };
         } catch (RuntimeException e) {
             // Fail-closed: never let a lookup error open access.
-            log.warn("permission resolve failed subject={}:{} action={} resource={}: {}",
-                    subject.subjectType(), subject.subjectId(), action, resource, e.toString());
+            log.warn(
+                    "permission resolve failed subject={}:{} action={} resource={}: {}",
+                    subject.subjectType(),
+                    subject.subjectId(),
+                    action,
+                    resource,
+                    e.toString());
             return false;
         }
     }
@@ -129,22 +136,23 @@ public class MongoPermissionResolver implements PermissionResolver {
         GrantRole required = minRole(action);
         return switch (st.referenceType()) {
             case "project" -> roleOnProject(subject, st.tenantId(), st.referenceId(), required);
-            case "user" -> st.referenceId().equals(subject.subjectId())    // own settings
-                    || hasRole(tenantRole(subject, st.tenantId()), GrantRole.ADMIN);
-            default -> tenantAllowed(subject, st.tenantId(), required);     // "tenant" and unknown → tenant scope
+            case "user" ->
+                st.referenceId().equals(subject.subjectId()) // own settings
+                        || hasRole(tenantRole(subject, st.tenantId()), GrantRole.ADMIN);
+            default -> tenantAllowed(subject, st.tenantId(), required); // "tenant" and unknown → tenant scope
         };
     }
 
-    // ── Project inheritance (R3) with podless-owner special cases (R7) ──
+    // ── Project inheritance (R3) with system-project special cases (R7) ──
 
     private boolean roleOnProject(SecurityContext subject, String tenantId, String project, GrantRole required) {
-        if (ProjectService.isPodless(project)) {
-            return podlessAllowed(subject, tenantId, project, required);
+        if (project.startsWith(ProjectService.SYSTEM_NAME_PREFIX)) {
+            return systemProjectAllowed(subject, tenantId, project, required);
         }
         return hasRole(effectiveRole(subject, tenantId, project), required);
     }
 
-    private boolean podlessAllowed(SecurityContext subject, String tenantId, String project, GrantRole required) {
+    private boolean systemProjectAllowed(SecurityContext subject, String tenantId, String project, GrantRole required) {
         // Owner of the personal hub _user_<login> has implicit ADMIN on it.
         if (project.equals(HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + subject.subjectId())) {
             return true;
@@ -159,10 +167,7 @@ public class MongoPermissionResolver implements PermissionResolver {
         }
         // Other users' hubs (_user_<other>) and any other system project:
         // tenant-ADMIN only.
-        if (project.startsWith(ProjectService.SYSTEM_NAME_PREFIX)) {
-            return hasRole(tenantRole(subject, tenantId), GrantRole.ADMIN);
-        }
-        return hasRole(effectiveRole(subject, tenantId, project), required);
+        return hasRole(tenantRole(subject, tenantId), GrantRole.ADMIN);
     }
 
     // ── Tenant (R2 — implicit READ for every member) ──

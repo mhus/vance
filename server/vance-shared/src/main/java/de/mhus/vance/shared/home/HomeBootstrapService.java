@@ -67,7 +67,7 @@ public class HomeBootstrapService {
      * the project itself is named {@code _tenant} to avoid the
      * name collision with that prefix.
      */
-    public static final String TENANT_PROJECT_NAME = "_tenant";
+    public static final String TENANT_PROJECT_NAME = ProjectService.TENANT_PROJECT_NAME;
 
     /** Display title of the {@link #TENANT_PROJECT_NAME} project on first creation. */
     public static final String TENANT_PROJECT_TITLE = "Tenant Defaults";
@@ -97,28 +97,30 @@ public class HomeBootstrapService {
     public ProjectDocument ensureHome(String tenantId, String userLogin) {
         ProjectGroupDocument group = ensureHomeGroup(tenantId);
         String projectName = hubProjectName(userLogin);
-        return projectService.findByTenantAndName(tenantId, projectName)
-                .orElseGet(() -> {
-                    ProjectDocument created = projectService.create(
-                            tenantId,
-                            projectName,
-                            // Display title, so it carries the product name.
-                            // "Vance" is the internal code name and must not
-                            // surface in a project list the user reads.
-                            "Vancetope — " + userLogin,
-                            group.getName(),
-                            null,
-                            ProjectKind.SYSTEM);
-                    log.info("Bootstrapped Vance Hub project tenantId='{}' userLogin='{}' project='{}'",
-                            tenantId, userLogin, created.getName());
-                    return created;
-                });
+        return projectService.findByTenantAndName(tenantId, projectName).orElseGet(() -> {
+            ProjectDocument created = projectService.create(
+                    tenantId,
+                    projectName,
+                    // Display title, so it carries the product name.
+                    // "Vance" is the internal code name and must not
+                    // surface in a project list the user reads.
+                    "Vancetope — " + userLogin,
+                    group.getName(),
+                    null,
+                    ProjectKind.SYSTEM);
+            log.info(
+                    "Bootstrapped Vance Hub project tenantId='{}' userLogin='{}' project='{}'",
+                    tenantId,
+                    userLogin,
+                    created.getName());
+            return created;
+        });
     }
 
     private ProjectGroupDocument ensureHomeGroup(String tenantId) {
-        return projectGroupService.findByTenantAndName(tenantId, HOME_GROUP_NAME)
-                .orElseGet(() -> projectGroupService.create(
-                        tenantId, HOME_GROUP_NAME, HOME_GROUP_TITLE));
+        return projectGroupService
+                .findByTenantAndName(tenantId, HOME_GROUP_NAME)
+                .orElseGet(() -> projectGroupService.create(tenantId, HOME_GROUP_NAME, HOME_GROUP_TITLE));
     }
 
     /**
@@ -135,7 +137,8 @@ public class HomeBootstrapService {
      */
     public ProjectDocument ensureTenantProject(String tenantId) {
         ProjectGroupDocument group = ensureHomeGroup(tenantId);
-        ProjectDocument project = projectService.findByTenantAndName(tenantId, TENANT_PROJECT_NAME)
+        ProjectDocument project = projectService
+                .findByTenantAndName(tenantId, TENANT_PROJECT_NAME)
                 .orElseGet(() -> {
                     ProjectDocument created = projectService.create(
                             tenantId,
@@ -144,8 +147,10 @@ public class HomeBootstrapService {
                             group.getName(),
                             null,
                             ProjectKind.SYSTEM);
-                    log.info("Bootstrapped tenant-wide system project tenantId='{}' project='{}'",
-                            tenantId, created.getName());
+                    log.info(
+                            "Bootstrapped tenant-wide system project tenantId='{}' project='{}'",
+                            tenantId,
+                            created.getName());
                     return created;
                 });
         // Seed project-kits catalog from the system tenant on first call.
@@ -174,10 +179,8 @@ public class HomeBootstrapService {
      * @return the existing or freshly created Hub project, or empty
      *         if not applicable
      */
-    public Optional<ProjectDocument> resolveOrAutoProvision(
-            String tenantId, String projectName) {
-        Optional<ProjectDocument> existing =
-                projectService.findByTenantAndName(tenantId, projectName);
+    public Optional<ProjectDocument> resolveOrAutoProvision(String tenantId, String projectName) {
+        Optional<ProjectDocument> existing = projectService.findByTenantAndName(tenantId, projectName);
         if (existing.isPresent()) {
             return existing;
         }
@@ -189,13 +192,14 @@ public class HomeBootstrapService {
             return Optional.empty();
         }
         if (!userService.existsByTenantAndName(tenantId, userLogin)) {
-            log.debug("Auto-provision skipped: user '{}' not found in tenant '{}'",
-                    userLogin, tenantId);
+            log.debug("Auto-provision skipped: user '{}' not found in tenant '{}'", userLogin, tenantId);
             return Optional.empty();
         }
-        log.info("Auto-provisioning Hub project tenantId='{}' userLogin='{}' "
-                + "(triggered by session lookup, not login)",
-                tenantId, userLogin);
+        log.info(
+                "Auto-provisioning Hub project tenantId='{}' userLogin='{}' "
+                        + "(triggered by session lookup, not login)",
+                tenantId,
+                userLogin);
         return Optional.of(ensureHome(tenantId, userLogin));
     }
 }

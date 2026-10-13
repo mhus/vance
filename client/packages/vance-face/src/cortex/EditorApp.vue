@@ -310,6 +310,7 @@ provide('vance:process-skill-clear', async (skillName: string): Promise<ProcessS
     command: ProcessSkillCommand.CLEAR,
     skillName,
     oneShot: false,
+    sticky: false,
   });
 });
 

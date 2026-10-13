@@ -871,6 +871,7 @@ export default {
       recipeBoundTitle: 'Vom Recipe mitgegeben — bleibt für die Laufzeit des Prozesses aktiv',
       info: 'Details anzeigen',
       macroBadge: 'Makro',
+      turnBadge: 'Für eine Aufgabe',
       stickyBadge: 'Dauerhaft',
       modeLabel: 'Aktivierung',
       modeHidden: 'Nicht sinnvoll (ausgeblendet)',
@@ -887,6 +888,8 @@ export default {
       searchPlaceholder: 'Skills suchen…',
       modeAuthorHint: 'Vom Skill-Autor gesetzt — ein Wechsel hier schreibt deinen persönlichen Override.',
       modeOverrideHint: 'Persönlicher Override (Tier: {scope}).',
+      lifecycleTurnHint:
+        'Gilt für eine Aufgabe: aktiv für den nächsten Turn, danach räumt er sich selbst auf. Mit --sticky bleibt er.',
       lifecycleStickyHint:
         'Aktivierung bleibt bestehen, bis der Skill deaktiviert wird oder die Session endet — der Skill-Body geht in jeden Turn.',
       lifecycleShotHint:

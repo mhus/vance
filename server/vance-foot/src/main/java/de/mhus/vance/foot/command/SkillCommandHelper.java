@@ -92,6 +92,7 @@ public class SkillCommandHelper {
                     + "  [" + dto.getSource() + "]"
                     + "  " + modeLabel(dto)
                     + ("shot".equals(dto.getLifecycle()) ? "  (macro)" : "")
+                    + ("turn".equals(dto.getLifecycle()) ? "  (task)" : "")
                     + "  — " + dto.getDescription()
                     + autoTriggerSuffix(dto));
         }
@@ -191,6 +192,17 @@ public class SkillCommandHelper {
      */
     public void activate(String processName, String skillName, boolean oneShot, List<String> trailingMessageTokens)
             throws Exception {
+        activate(processName, skillName, oneShot, /*sticky*/ false, trailingMessageTokens);
+    }
+
+    /**
+     * Activation with an explicit duration request: {@code sticky}
+     * ({@code --sticky}) keeps a {@code lifecycle: turn} skill beyond one
+     * turn, {@code oneShot} ({@code --once}) narrows any skill to one turn.
+     */
+    public void activate(
+            String processName, String skillName, boolean oneShot, boolean sticky, List<String> trailingMessageTokens)
+            throws Exception {
         String args = trailingMessageTokens == null || trailingMessageTokens.isEmpty()
                 ? null
                 : String.join(" ", trailingMessageTokens);
@@ -199,29 +211,25 @@ public class SkillCommandHelper {
                 .command(ProcessSkillCommand.ACTIVATE)
                 .skillName(skillName)
                 .oneShot(oneShot)
+                .sticky(sticky)
                 .args(args)
                 .build());
-        terminal.info(activationMessage(skillName, response, oneShot, args == null));
+        terminal.info(activationMessage(skillName, response, oneShot, sticky, args == null));
     }
 
     /**
-     * Splits {@code [--once] [args...]} into an oneShot flag plus the
-     * remaining tokens (the trailing chat message, if any).
+     * Splits {@code [--once] [--sticky] [args...]} into the duration flags
+     * plus the remaining tokens (the trailing chat message, if any). Each
+     * flag is taken once, wherever it stands.
      */
     public ParsedActivateArgs parseActivateArgs(List<String> args) {
-        boolean oneShot = false;
         List<String> remaining = new ArrayList<>(args);
-        for (int i = 0; i < remaining.size(); i++) {
-            if ("--once".equals(remaining.get(i))) {
-                oneShot = true;
-                remaining.remove(i);
-                break;
-            }
-        }
-        return new ParsedActivateArgs(oneShot, remaining);
+        boolean oneShot = remaining.remove("--once");
+        boolean sticky = remaining.remove("--sticky");
+        return new ParsedActivateArgs(oneShot, sticky, remaining);
     }
 
-    public record ParsedActivateArgs(boolean oneShot, List<String> trailingTokens) {}
+    public record ParsedActivateArgs(boolean oneShot, boolean sticky, List<String> trailingTokens) {}
 
     /**
      * Renders the post-ACTIVATE sentence from the response — the same
@@ -232,7 +240,14 @@ public class SkillCommandHelper {
      */
     static String activationMessage(
             String skillName, ProcessSkillResponse response, boolean oneShot, boolean withArgs) {
-        String prefix = "→ skill '" + skillName + "'" + (oneShot ? " (once)" : "") + (withArgs ? " with args" : "");
+        return activationMessage(skillName, response, oneShot, false, withArgs);
+    }
+
+    static String activationMessage(
+            String skillName, ProcessSkillResponse response, boolean oneShot, boolean sticky, boolean withArgs) {
+        // A turn skill (the default lifecycle) lives one turn unless --sticky.
+        boolean oneTurn = oneShot || ("turn".equals(response.getLifecycle()) && !sticky);
+        String prefix = "→ skill '" + skillName + "'" + (oneTurn ? " (once)" : "") + (withArgs ? " with args" : "");
         if (Boolean.FALSE.equals(response.getNewlyActivated())) {
             return prefix + " is already active (arguments updated at most)";
         }
@@ -242,7 +257,11 @@ public class SkillCommandHelper {
         int count = response.getActiveSkills() == null
                 ? 0
                 : response.getActiveSkills().size();
-        return prefix + " activated — in effect from the next turn. Active skills: " + count;
+        return prefix
+                + (oneTurn
+                        ? " activated for the next turn only — clears itself afterwards (--sticky keeps it). Active skills: "
+                        : " activated — in effect from the next turn. Active skills: ")
+                + count;
     }
 
     /**

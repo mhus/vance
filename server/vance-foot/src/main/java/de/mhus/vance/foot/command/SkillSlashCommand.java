@@ -5,7 +5,7 @@ import java.util.List;
 import org.springframework.stereotype.Component;
 
 /**
- * {@code /skill <name> [--once] [args...]} — explicit skill activation
+ * {@code /skill <name> [--once|--sticky] [args...]} — explicit skill activation
  * for the active think-process. Sticky by default. Trailing args go to
  * the brain as the invocation's raw arguments: a skill that declares
  * {@code arguments:} renders them into its prompt, any other skill gets
@@ -45,7 +45,7 @@ public class SkillSlashCommand implements SlashCommand {
     public String description() {
         return "Activate, clear, list or re-mode skills on the active process. "
                 + "Args: list | clear [name] | mode <name> <manual|trigger|agent> [scope]"
-                + " | <name> [--once] [args...]";
+                + " | <name> [--once|--sticky] [args...]";
     }
 
     @Override
@@ -60,7 +60,7 @@ public class SkillSlashCommand implements SlashCommand {
     public void execute(List<String> args) throws Exception {
         if (args.isEmpty()) {
             terminal.error(
-                    "Usage: /skill list | clear [name] | mode <name> <mode> [scope] | <name> [--once] [args...]");
+                    "Usage: /skill list | clear [name] | mode <name> <mode> [scope] | <name> [--once|--sticky] [args...]");
             return;
         }
         String head = args.get(0);
@@ -84,7 +84,7 @@ public class SkillSlashCommand implements SlashCommand {
                 String skillName = args.get(0);
                 List<String> rest = args.subList(1, args.size());
                 SkillCommandHelper.ParsedActivateArgs parsed = helper.parseActivateArgs(rest);
-                helper.activate(processName, skillName, parsed.oneShot(), parsed.trailingTokens());
+                helper.activate(processName, skillName, parsed.oneShot(), parsed.sticky(), parsed.trailingTokens());
             }
         }
     }

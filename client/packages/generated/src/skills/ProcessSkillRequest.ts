@@ -10,5 +10,6 @@ export interface ProcessSkillRequest {
   command: ProcessSkillCommand;
   skillName?: string;
   oneShot: boolean;
+  sticky: boolean;
   args?: string;
 }

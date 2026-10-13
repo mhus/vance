@@ -3,6 +3,7 @@ package de.mhus.vance.brain.tools.skill;
 import de.mhus.vance.brain.skill.ActivationRoute;
 import de.mhus.vance.brain.skill.ResolvedSkill;
 import de.mhus.vance.brain.skill.SkillLifecycle;
+import de.mhus.vance.brain.skill.SkillPromptComposer;
 import de.mhus.vance.brain.skill.SkillSteerProcessor;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -70,8 +71,17 @@ public class SkillActivateTool implements Tool {
                                     "type",
                                     "boolean",
                                     "description",
-                                    "One-turn activation (same as '/skill <name> --once'). "
-                                            + "Default false (sticky)."));
+                                    "Force a one-turn activation (same as '/skill <name> --once'). "
+                                            + "Default: the skill's own lifecycle."));
+                    put(
+                            "sticky",
+                            Map.of(
+                                    "type",
+                                    "boolean",
+                                    "description",
+                                    "Keep a task skill active beyond this turn (same as "
+                                            + "'/skill <name> --sticky'). Rarely needed — task skills "
+                                            + "clear themselves once the task is done."));
                 }
             },
             "required",
@@ -79,10 +89,16 @@ public class SkillActivateTool implements Tool {
 
     private final ThinkProcessService thinkProcessService;
     private final SkillSteerProcessor skillSteerProcessor;
+    /** Renders the activated skill's instructions into the tool result. */
+    private final SkillPromptComposer skillPromptComposer;
 
-    public SkillActivateTool(ThinkProcessService thinkProcessService, SkillSteerProcessor skillSteerProcessor) {
+    public SkillActivateTool(
+            ThinkProcessService thinkProcessService,
+            SkillSteerProcessor skillSteerProcessor,
+            SkillPromptComposer skillPromptComposer) {
         this.thinkProcessService = thinkProcessService;
         this.skillSteerProcessor = skillSteerProcessor;
+        this.skillPromptComposer = skillPromptComposer;
     }
 
     @Override
@@ -93,14 +109,15 @@ public class SkillActivateTool implements Tool {
     @Override
     public String description() {
         return "Activate a skill in the running conversation — the agent-side "
-                + "equivalent of the user's /skill command. The skill's prompt "
-                + "extension, tool whitelist and reference docs take effect from "
-                + "the next turn on. Use it when a skill matches the task (e.g. a "
-                + "'design' skill before creating web designs in a designer app) "
-                + "instead of working without it. Recipe allowedSkills locks, "
-                + "argument declarations and disabled skills are enforced exactly "
-                + "as on the /skill surface. Skills offered for the current "
-                + "work are listed under 'Available skills' in your context; "
+                + "equivalent of the user's /skill command. The result carries the "
+                + "skill's instructions: follow them for the task at hand, starting "
+                + "right away. Most skills are task skills and clear themselves after "
+                + "this turn; standing skills stay until skill_clear. Use it when a "
+                + "skill matches the task (e.g. a 'design' skill before creating web "
+                + "designs in a designer app) instead of working without it. Recipe "
+                + "allowedSkills locks, argument declarations and disabled skills are "
+                + "enforced exactly as on the /skill surface. Skills offered for the "
+                + "current work are listed under 'Available skills' in your context; "
                 + "how_do_i discovers the rest.";
     }
 
@@ -125,6 +142,7 @@ public class SkillActivateTool implements Tool {
         if (name == null) throw new ToolException("name is required");
         String args = params.get("args") instanceof String a && !a.isBlank() ? a : null;
         boolean once = params.get("once") instanceof Boolean b && b;
+        boolean sticky = params.get("sticky") instanceof Boolean st && st;
 
         if (ctx.processId() == null || ctx.processId().isBlank()) {
             throw new ToolException("skill_activate needs a running think-process — there is no conversation "
@@ -141,7 +159,7 @@ public class SkillActivateTool implements Tool {
         // duplicate the work in flight). The explicit kick-off is
         // skill_fire.
         SkillSteerProcessor.ActivationResult result =
-                skillSteerProcessor.activate(process, name, once, ActivationRoute.AGENT, args, ctx.userId());
+                skillSteerProcessor.activate(process, name, once, sticky, ActivationRoute.AGENT, args, ctx.userId());
 
         log.info(
                 "SkillActivateTool skill='{}' once={} newlyActivated={} process='{}'",
@@ -159,7 +177,20 @@ public class SkillActivateTool implements Tool {
                 result.activeAfter().stream()
                         .map(ActiveSkillRefEmbedded::getName)
                         .toList());
-        out.put("note", note(result, once));
+        boolean oneTurn = result.activeAfter().stream()
+                .filter(r -> result.skill().name().equals(r.getName()))
+                .anyMatch(ActiveSkillRefEmbedded::isOneShot);
+        // The instructions come back right here (progressive disclosure):
+        // the system prompt of this turn was built before the call, so
+        // without them a skill activated mid-turn would only work from the
+        // next turn — and a one-turn skill, cleared after this turn, never.
+        String instructions = result.newlyActivated() && registersInline(result.skill())
+                ? instructions(process, result.skill(), args)
+                : null;
+        if (instructions != null) {
+            out.put("instructions", instructions);
+        }
+        out.put("note", note(result, oneTurn, instructions != null));
         return out;
     }
 
@@ -174,7 +205,7 @@ public class SkillActivateTool implements Tool {
      * active that {@code activeSkills} does not contain. Branch order
      * mirrors the funnel's (spawn before shot) so the two never disagree.
      */
-    private String note(SkillSteerProcessor.ActivationResult result, boolean once) {
+    private String note(SkillSteerProcessor.ActivationResult result, boolean oneTurn, boolean withInstructions) {
         ResolvedSkill skill = result.skill();
         if (!result.newlyActivated()) {
             return "Skill was already active (arguments updated if it declares any).";
@@ -189,15 +220,42 @@ public class SkillActivateTool implements Tool {
                             + "was NOT fired (agent route): call skill_fire to run it."
                     : "Shot skill executed — its activation commands ran; nothing stays active.";
         }
-        StringBuilder out = new StringBuilder("Skill is active — its instructions take effect from your next turn.");
-        if (once) {
-            out.append(" One-shot: it clears itself after that turn.");
-        }
+        StringBuilder out = new StringBuilder(
+                withInstructions
+                        ? "Skill is active — follow its instructions below for this task, starting now."
+                        : "Skill is active.");
+        out.append(
+                oneTurn
+                        ? " It applies to this turn only and clears itself afterwards."
+                        : " It stays active: from your next turn on its instructions are part of your context;"
+                                + " call skill_clear when the task no longer needs it.");
         if (hasAction(skill)) {
             out.append(" It carries an action prompt that was NOT fired — call skill_fire "
                     + "when you want it to kick off its work.");
         }
         return out.toString();
+    }
+
+    /** Whether the activation registered the skill on this process (not a macro, not a spawn). */
+    private static boolean registersInline(ResolvedSkill skill) {
+        return skill.lifecycle() != SkillLifecycle.SHOT && !skill.run().spawns();
+    }
+
+    /**
+     * The skill's rendered instructions — body, INLINE reference docs and
+     * ON_DEMAND pointers, exactly as the system prompt would carry them,
+     * against the process's prompt context plus the invocation arguments.
+     */
+    private @org.jspecify.annotations.Nullable String instructions(
+            ThinkProcessDocument process, ResolvedSkill skill, @org.jspecify.annotations.Nullable String args) {
+        Map<String, String> argsByName = new java.util.HashMap<>();
+        if (args != null) argsByName.put(skill.name(), args);
+        String composed = skillPromptComposer.compose(
+                List.of(skill),
+                de.mhus.vance.brain.prompt.PromptContextBuilder.forProcess(process, null)
+                        .build(),
+                argsByName);
+        return composed == null || composed.isBlank() ? null : composed.strip();
     }
 
     private static boolean hasTurnPrompt(ResolvedSkill skill) {

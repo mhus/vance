@@ -470,4 +470,39 @@ class SkillSteerProcessorCommandTest {
 
         verify(thinkProcessService).replaceActiveSkills(anyString(), any());
     }
+
+    // ── Duration: the skill's lifecycle, --once / --sticky on request ──
+
+    private boolean activatedOneShot(SkillLifecycle lifecycle, boolean once, boolean sticky) {
+        when(skillResolver.resolve(any(), eq("report-writing")))
+                .thenReturn(Optional.of(skill("report-writing", lifecycle, List.of(), List.of())));
+        SkillSteerProcessor.ActivationResult result = processor.activate(
+                process(new java.util.ArrayList<>()), "report-writing", once, sticky, ActivationRoute.USER, null, null);
+        return result.activeAfter().stream()
+                .filter(r -> "report-writing".equals(r.getName()))
+                .findFirst()
+                .orElseThrow()
+                .isOneShot();
+    }
+
+    @Test
+    void activate_turnSkill_isOneShotByDefault() {
+        assertThat(activatedOneShot(SkillLifecycle.TURN, false, false)).isTrue();
+    }
+
+    @Test
+    void activate_turnSkill_withSticky_staysActive() {
+        assertThat(activatedOneShot(SkillLifecycle.TURN, false, true)).isFalse();
+    }
+
+    @Test
+    void activate_stickySkill_staysActive_unlessOnce() {
+        assertThat(activatedOneShot(SkillLifecycle.STICKY, false, false)).isFalse();
+        assertThat(activatedOneShot(SkillLifecycle.STICKY, true, false)).isTrue();
+    }
+
+    @Test
+    void activate_onceAndSticky_onceWins() {
+        assertThat(activatedOneShot(SkillLifecycle.TURN, true, true)).isTrue();
+    }
 }

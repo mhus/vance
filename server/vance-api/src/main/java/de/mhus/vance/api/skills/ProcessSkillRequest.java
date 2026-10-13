@@ -45,6 +45,14 @@ public class ProcessSkillRequest {
     private boolean oneShot;
 
     /**
+     * Keeps the activation beyond one turn even when the skill declares
+     * {@code lifecycle: turn} (the default) — the {@code --sticky} flag.
+     * {@code oneShot} wins when both are set. Only meaningful for
+     * {@code ACTIVATE}.
+     */
+    private boolean sticky;
+
+    /**
      * Raw trailing text of the invocation — everything after
      * {@code /skill <name>} minus the {@code --once} flag, unparsed.
      * Only meaningful for {@code ACTIVATE}.

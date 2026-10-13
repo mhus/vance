@@ -23,6 +23,13 @@ describe('parseSkillCommand', () => {
     expect(p.args).toBe('landing page');
   });
 
+  it('parses --sticky and strips it from the args', () => {
+    const p = parseSkillCommand('/skill report-writing --sticky quarterly numbers');
+    expect(p.sticky).toBe(true);
+    expect(p.oneShot).toBe(false);
+    expect(p.args).toBe('quarterly numbers');
+  });
+
   it('keeps args that merely contain once', () => {
     const p = parseSkillCommand('/skill review once more');
     expect(p.oneShot).toBe(false);
@@ -96,5 +103,21 @@ describe('renderSkillReply (activate branches)', () => {
       lifecycle: 'shot',
     });
     expect(line).toContain('fired demo');
+  });
+
+  it('says a turn skill lives one turn unless sticky', () => {
+    const reply = {
+      processName: 'chat',
+      activeSkills: [],
+      availableSkills: [],
+      newlyActivated: true,
+      lifecycle: 'turn',
+    };
+    expect(renderSkillReplyForTest(ProcessSkillCommand.ACTIVATE, 'report', reply)).toContain(
+      'for the next turn — clears itself',
+    );
+    expect(renderSkillReplyForTest(ProcessSkillCommand.ACTIVATE, 'report', reply, false, true)).toContain(
+      'in effect from the next turn',
+    );
   });
 });

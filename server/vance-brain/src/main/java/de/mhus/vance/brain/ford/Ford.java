@@ -20,6 +20,7 @@ import de.mhus.vance.brain.skill.ResolvedSkill;
 import de.mhus.vance.brain.skill.SkillPromptComposer;
 import de.mhus.vance.brain.skill.SkillResolver;
 import de.mhus.vance.brain.skill.SkillScopeContext;
+import de.mhus.vance.brain.skill.SkillTurnSupport;
 import de.mhus.vance.brain.skill.UnknownSkillException;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.SystemPrompts;
@@ -573,18 +574,14 @@ public class Ford implements ThinkEngine {
     }
 
     private void dropOneShotSkills(ThinkProcessDocument process) {
-        List<ActiveSkillRefEmbedded> active = process.getActiveSkills();
-        if (active == null || active.isEmpty()) return;
-        boolean anyOneShot = active.stream().anyMatch(ActiveSkillRefEmbedded::isOneShot);
-        if (!anyOneShot) return;
-        List<ActiveSkillRefEmbedded> kept = new ArrayList<>(active.size());
-        for (ActiveSkillRefEmbedded ref : active) {
-            if (!ref.isOneShot()) {
-                kept.add(ref);
-            }
+        // Atomic and on the stored list: a skill activated mid-turn (agent
+        // skill_activate) is not in this turn-start snapshot.
+        thinkProcessService.dropOneShotSkills(process.getId());
+        java.util.List<de.mhus.vance.shared.skill.ActiveSkillRefEmbedded> active = process.getActiveSkills();
+        if (active != null) {
+            process.setActiveSkills(new java.util.ArrayList<>(
+                    active.stream().filter(r -> !r.isOneShot()).toList()));
         }
-        process.setActiveSkills(kept);
-        thinkProcessService.replaceActiveSkills(process.getId(), kept);
     }
 
     /**
@@ -650,14 +647,17 @@ public class Ford implements ThinkEngine {
      */
     private TurnOutcome runToolLoop(
             AiChat aiChat,
-            List<ToolSpecification> toolSpecs,
-            ContextToolsApi tools,
+            List<ToolSpecification> initialToolSpecs,
+            ContextToolsApi initialTools,
             List<ChatMessage> messages,
             ThinkEngineContext ctx,
             ThinkProcessDocument process,
             LoopLimits limits,
             boolean validation,
             String modelAlias) {
+        // Mutable within the turn: a skill activated mid-turn widens them.
+        List<ToolSpecification> toolSpecs = initialToolSpecs;
+        ContextToolsApi tools = initialTools;
         int corrections = 0;
         int toolDataChars = 0;
         // Best Free-Text seen so far across all iterations — the partial
@@ -777,6 +777,17 @@ public class Ford implements ThinkEngine {
                 String result = invokeOne(tools, call, process.getId());
                 if (result != null) toolDataChars += result.length();
                 messages.add(ToolExecutionResultMessage.from(call, result));
+            }
+
+            // A skill activated mid-turn brings its tools: into this turn —
+            // its instructions already came back as the tool result, its
+            // tools must be callable on the next round, not the next turn.
+            if (calls.stream().anyMatch(c -> SkillTurnSupport.ACTIVATE_TOOL.equals(c.name()))) {
+                ThinkProcessDocument fresh =
+                        thinkProcessService.findById(process.getId()).orElse(process);
+                tools = ctx.tools()
+                        .withAdditional(skillTurnSupport.turnTools(fresh, skillTurnSupport.resolveActive(fresh)));
+                toolSpecs = tools.primaryAsLc4j();
             }
 
             // Poll throttle: a batch that only polled a running background

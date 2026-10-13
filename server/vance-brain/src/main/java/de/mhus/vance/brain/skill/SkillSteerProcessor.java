@@ -138,6 +138,26 @@ public class SkillSteerProcessor {
             ActivationRoute route,
             @Nullable String rawArgs,
             @Nullable String senderUserId) {
+        return activate(process, skillName, oneShot, /*sticky*/ false, route, rawArgs, senderUserId);
+    }
+
+    /**
+     * The activation funnel with an explicit duration request. How long an
+     * activation lives is the skill's {@code lifecycle:} (skills.md §2a):
+     * {@code turn} (the default) clears itself after one turn,
+     * {@code sticky} stays. The caller can only narrow or widen that on
+     * purpose — {@code oneShot} ({@code --once}) forces one turn,
+     * {@code sticky} ({@code --sticky}) keeps a {@code turn} skill; both
+     * set is a contradiction and {@code oneShot} wins (the cautious one).
+     */
+    public ActivationResult activate(
+            ThinkProcessDocument process,
+            String skillName,
+            boolean oneShot,
+            boolean sticky,
+            ActivationRoute route,
+            @Nullable String rawArgs,
+            @Nullable String senderUserId) {
         if (skillName == null || skillName.isBlank()) {
             throw new IllegalArgumentException("skillName is required for activate");
         }
@@ -157,6 +177,10 @@ public class SkillSteerProcessor {
             throw new DisabledSkillException(skill.name());
         }
 
+        // Duration: the skill's lifecycle, narrowed or widened only on an
+        // explicit request (see the javadoc above).
+        boolean once = oneShot || (skill.lifecycle() == SkillLifecycle.TURN && !sticky);
+
         String args = rawArgs == null || rawArgs.isBlank() ? null : rawArgs.strip();
         // Validate up front: a missing required argument must fail the
         // activation, not surface later as an empty placeholder in a
@@ -169,6 +193,9 @@ public class SkillSteerProcessor {
         // — pinned by SkillSteerProcessorSpawnTest.
         if (skill.run().spawns() && !isActive(process, skillName)) {
             if (route.allowSpawn()) {
+                // The child exists for this skill's job — it keeps the skill
+                // sticky whatever its lifecycle; only an explicit --once
+                // narrows it there.
                 return spawnAndActivate(process, skill, oneShot, rawArgs, args, senderUserId);
             }
             if (!route.registerInlineWhenSpawnBlocked()) {
@@ -212,7 +239,7 @@ public class SkillSteerProcessor {
             // the user just asked for sticky.
             ActiveSkillRefEmbedded ref = existing.get();
             boolean dirty = false;
-            if (ref.isOneShot() && !oneShot) {
+            if (ref.isOneShot() && !once) {
                 ref.setOneShot(false);
                 dirty = true;
             }
@@ -236,7 +263,7 @@ public class SkillSteerProcessor {
         ActiveSkillRefEmbedded ref = ActiveSkillRefEmbedded.builder()
                 .name(skill.name())
                 .resolvedFromScope(skill.source())
-                .oneShot(oneShot)
+                .oneShot(once)
                 .fromRecipe(false)
                 .activatedAt(Instant.now())
                 .args(skill.consumesArgs() ? args : null)
@@ -248,7 +275,7 @@ public class SkillSteerProcessor {
                 process.getId(),
                 skill.name(),
                 skill.source(),
-                oneShot);
+                once);
         // Fire the activate sequence only on a fresh activation — an
         // already-active skill (handled above) must not re-fire.
         skillCommandRunner.run(process, skill.activate(), "activate", skill.name());
@@ -292,7 +319,14 @@ public class SkillSteerProcessor {
         String childId = skillSpawnRunner.spawn(
                 process,
                 skill,
-                child -> activate(child, skill.name(), oneShot, ActivationRoute.WORKER, rawArgs, senderUserId));
+                child -> activate(
+                        child,
+                        skill.name(),
+                        oneShot, /*sticky*/
+                        !oneShot,
+                        ActivationRoute.WORKER,
+                        rawArgs,
+                        senderUserId));
         log.info(
                 "Skill activate id='{}' name='{}' run=spawn recipe='{}' → child id='{}'" + " (caller unchanged{})",
                 process.getId(),

@@ -1,6 +1,6 @@
 ---
-triggers: write a skill, create a skill, author a skill, SKILL.md, skill frontmatter, lifecycle sticky, lifecycle shot, prompt macro, slash command with arguments, skill arguments, args.text, skill triggers, /skill, one-shot skill, run a skill in a separate agent, skill without chat history, spawn a worker for a skill, Skill schreiben, Skill anlegen, Skill mit Argumenten, eigenen Befehl anlegen
-summary: How to write a skill — the SKILL.md frontmatter, the three lifecycles (sticky mode / one-shot / shot prompt-macro), running a skill in a fresh worker via run.target: spawn, invocation arguments via arguments: + {{ args }}, and which of body / action:/ activate: fires when — and from which surface (user /skill vs agent skill_activate + skill_fire).
+triggers: write a skill, create a skill, author a skill, SKILL.md, skill frontmatter, lifecycle turn, lifecycle sticky, lifecycle shot, prompt macro, slash command with arguments, skill arguments, args.text, skill triggers, /skill, one-shot skill, run a skill in a separate agent, skill without chat history, spawn a worker for a skill, Skill schreiben, Skill anlegen, Skill mit Argumenten, eigenen Befehl anlegen
+summary: How to write a skill — the SKILL.md frontmatter, the three lifecycles (turn = one task, the default / sticky mode / shot prompt-macro), running a skill in a fresh worker via run.target: spawn, invocation arguments via arguments: + {{ args }}, and which of body / action:/ activate: fires when — and from which surface (user /skill vs agent skill_activate + skill_fire).
 ---
 # Writing a skill
 
@@ -14,10 +14,11 @@ layer wins, so a user copy overrides the project's.
 
 | You want | Use |
 |---|---|
-| A **mode** the model stays in ("review mode", "a house style") | `lifecycle: sticky` (default) — body goes into the system prompt on every turn until `/skill clear` |
+| **Instructions for one task** ("write a report like this", "debug like this") | `lifecycle: turn` (the default — no field needed) — active for the one turn that does the task, then it clears itself |
+| A **mode** the model stays in ("review mode", "a house style") | `lifecycle: sticky` — body goes into the system prompt on every turn until `/skill clear` |
 | A **command** that runs once and leaves nothing behind | `lifecycle: shot` — the body is the prompt that gets fired, the skill never registers |
 | A **configuration macro** (install a guard, set a mode) | `lifecycle: shot` with `activate:` commands and an empty body |
-| A mode for exactly one turn | `lifecycle: sticky`, invoked as `/skill <name> --once` |
+| A standing skill just once | any lifecycle, invoked as `/skill <name> --once`; a task skill kept anyway: `/skill <name> --sticky` |
 | Work that must **not** see this conversation (review, second opinion) | `run.target: spawn` — runs in a fresh worker without the chat history (see below) |
 
 `shot` and `--once` are different things, easy to mix up:
@@ -87,7 +88,7 @@ of them.
 
 | Ingredient | When it fires | Where it lands |
 |---|---|---|
-| **body** | every turn while sticky — or **once** as the turn-prompt when `lifecycle: shot` | system prompt / user turn |
+| **body** | the one turn of a `turn` skill, every turn while `sticky` — or **once** as the turn-prompt when `lifecycle: shot`. Activated by the agent mid-turn (`skill_activate`), it comes back as the tool result instead, effective right away | system prompt / tool result / user turn |
 | **`action:`** | once, on a fresh activation from the **user surface** (`/skill`) or on the **worker side** of a spawn skill; never from the agent or the auto-trigger — the agent fires it explicitly via `skill_fire` after `skill_activate` | fires one LLM turn |
 | **`activate:` / `deactivate:`** | once, on activation / on clear | engine commands, no model, no tokens |
 
@@ -115,8 +116,8 @@ triggers:
     pattern: "review.*(diff|changes)"
 ```
 
-KEYWORDS fires when ≥50% of the keywords appear as whole tokens; PATTERN
-is a case-insensitive regex `find()`. Keep keywords in the languages your
+KEYWORDS fires when any one keyword appears in the message
+(case-insensitive substring); PATTERN is a case-insensitive regex `find()`. Keep keywords in the languages your
 users type — trigger matching is language-dependent, unlike prompts.
 
 An auto-triggered skill activates **one-shot** for the running turn, and
@@ -125,8 +126,22 @@ flight). The same is true for the agent path: `skill_activate` never
 fires a turn-prompt — the agent schedules one explicitly with
 `skill_fire`. Consequence: a `lifecycle: shot` skill whose only effect
 is a body does nothing on the trigger path *and* nothing on a bare agent
-activation — give it `activate:` commands, make it `sticky`, or expect
-explicit invocation only.
+activation — give it `activate:` commands, make it a `turn` or `sticky`
+skill, or expect explicit invocation only.
+
+## How long it lives (`lifecycle:`)
+
+Most skills are instructions for one task: write a report, debug a
+failure, review a change. Leave `lifecycle` out — the default `turn`
+keeps the skill for exactly the turn that does the task and then clears
+it, so nothing lingers in the context. Activated before the turn (word
+trigger, `/skill`, the panel) the body sits in that turn's system
+prompt; activated by the model mid-turn (`skill_activate`) the
+instructions come back as the tool result and apply right away.
+
+Declare `lifecycle: sticky` only for a standing mode that must hold over
+many turns — a house style, a design blueprint a design grows under.
+Recipe `defaultActiveSkills` are always sticky, whatever you declare.
 
 ## Activation level (`activation:`)
 

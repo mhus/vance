@@ -21,7 +21,6 @@ import de.mhus.vance.brain.tools.Lc4jSchema;
 import de.mhus.vance.brain.tools.ToolErrorPayload;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
-import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.ToolException;
@@ -278,22 +277,14 @@ public abstract class StructuredActionEngine implements ThinkEngine {
      * when no one-shot skill is active. See {@code specification/public/skills.md} §6.
      */
     protected void dropOneShotSkills(ThinkProcessDocument process) {
-        List<ActiveSkillRefEmbedded> active = process.getActiveSkills();
-        if (active == null || active.isEmpty()) {
-            return;
+        // Atomic and on the stored list: a skill activated mid-turn (agent
+        // skill_activate) is not in this turn-start snapshot.
+        thinkProcessService.dropOneShotSkills(process.getId());
+        java.util.List<de.mhus.vance.shared.skill.ActiveSkillRefEmbedded> active = process.getActiveSkills();
+        if (active != null) {
+            process.setActiveSkills(new java.util.ArrayList<>(
+                    active.stream().filter(r -> !r.isOneShot()).toList()));
         }
-        boolean anyOneShot = active.stream().anyMatch(ActiveSkillRefEmbedded::isOneShot);
-        if (!anyOneShot) {
-            return;
-        }
-        List<ActiveSkillRefEmbedded> kept = new ArrayList<>(active.size());
-        for (ActiveSkillRefEmbedded ref : active) {
-            if (!ref.isOneShot()) {
-                kept.add(ref);
-            }
-        }
-        process.setActiveSkills(kept);
-        thinkProcessService.replaceActiveSkills(process.getId(), kept);
     }
 
     // ─────────────────────────────────────────────

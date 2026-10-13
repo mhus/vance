@@ -742,7 +742,17 @@ public class FrankieEngine implements ThinkEngine {
                 // activatedDeferredTools from Mongo per call. Same reason
                 // StructuredActionEngine rebuilds after its read-tool
                 // dispatch.
-                tools = ctx.tools().withAdditional(skillTurnSupport.turnTools(process, activeSkills));
+                // A skill activated in this batch brings its tools: into this
+                // turn (its instructions came back as the tool result) — re-read
+                // the active skills only then; otherwise the turn-start list.
+                List<ResolvedSkill> toolSkills = activeSkills;
+                ThinkProcessDocument toolProcess = process;
+                if (reply.toolExecutionRequests().stream()
+                        .anyMatch(c -> de.mhus.vance.brain.skill.SkillTurnSupport.ACTIVATE_TOOL.equals(c.name()))) {
+                    toolProcess = thinkProcessService.findById(process.getId()).orElse(process);
+                    toolSkills = skillTurnSupport.resolveActive(toolProcess);
+                }
+                tools = ctx.tools().withAdditional(skillTurnSupport.turnTools(toolProcess, toolSkills));
                 toolSpecs = tools.primaryAsLc4j();
 
                 // Loop continues: next iteration's LLM call will see the tool results.
@@ -1141,18 +1151,14 @@ public class FrankieEngine implements ThinkEngine {
     }
 
     private void dropOneShotSkills(ThinkProcessDocument process) {
-        List<ActiveSkillRefEmbedded> active = process.getActiveSkills();
-        if (active == null || active.isEmpty()) return;
-        boolean anyOneShot = active.stream().anyMatch(ActiveSkillRefEmbedded::isOneShot);
-        if (!anyOneShot) return;
-        List<ActiveSkillRefEmbedded> kept = new ArrayList<>(active.size());
-        for (ActiveSkillRefEmbedded ref : active) {
-            if (!ref.isOneShot()) {
-                kept.add(ref);
-            }
+        // Atomic and on the stored list: a skill activated mid-turn (agent
+        // skill_activate) is not in this turn-start snapshot.
+        thinkProcessService.dropOneShotSkills(process.getId());
+        java.util.List<de.mhus.vance.shared.skill.ActiveSkillRefEmbedded> active = process.getActiveSkills();
+        if (active != null) {
+            process.setActiveSkills(new java.util.ArrayList<>(
+                    active.stream().filter(r -> !r.isOneShot()).toList()));
         }
-        process.setActiveSkills(kept);
-        thinkProcessService.replaceActiveSkills(process.getId(), kept);
     }
 
     /**

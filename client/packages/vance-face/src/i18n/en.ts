@@ -871,6 +871,7 @@ export default {
       recipeBoundTitle: 'Bundled by the recipe — stays active for the process lifetime',
       info: 'Show details',
       macroBadge: 'macro',
+      turnBadge: 'one task',
       stickyBadge: 'sticky',
       modeLabel: 'Activation',
       modeHidden: 'Not meaningful (hidden)',
@@ -887,6 +888,8 @@ export default {
       searchPlaceholder: 'Search skills…',
       modeAuthorHint: 'Set by the skill author — switching it here writes your personal override.',
       modeOverrideHint: 'Personal override (tier: {scope}).',
+      lifecycleTurnHint:
+        'Applies to one task: active for the next turn, then it clears itself. Add --sticky to keep it.',
       lifecycleStickyHint:
         'Activation persists until the skill is cleared or the session ends — the skill body is injected into every turn.',
       lifecycleShotHint:

@@ -175,7 +175,13 @@ public class ProcessSkillHandler implements WsHandler {
                 // activated" (turn fired) and "already active" are different
                 // sentences for the user.
                 activation = skillSteerProcessor.activate(
-                        process, request.getSkillName(), request.isOneShot(), request.getArgs(), userId);
+                        process,
+                        request.getSkillName(),
+                        request.isOneShot(),
+                        request.isSticky(),
+                        de.mhus.vance.brain.skill.ActivationRoute.USER,
+                        request.getArgs(),
+                        userId);
                 active = activation.activeAfter();
             } else {
                 active = skillSteerProcessor.apply(

@@ -1516,18 +1516,14 @@ public abstract class AbstractNutrimat implements ThinkEngine {
     }
 
     private void dropOneShotSkills(ThinkProcessDocument process) {
-        List<ActiveSkillRefEmbedded> active = process.getActiveSkills();
-        if (active == null || active.isEmpty()) return;
-        boolean anyOneShot = active.stream().anyMatch(ActiveSkillRefEmbedded::isOneShot);
-        if (!anyOneShot) return;
-        List<ActiveSkillRefEmbedded> kept = new ArrayList<>(active.size());
-        for (ActiveSkillRefEmbedded ref : active) {
-            if (!ref.isOneShot()) {
-                kept.add(ref);
-            }
+        // Atomic and on the stored list: a skill activated mid-turn (agent
+        // skill_activate) is not in this turn-start snapshot.
+        thinkProcessService.dropOneShotSkills(process.getId());
+        java.util.List<de.mhus.vance.shared.skill.ActiveSkillRefEmbedded> active = process.getActiveSkills();
+        if (active != null) {
+            process.setActiveSkills(new java.util.ArrayList<>(
+                    active.stream().filter(r -> !r.isOneShot()).toList()));
         }
-        process.setActiveSkills(kept);
-        thinkProcessService.replaceActiveSkills(process.getId(), kept);
     }
 
     // ──────────────────── Helpers ────────────────────

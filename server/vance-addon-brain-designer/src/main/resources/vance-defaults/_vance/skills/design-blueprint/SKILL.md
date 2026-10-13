@@ -16,6 +16,9 @@ category: design
 # default would be 'manual' and the agent would only find it via how_do_i
 # (planning/skill-activation-levels.md §3.4 breaking change).
 activation: agent
+# Standing skill: a design grows over several turns and the blueprint must
+# hold for all of them — not the one-turn default (skills.md §2a).
+lifecycle: sticky
 enabled: true
 action: |
   The design-blueprint skill is now active. Apply its workflow and style

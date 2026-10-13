@@ -736,6 +736,22 @@ public class ThinkProcessService {
     }
 
     /**
+     * Atomically removes every one-shot entry from {@code activeSkills} —
+     * the end-of-turn drain. Works on the stored list, not on a caller's
+     * snapshot: a skill the agent activated mid-turn ({@code skill_activate})
+     * is not in the process object the engine loaded at turn start, and a
+     * snapshot-based rewrite would both miss it and drop concurrent writes.
+     * Safe because skill activations run on the process lane, never during
+     * another turn of it — every one-shot entry present at turn end belongs
+     * to the turn that just ran.
+     */
+    public void dropOneShotSkills(String id) {
+        Query query = new Query(Criteria.where("_id").is(id));
+        Update update = new Update().pull("activeSkills", new org.bson.Document("oneShot", true));
+        mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class);
+    }
+
+    /**
      * Atomically sets / clears {@code activeDelegationWorkerId} on the
      * given process. Pass {@code null} to clear. Used by chat-
      * orchestrator engines (Arthur) to remember which child worker is

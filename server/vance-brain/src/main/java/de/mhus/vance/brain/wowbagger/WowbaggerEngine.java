@@ -434,16 +434,14 @@ public class WowbaggerEngine implements ThinkEngine {
     }
 
     private void dropOneShotSkills(ThinkProcessDocument process) {
-        List<de.mhus.vance.shared.skill.ActiveSkillRefEmbedded> active = process.getActiveSkills();
-        if (active == null || active.stream().noneMatch(de.mhus.vance.shared.skill.ActiveSkillRefEmbedded::isOneShot)) {
-            return;
+        // Atomic and on the stored list: a skill activated mid-turn (agent
+        // skill_activate) is not in this turn-start snapshot.
+        thinkProcessService.dropOneShotSkills(process.getId());
+        java.util.List<de.mhus.vance.shared.skill.ActiveSkillRefEmbedded> active = process.getActiveSkills();
+        if (active != null) {
+            process.setActiveSkills(new java.util.ArrayList<>(
+                    active.stream().filter(r -> !r.isOneShot()).toList()));
         }
-        List<de.mhus.vance.shared.skill.ActiveSkillRefEmbedded> kept = new ArrayList<>(active.size());
-        for (de.mhus.vance.shared.skill.ActiveSkillRefEmbedded ref : active) {
-            if (!ref.isOneShot()) kept.add(ref);
-        }
-        process.setActiveSkills(kept);
-        thinkProcessService.replaceActiveSkills(process.getId(), kept);
     }
 
     private static @Nullable Instant lastUserInputAt(List<SteerMessage> inbox) {

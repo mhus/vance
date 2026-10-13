@@ -93,4 +93,12 @@ class SkillLoaderActivationParseTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("'activation' must be a string");
     }
+
+    @Test
+    void lifecycle_defaultsToTurn_stickyAndShotOnDeclaration() {
+        assertThat(parse(BASE, "Body").lifecycle()).isEqualTo(SkillLifecycle.TURN);
+        assertThat(parse(BASE + "\nlifecycle: turn", "Body").lifecycle()).isEqualTo(SkillLifecycle.TURN);
+        assertThat(parse(BASE + "\nlifecycle: sticky", "Body").lifecycle()).isEqualTo(SkillLifecycle.STICKY);
+        assertThat(parse(BASE + "\nlifecycle: shot", "Body").lifecycle()).isEqualTo(SkillLifecycle.SHOT);
+    }
 }

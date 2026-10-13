@@ -3,7 +3,6 @@ package de.mhus.vance.brain.thinkengine.action;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -34,7 +33,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class StructuredActionEngineOneShotTest {
 
-    @Mock private ThinkProcessService thinkProcessService;
+    @Mock
+    private ThinkProcessService thinkProcessService;
 
     private StructuredActionEngine engine;
 
@@ -51,8 +51,7 @@ class StructuredActionEngineOneShotTest {
     void dropOneShotSkills_removesOneShotButKeepsSticky() {
         ThinkProcessDocument process = ThinkProcessDocument.builder()
                 .id("p1")
-                .activeSkills(new ArrayList<>(List.of(
-                        skill("sticky", false), skill("code-review", true))))
+                .activeSkills(new ArrayList<>(List.of(skill("sticky", false), skill("code-review", true))))
                 .build();
 
         engine.dropOneShotSkills(process);
@@ -60,11 +59,13 @@ class StructuredActionEngineOneShotTest {
         assertThat(process.getActiveSkills())
                 .extracting(ActiveSkillRefEmbedded::getName)
                 .containsExactly("sticky");
-        verify(thinkProcessService).replaceActiveSkills(eq("p1"), any());
+        verify(thinkProcessService).dropOneShotSkills("p1");
     }
 
     @Test
-    void dropOneShotSkills_noOneShotActive_doesNotPersist() {
+    void dropOneShotSkills_drainsTheStoredList_evenWhenTheSnapshotHasNone() {
+        // A skill the agent activated mid-turn is not in the turn-start
+        // snapshot — the drain must still run against the stored list.
         ThinkProcessDocument process = ThinkProcessDocument.builder()
                 .id("p1")
                 .activeSkills(new ArrayList<>(List.of(skill("sticky", false))))
@@ -75,16 +76,19 @@ class StructuredActionEngineOneShotTest {
         assertThat(process.getActiveSkills())
                 .extracting(ActiveSkillRefEmbedded::getName)
                 .containsExactly("sticky");
-        verify(thinkProcessService, never()).replaceActiveSkills(anyString(), any());
+        verify(thinkProcessService).dropOneShotSkills("p1");
     }
 
     @Test
-    void dropOneShotSkills_emptyList_isNoOp() {
+    void dropOneShotSkills_emptySnapshot_stillDrainsTheStoredList() {
         ThinkProcessDocument empty = ThinkProcessDocument.builder()
-                .id("p1").activeSkills(new ArrayList<>()).build();
+                .id("p1")
+                .activeSkills(new ArrayList<>())
+                .build();
 
         engine.dropOneShotSkills(empty);
 
+        verify(thinkProcessService).dropOneShotSkills("p1");
         verify(thinkProcessService, never()).replaceActiveSkills(anyString(), any());
     }
 
@@ -98,21 +102,63 @@ class StructuredActionEngineOneShotTest {
             super(null, null, null, null, null, null, tps, null, null);
         }
 
-        @Override public String name() { return "test-engine"; }
-        @Override public String title() { return "Test Engine"; }
-        @Override public String description() { return "test"; }
-        @Override public String version() { return "1.0.0"; }
-        @Override public void start(ThinkProcessDocument p, ThinkEngineContext c) { }
-        @Override public void resume(ThinkProcessDocument p, ThinkEngineContext c) { }
-        @Override public void suspend(ThinkProcessDocument p, ThinkEngineContext c) { }
-        @Override public void steer(ThinkProcessDocument p, ThinkEngineContext c, SteerMessage m) { }
-        @Override public void stop(ThinkProcessDocument p, ThinkEngineContext c) { }
+        @Override
+        public String name() {
+            return "test-engine";
+        }
 
-        @Override protected String actionToolName() { return "test_action"; }
-        @Override protected String actionToolDescription() { return "test"; }
-        @Override protected Map<String, Object> actionToolSchema() { return Map.of(); }
-        @Override protected Set<String> supportedActionTypes() { return Set.of(); }
-        @Override protected ActionTurnOutcome handleAction(
+        @Override
+        public String title() {
+            return "Test Engine";
+        }
+
+        @Override
+        public String description() {
+            return "test";
+        }
+
+        @Override
+        public String version() {
+            return "1.0.0";
+        }
+
+        @Override
+        public void start(ThinkProcessDocument p, ThinkEngineContext c) {}
+
+        @Override
+        public void resume(ThinkProcessDocument p, ThinkEngineContext c) {}
+
+        @Override
+        public void suspend(ThinkProcessDocument p, ThinkEngineContext c) {}
+
+        @Override
+        public void steer(ThinkProcessDocument p, ThinkEngineContext c, SteerMessage m) {}
+
+        @Override
+        public void stop(ThinkProcessDocument p, ThinkEngineContext c) {}
+
+        @Override
+        protected String actionToolName() {
+            return "test_action";
+        }
+
+        @Override
+        protected String actionToolDescription() {
+            return "test";
+        }
+
+        @Override
+        protected Map<String, Object> actionToolSchema() {
+            return Map.of();
+        }
+
+        @Override
+        protected Set<String> supportedActionTypes() {
+            return Set.of();
+        }
+
+        @Override
+        protected ActionTurnOutcome handleAction(
                 EngineAction action, ThinkProcessDocument process, ThinkEngineContext ctx) {
             return null;
         }

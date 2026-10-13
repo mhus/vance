@@ -39,6 +39,8 @@ export interface ParsedSkillCommand {
   command: ProcessSkillCommand | typeof MODE | null;
   skillName?: string;
   oneShot: boolean;
+  /** `--sticky`: keep a `lifecycle: turn` skill beyond one turn. */
+  sticky?: boolean;
   args?: string;
   /** For MODE: manual | trigger | agent. */
   mode?: string;
@@ -82,7 +84,8 @@ export function parseSkillCommand(line: string): ParsedSkillCommand {
     command: ProcessSkillCommand.ACTIVATE,
     skillName: sub,
     oneShot: parts.includes('--once'),
-    args: parts.slice(2).filter((p) => p !== '--once').join(' ') || undefined,
+    sticky: parts.includes('--sticky'),
+    args: parts.slice(2).filter((p) => p !== '--once' && p !== '--sticky').join(' ') || undefined,
   };
 }
 
@@ -102,7 +105,7 @@ function parseMode(parts: string[]): ParsedSkillCommand {
 
 export const SKILL_USAGE =
   '/skill → usage: /skill list | clear [name] | mode <name> <hidden|manual|trigger|agent> [scope]'
-  + ' | <name> [--once] [args…]';
+  + ' | <name> [--once|--sticky] [args…]';
 
 /**
  * Round-trips the parsed command and returns the activity line to render.
@@ -127,9 +130,10 @@ export async function sendSkillCommand(
       command: parsed.command,
       skillName: parsed.skillName,
       oneShot: parsed.oneShot,
+      sticky: parsed.sticky ?? false,
       args: parsed.args,
     });
-    return renderSkillReplyForTest(parsed.command, parsed.skillName, reply);
+    return renderSkillReplyForTest(parsed.command, parsed.skillName, reply, parsed.oneShot || false, parsed.sticky ?? false);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return `/skill → error: ${msg}`;
@@ -141,6 +145,8 @@ export function renderSkillReplyForTest(
   command: ProcessSkillCommand,
   skillName: string | undefined,
   r: ProcessSkillResponse,
+  oneShot = false,
+  sticky = false,
 ): string {
   if (command === ProcessSkillCommand.LIST) {
     const active = r.activeSkills.map((a) => a.name).join(', ') || '—';
@@ -162,6 +168,10 @@ export function renderSkillReplyForTest(
   }
   if (r.lifecycle === 'shot') {
     return `/skill → fired ${skillName} (macro)`;
+  }
+  // A turn skill (the default lifecycle) lives for one turn unless --sticky.
+  if (oneShot || (r.lifecycle === 'turn' && !sticky)) {
+    return `/skill → activated ${skillName} for the next turn — clears itself afterwards (--sticky keeps it)`;
   }
   return `/skill → activated ${skillName} — instructions in effect from the next turn`;
 }

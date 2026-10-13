@@ -76,7 +76,7 @@ async function refresh(): Promise<void> {
   try {
     const reply = await props.socket.send<ProcessSkillRequest, ProcessSkillResponse>(
       'process-skill',
-      { processName: props.sessionKey, command: ProcessSkillCommand.LIST, oneShot: false },
+      { processName: props.sessionKey, command: ProcessSkillCommand.LIST, oneShot: false, sticky: false },
     );
     available.value = reply.availableSkills ?? [];
     categories.value = reply.categories ?? [];
@@ -225,7 +225,7 @@ async function clear(name: string): Promise<void> {
   try {
     const reply = await props.socket.send<ProcessSkillRequest, ProcessSkillResponse>(
       'process-skill',
-      { processName: props.sessionKey, command: ProcessSkillCommand.CLEAR, skillName: name, oneShot: false },
+      { processName: props.sessionKey, command: ProcessSkillCommand.CLEAR, skillName: name, oneShot: false, sticky: false },
     );
     active.value = reply.activeSkills ?? [];
   } catch (err) {
@@ -467,12 +467,16 @@ watch(() => props.sessionKey, refresh);
           <VBadge variant="neutral" size="xs" outline>{{ detail.name }}</VBadge>
           <VBadge variant="neutral" size="xs" outline>{{ detail.source }}</VBadge>
           <VBadge :variant="isMacro(detail) ? 'warning' : 'info'" size="xs" outline>
-            {{ isMacro(detail) ? t('chat.skills.macroBadge') : t('chat.skills.stickyBadge') }}
+            {{ isMacro(detail)
+              ? t('chat.skills.macroBadge')
+              : detail.lifecycle === 'turn' ? t('chat.skills.turnBadge') : t('chat.skills.stickyBadge') }}
           </VBadge>
         </div>
         <div v-if="detail.description" class="opacity-80">{{ detail.description }}</div>
         <div class="text-xs opacity-60">
-          {{ isMacro(detail) ? t('chat.skills.lifecycleShotHint') : t('chat.skills.lifecycleStickyHint') }}
+          {{ isMacro(detail)
+            ? t('chat.skills.lifecycleShotHint')
+            : detail.lifecycle === 'turn' ? t('chat.skills.lifecycleTurnHint') : t('chat.skills.lifecycleStickyHint') }}
         </div>
 
         <div class="flex items-center gap-2">

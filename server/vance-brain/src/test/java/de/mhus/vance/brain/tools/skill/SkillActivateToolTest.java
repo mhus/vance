@@ -44,7 +44,11 @@ class SkillActivateToolTest {
     void setUp() {
         thinkProcessService = mock(ThinkProcessService.class);
         steerProcessor = mock(SkillSteerProcessor.class);
-        tool = new SkillActivateTool(thinkProcessService, steerProcessor);
+        tool = new SkillActivateTool(
+                thinkProcessService,
+                steerProcessor,
+                new de.mhus.vance.brain.skill.SkillPromptComposer(
+                        new de.mhus.vance.brain.prompt.PromptTemplateRenderer()));
     }
 
     private ToolInvocationContext ctx(String processId) {
@@ -89,13 +93,26 @@ class SkillActivateToolTest {
         ActiveSkillRefEmbedded active = new ActiveSkillRefEmbedded();
         active.setName("design-blueprint");
         when(steerProcessor.activate(
-                        any(), eq("design-blueprint"), eq(false), eq(ActivationRoute.AGENT), eq(null), eq("alice")))
+                        any(),
+                        eq("design-blueprint"),
+                        eq(false),
+                        eq(false),
+                        eq(ActivationRoute.AGENT),
+                        eq(null),
+                        eq("alice")))
                 .thenReturn(new SkillSteerProcessor.ActivationResult(skill, true, List.of(active)));
 
         Map<String, Object> out = tool.invoke(Map.of("name", "design-blueprint"), ctx("p1"));
 
         verify(steerProcessor)
-                .activate(any(), eq("design-blueprint"), eq(false), eq(ActivationRoute.AGENT), eq(null), eq("alice"));
+                .activate(
+                        any(),
+                        eq("design-blueprint"),
+                        eq(false),
+                        eq(false),
+                        eq(ActivationRoute.AGENT),
+                        eq(null),
+                        eq("alice"));
         assertThat(out.get("skill")).isEqualTo("design-blueprint");
         assertThat(out.get("newlyActivated")).isEqualTo(true);
         assertThat(out.get("activeSkills")).isEqualTo(List.of("design-blueprint"));
@@ -105,13 +122,26 @@ class SkillActivateToolTest {
     void invoke_passesArgsAndOnceThrough() {
         when(thinkProcessService.findById("p1")).thenReturn(Optional.of(process()));
         when(steerProcessor.activate(
-                        any(), eq("s"), eq(true), eq(ActivationRoute.AGENT), eq("landing page"), eq("alice")))
+                        any(),
+                        eq("s"),
+                        eq(true),
+                        eq(false),
+                        eq(ActivationRoute.AGENT),
+                        eq("landing page"),
+                        eq("alice")))
                 .thenReturn(new SkillSteerProcessor.ActivationResult(skill(true), true, List.of()));
 
         tool.invoke(Map.of("name", "s", "args", "landing page", "once", true), ctx("p1"));
 
         verify(steerProcessor)
-                .activate(any(), eq("s"), eq(true), eq(ActivationRoute.AGENT), eq("landing page"), eq("alice"));
+                .activate(
+                        any(),
+                        eq("s"),
+                        eq(true),
+                        eq(false),
+                        eq(ActivationRoute.AGENT),
+                        eq("landing page"),
+                        eq("alice"));
     }
 
     @Test
@@ -120,15 +150,16 @@ class SkillActivateToolTest {
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("think-process");
         verify(steerProcessor, never())
-                .activate(any(), anyString(), anyBoolean(), any(ActivationRoute.class), any(), any());
+                .activate(any(), anyString(), anyBoolean(), anyBoolean(), any(ActivationRoute.class), any(), any());
     }
 
     @Test
     void invoke_unknownAndDisabledSkillsSurfaceTheirFunnelErrors() {
         when(thinkProcessService.findById("p1")).thenReturn(Optional.of(process()));
-        when(steerProcessor.activate(any(), eq("ghost"), eq(false), eq(ActivationRoute.AGENT), any(), any()))
+        when(steerProcessor.activate(any(), eq("ghost"), eq(false), eq(false), eq(ActivationRoute.AGENT), any(), any()))
                 .thenThrow(new UnknownSkillException("ghost"));
-        when(steerProcessor.activate(any(), eq("template"), eq(false), eq(ActivationRoute.AGENT), any(), any()))
+        when(steerProcessor.activate(
+                        any(), eq("template"), eq(false), eq(false), eq(ActivationRoute.AGENT), any(), any()))
                 .thenThrow(new DisabledSkillException("template"));
 
         assertThatThrownBy(() -> tool.invoke(Map.of("name", "ghost"), ctx("p1")))
@@ -171,7 +202,13 @@ class SkillActivateToolTest {
         when(thinkProcessService.findById("p1")).thenReturn(Optional.of(process()));
         ResolvedSkill shot = skill("run-report", "Produce the report now.", null, SkillLifecycle.SHOT, SkillRun.INLINE);
         when(steerProcessor.activate(
-                        any(), eq("run-report"), eq(false), eq(ActivationRoute.AGENT), eq(null), eq("alice")))
+                        any(),
+                        eq("run-report"),
+                        eq(false),
+                        eq(false),
+                        eq(ActivationRoute.AGENT),
+                        eq(null),
+                        eq("alice")))
                 .thenReturn(new SkillSteerProcessor.ActivationResult(shot, true, List.of()));
 
         Map<String, Object> out = tool.invoke(Map.of("name", "run-report"), ctx("p1"));
@@ -185,7 +222,13 @@ class SkillActivateToolTest {
         when(thinkProcessService.findById("p1")).thenReturn(Optional.of(process()));
         ResolvedSkill macro = skill("code-guard", null, null, SkillLifecycle.SHOT, SkillRun.INLINE);
         when(steerProcessor.activate(
-                        any(), eq("code-guard"), eq(false), eq(ActivationRoute.AGENT), eq(null), eq("alice")))
+                        any(),
+                        eq("code-guard"),
+                        eq(false),
+                        eq(false),
+                        eq(ActivationRoute.AGENT),
+                        eq(null),
+                        eq("alice")))
                 .thenReturn(new SkillSteerProcessor.ActivationResult(macro, true, List.of()));
 
         Map<String, Object> out = tool.invoke(Map.of("name", "code-guard"), ctx("p1"));
@@ -203,7 +246,13 @@ class SkillActivateToolTest {
                 SkillLifecycle.STICKY,
                 new SkillRun(SkillRun.Target.SPAWN, "code-review", "none"));
         when(steerProcessor.activate(
-                        any(), eq("code-review"), eq(false), eq(ActivationRoute.AGENT), eq(null), eq("alice")))
+                        any(),
+                        eq("code-review"),
+                        eq(false),
+                        eq(false),
+                        eq(ActivationRoute.AGENT),
+                        eq(null),
+                        eq("alice")))
                 .thenReturn(new SkillSteerProcessor.ActivationResult(spawn, true, List.of()));
 
         Map<String, Object> out = tool.invoke(Map.of("name", "code-review"), ctx("p1"));
@@ -217,14 +266,23 @@ class SkillActivateToolTest {
         ResolvedSkill sticky = skill(
                 "code-review", "Review methodology.", "Review the diff now.", SkillLifecycle.STICKY, SkillRun.INLINE);
         when(steerProcessor.activate(
-                        any(), eq("code-review"), eq(false), eq(ActivationRoute.AGENT), eq(null), eq("alice")))
+                        any(),
+                        eq("code-review"),
+                        eq(false),
+                        eq(false),
+                        eq(ActivationRoute.AGENT),
+                        eq(null),
+                        eq("alice")))
                 .thenReturn(new SkillSteerProcessor.ActivationResult(sticky, true, List.of()));
 
         Map<String, Object> out = tool.invoke(Map.of("name", "code-review"), ctx("p1"));
 
         assertThat((String) out.get("note"))
-                .contains("take effect from your next turn")
+                .contains("follow its instructions below")
+                .contains("stays active")
+                .contains("skill_clear")
                 .contains("NOT fired — call skill_fire");
+        assertThat((String) out.get("instructions")).contains("Review methodology.");
     }
 
     @Test
@@ -232,11 +290,89 @@ class SkillActivateToolTest {
         when(thinkProcessService.findById("p1")).thenReturn(Optional.of(process()));
         ResolvedSkill sticky = skill("design-blueprint", "body", null, SkillLifecycle.STICKY, SkillRun.INLINE);
         when(steerProcessor.activate(
-                        any(), eq("design-blueprint"), eq(true), eq(ActivationRoute.AGENT), eq(null), eq("alice")))
-                .thenReturn(new SkillSteerProcessor.ActivationResult(sticky, true, List.of()));
+                        any(),
+                        eq("design-blueprint"),
+                        eq(true),
+                        eq(false),
+                        eq(ActivationRoute.AGENT),
+                        eq(null),
+                        eq("alice")))
+                .thenReturn(
+                        new SkillSteerProcessor.ActivationResult(sticky, true, List.of(ref("design-blueprint", true))));
 
         Map<String, Object> out = tool.invoke(Map.of("name", "design-blueprint", "once", true), ctx("p1"));
 
-        assertThat((String) out.get("note")).contains("One-shot");
+        assertThat((String) out.get("note")).contains("this turn only");
+    }
+
+    @Test
+    void invoke_turnSkill_returnsItsInstructionsRightAway() {
+        // Progressive disclosure: this turn's system prompt was built before
+        // the call — the instructions must come back in the result, or a
+        // one-turn skill would never reach the model at all.
+        when(thinkProcessService.findById("p1")).thenReturn(Optional.of(process()));
+        ResolvedSkill report = skill(
+                "report-writing",
+                "Use the sections scope, purpose, details, summary.",
+                null,
+                SkillLifecycle.TURN,
+                SkillRun.INLINE);
+        when(steerProcessor.activate(
+                        any(),
+                        eq("report-writing"),
+                        eq(false),
+                        eq(false),
+                        eq(ActivationRoute.AGENT),
+                        eq(null),
+                        eq("alice")))
+                .thenReturn(
+                        new SkillSteerProcessor.ActivationResult(report, true, List.of(ref("report-writing", true))));
+
+        Map<String, Object> out = tool.invoke(Map.of("name", "report-writing"), ctx("p1"));
+
+        assertThat((String) out.get("instructions"))
+                .contains("--- Skill: report-writing ---")
+                .contains("scope, purpose, details, summary");
+        assertThat((String) out.get("note")).contains("starting now").contains("this turn only");
+    }
+
+    @Test
+    void invoke_passesStickyThrough() {
+        when(thinkProcessService.findById("p1")).thenReturn(Optional.of(process()));
+        ResolvedSkill report = skill("report-writing", "body", null, SkillLifecycle.TURN, SkillRun.INLINE);
+        when(steerProcessor.activate(
+                        any(),
+                        eq("report-writing"),
+                        eq(false),
+                        eq(true),
+                        eq(ActivationRoute.AGENT),
+                        eq(null),
+                        eq("alice")))
+                .thenReturn(
+                        new SkillSteerProcessor.ActivationResult(report, true, List.of(ref("report-writing", false))));
+
+        Map<String, Object> out = tool.invoke(Map.of("name", "report-writing", "sticky", true), ctx("p1"));
+
+        assertThat((String) out.get("note")).contains("stays active");
+    }
+
+    @Test
+    void invoke_alreadyActive_returnsNoInstructions() {
+        when(thinkProcessService.findById("p1")).thenReturn(Optional.of(process()));
+        ResolvedSkill sticky = skill("style", "body", null, SkillLifecycle.STICKY, SkillRun.INLINE);
+        when(steerProcessor.activate(
+                        any(), eq("style"), eq(false), eq(false), eq(ActivationRoute.AGENT), eq(null), eq("alice")))
+                .thenReturn(new SkillSteerProcessor.ActivationResult(sticky, false, List.of(ref("style", false))));
+
+        Map<String, Object> out = tool.invoke(Map.of("name", "style"), ctx("p1"));
+
+        assertThat(out).doesNotContainKey("instructions");
+    }
+
+    private static ActiveSkillRefEmbedded ref(String name, boolean oneShot) {
+        ActiveSkillRefEmbedded r = new ActiveSkillRefEmbedded();
+        r.setName(name);
+        r.setOneShot(oneShot);
+        return r;
     }
 }

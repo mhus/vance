@@ -118,4 +118,29 @@ class SkillCommandHelperParserTest {
         assertThat(SkillCommandHelper.modeLabel(irrelevant)).isEqualTo("mode:agent → hidden(recipe)");
         assertThat(SkillCommandHelper.modeLabel(declaredHidden)).isEqualTo("mode:hidden");
     }
+
+    @Test
+    void stickyFlag_isStrippedAnywhere_andReported() {
+        SkillCommandHelper.ParsedActivateArgs parsed =
+                helper.parseActivateArgs(List.of("write", "--sticky", "the", "report"));
+
+        assertThat(parsed.sticky()).isTrue();
+        assertThat(parsed.oneShot()).isFalse();
+        assertThat(parsed.trailingTokens()).containsExactly("write", "the", "report");
+    }
+
+    @Test
+    void activationMessage_turnSkill_saysOneTurnUnlessSticky() {
+        de.mhus.vance.api.skills.ProcessSkillResponse turn = de.mhus.vance.api.skills.ProcessSkillResponse.builder()
+                .newlyActivated(true)
+                .lifecycle("turn")
+                .build();
+
+        assertThat(SkillCommandHelper.activationMessage("report-writing", turn, false, false, false))
+                .contains("(once)")
+                .contains("next turn only");
+        assertThat(SkillCommandHelper.activationMessage("report-writing", turn, false, true, false))
+                .doesNotContain("(once)")
+                .contains("in effect from the next turn");
+    }
 }

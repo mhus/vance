@@ -449,7 +449,7 @@ public class SkillLoader {
         if (lifecycle == SkillLifecycle.SHOT) {
             throw new IllegalStateException("skill '" + stem + "': run.target: spawn cannot combine with "
                     + "lifecycle: shot — spawn registers the skill sticky in the "
-                    + "child, shot registers it nowhere");
+                    + "child (whatever its lifecycle), shot registers it nowhere");
         }
         if (!triggers.isEmpty()) {
             log.warn(
@@ -572,17 +572,18 @@ public class SkillLoader {
 
     private static SkillLifecycle parseLifecycle(Object raw, String stem) {
         if (raw == null) {
-            return SkillLifecycle.STICKY;
+            return SkillLifecycle.TURN;
         }
         if (!(raw instanceof String s)) {
             throw new IllegalStateException("skill '" + stem + "': 'lifecycle' must be a string");
         }
         return switch (s.trim().toLowerCase(Locale.ROOT)) {
+            case "turn" -> SkillLifecycle.TURN;
             case "sticky" -> SkillLifecycle.STICKY;
             case "shot" -> SkillLifecycle.SHOT;
             default ->
                 throw new IllegalStateException(
-                        "skill '" + stem + "': unknown lifecycle '" + s + "' (expected sticky|shot)");
+                        "skill '" + stem + "': unknown lifecycle '" + s + "' (expected turn|sticky|shot)");
         };
     }
 

@@ -30,10 +30,7 @@ import org.jspecify.annotations.Nullable;
  * StructuredActionEngine#handleAction}, where it knows the per-type
  * required fields.
  */
-public record EngineAction(
-        String type,
-        String reason,
-        Map<String, Object> params) {
+public record EngineAction(String type, String reason, Map<String, Object> params) {
 
     /**
      * Convenience: returns the named param as a String, or
@@ -50,6 +47,21 @@ public record EngineAction(
     public String stringParamOr(String key, String fallback) {
         String v = stringParam(key);
         return v == null || v.isBlank() ? fallback : v;
+    }
+
+    /**
+     * The named param as a list of non-blank strings — empty when missing
+     * or not a list; a single string counts as a one-element list.
+     */
+    public java.util.List<String> stringListParam(String key) {
+        Object v = params == null ? null : params.get(key);
+        if (v instanceof String one) return one.isBlank() ? java.util.List.of() : java.util.List.of(one.strip());
+        if (!(v instanceof java.util.List<?> list)) return java.util.List.of();
+        java.util.List<String> out = new java.util.ArrayList<>();
+        for (Object item : list) {
+            if (item instanceof String s && !s.isBlank()) out.add(s.strip());
+        }
+        return java.util.List.copyOf(out);
     }
 
     public boolean booleanParam(String key, boolean fallback) {

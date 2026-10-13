@@ -143,6 +143,15 @@ Declare `lifecycle: sticky` only for a standing mode that must hold over
 many turns — a house style, a design blueprint a design grows under.
 Recipe `defaultActiveSkills` are always sticky, whatever you declare.
 
+## When the work is delegated (`delegation:`)
+
+When a process hands work to a worker (`process_spawn`, Arthur's
+`DELEGATE`), its active skills go along by default (`delegation:
+carry`) — whoever does the task needs your instructions. Declare
+`delegation: stay` when the skill is about the conversation itself
+(helping the user decide, a chat persona), not about the work. A model
+can also hand skills over explicitly: `process_spawn(skills=[…])`.
+
 ## Activation level (`activation:`)
 
 How the skill is offered **where it is relevant** — one ladder, one

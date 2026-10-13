@@ -154,6 +154,20 @@ public class ProcessSpawnTool implements Tool {
                         "additionalProperties",
                         true));
         properties.put(
+                "skills",
+                Map.of(
+                        "type",
+                        "array",
+                        "items",
+                        Map.of("type", "string"),
+                        "description",
+                        "Skills the worker gets activated before it starts — names from "
+                                + "your 'Available skills' list (or your active skills) that "
+                                + "fit the delegated task, so the worker has their instructions. "
+                                + "Your own active skills go along automatically unless they "
+                                + "declare 'delegation: stay'. Unknown or disallowed names fail "
+                                + "the spawn."));
+        properties.put(
                 "fallbackOnNone",
                 Map.of(
                         "type",
@@ -230,15 +244,16 @@ public class ProcessSpawnTool implements Tool {
         boolean wait = optBoolean(params, "wait", false);
         Map<String, Object> callerParams = optMap(params, "params");
         boolean fallbackOnNone = optBoolean(params, "fallbackOnNone", true);
+        List<String> skills = optStringList(params, "skills");
         Duration timeout = resolveTimeout(params);
 
         // ── Selector-routed mode (decide recipe before dispatch) ─────────
         if (recipeName == null) {
-            return invokeSelectorRouted(ctx, name, task, title, callerParams, fallbackOnNone, wait, timeout);
+            return invokeSelectorRouted(ctx, name, task, title, callerParams, skills, fallbackOnNone, wait, timeout);
         }
 
         // ── Explicit recipe dispatch ─────────────────────────────────────
-        return dispatch(ctx, name, title, task, recipeName, callerParams, wait, timeout);
+        return dispatch(ctx, name, title, task, recipeName, callerParams, skills, wait, timeout);
     }
 
     private Map<String, Object> invokeSelectorRouted(
@@ -247,6 +262,7 @@ public class ProcessSpawnTool implements Tool {
             String task,
             @Nullable String title,
             @Nullable Map<String, Object> callerParams,
+            @Nullable List<String> skills,
             boolean fallbackOnNone,
             boolean wait,
             Duration timeout) {
@@ -261,7 +277,7 @@ public class ProcessSpawnTool implements Tool {
 
         if (result.decision() == RecipeSelectorService.Result.Decision.MATCH) {
             Map<String, Object> spawn =
-                    dispatch(ctx, name, title, task, result.recipeName(), callerParams, wait, timeout);
+                    dispatch(ctx, name, title, task, result.recipeName(), callerParams, skills, wait, timeout);
             out.put("process", spawn);
             log.info("process_spawn name='{}' → spawned recipe='{}' via selector", name, result.recipeName());
             return out;
@@ -286,7 +302,8 @@ public class ProcessSpawnTool implements Tool {
             fallbackInfo.put("recipe", DEFAULT_RECIPE);
             fallbackInfo.put("source", "default-recipe (no trigger)");
             out.put("fallback", fallbackInfo);
-            Map<String, Object> spawn = dispatch(ctx, name, title, task, DEFAULT_RECIPE, callerParams, wait, timeout);
+            Map<String, Object> spawn =
+                    dispatch(ctx, name, title, task, DEFAULT_RECIPE, callerParams, skills, wait, timeout);
             out.put("process", spawn);
             return out;
         }
@@ -309,7 +326,8 @@ public class ProcessSpawnTool implements Tool {
         fallbackInfo.put("source", SETTING_FALLBACK_RECIPE);
         out.put("fallback", fallbackInfo);
 
-        Map<String, Object> spawn = dispatch(ctx, name, title, task, fallbackRecipe, callerParams, wait, timeout);
+        Map<String, Object> spawn =
+                dispatch(ctx, name, title, task, fallbackRecipe, callerParams, skills, wait, timeout);
         out.put("process", spawn);
         return out;
     }
@@ -329,6 +347,7 @@ public class ProcessSpawnTool implements Tool {
             String task,
             @Nullable String recipeName,
             @Nullable Map<String, Object> callerParams,
+            @Nullable List<String> skills,
             boolean wait,
             Duration timeout) {
         String parentProfile = parentConnectionProfile(ctx.processId());
@@ -341,7 +360,8 @@ public class ProcessSpawnTool implements Tool {
                 parentProfile,
                 /*initialMessage*/ wait ? null : task,
                 callerParams,
-                /*runAs*/ null);
+                /*runAs*/ null,
+                skills);
         TriggerContext triggerCtx = TriggerContext.sessioned(
                 ctx.tenantId(),
                 ctx.projectId(),
@@ -629,6 +649,18 @@ public class ProcessSpawnTool implements Tool {
     private static @Nullable String optString(Map<String, Object> params, String key) {
         Object raw = params == null ? null : params.get(key);
         return raw instanceof String s && !s.isBlank() ? s : null;
+    }
+
+    /** A list-of-strings param; a single string is accepted as a one-element list. */
+    private static @Nullable List<String> optStringList(Map<String, Object> params, String key) {
+        Object raw = params.get(key);
+        if (raw instanceof String one && !one.isBlank()) return List.of(one.strip());
+        if (!(raw instanceof List<?> list) || list.isEmpty()) return null;
+        List<String> out = new java.util.ArrayList<>();
+        for (Object item : list) {
+            if (item instanceof String s && !s.isBlank()) out.add(s.strip());
+        }
+        return out.isEmpty() ? null : List.copyOf(out);
     }
 
     private static @Nullable Map<String, Object> optMap(Map<String, Object> params, String key) {

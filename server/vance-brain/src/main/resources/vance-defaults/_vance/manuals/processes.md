@@ -1,6 +1,6 @@
 ---
-triggers: process, sub-process, subprocess, spawn, delegate, delegieren, parallel work, background worker, process_spawn, process_steer, process_list, process_status, process_history_text, orchestration, Sub-Agent, side task, includeTerminated, geschlossene worker, terminated processes
-summary: Spawning sub-processes (process_spawn / process_steer / process_list / process_status / process_history_text) — when to delegate work to a side worker, how to discover and inspect them.
+triggers: process, sub-process, hand skills to worker, delegate skills, subprocess, spawn, delegate, delegieren, parallel work, background worker, process_spawn, process_steer, process_list, process_status, process_history_text, orchestration, Sub-Agent, side task, includeTerminated, geschlossene worker, terminated processes
+summary: Spawning sub-processes (process_spawn / process_steer / process_list / process_status / process_history_text) — when to delegate work to a side worker, how to hand it skills (process_spawn skills=[…]), how to discover and inspect them.
 ---
 # Sub-processes and orchestration
 
@@ -17,6 +17,22 @@ process_spawn name=researcher recipe=ford task="Summarise design docs"
 
 The new process starts in `READY` and immediately writes its greeting
 into its own chat log. It's now visible to `process_list`.
+
+### Handing skills to the worker
+
+The worker does not see your skills. If the task needs one — a report
+format, a debugging method — hand it over instead of paraphrasing it in
+`task`; a one-line description loses the actual rules:
+
+```text
+process_spawn name=reporter recipe=analyze task="Report on remote work" skills=["report-writing"]
+```
+
+Name skills from your "Available skills" list or your active skills.
+They are active in the worker from its first turn. An unknown or
+disallowed name fails the spawn. Skills that are active on you go along
+on their own — unless they declare `delegation: stay` (e.g.
+`decision-frame`, which is about this conversation, not the work).
 
 ## Talking to a sub-process
 

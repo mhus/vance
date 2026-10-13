@@ -1913,6 +1913,12 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             if (explicitRecipe) {
                 params.put("recipe", preset);
             }
+            // Skills handed to the worker (skills.md §7f) — Arthur's own
+            // active carry-skills go along automatically in the spawn path.
+            java.util.List<String> skills = action.stringListParam(ArthurActionSchema.PARAM_SKILLS);
+            if (!skills.isEmpty()) {
+                params.put("skills", skills);
+            }
             ctx.tools().invokeInternal("process_spawn", params);
             if (explicitRecipe) {
                 log.info(

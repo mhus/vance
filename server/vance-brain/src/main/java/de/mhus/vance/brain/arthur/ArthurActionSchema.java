@@ -224,6 +224,7 @@ public final class ArthurActionSchema {
     public static final String PARAM_MESSAGE = "message";
     public static final String PARAM_PRESET = "preset";
     public static final String PARAM_PROMPT = "prompt";
+    public static final String PARAM_SKILLS = "skills";
     /**
      * RELAY: stable handle of the {@code <process-event>} to relay,
      * copied verbatim from the {@code eventId} attribute the engine
@@ -391,6 +392,18 @@ public final class ArthurActionSchema {
         promptProp.put("type", "string");
         promptProp.put("description", "Concrete instruction for the worker. Required for DELEGATE.");
 
+        Map<String, Object> skillsProp = new LinkedHashMap<>();
+        skillsProp.put("type", "array");
+        skillsProp.put("items", Map.of("type", "string"));
+        skillsProp.put(
+                "description",
+                "DELEGATE-only, optional: skills the worker gets activated before it "
+                        + "starts — names from your 'Available skills' list that fit the "
+                        + "delegated task (e.g. a report format for a report). The worker "
+                        + "then has their full instructions; the one-line descriptions you "
+                        + "see are not enough to pass on in the prompt. Your active skills "
+                        + "go along automatically.");
+
         Map<String, Object> eventRefProp = new LinkedHashMap<>();
         eventRefProp.put("type", "string");
         eventRefProp.put(
@@ -552,6 +565,7 @@ public final class ArthurActionSchema {
         properties.put(PARAM_SEVERITY, severityProp);
         properties.put(PARAM_PRESET, presetProp);
         properties.put(PARAM_PROMPT, promptProp);
+        properties.put(PARAM_SKILLS, skillsProp);
         properties.put(PARAM_EVENT_REF, eventRefProp);
         properties.put(PARAM_SCOPE, scopeProp);
         properties.put(PARAM_MODE, modeProp);

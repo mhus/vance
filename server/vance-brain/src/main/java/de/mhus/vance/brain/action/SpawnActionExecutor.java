@@ -82,6 +82,14 @@ public final class SpawnActionExecutor implements ActionExecutor<TriggerAction.R
     private final ObjectProvider<EngineMessageRouter> messageRouterProvider;
     private final ParentContextSpawnHelper parentContextSpawnHelper;
     private final de.mhus.vance.brain.tools.worktarget.WorkTargetService workTargetService;
+    /**
+     * Activates the skills a delegating caller hands over (skills.md §7f).
+     * Lazy: the skill funnel reaches the spawn runner, which reaches this
+     * executor.
+     */
+    private final ObjectProvider<de.mhus.vance.brain.skill.SkillSteerProcessor> skillSteerProcessorProvider;
+    /** Resolves the delegating parent's active skills for the automatic carry. */
+    private final ObjectProvider<de.mhus.vance.brain.skill.SkillTurnSupport> skillTurnSupportProvider;
 
     @Override
     public Class<TriggerAction.Recipe> actionType() {
@@ -195,6 +203,20 @@ public final class SpawnActionExecutor implements ActionExecutor<TriggerAction.R
                         .runAs(ctx.resolvedRunAs())
                         .build());
 
+        // ── Skills handed over by the delegating caller (skills.md §7f) ──
+        // Before the engine starts, so the first turn already carries them.
+        // A bad name fails the spawn with a clear message (and removes the
+        // half-made process) — the caller must learn, not get a worker
+        // silently missing the instructions it was promised.
+        String skillError = activateCarriedSkills(fresh, action.skills());
+        if (skillError == null) {
+            carryParentSkills(fresh, ctx.parentProcessId(), action.skills());
+        }
+        if (skillError != null) {
+            closeQuietly(fresh.getId());
+            return ActionResult.failure(ActionOutcome.BUSINESS_ERROR, skillError, Map.of("processId", fresh.getId()));
+        }
+
         // ── Start engine ─────────────────────────────────────────────────
         try {
             thinkEngineServiceProvider.getObject().start(fresh);
@@ -247,6 +269,97 @@ public final class SpawnActionExecutor implements ActionExecutor<TriggerAction.R
     }
 
     // ──────────────────── Helpers ────────────────────
+
+    /**
+     * Activates {@code skills} on the freshly created, not yet started
+     * process — sticky (the worker exists for this task, whatever the
+     * skill's lifecycle), route {@code IMPLICIT} (no action turn: the task
+     * itself is the first message; no spawn from here). Returns an error
+     * message for the first skill that does not resolve, is disabled or is
+     * outside the worker recipe's {@code allowedSkills}; {@code null} when
+     * all went in.
+     */
+    private @Nullable String activateCarriedSkills(ThinkProcessDocument process, @Nullable List<String> skills) {
+        if (skills == null || skills.isEmpty()) return null;
+        de.mhus.vance.brain.skill.SkillSteerProcessor steer = skillSteerProcessorProvider.getObject();
+        for (String name : new java.util.LinkedHashSet<>(skills)) {
+            if (name == null || name.isBlank()) continue;
+            try {
+                steer.activate(
+                        process,
+                        name.strip(),
+                        /*oneShot*/ false,
+                        /*sticky*/ true,
+                        de.mhus.vance.brain.skill.ActivationRoute.IMPLICIT,
+                        null,
+                        null);
+            } catch (RuntimeException e) {
+                return "skill '" + name.strip() + "' could not be handed to the worker: " + e.getMessage();
+            }
+        }
+        log.debug("SpawnActionExecutor: id='{}' carried skills {}", process.getId(), skills);
+        return null;
+    }
+
+    /**
+     * The automatic carry: the delegating parent's active skills that
+     * declare {@code delegation: carry} (the default) go to the worker too
+     * — whoever does the task needs the instructions the parent was given
+     * for it. Recipe-bound skills stay (the worker's recipe picks its own),
+     * so do {@code delegation: stay} skills. Lenient, unlike the explicit
+     * list: a skill the worker's recipe does not allow is skipped with a
+     * log line — the parent never asked for it, so it must not fail the
+     * spawn.
+     */
+    private void carryParentSkills(
+            ThinkProcessDocument child, @Nullable String parentProcessId, @Nullable List<String> explicit) {
+        if (parentProcessId == null || parentProcessId.isBlank()) return;
+        ThinkProcessDocument parent =
+                thinkProcessService.findById(parentProcessId).orElse(null);
+        if (parent == null
+                || parent.getActiveSkills() == null
+                || parent.getActiveSkills().isEmpty()) return;
+        java.util.Set<String> recipeBound = new java.util.HashSet<>();
+        for (de.mhus.vance.shared.skill.ActiveSkillRefEmbedded ref : parent.getActiveSkills()) {
+            if (ref.isFromRecipe()) recipeBound.add(ref.getName());
+        }
+        java.util.Set<String> already = explicit == null ? java.util.Set.of() : java.util.Set.copyOf(explicit);
+        de.mhus.vance.brain.skill.SkillSteerProcessor steer = skillSteerProcessorProvider.getObject();
+        for (de.mhus.vance.brain.skill.ResolvedSkill skill :
+                skillTurnSupportProvider.getObject().resolveActive(parent)) {
+            if (recipeBound.contains(skill.name()) || already.contains(skill.name())) continue;
+            if (skill.delegation() != de.mhus.vance.brain.skill.SkillDelegation.CARRY) continue;
+            try {
+                steer.activate(
+                        child,
+                        skill.name(),
+                        /*oneShot*/ false,
+                        /*sticky*/ true,
+                        de.mhus.vance.brain.skill.ActivationRoute.IMPLICIT,
+                        null,
+                        null);
+                log.info(
+                        "SpawnActionExecutor: id='{}' carried skill '{}' from parent '{}'",
+                        child.getId(),
+                        skill.name(),
+                        parentProcessId);
+            } catch (RuntimeException e) {
+                log.info(
+                        "SpawnActionExecutor: id='{}' did not carry skill '{}' from parent: {}",
+                        child.getId(),
+                        skill.name(),
+                        e.getMessage());
+            }
+        }
+    }
+
+    private void closeQuietly(String processId) {
+        try {
+            thinkProcessService.closeProcess(processId, de.mhus.vance.api.thinkprocess.CloseReason.ABANDONED);
+        } catch (RuntimeException closeEx) {
+            log.warn("SpawnActionExecutor: could not close process '{}': {}", processId, closeEx.toString());
+        }
+    }
 
     /**
      * Wraps {@code initialMessage} with a {@code ## Parent context} block

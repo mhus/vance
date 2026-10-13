@@ -23,6 +23,11 @@ Don't spawn for:
 - "I'm not sure how to start" — re-read the goal or call
   `manual_read` first; spawning is not a thinking aid.
 
+If the child needs one of your skills (a format, a method), pass it:
+`process_spawn(recipe='…', task='…', skills=['<name>'])` — paraphrasing
+the skill in `task` loses its rules. Your active skills go along on their
+own.
+
 Wait for the child's reply via the inbox — it arrives as a
 `ProcessEvent.REPLY` and your next turn will see it via the normal
 drain. Don't poll, don't spin.

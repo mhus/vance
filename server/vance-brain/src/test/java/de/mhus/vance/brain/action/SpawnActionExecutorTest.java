@@ -2,6 +2,7 @@ package de.mhus.vance.brain.action;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
@@ -40,6 +41,8 @@ class SpawnActionExecutorTest {
     private ThinkProcessService processService;
     private EngineMessageRouter messageRouter;
     private ParentContextSpawnHelper parentContextSpawnHelper;
+    private de.mhus.vance.brain.skill.SkillSteerProcessor skillSteerProcessor;
+    private de.mhus.vance.brain.skill.SkillTurnSupport skillTurnSupport;
     private SpawnActionExecutor exec;
 
     private final TriggerContext ctxWithSession =
@@ -53,6 +56,8 @@ class SpawnActionExecutorTest {
         processService = mock(ThinkProcessService.class);
         messageRouter = mock(EngineMessageRouter.class);
         parentContextSpawnHelper = mock(ParentContextSpawnHelper.class);
+        skillSteerProcessor = mock(de.mhus.vance.brain.skill.SkillSteerProcessor.class);
+        skillTurnSupport = mock(de.mhus.vance.brain.skill.SkillTurnSupport.class);
         when(parentContextSpawnHelper.wrap(any(), any(), any())).thenAnswer(inv -> inv.getArgument(2));
         de.mhus.vance.brain.tools.worktarget.WorkTargetService workTargetService =
                 mock(de.mhus.vance.brain.tools.worktarget.WorkTargetService.class);
@@ -65,7 +70,9 @@ class SpawnActionExecutorTest {
                 processService,
                 providerOf(messageRouter),
                 parentContextSpawnHelper,
-                workTargetService);
+                workTargetService,
+                providerOf(skillSteerProcessor),
+                providerOf(skillTurnSupport));
     }
 
     // ──────────────────── Happy path ────────────────────
@@ -117,6 +124,118 @@ class SpawnActionExecutorTest {
                 TriggerAction.Recipe.of("analyze", "   ", null, null), ctxWithSession, TriggerKind.SCHEDULER));
 
         verify(messageRouter, never()).dispatch(any(), any(), any());
+    }
+
+    // ──────────────────── Skills handed to the worker (skills.md §7f) ────────────────────
+
+    private static TriggerAction.Recipe withSkills(List<String> skills) {
+        return new TriggerAction.Recipe("analyze", "w1", null, null, null, null, "do it", null, null, skills);
+    }
+
+    private static de.mhus.vance.brain.skill.ResolvedSkill skill(
+            String name, de.mhus.vance.brain.skill.SkillDelegation delegation) {
+        return new de.mhus.vance.brain.skill.ResolvedSkill(
+                name,
+                name,
+                "desc",
+                "1.0.0",
+                List.of(),
+                "body",
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                null,
+                true,
+                de.mhus.vance.api.skills.SkillScope.RESOURCE,
+                List.of(),
+                List.of(),
+                de.mhus.vance.brain.skill.SkillLifecycle.TURN,
+                false,
+                List.of(),
+                null,
+                de.mhus.vance.brain.skill.SkillRun.INLINE,
+                null,
+                delegation);
+    }
+
+    @Test
+    void explicitSkills_areActivatedStickyBeforeTheEngineStarts() {
+        stubRecipe("analyze", "arthur");
+        stubEngine("arthur", "1.0");
+        stubCreateReturnsProcess("proc-s");
+
+        ActionResult r = exec.execute(
+                new ActionInvocation<>(withSkills(List.of("report-writing")), ctxWithSession, TriggerKind.TOOL));
+
+        assertThat(r.outcome()).isEqualTo(ActionOutcome.SCHEDULED);
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(skillSteerProcessor, engineService);
+        order.verify(skillSteerProcessor)
+                .activate(
+                        any(),
+                        eq("report-writing"),
+                        eq(false),
+                        eq(true),
+                        eq(de.mhus.vance.brain.skill.ActivationRoute.IMPLICIT),
+                        isNull(),
+                        isNull());
+        order.verify(engineService).start(any());
+    }
+
+    @Test
+    void explicitSkill_thatCannotBeActivated_failsTheSpawnAndClosesTheProcess() {
+        stubRecipe("analyze", "arthur");
+        stubEngine("arthur", "1.0");
+        stubCreateReturnsProcess("proc-x");
+        when(skillSteerProcessor.activate(any(), eq("ghost"), anyBoolean(), anyBoolean(), any(), any(), any()))
+                .thenThrow(new de.mhus.vance.brain.skill.UnknownSkillException("ghost"));
+
+        ActionResult r =
+                exec.execute(new ActionInvocation<>(withSkills(List.of("ghost")), ctxWithSession, TriggerKind.TOOL));
+
+        assertThat(r.outcome()).isEqualTo(ActionOutcome.BUSINESS_ERROR);
+        assertThat(r.errorMessage()).contains("skill 'ghost'");
+        verify(processService).closeProcess(eq("proc-x"), any());
+        verify(engineService, never()).start(any());
+    }
+
+    @Test
+    void parentCarrySkills_goAlong_stayAndRecipeBoundDoNot() {
+        stubRecipe("analyze", "arthur");
+        stubEngine("arthur", "1.0");
+        stubCreateReturnsProcess("proc-c");
+        ThinkProcessDocument parent = ThinkProcessDocument.builder()
+                .id("parent-1")
+                .activeSkills(new java.util.ArrayList<>(List.of(
+                        de.mhus.vance.shared.skill.ActiveSkillRefEmbedded.builder()
+                                .name("report-writing")
+                                .build(),
+                        de.mhus.vance.shared.skill.ActiveSkillRefEmbedded.builder()
+                                .name("decision-frame")
+                                .build(),
+                        de.mhus.vance.shared.skill.ActiveSkillRefEmbedded.builder()
+                                .name("house-style")
+                                .fromRecipe(true)
+                                .build())))
+                .build();
+        when(processService.findById("parent-1")).thenReturn(java.util.Optional.of(parent));
+        when(skillTurnSupport.resolveActive(parent))
+                .thenReturn(List.of(
+                        skill("report-writing", de.mhus.vance.brain.skill.SkillDelegation.CARRY),
+                        skill("decision-frame", de.mhus.vance.brain.skill.SkillDelegation.STAY),
+                        skill("house-style", de.mhus.vance.brain.skill.SkillDelegation.CARRY)));
+        TriggerContext fromParent =
+                TriggerContext.sessioned("t1", "p1", "alice", "corr-1", "tool:process_spawn", "sess-1", "parent-1");
+
+        exec.execute(new ActionInvocation<>(withSkills(null), fromParent, TriggerKind.TOOL));
+
+        verify(skillSteerProcessor)
+                .activate(any(), eq("report-writing"), eq(false), eq(true), any(), isNull(), isNull());
+        verify(skillSteerProcessor, never())
+                .activate(any(), eq("decision-frame"), anyBoolean(), anyBoolean(), any(), any(), any());
+        verify(skillSteerProcessor, never())
+                .activate(any(), eq("house-style"), anyBoolean(), anyBoolean(), any(), any(), any());
     }
 
     // ──────────────────── Soft-success: already-exists ────────────────────

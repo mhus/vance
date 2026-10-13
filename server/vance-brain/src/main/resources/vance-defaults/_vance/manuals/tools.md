@@ -84,7 +84,7 @@ platform's dialect (Windows `cmd.exe` vs. POSIX `sh`), don't assume bash.
 
 - `process_list` — siblings in the current session.
 - `process_status name=…` — one process detail.
-- `process_spawn name=… recipe=ford [task=…]` — spawn a sub-process.
+- `process_spawn name=… recipe=ford [task=…] [skills=[…]]` — spawn a sub-process (optionally handing it skills).
 - `process_steer name=… content=…` — drive another process. See
   `processes` doc.
 

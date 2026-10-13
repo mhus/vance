@@ -101,4 +101,12 @@ class SkillLoaderActivationParseTest {
         assertThat(parse(BASE + "\nlifecycle: sticky", "Body").lifecycle()).isEqualTo(SkillLifecycle.STICKY);
         assertThat(parse(BASE + "\nlifecycle: shot", "Body").lifecycle()).isEqualTo(SkillLifecycle.SHOT);
     }
+
+    @Test
+    void delegation_defaultsToCarry_stayOnDeclaration_typoFails() {
+        assertThat(parse(BASE, "Body").delegation()).isEqualTo(SkillDelegation.CARRY);
+        assertThat(parse(BASE + "\ndelegation: stay", "Body").delegation()).isEqualTo(SkillDelegation.STAY);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> parse(BASE + "\ndelegation: keep", "Body"))
+                .hasMessageContaining("expected carry|stay");
+    }
 }

@@ -87,7 +87,66 @@ public record ResolvedSkill(
          * are resolved by {@code SkillActivationService}, never carried
          * here — a resolved skill is tier-pinned, the override is not.
          */
-        @Nullable SkillActivation declaredActivation) {
+        @Nullable SkillActivation declaredActivation,
+        /**
+         * {@code delegation:} — whether the skill goes along when its
+         * process delegates work to a worker (skills.md §7f). Default
+         * {@link SkillDelegation#CARRY}.
+         */
+        SkillDelegation delegation) {
+
+    /**
+     * Canonical form before {@code delegation:} — the skill carries
+     * ({@link SkillDelegation#CARRY}, the default).
+     */
+    public ResolvedSkill(
+            String name,
+            String title,
+            String description,
+            String version,
+            List<Trigger> triggers,
+            @Nullable String promptExtension,
+            List<String> tools,
+            List<String> manualPaths,
+            List<ReferenceDoc> referenceDocs,
+            List<Script> scripts,
+            List<String> tags,
+            @Nullable String category,
+            boolean enabled,
+            SkillScope source,
+            List<EngineCommand> activate,
+            List<EngineCommand> deactivate,
+            SkillLifecycle lifecycle,
+            boolean consumesArgs,
+            List<Argument> arguments,
+            @Nullable String action,
+            SkillRun run,
+            @Nullable SkillActivation declaredActivation) {
+        this(
+                name,
+                title,
+                description,
+                version,
+                triggers,
+                promptExtension,
+                tools,
+                manualPaths,
+                referenceDocs,
+                scripts,
+                tags,
+                category,
+                enabled,
+                source,
+                activate,
+                deactivate,
+                lifecycle,
+                consumesArgs,
+                arguments,
+                action,
+                run,
+                declaredActivation,
+                SkillDelegation.CARRY);
+    }
 
     /**
      * The skill's activation mode at the frontmatter level: the declared

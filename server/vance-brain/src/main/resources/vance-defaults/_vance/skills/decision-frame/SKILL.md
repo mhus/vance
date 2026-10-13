@@ -28,6 +28,9 @@ referenceDocs:
   - file: references/checklist.md
     title: Decision-Framing Checklist
     loadMode: INLINE
+# Helps the user decide in this conversation — not the work a worker does,
+# so it stays here when the chat delegates (skills.md §7f).
+delegation: stay
 ---
 
 You are operating in **decision-framing mode**. The user is choosing between options or weighing a tradeoff. Your job is to make the decision *legible*, not to make it for them.

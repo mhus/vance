@@ -1,5 +1,6 @@
 package de.mhus.vance.api.action;
 
+import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
@@ -18,24 +19,23 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Design rationale: {@code specification/trigger-actions.md} §3.
  */
-public sealed interface TriggerAction
-        permits TriggerAction.Recipe,
-                TriggerAction.Script,
-                TriggerAction.Workflow {
+public sealed interface TriggerAction permits TriggerAction.Recipe, TriggerAction.Script, TriggerAction.Workflow {
 
     /**
      * User identity the action runs as. {@code null} means
      * "trigger-default" (e.g. scheduler's {@code createdBy}, event's
      * authenticated caller, workflow's owner). Executors resolve it.
      */
-    @Nullable String runAs();
+    @Nullable
+    String runAs();
 
     /**
      * Free-form parameters forwarded to the spawned target. For
      * events, the HTTP body is additionally mounted under
      * {@code params.payload} before parsing.
      */
-    @Nullable Map<String, Object> params();
+    @Nullable
+    Map<String, Object> params();
 
     // ──────────────────── Recipe ────────────────────
 
@@ -60,7 +60,39 @@ public sealed interface TriggerAction
             @Nullable String connectionProfile,
             @Nullable String initialMessage,
             @Nullable Map<String, Object> params,
-            @Nullable String runAs) implements TriggerAction {
+            @Nullable String runAs,
+            /**
+             * Skills to activate on the spawned process before its first
+             * turn — handed over by the delegating caller (skills.md
+             * §7f). Sticky in the child: the worker exists for this task.
+             * {@code null} / empty: none.
+             */
+            @Nullable List<String> skills)
+            implements TriggerAction {
+
+        /** Canonical form without carried skills — the pre-delegation-skills signature. */
+        public Recipe(
+                @Nullable String recipe,
+                @Nullable String processName,
+                @Nullable String title,
+                @Nullable String goal,
+                @Nullable String inheritContextLevel,
+                @Nullable String connectionProfile,
+                @Nullable String initialMessage,
+                @Nullable Map<String, Object> params,
+                @Nullable String runAs) {
+            this(
+                    recipe,
+                    processName,
+                    title,
+                    goal,
+                    inheritContextLevel,
+                    connectionProfile,
+                    initialMessage,
+                    params,
+                    runAs,
+                    null);
+        }
 
         /**
          * Minimal-form factory for callers that only need the
@@ -108,7 +140,8 @@ public sealed interface TriggerAction
             String path,
             @Nullable Integer timeoutSeconds,
             @Nullable Map<String, Object> params,
-            @Nullable String runAs) implements TriggerAction {
+            @Nullable String runAs)
+            implements TriggerAction {
 
         public Script {
             if (source == null) {
@@ -118,16 +151,13 @@ public sealed interface TriggerAction
                 throw new IllegalArgumentException("Script.path must be non-blank");
             }
             if (source == ScriptSource.WORKSPACE && (dirName == null || dirName.isBlank())) {
-                throw new IllegalArgumentException(
-                        "Script.dirName is required when source=WORKSPACE");
+                throw new IllegalArgumentException("Script.dirName is required when source=WORKSPACE");
             }
             if (source == ScriptSource.DOCUMENT && dirName != null && !dirName.isBlank()) {
-                throw new IllegalArgumentException(
-                        "Script.dirName must be null when source=DOCUMENT");
+                throw new IllegalArgumentException("Script.dirName must be null when source=DOCUMENT");
             }
             if (timeoutSeconds != null && timeoutSeconds <= 0) {
-                throw new IllegalArgumentException(
-                        "Script.timeoutSeconds must be > 0 when set");
+                throw new IllegalArgumentException("Script.timeoutSeconds must be > 0 when set");
             }
         }
     }

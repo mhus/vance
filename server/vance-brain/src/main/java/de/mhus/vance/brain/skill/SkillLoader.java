@@ -336,6 +336,7 @@ public class SkillLoader {
         String action = parseAction(spec.get("action"), stem);
         ParsedArguments args = parseArguments(spec.get("arguments"), stem);
         SkillRun run = parseRun(spec.get("run"), stem, lifecycle, action, triggers);
+        SkillDelegation delegation = parseDelegation(spec.get("delegation"), stem);
 
         // A shot skill never registers, so its only effects are the
         // activate: commands and its turn-prompt — and the auto-trigger
@@ -373,7 +374,8 @@ public class SkillLoader {
                 args.declared(),
                 action,
                 run,
-                declaredActivation);
+                declaredActivation,
+                delegation);
     }
 
     /**
@@ -585,6 +587,25 @@ public class SkillLoader {
                 throw new IllegalStateException(
                         "skill '" + stem + "': unknown lifecycle '" + s + "' (expected turn|sticky|shot)");
         };
+    }
+
+    /**
+     * Parses the optional {@code delegation:} field (skills.md §7f).
+     * Absent means {@link SkillDelegation#CARRY}; a typo fails the load —
+     * silently treating it as the default would hand a conversation skill
+     * to every worker.
+     */
+    private static SkillDelegation parseDelegation(Object raw, String stem) {
+        if (raw == null) return SkillDelegation.CARRY;
+        if (!(raw instanceof String s)) {
+            throw new IllegalStateException("skill '" + stem + "': 'delegation' must be a string");
+        }
+        SkillDelegation parsed = SkillDelegation.parse(s);
+        if (parsed == null) {
+            throw new IllegalStateException(
+                    "skill '" + stem + "': unknown delegation '" + s + "' (expected carry|stay)");
+        }
+        return parsed;
     }
 
     /**

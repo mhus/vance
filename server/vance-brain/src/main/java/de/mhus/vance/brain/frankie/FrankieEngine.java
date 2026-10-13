@@ -229,6 +229,12 @@ public class FrankieEngine implements ThinkEngine {
     private final de.mhus.vance.brain.guard.ShootyGuardService guardService;
     private final AttachedUserMessageComposer attachedUserMessageComposer;
     private final ClientTurnContextResolver clientTurnContextResolver;
+    /**
+     * Word activation (skills.md §4g): skills on the {@code trigger} level
+     * fire one-shot on the fresh user input, before the turn's skills are
+     * resolved — same hook Ford and Arthur run.
+     */
+    private final de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -362,6 +368,17 @@ public class FrankieEngine implements ThinkEngine {
             // guard-injected turns fire nothing.
             guardService.guardsOnTurnStart(process, drained);
             List<SteerMessage> extras = persistUserInputAndCollectExtras(process, chatLog, drained);
+            // Word activation on the combined fresh user input — before the
+            // active skills are resolved, so a triggered skill counts for
+            // this very turn (same hook as Ford/Arthur).
+            String userInput = drained.stream()
+                    .filter(m -> m instanceof SteerMessage.UserChatInput)
+                    .map(m -> ((SteerMessage.UserChatInput) m).content())
+                    .filter(c -> c != null && !c.isBlank())
+                    .collect(java.util.stream.Collectors.joining("\n"));
+            if (!userInput.isBlank()) {
+                skillTriggerMatcher.detectAndActivate(process, userInput);
+            }
 
             // 2) Build the LLM bundle + initial message list.
             EngineChatFactory.EngineChatBundle bundle = engineChatFactory.forProcess(process, ctx, NAME);
@@ -372,11 +389,10 @@ public class FrankieEngine implements ThinkEngine {
             // through the user/project/tenant/bundled cascade. Skills add
             // both a prompt block (composed by SkillPromptComposer) and
             // tool entries (merged into the per-turn allow-set). No
-            // auto-trigger here — activation is either recipe.defaultActiveSkills
-            // or explicit /skill add via ProcessSkillCommand. See
-            // CLAUDE.md "Skills" and specification/skills.md.
+            // auto-trigger was matched above, before this resolve. See
+            // specification/public/skills.md §4g.
             List<ResolvedSkill> activeSkills = resolveActiveSkills(process);
-            ContextToolsApi tools = ctx.tools().withAdditional(skillPromptComposer.mergedTools(activeSkills));
+            ContextToolsApi tools = ctx.tools().withAdditional(skillTurnSupport.turnTools(process, activeSkills));
             List<ToolSpecification> toolSpecs = tools.primaryAsLc4j();
 
             // Resolve model info before assembling the prompt — needed
@@ -726,7 +742,7 @@ public class FrankieEngine implements ThinkEngine {
                 // activatedDeferredTools from Mongo per call. Same reason
                 // StructuredActionEngine rebuilds after its read-tool
                 // dispatch.
-                tools = ctx.tools().withAdditional(skillPromptComposer.mergedTools(activeSkills));
+                tools = ctx.tools().withAdditional(skillTurnSupport.turnTools(process, activeSkills));
                 toolSpecs = tools.primaryAsLc4j();
 
                 // Loop continues: next iteration's LLM call will see the tool results.

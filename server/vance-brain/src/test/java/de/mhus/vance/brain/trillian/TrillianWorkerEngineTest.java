@@ -156,6 +156,7 @@ class TrillianWorkerEngineTest {
                 mock(de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry.class),
                 mock(de.mhus.vance.brain.guard.ShootyGuardService.class),
                 mock(de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer.class),
-                mock(de.mhus.vance.brain.prompt.ClientTurnContextResolver.class));
+                mock(de.mhus.vance.brain.prompt.ClientTurnContextResolver.class),
+                mock(de.mhus.vance.brain.skill.SkillTriggerMatcher.class));
     }
 }

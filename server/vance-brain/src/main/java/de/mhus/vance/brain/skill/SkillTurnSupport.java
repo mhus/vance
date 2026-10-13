@@ -101,6 +101,26 @@ public class SkillTurnSupport {
         return composer.mergedTools(skills);
     }
 
+    /** Name of the tool the "Available skills" section tells the model to call. */
+    public static final String ACTIVATE_TOOL = "skill_activate";
+
+    /**
+     * The turn's add-only tool set from the skill subsystem: the active
+     * skills' {@code tools:} plus {@value #ACTIVATE_TOOL} whenever the
+     * "Available skills" section lists something. The section tells the
+     * model to call that tool, so it has to be in the manifest — as a
+     * deferred pool tool it is invisible to engines that render no
+     * discovery block (Ford, Frankie), and the model then cannot act on
+     * the list at all.
+     */
+    public Set<String> turnTools(ThinkProcessDocument process, List<ResolvedSkill> activeSkills) {
+        Set<String> tools = mergedTools(activeSkills);
+        if (advertiseSection(process, activeSkills) == null) return tools;
+        Set<String> out = new java.util.LinkedHashSet<>(tools);
+        out.add(ACTIVATE_TOOL);
+        return out;
+    }
+
     /**
      * Maps skill name → the raw trailing text it was activated with.
      * Skills activated without arguments are absent from the map.
@@ -175,7 +195,9 @@ public class SkillTurnSupport {
         if (candidates.isEmpty()) return null;
         candidates.sort(Comparator.comparing(ResolvedSkill::name, String.CASE_INSENSITIVE_ORDER));
 
-        StringBuilder out = new StringBuilder("## Available skills — activate with the skill_activate tool\n\n");
+        StringBuilder out = new StringBuilder("## Available skills — activate with the skill_activate tool\n\n"
+                + "When one fits the task at hand, activate it before you start on it — its instructions"
+                + " then guide the work.\n\n");
         int shown = 0;
         int hidden = 0;
         for (ResolvedSkill s : candidates) {

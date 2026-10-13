@@ -891,7 +891,9 @@ export default {
         'Aktivierung bleibt bestehen, bis der Skill deaktiviert wird oder die Session endet — der Skill-Body geht in jeden Turn.',
       lifecycleShotHint:
         'Feuert einmal als Makro (Prompt oder Konfiguration) und wird nie als „aktiv“ gelistet — es gibt nichts aufzuräumen.',
-      autoTrigger: 'Automatisch aktiv bei:',
+      autoTrigger: 'Wort-Trigger:',
+      autoTriggerInactive:
+        'Wort-Trigger sind auf dieser Stufe aus — sie wirken nur bei „Wort-Aktivierung“.',
       autoTriggerTitle:
         'Dieser Skill aktiviert sich automatisch, wenn eine Nachricht auf diese Begriffe oder Muster passt.',
       argumentsLabel: 'Argumente',

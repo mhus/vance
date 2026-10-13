@@ -939,7 +939,7 @@ public class EddieEngine extends StructuredActionEngine {
             // Active skills — body into the prompt, tools: entries onto
             // the loop's surface (add-only).
             List<de.mhus.vance.brain.skill.ResolvedSkill> activeSkills = skillTurnSupport.resolveActive(process);
-            java.util.Set<String> skillTools = skillTurnSupport.mergedTools(activeSkills);
+            java.util.Set<String> skillTools = skillTurnSupport.turnTools(process, activeSkills);
 
             List<ChatMessage> messages =
                     buildPromptMessages(process, chatLog, inbox, modelInfo, effectiveSize, ctx, activeSkills);

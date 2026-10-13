@@ -517,4 +517,18 @@ class SkillTurnSupportTest {
         advertiseCandidates(disabled);
         assertThat(support.advertiseSection(processWith(), List.of())).isNull();
     }
+
+    @Test
+    void turnTools_addSkillActivate_onlyWhenSomethingIsListed() {
+        when(composer.mergedTools(any())).thenReturn(java.util.Set.of("lint_run"));
+        advertiseCandidates(agentSkill("alpha"));
+
+        // The section tells the model to call skill_activate — it must be
+        // callable, not a deferred name the engine never shows.
+        assertThat(support.turnTools(processWith(), List.of()))
+                .containsExactlyInAnyOrder("lint_run", SkillTurnSupport.ACTIVATE_TOOL);
+
+        advertiseCandidates(resolved("plain"));
+        assertThat(support.turnTools(processWith(), List.of())).containsExactly("lint_run");
+    }
 }

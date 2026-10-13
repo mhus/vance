@@ -811,7 +811,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             // tools: entries are add-only on top of the engine/recipe
             // whitelist (skills never remove a tool).
             List<de.mhus.vance.brain.skill.ResolvedSkill> activeSkills = skillTurnSupport.resolveActive(process);
-            java.util.Set<String> skillTools = skillTurnSupport.mergedTools(activeSkills);
+            java.util.Set<String> skillTools = skillTurnSupport.turnTools(process, activeSkills);
             ContextToolsApi tools =
                     skillTools.isEmpty() ? ctx.tools() : ctx.tools().withAdditional(skillTools);
             ModelInfo modelInfo = modelCatalog.lookupOrDefault(

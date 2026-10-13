@@ -87,7 +87,7 @@ public class SkillActivateTool implements Tool {
 
     @Override
     public String name() {
-        return "skill_activate";
+        return de.mhus.vance.brain.skill.SkillTurnSupport.ACTIVATE_TOOL;
     }
 
     @Override

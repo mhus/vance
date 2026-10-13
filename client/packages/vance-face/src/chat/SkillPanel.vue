@@ -327,16 +327,17 @@ watch(() => props.sessionKey, refresh);
 
 <template>
   <div class="p-3 flex flex-col gap-3 min-h-0">
-    <div class="flex items-center justify-between px-1">
-      <div class="text-xs uppercase tracking-wide opacity-60 font-semibold">
+    <div class="flex items-center gap-2 px-1">
+      <div class="text-xs uppercase tracking-wide opacity-60 font-semibold shrink-0">
         {{ t('chat.skills.title') }}
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex-1 min-w-0 flex items-center justify-end gap-2">
         <VToggle
           v-model="showHidden"
+          class="shrink-0"
           :title="t('chat.skills.showHiddenTitle', { count: hiddenCount })"
         />
-        <div class="w-36">
+        <div class="flex-1 min-w-0 max-w-48">
           <VInput
             v-model="search"
             size="xs"
@@ -520,7 +521,11 @@ watch(() => props.sessionKey, refresh);
               </span>
             </template>
           </div>
-          <div class="text-[11px] opacity-50 mt-1">{{ t('chat.skills.autoTriggerTitle') }}</div>
+          <div class="text-[11px] opacity-50 mt-1">
+            {{ effectiveLevel(detail) === SkillActivation.TRIGGER
+              ? t('chat.skills.autoTriggerTitle')
+              : t('chat.skills.autoTriggerInactive') }}
+          </div>
         </div>
 
         <div v-if="(detail.arguments ?? []).length">

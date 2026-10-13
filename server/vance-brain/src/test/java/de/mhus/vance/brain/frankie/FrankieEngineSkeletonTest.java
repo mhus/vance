@@ -185,7 +185,8 @@ class FrankieEngineSkeletonTest {
                 new de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry(java.util.List.of()),
                 completionGuard,
                 new de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer(attachmentResolver),
-                clientTurnContextResolver);
+                clientTurnContextResolver,
+                mock(de.mhus.vance.brain.skill.SkillTriggerMatcher.class));
 
         process = new ThinkProcessDocument();
         process.setId(PROC_ID);

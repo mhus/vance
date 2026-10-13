@@ -377,7 +377,7 @@ public class Ford implements ThinkEngine {
 
             List<ResolvedSkill> activeSkills = resolveActiveSkills(process);
 
-            ContextToolsApi tools = ctx.tools().withAdditional(skillPromptComposer.mergedTools(activeSkills));
+            ContextToolsApi tools = ctx.tools().withAdditional(skillTurnSupport.turnTools(process, activeSkills));
             List<ToolSpecification> toolSpecs = tools.primaryAsLc4j();
             ModelInfo modelInfo = modelCatalog.lookupOrDefault(
                     process.getTenantId(),

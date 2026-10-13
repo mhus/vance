@@ -891,7 +891,9 @@ export default {
         'Activation persists until the skill is cleared or the session ends — the skill body is injected into every turn.',
       lifecycleShotHint:
         'Fires once as a macro (prompt or configuration) and is never listed as active — there is nothing to clean up.',
-      autoTrigger: 'Auto-activated on:',
+      autoTrigger: 'Word triggers:',
+      autoTriggerInactive:
+        'Word triggers are off on this level — they only fire on "Word activation".',
       autoTriggerTitle:
         'This skill activates itself automatically when a message matches these keywords or patterns.',
       argumentsLabel: 'Arguments',

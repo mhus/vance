@@ -106,7 +106,7 @@ class FordEngineBaselineTest {
         // read side and research) because each was its own list.
         FrankieEngine frankie = new FrankieEngine(
                 null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null);
+                null, null, null, null, null);
         assertThat(frankie.allowedTools()).containsAll(WorkerEngineTools.CORE);
         assertThat(frankie.allowedTools()).contains("todo_create", "todo_update", "todo_remove");
         assertThat(frankie.toolPoolLabels()).isEqualTo(engine.toolPoolLabels());

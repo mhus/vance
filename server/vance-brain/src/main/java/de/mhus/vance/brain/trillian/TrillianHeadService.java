@@ -11,6 +11,7 @@ import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.SteerMessageCodec;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
+import de.mhus.vance.brain.trillian.exposure.TrillianExposureService;
 import de.mhus.vance.brain.trillian.nature.TrillianNature;
 import de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry;
 import de.mhus.vance.shared.inbox.MaximegalonDocument;
@@ -119,7 +120,7 @@ public class TrillianHeadService {
     private final TrillianNatureRegistry natureRegistry;
     private final TrillianModelGate modelGate;
     private final TrillianInternalApi trillianApi;
-
+    private final TrillianExposureService exposureService;
     private final Duration reminderAfter;
     private final Duration fallbackAfter;
     private final Duration inactivityAfter;
@@ -133,6 +134,7 @@ public class TrillianHeadService {
             TrillianNatureRegistry natureRegistry,
             TrillianModelGate modelGate,
             TrillianInternalApi trillianApi,
+            TrillianExposureService exposureService,
             @Value("${vance.trillian.head.reminder-after-ms:300000}") long reminderAfterMs,
             @Value("${vance.trillian.head.fallback-after-ms:3600000}") long fallbackAfterMs,
             @Value("${vance.trillian.head.inactivity-ms:604800000}") long inactivityMs) {
@@ -144,6 +146,7 @@ public class TrillianHeadService {
         this.natureRegistry = natureRegistry;
         this.modelGate = modelGate;
         this.trillianApi = trillianApi;
+        this.exposureService = exposureService;
         this.reminderAfter = Duration.ofMillis(reminderAfterMs);
         this.fallbackAfter = Duration.ofMillis(fallbackAfterMs);
         this.inactivityAfter = Duration.ofMillis(inactivityMs);
@@ -216,6 +219,24 @@ public class TrillianHeadService {
     }
 
     /**
+     * Whether another conversation head may spawn — the entry gate's honest
+     * "full" answer ({@code planning/trillian-exposure.md} §6.7) and the same
+     * limit {@link #ensureHead} enforces, from one place.
+     */
+    public boolean hasHeadCapacity(ThinkProcessDocument loop, TrillianNature nature) {
+        return liveHeads(loop).size() < effectiveHeadLimit(loop, nature);
+    }
+
+    /**
+     * The head limit in force: the exposure config's override when set,
+     * the Nature's default otherwise.
+     */
+    private int effectiveHeadLimit(ThinkProcessDocument loop, TrillianNature nature) {
+        int configured = exposureService.headLimitOf(loop.getTenantId(), accountOf(loop));
+        return configured > 0 ? configured : nature.headLimit();
+    }
+
+    /**
      * Finds or spawns the head for {@code threadId}:
      *
      * <ol>
@@ -243,11 +264,11 @@ public class TrillianHeadService {
         if (existing.isPresent()) {
             return existing;
         }
-        if (liveHeads(loop).size() >= nature.headLimit()) {
+        if (!hasHeadCapacity(loop, nature)) {
             log.warn(
                     "Trillian head: '{}' is at its head limit ({}) — conversation '{}' waits",
                     accountOf(loop),
-                    nature.headLimit(),
+                    effectiveHeadLimit(loop, nature),
                     threadId);
             return Optional.empty();
         }
@@ -522,7 +543,10 @@ public class TrillianHeadService {
         // Inactivity: no contribution from anyone for the configured window.
         // The head goes in the next round's heads-first pass, with the cause.
         Instant lastActivity = messages.isEmpty() ? item.getCreatedAt() : createdAtOf(messages, item);
-        if (lastActivity != null && Duration.between(lastActivity, now).compareTo(inactivityAfter) > 0) {
+        Duration effectiveInactivity = exposureService
+                .inactivityOf(loop.getTenantId(), accountOf(loop))
+                .orElse(inactivityAfter);
+        if (lastActivity != null && Duration.between(lastActivity, now).compareTo(effectiveInactivity) > 0) {
             endConversation(
                     loop,
                     nature,

@@ -19,6 +19,7 @@ import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.recipe.RecipeSource;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
+import de.mhus.vance.brain.trillian.exposure.TrillianExposureService;
 import de.mhus.vance.brain.trillian.nature.TrillianNature;
 import de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry;
 import de.mhus.vance.shared.inbox.MaximegalonDocument;
@@ -64,6 +65,7 @@ class TrillianHeadServiceTest {
     private final TrillianNatureRegistry natureRegistry = mock(TrillianNatureRegistry.class);
     private final TrillianModelGate modelGate = mock(TrillianModelGate.class);
     private final TrillianInternalApi trillianApi = mock(TrillianInternalApi.class);
+    private final TrillianExposureService exposureService = mock(TrillianExposureService.class);
 
     private final TrillianNature nature = mock(TrillianNature.class);
     private final TrillianHeadService service = new TrillianHeadService(
@@ -75,6 +77,7 @@ class TrillianHeadServiceTest {
             natureRegistry,
             modelGate,
             trillianApi,
+            exposureService,
             REMINDER_MS,
             FALLBACK_MS,
             INACTIVITY_MS);

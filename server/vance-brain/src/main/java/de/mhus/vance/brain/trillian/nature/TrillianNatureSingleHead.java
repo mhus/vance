@@ -11,7 +11,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
  * The base holds what every Trillian does, whichever side it is on. How
  * many heads a Trillian has is a structural decision that the multi-head
  * side answers differently (one conversation process per thread, see
- * {@code planning/trillian-a2a.md} §3.3). Putting the single-head answer
+ * {@code planning/trillian-exposure.md} §3.3). Putting the single-head answer
  * into the base would make it the silent default every Nature inherits;
  * as its own branch it is a choice a Nature makes by what it extends.
  *

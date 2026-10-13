@@ -48,7 +48,7 @@ public interface TrillianNature {
      * concrete Nature picks its side by what it extends and cannot flip it
      * by overriding. Deliberately without a default — a Nature that
      * implements this interface directly has to say which side it is on.
-     * The multi-head side is planned in {@code planning/trillian-a2a.md}
+     * The multi-head side is planned in {@code planning/trillian-exposure.md}
      * §3.3; today every Nature is single-headed.
      */
     boolean multiHead();

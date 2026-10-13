@@ -123,8 +123,8 @@ public class RecipeDescribeTool implements Tool {
         if (r.allowedSkills() != null) {
             out.put("allowedSkills", r.allowedSkills());
         }
-        if (!r.advertisedSkills().isEmpty()) {
-            out.put("advertisedSkills", r.advertisedSkills());
+        if (r.relevantSkills() != null) {
+            out.put("relevantSkills", r.relevantSkills());
         }
         if (!r.triggerKeywords().isEmpty()) {
             out.put("triggerKeywords", r.triggerKeywords());

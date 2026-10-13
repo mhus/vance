@@ -76,16 +76,17 @@ public record ResolvedRecipe(
          */
         @Nullable List<String> allowedSkills,
         /**
-         * Skill selectors for the turn context's "Available skills" list
-         * (skills.md §7e): exact skill names or {@code @label} selectors
-         * matching the skills' {@code tags:}. Pure discovery — a listed
-         * skill is offered to the agent via {@code skill_activate}, never
-         * activated. Resolved per turn against the process scope, so a
-         * newly tagged skill shows up without touching the recipe. Empty
-         * list means "the recipe advertises nothing beyond the skills that
-         * declare {@code activation: agent} themselves".
+         * Which skills make sense for this recipe (skills.md §7e,
+         * planning/skill-activation-levels.md §7.5): exact skill names,
+         * {@code @label} selectors matching the skills' {@code tags:}, and
+         * {@code !}-prefixed exclusions of either. A skill the selectors do
+         * not pick is {@code hidden} on processes running this recipe; a
+         * picked one keeps the level the skill declares. Relevance only —
+         * never activates. Resolved per turn against the process scope.
+         * {@code null} (field absent) means "every skill is relevant", an
+         * empty list "none is".
          */
-        List<String> advertisedSkills,
+        @Nullable List<String> relevantSkills,
         /**
          * Trigger keywords parsed from the YAML {@code triggers.keywords}
          * block. Used by {@link de.mhus.vance.brain.delegate.RecipeSelectorService}
@@ -222,9 +223,8 @@ public record ResolvedRecipe(
 
     /**
      * Backward-compatible constructor for call sites that predate
-     * {@code advertisedSkills} — passes the empty list: a call site that
-     * does not know about the field means a recipe that advertises nothing
-     * of its own.
+     * {@code relevantSkills} — passes {@code null}: a call site that does
+     * not know about the field means a recipe without a relevance filter.
      */
     public ResolvedRecipe(
             String name,
@@ -273,7 +273,7 @@ public record ResolvedRecipe(
                 profiles,
                 defaultActiveSkills,
                 allowedSkills,
-                List.of(),
+                /*relevantSkills*/ null,
                 triggerKeywords,
                 locked,
                 internal,

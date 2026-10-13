@@ -99,4 +99,23 @@ class SkillCommandHelperParserTest {
         assertThat(SkillCommandHelper.modeLabel(derived)).isEqualTo("mode:trigger");
         assertThat(SkillCommandHelper.modeLabel(overridden)).isEqualTo("mode:manual(user)");
     }
+
+    @Test
+    void modeLabel_marksSkillsTheRecipeHides() {
+        SkillSummaryDto irrelevant = SkillSummaryDto.builder()
+                .name("code-review")
+                .activation(SkillActivation.AGENT)
+                .activationSource(SkillActivationSource.FRONTMATTER)
+                .relevant(false)
+                .build();
+        SkillSummaryDto declaredHidden = SkillSummaryDto.builder()
+                .name("experimental")
+                .activation(SkillActivation.HIDDEN)
+                .activationSource(SkillActivationSource.FRONTMATTER)
+                .relevant(false)
+                .build();
+
+        assertThat(SkillCommandHelper.modeLabel(irrelevant)).isEqualTo("mode:agent → hidden(recipe)");
+        assertThat(SkillCommandHelper.modeLabel(declaredHidden)).isEqualTo("mode:hidden");
+    }
 }

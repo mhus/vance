@@ -24,7 +24,7 @@ import org.yaml.snakeyaml.Yaml;
  * means to, and nothing else would notice.
  *
  * <p>Scope: only values of {@code allowedTools*} keys (top level, profiles, modes — anywhere in
- * the YAML). Skill label selectors ({@code advertisedSkills: ["@coding"]}, skills.md §7e)
+ * the YAML). Skill selectors ({@code relevantSkills: ["@coding"]}, skills.md §7e)
  * share the {@code @} syntax in the same files but select <b>skills</b> by tag, so a text scan
  * over whole recipes would report them as unknown tool labels.
  *

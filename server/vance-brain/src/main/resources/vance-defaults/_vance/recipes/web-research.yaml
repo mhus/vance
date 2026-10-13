@@ -9,6 +9,12 @@ description: |
   source attributions ([source: url]). Single-shot worker (no
   sub-tasks); not for tasks that need decomposition into phases.
 engine: ford
+
+relevantSkills:
+  # Which skills make sense here (skills.md §7e): everything except the
+  # coding group.
+  - "!@coding"
+
 params:
   model: default:web-research,default:web
   validation: true

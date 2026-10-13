@@ -68,13 +68,13 @@ public class SkillSummaryDto {
     private List<String> tools = new ArrayList<>();
 
     /**
-     * Effective activation mode (skills.md §2, planning/
-     * skill-activation-levels.md §3.1): which surfaces offer this
-     * skill — {@code manual} (none), {@code trigger} (word activation
-     * armed) or {@code agent} (listed in every turn context for the agent
-     * to activate). Scope-level
-     * overrides from {@code _vance/config/skill_activation.yaml} are
-     * already folded in.
+     * The skill's activation level (skills.md §2, planning/
+     * skill-activation-levels.md §7): {@code hidden}, {@code manual},
+     * {@code trigger} (word activation armed) or {@code agent} (listed
+     * under "Available skills" for the model). Frontmatter or derivation
+     * with the scope overrides from {@code _vance/config/skill_activation.yaml}
+     * folded in — the value the mode dropdown edits. The recipe's
+     * relevance filter is <em>not</em> folded in; see {@link #relevant}.
      */
     private SkillActivation activation;
 
@@ -90,6 +90,16 @@ public class SkillSummaryDto {
      * otherwise.
      */
     private @Nullable SkillScope activationOverrideScope;
+
+    /**
+     * Whether the listing process's recipe considers this skill relevant
+     * ({@code relevantSkills}, planning/skill-activation-levels.md §7.5).
+     * {@code false} makes the effective level {@code hidden} in that
+     * context, whatever {@link #activation} says. Always {@code true}
+     * outside a process context and for recipes without the field.
+     */
+    @Builder.Default
+    private boolean relevant = true;
 
     /** Manual folder paths the skill contributes to {@code manual_read} while active. */
     @Builder.Default

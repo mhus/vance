@@ -163,12 +163,13 @@ public class BenjyFeatureConfig {
                     throw new IllegalArgumentException("Benjy id='" + processId + "' params.features." + stage
                             + ".skills entries must be non-blank skill names");
                 }
-                if (s.strip().startsWith("@")) {
-                    // Labels select what is advertised (recipe advertisedSkills),
-                    // never what is composed — a stage skill is a deliberate choice.
+                if (s.strip().startsWith("@") || s.strip().startsWith("!")) {
+                    // Selectors decide which skills are relevant (recipe
+                    // relevantSkills), never what is composed — a stage
+                    // skill is a deliberate choice.
                     throw new IllegalArgumentException("Benjy id='" + processId + "' params.features." + stage
-                            + ".skills entry '" + s.strip() + "' is a label selector — stage skills are exact"
-                            + " skill names (labels belong in the recipe's advertisedSkills)");
+                            + ".skills entry '" + s.strip() + "' is a selector — stage skills are exact"
+                            + " skill names (selectors belong in the recipe's relevantSkills)");
                 }
                 names.add(s.trim());
             }

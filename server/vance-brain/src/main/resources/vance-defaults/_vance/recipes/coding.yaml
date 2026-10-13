@@ -23,6 +23,12 @@ description: |
 
 engine: frankie
 
+relevantSkills:
+  # Which skills make sense here (skills.md §7e): the coding group. Each
+  # skill's own activation level decides how it is offered (the bundled
+  # coding skills are `agent` → listed under "Available skills").
+  - "@coding"
+
 # Research surface — useful for "what does library X do", "best
 # practice for Y in language Z", etc. Frankie's engine baseline
 # does not include these (other recipes may not need them).

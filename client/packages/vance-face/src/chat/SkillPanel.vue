@@ -17,7 +17,7 @@ import type {
   SkillCategoryDto,
   SkillSummaryDto,
 } from '@vance/generated';
-import { VAlert, VBadge, VButton, VEmptyState, VModal } from '@components/index';
+import { VAlert, VBadge, VButton, VEmptyState, VInput, VModal, VToggle } from '@components/index';
 import { groupCategorized } from '@/util/categoryGroups';
 
 interface Props {
@@ -113,6 +113,7 @@ const rows = computed(() => {
           lifecycle: '',
           activation: SkillActivation.MANUAL,
           activationSource: SkillActivationSource.DERIVED,
+          relevant: true,
           tools: [],
           manualPaths: [],
           arguments: [],
@@ -133,13 +134,72 @@ const rows = computed(() => {
 });
 
 /**
+ * Effective level in this chat (planning/skill-activation-levels.md §7.4):
+ * the skill's mode, or hidden when the process recipe does not consider
+ * it relevant.
+ */
+function effectiveLevel(summary: SkillSummaryDto): SkillActivation {
+  return summary.relevant === false ? SkillActivation.HIDDEN : summary.activation;
+}
+
+/**
+ * Hidden skills are collapsed by default — they are not meaningful here,
+ * but stay activatable on purpose. Active ones always show. The toggle is
+ * a per-viewer convenience, so browser storage is enough (and optional).
+ */
+const SHOW_HIDDEN_KEY = 'vance.chat.skills.showHidden';
+function readShowHidden(): boolean {
+  try {
+    return window.localStorage.getItem(SHOW_HIDDEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+const showHidden = ref(readShowHidden());
+watch(showHidden, (value) => {
+  try {
+    window.localStorage.setItem(SHOW_HIDDEN_KEY, value ? '1' : '0');
+  } catch {
+    // Storage blocked — the toggle still works for this page view.
+  }
+});
+
+const hiddenCount = computed(
+  () => rows.value.filter((row) => !row.ref && effectiveLevel(row.summary) === SkillActivation.HIDDEN).length,
+);
+
+/** Free-text filter over name, title, description and tags. */
+const search = ref('');
+
+function matchesSearch(summary: SkillSummaryDto, query: string): boolean {
+  const haystack = [summary.name, summary.title, summary.description, ...(summary.tags ?? [])]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  return query.split(/\s+/).every((term) => haystack.includes(term));
+}
+
+/**
+ * Rows the panel shows: hidden skills only behind the toggle (active ones
+ * always). A search is a deliberate lookup, so it covers hidden skills too
+ * — the same rule how_do_i follows.
+ */
+const visibleRows = computed(() => {
+  const query = search.value.trim().toLowerCase();
+  if (query) return rows.value.filter((row) => matchesSearch(row.summary, query));
+  return showHidden.value
+    ? rows.value
+    : rows.value.filter((row) => row.ref || effectiveLevel(row.summary) !== SkillActivation.HIDDEN);
+});
+
+/**
  * Rows grouped by category for the panel rendering: first-occurrence
  * order over the server-sorted list (skills.md §4f). The category key
  * lives on the summary; the synthetic active-but-unlisted rows carry
  * none and land in the trailing "no category" group.
  */
 const groups = computed(() => groupCategorized(
-  rows.value,
+  visibleRows.value,
   (row) => row.summary.category,
   categories.value,
   locale.value,
@@ -211,11 +271,12 @@ async function setMode(mode: SkillActivation): Promise<void> {
 }
 
 /**
- * Localised label of an activation mode (skills.md §2): the monotone
- * manual ⊂ trigger ⊂ agent ladder.
+ * Localised label of an activation level (skills.md §2): the ladder
+ * hidden < manual < trigger < agent.
  */
 function modeLabel(mode: SkillActivation): string {
   switch (mode) {
+    case SkillActivation.HIDDEN: return t('chat.skills.modeHidden');
     case SkillActivation.MANUAL: return t('chat.skills.modeManual');
     case SkillActivation.TRIGGER: return t('chat.skills.modeTrigger');
     case SkillActivation.AGENT: return t('chat.skills.modeAgent');
@@ -225,6 +286,7 @@ function modeLabel(mode: SkillActivation): string {
 /** i18n key of the short mode badge in the row list. */
 function modeBadgeKey(mode: SkillActivation): string {
   switch (mode) {
+    case SkillActivation.HIDDEN: return 'chat.skills.modeBadgeHidden';
     case SkillActivation.MANUAL: return 'chat.skills.modeBadgeManual';
     case SkillActivation.TRIGGER: return 'chat.skills.modeBadgeTrigger';
     case SkillActivation.AGENT: return 'chat.skills.modeBadgeAgent';
@@ -269,16 +331,30 @@ watch(() => props.sessionKey, refresh);
       <div class="text-xs uppercase tracking-wide opacity-60 font-semibold">
         {{ t('chat.skills.title') }}
       </div>
-      <VButton
-        variant="ghost"
-        size="sm"
-        :loading="loading"
-        :disabled="!sessionKey"
-        :title="t('chat.skills.refresh')"
-        @click="refresh"
-      >
-        ⟳
-      </VButton>
+      <div class="flex items-center gap-2">
+        <VToggle
+          v-model="showHidden"
+          :title="t('chat.skills.showHiddenTitle', { count: hiddenCount })"
+        />
+        <div class="w-36">
+          <VInput
+            v-model="search"
+            size="xs"
+            :title="t('chat.skills.searchPlaceholder')"
+            :placeholder="t('chat.skills.searchPlaceholder')"
+          />
+        </div>
+        <VButton
+          variant="ghost"
+          size="sm"
+          :loading="loading"
+          :disabled="!sessionKey"
+          :title="t('chat.skills.refresh')"
+          @click="refresh"
+        >
+          ⟳
+        </VButton>
+      </div>
     </div>
 
     <VAlert v-if="error" variant="error">
@@ -312,7 +388,7 @@ watch(() => props.sessionKey, refresh);
           v-for="row in group.items"
           :key="row.summary.name"
         class="bg-base-200 rounded px-2.5 py-2 text-left text-sm"
-        :class="{ 'opacity-50': !row.summary.enabled }"
+        :class="{ 'opacity-50': !row.summary.enabled || effectiveLevel(row.summary) === SkillActivation.HIDDEN }"
       >
         <div class="flex items-center gap-2">
           <div class="flex-1 min-w-0 flex flex-col gap-1">
@@ -329,12 +405,14 @@ watch(() => props.sessionKey, refresh);
               </VBadge>
               <VBadge
                 v-if="row.summary.activation"
-                :variant="row.summary.activation === SkillActivation.AGENT ? 'success' : 'neutral'"
+                :variant="effectiveLevel(row.summary) === SkillActivation.AGENT ? 'success' : 'neutral'"
                 size="xs"
                 outline
-                :title="modeLabel(row.summary.activation)"
+                :title="row.summary.relevant === false
+                  ? t('chat.skills.notRelevantTitle')
+                  : modeLabel(row.summary.activation)"
               >
-                {{ t(modeBadgeKey(row.summary.activation)) }}
+                {{ t(modeBadgeKey(effectiveLevel(row.summary))) }}
               </VBadge>
               <VBadge variant="neutral" size="xs" outline>
                 {{ row.summary.source }}
@@ -407,6 +485,7 @@ watch(() => props.sessionKey, refresh);
             :disabled="modeSaving"
             @change="setMode(($event.target as HTMLSelectElement).value as SkillActivation)"
           >
+            <option :value="SkillActivation.HIDDEN">{{ modeLabel(SkillActivation.HIDDEN) }}</option>
             <option :value="SkillActivation.MANUAL">{{ modeLabel(SkillActivation.MANUAL) }}</option>
             <option :value="SkillActivation.TRIGGER">{{ modeLabel(SkillActivation.TRIGGER) }}</option>
             <option :value="SkillActivation.AGENT">{{ modeLabel(SkillActivation.AGENT) }}</option>
@@ -416,6 +495,9 @@ watch(() => props.sessionKey, refresh);
               ? t('chat.skills.modeOverrideHint', { scope: detail.activationOverrideScope ?? 'USER' })
               : t('chat.skills.modeAuthorHint') }}
           </span>
+        </div>
+        <div v-if="detail.relevant === false" class="text-xs opacity-70">
+          {{ t('chat.skills.notRelevantHint') }}
         </div>
 
         <div v-if="triggerTokens(detail).length">

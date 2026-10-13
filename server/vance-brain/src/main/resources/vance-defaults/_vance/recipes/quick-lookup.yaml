@@ -6,6 +6,12 @@ description: |
   short answer suffices — file existence, current date, single
   shell command.
 engine: ford
+
+relevantSkills:
+  # Which skills make sense here (skills.md §7e): everything except the
+  # coding group.
+  - "!@coding"
+
 params:
   model: default:quick-lookup,default:fast
   validation: true

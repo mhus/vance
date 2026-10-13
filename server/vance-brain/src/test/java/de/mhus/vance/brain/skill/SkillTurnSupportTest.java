@@ -7,6 +7,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.api.skills.SkillActivation;
 import de.mhus.vance.api.skills.SkillScope;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.recipe.ResolvedRecipe;
@@ -14,6 +15,7 @@ import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -67,7 +69,15 @@ class SkillTurnSupportTest {
     void setUp() {
         when(recipeResolverProvider.getIfAvailable()).thenReturn(recipeResolver);
         support = new SkillTurnSupport(
-                skillResolver, composer, sessionService, activationService, recipeResolverProvider);
+                skillResolver,
+                composer,
+                sessionService,
+                new SkillLevelResolver(
+                        activationService,
+                        sessionService,
+                        skillResolver,
+                        Mockito.mock(ThinkProcessService.class),
+                        recipeResolverProvider));
     }
 
     private ThinkProcessDocument processWith(ActiveSkillRefEmbedded... skills) {
@@ -330,25 +340,54 @@ class SkillTurnSupportTest {
     }
 
     @Test
-    void advertise_recipeSelectsManualSkillsByLabelAndName() {
+    void advertise_recipeRelevance_listsOnlyTheAgentSkillsItSelects() {
         advertiseCandidates(
-                tagged("code-review", "code", "coding"),
-                tagged("lint-rules", "Coding"),
-                tagged("pinned-by-name"),
-                tagged("unrelated", "docs"));
-        recipeAdvertises("coder", "@coding", "pinned-by-name");
+                tagged("code-review", SkillActivation.AGENT, "code", "coding"),
+                tagged("lint-rules", SkillActivation.AGENT, "Coding"),
+                tagged("pinned-by-name", SkillActivation.AGENT),
+                tagged("unrelated", SkillActivation.AGENT, "docs"),
+                tagged("manual-coding", null, "coding"));
+        recipeRelevant("coder", "@coding", "pinned-by-name");
         ThinkProcessDocument process = processWith();
         process.setRecipeName("coder");
 
         String section = support.advertiseSection(process, List.of());
 
-        // All three are 'manual' by derivation — the recipe offers them anyway.
         assertThat(section).contains("- code-review:", "- lint-rules:", "- pinned-by-name:");
+        // Not selected → hidden, although its mode is agent.
         assertThat(section).doesNotContain("unrelated");
+        // Relevance never raises the level: a relevant manual skill stays off the list.
+        assertThat(section).doesNotContain("manual-coding");
     }
 
     @Test
-    void advertise_recipeSelectionStillRespectsWhitelistAndDisabled() {
+    void advertise_exclusionOnly_hidesTheExcludedGroupAndKeepsTheRest() {
+        advertiseCandidates(
+                tagged("code-review", SkillActivation.AGENT, "coding"),
+                tagged("design-blueprint", SkillActivation.AGENT, "design"),
+                tagged("untagged", SkillActivation.AGENT));
+        recipeRelevant("default", "!@coding");
+        ThinkProcessDocument process = processWith();
+        process.setRecipeName("default");
+
+        String section = support.advertiseSection(process, List.of());
+
+        assertThat(section).contains("- design-blueprint:", "- untagged:");
+        assertThat(section).doesNotContain("code-review");
+    }
+
+    @Test
+    void advertise_emptyRelevantList_hidesEverything() {
+        advertiseCandidates(tagged("code-review", SkillActivation.AGENT, "coding"));
+        recipeRelevant("silent");
+        ThinkProcessDocument process = processWith();
+        process.setRecipeName("silent");
+
+        assertThat(support.advertiseSection(process, List.of())).isNull();
+    }
+
+    @Test
+    void advertise_relevanceStillRespectsWhitelistAndDisabled() {
         ResolvedSkill disabledTagged = new ResolvedSkill(
                 "off",
                 "off",
@@ -371,9 +410,12 @@ class SkillTurnSupportTest {
                 List.of(),
                 null,
                 SkillRun.INLINE,
-                null);
-        advertiseCandidates(tagged("code-review", "coding"), tagged("locked-out", "coding"), disabledTagged);
-        recipeAdvertises("coder", "@coding");
+                SkillActivation.AGENT);
+        advertiseCandidates(
+                tagged("code-review", SkillActivation.AGENT, "coding"),
+                tagged("locked-out", SkillActivation.AGENT, "coding"),
+                disabledTagged);
+        recipeRelevant("coder", "@coding");
         ThinkProcessDocument process = processWith();
         process.setRecipeName("coder");
         process.setAllowedSkillsOverride(java.util.Set.of("code-review", "off"));
@@ -385,18 +427,19 @@ class SkillTurnSupportTest {
     }
 
     @Test
-    void advertise_recipeThatNoLongerResolves_fallsBackToAgentSkills() {
-        advertiseCandidates(agentSkill("alpha"), tagged("code-review", "coding"));
+    void advertise_recipeThatNoLongerResolves_treatsEverySkillAsRelevant() {
+        advertiseCandidates(agentSkill("alpha"), tagged("code-review", SkillActivation.AGENT, "coding"));
         when(recipeResolver.resolve(any(), any(), eq("gone"))).thenThrow(new IllegalStateException("broken yaml"));
         ThinkProcessDocument process = processWith();
         process.setRecipeName("gone");
 
         String section = support.advertiseSection(process, List.of());
 
-        assertThat(section).contains("- alpha:").doesNotContain("code-review");
+        assertThat(section).contains("- alpha:", "- code-review:");
     }
 
-    private static ResolvedSkill tagged(String name, String... tags) {
+    private static ResolvedSkill tagged(
+            String name, @org.jspecify.annotations.Nullable SkillActivation activation, String... tags) {
         return new ResolvedSkill(
                 name,
                 name,
@@ -419,12 +462,12 @@ class SkillTurnSupportTest {
                 List.of(),
                 null,
                 SkillRun.INLINE,
-                null);
+                activation);
     }
 
-    private void recipeAdvertises(String recipeName, String... selectors) {
+    private void recipeRelevant(String recipeName, String... selectors) {
         ResolvedRecipe recipe = Mockito.mock(ResolvedRecipe.class);
-        when(recipe.advertisedSkills()).thenReturn(List.of(selectors));
+        when(recipe.relevantSkills()).thenReturn(List.of(selectors));
         when(recipeResolver.resolve(any(), any(), eq(recipeName))).thenReturn(Optional.of(recipe));
     }
 

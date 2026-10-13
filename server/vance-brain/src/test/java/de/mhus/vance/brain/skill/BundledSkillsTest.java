@@ -64,9 +64,11 @@ class BundledSkillsTest {
     }
 
     @Test
-    void codingSkills_areOfferedByLabel_notSelfAdvertised() throws IOException {
-        // benjy-do-coding advertises "@coding" (skills.md §7e): these skills reach
-        // coding doers through the tag, and stay out of every other context.
+    void codingSkills_areTaggedCoding_andAgentDriven() throws IOException {
+        // Coding recipes select "@coding" as relevant, chat recipes exclude it
+        // (skills.md §7e): the tag decides where the skills make sense, their
+        // own level how they are offered there — the model picks via
+        // skill_activate. commit-message is a macro the user fires, so manual.
         Map<String, ResolvedSkill> skills = bundledSkills();
         for (String name : List.of(
                 "code-review",
@@ -80,7 +82,9 @@ class BundledSkillsTest {
             assertThat(skill.enabled()).as(name + " enabled").isTrue();
             assertThat(skill.tags()).as(name + " tags").contains("coding");
             assertThat(skill.category()).as(name + " category").isEqualTo("coding");
-            assertThat(skill.frontmatterActivation()).as(name + " activation").isNotEqualTo(SkillActivation.AGENT);
+            assertThat(skill.frontmatterActivation())
+                    .as(name + " activation")
+                    .isEqualTo("commit-message".equals(name) ? SkillActivation.MANUAL : SkillActivation.AGENT);
         }
     }
 
@@ -90,5 +94,62 @@ class BundledSkillsTest {
         assertThat(skill.lifecycle()).isEqualTo(SkillLifecycle.SHOT);
         assertThat(skill.action()).contains("git diff --staged");
         assertThat(skill.consumesArgs()).isTrue();
+    }
+
+    /** {@code relevantSkills} of every bundled recipe on the brain's classpath, by recipe name. */
+    private static Map<String, List<String>> bundledRelevantSkills() throws IOException {
+        Map<String, List<String>> out = new LinkedHashMap<>();
+        for (Resource resource :
+                RESOLVER.getResources("classpath*:" + DocumentService.RESOURCE_PREFIX + "_vance/recipes/*.yaml")) {
+            try (InputStream in = resource.getInputStream()) {
+                Object parsed = new org.yaml.snakeyaml.Yaml().load(in);
+                if (parsed instanceof Map<?, ?> m && m.get("relevantSkills") instanceof List<?> list) {
+                    String file = resource.getFilename();
+                    out.put(
+                            file.substring(0, file.length() - ".yaml".length()),
+                            list.stream().map(String::valueOf).toList());
+                }
+            }
+        }
+        return out;
+    }
+
+    @Test
+    void everyRecipeSkillLabel_matchesABundledSkillTag() throws IOException {
+        // A typo'd label ("@codin") silently selects nothing — an inclusion
+        // would hide everything, an exclusion would hide nothing.
+        java.util.Set<String> tags = new java.util.HashSet<>();
+        for (ResolvedSkill skill : bundledSkills().values()) {
+            skill.tags().forEach(t -> tags.add(t.strip().toLowerCase(java.util.Locale.ROOT)));
+        }
+        Map<String, List<String>> recipes = bundledRelevantSkills();
+        assertThat(recipes).isNotEmpty();
+        recipes.forEach((recipe, selectors) -> {
+            for (String entry : selectors) {
+                if (SkillLabelSelector.isLabelSelector(entry)) {
+                    assertThat(tags).as(recipe + " selector " + entry).contains(SkillLabelSelector.labelOf(entry));
+                }
+            }
+        });
+    }
+
+    @Test
+    void chatRecipesHideTheCodingGroup_codingRecipesSelectIt() throws IOException {
+        Map<String, List<String>> recipes = bundledRelevantSkills();
+        ResolvedSkill codeReview = bundledSkills().get("code-review");
+        ResolvedSkill decisionFrame = bundledSkills().get("decision-frame");
+        for (String chat : List.of("arthur", "eddie", "discuss")) {
+            assertThat(SkillLabelSelector.relevant(recipes.get(chat), codeReview))
+                    .as(chat)
+                    .isFalse();
+            assertThat(SkillLabelSelector.relevant(recipes.get(chat), decisionFrame))
+                    .as(chat)
+                    .isTrue();
+        }
+        for (String coding : List.of("coding", "benjy-do-coding")) {
+            assertThat(SkillLabelSelector.relevant(recipes.get(coding), codeReview))
+                    .as(coding)
+                    .isTrue();
+        }
     }
 }

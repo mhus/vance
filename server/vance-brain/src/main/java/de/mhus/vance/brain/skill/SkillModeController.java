@@ -53,7 +53,7 @@ public class SkillModeController {
             @RequestBody SkillModeRequest request,
             HttpServletRequest httpRequest) {
         if (request == null || request.getMode() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "mode is required (manual|trigger|agent)");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "mode is required (hidden|manual|trigger|agent)");
         }
         if (request.getScope() == null) {
             request.setScope(SkillModeScope.USER);

@@ -34,8 +34,7 @@ import org.jspecify.annotations.Nullable;
  */
 public final class CatalogFilter {
 
-    private static final Pattern ENTRY_HEADER =
-            Pattern.compile("(?m)^###\\s+(?<name>\\S+)\\s*$");
+    private static final Pattern ENTRY_HEADER = Pattern.compile("(?m)^###\\s+(?<name>\\S+)\\s*$");
 
     private CatalogFilter() {}
 
@@ -63,9 +62,7 @@ public final class CatalogFilter {
      * used by tests and by callers that want to inspect what got
      * filtered.
      */
-    public static Set<String> entriesToDrop(
-            Map<String, CatalogSnapshot.EntrySpec> entries,
-            Set<String> allowedTools) {
+    public static Set<String> entriesToDrop(Map<String, CatalogSnapshot.EntrySpec> entries, Set<String> allowedTools) {
         Set<String> drop = new HashSet<>();
         if (entries == null || entries.isEmpty()) return drop;
         for (Map.Entry<String, CatalogSnapshot.EntrySpec> e : entries.entrySet()) {
@@ -79,6 +76,32 @@ public final class CatalogFilter {
             }
         }
         return drop;
+    }
+
+    /**
+     * Moves the {@code ###} entries named in {@code demote} out of their
+     * sections into one trailing section under {@code heading} — ranking
+     * without filtering: the entries stay discoverable, they just come
+     * after everything else. Pass-through when nothing matches.
+     */
+    public static String demoteEntries(String markdown, Set<String> demote, String heading) {
+        if (markdown == null || demote == null || demote.isEmpty()) return markdown;
+        String[] lines = markdown.split("\\R", -1);
+        StringBuilder kept = new StringBuilder(markdown.length());
+        StringBuilder moved = new StringBuilder();
+        boolean moving = false;
+        for (String line : lines) {
+            if (line.startsWith("## ") && !line.startsWith("### ")) {
+                moving = false;
+            } else if (line.startsWith("### ")) {
+                Matcher m = ENTRY_HEADER.matcher(line);
+                moving = m.find() && demote.contains(m.group("name"));
+            }
+            (moving ? moved : kept).append(line).append('\n');
+        }
+        if (moved.isEmpty()) return markdown;
+        if (kept.length() > 0 && kept.charAt(kept.length() - 1) == '\n') kept.setLength(kept.length() - 1);
+        return kept + "\n\n" + heading + "\n\n" + moved.toString().strip() + "\n";
     }
 
     /**

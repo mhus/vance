@@ -387,7 +387,7 @@ public class SkillActivationService {
                 SkillActivation mode = raw instanceof String s ? SkillActivation.parse(s) : null;
                 if (mode == null) {
                     log.warn(
-                            "SkillActivationService: skipping activation override '{}' → '{}' in '{}' (expected manual|trigger|agent)",
+                            "SkillActivationService: skipping activation override '{}' → '{}' in '{}' (expected hidden|manual|trigger|agent)",
                             name,
                             raw,
                             projectId);

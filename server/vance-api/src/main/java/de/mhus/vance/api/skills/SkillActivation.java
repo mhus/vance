@@ -4,39 +4,45 @@ import de.mhus.vance.api.annotations.GenerateTypeScript;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Activation mode of a skill — which surfaces offer it for activation (skills.md §2, planning/
- * skill-activation-levels.md §3.1). A monotone ordering:
- * {@code manual} ⊂ {@code trigger} ⊂ {@code agent} — each level can do
- * everything the previous one can, plus one more surface.
+ * Activation level of a skill — where it is offered once it is relevant
+ * (skills.md §2, planning/skill-activation-levels.md §7). One ladder,
+ * ordered {@code hidden < manual < trigger < agent}:
  *
  * <ul>
- *   <li>{@link #MANUAL}: offered nowhere — activated by a deliberate
- *       gesture ({@code /skill}, recipe {@code defaultActiveSkills}) or by
- *       an agent that found it via {@code how_do_i}. Not a permission:
- *       only {@code enabled: false} blocks activation.</li>
- *   <li>{@link #TRIGGER}: word activation on top — the {@code triggers:}
+ *   <li>{@link #HIDDEN}: not meaningful here — hidden in the skill panel
+ *       by default (a toggle shows it), no word activation, not listed for
+ *       the AI. Also the effective level of every skill the process
+ *       recipe's {@code relevantSkills} does not select.</li>
+ *   <li>{@link #MANUAL}: shown in the panel, activated by a deliberate
+ *       gesture only ({@code /skill}, recipe {@code defaultActiveSkills},
+ *       an agent that found it via {@code how_do_i}).</li>
+ *   <li>{@link #TRIGGER}: word activation — the {@code triggers:}
  *       frontmatter block is honored by the auto-trigger matcher.</li>
- *   <li>{@link #AGENT}: the skill is advertised to the LLM (an
- *       "Available skills" card in the turn context) so the agent can
- *       activate it without a discovery round-trip. Triggers stay armed
- *       when the skill declares them.</li>
+ *   <li>{@link #AGENT}: listed under "Available skills" in the turn
+ *       context; the model decides via {@code skill_activate}. Triggers
+ *       are not armed — a word match would pre-empt that decision.</li>
  * </ul>
  *
- * <p>The mode is configuration (per skill + scope), not state: "is the
- * skill active on this process" lives on {@code ActiveSkillRef} and is a
- * different axis. {@code enabled: false} remains the hard kill switch
- * independent of the mode.
+ * <p>No level is a permission: every enabled skill stays activatable by
+ * a deliberate gesture, including a hidden one. Only {@code enabled:
+ * false} and the recipe's {@code allowedSkills} whitelist block it. The
+ * level is configuration (per skill + scope, filtered by the recipe), not
+ * state: "is the skill active on this process" lives on
+ * {@code ActiveSkillRef} and is a different axis.
  */
 @GenerateTypeScript("skills")
 public enum SkillActivation {
 
-    /** Offered nowhere: no word activation, not listed in the turn context. */
+    /** Not meaningful in this context: hidden by default, offered nowhere, still activatable on purpose. */
+    HIDDEN,
+
+    /** Shown, offered nowhere: no word activation, not listed in the turn context. */
     MANUAL,
 
-    /** Word activation: the {@code triggers:} block is armed, plus everything {@link #MANUAL} allows. */
+    /** Word activation: the {@code triggers:} block is armed. */
     TRIGGER,
 
-    /** Listed in every turn context ("Available skills") for the agent to activate. Superset of {@link #TRIGGER}. */
+    /** Listed in the turn context ("Available skills") for the agent to activate; triggers are not armed. */
     AGENT;
 
     /** Wire / YAML form — lowercase, matching the SKILL.md frontmatter vocabulary. */
@@ -53,6 +59,7 @@ public enum SkillActivation {
         if (raw == null) return null;
         String cleaned = raw.trim().toLowerCase(java.util.Locale.ROOT);
         return switch (cleaned) {
+            case "hidden" -> HIDDEN;
             case "manual" -> MANUAL;
             case "trigger" -> TRIGGER;
             case "agent" -> AGENT;

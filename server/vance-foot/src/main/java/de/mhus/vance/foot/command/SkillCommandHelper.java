@@ -98,15 +98,20 @@ public class SkillCommandHelper {
     }
 
     /**
-     * The activation mode column of {@code /skill list}: the effective mode,
+     * The activation level column of {@code /skill list}: the skill's mode,
      * plus the override tier when a scope document set it — e.g.
-     * {@code mode:agent} or {@code mode:manual(user)}.
+     * {@code mode:agent} or {@code mode:manual(user)} — and
+     * {@code → hidden(recipe)} when the process recipe does not consider
+     * the skill relevant, which makes it hidden here whatever its mode.
      */
     static String modeLabel(SkillSummaryDto dto) {
         if (dto.getActivation() == null) return "mode:?";
         String label = "mode:" + dto.getActivation().wireName();
         if (dto.getActivationSource() == SkillActivationSource.OVERRIDE && dto.getActivationOverrideScope() != null) {
             label += "(" + dto.getActivationOverrideScope().name().toLowerCase(Locale.ROOT) + ")";
+        }
+        if (!dto.isRelevant() && dto.getActivation() != SkillActivation.HIDDEN) {
+            label += " → hidden(recipe)";
         }
         return label;
     }
@@ -146,7 +151,7 @@ public class SkillCommandHelper {
     public void setMode(String skillName, String mode, @Nullable String scope) throws Exception {
         SkillActivation parsed = SkillActivation.parse(mode);
         if (parsed == null) {
-            terminal.error("Unknown mode '" + mode + "' — expected manual | trigger | agent");
+            terminal.error("Unknown mode '" + mode + "' — expected hidden | manual | trigger | agent");
             return;
         }
         SkillModeScope targetScope;

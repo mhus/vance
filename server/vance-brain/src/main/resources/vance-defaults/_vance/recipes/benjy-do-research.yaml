@@ -20,6 +20,11 @@ description: |
 
 engine: ford
 
+relevantSkills:
+  # Which skills make sense here (skills.md §7e): everything except the
+  # coding group.
+  - "!@coding"
+
 allowedToolsDefer:
   # Family selector — covers every client_* tool, current and future.
   - client_*

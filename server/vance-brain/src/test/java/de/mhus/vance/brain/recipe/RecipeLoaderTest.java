@@ -523,45 +523,69 @@ class RecipeLoaderTest {
     }
 
     @Test
-    void load_advertisedSkills_takesNamesAndLabelSelectors() {
-        // advertisedSkills only decides what the "Available skills" list
-        // offers (skills.md §7e) — membership resolves per turn, so parse
+    void load_relevantSkills_takesNamesLabelsAndExclusions() {
+        // relevantSkills only decides which skills make sense for the
+        // recipe (skills.md §7e) — membership resolves per turn, so parse
         // validates shape only and the whitelist is not consulted.
         stubRecipe("""
                 description: Labelled
                 engine: eddie
-                advertisedSkills: ["@coding", code-review]
+                relevantSkills: ["@coding", code-review, "!@design", "!commit-message"]
                 allowedSkills: [code-review]
                 """);
 
         ResolvedRecipe recipe = loader.load("acme", "p-1", "analyze").orElseThrow();
 
-        assertThat(recipe.advertisedSkills()).containsExactly("@coding", "code-review");
+        assertThat(recipe.relevantSkills()).containsExactly("@coding", "code-review", "!@design", "!commit-message");
         assertThat(recipe.defaultActiveSkills()).isEmpty();
     }
 
     @Test
-    void load_advertisedSkills_absent_isEmpty() {
+    void load_relevantSkills_absentIsNull() {
+        // Absent = every skill relevant; [] = none — the two must not collapse.
         stubRecipe("""
                 description: Plain
                 engine: eddie
                 """);
+        assertThat(loader.load("acme", "p-1", "analyze").orElseThrow().relevantSkills())
+                .isNull();
+    }
 
-        assertThat(loader.load("acme", "p-1", "analyze").orElseThrow().advertisedSkills())
+    @Test
+    void load_relevantSkills_emptyListIsEmpty() {
+        stubRecipe("""
+                description: Nothing relevant
+                engine: eddie
+                relevantSkills: []
+                """);
+        assertThat(loader.load("acme", "p-1", "analyze").orElseThrow().relevantSkills())
                 .isEmpty();
     }
 
     @Test
-    void load_advertisedSkills_emptyLabelSelector_isRejected() {
+    void load_relevantSkills_malformedEntry_isRejected() {
         stubRecipe("""
                 description: Bad label
                 engine: eddie
-                advertisedSkills: ["@"]
+                relevantSkills: ["!@"]
                 """);
 
         assertThatThrownBy(() -> loader.load("acme", "p-1", "analyze"))
                 .isInstanceOf(RecipeLoader.RecipeParseException.class)
-                .hasMessageContaining("empty '@' label selector in advertisedSkills");
+                .hasMessageContaining("malformed relevantSkills entry '!@'");
+    }
+
+    @Test
+    void load_advertisedSkills_isRejectedWithTheReplacement() {
+        stubRecipe("""
+                description: Old field
+                engine: eddie
+                advertisedSkills: ["@coding"]
+                """);
+
+        assertThatThrownBy(() -> loader.load("acme", "p-1", "analyze"))
+                .isInstanceOf(RecipeLoader.RecipeParseException.class)
+                .hasMessageContaining("'advertisedSkills' was replaced by 'relevantSkills'");
     }
 
     @Test
@@ -575,7 +599,7 @@ class RecipeLoaderTest {
 
         assertThatThrownBy(() -> loader.load("acme", "p-1", "analyze"))
                 .isInstanceOf(RecipeLoader.RecipeParseException.class)
-                .hasMessageContaining("labels select advertised skills");
+                .hasMessageContaining("selectors decide which skills are relevant");
     }
 
     @Test

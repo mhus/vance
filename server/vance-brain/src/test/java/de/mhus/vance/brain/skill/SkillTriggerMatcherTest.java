@@ -23,10 +23,11 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 /**
- * Auto-trigger filtering — the activation-mode gate on top of the
- * classic trigger matching (planning/skill-activation-levels.md §3.1):
- * a {@code manual} skill's triggers are never armed, {@code trigger}
- * and {@code agent} both match. Also pins the standard filters
+ * Auto-trigger filtering — the activation-level gate on top of the
+ * classic trigger matching (planning/skill-activation-levels.md §7.3):
+ * only the {@code trigger} level arms word activation; {@code hidden}
+ * (declared, or not relevant for the process recipe), {@code manual}
+ * and {@code agent} all leave it off. Also pins the standard filters
  * (already-active, whitelist, enabled) at the one place they live.
  */
 class SkillTriggerMatcherTest {
@@ -35,8 +36,23 @@ class SkillTriggerMatcherTest {
     private final SkillSteerProcessor skillSteerProcessor = mock(SkillSteerProcessor.class);
     private final SessionService sessionService = mock(SessionService.class);
     private final SkillActivationService activationService = mock(SkillActivationService.class);
-    private final SkillTriggerMatcher matcher =
-            new SkillTriggerMatcher(skillResolver, skillSteerProcessor, sessionService, activationService);
+
+    @SuppressWarnings("unchecked")
+    private final org.springframework.beans.factory.ObjectProvider<de.mhus.vance.brain.recipe.RecipeResolver>
+            recipeProvider = mock(org.springframework.beans.factory.ObjectProvider.class);
+
+    private final de.mhus.vance.brain.recipe.RecipeResolver recipeResolver =
+            mock(de.mhus.vance.brain.recipe.RecipeResolver.class);
+    private final SkillTriggerMatcher matcher = new SkillTriggerMatcher(
+            skillResolver,
+            skillSteerProcessor,
+            sessionService,
+            new SkillLevelResolver(
+                    activationService,
+                    sessionService,
+                    skillResolver,
+                    mock(de.mhus.vance.shared.thinkprocess.ThinkProcessService.class),
+                    recipeProvider));
 
     private static ResolvedSkill skill(String name, List<ResolvedSkill.Trigger> triggers) {
         return new ResolvedSkill(
@@ -84,6 +100,7 @@ class SkillTriggerMatcherTest {
 
     @BeforeEach
     void noOverrides() {
+        Mockito.lenient().when(recipeProvider.getIfAvailable()).thenReturn(recipeResolver);
         // Most tests run without an override document; the ones that pin
         // override behavior stub their own.
         Mockito.lenient()
@@ -172,37 +189,65 @@ class SkillTriggerMatcherTest {
     }
 
     @Test
-    void agentMode_stillMatchesTriggers() {
-        // agent is a superset of trigger — declaring agent must not
-        // silently turn off word activation (§3.1).
-        ResolvedSkill agent = new ResolvedSkill(
-                "code-review",
-                "code-review",
-                "desc",
-                "1.0.0",
-                List.of(new ResolvedSkill.Trigger(SkillTriggerType.KEYWORDS, null, List.of("review"))),
-                null,
-                List.of(),
-                List.of(),
-                List.of(),
-                List.of(),
-                List.of(),
-                null,
-                true,
-                SkillScope.VANCE,
-                List.of(),
-                List.of(),
-                SkillLifecycle.STICKY,
-                false,
-                List.of(),
-                null,
-                SkillRun.INLINE,
-                SkillActivation.AGENT);
-        when(skillResolver.listAvailable(any(SkillScopeContext.class))).thenReturn(List.of(agent));
+    void agentMode_disarmsTriggers() {
+        // At the agent level the model decides via skill_activate; a word
+        // match would pre-empt that decision (§7.3).
+        when(skillResolver.listAvailable(any(SkillScopeContext.class)))
+                .thenReturn(List.of(withActivation(keywordSkill("code-review", "review"), SkillActivation.AGENT)));
 
-        List<String> activated = matcher.detectAndActivate(process(), "please review my changes");
+        assertThat(matcher.detectAndActivate(process(), "please review my changes"))
+                .isEmpty();
+    }
 
-        assertThat(activated).containsExactly("code-review");
+    @Test
+    void hiddenMode_disarmsTriggers() {
+        when(skillResolver.listAvailable(any(SkillScopeContext.class)))
+                .thenReturn(List.of(withActivation(keywordSkill("code-review", "review"), SkillActivation.HIDDEN)));
+
+        assertThat(matcher.detectAndActivate(process(), "please review my changes"))
+                .isEmpty();
+    }
+
+    @Test
+    void notRelevantForTheRecipe_disarmsTriggers() {
+        ThinkProcessDocument process = process();
+        process.setRecipeName("default");
+        de.mhus.vance.brain.recipe.ResolvedRecipe recipe = mock(de.mhus.vance.brain.recipe.ResolvedRecipe.class);
+        when(recipe.relevantSkills()).thenReturn(List.of("!code-review"));
+        when(recipeResolver.resolve("acme", "proj", "default")).thenReturn(Optional.of(recipe));
+        when(skillResolver.listAvailable(any(SkillScopeContext.class)))
+                .thenReturn(List.of(keywordSkill("code-review", "review"), keywordSkill("lint", "review")));
+
+        // The excluded skill is hidden on this process, the other one is
+        // relevant and keeps its derived trigger level.
+        assertThat(matcher.detectAndActivate(process, "please review my changes"))
+                .containsExactly("lint");
+    }
+
+    private static ResolvedSkill withActivation(ResolvedSkill s, SkillActivation activation) {
+        return new ResolvedSkill(
+                s.name(),
+                s.title(),
+                s.description(),
+                s.version(),
+                s.triggers(),
+                s.promptExtension(),
+                s.tools(),
+                s.manualPaths(),
+                s.referenceDocs(),
+                s.scripts(),
+                s.tags(),
+                s.category(),
+                s.enabled(),
+                s.source(),
+                s.activate(),
+                s.deactivate(),
+                s.lifecycle(),
+                s.consumesArgs(),
+                s.arguments(),
+                s.action(),
+                s.run(),
+                activation);
     }
 
     @Test

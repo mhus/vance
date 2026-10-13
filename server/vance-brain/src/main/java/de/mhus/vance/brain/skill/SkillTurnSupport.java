@@ -1,8 +1,6 @@
 package de.mhus.vance.brain.skill;
 
 import de.mhus.vance.api.skills.SkillActivation;
-import de.mhus.vance.brain.recipe.RecipeResolver;
-import de.mhus.vance.brain.recipe.ResolvedRecipe;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
@@ -17,7 +15,6 @@ import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -44,15 +41,8 @@ public class SkillTurnSupport {
     private final SkillResolver skillResolver;
     private final SkillPromptComposer composer;
     private final SessionService sessionService;
-    private final SkillActivationService activationService;
-    /**
-     * Reads the process recipe's {@code advertisedSkills} per turn — the
-     * same per-turn recipe lookup the tool filter does, so a recipe edit
-     * or a newly tagged skill shows up without a respawn. Lazy: the recipe
-     * layer reaches into the engine registry, which reaches the engines
-     * that use this bean.
-     */
-    private final ObjectProvider<RecipeResolver> recipeResolverProvider;
+    /** Effective level per skill — mode and recipe relevance folded together. */
+    private final SkillLevelResolver levelResolver;
 
     /**
      * Cap on advertised skill cards per turn (planning/
@@ -153,15 +143,15 @@ public class SkillTurnSupport {
      * Composes the "Available skills" section — one line per skill the agent
      * may activate itself via {@code skill_activate} (name and description;
      * never the body), so it needs no {@code how_do_i} round-trip
-     * (planning/skill-activation-levels.md §3.2, skills.md §7e).
+     * (planning/skill-activation-levels.md §7, skills.md §7e).
      *
      * <p>A skill is listed when it is <b>enabled</b>, passes the process's
-     * {@code allowedSkills} whitelist, is <b>not already active</b>, and is
-     * offered by either side: its effective activation mode is
-     * {@code agent} (frontmatter or scope override), or the process recipe's
-     * {@code advertisedSkills} selects it by name or {@code @label}. Listing
-     * is discovery only — nothing here activates a skill. Stable name order
-     * so the same skill set renders byte-identically across turns.
+     * {@code allowedSkills} whitelist, is <b>not already active</b>, and its
+     * effective level on this process is {@code agent} — its mode says
+     * {@code agent} and the process recipe's {@code relevantSkills} selects
+     * it ({@link SkillLevelResolver}). Listing is discovery only — nothing
+     * here activates a skill. Stable name order so the same skill set
+     * renders byte-identically across turns.
      *
      * <p>{@code null} when nothing is listed — the caller adds no message at
      * all, keeping the prompt stable for skills-free scopes.
@@ -172,17 +162,14 @@ public class SkillTurnSupport {
         for (ResolvedSkill s : activeSkills) {
             activeNames.add(s.name());
         }
-        List<String> recipeSelectors = recipeAdvertisedSkills(process);
         SkillScopeContext scope = scopeFor(process);
-        SkillActivationService.ActivationOverrides overrides = activationService.overrides(scope);
+        SkillLevelResolver.Levels levels = levelResolver.forProcess(process, scope);
         List<ResolvedSkill> candidates = new ArrayList<>();
         for (ResolvedSkill s : skillResolver.listAvailable(scope)) {
             if (!s.enabled()) continue;
             if (activeNames.contains(s.name())) continue;
             if (whitelist != null && !whitelist.contains(s.name())) continue;
-            boolean offered = SkillLabelSelector.selects(recipeSelectors, s)
-                    || activationService.resolve(overrides, s).mode() == SkillActivation.AGENT;
-            if (!offered) continue;
+            if (levels.levelOf(s) != SkillActivation.AGENT) continue;
             candidates.add(s);
         }
         if (candidates.isEmpty()) return null;
@@ -209,29 +196,5 @@ public class SkillTurnSupport {
             log.trace("Skill advertising capped at {} shown, {} hidden", shown, hidden);
         }
         return out.toString();
-    }
-
-    /**
-     * The process recipe's {@code advertisedSkills} selectors, empty when the
-     * process has no recipe or the recipe no longer resolves — advertising
-     * is best-effort and must never fail a turn.
-     */
-    private List<String> recipeAdvertisedSkills(ThinkProcessDocument process) {
-        String recipeName = process.getRecipeName();
-        if (recipeName == null || recipeName.isBlank()) return List.of();
-        RecipeResolver resolver = recipeResolverProvider.getIfAvailable();
-        if (resolver == null) return List.of();
-        try {
-            return resolver.resolve(process.getTenantId(), process.getProjectId(), recipeName)
-                    .map(ResolvedRecipe::advertisedSkills)
-                    .orElse(List.of());
-        } catch (RuntimeException e) {
-            log.warn(
-                    "Skill advertising: recipe '{}' of process '{}' did not resolve: {}",
-                    recipeName,
-                    process.getId(),
-                    e.toString());
-            return List.of();
-        }
     }
 }

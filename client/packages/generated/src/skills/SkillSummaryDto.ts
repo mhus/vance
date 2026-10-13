@@ -24,6 +24,7 @@ export interface SkillSummaryDto {
   activation: SkillActivation;
   activationSource: SkillActivationSource;
   activationOverrideScope?: SkillScope;
+  relevant: boolean;
   manualPaths: string[];
   arguments: SkillArgumentDto[];
   referenceDocs: SkillReferenceDocDto[];

@@ -5,6 +5,7 @@ version: 1.0.0
 description: Use when something fails, crashes or behaves unexpectedly and the cause is not obvious — reproduce, isolate and prove the root cause before changing code
 tags: [coding, debugging]
 category: coding
+activation: agent
 enabled: true
 triggers:
   - type: PATTERN

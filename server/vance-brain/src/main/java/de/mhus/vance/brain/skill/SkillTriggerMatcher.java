@@ -61,7 +61,7 @@ public class SkillTriggerMatcher {
     private final SkillResolver skillResolver;
     private final SkillSteerProcessor skillSteerProcessor;
     private final SessionService sessionService;
-    private final SkillActivationService activationService;
+    private final SkillLevelResolver levelResolver;
 
     /** Compiled regex cache keyed by the raw pattern string. */
     private final ConcurrentMap<String, Pattern> patternCache = new ConcurrentHashMap<>();
@@ -83,15 +83,16 @@ public class SkillTriggerMatcher {
         Set<String> alreadyActive = activeSkillNames(process);
         Set<String> whitelist = process.getAllowedSkillsOverride();
         String lowered = userText.toLowerCase();
-        // Activation-mode overrides are read once per call, not per skill —
-        // a manual mode disarms this skill's triggers entirely (§3.1).
-        SkillActivationService.ActivationOverrides activationOverrides = activationService.overrides(scope);
+        // Levels are read once per call, not per skill: only the trigger
+        // level arms word activation — hidden (also: not relevant for the
+        // recipe), manual and agent all leave it off (§7.3).
+        SkillLevelResolver.Levels levels = levelResolver.forProcess(process, scope);
         List<String> activated = new ArrayList<>();
         for (ResolvedSkill skill : all) {
             if (!skill.enabled()) continue;
             if (alreadyActive.contains(skill.name())) continue;
             if (whitelist != null && !whitelist.contains(skill.name())) continue;
-            if (activationService.resolve(activationOverrides, skill).mode() == SkillActivation.MANUAL) continue;
+            if (levels.levelOf(skill) != SkillActivation.TRIGGER) continue;
             if (skill.triggers() == null || skill.triggers().isEmpty()) continue;
             if (!anyTriggerMatches(skill, lowered)) continue;
 

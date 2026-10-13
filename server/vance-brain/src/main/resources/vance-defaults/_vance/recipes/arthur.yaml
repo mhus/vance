@@ -12,6 +12,13 @@ description: |
   back into the chat. Default for engine 'arthur' when no specific
   recipe is named.
 engine: arthur
+
+relevantSkills:
+  # Which skills make sense here (skills.md §7e): everything except the
+  # coding group — those belong to the coding workers. A hidden skill stays
+  # activatable on purpose (/skill, panel toggle).
+  - "!@coding"
+
 params:
   # Degradation ladder, first configured wins: engine-specific arthur →
   # surface-tier chat (opt-in cost control for the highest-volume surface)

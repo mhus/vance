@@ -256,8 +256,12 @@ public class RecipeLoader {
         List<String> defaultActiveSkills = stringList(spec.get("defaultActiveSkills"), "defaultActiveSkills");
         rejectLabelSelectors(name, defaultActiveSkills);
         List<String> allowedSkills = parseAllowedSkills(spec.get("allowedSkills"));
-        List<String> advertisedSkills = stringList(spec.get("advertisedSkills"), "advertisedSkills");
-        validateAdvertisedSkills(name, advertisedSkills);
+        if (spec.get("advertisedSkills") != null) {
+            throw new IllegalStateException("recipe '" + name + "': 'advertisedSkills' was replaced by"
+                    + " 'relevantSkills' — the recipe now says which skills make sense for it, the skill's"
+                    + " activation level decides how it is offered (skills.md §7e)");
+        }
+        List<String> relevantSkills = parseRelevantSkills(name, spec.get("relevantSkills"));
         validateDefaultsAreAllowed(name, defaultActiveSkills, allowedSkills);
         List<String> triggerKeywords = parseTriggerKeywords(spec.get("triggers"));
         boolean locked = spec.get("locked") instanceof Boolean b && b;
@@ -293,7 +297,7 @@ public class RecipeLoader {
                 profiles,
                 defaultActiveSkills,
                 allowedSkills,
-                advertisedSkills,
+                relevantSkills,
                 triggerKeywords,
                 locked,
                 internal,
@@ -493,33 +497,46 @@ public class RecipeLoader {
     /**
      * {@code defaultActiveSkills} activates — and activation is always a
      * deliberate, named choice. A label selector there would activate
-     * whatever happens to carry the tag; labels only select what is
-     * <em>advertised</em> (skills.md §7e).
+     * whatever happens to carry the tag, an exclusion means nothing;
+     * selectors only decide which skills are <em>relevant</em>
+     * (skills.md §7e).
      */
     private static void rejectLabelSelectors(String recipeName, List<String> defaultActiveSkills) {
         for (String entry : defaultActiveSkills) {
-            if (SkillLabelSelector.isLabelSelector(entry)) {
+            if (SkillLabelSelector.isLabelSelector(entry) || SkillLabelSelector.isExclusion(entry)) {
                 throw new IllegalStateException("recipe '" + recipeName + "': defaultActiveSkills entry '"
-                        + entry.strip() + "' is a label selector — labels select advertised skills"
-                        + " (advertisedSkills), never activated ones");
+                        + entry.strip() + "' is a selector — selectors decide which skills are relevant"
+                        + " (relevantSkills), never which are activated");
             }
         }
     }
 
     /**
-     * Validates the shape of {@code advertisedSkills} entries: exact names
-     * or {@code @label} selectors. A blank label ("@") is a config error the
-     * author must hear about; an unknown label is not (groups may be empty,
-     * and the scope decides membership anyway).
+     * Parses {@code relevantSkills}: exact names, {@code @label} selectors
+     * and {@code !}-exclusions of either. {@code null} when the field is
+     * absent ("every skill is relevant"), an empty list when it is empty
+     * ("none is"). A malformed entry ({@code @}, {@code !}, {@code !@}) is
+     * a config error the author must hear about; an unknown label or name
+     * is not (groups may be empty, and the scope decides membership).
      */
-    private static void validateAdvertisedSkills(String recipeName, List<String> selectors) {
-        for (String entry : selectors) {
-            if (SkillLabelSelector.isLabelSelector(entry)
-                    && SkillLabelSelector.labelOf(entry).isBlank()) {
-                throw new IllegalStateException(
-                        "recipe '" + recipeName + "': empty '@' label selector in advertisedSkills");
-            }
+    private static @Nullable List<String> parseRelevantSkills(String recipeName, @Nullable Object raw) {
+        if (raw == null) return null;
+        if (!(raw instanceof List<?> list)) {
+            throw new IllegalStateException("recipe '" + recipeName + "': 'relevantSkills' must be a list");
         }
+        List<String> out = new ArrayList<>(list.size());
+        for (Object item : list) {
+            if (!(item instanceof String s) || s.isBlank()) {
+                throw new IllegalStateException(
+                        "recipe '" + recipeName + "': 'relevantSkills' contains a non-string or blank entry");
+            }
+            if (SkillLabelSelector.isMalformed(s)) {
+                throw new IllegalStateException("recipe '" + recipeName + "': malformed relevantSkills entry '"
+                        + s.strip() + "' (expected name, @label, !name or !@label)");
+            }
+            out.add(s.strip());
+        }
+        return List.copyOf(out);
     }
 
     @SuppressWarnings("unchecked")

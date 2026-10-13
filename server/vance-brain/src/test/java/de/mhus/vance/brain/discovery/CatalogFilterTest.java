@@ -2,7 +2,6 @@ package de.mhus.vance.brain.discovery;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
@@ -47,7 +46,7 @@ class CatalogFilterTest {
         CatalogSnapshot snap = snapshot(
                 "## Manuals\n\n### m1\n\nm1 desc\n\n### m2\n\nm2 desc\n",
                 Map.of(
-                        "m1", spec("manual", Set.of()),                  // no requirements
+                        "m1", spec("manual", Set.of()), // no requirements
                         "m2", spec("manual", Set.of("research_investigate"))));
 
         String filtered = CatalogFilter.filter(snap, Set.of("file_read", "file_write"));
@@ -72,9 +71,8 @@ class CatalogFilterTest {
 
     @Test
     void skill_entry_never_dropped() {
-        CatalogSnapshot snap = snapshot(
-                "## Skills\n\n### my-skill\n\nskill desc\n",
-                Map.of("my-skill", spec("skill", Set.of())));
+        CatalogSnapshot snap =
+                snapshot("## Skills\n\n### my-skill\n\nskill desc\n", Map.of("my-skill", spec("skill", Set.of())));
 
         // Even with empty allow-set, skills pass through (they have
         // their own activation mechanism).
@@ -111,12 +109,46 @@ class CatalogFilterTest {
         assertThat(drop).containsExactlyInAnyOrder("bar", "m1");
     }
 
-    private static CatalogSnapshot snapshot(
-            String markdown, Map<String, CatalogSnapshot.EntrySpec> entries) {
+    private static CatalogSnapshot snapshot(String markdown, Map<String, CatalogSnapshot.EntrySpec> entries) {
         return new CatalogSnapshot(markdown, "test-hash", entries);
     }
 
     private static CatalogSnapshot.EntrySpec spec(String type, Set<String> requires) {
         return new CatalogSnapshot.EntrySpec(type, requires);
+    }
+
+    @Test
+    void demoteEntries_movesNamedSkillsBehindEverythingElse() {
+        String md = """
+                ## Manuals
+
+                ### embed
+
+                Embedding.
+
+                ## Skills
+
+                ### code-review
+
+                Review changes.
+
+                ### design-blueprint
+
+                Design rules.
+                """;
+
+        String out = CatalogFilter.demoteEntries(md, Set.of("code-review"), "## Hidden skills");
+
+        assertThat(out).contains("### code-review", "### design-blueprint", "### embed");
+        assertThat(out.indexOf("### code-review")).isGreaterThan(out.indexOf("## Hidden skills"));
+        assertThat(out.indexOf("## Hidden skills")).isGreaterThan(out.indexOf("### design-blueprint"));
+        assertThat(out).contains("Review changes.");
+    }
+
+    @Test
+    void demoteEntries_nothingToMove_isPassThrough() {
+        String md = "## Skills\n\n### a\n\nA.\n";
+        assertThat(CatalogFilter.demoteEntries(md, Set.of("zzz"), "## Hidden")).isEqualTo(md);
+        assertThat(CatalogFilter.demoteEntries(md, Set.of(), "## Hidden")).isEqualTo(md);
     }
 }

@@ -19,12 +19,12 @@ description: |
 
 engine: ford
 
-advertisedSkills:
-  # Group selector (skills.md §7e): every enabled skill tagged `coding` is
-  # listed under "Available skills" in the doer's context — offered, not
-  # activated; the doer picks what fits its item via skill_activate. A
-  # tenant adding its own coding skills needs no recipe override. Empty
-  # group is fine (not every instance has tagged skills).
+relevantSkills:
+  # Which skills make sense here (skills.md §7e): the coding group — every
+  # enabled skill tagged `coding`. The skill's own level decides how it is
+  # offered: the bundled coding skills are `agent`, so the doer finds them
+  # under "Available skills" and activates what fits its item via
+  # skill_activate. A tenant's own coding skills need no recipe override.
   - "@coding"
 
 allowedToolsDefer:

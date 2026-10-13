@@ -24,6 +24,13 @@ description: |
   Arthur action-loop; RAG auto-inject off. Switch to `arthur` when
   you want operational work.
 engine: arthur
+
+relevantSkills:
+  # Which skills make sense here (skills.md §7e): everything except the
+  # coding group — those belong to the coding workers. A hidden skill stays
+  # activatable on purpose (/skill, panel toggle).
+  - "!@coding"
+
 # APPEND (the default) keeps the full Arthur system prompt — the whole
 # action-loop, all hard rules — and adds the stance below at the end,
 # where it carries recency weight. Never OVERWRITE here: we specialise

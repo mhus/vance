@@ -9,8 +9,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import de.mhus.vance.brain.ai.light.LightLlmException;
 import de.mhus.vance.api.tools.ToolSpec;
+import de.mhus.vance.brain.ai.light.LightLlmException;
 import de.mhus.vance.brain.ai.light.LightLlmRequest;
 import de.mhus.vance.brain.ai.light.LightLlmService;
 import de.mhus.vance.shared.document.DocumentService;
@@ -55,22 +55,26 @@ class DiscoveryServiceTest {
         catalogService = mock(SourceCatalogService.class);
         lightLlm = mock(LightLlmService.class);
         documentService = mock(DocumentService.class);
-        when(catalogService.renderForTenant(any(), any()))
-                .thenReturn(CATALOG_WITH_TWO_MANUALS);
-        service = new DiscoveryService(catalogService, lightLlm, documentService);
+        when(catalogService.renderForTenant(any(), any())).thenReturn(CATALOG_WITH_TWO_MANUALS);
+        @SuppressWarnings("unchecked")
+        org.springframework.beans.factory.ObjectProvider<de.mhus.vance.brain.skill.SkillLevelResolver> levels =
+                mock(org.springframework.beans.factory.ObjectProvider.class);
+        service = new DiscoveryService(catalogService, lightLlm, documentService, levels);
     }
 
     // ── Session tools as the catalog's tool section ────────────────
 
     private static ToolSpec spec(String name, String description, boolean primary) {
         return ToolSpec.builder()
-                .name(name).description(description).primary(primary).build();
+                .name(name)
+                .description(description)
+                .primary(primary)
+                .build();
     }
 
     /** Captures the rendered catalog the LLM was handed. */
     private String capturedCatalog() {
-        org.mockito.ArgumentCaptor<LightLlmRequest> captor =
-                org.mockito.ArgumentCaptor.forClass(LightLlmRequest.class);
+        org.mockito.ArgumentCaptor<LightLlmRequest> captor = org.mockito.ArgumentCaptor.forClass(LightLlmRequest.class);
         verify(lightLlm).callForJson(captor.capture());
         return String.valueOf(captor.getValue().getPebbleVars().get("sources"));
     }
@@ -82,10 +86,13 @@ class DiscoveryServiceTest {
         // contained them and a filter could not add them back. Asking
         // "how do I take a screenshot" with a browser pack connected
         // answered "no match".
-        when(lightLlm.callForJson(any(LightLlmRequest.class)))
-                .thenReturn(Map.of("hint", "nothing"));
+        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of("hint", "nothing"));
 
-        service.discover("take a screenshot", TENANT, null, null,
+        service.discover(
+                "take a screenshot",
+                TENANT,
+                null,
+                null,
                 Set.of("chrome__take_screenshot"),
                 List.of(spec("chrome__take_screenshot", "Take a screenshot of the page.", true)));
 
@@ -98,12 +105,15 @@ class DiscoveryServiceTest {
     void sessionTools_nonPrimary_areCompactButPresent() {
         // Deferred tools are callable; omitting them is how a model
         // concludes the capability does not exist.
-        when(lightLlm.callForJson(any(LightLlmRequest.class)))
-                .thenReturn(Map.of("hint", "nothing"));
+        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of("hint", "nothing"));
 
-        service.discover("x", TENANT, null, null, Set.of("t"),
-                List.of(spec("client_file_read",
-                        "Read a file. Second sentence with detail.", false)));
+        service.discover(
+                "x",
+                TENANT,
+                null,
+                null,
+                Set.of("t"),
+                List.of(spec("client_file_read", "Read a file. Second sentence with detail.", false)));
 
         String catalog = capturedCatalog();
         assertThat(catalog)
@@ -118,14 +128,20 @@ class DiscoveryServiceTest {
         // knownCapability matches "### name" against the rendered
         // catalog — a session tool must be accepted, not treated as a
         // hallucinated pick.
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "loaded", Map.of(
-                        "type", "tool",
-                        "name", "chrome__take_screenshot",
-                        "source", "client",
-                        "summary", "Screenshot the page.")));
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of(
+                        "loaded",
+                        Map.of(
+                                "type", "tool",
+                                "name", "chrome__take_screenshot",
+                                "source", "client",
+                                "summary", "Screenshot the page.")));
 
-        DiscoveryResult r = service.discover("screenshot", TENANT, null, null,
+        DiscoveryResult r = service.discover(
+                "screenshot",
+                TENANT,
+                null,
+                null,
                 Set.of("chrome__take_screenshot"),
                 List.of(spec("chrome__take_screenshot", "Take a screenshot.", true)));
 
@@ -135,32 +151,32 @@ class DiscoveryServiceTest {
 
     @Test
     void withoutSessionTools_theCatalogIsUnchanged() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class)))
-                .thenReturn(Map.of("hint", "nothing"));
+        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of("hint", "nothing"));
 
         service.discover("x", TENANT, null, null);
 
-        assertThat(capturedCatalog())
-                .isEqualTo(CATALOG_WITH_TWO_MANUALS)
-                .doesNotContain("## Tools");
+        assertThat(capturedCatalog()).isEqualTo(CATALOG_WITH_TWO_MANUALS).doesNotContain("## Tools");
     }
 
     // ── Loaded + auto-load happy path ──────────────────────────────
 
     @Test
     void discover_inlines_manual_body_on_confident_match() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "loaded", Map.of(
-                        "type", "manual",
-                        "name", "embed-images",
-                        "source", "engine",
-                        "summary", "How to embed images.")));
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of(
+                        "loaded",
+                        Map.of(
+                                "type", "manual",
+                                "name", "embed-images",
+                                "source", "engine",
+                                "summary", "How to embed images.")));
         // Document cascade returns the manual body.
         when(documentService.lookupCascade(eq(TENANT), any(), eq("_vance/manuals/embed-images.md")))
                 .thenReturn(Optional.of(new LookupResult(
                         "_vance/manuals/embed-images.md",
                         "# Embedding — Images\n\nFull body text here.\n",
-                        LookupResult.Source.RESOURCE, null)));
+                        LookupResult.Source.RESOURCE,
+                        null)));
 
         DiscoveryResult r = service.discover("show me a picture", TENANT, null, null);
 
@@ -184,12 +200,14 @@ class DiscoveryServiceTest {
 
                 Search the web.
                 """);
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "loaded", Map.of(
-                        "type", "tool",
-                        "name", "web_search",
-                        "source", "engine",
-                        "summary", "Search the web.")));
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of(
+                        "loaded",
+                        Map.of(
+                                "type", "tool",
+                                "name", "web_search",
+                                "source", "engine",
+                                "summary", "Search the web.")));
 
         DiscoveryResult r = service.discover("search the web", TENANT, null, null);
 
@@ -203,12 +221,32 @@ class DiscoveryServiceTest {
 
     @Test
     void discover_returns_alternatives_without_content() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "alternatives", List.of(
-                        Map.of("type", "manual", "name", "embed-overview",
-                                "source", "engine", "summary", "Routing", "score", 0.7),
-                        Map.of("type", "manual", "name", "embed-images",
-                                "source", "engine", "summary", "Images", "score", 0.6))));
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of(
+                        "alternatives",
+                        List.of(
+                                Map.of(
+                                        "type",
+                                        "manual",
+                                        "name",
+                                        "embed-overview",
+                                        "source",
+                                        "engine",
+                                        "summary",
+                                        "Routing",
+                                        "score",
+                                        0.7),
+                                Map.of(
+                                        "type",
+                                        "manual",
+                                        "name",
+                                        "embed-images",
+                                        "source",
+                                        "engine",
+                                        "summary",
+                                        "Images",
+                                        "score",
+                                        0.6))));
 
         DiscoveryResult r = service.discover("something visual", TENANT, null, null);
 
@@ -222,8 +260,8 @@ class DiscoveryServiceTest {
 
     @Test
     void discover_returns_hint_when_LLM_emits_hint() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "hint", "no match — be more specific"));
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of("hint", "no match — be more specific"));
 
         DiscoveryResult r = service.discover("xyzzy gibberish", TENANT, null, null);
 
@@ -239,21 +277,22 @@ class DiscoveryServiceTest {
     void discover_retries_when_first_pick_is_not_in_catalog() {
         when(lightLlm.callForJson(any(LightLlmRequest.class)))
                 .thenReturn(Map.of(
-                        "loaded", Map.of(
+                        "loaded",
+                        Map.of(
                                 "type", "manual",
                                 "name", "embed-hallucinated",
                                 "source", "engine",
                                 "summary", "made up")))
                 .thenReturn(Map.of(
-                        "loaded", Map.of(
+                        "loaded",
+                        Map.of(
                                 "type", "manual",
                                 "name", "embed-images",
                                 "source", "engine",
                                 "summary", "Images.")));
         when(documentService.lookupCascade(eq(TENANT), any(), eq("_vance/manuals/embed-images.md")))
                 .thenReturn(Optional.of(new LookupResult(
-                        "_vance/manuals/embed-images.md", "real body",
-                        LookupResult.Source.RESOURCE, null)));
+                        "_vance/manuals/embed-images.md", "real body", LookupResult.Source.RESOURCE, null)));
 
         DiscoveryResult r = service.discover("show pic", TENANT, null, null);
 
@@ -270,13 +309,15 @@ class DiscoveryServiceTest {
         // and retried.
         when(lightLlm.callForJson(any(LightLlmRequest.class)))
                 .thenReturn(Map.of(
-                        "loaded", Map.of(
+                        "loaded",
+                        Map.of(
                                 "type", "manual",
                                 "name", "embed-images",
                                 "source", "engine",
                                 "summary", "Images.")))
                 .thenReturn(Map.of(
-                        "loaded", Map.of(
+                        "loaded",
+                        Map.of(
                                 "type", "manual",
                                 "name", "embed-overview",
                                 "source", "engine",
@@ -285,8 +326,7 @@ class DiscoveryServiceTest {
                 .thenReturn(Optional.empty());
         when(documentService.lookupCascade(eq(TENANT), any(), eq("_vance/manuals/embed-overview.md")))
                 .thenReturn(Optional.of(new LookupResult(
-                        "_vance/manuals/embed-overview.md", "overview body",
-                        LookupResult.Source.RESOURCE, null)));
+                        "_vance/manuals/embed-overview.md", "overview body", LookupResult.Source.RESOURCE, null)));
 
         DiscoveryResult r = service.discover("show pic", TENANT, null, null);
 
@@ -311,17 +351,18 @@ class DiscoveryServiceTest {
 
                 Create or update an event hook.
                 """);
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "loaded", Map.of(
-                        "type", "manual",
-                        "name", "hook_set",
-                        "source", "engine",
-                        "summary", "Create or update an event hook.")));
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of(
+                        "loaded",
+                        Map.of(
+                                "type", "manual",
+                                "name", "hook_set",
+                                "source", "engine",
+                                "summary", "Create or update an event hook.")));
         when(documentService.lookupCascade(eq(TENANT), any(), eq("_vance/manuals/hook_set.md")))
                 .thenReturn(Optional.empty());
 
-        DiscoveryResult r = service.discover(
-                "automate on inbox.item.created", TENANT, null, null);
+        DiscoveryResult r = service.discover("automate on inbox.item.created", TENANT, null, null);
 
         assertThat(r.getLoaded()).isNotNull();
         assertThat(r.getLoaded().getName()).isEqualTo("hook_set");
@@ -337,12 +378,14 @@ class DiscoveryServiceTest {
         // Every attempt picks a name that isn't in the catalog. After
         // MAX_DISCOVERY_ATTEMPTS retries the service gives up with a
         // hint that names the offending picks.
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "loaded", Map.of(
-                        "type", "manual",
-                        "name", "embed-hallucinated",
-                        "source", "engine",
-                        "summary", "made up")));
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of(
+                        "loaded",
+                        Map.of(
+                                "type", "manual",
+                                "name", "embed-hallucinated",
+                                "source", "engine",
+                                "summary", "made up")));
 
         DiscoveryResult r = service.discover("hmm", TENANT, null, null);
 
@@ -356,12 +399,32 @@ class DiscoveryServiceTest {
 
     @Test
     void discover_filters_unknown_names_out_of_alternatives() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of(
-                "alternatives", List.of(
-                        Map.of("type", "manual", "name", "embed-hallucinated",
-                                "source", "engine", "summary", "fake", "score", 0.5),
-                        Map.of("type", "manual", "name", "embed-images",
-                                "source", "engine", "summary", "Images", "score", 0.8))));
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of(
+                        "alternatives",
+                        List.of(
+                                Map.of(
+                                        "type",
+                                        "manual",
+                                        "name",
+                                        "embed-hallucinated",
+                                        "source",
+                                        "engine",
+                                        "summary",
+                                        "fake",
+                                        "score",
+                                        0.5),
+                                Map.of(
+                                        "type",
+                                        "manual",
+                                        "name",
+                                        "embed-images",
+                                        "source",
+                                        "engine",
+                                        "summary",
+                                        "Images",
+                                        "score",
+                                        0.8))));
 
         DiscoveryResult r = service.discover("show pic", TENANT, null, null);
 

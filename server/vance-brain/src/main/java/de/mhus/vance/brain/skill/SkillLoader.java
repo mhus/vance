@@ -603,7 +603,7 @@ public class SkillLoader {
         SkillActivation parsed = SkillActivation.parse(s);
         if (parsed == null) {
             throw new IllegalStateException(
-                    "skill '" + stem + "': unknown activation '" + s + "' (expected manual|trigger|agent)");
+                    "skill '" + stem + "': unknown activation '" + s + "' (expected hidden|manual|trigger|agent)");
         }
         return parsed;
     }

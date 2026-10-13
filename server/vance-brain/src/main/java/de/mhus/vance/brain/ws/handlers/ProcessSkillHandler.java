@@ -19,9 +19,9 @@ import de.mhus.vance.brain.command.EngineCommand;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.skill.ResolvedSkill;
-import de.mhus.vance.brain.skill.SkillActivationService;
 import de.mhus.vance.brain.skill.SkillActivationService.ActivationResolution;
 import de.mhus.vance.brain.skill.SkillCategoriesService;
+import de.mhus.vance.brain.skill.SkillLevelResolver;
 import de.mhus.vance.brain.skill.SkillSteerProcessor;
 import de.mhus.vance.brain.skill.UnknownSkillException;
 import de.mhus.vance.brain.ws.ConnectionContext;
@@ -65,7 +65,7 @@ public class ProcessSkillHandler implements WsHandler {
     private final ThinkProcessService thinkProcessService;
     private final SkillSteerProcessor skillSteerProcessor;
     private final SkillCategoriesService skillCategoriesService;
-    private final SkillActivationService skillActivationService;
+    private final SkillLevelResolver skillLevelResolver;
     private final RequestAuthority authority;
     private final LaneScheduler laneScheduler;
 
@@ -207,14 +207,16 @@ public class ProcessSkillHandler implements WsHandler {
         }
 
         if (command == ProcessSkillCommand.LIST) {
-            // Effective activation modes fold in the scope's override
-            // document — read once for the whole listing, then per skill
-            // without another document read.
-            SkillActivationService.ActivationOverrides activationOverrides =
-                    skillSteerProcessor.activationOverrides(process);
+            // Levels fold the scope's override document and the process
+            // recipe's relevance together — read once for the whole
+            // listing, then per skill in memory.
+            SkillLevelResolver.Levels levels = skillLevelResolver.forProcess(process);
             List<SkillSummaryDto> available = new ArrayList<>();
             for (ResolvedSkill skill : skillSteerProcessor.listAvailable(process)) {
-                available.add(toSummary(skill, skillActivationService.resolve(activationOverrides, skill)));
+                SkillLevelResolver.Level level = levels.of(skill);
+                SkillSummaryDto dto = toSummary(skill, level.activation());
+                dto.setRelevant(level.relevant());
+                available.add(dto);
             }
             SkillCategoriesService.Arrangement arranged =
                     skillCategoriesService.arrange(process.getTenantId(), process.getProjectId(), available);

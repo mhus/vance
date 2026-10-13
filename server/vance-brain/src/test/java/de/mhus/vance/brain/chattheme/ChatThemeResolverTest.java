@@ -171,7 +171,7 @@ class ChatThemeResolverTest {
                 .profiles(Map.of())
                 .defaultActiveSkills(List.of())
                 .allowedSkills(null)
-                .advertisedSkills(List.of())
+                .relevantSkills(null)
                 .triggerKeywords(List.of())
                 .locked(false)
                 .internal(false)

@@ -36,6 +36,8 @@ class SkillLoaderActivationParseTest {
 
     @Test
     void explicitModes_parse() {
+        assertThat(parse(BASE + "\nactivation: hidden", "Body").declaredActivation())
+                .isEqualTo(SkillActivation.HIDDEN);
         assertThat(parse(BASE + "\nactivation: manual", "Body").declaredActivation())
                 .isEqualTo(SkillActivation.MANUAL);
         assertThat(parse(BASE + "\nactivation: trigger", "Body").declaredActivation())
@@ -82,7 +84,7 @@ class SkillLoaderActivationParseTest {
         assertThatThrownBy(() -> parse(BASE + "\nactivation: always", "Body"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("unknown activation 'always'")
-                .hasMessageContaining("expected manual|trigger|agent");
+                .hasMessageContaining("expected hidden|manual|trigger|agent");
     }
 
     @Test

@@ -5,6 +5,7 @@ version: 1.0.0
 description: Use when adding or changing behaviour in code that has (or should have) automated tests — write the failing test first, then the minimal code to pass it
 tags: [coding, testing]
 category: coding
+activation: agent
 enabled: true
 ---
 

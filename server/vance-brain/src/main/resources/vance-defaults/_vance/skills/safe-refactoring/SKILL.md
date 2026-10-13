@@ -5,6 +5,7 @@ version: 1.0.0
 description: Use when restructuring existing code without changing what it does — renames, extractions, moving or splitting code, removing duplication
 tags: [coding, refactoring]
 category: coding
+activation: agent
 enabled: true
 ---
 

@@ -4,6 +4,7 @@
 */
 
 export enum SkillActivation {
+  HIDDEN = 'HIDDEN',
   MANUAL = 'MANUAL',
   TRIGGER = 'TRIGGER',
   AGENT = 'AGENT'

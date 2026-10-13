@@ -86,7 +86,7 @@ export function parseSkillCommand(line: string): ParsedSkillCommand {
   };
 }
 
-/** `/skill mode <name> <manual|trigger|agent> [user|project|tenant]`. */
+/** `/skill mode <name> <hidden|manual|trigger|agent> [user|project|tenant]`. */
 function parseMode(parts: string[]): ParsedSkillCommand {
   if (parts.length < 2) {
     return { command: null, oneShot: false };
@@ -101,7 +101,7 @@ function parseMode(parts: string[]): ParsedSkillCommand {
 }
 
 export const SKILL_USAGE =
-  '/skill → usage: /skill list | clear [name] | mode <name> <manual|trigger|agent> [scope]'
+  '/skill → usage: /skill list | clear [name] | mode <name> <hidden|manual|trigger|agent> [scope]'
   + ' | <name> [--once] [args…]';
 
 /**
@@ -176,8 +176,8 @@ export function renderSkillReplyForTest(
  */
 async function sendModeCommand(parsed: ParsedSkillCommand, projectId?: string): Promise<string> {
   const mode = (parsed.mode ?? '').toLowerCase();
-  if (!['manual', 'trigger', 'agent'].includes(mode)) {
-    return '/skill mode → usage: /skill mode <name> <manual|trigger|agent> [user|project|tenant]';
+  if (!['hidden', 'manual', 'trigger', 'agent'].includes(mode)) {
+    return '/skill mode → usage: /skill mode <name> <hidden|manual|trigger|agent> [user|project|tenant]';
   }
   const scope = (parsed.scope ?? 'user').toLowerCase();
   if (!['user', 'project', 'tenant'].includes(scope)) {

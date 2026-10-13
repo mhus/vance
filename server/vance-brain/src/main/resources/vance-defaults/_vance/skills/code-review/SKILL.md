@@ -5,6 +5,7 @@ version: 1.0.0
 description: Review the current code changes for correctness, security and quality — kicks off immediately on activation
 tags: [code, coding, review, quality]
 category: coding
+activation: agent
 enabled: true
 triggers:
   - type: KEYWORDS

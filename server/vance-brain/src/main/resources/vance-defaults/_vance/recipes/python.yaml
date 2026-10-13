@@ -4,6 +4,13 @@ description: |
   tools are promoted to primary so they sit in the default tool
   catalog without tool_list discovery.
 engine: ford
+
+relevantSkills:
+  # Which skills make sense here (skills.md §7e): the coding group. Each
+  # skill's own activation level decides how it is offered (the bundled
+  # coding skills are `agent` → listed under "Available skills").
+  - "@coding"
+
 # High-precision execution-intent phrases only. The recipe NAME is NOT a
 # routing signal (that would hijack any goal that merely mentions Python
 # as content, e.g. "a mindmap about Python"); routing is by these curated

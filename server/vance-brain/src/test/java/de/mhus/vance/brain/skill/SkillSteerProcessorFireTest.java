@@ -54,9 +54,6 @@ class SkillSteerProcessorFireTest {
     @Mock
     private SkillSpawnRunner skillSpawnRunner;
 
-    @Mock
-    private SkillActivationService activationService;
-
     @Captor
     private ArgumentCaptor<PendingMessageDocument> pendingCaptor;
 
@@ -71,8 +68,7 @@ class SkillSteerProcessorFireTest {
                 skillCommandRunner,
                 eventEmitter,
                 new PromptTemplateRenderer(),
-                skillSpawnRunner,
-                activationService);
+                skillSpawnRunner);
     }
 
     private ThinkProcessDocument process(List<ActiveSkillRefEmbedded> active) {

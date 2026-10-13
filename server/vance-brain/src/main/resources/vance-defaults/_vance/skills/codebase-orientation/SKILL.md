@@ -5,6 +5,7 @@ version: 1.0.0
 description: Use before changing an unfamiliar code base or module — find the conventions, entry points and an existing example to follow, so the change fits in
 tags: [coding]
 category: coding
+activation: agent
 enabled: true
 ---
 

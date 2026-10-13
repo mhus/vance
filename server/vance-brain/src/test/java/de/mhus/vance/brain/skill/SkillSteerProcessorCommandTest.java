@@ -48,9 +48,6 @@ class SkillSteerProcessorCommandTest {
     @Mock
     private SkillSpawnRunner skillSpawnRunner;
 
-    @Mock
-    private SkillActivationService activationService;
-
     @Captor
     private ArgumentCaptor<de.mhus.vance.shared.thinkprocess.PendingMessageDocument> pendingCaptor;
 
@@ -65,8 +62,7 @@ class SkillSteerProcessorCommandTest {
                 skillCommandRunner,
                 eventEmitter,
                 new PromptTemplateRenderer(),
-                skillSpawnRunner,
-                activationService);
+                skillSpawnRunner);
         when(sessionService.findBySessionId(anyString())).thenReturn(Optional.empty());
     }
 

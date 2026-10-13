@@ -180,7 +180,7 @@ class BenjyFeatureConfigTest {
 
         assertThatThrownBy(() -> BenjyFeatureConfig.fromParams(params, PID))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("'@coding' is a label selector");
+                .hasMessageContaining("'@coding' is a selector");
     }
 
     @Test

@@ -128,31 +128,51 @@ is a body does nothing on the trigger path *and* nothing on a bare agent
 activation — give it `activate:` commands, make it `sticky`, or expect
 explicit invocation only.
 
-## Activation mode (`activation:`)
+## Activation level (`activation:`)
 
-Where the skill is offered — a monotone ladder, one frontmatter field.
-It is not a permission: the user (`/skill`), the agent (`skill_activate` /
-`skill_fire`) and recipe defaults can activate any enabled skill at every
-level; only `enabled: false` blocks activation.
+How the skill is offered **where it is relevant** — one ladder, one
+frontmatter field. Relevance is the recipe's call: its `relevantSkills`
+selects skills by name or `@label` (your `tags:`), and a skill it does
+not select is `hidden` on that recipe's processes, whatever you declare.
+You decide the level; the recipe decides where you make sense.
 
-| Mode | Auto-trigger | Listed under "Available skills" in the agent's context |
-|---|---|---|
-| `manual` | off | no — unless a recipe selects it via `advertisedSkills` |
-| `trigger` | armed (your `triggers:` block) | no — unless a recipe selects it |
-| `agent` | armed if `triggers:` present | **yes**, in every context |
+| Level | Skill panel | Word trigger | Listed under "Available skills" for the model |
+|---|---|---|---|
+| `hidden` | collapsed (a toggle shows it) | off | no |
+| `manual` | shown | off | no |
+| `trigger` | shown | armed (your `triggers:` block) | no |
+| `agent` | shown | **off** — the model decides | **yes** |
+
+No level is a permission: the user (`/skill`), the agent
+(`skill_activate` / `skill_fire`) and recipe defaults can activate any
+enabled skill on every level, `hidden` included; only `enabled: false`
+and the recipe's `allowedSkills` whitelist block activation.
 
 When the field is absent it derives from `triggers:`: present →
-`trigger`, absent → `manual`. Declare `activation: agent` on skills the
-model should be offered everywhere (like `design-blueprint`); for skills
-that only fit certain work, tag them instead and let the recipe for that
-work select the tag (see `tags` below).
+`trigger`, absent → `manual`. Pick:
+
+- `agent` — the model should pick you up by itself when the work fits
+  (the bundled coding skills, `design-blueprint`). Your description is
+  all it sees, so write it as "use when …". Triggers are not armed on
+  this level.
+- `trigger` — a deterministic word match is the right signal.
+- `manual` — a deliberate tool the user reaches for (a macro like
+  `commit-message`).
+- `hidden` — experimental or internal; reachable only on purpose.
+
+Recipes select by the **domain labels** in your `tags:` — tag by what
+you contribute to, not by activity: `coding`, `design`, `decision`,
+`writing`, `research`. Chat recipes exclude the coding group
+(`relevantSkills: ["!@coding"]`), coding workers select only it
+(`["@coding"]`), recipes without the field consider everything relevant.
 
 Users can override the mode per scope without forking your SKILL.md —
-`_vance/config/skill_activation.yaml` (`skills: { <name>: manual }`) in
+`_vance/config/skill_activation.yaml` (`skills: { <name>: hidden }`) in
 the tenant, the project or their own user project. The three documents
 merge **per entry**: for each skill the innermost entry wins (user →
 project → tenant), and a skill no document mentions keeps your
-declaration. Overrides win over your declaration.
+declaration. Overrides win over your declaration. An override changes the
+level, never the recipe's relevance.
 
 Keep listed skills honest: the list shows only the name and the
 description (the title when there is none), so write the description as
@@ -219,7 +239,7 @@ literal `{% %}` in them must survive.
 | `manualPaths` | Folders the skill contributes to `manual_read` / `manual_list` while active |
 | `referenceDocs` | Sibling files, `loadMode: INLINE` (into the prompt) or `ON_DEMAND` (listed for `manual_read`) |
 | `enabled: false` | Hides the skill — including a same-named one from an outer cascade layer |
-| `tags` | Discovery hints **plus group membership**: each tag is a selectable `@label` — a recipe saying `advertisedSkills: ["@coding"]` lists every enabled skill tagged `coding` under "Available skills", where the agent can activate it. Tagging never activates anything. Tag by domain (what you contribute to), not by activity — a recipe asks for "coding skills", not "reviewing". Tags have no other effect: trigger, activation and tool logic never read them |
+| `tags` | Discovery hints **plus group membership**: each tag is a selectable `@label` — a recipe saying `relevantSkills: ["@coding"]` considers every skill tagged `coding` relevant, `["!@coding"]` hides them. Relevance never activates anything; your `activation:` level decides how a relevant skill is offered. Tag by domain (`coding`, `design`, `decision`, `writing`, `research`), not by activity. Tags have no other effect: trigger, activation and tool logic never read them |
 | `activation` | Who may activate: `manual` (user-only, agent refused) / `trigger` (word activation armed) / `agent` (advertised to the LLM). Absent → derived from `triggers:` (see above) |
 
 `title`, `description`, `version` are required. `description` doubles as

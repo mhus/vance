@@ -1,9 +1,10 @@
 package de.mhus.vance.brain.discovery;
 
+import de.mhus.vance.api.tools.ToolSpec;
 import de.mhus.vance.brain.ai.light.LightLlmException;
 import de.mhus.vance.brain.ai.light.LightLlmRequest;
-import de.mhus.vance.api.tools.ToolSpec;
 import de.mhus.vance.brain.ai.light.LightLlmService;
+import de.mhus.vance.brain.skill.SkillLevelResolver;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
 import java.util.ArrayList;
@@ -16,6 +17,7 @@ import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 /**
@@ -85,15 +87,19 @@ public class DiscoveryService {
      * schema permissive lets the LLM pick the natural shape without
      * tripping on artificial "exactly one" wording.
      */
-    static final Map<String, Object> DISCOVERY_SCHEMA = Map.of(
-            "type", "object");
+    static final Map<String, Object> DISCOVERY_SCHEMA = Map.of("type", "object");
 
-    private static final Pattern CAPABILITY_HEADER =
-            Pattern.compile("(?m)^###\\s+(?<name>\\S+)\\s*$");
+    private static final Pattern CAPABILITY_HEADER = Pattern.compile("(?m)^###\\s+(?<name>\\S+)\\s*$");
 
     private final SourceCatalogService catalogService;
     private final LightLlmService lightLlm;
     private final DocumentService documentService;
+    /**
+     * Ranks the calling process's hidden skills last (planning/
+     * skill-activation-levels.md §7.7.3). Lazy: the skill beans reach the
+     * recipe layer, which reaches the engines that call discovery.
+     */
+    private final ObjectProvider<SkillLevelResolver> skillLevelResolver;
 
     /**
      * Resolve an intent against the catalog. Throws
@@ -103,10 +109,7 @@ public class DiscoveryService {
      * a {@code hint} listing the bad picks.
      */
     public DiscoveryResult discover(
-            String intent,
-            String tenantId,
-            @Nullable String projectId,
-            @Nullable String processId) {
+            String intent, String tenantId, @Nullable String projectId, @Nullable String processId) {
         if (intent == null || intent.isBlank()) {
             throw new IllegalArgumentException("intent is required");
         }
@@ -114,8 +117,11 @@ public class DiscoveryService {
             throw new IllegalArgumentException("tenantId is required");
         }
         return discoverWithCatalog(
-                intent, tenantId, projectId, processId,
-                catalogService.renderForTenant(tenantId, projectId));
+                intent,
+                tenantId,
+                projectId,
+                processId,
+                demoteHiddenSkills(catalogService.renderForTenant(tenantId, projectId), processId));
     }
 
     /**
@@ -178,8 +184,31 @@ public class DiscoveryService {
             CatalogSnapshot snapshot = catalogService.snapshotFor(tenantId, projectId);
             catalog = CatalogFilter.filter(snapshot, allowedTools);
         }
-        catalog = catalog + renderProcessTools(processTools);
+        catalog = demoteHiddenSkills(catalog, processId) + renderProcessTools(processTools);
         return discoverWithCatalog(intent, tenantId, projectId, processId, catalog);
+    }
+
+    /**
+     * Moves the skills that are {@code hidden} on the calling process
+     * (declared hidden, or not relevant for its recipe) into a trailing
+     * section: still findable — a deliberate question may want one — but
+     * ranked after everything that makes sense here. The cached catalog
+     * stays process-agnostic; this runs per call. Best-effort: a failure
+     * leaves the catalog as it is.
+     */
+    private String demoteHiddenSkills(String catalog, @Nullable String processId) {
+        SkillLevelResolver resolver = skillLevelResolver.getIfAvailable();
+        if (resolver == null || processId == null) return catalog;
+        try {
+            return CatalogFilter.demoteEntries(
+                    catalog,
+                    resolver.hiddenSkillNames(processId),
+                    "## Hidden skills (not meaningful in this context — pick one only when the intent asks for it"
+                            + " explicitly)");
+        } catch (RuntimeException e) {
+            log.warn("how_do_i: ranking hidden skills failed for process '{}': {}", processId, e.toString());
+            return catalog;
+        }
     }
 
     /**
@@ -212,7 +241,8 @@ public class DiscoveryService {
             md.append("\n## Tools\n\n");
             for (ToolSpec t : primary) {
                 md.append("### ").append(t.getName()).append("\n\n");
-                String description = t.getDescription() == null ? "" : t.getDescription().trim();
+                String description =
+                        t.getDescription() == null ? "" : t.getDescription().trim();
                 if (!description.isBlank()) {
                     md.append(description).append("\n\n");
                 }
@@ -224,11 +254,11 @@ public class DiscoveryService {
         // descriptions would balloon this hot-path prompt, so only the first
         // sentence ships.
         if (!secondary.isEmpty()) {
-            md.append("\n## More tools (activate by calling them, or via "
-                    + "`tool_description name='<name>'`)\n\n");
+            md.append("\n## More tools (activate by calling them, or via " + "`tool_description name='<name>'`)\n\n");
             for (ToolSpec t : secondary) {
                 md.append("### ").append(t.getName()).append("\n\n");
-                String description = t.getDescription() == null ? "" : t.getDescription().trim();
+                String description =
+                        t.getDescription() == null ? "" : t.getDescription().trim();
                 if (!description.isBlank()) {
                     md.append(firstSentence(description)).append("\n\n");
                 }
@@ -244,11 +274,7 @@ public class DiscoveryService {
     }
 
     private DiscoveryResult discoverWithCatalog(
-            String intent,
-            String tenantId,
-            @Nullable String projectId,
-            @Nullable String processId,
-            String catalog) {
+            String intent, String tenantId, @Nullable String projectId, @Nullable String processId, String catalog) {
         List<String> badPicks = new ArrayList<>();
 
         for (int attempt = 1; attempt <= MAX_DISCOVERY_ATTEMPTS; attempt++) {
@@ -269,8 +295,11 @@ public class DiscoveryService {
 
             NormaliseOutcome outcome = normalise(intent, raw, catalog);
             if (outcome instanceof NormaliseOutcome.Hallucinated h) {
-                log.info("DiscoveryService: attempt {}/{} picked unknown '{}' — retrying",
-                        attempt, MAX_DISCOVERY_ATTEMPTS, h.name);
+                log.info(
+                        "DiscoveryService: attempt {}/{} picked unknown '{}' — retrying",
+                        attempt,
+                        MAX_DISCOVERY_ATTEMPTS,
+                        h.name);
                 badPicks.add(h.name);
                 continue;
             }
@@ -280,8 +309,7 @@ public class DiscoveryService {
             // so the caller doesn't need to bounce through manual_read.
             DiscoveryResult.Match loaded = result.getLoaded();
             if (loaded != null && "manual".equals(loaded.getType())) {
-                Optional<String> body = loadManualBody(
-                        loaded.getName(), tenantId, projectId);
+                Optional<String> body = loadManualBody(loaded.getName(), tenantId, projectId);
                 if (body.isPresent()) {
                     return withInlinedContent(result, loaded, body.get());
                 }
@@ -296,18 +324,26 @@ public class DiscoveryService {
                 // useless hint.
                 String realType = capabilityType(loaded.getName(), catalog);
                 if (!"manual".equals(realType)) {
-                    log.debug("DiscoveryService: pick '{}' labelled manual but is a "
+                    log.debug(
+                            "DiscoveryService: pick '{}' labelled manual but is a "
                                     + "{} with no manuals/{}.md body — returning as {} match",
-                            loaded.getName(), realType, loaded.getName(), realType);
+                            loaded.getName(),
+                            realType,
+                            loaded.getName(),
+                            realType);
                     return relabelMatch(result, loaded, realType);
                 }
                 // Genuinely a manuals-section entry whose body didn't load
                 // — an odd soft-hallucination (catalog and body come from
                 // the same cascade). Retry for a loadable pick.
-                log.info("DiscoveryService: attempt {}/{} picked '{}' which is "
+                log.info(
+                        "DiscoveryService: attempt {}/{} picked '{}' which is "
                                 + "in the manuals section but not loadable as "
                                 + "_vance/manuals/{}.md — retrying",
-                        attempt, MAX_DISCOVERY_ATTEMPTS, loaded.getName(), loaded.getName());
+                        attempt,
+                        MAX_DISCOVERY_ATTEMPTS,
+                        loaded.getName(),
+                        loaded.getName());
                 badPicks.add(loaded.getName());
                 continue;
             }
@@ -353,8 +389,7 @@ public class DiscoveryService {
     private Optional<String> loadManualBody(String name, String tenantId, @Nullable String projectId) {
         String project = projectId == null ? "" : projectId;
         String path = MANUAL_PATH_PREFIX + name + ".md";
-        return documentService.lookupCascade(tenantId, project, path)
-                .map(LookupResult::content);
+        return documentService.lookupCascade(tenantId, project, path).map(LookupResult::content);
     }
 
     /** Return a copy of {@code result} with the loaded match's
@@ -380,8 +415,7 @@ public class DiscoveryService {
     /** Rebuild {@code result} with the loaded match retyped (no inlined
      *  body) — used when the LLM mis-typed a bodiless tool/skill
      *  capability as a {@code "manual"}. */
-    private static DiscoveryResult relabelMatch(
-            DiscoveryResult result, DiscoveryResult.Match loaded, String type) {
+    private static DiscoveryResult relabelMatch(DiscoveryResult result, DiscoveryResult.Match loaded, String type) {
         DiscoveryResult.Match retyped = DiscoveryResult.Match.builder()
                 .type(type)
                 .name(loaded.getName())
@@ -427,17 +461,16 @@ public class DiscoveryService {
     /** Result of parsing one LLM response. Two outcomes:
      *  {@link Resolved} = pass-through to caller; {@link Hallucinated}
      *  = bad name, retry the LLM call. */
-    sealed interface NormaliseOutcome
-            permits NormaliseOutcome.Resolved, NormaliseOutcome.Hallucinated {
+    sealed interface NormaliseOutcome permits NormaliseOutcome.Resolved, NormaliseOutcome.Hallucinated {
 
         record Resolved(DiscoveryResult result) implements NormaliseOutcome {}
+
         record Hallucinated(String name) implements NormaliseOutcome {}
     }
 
     private NormaliseOutcome normalise(String intent, Map<String, Object> raw, String catalog) {
-        DiscoveryResult.DiscoveryResultBuilder builder = DiscoveryResult.builder()
-                .intent(intent)
-                .alternatives(List.of());
+        DiscoveryResult.DiscoveryResultBuilder builder =
+                DiscoveryResult.builder().intent(intent).alternatives(List.of());
 
         // Loaded — confident single match (takes precedence)
         Object loaded = raw.get("loaded");
@@ -468,7 +501,8 @@ public class DiscoveryService {
                 filtered.add(m);
             }
             if (!filtered.isEmpty()) {
-                return new NormaliseOutcome.Resolved(builder.alternatives(filtered).build());
+                return new NormaliseOutcome.Resolved(
+                        builder.alternatives(filtered).build());
             }
         }
 
@@ -480,9 +514,9 @@ public class DiscoveryService {
 
         // Fallback when the LLM somehow returned an empty shape that
         // satisfied the schema but carries no useful payload.
-        return new NormaliseOutcome.Resolved(builder
-                .hint("Discovery returned no usable result — try a more concrete intent.")
-                .build());
+        return new NormaliseOutcome.Resolved(
+                builder.hint("Discovery returned no usable result — try a more concrete intent.")
+                        .build());
     }
 
     private static DiscoveryResult.@Nullable Match toMatch(Map<?, ?> raw) {

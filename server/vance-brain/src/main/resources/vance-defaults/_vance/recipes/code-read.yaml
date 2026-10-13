@@ -5,6 +5,13 @@ description: |
   Read-only codebase inspection. Reads files, follows references,
   summarises structure and call sites.
 engine: ford
+
+relevantSkills:
+  # Which skills make sense here (skills.md §7e): the coding group. Each
+  # skill's own activation level decides how it is offered (the bundled
+  # coding skills are `agent` → listed under "Available skills").
+  - "@coding"
+
 params:
   model: default:code-read,default:code
   validation: true

@@ -1,0 +1,74 @@
+# Trillian Control — Nature 'colin'
+#
+# The session's primary chat process when foot connects with
+# --recipe trillian-colin. Pairs with a Trillian-User worker that
+# TrillianSessionBootstrapper spawns alongside.
+#
+# colin is the first multi-headed Nature: every discussion thread
+# assigned to its account is answered by its own conversation head
+# (trillian-head-colin), and the loop stays free of other people's
+# texts. Control itself is unchanged — this recipe pins the Nature,
+# nothing else.
+#
+# See planning/trillian-exposure.md §3.2/§3.3.
+
+description: |
+  Trillian Control — Nature colin. Reactive chat host that discusses
+  tasks with the human and enqueues them into a paired Trillian
+  UserProcess. Discussion threads are answered by per-conversation
+  heads; work goes through the loop as tasks.
+
+engine: trillian-control
+
+listed: true
+category: agents
+title: Trillian colin (conversation heads)
+
+params:
+  nature: 'colin'
+  # Same reasoning as the other Trillian natures: analyze tier first,
+  # the function-calling pattern is more reliable there (see
+  # trillian-adam.yaml).
+  model: trillian-admin:analyze,trillian:analyze,default:analyze,default:fast
+  fallbackModels:
+    - default:fast
+
+# No thread tools here and none on the loop (trillian-user-colin):
+# threads belong to the heads. Control talks to the human, the loop
+# does the work, heads carry the conversations.
+
+profiles:
+  foot:
+    session:
+      onDisconnect: KEEP_OPEN
+      onIdle: NONE
+      onSuspend: KEEP
+      idleTimeoutMs: 3600000
+      suspendKeepDurationMs: 86400000
+  desktop:
+    session:
+      onDisconnect: KEEP_OPEN
+      onIdle: NONE
+      onSuspend: KEEP
+      idleTimeoutMs: 3600000
+      suspendKeepDurationMs: 86400000
+  web:
+    session:
+      onDisconnect: KEEP_OPEN
+      onIdle: NONE
+      onSuspend: KEEP
+      idleTimeoutMs: 1800000
+      suspendKeepDurationMs: 86400000
+  default:
+    session:
+      onDisconnect: KEEP_OPEN
+      onIdle: NONE
+      onSuspend: KEEP
+      idleTimeoutMs: 1800000
+      suspendKeepDurationMs: 86400000
+
+tags:
+  - trillian
+  - control
+  - chat
+  - colin

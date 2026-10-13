@@ -58,6 +58,23 @@ public class TrillianInternalApi {
     public static final String PAYLOAD_KEY_RESULT = "result";
     public static final String PAYLOAD_KEY_REASON = "reason";
 
+    /**
+     * Task-request payload key: the process the conclusion events
+     * ({@code task_done}/{@code task_failed}/{@code task_needs_input}) are
+     * routed to instead of the loop's own peer — the conversation head that
+     * handed the task over. Absent on Control-raised tasks.
+     */
+    public static final String PAYLOAD_KEY_REPLY_TO = "replyTo";
+
+    /**
+     * engineParams key on the Trillian-User loop: {@code taskId → replyTo
+     * process}, recorded when the loop drains a {@code task_request}
+     * carrying a return address, consumed when it reports the task. Written
+     * and read on the loop's own lane only — the loop is the single writer
+     * of its engineParams during its turns.
+     */
+    public static final String PARAM_TASK_REPLIES = "taskReplies";
+
     public static final String TASK_EVENT_REQUEST = "task_request";
     public static final String TASK_EVENT_DONE = "task_done";
     public static final String TASK_EVENT_FAILED = "task_failed";
@@ -327,16 +344,38 @@ public class TrillianInternalApi {
      * @return the generated task id, or empty when dispatch failed
      */
     public Optional<String> enqueueTask(String senderProcessId, ThinkProcessDocument peer, String description) {
+        return enqueueTask(senderProcessId, peer, description, /*replyToProcessId*/ null);
+    }
+
+    /**
+     * Queues a task for the peer, with an explicit return address.
+     *
+     * <p>{@code replyToProcessId} is where the conclusion events
+     * ({@code task_done}/{@code task_failed}/{@code task_needs_input}) are
+     * routed when the loop reports this task — the conversation head that
+     * handed the work over, so the loop's answer lands in the thread the
+     * task came from. {@code null} keeps the historic behaviour: conclusions
+     * go to the loop's peer, the human's Control. Control itself passes its
+     * own id or null — both are the same address, so one rule covers both:
+     * <b>results return to the requester.</b>
+     *
+     * <p>The loop records the mapping when it drains the request (it owns the
+     * map, on its own lane) — this payload only carries it.
+     *
+     * @return the generated task id, or empty when dispatch failed
+     */
+    public Optional<String> enqueueTask(
+            String senderProcessId, ThinkProcessDocument peer, String description, @Nullable String replyToProcessId) {
         String taskId = UUID.randomUUID().toString();
         String humanSummary =
                 "Task request: " + (description.length() <= 240 ? description : description.substring(0, 237) + "...");
-        Optional<String> eventId = dispatchTaskEvent(
-                senderProcessId,
-                peer.getId(),
-                TASK_EVENT_REQUEST,
-                taskId,
-                humanSummary,
-                Map.of(PAYLOAD_KEY_DESCRIPTION, description));
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put(PAYLOAD_KEY_DESCRIPTION, description);
+        if (replyToProcessId != null && !replyToProcessId.isBlank()) {
+            payload.put(PAYLOAD_KEY_REPLY_TO, replyToProcessId);
+        }
+        Optional<String> eventId =
+                dispatchTaskEvent(senderProcessId, peer.getId(), TASK_EVENT_REQUEST, taskId, humanSummary, payload);
         return eventId.isEmpty() ? Optional.empty() : Optional.of(taskId);
     }
 
@@ -444,6 +483,45 @@ public class TrillianInternalApi {
     }
 
     /**
+     * The return address a task was enqueued with, if any — consumed by
+     * the reporting tool: the loop's answer to a task raised by a
+     * conversation head goes to that head (which posts it into its thread),
+     * everything else goes to the peer as before. Removing the entry here
+     * is what keeps the map bounded: a task is reported once.
+     *
+     * <p>Runs inside the loop's turn, on the loop's lane — the same writer
+     * that recorded the entry at drain time, so the read-modify-write is
+     * single-threaded by construction.
+     *
+     * @return the reply-to process id, or empty when the task has none (or
+     *         is unknown — a loop rebuilt with an old inbox lost it; the
+     *         report then falls back to the peer, the historic target)
+     */
+    public Optional<String> consumeReplyTo(String loopProcessId, String taskId) {
+        Optional<ThinkProcessDocument> loopOpt = thinkProcessService.findById(loopProcessId);
+        if (loopOpt.isEmpty()) {
+            return Optional.empty();
+        }
+        ThinkProcessDocument loop = loopOpt.get();
+        Map<String, Object> params =
+                loop.getEngineParams() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(loop.getEngineParams());
+        Object raw = params.get(PARAM_TASK_REPLIES);
+        if (!(raw instanceof Map<?, ?> replies) || !replies.containsKey(taskId)) {
+            return Optional.empty();
+        }
+        Object target = replies.get(taskId);
+        Map<String, Object> updated = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : replies.entrySet()) {
+            if (!e.getKey().equals(taskId) && e.getKey() instanceof String k) {
+                updated.put(k, e.getValue());
+            }
+        }
+        params.put(PARAM_TASK_REPLIES, updated);
+        thinkProcessService.replaceEngineParams(loop.getId(), params);
+        return target instanceof String s && !s.isBlank() ? Optional.of(s) : Optional.empty();
+    }
+
+    /**
      * Writes a status on the peer's lane and waits — bounded — for it to
      * land. The mutated process is the peer, so that is where
      * serialization belongs.
@@ -506,6 +584,13 @@ public class TrillianInternalApi {
         List<TaskWorkerSnapshot> workers = new ArrayList<>();
         for (ThinkProcessDocument p : thinkProcessService.findBySession(peer.getTenantId(), peer.getSessionId())) {
             if (p.getId().equals(peer.getId()) || p.getStatus() == ThinkProcessStatus.CLOSED) {
+                continue;
+            }
+            // Conversation heads share the session but are not task workers:
+            // they are the Trillian talking, not the Trillian working; their
+            // state lives in their thread and the head sweep, not the work
+            // views.
+            if (TrillianHeadService.headThreadOf(p) != null) {
                 continue;
             }
             workers.add(new TaskWorkerSnapshot(

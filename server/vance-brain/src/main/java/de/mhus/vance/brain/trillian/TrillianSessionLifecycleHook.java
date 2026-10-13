@@ -67,6 +67,7 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
 
     private final de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry natureRegistry;
     private final TrillianHubSweeper hubSweeper;
+    private final TrillianHeadService headService;
 
     @Override
     public void onSessionClosed(SessionDocument session) {
@@ -129,6 +130,22 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
             // account in other people's projects; left open, their engines
             // keep working for a subject that is about to stop existing.
             closeOutgoingSessions(session.getTenantId(), account);
+            // Open conversations go with the account too: counterparts
+            // must not keep writing into a thread nobody answers anymore.
+            // Multi-headed only — on the single-headed side threads are the
+            // human's matters, settled (or archived) by people, not by the
+            // shutdown of an agent (planning/trillian-exposure.md §3.11).
+            try {
+                de.mhus.vance.brain.trillian.nature.TrillianNature nature = natureRegistry.resolve(natureOf(session));
+                if (nature.multiHead()) {
+                    java.util.List<String> concluded = headService.concludeOpenThreads(session.getTenantId(), account);
+                    if (!concluded.isEmpty()) {
+                        log.info("Trillian: archived {} open conversation(s) of '{}'", concluded.size(), account);
+                    }
+                }
+            } catch (RuntimeException e) {
+                log.warn("Trillian: concluding open conversations of '{}' failed: {}", account, e.toString());
+            }
             // The home goes with the account (D1): loop session, chat,
             // schedules, goals and settings live in `_user_<trillian>`.
             // Swept, not just unlisted — rows keyed by the hub name would

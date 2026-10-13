@@ -98,7 +98,10 @@ public class TaskEnqueueTool implements Tool {
         ThinkProcessDocument peer = peerOpt.get();
         // Shared with the //trillian task command, so a task raised by
         // hand is indistinguishable from one Control raised.
-        Optional<String> taskId = api.enqueueTask(ctx.processId(), peer, description);
+        // The reply-to is the caller: Control gets its result events as before, a
+        // conversation head gets them routed back so it can post them into
+        // its thread — one rule, results return to the requester.
+        Optional<String> taskId = api.enqueueTask(ctx.processId(), peer, description, ctx.processId());
         if (taskId.isEmpty()) {
             throw new ToolException("Failed to dispatch task to Trillian User — see brain logs for detail");
         }

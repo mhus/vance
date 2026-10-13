@@ -1,7 +1,6 @@
 package de.mhus.vance.shared.inbox;
 
 import com.mongodb.client.result.UpdateResult;
-import org.bson.types.ObjectId;
 import de.mhus.vance.api.inbox.AnswerOutcome;
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.Criticality;
@@ -18,10 +17,11 @@ import java.util.Optional;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.annotation.Id;
-import org.springframework.data.domain.Sort;
+import org.bson.types.ObjectId;
 import org.jspecify.annotations.Nullable;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.aggregation.Aggregation;
 import org.springframework.data.mongodb.core.aggregation.ArrayOperators;
@@ -131,8 +131,7 @@ public class MaximegalonService {
 
         if (autoAnswered) {
             Object defaultValue = toCreate.getPayload().get(PAYLOAD_DEFAULT_KEY);
-            Map<String, Object> answerValue = wrapDefaultAsAnswerValue(
-                    toCreate.getType(), defaultValue);
+            Map<String, Object> answerValue = wrapDefaultAsAnswerValue(toCreate.getType(), defaultValue);
             toCreate.setStatus(MaximegalonStatus.ANSWERED);
             toCreate.setAnswer(AnswerPayload.builder()
                     .outcome(AnswerOutcome.DECIDED)
@@ -152,10 +151,15 @@ public class MaximegalonService {
         seedThreadState(toCreate, autoAnswered);
 
         MaximegalonDocument saved = repository.save(toCreate);
-        log.info("Created inbox item id='{}' tenant='{}' assignee='{}' type={} crit={} requiresAction={} status={}",
-                saved.getId(), saved.getTenantId(), saved.getAssignedToUserId(),
-                saved.getType(), saved.getCriticality(),
-                saved.isRequiresAction(), saved.getStatus());
+        log.info(
+                "Created inbox item id='{}' tenant='{}' assignee='{}' type={} crit={} requiresAction={} status={}",
+                saved.getId(),
+                saved.getTenantId(),
+                saved.getAssignedToUserId(),
+                saved.getType(),
+                saved.getCriticality(),
+                saved.isRequiresAction(),
+                saved.getStatus());
 
         eventPublisher.publishEvent(new MaximegalonCreatedEvent(saved));
         if (autoAnswered) {
@@ -217,17 +221,19 @@ public class MaximegalonService {
     }
 
     /** Maps the bare {@code default} value to the type-shaped answer-value map. */
-    private static Map<String, Object> wrapDefaultAsAnswerValue(
-            MaximegalonType type, Object defaultValue) {
+    private static Map<String, Object> wrapDefaultAsAnswerValue(MaximegalonType type, Object defaultValue) {
         Map<String, Object> v = new LinkedHashMap<>();
         switch (type) {
-            case APPROVAL -> v.put("approved",
-                    defaultValue instanceof Boolean b ? b
-                            : "yes".equalsIgnoreCase(String.valueOf(defaultValue)));
+            case APPROVAL ->
+                v.put(
+                        "approved",
+                        defaultValue instanceof Boolean b ? b : "yes".equalsIgnoreCase(String.valueOf(defaultValue)));
             case DECISION -> v.put("chosen", defaultValue);
             case FEEDBACK -> v.put("text", String.valueOf(defaultValue));
             case ORDERING, STRUCTURE_EDIT -> v.put("value", defaultValue);
-            default -> { /* outputs don't auto-answer */ }
+            default -> {
+                /* outputs don't auto-answer */
+            }
         }
         return v;
     }
@@ -238,8 +244,7 @@ public class MaximegalonService {
         return repository.findByIdAndTenantId(id, tenantId);
     }
 
-    public List<MaximegalonDocument> listForUser(
-            String tenantId, String userId, @Nullable MaximegalonStatus status) {
+    public List<MaximegalonDocument> listForUser(String tenantId, String userId, @Nullable MaximegalonStatus status) {
         if (status == null) {
             return repository.findByTenantIdAndAssignedToUserId(tenantId, userId);
         }
@@ -276,10 +281,7 @@ public class MaximegalonService {
      * field for exactly that reason.
      */
     public List<MaximegalonDocument> listFiltered(
-            String tenantId,
-            List<String> userIds,
-            @Nullable MaximegalonStatus status,
-            @Nullable String tag) {
+            String tenantId, List<String> userIds, @Nullable MaximegalonStatus status, @Nullable String tag) {
         Query query = Query.query(filterCriteria(tenantId, userIds, status, tag))
                 .with(Sort.by(Sort.Direction.DESC, "createdAt"));
         query.fields().exclude(F_MESSAGES);
@@ -305,11 +307,13 @@ public class MaximegalonService {
      * reads it per thread. Same consequence — the returned documents are
      * incomplete and must never be handed to {@code save()}.
      */
-    public List<MaximegalonDocument> listUnreadForUser(
-            String tenantId, String userId, int limit) {
-        Query query = Query.query(Criteria.where(F_TENANT).is(tenantId)
-                        .and(F_UNREAD_FOR).is(userId)
-                        .and(F_STATUS).ne(MaximegalonStatus.ARCHIVED))
+    public List<MaximegalonDocument> listUnreadForUser(String tenantId, String userId, int limit) {
+        Query query = Query.query(Criteria.where(F_TENANT)
+                        .is(tenantId)
+                        .and(F_UNREAD_FOR)
+                        .is(userId)
+                        .and(F_STATUS)
+                        .ne(MaximegalonStatus.ARCHIVED))
                 .with(Sort.by(Sort.Direction.ASC, "createdAt"))
                 .limit(Math.max(1, limit));
         query.fields().exclude(F_MESSAGES);
@@ -337,10 +341,9 @@ public class MaximegalonService {
      * more than it wants to show and learns from the extra row that it is
      * looking at a window. Sorted newest-first, so the window is the useful end.
      */
-    public List<MaximegalonDocument> listByDocument(
-            String tenantId, String documentId, int limit) {
-        Query query = Query.query(Criteria.where(F_TENANT).is(tenantId)
-                        .and(F_DOC_REF_ID).is(documentId))
+    public List<MaximegalonDocument> listByDocument(String tenantId, String documentId, int limit) {
+        Query query = Query.query(
+                        Criteria.where(F_TENANT).is(tenantId).and(F_DOC_REF_ID).is(documentId))
                 .with(Sort.by(Sort.Direction.DESC, "createdAt"))
                 .limit(Math.max(1, limit));
         query.fields().exclude(F_MESSAGES);
@@ -364,7 +367,8 @@ public class MaximegalonService {
         if (itemIds.isEmpty()) return Map.of();
         Aggregation aggregation = Aggregation.newAggregation(
                 Aggregation.match(Criteria.where(F_ID).in(itemIds).and(F_TENANT).is(tenantId)),
-                Aggregation.project().and(ArrayOperators.Size.lengthOfArray(
+                Aggregation.project()
+                        .and(ArrayOperators.Size.lengthOfArray(
                                 ConditionalOperators.ifNull(F_MESSAGES).then(List.of())))
                         .as(MessageCountRow.F_COUNT));
         Map<String, Integer> counts = new LinkedHashMap<>();
@@ -383,6 +387,7 @@ public class MaximegalonService {
 
         @Id
         private @Nullable String id;
+
         private int count;
     }
 
@@ -406,7 +411,8 @@ public class MaximegalonService {
                 MaximegalonDocument.class);
         long requiresAction = mongoTemplate.count(
                 Query.query(filterCriteria(tenantId, userIds, MaximegalonStatus.PENDING, null)
-                        .and(F_REQUIRES_ACTION).is(true)),
+                        .and(F_REQUIRES_ACTION)
+                        .is(true)),
                 MaximegalonDocument.class);
         return new PendingCounts(total, requiresAction);
     }
@@ -422,10 +428,7 @@ public class MaximegalonService {
      * one would leak the caller's extra clauses into the next query.
      */
     private static Criteria filterCriteria(
-            String tenantId,
-            @Nullable List<String> userIds,
-            @Nullable MaximegalonStatus status,
-            @Nullable String tag) {
+            String tenantId, @Nullable List<String> userIds, @Nullable MaximegalonStatus status, @Nullable String tag) {
         Criteria criteria = Criteria.where(F_TENANT).is(tenantId);
         if (userIds != null && !userIds.isEmpty()) {
             criteria = criteria.and(F_ASSIGNED).in(userIds);
@@ -451,8 +454,7 @@ public class MaximegalonService {
         if (userIds != null && !userIds.isEmpty()) {
             criteria = criteria.and(F_ASSIGNED).in(userIds);
         }
-        return mongoTemplate.findDistinct(
-                Query.query(criteria), "tags", MaximegalonDocument.class, String.class);
+        return mongoTemplate.findDistinct(Query.query(criteria), "tags", MaximegalonDocument.class, String.class);
     }
 
     public List<MaximegalonDocument> listPendingForUser(String tenantId, String userId) {
@@ -481,15 +483,12 @@ public class MaximegalonService {
      * Idempotent against double-submit: if status is already ANSWERED,
      * returns the existing item without overwriting.
      */
-    public Optional<MaximegalonDocument> answer(
-            String tenantId, String itemId,
-            AnswerPayload answer, ResolvedBy by) {
+    public Optional<MaximegalonDocument> answer(String tenantId, String itemId, AnswerPayload answer, ResolvedBy by) {
         Optional<MaximegalonDocument> existing = findById(tenantId, itemId);
         if (existing.isEmpty()) return Optional.empty();
         MaximegalonDocument doc = existing.get();
         if (doc.getStatus() != MaximegalonStatus.PENDING) {
-            log.info("Inbox.answer skipped — id='{}' already in status {}",
-                    itemId, doc.getStatus());
+            log.info("Inbox.answer skipped — id='{}' already in status {}", itemId, doc.getStatus());
             return Optional.of(doc);
         }
         Instant now = Instant.now();
@@ -498,15 +497,22 @@ public class MaximegalonService {
                 .set("answer", answer)
                 .set("resolvedBy", by)
                 .set("resolvedAt", now)
-                .push("history", MaximegalonHistoryEntry.builder()
-                        .action("ANSWERED")
-                        .actor(answer.getAnsweredBy())
-                        .at(now)
-                        .build());
+                .push(
+                        "history",
+                        MaximegalonHistoryEntry.builder()
+                                .action("ANSWERED")
+                                .actor(answer.getAnsweredBy())
+                                .at(now)
+                                .build());
         UpdateResult result = mongoTemplate.updateFirst(
-                Query.query(Criteria.where(F_ID).is(itemId).and(F_TENANT).is(tenantId)
-                        .and(F_STATUS).is(MaximegalonStatus.PENDING)),
-                update, MaximegalonDocument.class);
+                Query.query(Criteria.where(F_ID)
+                        .is(itemId)
+                        .and(F_TENANT)
+                        .is(tenantId)
+                        .and(F_STATUS)
+                        .is(MaximegalonStatus.PENDING)),
+                update,
+                MaximegalonDocument.class);
         if (result.getModifiedCount() == 0) {
             // Race: someone else answered first. Re-read.
             return findById(tenantId, itemId);
@@ -536,39 +542,41 @@ public class MaximegalonService {
         try {
             effectRegistry.dispatch(item, answer);
         } catch (RuntimeException e) {
-            log.error("Inbox effect failed for item '{}' (type='{}') — item stays ANSWERED",
-                    item.getId(), item.getEffectType(), e);
+            log.error(
+                    "Inbox effect failed for item '{}' (type='{}') — item stays ANSWERED",
+                    item.getId(),
+                    item.getEffectType(),
+                    e);
             recordEffectFailure(item, answer, e);
         }
     }
 
-    private void recordEffectFailure(
-            MaximegalonDocument item, AnswerPayload answer, RuntimeException cause) {
+    private void recordEffectFailure(MaximegalonDocument item, AnswerPayload answer, RuntimeException cause) {
         try {
             mongoTemplate.updateFirst(
-                    Query.query(Criteria.where(F_ID).is(item.getId())
-                            .and(F_TENANT).is(item.getTenantId())),
-                    new Update().push("history", MaximegalonHistoryEntry.builder()
-                            .action("EFFECT_FAILED")
-                            .actor(answer.getAnsweredBy())
-                            .at(Instant.now())
-                            .details(cause.getMessage())
-                            .build()),
+                    Query.query(
+                            Criteria.where(F_ID).is(item.getId()).and(F_TENANT).is(item.getTenantId())),
+                    new Update()
+                            .push(
+                                    "history",
+                                    MaximegalonHistoryEntry.builder()
+                                            .action("EFFECT_FAILED")
+                                            .actor(answer.getAnsweredBy())
+                                            .at(Instant.now())
+                                            .details(cause.getMessage())
+                                            .build()),
                     MaximegalonDocument.class);
         } catch (RuntimeException e) {
             // Nothing left to do — the error log above is the record.
-            log.warn("Could not record effect failure on item '{}': {}",
-                    item.getId(), e.toString());
+            log.warn("Could not record effect failure on item '{}': {}", item.getId(), e.toString());
         }
     }
 
-    public Optional<MaximegalonDocument> dismiss(
-            String tenantId, String itemId, String byUserId) {
+    public Optional<MaximegalonDocument> dismiss(String tenantId, String itemId, String byUserId) {
         return transitionTo(tenantId, itemId, MaximegalonStatus.DISMISSED, byUserId, "DISMISSED");
     }
 
-    public Optional<MaximegalonDocument> archive(
-            String tenantId, String itemId, String byUserId) {
+    public Optional<MaximegalonDocument> archive(String tenantId, String itemId, String byUserId) {
         Optional<MaximegalonDocument> existing = findById(tenantId, itemId);
         if (existing.isEmpty()) return Optional.empty();
         MaximegalonDocument doc = existing.get();
@@ -577,14 +585,17 @@ public class MaximegalonService {
         Update update = new Update()
                 .set("status", MaximegalonStatus.ARCHIVED)
                 .set("archivedAt", now)
-                .push("history", MaximegalonHistoryEntry.builder()
-                        .action("ARCHIVED")
-                        .actor(byUserId)
-                        .at(now)
-                        .build());
+                .push(
+                        "history",
+                        MaximegalonHistoryEntry.builder()
+                                .action("ARCHIVED")
+                                .actor(byUserId)
+                                .at(now)
+                                .build());
         mongoTemplate.updateFirst(
                 Query.query(Criteria.where(F_ID).is(itemId).and(F_TENANT).is(tenantId)),
-                update, MaximegalonDocument.class);
+                update,
+                MaximegalonDocument.class);
         MaximegalonDocument refreshed = findById(tenantId, itemId).orElse(doc);
         eventPublisher.publishEvent(new MaximegalonArchivedEvent(refreshed));
         return Optional.of(refreshed);
@@ -601,27 +612,28 @@ public class MaximegalonService {
      * answer-presence heuristic gives the right answer in practice
      * (archive of an open ask vs. archive of a resolved item).
      */
-    public Optional<MaximegalonDocument> unarchive(
-            String tenantId, String itemId, String byUserId) {
+    public Optional<MaximegalonDocument> unarchive(String tenantId, String itemId, String byUserId) {
         Optional<MaximegalonDocument> existing = findById(tenantId, itemId);
         if (existing.isEmpty()) return Optional.empty();
         MaximegalonDocument doc = existing.get();
         if (doc.getStatus() != MaximegalonStatus.ARCHIVED) return Optional.of(doc);
-        MaximegalonStatus restored = doc.getAnswer() != null
-                ? MaximegalonStatus.ANSWERED : MaximegalonStatus.PENDING;
+        MaximegalonStatus restored = doc.getAnswer() != null ? MaximegalonStatus.ANSWERED : MaximegalonStatus.PENDING;
         Instant now = Instant.now();
         Update update = new Update()
                 .set("status", restored)
                 .unset("archivedAt")
-                .push("history", MaximegalonHistoryEntry.builder()
-                        .action("UNARCHIVED")
-                        .actor(byUserId)
-                        .details("restored to " + restored.name())
-                        .at(now)
-                        .build());
+                .push(
+                        "history",
+                        MaximegalonHistoryEntry.builder()
+                                .action("UNARCHIVED")
+                                .actor(byUserId)
+                                .details("restored to " + restored.name())
+                                .at(now)
+                                .build());
         mongoTemplate.updateFirst(
                 Query.query(Criteria.where(F_ID).is(itemId).and(F_TENANT).is(tenantId)),
-                update, MaximegalonDocument.class);
+                update,
+                MaximegalonDocument.class);
         return findById(tenantId, itemId);
     }
 
@@ -649,11 +661,13 @@ public class MaximegalonService {
         Instant now = Instant.now();
         Update update = new Update()
                 .set("body", newBody)
-                .push("history", MaximegalonHistoryEntry.builder()
-                        .action("CONTENT_UPDATED")
-                        .actor(byActorId)
-                        .at(now)
-                        .build());
+                .push(
+                        "history",
+                        MaximegalonHistoryEntry.builder()
+                                .action("CONTENT_UPDATED")
+                                .actor(byActorId)
+                                .at(now)
+                                .build());
         if (newTitle != null && !newTitle.equals(doc.getTitle())) {
             update.set("title", newTitle);
         }
@@ -662,15 +676,15 @@ public class MaximegalonService {
         }
         mongoTemplate.updateFirst(
                 Query.query(Criteria.where(F_ID).is(itemId).and(F_TENANT).is(tenantId)),
-                update, MaximegalonDocument.class);
+                update,
+                MaximegalonDocument.class);
         MaximegalonDocument refreshed = findById(tenantId, itemId).orElse(doc);
         eventPublisher.publishEvent(new MaximegalonUpdatedEvent(refreshed));
         return Optional.of(refreshed);
     }
 
     public Optional<MaximegalonDocument> delegate(
-            String tenantId, String itemId, String toUserId, String byUserId,
-            @Nullable String note) {
+            String tenantId, String itemId, String toUserId, String byUserId, @Nullable String note) {
         Optional<MaximegalonDocument> existing = findById(tenantId, itemId);
         if (existing.isEmpty()) return Optional.empty();
         MaximegalonDocument doc = existing.get();
@@ -689,24 +703,25 @@ public class MaximegalonService {
                 // true rather than merely intended.
                 .addToSet(F_PARTICIPANTS, toUserId)
                 .addToSet(F_UNREAD_FOR, toUserId)
-                .push("history", MaximegalonHistoryEntry.builder()
-                        .action("DELEGATED")
-                        .actor(byUserId)
-                        .details("from=" + previous + " to=" + toUserId
-                                + (note == null ? "" : " note=" + note))
-                        .at(now)
-                        .build());
+                .push(
+                        "history",
+                        MaximegalonHistoryEntry.builder()
+                                .action("DELEGATED")
+                                .actor(byUserId)
+                                .details("from=" + previous + " to=" + toUserId + (note == null ? "" : " note=" + note))
+                                .at(now)
+                                .build());
         mongoTemplate.updateFirst(
                 Query.query(Criteria.where(F_ID).is(itemId).and(F_TENANT).is(tenantId)),
-                update, MaximegalonDocument.class);
+                update,
+                MaximegalonDocument.class);
         MaximegalonDocument refreshed = findById(tenantId, itemId).orElse(doc);
         eventPublisher.publishEvent(new MaximegalonDelegatedEvent(refreshed, previous));
         return Optional.of(refreshed);
     }
 
     private Optional<MaximegalonDocument> transitionTo(
-            String tenantId, String itemId,
-            MaximegalonStatus newStatus, String byUserId, String historyAction) {
+            String tenantId, String itemId, MaximegalonStatus newStatus, String byUserId, String historyAction) {
         Optional<MaximegalonDocument> existing = findById(tenantId, itemId);
         if (existing.isEmpty()) return Optional.empty();
         MaximegalonDocument doc = existing.get();
@@ -714,17 +729,20 @@ public class MaximegalonService {
         Instant now = Instant.now();
         Update update = new Update()
                 .set("status", newStatus)
-                .push("history", MaximegalonHistoryEntry.builder()
-                        .action(historyAction)
-                        .actor(byUserId)
-                        .at(now)
-                        .build());
+                .push(
+                        "history",
+                        MaximegalonHistoryEntry.builder()
+                                .action(historyAction)
+                                .actor(byUserId)
+                                .at(now)
+                                .build());
         if (newStatus == MaximegalonStatus.DISMISSED) {
             update.set("resolvedBy", ResolvedBy.USER).set("resolvedAt", now);
         }
         mongoTemplate.updateFirst(
                 Query.query(Criteria.where(F_ID).is(itemId).and(F_TENANT).is(tenantId)),
-                update, MaximegalonDocument.class);
+                update,
+                MaximegalonDocument.class);
         return findById(tenantId, itemId);
     }
 
@@ -750,19 +768,18 @@ public class MaximegalonService {
      *                                  {@code INVALID_PARENT}
      */
     public Optional<MaximegalonDocument> postMessage(
-            String tenantId, String itemId, String authorUserId, String body,
-            @Nullable String parentId) {
+            String tenantId, String itemId, String authorUserId, String body, @Nullable String parentId) {
         Optional<MaximegalonDocument> existing = findById(tenantId, itemId);
         if (existing.isEmpty()) return Optional.empty();
         MaximegalonDocument doc = existing.get();
 
-        List<MaximegalonMessage> current = doc.getMessages() == null
-                ? List.<MaximegalonMessage>of() : doc.getMessages();
+        List<MaximegalonMessage> current =
+                doc.getMessages() == null ? List.<MaximegalonMessage>of() : doc.getMessages();
         if (current.size() >= MAX_MESSAGES) {
             throw new MaximegalonRuleException(
                     MaximegalonRuleException.MESSAGE_LIMIT_REACHED,
-                    "thread '" + itemId + "' already holds " + current.size()
-                            + " messages (limit " + MAX_MESSAGES + ")");
+                    "thread '" + itemId + "' already holds " + current.size() + " messages (limit " + MAX_MESSAGES
+                            + ")");
         }
         if (parentId != null) {
             requireReplyableParent(current, parentId, itemId);
@@ -784,14 +801,14 @@ public class MaximegalonService {
             if (!p.equals(authorUserId)) nowUnread.add(p);
         }
 
-        Update update = new Update()
-                .push(F_MESSAGES, message)
-                .addToSet(F_PARTICIPANTS, authorUserId);
+        Update update = new Update().push(F_MESSAGES, message).addToSet(F_PARTICIPANTS, authorUserId);
         if (!nowUnread.isEmpty()) {
             update.addToSet(F_UNREAD_FOR).each(nowUnread.toArray());
         }
         mongoTemplate.updateFirst(byId(tenantId, itemId), update, MaximegalonDocument.class);
-        return findById(tenantId, itemId);
+        MaximegalonDocument refreshed = findById(tenantId, itemId).orElse(doc);
+        eventPublisher.publishEvent(new MaximegalonMessageEvent(refreshed, message));
+        return Optional.of(refreshed);
     }
 
     /**
@@ -799,8 +816,7 @@ public class MaximegalonService {
      * a root message. Checked here rather than in the schema — see
      * {@link MaximegalonMessage} for why that is deliberate.
      */
-    private static void requireReplyableParent(
-            List<MaximegalonMessage> messages, String parentId, String itemId) {
+    private static void requireReplyableParent(List<MaximegalonMessage> messages, String parentId, String itemId) {
         for (MaximegalonMessage m : messages) {
             if (parentId.equals(m.getId())) {
                 if (m.getParentId() != null) {
@@ -812,8 +828,7 @@ public class MaximegalonService {
             }
         }
         throw new MaximegalonRuleException(
-                MaximegalonRuleException.INVALID_PARENT,
-                "no message '" + parentId + "' in thread '" + itemId + "'");
+                MaximegalonRuleException.INVALID_PARENT, "no message '" + parentId + "' in thread '" + itemId + "'");
     }
 
     // ────────────────── Thread: read state ──────────────────
@@ -830,10 +845,9 @@ public class MaximegalonService {
     public Optional<MaximegalonDocument> markRead(String tenantId, String itemId, String userId) {
         Optional<MaximegalonDocument> existing = findById(tenantId, itemId);
         if (existing.isEmpty()) return Optional.empty();
-        Update update = new Update()
-                .addToSet(F_READ_BY, userId)
-                .pull(F_UNREAD_FOR, userId);
-        if (existing.get().getMessages() != null && !existing.get().getMessages().isEmpty()) {
+        Update update = new Update().addToSet(F_READ_BY, userId).pull(F_UNREAD_FOR, userId);
+        if (existing.get().getMessages() != null
+                && !existing.get().getMessages().isEmpty()) {
             update.addToSet(F_MESSAGES + ".$[].readBy", userId);
         }
         mongoTemplate.updateFirst(byId(tenantId, itemId), update, MaximegalonDocument.class);
@@ -858,14 +872,15 @@ public class MaximegalonService {
 
         mongoTemplate.updateFirst(
                 byId(tenantId, itemId),
-                new Update().addToSet(F_MESSAGES + ".$[m].readBy", userId)
+                new Update()
+                        .addToSet(F_MESSAGES + ".$[m].readBy", userId)
                         .filterArray(Criteria.where("m.id").in(messageIds)),
                 MaximegalonDocument.class);
 
         MaximegalonDocument refreshed = findById(tenantId, itemId).orElse(existing.get());
         if (!hasUnreadFor(refreshed, userId)) {
-            mongoTemplate.updateFirst(byId(tenantId, itemId),
-                    new Update().pull(F_UNREAD_FOR, userId), MaximegalonDocument.class);
+            mongoTemplate.updateFirst(
+                    byId(tenantId, itemId), new Update().pull(F_UNREAD_FOR, userId), MaximegalonDocument.class);
             return findById(tenantId, itemId);
         }
         return Optional.of(refreshed);
@@ -895,20 +910,22 @@ public class MaximegalonService {
      * that Milliways' inbox handler uses. Participation itself is a property of
      * the object, not a grant — it is checked on entry, not on every access.
      */
-    public Optional<MaximegalonDocument> invite(
-            String tenantId, String itemId, String invitedUserId, String byUserId) {
+    public Optional<MaximegalonDocument> invite(String tenantId, String itemId, String invitedUserId, String byUserId) {
         Optional<MaximegalonDocument> existing = findById(tenantId, itemId);
         if (existing.isEmpty()) return Optional.empty();
-        mongoTemplate.updateFirst(byId(tenantId, itemId),
+        mongoTemplate.updateFirst(
+                byId(tenantId, itemId),
                 new Update()
                         .addToSet(F_PARTICIPANTS, invitedUserId)
                         .addToSet(F_UNREAD_FOR, invitedUserId)
-                        .push("history", MaximegalonHistoryEntry.builder()
-                                .action("INVITED")
-                                .actor(byUserId)
-                                .details("invited=" + invitedUserId)
-                                .at(Instant.now())
-                                .build()),
+                        .push(
+                                "history",
+                                MaximegalonHistoryEntry.builder()
+                                        .action("INVITED")
+                                        .actor(byUserId)
+                                        .details("invited=" + invitedUserId)
+                                        .at(Instant.now())
+                                        .build()),
                 MaximegalonDocument.class);
         return findById(tenantId, itemId);
     }
@@ -954,20 +971,22 @@ public class MaximegalonService {
         if (userId.equals(doc.getOriginatorUserId())) {
             throw new MaximegalonRuleException(
                     MaximegalonRuleException.PARTICIPANT_MUST_STAY,
-                    "user '" + userId + "' opened thread '" + itemId
-                            + "' — the originator is not removable");
+                    "user '" + userId + "' opened thread '" + itemId + "' — the originator is not removable");
         }
 
-        mongoTemplate.updateFirst(byId(tenantId, itemId),
+        mongoTemplate.updateFirst(
+                byId(tenantId, itemId),
                 new Update()
                         .pull(F_PARTICIPANTS, userId)
                         .pull(F_UNREAD_FOR, userId)
-                        .push("history", MaximegalonHistoryEntry.builder()
-                                .action("REMOVED")
-                                .actor(byUserId)
-                                .details("removed=" + userId)
-                                .at(Instant.now())
-                                .build()),
+                        .push(
+                                "history",
+                                MaximegalonHistoryEntry.builder()
+                                        .action("REMOVED")
+                                        .actor(byUserId)
+                                        .details("removed=" + userId)
+                                        .at(Instant.now())
+                                        .build()),
                 MaximegalonDocument.class);
         return findById(tenantId, itemId);
     }
@@ -1038,8 +1057,7 @@ public class MaximegalonService {
      * writes a message.
      */
     public Optional<MaximegalonDocument> react(
-            String tenantId, String itemId, @Nullable String messageId,
-            String key, String userId, boolean on) {
+            String tenantId, String itemId, @Nullable String messageId, String key, String userId, boolean on) {
         for (int attempt = 0; attempt < 2; attempt++) {
             Optional<MaximegalonDocument> existing = findById(tenantId, itemId);
             if (existing.isEmpty()) return Optional.empty();
@@ -1051,17 +1069,24 @@ public class MaximegalonService {
             } else {
                 MaximegalonMessage target = null;
                 for (MaximegalonMessage m : doc.getMessages()) {
-                    if (messageId.equals(m.getId())) { target = m; break; }
+                    if (messageId.equals(m.getId())) {
+                        target = m;
+                        break;
+                    }
                 }
                 if (target == null) return Optional.of(doc);
-                update.set(F_MESSAGES + ".$[m].reactions",
-                                toggled(target.getReactions(), key, userId, on))
+                update.set(F_MESSAGES + ".$[m].reactions", toggled(target.getReactions(), key, userId, on))
                         .filterArray(Criteria.where("m.id").is(messageId));
             }
             UpdateResult result = mongoTemplate.updateFirst(
-                    Query.query(Criteria.where(F_ID).is(itemId).and(F_TENANT).is(tenantId)
-                            .and("version").is(doc.getVersion())),
-                    update, MaximegalonDocument.class);
+                    Query.query(Criteria.where(F_ID)
+                            .is(itemId)
+                            .and(F_TENANT)
+                            .is(tenantId)
+                            .and("version")
+                            .is(doc.getVersion())),
+                    update,
+                    MaximegalonDocument.class);
             if (result.getModifiedCount() > 0) {
                 return findById(tenantId, itemId);
             }
@@ -1079,12 +1104,11 @@ public class MaximegalonService {
      */
     private static List<MaximegalonReaction> toggled(
             @Nullable List<MaximegalonReaction> current, String key, String userId, boolean on) {
-        if (on && current != null && current.size() >= MAX_REACTION_KEYS
-                && !containsKey(current, key)) {
+        if (on && current != null && current.size() >= MAX_REACTION_KEYS && !containsKey(current, key)) {
             throw new MaximegalonRuleException(
                     MaximegalonRuleException.REACTION_LIMIT_REACHED,
-                    "already " + current.size() + " distinct reactions here (limit "
-                            + MAX_REACTION_KEYS + ") — join one of them instead");
+                    "already " + current.size() + " distinct reactions here (limit " + MAX_REACTION_KEYS
+                            + ") — join one of them instead");
         }
         List<MaximegalonReaction> result = new ArrayList<>();
         boolean seen = false;
@@ -1095,8 +1119,7 @@ public class MaximegalonService {
                     continue;
                 }
                 seen = true;
-                List<String> users = new ArrayList<>(
-                        r.getUserIds() == null ? List.<String>of() : r.getUserIds());
+                List<String> users = new ArrayList<>(r.getUserIds() == null ? List.<String>of() : r.getUserIds());
                 if (on) {
                     if (!users.contains(userId)) users.add(userId);
                 } else {
@@ -1105,13 +1128,18 @@ public class MaximegalonService {
                 // An empty reaction is dropped: a key with nobody behind it
                 // would still render as a chip showing zero.
                 if (!users.isEmpty()) {
-                    result.add(MaximegalonReaction.builder().key(key).userIds(users).build());
+                    result.add(MaximegalonReaction.builder()
+                            .key(key)
+                            .userIds(users)
+                            .build());
                 }
             }
         }
         if (!seen && on) {
             result.add(MaximegalonReaction.builder()
-                    .key(key).userIds(new ArrayList<>(List.of(userId))).build());
+                    .key(key)
+                    .userIds(new ArrayList<>(List.of(userId)))
+                    .build());
         }
         return result;
     }
@@ -1143,22 +1171,29 @@ public class MaximegalonService {
      * inventory. See {@code planning/maximegalon.md} §4b.
      */
     public BadgeCounts countBadge(String tenantId, String userId) {
-        Criteria notArchived = Criteria.where(F_TENANT).is(tenantId)
-                .and(F_UNREAD_FOR).is(userId)
-                .and(F_STATUS).ne(MaximegalonStatus.ARCHIVED);
+        Criteria notArchived = Criteria.where(F_TENANT)
+                .is(tenantId)
+                .and(F_UNREAD_FOR)
+                .is(userId)
+                .and(F_STATUS)
+                .ne(MaximegalonStatus.ARCHIVED);
         long unread = mongoTemplate.count(Query.query(notArchived), MaximegalonDocument.class);
 
         long unreadRequiresAction = mongoTemplate.count(
-                Query.query(Criteria.where(F_TENANT).is(tenantId)
-                        .and(F_UNREAD_FOR).is(userId)
-                        .and(F_STATUS).is(MaximegalonStatus.PENDING)
-                        .and(F_REQUIRES_ACTION).is(true)
-                        .and(F_ASSIGNED).is(userId)),
+                Query.query(Criteria.where(F_TENANT)
+                        .is(tenantId)
+                        .and(F_UNREAD_FOR)
+                        .is(userId)
+                        .and(F_STATUS)
+                        .is(MaximegalonStatus.PENDING)
+                        .and(F_REQUIRES_ACTION)
+                        .is(true)
+                        .and(F_ASSIGNED)
+                        .is(userId)),
                 MaximegalonDocument.class);
 
         long pending = mongoTemplate.count(
-                Query.query(filterCriteria(tenantId, List.of(userId),
-                        MaximegalonStatus.PENDING, null)),
+                Query.query(filterCriteria(tenantId, List.of(userId), MaximegalonStatus.PENDING, null)),
                 MaximegalonDocument.class);
 
         return new BadgeCounts(unread, unreadRequiresAction, pending);

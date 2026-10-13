@@ -179,8 +179,13 @@ public class TrillianSessionBootstrapper {
      *
      * <p>The instance part is random rather than sequential: a counter
      * would need coordination across pods for a value nobody reads.
+     *
+     * <p>Public because the prefix is the discriminator outside the bootstrap
+     * too: a thread assigned to a {@code _trillian-} account belongs to a
+     * Trillian, and a listener decides on that prefix whether a conversation
+     * head is even a question ({@code TrillianThreadListener}).
      */
-    private static final String ACCOUNT_PREFIX = "_trillian-";
+    public static final String ACCOUNT_PREFIX = "_trillian-";
 
     private static final int MAX_NAMING_ATTEMPTS = 16;
     private static final int INSTANCE_BOUND = 10_000;
@@ -809,6 +814,14 @@ public class TrillianSessionBootstrapper {
      */
     public boolean ensureUserLoop(ThinkProcessDocument controlProcess) {
         if (controlProcess.getId() == null || !CONTROL_ENGINE_NAME.equals(controlProcess.getThinkEngine())) {
+            return false;
+        }
+        // A conversation head runs the control engine but is not the human's
+        // half of a pair — it neither owns nor needs a Trillian of its own,
+        // and letting it through here would mint one per head turn. Heads
+        // are spawned against an existing loop (the peer they wire to) and
+        // end with their thread (the head sweep).
+        if (TrillianHeadService.headThreadOf(controlProcess) != null) {
             return false;
         }
         Optional<SessionDocument> controlSession = sessionService.findBySessionId(controlProcess.getSessionId());

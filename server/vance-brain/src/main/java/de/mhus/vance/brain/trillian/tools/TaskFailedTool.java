@@ -84,9 +84,11 @@ public class TaskFailedTool implements Tool {
                     "No Trillian Control peer found — this tool is only available " + "inside a Trillian-User worker");
         }
         ThinkProcessDocument peer = peerOpt.get();
+        // Results return to the requester — see TaskCompleteTool.
+        String target = api.consumeReplyTo(ctx.processId(), taskId).orElse(peer.getId());
         Optional<String> eventId = api.dispatchTaskEvent(
                 ctx.processId(),
-                peer.getId(),
+                target,
                 TrillianInternalApi.TASK_EVENT_FAILED,
                 taskId,
                 "Task failed: " + truncate(reason, 240),

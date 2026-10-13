@@ -359,6 +359,7 @@ public class TrillianUserEngine implements ThinkEngine {
             ChatMessageService chatLog = ctx.chatMessageService();
             List<SteerMessage> drained = ctx.drainPending();
             List<SteerMessage> extras = persistUserInputAndCollectExtras(process, chatLog, drained);
+            recordReplyAddresses(process, drained);
 
             log.debug(
                     "TrillianUser.runTurn id='{}' drained={} (uci={}, extras={})",
@@ -559,6 +560,70 @@ public class TrillianUserEngine implements ThinkEngine {
      * that task nothing.
      */
     private static final Set<String> TASK_CONCLUDING_TOOLS = Set.of("task_complete", "task_failed", "task_needs_input");
+
+    /**
+     * Records the return address of every task request this turn drained
+     * that carries one: {@code taskId → replyTo} on the loop's own
+     * {@code engineParams} ({@link TrillianInternalApi#PARAM_TASK_REPLIES}),
+     * so the reporting tool can route the conclusion to the conversation
+     * head that asked instead of to the human's Control.
+     *
+     * <p>At drain time, on the loop's lane — the same single writer the
+     * reporting side reads on, so no lock is needed. A request without a
+     * {@code replyTo} is Control's task and needs no entry: the reporting
+     * tool falls back to the peer, which is where Control's results have
+     * always gone. The map is consumed on report
+     * ({@link TrillianInternalApi#consumeReplyTo}), so it stays bounded by
+     * the open tasks; a loop rebuilt with a lost inbox simply loses the
+     * addresses with it — their tasks are gone with the same inbox.
+     */
+    private void recordReplyAddresses(ThinkProcessDocument process, List<SteerMessage> drained) {
+        Map<String, String> collected = null;
+        for (SteerMessage m : drained) {
+            if (!(m instanceof SteerMessage.ProcessEvent pe) || pe.payload() == null) {
+                continue;
+            }
+            if (!TrillianInternalApi.TASK_EVENT_REQUEST.equals(
+                    pe.payload().get(TrillianInternalApi.PAYLOAD_KEY_TASK_EVENT))) {
+                continue;
+            }
+            Object taskId = pe.payload().get(TrillianInternalApi.PAYLOAD_KEY_TASK_ID);
+            Object replyTo = pe.payload().get(TrillianInternalApi.PAYLOAD_KEY_REPLY_TO);
+            if (!(taskId instanceof String id)
+                    || id.isBlank()
+                    || !(replyTo instanceof String target)
+                    || target.isBlank()) {
+                continue;
+            }
+            if (collected == null) {
+                collected = new LinkedHashMap<>();
+            }
+            collected.put(id, target);
+        }
+        if (collected == null || collected.isEmpty()) {
+            return;
+        }
+        Map<String, Object> params = process.getEngineParams() == null
+                ? new LinkedHashMap<>()
+                : new LinkedHashMap<>(process.getEngineParams());
+        Map<String, Object> replies = new LinkedHashMap<>();
+        Object existing = params.get(TrillianInternalApi.PARAM_TASK_REPLIES);
+        if (existing instanceof Map<?, ?> map) {
+            for (Map.Entry<?, ?> e : map.entrySet()) {
+                if (e.getKey() instanceof String k) {
+                    replies.put(k, e.getValue());
+                }
+            }
+        }
+        replies.putAll(collected);
+        params.put(TrillianInternalApi.PARAM_TASK_REPLIES, replies);
+        if (!thinkProcessService.replaceEngineParams(process.getId(), params)) {
+            log.warn(
+                    "TrillianUser id='{}' could not record {} task reply address(es)",
+                    process.getId(),
+                    collected.size());
+        }
+    }
 
     /**
      * The task ids this turn was woken for — every {@code task_request}

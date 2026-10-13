@@ -66,6 +66,9 @@ class TrillianSessionLifecycleHookTest {
     @Mock
     TrillianHubSweeper hubSweeper;
 
+    @Mock
+    TrillianHeadService headService;
+
     TrillianSessionLifecycleHook hook;
 
     @BeforeEach
@@ -91,7 +94,8 @@ class TrillianSessionLifecycleHookTest {
                 lifecycleProvider,
                 permissionProvider,
                 new de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry(List.of(nature)),
-                hubSweeper);
+                hubSweeper,
+                headService);
         givenControlProcessLinkingTo(PEER);
     }
 

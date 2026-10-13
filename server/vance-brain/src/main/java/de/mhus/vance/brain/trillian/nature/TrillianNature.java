@@ -44,12 +44,13 @@ public interface TrillianNature {
      * ({@code true}) or carries everything on its one loop ({@code false}).
      *
      * <p>This is an axis of the class hierarchy, not a per-Nature switch:
-     * {@link TrillianNatureSingleHead} answers it {@code final}, so a
-     * concrete Nature picks its side by what it extends and cannot flip it
-     * by overriding. Deliberately without a default — a Nature that
-     * implements this interface directly has to say which side it is on.
-     * The multi-head side is planned in {@code planning/trillian-exposure.md}
-     * §3.3; today every Nature is single-headed.
+     * {@link TrillianNatureSingleHead} and {@link TrillianNatureMultiHead}
+     * answer it {@code final}, so a concrete Nature picks its side by what
+     * it extends and cannot flip it by overriding. Deliberately without a
+     * default — a Nature that implements this interface directly has to say
+     * which side it is on. The multi-head side (first concrete Nature:
+     * {@code colin}) is the conversation-head machinery of
+     * {@code planning/trillian-exposure.md} §3.3.
      */
     boolean multiHead();
 
@@ -83,6 +84,77 @@ public interface TrillianNature {
     default String userPromptAddendum(ThinkProcessDocument process) {
         return "";
     }
+
+    // ─── Conversation heads (multi-head side) ────────────────────
+
+    /**
+     * The recipe a conversation head of this Trillian runs on
+     * ({@code engine: trillian-control}, toolset cut to the thread family
+     * plus the task handover — see {@code planning/trillian-exposure.md}
+     * §3.2). Derived from the Nature id so nobody has to keep the pair
+     * in sync by hand; a Nature that wants a different name overrides.
+     *
+     * <p>Only asked for multi-head Natures ({@link #multiHead()}), and only
+     * when a head is spawned — not a loop or control concern.
+     */
+    default String headRecipe() {
+        return "trillian-head-" + id();
+    }
+
+    /**
+     * Nature-specific addendum appended to a conversation head's system
+     * prompt. The head doctrine (how to answer a thread, when to hand a
+     * task to the loop, when to conclude) lives in the head *recipe*, not
+     * here — same split as adam's thread tools: what follows from a Nature
+     * finding belongs in the Nature recipe. This hook is for what a
+     * Nature has to say about *itself* in a conversation.
+     *
+     * <p>Called by the multi-head side's prompt addendum dispatch only — a
+     * head runs the control engine, so the base attribute rendering (the
+     * shared persona, read from the loop via the peer link) applies to
+     * heads as well; this lands next to it.
+     */
+    default String headPromptAddendum(ThinkProcessDocument head) {
+        return "";
+    }
+
+    /**
+     * How many conversation heads this Trillian may hold at the same
+     * time. A bound on cost and on thread-flood abuse — every head is a
+     * process with its own context. Per-Trillian override comes with the
+     * exposure configuration (Phase 2); this is the Nature's default.
+     */
+    default int headLimit() {
+        return 5;
+    }
+
+    /** How a conversation of this Trillian ended — for {@link #headConcluded}. */
+    enum HeadConclusion {
+        /** The head (or the sweep) archived the thread as settled. */
+        COMPLETED,
+        /** The message limit forced the close — open a new conversation. */
+        LIMIT,
+        /** No contribution for the configured inactivity window. */
+        INACTIVITY,
+        /** The Trillian itself ended; open threads were archived with it. */
+        ACCOUNT_ENDED
+    }
+
+    /**
+     * A conversation of this Trillian ended — whatever ended it: the head
+     * archiving the thread as settled, the message limit, the inactivity
+     * sweep, or the end of the Trillian itself. One funnel, four causes:
+     * whatever a Nature wants to remember about a concluded conversation
+     * (a journal line, a summary to the owner) keys on this hook and needs
+     * no second dispatch.
+     *
+     * <p>Never called for a thread that ended without a conversation (a
+     * headless thread archived by hand), and at most once per conversation:
+     * the closing path runs under a status check, so the fast event path and
+     * the sweep backstop do not double-fire. Swallows nothing — called
+     * best-effort from the closing service.
+     */
+    default void headConcluded(String tenantId, String account, String threadId, HeadConclusion cause) {}
 
     // ─── Turn lifecycle hooks ─────────────────────────────────────
 

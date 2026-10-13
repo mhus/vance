@@ -86,9 +86,13 @@ public class TaskCompleteTool implements Tool {
                     "No Trillian Control peer found — this tool is only available " + "inside a Trillian-User worker");
         }
         ThinkProcessDocument peer = peerOpt.get();
+        // Results return to the requester: a task a conversation head
+        // handed over is reported to that head (which posts it into its
+        // thread); everything else keeps its historic target, the peer.
+        String target = api.consumeReplyTo(ctx.processId(), taskId).orElse(peer.getId());
         Optional<String> eventId = api.dispatchTaskEvent(
                 ctx.processId(),
-                peer.getId(),
+                target,
                 TrillianInternalApi.TASK_EVENT_DONE,
                 taskId,
                 "Task done: " + truncate(result, 240),

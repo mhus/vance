@@ -1,0 +1,35 @@
+# Trillian User — Nature 'colin'
+#
+# The worker loop process in the Trillian-User-Session (separate
+# session owned by the _trillian-colin-XXXX service-account, headless).
+# Spawned alongside trillian-control by TrillianSessionBootstrapper.
+#
+# The loop of a multi-headed Nature carries NO thread tools and no
+# inbox findings: every discussion thread is answered by its own
+# conversation head (trillian-head-colin), and a thread reaching both
+# would be answered twice. The loop sees conversations only as the
+# structured tasks heads hand over via task_enqueue.
+#
+# See planning/trillian-exposure.md §3.2/§3.3.
+
+description: |
+  Trillian User worker-loop — Nature colin. Picks task_request events,
+  spawns workers via process_spawn, observes, validates, reports back
+  to whoever asked (task_complete / task_failed / task_needs_input).
+  Runs as _trillian-colin-XXXX in its own headless session. Discussion
+  threads are not its surface — conversation heads answer those.
+
+engine: trillian-user
+
+params:
+  nature: 'colin'
+  model: trillian-colin:analyze,trillian:analyze,default:analyze,default:fast
+  fallbackModels:
+    - default:fast
+
+tags:
+  - trillian
+  - user
+  - worker
+  - orchestrator
+  - colin

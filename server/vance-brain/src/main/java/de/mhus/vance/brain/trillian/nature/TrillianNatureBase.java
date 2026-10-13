@@ -25,8 +25,9 @@ import lombok.RequiredArgsConstructor;
  *
  * <p><b>Concrete Natures do not extend this class directly</b> but one side
  * of the head axis ({@link TrillianNature#multiHead()}):
- * {@link TrillianNatureSingleHead} today. Nature void and adam are both
- * single-headed siblings there — neither derives from the other.
+ * {@link TrillianNatureSingleHead} or {@link TrillianNatureMultiHead}.
+ * Nature void and adam are single-headed siblings there, colin the first
+ * multi-headed one — neither derives from the other.
  *
  * <p>Subclasses supply {@link #id()} and {@link #title()} and override
  * whichever hooks their generation actually changes.

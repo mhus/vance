@@ -1,0 +1,103 @@
+package de.mhus.vance.brain.trillian;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
+import de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry;
+import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.enginemessage.EngineMessageService;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Optional;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+
+/**
+ * Results return to the requester: a task a conversation head handed over
+ * carries its return address, the loop records it at drain, and the report
+ * consumes it. The address lives on the loop's engineParams — written and
+ * read on the loop's own lane, one writer by construction.
+ */
+class TrillianTaskReplyRoutingTest {
+
+    private final ThinkProcessService thinkProcessService = mock(ThinkProcessService.class);
+    private final EngineMessageRouter router = mock(EngineMessageRouter.class);
+    private final TrillianInternalApi api = new TrillianInternalApi(
+            thinkProcessService,
+            router,
+            mock(EngineMessageService.class),
+            mock(de.mhus.vance.brain.thinkengine.ProcessEventEmitter.class),
+            mock(ChatMessageService.class),
+            mock(de.mhus.vance.brain.scheduling.LaneScheduler.class),
+            mock(TrillianNatureRegistry.class));
+
+    @Test
+    void aTaskWithAReturnAddress_carriesItInTheRequestPayload() {
+        when(router.dispatch(any(), anyString(), any())).thenReturn(true);
+        ThinkProcessDocument loop = loopWithTaskReplies(null);
+
+        api.enqueueTask("head-1", loop, "count the docs", "head-1");
+
+        ArgumentCaptor<de.mhus.vance.shared.thinkprocess.PendingMessageDocument> message =
+                ArgumentCaptor.forClass(de.mhus.vance.shared.thinkprocess.PendingMessageDocument.class);
+        verify(router).dispatch(eq("head-1"), eq("loop-1"), message.capture());
+        assertThat(message.getValue().getPayload())
+                .containsEntry(TrillianInternalApi.PAYLOAD_KEY_REPLY_TO, "head-1")
+                .containsEntry(TrillianInternalApi.PAYLOAD_KEY_DESCRIPTION, "count the docs");
+    }
+
+    @Test
+    void aControlRaisedTask_carriesNoReturnAddress() {
+        when(router.dispatch(any(), anyString(), any())).thenReturn(true);
+
+        api.enqueueTask("control-1", loopWithTaskReplies(null), "count the docs");
+
+        ArgumentCaptor<de.mhus.vance.shared.thinkprocess.PendingMessageDocument> message =
+                ArgumentCaptor.forClass(de.mhus.vance.shared.thinkprocess.PendingMessageDocument.class);
+        verify(router).dispatch(eq("control-1"), eq("loop-1"), message.capture());
+        assertThat(message.getValue().getPayload()).doesNotContainKey(TrillianInternalApi.PAYLOAD_KEY_REPLY_TO);
+    }
+
+    @Test
+    void consumingTheAddress_returnsItAndRemovesTheEntry() {
+        ThinkProcessDocument loop = loopWithTaskReplies(Map.of("task-42", "head-1", "task-7", "head-2"));
+
+        assertThat(api.consumeReplyTo("loop-1", "task-42")).contains("head-1");
+
+        // Gone on the second ask — a task is reported once, and the map must
+        // not grow with work that finished long ago.
+        assertThat(api.consumeReplyTo("loop-1", "task-42")).isEmpty();
+        assertThat(api.consumeReplyTo("loop-1", "task-7")).contains("head-2");
+    }
+
+    @Test
+    void anUnknownTask_hasNoAddress_fallsBackToThePeer() {
+        ThinkProcessDocument loop = loopWithTaskReplies(Map.of("task-42", "head-1"));
+
+        assertThat(api.consumeReplyTo("loop-1", "task-99")).isEmpty();
+    }
+
+    private ThinkProcessDocument loopWithTaskReplies(Map<String, String> taskReplies) {
+        ThinkProcessDocument loop = new ThinkProcessDocument();
+        loop.setId("loop-1");
+        Map<String, Object> params = new LinkedHashMap<>();
+        if (taskReplies != null) {
+            params.put(TrillianInternalApi.PARAM_TASK_REPLIES, new LinkedHashMap<>(taskReplies));
+        }
+        loop.setEngineParams(params);
+        when(thinkProcessService.findById("loop-1")).thenReturn(Optional.of(loop));
+        when(thinkProcessService.replaceEngineParams(eq("loop-1"), any())).thenAnswer(inv -> {
+            loop.setEngineParams(inv.getArgument(1));
+            return true;
+        });
+        return loop;
+    }
+}

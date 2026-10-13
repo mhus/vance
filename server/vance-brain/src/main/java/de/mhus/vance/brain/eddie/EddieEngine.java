@@ -238,6 +238,12 @@ public class EddieEngine extends StructuredActionEngine {
     private final de.mhus.vance.brain.prompt.ClientTurnContextResolver clientTurnContextResolver;
     private final ObjectMapper objectMapper;
     private final de.mhus.vance.brain.notification.NotificationService notificationService;
+    /**
+     * Word activation (skills.md §4g): skills on the {@code trigger} level
+     * fire one-shot on the fresh user input, before the turn's skills are
+     * resolved — same hook as Arthur, Ford and Frankie.
+     */
+    private final de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher;
 
     /**
      * Per-process flag tracking whether the in-flight turn was
@@ -292,7 +298,8 @@ public class EddieEngine extends StructuredActionEngine {
             de.mhus.vance.brain.notification.NotificationService notificationService,
             de.mhus.vance.brain.guard.ShootyGuardService completionGuardService,
             de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry turnContextHandlers,
-            de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer attachedUserMessageComposer) {
+            de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer attachedUserMessageComposer,
+            de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher) {
         super(
                 streamingProperties,
                 llmCallTracker,
@@ -326,6 +333,7 @@ public class EddieEngine extends StructuredActionEngine {
         this.promptDateContextResolver = promptDateContextResolver;
         this.scratchpadPromptContributor = scratchpadPromptContributor;
         this.notificationService = notificationService;
+        this.skillTriggerMatcher = skillTriggerMatcher;
     }
 
     // ──────────────────── Metadata ────────────────────
@@ -908,8 +916,13 @@ public class EddieEngine extends StructuredActionEngine {
             // Persist user-typed messages into the chat log so future
             // turns see them in history. Other inbox kinds are
             // turn-local context.
+            StringBuilder userTextForTriggers = new StringBuilder();
             for (SteerMessage m : inbox) {
                 if (m instanceof SteerMessage.UserChatInput uci) {
+                    if (uci.content() != null && !uci.content().isBlank()) {
+                        if (userTextForTriggers.length() > 0) userTextForTriggers.append('\n');
+                        userTextForTriggers.append(uci.content());
+                    }
                     chatLog.append(ChatMessageDocument.builder()
                             .tenantId(process.getTenantId())
                             .sessionId(process.getSessionId())
@@ -923,6 +936,13 @@ public class EddieEngine extends StructuredActionEngine {
                             .meta(de.mhus.vance.brain.applications.SelectionReferenceIngest.metaFor(uci.activeApp()))
                             .build());
                 }
+            }
+
+            // Word activation on the joined fresh user input — before the
+            // active skills are resolved below, so a triggered skill counts
+            // for this very turn (same hook as Arthur/Ford/Frankie).
+            if (userTextForTriggers.length() > 0) {
+                skillTriggerMatcher.detectAndActivate(process, userTextForTriggers.toString());
             }
 
             EngineChatFactory.EngineChatBundle chatBundle = engineChatFactory.forProcess(process, ctx, NAME);

@@ -10,7 +10,6 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
@@ -60,22 +59,12 @@ public class TrillianThreadListener {
             dispatch(item, messages.get(messages.size() - 1));
             return;
         }
-        // The other creation shape every REST opener produces: no messages,
-        // the body IS the contribution (the thread panel renders it as the
-        // opening post). Without this branch a discussion opened over the
-        // REST discussions endpoint would rest unheard — the shape the
-        // listener was built with, an embedded opener message, only exists
-        // in direct {@link MaximegalonService#create} calls.
-        if (StringUtils.isNotBlank(item.getBody())) {
-            dispatch(
-                    item,
-                    MaximegalonMessage.builder()
-                            .id(item.getId())
-                            .authorUserId(item.getOriginatorUserId())
-                            .body(item.getBody())
-                            .createdAt(item.getCreatedAt())
-                            .build());
-        }
+        // The other creation shape every discussion opener produces (the
+        // inbox REST endpoint, the exposure door): no messages, the body IS
+        // the contribution. Whether the thread is a conversation at all —
+        // a discussion, not a notice that merely carries a body — is
+        // dispatch's question, as for every contribution.
+        TrillianHeadService.openerOf(item).ifPresent(opener -> dispatch(item, opener));
     }
 
     @EventListener

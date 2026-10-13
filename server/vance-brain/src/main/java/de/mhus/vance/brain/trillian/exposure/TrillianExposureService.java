@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.trillian.exposure;
 
 import de.mhus.vance.brain.documents.events.RoutedDocumentChangedEvent;
+import de.mhus.vance.brain.trillian.TrillianSessionBootstrapper;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.user.UserDocument;
@@ -9,9 +10,12 @@ import de.mhus.vance.shared.user.UserStatus;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -89,25 +93,57 @@ public class TrillianExposureService {
 
     /** The Trillian behind an exposed name — or empty when no exposed Trillian carries it. */
     public Optional<Exposed> findByExposedName(String tenantId, String exposedName) {
-        for (Exposed exposed : directory(tenantId)) {
-            if (exposed.config().exposedName().equals(exposedName)) {
-                return Optional.of(exposed);
-            }
-        }
-        return Optional.empty();
+        return directory(tenantId).stream()
+                .filter(exposed -> exposed.config().exposedName().equals(exposedName))
+                .findFirst();
+    }
+
+    /**
+     * The exposure of one Trillian account as the door sees it — empty when
+     * the account is not exposed, or its name is ambiguous. The gate for
+     * every call on an existing conversation, so a revoked exposure takes
+     * effect on running conversations too.
+     */
+    public Optional<Exposed> findByAccount(String tenantId, String account) {
+        return directory(tenantId).stream()
+                .filter(exposed -> exposed.account().equals(account))
+                .findFirst();
     }
 
     /**
      * The exposed Trillians of the tenant, by account name — the directory.
      * Only active service accounts with the Trillian prefix count; an
      * archived or deleted Trillian is not exposed, whatever its hub says.
+     *
+     * <p>An {@code exposedName} carried by more than one Trillian exposes
+     * none of them: a name that resolves to several accounts is worse than
+     * a name that resolves to none — it would route a counterpart to
+     * whichever account the user listing happens to return first, and a
+     * second account could take over a name by copying it. WARN, because
+     * that is an operator mistake worth seeing.
      */
     public List<Exposed> directory(String tenantId) {
-        return userService.all(tenantId).stream()
+        List<Exposed> candidates = userService.all(tenantId).stream()
                 .filter(TrillianExposureService::isTrillian)
                 .map(acc -> configOf(tenantId, acc.getName()).map(c -> new Exposed(acc.getName(), c)))
                 .flatMap(Optional::stream)
                 .toList();
+        Map<String, Long> perName = candidates.stream()
+                .collect(Collectors.groupingBy(exposed -> exposed.config().exposedName(), Collectors.counting()));
+        List<Exposed> unambiguous = new ArrayList<>();
+        for (Exposed exposed : candidates) {
+            if (perName.get(exposed.config().exposedName()) > 1) {
+                log.warn(
+                        "trillian exposure: exposedName '{}' is carried by several Trillians in '{}'"
+                                + " — '{}' is not exposed until the name is unique",
+                        exposed.config().exposedName(),
+                        tenantId,
+                        exposed.account());
+                continue;
+            }
+            unambiguous.add(exposed);
+        }
+        return unambiguous;
     }
 
     /** Per-Trillian head limit override; {@code 0} = the Nature's default. */
@@ -156,7 +192,7 @@ public class TrillianExposureService {
         return user.isServiceAccount()
                 && user.getStatus() == UserStatus.ACTIVE
                 && user.getName() != null
-                && user.getName().startsWith("_trillian-");
+                && user.getName().startsWith(TrillianSessionBootstrapper.ACCOUNT_PREFIX);
     }
 
     private static String key(@Nullable String tenantId, String account) {

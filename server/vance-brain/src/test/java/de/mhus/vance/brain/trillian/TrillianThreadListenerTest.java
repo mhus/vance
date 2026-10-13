@@ -15,6 +15,7 @@ import de.mhus.vance.shared.inbox.MaximegalonCreatedEvent;
 import de.mhus.vance.shared.inbox.MaximegalonDocument;
 import de.mhus.vance.shared.inbox.MaximegalonMessage;
 import de.mhus.vance.shared.inbox.MaximegalonMessageEvent;
+import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -141,6 +142,33 @@ class TrillianThreadListenerTest {
     }
 
     @Test
+    void aNotificationWithABody_isNoOpener_andWakesNobody() {
+        // A share notice, a process output or a scheduler note carries a
+        // body too — but nobody opened it to be answered.
+        givenLiveMultiHeadLoop("loop-1");
+        MaximegalonDocument notice = conversation();
+        notice.setMessages(null);
+        notice.setOriginatorUserId("system");
+        notice.setTags(new ArrayList<>());
+        notice.setBody("Bob shared 'notes/plan.md' with you.");
+
+        listener.onThreadCreated(new MaximegalonCreatedEvent(notice));
+
+        verify(headService, never()).dispatchContribution(any(), any(), any(), any());
+    }
+
+    @Test
+    void aCommentOnANotice_isNoConversation_andWakesNobody() {
+        givenLiveMultiHeadLoop("loop-1");
+        MaximegalonDocument notice = conversation();
+        notice.setTags(new ArrayList<>());
+
+        listener.onThreadMessage(messageEvent(notice, message("m-1", "bob", "see above")));
+
+        verify(headService, never()).dispatchContribution(any(), any(), any(), any());
+    }
+
+    @Test
     void aThreadCreatedEmpty_wakesNobody() {
         givenLiveMultiHeadLoop("loop-1");
         MaximegalonDocument created = conversation();
@@ -192,6 +220,7 @@ class TrillianThreadListenerTest {
         item.setOriginatorUserId("bob");
         item.setType(MaximegalonType.OUTPUT_TEXT);
         item.setStatus(MaximegalonStatus.PENDING);
+        item.setTags(new ArrayList<>(List.of(MaximegalonService.TAG_DISCUSSION)));
         return item;
     }
 

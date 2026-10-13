@@ -101,6 +101,42 @@ public class MaximegalonService {
     /** Conventional payload key for the LOW-auto-default value. */
     public static final String PAYLOAD_DEFAULT_KEY = "default";
 
+    /**
+     * Tag every discussion thread carries — the mark that a thread was opened
+     * to be talked in, as opposed to a notification that merely lands on a
+     * desk. Thread consumers that answer (the Trillian conversation heads)
+     * treat only such a thread's opening body as a contribution.
+     */
+    public static final String TAG_DISCUSSION = "discussion";
+
+    /**
+     * The one shape of a discussion thread, for every opener (the inbox REST
+     * endpoint, the Trillian exposure door): plain text, normal criticality,
+     * pending, never an ask, tagged {@link #TAG_DISCUSSION}. The caller adds
+     * what is specific to its case — a document reference turns the type
+     * into {@link MaximegalonType#OUTPUT_DOCUMENT} — and passes the result to
+     * {@link #create}.
+     */
+    public static MaximegalonDocument.MaximegalonDocumentBuilder discussion(
+            String tenantId, String originatorUserId, String assignedToUserId, String title, @Nullable String body) {
+        return MaximegalonDocument.builder()
+                .tenantId(tenantId)
+                .originatorUserId(originatorUserId)
+                .assignedToUserId(assignedToUserId)
+                .type(MaximegalonType.OUTPUT_TEXT)
+                .criticality(Criticality.NORMAL)
+                .status(MaximegalonStatus.PENDING)
+                .requiresAction(false)
+                .title(title)
+                .body(body)
+                .tags(new ArrayList<>(List.of(TAG_DISCUSSION)));
+    }
+
+    /** Whether {@code item} was opened as a discussion ({@link #TAG_DISCUSSION}). */
+    public static boolean isDiscussion(MaximegalonDocument item) {
+        return item.getTags() != null && item.getTags().contains(TAG_DISCUSSION);
+    }
+
     private final MaximegalonRepository repository;
     private final MongoTemplate mongoTemplate;
     private final ApplicationEventPublisher eventPublisher;

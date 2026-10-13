@@ -286,25 +286,17 @@ public class InboxController {
         }
         authority.enforce(httpRequest, new Resource.InboxItem(tenant, "", assignee), Action.WRITE);
 
-        MaximegalonDocument.MaximegalonDocumentBuilder builder = MaximegalonDocument.builder()
-                .tenantId(tenant)
-                .originatorUserId(currentUser)
-                .assignedToUserId(assignee)
-                .type(doc != null ? MaximegalonType.OUTPUT_DOCUMENT : MaximegalonType.OUTPUT_TEXT)
-                .criticality(Criticality.NORMAL)
-                .status(MaximegalonStatus.PENDING)
-                .requiresAction(false)
-                .title(request.getTitle().trim())
-                .body(request.getBody())
-                .tags(new ArrayList<>(List.of("discussion")));
+        MaximegalonDocument.MaximegalonDocumentBuilder builder = MaximegalonService.discussion(
+                tenant, currentUser, assignee, request.getTitle().trim(), request.getBody());
         if (doc != null) {
-            builder.documentRef(MaximegalonDocumentRef.builder()
-                    .documentId(doc.getId())
-                    .projectId(doc.getProjectId())
-                    .path(doc.getPath())
-                    .title(doc.getTitle())
-                    .mimeType(doc.getMimeType())
-                    .build());
+            builder.type(MaximegalonType.OUTPUT_DOCUMENT)
+                    .documentRef(MaximegalonDocumentRef.builder()
+                            .documentId(doc.getId())
+                            .projectId(doc.getProjectId())
+                            .path(doc.getPath())
+                            .title(doc.getTitle())
+                            .mimeType(doc.getMimeType())
+                            .build());
         }
         MaximegalonDocument created = inboxItemService.create(builder.build());
         return ResponseEntity.ok(InboxMapper.toDto(created));

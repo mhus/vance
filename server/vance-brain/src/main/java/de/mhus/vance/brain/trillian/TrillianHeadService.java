@@ -29,6 +29,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
@@ -228,12 +229,14 @@ public class TrillianHeadService {
     }
 
     /**
-     * The head limit in force: the exposure config's override when set,
-     * the Nature's default otherwise.
+     * The head limit in force: the Nature's limit, lowered by the exposure
+     * config when it sets a smaller one. The config can only lower it — the
+     * Nature's limit is the bound on cost and thread-flood abuse, and a
+     * document anyone with write access to the hub can edit must not lift it.
      */
     private int effectiveHeadLimit(ThinkProcessDocument loop, TrillianNature nature) {
         int configured = exposureService.headLimitOf(loop.getTenantId(), accountOf(loop));
-        return configured > 0 ? configured : nature.headLimit();
+        return configured > 0 ? Math.min(configured, nature.headLimit()) : nature.headLimit();
     }
 
     /**
@@ -557,7 +560,10 @@ public class TrillianHeadService {
                             + "Please open a new conversation to continue.");
             return;
         }
-        MaximegalonMessage last = messages.isEmpty() ? null : messages.get(messages.size() - 1);
+        // A body-only opener nobody answered yet is an owed contribution like
+        // any other — refused at the head limit, or arrived while the loop
+        // was down, it would otherwise rest forever.
+        MaximegalonMessage last = messages.isEmpty() ? openerOf(item).orElse(null) : messages.get(messages.size() - 1);
         if (last == null || accountOf(loop).equals(authorOf(last))) {
             return; // answered — nothing owed
         }
@@ -648,15 +654,47 @@ public class TrillianHeadService {
     }
 
     /**
-     * Whether a thread is a conversation — the only kind a head leads.
-     * Asks carry rights (maximegalon §8) and never reach a head; outputs and
-     * other effects are not a conversation either.
+     * Whether an open thread is a conversation — the only kind a head leads.
+     * See {@link #isConversationThread} for the shape; a closed one
+     * (archived, dismissed) is a finished conversation, no longer led.
      */
     public static boolean isConversation(MaximegalonDocument item) {
-        return !item.isRequiresAction()
-                && item.getEffectType() == null
+        return isConversationThread(item)
                 && item.getStatus() != MaximegalonStatus.ARCHIVED
                 && item.getStatus() != MaximegalonStatus.DISMISSED;
+    }
+
+    /**
+     * Whether a thread was opened as a conversation, whatever its status: a
+     * discussion ({@link MaximegalonService#TAG_DISCUSSION}) that is neither
+     * an ask nor carries an effect. Asks carry rights (maximegalon §8) and
+     * never reach a head; a notice that lands on the Trillian's desk — a
+     * share, a process output, a scheduler note — was not opened to be
+     * answered, and a head per notice would spend a slot and a model call on
+     * talking to "system".
+     */
+    public static boolean isConversationThread(MaximegalonDocument item) {
+        return MaximegalonService.isDiscussion(item) && !item.isRequiresAction() && item.getEffectType() == null;
+    }
+
+    /**
+     * The opening contribution of a body-only discussion — the shape every
+     * opener produces (the inbox REST endpoint, the exposure door): no
+     * messages, the body IS the contribution (the thread panel renders it as
+     * the opening post). Synthesized with the thread's id and the
+     * originator's voice, so the listener and the sweep see the same
+     * contribution. Empty when the thread carries messages or no body.
+     */
+    public static Optional<MaximegalonMessage> openerOf(MaximegalonDocument item) {
+        if (!messagesOf(item).isEmpty() || StringUtils.isBlank(item.getBody())) {
+            return Optional.empty();
+        }
+        return Optional.of(MaximegalonMessage.builder()
+                .id(item.getId())
+                .authorUserId(item.getOriginatorUserId())
+                .body(item.getBody())
+                .createdAt(item.getCreatedAt())
+                .build());
     }
 
     /** The thread a head process belongs to, from its engineParams marker. */

@@ -3,6 +3,7 @@ package de.mhus.vance.brain.mcpserver;
 import de.mhus.vance.brain.trillian.exposure.TrillianConversationService;
 import de.mhus.vance.brain.trillian.exposure.TrillianExposureService;
 import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -49,6 +50,7 @@ public class TrillianAgentsToolCatalog {
         return tools;
     }
 
+    @Nullable
     Tool find(String name) {
         for (Tool tool : tools) {
             if (tool.name().equals(name)) return tool;
@@ -68,7 +70,7 @@ public class TrillianAgentsToolCatalog {
 
         @Override
         public String description() {
-            return "List the exposed agents (Trillians) of this tenant that are reachable"
+            return "List the exposed agents (Trillians) of this tenant you may talk to"
                     + " through this door: exposed name, description, open doors.";
         }
 
@@ -84,17 +86,24 @@ public class TrillianAgentsToolCatalog {
 
         @Override
         public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
+            // Only who this caller may talk to through this door: an agent
+            // that refuses the caller anyway is no entry in their directory,
+            // and the list does not tell anyone whom else a Trillian talks to.
+            String caller = callerOf(ctx);
             List<Map<String, Object>> agents = new ArrayList<>();
-            exposureService.directory(ctx.tenantId()).forEach(exposed -> {
-                Map<String, Object> doors = new LinkedHashMap<>();
-                doors.put("mcp", exposed.config().doors().mcp());
-                doors.put("a2a", exposed.config().doors().a2a());
-                Map<String, Object> agent = new LinkedHashMap<>();
-                agent.put("name", exposed.config().exposedName());
-                agent.put("description", exposed.config().description());
-                agent.put("doors", doors);
-                agents.add(agent);
-            });
+            exposureService.directory(ctx.tenantId()).stream()
+                    .filter(exposed ->
+                            exposed.config().doors().mcp() && exposed.config().allows(caller))
+                    .forEach(exposed -> {
+                        Map<String, Object> doors = new LinkedHashMap<>();
+                        doors.put("mcp", exposed.config().doors().mcp());
+                        doors.put("a2a", exposed.config().doors().a2a());
+                        Map<String, Object> agent = new LinkedHashMap<>();
+                        agent.put("name", exposed.config().exposedName());
+                        agent.put("description", exposed.config().description());
+                        agent.put("doors", doors);
+                        agents.add(agent);
+                    });
             return Map.of("agents", agents);
         }
     }
@@ -257,14 +266,14 @@ public class TrillianAgentsToolCatalog {
     private static String requireString(Map<String, Object> params, String key) {
         String value = stringOf(params, key);
         if (value == null) {
-            throw new de.mhus.vance.toolpack.ToolException("'" + key + "' is required");
+            throw new ToolException("'" + key + "' is required");
         }
         return value;
     }
 
     private static long waitOf(Map<String, Object> params) {
         return params.get("waitMs") instanceof Number n
-                ? de.mhus.vance.brain.trillian.exposure.TrillianConversationService.clampWait(n.longValue())
-                : de.mhus.vance.brain.trillian.exposure.TrillianConversationService.DEFAULT_WAIT_MS;
+                ? TrillianConversationService.clampWait(n.longValue())
+                : TrillianConversationService.DEFAULT_WAIT_MS;
     }
 }

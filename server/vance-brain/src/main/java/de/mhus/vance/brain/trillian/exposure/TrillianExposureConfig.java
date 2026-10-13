@@ -17,15 +17,15 @@ import org.yaml.snakeyaml.Yaml;
  * the directory shows; {@code allowedCounterparts} is the gate — the accounts
  * allowed to open conversations, checked against the caller's identity at
  * request time, never mapped from a config identity (maximegalon §9).
- * {@code headLimit} and {@code inactivityDays} override the Nature's head
- * limit and the global inactivity setting when greater than zero. {@code
+ * {@code headLimit} lowers the Nature's head limit when greater than zero
+ * (it never lifts it — the Nature's limit is the bound on cost and flood
+ * abuse); {@code inactivityDays} overrides the global inactivity setting
+ * when greater than zero. {@code
  * doors} says which shells may stand in front of the protocol entry — the
  * MCP door ({@code POST /brain/{tenant}/agents}) is the first.
  *
- * <p>Numbers are deliberately {@code int}-typed with {@code 0} as the
- * documented "not set" value: YAML arrives as Integer/Long and a config that
- * says {@code headLimit: 5000} by accident should parse to something
- * obviously wrong, not silently become the default.
+ * <p>Numbers are {@code int}-typed with {@code 0} as the documented "not
+ * set" value; YAML arrives as Integer/Long either way.
  */
 public record TrillianExposureConfig(
         String exposedName,

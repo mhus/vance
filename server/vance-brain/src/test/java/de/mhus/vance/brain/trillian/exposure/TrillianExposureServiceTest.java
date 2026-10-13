@@ -107,6 +107,28 @@ class TrillianExposureServiceTest {
     }
 
     @Test
+    void anAmbiguousExposedName_exposesNoneOfItsCarriers() {
+        String copycat = "_trillian-copycat-9999";
+        when(userService.all(TENANT))
+                .thenReturn(List.of(trillian(COLIN, UserStatus.ACTIVE), trillian(copycat, UserStatus.ACTIVE)));
+        givenConfig(COLIN, "exposedName: colin\nallowedCounterparts: [road.runner]\ndoors:\n  mcp: true\n");
+        givenConfig(copycat, "exposedName: colin\nallowedCounterparts: [wile.coyote]\ndoors:\n  mcp: true\n");
+
+        assertThat(service.findByExposedName(TENANT, "colin")).isEmpty();
+        assertThat(service.findByAccount(TENANT, COLIN)).isEmpty();
+        assertThat(service.directory(TENANT)).isEmpty();
+    }
+
+    @Test
+    void findByAccountAnswersTheExposureOfOneTrillian() {
+        when(userService.all(TENANT)).thenReturn(List.of(trillian(COLIN, UserStatus.ACTIVE)));
+        givenConfig(COLIN, "exposedName: colin\nallowedCounterparts: [road.runner]\ndoors:\n  mcp: true\n");
+
+        assertThat(service.findByAccount(TENANT, COLIN)).isPresent();
+        assertThat(service.findByAccount(TENANT, "_trillian-void")).isEmpty();
+    }
+
+    @Test
     void malformedConfigMeansNotExposed_notAnException() {
         when(userService.all(TENANT)).thenReturn(List.of(trillian(COLIN, UserStatus.ACTIVE)));
         givenConfig(COLIN, "exposedName: [not, a, string]\n");

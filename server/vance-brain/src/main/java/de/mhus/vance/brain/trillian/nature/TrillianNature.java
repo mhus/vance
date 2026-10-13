@@ -129,8 +129,8 @@ public interface TrillianNature {
     /**
      * How many conversation heads this Trillian may hold at the same
      * time. A bound on cost and on thread-flood abuse — every head is a
-     * process with its own context. Per-Trillian override comes with the
-     * exposure configuration (Phase 2); this is the Nature's default.
+     * process with its own context. The exposure configuration may lower
+     * it per Trillian, never lift it.
      */
     default int headLimit() {
         return 5;

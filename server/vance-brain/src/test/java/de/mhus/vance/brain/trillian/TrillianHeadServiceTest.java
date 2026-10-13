@@ -243,6 +243,24 @@ class TrillianHeadServiceTest {
     }
 
     @Test
+    void theExposureConfig_lowersTheHeadLimit() {
+        when(exposureService.headLimitOf(TENANT, ACCOUNT)).thenReturn(1);
+        sessionProcesses.add(headFor("thread-2"));
+
+        assertThat(service.hasHeadCapacity(loop, nature)).isFalse();
+    }
+
+    @Test
+    void theExposureConfig_cannotLiftTheNaturesHeadLimit() {
+        // The Nature's limit is the bound on cost and flood abuse; a hub
+        // document must not lift it.
+        when(exposureService.headLimitOf(TENANT, ACCOUNT)).thenReturn(50);
+        sessionProcesses.addAll(List.of(headFor("thread-2"), headFor("thread-3")));
+
+        assertThat(service.hasHeadCapacity(loop, nature)).isFalse();
+    }
+
+    @Test
     void aClosedHead_isNotTheLimit_andIsRebuilt() {
         when(nature.headLimit()).thenReturn(1);
         ThinkProcessDocument closed = headFor("thread-2");
@@ -504,6 +522,38 @@ class TrillianHeadServiceTest {
     }
 
     @Test
+    void aBodyOnlyOpener_nobodyAnswered_isOwedLikeAnyContribution() {
+        // Opened over the door while the head limit was full: no messages,
+        // the body is the contribution — it must not rest forever.
+        when(nature.headLimit()).thenReturn(0);
+        MaximegalonDocument opened = conversationWithMessages();
+        opened.setBody("Hello, anyone there?");
+        opened.setCreatedAt(Instant.now().minus(6, ChronoUnit.MINUTES));
+        givenOpenThread(opened);
+
+        service.sweepLoop(loop, Instant.now());
+
+        verify(threads).postMessage(eq(TENANT), eq(THREAD), eq(ACCOUNT), any(), any());
+    }
+
+    @Test
+    void aNoticeOnTheTrilliansDesk_isNoConversation_andIsLeftAlone() {
+        // A share notice with an old comment: not opened to be answered —
+        // no head, no decline, no inactivity close.
+        MaximegalonDocument notice =
+                conversationWithMessages(message("m-1", "bob", Instant.now().minus(30, ChronoUnit.DAYS)));
+        notice.setTags(new ArrayList<>());
+        notice.setBody("Bob shared 'notes/plan.md' with you.");
+        givenOpenThread(notice);
+
+        service.sweepLoop(loop, Instant.now());
+
+        verify(threads, never()).postMessage(any(), any(), any(), any(), any());
+        verify(threads, never()).archive(any(), any(), any());
+        verify(router, never()).dispatch(any(), anyString(), any());
+    }
+
+    @Test
     void aHeadlessFreshContribution_isNotDeclinedYet() {
         when(nature.headLimit()).thenReturn(0);
         givenOpenThread(
@@ -694,6 +744,7 @@ class TrillianHeadServiceTest {
         item.setType(MaximegalonType.OUTPUT_TEXT);
         item.setStatus(MaximegalonStatus.PENDING);
         item.setCreatedAt(Instant.now());
+        item.setTags(new ArrayList<>(List.of(MaximegalonService.TAG_DISCUSSION)));
         item.setMessages(new ArrayList<>(List.of(messages)));
         return item;
     }

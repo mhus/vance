@@ -18,6 +18,8 @@ import de.mhus.vance.brain.trillian.nature.TrillianNature;
 import de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry;
 import de.mhus.vance.shared.inbox.MaximegalonDocument;
 import de.mhus.vance.shared.inbox.MaximegalonMessage;
+import de.mhus.vance.shared.inbox.MaximegalonMessageEvent;
+import de.mhus.vance.shared.inbox.MaximegalonRuleException;
 import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.toolpack.ToolException;
@@ -25,6 +27,11 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -65,8 +72,14 @@ class TrillianConversationServiceTest {
     @BeforeEach
     void setUp() {
         service = new TrillianConversationService(threads, exposureService, ownSessions, natureRegistry, headService);
-        lenient().when(natureRegistry.resolve(anyString())).thenReturn(mock(TrillianNature.class));
+        TrillianNature multiHead = mock(TrillianNature.class);
+        lenient().when(multiHead.multiHead()).thenReturn(true);
+        lenient().when(natureRegistry.resolve(anyString())).thenReturn(multiHead);
         lenient().when(ownSessions.liveLoopOf(TENANT, COLIN)).thenReturn(Optional.of(new ThinkProcessDocument()));
+        // A running conversation passes the gate again on every call.
+        lenient()
+                .when(exposureService.findByAccount(TENANT, COLIN))
+                .thenReturn(Optional.of(new TrillianExposureService.Exposed(COLIN, colinConfig(CALLER))));
     }
 
     // ──────────────────── open ────────────────────
@@ -162,6 +175,19 @@ class TrillianConversationServiceTest {
         verify(threads, never()).create(any());
     }
 
+    @Test
+    void openRefusesASingleHeadedAgent() {
+        givenExposure(colinConfig("road.runner"), true);
+        TrillianNature singleHead = mock(TrillianNature.class);
+        when(singleHead.multiHead()).thenReturn(false);
+        when(natureRegistry.resolve(anyString())).thenReturn(singleHead);
+
+        assertThatThrownBy(() -> service.open(TENANT, CALLER, "colin", null, "Hi"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("agent not conversational");
+        verify(threads, never()).create(any());
+    }
+
     // ──────────────────── send & read ────────────────────
 
     @Test
@@ -180,6 +206,81 @@ class TrillianConversationServiceTest {
         assertThat(sent.id()).isEqualTo("m-2");
         assertThat(sent.author()).isEqualTo(CALLER);
         assertThat(sent.body()).isEqualTo("and more");
+    }
+
+    @Test
+    void sendTakesTheCallersOwnMessageAsCursor_evenWhenTheHeadAnsweredInBetween() {
+        // The head answered an earlier contribution between the write and
+        // the re-read: its answer must stay ahead of the cursor, not become it.
+        givenConversation("thread-1", CALLER, MaximegalonStatus.PENDING, message("m-1", COLIN, "earlier"));
+        when(threads.postMessage(TENANT, "thread-1", CALLER, "and more", null))
+                .thenReturn(Optional.of(conversation(
+                        "thread-1",
+                        CALLER,
+                        MaximegalonStatus.PENDING,
+                        message("m-1", COLIN, "earlier"),
+                        message("m-2", CALLER, "and more"),
+                        message("m-3", COLIN, "the answer to before"))));
+
+        assertThat(service.send(TENANT, CALLER, "thread-1", "and more").id()).isEqualTo("m-2");
+    }
+
+    @Test
+    void sendAtTheMessageLimit_isConversationFull() {
+        givenConversation("thread-1", CALLER, MaximegalonStatus.PENDING);
+        when(threads.postMessage(TENANT, "thread-1", CALLER, "one more", null))
+                .thenThrow(new MaximegalonRuleException(MaximegalonRuleException.MESSAGE_LIMIT_REACHED, "full"));
+
+        assertThatThrownBy(() -> service.send(TENANT, CALLER, "thread-1", "one more"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("conversation full");
+    }
+
+    @Test
+    void sendRefusesARevokedCounterpart() {
+        givenConversation("thread-1", CALLER, MaximegalonStatus.PENDING);
+        when(exposureService.findByAccount(TENANT, COLIN))
+                .thenReturn(Optional.of(new TrillianExposureService.Exposed(COLIN, colinConfig(OTHER))));
+
+        assertThatThrownBy(() -> service.send(TENANT, CALLER, "thread-1", "still there?"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("not allowed");
+        verify(threads, never()).postMessage(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void sendRefusesWhenTheAgentIsNoLongerExposed() {
+        givenConversation("thread-1", CALLER, MaximegalonStatus.PENDING);
+        when(exposureService.findByAccount(TENANT, COLIN)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.send(TENANT, CALLER, "thread-1", "hello?"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("agent not exposed");
+        verify(threads, never()).postMessage(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void readRefusesWhenTheDoorWasClosed() {
+        givenConversation("thread-1", CALLER, MaximegalonStatus.PENDING, message("m-1", COLIN, "hi"));
+        TrillianExposureConfig closed = new TrillianExposureConfig(
+                "colin", "Colin", List.of(CALLER), 0, 0, new TrillianExposureConfig.Doors(false, false));
+        when(exposureService.findByAccount(TENANT, COLIN))
+                .thenReturn(Optional.of(new TrillianExposureService.Exposed(COLIN, closed)));
+
+        assertThatThrownBy(() -> service.read(TENANT, CALLER, "thread-1", null, 0))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("door closed");
+    }
+
+    @Test
+    void aNoticeOnTheTrilliansDesk_isNotAConversationOfTheDoor() {
+        MaximegalonDocument notice = conversation("thread-1", CALLER, MaximegalonStatus.PENDING);
+        notice.setTags(new ArrayList<>());
+        when(threads.findById(TENANT, "thread-1")).thenReturn(Optional.of(notice));
+
+        assertThatThrownBy(() -> service.read(TENANT, CALLER, "thread-1", null, 0))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("conversation not found");
     }
 
     @Test
@@ -251,6 +352,72 @@ class TrillianConversationServiceTest {
                 .hasMessageContaining("conversation not found");
     }
 
+    // ──────────────────── waiting ────────────────────
+
+    @Test
+    void aWaitingRead_isWokenByTheMessageEvent_notByTheFallbackPoll() throws Exception {
+        MaximegalonDocument quiet = conversation("thread-1", CALLER, MaximegalonStatus.PENDING);
+        AtomicReference<MaximegalonDocument> current = new AtomicReference<>(quiet);
+        when(threads.findById(TENANT, "thread-1")).thenAnswer(inv -> Optional.of(current.get()));
+
+        long started = System.currentTimeMillis();
+        CompletableFuture<TrillianConversationService.Reply> pending =
+                CompletableFuture.supplyAsync(() -> service.read(TENANT, CALLER, "thread-1", null, 10_000));
+        awaitWaiting(1);
+
+        MaximegalonMessage answer = message("m-1", COLIN, "here I am");
+        MaximegalonDocument answered = conversation("thread-1", CALLER, MaximegalonStatus.PENDING, answer);
+        current.set(answered);
+        service.onThreadMessage(new MaximegalonMessageEvent(answered, answer));
+
+        TrillianConversationService.Reply reply = pending.get(5, TimeUnit.SECONDS);
+        assertThat(reply.arrived()).isTrue();
+        assertThat(reply.messages())
+                .extracting(TrillianConversationService.Contribution::id)
+                .containsExactly("m-1");
+        assertThat(System.currentTimeMillis() - started)
+                .isLessThan(TrillianConversationService.FALLBACK_POLL_MS + 1_000);
+        assertThat(service.waitingReadsOf(CALLER)).isZero();
+    }
+
+    @Test
+    void aCallerAtTheWaitingBound_isAnsweredAtOnce() throws Exception {
+        MaximegalonDocument quiet = conversation("thread-1", CALLER, MaximegalonStatus.PENDING);
+        AtomicReference<MaximegalonDocument> current = new AtomicReference<>(quiet);
+        when(threads.findById(TENANT, "thread-1")).thenAnswer(inv -> Optional.of(current.get()));
+        ExecutorService pool = Executors.newFixedThreadPool(TrillianConversationService.MAX_WAITING_PER_CALLER);
+        List<CompletableFuture<TrillianConversationService.Reply>> parked = new ArrayList<>();
+        for (int i = 0; i < TrillianConversationService.MAX_WAITING_PER_CALLER; i++) {
+            parked.add(
+                    CompletableFuture.supplyAsync(() -> service.read(TENANT, CALLER, "thread-1", null, 10_000), pool));
+        }
+        awaitWaiting(TrillianConversationService.MAX_WAITING_PER_CALLER);
+
+        long started = System.currentTimeMillis();
+        TrillianConversationService.Reply extra = service.read(TENANT, CALLER, "thread-1", null, 10_000);
+
+        assertThat(extra.arrived()).isFalse();
+        assertThat(System.currentTimeMillis() - started).isLessThan(1_000);
+
+        MaximegalonMessage answer = message("m-1", COLIN, "done");
+        MaximegalonDocument answered = conversation("thread-1", CALLER, MaximegalonStatus.PENDING, answer);
+        current.set(answered);
+        service.onThreadMessage(new MaximegalonMessageEvent(answered, answer));
+        for (CompletableFuture<TrillianConversationService.Reply> read : parked) {
+            assertThat(read.get(5, TimeUnit.SECONDS).arrived()).isTrue();
+        }
+        assertThat(service.waitingReadsOf(CALLER)).isZero();
+        pool.shutdown();
+    }
+
+    private void awaitWaiting(int expected) throws InterruptedException {
+        long until = System.currentTimeMillis() + 5_000;
+        while (service.waitingReadsOf(CALLER) < expected && System.currentTimeMillis() < until) {
+            Thread.sleep(10);
+        }
+        assertThat(service.waitingReadsOf(CALLER)).isEqualTo(expected);
+    }
+
     // ──────────────────── fixtures ────────────────────
 
     private static TrillianExposureConfig colinConfig(String... allowed) {
@@ -285,6 +452,7 @@ class TrillianConversationServiceTest {
         item.setOriginatorUserId(originator);
         item.setStatus(status);
         item.setType(MaximegalonType.OUTPUT_TEXT);
+        item.setTags(new ArrayList<>(List.of(MaximegalonService.TAG_DISCUSSION)));
         item.setMessages(new ArrayList<>(List.of(messages)));
         return item;
     }

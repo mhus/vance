@@ -4,7 +4,7 @@
 */
 
 export interface InboxDiscussionOpenRequest {
-  documentId: string;
+  documentId?: string;
   assignedToUserId?: string;
   title: string;
   body?: string;

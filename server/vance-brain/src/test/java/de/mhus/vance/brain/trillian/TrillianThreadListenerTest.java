@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.trillian;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -21,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
 /**
@@ -119,6 +121,23 @@ class TrillianThreadListenerTest {
         listener.onThreadCreated(new MaximegalonCreatedEvent(created));
 
         verify(headService).dispatchContribution(any(), any(), any(), any());
+    }
+
+    @Test
+    void aThreadCreatedBodyOnly_theRestOpenerShape_reachesTheHeadService() {
+        givenLiveMultiHeadLoop("loop-1");
+        MaximegalonDocument created = conversation();
+        created.setMessages(null);
+        created.setBody("Hi from the outside");
+
+        listener.onThreadCreated(new MaximegalonCreatedEvent(created));
+
+        ArgumentCaptor<MaximegalonMessage> message = ArgumentCaptor.forClass(MaximegalonMessage.class);
+        verify(headService).dispatchContribution(any(), any(), any(), message.capture());
+        // The contribution speaks with the originator's voice, and its text
+        // is the body — the thread panel renders it as the opening post.
+        assertThat(message.getValue().getAuthorUserId()).isEqualTo("bob");
+        assertThat(message.getValue().getBody()).isEqualTo("Hi from the outside");
     }
 
     @Test

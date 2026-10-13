@@ -1,40 +1,39 @@
 package de.mhus.vance.brain.inbox.rest;
 
 import de.mhus.vance.api.inbox.AnswerPayload;
+import de.mhus.vance.api.inbox.Criticality;
 import de.mhus.vance.api.inbox.EffectDescription;
+import de.mhus.vance.api.inbox.InboxAnswerRequest;
 import de.mhus.vance.api.inbox.InboxComposeRequest;
 import de.mhus.vance.api.inbox.InboxComposeResponse;
-import de.mhus.vance.api.inbox.Criticality;
-import de.mhus.vance.api.inbox.InboxAnswerRequest;
 import de.mhus.vance.api.inbox.InboxCountResponse;
+import de.mhus.vance.api.inbox.InboxDelegateRequest;
+import de.mhus.vance.api.inbox.InboxDiscussionOpenRequest;
+import de.mhus.vance.api.inbox.InboxFollowRequest;
+import de.mhus.vance.api.inbox.InboxInviteRequest;
+import de.mhus.vance.api.inbox.InboxListResponse;
 import de.mhus.vance.api.inbox.InboxMessagePostRequest;
+import de.mhus.vance.api.inbox.InboxParticipantRemoveRequest;
+import de.mhus.vance.api.inbox.InboxReactRequest;
+import de.mhus.vance.api.inbox.InboxReadRequest;
 import de.mhus.vance.api.inbox.InboxRecipientDto;
 import de.mhus.vance.api.inbox.InboxRecipientKind;
 import de.mhus.vance.api.inbox.InboxRecipientsResponse;
-import de.mhus.vance.api.inbox.InboxReadRequest;
-import de.mhus.vance.api.inbox.InboxInviteRequest;
-import de.mhus.vance.api.inbox.InboxParticipantRemoveRequest;
-import de.mhus.vance.api.inbox.InboxFollowRequest;
-import de.mhus.vance.api.inbox.InboxReactRequest;
-import de.mhus.vance.shared.inbox.MaximegalonRuleException;
-import org.springframework.web.bind.annotation.ExceptionHandler;
-import de.mhus.vance.api.inbox.InboxDelegateRequest;
-import de.mhus.vance.api.inbox.InboxDiscussionOpenRequest;
+import de.mhus.vance.api.inbox.InboxShareRequest;
+import de.mhus.vance.api.inbox.InboxTagsResponse;
 import de.mhus.vance.api.inbox.MaximegalonDocumentRef;
 import de.mhus.vance.api.inbox.MaximegalonDto;
 import de.mhus.vance.api.inbox.MaximegalonStatus;
 import de.mhus.vance.api.inbox.MaximegalonType;
-import de.mhus.vance.api.inbox.InboxListResponse;
-import de.mhus.vance.api.inbox.InboxShareRequest;
-import de.mhus.vance.api.inbox.InboxTagsResponse;
 import de.mhus.vance.api.inbox.ResolvedBy;
 import de.mhus.vance.brain.inbox.InboxMapper;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.access.AccessFilterBase;
-import de.mhus.vance.shared.inbox.InboxEffectRegistry;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.inbox.InboxEffectRegistry;
 import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonRuleException;
 import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
@@ -56,12 +55,13 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import org.apache.commons.lang3.StringUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -141,13 +141,18 @@ public class InboxController {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.READ);
         String currentUser = currentUser(httpRequest);
         List<String> targetUsers = resolveTargetUsers(tenant, currentUser, assignedTo);
-        List<MaximegalonDocument> docs = inboxItemService.listFiltered(
-                tenant, targetUsers, status, tag);
+        List<MaximegalonDocument> docs = inboxItemService.listFiltered(tenant, targetUsers, status, tag);
         // The list query leaves the transcripts behind; the sizes come back in
         // a counting query, so a row can show that a thread has a discussion
         // without transferring it.
-        List<MaximegalonDto> dtos = InboxMapper.toDtos(docs, inboxItemService.countMessages(
-                tenant, docs.stream().map(MaximegalonDocument::getId).filter(Objects::nonNull).toList()));
+        List<MaximegalonDto> dtos = InboxMapper.toDtos(
+                docs,
+                inboxItemService.countMessages(
+                        tenant,
+                        docs.stream()
+                                .map(MaximegalonDocument::getId)
+                                .filter(Objects::nonNull)
+                                .toList()));
         return InboxListResponse.builder().items(dtos).count(dtos.size()).build();
     }
 
@@ -168,8 +173,7 @@ public class InboxController {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.READ);
         String currentUser = currentUser(httpRequest);
         List<String> targetUsers = resolveTargetUsers(tenant, currentUser, assignedTo);
-        MaximegalonService.PendingCounts counts =
-                inboxItemService.countPending(tenant, targetUsers);
+        MaximegalonService.PendingCounts counts = inboxItemService.countPending(tenant, targetUsers);
         // The badge counts unread, which is per-person by nature: there is no
         // such thing as "unread for a team". When a team view is requested the
         // alarm numbers stay at zero and only the stock is reported.
@@ -216,18 +220,25 @@ public class InboxController {
         String currentUser = currentUser(httpRequest);
         // One more than we show: the extra row is how we learn that the window
         // has an outside, without a second counting query.
-        List<MaximegalonDocument> page =
-                inboxItemService.listByDocument(tenant, documentId, BY_DOCUMENT_LIMIT + 1);
+        List<MaximegalonDocument> page = inboxItemService.listByDocument(tenant, documentId, BY_DOCUMENT_LIMIT + 1);
         boolean truncated = page.size() > BY_DOCUMENT_LIMIT;
         List<MaximegalonDocument> visible = new ArrayList<>();
         for (MaximegalonDocument doc : truncated ? page.subList(0, BY_DOCUMENT_LIMIT) : page) {
             if (inboxAuthz.maySee(tenant, currentUser, doc)) visible.add(doc);
         }
-        List<MaximegalonDto> dtos = InboxMapper.toDtos(visible, inboxItemService.countMessages(
-                tenant, visible.stream().map(MaximegalonDocument::getId)
-                        .filter(Objects::nonNull).toList()));
+        List<MaximegalonDto> dtos = InboxMapper.toDtos(
+                visible,
+                inboxItemService.countMessages(
+                        tenant,
+                        visible.stream()
+                                .map(MaximegalonDocument::getId)
+                                .filter(Objects::nonNull)
+                                .toList()));
         return InboxListResponse.builder()
-                .items(dtos).count(dtos.size()).truncated(truncated).build();
+                .items(dtos)
+                .count(dtos.size())
+                .truncated(truncated)
+                .build();
     }
 
     /**
@@ -257,47 +268,52 @@ public class InboxController {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.READ);
         String currentUser = currentUser(httpRequest);
         String assignee = StringUtils.isBlank(request.getAssignedToUserId())
-                ? currentUser : request.getAssignedToUserId().trim();
+                ? currentUser
+                : request.getAssignedToUserId().trim();
 
-        DocumentDocument doc = documentService.findById(request.getDocumentId())
-                .filter(d -> tenant.equals(d.getTenantId()))
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Document not found"));
-        authority.enforce(httpRequest,
-                new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
-        authority.enforce(httpRequest,
-                new Resource.InboxItem(tenant, "", assignee), Action.WRITE);
+        // A discussion may be anchored to a document — then reading that
+        // document is part of opening the thread — or stand free on its own
+        // title and body. The type follows the object, as everywhere else:
+        // a thread with a document is about one, a free thread is plain text.
+        @Nullable DocumentDocument doc = null;
+        if (!StringUtils.isBlank(request.getDocumentId())) {
+            doc = documentService
+                    .findById(request.getDocumentId())
+                    .filter(d -> tenant.equals(d.getTenantId()))
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found"));
+            authority.enforce(
+                    httpRequest, new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
+        }
+        authority.enforce(httpRequest, new Resource.InboxItem(tenant, "", assignee), Action.WRITE);
 
-        MaximegalonDocument created = inboxItemService.create(MaximegalonDocument.builder()
+        MaximegalonDocument.MaximegalonDocumentBuilder builder = MaximegalonDocument.builder()
                 .tenantId(tenant)
                 .originatorUserId(currentUser)
                 .assignedToUserId(assignee)
-                // The type follows the object, as everywhere else: this thread has
-                // a document, so it is about one.
-                .type(MaximegalonType.OUTPUT_DOCUMENT)
+                .type(doc != null ? MaximegalonType.OUTPUT_DOCUMENT : MaximegalonType.OUTPUT_TEXT)
                 .criticality(Criticality.NORMAL)
                 .status(MaximegalonStatus.PENDING)
                 .requiresAction(false)
                 .title(request.getTitle().trim())
                 .body(request.getBody())
-                .tags(new ArrayList<>(List.of("discussion")))
-                .documentRef(MaximegalonDocumentRef.builder()
-                        .documentId(doc.getId())
-                        .projectId(doc.getProjectId())
-                        .path(doc.getPath())
-                        .title(doc.getTitle())
-                        .mimeType(doc.getMimeType())
-                        .build())
-                .build());
+                .tags(new ArrayList<>(List.of("discussion")));
+        if (doc != null) {
+            builder.documentRef(MaximegalonDocumentRef.builder()
+                    .documentId(doc.getId())
+                    .projectId(doc.getProjectId())
+                    .path(doc.getPath())
+                    .title(doc.getTitle())
+                    .mimeType(doc.getMimeType())
+                    .build());
+        }
+        MaximegalonDocument created = inboxItemService.create(builder.build());
         return ResponseEntity.ok(InboxMapper.toDto(created));
     }
 
     /** Single item — same authorisation as list. */
     @GetMapping("/brain/{tenant}/inbox/{id}")
     public MaximegalonDto findOne(
-            @PathVariable("tenant") String tenant,
-            @PathVariable("id") String id,
-            HttpServletRequest httpRequest) {
+            @PathVariable("tenant") String tenant, @PathVariable("id") String id, HttpServletRequest httpRequest) {
         MaximegalonDocument doc = loadVisible(tenant, id, httpRequest);
         return InboxMapper.toDto(doc);
     }
@@ -316,11 +332,10 @@ public class InboxController {
      */
     @GetMapping("/brain/{tenant}/inbox/{id}/effect")
     public ResponseEntity<EffectDescription> effect(
-            @PathVariable("tenant") String tenant,
-            @PathVariable("id") String id,
-            HttpServletRequest httpRequest) {
+            @PathVariable("tenant") String tenant, @PathVariable("id") String id, HttpServletRequest httpRequest) {
         MaximegalonDocument doc = loadVisible(tenant, id, httpRequest);
-        return effectRegistry.describe(doc)
+        return effectRegistry
+                .describe(doc)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.noContent().build());
     }
@@ -331,9 +346,7 @@ public class InboxController {
      * by the sidebar to render the tag list.
      */
     @GetMapping("/brain/{tenant}/inbox/tags")
-    public InboxTagsResponse tags(
-            @PathVariable("tenant") String tenant,
-            HttpServletRequest httpRequest) {
+    public InboxTagsResponse tags(@PathVariable("tenant") String tenant, HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.READ);
         String currentUser = currentUser(httpRequest);
         Set<String> userScope = new LinkedHashSet<>();
@@ -378,9 +391,7 @@ public class InboxController {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.READ);
         String currentUser = currentUser(httpRequest);
         String query = q == null ? "" : q.trim().toLowerCase();
-        int max = limit == null
-                ? RECIPIENT_LIMIT
-                : Math.min(Math.max(limit, 1), RECIPIENT_LIMIT);
+        int max = limit == null ? RECIPIENT_LIMIT : Math.min(Math.max(limit, 1), RECIPIENT_LIMIT);
 
         List<InboxRecipientDto> teams = new ArrayList<>();
         for (TeamDocument team : teamService.byMember(tenant, currentUser)) {
@@ -391,8 +402,7 @@ public class InboxController {
                     .displayName(displayName(team.getTitle(), team.getName()))
                     .build());
         }
-        teams.sort(Comparator.comparing(
-                InboxRecipientDto::getDisplayName, String.CASE_INSENSITIVE_ORDER));
+        teams.sort(Comparator.comparing(InboxRecipientDto::getDisplayName, String.CASE_INSENSITIVE_ORDER));
 
         List<InboxRecipientDto> users = new ArrayList<>();
         // Teams alone can fill the page; in that case the user walk — whose
@@ -412,8 +422,7 @@ public class InboxController {
                     truncated = true;
                     break;
                 }
-                if (!authority.check(httpRequest,
-                        new Resource.InboxItem(tenant, "", user.getName()), Action.WRITE)) {
+                if (!authority.check(httpRequest, new Resource.InboxItem(tenant, "", user.getName()), Action.WRITE)) {
                     continue;
                 }
                 users.add(InboxRecipientDto.builder()
@@ -423,8 +432,7 @@ public class InboxController {
                         .build());
             }
         }
-        users.sort(Comparator.comparing(
-                InboxRecipientDto::getDisplayName, String.CASE_INSENSITIVE_ORDER));
+        users.sort(Comparator.comparing(InboxRecipientDto::getDisplayName, String.CASE_INSENSITIVE_ORDER));
 
         List<InboxRecipientDto> merged = new ArrayList<>(teams.size() + users.size());
         merged.addAll(teams);
@@ -434,7 +442,9 @@ public class InboxController {
             truncated = true;
         }
         return InboxRecipientsResponse.builder()
-                .recipients(merged).truncated(truncated).build();
+                .recipients(merged)
+                .truncated(truncated)
+                .build();
     }
 
     /**
@@ -474,8 +484,7 @@ public class InboxController {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.READ);
         String currentUser = currentUser(httpRequest);
         if (request.getTeamName() != null && request.getAssignedToUserId() != null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Pick one address: a user or a team, not both");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Pick one address: a user or a team, not both");
         }
         InboxComposeResponse response = request.getTeamName() != null
                 ? composeToTeam(tenant, currentUser, request, httpRequest)
@@ -484,17 +493,16 @@ public class InboxController {
     }
 
     private InboxComposeResponse composeToUser(
-            String tenant, String currentUser,
-            InboxComposeRequest request, HttpServletRequest httpRequest) {
+            String tenant, String currentUser, InboxComposeRequest request, HttpServletRequest httpRequest) {
         String assignee = StringUtils.isBlank(request.getAssignedToUserId())
-                ? currentUser : request.getAssignedToUserId().trim();
-        UserDocument recipient = userService.findByTenantAndName(tenant, assignee)
+                ? currentUser
+                : request.getAssignedToUserId().trim();
+        UserDocument recipient = userService
+                .findByTenantAndName(tenant, assignee)
                 .filter(u -> !u.isServiceAccount())
                 .filter(u -> u.getStatus() == UserStatus.ACTIVE)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Unknown recipient"));
-        authority.enforce(httpRequest,
-                new Resource.InboxItem(tenant, "", recipient.getName()), Action.WRITE);
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown recipient"));
+        authority.enforce(httpRequest, new Resource.InboxItem(tenant, "", recipient.getName()), Action.WRITE);
         createMessage(tenant, currentUser, recipient.getName(), request);
         return InboxComposeResponse.builder()
                 .deliveredTo(new ArrayList<>(List.of(recipient.getName())))
@@ -511,34 +519,34 @@ public class InboxController {
      * "done" to a client that just told its user the send succeeded.
      */
     private InboxComposeResponse composeToTeam(
-            String tenant, String currentUser,
-            InboxComposeRequest request, HttpServletRequest httpRequest) {
+            String tenant, String currentUser, InboxComposeRequest request, HttpServletRequest httpRequest) {
         String teamName = request.getTeamName().trim();
-        TeamDocument team = teamService.findByTenantAndName(tenant, teamName)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Unknown team '" + teamName + "'"));
+        TeamDocument team = teamService
+                .findByTenantAndName(tenant, teamName)
+                .orElseThrow(
+                        () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown team '" + teamName + "'"));
         List<String> members = team.getMembers() == null ? List.of() : team.getMembers();
         if (!members.contains(currentUser)) {
-            throw new ResponseStatusException(
-                    HttpStatus.NOT_FOUND, "Unknown team '" + teamName + "'");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown team '" + teamName + "'");
         }
         List<String> delivered = new ArrayList<>();
         for (String member : members) {
             if (member.equals(currentUser)) continue;
-            UserDocument recipient = userService.findByTenantAndName(tenant, member)
+            UserDocument recipient = userService
+                    .findByTenantAndName(tenant, member)
                     .filter(u -> !u.isServiceAccount())
                     .filter(u -> u.getStatus() == UserStatus.ACTIVE)
                     .orElse(null);
             if (recipient == null) continue;
-            if (!authority.check(httpRequest,
-                    new Resource.InboxItem(tenant, "", member), Action.WRITE)) {
+            if (!authority.check(httpRequest, new Resource.InboxItem(tenant, "", member), Action.WRITE)) {
                 continue;
             }
             createMessage(tenant, currentUser, member, request);
             delivered.add(member);
         }
         if (delivered.isEmpty()) {
-            throw new MaximegalonRuleException(MaximegalonRuleException.NO_DELIVERABLE_MEMBERS,
+            throw new MaximegalonRuleException(
+                    MaximegalonRuleException.NO_DELIVERABLE_MEMBERS,
                     "No member of team '" + teamName + "' could be reached");
         }
         return InboxComposeResponse.builder().deliveredTo(delivered).build();
@@ -581,21 +589,20 @@ public class InboxController {
                 .reason(request.getReason())
                 .answeredBy(currentUser)
                 .build();
-        MaximegalonDocument updated = inboxItemService.answer(
-                        tenant, id, payload, ResolvedBy.USER)
+        MaximegalonDocument updated = inboxItemService
+                .answer(tenant, id, payload, ResolvedBy.USER)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         return ResponseEntity.ok(InboxMapper.toDto(updated));
     }
 
     @PostMapping("/brain/{tenant}/inbox/{id}/archive")
     public ResponseEntity<MaximegalonDto> archive(
-            @PathVariable("tenant") String tenant,
-            @PathVariable("id") String id,
-            HttpServletRequest httpRequest) {
+            @PathVariable("tenant") String tenant, @PathVariable("id") String id, HttpServletRequest httpRequest) {
         String currentUser = currentUser(httpRequest);
         MaximegalonDocument doc = loadDecidable(tenant, id, httpRequest);
         authority.enforce(httpRequest, inboxResource(doc), Action.WRITE);
-        MaximegalonDocument updated = inboxItemService.archive(tenant, id, currentUser)
+        MaximegalonDocument updated = inboxItemService
+                .archive(tenant, id, currentUser)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         return ResponseEntity.ok(InboxMapper.toDto(updated));
     }
@@ -607,26 +614,24 @@ public class InboxController {
      */
     @PostMapping("/brain/{tenant}/inbox/{id}/unarchive")
     public ResponseEntity<MaximegalonDto> unarchive(
-            @PathVariable("tenant") String tenant,
-            @PathVariable("id") String id,
-            HttpServletRequest httpRequest) {
+            @PathVariable("tenant") String tenant, @PathVariable("id") String id, HttpServletRequest httpRequest) {
         String currentUser = currentUser(httpRequest);
         MaximegalonDocument doc = loadDecidable(tenant, id, httpRequest);
         authority.enforce(httpRequest, inboxResource(doc), Action.WRITE);
-        MaximegalonDocument updated = inboxItemService.unarchive(tenant, id, currentUser)
+        MaximegalonDocument updated = inboxItemService
+                .unarchive(tenant, id, currentUser)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         return ResponseEntity.ok(InboxMapper.toDto(updated));
     }
 
     @PostMapping("/brain/{tenant}/inbox/{id}/dismiss")
     public ResponseEntity<MaximegalonDto> dismiss(
-            @PathVariable("tenant") String tenant,
-            @PathVariable("id") String id,
-            HttpServletRequest httpRequest) {
+            @PathVariable("tenant") String tenant, @PathVariable("id") String id, HttpServletRequest httpRequest) {
         String currentUser = currentUser(httpRequest);
         MaximegalonDocument doc = loadDecidable(tenant, id, httpRequest);
         authority.enforce(httpRequest, inboxResource(doc), Action.WRITE);
-        MaximegalonDocument updated = inboxItemService.dismiss(tenant, id, currentUser)
+        MaximegalonDocument updated = inboxItemService
+                .dismiss(tenant, id, currentUser)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         return ResponseEntity.ok(InboxMapper.toDto(updated));
     }
@@ -641,18 +646,16 @@ public class InboxController {
         MaximegalonDocument doc = loadDecidable(tenant, id, httpRequest);
         authority.enforce(httpRequest, inboxResource(doc), Action.WRITE);
         if (request.getToUserId() == null || request.getToUserId().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Delegate target userId is required");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Delegate target userId is required");
         }
         // Delegating *delivers* into someone else's inbox, so it needs WRITE
         // there — the same rule invite() applies below, and for the same reason:
         // handing a matter to a person spends their attention. The check on the
         // item above only says the caller may settle this thread; it says
         // nothing about whose desk it may land on.
-        authority.enforce(httpRequest,
-                new Resource.InboxItem(tenant, "", request.getToUserId()), Action.WRITE);
-        MaximegalonDocument updated = inboxItemService.delegate(
-                        tenant, id, request.getToUserId(), currentUser, request.getNote())
+        authority.enforce(httpRequest, new Resource.InboxItem(tenant, "", request.getToUserId()), Action.WRITE);
+        MaximegalonDocument updated = inboxItemService
+                .delegate(tenant, id, request.getToUserId(), currentUser, request.getNote())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         return ResponseEntity.ok(InboxMapper.toDto(updated));
     }
@@ -673,8 +676,8 @@ public class InboxController {
             HttpServletRequest httpRequest) {
         String currentUser = currentUser(httpRequest);
         loadVisible(tenant, id, httpRequest);
-        MaximegalonDocument updated = inboxItemService.postMessage(
-                        tenant, id, currentUser, request.getBody(), request.getParentId())
+        MaximegalonDocument updated = inboxItemService
+                .postMessage(tenant, id, currentUser, request.getBody(), request.getParentId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         return ResponseEntity.ok(InboxMapper.toDto(updated));
     }
@@ -696,8 +699,8 @@ public class InboxController {
         Optional<MaximegalonDocument> updated = messageIds == null || messageIds.isEmpty()
                 ? inboxItemService.markRead(tenant, id, currentUser)
                 : inboxItemService.markMessagesRead(tenant, id, currentUser, messageIds);
-        return ResponseEntity.ok(InboxMapper.toDto(
-                updated.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND))));
+        return ResponseEntity.ok(
+                InboxMapper.toDto(updated.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND))));
     }
 
     /**
@@ -716,10 +719,9 @@ public class InboxController {
             HttpServletRequest httpRequest) {
         String currentUser = currentUser(httpRequest);
         loadVisible(tenant, id, httpRequest);
-        authority.enforce(httpRequest,
-                new Resource.InboxItem(tenant, "", request.getUserId()), Action.WRITE);
-        MaximegalonDocument updated = inboxItemService.invite(
-                        tenant, id, request.getUserId(), currentUser)
+        authority.enforce(httpRequest, new Resource.InboxItem(tenant, "", request.getUserId()), Action.WRITE);
+        MaximegalonDocument updated = inboxItemService
+                .invite(tenant, id, request.getUserId(), currentUser)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         return ResponseEntity.ok(InboxMapper.toDto(updated));
     }
@@ -744,8 +746,8 @@ public class InboxController {
         String currentUser = currentUser(httpRequest);
         MaximegalonDocument doc = loadDecidable(tenant, id, httpRequest);
         authority.enforce(httpRequest, inboxResource(doc), Action.WRITE);
-        MaximegalonDocument updated = inboxItemService.removeParticipant(
-                        tenant, id, request.getUserId(), currentUser)
+        MaximegalonDocument updated = inboxItemService
+                .removeParticipant(tenant, id, request.getUserId(), currentUser)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         return ResponseEntity.ok(InboxMapper.toDto(updated));
     }
@@ -759,8 +761,8 @@ public class InboxController {
             HttpServletRequest httpRequest) {
         String currentUser = currentUser(httpRequest);
         loadVisible(tenant, id, httpRequest);
-        MaximegalonDocument updated = inboxItemService.setFollowing(
-                        tenant, id, currentUser, request.isFollowing())
+        MaximegalonDocument updated = inboxItemService
+                .setFollowing(tenant, id, currentUser, request.isFollowing())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         return ResponseEntity.ok(InboxMapper.toDto(updated));
     }
@@ -774,9 +776,8 @@ public class InboxController {
             HttpServletRequest httpRequest) {
         String currentUser = currentUser(httpRequest);
         loadVisible(tenant, id, httpRequest);
-        MaximegalonDocument updated = inboxItemService.react(
-                        tenant, id, request.getMessageId(), request.getKey(), currentUser,
-                        request.isOn())
+        MaximegalonDocument updated = inboxItemService
+                .react(tenant, id, request.getMessageId(), request.getKey(), currentUser, request.isOn())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         return ResponseEntity.ok(InboxMapper.toDto(updated));
     }
@@ -818,8 +819,7 @@ public class InboxController {
         ProjectDocument project = projectService
                 .findByTenantAndName(tenant, request.getProjectName())
                 .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Project not found: " + request.getProjectName()));
+                        HttpStatus.NOT_FOUND, "Project not found: " + request.getProjectName()));
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("projectName", project.getName());
@@ -849,8 +849,7 @@ public class InboxController {
                 .build();
 
         MaximegalonDocument created = inboxItemService.create(toCreate);
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(InboxMapper.toDto(created));
+        return ResponseEntity.status(HttpStatus.CREATED).body(InboxMapper.toDto(created));
     }
 
     // ──────────────────── Authorization helpers ────────────────────
@@ -858,8 +857,7 @@ public class InboxController {
     private String currentUser(HttpServletRequest httpRequest) {
         Object u = httpRequest.getAttribute(AccessFilterBase.ATTR_USERNAME);
         if (!(u instanceof String s) || s.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
-                    "No authenticated user");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "No authenticated user");
         }
         return s;
     }
@@ -877,8 +875,7 @@ public class InboxController {
      *       the user shares a team with that user, otherwise 404.</li>
      * </ul>
      */
-    private List<String> resolveTargetUsers(
-            String tenant, String currentUser, @Nullable String assignedTo) {
+    private List<String> resolveTargetUsers(String tenant, String currentUser, @Nullable String assignedTo) {
         if (assignedTo == null || assignedTo.isBlank() || "self".equalsIgnoreCase(assignedTo)) {
             List<String> out = new ArrayList<>();
             out.add(currentUser);
@@ -886,15 +883,14 @@ public class InboxController {
         }
         if (assignedTo.startsWith("team:")) {
             String teamName = assignedTo.substring("team:".length()).trim();
-            TeamDocument team = teamService.findByTenantAndName(tenant, teamName)
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                            "Unknown team '" + teamName + "'"));
-            List<String> members = team.getMembers() == null
-                    ? new ArrayList<>() : team.getMembers();
+            TeamDocument team = teamService
+                    .findByTenantAndName(tenant, teamName)
+                    .orElseThrow(
+                            () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown team '" + teamName + "'"));
+            List<String> members = team.getMembers() == null ? new ArrayList<>() : team.getMembers();
             if (!members.contains(currentUser)) {
                 // Hide existence — same as 404 elsewhere.
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Unknown team '" + teamName + "'");
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown team '" + teamName + "'");
             }
             // Team-inbox shows OTHER members' items only; the user's
             // own items live in the personal-inbox view.
@@ -929,9 +925,7 @@ public class InboxController {
      * Just the name when no title is set.
      */
     private static String displayName(@Nullable String title, String name) {
-        return title == null || title.isBlank()
-                ? name
-                : title + " (" + name + ")";
+        return title == null || title.isBlank() ? name : title + " (" + name + ")";
     }
 
     /** Case-insensitive substring match on name or title; an empty query matches everything. */
@@ -946,8 +940,7 @@ public class InboxController {
      * participant or the declared team. Used by the two read endpoints and by
      * everything that only contributes (messages, reads, reactions).
      */
-    private MaximegalonDocument loadVisible(
-            String tenant, String id, HttpServletRequest httpRequest) {
+    private MaximegalonDocument loadVisible(String tenant, String id, HttpServletRequest httpRequest) {
         String currentUser = currentUser(httpRequest);
         MaximegalonDocument doc = loadInTenant(tenant, id);
         // The permission provider is asked first and stays the authority — it
@@ -972,8 +965,7 @@ public class InboxController {
      * work: being invited into a discussion does not confer the right to
      * settle it.
      */
-    private MaximegalonDocument loadDecidable(
-            String tenant, String id, HttpServletRequest httpRequest) {
+    private MaximegalonDocument loadDecidable(String tenant, String id, HttpServletRequest httpRequest) {
         String currentUser = currentUser(httpRequest);
         MaximegalonDocument doc = loadInTenant(tenant, id);
         if (!inboxAuthz.mayDecide(tenant, currentUser, doc.getAssignedToUserId())) {

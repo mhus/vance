@@ -10,6 +10,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
@@ -55,10 +56,26 @@ public class TrillianThreadListener {
     public void onThreadCreated(MaximegalonCreatedEvent event) {
         MaximegalonDocument item = event.item();
         List<MaximegalonMessage> messages = item.getMessages() == null ? List.of() : item.getMessages();
-        if (messages.isEmpty()) {
-            return; // created empty — no contribution to wake anyone for
+        if (!messages.isEmpty()) {
+            dispatch(item, messages.get(messages.size() - 1));
+            return;
         }
-        dispatch(item, messages.get(messages.size() - 1));
+        // The other creation shape every REST opener produces: no messages,
+        // the body IS the contribution (the thread panel renders it as the
+        // opening post). Without this branch a discussion opened over the
+        // REST discussions endpoint would rest unheard — the shape the
+        // listener was built with, an embedded opener message, only exists
+        // in direct {@link MaximegalonService#create} calls.
+        if (StringUtils.isNotBlank(item.getBody())) {
+            dispatch(
+                    item,
+                    MaximegalonMessage.builder()
+                            .id(item.getId())
+                            .authorUserId(item.getOriginatorUserId())
+                            .body(item.getBody())
+                            .createdAt(item.getCreatedAt())
+                            .build());
+        }
     }
 
     @EventListener

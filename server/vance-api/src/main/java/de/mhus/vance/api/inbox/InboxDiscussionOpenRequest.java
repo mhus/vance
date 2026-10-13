@@ -36,9 +36,13 @@ import org.jspecify.annotations.Nullable;
 @GenerateTypeScript("inbox")
 public class InboxDiscussionOpenRequest {
 
-    /** The document the discussion is about. Becomes the thread's object. */
-    @NotBlank
-    private String documentId;
+    /**
+     * The document the discussion is about, if any — a free discussion
+     * carries no object. Absent means the thread stands on its own
+     * {@code title}/{@code body}; the thread is then created without a
+     * document reference and as plain text.
+     */
+    private @Nullable String documentId;
 
     /**
      * Whose desk it lands on. {@code null} means the caller themselves — the

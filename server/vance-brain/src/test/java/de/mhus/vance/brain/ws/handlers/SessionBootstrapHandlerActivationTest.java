@@ -248,6 +248,37 @@ class SessionBootstrapHandlerActivationTest {
     }
 
     @Test
+    void createWhileAnotherPodHoldsTheProject_isAConflictNotAServerError() throws Exception {
+        String hub = HomeBootstrapService.hubProjectName(USER);
+        when(sessionService.listForUser(TENANT, USER)).thenReturn(List.of());
+        when(homeBootstrapService.resolveOrAutoProvision(TENANT, hub)).thenReturn(Optional.of(project(hub)));
+        when(lifecycleService.bring(TENANT, hub))
+                .thenThrow(new ProjectManagerService.ClaimRejectedException("leased by pod 'x'"));
+
+        handler.handle(
+                ctx, wsSession, envelope(SessionBootstrapRequest.builder().build()));
+
+        verify(sender).sendError(eq(wsSession), any(), eq(409), anyString());
+        verify(sender, never()).sendError(eq(wsSession), any(), eq(500), anyString());
+        verify(sessionService, never()).create(anyString(), anyString(), anyString(), any(), any(), any(), any());
+    }
+
+    @Test
+    void explicitResumeWhileAnotherPodHoldsTheProject_isAConflictAndDoesNotBind() throws Exception {
+        when(sessionService.findBySessionId(SESSION)).thenReturn(Optional.of(session(SESSION, PROJECT)));
+        when(lifecycleService.bring(TENANT, PROJECT))
+                .thenThrow(new ProjectManagerService.ClaimRejectedException("leased by pod 'x'"));
+
+        handler.handle(
+                ctx,
+                wsSession,
+                envelope(SessionBootstrapRequest.builder().sessionId(SESSION).build()));
+
+        verify(sender).sendError(eq(wsSession), any(), eq(409), anyString());
+        verify(sessionService, never()).tryBindWithUserTakeover(anyString(), anyString());
+    }
+
+    @Test
     void createInTheTenantProject_isRefused() throws Exception {
         when(homeBootstrapService.resolveOrAutoProvision(TENANT, ProjectService.TENANT_PROJECT_NAME))
                 .thenReturn(Optional.of(project(ProjectService.TENANT_PROJECT_NAME)));

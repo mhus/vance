@@ -416,8 +416,12 @@ public class SessionBootstrapHandler implements WsHandler {
         // Claim *and* activate — see tryAutoResumeLatest for why a bare claim
         // leaves the project's hooks and schedulers silently dark. Safe here
         // in any order: the session does not exist yet, so bring's stale-bind
-        // sweep has nothing of ours to clear.
-        lifecycleService.bring(ctx.getTenantId(), projectId);
+        // sweep has nothing of ours to clear. Another pod holding the project
+        // is a lost race against the routing decision — a conflict the client
+        // retries (and the retry is routed to the holder), not a server error.
+        if (!bringOrRefuse(wsSession, envelope, ctx.getTenantId(), projectId)) {
+            return Optional.empty();
+        }
         SessionDocument fresh = sessionService.create(
                 ctx.getTenantId(),
                 ctx.getUserId(),
@@ -465,8 +469,11 @@ public class SessionBootstrapHandler implements WsHandler {
         // Claim *and* activate — see tryAutoResumeLatest. The bind below runs
         // after bring's stale-bind sweep, and the concurrent-owner guard reads
         // the in-memory connection registry, not the Mongo bind, so the sweep
-        // cannot mask a live sibling.
-        lifecycleService.bring(doc.getTenantId(), doc.getProjectId());
+        // cannot mask a live sibling. A holder elsewhere is refused like on
+        // the create path.
+        if (!bringOrRefuse(wsSession, envelope, doc.getTenantId(), doc.getProjectId())) {
+            return Optional.empty();
+        }
         // Concurrent-owner guard (same rule as SessionResumeHandler): a live
         // sibling connection of the same user already holding this session is
         // a conflict, not a takeover target — refuse unless the caller opted
@@ -496,6 +503,29 @@ public class SessionBootstrapHandler implements WsHandler {
             return Optional.empty();
         }
         return Optional.of(doc);
+    }
+
+    /**
+     * Brings the project onto this pod. When another pod holds its lease the
+     * frame was routed here on a decision that went stale in between; answers
+     * {@code 409} and returns {@code false} — nothing is bound yet, so there
+     * is nothing to compensate.
+     */
+    private boolean bringOrRefuse(
+            WebSocketSession wsSession, WebSocketEnvelope envelope, String tenantId, String projectId)
+            throws IOException {
+        try {
+            lifecycleService.bring(tenantId, projectId);
+            return true;
+        } catch (ProjectManagerService.ClaimRejectedException e) {
+            log.debug("session-bootstrap: project '{}/{}' is held elsewhere: {}", tenantId, projectId, e.getMessage());
+            sender.sendError(
+                    wsSession,
+                    envelope,
+                    409,
+                    "Project '" + projectId + "' is owned by another brain process — retry the bootstrap");
+            return false;
+        }
     }
 
     // ──────────────────── Helpers ────────────────────

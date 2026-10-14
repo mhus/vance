@@ -188,7 +188,7 @@ function send(): void {
             <button
               v-if="interactive"
               type="button"
-              class="text-left hover:underline"
+              class="text-left align-top hover:underline"
               @click="goTo(i)"
             >
               {{ q.text }} → <strong>{{ answerLabel(parsed.set, answers[q.key], labels) }}</strong>

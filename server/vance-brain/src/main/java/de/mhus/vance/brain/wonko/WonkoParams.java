@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.wonko;
 
+import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
@@ -67,6 +68,22 @@ record WonkoParams(Map<String, Object> raw) {
     /** Compare calls running at the same time. */
     int parallelism() {
         return integer("parallelism", 4);
+    }
+
+    /**
+     * Skill selectors for every model call: names, {@code @label} and
+     * {@code !}-exclusions — the {@code relevantSkills} grammar.
+     */
+    List<String> skills() {
+        Object v = raw.get("skills");
+        if (v instanceof List<?> list) {
+            return list.stream()
+                    .filter(String.class::isInstance)
+                    .map(String.class::cast)
+                    .filter(s -> !s.isBlank())
+                    .toList();
+        }
+        return v instanceof String s && !s.isBlank() ? List.of(s.trim()) : List.of();
     }
 
     boolean coverage() {

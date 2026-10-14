@@ -26,6 +26,9 @@ final class WonkoTurn {
     /** The {@code ## Languages} block of the process's settings — every model call gets it. */
     final String languageBlock;
 
+    /** Skills every model call of the turn carries ({@link WonkoSkills}). */
+    final List<String> skills;
+
     /** Bound on the decision log of one run — it explains, it is not an audit trail of every call. */
     private static final int MAX_DECISIONS = 300;
 
@@ -40,6 +43,20 @@ final class WonkoTurn {
             String goal,
             @Nullable String userId,
             String languageBlock) {
+        this(process, ctx, state, register, params, goal, userId, languageBlock, List.of());
+    }
+
+    WonkoTurn(
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx,
+            WonkoState state,
+            WonkoRegister register,
+            WonkoParams params,
+            String goal,
+            @Nullable String userId,
+            String languageBlock,
+            List<String> skills) {
+        this.skills = skills;
         this.process = process;
         this.ctx = ctx;
         this.state = state;

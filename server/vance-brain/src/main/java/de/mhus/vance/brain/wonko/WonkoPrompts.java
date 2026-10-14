@@ -81,11 +81,16 @@ final class WonkoPrompts {
 
     /** Result of routing a free message; {@code answer} is set for question and unclear. */
     record RouteResult(
-            RouteIntent intent, String reason, @Nullable String answer) {}
+            RouteIntent intent,
+            String reason,
+            @Nullable String answer,
+            @Nullable String lookup) {}
 
     static final String CANNOT_DETERMINE = "cannot_determine";
 
     private static final int MAX_ROUTE_REPORT_CHARS = 12_000;
+
+    private static final int MAX_ROUTE_SUBJECT_CHARS = 30_000;
 
     private static final List<String> CONCERNS = List.of("contradiction", "gap", "vague", "implausible", "intent");
 
@@ -397,9 +402,26 @@ final class WonkoPrompts {
     // ──────────────────── route (free messages) ────────────────────
 
     static String routePrompt(
-            List<String> subjectRefs, @Nullable String report, @Nullable QuestionSetDto pending, String userText) {
+            List<String> subjectRefs,
+            List<SubjectDoc> subject,
+            @Nullable String report,
+            @Nullable QuestionSetDto pending,
+            String userText) {
         StringBuilder sb = new StringBuilder("## Subject under review\n");
         subjectRefs.forEach(r -> sb.append("- ").append(r).append('\n'));
+        int budget = MAX_ROUTE_SUBJECT_CHARS;
+        for (SubjectDoc doc : subject) {
+            if (budget <= 0) {
+                break;
+            }
+            String text = doc.content().length() > budget ? doc.content().substring(0, budget) + "\n…" : doc.content();
+            budget -= text.length();
+            sb.append("\n### ")
+                    .append(doc.path())
+                    .append(" (current text)\n````\n")
+                    .append(text)
+                    .append("\n````\n");
+        }
         if (report != null && !report.isBlank()) {
             String text = report.length() > MAX_ROUTE_REPORT_CHARS
                     ? report.substring(0, MAX_ROUTE_REPORT_CHARS) + "\n…"
@@ -432,7 +454,8 @@ final class WonkoPrompts {
                 Map.of(
                         "intent", enumOf("recheck", "statement", "question", "unclear"),
                         "reason", string(),
-                        "answer", string()));
+                        "answer", string(),
+                        "lookup", string()));
     }
 
     /**
@@ -452,7 +475,15 @@ final class WonkoPrompts {
         if ((intent == RouteIntent.QUESTION || intent == RouteIntent.UNCLEAR) && answer == null) {
             intent = RouteIntent.UNCLEAR;
         }
-        return new RouteResult(intent, nz(str(json.get("reason"))), answer);
+        return new RouteResult(intent, nz(str(json.get("reason"))), answer, str(json.get("lookup")));
+    }
+
+    /** The route prompt once more, with the manual a lookup found — no second lookup. */
+    static String withManual(String routePrompt, String manual) {
+        return routePrompt
+                + "\n" + manual
+                + "\n\n## Lookup done\nThe manual above answers your lookup. Answer the user now with it;"
+                + " leave lookup out.\n";
     }
 
     static Map<String, Object> interpretSchema() {

@@ -472,6 +472,7 @@ class WonkoItemHandlers {
                 .projectId(turn.process.getProjectId())
                 .processId(turn.process.getId())
                 .userId(turn.userId)
+                .skills(turn.skills.isEmpty() ? null : turn.skills)
                 .build();
     }
 }

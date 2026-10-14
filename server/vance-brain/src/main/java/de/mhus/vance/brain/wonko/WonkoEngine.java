@@ -18,6 +18,8 @@ import de.mhus.vance.brain.ai.light.LightLlmRequest;
 import de.mhus.vance.brain.ai.light.LightLlmService;
 import de.mhus.vance.brain.arthur.PlanModeEventEmitter;
 import de.mhus.vance.brain.context.LanguageContextResolver;
+import de.mhus.vance.brain.discovery.DiscoveryResult;
+import de.mhus.vance.brain.discovery.DiscoveryService;
 import de.mhus.vance.brain.thinkengine.ParentReport;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
@@ -115,6 +117,8 @@ public class WonkoEngine implements ThinkEngine {
     private final SessionService sessionService;
     private final LanguageContextResolver languageContextResolver;
     private final MetricService metricService;
+    private final WonkoSkills wonkoSkills;
+    private final DiscoveryService discoveryService;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -281,7 +285,7 @@ public class WonkoEngine implements ThinkEngine {
                 if (state.getPendingSet() != null) {
                     // Nothing of it answered the open questions: a question to
                     // Wonko, or a reply it cannot read — the set stays open.
-                    WonkoPrompts.RouteResult route = route(process, state, register, input.content());
+                    WonkoPrompts.RouteResult route = route(process, ctx, state, register, input.content());
                     appendChat(
                             process,
                             ctx,
@@ -313,7 +317,7 @@ public class WonkoEngine implements ThinkEngine {
             WonkoState state,
             WonkoRegister register,
             String text) {
-        WonkoPrompts.RouteResult route = route(process, state, register, text);
+        WonkoPrompts.RouteResult route = route(process, ctx, state, register, text);
         WonkoPrompts.RouteIntent intent = route == null ? WonkoPrompts.RouteIntent.STATEMENT : route.intent();
         log.info(
                 "Wonko id='{}' routed a message as {}{}",
@@ -343,26 +347,78 @@ public class WonkoEngine implements ThinkEngine {
         }
     }
 
-    /** The route judge; {@code null} when the call fails. */
+    /**
+     * The route judge; {@code null} when the call fails. An answer that needs
+     * know-how the judge lacks (how to link a document, …) names a
+     * {@code lookup}: the how-do-I discovery finds the manual, and the judge
+     * answers once more with it — Wonko's {@code how_do_i}, without a tool
+     * loop.
+     */
     private WonkoPrompts.@Nullable RouteResult route(
-            ThinkProcessDocument process, WonkoState state, WonkoRegister register, String text) {
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx,
+            WonkoState state,
+            WonkoRegister register,
+            String text) {
         String report = state.getFinalReport() != null
                 ? state.getFinalReport()
                 : WonkoReportRenderer.render(register, "", state);
+        // The subject as it is now — "summarise the document" needs the text, not the findings.
+        WonkoTurn reader = new WonkoTurn(
+                process, ctx, state, register, new WonkoParams(params(process)), "", userIdFor(process), "");
+        List<WonkoPrompts.SubjectDoc> subject = new ArrayList<>();
+        for (String ref : state.getSubjectRefs()) {
+            String body = reader.doc(ref);
+            if (body != null) {
+                subject.add(new WonkoPrompts.SubjectDoc(ref, body));
+            }
+        }
+        String prompt = WonkoPrompts.routePrompt(state.getSubjectRefs(), subject, report, state.getPendingSet(), text);
         try {
-            return WonkoPrompts.parseRoute(lightLlmService.callForJson(LightLlmRequest.builder()
-                    .recipeName(new WonkoParams(params(process)).routeRecipe())
-                    .userPrompt(WonkoItemHandlers.withLanguage(
-                            languageContextResolver.formatBlock(process),
-                            WonkoPrompts.routePrompt(state.getSubjectRefs(), report, state.getPendingSet(), text)))
-                    .schema(WonkoPrompts.routeSchema())
-                    .tenantId(process.getTenantId())
-                    .projectId(process.getProjectId())
-                    .processId(process.getId())
-                    .userId(userIdFor(process))
-                    .build()));
+            WonkoPrompts.RouteResult first = callRoute(process, prompt);
+            if (first.lookup() == null
+                    || first.intent() == WonkoPrompts.RouteIntent.RECHECK
+                    || first.intent() == WonkoPrompts.RouteIntent.STATEMENT) {
+                return first;
+            }
+            String manual = lookup(process, first.lookup());
+            return manual == null ? first : callRoute(process, WonkoPrompts.withManual(prompt, manual));
         } catch (RuntimeException e) {
             log.warn("Wonko id='{}' could not route a message: {}", process.getId(), e.toString());
+            return null;
+        }
+    }
+
+    private WonkoPrompts.RouteResult callRoute(ThinkProcessDocument process, String prompt) {
+        List<String> skills = skills(process, new WonkoParams(params(process))).names();
+        return WonkoPrompts.parseRoute(lightLlmService.callForJson(LightLlmRequest.builder()
+                .recipeName(new WonkoParams(params(process)).routeRecipe())
+                .userPrompt(WonkoItemHandlers.withLanguage(languageContextResolver.formatBlock(process), prompt))
+                .schema(WonkoPrompts.routeSchema())
+                .tenantId(process.getTenantId())
+                .projectId(process.getProjectId())
+                .processId(process.getId())
+                .userId(userIdFor(process))
+                .skills(skills.isEmpty() ? null : skills)
+                .build()));
+    }
+
+    /** The manual the how-do-I discovery finds for an intent; {@code null} without a confident match. */
+    private @Nullable String lookup(ThinkProcessDocument process, String intent) {
+        try {
+            DiscoveryResult result =
+                    discoveryService.discover(intent, process.getTenantId(), process.getProjectId(), process.getId());
+            DiscoveryResult.Match loaded = result.getLoaded();
+            if (loaded == null
+                    || loaded.getContent() == null
+                    || loaded.getContent().isBlank()) {
+                log.info("Wonko id='{}' lookup '{}' found no manual", process.getId(), intent);
+                return null;
+            }
+            log.info("Wonko id='{}' lookup '{}' → manual '{}'", process.getId(), intent, loaded.getName());
+            return "## Manual: " + loaded.getName() + "\n" + loaded.getContent();
+        } catch (RuntimeException e) {
+            log.warn("Wonko id='{}' lookup '{}' failed: {}", process.getId(), intent, e.toString());
             return null;
         }
     }
@@ -375,6 +431,14 @@ public class WonkoEngine implements ThinkEngine {
         WonkoItemHandlers.enqueue(
                 state, state.getReferencePaths().isEmpty() ? WonkoItemType.CHECK : WonkoItemType.DECOMPOSE, 0, null);
         state.getPendingFindings().addAll(WonkoQuestionPlanner.carryOver(loadRegister(process, state)));
+        // Once per run: a selected skill that cannot take effect is named, not dropped silently.
+        for (String skipped : skills(process, new WonkoParams(params(process))).skipped()) {
+            state.getDecisions().add(new WonkoDecision("skills", "skipped", skipped));
+        }
+    }
+
+    private WonkoSkills.Selection skills(ThinkProcessDocument process, WonkoParams params) {
+        return wonkoSkills.select(process, userIdFor(process), params.skills());
     }
 
     private static void requeueAfterStatement(WonkoState state) {
@@ -647,7 +711,8 @@ public class WonkoEngine implements ThinkEngine {
                 params,
                 goal(process, state),
                 userIdFor(process),
-                languageContextResolver.formatBlock(process));
+                languageContextResolver.formatBlock(process),
+                skills(process, params).names());
         if (!state.getQueue().isEmpty()) {
             thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.RUNNING);
         }

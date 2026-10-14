@@ -22,7 +22,8 @@ promptPrefix: |
   {
     "intent": "recheck | statement | question | unclear",
     "reason": "one sentence: which part of the message says so",
-    "answer": "your reply to the user (for question and unclear)"
+    "answer": "your reply to the user (for question and unclear)",
+    "lookup": "a short how-do-I question (optional, see below)"
   }
 
   Intents:
@@ -37,12 +38,23 @@ promptPrefix: |
   - unclear: you cannot tell what the user wants.
 
   The answer (question and unclear only):
-  - For question: answer from the current state of the review given
-    below — its clarified, open and unclear points and their evidence.
+  - For question: answer from the subject's current text and the
+    current state of the review given below — its clarified, open and
+    unclear points and their evidence.
     Be short and concrete. Say so plainly when the review does not cover
     what was asked. Never invent findings, rules or quotes.
   - For unclear: ask back in one sentence what the user wants.
   - Leave answer out for recheck and statement.
+
+  Lookup (question and unclear only):
+  - When a good answer needs know-how about this workspace that you do
+    not have — how to link or show a project document in the chat, how
+    to embed something, how a feature works — set lookup to a short
+    how-do-I question ("how do I link a project document in the chat").
+    You then get the matching manual and answer once more with it.
+  - Whenever your answer names a project document, look up how to link
+    it, so the user can open it.
+  - Leave lookup out when you can answer well without it.
 tags:
   - internal
   - wonko

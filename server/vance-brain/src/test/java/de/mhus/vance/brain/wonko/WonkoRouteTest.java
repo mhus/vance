@@ -64,9 +64,19 @@ class WonkoRouteTest {
                 .build();
 
         String prompt = WonkoPrompts.routePrompt(
-                List.of("requirements/export.md"), "# Review\n- Region open", pending, "what do you think?");
+                List.of("requirements/export.md"),
+                List.of(new WonkoPrompts.SubjectDoc("requirements/export.md", "Exports go to us-west-2.")),
+                "# Review\n- Region open",
+                pending,
+                "what do you think?");
 
-        assertThat(prompt).contains("requirements/export.md", "# Review", "Which region?", "what do you think?");
+        assertThat(prompt)
+                .contains(
+                        "requirements/export.md",
+                        "Exports go to us-west-2.",
+                        "# Review",
+                        "Which region?",
+                        "what do you think?");
     }
 
     @Test

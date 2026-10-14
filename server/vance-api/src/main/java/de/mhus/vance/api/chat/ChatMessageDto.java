@@ -60,12 +60,10 @@ public class ChatMessageDto {
 
     /**
      * Optional structured metadata that travels alongside the
-     * message content. Today this is used for ASK_USER picker
-     * options (key {@code askUserOptions} → array of
-     * {@code { label, description? }}); future engines may use it
-     * for other typed side-channels. Picker-aware clients render
-     * the options as buttons; clients that ignore the meta still
-     * see the Markdown rendering in {@link #content}.
+     * message content — typed side-channels such as {@code actionType},
+     * {@code kind} or {@code questionsAnswered}. Questions to the user
+     * are not meta: they travel in {@link #content} as a
+     * {@code questions} fence (spec doc-kind-questions).
      */
     private @Nullable Map<String, Object> meta;
 

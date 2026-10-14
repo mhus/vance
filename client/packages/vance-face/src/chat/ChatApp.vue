@@ -377,10 +377,6 @@ function onQuestionAnswersFromView(detail: QuestionAnswersDetail): void {
   void composerRef.value?.setTextAndSend(detail.content, { questionAnswers: detail.answers });
 }
 
-function onAskUserPickFromView(label: string): void {
-  void composerRef.value?.setTextAndSend(label);
-}
-
 /**
  * Handles the {@code /who} slash-command from the composer.
  * Round-trips a {@code session-who} WS request and renders the
@@ -982,7 +978,6 @@ function openInCortex(): void {
           @speak-message="onSpeakMessageFromView"
           @note-activity="onNoteActivityFromView"
           @history-loaded="onHistoryLoadedFromView"
-          @ask-user-pick="onAskUserPickFromView"
           @question-answers="onQuestionAnswersFromView"
           @wizard-deep-link="onWizardDeepLinkFromView"
           @project-resolved="onChatViewProjectResolved"

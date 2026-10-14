@@ -12,12 +12,18 @@
  * readable short form as the message text. Once a later user message exists
  * the set is answered and shows read-only.
  *
- * In the editor and embedded modes it is a read-only list.
+ * A set with a single question (an engine's ASK_USER) is compact: no
+ * progress bar and no overview — a click on an option, the confirm button,
+ * an exit or a typed answer sends right away.
+ *
+ * Question texts are Markdown. In the editor and embedded modes it is a
+ * read-only list.
  *
  * Spec: specification/public/doc-kind-questions.md.
  */
 import { computed, inject, ref } from 'vue';
 import { VAlert, VButton, VTextarea, useT } from '@vance/components';
+import { MarkdownView } from '@components/index';
 import {
   QuestionKind,
   QuestionOutcome,
@@ -93,6 +99,8 @@ const labels = computed<OutcomeLabels>(() => ({
 }));
 
 const total = computed(() => parsed.value.set?.questions.length ?? 0);
+/** One question: the compact form, every answer sends at once. */
+const single = computed(() => total.value === 1);
 const onOverview = computed(() => page.value >= total.value);
 const current = computed(() => parsed.value.set?.questions[page.value]);
 const progress = computed(() => (total.value === 0 ? 0 : Math.round((Math.min(page.value, total.value) / total.value) * 100)));
@@ -108,13 +116,17 @@ function answer(outcome: QuestionOutcome, value?: string): void {
   const q = current.value;
   if (!q) return;
   answers.value = { ...answers.value, [q.key]: { key: q.key, outcome, value } };
+  if (single.value) {
+    send();
+    return;
+  }
   goTo(page.value + 1);
 }
 
 function answerWithText(): void {
   const text = draft.value.trim();
   if (text) answer(QuestionOutcome.ANSWERED, text);
-  else goTo(page.value + 1);
+  else if (!single.value) goTo(page.value + 1);
 }
 
 function send(): void {
@@ -140,16 +152,16 @@ function send(): void {
 
       <!-- Wizard: one page per question -->
       <template v-if="interactive && !onOverview && current">
-        <div class="flex items-center gap-3">
+        <div v-if="!single" class="flex items-center gap-3">
           <progress class="progress progress-primary flex-1" :value="progress" max="100" />
           <span class="text-xs opacity-70">{{ t('kindViews.questions.progress', { n: page + 1, total }) }}</span>
         </div>
         <div class="flex flex-col gap-2">
-          <div class="font-medium">
-            <span v-if="current.weight === QuestionWeight.BLOCKER" class="badge badge-error badge-sm mr-2">
+          <div class="flex items-start gap-2">
+            <span v-if="current.weight === QuestionWeight.BLOCKER" class="badge badge-error badge-sm mt-1">
               {{ t('kindViews.questions.blocker') }}
             </span>
-            {{ current.text }}
+            <MarkdownView class="questions-view__text" :source="current.text" />
           </div>
           <blockquote v-if="current.context" class="text-xs opacity-70 border-l-2 border-base-300 pl-2">
             {{ current.context }}
@@ -174,7 +186,9 @@ function send(): void {
           </div>
           <VTextarea v-model="draft" :rows="2" :mono="false" :placeholder="t('kindViews.questions.freeText')" />
           <div class="flex flex-wrap gap-2">
-            <VButton variant="primary" size="sm" @click="answerWithText">{{ t('kindViews.questions.next') }}</VButton>
+            <VButton variant="primary" size="sm" @click="answerWithText">
+              {{ single ? t('kindViews.questions.send') : t('kindViews.questions.next') }}
+            </VButton>
             <VButton variant="ghost" size="sm" @click="answer(QuestionOutcome.SETTLED)">{{ labels.settled }}</VButton>
             <VButton variant="ghost" size="sm" @click="answer(QuestionOutcome.LATER)">{{ labels.later }}</VButton>
             <VButton variant="ghost" size="sm" @click="answer(QuestionOutcome.UNKNOWN)">{{ labels.unknown }}</VButton>
@@ -189,7 +203,13 @@ function send(): void {
           <progress class="progress progress-primary flex-1" value="100" max="100" />
           <span class="text-xs opacity-70">{{ t('kindViews.questions.overview') }}</span>
         </div>
-        <ol class="list-decimal pl-5 flex flex-col gap-1 text-sm">
+        <template v-if="single">
+          <MarkdownView class="questions-view__text" :source="parsed.set.questions[0]?.text ?? ''" />
+          <div v-if="sent && parsed.set.questions[0]" class="text-sm">
+            → <strong>{{ answerLabel(parsed.set, answers[parsed.set.questions[0].key], labels) }}</strong>
+          </div>
+        </template>
+        <ol v-else class="list-decimal pl-5 flex flex-col gap-1 text-sm">
           <li v-for="(q, i) in parsed.set.questions" :key="q.key">
             <button
               v-if="interactive"

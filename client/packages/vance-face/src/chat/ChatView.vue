@@ -103,9 +103,6 @@ const emit = defineEmits<{
   /** The initial REST history snapshot finished loading — opens the
    *  composer's TTS gate so future frames count as live. */
   (event: 'history-loaded'): void;
-  /** User clicked an ASK_USER picker option — composer should write
-   *  the label into its input and immediately send. */
-  (event: 'ask-user-pick', label: string): void;
   /** A {@code vance:/wizards/<name>?...} link was activated in a chat
    *  message — the right panel should switch to the wizards tab and
    *  open the named wizard with the URL prefill. */
@@ -436,32 +433,6 @@ const allMessages = computed<ChatMessageDto[]>(() => {
   }
   return result;
 });
-
-/**
- * Id of the most recent ASSISTANT message that carries
- * {@code askUserOptions} AND has no subsequent USER message — the
- * only ASK_USER picker the user can still answer by clicking.
- */
-const activeAskUserMessageId = computed<string | null>(() => {
-  const msgs = allMessages.value;
-  for (let i = msgs.length - 1; i >= 0; i--) {
-    const m = msgs[i];
-    if (String(m.role) === 'USER') return null;
-    if (String(m.role) !== 'ASSISTANT') continue;
-    const raw = m.meta?.['askUserOptions'];
-    if (Array.isArray(raw) && raw.length > 0) {
-      return m.messageId;
-    }
-  }
-  return null;
-});
-
-function onPickAskUserOption(label: string): void {
-  if (!label || !label.trim()) return;
-  // Composer owns the send pipeline — bubble up so the parent can
-  // route this to {@code composerRef.setTextAndSend(label)}.
-  emit('ask-user-pick', label.trim());
-}
 
 /**
  * Bounded, speaker-aware transcript of the committed main conversation.
@@ -1095,12 +1066,10 @@ onBeforeUnmount(() => {
             :created-at="msg.createdAt"
             :worker="isWorkerMessage(msg)"
             :meta="msg.meta"
-            :options-actionable="msg.messageId === activeAskUserMessageId"
             :questions-context="questionsContextFor(idx)"
             :sender-user-id="msg.senderUserId"
             :sender-display-name="msg.senderDisplayName"
             :current-user-id="currentUserId"
-            @pick-option="onPickAskUserOption"
           />
           <div
             v-if="isQueued(msg.messageId)"

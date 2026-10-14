@@ -338,9 +338,9 @@ onBeforeUnmount(() => {
 // TTS / speak gates, talk-mode. Those add a lot of surface area and the
 // chat is functional without them — they can be ported piecemeal.
 //
-// The ASK_USER pick is NOT among them: an unrouted option button looks
-// like a working control and swallows the click, leaving the process
-// waiting on an answer the user believes they gave.
+// The answers of a questions fence are NOT among them: an unrouted
+// wizard looks like a working control and swallows the send, leaving the
+// process waiting on an answer the user believes they gave.
 
 /**
  * `/skill …` from the composer — the same handling /chat runs, from the
@@ -361,11 +361,6 @@ async function onSkillCommand(line: string): Promise<void> {
 
 function onLocalEcho(msg: ChatMessageDto): void {
   chatViewRef.value?.appendLocalEcho(msg);
-}
-
-/** ASK_USER option clicked — the composer owns the send pipeline. */
-function onAskUserPick(label: string): void {
-  void composerRef.value?.setTextAndSend(label);
 }
 
 function onQuestionAnswers(detail: QuestionAnswersDetail): void {
@@ -445,7 +440,6 @@ defineExpose({
           :chat-project-id="projectId"
           @leave="emit('leave')"
           @hub="emit('leave')"
-          @ask-user-pick="onAskUserPick"
           @question-answers="onQuestionAnswers"
           @conversation-exported="(p: { documentId: string; document: DocumentDto }) =>
             emit('conversation-exported', p)"

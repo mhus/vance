@@ -20,6 +20,7 @@ import de.mhus.vance.brain.thinkengine.EnginePromptResolver;
 import de.mhus.vance.brain.thinkengine.ParentReport;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
+import de.mhus.vance.brain.thinkengine.action.AskUserQuestions;
 import de.mhus.vance.brain.thinkengine.action.EngineAction;
 import de.mhus.vance.brain.thinkengine.action.StructuredActionEngine;
 import de.mhus.vance.brain.thinkengine.action.StructuredActionEngine.ActionLoopResult;
@@ -1519,7 +1520,7 @@ public class EddieEngine extends StructuredActionEngine {
             case EddieActionSchema.TYPE_ASK_USER -> handleAskUser(action);
             case EddieActionSchema.TYPE_DELEGATE_PROJECT -> handleDelegateProject(action, process, ctx);
             case EddieActionSchema.TYPE_STEER_PROJECT -> handleSteerProject(action, process, ctx);
-            case EddieActionSchema.TYPE_RELAY -> handleRelay(action, process, ctx);
+            case EddieActionSchema.TYPE_RELAY -> handleRelay(action, process);
             case EddieActionSchema.TYPE_RELAY_INBOX -> handleRelayInbox(action, process, ctx);
             case EddieActionSchema.TYPE_LEARN -> handleLearn(action, process);
             case EddieActionSchema.TYPE_MEDIATE -> handleMediate(action, process, ctx);
@@ -1550,82 +1551,10 @@ public class EddieEngine extends StructuredActionEngine {
         if (message == null || message.isBlank()) {
             message = action.reason();
         }
-        Object optionsRaw = action.params().get(EddieActionSchema.PARAM_OPTIONS);
-        String rendered = renderAskUserOptions(message, optionsRaw);
-        // Surface the structured options as ChatMessage.meta so picker-
-        // aware clients (Web-UI) and the cross-engine relay path
-        // (see specification/eddie-engine.md §5.8) can read them without
-        // parsing markdown. Empty / non-list → no meta attached.
-        Map<String, Object> meta = buildAskUserMeta(optionsRaw);
-        return new ActionTurnOutcome(rendered, /*awaitingUserInput*/ true, meta);
-    }
-
-    /**
-     * Builds the {@code meta} payload attached to an ASK_USER chat
-     * message. Returns {@code null} when the LLM did not pass an
-     * {@code options} array — keeps the persisted document clean for
-     * the open-ended-question case (no empty meta sub-document).
-     */
-    private static @Nullable Map<String, Object> buildAskUserMeta(@Nullable Object optionsRaw) {
-        if (!(optionsRaw instanceof List<?> rawList) || rawList.isEmpty()) {
-            return null;
-        }
-        List<Map<String, Object>> cleaned = new ArrayList<>();
-        for (Object item : rawList) {
-            if (!(item instanceof Map<?, ?> m)) continue;
-            Object label = m.get("label");
-            if (!(label instanceof String l) || l.isBlank()) continue;
-            Map<String, Object> entry = new LinkedHashMap<>();
-            entry.put("label", l.trim());
-            Object desc = m.get("description");
-            if (desc instanceof String d && !d.isBlank()) {
-                entry.put("description", d.trim());
-            }
-            cleaned.add(entry);
-        }
-        if (cleaned.isEmpty()) return null;
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put(de.mhus.vance.shared.chat.ChatMessageDocument.META_ASK_USER_OPTIONS, cleaned);
-        return out;
-    }
-
-    /**
-     * Appends structured ASK_USER options to the question text as a
-     * Markdown list the UI / voice channel can present. Pure-text
-     * fallback so any client renders something useful — a Markdown-
-     * aware UI shows it as bullets, a voice channel reads each
-     * option aloud, a future picker-aware UI can sniff the options
-     * back out of the chat-message or read them from the action
-     * params side-channel (not implemented yet).
-     *
-     * <p>Pass-through when {@code options} is null / empty / not a
-     * list — keeps the free-text question shape intact.
-     */
-    @SuppressWarnings("unchecked")
-    private static String renderAskUserOptions(String baseMessage, @Nullable Object optionsRaw) {
-        if (!(optionsRaw instanceof List<?> rawList) || rawList.isEmpty()) {
-            return baseMessage;
-        }
-        StringBuilder sb = new StringBuilder(baseMessage == null ? "" : baseMessage);
-        boolean any = false;
-        for (Object item : rawList) {
-            if (!(item instanceof Map<?, ?> m)) continue;
-            Object label = ((Map<String, Object>) m).get("label");
-            if (!(label instanceof String l) || l.isBlank()) continue;
-            if (!any) {
-                if (sb.length() > 0 && sb.charAt(sb.length() - 1) != '\n') {
-                    sb.append("\n\n");
-                }
-                any = true;
-            }
-            sb.append("- **").append(l.trim()).append("**");
-            Object desc = ((Map<String, Object>) m).get("description");
-            if (desc instanceof String d && !d.isBlank()) {
-                sb.append(" — ").append(d.trim());
-            }
-            sb.append('\n');
-        }
-        return sb.toString();
+        // Options go out as a questions fence in the text — every client
+        // renders it, and a relay carries it along (doc-kind-questions §6).
+        String rendered = AskUserQuestions.render(message, action.params().get(EddieActionSchema.PARAM_OPTIONS));
+        return new ActionTurnOutcome(rendered, /*awaitingUserInput*/ true, null);
     }
 
     /**
@@ -1814,7 +1743,7 @@ public class EddieEngine extends StructuredActionEngine {
      * Zero-token pass-through: engine copies the worker's content
      * verbatim, with an optional short prefix from Eddie.
      */
-    private ActionTurnOutcome handleRelay(EngineAction action, ThinkProcessDocument process, ThinkEngineContext ctx) {
+    private ActionTurnOutcome handleRelay(EngineAction action, ThinkProcessDocument process) {
         EventRelayResolution res = resolveRelayEvent(action, process);
         if (res.error() != null) {
             return new ActionTurnOutcome(res.error(), true);
@@ -1831,21 +1760,14 @@ public class EddieEngine extends StructuredActionEngine {
                 .append(res.event().type().name().toLowerCase())
                 .append("]**\n\n");
         out.append(body);
-        // Cross-engine ASK_USER picker — same provenance lookup as
-        // before, but anchored on the event's source-process rather
-        // than the LLM-supplied name (see specification/eddie-engine.md
-        // §5.8 for why we forward picker options).
-        Map<String, Object> relayedMeta =
-                extractAskUserOptionsMetaForProcess(res.event().sourceProcessId(), process, ctx);
         log.info(
-                "Eddie id='{}' RELAY eventRef='{}' source='{}' ({} chars) reason='{}'{}",
+                "Eddie id='{}' RELAY eventRef='{}' source='{}' ({} chars) reason='{}'",
                 process.getId(),
                 action.stringParam(EddieActionSchema.PARAM_EVENT_REF),
                 res.sourceName(),
                 body.length(),
-                summariseReason(action.reason()),
-                relayedMeta != null ? " — forwarding askUserOptions" : "");
-        return new ActionTurnOutcome(out.toString(), /*awaitingUserInput*/ true, relayedMeta);
+                summariseReason(action.reason()));
+        return new ActionTurnOutcome(out.toString(), /*awaitingUserInput*/ true, null);
     }
 
     /**
@@ -1980,39 +1902,6 @@ public class EddieEngine extends StructuredActionEngine {
         return "_I just lost track while passing along the worker's "
                 + "response. If you still need the answer, ask again — "
                 + "I'll spin up a new worker if needed._";
-    }
-
-    /**
-     * Looks up the worker's last ASSISTANT chat-message to pull
-     * {@code meta.askUserOptions} for picker-forwarding. The event
-     * payload only carries the prose reply; the picker options live
-     * on the worker's chat-message meta. Returns {@code null} when no
-     * options are present — keeps non-ASK_USER relays clean.
-     */
-    @SuppressWarnings("unchecked")
-    private @Nullable Map<String, Object> extractAskUserOptionsMetaForProcess(
-            String workerProcessId, ThinkProcessDocument eddie, ThinkEngineContext ctx) {
-        ThinkProcessDocument worker = thinkProcessService
-                .findById(workerProcessId)
-                .filter(p -> eddie.getTenantId().equals(p.getTenantId()))
-                .orElse(null);
-        if (worker == null) return null;
-        List<ChatMessageDocument> history =
-                ctx.chatMessageService().activeHistory(worker.getTenantId(), worker.getSessionId(), worker.getId());
-        for (int i = history.size() - 1; i >= 0; i--) {
-            ChatMessageDocument m = history.get(i);
-            if (m.getRole() != ChatRole.ASSISTANT
-                    || m.getContent() == null
-                    || m.getContent().isBlank()) continue;
-            Map<String, Object> meta = m.getMeta();
-            if (meta == null || meta.isEmpty()) return null;
-            Object options = meta.get(ChatMessageDocument.META_ASK_USER_OPTIONS);
-            if (!(options instanceof List<?> list) || list.isEmpty()) return null;
-            Map<String, Object> forward = new LinkedHashMap<>();
-            forward.put(ChatMessageDocument.META_ASK_USER_OPTIONS, list);
-            return forward;
-        }
-        return null;
     }
 
     /**

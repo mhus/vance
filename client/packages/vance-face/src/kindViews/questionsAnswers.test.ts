@@ -76,4 +76,9 @@ describe('questionsAnswers', () => {
     expect(questionsActionable(base, set)).toBe(true);
     expect(questionsActionable({ ...base, laterUserMessage: true }, set)).toBe(false);
   });
+
+  it('answers a single question with just the answer, like typed text', () => {
+    const one = parseQuestions('questions:\n  - key: v\n    text: Which **variant**?\n    kind: choice\n    options: [A, B]\n');
+    expect(readableAnswers(one, { v: { key: 'v', outcome: QuestionOutcome.ANSWERED, value: 'B' } }, LABELS)).toBe('B');
+  });
 });

@@ -59,14 +59,6 @@ import org.springframework.data.mongodb.core.mapping.Document;
 public class ChatMessageDocument {
 
     /**
-     * {@link #meta} key for the structured ASK_USER picker options.
-     * Value is {@code List<Map<String, Object>>} with at least
-     * {@code label} and optional {@code description} per entry. See
-     * {@code specification/eddie-engine.md} §5.6 / §5.8.
-     */
-    public static final String META_ASK_USER_OPTIONS = "askUserOptions";
-
-    /**
      * {@link #meta} key on a user message that answered a {@code questions}
      * fence: the id of the question set it answered. The chat shows a set
      * with an id as answered only once a message carries it — a question

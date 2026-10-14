@@ -93,12 +93,20 @@ export function answerLabel(
   }
 }
 
-/** One line per question — "text → answer". Questions left open are sent as "later". */
+/**
+ * The message text of the answers. One question (an engine's ASK_USER): just
+ * the answer, as if the user had typed it. Several: one line per question —
+ * "text → answer". Questions left open are sent as "later".
+ */
 export function readableAnswers(
   set: QuestionSetDto,
   answers: Record<string, QuestionAnswerDto>,
   labels: OutcomeLabels,
 ): string {
+  const only = set.questions.length === 1 ? set.questions[0] : undefined;
+  if (only) {
+    return answerLabel(set, answers[only.key] ?? { key: only.key, outcome: QuestionOutcome.LATER }, labels);
+  }
   return set.questions
     .map((q) => `- ${q.text} → ${answerLabel(set, answers[q.key] ?? { key: q.key, outcome: QuestionOutcome.LATER }, labels)}`)
     .join('\n');

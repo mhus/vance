@@ -4,12 +4,10 @@ import { MarkdownView } from '@components/index';
 import { safeUrl } from '@vance/shared';
 import { uiTheme, paletteStyle } from '@composables/useUiTheme';
 import { useI18n } from 'vue-i18n';
-import QuestionCanvas, { type QuestionOption } from './QuestionCanvas.vue';
 import { QUESTIONS_CONTEXT_KEY, type QuestionsChatContext } from '@/kindViews/questionsAnswers';
 
 // Action-type values mirror constants in
 // {@code ChatMessageDocument.ACTION_TYPE_*}.
-const ACTION_TYPE_ASK_USER = 'ASK_USER';
 const ACTION_TYPE_REJECT = 'REJECT';
 const ACTION_TYPE_WAIT = 'WAIT';
 
@@ -20,12 +18,6 @@ const ACTION_TYPE_WAIT = 'WAIT';
 // expect a Number and warn on every incoming string. Treat the role
 // as a plain string at the component boundary instead.
 type RoleName = 'USER' | 'ASSISTANT' | 'SYSTEM';
-
-/** ASK_USER picker option (mirrors the {@code label/description} schema
- *  defined in {@code ArthurActionSchema} / {@code EddieActionSchema}).
- *  Kept as a re-export so existing call-sites stay valid; the new
- *  canonical name is {@link QuestionOption} in QuestionCanvas. */
-export type AskUserOption = QuestionOption;
 
 const props = withDefaults(defineProps<{
   role: RoleName | string;
@@ -58,18 +50,10 @@ const props = withDefaults(defineProps<{
   lineMaxChars?: number;
   /**
    * Optional structured metadata mirroring
-   * {@code ChatMessageDto.meta}. Today we only consume
-   * {@code askUserOptions}; future keys (typed side-channels) are
-   * ignored gracefully.
+   * {@code ChatMessageDto.meta} — typed side-channels such as
+   * {@code actionType} or {@code kind}; unknown keys are ignored.
    */
   meta?: Record<string, unknown>;
-  /**
-   * When the meta carries picker options, this flag controls whether
-   * the buttons are still actionable. Set false once the user has
-   * answered (a later USER message landed) so stale buttons grey out
-   * instead of double-firing the same answer.
-   */
-  optionsActionable?: boolean;
   /**
    * Where this message stands in the conversation, for a {@code questions}
    * fence in it — whether the wizard may still send. Handed to the fence's
@@ -95,38 +79,15 @@ const props = withDefaults(defineProps<{
 }>(), {
   worker: false,
   lineMaxChars: () => uiTheme.lineMaxChars,
-  optionsActionable: true,
   questionsContext: undefined,
 });
 
 provide(QUESTIONS_CONTEXT_KEY, toRef(props, 'questionsContext'));
 
-const emit = defineEmits<{
-  (e: 'pickOption', label: string): void;
-}>();
-
 /** Working-log note (meta.kind='interim') — engine loop narration like
  * "[redbull] round 11/12". Rendered dimmed: side-channel observability,
  * not a canonical turn answer (see workingLog.ts). */
 const interimNote = computed(() => props.meta?.['kind'] === 'interim');
-
-const askUserOptions = computed<AskUserOption[]>(() => {
-  const raw = props.meta?.['askUserOptions'];
-  if (!Array.isArray(raw)) return [];
-  const out: AskUserOption[] = [];
-  for (const item of raw) {
-    if (!item || typeof item !== 'object') continue;
-    const obj = item as Record<string, unknown>;
-    const label = obj['label'];
-    if (typeof label !== 'string' || !label.trim()) continue;
-    const desc = obj['description'];
-    out.push({
-      label: label.trim(),
-      description: typeof desc === 'string' && desc.trim() ? desc.trim() : undefined,
-    });
-  }
-  return out;
-});
 
 /**
  * What this message pointed at, from {@code meta.selectionReference} —
@@ -202,16 +163,8 @@ const actionType = computed<string | null>(() => {
   return typeof v === 'string' && v.trim() ? v.trim().toUpperCase() : null;
 });
 
-const isAskUser = computed(() =>
-  actionType.value === ACTION_TYPE_ASK_USER || askUserOptions.value.length > 0,
-);
 const isReject = computed(() => actionType.value === ACTION_TYPE_REJECT);
 const isWait   = computed(() => actionType.value === ACTION_TYPE_WAIT);
-
-function onPick(label: string): void {
-  if (!props.optionsActionable) return;
-  emit('pickOption', label);
-}
 
 const isUser = computed(() => props.role === 'USER');
 const isAssistant = computed(() => props.role === 'ASSISTANT');
@@ -347,14 +300,13 @@ const { t: _ } = useI18n();
 
 /**
  * Show the hover-Copy affordance on regular USER/ASSISTANT bubbles with
- * non-empty content. ASK_USER, WAIT and REJECT bubbles render their own
- * interactive surface (option buttons / progress dots) — adding a copy
+ * non-empty content. WAIT and REJECT bubbles render their own
+ * surface (progress dots / refusal tone) — adding a copy
  * shortcut on top of those would muddy the visual contract.
  */
 const canCopyContent = computed(() =>
   !props.worker
   && (isUser.value || isAssistant.value)
-  && !isAskUser.value
   && !isWait.value
   && !isReject.value
   && (props.content?.trim().length ?? 0) > 0,
@@ -460,20 +412,9 @@ async function onCopyMarkdown(): Promise<void> {
         </summary>
         <pre class="mb-thinking-body">{{ thinking }}</pre>
       </details>
-      <!-- ASK_USER question canvas — question text + structured option
-           buttons as one closed unit. See spec §11 (meta.actionType
-           dispatch). Falls back to legacy showOptions check so old
-           messages without actionType still render correctly. -->
-      <QuestionCanvas
-        v-if="isAskUser"
-        :content="displayContent"
-        :options="askUserOptions"
-        :actionable="optionsActionable"
-        @pick="onPick"
-      />
       <!-- WAIT — async work in flight; show only a thin status line, no
            full bubble payload. -->
-      <div v-else-if="isWait" class="text-xs italic opacity-70">
+      <div v-if="isWait" class="text-xs italic opacity-70">
         <span class="inline-block w-1.5 h-1.5 rounded-full bg-warning animate-pulse mr-2" />
         {{ displayContent }}
       </div>

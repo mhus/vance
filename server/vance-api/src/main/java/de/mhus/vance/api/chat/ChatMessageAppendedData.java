@@ -49,10 +49,7 @@ public class ChatMessageAppendedData {
 
     /**
      * Optional structured metadata mirroring
-     * {@link ChatMessageDto#getMeta()}. Picker-aware clients render
-     * {@code askUserOptions} as buttons; Markdown rendering of the
-     * same data lives in {@link #content} as a fallback for plain
-     * Markdown / voice clients.
+     * {@link ChatMessageDto#getMeta()}.
      */
     private @Nullable Map<String, Object> meta;
 

@@ -14,10 +14,9 @@ import de.mhus.vance.brain.events.StreamingProperties;
 import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.recipe.RecipeLoader;
 import de.mhus.vance.brain.recipe.ResolvedRecipe;
-import de.mhus.vance.brain.thinkengine.ParentReport;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
-import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
+import de.mhus.vance.brain.thinkengine.action.AskUserQuestions;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.usermemory.UserMemoryService;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
@@ -194,14 +193,6 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private final de.mhus.vance.brain.thinkengine.plan.PlanModeService planModeService;
     private final de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer attachedUserMessageComposer;
     private final de.mhus.vance.shared.workspace.WorkspaceService workspaceService;
-    /**
-     * Used by {@link #summarizeForParent} to pull the last ASSISTANT
-     * chat message and re-emit its {@code meta.askUserOptions} (when
-     * present) into the parent-event payload — the structured
-     * transport for cross-engine ASK_USER pickers (see
-     * specification/eddie-engine.md §5.8).
-     */
-    private final de.mhus.vance.shared.chat.ChatMessageService chatMessageService;
 
     private final de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter;
     private final de.mhus.vance.brain.memory.MemoryCompactionService memoryCompactionService;
@@ -275,7 +266,6 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer attachedUserMessageComposer,
             de.mhus.vance.brain.thinkengine.SystemPromptComposer composer,
             de.mhus.vance.shared.workspace.WorkspaceService workspaceService,
-            de.mhus.vance.shared.chat.ChatMessageService chatMessageService,
             de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter,
             de.mhus.vance.brain.memory.MemoryCompactionService memoryCompactionService,
             UserMemoryService userMemoryService,
@@ -310,7 +300,6 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         this.planModeService = planModeService;
         this.attachedUserMessageComposer = attachedUserMessageComposer;
         this.workspaceService = workspaceService;
-        this.chatMessageService = chatMessageService;
         this.historyStrengthFilter = historyStrengthFilter;
         this.memoryCompactionService = memoryCompactionService;
         this.userMemoryService = userMemoryService;
@@ -362,79 +351,6 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     @Override
     public Set<String> allowedTools() {
         return ALLOWED_TOOLS;
-    }
-
-    /**
-     * Parent-event report. On {@code BLOCKED} transitions (typical
-     * trigger: Arthur emitted {@code ASK_USER}), reach into the chat
-     * history and re-emit the last ASSISTANT message's
-     * {@code meta.askUserOptions} into {@link ParentReport#payload}
-     * if present — that gives Eddie's RELAY handler the structured
-     * options it needs to re-render the picker on the user-facing
-     * side. See specification/eddie-engine.md §5.8.
-     *
-     * <p>Other event types fall through to the default generic
-     * summary.
-     */
-    @Override
-    public ParentReport summarizeForParent(ThinkProcessDocument process, ProcessEventType eventType) {
-        if (eventType != ProcessEventType.BLOCKED) {
-            return ParentReport.of(genericChildSummary(process, eventType));
-        }
-        Map<String, Object> payload = extractAskUserOptionsPayload(process);
-        if (payload == null) {
-            return ParentReport.of(genericChildSummary(process, eventType));
-        }
-        return new ParentReport(
-                "Child process " + process.getId()
-                        + " status=" + eventType.name().toLowerCase()
-                        + " — awaiting user clarification (picker options attached)",
-                payload);
-    }
-
-    /** Same text the {@link ThinkEngine#summarizeForParent default} produces. */
-    private static String genericChildSummary(ThinkProcessDocument process, ProcessEventType eventType) {
-        return "Child process " + process.getId() + " status="
-                + eventType.name().toLowerCase();
-    }
-
-    /**
-     * Reads the last ASSISTANT chat message of {@code process} and
-     * returns a payload map carrying its {@code askUserOptions} meta
-     * — or {@code null} if no such message or no options. Defensive:
-     * any read error returns null and is logged at debug-level.
-     */
-    @SuppressWarnings("unchecked")
-    private @Nullable Map<String, Object> extractAskUserOptionsPayload(ThinkProcessDocument process) {
-        try {
-            java.util.List<de.mhus.vance.shared.chat.ChatMessageDocument> history =
-                    chatMessageService.activeHistory(process.getTenantId(), process.getSessionId(), process.getId());
-            de.mhus.vance.shared.chat.ChatMessageDocument lastAssistant = null;
-            for (int i = history.size() - 1; i >= 0; i--) {
-                de.mhus.vance.shared.chat.ChatMessageDocument m = history.get(i);
-                if (m.getRole() == de.mhus.vance.api.chat.ChatRole.ASSISTANT) {
-                    lastAssistant = m;
-                    break;
-                }
-            }
-            if (lastAssistant == null || lastAssistant.getMeta() == null) {
-                return null;
-            }
-            Object rawOptions =
-                    lastAssistant.getMeta().get(de.mhus.vance.shared.chat.ChatMessageDocument.META_ASK_USER_OPTIONS);
-            if (!(rawOptions instanceof java.util.List<?> list) || list.isEmpty()) {
-                return null;
-            }
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put(de.mhus.vance.shared.chat.ChatMessageDocument.META_ASK_USER_OPTIONS, list);
-            return payload;
-        } catch (RuntimeException e) {
-            log.debug(
-                    "Arthur.summarizeForParent: failed to extract askUserOptions for " + "process='{}': {}",
-                    process.getId(),
-                    e.toString());
-            return null;
-        }
     }
 
     // ──────────────────── Lifecycle ────────────────────
@@ -1793,79 +1709,10 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         if (message == null || message.isBlank()) {
             message = action.reason();
         }
-        Object optionsRaw = action.params().get(ArthurActionSchema.PARAM_OPTIONS);
-        String rendered = renderAskUserOptions(message, optionsRaw);
-        Map<String, Object> meta = buildAskUserMeta(optionsRaw);
-        return new ActionTurnOutcome(rendered, /*awaitingUserInput*/ true, meta);
-    }
-
-    /**
-     * Builds the {@code meta} payload attached to an ASK_USER chat
-     * message. Returns {@code null} when no usable options were given
-     * — keeps the persisted document clean for open-ended questions.
-     * Mirror of {@code EddieEngine.buildAskUserMeta}.
-     */
-    @SuppressWarnings("unchecked")
-    private static @Nullable Map<String, Object> buildAskUserMeta(@Nullable Object optionsRaw) {
-        if (!(optionsRaw instanceof List<?> rawList) || rawList.isEmpty()) {
-            return null;
-        }
-        List<Map<String, Object>> cleaned = new ArrayList<>();
-        for (Object item : rawList) {
-            if (!(item instanceof Map<?, ?> m)) continue;
-            Object label = m.get("label");
-            if (!(label instanceof String l) || l.isBlank()) continue;
-            Map<String, Object> entry = new LinkedHashMap<>();
-            entry.put("label", l.trim());
-            Object desc = m.get("description");
-            if (desc instanceof String d && !d.isBlank()) {
-                entry.put("description", d.trim());
-            }
-            cleaned.add(entry);
-        }
-        if (cleaned.isEmpty()) return null;
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put(ChatMessageDocument.META_ASK_USER_OPTIONS, cleaned);
-        return out;
-    }
-
-    /**
-     * Appends structured ASK_USER options to the question text as a
-     * Markdown list the UI / voice channel can present. Mirror of
-     * {@code EddieEngine.renderAskUserOptions}; kept in Arthur because
-     * Arthur sometimes runs without Eddie (foot- or web-session
-     * direct on a project Arthur). When Arthur sits under Eddie, the
-     * cross-engine relay path (eddie-engine.md §5.8) takes over and
-     * Eddie re-renders the picker on the user-facing side.
-     *
-     * <p>Pass-through when {@code options} is null / empty / not a
-     * list — keeps the free-text question shape intact.
-     */
-    @SuppressWarnings("unchecked")
-    private static String renderAskUserOptions(String baseMessage, @Nullable Object optionsRaw) {
-        if (!(optionsRaw instanceof List<?> rawList) || rawList.isEmpty()) {
-            return baseMessage;
-        }
-        StringBuilder sb = new StringBuilder(baseMessage == null ? "" : baseMessage);
-        boolean any = false;
-        for (Object item : rawList) {
-            if (!(item instanceof Map<?, ?> m)) continue;
-            Object label = ((Map<String, Object>) m).get("label");
-            if (!(label instanceof String l) || l.isBlank()) continue;
-            if (!any) {
-                if (sb.length() > 0 && sb.charAt(sb.length() - 1) != '\n') {
-                    sb.append("\n\n");
-                }
-                any = true;
-            }
-            sb.append("- **").append(l.trim()).append("**");
-            Object desc = ((Map<String, Object>) m).get("description");
-            if (desc instanceof String d && !d.isBlank()) {
-                sb.append(" — ").append(d.trim());
-            }
-            sb.append('\n');
-        }
-        return sb.toString();
+        // Options go out as a questions fence in the text — every client
+        // renders it, and a parent's relay carries it along (doc-kind-questions §6).
+        String rendered = AskUserQuestions.render(message, action.params().get(ArthurActionSchema.PARAM_OPTIONS));
+        return new ActionTurnOutcome(rendered, /*awaitingUserInput*/ true, null);
     }
 
     /**

@@ -124,7 +124,7 @@ class TrillianHeadEngineTest {
     }
 
     @Test
-    void theHead_readsAndResearches_butReachesNoOtherProcessAndNoOtherConversation() {
+    void theHead_worksWithItsDocuments_butReachesNoOtherProcessAndNoOtherConversation() {
         // A head lives in the loop session next to the loop and every other
         // head: the worker pool's process_*/inbox_list/wakeup tools would let
         // a counterpart list, steer or stop them, or read the other
@@ -133,7 +133,15 @@ class TrillianHeadEngineTest {
         TrillianHeadEngine engine = newEngine();
 
         assertThat(engine.allowedTools())
-                .contains("doc_find", "doc_read", "doc_count", "doc_grep", "web_search", "research_search")
+                .contains(
+                        "doc_find",
+                        "doc_read",
+                        "doc_count",
+                        "doc_grep",
+                        "doc_write",
+                        "doc_edit",
+                        "web_search",
+                        "research_search")
                 .doesNotContain(
                         "process_list",
                         "process_status",
@@ -143,8 +151,6 @@ class TrillianHeadEngineTest {
                         "inbox_list",
                         "inbox_post",
                         "wakeup_in",
-                        "doc_write",
-                        "doc_edit",
                         "exec_run",
                         "project_switch",
                         "doc_link");

@@ -176,16 +176,22 @@ class TrillianConversationServiceTest {
     }
 
     @Test
-    void openRefusesASingleHeadedAgent() {
+    void aSingleHeadedAgent_isReachable_itsLoopAnswersTheThread() {
+        // No heads, no head limit: the thread lands in the Trillian's inbox
+        // and its own loop answers it (inbox_unread).
         givenExposure(colinConfig("road.runner"), true);
         TrillianNature singleHead = mock(TrillianNature.class);
         when(singleHead.multiHead()).thenReturn(false);
         when(natureRegistry.resolve(anyString())).thenReturn(singleHead);
+        when(threads.create(any())).thenAnswer(inv -> {
+            MaximegalonDocument doc = inv.getArgument(0);
+            doc.setId("thread-9");
+            return doc;
+        });
 
-        assertThatThrownBy(() -> service.open(TENANT, CALLER, "colin", null, "Hi"))
-                .isInstanceOf(ToolException.class)
-                .hasMessageContaining("agent not conversational");
-        verify(threads, never()).create(any());
+        assertThat(service.open(TENANT, CALLER, "colin", null, "Hi").conversationId())
+                .isEqualTo("thread-9");
+        verify(headService, never()).hasHeadCapacity(any(), any());
     }
 
     // ──────────────────── send & read ────────────────────

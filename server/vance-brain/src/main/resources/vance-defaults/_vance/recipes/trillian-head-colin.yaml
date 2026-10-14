@@ -8,9 +8,9 @@
 # Runs the trillian-head engine — Frankie's loop forked into a
 # conversational shape (TrillianHeadEngine, the same extend as
 # TrillianWorkerEngine) — whose allowedTools() IS the head's surface:
-# the thread family, the archive tool, the read side of the hub's
-# documents, research, and the task handover to its own loop for work
-# that writes or runs long. No write/exec tools, no process_* or
+# the thread family, the archive tool, the hub's documents (read and
+# write, under the account's WRITER rights), research, and the task
+# handover to its own loop for long work. No exec, no process_* or
 # inbox_list (the head lives in the loop session next to every other
 # head), none of the control-side user_* tools; confined to its hub.
 #

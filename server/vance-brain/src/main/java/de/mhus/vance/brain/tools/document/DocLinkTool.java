@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.document;
 
+import de.mhus.vance.brain.tools.eddie.EddieContext;
 import de.mhus.vance.brain.tools.kinds.KindToolSupport;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -34,6 +35,7 @@ public class DocLinkTool implements Tool {
     private final ProjectService projectService;
     private final DocumentService documentService;
     private final DocumentLinkBuilder linkBuilder;
+    private final EddieContext eddieContext;
 
     @Override
     public String name() {
@@ -148,7 +150,20 @@ public class DocLinkTool implements Tool {
         return out;
     }
 
+    /**
+     * The link carries the document's title and path, so building one is a
+     * read: both branches pass the document tools' read gate (tenant, READ on
+     * the document, engine confinement) — before, any project of the tenant
+     * was addressable by name and any document by id.
+     */
     private DocumentDocument resolveDocument(
+            @Nullable String id, @Nullable String path, @Nullable String requestedProject, ToolInvocationContext ctx) {
+        DocumentDocument doc = loadDocument(id, path, requestedProject, ctx);
+        eddieContext.requireReadableById(ctx, doc, doc.getId() == null ? String.valueOf(path) : doc.getId());
+        return doc;
+    }
+
+    private DocumentDocument loadDocument(
             @Nullable String id, @Nullable String path, @Nullable String requestedProject, ToolInvocationContext ctx) {
         if (id != null) {
             DocumentDocument doc = documentService

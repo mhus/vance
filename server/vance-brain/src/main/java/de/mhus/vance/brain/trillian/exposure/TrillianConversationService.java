@@ -52,9 +52,8 @@ import org.springframework.stereotype.Service;
  * (same convention as the project-scoped MCP surface).
  *
  * <p><b>Honest answers at the door.</b> The entry refuses up front what
- * would otherwise rest unheard (§6.7): an inactive Trillian (no live loop),
- * a single-headed one (it leads no conversations) and a reached conversation
- * limit are refused before the thread exists — a thread that lies around
+ * would otherwise rest unheard (§6.7): an inactive Trillian (no live loop)
+ * and a reached conversation limit are refused before the thread exists — a thread that lies around
  * with no head is the mechanics' fallback, not the entry's promise.
  *
  * <p><b>Reading outlives writing.</b> An archived conversation stays
@@ -134,12 +133,11 @@ public class TrillianConversationService {
         ThinkProcessDocument loop = ownSessions
                 .liveLoopOf(tenantId, exposed.account())
                 .orElseThrow(() -> new ToolException("agent inactive: '" + exposedName + "' has no live loop"));
+        // A single-headed Trillian answers its threads on its own loop
+        // (inbox_unread) — no heads, no head limit. A multi-headed one gets
+        // a head per conversation, so the limit is the honest "full".
         TrillianNature nature = natureRegistry.resolve(TrillianSessionBootstrapper.readNature(loop));
-        if (!nature.multiHead()) {
-            throw new ToolException(
-                    "agent not conversational: '" + exposedName + "' leads no conversations through this door");
-        }
-        if (!headService.hasHeadCapacity(loop, nature)) {
+        if (nature.multiHead() && !headService.hasHeadCapacity(loop, nature)) {
             throw new ToolException("conversation limit reached: '" + exposedName
                     + "' already leads the maximum number of conversations");
         }

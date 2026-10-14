@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.brain.tools.eddie.EddieContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.project.ProjectDocument;
@@ -29,13 +30,15 @@ class DocLinkToolTest {
 
     private DocumentService documentService;
     private ProjectService projectService;
+    private EddieContext eddieContext;
     private DocLinkTool tool;
 
     @BeforeEach
     void setUp() {
         documentService = Mockito.mock(DocumentService.class);
         projectService = Mockito.mock(ProjectService.class);
-        tool = new DocLinkTool(projectService, documentService, new DocumentLinkBuilder());
+        eddieContext = Mockito.mock(EddieContext.class);
+        tool = new DocLinkTool(projectService, documentService, new DocumentLinkBuilder(), eddieContext);
     }
 
     @Test
@@ -44,8 +47,7 @@ class DocLinkToolTest {
         when(documentService.findByPath("acme", "proj-a", "documents/strategy.md"))
                 .thenReturn(Optional.of(doc));
 
-        Map<String, Object> out = tool.invoke(
-                Map.of("path", "documents/strategy.md"), CTX);
+        Map<String, Object> out = tool.invoke(Map.of("path", "documents/strategy.md"), CTX);
 
         assertThat(out)
                 .containsEntry("path", "documents/strategy.md")
@@ -60,14 +62,12 @@ class DocLinkToolTest {
     @Test
     void invoke_imageKind_defaultsToImageSyntaxAndPreviewMode() {
         DocumentDocument doc = newDoc("proj-a", "diagrams/arch.png", "image", "Architektur");
-        when(documentService.findByPath("acme", "proj-a", "diagrams/arch.png"))
-                .thenReturn(Optional.of(doc));
+        when(documentService.findByPath("acme", "proj-a", "diagrams/arch.png")).thenReturn(Optional.of(doc));
 
         Map<String, Object> out = tool.invoke(Map.of("path", "diagrams/arch.png"), CTX);
 
         // Image kind → preview mode is default → mode segment omitted from URI
-        assertThat((String) out.get("markdownLink"))
-                .isEqualTo("![Architektur](vance:/diagrams/arch.png?kind=image)");
+        assertThat((String) out.get("markdownLink")).isEqualTo("![Architektur](vance:/diagrams/arch.png?kind=image)");
         assertThat(out).containsEntry("imageStyle", true).containsEntry("mode", "preview");
     }
 
@@ -79,8 +79,7 @@ class DocLinkToolTest {
         when(documentService.findByPath("acme", "templates-shared", "reports/q.md"))
                 .thenReturn(Optional.of(doc));
 
-        Map<String, Object> out = tool.invoke(
-                Map.of("path", "reports/q.md", "project", "templates-shared"), CTX);
+        Map<String, Object> out = tool.invoke(Map.of("path", "reports/q.md", "project", "templates-shared"), CTX);
 
         assertThat((String) out.get("markdownLink"))
                 .isEqualTo("[Template](vance://templates-shared/reports/q.md?kind=markdown)");
@@ -100,8 +99,7 @@ class DocLinkToolTest {
         when(documentService.findByPath("acme", "templates-shared", "reports/q.md"))
                 .thenReturn(Optional.of(doc));
 
-        Map<String, Object> out = tool.invoke(
-                Map.of("path", "reports/q.md", "projectId", "templates-shared"), CTX);
+        Map<String, Object> out = tool.invoke(Map.of("path", "reports/q.md", "projectId", "templates-shared"), CTX);
 
         assertThat((String) out.get("markdownLink"))
                 .isEqualTo("[Template](vance://templates-shared/reports/q.md?kind=markdown)");
@@ -111,8 +109,7 @@ class DocLinkToolTest {
     @Test
     void paramsSchema_declaresProjectId_notTheLegacySpelling() {
         @SuppressWarnings("unchecked")
-        Map<String, Object> props =
-                (Map<String, Object>) tool.paramsSchema().get("properties");
+        Map<String, Object> props = (Map<String, Object>) tool.paramsSchema().get("properties");
 
         // The alias is deliberately undeclared: it exists for calls already in
         // flight, not as a second name to choose from.
@@ -122,14 +119,11 @@ class DocLinkToolTest {
     @Test
     void invoke_textOverride_winsOverTitle() {
         DocumentDocument doc = newDoc("proj-a", "x.md", "markdown", "OriginalTitle");
-        when(documentService.findByPath(eq("acme"), eq("proj-a"), eq("x.md")))
-                .thenReturn(Optional.of(doc));
+        when(documentService.findByPath(eq("acme"), eq("proj-a"), eq("x.md"))).thenReturn(Optional.of(doc));
 
-        Map<String, Object> out = tool.invoke(
-                Map.of("path", "x.md", "text", "Custom Label"), CTX);
+        Map<String, Object> out = tool.invoke(Map.of("path", "x.md", "text", "Custom Label"), CTX);
 
-        assertThat((String) out.get("markdownLink"))
-                .startsWith("[Custom Label](");
+        assertThat((String) out.get("markdownLink")).startsWith("[Custom Label](");
     }
 
     @Test
@@ -137,13 +131,10 @@ class DocLinkToolTest {
         DocumentDocument doc = newDoc("proj-a", "x.png", "image", null);
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.of(doc));
 
-        Map<String, Object> out = tool.invoke(
-                Map.of("path", "x.png", "mode", "reference"), CTX);
+        Map<String, Object> out = tool.invoke(Map.of("path", "x.png", "mode", "reference"), CTX);
 
         // image default is preview — explicit 'reference' must serialise
-        assertThat((String) out.get("markdownLink"))
-                .contains("kind=image")
-                .contains("mode=reference");
+        assertThat((String) out.get("markdownLink")).contains("kind=image").contains("mode=reference");
     }
 
     @Test
@@ -159,8 +150,7 @@ class DocLinkToolTest {
     void invoke_crossProjectNotInTenant_throwsToolException() {
         when(projectService.findByTenantAndName(any(), any())).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> tool.invoke(
-                Map.of("path", "x.md", "project", "ghost"), CTX))
+        assertThatThrownBy(() -> tool.invoke(Map.of("path", "x.md", "project", "ghost"), CTX))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("CROSS_PROJECT_NOT_IN_TENANT");
     }
@@ -177,16 +167,31 @@ class DocLinkToolTest {
         DocumentDocument doc = newDoc("proj-other", "shared/spec.md", "markdown", "Spec");
         doc.setId("507f1f77bcf86cd799439011");
         doc.setTenantId("acme");
-        when(documentService.findById("507f1f77bcf86cd799439011"))
-                .thenReturn(Optional.of(doc));
+        when(documentService.findById("507f1f77bcf86cd799439011")).thenReturn(Optional.of(doc));
 
-        Map<String, Object> out = tool.invoke(
-                Map.of("id", "507f1f77bcf86cd799439011"), CTX);
+        Map<String, Object> out = tool.invoke(Map.of("id", "507f1f77bcf86cd799439011"), CTX);
 
         // ctx project is proj-a, doc project is proj-other → cross-project
-        assertThat((String) out.get("markdownLink"))
-                .startsWith("[Spec](vance://proj-other/shared/spec.md");
+        assertThat((String) out.get("markdownLink")).startsWith("[Spec](vance://proj-other/shared/spec.md");
         assertThat(out).containsEntry("project", "proj-other");
+    }
+
+    @Test
+    void invoke_aDocumentTheCallerMayNotRead_isRefused_notLinked() {
+        // The link carries title and path — building it is a read and passes
+        // the document tools' read gate.
+        DocumentDocument doc = newDoc("proj-b", "documents/secret.md", "markdown", "Secret");
+        ProjectDocument projB = new ProjectDocument();
+        projB.setName("proj-b");
+        when(projectService.findByTenantAndName("acme", "proj-b")).thenReturn(Optional.of(projB));
+        when(documentService.findByPath("acme", "proj-b", "documents/secret.md"))
+                .thenReturn(Optional.of(doc));
+        Mockito.doThrow(new ToolException("denied"))
+                .when(eddieContext)
+                .requireReadableById(eq(CTX), eq(doc), Mockito.anyString());
+
+        assertThatThrownBy(() -> tool.invoke(Map.of("path", "documents/secret.md", "projectId", "proj-b"), CTX))
+                .isInstanceOf(ToolException.class);
     }
 
     @Test
@@ -194,15 +199,12 @@ class DocLinkToolTest {
         DocumentDocument doc = newDoc("proj-a", "documents/Quartalsbericht Q1.pdf", "pdf", "Q1");
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.of(doc));
 
-        Map<String, Object> out = tool.invoke(
-                Map.of("path", "documents/Quartalsbericht Q1.pdf"), CTX);
+        Map<String, Object> out = tool.invoke(Map.of("path", "documents/Quartalsbericht Q1.pdf"), CTX);
 
-        assertThat((String) out.get("markdownLink"))
-                .contains("documents/Quartalsbericht%20Q1.pdf");
+        assertThat((String) out.get("markdownLink")).contains("documents/Quartalsbericht%20Q1.pdf");
     }
 
-    private static DocumentDocument newDoc(
-            String projectId, String path, String kind, String title) {
+    private static DocumentDocument newDoc(String projectId, String path, String kind, String title) {
         DocumentDocument d = new DocumentDocument();
         d.setTenantId("acme");
         d.setProjectId(projectId);

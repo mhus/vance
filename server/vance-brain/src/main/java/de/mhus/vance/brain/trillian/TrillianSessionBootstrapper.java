@@ -426,8 +426,12 @@ public class TrillianSessionBootstrapper {
         //     denied until someone grants that explicitly. Every time, not
         //     only on mint: grants are idempotent, and an attempt that died
         //     between mint and grant must not leave an account without one.
+        //     WRITER, not ADMIN: a Trillian works in the project, it does not
+        //     administer it — no grants, and no _vance/ configuration (R4),
+        //     which an agent steered by a conversation counterpart must never
+        //     rewrite. Re-seeding lowers the ADMIN earlier versions seeded.
         permissionBootstrapProvider.ifAvailable(
-                pb -> pb.grantProjectAdmin(controlSession.getTenantId(), controlSession.getProjectId(), trillianName));
+                pb -> pb.grantProjectWriter(controlSession.getTenantId(), controlSession.getProjectId(), trillianName));
 
         // 4. Create the headless user-session owned by the service-
         //    account. system=true marks it as auto-managed (UI may

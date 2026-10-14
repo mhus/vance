@@ -40,6 +40,18 @@ public interface PermissionBootstrap {
     void grantProjectAdmin(String tenant, String project, String username);
 
     /**
+     * Grant {@code username} write access to a single {@code project} — an
+     * agent account that works there on someone's behalf (a Trillian in its
+     * human's project) and must not administer it: no grants, no
+     * {@code _vance/} configuration (R4).
+     *
+     * <p>Re-seeding lowers a stronger grant only where this bootstrap seeded
+     * it (an earlier version seeded such accounts ADMIN); a grant someone
+     * created deliberately stays as it is.
+     */
+    void grantProjectWriter(String tenant, String project, String username);
+
+    /**
      * Grant a {@code team} write access to a single {@code project} — the
      * seed that turns the organisational "this team works on this project"
      * association into an actual permission.

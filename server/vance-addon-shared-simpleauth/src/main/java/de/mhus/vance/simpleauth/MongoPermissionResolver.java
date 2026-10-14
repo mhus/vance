@@ -11,6 +11,7 @@ import de.mhus.vance.shared.permission.WriteReason;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.team.TeamDocument;
 import de.mhus.vance.shared.team.TeamService;
+import de.mhus.vance.shared.user.UserService;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -29,16 +30,18 @@ public class MongoPermissionResolver implements PermissionResolver {
 
     private static final String TENANT_PROJECT = "_tenant";
     /**
-     * Reserved document paths — WRITE here is server-only (R4). The whole
-     * {@code _vance/} namespace is reserved: recipes, models, manuals,
-     * setting-forms, wizards, templates and the auto-executing scheduler/hooks/
-     * events all shape system behaviour, so writing any of them — even a
-     * project-local override in a normal project — is denied for every user
-     * actor, ADMIN included. Only trusted server code writes it, via
-     * {@link WriteReason#SYSTEM}, which {@link PermissionService} short-circuits
-     * upstream so it never reaches this resolver (internal log/recipe/kit writes
-     * are unaffected). Reading stays open (the recipe/model/settings cascade
-     * resolves here for every user).
+     * Reserved document paths (R4). The whole {@code _vance/} namespace is
+     * reserved: recipes, models, manuals, setting-forms, wizards, templates
+     * and the auto-executing scheduler/hooks/events all shape system
+     * behaviour, so WRITE there needs ADMIN on the project — a person who
+     * administers it may edit its configuration (since 2026-07-29; before,
+     * it was server-only). Agent accounts are kept out by not being ADMIN:
+     * a Trillian is seeded WRITER, and a service account is WRITER on its
+     * own hub. Trusted server code writes regardless, via
+     * {@link WriteReason#SYSTEM}, which {@link PermissionService}
+     * short-circuits upstream so it never reaches this resolver. Reading
+     * stays open (the recipe/model/settings cascade resolves here for every
+     * user).
      */
     private static final List<String> RESERVED_PATH_PREFIXES = List.of("_vance/");
 
@@ -153,9 +156,15 @@ public class MongoPermissionResolver implements PermissionResolver {
     }
 
     private boolean systemProjectAllowed(SecurityContext subject, String tenantId, String project, GrantRole required) {
-        // Owner of the personal hub _user_<login> has implicit ADMIN on it.
+        // Owner of the personal hub _user_<login> has implicit ADMIN on it —
+        // a person. A service account (the "_" prefix is enforced at account
+        // creation) gets WRITER on its own hub: it acts through agents,
+        // unattended, and must not rewrite the _vance/ configuration of its
+        // own home (R4) — a Trillian's exposure, recipes or hooks. Its own
+        // bookkeeping there goes through server code as WriteReason.SYSTEM.
         if (project.equals(HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + subject.subjectId())) {
-            return true;
+            return !subject.subjectId().startsWith(UserService.SERVICE_ACCOUNT_PREFIX)
+                    || hasRole(GrantRole.WRITER, required);
         }
         // _tenant: every tenant member may READ (settings-cascade defaults);
         // writing needs tenant-ADMIN.

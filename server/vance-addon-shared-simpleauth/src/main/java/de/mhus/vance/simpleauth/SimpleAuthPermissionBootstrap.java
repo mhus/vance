@@ -25,29 +25,46 @@ public class SimpleAuthPermissionBootstrap implements PermissionBootstrap {
 
     @Override
     public void grantTenantAdmin(String tenant, String username) {
-        grants.set(tenant, GrantScopeType.TENANT, tenant,
-                GrantSubjectType.USER, username, GrantRole.ADMIN, CREATED_BY);
+        grants.set(tenant, GrantScopeType.TENANT, tenant, GrantSubjectType.USER, username, GrantRole.ADMIN, CREATED_BY);
     }
 
     @Override
     public void grantProjectAdmin(String tenant, String project, String username) {
-        grants.set(tenant, GrantScopeType.PROJECT, project,
-                GrantSubjectType.USER, username, GrantRole.ADMIN, CREATED_BY);
+        grants.set(
+                tenant, GrantScopeType.PROJECT, project, GrantSubjectType.USER, username, GrantRole.ADMIN, CREATED_BY);
+    }
+
+    @Override
+    public void grantProjectWriter(String tenant, String project, String username) {
+        for (PermissionGrantDocument existing : grants.forScope(tenant, GrantScopeType.PROJECT, project)) {
+            if (existing.getSubjectType() == GrantSubjectType.USER
+                    && username.equals(existing.getSubjectId())
+                    && existing.getRole() == GrantRole.ADMIN
+                    && !CREATED_BY.equals(existing.getCreatedBy())) {
+                // Someone made this account an admin on purpose — that is
+                // theirs to take back, not a seed to overwrite.
+                log.info(
+                        "Keeping deliberate ADMIN grant of '{}' on project '{}' in tenant '{}'",
+                        username,
+                        project,
+                        tenant);
+                return;
+            }
+        }
+        grants.set(
+                tenant, GrantScopeType.PROJECT, project, GrantSubjectType.USER, username, GrantRole.WRITER, CREATED_BY);
     }
 
     @Override
     public void grantProjectTeamWriter(String tenant, String project, String team) {
-        grants.set(tenant, GrantScopeType.PROJECT, project,
-                GrantSubjectType.TEAM, team, GrantRole.WRITER, CREATED_BY);
+        grants.set(tenant, GrantScopeType.PROJECT, project, GrantSubjectType.TEAM, team, GrantRole.WRITER, CREATED_BY);
     }
 
     @Override
     public void revokeAll(String tenant, String username) {
         int removed = 0;
-        for (PermissionGrantDocument grant :
-                grants.forSubject(tenant, GrantSubjectType.USER, username)) {
-            if (grants.remove(tenant, grant.getScopeType(), grant.getScopeId(),
-                    GrantSubjectType.USER, username)) {
+        for (PermissionGrantDocument grant : grants.forSubject(tenant, GrantSubjectType.USER, username)) {
+            if (grants.remove(tenant, grant.getScopeType(), grant.getScopeId(), GrantSubjectType.USER, username)) {
                 removed++;
             }
         }

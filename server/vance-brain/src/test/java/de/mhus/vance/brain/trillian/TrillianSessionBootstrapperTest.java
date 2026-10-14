@@ -204,11 +204,14 @@ class TrillianSessionBootstrapperTest {
     }
 
     @Test
-    void bootstrap_grantsTheMintedAccountAdminOnTheControlProject() {
+    void bootstrap_grantsTheMintedAccountWriterOnTheControlProject_neverAdmin() {
+        // A Trillian works in its human's project, it does not administer it:
+        // ADMIN would let it (and a counterpart steering it) rewrite _vance/.
         bootstrap(controlSession(), controlProcess());
+        verify(permissionBootstrap, never()).grantProjectAdmin(any(), any(), any());
 
         ArgumentCaptor<String> username = ArgumentCaptor.forClass(String.class);
-        verify(permissionBootstrap).grantProjectAdmin(eq(TENANT), eq(PROJECT), username.capture());
+        verify(permissionBootstrap).grantProjectWriter(eq(TENANT), eq(PROJECT), username.capture());
         org.assertj.core.api.Assertions.assertThat(username.getValue()).startsWith("_trillian-void-");
     }
 
@@ -248,7 +251,7 @@ class TrillianSessionBootstrapperTest {
 
         ArgumentCaptor<String> granted = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> owner = ArgumentCaptor.forClass(String.class);
-        verify(permissionBootstrap).grantProjectAdmin(any(), any(), granted.capture());
+        verify(permissionBootstrap).grantProjectWriter(any(), any(), granted.capture());
         verify(sessionService).create(any(), owner.capture(), any(), any(), any(), any(), any(), anyBoolean());
         // A mismatch here is invisible at runtime until the first tool call
         // is denied — exactly the failure this pair of fixes removes.
@@ -279,7 +282,7 @@ class TrillianSessionBootstrapperTest {
         ArgumentCaptor<ChatMessageDocument> message = ArgumentCaptor.forClass(ChatMessageDocument.class);
         verify(chatMessageService).append(message.capture());
         ArgumentCaptor<String> granted = ArgumentCaptor.forClass(String.class);
-        verify(permissionBootstrap).grantProjectAdmin(any(), any(), granted.capture());
+        verify(permissionBootstrap).grantProjectWriter(any(), any(), granted.capture());
 
         // The operator needs this name to widen the worker's reach later;
         // the brain log is not a place they can be expected to look.
@@ -601,7 +604,7 @@ class TrillianSessionBootstrapperTest {
 
         verify(userService, never()).createServiceAccount(anyString(), anyString(), any(), any(), any());
         verify(homeBootstrapService, never()).ensureHome(anyString(), anyString());
-        verify(permissionBootstrap, never()).grantProjectAdmin(any(), any(), any());
+        verify(permissionBootstrap, never()).grantProjectWriter(any(), any(), any());
     }
 
     @Test
@@ -695,7 +698,7 @@ class TrillianSessionBootstrapperTest {
 
         bootstrap(controlSession(), arthur);
 
-        verify(permissionBootstrap, never()).grantProjectAdmin(any(), any(), any());
+        verify(permissionBootstrap, never()).grantProjectWriter(any(), any(), any());
         verify(userService, never()).createServiceAccount(any(), any(), any(), any(), any());
     }
 

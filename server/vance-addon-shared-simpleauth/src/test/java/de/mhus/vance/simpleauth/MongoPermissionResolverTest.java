@@ -33,11 +33,16 @@ class MongoPermissionResolverTest {
         resolver = new MongoPermissionResolver(grants, teamService, /* metricService */ null);
     }
 
-    private static PermissionGrantDocument grant(GrantScopeType scope, String scopeId,
-            GrantSubjectType subjectType, String subjectId, GrantRole role) {
+    private static PermissionGrantDocument grant(
+            GrantScopeType scope, String scopeId, GrantSubjectType subjectType, String subjectId, GrantRole role) {
         return PermissionGrantDocument.builder()
-                .tenantId("acme").scopeType(scope).scopeId(scopeId)
-                .subjectType(subjectType).subjectId(subjectId).role(role).build();
+                .tenantId("acme")
+                .scopeType(scope)
+                .scopeId(scopeId)
+                .subjectType(subjectType)
+                .subjectId(subjectId)
+                .role(role)
+                .build();
     }
 
     // Note: the SYSTEM trust boundary (SYSTEM subject / SYSTEM write-reason) is
@@ -47,15 +52,17 @@ class MongoPermissionResolverTest {
 
     @Test
     void crossTenant_isDenied() {
-        assertThat(resolver.isAllowed(alice,
-                new Resource.Project("other-corp", "proj"), Action.READ)).isFalse();
+        assertThat(resolver.isAllowed(alice, new Resource.Project("other-corp", "proj"), Action.READ))
+                .isFalse();
     }
 
     @Test
     void r2_tenantRead_isImplicitForAnyMember() {
-        assertThat(resolver.isAllowed(alice, new Resource.Tenant("acme"), Action.READ)).isTrue();
+        assertThat(resolver.isAllowed(alice, new Resource.Tenant("acme"), Action.READ))
+                .isTrue();
         // but tenant ADMIN needs a grant
-        assertThat(resolver.isAllowed(alice, new Resource.Tenant("acme"), Action.ADMIN)).isFalse();
+        assertThat(resolver.isAllowed(alice, new Resource.Tenant("acme"), Action.ADMIN))
+                .isFalse();
     }
 
     @Test
@@ -65,58 +72,63 @@ class MongoPermissionResolverTest {
         // tenant member for the cascade; a tenant ADMIN may edit them directly.
         // Server code still writes via WriteReason.SYSTEM.
         when(grants.forScope("acme", GrantScopeType.TENANT, "acme"))
-                .thenReturn(List.of(grant(GrantScopeType.TENANT, "acme",
-                        GrantSubjectType.USER, "alice", GrantRole.ADMIN)));
-        assertThat(resolver.isAllowed(alice,
-                new Resource.Document("acme", "_tenant", "_vance/recipes/default.yaml"),
-                Action.WRITE))
+                .thenReturn(
+                        List.of(grant(GrantScopeType.TENANT, "acme", GrantSubjectType.USER, "alice", GrantRole.ADMIN)));
+        assertThat(resolver.isAllowed(
+                        alice, new Resource.Document("acme", "_tenant", "_vance/recipes/default.yaml"), Action.WRITE))
                 .isTrue();
-        assertThat(resolver.isAllowed(alice,
-                new Resource.Document("acme", "_tenant", "_vance/recipes/default.yaml"),
-                Action.READ))
+        assertThat(resolver.isAllowed(
+                        alice, new Resource.Document("acme", "_tenant", "_vance/recipes/default.yaml"), Action.READ))
                 .isTrue();
     }
 
     @Test
     void r3_projectRead_needsAGrant_writeFollowsRole() {
         // no grant → even READ denied on a normal project
-        assertThat(resolver.isAllowed(alice, new Resource.Project("acme", "proj"), Action.READ)).isFalse();
+        assertThat(resolver.isAllowed(alice, new Resource.Project("acme", "proj"), Action.READ))
+                .isFalse();
 
         when(grants.forScope("acme", GrantScopeType.PROJECT, "proj"))
-                .thenReturn(List.of(grant(GrantScopeType.PROJECT, "proj",
-                        GrantSubjectType.USER, "alice", GrantRole.WRITER)));
+                .thenReturn(List.of(
+                        grant(GrantScopeType.PROJECT, "proj", GrantSubjectType.USER, "alice", GrantRole.WRITER)));
 
-        assertThat(resolver.isAllowed(alice, new Resource.Project("acme", "proj"), Action.READ)).isTrue();
-        assertThat(resolver.isAllowed(alice, new Resource.Document("acme", "proj", "notes.md"), Action.WRITE)).isTrue();
+        assertThat(resolver.isAllowed(alice, new Resource.Project("acme", "proj"), Action.READ))
+                .isTrue();
+        assertThat(resolver.isAllowed(alice, new Resource.Document("acme", "proj", "notes.md"), Action.WRITE))
+                .isTrue();
         // WRITER is not ADMIN
-        assertThat(resolver.isAllowed(alice, new Resource.Project("acme", "proj"), Action.ADMIN)).isFalse();
+        assertThat(resolver.isAllowed(alice, new Resource.Project("acme", "proj"), Action.ADMIN))
+                .isFalse();
     }
 
     @Test
     void r3_teamGrant_unionsWithUserGrants() {
         when(grants.forScope("acme", GrantScopeType.PROJECT, "proj"))
-                .thenReturn(List.of(grant(GrantScopeType.PROJECT, "proj",
-                        GrantSubjectType.TEAM, "rd", GrantRole.WRITER)));
+                .thenReturn(
+                        List.of(grant(GrantScopeType.PROJECT, "proj", GrantSubjectType.TEAM, "rd", GrantRole.WRITER)));
         // bob is in team "rd"
-        assertThat(resolver.isAllowed(bob, new Resource.Document("acme", "proj", "x.md"), Action.WRITE)).isTrue();
+        assertThat(resolver.isAllowed(bob, new Resource.Document("acme", "proj", "x.md"), Action.WRITE))
+                .isTrue();
         // alice is not in "rd"
-        assertThat(resolver.isAllowed(alice, new Resource.Document("acme", "proj", "x.md"), Action.WRITE)).isFalse();
+        assertThat(resolver.isAllowed(alice, new Resource.Document("acme", "proj", "x.md"), Action.WRITE))
+                .isFalse();
     }
 
     @Test
     void tenantGrant_coversEveryProject() {
         when(grants.forScope("acme", GrantScopeType.TENANT, "acme"))
-                .thenReturn(List.of(grant(GrantScopeType.TENANT, "acme",
-                        GrantSubjectType.USER, "alice", GrantRole.ADMIN)));
-        assertThat(resolver.isAllowed(alice, new Resource.Project("acme", "any-proj"), Action.ADMIN)).isTrue();
+                .thenReturn(
+                        List.of(grant(GrantScopeType.TENANT, "acme", GrantSubjectType.USER, "alice", GrantRole.ADMIN)));
+        assertThat(resolver.isAllowed(alice, new Resource.Project("acme", "any-proj"), Action.ADMIN))
+                .isTrue();
     }
 
     @Test
     void r4_reservedVancePath_writeNeedsAdmin() {
         // alice is project WRITER
         when(grants.forScope("acme", GrantScopeType.PROJECT, "proj"))
-                .thenReturn(List.of(grant(GrantScopeType.PROJECT, "proj",
-                        GrantSubjectType.USER, "alice", GrantRole.WRITER)));
+                .thenReturn(List.of(
+                        grant(GrantScopeType.PROJECT, "proj", GrantSubjectType.USER, "alice", GrantRole.WRITER)));
         Resource.Document reserved = new Resource.Document("acme", "proj", "_vance/scheduler/x.yaml");
         // READ on a reserved path follows the project rule (WRITER can read)
         assertThat(resolver.isAllowed(alice, reserved, Action.READ)).isTrue();
@@ -126,8 +138,8 @@ class MongoPermissionResolverTest {
         // …but a project ADMIN may write it directly (server code still uses
         // WriteReason.SYSTEM; a $meta.privileged doc keeps its own ADMIN gate).
         when(grants.forScope("acme", GrantScopeType.PROJECT, "proj"))
-                .thenReturn(List.of(grant(GrantScopeType.PROJECT, "proj",
-                        GrantSubjectType.USER, "alice", GrantRole.ADMIN)));
+                .thenReturn(List.of(
+                        grant(GrantScopeType.PROJECT, "proj", GrantSubjectType.USER, "alice", GrantRole.ADMIN)));
         assertThat(resolver.isAllowed(alice, reserved, Action.WRITE)).isTrue();
     }
 
@@ -135,22 +147,21 @@ class MongoPermissionResolverTest {
     void r4_wholeVanceNamespace_isReserved_forWrite() {
         // alice is project WRITER
         when(grants.forScope("acme", GrantScopeType.PROJECT, "proj"))
-                .thenReturn(List.of(grant(GrantScopeType.PROJECT, "proj",
-                        GrantSubjectType.USER, "alice", GrantRole.WRITER)));
+                .thenReturn(List.of(
+                        grant(GrantScopeType.PROJECT, "proj", GrantSubjectType.USER, "alice", GrantRole.WRITER)));
         // Every _vance/ path is reserved — auto-exec (scheduler) AND config
         // (recipes) AND logs alike; a user actor never writes it (SYSTEM only).
-        assertThat(resolver.isAllowed(alice,
-                new Resource.Document("acme", "proj", "_vance/scheduler/x.yaml"), Action.WRITE))
+        assertThat(resolver.isAllowed(
+                        alice, new Resource.Document("acme", "proj", "_vance/scheduler/x.yaml"), Action.WRITE))
                 .isFalse();
-        assertThat(resolver.isAllowed(alice,
-                new Resource.Document("acme", "proj", "_vance/recipes/x.yaml"), Action.WRITE))
+        assertThat(resolver.isAllowed(
+                        alice, new Resource.Document("acme", "proj", "_vance/recipes/x.yaml"), Action.WRITE))
                 .isFalse();
-        assertThat(resolver.isAllowed(alice,
-                new Resource.Document("acme", "proj", "_vance/logs/run.md"), Action.WRITE))
+        assertThat(resolver.isAllowed(alice, new Resource.Document("acme", "proj", "_vance/logs/run.md"), Action.WRITE))
                 .isFalse();
         // But READ into _vance/ still follows the normal project role.
-        assertThat(resolver.isAllowed(alice,
-                new Resource.Document("acme", "proj", "_vance/recipes/x.yaml"), Action.READ))
+        assertThat(resolver.isAllowed(
+                        alice, new Resource.Document("acme", "proj", "_vance/recipes/x.yaml"), Action.READ))
                 .isTrue();
     }
 
@@ -159,49 +170,81 @@ class MongoPermissionResolverTest {
         // Regression: a bare "recipes/" prefix used to over-reserve a user's
         // own doc. Only "_vance/..." is reserved.
         when(grants.forScope("acme", GrantScopeType.PROJECT, "proj"))
-                .thenReturn(List.of(grant(GrantScopeType.PROJECT, "proj",
-                        GrantSubjectType.USER, "alice", GrantRole.WRITER)));
-        assertThat(resolver.isAllowed(alice,
-                new Resource.Document("acme", "proj", "recipes/mine.md"), Action.WRITE)).isTrue();
+                .thenReturn(List.of(
+                        grant(GrantScopeType.PROJECT, "proj", GrantSubjectType.USER, "alice", GrantRole.WRITER)));
+        assertThat(resolver.isAllowed(alice, new Resource.Document("acme", "proj", "recipes/mine.md"), Action.WRITE))
+                .isTrue();
     }
 
     @Test
     void r5_inbox_ownAssignee_orSharedTeam() {
         // own item
-        assertThat(resolver.isAllowed(alice,
-                new Resource.InboxItem("acme", "i1", "alice"), Action.READ)).isTrue();
+        assertThat(resolver.isAllowed(alice, new Resource.InboxItem("acme", "i1", "alice"), Action.READ))
+                .isTrue();
         // someone else's, no shared team
-        assertThat(resolver.isAllowed(alice,
-                new Resource.InboxItem("acme", "i2", "carol"), Action.READ)).isFalse();
+        assertThat(resolver.isAllowed(alice, new Resource.InboxItem("acme", "i2", "carol"), Action.READ))
+                .isFalse();
         // bob shares team "rd" with carol
-        when(teamService.byMember("acme", "carol"))
-                .thenReturn(List.of(team("rd")));
-        assertThat(resolver.isAllowed(bob,
-                new Resource.InboxItem("acme", "i3", "carol"), Action.WRITE)).isTrue();
+        when(teamService.byMember("acme", "carol")).thenReturn(List.of(team("rd")));
+        assertThat(resolver.isAllowed(bob, new Resource.InboxItem("acme", "i3", "carol"), Action.WRITE))
+                .isTrue();
     }
 
     @Test
     void r7_podlessHub_ownerHasImplicitAdmin_othersNeedTenantAdmin() {
         // alice owns _user_alice
-        assertThat(resolver.isAllowed(alice,
-                new Resource.Document("acme", "_user_alice", "note.md"), Action.WRITE)).isTrue();
+        assertThat(resolver.isAllowed(alice, new Resource.Document("acme", "_user_alice", "note.md"), Action.WRITE))
+                .isTrue();
         // alice on bob's hub → denied (no tenant admin)
-        assertThat(resolver.isAllowed(alice,
-                new Resource.Document("acme", "_user_bob", "note.md"), Action.READ)).isFalse();
+        assertThat(resolver.isAllowed(alice, new Resource.Document("acme", "_user_bob", "note.md"), Action.READ))
+                .isFalse();
+    }
+
+    @Test
+    void r7_ownHub_aPersonMayWriteItsVanceConfig() {
+        assertThat(resolver.isAllowed(
+                        alice, new Resource.Document("acme", "_user_alice", "_vance/recipes/mine.yaml"), Action.WRITE))
+                .isTrue();
+    }
+
+    @Test
+    void r7_ownHub_aServiceAccountWorksThere_butNeverRewritesItsVanceConfig() {
+        // A Trillian (any "_" service account) acts through agents,
+        // unattended — WRITER on its own hub, not ADMIN: documents yes,
+        // _vance/ (exposure, recipes, hooks) no.
+        SecurityContext trillian = SecurityContext.user("_trillian-colin-5127", "acme", List.of());
+        String hub = "_user__trillian-colin-5127";
+
+        assertThat(resolver.isAllowed(trillian, new Resource.Document("acme", hub, "notes/a.md"), Action.WRITE))
+                .isTrue();
+        assertThat(resolver.isAllowed(
+                        trillian, new Resource.Document("acme", hub, "_vance/trillian/exposure.yaml"), Action.READ))
+                .isTrue();
+        assertThat(resolver.isAllowed(
+                        trillian, new Resource.Document("acme", hub, "_vance/trillian/exposure.yaml"), Action.WRITE))
+                .isFalse();
+        assertThat(resolver.isAllowed(
+                        trillian,
+                        new Resource.Document("acme", hub, "_vance/recipes/trillian-head-colin.yaml"),
+                        Action.WRITE))
+                .isFalse();
+        assertThat(resolver.isAllowed(trillian, new Resource.Project("acme", hub), Action.ADMIN))
+                .isFalse();
     }
 
     @Test
     void r7_tenantProject_readableByMembers_writeNeedsAdmin() {
-        assertThat(resolver.isAllowed(alice, new Resource.Document("acme", "_tenant", "settings.yaml"), Action.READ)).isTrue();
-        assertThat(resolver.isAllowed(alice, new Resource.Document("acme", "_tenant", "settings.yaml"), Action.WRITE)).isFalse();
+        assertThat(resolver.isAllowed(alice, new Resource.Document("acme", "_tenant", "settings.yaml"), Action.READ))
+                .isTrue();
+        assertThat(resolver.isAllowed(alice, new Resource.Document("acme", "_tenant", "settings.yaml"), Action.WRITE))
+                .isFalse();
     }
 
     @Test
     void failClosed_unknownProject_noGrant_denies() {
-        assertThat(resolver.isAllowed(alice,
-                new Resource.Session("acme", "ghost", "s1"), Action.EXECUTE)).isFalse();
+        assertThat(resolver.isAllowed(alice, new Resource.Session("acme", "ghost", "s1"), Action.EXECUTE))
+                .isFalse();
     }
-
 
     private static TeamDocument team(String name) {
         TeamDocument t = new TeamDocument();

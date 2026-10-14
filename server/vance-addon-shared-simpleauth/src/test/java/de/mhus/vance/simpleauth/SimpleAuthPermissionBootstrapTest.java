@@ -27,6 +27,63 @@ class SimpleAuthPermissionBootstrapTest {
     SimpleAuthPermissionBootstrap bootstrap;
 
     @Test
+    void grantProjectWriter_seedsWriter() {
+        when(grants.forScope("acme", GrantScopeType.PROJECT, "trillian-test")).thenReturn(List.of());
+
+        bootstrap.grantProjectWriter("acme", "trillian-test", "_trillian-colin-5127");
+
+        verify(grants)
+                .set(
+                        "acme",
+                        GrantScopeType.PROJECT,
+                        "trillian-test",
+                        GrantSubjectType.USER,
+                        "_trillian-colin-5127",
+                        GrantRole.WRITER,
+                        "bootstrap");
+    }
+
+    @Test
+    void grantProjectWriter_lowersTheAdminAnEarlierBootstrapSeeded() {
+        PermissionGrantDocument seeded = userGrant("_trillian-colin-5127", GrantRole.ADMIN, "bootstrap");
+        when(grants.forScope("acme", GrantScopeType.PROJECT, "trillian-test")).thenReturn(List.of(seeded));
+
+        bootstrap.grantProjectWriter("acme", "trillian-test", "_trillian-colin-5127");
+
+        verify(grants)
+                .set(
+                        "acme",
+                        GrantScopeType.PROJECT,
+                        "trillian-test",
+                        GrantSubjectType.USER,
+                        "_trillian-colin-5127",
+                        GrantRole.WRITER,
+                        "bootstrap");
+    }
+
+    @Test
+    void grantProjectWriter_keepsADeliberateAdminGrant() {
+        PermissionGrantDocument deliberate = userGrant("_trillian-colin-5127", GrantRole.ADMIN, "marvin.acme");
+        when(grants.forScope("acme", GrantScopeType.PROJECT, "trillian-test")).thenReturn(List.of(deliberate));
+
+        bootstrap.grantProjectWriter("acme", "trillian-test", "_trillian-colin-5127");
+
+        verify(grants, never()).set(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    private static PermissionGrantDocument userGrant(String subject, GrantRole role, String createdBy) {
+        PermissionGrantDocument g = new PermissionGrantDocument();
+        g.setTenantId("acme");
+        g.setScopeType(GrantScopeType.PROJECT);
+        g.setScopeId("trillian-test");
+        g.setSubjectType(GrantSubjectType.USER);
+        g.setSubjectId(subject);
+        g.setRole(role);
+        g.setCreatedBy(createdBy);
+        return g;
+    }
+
+    @Test
     void revokeAll_subjectHoldsGrantsOnSeveralScopes_removesEveryOne() {
         when(grants.forSubject("acme", GrantSubjectType.USER, "_trillian-03725"))
                 .thenReturn(List.of(
@@ -37,18 +94,15 @@ class SimpleAuthPermissionBootstrapTest {
 
         bootstrap.revokeAll("acme", "_trillian-03725");
 
-        verify(grants).remove("acme", GrantScopeType.PROJECT, "trillian-test",
-                GrantSubjectType.USER, "_trillian-03725");
-        verify(grants).remove("acme", GrantScopeType.PROJECT, "test1",
-                GrantSubjectType.USER, "_trillian-03725");
-        verify(grants).remove("acme", GrantScopeType.TENANT, "acme",
-                GrantSubjectType.USER, "_trillian-03725");
+        verify(grants)
+                .remove("acme", GrantScopeType.PROJECT, "trillian-test", GrantSubjectType.USER, "_trillian-03725");
+        verify(grants).remove("acme", GrantScopeType.PROJECT, "test1", GrantSubjectType.USER, "_trillian-03725");
+        verify(grants).remove("acme", GrantScopeType.TENANT, "acme", GrantSubjectType.USER, "_trillian-03725");
     }
 
     @Test
     void revokeAll_subjectHasNoGrants_isNoOp() {
-        when(grants.forSubject("acme", GrantSubjectType.USER, "ghost"))
-                .thenReturn(List.of());
+        when(grants.forSubject("acme", GrantSubjectType.USER, "ghost")).thenReturn(List.of());
 
         bootstrap.revokeAll("acme", "ghost");
 
@@ -65,10 +119,9 @@ class SimpleAuthPermissionBootstrapTest {
 
         // The subject is passed explicitly on every removal — a grant document
         // belonging to someone else could never be dropped through this path.
-        verify(grants, never()).remove(any(), any(), any(),
-                eq(GrantSubjectType.TEAM), any());
-        verify(grants).remove("acme", GrantScopeType.PROJECT, "trillian-test",
-                GrantSubjectType.USER, "_trillian-03725");
+        verify(grants, never()).remove(any(), any(), any(), eq(GrantSubjectType.TEAM), any());
+        verify(grants)
+                .remove("acme", GrantScopeType.PROJECT, "trillian-test", GrantSubjectType.USER, "_trillian-03725");
     }
 
     @Test
@@ -87,9 +140,15 @@ class SimpleAuthPermissionBootstrapTest {
     void grantProjectAdmin_writesAdminRoleOnProjectScope() {
         bootstrap.grantProjectAdmin("acme", "trillian-test", "_trillian-03725");
 
-        verify(grants).set(eq("acme"), eq(GrantScopeType.PROJECT), eq("trillian-test"),
-                eq(GrantSubjectType.USER), eq("_trillian-03725"),
-                eq(GrantRole.ADMIN), any());
+        verify(grants)
+                .set(
+                        eq("acme"),
+                        eq(GrantScopeType.PROJECT),
+                        eq("trillian-test"),
+                        eq(GrantSubjectType.USER),
+                        eq("_trillian-03725"),
+                        eq(GrantRole.ADMIN),
+                        any());
     }
 
     @Test
@@ -98,8 +157,7 @@ class SimpleAuthPermissionBootstrapTest {
                 .thenReturn(List.of(grant(GrantScopeType.PROJECT, "trillian-test")));
         when(grants.remove(any(), any(), any(), any(), any())).thenReturn(false);
 
-        assertThatCode(() -> bootstrap.revokeAll("acme", "_trillian-03725"))
-                .doesNotThrowAnyException();
+        assertThatCode(() -> bootstrap.revokeAll("acme", "_trillian-03725")).doesNotThrowAnyException();
     }
 
     private static PermissionGrantDocument grant(GrantScopeType scopeType, String scopeId) {

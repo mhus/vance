@@ -12,9 +12,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -48,7 +49,6 @@ import org.springframework.web.bind.annotation.RestController;
  * sending the header.
  */
 @RestController
-@RequiredArgsConstructor
 @Slf4j
 @CrossOrigin(origins = "*")
 public class OAuthRegistrationController {
@@ -56,14 +56,48 @@ public class OAuthRegistrationController {
     static final int MAX_REDIRECT_URIS = 10;
     static final int MAX_NAME_LENGTH = 120;
     static final int MAX_URI_LENGTH = 2000;
+    /** Default of {@code vance.oauth-server.registrations-per-tenant-per-hour}. */
     static final int REGISTRATIONS_PER_HOUR = 60;
+    /** Default of {@code vance.oauth-server.registrations-per-address-per-hour}. */
     static final int REGISTRATIONS_PER_ADDRESS_PER_HOUR = 5;
+
     static final int MAX_TRACKED_KEYS = 10_000;
     static final Duration BUDGET_WINDOW = Duration.ofHours(1);
 
     private final OAuthServerSettings settings;
     private final OAuthServerClientService clientService;
     private final TenantService tenantService;
+    private final int perTenantPerHour;
+    private final int perAddressPerHour;
+
+    /**
+     * The budgets are operator settings, not constants: a deployment where
+     * many people register clients from behind one NAT needs a larger
+     * per-address budget, and a test suite that registers one client per
+     * scenario does too. The defaults are the conservative public values.
+     */
+    @Autowired
+    public OAuthRegistrationController(
+            OAuthServerSettings settings,
+            OAuthServerClientService clientService,
+            TenantService tenantService,
+            @Value("${vance.oauth-server.registrations-per-tenant-per-hour:" + REGISTRATIONS_PER_HOUR + "}")
+                    int perTenantPerHour,
+            @Value("${vance.oauth-server.registrations-per-address-per-hour:" + REGISTRATIONS_PER_ADDRESS_PER_HOUR
+                            + "}")
+                    int perAddressPerHour) {
+        this.settings = settings;
+        this.clientService = clientService;
+        this.tenantService = tenantService;
+        this.perTenantPerHour = Math.max(1, perTenantPerHour);
+        this.perAddressPerHour = Math.max(1, perAddressPerHour);
+    }
+
+    /** Defaults for both budgets. */
+    OAuthRegistrationController(
+            OAuthServerSettings settings, OAuthServerClientService clientService, TenantService tenantService) {
+        this(settings, clientService, tenantService, REGISTRATIONS_PER_HOUR, REGISTRATIONS_PER_ADDRESS_PER_HOUR);
+    }
 
     /**
      * {@code tenant -> count} — the hourly ceiling per pod. An entry expires
@@ -96,11 +130,11 @@ public class OAuthRegistrationController {
             return error(HttpStatus.NOT_FOUND, "invalid_request", "registration is not available");
         }
         String address = ClientAddresses.of(request);
-        if (!consume(addressBudget, address, REGISTRATIONS_PER_ADDRESS_PER_HOUR)) {
+        if (!consume(addressBudget, address, perAddressPerHour)) {
             log.info("OAuth registration budget exhausted for address '{}' (tenant '{}')", address, tenant);
             return error(HttpStatus.TOO_MANY_REQUESTS, "invalid_request", "too many registrations, try later");
         }
-        if (!consume(tenantBudget, tenant, REGISTRATIONS_PER_HOUR)) {
+        if (!consume(tenantBudget, tenant, perTenantPerHour)) {
             log.warn("OAuth registration budget exhausted for tenant '{}'", tenant);
             return error(HttpStatus.TOO_MANY_REQUESTS, "invalid_request", "too many registrations, try later");
         }

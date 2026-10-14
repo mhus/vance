@@ -26,6 +26,7 @@ Verteilung". The expectation is immediate visual output, not
 | Network of nodes + edges (m:n, dependencies, concept map) | `graph` | `manual_read('kind-graph')` |
 | Geographic map (markers, areas, routes on OpenStreetMap) | `map` | `manual_read('kind-map')` |
 | YouTube video | `youtube` | `manual_read('kind-youtube')` |
+| Several questions to the user at once (wizard) | `questions` | `manual_read('kind-questions')` |
 | Outline (no radial layout) | `tree` | inline below |
 | Structured bullet list | `list` | inline below |
 | Small sortable table | `records` | inline below |

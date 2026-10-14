@@ -89,6 +89,7 @@ const VideoView   = defineAsyncComponent(() => import('@/kindViews/VideoView.vue
 const YouTubeView = defineAsyncComponent(() => import('@/kindViews/YouTubeView.vue'));
 const FormulaView  = defineAsyncComponent(() => import('@/kindViews/FormulaView.vue'));
 const QrCodeView  = defineAsyncComponent(() => import('@/kindViews/QrCodeView.vue'));
+const QuestionsView = defineAsyncComponent(() => import('@/kindViews/QuestionsView.vue'));
 
 /**
  * Registry of Vance-specific rich-content renderers. ONLY Vance kinds
@@ -154,6 +155,11 @@ export const kindRegistry: Record<string, KindRenderer> = {
   // Stored documents render from their body; the inline fence body
   // IS the payload (options via fence params).
   qrcode: { inline: QrCodeView, embedded: QrCodeView, label: 'QR Code', icon: '🔳' },
+
+  // Questions — several questions to the user at once. Inline in a chat it
+  // is a wizard that sends structured answers (doc-kind-questions.md);
+  // embedded / editor show the questions read-only.
+  questions: { inline: QuestionsView, embedded: QuestionsView, label: 'Questions', icon: '❓' },
 
   // Sheet: embedded-only data card (read-only mini-grid) with a
   // "Bearbeiten" dialog that opens the full SheetView editor — mirrors

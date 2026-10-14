@@ -35,6 +35,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -61,7 +62,7 @@ import tools.jackson.databind.ObjectMapper;
  * open — not when a model stops calling tools.
  *
  * <p>Findings collect in a question pool; a {@link QuestionSetDto} goes out
- * (chat meta {@code questionSet}) when the pool is full or the queue has run
+ * (a {@code questions} fence in the chat) when the pool is full or the queue has run
  * dry, and the queue keeps working while the user answers. Answers come back
  * typed ({@link SteerMessage.UserChatInput#questionAnswers()}) or as free text
  * (interpret recipe), land in the register in project memory, and queue a
@@ -231,7 +232,7 @@ public class WonkoEngine implements ThinkEngine {
         }
         QuestionSetDto pending = state.getPendingSet();
         if (pending != null) {
-            return ParentReport.of(WonkoPrompts.renderQuestionSet(pending, List.of()));
+            return ParentReport.of(WonkoPrompts.questionMessage(pending, List.of()));
         }
         return ParentReport.of(
                 "Wonko process " + process.getId() + " " + eventType.name().toLowerCase(Locale.ROOT));
@@ -293,6 +294,7 @@ public class WonkoEngine implements ThinkEngine {
         state.setCallBudget(new WonkoParams(params(process)).maxCalls());
         WonkoItemHandlers.enqueue(
                 state, state.getReferencePaths().isEmpty() ? WonkoItemType.CHECK : WonkoItemType.DECOMPOSE, 0, null);
+        state.getPendingFindings().addAll(WonkoQuestionPlanner.carryOver(loadRegister(process, state)));
     }
 
     private static void requeueAfterStatement(WonkoState state) {
@@ -509,6 +511,16 @@ public class WonkoEngine implements ThinkEngine {
             String claimId = state.getTopicClaims().get(q.getKey());
             if (claimId != null) {
                 WonkoItemHandlers.enqueueRecheck(state, claimId);
+            }
+            // Claims the model could not judge against the same reference get
+            // another look — the answer may be exactly what was missing.
+            String ref = topic.getEvidenceRef();
+            if (ref != null) {
+                register.getTopics().stream()
+                        .filter(t -> t.getStatus() == WonkoTopicStatus.UNCLEAR && ref.equals(t.getEvidenceRef()))
+                        .map(t -> state.getTopicClaims().get(t.getKey()))
+                        .filter(Objects::nonNull)
+                        .forEach(id -> WonkoItemHandlers.enqueueRecheck(state, id));
             }
         }
         if (answeredSomething
@@ -754,10 +766,7 @@ public class WonkoEngine implements ThinkEngine {
         registerService.save(turn.process.getTenantId(), turn.process.getProjectId(), register);
         persistState(turn.process, state);
 
-        Map<String, Object> meta = new LinkedHashMap<>();
-        meta.put(ChatMessageDocument.META_QUESTION_SET, objectMapper.convertValue(set, Map.class));
-        appendChat(
-                turn.process, turn.ctx, ChatRole.ASSISTANT, WonkoPrompts.renderQuestionSet(set, plan.decided()), meta);
+        appendChat(turn.process, turn.ctx, ChatRole.ASSISTANT, WonkoPrompts.questionMessage(set, plan.decided()), null);
         log.info(
                 "Wonko id='{}' asked {} question(s) in round {} (decided {}, suppressed {}, deferred {})",
                 turn.process.getId(),
@@ -822,6 +831,8 @@ public class WonkoEngine implements ThinkEngine {
         registerService.save(process.getTenantId(), process.getProjectId(), register);
         persistState(process, state);
         appendChat(process, ctx, ChatRole.ASSISTANT, report, null);
+        // The closed plan box keeps the last state it saw — make that the end state.
+        emitProgress(process, state);
         thinkProcessService.setTodos(process.getId(), List.of());
         planModeEventEmitter.emitTodosUpdated(process, List.of());
         metricService.counter(METRIC_OUTCOMES, "outcome", outcome).increment();

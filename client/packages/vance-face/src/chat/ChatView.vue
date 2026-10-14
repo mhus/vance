@@ -26,6 +26,7 @@ import {
   type RosterChange,
 } from '@/cortex/composables/useSessionRoster';
 import MessageBubble from './MessageBubble.vue';
+import type { QuestionAnswersDetail } from '@/kindViews/questionsAnswers';
 import FollowUpGhost from './FollowUpGhost.vue';
 import PlanModeIndicator from './PlanModeIndicator.vue';
 import ChatActivityStrip from './ChatActivityStrip.vue';
@@ -109,6 +110,9 @@ const emit = defineEmits<{
    *  message — the right panel should switch to the wizards tab and
    *  open the named wizard with the URL prefill. */
   (event: 'wizard-deep-link', detail: { name: string; prefill: Record<string, string> }): void;
+  /** A {@code questions} fence wizard sent its answers — the composer
+   *  sends the readable text with the structured answers attached. */
+  (event: 'question-answers', detail: QuestionAnswersDetail): void;
   /** Display title for {@code chatProjectId} is now known — emitted
    *  on mount once tenant projects load, and on any subsequent change.
    *  Parent uses this for the topbar breadcrumb. */
@@ -305,6 +309,21 @@ const liveMessages = ref<ChatMessageDto[]>([]);
  * derivation rather than a tracked Set also means it self-corrects once
  * {@code chatProcessName} arrives from the bootstrap response.
  */
+/** A questions fence stays answerable only while it is the open end of the conversation. */
+function hasLaterUserMessage(index: number): boolean {
+  const list = allMessages.value;
+  for (let i = index + 1; i < list.length; i++) {
+    if (String(list[i]?.role) === 'USER') return true;
+  }
+  return false;
+}
+
+/** The wizard of a {@code questions} fence dispatched its answers (bubbling DOM event). */
+function onQuestionAnswers(ev: Event): void {
+  const detail = (ev as CustomEvent<QuestionAnswersDetail>).detail;
+  if (detail?.answers && detail.content) emit('question-answers', detail);
+}
+
 function isWorkerMessage(msg: ChatMessageDto): boolean {
   return isWorkerProcess(msg.processName);
 }
@@ -933,7 +952,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="h-full min-h-0 flex flex-col">
+  <div class="h-full min-h-0 flex flex-col" @vance-question-answers="onQuestionAnswers">
     <header class="px-6 py-3 border-b border-base-300 bg-base-100 flex items-center gap-3">
       <SessionHeader
         :session-id="sessionId"
@@ -1042,6 +1061,7 @@ onBeforeUnmount(() => {
             :worker="isWorkerMessage(msg)"
             :meta="msg.meta"
             :options-actionable="msg.messageId === activeAskUserMessageId"
+            :questions-actionable="!hasLaterUserMessage(idx)"
             :sender-user-id="msg.senderUserId"
             :sender-display-name="msg.senderDisplayName"
             :current-user-id="currentUserId"

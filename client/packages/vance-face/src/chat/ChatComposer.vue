@@ -35,6 +35,7 @@ import type {
   ProcessPauseRequest,
   ProcessSteerRequest,
   ProcessSteerResponse,
+  QuestionSetAnswerDto,
 } from '@vance/generated';
 import {
   uploadChatboxAttachments,
@@ -1098,6 +1099,7 @@ async function send(): Promise<void> {
       boundDocumentId: props.boundDocumentId ?? undefined,
       boundDocSelection: props.boundDocSelection ?? undefined,
       activeInbox: props.activeInbox ?? undefined,
+      questionAnswers: pendingQuestionAnswers,
     });
   } catch (e) {
     emit('rollback-echo', optimisticId);
@@ -1365,11 +1367,22 @@ function setText(text: string): void {
 /** Replace text AND send immediately. Used by the ASK_USER picker
  *  flow: the picker's option label is the canonical reply, no
  *  edit step expected. */
-async function setTextAndSend(text: string): Promise<void> {
+async function setTextAndSend(
+  text: string,
+  extra?: { questionAnswers?: QuestionSetAnswerDto },
+): Promise<void> {
   if (sending.value) return;
   composerText.value = text;
-  await send();
+  pendingQuestionAnswers = extra?.questionAnswers;
+  try {
+    await send();
+  } finally {
+    pendingQuestionAnswers = undefined;
+  }
 }
+
+/** Structured answers of a questions fence riding on the next send only. */
+let pendingQuestionAnswers: QuestionSetAnswerDto | undefined;
 
 defineExpose({
   speakMessage,

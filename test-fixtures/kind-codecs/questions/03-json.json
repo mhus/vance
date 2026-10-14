@@ -1,0 +1,17 @@
+{
+  "description": "application/json input with $meta wrapper, important weight is the default and not emitted",
+  "mime": "application/json",
+  "input": "{\"$meta\":{\"kind\":\"questions\"},\"questions\":[{\"key\":\"a\",\"text\":\"A?\",\"weight\":\"important\"}]}",
+  "expected": {
+    "$meta": {
+      "kind": "questions"
+    },
+    "questions": [
+      {
+        "key": "a",
+        "text": "A?",
+        "kind": "text"
+      }
+    ]
+  }
+}

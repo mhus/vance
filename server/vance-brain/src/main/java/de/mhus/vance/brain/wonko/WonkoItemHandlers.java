@@ -3,9 +3,11 @@ package de.mhus.vance.brain.wonko;
 import de.mhus.vance.brain.ai.light.LightLlmRequest;
 import de.mhus.vance.brain.ai.light.LightLlmService;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -202,6 +204,8 @@ class WonkoItemHandlers {
         turn.state.setCalls(turn.state.getCalls() + 1);
         Map<String, WonkoPassage> byId = new LinkedHashMap<>();
         passages.forEach(p -> byId.put(p.getId(), p));
+        Set<String> undetermined = new HashSet<>();
+        Set<String> determined = new HashSet<>();
         for (WonkoPrompts.Verdict v : WonkoPrompts.parseCompare(json, byId)) {
             WonkoPassage passage = byId.get(v.passageId());
             String what = "claim " + claim.getId() + " vs " + passage.getRef();
@@ -220,10 +224,18 @@ class WonkoItemHandlers {
                         pool(turn, f);
                     }
                 }
-                case WonkoPrompts.CANNOT_DETERMINE -> unclear(turn, claim, passage, v.reason());
+                case WonkoPrompts.CANNOT_DETERMINE -> {
+                    undetermined.add(passage.getRef());
+                    unclear(turn, claim, passage, v.reason());
+                }
                 default -> {}
             }
+            if (!WonkoPrompts.CANNOT_DETERMINE.equals(v.verdict())) {
+                determined.add(passage.getRef());
+            }
         }
+        determined.removeAll(undetermined);
+        determined.forEach(ref -> resolveUnclear(turn, claim, ref));
         passages.forEach(p -> {
             if (!claim.getComparedPassageIds().contains(p.getId())) {
                 claim.getComparedPassageIds().add(p.getId());
@@ -375,7 +387,8 @@ class WonkoItemHandlers {
 
     /** {@code cannot_determine} never becomes a finding silently — it is reported as unclear (§4a.8). */
     private static void unclear(WonkoTurn turn, WonkoClaim claim, WonkoPassage passage, String reason) {
-        String key = "unclear/" + claim.getId() + "-" + WonkoKeys.slug(passage.getRef());
+        String key = unclearKey(claim, passage.getRef());
+        turn.state.getTopicClaims().put(key, claim.getId());
         WonkoTopic topic = turn.register.topic(key).orElseGet(() -> {
             WonkoTopic t = new WonkoTopic();
             t.setKey(key);
@@ -387,6 +400,25 @@ class WonkoItemHandlers {
         topic.setFindingReason(reason);
         topic.setEvidenceRef(passage.getRef());
         turn.log("claim " + claim.getId() + " vs " + passage.getRef(), WonkoPrompts.CANNOT_DETERMINE, reason);
+    }
+
+    /**
+     * A recheck that reaches a verdict for a reference the claim was unclear
+     * about closes the unclear point — it was a question to the model, not to
+     * the user, and it is answered now.
+     */
+    private static void resolveUnclear(WonkoTurn turn, WonkoClaim claim, String ref) {
+        String key = unclearKey(claim, ref);
+        boolean removed = turn.register
+                .getTopics()
+                .removeIf(t -> t.getKey().equals(key) && t.getStatus() == WonkoTopicStatus.UNCLEAR);
+        if (removed) {
+            turn.log("claim " + claim.getId() + " vs " + ref, "resolved", "the recheck reached a verdict");
+        }
+    }
+
+    private static String unclearKey(WonkoClaim claim, String ref) {
+        return "unclear/" + claim.getId() + "-" + WonkoKeys.slug(ref);
     }
 
     private static WonkoPassage passage(WonkoState state, WonkoPassageSearch.Candidate c, String reason) {

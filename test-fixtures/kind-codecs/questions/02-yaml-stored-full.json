@@ -1,0 +1,26 @@
+{
+  "description": "stored document with $meta header, id, object options with description, weight",
+  "mime": "application/yaml",
+  "input": "$meta:\n  kind: questions\nid: q-7f3a\nquestions:\n  - key: mode\n    text: Which mode?\n    kind: choice\n    weight: blocker\n    options:\n      - label: fast\n        description: less checks\n      - slow\n",
+  "expected": {
+    "$meta": {
+      "kind": "questions"
+    },
+    "id": "q-7f3a",
+    "questions": [
+      {
+        "key": "mode",
+        "text": "Which mode?",
+        "kind": "choice",
+        "options": [
+          {
+            "label": "fast",
+            "description": "less checks"
+          },
+          "slow"
+        ],
+        "weight": "blocker"
+      }
+    ]
+  }
+}

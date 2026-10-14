@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, provide, ref, toRef } from 'vue';
 import { MarkdownView } from '@components/index';
 import { safeUrl } from '@vance/shared';
 import { uiTheme, paletteStyle } from '@composables/useUiTheme';
 import { useI18n } from 'vue-i18n';
 import QuestionCanvas, { type QuestionOption } from './QuestionCanvas.vue';
+import { QUESTIONS_ACTIONABLE_KEY } from '@/kindViews/questionsAnswers';
 
 // Action-type values mirror constants in
 // {@code ChatMessageDocument.ACTION_TYPE_*}.
@@ -70,6 +71,12 @@ const props = withDefaults(defineProps<{
    */
   optionsActionable?: boolean;
   /**
+   * Whether a {@code questions} fence in this message may still be
+   * answered — true only while no later USER message exists. Handed to
+   * the fence's wizard through {@link QUESTIONS_ACTIONABLE_KEY}.
+   */
+  questionsActionable?: boolean;
+  /**
    * UserId of the message author for USER turns (from
    * {@code ChatMessageDto.senderUserId}). {@code null} for legacy rows
    * and for non-USER roles — those render the way they always have.
@@ -88,7 +95,10 @@ const props = withDefaults(defineProps<{
   worker: false,
   lineMaxChars: () => uiTheme.lineMaxChars,
   optionsActionable: true,
+  questionsActionable: false,
 });
+
+provide(QUESTIONS_ACTIONABLE_KEY, toRef(props, 'questionsActionable'));
 
 const emit = defineEmits<{
   (e: 'pickOption', label: string): void;

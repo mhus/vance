@@ -36,6 +36,7 @@ import {
 import PickerView from './PickerView.vue';
 import ChatView from './ChatView.vue';
 import ChatComposer from './ChatComposer.vue';
+import type { QuestionAnswersDetail } from '@/kindViews/questionsAnswers';
 import ChatRightPanel from './ChatRightPanel.vue';
 import { navigateTo, pushUrl, replaceUrl } from '@/platform/navigate';
 import { rememberProject } from '@/platform/lastProject';
@@ -372,6 +373,10 @@ function onNoteActivityFromView(): void {
 function onHistoryLoadedFromView(): void {
   composerRef.value?.markSpeakerLive();
 }
+function onQuestionAnswersFromView(detail: QuestionAnswersDetail): void {
+  void composerRef.value?.setTextAndSend(detail.content, { questionAnswers: detail.answers });
+}
+
 function onAskUserPickFromView(label: string): void {
   void composerRef.value?.setTextAndSend(label);
 }
@@ -978,6 +983,7 @@ function openInCortex(): void {
           @note-activity="onNoteActivityFromView"
           @history-loaded="onHistoryLoadedFromView"
           @ask-user-pick="onAskUserPickFromView"
+          @question-answers="onQuestionAnswersFromView"
           @wizard-deep-link="onWizardDeepLinkFromView"
           @project-resolved="onChatViewProjectResolved"
           @follow-up-context-changed="onFollowUpContextChangedFromView"

@@ -134,7 +134,7 @@ public class PendingMessageDocument {
 
     /**
      * Structured answers to a question set the engine asked earlier
-     * ({@code meta.questionSet}). Persisted with the pending message so it
+     * (a {@code questions} fence). Persisted with the pending message so it
      * survives the queue round-trip; the engine reads this typed field and
      * treats {@link #content} only as the readable short form.
      */

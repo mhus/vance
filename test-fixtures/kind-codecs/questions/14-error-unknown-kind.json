@@ -1,0 +1,6 @@
+{
+  "description": "kind must be choice, text or confirm",
+  "mime": "text/yaml",
+  "input": "questions:\n  - key: a\n    text: A?\n    kind: slider\n",
+  "expectedError": "kind must be"
+}

@@ -375,6 +375,7 @@ public class DocWriteTool implements Tool {
         return switch (kind) {
             case "list", "checklist", "tree", "mindmap", "records", "slides", "text", "diagram" -> "text/markdown";
             case "sheet", "graph", "chart", "data", "schema" -> "application/json";
+            case "questions" -> "application/yaml";
             // Detected armor bodies get the marker mime so the row is typed
             // age from its first moment.
             case "age" -> AgeDocumentKind.MIME_TYPE;

@@ -1,0 +1,34 @@
+{
+  "description": "inline fence body: choice with string options, confirm, text default",
+  "mime": "text/yaml",
+  "input": "intro: Three points\nquestions:\n  - key: eu-region\n    text: Which region stores the data?\n    kind: Choice\n    options: [eu-central-1, eu-west-1]\n    context: must be stored within the EU\n  - key: retention\n    text: Correct the retention to 10 years?\n    kind: confirm\n    proposal: 10 years instead of 5\n  - key: owner\n    text: Who owns the archive?\n",
+  "expected": {
+    "$meta": {
+      "kind": "questions"
+    },
+    "intro": "Three points",
+    "questions": [
+      {
+        "key": "eu-region",
+        "text": "Which region stores the data?",
+        "kind": "choice",
+        "options": [
+          "eu-central-1",
+          "eu-west-1"
+        ],
+        "context": "must be stored within the EU"
+      },
+      {
+        "key": "retention",
+        "text": "Correct the retention to 10 years?",
+        "kind": "confirm",
+        "proposal": "10 years instead of 5"
+      },
+      {
+        "key": "owner",
+        "text": "Who owns the archive?",
+        "kind": "text"
+      }
+    ]
+  }
+}

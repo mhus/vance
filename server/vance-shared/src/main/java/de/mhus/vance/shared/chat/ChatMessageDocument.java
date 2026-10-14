@@ -67,15 +67,6 @@ public class ChatMessageDocument {
     public static final String META_ASK_USER_OPTIONS = "askUserOptions";
 
     /**
-     * {@link #meta} key for a structured question set — several questions
-     * asked at once, each answered separately. Value is the
-     * {@code QuestionSetDto} as a map. The answer comes back typed on the
-     * {@code process-steer} request ({@code questionAnswers}), never parsed
-     * out of the text. See {@code planning/wonko-engine.md} §8.3.
-     */
-    public static final String META_QUESTION_SET = "questionSet";
-
-    /**
      * {@link #meta} key for the engine-action type that produced the
      * chat message — typically one of {@code ANSWER}, {@code ASK_USER},
      * {@code REJECT}, {@code WAIT}, {@code RELAY} (engine-specific).

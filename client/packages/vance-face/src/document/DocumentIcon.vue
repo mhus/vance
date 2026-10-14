@@ -37,6 +37,7 @@ function iconForKind(kind: string | null | undefined): string | null {
     case 'data': return '🗃️';
     case 'records': return '📇';
     case 'qrcode': return '🔳';
+    case 'questions': return '❓';
     case 'schema': return '🧬';
     default: return null;
   }

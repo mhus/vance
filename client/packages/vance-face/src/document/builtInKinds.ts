@@ -331,6 +331,25 @@ export function registerBuiltInKinds(): void {
     ),
   });
 
+  // ── Questions: a questionnaire (doc-kind-questions.md) ────────
+  // Identity codec: the Edit toggle is a raw CodeEditor on the YAML,
+  // QuestionsView parses it itself (questionsCodec.ts) and shows the
+  // questions read-only — answering only happens inline in a chat.
+  registerKind<string>({
+    id: 'questions',
+    matches: (kind, mime) => {
+      if ((kind ?? '').toLowerCase() !== 'questions') return false;
+      const m = (mime ?? '').toLowerCase();
+      return m === '' || m === 'application/yaml' || m === 'application/x-yaml'
+        || m === 'text/yaml' || m === 'text/x-yaml' || m === 'application/json';
+    },
+    parse: (body) => body,
+    serialize: (doc) => doc,
+    view: defineAsyncComponent(
+      () => import('@/kindViews/QuestionsView.vue'),
+    ),
+  });
+
   // ── QR Code: payload rendered as a scannable symbol ───────────
   // Body = payload (URL or any text) plus optional flat render
   // options — the identity codec keeps the Edit toggle a raw

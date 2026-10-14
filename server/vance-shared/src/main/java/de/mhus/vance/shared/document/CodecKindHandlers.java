@@ -9,6 +9,7 @@ import de.mhus.vance.shared.document.kind.GraphCodec;
 import de.mhus.vance.shared.document.kind.KindHandler;
 import de.mhus.vance.shared.document.kind.ListCodec;
 import de.mhus.vance.shared.document.kind.MindmapCodec;
+import de.mhus.vance.shared.document.kind.QuestionsCodec;
 import de.mhus.vance.shared.document.kind.SheetCodec;
 import de.mhus.vance.shared.document.kind.TreeCodec;
 import org.springframework.context.annotation.Bean;
@@ -29,36 +30,62 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class CodecKindHandlers {
 
-    @Bean public KindHandler sheetKindHandler() {
+    @Bean
+    public KindHandler sheetKindHandler() {
         return new CodecKindHandler("sheet", SheetCodec::parse, SheetCodec::supports);
     }
-    @Bean public KindHandler chartKindHandler() {
+
+    @Bean
+    public KindHandler chartKindHandler() {
         return new CodecKindHandler("chart", ChartCodec::parse, ChartCodec::supports);
     }
-    @Bean public KindHandler graphKindHandler() {
+
+    @Bean
+    public KindHandler graphKindHandler() {
         return new CodecKindHandler("graph", GraphCodec::parse, GraphCodec::supports);
     }
-    @Bean public KindHandler diagramKindHandler() {
+
+    @Bean
+    public KindHandler diagramKindHandler() {
         // Claims un-typed bodies carrying a ```mermaid fence, ahead of the
         // list-shaped kinds: the fence language is unambiguous, their markers
         // are not. Measured need — 7 of 27 stored Mermaid docs across three
         // models landed as kind: text because the parameter is optional.
-        return new CodecKindHandler("diagram", DiagramCodec::parse, DiagramCodec::supports,
-                DiagramCodec::looksLikeDiagram, /*detectionPriority*/ 10);
+        return new CodecKindHandler(
+                "diagram",
+                DiagramCodec::parse,
+                DiagramCodec::supports,
+                DiagramCodec::looksLikeDiagram, /*detectionPriority*/
+                10);
     }
-    @Bean public KindHandler treeKindHandler() {
+
+    @Bean
+    public KindHandler treeKindHandler() {
         return new CodecKindHandler("tree", TreeCodec::parse, TreeCodec::supports);
     }
-    @Bean public KindHandler listKindHandler() {
+
+    @Bean
+    public KindHandler listKindHandler() {
         return new CodecKindHandler("list", ListCodec::parse, ListCodec::supports);
     }
-    @Bean public KindHandler checklistKindHandler() {
+
+    @Bean
+    public KindHandler checklistKindHandler() {
         return new CodecKindHandler("checklist", ChecklistCodec::parse, ChecklistCodec::supports);
     }
-    @Bean public KindHandler mindmapKindHandler() {
+
+    @Bean
+    public KindHandler mindmapKindHandler() {
         return new CodecKindHandler("mindmap", MindmapCodec::parse, MindmapCodec::supports);
     }
-    @Bean public KindHandler dataKindHandler() {
+
+    @Bean
+    public KindHandler questionsKindHandler() {
+        return new CodecKindHandler(QuestionsCodec.KIND, QuestionsCodec::parse, QuestionsCodec::supports);
+    }
+
+    @Bean
+    public KindHandler dataKindHandler() {
         return new CodecKindHandler("data", DataCodec::parse, DataCodec::supports);
     }
 }

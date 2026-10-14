@@ -133,7 +133,7 @@ public class ProcessSteerRequest {
 
     /**
      * Structured answers to a question set the engine asked in an earlier
-     * message ({@code meta.questionSet}). {@link #content} still carries a
+     * message (a {@code questions} fence). {@link #content} still carries a
      * readable short form for the chat history; the engine reads this typed
      * field, never the text. {@code null} on ordinary turns.
      */

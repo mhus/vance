@@ -208,6 +208,7 @@ public class DocCreateKindTool implements Tool {
             case "list", "checklist", "tree", "mindmap", "records", "slides", "text" -> "text/markdown";
             case "sheet", "graph", "chart", "data" -> "application/json";
             case "schema" -> "application/json";
+            case "questions" -> "application/yaml";
             default -> "text/markdown";
         };
     }
@@ -268,6 +269,10 @@ public class DocCreateKindTool implements Tool {
                                 ? "{\n  \"$meta\": { \"kind\": \"slides\" },\n  \"slides\": { \"theme\": \"default\", \"aspect\": \"16:9\", \"paginate\": true },\n  \"items\": [\n    \"# First slide\\n\\nWelcome to your deck.\",\n    \"## Second slide\\n\\n- bullet one\\n- bullet two\"\n  ]\n}\n"
                                 : "$meta:\n  kind: slides\nslides:\n  theme: default\n  aspect: \"16:9\"\n  paginate: true\nitems:\n  - |\n    # First slide\n\n    Welcome to your deck.\n  - |\n    ## Second slide\n\n    - bullet one\n    - bullet two\n";
             case "data" -> json ? "{\n  \"$meta\": { \"kind\": \"data\" }\n}\n" : "$meta:\n  kind: data\n";
+            case "questions" ->
+                json
+                        ? "{\n  \"$meta\": { \"kind\": \"questions\" },\n  \"questions\": [\n    { \"key\": \"first\", \"text\": \"First question?\" }\n  ]\n}\n"
+                        : "$meta:\n  kind: questions\nquestions:\n  - key: first\n    text: First question?\n";
             default ->
                 md
                         ? "---\nkind: " + kind + "\n---\n"

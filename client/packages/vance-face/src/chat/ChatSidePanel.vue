@@ -20,6 +20,7 @@ import {
 import { VAlert, VBackButton, VButton } from '@/components';
 import ChatView from '@/chat/ChatView.vue';
 import { parseSkillCommand, sendSkillCommand } from '@/chat/skillCommand';
+import type { QuestionAnswersDetail } from '@/kindViews/questionsAnswers';
 import ChatComposer, {
   type ComposerCurrentFileSource,
 } from '@/chat/ChatComposer.vue';
@@ -367,6 +368,10 @@ function onAskUserPick(label: string): void {
   void composerRef.value?.setTextAndSend(label);
 }
 
+function onQuestionAnswers(detail: QuestionAnswersDetail): void {
+  void composerRef.value?.setTextAndSend(detail.content, { questionAnswers: detail.answers });
+}
+
 function onRollbackEcho(messageId: string): void {
   chatViewRef.value?.rollbackLocalEcho(messageId);
 }
@@ -441,6 +446,7 @@ defineExpose({
           @leave="emit('leave')"
           @hub="emit('leave')"
           @ask-user-pick="onAskUserPick"
+          @question-answers="onQuestionAnswers"
           @conversation-exported="(p: { documentId: string; document: DocumentDto }) =>
             emit('conversation-exported', p)"
         />

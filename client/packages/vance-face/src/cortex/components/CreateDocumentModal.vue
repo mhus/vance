@@ -238,7 +238,7 @@ const kindAllowed = computed(() => KIND_ALLOWED_MIMES.has(createMime.value));
 const KIND_CREATE_OPTIONS = [
   'list', 'checklist', 'tree', 'text', 'mindmap', 'graph', 'chart', 'sheet',
   'slides', 'diagram', 'calendar', 'timeline', 'application', 'data', 'records', 'schema',
-  'compose', 'vance-workflow', 'vance-scheduler', 'qrcode',
+  'compose', 'vance-workflow', 'vance-scheduler', 'qrcode', 'questions',
 ] as const;
 
 // Human-facing labels where the raw kind id would be unclear. The id stays
@@ -248,13 +248,14 @@ const KIND_LABELS: Record<string, string> = {
   'vance-workflow': 'Workflow (Magrathea)',
   'vance-scheduler': 'Scheduler (Ursa)',
   qrcode: 'QR Code',
+  questions: 'Questions',
 };
 
 // Kinds whose body only exists as YAML — their stub generator has no
 // markdown / JSON branch, and the server-side parser reads YAML. Picking
 // one switches the mime instead of producing a document that is the
 // right kind in the wrong format.
-const YAML_ONLY_KINDS = new Set<string>(['compose', 'vance-workflow', 'vance-scheduler']);
+const YAML_ONLY_KINDS = new Set<string>(['compose', 'vance-workflow', 'vance-scheduler', 'questions']);
 
 function isYamlMime(mime: string): boolean {
   return mime === 'application/yaml'
@@ -393,6 +394,10 @@ function buildKindStub(kind: string, mime: string): string {
         + 'initialMessage: |\n'
         + '  What the agent should do on each run.\n';
     }
+  }
+  if (kind === 'questions') {
+    // YAML only (see YAML_ONLY_KINDS) — doc-kind-questions.md.
+    return '$meta:\n  kind: questions\nquestions:\n  - key: first\n    text: First question?\n';
   }
   if (kind === 'qrcode') {
     // Payload after the front matter; flat front-matter keys are the

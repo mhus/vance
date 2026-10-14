@@ -24,6 +24,7 @@ sides:
 | list      | `listItemsCodec.ts` | `ListCodec`      | markdown, json, yaml |
 | checklist | `checklistCodec.ts` | `ChecklistCodec` | markdown, json, yaml |
 | diagram   | `diagramCodec.ts`   | `DiagramCodec`   | markdown, json, yaml |
+| questions | `questionsCodec.ts` | `QuestionsCodec` | yaml, json — plus `expectedError` fixtures (both sides must reject) |
 
 The `mime` field of each fixture selects the *input* format. The
 harness always **serializes to `application/json`**, so `expected` is
@@ -37,6 +38,7 @@ parsed, never serialized, by these tests.
   "mime": "text/markdown | application/json | application/yaml",
   "input": "raw document body",
   "expected": { ... canonical JSON object ... },
+  "expectedError": "substring",    // optional, instead of `expected` — parse must fail with this
   "knownJavaDrift": true,          // optional — see below
   "driftNote": "why Java diverges" // optional
 }

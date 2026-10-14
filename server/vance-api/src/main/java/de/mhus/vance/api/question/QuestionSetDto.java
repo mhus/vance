@@ -13,7 +13,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Several questions asked at once, each answered separately. Travels in the
- * chat message meta under {@code questionSet}; answered with a
+ * chat as a {@code questions} fence (kind {@code questions}); answered with a
  * {@link QuestionSetAnswerDto} carrying the same {@link #id}.
  */
 @Data

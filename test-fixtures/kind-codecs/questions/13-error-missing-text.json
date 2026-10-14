@@ -1,0 +1,6 @@
+{
+  "description": "every question needs a text",
+  "mime": "text/yaml",
+  "input": "questions:\n  - key: a\n",
+  "expectedError": "text is required"
+}

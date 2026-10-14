@@ -149,4 +149,24 @@ class WonkoQuestionPlannerTest {
                 WonkoQuestionPlanner.plan(r, List.of(finding("deletion", QuestionWeight.BLOCKER, null, null)), 1, 5);
         assertThat(nextRun.questions()).extracting(QuestionDto::getKey).containsExactly("deletion");
     }
+
+    @Test
+    void carryOver_bringsBackUnansweredTopics_ofAPreviousRun() {
+        WonkoRegister r = register(MandateLevel.ASK);
+        topic(r, "media", WonkoTopicStatus.ASKED).setQuestion("Which media?");
+        topic(r, "region", WonkoTopicStatus.LATER).setQuestion("Which region?");
+        topic(r, "retention", WonkoTopicStatus.ANSWERED).setQuestion("How long?");
+        WonkoTopic minor = topic(r, "wording", WonkoTopicStatus.OPEN);
+        minor.setQuestion("Rename?");
+        minor.setWeight(QuestionWeight.MINOR);
+        topic(r, "no-question", WonkoTopicStatus.OPEN);
+        topic(r, "logging", WonkoTopicStatus.SETTLED);
+        topic(r, "logging/format", WonkoTopicStatus.OPEN).setQuestion("Which format?");
+
+        var carried = WonkoQuestionPlanner.carryOver(r);
+
+        assertThat(carried).extracting(WonkoFinding::key).containsExactly("media", "region");
+        var plan = WonkoQuestionPlanner.plan(r, carried, 1, 5);
+        assertThat(plan.questions()).extracting(QuestionDto::getKey).containsExactly("media", "region");
+    }
 }

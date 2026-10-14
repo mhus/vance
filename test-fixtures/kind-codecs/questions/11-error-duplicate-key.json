@@ -1,0 +1,6 @@
+{
+  "description": "keys must be unique",
+  "mime": "text/yaml",
+  "input": "questions:\n  - key: a\n    text: A?\n  - key: a\n    text: Again?\n",
+  "expectedError": "duplicate key"
+}

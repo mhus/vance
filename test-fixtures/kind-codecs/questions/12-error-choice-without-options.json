@@ -1,0 +1,6 @@
+{
+  "description": "a choice needs at least two options",
+  "mime": "text/yaml",
+  "input": "questions:\n  - key: a\n    text: A?\n    kind: choice\n    options: [only]\n",
+  "expectedError": "at least two options"
+}

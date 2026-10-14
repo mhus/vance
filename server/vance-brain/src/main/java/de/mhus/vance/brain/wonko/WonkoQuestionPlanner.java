@@ -123,6 +123,49 @@ final class WonkoQuestionPlanner {
     }
 
     /**
+     * Open questions a previous run left behind — found, asked or put off,
+     * but never answered. A new run asks them again even when its own checks
+     * do not raise them a second time: the register already knows they are
+     * open, and a model call that misses them this time does not close them.
+     * Minor topics and topics under a settled branch stay out.
+     */
+    static List<WonkoFinding> carryOver(WonkoRegister register) {
+        List<WonkoFinding> out = new ArrayList<>();
+        for (WonkoTopic topic : register.getTopics()) {
+            boolean open =
+                    switch (topic.getStatus()) {
+                        case OPEN, ASKED, LATER -> true;
+                        default -> false;
+                    };
+            if (!open
+                    || topic.getWeight() == QuestionWeight.MINOR
+                    || topic.getQuestion() == null
+                    || topic.getQuestion().isBlank()
+                    || register.settledAncestor(topic.getKey()).isPresent()) {
+                continue;
+            }
+            out.add(new WonkoFinding(
+                    topic.getKey(),
+                    topic.getTitle(),
+                    topic.getCategory(),
+                    topic.getAnchor(),
+                    topic.getConcern(),
+                    topic.getWeight(),
+                    topic.getQuestion(),
+                    QuestionKind.TEXT,
+                    List.of(),
+                    topic.getProposal(),
+                    null,
+                    null,
+                    false,
+                    topic.getFindingReason(),
+                    topic.getEvidenceRef(),
+                    topic.getEvidenceQuote()));
+        }
+        return out;
+    }
+
+    /**
      * Whether a finding may reopen a topic the register already knows.
      * Open/later topics simply continue; answered ones only on a new
      * contradiction and only once — the second time the topic turns into a

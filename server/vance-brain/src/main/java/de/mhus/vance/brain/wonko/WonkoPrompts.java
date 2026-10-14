@@ -6,6 +6,7 @@ import de.mhus.vance.api.question.QuestionKind;
 import de.mhus.vance.api.question.QuestionOutcome;
 import de.mhus.vance.api.question.QuestionSetDto;
 import de.mhus.vance.api.question.QuestionWeight;
+import de.mhus.vance.shared.document.kind.QuestionsCodec;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -436,35 +437,16 @@ final class WonkoPrompts {
 
     // ──────────────────── question message ────────────────────
 
-    /** Readable Markdown form of a set — the chat content beside the structured meta. */
-    static String renderQuestionSet(QuestionSetDto set, List<WonkoTopic> decided) {
+    /**
+     * The chat message of a question set: what Wonko decided on its own (if
+     * anything), then the set as a {@code questions} fence — the kind the
+     * Web-UI renders as a wizard (spec {@code doc-kind-questions.md}). The
+     * fence is written by the kind's codec, so it is valid by construction.
+     */
+    static String questionMessage(QuestionSetDto set, List<WonkoTopic> decided) {
         StringBuilder sb = new StringBuilder();
-        if (set.getIntro() != null) {
-            sb.append(set.getIntro()).append("\n\n");
-        }
-        int i = 1;
-        for (QuestionDto q : set.getQuestions()) {
-            sb.append(i++).append(". ");
-            if (q.getWeight() == QuestionWeight.BLOCKER) {
-                sb.append("**[blocker]** ");
-            }
-            sb.append(q.getText());
-            if (q.getKind() == QuestionKind.CONFIRM && q.getProposal() != null) {
-                sb.append("\n   *My assumption:* ").append(q.getProposal());
-            }
-            if (!q.getOptions().isEmpty()) {
-                sb.append("\n   Options: ")
-                        .append(String.join(
-                                " · ",
-                                q.getOptions().stream().map(o -> o.getLabel()).toList()));
-            }
-            if (q.getContext() != null) {
-                sb.append("\n   > ").append(q.getContext());
-            }
-            sb.append('\n');
-        }
         if (!decided.isEmpty()) {
-            sb.append("\nDecided within my mandate:\n");
+            sb.append("Decided within my mandate:\n");
             for (WonkoTopic t : decided) {
                 sb.append("- **")
                         .append(t.getTitle())
@@ -472,8 +454,9 @@ final class WonkoPrompts {
                         .append(t.getDecision())
                         .append('\n');
             }
+            sb.append('\n');
         }
-        sb.append("\nPer question you can also answer \"good as it is\", \"later\" or \"don't know\".");
+        sb.append(QuestionsCodec.toFence(set));
         return sb.toString();
     }
 

@@ -1,0 +1,6 @@
+{
+  "description": "a set without questions is invalid",
+  "mime": "text/yaml",
+  "input": "intro: nothing to ask\n",
+  "expectedError": "at least one question"
+}

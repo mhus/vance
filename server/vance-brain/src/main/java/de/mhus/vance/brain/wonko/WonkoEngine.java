@@ -17,6 +17,7 @@ import de.mhus.vance.api.thinkprocess.TodoStatus;
 import de.mhus.vance.brain.ai.light.LightLlmRequest;
 import de.mhus.vance.brain.ai.light.LightLlmService;
 import de.mhus.vance.brain.arthur.PlanModeEventEmitter;
+import de.mhus.vance.brain.context.LanguageContextResolver;
 import de.mhus.vance.brain.thinkengine.ParentReport;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
@@ -110,6 +111,7 @@ public class WonkoEngine implements ThinkEngine {
     private final PlanModeEventEmitter planModeEventEmitter;
     private final ProcessEventEmitter eventEmitter;
     private final SessionService sessionService;
+    private final LanguageContextResolver languageContextResolver;
     private final MetricService metricService;
 
     // ──────────────────── Metadata ────────────────────
@@ -530,7 +532,15 @@ public class WonkoEngine implements ThinkEngine {
     private void work(ThinkProcessDocument process, ThinkEngineContext ctx, WonkoState state) {
         WonkoParams params = new WonkoParams(params(process));
         WonkoRegister register = loadRegister(process, state);
-        WonkoTurn turn = new WonkoTurn(process, ctx, state, register, params, goal(process, state), userIdFor(process));
+        WonkoTurn turn = new WonkoTurn(
+                process,
+                ctx,
+                state,
+                register,
+                params,
+                goal(process, state),
+                userIdFor(process),
+                languageContextResolver.formatBlock(process));
         if (!state.getQueue().isEmpty()) {
             thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.RUNNING);
         }

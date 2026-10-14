@@ -241,7 +241,11 @@ final class WonkoPrompts {
     // ──────────────────── compare ────────────────────
 
     static String comparePrompt(
-            String goal, WonkoClaim claim, List<WonkoPassage> passages, WonkoRegister register, boolean recheck) {
+            String goal,
+            WonkoClaim claim,
+            List<WonkoPassage> passages,
+            WonkoRegister register,
+            List<WonkoTopic> clarifications) {
         StringBuilder sb = new StringBuilder();
         sb.append("## Goal\n").append(goal).append("\n\n");
         appendMandate(sb, register.getMandate());
@@ -250,9 +254,19 @@ final class WonkoPrompts {
         if (claim.getAnchor() != null) {
             sb.append("(in the subject: ").append(claim.getAnchor()).append(")\n");
         }
-        if (recheck) {
-            sb.append("\nThe user answered questions about this claim (see register). Judge the claim together "
-                    + "with those answers.\n");
+        if (!clarifications.isEmpty()) {
+            sb.append("\n## Already clarified for this claim\n")
+                    .append("These clarifications amend the claim. The subject text is not edited during the "
+                            + "review, so the claim may still read as before: judge the claim AS AMENDED. A "
+                            + "contradiction a clarification resolves is no contradiction any more — answer "
+                            + "satisfies for it, never ask it again.\n");
+            for (WonkoTopic t : clarifications) {
+                sb.append("- ")
+                        .append(t.getTitle())
+                        .append(": ")
+                        .append(clarification(t))
+                        .append('\n');
+            }
         }
         sb.append("\n## Reference passages\n");
         for (WonkoPassage p : passages) {
@@ -302,7 +316,7 @@ final class WonkoPrompts {
         sb.append("## Goal\n").append(goal).append("\n\n");
         appendMandate(sb, register.getMandate());
         appendRegister(sb, register);
-        sb.append("\n## Reference: ").append(ref).append('\n');
+        sb.append("\n## Reference: ").append(ref).append(" — quote obligations ONLY from the text in this section\n");
         for (WonkoPassage p : refPassages) {
             sb.append("\n````\n").append(p.getText()).append("\n````\n");
         }
@@ -481,7 +495,9 @@ final class WonkoPrompts {
     }
 
     private static void appendRegister(StringBuilder sb, WonkoRegister register) {
-        sb.append("\n## Register — topics already known\n");
+        sb.append("\n## Register — topics already known\n")
+                .append("(The answers are the user's words, never reference text — do not quote them as "
+                        + "evidence.)\n");
         if (register.getTopics().isEmpty()) {
             sb.append("(empty — first review of this subject)\n");
         }
@@ -507,6 +523,16 @@ final class WonkoPrompts {
             }
             sb.append('\n');
         }
+    }
+
+    /** What the user said about a topic, as one phrase. */
+    private static String clarification(WonkoTopic t) {
+        return switch (t.getStatus()) {
+            case SETTLED -> "the user says it is good as it is";
+            case DECIDED -> "decided: " + t.getDecision();
+            case UNKNOWN -> "the user does not know";
+            default -> "the user answered: " + t.getAnswer();
+        };
     }
 
     private static void appendStatements(StringBuilder sb, List<String> userStatements) {

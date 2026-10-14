@@ -23,6 +23,9 @@ final class WonkoTurn {
     final String goal;
     final @Nullable String userId;
 
+    /** The {@code ## Languages} block of the process's settings — every model call gets it. */
+    final String languageBlock;
+
     /** Bound on the decision log of one run — it explains, it is not an audit trail of every call. */
     private static final int MAX_DECISIONS = 300;
 
@@ -35,7 +38,8 @@ final class WonkoTurn {
             WonkoRegister register,
             WonkoParams params,
             String goal,
-            @Nullable String userId) {
+            @Nullable String userId,
+            String languageBlock) {
         this.process = process;
         this.ctx = ctx;
         this.state = state;
@@ -43,6 +47,7 @@ final class WonkoTurn {
         this.params = params;
         this.goal = goal;
         this.userId = userId;
+        this.languageBlock = languageBlock;
     }
 
     /** Document text by path, read on first use; {@code null} when unreadable. */

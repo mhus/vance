@@ -50,8 +50,15 @@ promptPrefix: |
     govern this claim after all.
   - cannot_determine: you cannot tell from the claim and the passage —
     always with the reason. Never guess a contradiction.
-  - Answers in the register are facts: a claim the user already clarified
-    is judged together with that answer. A topic marked SETTLED is closed.
+  - Answers in the register are facts. Under "Already clarified for this
+    claim" you find what the user decided about THIS claim: it amends the
+    claim. The subject text is not edited during the review, so the claim
+    may still read as before — judge the claim as amended. A contradiction
+    a clarification resolves is no contradiction any more: answer
+    satisfies, never raise it again under another key. A topic marked
+    SETTLED is closed.
+  - Quote only from the reference passage — never from the register or the
+    clarifications.
   - weight: blocker = clear violation of a binding rule; important =
     likely violation or ambiguous compliance; minor = wording.
 tags:

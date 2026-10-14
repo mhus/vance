@@ -39,9 +39,12 @@ promptPrefix: |
   Rules:
   - Only obligations that apply to what the subject is about. An
     obligation the subject does address is not missing.
-  - The quote MUST be copied verbatim from the reference — it is checked by
-    code; a missing obligation with a quote that is not in the reference
-    is discarded.
+  - The quote MUST be copied verbatim from the "Reference" section — it is
+    checked by code; a missing obligation with a quote that is not in the
+    reference is discarded. The register lists the user's answers: they are
+    never reference text, never quote them.
+  - An obligation the user already clarified (register: ANSWERED, SETTLED,
+    DECIDED) is not missing — the answer covers it.
   - A topic marked SETTLED in the register is closed; answers in the
     register are facts.
   - "complete" with an empty list when nothing is missing;

@@ -184,7 +184,8 @@ class WonkoItemHandlers {
         return request(
                 turn,
                 turn.params.compareRecipe(),
-                WonkoPrompts.comparePrompt(turn.goal, claim, passages, turn.register, item.isRecheck()),
+                WonkoPrompts.comparePrompt(
+                        turn.goal, claim, passages, turn.register, clarifications(turn, claim, passages)),
                 WonkoPrompts.compareSchema());
     }
 
@@ -306,10 +307,70 @@ class WonkoItemHandlers {
                 .anyMatch(i -> i.getType() == WonkoItemType.LOCATE && claimId.equals(i.getClaimId()));
     }
 
-    /** Adds a finding to the question pool — a newer finding on the same key replaces the older one. */
+    /**
+     * Adds a finding to the question pool — a newer finding on the same key
+     * replaces the older one. A finding that rests on the same evidence as a
+     * topic the register already knows, or as one already in the pool, is the
+     * same concern under another key: it is dropped with its reason (the
+     * evidence is the stable anchor of plan §5.3 — the model's key is not).
+     */
     private static void pool(WonkoTurn turn, WonkoFinding finding) {
+        String duplicateOf = duplicateOf(turn, finding);
+        if (duplicateOf != null) {
+            turn.log(
+                    finding.title(),
+                    "duplicate",
+                    "same evidence as " + duplicateOf + " (" + finding.evidenceRef() + ")");
+            return;
+        }
         turn.state.getPendingFindings().removeIf(f -> f.key().equals(finding.key()));
         turn.state.getPendingFindings().add(finding);
+    }
+
+    /** Key of the topic or pooled finding that rests on the same evidence, or {@code null}. */
+    static @Nullable String duplicateOf(WonkoTurn turn, WonkoFinding finding) {
+        if (finding.evidenceRef() == null || finding.evidenceQuote() == null) {
+            return null;
+        }
+        for (WonkoTopic t : turn.register.getTopics()) {
+            if (!t.getKey().equals(finding.key())
+                    && t.getStatus() != WonkoTopicStatus.UNCLEAR
+                    && sameEvidence(t.getEvidenceRef(), t.getEvidenceQuote(), finding)) {
+                return t.getKey();
+            }
+        }
+        for (WonkoFinding f : turn.state.getPendingFindings()) {
+            if (!f.key().equals(finding.key()) && sameEvidence(f.evidenceRef(), f.evidenceQuote(), finding)) {
+                return f.key();
+            }
+        }
+        return null;
+    }
+
+    private static boolean sameEvidence(@Nullable String ref, @Nullable String quote, WonkoFinding finding) {
+        if (ref == null || quote == null || !ref.equals(finding.evidenceRef()) || finding.evidenceQuote() == null) {
+            return false;
+        }
+        String a = WonkoQuotes.normalise(quote);
+        String b = WonkoQuotes.normalise(finding.evidenceQuote());
+        return !a.isEmpty() && !b.isEmpty() && (a.contains(b) || b.contains(a));
+    }
+
+    /**
+     * What the user already clarified about a claim: topics raised from the
+     * claim, and topics resting on one of its reference documents — they go
+     * into the recheck as amendments of the claim.
+     */
+    private static List<WonkoTopic> clarifications(WonkoTurn turn, WonkoClaim claim, List<WonkoPassage> passages) {
+        List<String> refs = passages.stream().map(WonkoPassage::getRef).toList();
+        return turn.register.getTopics().stream()
+                .filter(t -> t.getStatus() == WonkoTopicStatus.ANSWERED
+                        || t.getStatus() == WonkoTopicStatus.SETTLED
+                        || t.getStatus() == WonkoTopicStatus.DECIDED
+                        || t.getStatus() == WonkoTopicStatus.UNKNOWN)
+                .filter(t -> claim.getId().equals(turn.state.getTopicClaims().get(t.getKey()))
+                        || (t.getEvidenceRef() != null && refs.contains(t.getEvidenceRef())))
+                .toList();
     }
 
     /** {@code cannot_determine} never becomes a finding silently — it is reported as unclear (§4a.8). */
@@ -356,10 +417,24 @@ class WonkoItemHandlers {
         return lightLlmService.callForJson(request(turn, recipe, prompt, schema));
     }
 
+    /**
+     * The language block goes before AND after the material: in a long
+     * English prompt full of English rule text a block at the top alone gets
+     * lost, and the model answers in the language of the material.
+     */
+    static String withLanguage(String languageBlock, String prompt) {
+        if (languageBlock.isEmpty()) {
+            return prompt;
+        }
+        return languageBlock + "\n" + prompt + "\n\n" + languageBlock
+                + "Write every title, question, proposal and reason in the chat language above. Quotes stay "
+                + "verbatim in the language of their source.\n";
+    }
+
     private static LightLlmRequest request(WonkoTurn turn, String recipe, String prompt, Map<String, Object> schema) {
         return LightLlmRequest.builder()
                 .recipeName(recipe)
-                .userPrompt(prompt)
+                .userPrompt(withLanguage(turn.languageBlock, prompt))
                 .schema(schema)
                 .tenantId(turn.process.getTenantId())
                 .projectId(turn.process.getProjectId())

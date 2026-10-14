@@ -201,6 +201,7 @@ function send(): void {
         </ol>
         <div v-if="interactive" class="flex gap-2">
           <VButton variant="primary" size="sm" @click="send">{{ t('kindViews.questions.send') }}</VButton>
+          <VButton v-if="total > 0" variant="ghost" size="sm" @click="goTo(total - 1)">{{ t('kindViews.questions.back') }}</VButton>
         </div>
         <div v-else-if="mode === 'inline' && (sent || !actionableRef)" class="text-xs opacity-60">
           {{ t('kindViews.questions.answered') }}

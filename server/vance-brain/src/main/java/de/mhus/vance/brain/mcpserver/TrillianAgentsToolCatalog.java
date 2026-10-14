@@ -61,6 +61,13 @@ public class TrillianAgentsToolCatalog {
 
     // ──────────────────── the tools ────────────────────
 
+    /**
+     * Shown with an empty {@code agent_list}. Says why a list can be empty
+     * without telling whether agents exist that refuse this caller.
+     */
+    static final String EMPTY_DIRECTORY_HINT = "No exposed agent of this tenant admits your account through this door."
+            + " Each agent's owner decides which accounts may talk to it; ask them to add yours.";
+
     /** {@code agent_list} — the exposed Trillians of the tenant. */
     private class AgentListTool implements Tool {
 
@@ -105,6 +112,12 @@ public class TrillianAgentsToolCatalog {
                         agent.put("doors", doors);
                         agents.add(agent);
                     });
+            if (agents.isEmpty()) {
+                // An empty directory is ambiguous from the outside — no agents
+                // at all, or none that admits this account. Say which kind of
+                // answer it is without naming anyone the caller may not see.
+                return Map.of("agents", agents, "hint", EMPTY_DIRECTORY_HINT);
+            }
             return Map.of("agents", agents);
         }
     }

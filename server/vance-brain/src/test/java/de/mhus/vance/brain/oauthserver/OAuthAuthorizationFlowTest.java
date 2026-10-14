@@ -105,6 +105,33 @@ class OAuthAuthorizationFlowTest {
     }
 
     /** The cause (here: a resolver detail) goes to the log only — no oracle for the caller. */
+    /**
+     * A loopback registration matches any port (RFC 8252 §7.3). On a server
+     * that itself runs on loopback, that port may be its own — the code must
+     * not land on the server's own origin.
+     */
+    @Test
+    void loopbackRedirectOnTheServersOwnOrigin_isShownNotRedirected() {
+        OAuthServerSettings loopbackSettings = OAuthDoorsTest.settings("http://127.0.0.1:9901");
+        OAuthAuthorizationFlow loopbackFlow = new OAuthAuthorizationFlow(
+                loopbackSettings,
+                clientResolver,
+                clientService,
+                new OAuthDoors(loopbackSettings),
+                gate,
+                authorizations,
+                grants,
+                audit);
+
+        OAuthAuthorizationFlow.Step step = loopbackFlow.begin(
+                TENANT,
+                params("dcr_x", "http://127.0.0.1:9901/callback", "http://127.0.0.1:9901/brain/acme/agents"),
+                null);
+
+        assertThat(step).isInstanceOf(OAuthAuthorizationFlow.Step.ShowError.class);
+        verify(authorizations, never()).createRequest(any());
+    }
+
     @Test
     void unknownClient_isShownNotRedirected_withAGenericMessage() {
         when(clientResolver.resolve(TENANT, "nope"))

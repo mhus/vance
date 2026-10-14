@@ -103,6 +103,35 @@ class TrillianAgentsServiceTest {
     }
 
     @Test
+    void agentListEmpty_carriesAHint_withoutNamingRefusingAgents() {
+        TrillianExposureConfig refuses = new TrillianExposureConfig(
+                "colin", "Colin", List.of("wile.coyote"), 0, 0, new TrillianExposureConfig.Doors(true, false));
+        when(exposureService.directory(TENANT))
+                .thenReturn(List.of(new TrillianExposureService.Exposed(COLIN, refuses)));
+
+        String text = content(call("""
+                {"jsonrpc":"2.0","id":1,"method":"tools/call",
+                 "params":{"name":"agent_list","arguments":{}}}
+                """));
+
+        assertThat(text).contains("No exposed agent").doesNotContain("colin");
+    }
+
+    @Test
+    void agentListWithAgents_hasNoHint() {
+        TrillianExposureConfig colin = new TrillianExposureConfig(
+                "colin", "Colin", List.of("road.runner"), 0, 0, new TrillianExposureConfig.Doors(true, false));
+        when(exposureService.directory(TENANT)).thenReturn(List.of(new TrillianExposureService.Exposed(COLIN, colin)));
+
+        String text = content(call("""
+                {"jsonrpc":"2.0","id":1,"method":"tools/call",
+                 "params":{"name":"agent_list","arguments":{}}}
+                """));
+
+        assertThat(text).contains("colin").doesNotContain("hint");
+    }
+
+    @Test
     void aGateRefusalIsErrorContent_notAProtocolFailure() {
         when(conversations.open(anyString(), anyString(), anyString(), any(), anyString()))
                 .thenThrow(new ToolException("agent not exposed: 'colin'"));

@@ -131,6 +131,15 @@ public class OAuthAuthorizationFlow {
                     client.clientId());
             return new Step.ShowError("The redirect_uri is not registered for this client.");
         }
+        if (!RedirectUris.isAcceptable(redirectUri, settings.ownOrigin())) {
+            // Registration already refuses the own origin, but a loopback
+            // registration matches any port (RFC 8252 §7.3) — on a server that
+            // itself runs on loopback (dev) that would let a code land on this
+            // server's own origin, where the consent page would present it as
+            // a trustworthy destination.
+            log.debug("OAuth authorize rejected: redirect '{}' is on this server's own origin", redirectUri);
+            return new Step.ShowError("The redirect_uri points to this server itself.");
+        }
 
         // From here on the redirect URI is trusted: errors go back to the client.
         String state = params.state();

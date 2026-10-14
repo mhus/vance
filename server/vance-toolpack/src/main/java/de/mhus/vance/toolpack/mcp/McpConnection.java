@@ -1,8 +1,8 @@
 package de.mhus.vance.toolpack.mcp;
 
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.core.McpJsonRpc;
 import de.mhus.vance.toolpack.core.SecretResolver;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -38,6 +38,7 @@ public final class McpConnection implements AutoCloseable {
     private final McpTransport transport;
     private final ToolInvocationContext bootstrapCtx;
     private final SecretResolver secretResolver;
+    private final @Nullable SessionGuard guard;
     private final Object initLock = new Object();
 
     private volatile boolean initialized;
@@ -60,10 +61,24 @@ public final class McpConnection implements AutoCloseable {
             McpTransport transport,
             ToolInvocationContext bootstrapCtx,
             @Nullable SecretResolver secretResolver) {
+        this(config, transport, bootstrapCtx, secretResolver, null);
+    }
+
+    /**
+     * @param guard host lifecycle hooks (brain: lease-backed;
+     *              {@code null} = no guard, e.g. foot). See {@link SessionGuard}.
+     */
+    public McpConnection(
+            McpConfig config,
+            McpTransport transport,
+            ToolInvocationContext bootstrapCtx,
+            @Nullable SecretResolver secretResolver,
+            @Nullable SessionGuard guard) {
         this.config = config;
         this.transport = transport;
         this.bootstrapCtx = bootstrapCtx;
         this.secretResolver = secretResolver == null ? SecretResolver.PASSTHROUGH : secretResolver;
+        this.guard = guard;
         this.materializedAt = Instant.now();
     }
 
@@ -89,15 +104,11 @@ public final class McpConnection implements AutoCloseable {
         synchronized (initLock) {
             hit = toolsCache.get();
             if (hit != null) return hit;
-            Object result = transport.sendRequest(
-                    "tools/list",
-                    Map.of(),
-                    Duration.ofSeconds(config.timeoutSeconds()),
-                    ctx);
+            Object result =
+                    transport.sendRequest("tools/list", Map.of(), Duration.ofSeconds(config.timeoutSeconds()), ctx);
             List<McpToolMeta> tools = McpToolMeta.fromListResult(result);
             toolsCache.set(tools);
-            log.info("MCP tools/list: {} tools available (transport={})",
-                    tools.size(), config.transport());
+            log.info("MCP tools/list: {} tools available (transport={})", tools.size(), config.transport());
             return tools;
         }
     }
@@ -124,19 +135,15 @@ public final class McpConnection implements AutoCloseable {
      * {@code defaultArgs} are always strings and benefit likewise.
      */
     @SuppressWarnings("unchecked")
-    public Map<String, Object> callTool(
-            String toolName, Map<String, Object> arguments, ToolInvocationContext ctx) {
+    public Map<String, Object> callTool(String toolName, Map<String, Object> arguments, ToolInvocationContext ctx) {
         ensureInitialized(ctx);
-        Map<String, Object> mergedArgs = McpArgumentCoercer.coerce(
-                mergeDefaultArgs(toolName, arguments, ctx), schemaFor(toolName));
+        if (guard != null) guard.onSessionUse();
+        Map<String, Object> mergedArgs =
+                McpArgumentCoercer.coerce(mergeDefaultArgs(toolName, arguments, ctx), schemaFor(toolName));
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("name", toolName);
         params.put("arguments", mergedArgs);
-        Object result = transport.sendRequest(
-                "tools/call",
-                params,
-                Duration.ofSeconds(config.timeoutSeconds()),
-                ctx);
+        Object result = transport.sendRequest("tools/call", params, Duration.ofSeconds(config.timeoutSeconds()), ctx);
         if (result instanceof Map<?, ?> m) {
             return new LinkedHashMap<>((Map<String, Object>) m);
         }
@@ -156,38 +163,45 @@ public final class McpConnection implements AutoCloseable {
 
     @Override
     public void close() {
-        transport.close();
-        toolsCache.set(null);
-        initialized = false;
+        try {
+            transport.close();
+        } finally {
+            if (guard != null) guard.onSessionClose();
+            toolsCache.set(null);
+            initialized = false;
+        }
     }
 
     private void ensureInitialized(ToolInvocationContext ctx) {
         if (initialized) return;
         synchronized (initLock) {
             if (initialized) return;
+            // Guard first: a busy lease aborts the session before anything is
+            // opened — no half-initialized connection may exist.
+            if (guard != null) guard.onSessionOpen();
             transport.open();
             transport.setNotificationHandler(this::onNotification);
 
             Map<String, Object> initParams = new LinkedHashMap<>();
             initParams.put("protocolVersion", PROTOCOL_VERSION);
             initParams.put("capabilities", Map.of());
-            initParams.put("clientInfo", Map.of(
-                    "name", "vance-brain",
-                    "version", "1.0.0"));
+            initParams.put(
+                    "clientInfo",
+                    Map.of(
+                            "name", "vance-brain",
+                            "version", "1.0.0"));
 
             try {
-                transport.sendRequest(
-                        "initialize",
-                        initParams,
-                        Duration.ofSeconds(config.initTimeoutSeconds()),
-                        ctx);
+                transport.sendRequest("initialize", initParams, Duration.ofSeconds(config.initTimeoutSeconds()), ctx);
                 transport.sendNotification("notifications/initialized", null, ctx);
             } catch (RuntimeException e) {
                 transport.close();
+                if (guard != null) guard.onSessionClose();
                 throw new IllegalStateException(
                         "MCP initialize failed (" + config.transport() + "): " + e.getMessage(), e);
             }
             initialized = true;
+            if (guard != null) guard.onSessionId(transport.currentSessionId());
             log.info("MCP connection initialized — transport={} ", config.transport());
         }
     }
@@ -203,9 +217,7 @@ public final class McpConnection implements AutoCloseable {
     }
 
     private Map<String, Object> mergeDefaultArgs(
-            String toolName,
-            @Nullable Map<String, Object> llmArgs,
-            ToolInvocationContext ctx) {
+            String toolName, @Nullable Map<String, Object> llmArgs, ToolInvocationContext ctx) {
         Map<String, String> defaults = config.defaultArgs();
         if (defaults == null || defaults.isEmpty()) {
             return llmArgs == null ? Map.of() : llmArgs;
@@ -278,7 +290,8 @@ public final class McpConnection implements AutoCloseable {
      * transport bypasses the protocol guarantees ({@code initialize}
      * handshake, notifications routing).
      */
-    @Nullable McpTransport transportForTesting() {
+    @Nullable
+    McpTransport transportForTesting() {
         return transport;
     }
 }

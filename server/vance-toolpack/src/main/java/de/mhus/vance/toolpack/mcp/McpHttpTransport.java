@@ -103,8 +103,52 @@ public final class McpHttpTransport implements McpTransport {
     public synchronized void close() {
         if (!open) return;
         open = false;
+        terminateServerSession();
         sessionId.set(null);
         log.info("McpHttpTransport closed");
+    }
+
+    /**
+     * Server session id captured from the initialize response — lease
+     * payload for a session-based server. {@code null} until the server
+     * assigns one (or for session-less servers forever).
+     */
+    @Override
+    public synchronized @Nullable String currentSessionId() {
+        return sessionId.get();
+    }
+
+    /**
+     * Best-effort session termination per the Streamable-HTTP spec:
+     * {@code DELETE} with the {@code Mcp-Session-Id} header tells the server
+     * to drop the session. Without it every close left the server-side
+     * session to its own expiry (leaked browser sessions on Playwright-MCP
+     * style servers, see {@code planning/lease-system.md} §10). Failures are
+     * swallowed — a server that never had the session loses nothing, and
+     * the local side is closed either way.
+     */
+    private void terminateServerSession() {
+        String sid = sessionId.get();
+        if (sid == null || config.url() == null) return;
+        try {
+            HttpRequest request = HttpRequest.newBuilder(URI.create(config.url()))
+                    .timeout(Duration.ofSeconds(5))
+                    .header(SESSION_HEADER, sid)
+                    .DELETE()
+                    .build();
+            HttpClient client = httpClient.client(config.tls());
+            HttpResponse<Void> response = client.send(request, HttpResponse.BodyHandlers.discarding());
+            if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                log.debug("McpHttpTransport: server session {} terminated", sid);
+            } else {
+                log.debug(
+                        "McpHttpTransport: session termination returned {} — server expires it on its own",
+                        response.statusCode());
+            }
+        } catch (IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            log.debug("McpHttpTransport: session termination failed — server expires it on its own: {}", e.toString());
+        }
     }
 
     @Override

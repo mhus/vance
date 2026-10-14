@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.mcp;
 
+import de.mhus.vance.shared.servertool.ServerToolDocument;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.core.McpJsonRpc;
 import de.mhus.vance.toolpack.core.PackHttpClient;
@@ -9,7 +10,7 @@ import de.mhus.vance.toolpack.mcp.McpConnection;
 import de.mhus.vance.toolpack.mcp.McpHttpTransport;
 import de.mhus.vance.toolpack.mcp.McpStdioTransport;
 import de.mhus.vance.toolpack.mcp.McpTransport;
-import de.mhus.vance.shared.servertool.ServerToolDocument;
+import de.mhus.vance.toolpack.mcp.SessionGuard;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -45,13 +46,20 @@ public final class McpConnectionPool implements AutoCloseable {
 
     private final PackHttpClient httpClient;
     private final SecretResolver secretResolver;
+    private final @Nullable McpLeaseSupport leaseSupport;
 
     /** Keyed by {@code docId|tenantId|userId}. Anonymous / bootstrap calls keyed with empty user. */
     private final ConcurrentHashMap<String, McpConnection> entries = new ConcurrentHashMap<>();
 
     public McpConnectionPool(PackHttpClient httpClient, SecretResolver secretResolver) {
+        this(httpClient, secretResolver, null);
+    }
+
+    public McpConnectionPool(
+            PackHttpClient httpClient, SecretResolver secretResolver, @Nullable McpLeaseSupport leaseSupport) {
         this.httpClient = httpClient;
         this.secretResolver = secretResolver == null ? SecretResolver.PASSTHROUGH : secretResolver;
+        this.leaseSupport = leaseSupport;
     }
 
     /**
@@ -107,16 +115,20 @@ public final class McpConnectionPool implements AutoCloseable {
             closeAndForget(key);
         }
         if (!matching.isEmpty()) {
-            log.info("McpConnectionPool: invalidated {} connection(s) for tenant='{}' user='{}'",
-                    matching.size(), tenantId, userId);
+            log.info(
+                    "McpConnectionPool: invalidated {} connection(s) for tenant='{}' user='{}'",
+                    matching.size(),
+                    tenantId,
+                    userId);
         }
     }
 
     @Override
     public synchronized void close() {
         for (McpConnection c : entries.values()) {
-            try { c.close(); }
-            catch (RuntimeException ex) {
+            try {
+                c.close();
+            } catch (RuntimeException ex) {
                 log.warn("McpConnectionPool: error closing connection on shutdown: {}", ex.toString());
             }
         }
@@ -126,8 +138,9 @@ public final class McpConnectionPool implements AutoCloseable {
     private void closeAndForget(String key) {
         McpConnection hit = entries.remove(key);
         if (hit != null) {
-            try { hit.close(); }
-            catch (RuntimeException e) {
+            try {
+                hit.close();
+            } catch (RuntimeException e) {
                 log.warn("McpConnectionPool: error closing connection '{}': {}", key, e.toString());
             }
         }
@@ -136,11 +149,26 @@ public final class McpConnectionPool implements AutoCloseable {
     private McpConnection build(ServerToolDocument doc, ToolInvocationContext ctx) {
         McpConfig cfg = McpConfig.fromParameters(doc.getParameters());
         McpJsonRpc rpc = new McpJsonRpc();
-        McpTransport transport = switch (cfg.transport()) {
-            case STDIO -> new McpStdioTransport(cfg, rpc);
-            case HTTP -> new McpHttpTransport(cfg, rpc, httpClient, secretResolver);
-        };
-        return new McpConnection(cfg, transport, ctx, secretResolver);
+        McpTransport transport =
+                switch (cfg.transport()) {
+                    case STDIO -> new McpStdioTransport(cfg, rpc);
+                    case HTTP -> new McpHttpTransport(cfg, rpc, httpClient, secretResolver);
+                };
+        SessionGuard guard = leaseSupport == null || doc.getId() == null
+                ? null
+                : leaseSupport.createGuard(doc, cfg, ctx, entryKey(doc.getId(), ctx));
+        return new McpConnection(cfg, transport, ctx, secretResolver, guard);
+    }
+
+    /**
+     * Revokes one pooled connection by its entry key
+     * ({@code docId|tenant|user}) — the lease-revoke path
+     * ({@link McpLeaseHandler}). Closing runs the connection's guard,
+     * which releases the (already revoked) lease idempotently, and
+     * terminates the server session via the transport.
+     */
+    public synchronized void revokeEntry(String key) {
+        closeAndForget(key);
     }
 
     private static String entryKey(String docId, @Nullable ToolInvocationContext ctx) {

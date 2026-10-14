@@ -2366,6 +2366,16 @@ public class DocumentService {
         }
     }
 
+    /**
+     * Reads a bundled classpath default ({@code vance-defaults/<path>}) —
+     * the outermost cascade layer, by path rather than through
+     * {@link #lookupCascade}. Config loaders that resolve every layer
+     * individually (lease definitions) use this for the add-on layer.
+     */
+    public Optional<String> readBundledResource(String path) {
+        return loadResource(normalizePath(path));
+    }
+
     private Optional<String> loadResource(String normalizedPath) {
         String resourcePath = RESOURCE_PREFIX + normalizedPath;
         try {

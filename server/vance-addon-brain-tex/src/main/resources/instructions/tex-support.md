@@ -48,6 +48,18 @@ müssen also importiert sein (`.tex`, `.bib`, `.sty`, Bilder).
   an einen externen `rbehzadan/tex2pdf`-Docker-Service. Config über das
   Setting-Form `tex-setup`.
 
+## Lease (gleichzeitige Kompilierungen)
+
+Der rbehzadan-Executor hält während einer Kompilierung ein Lease auf der
+Ressource `tex2pdf` (Setting `tex.lease`, Default `tex`). Das begrenzt
+gleichzeitige Kompilierungen über Quota-Ebenen (global/tenant/project,
+Default-Definition: global 6, tenant 3, project 1). Ist der Trichter voll,
+scheitert der `tex-task` mit `LEASE_BUSY: 'tex2pdf' level '<ebene>' is full
+(n/m held) — retry later`. Das ist eine Auslastungs-Aussage, kein Fehler
+im Dokument: später erneut versuchen (der Poll-Loop einer laufenden
+Kompilierung blockiert den Slot nur für seine eigene Dauer). `none` als
+Setting deaktiviert die Begrenzung.
+
 ## TeX Live (local Executor)
 
 Im Brain-Docker-Image installiert:

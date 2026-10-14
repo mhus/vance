@@ -1,0 +1,21 @@
+# Lease definition for the tex2pdf resource — the rbehzadan compile path
+# (bundled default; override in the system tenant's _tenant project or
+# per tenant/project with a document at the same path).
+#
+# The four quota levels stack as a funnel (planning/lease-system.md §3);
+# a compile has to pass every configured level, narrow → wide.
+name: tex
+resource: tex2pdf
+levels:
+  global: 6       # total capacity of the shared tex2pdf container
+  tenant: 3       # fair share per tenant
+  project: 1      # one concurrent compile per project
+
+# Inactivity TTL: the executor's poll loop checks/touches every
+# pollIntervalSeconds (default 3 s), so 120 s of silence means the
+# holder is gone.
+ttlSeconds: 120
+
+# How long an acquire waits for a free slot before failing with
+# LEASE_BUSY (the poll loop is on a lane — it must not block forever).
+waitMs: 10000

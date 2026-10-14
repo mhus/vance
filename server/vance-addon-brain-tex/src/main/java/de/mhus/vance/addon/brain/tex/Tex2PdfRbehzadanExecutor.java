@@ -1,5 +1,12 @@
 package de.mhus.vance.addon.brain.tex;
 
+import de.mhus.vance.brain.cluster.ClusterService;
+import de.mhus.vance.shared.lease.Lease;
+import de.mhus.vance.shared.lease.LeaseBusyException;
+import de.mhus.vance.shared.lease.LeaseLostException;
+import de.mhus.vance.shared.lease.LeaseRequest;
+import de.mhus.vance.shared.lease.LeaseUnavailableException;
+import de.mhus.vance.shared.lease.ResourceLeaseService;
 import de.mhus.vance.shared.settings.SettingService;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -11,6 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import lombok.RequiredArgsConstructor;
@@ -62,21 +70,32 @@ public class Tex2PdfRbehzadanExecutor implements Tex2PdfExecutor {
     static final String SETTING_TIMEOUT = "tex.rbehzadan.timeoutSeconds";
     static final String SETTING_POLL_INTERVAL = "tex.rbehzadan.pollIntervalSeconds";
 
+    static final String SETTING_LEASE = "tex.lease";
+
     private final ObjectMapper objectMapper;
     private final SettingService settings;
+    private final ResourceLeaseService leaseService;
+    private final ClusterService cluster;
+    private final TexCompileTracker tracker;
+
+    /** Lease name when no setting overrides it; empty disables leasing. */
+    @Value("${vance.tex.lease:tex}")
+    private String defaultLease;
 
     @Value("${vance.tex.rbehzadan.url:}")
     private String defaultUrl;
+
     @Value("${vance.tex.rbehzadan.api-key:}")
     private String defaultApiKey;
+
     @Value("${vance.tex.rbehzadan.timeout-seconds:300}")
     private long defaultTimeoutSeconds;
+
     @Value("${vance.tex.rbehzadan.poll-interval-seconds:3}")
     private long defaultPollIntervalSeconds;
 
-    private final HttpClient httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(30))
-            .build();
+    private final HttpClient httpClient =
+            HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(30)).build();
 
     @Override
     public String type() {
@@ -87,6 +106,51 @@ public class Tex2PdfRbehzadanExecutor implements Tex2PdfExecutor {
     public Result compile(Request request) {
         long start = System.currentTimeMillis();
 
+        Lease lease;
+        try {
+            lease = acquireLease(request);
+        } catch (LeaseBusyException | LeaseUnavailableException e) {
+            return Result.failure(e.getMessage(), null, System.currentTimeMillis() - start);
+        }
+
+        try {
+            return compileWithLease(request, lease, start);
+        } catch (LeaseLostException e) {
+            return Result.failure(
+                    "tex compile aborted — lease was revoked: " + e.getMessage(),
+                    null,
+                    System.currentTimeMillis() - start);
+        } finally {
+            lease.release();
+        }
+    }
+
+    /**
+     * Acquires the {@code tex} lease — {@link Lease#NOOP} when the
+     * {@code tex.lease} setting resolves empty or to {@code none}
+     * (explicitly off). Otherwise the lease caps concurrent compiles
+     * through the quota funnel; a busy funnel surfaces as
+     * {@link LeaseBusyException} instead of a remote 429.
+     */
+    private Lease acquireLease(Request request) {
+        String name = settings.getStringValueCascade(
+                request.tenantId(), request.projectId(), request.processId(), SETTING_LEASE);
+        if (name == null || name.isBlank()) name = defaultLease;
+        if (name == null || name.isBlank() || "none".equalsIgnoreCase(name.trim())) {
+            return Lease.NOOP;
+        }
+        return leaseService.acquire(LeaseRequest.builder()
+                .type(TexLeaseHandler.TYPE)
+                .lease(name.trim())
+                .tenantId(request.tenantId())
+                .projectId(request.projectId())
+                .holderRef("tex-compile")
+                .pod(cluster.selfPodId())
+                .podBound(true)
+                .build());
+    }
+
+    private Result compileWithLease(Request request, Lease lease, long start) {
         // Resolve settings per-call from the cascade
         String baseUrl = resolveUrl(request);
         if (baseUrl == null || baseUrl.isBlank()) {
@@ -94,7 +158,8 @@ public class Tex2PdfRbehzadanExecutor implements Tex2PdfExecutor {
                     "tex.rbehzadan.url is not configured — set it in Settings "
                             + "(key: '" + SETTING_URL + "') or application property "
                             + "'vance.tex.rbehzadan.url'",
-                    null, System.currentTimeMillis() - start);
+                    null,
+                    System.currentTimeMillis() - start);
         }
         baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
         String apiKey = resolveApiKey(request);
@@ -110,37 +175,50 @@ public class Tex2PdfRbehzadanExecutor implements Tex2PdfExecutor {
             // 2. Submit the job
             String jobId = submitJob(baseUrl, apiKey, zipBytes);
             log.debug("tex2pdf: submitted job {}", jobId);
+            lease.updatePayload(Map.of("jobId", jobId));
 
             // 3. Poll until done
-            while (true) {
-                if (System.currentTimeMillis() > deadline) {
-                    return Result.failure(
-                            "TIMEOUT: tex2pdf job " + jobId + " did not finish within "
-                                    + timeoutSeconds + "s",
-                            null, System.currentTimeMillis() - start);
-                }
+            try {
+                while (true) {
+                    // Usage step: verifies the lease is still held and touches
+                    // the TTL clock; a revoked lease (idle/pod reap) aborts here.
+                    lease.check();
+                    if (tracker.isCancelled(jobId)) {
+                        return Result.failure(
+                                "tex compile aborted — lease was revoked while polling (job " + jobId + ")",
+                                null,
+                                System.currentTimeMillis() - start);
+                    }
+                    if (System.currentTimeMillis() > deadline) {
+                        return Result.failure(
+                                "TIMEOUT: tex2pdf job " + jobId + " did not finish within " + timeoutSeconds + "s",
+                                null,
+                                System.currentTimeMillis() - start);
+                    }
 
-                Thread.sleep(pollIntervalSeconds * 1000);
+                    Thread.sleep(pollIntervalSeconds * 1000);
 
-                JsonNode status = checkStatus(baseUrl, apiKey, jobId);
-                String statusStr = status.path("status").asText("");
-                log.debug("tex2pdf: job {} status: {}", jobId, statusStr);
+                    JsonNode status = checkStatus(baseUrl, apiKey, jobId);
+                    String statusStr = status.path("status").asText("");
+                    log.debug("tex2pdf: job {} status: {}", jobId, statusStr);
 
-                if ("completed".equalsIgnoreCase(statusStr)
-                        || "done".equalsIgnoreCase(statusStr)) {
-                    // 4. Download the PDF
-                    byte[] pdf = downloadResult(baseUrl, apiKey, jobId);
-                    String logText = extractLog(status);
-                    return Result.success(pdf, logText, System.currentTimeMillis() - start);
+                    if ("completed".equalsIgnoreCase(statusStr) || "done".equalsIgnoreCase(statusStr)) {
+                        // 4. Download the PDF
+                        byte[] pdf = downloadResult(baseUrl, apiKey, jobId);
+                        String logText = extractLog(status);
+                        return Result.success(pdf, logText, System.currentTimeMillis() - start);
+                    }
+                    if ("failed".equalsIgnoreCase(statusStr) || "error".equalsIgnoreCase(statusStr)) {
+                        String errorMsg = status.path("error").asText("tex2pdf service reported compilation failure");
+                        String logText = extractLog(status);
+                        return Result.failure(errorMsg, logText, System.currentTimeMillis() - start);
+                    }
+                    // still processing/queued — continue polling
                 }
-                if ("failed".equalsIgnoreCase(statusStr)
-                        || "error".equalsIgnoreCase(statusStr)) {
-                    String errorMsg = status.path("error").asText(
-                            "tex2pdf service reported compilation failure");
-                    String logText = extractLog(status);
-                    return Result.failure(errorMsg, logText, System.currentTimeMillis() - start);
-                }
-                // still processing/queued — continue polling
+            } finally {
+                // The abort mark has done its job (or was never set) —
+                // the tracker entry must not outlive the poll loop.
+                tracker.forget(jobId);
             }
 
         } catch (InterruptedException e) {
@@ -148,9 +226,7 @@ public class Tex2PdfRbehzadanExecutor implements Tex2PdfExecutor {
             return Result.failure("Interrupted", null, System.currentTimeMillis() - start);
         } catch (IOException e) {
             log.warn("tex2pdf: rbehzadan executor error: {}", e.toString());
-            return Result.failure(
-                    "tex2pdf service error: " + e.getMessage(),
-                    null, System.currentTimeMillis() - start);
+            return Result.failure("tex2pdf service error: " + e.getMessage(), null, System.currentTimeMillis() - start);
         }
     }
 
@@ -175,10 +251,11 @@ public class Tex2PdfRbehzadanExecutor implements Tex2PdfExecutor {
                 request.tenantId(),
                 SettingService.SCOPE_PROJECT,
                 request.projectId() != null ? request.projectId() : "_tenant",
-                key, (int) appDefault);
+                key,
+                (int) appDefault);
         // Also try the cascade — getIntValue doesn't have a cascade variant
-        String cascadeVal = settings.getStringValueCascade(
-                request.tenantId(), request.projectId(), request.processId(), key);
+        String cascadeVal =
+                settings.getStringValueCascade(request.tenantId(), request.projectId(), request.processId(), key);
         if (cascadeVal != null && !cascadeVal.isBlank()) {
             try {
                 return Long.parseLong(cascadeVal.trim());
@@ -194,21 +271,17 @@ public class Tex2PdfRbehzadanExecutor implements Tex2PdfExecutor {
     private byte[] zipDirectory(Path rootDir) throws IOException {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try (ZipOutputStream zos = new ZipOutputStream(baos)) {
-            Files.walk(rootDir)
-                    .filter(Files::isRegularFile)
-                    .forEach(file -> {
-                        String relativePath = rootDir.relativize(file)
-                                .toString()
-                                .replace('\\', '/');
-                        ZipEntry entry = new ZipEntry(relativePath);
-                        try {
-                            zos.putNextEntry(entry);
-                            Files.copy(file, zos);
-                            zos.closeEntry();
-                        } catch (IOException e) {
-                            throw new RuntimeException("Failed to zip " + file, e);
-                        }
-                    });
+            Files.walk(rootDir).filter(Files::isRegularFile).forEach(file -> {
+                String relativePath = rootDir.relativize(file).toString().replace('\\', '/');
+                ZipEntry entry = new ZipEntry(relativePath);
+                try {
+                    zos.putNextEntry(entry);
+                    Files.copy(file, zos);
+                    zos.closeEntry();
+                } catch (IOException e) {
+                    throw new RuntimeException("Failed to zip " + file, e);
+                }
+            });
         }
         return baos.toByteArray();
     }
@@ -233,12 +306,10 @@ public class Tex2PdfRbehzadanExecutor implements Tex2PdfExecutor {
             reqBuilder.header("X-API-Key", apiKey);
         }
 
-        HttpResponse<String> response = httpClient.send(
-                reqBuilder.build(), HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> response = httpClient.send(reqBuilder.build(), HttpResponse.BodyHandlers.ofString());
 
         if (response.statusCode() != 200 && response.statusCode() != 201) {
-            throw new IOException("tex2pdf submit failed (HTTP " + response.statusCode()
-                    + "): " + response.body());
+            throw new IOException("tex2pdf submit failed (HTTP " + response.statusCode() + "): " + response.body());
         }
 
         JsonNode json = objectMapper.readTree(response.body());
@@ -259,12 +330,11 @@ public class Tex2PdfRbehzadanExecutor implements Tex2PdfExecutor {
             reqBuilder.header("X-API-Key", apiKey);
         }
 
-        HttpResponse<String> response = httpClient.send(
-                reqBuilder.build(), HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> response = httpClient.send(reqBuilder.build(), HttpResponse.BodyHandlers.ofString());
 
         if (response.statusCode() != 200) {
-            throw new IOException("tex2pdf status check failed (HTTP "
-                    + response.statusCode() + "): " + response.body());
+            throw new IOException(
+                    "tex2pdf status check failed (HTTP " + response.statusCode() + "): " + response.body());
         }
 
         return objectMapper.readTree(response.body());
@@ -280,12 +350,10 @@ public class Tex2PdfRbehzadanExecutor implements Tex2PdfExecutor {
             reqBuilder.header("X-API-Key", apiKey);
         }
 
-        HttpResponse<byte[]> response = httpClient.send(
-                reqBuilder.build(), HttpResponse.BodyHandlers.ofByteArray());
+        HttpResponse<byte[]> response = httpClient.send(reqBuilder.build(), HttpResponse.BodyHandlers.ofByteArray());
 
         if (response.statusCode() != 200) {
-            throw new IOException("tex2pdf download failed (HTTP "
-                    + response.statusCode() + ")");
+            throw new IOException("tex2pdf download failed (HTTP " + response.statusCode() + ")");
         }
 
         return response.body();
@@ -301,12 +369,17 @@ public class Tex2PdfRbehzadanExecutor implements Tex2PdfExecutor {
         return logNode.asText();
     }
 
-    private void writeMultipartField(ByteArrayOutputStream out, String boundary,
-                                     String fieldName, String filename,
-                                     String contentType, byte[] data) throws IOException {
+    private void writeMultipartField(
+            ByteArrayOutputStream out,
+            String boundary,
+            String fieldName,
+            String filename,
+            String contentType,
+            byte[] data)
+            throws IOException {
         out.write(("--" + boundary + "\r\n").getBytes(StandardCharsets.UTF_8));
-        out.write(("Content-Disposition: form-data; name=\"" + fieldName
-                + "\"; filename=\"" + filename + "\"\r\n").getBytes(StandardCharsets.UTF_8));
+        out.write(("Content-Disposition: form-data; name=\"" + fieldName + "\"; filename=\"" + filename + "\"\r\n")
+                .getBytes(StandardCharsets.UTF_8));
         out.write(("Content-Type: " + contentType + "\r\n\r\n").getBytes(StandardCharsets.UTF_8));
         out.write(data);
         out.write("\r\n".getBytes(StandardCharsets.UTF_8));

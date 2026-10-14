@@ -40,13 +40,13 @@ import org.springframework.data.mongodb.core.mapping.Document;
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = {
-                "de.flapdoodle.mongodb.embedded.version=7.0.12",
-                "spring.mongodb.uri=",
-                "spring.mongodb.database=vance-user-coverage",
-                "spring.data.mongodb.auto-index-creation=false",
-                "spring.shell.interactive.enabled=false",
-                "vance.encryption.password=coverage-test",
-                "vance.redis.enabled=false",
+            "de.flapdoodle.mongodb.embedded.version=7.0.12",
+            "spring.mongodb.uri=",
+            "spring.mongodb.database=vance-user-coverage",
+            "spring.data.mongodb.auto-index-creation=false",
+            "spring.shell.interactive.enabled=false",
+            "vance.encryption.password=coverage-test",
+            "vance.redis.enabled=false",
         })
 class UserDataCoverageTest {
 
@@ -59,28 +59,32 @@ class UserDataCoverageTest {
     private static final TreeMap<String, String> NOT_A_USER_REFERENCE = new TreeMap<>();
 
     static {
-        NOT_A_USER_REFERENCE.put("DatabaseIdentityDocument.owner",
-                "names the application that claimed the database, not a person");
-        NOT_A_USER_REFERENCE.put("SchemaMigrationLockDocument.owner",
-                "names the pod holding the migration lease");
-        NOT_A_USER_REFERENCE.put("LlmUsageDailyDocument.caller",
-                "an engine or subsystem name, never a login");
-        NOT_A_USER_REFERENCE.put("ImageCallRecord.caller",
-                "an engine or subsystem name, never a login");
-        NOT_A_USER_REFERENCE.put("StoreUserDocument.userId",
-                "the marketplace's own account, not a Vance login");
-        NOT_A_USER_REFERENCE.put("StoreSessionDocument.userId",
-                "the marketplace's own account, not a Vance login");
-        NOT_A_USER_REFERENCE.put("StoreLinkDocument.userId",
-                "the marketplace's own account, not a Vance login");
-        NOT_A_USER_REFERENCE.put("OrderDocument.userId",
-                "the marketplace's own account, not a Vance login");
+        NOT_A_USER_REFERENCE.put(
+                "ResourceLeaseHolderDocument.userId",
+                "quota scope of an ephemeral lease claim — self-expires via idle/pod reap, not account data");
+        NOT_A_USER_REFERENCE.put(
+                "DatabaseIdentityDocument.owner", "names the application that claimed the database, not a person");
+        NOT_A_USER_REFERENCE.put("SchemaMigrationLockDocument.owner", "names the pod holding the migration lease");
+        NOT_A_USER_REFERENCE.put("LlmUsageDailyDocument.caller", "an engine or subsystem name, never a login");
+        NOT_A_USER_REFERENCE.put("ImageCallRecord.caller", "an engine or subsystem name, never a login");
+        NOT_A_USER_REFERENCE.put("StoreUserDocument.userId", "the marketplace's own account, not a Vance login");
+        NOT_A_USER_REFERENCE.put("StoreSessionDocument.userId", "the marketplace's own account, not a Vance login");
+        NOT_A_USER_REFERENCE.put("StoreLinkDocument.userId", "the marketplace's own account, not a Vance login");
+        NOT_A_USER_REFERENCE.put("OrderDocument.userId", "the marketplace's own account, not a Vance login");
     }
 
     /** Field names that do refer to a Vance login. */
     private static final Set<String> USER_FIELDS = Set.of(
-            "userId", "createdBy", "actor", "accountId", "senderUserId", "fromUser",
-            "assignedToUserId", "originatorUserId", "requestedBy", "peerUserId");
+            "userId",
+            "createdBy",
+            "actor",
+            "accountId",
+            "senderUserId",
+            "fromUser",
+            "assignedToUserId",
+            "originatorUserId",
+            "requestedBy",
+            "peerUserId");
 
     /** A scan that resolves nothing would report perfect coverage. */
     private static final int MINIMUM_SCANNED_ENTITIES = 8;
@@ -93,8 +97,7 @@ class UserDataCoverageTest {
 
     @Test
     void theScanItself_findsTheEntities() {
-        assertThat(userReferencingEntities())
-                .hasSizeGreaterThanOrEqualTo(MINIMUM_SCANNED_ENTITIES);
+        assertThat(userReferencingEntities()).hasSizeGreaterThanOrEqualTo(MINIMUM_SCANNED_ENTITIES);
     }
 
     @Test
@@ -132,7 +135,8 @@ class UserDataCoverageTest {
         // projects — less work and a truer count.
         int hub = orderOf("hub-project");
         assertThat(handlers)
-                .filteredOn(h -> !Set.of("hub-project", "trillian-account-guard").contains(h.id()))
+                .filteredOn(
+                        h -> !Set.of("hub-project", "trillian-account-guard").contains(h.id()))
                 .allSatisfy(h -> assertThat(h.order())
                         .as("'%s' must not run before the hub project", h.id())
                         .isGreaterThan(hub));
@@ -141,8 +145,11 @@ class UserDataCoverageTest {
     @Test
     void cascadeHandlers_runBeforeTheSessionsTheyAreReachedThrough() {
         int sessions = orderOf("sessions");
-        for (String cascade : List.of("chat-messages-of-sessions", "engine-messages-of-sessions",
-                "marvin-nodes-of-sessions", "think-processes-of-sessions")) {
+        for (String cascade : List.of(
+                "chat-messages-of-sessions",
+                "engine-messages-of-sessions",
+                "marvin-nodes-of-sessions",
+                "think-processes-of-sessions")) {
             assertThat(orderOf(cascade))
                     .as("%s is found through the account's sessions", cascade)
                     .isLessThan(sessions);
@@ -153,8 +160,7 @@ class UserDataCoverageTest {
     void grantsAreRemovedBeforeAuthorshipIsTombstoned() {
         // Two handlers on one collection with different classes: the subject of
         // a grant is authority and goes, its author is a record and stays.
-        assertThat(orderOf("permission-grants"))
-                .isLessThan(orderOf("permission-grant-authors"));
+        assertThat(orderOf("permission-grants")).isLessThan(orderOf("permission-grant-authors"));
     }
 
     private int orderOf(String handlerId) {
@@ -167,8 +173,7 @@ class UserDataCoverageTest {
 
     /** Mapped documents on this classpath that declare a field naming a user. */
     private static List<Class<?>> userReferencingEntities() {
-        ClassPathScanningCandidateComponentProvider scanner =
-                new ClassPathScanningCandidateComponentProvider(false);
+        ClassPathScanningCandidateComponentProvider scanner = new ClassPathScanningCandidateComponentProvider(false);
         scanner.addIncludeFilter(new AnnotationTypeFilter(Document.class));
         List<Class<?>> found = new ArrayList<>();
         for (var candidate : scanner.findCandidateComponents(SCAN_ROOT)) {
@@ -195,8 +200,7 @@ class UserDataCoverageTest {
                 if (!USER_FIELDS.contains(field.getName())) {
                     continue;
                 }
-                if (NOT_A_USER_REFERENCE.containsKey(
-                        type.getSimpleName() + "." + field.getName())) {
+                if (NOT_A_USER_REFERENCE.containsKey(type.getSimpleName() + "." + field.getName())) {
                     continue;
                 }
                 return true;

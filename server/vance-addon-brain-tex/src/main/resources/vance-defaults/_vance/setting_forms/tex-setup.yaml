@@ -42,6 +42,22 @@ fields:
 
   # ─── Rbehzadan remote service ────────────────────────────────────
 
+  - name: lease
+    type: string
+    defaultValue: "tex"
+    label:
+      de: "Lease (gleichzeitige Kompilierungen)"
+      en: "Lease (concurrent compiles)"
+    help:
+      de: "Name der Lease-Definition (_vance/config/lease/<name>.yaml), die
+           gleichzeitige Kompilierungen über alle Quota-Ebenen begrenzt.
+           'none' oder leer deaktiviert die Begrenzung. Default: tex."
+      en: "Name of the lease definition (_vance/config/lease/<name>.yaml) that
+           caps concurrent compiles across the quota levels. 'none' or empty
+           disables the cap. Default: tex."
+    bindsTo:
+      key: "tex.lease"
+
   - name: rbehzadanUrl
     type: string
     label:

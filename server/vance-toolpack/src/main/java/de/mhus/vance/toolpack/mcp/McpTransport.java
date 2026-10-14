@@ -1,7 +1,7 @@
 package de.mhus.vance.toolpack.mcp;
 
-import de.mhus.vance.toolpack.core.McpJsonRpc;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.core.McpJsonRpc;
 import java.time.Duration;
 import java.util.Map;
 import java.util.function.Consumer;
@@ -54,19 +54,13 @@ public interface McpTransport extends AutoCloseable {
      */
     @Nullable
     Object sendRequest(
-            String method,
-            @Nullable Map<String, Object> params,
-            Duration timeout,
-            ToolInvocationContext ctx);
+            String method, @Nullable Map<String, Object> params, Duration timeout, ToolInvocationContext ctx);
 
     /**
      * Sends a JSON-RPC notification. No response is expected; failures
      * to write are propagated as {@link RuntimeException}.
      */
-    void sendNotification(
-            String method,
-            @Nullable Map<String, Object> params,
-            ToolInvocationContext ctx);
+    void sendNotification(String method, @Nullable Map<String, Object> params, ToolInvocationContext ctx);
 
     /**
      * Registers a listener for server-pushed notifications. The MCP
@@ -77,6 +71,15 @@ public interface McpTransport extends AutoCloseable {
      * is safe.
      */
     void setNotificationHandler(@Nullable Consumer<McpJsonRpc.Frame.Notification> handler);
+
+    /**
+     * Server-assigned Streamable-HTTP session id, when the transport
+     * has one and knows it — the host uses it as lease payload for cleanup
+     * after the holder died. Default: no session notion.
+     */
+    default @Nullable String currentSessionId() {
+        return null;
+    }
 
     /** {@code true} when {@link #open} has been called and {@link #close} hasn't. */
     boolean isOpen();

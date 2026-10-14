@@ -45,13 +45,13 @@ import org.springframework.data.mongodb.core.mapping.Document;
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = {
-                "de.flapdoodle.mongodb.embedded.version=7.0.12",
-                "spring.mongodb.uri=",
-                "spring.mongodb.database=vance-coverage",
-                "spring.data.mongodb.auto-index-creation=false",
-                "spring.shell.interactive.enabled=false",
-                "vance.encryption.password=coverage-test",
-                "vance.redis.enabled=false",
+            "de.flapdoodle.mongodb.embedded.version=7.0.12",
+            "spring.mongodb.uri=",
+            "spring.mongodb.database=vance-coverage",
+            "spring.data.mongodb.auto-index-creation=false",
+            "spring.shell.interactive.enabled=false",
+            "vance.encryption.password=coverage-test",
+            "vance.redis.enabled=false",
         })
 class ProjectDataCoverageTest {
 
@@ -65,7 +65,10 @@ class ProjectDataCoverageTest {
     private static final TreeMap<String, String> NOT_PROJECT_DATA = new TreeMap<>();
 
     static {
-        // Nothing so far — every projectId-carrying entity has a handler.
+        NOT_PROJECT_DATA.put(
+                "ResourceLeaseHolderDocument",
+                "ephemeral lease claim of the resource-lease system — self-expires via"
+                        + " idle/pod reap within the lease TTL, never project data to drain");
     }
 
     @Autowired
@@ -98,8 +101,7 @@ class ProjectDataCoverageTest {
         List<String> uncovered = new ArrayList<>();
         for (Class<?> entity : projectScopedEntities()) {
             String collection = mongoTemplate.getCollectionName(entity);
-            if (claimed.contains(collection)
-                    || NOT_PROJECT_DATA.containsKey(entity.getSimpleName())) {
+            if (claimed.contains(collection) || NOT_PROJECT_DATA.containsKey(entity.getSimpleName())) {
                 continue;
             }
             uncovered.add(entity.getName() + " (" + collection + ")");
@@ -143,8 +145,7 @@ class ProjectDataCoverageTest {
                     .as("%s is found through the project's sessions", cascade)
                     .isLessThan(sessions);
         }
-        for (String cascade :
-                List.of("engine-messages", "marvin-nodes", "settings-process-scope")) {
+        for (String cascade : List.of("engine-messages", "marvin-nodes", "settings-process-scope")) {
             assertThat(orderOf(cascade))
                     .as("%s is found through the project's think processes", cascade)
                     .isLessThan(thinkProcesses);
@@ -161,8 +162,7 @@ class ProjectDataCoverageTest {
 
     /** Mapped documents on this classpath that declare a {@code projectId}. */
     private static List<Class<?>> projectScopedEntities() {
-        ClassPathScanningCandidateComponentProvider scanner =
-                new ClassPathScanningCandidateComponentProvider(false);
+        ClassPathScanningCandidateComponentProvider scanner = new ClassPathScanningCandidateComponentProvider(false);
         scanner.addIncludeFilter(new AnnotationTypeFilter(Document.class));
         List<Class<?>> found = new ArrayList<>();
         for (var candidate : scanner.findCandidateComponents(SCAN_ROOT)) {

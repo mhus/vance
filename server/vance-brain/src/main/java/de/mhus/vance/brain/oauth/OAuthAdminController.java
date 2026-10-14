@@ -44,7 +44,7 @@ import org.springframework.web.server.ResponseStatusException;
  * tenant admins can read or write provider configs.
  */
 @RestController
-@RequestMapping("/brain/{tenant}/admin/oauth")
+@RequestMapping("/brain/{tenant}/admin/oauth-client")
 @RequiredArgsConstructor
 @Slf4j
 public class OAuthAdminController {

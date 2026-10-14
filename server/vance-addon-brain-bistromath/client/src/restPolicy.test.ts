@@ -40,7 +40,7 @@ describe('canonicalRestPath', () => {
 describe('checkRestAllowed', () => {
 
   it('closes the floor', () => {
-    for (const denied of ['admin', 'share', 'mcp', 'oauth', 'access', 'refresh',
+    for (const denied of ['admin', 'share', 'mcp', 'oauth', 'oauth-client', 'access', 'refresh',
                           'logout', 'compose', 'python', 'script', 'scripts']) {
       expect(() => checkRestAllowed(denied)).toThrow(RestDeniedError);
       expect(() => checkRestAllowed(`${denied}/anything/deeper`)).toThrow(RestDeniedError);

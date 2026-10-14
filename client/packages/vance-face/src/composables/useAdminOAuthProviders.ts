@@ -7,7 +7,7 @@ import { brainFetch } from '@vance/shared';
 
 /**
  * Admin-side CRUD for OAuth provider configurations. Talks to
- * {@code /brain/{tenant}/admin/oauth/providers}.
+ * {@code /brain/{tenant}/admin/oauth-client/providers}.
  *
  * <p>{@code clientSecret} handling follows the
  * {@link OAuthProviderWriteRequest} three-state contract:
@@ -35,7 +35,7 @@ export function useAdminOAuthProviders(): {
     try {
       providers.value = await brainFetch<OAuthProviderAdminDto[]>(
         'GET',
-        'admin/oauth/providers',
+        'admin/oauth-client/providers',
       );
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load OAuth providers.';
@@ -48,7 +48,7 @@ export function useAdminOAuthProviders(): {
   async function get(providerId: string): Promise<OAuthProviderAdminDto> {
     return brainFetch<OAuthProviderAdminDto>(
       'GET',
-      `admin/oauth/providers/${encodeURIComponent(providerId)}`,
+      `admin/oauth-client/providers/${encodeURIComponent(providerId)}`,
     );
   }
 
@@ -61,7 +61,7 @@ export function useAdminOAuthProviders(): {
     try {
       const saved = await brainFetch<OAuthProviderAdminDto>(
         'PUT',
-        `admin/oauth/providers/${encodeURIComponent(providerId)}`,
+        `admin/oauth-client/providers/${encodeURIComponent(providerId)}`,
         { body },
       );
       await reload();
@@ -80,7 +80,7 @@ export function useAdminOAuthProviders(): {
     try {
       await brainFetch<void>(
         'DELETE',
-        `admin/oauth/providers/${encodeURIComponent(providerId)}`,
+        `admin/oauth-client/providers/${encodeURIComponent(providerId)}`,
       );
       await reload();
     } catch (e) {

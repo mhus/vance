@@ -8,7 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * One entry in the response of {@code GET /brain/{tenant}/oauth/providers}.
+ * One entry in the response of {@code GET /brain/{tenant}/oauth-client/providers}.
  * Lists the OAuth provider configurations the tenant has installed and
  * whether the calling user has already connected.
  */

@@ -44,7 +44,7 @@ class OAuthControllerTest {
     private static final String PROVIDER_ID = "slack";
     private static final String PUBLIC_BASE = "https://vance.example.com";
     private static final String EXPECTED_REDIRECT_URI =
-            "https://vance.example.com/brain/acme/oauth/slack/callback";
+            "https://vance.example.com/brain/acme/oauth-client/slack/callback";
 
     private OAuthConfigRegistry configRegistry;
     private OAuthStateService stateService;

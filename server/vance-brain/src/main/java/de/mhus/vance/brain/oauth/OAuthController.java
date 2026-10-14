@@ -37,7 +37,7 @@ import tools.jackson.databind.json.JsonMapper;
  * User-facing OAuth endpoints — list of configured providers, init
  * (redirect to provider), callback (consume code, persist tokens).
  *
- * <p>The endpoints are tenant-scoped under {@code /brain/{tenant}/oauth};
+ * <p>The endpoints are tenant-scoped under {@code /brain/{tenant}/oauth-client};
  * the tenant path variable is validated by the brain access filter
  * against the caller's JWT before requests reach this controller.
  * The callback explicitly re-validates state against the authenticated
@@ -51,7 +51,7 @@ import tools.jackson.databind.json.JsonMapper;
  * {@code oauth.<providerId>.extra} (STRING JSON-blob).
  */
 @RestController
-@RequestMapping("/brain/{tenant}/oauth")
+@RequestMapping("/brain/{tenant}/oauth-client")
 @Slf4j
 public class OAuthController {
 
@@ -82,7 +82,7 @@ public class OAuthController {
             SettingService settingService,
             RequestAuthority authority,
             ApplicationEventPublisher events,
-            @Value("${vance.web.public-base-url:http://localhost:18080}") String publicBaseUrl) {
+            @Value("${vance.web.public-base-url}") String publicBaseUrl) {
         this.configRegistry = configRegistry;
         this.stateService = stateService;
         this.settingService = settingService;
@@ -374,7 +374,7 @@ public class OAuthController {
 
     private String redirectUriFor(String tenant, String providerId) {
         return UriComponentsBuilder.fromUriString(publicBaseUrl)
-                .pathSegment("brain", tenant, "oauth", providerId, "callback")
+                .pathSegment("brain", tenant, "oauth-client", providerId, "callback")
                 .build()
                 .toUriString();
     }

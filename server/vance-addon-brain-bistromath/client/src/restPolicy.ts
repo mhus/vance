@@ -33,7 +33,8 @@ const DENIED: { prefix: string; because: string }[] = [
   { prefix: 'access', because: 'session and credential machinery' },
   { prefix: 'refresh', because: 'session and credential machinery' },
   { prefix: 'logout', because: 'session and credential machinery' },
-  { prefix: 'oauth', because: 'credentials for third-party accounts' },
+  { prefix: 'oauth', because: 'session and credential machinery' },
+  { prefix: 'oauth-client', because: 'credentials for third-party accounts' },
 
   // Lasting rights, and anything that leaves the building.
   { prefix: 'admin', because: 'administration — grants, catalogues, session exports' },

@@ -13,7 +13,7 @@ import org.jspecify.annotations.Nullable;
  * @param state        single-use CSRF/state token persisted in
  *                     {@code OAuthStateDocument} until the callback
  *                     consumes it
- * @param redirectUri  absolute callback URL ({@code https://<brain>/brain/{tenant}/oauth/{providerId}/callback})
+ * @param redirectUri  absolute callback URL ({@code https://<brain>/brain/{tenant}/oauth-client/{providerId}/callback})
  * @param returnTo     Web-UI path the browser should be redirected to
  *                     after the callback completes; {@code null} for the
  *                     UI's default

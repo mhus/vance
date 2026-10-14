@@ -452,7 +452,7 @@ class AccessControllerTest {
 
         // Access cookie: HttpOnly, Secure, SameSite=Lax, Path=/.
         // Lax (not Strict) so the OAuth callback redirect from a
-        // provider back to /brain/.../oauth/.../callback carries the
+        // provider back to /brain/.../oauth-client/.../callback carries the
         // cookie — a Strict cookie would be dropped on that cross-site
         // top-level GET navigation.
         String access = findCookie(setCookies, WebUiCookies.ACCESS);

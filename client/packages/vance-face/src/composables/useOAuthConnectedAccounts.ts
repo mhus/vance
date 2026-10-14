@@ -29,7 +29,7 @@ export function useOAuthConnectedAccounts(): {
     try {
       providers.value = await brainFetch<OAuthProviderListEntry[]>(
         'GET',
-        'oauth/providers',
+        'oauth-client/providers',
       );
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load OAuth providers.';
@@ -48,7 +48,7 @@ export function useOAuthConnectedAccounts(): {
       error.value = 'No tenant configured — user is not logged in.';
       return;
     }
-    const path = `${brainBaseUrl()}/brain/${encodeURIComponent(tenant)}/oauth/${
+    const path = `${brainBaseUrl()}/brain/${encodeURIComponent(tenant)}/oauth-client/${
       encodeURIComponent(providerId)
     }/init`;
     const target = returnTo
@@ -63,7 +63,7 @@ export function useOAuthConnectedAccounts(): {
     try {
       await brainFetch<void>(
         'DELETE',
-        `oauth/${encodeURIComponent(providerId)}/connection`,
+        `oauth-client/${encodeURIComponent(providerId)}/connection`,
       );
       await reload();
     } catch (e) {

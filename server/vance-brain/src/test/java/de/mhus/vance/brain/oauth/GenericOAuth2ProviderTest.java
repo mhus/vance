@@ -65,7 +65,7 @@ class GenericOAuth2ProviderTest {
         OAuthProviderConfig cfg = cfg("https://provider.example/authorize",
                 "http://localhost/token", List.of("openid", "email"));
         OAuthInitContext ctx = ctx("STATE-XYZ",
-                "https://vance.example.com/brain/acme/oauth/keycloak/callback");
+                "https://vance.example.com/brain/acme/oauth-client/keycloak/callback");
 
         URI uri = provider.buildAuthorizeUri(cfg, ctx);
 
@@ -75,7 +75,7 @@ class GenericOAuth2ProviderTest {
                 .contains("client_id=my-app")
                 .contains("state=STATE-XYZ")
                 .contains("scope=openid+email")
-                .contains("redirect_uri=https%3A%2F%2Fvance.example.com%2Fbrain%2Facme%2Foauth%2Fkeycloak%2Fcallback");
+                .contains("redirect_uri=https%3A%2F%2Fvance.example.com%2Fbrain%2Facme%2Foauth-client%2Fkeycloak%2Fcallback");
     }
 
     @Test

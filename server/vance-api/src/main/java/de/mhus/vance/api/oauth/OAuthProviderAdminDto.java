@@ -10,7 +10,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Admin-view of one provider config. Returned by {@code GET
- * /brain/{tenant}/admin/oauth/providers} and the single-provider GET.
+ * /brain/{tenant}/admin/oauth-client/providers} and the single-provider GET.
  * The YAML body round-trips verbatim so the admin form can edit it
  * without losing comments or field order.
  *

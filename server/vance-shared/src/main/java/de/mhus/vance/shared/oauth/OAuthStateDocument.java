@@ -12,9 +12,9 @@ import org.springframework.data.mongodb.core.mapping.Document;
 
 /**
  * One in-flight OAuth authorization code-grant flow. Created by
- * {@code GET /brain/{tenant}/oauth/{providerId}/init} before the
+ * {@code GET /brain/{tenant}/oauth-client/{providerId}/init} before the
  * browser is redirected to the provider, consumed by
- * {@code GET /brain/{tenant}/oauth/{providerId}/callback} on return.
+ * {@code GET /brain/{tenant}/oauth-client/{providerId}/callback} on return.
  *
  * <p>{@code state} is the random CSRF token round-tripped through the
  * provider; the matching document binds it to the originating

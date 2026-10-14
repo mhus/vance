@@ -10,7 +10,7 @@ import lombok.NoArgsConstructor;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Payload for {@code PUT /brain/{tenant}/admin/oauth/{providerId}} —
+ * Payload for {@code PUT /brain/{tenant}/admin/oauth-client/{providerId}} —
  * upserts the provider's YAML config and, when {@link #clientSecret}
  * is non-null, the tenant-PASSWORD setting that holds the secret.
  *

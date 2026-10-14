@@ -1,6 +1,7 @@
 package de.mhus.vance.shared.lease;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -63,5 +64,33 @@ class LeaseDefinitionTest {
 
         assertThat(def.ttlSecondsOrDefault()).isEqualTo(LeaseDefinition.DEFAULT_TTL_SECONDS);
         assertThat(def.waitMsOrDefault()).isEqualTo(LeaseDefinition.DEFAULT_WAIT_MS);
+    }
+
+    @Test
+    void fromLayer_capBelowOne_isRejected() {
+        // cap 0 would not block: the first acquisition creates the counter.
+        assertThatThrownBy(() -> LeaseDefinition.fromLayer("tex", Map.of("levels", Map.of("project", 0))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("levels.project")
+                .hasMessageContaining("at least 1");
+    }
+
+    @Test
+    void fromLayer_nonNumericCap_isAnErrorNotUnset() {
+        assertThatThrownBy(() -> LeaseDefinition.fromLayer("tex", Map.of("levels", Map.of("tenant", "three"))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("levels.tenant")
+                .hasMessageContaining("not a number");
+    }
+
+    @Test
+    void isValidName_acceptsPlainNames_rejectsPathSyntax() {
+        assertThat(LeaseDefinition.isValidName("tex")).isTrue();
+        assertThat(LeaseDefinition.isValidName("browser-session_2")).isTrue();
+        assertThat(LeaseDefinition.isValidName("../x")).isFalse();
+        assertThat(LeaseDefinition.isValidName("a/b")).isFalse();
+        assertThat(LeaseDefinition.isValidName("tex.yaml")).isFalse();
+        assertThat(LeaseDefinition.isValidName("")).isFalse();
+        assertThat(LeaseDefinition.isValidName(null)).isFalse();
     }
 }

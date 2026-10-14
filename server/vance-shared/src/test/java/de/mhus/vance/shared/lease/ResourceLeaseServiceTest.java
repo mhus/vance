@@ -6,33 +6,30 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.mongodb.client.result.UpdateResult;
 import de.mhus.vance.shared.metric.MetricService;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.dao.DuplicateKeyException;
-import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
 
 /**
- * The acquisition decision logic of {@link ResourceLeaseService} — funnel
- * order, rollback, NOOP path, busy diagnosis, check-at-use. The Mongo
- * atomicity itself (conditional upsert under concurrency, the $expr reap
- * filter on server time) is the E2E lane's concern
- * ({@code qa/ai-test/ResourceLeaseE2ETest}); here MongoTemplate is a mock
- * that records the funnel.
+ * The acquisition logic of {@link ResourceLeaseService} against
+ * {@link FakeLeaseStore} — funnel order, first use of a counter, rollback
+ * on busy and on store failure, lazy reap dispatch, check-at-use, release
+ * and reconcile. The real Mongo semantics under concurrency (conditional
+ * update, {@code $expr} reap filter on server time) are the E2E lane's
+ * concern ({@code qa/ai-test/ResourceLeaseE2ETest}).
  */
 class ResourceLeaseServiceTest {
 
@@ -40,28 +37,25 @@ class ResourceLeaseServiceTest {
     private static final String PROJECT = "proj-1";
     private static final String USER = "alice";
 
-    private MongoTemplate mongoTemplate;
+    private FakeLeaseStore store;
     private LeaseDefinitionLoader loader;
+    private final List<LeaseHolderInfo> reapedToListener = new ArrayList<>();
     private ResourceLeaseService service;
 
     @BeforeEach
+    @SuppressWarnings("unchecked")
     void setUp() {
-        mongoTemplate = mock(MongoTemplate.class);
+        store = new FakeLeaseStore();
         loader = mock(LeaseDefinitionLoader.class);
         MetricService metrics = mock(MetricService.class);
         when(metrics.counter(anyString(), any(String[].class)))
                 .thenReturn(io.micrometer.core.instrument.Counter.builder("x")
                         .register(new io.micrometer.core.instrument.simple.SimpleMeterRegistry()));
-        @SuppressWarnings("unchecked")
         ObjectProvider<LeaseHandler> handlers = mock(ObjectProvider.class);
         when(handlers.orderedStream()).thenReturn(java.util.stream.Stream.of(new TestHandler()));
-        service = new ResourceLeaseService(mongoTemplate, loader, metrics, handlers);
-
-        when(mongoTemplate.insert(any(ResourceLeaseHolderDocument.class))).thenAnswer(inv -> inv.getArgument(0));
-        UpdateResult one = mock(UpdateResult.class);
-        when(one.getModifiedCount()).thenReturn(1L);
-        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class), any(Class.class)))
-                .thenReturn(one);
+        ObjectProvider<LeaseRevocationListener> listeners = mock(ObjectProvider.class);
+        when(listeners.getIfAvailable()).thenReturn(reapedToListener::addAll);
+        service = new ResourceLeaseService(store.template, loader, metrics, handlers, listeners);
     }
 
     private static LeaseRequest request(LeaseDefinition inline) {
@@ -83,26 +77,38 @@ class ResourceLeaseServiceTest {
     // ──────────────── funnel ────────────────
 
     @Test
-    void acquire_pushesCountersNarrowToWide() {
+    void acquire_booksEveryLevel_userScopedAcrossProjects() {
         Lease lease = service.acquire(request(def(2L, 2L, 2L, 2L, 0L)));
 
         assertThat(lease.isNoop()).isFalse();
-        ArgumentCaptor<Query> queries = ArgumentCaptor.forClass(Query.class);
-        // One findAndModify per level, narrow → wide (§3).
-        verify(mongoTemplate, times(4))
-                .findAndModify(queries.capture(), any(Update.class), any(), eq(ResourceLeaseCounterDocument.class));
-        List<String> keys = queries.getAllValues().stream()
-                .map(q -> String.valueOf(q.getQueryObject().get("_id")))
-                .toList();
-        assertThat(keys)
+        ResourceLeaseHolderDocument holder = store.holders.get(lease.holderToken());
+        // Narrow → wide, and the user level is per (tenant, user) — not per project.
+        assertThat(holder.getLevels())
                 .containsExactly(
-                        "tex2pdf|user|acme/proj-1/alice",
+                        "tex2pdf|user|acme/alice",
                         "tex2pdf|project|acme/proj-1",
                         "tex2pdf|tenant|acme",
                         "tex2pdf|global|");
-        // The holder ends up HELD.
-        verify(mongoTemplate, atLeastOnce())
-                .updateFirst(any(Query.class), any(Update.class), eq(ResourceLeaseHolderDocument.class));
+        assertThat(holder.getState()).isEqualTo(ResourceLeaseService.STATE_HELD);
+        holder.getLevels().forEach(key -> assertThat(store.count(key)).isEqualTo(1));
+    }
+
+    @Test
+    void acquire_userCap_appliesAcrossTheTenantsProjects() {
+        service.acquire(request(def(null, null, null, 1L, 0L)));
+        LeaseRequest otherProject = LeaseRequest.builder()
+                .type("test")
+                .inline(def(null, null, null, 1L, 0L))
+                .tenantId(TENANT)
+                .projectId("proj-2")
+                .userId(USER)
+                .holderRef("holder-ref")
+                .pod("pod-1")
+                .build();
+
+        assertThatThrownBy(() -> service.acquire(otherProject))
+                .isInstanceOf(LeaseBusyException.class)
+                .hasMessageContaining("'user'");
     }
 
     @Test
@@ -115,65 +121,97 @@ class ResourceLeaseServiceTest {
                 .pod("pod-1")
                 .build();
 
-        service.acquire(noProject);
+        Lease lease = service.acquire(noProject);
 
-        ArgumentCaptor<Query> queries = ArgumentCaptor.forClass(Query.class);
-        // Project/user caps skipped (no scope), global cap absent, tenant cap applies.
-        verify(mongoTemplate, times(1))
-                .findAndModify(queries.capture(), any(Update.class), any(), eq(ResourceLeaseCounterDocument.class));
-        assertThat(String.valueOf(queries.getValue().getQueryObject().get("_id")))
-                .isEqualTo("tex2pdf|tenant|acme");
+        assertThat(store.holders.get(lease.holderToken()).getLevels()).containsExactly("tex2pdf|tenant|acme");
+    }
+
+    @Test
+    void acquire_firstUseOfACounter_createsItAtZeroInsteadOfReportingBusy() {
+        assertThat(store.counters).isEmpty();
+
+        service.acquire(request(def(null, 1L, null, null, 0L)));
+
+        assertThat(store.count("tex2pdf|tenant|acme")).isEqualTo(1);
     }
 
     @Test
     void acquire_busyLevel_rollsBackAlreadyTakenCounters() {
-        // Two levels (project, tenant): the first counter is taken, the
-        // second is full — the attempt must roll the first one back.
-        LeaseRequest two = LeaseRequest.builder()
-                .type("test")
-                .inline(def(null, 1L, 1L, null, 0L))
-                .tenantId(TENANT)
-                .projectId(PROJECT)
-                .holderRef("holder-ref")
-                .pod("pod-1")
-                .build();
-        when(mongoTemplate.findAndModify(
-                        any(Query.class), any(Update.class), any(), eq(ResourceLeaseCounterDocument.class)))
-                .thenAnswer(inv -> {
-                    Query q = inv.getArgument(0);
-                    return new ResourceLeaseCounterDocument(
-                            String.valueOf(q.getQueryObject().get("_id")), 1);
-                })
-                .thenThrow(new DuplicateKeyException("dup"));
+        store.putCounter("tex2pdf|tenant|acme", 1, Instant.now());
 
-        assertThatThrownBy(() -> service.acquire(two))
+        assertThatThrownBy(() -> service.acquire(request(def(null, 1L, 1L, null, 0L))))
                 .isInstanceOf(LeaseBusyException.class)
                 .hasMessageContaining("tenant")
-                .hasMessageContaining("full");
+                .hasMessageContaining("(1/1 held)");
 
-        // The first counter (project) was taken and must be given back —
-        // one dec(-1) update against the counters collection.
-        ArgumentCaptor<Update> dec = ArgumentCaptor.forClass(Update.class);
-        verify(mongoTemplate, atLeastOnce())
-                .updateFirst(any(Query.class), dec.capture(), eq(ResourceLeaseCounterDocument.class));
-        assertThat(dec.getAllValues().stream().anyMatch(u -> u.toString().contains("-1")))
-                .as("rollback decrements the already-acquired level")
-                .isTrue();
+        assertThat(store.count("tex2pdf|project|acme/proj-1"))
+                .as("the project level taken first is given back")
+                .isZero();
+        assertThat(store.count("tex2pdf|tenant|acme")).isEqualTo(1);
+        assertThat(store.holders).isEmpty();
     }
 
     @Test
-    void acquire_busyWithinWaitBudget_retriesUntilDeadline() {
-        when(mongoTemplate.findAndModify(
-                        any(Query.class), any(Update.class), any(), eq(ResourceLeaseCounterDocument.class)))
-                .thenThrow(new DuplicateKeyException("dup"))
-                .thenThrow(new DuplicateKeyException("dup"))
-                .thenAnswer(inv -> new ResourceLeaseCounterDocument("key", 1));
+    void acquire_busyWithinWaitBudget_succeedsOnceASlotFrees() throws Exception {
+        Lease first = service.acquire(request(def(null, 1L, null, null, 0L)));
+        Thread releaser = Thread.ofVirtual().start(() -> {
+            try {
+                Thread.sleep(150);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            first.release();
+        });
 
-        Lease lease = service.acquire(request(def(null, 1L, null, null, 5_000L)));
+        Lease second = service.acquire(request(def(null, 1L, null, null, 5_000L)));
+        releaser.join();
 
-        assertThat(lease.isNoop()).isFalse();
-        verify(mongoTemplate, times(3))
-                .findAndModify(any(Query.class), any(Update.class), any(), eq(ResourceLeaseCounterDocument.class));
+        assertThat(second.isNoop()).isFalse();
+        assertThat(store.count("tex2pdf|tenant|acme")).isEqualTo(1);
+    }
+
+    @Test
+    void acquire_storeFailureMidFunnel_rollsBackAndFailsClosed() {
+        // The second level's $push fails: the first level's counter and the
+        // half-booked holder must not survive the attempt.
+        int[] pushes = {0};
+        store.failWhen(op -> op.equals("holder.push") && ++pushes[0] == 2);
+
+        assertThatThrownBy(() -> service.acquire(request(def(null, 1L, 1L, null, 0L))))
+                .isInstanceOf(LeaseUnavailableException.class)
+                .hasMessageContaining("injected store failure");
+
+        assertThat(store.holders).isEmpty();
+        assertThat(store.count("tex2pdf|project|acme/proj-1")).isZero();
+        assertThat(store.count("tex2pdf|tenant|acme")).isZero();
+    }
+
+    @Test
+    void acquire_holderReapedDuringAcquisition_isUnavailable() {
+        // The HELD update finds no holder: a reaper removed it mid-funnel.
+        store.failWhen(op -> {
+            if (op.equals("holder.update")) store.holders.clear();
+            return false;
+        });
+
+        assertThatThrownBy(() -> service.acquire(request(def(null, 1L, null, null, 0L))))
+                .isInstanceOf(LeaseUnavailableException.class)
+                .hasMessageContaining("reaped during acquisition");
+    }
+
+    @Test
+    void acquire_lazyIdleReap_handsReapedHoldersToTheListener() {
+        Lease stale = service.acquire(request(def(null, 1L, null, null, 0L)));
+        store.expire(stale.holderToken());
+
+        Lease fresh = service.acquire(request(def(null, 1L, null, null, 0L)));
+
+        assertThat(fresh.holderToken()).isNotEqualTo(stale.holderToken());
+        assertThat(reapedToListener).singleElement().satisfies(info -> {
+            assertThat(info.token()).isEqualTo(stale.holderToken());
+            assertThat(info.type()).isEqualTo("test");
+        });
+        assertThat(store.count("tex2pdf|tenant|acme")).isEqualTo(1);
     }
 
     @Test
@@ -182,7 +220,8 @@ class ResourceLeaseServiceTest {
 
         assertThat(lease.isNoop()).isTrue();
         assertThatCode(lease::check).doesNotThrowAnyException();
-        verify(mongoTemplate, never()).insert(any(ResourceLeaseHolderDocument.class));
+        verify(store.template, never())
+                .upsert(any(Query.class), any(Update.class), eq(ResourceLeaseHolderDocument.class));
     }
 
     @Test
@@ -203,43 +242,111 @@ class ResourceLeaseServiceTest {
     @Test
     void acquire_missingNamedDefinition_isRejected() {
         when(loader.load(TENANT, PROJECT, "ghost")).thenReturn(Optional.empty());
-        LeaseRequest named = LeaseRequest.builder()
+
+        assertThatThrownBy(() -> service.acquire(named("ghost")))
+                .isInstanceOf(LeaseUnavailableException.class)
+                .hasMessageContaining("not defined in any layer");
+    }
+
+    @Test
+    void acquire_invalidLeaseName_isRejectedBeforeAnyLookup() {
+        assertThatThrownBy(() -> service.acquire(named("../setting_forms/x")))
+                .isInstanceOf(LeaseUnavailableException.class)
+                .hasMessageContaining("invalid lease name");
+        verify(loader, never()).load(any(), any(), any());
+    }
+
+    private static LeaseRequest named(String name) {
+        return LeaseRequest.builder()
                 .type("test")
-                .lease("ghost")
+                .lease(name)
                 .tenantId(TENANT)
                 .projectId(PROJECT)
                 .holderRef("holder-ref")
                 .pod("pod-1")
                 .build();
-
-        assertThatThrownBy(() -> service.acquire(named))
-                .isInstanceOf(LeaseUnavailableException.class)
-                .hasMessageContaining("not defined in any layer");
     }
 
-    // ──────────────── check / release ────────────────
+    // ──────────────── check / payload / release ────────────────
+
+    @Test
+    void check_twiceWithinTheSameMillisecond_isNotLost() {
+        // The fake's server clock is fixed: the second touch writes an
+        // identical lastSeenAt — matched, not modified. Still held.
+        Lease lease = service.acquire(request(def(1L, null, null, null, 0L)));
+
+        assertThatCode(() -> {
+                    lease.check();
+                    lease.check();
+                })
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void updatePayload_identicalPayload_isNotLost() {
+        Lease lease = service.acquire(request(def(1L, null, null, null, 0L)));
+
+        lease.updatePayload(Map.of("jobId", "j-1"));
+        assertThatCode(() -> lease.updatePayload(Map.of("jobId", "j-1"))).doesNotThrowAnyException();
+        assertThat(store.holders.get(lease.holderToken()).getPayload()).containsEntry("jobId", "j-1");
+    }
 
     @Test
     void check_holderGone_throwsLeaseLost() {
         Lease lease = service.acquire(request(def(1L, null, null, null, 0L)));
-        UpdateResult zero = mock(UpdateResult.class);
-        when(zero.getModifiedCount()).thenReturn(0L);
-        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class), eq(ResourceLeaseHolderDocument.class)))
-                .thenReturn(zero);
+        store.holders.clear();
 
         assertThatThrownBy(lease::check).isInstanceOf(LeaseLostException.class);
     }
 
     @Test
-    void release_holderAbsent_isIdempotent() {
-        when(mongoTemplate.findAndRemove(any(Query.class), eq(ResourceLeaseHolderDocument.class)))
-                .thenReturn(null);
-        Lease lease = service.acquire(request(def(1L, null, null, null, 0L)));
+    void release_freesTheSlots_andIsIdempotent() {
+        Lease lease = service.acquire(request(def(1L, 1L, null, null, 0L)));
 
         lease.release();
         lease.release();
 
-        verify(mongoTemplate, times(2)).findAndRemove(any(Query.class), eq(ResourceLeaseHolderDocument.class));
+        assertThat(store.holders).isEmpty();
+        assertThat(store.count("tex2pdf|global|")).isZero();
+        assertThat(store.count("tex2pdf|tenant|acme")).isZero();
+    }
+
+    // ──────────────── reconcile ────────────────
+
+    @Test
+    void reconcile_correctsDriftFromTheHolders() {
+        Lease lease = service.acquire(request(def(null, 5L, null, null, 0L)));
+        Instant old = Instant.parse("2026-01-01T00:00:00Z");
+        store.putCounter("tex2pdf|tenant|acme", 3, old);
+
+        long corrected = service.reconcile(old.plusSeconds(60));
+
+        assertThat(corrected).isEqualTo(1);
+        assertThat(store.count("tex2pdf|tenant|acme")).isEqualTo(1);
+        assertThat(lease.holderToken()).isNotBlank();
+    }
+
+    @Test
+    void reconcile_removesCountersNoHolderBooks() {
+        Instant old = Instant.parse("2026-01-01T00:00:00Z");
+        store.putCounter("tex2pdf|user|acme/bob", 0, old);
+        store.putCounter("tex2pdf|project|acme/gone", 2, old);
+
+        long corrected = service.reconcile(old.plusSeconds(60));
+
+        assertThat(store.counters).isEmpty();
+        assertThat(corrected).as("only the drifted one counts as a correction").isEqualTo(1);
+    }
+
+    @Test
+    void reconcile_leavesRecentlyWrittenCountersAlone() {
+        Instant recent = Instant.parse("2026-01-01T00:00:00Z");
+        store.putCounter("tex2pdf|tenant|acme", 4, recent);
+
+        long corrected = service.reconcile(recent.minusSeconds(60));
+
+        assertThat(corrected).isZero();
+        assertThat(store.count("tex2pdf|tenant|acme")).isEqualTo(4);
     }
 
     private static final class TestHandler implements LeaseHandler {

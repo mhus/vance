@@ -163,12 +163,32 @@ public final class McpConnectionPool implements AutoCloseable {
     /**
      * Revokes one pooled connection by its entry key
      * ({@code docId|tenant|user}) — the lease-revoke path
-     * ({@link McpLeaseHandler}). Closing runs the connection's guard,
-     * which releases the (already revoked) lease idempotently, and
-     * terminates the server session via the transport.
+     * ({@link McpLeaseHandler}). Only the session the revoked claim was
+     * issued for is closed: when the entry has meanwhile opened a new
+     * session under a new lease, the revocation is stale and ignored.
+     * Closing runs the connection's guard (idempotent release of the
+     * revoked lease) and terminates the server session via the transport.
+     *
+     * @return whether a session of this pool held {@code holderToken}
      */
-    public synchronized void revokeEntry(String key) {
+    public synchronized boolean revokeEntry(String key, String holderToken) {
+        McpConnection hit = entries.get(key);
+        if (hit == null || !holderToken.equals(hit.sessionToken())) {
+            return false;
+        }
         closeAndForget(key);
+        return true;
+    }
+
+    /**
+     * Terminates a remote HTTP session this pod never held — the lease
+     * reaper's cleanup after a dead holder pod. Builds an unopened
+     * transport for the tool's config so the DELETE carries the
+     * configured auth resolved under {@code ctx}.
+     */
+    public void terminateRemoteSession(McpConfig cfg, String sessionId, ToolInvocationContext ctx) {
+        if (cfg.transport() != McpConfig.Transport.HTTP) return;
+        new McpHttpTransport(cfg, new McpJsonRpc(), httpClient, secretResolver).terminateSession(sessionId, ctx);
     }
 
     private static String entryKey(String docId, @Nullable ToolInvocationContext ctx) {

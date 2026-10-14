@@ -1,10 +1,12 @@
 package de.mhus.vance.shared.lease;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -148,16 +150,47 @@ class LeaseDefinitionLoaderTest {
     }
 
     @Test
-    void readLayers_malformedYaml_isSkippedWithTheOthersStillMerging() {
+    void readLayers_malformedYaml_failsClosed() {
         layer("acme", "_tenant", "{ unbalanced");
         layer("acme", "proj-1", "levels: { project: 1 }");
 
-        LeaseDefinition def = loader.load(TENANT, PROJECT, "tex").orElseThrow();
+        // A skipped layer could be exactly the one carrying the cap.
+        assertThatThrownBy(() -> loader.load(TENANT, PROJECT, "tex"))
+                .isInstanceOf(LeaseUnavailableException.class)
+                .hasMessageContaining("malformed tenant layer");
+    }
 
-        assertThat(def.resourceKey())
-                .as("malformed tenant layer contributes nothing")
-                .isEqualTo("tex");
-        assertThat(def.maxProject()).isEqualTo(1L);
+    @Test
+    void readLayers_invalidCap_failsClosed() {
+        layer("acme", "_tenant", "levels: { tenant: 0 }");
+
+        assertThatThrownBy(() -> loader.load(TENANT, PROJECT, "tex"))
+                .isInstanceOf(LeaseUnavailableException.class)
+                .hasMessageContaining("invalid tenant layer")
+                .hasMessageContaining("at least 1");
+    }
+
+    @Test
+    void readLayers_storeError_failsClosed_andCachesNothing() {
+        layer("_vance", "_tenant", "levels: { global: 6 }");
+        when(documentService.findByPath(eq("acme"), eq("_tenant"), any()))
+                .thenThrow(new IllegalStateException("mongo down"))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> loader.load(TENANT, PROJECT, "tex"))
+                .isInstanceOf(LeaseUnavailableException.class)
+                .hasMessageContaining("mongo down");
+        // Recovered store: the next load reads all layers again.
+        assertThat(loader.load(TENANT, PROJECT, "tex").orElseThrow().maxGlobal())
+                .isEqualTo(6L);
+    }
+
+    @Test
+    void load_invalidName_isRejected() {
+        assertThatThrownBy(() -> loader.load(TENANT, PROJECT, "../../setting_forms/x"))
+                .isInstanceOf(LeaseUnavailableException.class)
+                .hasMessageContaining("invalid lease name");
+        verify(documentService, never()).readBundledResource(any());
     }
 
     @Test

@@ -33,4 +33,19 @@ public record LeaseHolderInfo(
     public LeaseHolderInfo {
         payload = payload == null ? Map.of() : Map.copyOf(payload);
     }
+
+    /** The handler view of a holder document. */
+    public static LeaseHolderInfo of(ResourceLeaseHolderDocument holder) {
+        return new LeaseHolderInfo(
+                holder.getToken(),
+                holder.getType(),
+                holder.getResource(),
+                holder.getHolderRef(),
+                holder.getTenantId(),
+                holder.getProjectId(),
+                holder.getUserId(),
+                holder.getPod(),
+                holder.isPodBound(),
+                holder.getPayload() == null ? Map.of() : holder.getPayload());
+    }
 }

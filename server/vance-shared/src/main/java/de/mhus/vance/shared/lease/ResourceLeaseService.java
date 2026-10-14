@@ -1,5 +1,6 @@
 package de.mhus.vance.shared.lease;
 
+import com.mongodb.client.result.UpdateResult;
 import de.mhus.vance.shared.metric.MetricService;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -15,7 +16,6 @@ import org.bson.Document;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.data.mongodb.core.FindAndModifyOptions;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
@@ -59,16 +59,19 @@ public class ResourceLeaseService {
     private final MongoTemplate mongoTemplate;
     private final LeaseDefinitionLoader definitionLoader;
     private final MetricService metrics;
+    private final ObjectProvider<LeaseRevocationListener> revocationListeners;
     private final Set<String> knownTypes;
 
     public ResourceLeaseService(
             MongoTemplate mongoTemplate,
             LeaseDefinitionLoader definitionLoader,
             MetricService metrics,
-            ObjectProvider<LeaseHandler> handlers) {
+            ObjectProvider<LeaseHandler> handlers,
+            ObjectProvider<LeaseRevocationListener> revocationListeners) {
         this.mongoTemplate = mongoTemplate;
         this.definitionLoader = definitionLoader;
         this.metrics = metrics;
+        this.revocationListeners = revocationListeners;
         Set<String> types = new HashSet<>();
         handlers.orderedStream().forEach(h -> types.add(h.type()));
         this.knownTypes = Set.copyOf(types);
@@ -95,32 +98,53 @@ public class ResourceLeaseService {
             return Lease.NOOP;
         }
 
-        // Opportunistic idle reap scoped to this resource — frees slots of
-        // crashed holders before we decide we're busy.
-        reapIdle(def.resourceKey());
-
         List<Level> levels = funnel(def, request);
         long deadline = System.currentTimeMillis() + def.waitMsOrDefault();
-        while (true) {
-            try {
-                Lease lease = tryAcquire(request, def, levels);
-                metrics.counter("vance.lease.acquire", "resource", def.resourceKey(), "outcome", "success")
-                        .increment();
-                return lease;
-            } catch (BusySignal busy) {
-                if (System.currentTimeMillis() >= deadline) {
-                    metrics.counter("vance.lease.acquire", "resource", def.resourceKey(), "outcome", "busy")
+        try {
+            // Opportunistic idle reap scoped to this resource — frees slots
+            // of crashed holders before we decide we're busy. The reaped
+            // holders still need their handler (§5), hence the listener.
+            notifyReaped(reapIdle(def.resourceKey()));
+            while (true) {
+                try {
+                    Lease lease = tryAcquire(request, def, levels);
+                    metrics.counter("vance.lease.acquire", "resource", def.resourceKey(), "outcome", "success")
                             .increment();
-                    throw new LeaseBusyException(diagnose(def, busy));
+                    return lease;
+                } catch (BusySignal busy) {
+                    if (System.currentTimeMillis() >= deadline) {
+                        metrics.counter("vance.lease.acquire", "resource", def.resourceKey(), "outcome", "busy")
+                                .increment();
+                        throw new LeaseBusyException(diagnose(def, busy));
+                    }
+                    sleepWithJitter(deadline);
                 }
-                sleepWithJitter(deadline);
-            } catch (RuntimeException e) {
-                metrics.counter("vance.lease.acquire", "resource", def.resourceKey(), "outcome", "unavailable")
-                        .increment();
-                throw (e instanceof LeaseUnavailableException lun)
-                        ? lun
-                        : new LeaseUnavailableException("lease store unavailable: " + e, e);
             }
+        } catch (LeaseBusyException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            metrics.counter("vance.lease.acquire", "resource", def.resourceKey(), "outcome", "unavailable")
+                    .increment();
+            throw (e instanceof LeaseUnavailableException lun)
+                    ? lun
+                    : new LeaseUnavailableException("lease store unavailable: " + e, e);
+        }
+    }
+
+    /** Hands holders reaped inside this service to the listener; never fails the caller. */
+    private void notifyReaped(List<ResourceLeaseHolderDocument> reaped) {
+        if (reaped.isEmpty()) return;
+        LeaseRevocationListener listener = revocationListeners.getIfAvailable();
+        if (listener == null) {
+            log.warn(
+                    "resource lease: {} holder(s) reaped without a revocation listener — handlers not run",
+                    reaped.size());
+            return;
+        }
+        try {
+            listener.onReaped(reaped.stream().map(LeaseHolderInfo::of).toList());
+        } catch (RuntimeException e) {
+            log.warn("resource lease: revocation listener failed: {}", e.toString());
         }
     }
 
@@ -131,6 +155,10 @@ public class ResourceLeaseService {
         String name = request.leaseName() == null ? "" : request.leaseName().trim();
         if (name.isEmpty()) {
             throw new LeaseUnavailableException("LeaseRequest without a lease name — reference a lease config by name");
+        }
+        if (!LeaseDefinition.isValidName(name)) {
+            throw new LeaseUnavailableException(
+                    "invalid lease name '" + name + "' — allowed: " + LeaseDefinition.NAME_PATTERN.pattern());
         }
         return definitionLoader
                 .load(request.tenantId(), request.projectId(), name)
@@ -146,10 +174,9 @@ public class ResourceLeaseService {
         List<Level> levels = new ArrayList<>(4);
         if (def.maxUser() != null && request.userId() != null) {
             levels.add(new Level(
-                    counterKey(
-                            resource,
-                            LEVEL_USER,
-                            request.tenantId() + "/" + request.projectId() + "/" + request.userId()),
+                    // Per user across the tenant's projects — "one active
+                    // browser session per user" must not multiply by project.
+                    counterKey(resource, LEVEL_USER, request.tenantId() + "/" + request.userId()),
                     "user",
                     def.maxUser()));
         }
@@ -170,68 +197,92 @@ public class ResourceLeaseService {
 
     private Lease tryAcquire(LeaseRequest request, LeaseDefinition def, List<Level> levels) {
         String token = "rl-" + UUID.randomUUID();
-        Instant now = Instant.now();
 
         // Holder first (§5): a raised counter never exists without a holder
         // document that knows about it — reconcile recomputes from holders.
-        ResourceLeaseHolderDocument holder = ResourceLeaseHolderDocument.builder()
-                .token(token)
-                .state(STATE_PENDING)
-                .type(request.type())
-                .resource(def.resourceKey())
-                .holderRef(request.holderRef())
-                .tenantId(request.tenantId())
-                .projectId(request.projectId())
-                .userId(request.userId())
-                .pod(request.pod())
-                .podBound(request.podBound())
-                .payload(request.payload())
-                .levels(new ArrayList<>())
-                .ttlSeconds(def.ttlSecondsOrDefault())
-                .acquiredAt(now)
-                .lastSeenAt(now)
-                .build();
-        mongoTemplate.insert(holder);
+        // Written as an upsert so acquiredAt/lastSeenAt come from the Mongo
+        // server clock like every later touch — a pod clock behind by more
+        // than the TTL would otherwise get its PENDING holder reaped.
+        mongoTemplate.upsert(
+                byToken(token),
+                new Update()
+                        .set("state", STATE_PENDING)
+                        .set("type", request.type())
+                        .set("resource", def.resourceKey())
+                        .set("holderRef", request.holderRef())
+                        .set("tenantId", request.tenantId())
+                        .set("projectId", request.projectId())
+                        .set("userId", request.userId())
+                        .set("pod", request.pod())
+                        .set("podBound", request.podBound())
+                        .set("payload", request.payload())
+                        .set("levels", new ArrayList<String>())
+                        .set("ttlSeconds", def.ttlSecondsOrDefault())
+                        .currentDate("acquiredAt")
+                        .currentDate("lastSeenAt"),
+                ResourceLeaseHolderDocument.class);
 
         List<String> acquired = new ArrayList<>(levels.size());
         try {
             for (Level level : levels) {
-                try {
-                    incCounter(level.key(), level.cap());
-                } catch (DuplicateKeyException e) {
-                    // Counter exists and is full: the conditional filter
-                    // missed, the upsert insert collided on the unique _id.
-                    // That duplicate key *is* the busy signal.
-                    throw new BusySignal(level, e);
+                if (!incCounter(level.key(), level.cap())) {
+                    throw new BusySignal(level);
                 }
                 acquired.add(level.key());
                 mongoTemplate.updateFirst(
-                        Query.query(Criteria.where("_id").is(token)),
-                        new Update().push("levels", level.key()),
-                        ResourceLeaseHolderDocument.class);
+                        byToken(token), new Update().push("levels", level.key()), ResourceLeaseHolderDocument.class);
             }
-            mongoTemplate.updateFirst(
-                    Query.query(Criteria.where("_id").is(token)),
-                    new Update().set("state", STATE_HELD),
+            UpdateResult held = mongoTemplate.updateFirst(
+                    byToken(token),
+                    new Update().set("state", STATE_HELD).currentDate("lastSeenAt"),
                     ResourceLeaseHolderDocument.class);
-        } catch (BusySignal busy) {
-            // Rollback: give back everything this attempt took, then drop the
-            // holder — the outer wait loop starts a fresh attempt.
-            for (String key : acquired) {
-                decCounter(key);
+            if (held.getMatchedCount() == 0) {
+                // A reaper took the PENDING holder (and its booked levels)
+                // under our hands — nothing was handed out yet.
+                throw new LeaseUnavailableException("lease holder " + token + " was reaped during acquisition");
             }
-            mongoTemplate.remove(Query.query(Criteria.where("_id").is(token)), ResourceLeaseHolderDocument.class);
+        } catch (BusySignal busy) {
+            // Rollback: give back everything this attempt took — the outer
+            // wait loop starts a fresh attempt.
+            rollback(token, acquired);
             throw busy;
+        } catch (RuntimeException e) {
+            // Store failure mid-funnel: the same rollback, best effort — a
+            // half-booked holder would block a cap-1 slot for a whole TTL.
+            try {
+                rollback(token, acquired);
+            } catch (RuntimeException rollbackFailure) {
+                log.warn(
+                        "lease {}: rollback after failed acquisition failed (reconcile/idle reap clean up): {}",
+                        token,
+                        rollbackFailure.toString());
+            }
+            throw e;
         }
         return new HeldLease(token, def.resourceKey());
+    }
+
+    /**
+     * Undoes a failed attempt. Only the remover of the holder document
+     * books counters back: when a reaper got there first it already
+     * decremented the levels the document recorded — anything incremented
+     * but not yet recorded is left to reconcile.
+     */
+    private void rollback(String token, List<String> acquired) {
+        ResourceLeaseHolderDocument removed =
+                mongoTemplate.findAndRemove(byToken(token), ResourceLeaseHolderDocument.class);
+        if (removed == null) return;
+        for (String key : acquired) {
+            decCounter(key);
+        }
     }
 
     /** Internal busy marker — carries the level that rejected us. */
     private static final class BusySignal extends RuntimeException {
         private final Level level;
 
-        BusySignal(Level level, RuntimeException cause) {
-            super(null, cause, false, false);
+        BusySignal(Level level) {
+            super(null, null, false, false);
             this.level = level;
         }
     }
@@ -245,7 +296,9 @@ public class ResourceLeaseService {
                     Query.query(Criteria.where("_id").is(token)),
                     new Update().currentDate("lastSeenAt"),
                     ResourceLeaseHolderDocument.class);
-            if (result.getModifiedCount() == 0) {
+            // Matched, not modified: two touches within the same millisecond
+            // write an identical document and Mongo reports nModified = 0.
+            if (result.getMatchedCount() == 0) {
                 throw new LeaseLostException(
                         "lease " + token + " on '" + resource + "' was revoked (idle or pod reaped)");
             }
@@ -266,7 +319,7 @@ public class ResourceLeaseService {
                     Query.query(Criteria.where("_id").is(token)),
                     new Update().set("payload", Map.copyOf(payload)).currentDate("lastSeenAt"),
                     ResourceLeaseHolderDocument.class);
-            if (result.getModifiedCount() == 0) {
+            if (result.getMatchedCount() == 0) {
                 throw new LeaseLostException(
                         "lease " + token + " on '" + resource + "' was revoked — payload update rejected");
             }
@@ -375,29 +428,57 @@ public class ResourceLeaseService {
             }
         }
         long corrections = 0;
+        long removed = 0;
         for (ResourceLeaseCounterDocument counter : mongoTemplate.findAll(ResourceLeaseCounterDocument.class)) {
             if (counter.getUpdatedAt() == null || counter.getUpdatedAt().isAfter(safetyNotBefore)) {
                 continue;
             }
             long real = actual.getOrDefault(counter.getId(), 0L);
-            if (real != counter.getCount()) {
-                mongoTemplate.updateFirst(
-                        Query.query(Criteria.where("_id")
-                                .is(counter.getId())
-                                .and("count")
-                                .is(counter.getCount())),
-                        new Update().set("count", real),
-                        ResourceLeaseCounterDocument.class);
-                corrections++;
-                log.warn(
-                        "resource lease: reconcile corrected counter '{}' {} → {}",
-                        counter.getId(),
-                        counter.getCount(),
-                        real);
+            // The filter pins the observed state: any write since the read
+            // (count or updatedAt) makes the correction a no-op.
+            Query unchanged = Query.query(Criteria.where("_id")
+                    .is(counter.getId())
+                    .and("count")
+                    .is(counter.getCount())
+                    .and("updatedAt")
+                    .is(counter.getUpdatedAt()));
+            if (real == 0) {
+                // No holder books this level: drop the counter instead of
+                // keeping one quiet document per user/project forever. The
+                // next acquisition re-creates it.
+                if (mongoTemplate
+                                .remove(unchanged, ResourceLeaseCounterDocument.class)
+                                .getDeletedCount()
+                        > 0) {
+                    removed++;
+                    if (counter.getCount() != 0) {
+                        corrections++;
+                        log.warn(
+                                "resource lease: reconcile corrected counter '{}' {} → 0 (removed)",
+                                counter.getId(),
+                                counter.getCount());
+                    }
+                }
+            } else if (real != counter.getCount()) {
+                if (mongoTemplate
+                                .updateFirst(
+                                        unchanged, new Update().set("count", real), ResourceLeaseCounterDocument.class)
+                                .getMatchedCount()
+                        > 0) {
+                    corrections++;
+                    log.warn(
+                            "resource lease: reconcile corrected counter '{}' {} → {}",
+                            counter.getId(),
+                            counter.getCount(),
+                            real);
+                }
             }
         }
         if (corrections > 0) {
             metrics.counter("vance.lease.reconcile", "outcome", "corrected").increment(corrections);
+        }
+        if (removed > 0) {
+            log.debug("resource lease: reconcile removed {} idle counter(s)", removed);
         }
         return corrections;
     }
@@ -407,29 +488,42 @@ public class ResourceLeaseService {
         return mongoTemplate.findAll(ResourceLeaseHolderDocument.class);
     }
 
-    /** Converts a holder document into the handler view. */
-    public LeaseHolderInfo toInfo(ResourceLeaseHolderDocument holder) {
-        return new LeaseHolderInfo(
-                holder.getToken(),
-                holder.getType(),
-                holder.getResource(),
-                holder.getHolderRef(),
-                holder.getTenantId(),
-                holder.getProjectId(),
-                holder.getUserId(),
-                holder.getPod(),
-                holder.isPodBound(),
-                holder.getPayload() == null ? Map.of() : holder.getPayload());
-    }
-
     // ──────────────── internals ────────────────
 
-    private void incCounter(String key, long cap) {
-        mongoTemplate.findAndModify(
-                Query.query(Criteria.where("_id").is(key).and("count").lt(cap)),
-                new Update().inc("count", 1).currentDate("updatedAt"),
-                FindAndModifyOptions.options().upsert(true),
-                ResourceLeaseCounterDocument.class);
+    /**
+     * Takes one slot on a level: {@code true} when taken, {@code false}
+     * when the level is full. The hot path is one conditional increment
+     * without upsert — a missing document only means "never used (or
+     * reaped by reconcile)", which {@link #ensureCounter} fixes before a
+     * second try. An upsert inside the conditional increment would turn a
+     * concurrent first use into a false busy: the losing insert collides
+     * on {@code _id}, and Mongo only retries such upserts when the filter
+     * is a pure {@code _id} equality.
+     */
+    private boolean incCounter(String key, long cap) {
+        if (incExisting(key, cap)) return true;
+        ensureCounter(key);
+        return incExisting(key, cap);
+    }
+
+    private boolean incExisting(String key, long cap) {
+        return mongoTemplate.findAndModify(
+                        Query.query(Criteria.where("_id").is(key).and("count").lt(cap)),
+                        new Update().inc("count", 1).currentDate("updatedAt"),
+                        ResourceLeaseCounterDocument.class)
+                != null;
+    }
+
+    /** Creates the counter at zero if absent — a pure {@code _id} upsert, idempotent across pods. */
+    private void ensureCounter(String key) {
+        try {
+            mongoTemplate.upsert(
+                    Query.query(Criteria.where("_id").is(key)),
+                    new Update().setOnInsert("count", 0L).setOnInsert("updatedAt", Instant.now()),
+                    ResourceLeaseCounterDocument.class);
+        } catch (DuplicateKeyException e) {
+            // Another pod created it between our read and insert — exists now.
+        }
     }
 
     private void decCounter(String key) {
@@ -461,6 +555,10 @@ public class ResourceLeaseService {
             Thread.currentThread().interrupt();
             throw new LeaseUnavailableException("interrupted while waiting for a lease slot", e);
         }
+    }
+
+    private static Query byToken(String token) {
+        return Query.query(Criteria.where("_id").is(token));
     }
 
     private static String counterKey(String resource, String level, String scope) {

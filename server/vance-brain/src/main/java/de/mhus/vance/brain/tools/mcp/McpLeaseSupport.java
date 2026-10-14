@@ -3,11 +3,13 @@ package de.mhus.vance.brain.tools.mcp;
 import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.shared.lease.Lease;
 import de.mhus.vance.shared.lease.LeaseDefinition;
+import de.mhus.vance.shared.lease.LeaseLostException;
 import de.mhus.vance.shared.lease.LeaseRequest;
 import de.mhus.vance.shared.lease.ResourceLeaseService;
 import de.mhus.vance.shared.servertool.ServerToolDocument;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.mcp.McpConfig;
+import de.mhus.vance.toolpack.mcp.McpSessionRevokedException;
 import de.mhus.vance.toolpack.mcp.SessionGuard;
 import java.util.HashMap;
 import java.util.Map;
@@ -40,6 +42,13 @@ public class McpLeaseSupport {
     /** Parameter name on the {@code mcp_server} tool config. */
     public static final String PARAM_LEASE = "lease";
 
+    /** Payload keys the {@link McpLeaseHandler} reads back. */
+    static final String PAYLOAD_CONNECTION_KEY = "connectionKey";
+
+    static final String PAYLOAD_TOOL = "tool";
+
+    static final String PAYLOAD_SESSION_ID = "sessionId";
+
     private final ResourceLeaseService leaseService;
     private final ClusterService cluster;
 
@@ -65,7 +74,7 @@ public class McpLeaseSupport {
                 .holderRef(connectionKey)
                 .pod(cluster.selfPodId())
                 .podBound(cfg.transport() == McpConfig.Transport.STDIO)
-                .payload(initialPayload(cfg, connectionKey));
+                .payload(initialPayload(doc, cfg, connectionKey));
 
         if (param instanceof String name) {
             String trimmed = name.trim();
@@ -74,11 +83,7 @@ public class McpLeaseSupport {
         } else if (param instanceof Map<?, ?> raw) {
             @SuppressWarnings("unchecked")
             Map<String, Object> map = (Map<String, Object>) raw;
-            Object nameObj = map.get("name");
-            if (nameObj == null || String.valueOf(nameObj).isBlank()) {
-                throw new IllegalStateException("MCP tool '" + doc.getName() + "': inline lease config needs a 'name'");
-            }
-            builder.inline(LeaseDefinition.fromLayer(String.valueOf(nameObj), map));
+            builder.inline(inlineDefinition(doc, map, ctx));
         } else {
             throw new IllegalStateException("MCP tool '" + doc.getName() + "': 'lease' must be a name or a mapping");
         }
@@ -91,9 +96,54 @@ public class McpLeaseSupport {
         return new McpLeaseGuard(builder.build());
     }
 
-    private static Map<String, Object> initialPayload(McpConfig cfg, String connectionKey) {
+    /**
+     * An inline definition is written by whoever may edit the tool config
+     * — typically a project. It therefore carries only the fields the
+     * project layer owns ({@code levels.project}, {@code levels.user},
+     * {@code ttlSeconds}, {@code waitMs}) and counts on a resource private
+     * to its tenant/project: an inline {@code resource: tex2pdf} with a
+     * high {@code levels.global} would otherwise book the shared funnel of
+     * every tenant. Shared caps belong in a named lease config.
+     */
+    private static LeaseDefinition inlineDefinition(
+            ServerToolDocument doc, Map<String, Object> map, ToolInvocationContext ctx) {
+        Object nameObj = map.get("name");
+        String name = nameObj == null ? "" : String.valueOf(nameObj).trim();
+        if (!LeaseDefinition.isValidName(name)) {
+            throw new IllegalStateException("MCP tool '" + doc.getName()
+                    + "': inline lease config needs a valid 'name' (" + LeaseDefinition.NAME_PATTERN.pattern() + ")");
+        }
+        LeaseDefinition parsed;
+        try {
+            parsed = LeaseDefinition.fromLayer(name, map);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalStateException(
+                    "MCP tool '" + doc.getName() + "': invalid inline lease config: " + e.getMessage(), e);
+        }
+        if (parsed.resource() != null || parsed.maxGlobal() != null || parsed.maxTenant() != null) {
+            throw new IllegalStateException("MCP tool '" + doc.getName()
+                    + "': an inline lease config may only set levels.project, levels.user, ttlSeconds and waitMs"
+                    + " — reference a named lease (_vance/config/lease/<name>.yaml) for shared caps");
+        }
+        String scope =
+                Objects.requireNonNullElse(ctx.tenantId(), "") + "/" + Objects.requireNonNullElse(ctx.projectId(), "");
+        return new LeaseDefinition(
+                name,
+                "mcp-inline:" + scope + "/" + name,
+                null,
+                null,
+                parsed.maxProject(),
+                parsed.maxUser(),
+                parsed.ttlSeconds(),
+                parsed.waitMs());
+    }
+
+    private static Map<String, Object> initialPayload(ServerToolDocument doc, McpConfig cfg, String connectionKey) {
         Map<String, Object> payload = new HashMap<>();
-        payload.put("connectionKey", connectionKey);
+        payload.put(PAYLOAD_CONNECTION_KEY, connectionKey);
+        // Tool name: the reaper on a foreign pod reloads the config (URL,
+        // auth) through the cascade to DELETE the remote session.
+        payload.put(PAYLOAD_TOOL, doc.getName());
         if (cfg.url() != null) {
             payload.put("endpoint", cfg.url());
         } else if (cfg.command() != null && !cfg.command().isEmpty()) {
@@ -123,7 +173,7 @@ public class McpLeaseSupport {
             Lease held = lease;
             if (held == null || sessionId == null) return;
             Map<String, Object> payload = new HashMap<>(request.payload());
-            payload.put("sessionId", sessionId);
+            payload.put(PAYLOAD_SESSION_ID, sessionId);
             held.updatePayload(payload);
         }
 
@@ -131,7 +181,18 @@ public class McpLeaseSupport {
         @SuppressWarnings("PMD.CloseResource") // local view of the field; the guard releases in onSessionClose
         public synchronized void onSessionUse() {
             Lease held = lease;
-            if (held != null) held.check();
+            if (held == null) return;
+            try {
+                held.check();
+            } catch (LeaseLostException e) {
+                throw new McpSessionRevokedException(e.getMessage(), e);
+            }
+        }
+
+        @Override
+        public synchronized @Nullable String sessionToken() {
+            Lease held = lease;
+            return held == null || held.isNoop() ? null : held.holderToken();
         }
 
         @Override

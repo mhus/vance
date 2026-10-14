@@ -120,6 +120,10 @@ public class Tex2PdfRbehzadanExecutor implements Tex2PdfExecutor {
                     "tex compile aborted — lease was revoked: " + e.getMessage(),
                     null,
                     System.currentTimeMillis() - start);
+        } catch (LeaseUnavailableException e) {
+            // Store failure on check/updatePayload: fail-closed, but inside
+            // the Result contract like every other compile failure.
+            return Result.failure("tex compile aborted — " + e.getMessage(), null, System.currentTimeMillis() - start);
         } finally {
             lease.release();
         }
@@ -144,6 +148,7 @@ public class Tex2PdfRbehzadanExecutor implements Tex2PdfExecutor {
                 .lease(name.trim())
                 .tenantId(request.tenantId())
                 .projectId(request.projectId())
+                .userId(request.userId())
                 .holderRef("tex-compile")
                 .pod(cluster.selfPodId())
                 .podBound(true)
@@ -175,10 +180,13 @@ public class Tex2PdfRbehzadanExecutor implements Tex2PdfExecutor {
             // 2. Submit the job
             String jobId = submitJob(baseUrl, apiKey, zipBytes);
             log.debug("tex2pdf: submitted job {}", jobId);
-            lease.updatePayload(Map.of("jobId", jobId));
-
-            // 3. Poll until done
+            // Register before the payload carries the job id: from then on a
+            // revocation may name it, and only registered jobs take a mark.
+            tracker.begin(jobId);
             try {
+                lease.updatePayload(Map.of("jobId", jobId));
+
+                // 3. Poll until done
                 while (true) {
                     // Usage step: verifies the lease is still held and touches
                     // the TTL clock; a revoked lease (idle/pod reap) aborts here.
@@ -218,7 +226,7 @@ public class Tex2PdfRbehzadanExecutor implements Tex2PdfExecutor {
             } finally {
                 // The abort mark has done its job (or was never set) —
                 // the tracker entry must not outlive the poll loop.
-                tracker.forget(jobId);
+                tracker.end(jobId);
             }
 
         } catch (InterruptedException e) {

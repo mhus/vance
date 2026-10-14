@@ -137,7 +137,16 @@ public final class McpConnection implements AutoCloseable {
     @SuppressWarnings("unchecked")
     public Map<String, Object> callTool(String toolName, Map<String, Object> arguments, ToolInvocationContext ctx) {
         ensureInitialized(ctx);
-        if (guard != null) guard.onSessionUse();
+        if (guard != null) {
+            try {
+                guard.onSessionUse();
+            } catch (McpSessionRevokedException e) {
+                // The claim is gone: drop the session so the next call opens
+                // a new one instead of failing on this one forever.
+                close();
+                throw e;
+            }
+        }
         Map<String, Object> mergedArgs =
                 McpArgumentCoercer.coerce(mergeDefaultArgs(toolName, arguments, ctx), schemaFor(toolName));
         Map<String, Object> params = new LinkedHashMap<>();
@@ -161,14 +170,29 @@ public final class McpConnection implements AutoCloseable {
         toolsCache.set(null);
     }
 
+    /**
+     * Claim identity of the current session ({@link SessionGuard#sessionToken()}),
+     * {@code null} without a guard or an open session.
+     */
+    public @Nullable String sessionToken() {
+        return guard == null ? null : guard.sessionToken();
+    }
+
+    /**
+     * Closes the session. The connection stays usable: the next call runs
+     * the initialize handshake again. Serialized with that handshake so a
+     * close never interleaves with a half-opened session.
+     */
     @Override
     public void close() {
-        try {
-            transport.close();
-        } finally {
-            if (guard != null) guard.onSessionClose();
-            toolsCache.set(null);
-            initialized = false;
+        synchronized (initLock) {
+            try {
+                transport.close();
+            } finally {
+                if (guard != null) guard.onSessionClose();
+                toolsCache.set(null);
+                initialized = false;
+            }
         }
     }
 
@@ -179,8 +203,6 @@ public final class McpConnection implements AutoCloseable {
             // Guard first: a busy lease aborts the session before anything is
             // opened — no half-initialized connection may exist.
             if (guard != null) guard.onSessionOpen();
-            transport.open();
-            transport.setNotificationHandler(this::onNotification);
 
             Map<String, Object> initParams = new LinkedHashMap<>();
             initParams.put("protocolVersion", PROTOCOL_VERSION);
@@ -191,9 +213,15 @@ public final class McpConnection implements AutoCloseable {
                             "name", "vance-brain",
                             "version", "1.0.0"));
 
+            // Everything after the guard's open sits in one try: any failure
+            // — transport open, handshake, the guard's session-id hook —
+            // must hand the claim back, or it stays booked until its TTL.
             try {
+                transport.open();
+                transport.setNotificationHandler(this::onNotification);
                 transport.sendRequest("initialize", initParams, Duration.ofSeconds(config.initTimeoutSeconds()), ctx);
                 transport.sendNotification("notifications/initialized", null, ctx);
+                if (guard != null) guard.onSessionId(transport.currentSessionId());
             } catch (RuntimeException e) {
                 transport.close();
                 if (guard != null) guard.onSessionClose();
@@ -201,7 +229,6 @@ public final class McpConnection implements AutoCloseable {
                         "MCP initialize failed (" + config.transport() + "): " + e.getMessage(), e);
             }
             initialized = true;
-            if (guard != null) guard.onSessionId(transport.currentSessionId());
             log.info("MCP connection initialized — transport={} ", config.transport());
         }
     }

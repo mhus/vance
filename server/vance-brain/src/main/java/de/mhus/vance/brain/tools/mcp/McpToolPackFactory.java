@@ -3,10 +3,14 @@ package de.mhus.vance.brain.tools.mcp;
 import de.mhus.vance.brain.oauth.OAuthDisconnectedEvent;
 import de.mhus.vance.brain.tools.rest.SettingsSecretResolver;
 import de.mhus.vance.brain.tools.types.ToolFactory;
+import de.mhus.vance.shared.lease.LeaseHolderInfo;
+import de.mhus.vance.shared.servertool.ServerToolConfig;
 import de.mhus.vance.shared.servertool.ServerToolDocument;
+import de.mhus.vance.shared.servertool.ServerToolLoader;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.core.PackHttpClient;
+import de.mhus.vance.toolpack.mcp.McpConfig;
 import de.mhus.vance.toolpack.mcp.McpConnection;
 import de.mhus.vance.toolpack.mcp.McpPackBuilder;
 import jakarta.annotation.PreDestroy;
@@ -15,6 +19,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
@@ -76,18 +82,64 @@ public class McpToolPackFactory implements ToolFactory {
                                             + "the session lifecycle of the connection is the lease lifecycle.")));
 
     private final McpConnectionPool pool;
+    private final ServerToolLoader serverToolLoader;
 
-    public McpToolPackFactory(SettingsSecretResolver secretResolver, McpLeaseSupport leaseSupport) {
+    public McpToolPackFactory(
+            SettingsSecretResolver secretResolver, McpLeaseSupport leaseSupport, ServerToolLoader serverToolLoader) {
         this.pool = new McpConnectionPool(new PackHttpClient(), secretResolver, leaseSupport);
+        this.serverToolLoader = serverToolLoader;
     }
 
     /**
      * Closes the pooled connection registered under {@code connectionKey}
-     * — invoked by {@link McpLeaseHandler} when the connection's lease was
-     * revoked. The pool key doubles as the lease holderRef.
+     * when its session still holds the revoked lease — invoked by
+     * {@link McpLeaseHandler}. The pool key doubles as the lease holderRef.
+     *
+     * @return whether a session of this pod held the lease
      */
-    public void revokeConnection(String connectionKey) {
-        pool.revokeEntry(connectionKey);
+    public boolean revokeConnection(String connectionKey, String holderToken) {
+        return pool.revokeEntry(connectionKey, holderToken);
+    }
+
+    /**
+     * Terminates the remote HTTP session of a lease whose holder pod is
+     * gone: reloads the tool config through the cascade (URL, auth) and
+     * sends the session DELETE with the session id from the lease payload.
+     * Skips when the configured endpoint no longer is the one the session
+     * was opened on — the DELETE would hit a server that never had it.
+     */
+    public void terminateRemoteSession(LeaseHolderInfo info) {
+        Object sessionId = info.payload().get(McpLeaseSupport.PAYLOAD_SESSION_ID);
+        Object tool = info.payload().get(McpLeaseSupport.PAYLOAD_TOOL);
+        if (sessionId == null || tool == null) {
+            log.debug("mcp lease revoke: holder {} has no remote session to terminate", info.token());
+            return;
+        }
+        Optional<ServerToolConfig> config =
+                serverToolLoader.load(info.tenantId(), info.projectId(), String.valueOf(tool));
+        if (config.isEmpty()) {
+            log.warn(
+                    "mcp lease revoke: tool '{}' no longer resolvable for {}/{} — remote session {} left to expire",
+                    tool,
+                    info.tenantId(),
+                    info.projectId(),
+                    sessionId);
+            return;
+        }
+        McpConfig cfg = McpConfig.fromParameters(config.get().parameters());
+        Object endpoint = info.payload().get("endpoint");
+        if (!Objects.equals(cfg.url(), endpoint == null ? null : String.valueOf(endpoint))) {
+            log.warn(
+                    "mcp lease revoke: tool '{}' now points to {} (session was opened on {}) — remote session left to expire",
+                    tool,
+                    cfg.url(),
+                    endpoint);
+            return;
+        }
+        pool.terminateRemoteSession(
+                cfg,
+                String.valueOf(sessionId),
+                new ToolInvocationContext(info.tenantId(), info.projectId(), null, null, info.userId()));
     }
 
     @Override

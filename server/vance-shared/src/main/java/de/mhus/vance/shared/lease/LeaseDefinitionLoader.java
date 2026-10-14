@@ -6,7 +6,6 @@ import de.mhus.vance.shared.tenant.TenantService;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import org.yaml.snakeyaml.Yaml;
@@ -32,13 +31,17 @@ import org.yaml.snakeyaml.Yaml;
  * {@code resource} only up to the tenant layer (a project must not land
  * on a private counter by accident), everything else from any layer.
  *
+ * <p>Fail-closed: a layer that cannot be read (store error) or does not
+ * parse (malformed YAML, invalid value) fails the load with
+ * {@link LeaseUnavailableException} and nothing is cached — silently
+ * skipping a layer could drop exactly the cap that layer sets.
+ *
  * <p>Merged definitions are cached per {@code (tenant, project, name)} and
  * invalidated through the document-change-event chain — the brain-side
  * listener drops cache entries on writes under {@code _vance/config/lease/}
  * (local and cross-pod, see {@code LeaseDefinitionCacheListener}).
  */
 @Service
-@Slf4j
 public class LeaseDefinitionLoader {
 
     /** Document path inside each project scope. */
@@ -60,6 +63,10 @@ public class LeaseDefinitionLoader {
      * when no layer defines it.
      */
     public Optional<LeaseDefinition> load(String tenantId, @Nullable String projectId, String name) {
+        if (!LeaseDefinition.isValidName(name)) {
+            throw new LeaseUnavailableException(
+                    "invalid lease name '" + name + "' — allowed: " + LeaseDefinition.NAME_PATTERN.pattern());
+        }
         String cacheKey = cacheKey(tenantId, projectId, name);
         LeaseDefinition hit = cache.get(cacheKey);
         if (hit != null) return Optional.of(hit);
@@ -111,7 +118,13 @@ public class LeaseDefinitionLoader {
         @Nullable Long ttl = null;
         @Nullable Long wait = null;
         for (Layer layer : layers) {
-            LeaseDefinition parsed = LeaseDefinition.fromLayer(name, layer.yaml());
+            LeaseDefinition parsed;
+            try {
+                parsed = LeaseDefinition.fromLayer(name, layer.yaml());
+            } catch (IllegalArgumentException e) {
+                throw new LeaseUnavailableException(
+                        "lease definition '" + name + "': invalid " + layer.source() + " layer: " + e.getMessage(), e);
+            }
             if (isProjectLayer(layer.source())) {
                 // Project layer owns only project/user/ttl/wait — no resource,
                 // no global, no tenant cap.
@@ -169,8 +182,8 @@ public class LeaseDefinitionLoader {
         try {
             return documentService.findByPath(tenantId, projectId, path).map(documentService::readContent);
         } catch (RuntimeException e) {
-            log.warn("lease definition: reading '{}/{}' failed: {}", tenantId, path, e.toString());
-            return Optional.empty();
+            throw new LeaseUnavailableException(
+                    "lease definition: reading '" + tenantId + "/" + projectId + "/" + path + "' failed: " + e, e);
         }
     }
 
@@ -180,11 +193,13 @@ public class LeaseDefinitionLoader {
             Object parsed = new Yaml().load(content);
             if (parsed == null) return Map.of();
             if (parsed instanceof Map<?, ?> m) return (Map<String, Object>) m;
-            log.warn("lease definition '{}': {} layer is not a YAML mapping — ignored", name, source);
-            return Map.of();
+            throw new LeaseUnavailableException(
+                    "lease definition '" + name + "': " + source + " layer is not a YAML mapping");
+        } catch (LeaseUnavailableException e) {
+            throw e;
         } catch (RuntimeException e) {
-            log.warn("lease definition '{}': malformed {} layer ignored: {}", name, source, e.toString());
-            return Map.of();
+            throw new LeaseUnavailableException(
+                    "lease definition '" + name + "': malformed " + source + " layer: " + e.getMessage(), e);
         }
     }
 

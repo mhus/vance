@@ -6,6 +6,8 @@ import de.mhus.vance.brain.damogran.DamogranMime;
 import de.mhus.vance.brain.damogran.DamogranTask;
 import de.mhus.vance.brain.damogran.DamogranTaskResult;
 import de.mhus.vance.brain.damogran.OutputArtifact;
+import de.mhus.vance.shared.permission.SecurityContext;
+import de.mhus.vance.shared.permission.SubjectType;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -68,8 +70,13 @@ public class TexDamogranTask implements DamogranTask {
         }
 
         Tex2PdfExecutor.Result result = executor.compile(new Tex2PdfExecutor.Request(
-                main, engine == null ? "" : engine, workspaceRoot,
-                ctx.tenantId(), ctx.projectId(), ctx.processId()));
+                main,
+                engine == null ? "" : engine,
+                workspaceRoot,
+                ctx.tenantId(),
+                ctx.projectId(),
+                ctx.processId(),
+                callerUserId(ctx)));
 
         if (!result.success() || result.pdf() == null) {
             String error = result.error() != null ? result.error() : "LaTeX compilation failed";
@@ -77,8 +84,7 @@ public class TexDamogranTask implements DamogranTask {
         }
 
         try {
-            Path target = workspaceService.resolve(
-                    ctx.tenantId(), ctx.projectId(), ctx.workspaceDirName(), outputPath);
+            Path target = workspaceService.resolve(ctx.tenantId(), ctx.projectId(), ctx.workspaceDirName(), outputPath);
             if (target.getParent() != null) {
                 Files.createDirectories(target.getParent());
             }
@@ -90,6 +96,12 @@ public class TexDamogranTask implements DamogranTask {
         OutputArtifact pdf = new OutputArtifact(
                 outputPath, DamogranMime.kindForPath(outputPath), DamogranMime.mimeForPath(outputPath), null);
         return DamogranTaskResult.success(List.of(pdf), result.log());
+    }
+
+    /** The user the run fires for — scopes the compile lease's user level. */
+    private static @Nullable String callerUserId(DamogranContext ctx) {
+        SecurityContext caller = ctx.caller();
+        return caller != null && caller.subjectType() == SubjectType.USER ? caller.subjectId() : null;
     }
 
     private static @Nullable String str(TaskSpec spec, String key) {

@@ -20,52 +20,35 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /**
- * The {@code podBound} dispatch matrix of the sweeper (§8 of
- * {@code planning/lease-system.md}): who cleans up a reaped lease when
- * the holder pod is alive / unreachable / dead, split by whether the
- * resource dies with the pod.
+ * The sweeper round: idle reap and dead-pod reap feed the
+ * {@link LeaseRevocationDispatcher}, live pods are never reaped, and a
+ * failed round is contained. The routing matrix itself is
+ * {@link LeaseRevocationDispatcherTest}'s subject.
  */
 class ResourceLeaseSweeperTest {
 
     private static final String SELF = "pod-self";
-    private static final String OTHER = "pod-other";
 
     private ResourceLeaseService leaseService;
-    private LeaseHandlerRegistry registry;
+    private LeaseRevocationDispatcher dispatcher;
     private ClusterService cluster;
-    private HttpLeaseRevokedClient revokedClient;
     private ResourceLeaseSweeper sweeper;
 
     @BeforeEach
     void setUp() {
         leaseService = mock(ResourceLeaseService.class);
-        registry = mock(LeaseHandlerRegistry.class);
+        dispatcher = mock(LeaseRevocationDispatcher.class);
         cluster = mock(ClusterService.class);
-        revokedClient = mock(HttpLeaseRevokedClient.class);
         when(cluster.selfPodId()).thenReturn(SELF);
         when(leaseService.reapIdle(any())).thenAnswer(inv -> List.of());
         when(leaseService.reapPod(any())).thenAnswer(inv -> List.of());
         when(leaseService.reconcile(any())).thenReturn(0L);
         when(leaseService.listHolders()).thenReturn(List.of());
-        when(leaseService.toInfo(any())).thenAnswer(inv -> {
-            ResourceLeaseHolderDocument doc = inv.getArgument(0);
-            return new LeaseHolderInfo(
-                    doc.getToken(),
-                    doc.getType(),
-                    doc.getResource(),
-                    doc.getHolderRef(),
-                    doc.getTenantId(),
-                    doc.getProjectId(),
-                    doc.getUserId(),
-                    doc.getPod(),
-                    doc.isPodBound(),
-                    doc.getPayload() == null ? Map.of() : doc.getPayload());
-        });
-        sweeper = new ResourceLeaseSweeper(leaseService, registry, cluster, revokedClient);
+        sweeper = new ResourceLeaseSweeper(leaseService, dispatcher, cluster);
         ReflectionTestUtils.setField(sweeper, "reconcileSafetyMs", 60_000L);
     }
 
-    private ResourceLeaseHolderDocument holder(String pod, boolean podBound) {
+    private static ResourceLeaseHolderDocument holder(String pod) {
         ResourceLeaseHolderDocument doc = new ResourceLeaseHolderDocument();
         doc.setToken("rl-1");
         doc.setType("test");
@@ -73,91 +56,31 @@ class ResourceLeaseSweeperTest {
         doc.setHolderRef("ref");
         doc.setTenantId("acme");
         doc.setPod(pod);
-        doc.setPodBound(podBound);
         doc.setPayload(Map.of("jobId", "j-42"));
         return doc;
     }
 
-    private LeaseHolderInfo capturedDispatch() {
-        ArgumentCaptor<LeaseHolderInfo> captor = ArgumentCaptor.forClass(LeaseHolderInfo.class);
-        verify(registry).dispatch(captor.capture());
-        return captor.getValue();
+    @SuppressWarnings("unchecked")
+    private List<LeaseHolderInfo> dispatched() {
+        ArgumentCaptor<List<LeaseHolderInfo>> captor = ArgumentCaptor.forClass(List.class);
+        verify(dispatcher, org.mockito.Mockito.atLeastOnce()).dispatch(captor.capture());
+        return captor.getAllValues().stream().flatMap(List::stream).toList();
     }
 
     @Test
-    void dispatch_holderOnThisPod_runsHandlerLocally() {
-        when(leaseService.reapIdle(null)).thenReturn(List.of(holder(SELF, false)));
-        when(cluster.resolveEndpointByPodId(SELF)).thenReturn(Optional.of("http://self"));
+    void sweep_idleReapedHolders_goToTheDispatcher() {
+        when(leaseService.reapIdle(null)).thenReturn(List.of(holder(SELF)));
 
         sweeper.sweepRound();
 
-        assertThat(capturedDispatch().token()).isEqualTo("rl-1");
-        verify(revokedClient, never()).post(any(), any());
-    }
-
-    @Test
-    void dispatch_holderOnAliveForeignPod_forwardsViaInternalPost() {
-        when(leaseService.reapIdle(null)).thenReturn(List.of(holder(OTHER, false)));
-        when(cluster.resolveEndpointByPodId(OTHER)).thenReturn(Optional.of("http://other"));
-
-        sweeper.sweepRound();
-
-        verify(revokedClient).post(org.mockito.ArgumentMatchers.eq("http://other"), any());
-        verify(registry, never()).dispatch(any());
-    }
-
-    @Test
-    void dispatch_forwardFails_podBoundResource_noLocalCleanup() {
-        when(leaseService.reapIdle(null)).thenReturn(List.of(holder(OTHER, true)));
-        when(cluster.resolveEndpointByPodId(OTHER)).thenReturn(Optional.of("http://other"));
-        org.mockito.Mockito.doThrow(new IllegalStateException("unreachable"))
-                .when(revokedClient)
-                .post(any(), any());
-
-        sweeper.sweepRound();
-
-        verify(registry, never()).dispatch(any());
-    }
-
-    @Test
-    void dispatch_forwardFails_notPodBound_reaperCleansUpLocally() {
-        when(leaseService.reapIdle(null)).thenReturn(List.of(holder(OTHER, false)));
-        when(cluster.resolveEndpointByPodId(OTHER)).thenReturn(Optional.of("http://other"));
-        org.mockito.Mockito.doThrow(new IllegalStateException("unreachable"))
-                .when(revokedClient)
-                .post(any(), any());
-
-        sweeper.sweepRound();
-
-        assertThat(capturedDispatch().token()).isEqualTo("rl-1");
-    }
-
-    @Test
-    void dispatch_deadPod_podBoundResource_diedWithThePod() {
-        when(leaseService.reapIdle(null)).thenReturn(List.of(holder("pod-gone", true)));
-        when(cluster.resolveEndpointByPodId("pod-gone")).thenReturn(Optional.empty());
-
-        sweeper.sweepRound();
-
-        verify(registry, never()).dispatch(any());
-        verify(revokedClient, never()).post(any(), any());
-    }
-
-    @Test
-    void dispatch_deadPod_notPodBound_reaperCleansUpWithPayload() {
-        when(leaseService.reapIdle(null)).thenReturn(List.of(holder("pod-gone", false)));
-        when(cluster.resolveEndpointByPodId("pod-gone")).thenReturn(Optional.empty());
-
-        sweeper.sweepRound();
-
-        LeaseHolderInfo info = capturedDispatch();
-        assertThat(info.token()).isEqualTo("rl-1");
-        assertThat(info.payload()).containsEntry("jobId", "j-42");
+        assertThat(dispatched())
+                .singleElement()
+                .satisfies(info -> assertThat(info.payload()).containsEntry("jobId", "j-42"));
     }
 
     @Test
     void sweep_deadPodIsReaped_entirePod() {
-        ResourceLeaseHolderDocument doc = holder("pod-gone", false);
+        ResourceLeaseHolderDocument doc = holder("pod-gone");
         when(leaseService.listHolders()).thenReturn(List.of(doc));
         when(cluster.resolveEndpointByPodId("pod-gone")).thenReturn(Optional.empty());
         when(leaseService.reapPod("pod-gone")).thenReturn(List.of(doc));
@@ -165,7 +88,17 @@ class ResourceLeaseSweeperTest {
         sweeper.sweepRound();
 
         verify(leaseService).reapPod("pod-gone");
-        assertThat(capturedDispatch().token()).isEqualTo("rl-1");
+        assertThat(dispatched()).extracting(LeaseHolderInfo::token).containsExactly("rl-1");
+    }
+
+    @Test
+    void sweep_livePods_areNotReaped() {
+        when(leaseService.listHolders()).thenReturn(List.of(holder(SELF), holder("pod-other")));
+        when(cluster.resolveEndpointByPodId("pod-other")).thenReturn(Optional.of("http://other"));
+
+        sweeper.sweepRound();
+
+        verify(leaseService, never()).reapPod(any());
     }
 
     @Test

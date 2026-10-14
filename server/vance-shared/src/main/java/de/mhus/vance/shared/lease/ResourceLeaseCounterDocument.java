@@ -12,11 +12,12 @@ import org.springframework.data.mongodb.core.mapping.Document;
  * {@code _id = <resource>|<level>|<scope>} (e.g. {@code tex2pdf|tenant|acme}).
  *
  * <p>Acquisition is one atomic conditional
- * {@code findOneAndUpdate({_id, count: {$lt: cap}}, {$inc: {count: 1}})} with
- * upsert: a matching document increments; a full document makes the filter
- * miss and the upsert insert collide on the unique {@code _id} — that
- * {@code DuplicateKeyException} is the busy signal (§5). No further indexes:
- * {@code _id} is the only access path.
+ * {@code findOneAndUpdate({_id, count: {$lt: cap}}, {$inc: {count: 1}})}
+ * without upsert: a matching document increments, a miss means "full" —
+ * unless the document does not exist yet, which a pure-{@code _id} upsert
+ * at {@code count: 0} fixes before one more try. Reconcile removes
+ * counters that no holder books. No further indexes: {@code _id} is the
+ * only access path.
  */
 @Document(collection = "resource_lease_counters")
 @Data

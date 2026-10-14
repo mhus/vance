@@ -73,6 +73,13 @@ public final class McpHttpTransport implements McpTransport {
 
     private volatile boolean open;
 
+    /**
+     * Invocation scope of the last request — the session-termination
+     * DELETE on {@link #close()} has no caller context of its own but must
+     * authenticate like the requests that opened the session.
+     */
+    private final AtomicReference<@Nullable ToolInvocationContext> lastCtx = new AtomicReference<>();
+
     /** Header name from the MCP Streamable-HTTP transport spec. Case-insensitive on the wire. */
     static final String SESSION_HEADER = "Mcp-Session-Id";
 
@@ -123,21 +130,38 @@ public final class McpHttpTransport implements McpTransport {
      * {@code DELETE} with the {@code Mcp-Session-Id} header tells the server
      * to drop the session. Without it every close left the server-side
      * session to its own expiry (leaked browser sessions on Playwright-MCP
-     * style servers, see {@code planning/lease-system.md} §10). Failures are
-     * swallowed — a server that never had the session loses nothing, and
-     * the local side is closed either way.
+     * style servers, see {@code specification/public/lease-system.md}).
      */
     private void terminateServerSession() {
         String sid = sessionId.get();
-        if (sid == null || config.url() == null) return;
+        if (sid == null) return;
+        sendSessionDelete(sid, lastCtx.get());
+    }
+
+    /**
+     * Terminates a session this transport instance never opened — the
+     * lease reaper cleaning up after a dead holder pod, with the session id
+     * from the lease payload. Needs no {@link #open()}; authenticates with
+     * the configured auth under {@code ctx}. Best effort like
+     * {@link #close()}.
+     */
+    public void terminateSession(String sid, ToolInvocationContext ctx) {
+        sendSessionDelete(sid, ctx);
+    }
+
+    /** Failures are swallowed — the server expires the session on its own. */
+    private void sendSessionDelete(String sid, @Nullable ToolInvocationContext ctx) {
+        if (config.url() == null) return;
         try {
-            HttpRequest request = HttpRequest.newBuilder(URI.create(config.url()))
+            HttpRequest.Builder rb = HttpRequest.newBuilder(URI.create(config.url()))
                     .timeout(Duration.ofSeconds(5))
                     .header(SESSION_HEADER, sid)
-                    .DELETE()
-                    .build();
+                    .DELETE();
+            if (ctx != null) {
+                applyAuthHeader(rb, ctx);
+            }
             HttpClient client = httpClient.client(config.tls());
-            HttpResponse<Void> response = client.send(request, HttpResponse.BodyHandlers.discarding());
+            HttpResponse<Void> response = client.send(rb.build(), HttpResponse.BodyHandlers.discarding());
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
                 log.debug("McpHttpTransport: server session {} terminated", sid);
             } else {
@@ -145,7 +169,7 @@ public final class McpHttpTransport implements McpTransport {
                         "McpHttpTransport: session termination returned {} — server expires it on its own",
                         response.statusCode());
             }
-        } catch (IOException | InterruptedException e) {
+        } catch (IOException | InterruptedException | RuntimeException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             log.debug("McpHttpTransport: session termination failed — server expires it on its own: {}", e.toString());
         }
@@ -219,6 +243,7 @@ public final class McpHttpTransport implements McpTransport {
                 .header("Accept", "application/json, text/event-stream")
                 .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
         applyAuthHeader(rb, ctx);
+        lastCtx.set(ctx);
         String sid = sessionId.get();
         if (sid != null) {
             rb.header(SESSION_HEADER, sid);

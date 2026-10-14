@@ -47,7 +47,9 @@ public interface Tex2PdfExecutor {
      * Compilation request. The {@code workspaceRoot} is already
      * populated with all source files by the caller. The tenant/project/
      * process context is included so executors can read settings via
-     * the cascade (e.g. API keys, service URLs).
+     * the cascade (e.g. API keys, service URLs); {@code userId} scopes the
+     * {@code levels.user} cap of the compile lease ({@code null} for
+     * system-initiated runs — the user level is then skipped).
      */
     record Request(
             String mainDocument,
@@ -55,7 +57,19 @@ public interface Tex2PdfExecutor {
             Path workspaceRoot,
             String tenantId,
             @Nullable String projectId,
-            @Nullable String processId) {
+            @Nullable String processId,
+            @Nullable String userId) {
+
+        /** Request without a user — system-initiated runs and tests. */
+        public Request(
+                String mainDocument,
+                String engine,
+                Path workspaceRoot,
+                String tenantId,
+                @Nullable String projectId,
+                @Nullable String processId) {
+            this(mainDocument, engine, workspaceRoot, tenantId, projectId, processId, null);
+        }
 
         /**
          * Resolved engine name, defaulting to {@code pdflatex}.

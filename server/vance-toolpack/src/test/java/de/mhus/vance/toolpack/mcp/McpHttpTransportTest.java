@@ -4,11 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.core.McpJsonRpc;
 import de.mhus.vance.toolpack.core.PackHttpClient;
 import de.mhus.vance.toolpack.core.PackJson;
 import de.mhus.vance.toolpack.core.SecretResolver;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetAddress;
@@ -57,10 +57,9 @@ class McpHttpTransportTest {
     @BeforeEach
     void start() throws IOException {
         lastRequestBody = new AtomicReference<>();
-        server = HttpServer.create(
-                new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
-        endpoint = "http://" + InetAddress.getLoopbackAddress().getHostAddress()
-                + ":" + server.getAddress().getPort() + "/mcp";
+        server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        endpoint = "http://" + InetAddress.getLoopbackAddress().getHostAddress() + ":"
+                + server.getAddress().getPort() + "/mcp";
         server.setExecutor(null);
         server.start();
     }
@@ -74,13 +73,10 @@ class McpHttpTransportTest {
     void jsonResponse_returnsResultMap() {
         server.createContext("/mcp", this::respondJson);
 
-        McpConfig cfg = McpConfig.fromParameters(Map.of(
-                "transport", "http",
-                "url", endpoint));
+        McpConfig cfg = McpConfig.fromParameters(Map.of("transport", "http", "url", endpoint));
         try (McpHttpTransport t = new McpHttpTransport(cfg, rpc, new PackHttpClient(), SecretResolver.PASSTHROUGH)) {
             t.open();
-            Object result = t.sendRequest("tools/list", Map.of(),
-                    Duration.ofSeconds(5), CTX);
+            Object result = t.sendRequest("tools/list", Map.of(), Duration.ofSeconds(5), CTX);
             assertThat(result).isInstanceOf(Map.class);
             @SuppressWarnings("unchecked")
             Map<String, Object> m = (Map<String, Object>) result;
@@ -97,19 +93,15 @@ class McpHttpTransportTest {
         server.createContext("/mcp", this::respondSseWithNotification);
 
         AtomicReference<McpJsonRpc.Frame.Notification> capturedNotification = new AtomicReference<>();
-        McpConfig cfg = McpConfig.fromParameters(Map.of(
-                "transport", "http",
-                "url", endpoint));
+        McpConfig cfg = McpConfig.fromParameters(Map.of("transport", "http", "url", endpoint));
         try (McpHttpTransport t = new McpHttpTransport(cfg, rpc, new PackHttpClient(), SecretResolver.PASSTHROUGH)) {
             t.open();
             t.setNotificationHandler(capturedNotification::set);
-            Object result = t.sendRequest("tools/list", Map.of(),
-                    Duration.ofSeconds(5), CTX);
+            Object result = t.sendRequest("tools/list", Map.of(), Duration.ofSeconds(5), CTX);
             assertThat(result).isInstanceOf(Map.class);
         }
         assertThat(capturedNotification.get()).isNotNull();
-        assertThat(capturedNotification.get().method())
-                .isEqualTo("notifications/tools/list_changed");
+        assertThat(capturedNotification.get().method()).isEqualTo("notifications/tools/list_changed");
     }
 
     @Test
@@ -120,12 +112,9 @@ class McpHttpTransportTest {
             respondJson(ex);
         });
 
-        SecretResolver resolver = (input, ctx) ->
-                input == null ? null : input.replace("{{secret:tok}}", "supersecret");
+        SecretResolver resolver = (input, ctx) -> input == null ? null : input.replace("{{secret:tok}}", "supersecret");
         McpConfig cfg = McpConfig.fromParameters(Map.of(
-                "transport", "http",
-                "url", endpoint,
-                "auth", Map.of("type", "bearer", "token", "{{secret:tok}}")));
+                "transport", "http", "url", endpoint, "auth", Map.of("type", "bearer", "token", "{{secret:tok}}")));
         try (McpHttpTransport t = new McpHttpTransport(cfg, rpc, new PackHttpClient(), resolver)) {
             t.open();
             t.sendRequest("tools/list", Map.of(), Duration.ofSeconds(5), CTX);
@@ -149,15 +138,12 @@ class McpHttpTransportTest {
             if (n == 1) {
                 ex.getResponseHeaders().add("Mcp-Session-Id", "sess-abc");
             } else {
-                capturedSessionOnSecondCall.set(
-                        ex.getRequestHeaders().getFirst("Mcp-Session-Id"));
+                capturedSessionOnSecondCall.set(ex.getRequestHeaders().getFirst("Mcp-Session-Id"));
             }
             respondJson(ex);
         });
 
-        McpConfig cfg = McpConfig.fromParameters(Map.of(
-                "transport", "http",
-                "url", endpoint));
+        McpConfig cfg = McpConfig.fromParameters(Map.of("transport", "http", "url", endpoint));
         try (McpHttpTransport t = new McpHttpTransport(cfg, rpc, new PackHttpClient(), SecretResolver.PASSTHROUGH)) {
             t.open();
             t.sendRequest("initialize", Map.of(), Duration.ofSeconds(5), CTX);
@@ -180,15 +166,12 @@ class McpHttpTransportTest {
         server.createContext("/mcp", ex -> {
             int n = callCounter.updateAndGet(i -> i + 1);
             if (n == 2) {
-                capturedSessionOnSecondCall.set(
-                        ex.getRequestHeaders().getFirst("Mcp-Session-Id"));
+                capturedSessionOnSecondCall.set(ex.getRequestHeaders().getFirst("Mcp-Session-Id"));
             }
             respondJson(ex);
         });
 
-        McpConfig cfg = McpConfig.fromParameters(Map.of(
-                "transport", "http",
-                "url", endpoint));
+        McpConfig cfg = McpConfig.fromParameters(Map.of("transport", "http", "url", endpoint));
         try (McpHttpTransport t = new McpHttpTransport(cfg, rpc, new PackHttpClient(), SecretResolver.PASSTHROUGH)) {
             t.open();
             t.sendRequest("initialize", Map.of(), Duration.ofSeconds(5), CTX);
@@ -202,9 +185,7 @@ class McpHttpTransportTest {
     void errorResponse_mapsToJsonRpcException() {
         server.createContext("/mcp", this::respondJsonError);
 
-        McpConfig cfg = McpConfig.fromParameters(Map.of(
-                "transport", "http",
-                "url", endpoint));
+        McpConfig cfg = McpConfig.fromParameters(Map.of("transport", "http", "url", endpoint));
         try (McpHttpTransport t = new McpHttpTransport(cfg, rpc, new PackHttpClient(), SecretResolver.PASSTHROUGH)) {
             t.open();
             try {
@@ -219,6 +200,57 @@ class McpHttpTransportTest {
 
     // ─────── Test handlers ───────
 
+    @Test
+    void close_terminatesTheServerSession_withTheConfiguredAuth() {
+        AtomicReference<String> deleteSession = new AtomicReference<>();
+        AtomicReference<String> deleteAuth = new AtomicReference<>();
+        server.createContext("/mcp", ex -> {
+            if ("DELETE".equals(ex.getRequestMethod())) {
+                deleteSession.set(ex.getRequestHeaders().getFirst("Mcp-Session-Id"));
+                deleteAuth.set(ex.getRequestHeaders().getFirst("Authorization"));
+                ex.sendResponseHeaders(204, -1);
+                ex.close();
+                return;
+            }
+            ex.getResponseHeaders().add("Mcp-Session-Id", "sess-1");
+            respondJson(ex);
+        });
+
+        SecretResolver resolver = (input, ctx) -> input == null ? null : input.replace("{{secret:tok}}", "supersecret");
+        McpConfig cfg = McpConfig.fromParameters(Map.of(
+                "transport", "http", "url", endpoint, "auth", Map.of("type", "bearer", "token", "{{secret:tok}}")));
+        try (McpHttpTransport t = new McpHttpTransport(cfg, rpc, new PackHttpClient(), resolver)) {
+            t.open();
+            t.sendRequest("initialize", Map.of(), Duration.ofSeconds(5), CTX);
+            assertThat(t.currentSessionId()).isEqualTo("sess-1");
+        }
+
+        // An authenticated server rejects an anonymous DELETE — the session
+        // would leak exactly where termination matters.
+        assertThat(deleteSession.get()).isEqualTo("sess-1");
+        assertThat(deleteAuth.get()).isEqualTo("Bearer supersecret");
+    }
+
+    @Test
+    void terminateSession_onAnUnopenedTransport_sendsTheAuthenticatedDelete() {
+        AtomicReference<String> deleteSession = new AtomicReference<>();
+        AtomicReference<String> deleteAuth = new AtomicReference<>();
+        server.createContext("/mcp", ex -> {
+            deleteSession.set(ex.getRequestHeaders().getFirst("Mcp-Session-Id"));
+            deleteAuth.set(ex.getRequestHeaders().getFirst("Authorization"));
+            ex.sendResponseHeaders(204, -1);
+            ex.close();
+        });
+
+        McpConfig cfg = McpConfig.fromParameters(
+                Map.of("transport", "http", "url", endpoint, "auth", Map.of("type", "bearer", "token", "t0k")));
+        new McpHttpTransport(cfg, rpc, new PackHttpClient(), SecretResolver.PASSTHROUGH)
+                .terminateSession("sess-from-payload", CTX);
+
+        assertThat(deleteSession.get()).isEqualTo("sess-from-payload");
+        assertThat(deleteAuth.get()).isEqualTo("Bearer t0k");
+    }
+
     private void respondJson(HttpExchange ex) throws IOException {
         long requestId = parseRequestId(ex);
         Map<String, Object> envelope = new LinkedHashMap<>();
@@ -228,7 +260,9 @@ class McpHttpTransportTest {
         byte[] resp = PackJson.write(envelope).getBytes(StandardCharsets.UTF_8);
         ex.getResponseHeaders().add("Content-Type", "application/json");
         ex.sendResponseHeaders(200, resp.length);
-        try (OutputStream os = ex.getResponseBody()) { os.write(resp); }
+        try (OutputStream os = ex.getResponseBody()) {
+            os.write(resp);
+        }
     }
 
     private void respondSseWithNotification(HttpExchange ex) throws IOException {
@@ -243,10 +277,8 @@ class McpHttpTransportTest {
             os.write(("data: " + notif + "\n\n").getBytes(StandardCharsets.UTF_8));
             os.flush();
             // Then the response frame.
-            String resp = PackJson.write(Map.of(
-                    "jsonrpc", "2.0",
-                    "id", requestId,
-                    "result", Map.of("tools", List.of())));
+            String resp =
+                    PackJson.write(Map.of("jsonrpc", "2.0", "id", requestId, "result", Map.of("tools", List.of())));
             os.write(("data: " + resp + "\n\n").getBytes(StandardCharsets.UTF_8));
             os.flush();
         }
@@ -261,7 +293,9 @@ class McpHttpTransportTest {
         byte[] resp = PackJson.write(envelope).getBytes(StandardCharsets.UTF_8);
         ex.getResponseHeaders().add("Content-Type", "application/json");
         ex.sendResponseHeaders(200, resp.length);
-        try (OutputStream os = ex.getResponseBody()) { os.write(resp); }
+        try (OutputStream os = ex.getResponseBody()) {
+            os.write(resp);
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -276,6 +310,6 @@ class McpHttpTransportTest {
         return 1L;
     }
 
-    private static final ToolInvocationContext CTX = new ToolInvocationContext(
-            "tenant", "project", "session", "process", "user");
+    private static final ToolInvocationContext CTX =
+            new ToolInvocationContext("tenant", "project", "session", "process", "user");
 }

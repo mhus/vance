@@ -15,48 +15,29 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * The brain-side reaper round (§6 of {@code planning/lease-system.md}):
- * idle reap, dead-pod reap and counter reconcile run in the shared
- * {@link ResourceLeaseService}; this component drives them and routes
- * every reaped holder into the {@code podBound} matrix (§8):
- *
- * <ul>
- *   <li>holder pod alive (this one) → local handler dispatch</li>
- *   <li>holder pod alive (other) → internal POST; unreachable falls
- *       through to the dead-pod path</li>
- *   <li>holder pod dead + {@code podBound} → nothing left to clean, the
- *       resource died with the pod</li>
- *   <li>holder pod dead + not {@code podBound} → handler runs on this
- *       pod with the holder's payload (e.g. DELETE the remote session)</li>
- * </ul>
- *
- * <p>"Pod alive" uses the same criterion as project ownership —
- * {@link ClusterService#resolveEndpointByPodId}: a pod is alive when its
- * {@code brain_pods} row is neither stopped nor stale by the pod-liveness
- * window. There must not be two opinions about whether a pod lives.
+ * The brain-side reaper round (§5 of
+ * {@code specification/public/lease-system.md}): idle reap, dead-pod reap
+ * and counter reconcile run in the shared {@link ResourceLeaseService};
+ * this component drives them and hands every reaped holder to the
+ * {@link LeaseRevocationDispatcher} (the {@code podBound} matrix).
  */
 @Component
 @Slf4j
 public class ResourceLeaseSweeper {
 
     private final ResourceLeaseService leaseService;
-    private final LeaseHandlerRegistry registry;
+    private final LeaseRevocationDispatcher dispatcher;
     private final ClusterService cluster;
-    private final HttpLeaseRevokedClient revokedClient;
 
     /** Counters quiet for this window may be reconciled — must comfortably exceed every waitMs. */
     @Value("${vance.lease.reconcile-safety-ms:60000}")
     private long reconcileSafetyMs;
 
     public ResourceLeaseSweeper(
-            ResourceLeaseService leaseService,
-            LeaseHandlerRegistry registry,
-            ClusterService cluster,
-            HttpLeaseRevokedClient revokedClient) {
+            ResourceLeaseService leaseService, LeaseRevocationDispatcher dispatcher, ClusterService cluster) {
         this.leaseService = leaseService;
-        this.registry = registry;
+        this.dispatcher = dispatcher;
         this.cluster = cluster;
-        this.revokedClient = revokedClient;
     }
 
     @Scheduled(
@@ -94,38 +75,6 @@ public class ResourceLeaseSweeper {
     }
 
     private void dispatch(List<ResourceLeaseHolderDocument> holders) {
-        String selfPod = cluster.selfPodId();
-        for (ResourceLeaseHolderDocument holder : holders) {
-            LeaseHolderInfo info = leaseService.toInfo(holder);
-            String endpoint = cluster.resolveEndpointByPodId(info.pod()).orElse(null);
-            if (endpoint != null) {
-                if (info.pod().equals(selfPod)) {
-                    registry.dispatch(info);
-                    continue;
-                }
-                try {
-                    revokedClient.post(endpoint, info);
-                } catch (RuntimeException e) {
-                    log.warn(
-                            "lease revoke: forwarding to holder pod '{}' failed ({}): {}",
-                            info.pod(),
-                            info.token(),
-                            e.toString());
-                    if (info.podBound()) continue;
-                    registry.dispatch(info);
-                }
-            } else {
-                // Dead pod: podBound resources died with it; the rest is
-                // cleaned up here with the holder's payload.
-                if (info.podBound()) {
-                    log.info(
-                            "lease revoke: holder pod '{}' is dead and resource is pod-bound — nothing to clean: {}",
-                            info.pod(),
-                            info.token());
-                    continue;
-                }
-                registry.dispatch(info);
-            }
-        }
+        dispatcher.dispatch(holders.stream().map(LeaseHolderInfo::of).toList());
     }
 }

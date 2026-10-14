@@ -38,6 +38,12 @@ import org.springframework.stereotype.Service;
  * brain's OAuth server instead ({@link OAuthBrowserLogin}); the stored
  * {@code authMethod: oauth} makes step 2 of the cascade refresh at the OAuth
  * token endpoint, and {@link #logout()} revokes the grant there.
+ *
+ * <p><b>Concurrency:</b> every read-modify-write of {@code access.yaml}
+ * (refresh, login, logout) runs under {@link AccessStore#withLock}, and a
+ * refresh re-reads the file once it holds the lock — another foot in the same
+ * directory may have rotated the refresh token in the meantime, and using the
+ * old one again would look like a replay to the OAuth server.
  */
 @Service
 @Slf4j
@@ -58,6 +64,16 @@ public class FootAuthService {
 
     /** {@link AccessData#getAuthMethod()} of a browser (OAuth) login. */
     static final String AUTH_METHOD_OAUTH = "oauth";
+
+    /**
+     * Outcome of {@link #logout()}.
+     *
+     * @param removed            a credential file was deleted
+     * @param serverRevokeFailed a browser login was to be revoked at the
+     *                           server, but the server did not confirm it — the
+     *                           grant may still be live there
+     */
+    public record LogoutResult(boolean removed, boolean serverRevokeFailed) {}
 
     @Autowired
     public FootAuthService(
@@ -117,25 +133,10 @@ public class FootAuthService {
                 log.debug("using cached access token from {}", accessStore.file(dir));
                 return toResponse(stored.getAccessToken(), stored.getAccessExpiresAt());
             }
-            if (AUTH_METHOD_OAUTH.equals(stored.getAuthMethod())) {
-                return refreshOAuth(dir, stored);
+            AccessTokenResponse refreshed = accessStore.withLock(dir, () -> refreshLocked(dir));
+            if (refreshed != null) {
+                return refreshed;
             }
-            if (isValid(stored.getRefreshToken(), stored.getRefreshExpiresAt())) {
-                String username =
-                        firstNonBlank(stored.getUsername(), config.getAuth().getUsername());
-                log.info("access token expired — refreshing via stored refresh token (user='{}')", username);
-                AccessTokenResponse minted = client.mint(
-                        config.getBrain().getHttpBase(),
-                        config.getAuth().getTenant(),
-                        username,
-                        AccessTokenRequest.builder()
-                                .refreshToken(stored.getRefreshToken())
-                                .requestRefreshToken(true)
-                                .build());
-                persist(dir, username, minted, stored);
-                return minted;
-            }
-            log.debug("stored credentials in {} are fully expired", accessStore.file(dir));
         }
 
         String password = config.getAuth().getPassword();
@@ -150,6 +151,47 @@ public class FootAuthService {
 
         throw new AuthRequiredException(
                 "No valid stored credentials — run /login (or set vance.auth.password for a dev login).");
+    }
+
+    /**
+     * Steps 1–2 of the cascade, run while holding the access lock: the file is
+     * read again, because another client may have refreshed while this one
+     * waited — then its fresh access token is used and the (already rotated)
+     * refresh token is not touched.
+     *
+     * @return the token, or {@code null} when the stored credentials are gone
+     *         or fully expired (the caller falls through to step 3)
+     */
+    private @Nullable AccessTokenResponse refreshLocked(Path dir) throws Exception {
+        Optional<AccessData> current = accessStore.load(dir);
+        if (current.isEmpty()) {
+            return null;
+        }
+        AccessData stored = current.get();
+        if (isValid(stored.getAccessToken(), stored.getAccessExpiresAt())) {
+            log.debug("access token in {} was refreshed by another client meanwhile", accessStore.file(dir));
+            return toResponse(stored.getAccessToken(), stored.getAccessExpiresAt());
+        }
+        if (AUTH_METHOD_OAUTH.equals(stored.getAuthMethod())) {
+            return refreshOAuth(dir, stored);
+        }
+        if (isValid(stored.getRefreshToken(), stored.getRefreshExpiresAt())) {
+            String username =
+                    firstNonBlank(stored.getUsername(), config.getAuth().getUsername());
+            log.info("access token expired — refreshing via stored refresh token (user='{}')", username);
+            AccessTokenResponse minted = client.mint(
+                    config.getBrain().getHttpBase(),
+                    config.getAuth().getTenant(),
+                    username,
+                    AccessTokenRequest.builder()
+                            .refreshToken(stored.getRefreshToken())
+                            .requestRefreshToken(true)
+                            .build());
+            persist(dir, username, minted, stored);
+            return minted;
+        }
+        log.debug("stored credentials in {} are fully expired", accessStore.file(dir));
+        return null;
     }
 
     /**
@@ -181,7 +223,7 @@ public class FootAuthService {
         data.setAccessExpiresAt(minted.getExpiresAtTimestamp());
         data.setRefreshToken(minted.getRefreshToken());
         data.setRefreshExpiresAt(minted.getRefreshTokenExpiresAtTimestamp());
-        accessStore.save(dir, data);
+        replaceStored(dir, data);
 
         ProjectBinding binding = buildBinding(request);
         bindingStore.save(dir, binding);
@@ -215,7 +257,8 @@ public class FootAuthService {
         TransportGuard.assertAllowed(
                 httpBase, wsBase, config.getBrain().isAllowInsecureTransport(), true, msg -> log.warn("{}", msg));
 
-        OAuthBrowserLogin.Result result = browserLogin.run(httpBase, tenant, showUrl, timeout);
+        OAuthBrowserLogin.Result result =
+                browserLogin.run(httpBase, tenant, config.getBrain().isAllowInsecureTransport(), showUrl, timeout);
         long now = clock.getAsLong();
         Path dir = paths.loginTargetDir();
         AccessData data = new AccessData();
@@ -227,7 +270,7 @@ public class FootAuthService {
         data.setOauthTokenEndpoint(result.endpoints().tokenEndpoint());
         data.setOauthRevocationEndpoint(result.endpoints().revocationEndpoint());
         data.setOauthClientId(OAuthBrowserLogin.CLIENT_ID);
-        accessStore.save(dir, data);
+        replaceStored(dir, data);
 
         ProjectBinding binding =
                 buildBinding(new LoginRequest(httpBase, wsBase, tenant, result.username(), project, ""));
@@ -245,15 +288,63 @@ public class FootAuthService {
     }
 
     /**
+     * Writes a fresh login to {@code dir} under the access lock. A browser
+     * login it replaces is revoked at its OAuth server afterwards (best
+     * effort) — the server issues one grant per login, and the old one would
+     * otherwise stay live, unreachable from this CLI, until it expires.
+     */
+    private void replaceStored(Path dir, AccessData data) throws Exception {
+        Optional<AccessData> previous = accessStore.withLock(dir, () -> {
+            Optional<AccessData> old = loadQuietly(dir);
+            accessStore.save(dir, data);
+            return old;
+        });
+        previous.ifPresent(old -> revokeReplaced(old, data));
+    }
+
+    private void revokeReplaced(AccessData old, AccessData replacement) {
+        String oldRefresh = old.getRefreshToken();
+        String endpoint = old.getOauthRevocationEndpoint();
+        if (!AUTH_METHOD_OAUTH.equals(old.getAuthMethod())
+                || oldRefresh == null
+                || oldRefresh.isBlank()
+                || endpoint == null
+                || oldRefresh.equals(replacement.getRefreshToken())) {
+            return;
+        }
+        if (oauthClient.revoke(endpoint, clientIdOf(old), oldRefresh)) {
+            log.info("revoked the browser login replaced by this login");
+        } else {
+            log.warn("could not revoke the browser login replaced by this login — "
+                    + "it may still be listed under the connected apps of the account");
+        }
+    }
+
+    /** A broken previous file must not block a new login — it is overwritten anyway. */
+    private Optional<AccessData> loadQuietly(Path dir) {
+        try {
+            return accessStore.load(dir);
+        } catch (AccessStoreException e) {
+            log.debug("ignoring unreadable previous access file: {}", e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    private static String clientIdOf(AccessData data) {
+        return data.getOauthClientId() == null ? OAuthBrowserLogin.CLIENT_ID : data.getOauthClientId();
+    }
+
+    /**
      * Step 2 of the cascade for a browser login: rotate the refresh token at
      * the OAuth token endpoint. The server owns the refresh token's lifetime
      * (sliding), so there is no local expiry to check — a refusal means the
-     * login is gone and the user has to sign in again.
+     * login is gone and the user has to sign in again. Runs under the access
+     * lock (see {@link #refreshLocked}).
      */
     private AccessTokenResponse refreshOAuth(Path dir, AccessData stored) throws Exception {
         String refreshToken = stored.getRefreshToken();
         String tokenEndpoint = stored.getOauthTokenEndpoint();
-        String clientId = stored.getOauthClientId() == null ? OAuthBrowserLogin.CLIENT_ID : stored.getOauthClientId();
+        String clientId = clientIdOf(stored);
         if (refreshToken == null || refreshToken.isBlank() || tokenEndpoint == null) {
             throw new AuthRequiredException("Stored browser login is incomplete — run /login --browser.");
         }
@@ -279,28 +370,46 @@ public class FootAuthService {
     }
 
     /**
-     * Clears the stored access credentials from the active directory.
-     * Returns {@code true} if a credential file was removed. A browser login
-     * is also revoked at the OAuth server (best effort), so the refresh token
-     * is dead even if a copy of the file survived; the password login's
-     * refresh token is a self-expiring JWT with no server-side revocation, so
-     * there logout stays a local delete.
+     * Clears the stored access credentials from the active directory. A
+     * browser login is also revoked at the OAuth server first (best effort),
+     * so the refresh token is dead even if a copy of the file survived;
+     * {@link LogoutResult#serverRevokeFailed()} tells the caller when the
+     * server did not confirm that. The password login's refresh token is a
+     * self-expiring JWT with no server-side revocation, so there logout stays
+     * a local delete.
      */
-    public boolean logout() {
+    public LogoutResult logout() {
         Path dir = paths.activeDir();
-        accessStore.load(dir).ifPresent(stored -> {
-            if (AUTH_METHOD_OAUTH.equals(stored.getAuthMethod())
-                    && stored.getOauthRevocationEndpoint() != null
-                    && stored.getRefreshToken() != null) {
-                oauthClient.revoke(
-                        stored.getOauthRevocationEndpoint(),
-                        stored.getOauthClientId() == null ? OAuthBrowserLogin.CLIENT_ID : stored.getOauthClientId(),
-                        stored.getRefreshToken());
-            }
-        });
-        boolean removed = accessStore.delete(dir);
-        log.info("logout: {} credentials in {}", removed ? "removed" : "no", dir);
-        return removed;
+        if (!accessStore.exists(dir)) {
+            // Nothing to do — and no lock file to leave behind in a directory without a login.
+            log.info("logout: no credentials in {}", dir);
+            return new LogoutResult(false, false);
+        }
+        try {
+            return accessStore.withLock(dir, () -> {
+                boolean revokeFailed = false;
+                Optional<AccessData> stored = loadQuietly(dir);
+                if (stored.isPresent()) {
+                    AccessData data = stored.get();
+                    if (AUTH_METHOD_OAUTH.equals(data.getAuthMethod())
+                            && data.getOauthRevocationEndpoint() != null
+                            && data.getRefreshToken() != null) {
+                        revokeFailed = !oauthClient.revoke(
+                                data.getOauthRevocationEndpoint(), clientIdOf(data), data.getRefreshToken());
+                        if (revokeFailed) {
+                            log.warn("logout: the OAuth server did not confirm the revocation of the browser login");
+                        }
+                    }
+                }
+                boolean removed = accessStore.delete(dir);
+                log.info("logout: {} credentials in {}", removed ? "removed" : "no", dir);
+                return new LogoutResult(removed, revokeFailed);
+            });
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new AccessStoreException("Failed to lock " + accessStore.file(dir) + ": " + e.getMessage(), e);
+        }
     }
 
     /** Whether the active directory currently holds a stored credential. */

@@ -63,7 +63,15 @@ public class OAuthServerClientService {
         return repository.findByClientId(clientId).filter(c -> tenantId.equals(c.getTenantId()));
     }
 
-    /** Stamp {@code lastUsedAt} — a single-field update, never a save of a read copy. */
+    /**
+     * Stamp {@code lastUsedAt} — a single-field update, never a save of a read copy.
+     *
+     * <p>Call it only once an authorization code has actually been issued to
+     * the client, never for a merely started authorization request: the
+     * cleanup keys on {@code lastUsedAt}, and a stamp anyone can trigger by
+     * opening an authorize URL would keep an abandoned registration alive
+     * forever.
+     */
     public void touch(String clientId) {
         mongoTemplate.updateFirst(
                 new Query(Criteria.where("clientId").is(clientId)),

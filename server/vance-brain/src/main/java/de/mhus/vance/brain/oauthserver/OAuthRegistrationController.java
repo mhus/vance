@@ -1,15 +1,17 @@
 package de.mhus.vance.brain.oauthserver;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import de.mhus.vance.shared.oauthserver.OAuthServerClientDocument;
 import de.mhus.vance.shared.oauthserver.OAuthServerClientService;
 import de.mhus.vance.shared.tenant.TenantService;
+import jakarta.servlet.http.HttpServletRequest;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -31,10 +33,19 @@ import org.springframework.web.bind.annotation.RestController;
  * {@code token_endpoint_auth_method} must be {@code none} (or absent), no
  * secret is issued. Redirect URIs must be HTTPS or loopback.
  *
- * <p>The endpoint is open by nature, so it is fenced: a per-tenant hourly
- * budget on this pod, size limits on every field, and unused registrations
- * are cleaned up ({@link OAuthClientCleanup}). A registration grants nothing
- * — every grant still needs a logged-in user's consent.
+ * <p>The endpoint is open by nature, so it is fenced: an hourly budget per
+ * client address ({@link #REGISTRATIONS_PER_ADDRESS_PER_HOUR}) under an
+ * hourly ceiling per tenant ({@link #REGISTRATIONS_PER_HOUR}), both on this
+ * pod; size limits on every field; a {@code client_name} cleaned of
+ * invisible and direction-changing characters ({@link OAuthClientNames});
+ * no redirect URI on the server's own origin; and unused registrations are
+ * cleaned up ({@link OAuthClientCleanup}). A registration grants nothing —
+ * every grant still needs a logged-in user's consent.
+ *
+ * <p>The client address comes from {@link ClientAddresses}: the socket peer,
+ * followed back through {@code X-Forwarded-For} only across our own
+ * (non-public) proxies, so a client cannot pick its own budget key by
+ * sending the header.
  */
 @RestController
 @RequiredArgsConstructor
@@ -46,28 +57,50 @@ public class OAuthRegistrationController {
     static final int MAX_NAME_LENGTH = 120;
     static final int MAX_URI_LENGTH = 2000;
     static final int REGISTRATIONS_PER_HOUR = 60;
+    static final int REGISTRATIONS_PER_ADDRESS_PER_HOUR = 5;
+    static final int MAX_TRACKED_KEYS = 10_000;
+    static final Duration BUDGET_WINDOW = Duration.ofHours(1);
 
     private final OAuthServerSettings settings;
     private final OAuthServerClientService clientService;
     private final TenantService tenantService;
 
-    /** {@code tenant -> (window start, count)} — the hourly budget per pod. */
-    private final ConcurrentHashMap<String, Window> budget = new ConcurrentHashMap<>();
+    /**
+     * {@code tenant -> count} — the hourly ceiling per pod. An entry expires
+     * one window after it was created, so each entry is a fixed window.
+     */
+    private final Cache<String, AtomicInteger> tenantBudget = Caffeine.newBuilder()
+            .maximumSize(MAX_TRACKED_KEYS)
+            .expireAfterWrite(BUDGET_WINDOW)
+            .build();
 
-    private record Window(Instant start, int count) {}
+    /**
+     * {@code client address -> count} — the hourly budget per
+     * address, bounded; evicting an entry early only resets one address's
+     * budget, the tenant ceiling still holds.
+     */
+    private final Cache<String, AtomicInteger> addressBudget = Caffeine.newBuilder()
+            .maximumSize(MAX_TRACKED_KEYS)
+            .expireAfterWrite(BUDGET_WINDOW)
+            .build();
 
     @PostMapping(
             value = "/brain/{tenant}/oauth/register",
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, Object>> register(
-            @PathVariable("tenant") String tenant, @RequestBody Map<String, Object> body) {
+            @PathVariable("tenant") String tenant, @RequestBody Map<String, Object> body, HttpServletRequest request) {
         if (!settings.enabled()
                 || !settings.registrationEnabled()
                 || tenantService.findByName(tenant).isEmpty()) {
             return error(HttpStatus.NOT_FOUND, "invalid_request", "registration is not available");
         }
-        if (!consumeBudget(tenant)) {
+        String address = ClientAddresses.of(request);
+        if (!consume(addressBudget, address, REGISTRATIONS_PER_ADDRESS_PER_HOUR)) {
+            log.info("OAuth registration budget exhausted for address '{}' (tenant '{}')", address, tenant);
+            return error(HttpStatus.TOO_MANY_REQUESTS, "invalid_request", "too many registrations, try later");
+        }
+        if (!consume(tenantBudget, tenant, REGISTRATIONS_PER_HOUR)) {
             log.warn("OAuth registration budget exhausted for tenant '{}'", tenant);
             return error(HttpStatus.TOO_MANY_REQUESTS, "invalid_request", "too many registrations, try later");
         }
@@ -95,17 +128,20 @@ public class OAuthRegistrationController {
                     "invalid_redirect_uri",
                     "redirect_uris must list 1 to " + MAX_REDIRECT_URIS + " URIs");
         }
+        String ownOrigin = settings.ownOrigin();
         for (Object item : raw) {
-            String uri = item instanceof String s ? s : null;
-            if (!RedirectUris.isAcceptable(uri)) {
+            if (!(item instanceof String uri) || !RedirectUris.isAcceptable(uri, ownOrigin)) {
                 return error(
                         HttpStatus.BAD_REQUEST,
                         "invalid_redirect_uri",
-                        "redirect URIs must be https or http to a loopback address, without fragment");
+                        "redirect URIs must be https or http to a loopback address, without fragment,"
+                                + " and not on this server's own origin");
             }
             redirectUris.add(uri);
         }
-        String name = text(body.get("client_name"), MAX_NAME_LENGTH);
+        String name = body.get("client_name") instanceof String rawName
+                ? OAuthClientNames.sanitize(rawName, MAX_NAME_LENGTH)
+                : null;
         String clientUri = httpsOrNull(body.get("client_uri"));
         String logoUri = httpsOrNull(body.get("logo_uri"));
 
@@ -129,15 +165,8 @@ public class OAuthRegistrationController {
                 .body(out);
     }
 
-    private boolean consumeBudget(String tenant) {
-        Instant now = Instant.now();
-        Window next = budget.compute(tenant, (k, w) -> {
-            if (w == null || Duration.between(w.start(), now).compareTo(Duration.ofHours(1)) >= 0) {
-                return new Window(now, 1);
-            }
-            return new Window(w.start(), w.count() + 1);
-        });
-        return next.count() <= REGISTRATIONS_PER_HOUR;
+    private static boolean consume(Cache<String, AtomicInteger> budget, String key, int limit) {
+        return budget.get(key, k -> new AtomicInteger()).incrementAndGet() <= limit;
     }
 
     private static boolean subsetOf(@Nullable Object raw, List<String> allowed) {

@@ -53,4 +53,32 @@ class RedirectUrisTest {
         assertThat(RedirectUris.isLoopback("https://claude.ai/cb")).isFalse();
         assertThat(RedirectUris.host("https://claude.ai/cb")).isEqualTo("claude.ai");
     }
+
+    @Test
+    void origin_isNormalizedWithExplicitPort() {
+        assertThat(RedirectUris.origin("https://Vance.Example.com/brain/acme"))
+                .isEqualTo("https://vance.example.com:443");
+        assertThat(RedirectUris.origin("http://localhost:9797")).isEqualTo("http://localhost:9797");
+        assertThat(RedirectUris.origin("http://a.example/x")).isEqualTo("http://a.example:80");
+        assertThat(RedirectUris.origin("javascript:alert(1)")).isNull();
+        assertThat(RedirectUris.origin(null)).isNull();
+    }
+
+    @Test
+    void acceptable_refusesTheServersOwnOrigin() {
+        String own = RedirectUris.origin("https://vance.example.com");
+
+        assertThat(RedirectUris.isAcceptable("https://vance.example.com/login.html", own))
+                .isFalse();
+        assertThat(RedirectUris.isAcceptable("https://VANCE.example.com:443/oauth-consent.html", own))
+                .isFalse();
+        assertThat(RedirectUris.isAcceptable("https://vance.example.com:8443/cb", own))
+                .isTrue();
+        assertThat(RedirectUris.isAcceptable("https://other.example.com/cb", own))
+                .isTrue();
+        assertThat(RedirectUris.isAcceptable("http://127.0.0.1:3000/cb", own)).isTrue();
+        assertThat(RedirectUris.isAcceptable("http://evil.example/cb", own)).isFalse();
+        assertThat(RedirectUris.isAcceptable("https://vance.example.com/cb", null))
+                .isTrue();
+    }
 }

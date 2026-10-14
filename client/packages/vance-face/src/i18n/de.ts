@@ -2351,9 +2351,14 @@ export default {
     wrongTenant: 'Diese Anmelde-Anfrage gilt für den Mandanten „{tenant}“, du bist aber bei einem anderen angemeldet.',
     signInToTenant: 'Bei {tenant} anmelden',
     headline: '„{client}“ möchte auf dein Konto zugreifen',
+    firstParty: {
+      headline: '„{client}“ auf diesem Rechner anmelden?',
+      warning:
+        'Das Programm erhält vollen Zugriff auf dein Konto — alles, was du hier tun kannst. Der Zugang geht an ein Programm auf diesem Rechner (localhost): Erlaube das nur, wenn du die Anmeldung gerade selbst gestartet hast, z.B. mit /login --browser.',
+    },
     client: {
       dcr: 'Diesen Namen hat das Programm selbst gewählt — er ist nicht geprüft.',
-      cimd: 'Das Programm weist sich über seine Website {host} aus.',
+      cimd: 'Das Programm weist sich über sein Metadaten-Dokument {url} aus.',
       firstParty: 'Das ist ein Vancetope-Programm.',
     },
     accessLabel: 'Zugriff auf',
@@ -2370,6 +2375,7 @@ export default {
     revokeHint: 'Du kannst den Zugriff jederzeit unter „Verbundene Konten“ widerrufen.',
     approve: 'Erlauben',
     decline: 'Ablehnen',
+    approveArming: '„Erlauben“ wird aktiv, sobald dieses Fenster im Vordergrund ist.',
   },
 
   connectedApps: {

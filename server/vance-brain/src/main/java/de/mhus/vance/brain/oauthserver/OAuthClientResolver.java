@@ -23,6 +23,11 @@ public class OAuthClientResolver {
      * Built-in clients. Fixed in code, not registrable: they are the only
      * clients that may hold the full-account {@code account} scope, so their
      * redirect URIs must not be something a stranger can choose.
+     *
+     * <p>The foot CLI redirects to a loopback <em>IP literal</em> (RFC 8252
+     * §7.3, any port): {@code localhost} is deliberately not registered — the
+     * name can resolve elsewhere (hosts file, resolver) and the listener
+     * would not be the one bound on the loopback interface.
      */
     static final Map<String, ResolvedOAuthClient> FIRST_PARTY = Map.of(
             FOOT_CLIENT_ID,
@@ -31,7 +36,7 @@ public class OAuthClientResolver {
                     OAuthClientKind.FIRST_PARTY,
                     "Vancetope CLI",
                     null,
-                    List.of("http://127.0.0.1/callback", "http://localhost/callback")));
+                    List.of("http://127.0.0.1/callback", "http://[::1]/callback")));
 
     private final OAuthServerClientService clientService;
     private final ClientMetadataDocumentResolver documentResolver;

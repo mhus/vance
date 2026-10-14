@@ -203,23 +203,40 @@ function goOn(): void {
 }
 
 /**
- * Pull and validate the `next` query parameter. We accept only same-origin
- * relative paths (must start with `/`, must not start with `//` or `\\`,
- * must not be a protocol-relative URL) — anything else is an open-redirect
- * risk and gets rejected to a `null` (which makes the caller fall back to
- * the launcher).
+ * The `tenant` query parameter (sent by the OAuth authorization endpoint),
+ * accepted only as a plain tenant name.
  */
 function readTenantParam(): string | null {
   const raw = new URLSearchParams(window.location.search).get('tenant');
   return raw && /^[A-Za-z0-9_.-]+$/.test(raw) ? raw : null;
 }
 
+/**
+ * Pull and validate the `next` query parameter. Only a same-origin path is
+ * accepted — anything else is an open-redirect risk and gets rejected to
+ * `null` (which makes the caller fall back to the launcher). Control
+ * characters and backslashes are refused up front: the URL parser treats a
+ * backslash like a slash and drops tabs and newlines, so `/\evil.example`
+ * or `/` + TAB + `/evil.example` turn protocol-relative — a prefix check
+ * alone cannot be trusted. The rest is
+ * decided by the URL parser itself: the value must start with `/` and
+ * resolve to this page's origin. Returned is the normalised
+ * path + query + hash, never the raw input.
+ */
 function readNextParam(): string | null {
   const raw = new URLSearchParams(window.location.search).get('next');
   if (!raw) return null;
+  // eslint-disable-next-line no-control-regex -- refusing control characters is the point
+  if (/[\u0000-\u001F\u007F\\]/.test(raw)) return null;
   if (!raw.startsWith('/')) return null;
-  if (raw.startsWith('//') || raw.startsWith('/\\')) return null;
-  return raw;
+  let resolved: URL;
+  try {
+    resolved = new URL(raw, window.location.origin);
+  } catch {
+    return null;
+  }
+  if (resolved.origin !== window.location.origin) return null;
+  return resolved.pathname + resolved.search + resolved.hash;
 }
 </script>
 

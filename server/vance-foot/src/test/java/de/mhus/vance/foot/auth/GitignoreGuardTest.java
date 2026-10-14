@@ -35,9 +35,8 @@ class GitignoreGuardTest {
         GitignoreGuard.Result result = guard.ensureAccessIgnored(vance);
 
         assertThat(result.kind()).isEqualTo(GitignoreGuard.Kind.ADDED);
-        assertThat(result.entry()).isEqualTo(".vancetope/access.yaml");
-        assertThat(Files.readString(root.resolve(".gitignore")))
-                .contains(".vancetope/access.yaml");
+        assertThat(result.entry()).isEqualTo(".vancetope/access.yaml*");
+        assertThat(Files.readString(root.resolve(".gitignore"))).contains(".vancetope/access.yaml*");
     }
 
     @Test
@@ -48,17 +47,29 @@ class GitignoreGuardTest {
         guard.ensureAccessIgnored(vance);
 
         String gi = Files.readString(root.resolve(".gitignore"));
-        assertThat(gi).isEqualTo("target/\n.vancetope/access.yaml\n");
+        assertThat(gi).isEqualTo("target/\n.vancetope/access.yaml*\n");
     }
 
     @Test
-    void alreadyIgnoredByFileEntry_noChange(@TempDir Path root) throws Exception {
+    void alreadyIgnoredByWildcardEntry_noChange(@TempDir Path root) throws Exception {
+        Path vance = repoWithVance(root);
+        Files.writeString(root.resolve(".gitignore"), ".vancetope/access.yaml*\n");
+
+        GitignoreGuard.Result result = guard.ensureAccessIgnored(vance);
+
+        assertThat(result.kind()).isEqualTo(GitignoreGuard.Kind.ALREADY_IGNORED);
+    }
+
+    @Test
+    void legacyFileOnlyEntry_addsWildcardForLockFile(@TempDir Path root) throws Exception {
         Path vance = repoWithVance(root);
         Files.writeString(root.resolve(".gitignore"), ".vancetope/access.yaml\n");
 
         GitignoreGuard.Result result = guard.ensureAccessIgnored(vance);
 
-        assertThat(result.kind()).isEqualTo(GitignoreGuard.Kind.ALREADY_IGNORED);
+        assertThat(result.kind()).isEqualTo(GitignoreGuard.Kind.ADDED);
+        assertThat(Files.readString(root.resolve(".gitignore")))
+                .isEqualTo(".vancetope/access.yaml\n.vancetope/access.yaml*\n");
     }
 
     @Test
@@ -80,6 +91,6 @@ class GitignoreGuardTest {
         GitignoreGuard.Result result = guard.ensureAccessIgnored(vance);
 
         assertThat(result.kind()).isEqualTo(GitignoreGuard.Kind.ADDED);
-        assertThat(result.entry()).isEqualTo("sub/.vancetope/access.yaml");
+        assertThat(result.entry()).isEqualTo("sub/.vancetope/access.yaml*");
     }
 }

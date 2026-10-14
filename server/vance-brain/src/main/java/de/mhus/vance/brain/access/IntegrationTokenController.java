@@ -48,6 +48,13 @@ import org.springframework.web.server.ResponseStatusException;
  *       an attenuated credential must never be a source of credentials.</li>
  * </ul>
  *
+ * <p>A token minted with an OAuth {@code account} login records that grant as
+ * its parent and is revoked together with it.
+ *
+ * <p>The pin follows the profiles: a project-pinned profile needs a
+ * {@code projectId}, a tenant-wide one ({@code requiresProject() == false})
+ * refuses it, and the two kinds do not mix in one token.
+ *
  * <p>The mint additionally requires {@code WRITE} on the project being pinned.
  * The permission intersection would make an over-broad token harmless anyway,
  * but a token that authenticates and then fails every call is a bad thing to
@@ -109,7 +116,7 @@ public class IntegrationTokenController {
             HttpServletRequest request) {
 
         String username = requireUser(request);
-        requireAccessToken(request);
+        VanceJwtClaims caller = requireAccessToken(request);
 
         // Resolve every requested profile before doing anything: a mint that
         // half-succeeded would hand out a credential narrower than the person
@@ -122,9 +129,31 @@ public class IntegrationTokenController {
         }
 
         String projectId = blankToNull(req.getProjectId());
-        if (granted.stream().anyMatch(IntegrationScopeProfile::requiresProject) && projectId == null) {
+        boolean anyNeedsProject = granted.stream().anyMatch(IntegrationScopeProfile::requiresProject);
+        List<String> tenantWide = granted.stream()
+                .filter(p -> !p.requiresProject())
+                .map(IntegrationScopeProfile::id)
+                .toList();
+        if (anyNeedsProject && !tenantWide.isEmpty()) {
+            // One pin for the whole token: a pinned profile needs it, a
+            // tenant-wide one cannot honour it. Two tokens, not one.
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Scope profiles " + tenantWide
+                            + " are tenant-wide and cannot be combined with project-pinned profiles in one token");
+        }
+        if (anyNeedsProject && projectId == null) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, "One of the requested scope profiles requires a projectId");
+        }
+        if (!tenantWide.isEmpty() && projectId != null) {
+            // The doors of tenant-wide profiles (global MCP, agents) run their
+            // work under an unconfined security context — a pin would look
+            // like a restriction and restrict nothing.
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Scope profiles " + tenantWide + " are tenant-wide and cannot be pinned to a project — "
+                            + "omit projectId");
         }
         if (projectId != null) {
             authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
@@ -140,8 +169,12 @@ public class IntegrationTokenController {
         // Row first, token second — see IntegrationTokenService.create.
         List<String> profileIds =
                 granted.stream().map(IntegrationScopeProfile::id).toList();
+        // Minted through an OAuth login: the token is a child of that grant and
+        // dies with it (IntegrationTokenService.revokeAllForParentGrant) — a
+        // revoked app login must not leave credentials it created behind.
+        String parentGrantId = caller.tokenType() == TokenType.OAUTH ? caller.tokenId() : null;
         IntegrationTokenDocument doc = tokenService.create(
-                tenant, username, profileIds, projectId, req.getLabel().trim(), username, expiresAt);
+                tenant, username, profileIds, projectId, req.getLabel().trim(), username, expiresAt, parentGrantId);
         String token =
                 jwtService.createIntegrationToken(tenant, username, doc.getTokenId(), profileIds, projectId, expiresAt);
 
@@ -211,12 +244,20 @@ public class IntegrationTokenController {
      * OAuth token of the {@code account} scope). An attenuated credential
      * must not be able to mint credentials.
      */
-    private static void requireAccessToken(HttpServletRequest request) {
+    private static VanceJwtClaims requireAccessToken(HttpServletRequest request) {
         Object claims = request.getAttribute(AccessFilterBase.ATTR_CLAIMS);
         if (!(claims instanceof VanceJwtClaims c) || !c.isFullAccountCredential()) {
             throw new ResponseStatusException(
                     HttpStatus.FORBIDDEN, "Integration tokens can only be minted with a login token");
         }
+        if (c.tokenType() == TokenType.OAUTH
+                && (c.tokenId() == null || c.tokenId().isBlank())) {
+            // An OAuth login without its grant id could not be tied to the
+            // grant, so its children would survive the grant's revocation.
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "Integration tokens can only be minted with a login token");
+        }
+        return c;
     }
 
     private static @Nullable Long millis(@Nullable Instant instant) {

@@ -25,7 +25,11 @@ import org.springframework.stereotype.Component;
  *
  * <p>The project claim is only <em>checked for presence</em> here; the actual
  * confinement happens in {@code PermissionService}, against the resource the
- * endpoint really touched.
+ * endpoint really touched. Presence cuts both ways: a profile that needs a pin
+ * refuses a token without one, and a tenant-wide profile
+ * ({@link IntegrationScopeProfile#requiresProject()} {@code false}) refuses a
+ * token with one — its door cannot carry the confinement to where the work
+ * happens.
  */
 @Component
 @RequiredArgsConstructor
@@ -83,6 +87,22 @@ public class NarrowedCredentialCheck {
         if (granted.stream().anyMatch(IntegrationScopeProfile::requiresProject)
                 && (claims.projectId() == null || claims.projectId().isBlank())) {
             log.debug("{} token rejected: a carried profile requires a project pin (jti='{}')", kind, tokenId);
+            return false;
+        }
+        // The mirror image: a tenant-wide profile must not carry a pin. Its
+        // doors (the global MCP door, the agents door) hand the request to
+        // code that rebuilds an unconfined security context per tool call, so
+        // the pin would be a promise nobody downstream keeps. The mint refuses
+        // such a token; this refuses one that got minted anyway.
+        if (granted.stream().anyMatch(p -> !p.requiresProject())
+                && claims.projectId() != null
+                && !claims.projectId().isBlank()) {
+            log.debug(
+                    "{} token rejected: a carried profile is tenant-wide and cannot honour the project pin '{}'"
+                            + " (jti='{}')",
+                    kind,
+                    claims.projectId(),
+                    tokenId);
             return false;
         }
 

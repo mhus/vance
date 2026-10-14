@@ -4,6 +4,7 @@ import de.mhus.vance.api.ws.ClientContext;
 import de.mhus.vance.api.ws.HandshakeHeaders;
 import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.shared.access.AccessFilterBase;
+import de.mhus.vance.shared.jwt.TokenType;
 import de.mhus.vance.shared.jwt.VanceJwtClaims;
 import de.mhus.vance.shared.location.LocationService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -45,6 +46,9 @@ import tools.jackson.databind.ObjectMapper;
  * §2.1a):
  * <ul>
  *   <li>missing or invalid JWT → 401</li>
+ *   <li>a credential that is not a full account login (integration token,
+ *       narrowed OAuth token, script-run token, anything project-pinned) → 403
+ *       — see {@link #isAdmissible}</li>
  *   <li>{@code X-Vance-Profile} value violates the shape pattern → 400</li>
  *   <li>missing {@code X-Vance-Client-Version} → 400</li>
  * </ul>
@@ -69,6 +73,7 @@ public class VanceHandshakeInterceptor implements HandshakeInterceptor {
 
     private final LocationService locationService;
     private final ObjectMapper objectMapper;
+    private final OAuthWebSocketRevocationService grantRevocation;
 
     @Override
     public boolean beforeHandshake(
@@ -80,6 +85,18 @@ public class VanceHandshakeInterceptor implements HandshakeInterceptor {
         VanceJwtClaims claims = resolveClaims(request);
         if (claims == null) {
             response.setStatusCode(HttpStatus.UNAUTHORIZED);
+            return false;
+        }
+        if (!isAdmissible(claims)) {
+            log.debug(
+                    "Handshake refused: {} credential is not a full account login "
+                            + "(user='{}' tenant='{}' scp={} pid='{}')",
+                    claims.tokenType(),
+                    claims.username(),
+                    claims.tenantId(),
+                    claims.scopeProfiles(),
+                    claims.projectId());
+            response.setStatusCode(HttpStatus.FORBIDDEN);
             return false;
         }
 
@@ -126,6 +143,12 @@ public class VanceHandshakeInterceptor implements HandshakeInterceptor {
                 UUID.randomUUID().toString(),
                 locationService.getPodIp());
         ctx.setClientContext(parseClientContext(request));
+        if (claims.tokenType() == TokenType.OAUTH) {
+            // The socket outlives the access token; remember the grant so a
+            // revocation can still reach the open connection.
+            ctx.setOauthGrantId(claims.tokenId());
+            grantRevocation.track(ctx);
+        }
         attributes.put(ATTR_CONNECTION, ctx);
         log.debug(
                 "Handshake ok: user='{}' tenant='{}' profile={} clientName='{}' editorId='{}' podIp='{}'",
@@ -145,6 +168,31 @@ public class VanceHandshakeInterceptor implements HandshakeInterceptor {
             WebSocketHandler wsHandler,
             @Nullable Exception exception) {
         // No session is bound here anymore — nothing to release.
+    }
+
+    /**
+     * Whether the credential may open a socket at all — the handshake's own
+     * check, independent of what the access filter already refused.
+     *
+     * <p>Only a full-account login passes: an {@code ACCESS} token (header,
+     * {@code ?token=} or the web UI's cookie) or an OAuth token of the
+     * {@code account} scope. Everything narrowed is refused — an integration
+     * token, a door-bound OAuth token, a script-run token — and so is any
+     * credential carrying a project pin: after the upgrade the connection's
+     * security context is rebuilt from tenant and user alone
+     * ({@code SecurityContextFactory.fromConnection}), so a confinement would
+     * not survive the handshake. An OAuth account token additionally needs its
+     * grant id, the key its revocation travels by.
+     */
+    static boolean isAdmissible(VanceJwtClaims claims) {
+        if (!claims.isFullAccountCredential()) {
+            return false;
+        }
+        if (claims.projectId() != null && !claims.projectId().isBlank()) {
+            return false;
+        }
+        return claims.tokenType() != TokenType.OAUTH
+                || (claims.tokenId() != null && !claims.tokenId().isBlank());
     }
 
     /**

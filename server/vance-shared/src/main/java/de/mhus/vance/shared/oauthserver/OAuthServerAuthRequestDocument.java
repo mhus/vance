@@ -24,8 +24,10 @@ import org.springframework.data.mongodb.core.mapping.Document;
  * can change what the request asks for.
  *
  * <p>{@link #userId} is bound the first time a logged-in user looks at the
- * request, together with a {@link #consentTicket}; the consent POST must
- * present both the session and the ticket. TTL-evicted.
+ * request; the consent page then gets a one-time ticket, stored here only as
+ * {@link #consentTicketHash}. The consent POST must present both the session
+ * and the ticket, and takes the request out of the collection atomically —
+ * a decision happens once. TTL-evicted.
  */
 @Document(collection = "oauth_server_requests")
 @Data
@@ -55,6 +57,7 @@ public class OAuthServerAuthRequestDocument {
     /** The exact redirect URI the code goes to. */
     private String redirectUri = "";
 
+    /** Client state, echoed back; at most {@code OAuthServerAuthorizationService.MAX_STATE_LENGTH} characters. */
     private @Nullable String state;
 
     /** PKCE S256 challenge. */
@@ -73,8 +76,11 @@ public class OAuthServerAuthRequestDocument {
     /** The user the request is bound to, once one logged in and looked at it. */
     private @Nullable String userId;
 
-    /** One-time value the consent POST must echo, bound together with {@link #userId}. */
-    private @Nullable String consentTicket;
+    /**
+     * SHA-256 of the one-time value the consent POST must echo. Re-issued on
+     * every consent page view of the bound user; only the latest is valid.
+     */
+    private @Nullable String consentTicketHash;
 
     private @Nullable Instant createdAt;
 

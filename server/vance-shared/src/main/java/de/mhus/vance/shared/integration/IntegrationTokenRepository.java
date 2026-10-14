@@ -9,6 +9,8 @@ public interface IntegrationTokenRepository extends MongoRepository<IntegrationT
 
     Optional<IntegrationTokenDocument> findByTokenId(String tokenId);
 
-    List<IntegrationTokenDocument> findByTenantIdAndUserIdOrderByCreatedAtDesc(
-            String tenantId, String userId);
+    List<IntegrationTokenDocument> findByTenantIdAndUserIdOrderByCreatedAtDesc(String tenantId, String userId);
+
+    List<IntegrationTokenDocument> findByTenantIdAndParentGrantIdAndRevokedAtIsNull(
+            String tenantId, String parentGrantId);
 }

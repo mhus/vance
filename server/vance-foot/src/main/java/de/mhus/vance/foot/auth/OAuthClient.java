@@ -39,6 +39,11 @@ public interface OAuthClient {
 
     Tokens refresh(String tokenEndpoint, String clientId, String refreshToken) throws Exception;
 
-    /** Best effort — never throws for a server-side refusal. */
-    void revoke(String revocationEndpoint, String clientId, String token);
+    /**
+     * Best effort — never throws. Returns {@code true} when the server
+     * confirmed the revocation (RFC 7009: HTTP 200, also for a token it
+     * already considered dead), {@code false} when it could not be reached or
+     * answered otherwise — the grant may then still be live on the server.
+     */
+    boolean revoke(String revocationEndpoint, String clientId, String token);
 }

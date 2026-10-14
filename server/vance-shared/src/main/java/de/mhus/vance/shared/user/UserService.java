@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.mongodb.core.FindAndModifyOptions;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -80,7 +81,10 @@ public class UserService {
      * {@link UserLifecycleListener}.
      */
     private final ObjectProvider<UserLifecycleListener> lifecycleListeners;
+
     private final de.mhus.vance.shared.megadodo.MegadodoService megadodoService;
+    /** Carries {@link UserPasswordChangedEvent} to whoever ends credentials on a password change. */
+    private final ApplicationEventPublisher events;
 
     public Optional<UserDocument> findByTenantAndName(String tenantId, String name) {
         return repository.findByTenantIdAndName(tenantId, name);
@@ -112,14 +116,12 @@ public class UserService {
             @Nullable String title,
             @Nullable String email) {
         if (name.startsWith(SERVICE_ACCOUNT_PREFIX)) {
-            throw new ReservedNameException(
-                    "User name '" + name + "' starts with the reserved '"
-                            + SERVICE_ACCOUNT_PREFIX + "' prefix — service accounts "
-                            + "must be created via createServiceAccount(...)");
+            throw new ReservedNameException("User name '" + name + "' starts with the reserved '"
+                    + SERVICE_ACCOUNT_PREFIX + "' prefix — service accounts "
+                    + "must be created via createServiceAccount(...)");
         }
-        return doCreate(tenantId, name, passwordHash, title, email,
-                /* loginEnabled */ true,
-                /* serviceAccount */ false);
+        return doCreate(
+                tenantId, name, passwordHash, title, email, /* loginEnabled */ true, /* serviceAccount */ false);
     }
 
     /**
@@ -141,18 +143,15 @@ public class UserService {
             @Nullable String email) {
         if (!name.startsWith(SERVICE_ACCOUNT_PREFIX)) {
             throw new ReservedNameException(
-                    "Service account name '" + name + "' must start with '"
-                            + SERVICE_ACCOUNT_PREFIX + "'");
+                    "Service account name '" + name + "' must start with '" + SERVICE_ACCOUNT_PREFIX + "'");
         }
         if (name.startsWith(RESERVED_VANCE_PREFIX)) {
-            throw new ReservedNameException(
-                    "Service account name '" + name + "' is in the reserved "
-                            + "Vance-internal namespace ('" + RESERVED_VANCE_PREFIX
-                            + "*') — use ensureVanceServiceAccount(...) instead");
+            throw new ReservedNameException("Service account name '" + name + "' is in the reserved "
+                    + "Vance-internal namespace ('" + RESERVED_VANCE_PREFIX
+                    + "*') — use ensureVanceServiceAccount(...) instead");
         }
-        return doCreate(tenantId, name, passwordHash, title, email,
-                /* loginEnabled */ false,
-                /* serviceAccount */ true);
+        return doCreate(
+                tenantId, name, passwordHash, title, email, /* loginEnabled */ false, /* serviceAccount */ true);
     }
 
     /**
@@ -174,18 +173,16 @@ public class UserService {
             @Nullable String title,
             @Nullable String email) {
         if (!name.startsWith(RESERVED_VANCE_PREFIX)) {
-            throw new ReservedNameException(
-                    "Vance-internal service account name '" + name
-                            + "' must start with '" + RESERVED_VANCE_PREFIX + "'");
+            throw new ReservedNameException("Vance-internal service account name '" + name + "' must start with '"
+                    + RESERVED_VANCE_PREFIX + "'");
         }
         Optional<UserDocument> existing = repository.findByTenantIdAndName(tenantId, name);
         if (existing.isPresent()) {
             return existing.get();
         }
         try {
-            return doCreate(tenantId, name, passwordHash, title, email,
-                    /* loginEnabled */ false,
-                    /* serviceAccount */ true);
+            return doCreate(
+                    tenantId, name, passwordHash, title, email, /* loginEnabled */ false, /* serviceAccount */ true);
         } catch (RuntimeException e) {
             // Another pod booting against the same fresh database created the
             // account between our read and the write. Two windows lead here:
@@ -193,10 +190,10 @@ public class UserService {
             // UserAlreadyExistsException) and the unique index on
             // (tenantId, name) behind it. Either way an account that is there
             // now satisfies "ensure" — anything else keeps its exception.
-            UserDocument concurrent = repository.findByTenantIdAndName(tenantId, name)
-                    .orElseThrow(() -> e);
-            log.info("Service account '{}' in tenant '{}' was created concurrently "
-                    + "by another pod", name, tenantId);
+            UserDocument concurrent =
+                    repository.findByTenantIdAndName(tenantId, name).orElseThrow(() -> e);
+            log.info(
+                    "Service account '{}' in tenant '{}' was created concurrently " + "by another pod", name, tenantId);
             return concurrent;
         }
     }
@@ -211,12 +208,10 @@ public class UserService {
             boolean serviceAccount) {
         if (RESERVED_NAMES.contains(name)) {
             throw new ReservedNameException(
-                    "User name '" + name + "' is reserved for internal, "
-                            + "non-principal use and cannot be created");
+                    "User name '" + name + "' is reserved for internal, " + "non-principal use and cannot be created");
         }
         if (repository.existsByTenantIdAndName(tenantId, name)) {
-            throw new UserAlreadyExistsException(
-                    "User '" + name + "' already exists in tenant '" + tenantId + "'");
+            throw new UserAlreadyExistsException("User '" + name + "' already exists in tenant '" + tenantId + "'");
         }
         UserDocument user = UserDocument.builder()
                 .tenantId(tenantId)
@@ -236,13 +231,21 @@ public class UserService {
             try {
                 listener.onUserCreated(saved);
             } catch (RuntimeException e) {
-                log.warn("User-lifecycle listener {} failed for created user '{}' in tenant '{}'",
-                        listener.getClass().getSimpleName(), name, tenantId, e);
+                log.warn(
+                        "User-lifecycle listener {} failed for created user '{}' in tenant '{}'",
+                        listener.getClass().getSimpleName(),
+                        name,
+                        tenantId,
+                        e);
             }
         });
-        log.info("Created user tenantId='{}' name='{}' id='{}' serviceAccount={} loginEnabled={}",
-                saved.getTenantId(), saved.getName(), saved.getId(),
-                saved.isServiceAccount(), saved.isLoginEnabled());
+        log.info(
+                "Created user tenantId='{}' name='{}' id='{}' serviceAccount={} loginEnabled={}",
+                saved.getTenantId(),
+                saved.getName(),
+                saved.getId(),
+                saved.isServiceAccount(),
+                saved.isLoginEnabled());
         return saved;
     }
 
@@ -269,9 +272,10 @@ public class UserService {
             @Nullable String email,
             @Nullable UserStatus status,
             @Nullable Boolean loginEnabled) {
-        UserDocument user = repository.findByTenantIdAndName(tenantId, name)
-                .orElseThrow(() -> new UserNotFoundException(
-                        "User '" + name + "' not found in tenant '" + tenantId + "'"));
+        UserDocument user = repository
+                .findByTenantIdAndName(tenantId, name)
+                .orElseThrow(
+                        () -> new UserNotFoundException("User '" + name + "' not found in tenant '" + tenantId + "'"));
         if (title != null) {
             user.setTitle(title);
         }
@@ -285,9 +289,13 @@ public class UserService {
             user.setLoginEnabled(loginEnabled);
         }
         UserDocument saved = repository.save(user);
-        log.info("Updated user tenantId='{}' name='{}' status={} loginEnabled={} serviceAccount={}",
-                saved.getTenantId(), saved.getName(), saved.getStatus(),
-                saved.isLoginEnabled(), saved.isServiceAccount());
+        log.info(
+                "Updated user tenantId='{}' name='{}' status={} loginEnabled={} serviceAccount={}",
+                saved.getTenantId(),
+                saved.getName(),
+                saved.getStatus(),
+                saved.isLoginEnabled(),
+                saved.isServiceAccount());
         return saved;
     }
 
@@ -306,11 +314,16 @@ public class UserService {
      * Replaces the user's password hash. Caller hashes; service stores.
      * Also stamps {@code passwordChangedAt} and clears any lockout state —
      * a fresh password starts the login-failure window over.
+     *
+     * <p>Publishes {@link UserPasswordChangedEvent} once the hash is stored, so
+     * long-lived credentials issued under the old password (OAuth grants) end
+     * with it.
      */
     public UserDocument setPasswordHash(String tenantId, String name, String passwordHash) {
-        UserDocument user = repository.findByTenantIdAndName(tenantId, name)
-                .orElseThrow(() -> new UserNotFoundException(
-                        "User '" + name + "' not found in tenant '" + tenantId + "'"));
+        UserDocument user = repository
+                .findByTenantIdAndName(tenantId, name)
+                .orElseThrow(
+                        () -> new UserNotFoundException("User '" + name + "' not found in tenant '" + tenantId + "'"));
         user.setPasswordHash(passwordHash);
         user.setPasswordChangedAt(Instant.now());
         user.setFailedLoginAttempts(0);
@@ -318,6 +331,7 @@ public class UserService {
         user.setLastFailedLoginAt(null);
         UserDocument saved = repository.save(user);
         log.info("Reset password tenantId='{}' name='{}'", saved.getTenantId(), saved.getName());
+        events.publishEvent(new UserPasswordChangedEvent(saved.getTenantId(), saved.getName()));
         return saved;
     }
 
@@ -342,12 +356,11 @@ public class UserService {
      */
     public void recordFailedLogin(String tenantId, String name) {
         Instant now = Instant.now();
-        Query query = new Query(Criteria.where(F_TENANT_ID).is(tenantId).and(F_NAME).is(name));
+        Query query =
+                new Query(Criteria.where(F_TENANT_ID).is(tenantId).and(F_NAME).is(name));
         Update update = new Update().inc(F_FAILED_ATTEMPTS, 1).set(F_LAST_FAILED, now);
         UserDocument updated = mongoTemplate.findAndModify(
-                query, update,
-                FindAndModifyOptions.options().returnNew(true),
-                UserDocument.class);
+                query, update, FindAndModifyOptions.options().returnNew(true), UserDocument.class);
         if (updated == null) {
             return;
         }
@@ -355,8 +368,12 @@ public class UserService {
             Instant lockedUntil = now.plus(LOCKOUT_DURATION);
             Update lock = new Update().set(F_LOCKED_UNTIL, lockedUntil).set(F_FAILED_ATTEMPTS, 0);
             mongoTemplate.updateFirst(query, lock, UserDocument.class);
-            log.warn("Account locked after {} failed logins tenantId='{}' name='{}' until={}",
-                    MAX_FAILED_LOGIN_ATTEMPTS, tenantId, name, lockedUntil);
+            log.warn(
+                    "Account locked after {} failed logins tenantId='{}' name='{}' until={}",
+                    MAX_FAILED_LOGIN_ATTEMPTS,
+                    tenantId,
+                    name,
+                    lockedUntil);
         }
     }
 
@@ -366,11 +383,10 @@ public class UserService {
      * not exist.
      */
     public void resetLoginFailures(String tenantId, String name) {
-        Query query = new Query(Criteria.where(F_TENANT_ID).is(tenantId).and(F_NAME).is(name));
-        Update update = new Update()
-                .set(F_FAILED_ATTEMPTS, 0)
-                .set(F_LOCKED_UNTIL, null)
-                .set(F_LAST_FAILED, null);
+        Query query =
+                new Query(Criteria.where(F_TENANT_ID).is(tenantId).and(F_NAME).is(name));
+        Update update =
+                new Update().set(F_FAILED_ATTEMPTS, 0).set(F_LOCKED_UNTIL, null).set(F_LAST_FAILED, null);
         mongoTemplate.updateFirst(query, update, UserDocument.class);
     }
 
@@ -396,9 +412,10 @@ public class UserService {
      * document delete.
      */
     public void delete(String tenantId, String name) {
-        UserDocument user = repository.findByTenantIdAndName(tenantId, name)
-                .orElseThrow(() -> new UserNotFoundException(
-                        "User '" + name + "' not found in tenant '" + tenantId + "'"));
+        UserDocument user = repository
+                .findByTenantIdAndName(tenantId, name)
+                .orElseThrow(
+                        () -> new UserNotFoundException("User '" + name + "' not found in tenant '" + tenantId + "'"));
         lifecycleListeners.orderedStream().forEach(l -> l.onUserDeleted(tenantId, name));
         repository.delete(user);
         megadodoService.userDeleted(tenantId, name);
@@ -431,23 +448,21 @@ public class UserService {
      *     or reach into the Vance-internal namespace
      */
     public UserDocument rename(String tenantId, String name, String newName) {
-        UserDocument user = repository.findByTenantIdAndName(tenantId, name)
-                .orElseThrow(() -> new UserNotFoundException(
-                        "User '" + name + "' not found in tenant '" + tenantId + "'"));
+        UserDocument user = repository
+                .findByTenantIdAndName(tenantId, name)
+                .orElseThrow(
+                        () -> new UserNotFoundException("User '" + name + "' not found in tenant '" + tenantId + "'"));
         if (repository.existsByTenantIdAndName(tenantId, newName)) {
-            throw new UserAlreadyExistsException(
-                    "User '" + newName + "' already exists in tenant '" + tenantId + "'");
+            throw new UserAlreadyExistsException("User '" + newName + "' already exists in tenant '" + tenantId + "'");
         }
         if (newName.startsWith(RESERVED_VANCE_PREFIX)) {
             throw new ReservedNameException(
-                    "User name '" + newName + "' starts with the reserved '"
-                            + RESERVED_VANCE_PREFIX + "' prefix");
+                    "User name '" + newName + "' starts with the reserved '" + RESERVED_VANCE_PREFIX + "' prefix");
         }
         if (name.startsWith(SERVICE_ACCOUNT_PREFIX) != newName.startsWith(SERVICE_ACCOUNT_PREFIX)) {
-            throw new ReservedNameException(
-                    "Cannot rename '" + name + "' to '" + newName + "' — the '"
-                            + SERVICE_ACCOUNT_PREFIX + "' prefix says whether an account is a"
-                            + " service account, and a rename does not change that");
+            throw new ReservedNameException("Cannot rename '" + name + "' to '" + newName + "' — the '"
+                    + SERVICE_ACCOUNT_PREFIX + "' prefix says whether an account is a"
+                    + " service account, and a rename does not change that");
         }
         user.setName(newName);
         UserDocument saved = repository.save(user);
@@ -479,5 +494,4 @@ public class UserService {
             super(message);
         }
     }
-
 }

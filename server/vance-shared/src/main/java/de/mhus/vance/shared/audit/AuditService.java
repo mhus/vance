@@ -256,6 +256,13 @@ public class AuditService {
                 .build());
     }
 
+    /**
+     * An OAuth grant was revoked. {@code username} is the grant's owner — the
+     * account its tokens acted as — whoever triggered the revocation;
+     * {@code reason} says who or what that was ({@code user}, {@code client},
+     * {@code code-replay}, {@code refresh-replay}, {@code password-changed},
+     * {@code project-renamed}, {@code project-deleted}).
+     */
     public void authOAuthGrantRevoked(String tenantId, String username, String grantId, String reason) {
         record(AuditEventDto.builder()
                 .action("auth.oauth-grant.revoke")
@@ -265,6 +272,27 @@ public class AuditService {
                 .actor(username)
                 .target("oauth-grant:" + grantId)
                 .message(reason)
+                .build());
+    }
+
+    /**
+     * A used authorization code or a replaced refresh token was presented
+     * again by a caller that passed the client binding — a copy of an OAuth
+     * credential exists somewhere. WARN: this is the signal of a leaked token;
+     * the grant revocation that follows is recorded separately.
+     *
+     * @param tokenKind {@code code} or {@code refresh}
+     */
+    public void authOAuthTokenReplay(
+            String tenantId, String username, String grantId, String clientId, String tokenKind) {
+        record(AuditEventDto.builder()
+                .action("auth.oauth-grant.replay")
+                .severity(AuditSeverity.WARN)
+                .outcome("failure")
+                .tenantId(tenantId)
+                .actor(username)
+                .target("oauth-grant:" + grantId)
+                .message("token=" + tokenKind + " client=" + clientId)
                 .build());
     }
 

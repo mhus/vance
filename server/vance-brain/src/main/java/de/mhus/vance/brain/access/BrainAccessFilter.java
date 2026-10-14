@@ -280,7 +280,20 @@ public class BrainAccessFilter extends AccessFilterBase {
         String uri = request.getRequestURI();
         Matcher matcher = BRAIN_TENANT_PATH.matcher(uri);
         if (!matcher.matches()) {
-            // Non-tenant-scoped paths — nothing to cross-check here.
+            // Non-tenant-scoped paths — there is no tenant to cross-check, and
+            // no narrowing that could be checked either: profiles, project
+            // pins and OAuth audiences are all expressed relative to
+            // /brain/{tenant}. So only the plain login token passes here;
+            // every attenuated or grant-gated credential (INTEGRATION, OAUTH,
+            // SCRIPT_RUN) is refused rather than waved through unchecked.
+            if (claims.tokenType() != TokenType.ACCESS) {
+                log.debug(
+                        "{} token rejected on non-tenant path '{}' (user='{}')",
+                        claims.tokenType(),
+                        uri,
+                        claims.username());
+                return false;
+            }
             return true;
         }
         String pathTenant = matcher.group(1);

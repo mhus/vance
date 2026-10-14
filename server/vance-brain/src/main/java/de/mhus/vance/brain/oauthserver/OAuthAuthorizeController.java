@@ -45,6 +45,7 @@ public class OAuthAuthorizeController {
 
     private final OAuthAuthorizationFlow flow;
     private final TenantService tenantService;
+    private final OAuthServerSettings settings;
 
     @GetMapping("/brain/{tenant}/oauth/authorize")
     public ResponseEntity<String> authorize(
@@ -58,6 +59,11 @@ public class OAuthAuthorizeController {
             @RequestParam(value = "scope", required = false) @Nullable String scope,
             @RequestParam(value = "resource", required = false) @Nullable String resource,
             HttpServletRequest request) {
+        // Before the tenant lookup: a disabled server must not answer which
+        // tenants exist.
+        if (!settings.enabled()) {
+            return errorPage(OAuthAuthorizationFlow.SERVER_DISABLED);
+        }
         if (tenantService.findByName(tenant).isEmpty()) {
             return errorPage("Unknown tenant.");
         }

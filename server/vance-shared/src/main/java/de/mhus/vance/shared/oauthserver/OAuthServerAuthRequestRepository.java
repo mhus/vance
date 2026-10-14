@@ -7,6 +7,4 @@ import org.springframework.data.mongodb.repository.MongoRepository;
 public interface OAuthServerAuthRequestRepository extends MongoRepository<OAuthServerAuthRequestDocument, String> {
 
     Optional<OAuthServerAuthRequestDocument> findByRequestId(String requestId);
-
-    void deleteByRequestId(String requestId);
 }

@@ -3,6 +3,7 @@ package de.mhus.vance.brain.mcpserver;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.home.HomeBootstrapService;
+import de.mhus.vance.shared.jwt.VanceJwtClaims;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import jakarta.servlet.http.HttpServletRequest;
@@ -59,6 +60,11 @@ public class McpServerController {
             @RequestBody String body,
             HttpServletRequest request) {
 
+        ResponseEntity<?> pinned = refusePinnedCredential(request, tenant);
+        if (pinned != null) {
+            return pinned;
+        }
+
         String project =
                 (projectId == null || projectId.isBlank()) ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
 
@@ -94,7 +100,42 @@ public class McpServerController {
 
     /** No server-push SSE stream — the spec allows answering GET with 405. */
     @GetMapping("/brain/{tenant}/mcp")
-    public ResponseEntity<Void> noStream(@PathVariable("tenant") String tenant) {
+    public ResponseEntity<?> noStream(@PathVariable("tenant") String tenant, HttpServletRequest request) {
+        ResponseEntity<?> pinned = refusePinnedCredential(request, tenant);
+        if (pinned != null) {
+            return pinned;
+        }
         return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).build();
+    }
+
+    /**
+     * A {@code 403} for a credential pinned to a project ({@code pid}), else
+     * {@code null}.
+     *
+     * <p>The pin cannot be honoured behind this door: {@code tools/call} runs
+     * through {@code ToolDispatcher}, which builds the tool's security context
+     * from tenant and user alone, so a pinned credential would come out the
+     * other side unconfined. The scope-profile check already refuses a pinned
+     * token of the tenant-wide {@code mcp} profile; this is the door's own
+     * guard for every other pinned credential type (e.g. a script-run token).
+     */
+    private static @Nullable ResponseEntity<?> refusePinnedCredential(HttpServletRequest request, String tenant) {
+        if (!(request.getAttribute(AccessFilterBase.ATTR_CLAIMS) instanceof VanceJwtClaims claims)) {
+            return null;
+        }
+        String pin = claims.projectId();
+        if (pin == null || pin.isBlank()) {
+            return null;
+        }
+        log.debug(
+                "MCP global door denied a {} credential pinned to project '{}' (user '{}', tenant '{}')",
+                claims.tokenType(),
+                pin,
+                claims.username(),
+                tenant);
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .contentType(MediaType.TEXT_PLAIN)
+                .body("mcp access denied: a project-pinned credential cannot use the global MCP door — "
+                        + "use the project door /mcp/{project}\n");
     }
 }

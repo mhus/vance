@@ -39,8 +39,8 @@ public class GitignoreGuard {
     }
 
     /** Outcome of {@link #ensureAccessIgnored(Path)}. */
-    public record Result(Kind kind, @Nullable Path gitignore, @Nullable String entry) {
-    }
+    public record Result(
+            Kind kind, @Nullable Path gitignore, @Nullable String entry) {}
 
     /**
      * Ensures the {@code access.yaml} inside {@code vanceDir} is git-ignored.
@@ -82,9 +82,11 @@ public class GitignoreGuard {
 
     /**
      * Whether {@code .gitignore} already covers {@code relative} (POSIX path
-     * relative to the repo root, e.g. {@code .vancetope/access.yaml}). Matches the
-     * common line forms: the file itself, the containing {@code .vance}
-     * directory (bare or trailing-slash), and root-anchored variants.
+     * relative to the repo root, e.g. {@code .vancetope/access.yaml}) together
+     * with its lock file. Matches the common line forms: the file name with a
+     * trailing {@code *}, the containing {@code .vancetope} directory (bare or
+     * trailing-slash), and root-anchored variants. A line naming only the file
+     * itself does not cover the lock file, so the wildcard entry is appended.
      */
     private boolean isIgnored(Path gitignore, String relative) {
         if (!Files.isRegularFile(gitignore)) {
@@ -113,23 +115,25 @@ public class GitignoreGuard {
         // relative is e.g. ".vancetope/access.yaml" or "sub/.vancetope/access.yaml".
         int slash = relative.lastIndexOf('/');
         String dir = slash < 0 ? "" : relative.substring(0, slash); // ".vancetope" or "sub/.vancetope"
+        // The bare file name alone no longer suffices: the lock file
+        // (access.yaml.lock) sits next to it and must be ignored too.
         return List.of(
-                relative,            // .vancetope/access.yaml
-                "/" + relative,      // /.vancetope/access.yaml
-                dir,                 // .vance
-                dir + "/",           // .vancetope/
-                "/" + dir,           // /.vancetope
-                "/" + dir + "/",     // /.vancetope/
-                "**/" + dir + "/");  // **/.vancetope/
+                relative + "*", // .vancetope/access.yaml*
+                "/" + relative + "*", // /.vancetope/access.yaml*
+                dir, // .vance
+                dir + "/", // .vancetope/
+                "/" + dir, // /.vancetope
+                "/" + dir + "/", // /.vancetope/
+                "**/" + dir + "/"); // **/.vancetope/
     }
 
     /**
-     * The line to append. When the file sits directly under the repo root
-     * ({@code .vancetope/access.yaml}) we use that; a nested location keeps its
-     * relative prefix so the pattern still resolves from the repo root.
+     * The line to append: the credential file plus its siblings
+     * ({@code access.yaml.lock}). A nested location keeps its relative prefix
+     * so the pattern still resolves from the repo root.
      */
     private static String chooseEntry(String relative) {
-        return relative;
+        return relative + "*";
     }
 
     private void append(Path gitignore, String entry) {
@@ -145,8 +149,7 @@ public class GitignoreGuard {
             sb.append(entry).append('\n');
             Files.writeString(gitignore, sb.toString());
         } catch (IOException e) {
-            throw new AccessStoreException(
-                    "Failed to update " + gitignore + ": " + e.getMessage(), e);
+            throw new AccessStoreException("Failed to update " + gitignore + ": " + e.getMessage(), e);
         }
     }
 

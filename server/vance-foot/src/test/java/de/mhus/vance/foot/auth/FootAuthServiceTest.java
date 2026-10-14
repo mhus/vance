@@ -7,10 +7,18 @@ import de.mhus.vance.api.access.AccessTokenRequest;
 import de.mhus.vance.api.access.AccessTokenResponse;
 import de.mhus.vance.foot.config.FootConfig;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -35,9 +43,12 @@ class FootAuthServiceTest {
 
     /** Scripted OAuth token endpoint. */
     private static final class FakeOAuthClient implements OAuthClient {
-        final List<String> refreshed = new ArrayList<>();
-        final List<String> revoked = new ArrayList<>();
+        final List<String> refreshed = new java.util.concurrent.CopyOnWriteArrayList<>();
+        final List<String> revoked = new java.util.concurrent.CopyOnWriteArrayList<>();
+        final AtomicInteger refreshCalls = new AtomicInteger();
         boolean refuse;
+        boolean revokeFails;
+        long refreshDelayMs;
 
         @Override
         public Endpoints discover(String httpBase, String tenant) {
@@ -50,8 +61,13 @@ class FootAuthServiceTest {
         }
 
         @Override
-        public Tokens refresh(String tokenEndpoint, String clientId, String refreshToken) throws OAuthRefusedException {
+        public Tokens refresh(String tokenEndpoint, String clientId, String refreshToken)
+                throws OAuthRefusedException, InterruptedException {
             refreshed.add(refreshToken);
+            refreshCalls.incrementAndGet();
+            if (refreshDelayMs > 0) {
+                Thread.sleep(refreshDelayMs);
+            }
             if (refuse) {
                 throw new OAuthRefusedException("invalid_grant");
             }
@@ -59,8 +75,9 @@ class FootAuthServiceTest {
         }
 
         @Override
-        public void revoke(String revocationEndpoint, String clientId, String token) {
+        public boolean revoke(String revocationEndpoint, String clientId, String token) {
             revoked.add(token);
+            return !revokeFails;
         }
     }
 
@@ -69,6 +86,11 @@ class FootAuthServiceTest {
     private final AtomicLong now = new AtomicLong(1_000_000L);
 
     private FootAuthService service(FootConfig config, VancePaths paths, AccessTokenClient client) {
+        return service(config, paths, client, new OAuthBrowserLogin(oauthClient, url -> {}));
+    }
+
+    private FootAuthService service(
+            FootConfig config, VancePaths paths, AccessTokenClient client, OAuthBrowserLogin browserLogin) {
         return new FootAuthService(
                 config,
                 paths,
@@ -77,7 +99,7 @@ class FootAuthServiceTest {
                 new ProjectBindingApplier(),
                 client,
                 oauthClient,
-                new OAuthBrowserLogin(oauthClient),
+                browserLogin,
                 now::get);
     }
 
@@ -209,9 +231,11 @@ class FootAuthServiceTest {
         data.setAccessToken("x");
         store.save(dir, data);
 
-        boolean removed = service(config(), localPaths(dir), new FakeClient()).logout();
+        FootAuthService.LogoutResult result =
+                service(config(), localPaths(dir), new FakeClient()).logout();
 
-        assertThat(removed).isTrue();
+        assertThat(result.removed()).isTrue();
+        assertThat(result.serverRevokeFailed()).isFalse();
         assertThat(store.exists(dir)).isFalse();
     }
 
@@ -260,7 +284,103 @@ class FootAuthServiceTest {
         new AccessStore().save(dir, oauthLogin(now.get() + 3_600_000L));
 
         assertThat(service(config(), localPaths(dir), new FakeClient()).logout())
-                .isTrue();
+                .isEqualTo(new FootAuthService.LogoutResult(true, false));
         assertThat(oauthClient.revoked).containsExactly("rt-1");
+    }
+
+    @Test
+    void logout_oauthLogin_revokeNotConfirmed_isReported(@TempDir Path dir) {
+        new AccessStore().save(dir, oauthLogin(now.get() + 3_600_000L));
+        oauthClient.revokeFails = true;
+
+        FootAuthService.LogoutResult result =
+                service(config(), localPaths(dir), new FakeClient()).logout();
+
+        assertThat(result.removed()).isTrue();
+        assertThat(result.serverRevokeFailed()).isTrue();
+        assertThat(new AccessStore().exists(dir)).isFalse();
+    }
+
+    @Test
+    void acquire_oauthLogin_concurrentClients_refreshOnlyOnce(@TempDir Path dir) throws Exception {
+        new AccessStore().save(dir, oauthLogin(now.get() - 1));
+        oauthClient.refreshDelayMs = 200;
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Callable<AccessTokenResponse> acquire =
+                    () -> service(config(), localPaths(dir), new FakeClient()).acquireAccessToken();
+            Future<AccessTokenResponse> first = pool.submit(acquire);
+            Future<AccessTokenResponse> second = pool.submit(acquire);
+
+            assertThat(first.get(10, TimeUnit.SECONDS).getToken()).isEqualTo("oauth-access-2");
+            assertThat(second.get(10, TimeUnit.SECONDS).getToken()).isEqualTo("oauth-access-2");
+        } finally {
+            pool.shutdownNow();
+        }
+        // The second client waited for the lock, re-read the file and took the
+        // fresh token instead of spending the already rotated refresh token.
+        assertThat(oauthClient.refreshCalls.get()).isEqualTo(1);
+        assertThat(new AccessStore().load(dir).orElseThrow().getRefreshToken()).isEqualTo("rt-2");
+    }
+
+    /** A browser login that skips discovery and the browser, answering with fixed tokens. */
+    private OAuthBrowserLogin scriptedBrowserLogin(String refreshToken) {
+        return new OAuthBrowserLogin(oauthClient, url -> {}) {
+            @Override
+            public Result run(
+                    String httpBase,
+                    String tenant,
+                    boolean allowInsecureTransport,
+                    Consumer<String> showUrl,
+                    Duration timeout) {
+                return new Result(
+                        new OAuthClient.Endpoints(
+                                httpBase + "/brain/" + tenant,
+                                httpBase + "/brain/" + tenant + "/oauth/authorize",
+                                httpBase + "/brain/" + tenant + "/oauth/token",
+                                httpBase + "/brain/" + tenant + "/oauth/revoke"),
+                        new OAuthClient.Tokens("oauth-access-new", 3600, refreshToken),
+                        "mike");
+            }
+        };
+    }
+
+    @Test
+    void loginWithBrowser_revokesTheReplacedBrowserLogin(@TempDir Path dir) throws Exception {
+        new AccessStore().save(dir, oauthLogin(now.get() + 3_600_000L));
+
+        service(config(), localPaths(dir), new FakeClient(), scriptedBrowserLogin("rt-new"))
+                .loginWithBrowser(
+                        "https://brain.example.com",
+                        "wss://brain.example.com",
+                        "acme",
+                        null,
+                        url -> {},
+                        Duration.ofMinutes(1));
+
+        assertThat(oauthClient.revoked).containsExactly("rt-1");
+        AccessData saved = new AccessStore().load(dir).orElseThrow();
+        assertThat(saved.getRefreshToken()).isEqualTo("rt-new");
+        assertThat(saved.getAuthMethod()).isEqualTo("oauth");
+    }
+
+    @Test
+    void loginWithBrowser_withoutPreviousBrowserLogin_revokesNothing(@TempDir Path dir) throws Exception {
+        AccessData passwordLogin = new AccessData();
+        passwordLogin.setAccessToken("pw-access");
+        passwordLogin.setRefreshToken("pw-refresh");
+        new AccessStore().save(dir, passwordLogin);
+
+        service(config(), localPaths(dir), new FakeClient(), scriptedBrowserLogin("rt-new"))
+                .loginWithBrowser(
+                        "https://brain.example.com",
+                        "wss://brain.example.com",
+                        "acme",
+                        null,
+                        url -> {},
+                        Duration.ofMinutes(1));
+
+        assertThat(oauthClient.revoked).isEmpty();
+        assertThat(new AccessStore().load(dir).orElseThrow().getRefreshToken()).isEqualTo("rt-new");
     }
 }

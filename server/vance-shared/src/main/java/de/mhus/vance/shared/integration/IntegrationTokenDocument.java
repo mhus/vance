@@ -75,6 +75,16 @@ public class IntegrationTokenDocument {
     /** Who minted it — normally the owner themselves. */
     private @Nullable String createdBy;
 
+    /**
+     * The OAuth grant whose {@code account} login minted this token, or
+     * {@code null} when it was minted with a regular login. A token made
+     * through an app login is a child of that grant: revoking the grant
+     * revokes it too, otherwise disconnecting an app would leave behind the
+     * credentials the app created.
+     */
+    @Indexed(sparse = true)
+    private @Nullable String parentGrantId;
+
     /** Safety-net expiry, mirrored from the token's {@code exp}. */
     private @Nullable Instant expiresAt;
 

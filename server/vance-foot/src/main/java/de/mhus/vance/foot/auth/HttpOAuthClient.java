@@ -82,14 +82,23 @@ public class HttpOAuthClient implements OAuthClient {
     }
 
     @Override
-    public void revoke(String revocationEndpoint, String clientId, String token) {
+    public boolean revoke(String revocationEndpoint, String clientId, String token) {
         Map<String, String> form = new LinkedHashMap<>();
         form.put("token", token);
         form.put("client_id", clientId);
         try {
-            post(revocationEndpoint, form);
+            int status = post(revocationEndpoint, form).statusCode();
+            if (status == 200) {
+                return true;
+            }
+            log.debug("OAuth revoke answered HTTP {}", status);
+            return false;
         } catch (Exception e) {
-            log.debug("OAuth revoke failed (ignored): {}", e.toString());
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            log.debug("OAuth revoke failed: {}", e.toString());
+            return false;
         }
     }
 

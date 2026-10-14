@@ -2340,9 +2340,14 @@ export default {
     wrongTenant: 'This sign-in request is for the tenant "{tenant}", but you are signed in to another one.',
     signInToTenant: 'Sign in to {tenant}',
     headline: '"{client}" wants access to your account',
+    firstParty: {
+      headline: 'Sign in "{client}" on this computer?',
+      warning:
+        'The program gets full access to your account — everything you can do here. The access goes to a program on this computer (localhost): only allow it if you just started the sign-in yourself, e.g. with /login --browser.',
+    },
     client: {
       dcr: 'The program chose this name itself — it is not verified.',
-      cimd: 'The program is identified by its website {host}.',
+      cimd: 'The program is identified by its metadata document {url}.',
       firstParty: 'This is a Vancetope program.',
     },
     accessLabel: 'Access to',
@@ -2359,6 +2364,7 @@ export default {
     revokeHint: 'You can revoke the access at any time under Connected Accounts.',
     approve: 'Allow',
     decline: 'Decline',
+    approveArming: 'Allow becomes available once this window is in the foreground.',
   },
 
   connectedApps: {

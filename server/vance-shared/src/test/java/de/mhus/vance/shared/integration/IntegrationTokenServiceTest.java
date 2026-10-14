@@ -26,8 +26,7 @@ class IntegrationTokenServiceTest {
     private final MongoTemplate mongoTemplate = mock(MongoTemplate.class, RETURNS_DEEP_STUBS);
 
     /** TTL 0 disables the cache, so each test controls its own repository calls. */
-    private final IntegrationTokenService service =
-            new IntegrationTokenService(repository, mongoTemplate, 0);
+    private final IntegrationTokenService service = new IntegrationTokenService(repository, mongoTemplate, 0);
 
     private static IntegrationTokenDocument row() {
         return IntegrationTokenDocument.builder()
@@ -87,7 +86,8 @@ class IntegrationTokenServiceTest {
         when(repository.findByTokenId("tok-1")).thenReturn(Optional.of(row()));
 
         assertThat(service.isActive("tok-1", "acme", "mallory", "links-proj")).isFalse();
-        assertThat(service.isActive("tok-1", "other-tenant", "alice", "links-proj")).isFalse();
+        assertThat(service.isActive("tok-1", "other-tenant", "alice", "links-proj"))
+                .isFalse();
     }
 
     /**
@@ -138,8 +138,7 @@ class IntegrationTokenServiceTest {
 
         verify(repository, never()).save(any(IntegrationTokenDocument.class));
         ArgumentCaptor<Update> update = ArgumentCaptor.forClass(Update.class);
-        verify(mongoTemplate).updateFirst(any(Query.class), update.capture(),
-                eq(IntegrationTokenDocument.class));
+        verify(mongoTemplate).updateFirst(any(Query.class), update.capture(), eq(IntegrationTokenDocument.class));
         // Key presence, not toJson(): the document holds an Instant, and the
         // driver has no codec for one outside a configured MongoTemplate.
         assertThat(setKeysOf(update.getValue())).containsExactly("lastUsedAt");
@@ -151,8 +150,7 @@ class IntegrationTokenServiceTest {
      */
     @Test
     void isActive_cachesTheDecision_withinTheTtlWindow() {
-        IntegrationTokenService cached =
-                new IntegrationTokenService(repository, mongoTemplate, 60);
+        IntegrationTokenService cached = new IntegrationTokenService(repository, mongoTemplate, 60);
         when(repository.findByTokenId("tok-1")).thenReturn(Optional.of(row()));
 
         assertThat(cached.isActive("tok-1", "acme", "alice", "links-proj")).isTrue();
@@ -165,8 +163,7 @@ class IntegrationTokenServiceTest {
     /** Revoking on this pod evicts locally, so it takes effect immediately here. */
     @Test
     void revoke_evictsTheCache_soTheNextCallSeesIt() {
-        IntegrationTokenService cached =
-                new IntegrationTokenService(repository, mongoTemplate, 60);
+        IntegrationTokenService cached = new IntegrationTokenService(repository, mongoTemplate, 60);
         IntegrationTokenDocument doc = row();
         when(repository.findByTokenId("tok-1")).thenReturn(Optional.of(doc));
 
@@ -192,10 +189,8 @@ class IntegrationTokenServiceTest {
 
         verify(repository, never()).save(any(IntegrationTokenDocument.class));
         ArgumentCaptor<Query> query = ArgumentCaptor.forClass(Query.class);
-        verify(mongoTemplate).updateFirst(query.capture(), any(Update.class),
-                eq(IntegrationTokenDocument.class));
-        assertThat(query.getValue().getQueryObject().keySet())
-                .containsExactlyInAnyOrder("tokenId", "revokedAt");
+        verify(mongoTemplate).updateFirst(query.capture(), any(Update.class), eq(IntegrationTokenDocument.class));
+        assertThat(query.getValue().getQueryObject().keySet()).containsExactlyInAnyOrder("tokenId", "revokedAt");
     }
 
     /** The fields one {@code $set} touches. */
@@ -209,20 +204,68 @@ class IntegrationTokenServiceTest {
         when(repository.findByTokenId("tok-1")).thenReturn(Optional.of(row()));
 
         assertThat(service.revoke("other-tenant", "tok-1")).isFalse();
-        verify(mongoTemplate, never()).updateFirst(any(Query.class), any(Update.class),
-                eq(IntegrationTokenDocument.class));
+        verify(mongoTemplate, never())
+                .updateFirst(any(Query.class), any(Update.class), eq(IntegrationTokenDocument.class));
     }
 
     @Test
     void create_mintsDistinctTokenIds() {
-        when(repository.save(any(IntegrationTokenDocument.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
+        when(repository.save(any(IntegrationTokenDocument.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        IntegrationTokenDocument a = service.create(
-                "acme", "alice", List.of("links-capture"), "p", "one", "alice", null);
-        IntegrationTokenDocument b = service.create(
-                "acme", "alice", List.of("links-capture"), "p", "two", "alice", null);
+        IntegrationTokenDocument a =
+                service.create("acme", "alice", List.of("links-capture"), "p", "one", "alice", null, null);
+        IntegrationTokenDocument b =
+                service.create("acme", "alice", List.of("links-capture"), "p", "two", "alice", null, null);
 
         assertThat(a.getTokenId()).isNotBlank().isNotEqualTo(b.getTokenId());
+    }
+
+    @Test
+    void create_recordsTheParentGrant() {
+        when(repository.save(any(IntegrationTokenDocument.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        IntegrationTokenDocument doc =
+                service.create("acme", "alice", List.of("links-capture"), "p", "app", "alice", null, "grant-7");
+
+        assertThat(doc.getParentGrantId()).isEqualTo("grant-7");
+    }
+
+    /**
+     * Revoking the OAuth grant takes the tokens minted through it along —
+     * each with a conditional write, and only the ones this call actually
+     * revoked are reported (for the audit trail).
+     */
+    @Test
+    void revokeAllForParentGrant_revokesEachLiveChild_andReportsOnlyTheEffectiveOnes() {
+        IntegrationTokenDocument first = row();
+        IntegrationTokenDocument second = row();
+        second.setTokenId("tok-2");
+        when(repository.findByTenantIdAndParentGrantIdAndRevokedAtIsNull("acme", "grant-7"))
+                .thenReturn(List.of(first, second));
+        when(mongoTemplate
+                        .updateFirst(any(Query.class), any(Update.class), eq(IntegrationTokenDocument.class))
+                        .getModifiedCount())
+                .thenReturn(1L, 0L);
+
+        List<IntegrationTokenDocument> revoked = service.revokeAllForParentGrant("acme", "grant-7");
+
+        assertThat(revoked).extracting(IntegrationTokenDocument::getTokenId).containsExactly("tok-1");
+        verify(repository, never()).save(any(IntegrationTokenDocument.class));
+    }
+
+    @Test
+    void revokeAllForParentGrant_evictsTheCache() {
+        IntegrationTokenService cached = new IntegrationTokenService(repository, mongoTemplate, 60);
+        IntegrationTokenDocument doc = row();
+        doc.setParentGrantId("grant-7");
+        when(repository.findByTokenId("tok-1")).thenReturn(Optional.of(doc));
+        when(repository.findByTenantIdAndParentGrantIdAndRevokedAtIsNull("acme", "grant-7"))
+                .thenReturn(List.of(doc));
+
+        assertThat(cached.isActive("tok-1", "acme", "alice", "links-proj")).isTrue();
+        doc.setRevokedAt(Instant.now());
+        cached.revokeAllForParentGrant("acme", "grant-7");
+
+        assertThat(cached.isActive("tok-1", "acme", "alice", "links-proj")).isFalse();
     }
 }

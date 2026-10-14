@@ -69,7 +69,6 @@ class OAuthAuthorizationFlowTest {
                     .scopeProfiles(List.of("mcp-project"))
                     .projectId("docs")
                     .userId(inv.getArgument(2))
-                    .consentTicket("ticket")
                     .build());
         });
     }
@@ -77,6 +76,24 @@ class OAuthAuthorizationFlowTest {
     private OAuthAuthorizationFlow.AuthorizeParams params(String clientId, String redirect, String resource) {
         return new OAuthAuthorizationFlow.AuthorizeParams(
                 "code", clientId, redirect, "st", CHALLENGE, "S256", null, resource);
+    }
+
+    private static OAuthServerAuthRequestDocument request(String clientId, String kind) {
+        return OAuthServerAuthRequestDocument.builder()
+                .requestId("r1")
+                .tenantId(TENANT)
+                .userId("alice")
+                .clientId(clientId)
+                .clientName("Claude Code")
+                .clientKind(kind)
+                .redirectUri(REDIRECT)
+                .codeChallenge(CHALLENGE)
+                .resource(RESOURCE)
+                .scope("mcp-project")
+                .scopeProfiles(List.of("mcp-project"))
+                .projectId("docs")
+                .state("st")
+                .build();
     }
 
     @Test
@@ -87,12 +104,49 @@ class OAuthAuthorizationFlowTest {
         assertThat(step).isInstanceOf(OAuthAuthorizationFlow.Step.ShowError.class);
     }
 
+    /** The cause (here: a resolver detail) goes to the log only — no oracle for the caller. */
     @Test
-    void unknownClient_isShownNotRedirected() {
-        when(clientResolver.resolve(TENANT, "nope")).thenThrow(new InvalidClientException("unknown client_id"));
+    void unknownClient_isShownNotRedirected_withAGenericMessage() {
+        when(clientResolver.resolve(TENANT, "nope"))
+                .thenThrow(new InvalidClientException("metadata host did not resolve"));
 
-        assertThat(flow.begin(TENANT, params("nope", REDIRECT, RESOURCE), null))
-                .isInstanceOf(OAuthAuthorizationFlow.Step.ShowError.class);
+        OAuthAuthorizationFlow.Step step = flow.begin(TENANT, params("nope", REDIRECT, RESOURCE), null);
+
+        assertThat(step).isInstanceOf(OAuthAuthorizationFlow.Step.ShowError.class);
+        assertThat(((OAuthAuthorizationFlow.Step.ShowError) step).message())
+                .isEqualTo(OAuthAuthorizationFlow.CLIENT_NOT_VERIFIED)
+                .doesNotContain("resolve");
+    }
+
+    @Test
+    void oversizedState_goesBackAsInvalidRequest_withoutEchoingIt() {
+        String state = "s".repeat(OAuthServerAuthorizationService.MAX_STATE_LENGTH + 1);
+        OAuthAuthorizationFlow.AuthorizeParams p = new OAuthAuthorizationFlow.AuthorizeParams(
+                "code", "dcr_x", REDIRECT, state, CHALLENGE, "S256", null, RESOURCE);
+
+        String url = ((OAuthAuthorizationFlow.Step.Redirect) flow.begin(TENANT, p, null)).url();
+
+        assertThat(url).startsWith(REDIRECT + "?error=invalid_request").doesNotContain("state=");
+        verify(authorizations, never()).createRequest(any());
+    }
+
+    @Test
+    void stateAtTheLimit_isAccepted() {
+        String state = "s".repeat(OAuthServerAuthorizationService.MAX_STATE_LENGTH);
+        OAuthAuthorizationFlow.AuthorizeParams p = new OAuthAuthorizationFlow.AuthorizeParams(
+                "code", "dcr_x", REDIRECT, state, CHALLENGE, "S256", null, RESOURCE);
+
+        flow.begin(TENANT, p, null);
+
+        verify(authorizations).createRequest(any());
+    }
+
+    /** An anonymous visit is not use — the registration's clock only moves when a code is issued. */
+    @Test
+    void anonymousAuthorize_doesNotTouchTheClient() {
+        flow.begin(TENANT, params("dcr_x", REDIRECT, RESOURCE), null);
+
+        verify(clientService, never()).touch(anyString());
     }
 
     @Test
@@ -161,6 +215,7 @@ class OAuthAuthorizationFlowTest {
         OAuthServerGrantDocument existing =
                 OAuthServerGrantDocument.builder().grantId("g1").build();
         when(grants.findReusable(TENANT, "alice", "dcr_x", RESOURCE)).thenReturn(Optional.of(existing));
+        when(authorizations.take(TENANT, "r1", "alice")).thenReturn(Optional.of(request("dcr_x", "dcr")));
         when(authorizations.issueCode(any(), any(), eq("g1"), any(), any(), any(), any()))
                 .thenReturn("CODE");
 
@@ -168,36 +223,55 @@ class OAuthAuthorizationFlowTest {
 
         assertThat(((OAuthAuthorizationFlow.Step.Redirect) step).url()).startsWith(REDIRECT + "?code=CODE&state=st");
         verify(gate).denial(TENANT, "alice", OAuthDoor.mcpProject("docs"));
+        verify(clientService).touch("dcr_x");
+        verify(grants, never()).create(any(), any(), any(), any(), any(), any(), anyList(), any(), any());
+    }
+
+    /** A reload racing the first visit: only one of them takes the request and gets a code. */
+    @Test
+    void loggedIn_withLiveGrant_requestAlreadyTaken_isShownExpired() {
+        when(grants.findReusable(TENANT, "alice", "dcr_x", RESOURCE))
+                .thenReturn(Optional.of(
+                        OAuthServerGrantDocument.builder().grantId("g1").build()));
+        when(authorizations.take(TENANT, "r1", "alice")).thenReturn(Optional.empty());
+
+        assertThat(flow.begin(TENANT, params("dcr_x", REDIRECT, RESOURCE), "alice"))
+                .isInstanceOf(OAuthAuthorizationFlow.Step.ShowError.class);
+        verify(authorizations, never()).issueCode(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
-    void decide_withWrongTicket_doesNothing() {
-        when(authorizations.findRequest(TENANT, "r1"))
-                .thenReturn(Optional.of(OAuthServerAuthRequestDocument.builder()
-                        .requestId("r1")
-                        .userId("alice")
-                        .consentTicket("ticket")
-                        .redirectUri(REDIRECT)
-                        .build()));
+    void consentView_handsOutAFreshTicket() {
+        when(authorizations.issueConsentTicket(TENANT, "r1", "alice")).thenReturn(Optional.of("raw-ticket"));
+
+        assertThat(flow.consentView(TENANT, "r1", "alice").orElseThrow().getConsentTicket())
+                .isEqualTo("raw-ticket");
+    }
+
+    /** Wrong ticket, wrong user, or a second submission: the service hands nothing out. */
+    @Test
+    void decide_requestNotTaken_doesNothing() {
+        when(authorizations.takeForDecision(any(), any(), any(), any())).thenReturn(Optional.empty());
 
         assertThat(flow.decide(TENANT, "r1", "forged", true, "alice")).isEmpty();
-        assertThat(flow.decide(TENANT, "r1", "ticket", true, "mallory")).isEmpty();
+        verify(authorizations, never()).issueCode(any(), any(), any(), any(), any(), any(), any());
+        verify(grants, never()).create(any(), any(), any(), any(), any(), any(), anyList(), any(), any());
+    }
+
+    @Test
+    void decide_decline_isAccessDenied() {
+        when(authorizations.takeForDecision(TENANT, "r1", "alice", "ticket"))
+                .thenReturn(Optional.of(request("dcr_x", "dcr")));
+
+        assertThat(flow.decide(TENANT, "r1", "ticket", false, "alice").orElseThrow())
+                .startsWith(REDIRECT + "?error=access_denied");
         verify(authorizations, never()).issueCode(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
     void decide_approve_gateDenies_isAccessDenied_andNoGrant() {
-        when(authorizations.findRequest(TENANT, "r1"))
-                .thenReturn(Optional.of(OAuthServerAuthRequestDocument.builder()
-                        .requestId("r1")
-                        .tenantId(TENANT)
-                        .userId("alice")
-                        .consentTicket("ticket")
-                        .clientId("dcr_x")
-                        .redirectUri(REDIRECT)
-                        .resource(RESOURCE)
-                        .scope("mcp-project")
-                        .build()));
+        when(authorizations.takeForDecision(TENANT, "r1", "alice", "ticket"))
+                .thenReturn(Optional.of(request("dcr_x", "dcr")));
         when(gate.denial(TENANT, "alice", OAuthDoor.mcpProject("docs"))).thenReturn("no entry");
 
         String url = flow.decide(TENANT, "r1", "ticket", true, "alice").orElseThrow();
@@ -208,22 +282,8 @@ class OAuthAuthorizationFlowTest {
 
     @Test
     void decide_approve_createsGrantAndCode() {
-        when(authorizations.findRequest(TENANT, "r1"))
-                .thenReturn(Optional.of(OAuthServerAuthRequestDocument.builder()
-                        .requestId("r1")
-                        .tenantId(TENANT)
-                        .userId("alice")
-                        .consentTicket("ticket")
-                        .clientId("dcr_x")
-                        .clientName("Claude Code")
-                        .redirectUri(REDIRECT)
-                        .codeChallenge(CHALLENGE)
-                        .resource(RESOURCE)
-                        .scope("mcp-project")
-                        .scopeProfiles(List.of("mcp-project"))
-                        .projectId("docs")
-                        .state("st")
-                        .build()));
+        when(authorizations.takeForDecision(TENANT, "r1", "alice", "ticket"))
+                .thenReturn(Optional.of(request("dcr_x", "dcr")));
         when(grants.findReusable(TENANT, "alice", "dcr_x", RESOURCE)).thenReturn(Optional.empty());
         when(grants.create(
                         eq(TENANT),
@@ -243,34 +303,86 @@ class OAuthAuthorizationFlowTest {
 
         assertThat(url).startsWith(REDIRECT + "?code=CODE&state=st&iss=");
         verify(audit).authOAuthGrantIssued(TENANT, "alice", "dcr_x", "mcp-project", "docs", "g9");
-        verify(authorizations).deleteRequest("r1");
+        verify(clientService).touch("dcr_x");
     }
 
+    /** A third-party client's second consent (e.g. two browser tabs) reuses the grant it already has. */
     @Test
-    void firstPartyClient_mayAskForTheAccountScope_andSkipsConsent() {
-        when(authorizations.bindUser(eq(TENANT), eq("r1"), eq("alice")))
-                .thenReturn(Optional.of(OAuthServerAuthRequestDocument.builder()
-                        .requestId("r1")
-                        .tenantId(TENANT)
-                        .clientId(OAuthClientResolver.FOOT_CLIENT_ID)
-                        .clientName("Vancetope CLI")
-                        .clientKind("first-party")
-                        .redirectUri(REDIRECT)
-                        .codeChallenge(CHALLENGE)
-                        .scope("account")
-                        .userId("alice")
-                        .build()));
+    void decide_approve_thirdParty_reusesALiveGrant() {
+        when(authorizations.takeForDecision(TENANT, "r1", "alice", "ticket"))
+                .thenReturn(Optional.of(request("dcr_x", "dcr")));
+        when(grants.findReusable(TENANT, "alice", "dcr_x", RESOURCE))
+                .thenReturn(Optional.of(
+                        OAuthServerGrantDocument.builder().grantId("g1").build()));
+        when(authorizations.issueCode(any(), any(), eq("g1"), any(), any(), any(), any()))
+                .thenReturn("CODE");
+
+        assertThat(flow.decide(TENANT, "r1", "ticket", true, "alice").orElseThrow())
+                .startsWith(REDIRECT + "?code=CODE");
+        verify(grants, never()).create(any(), any(), any(), any(), any(), any(), anyList(), any(), any());
+    }
+
+    private OAuthServerAuthRequestDocument footRequest() {
+        return OAuthServerAuthRequestDocument.builder()
+                .requestId("r1")
+                .tenantId(TENANT)
+                .clientId(OAuthClientResolver.FOOT_CLIENT_ID)
+                .clientName("Vancetope CLI")
+                .clientKind("first-party")
+                .redirectUri(REDIRECT)
+                .codeChallenge(CHALLENGE)
+                .scope("account")
+                .userId("alice")
+                .build();
+    }
+
+    /**
+     * The first-party client may hold the account scope — and precisely
+     * because of that it confirms every login: a login link someone else
+     * opened must not silently hand out a full-account code.
+     */
+    @Test
+    void firstPartyClient_mayAskForTheAccountScope_andAlwaysGoesToConsent() {
+        when(authorizations.bindUser(eq(TENANT), eq("r1"), eq("alice"))).thenReturn(Optional.of(footRequest()));
         when(grants.findReusable(TENANT, "alice", OAuthClientResolver.FOOT_CLIENT_ID, null))
-                .thenReturn(Optional.empty());
+                .thenReturn(Optional.of(
+                        OAuthServerGrantDocument.builder().grantId("g-old").build()));
+
+        OAuthAuthorizationFlow.Step step =
+                flow.begin(TENANT, params(OAuthClientResolver.FOOT_CLIENT_ID, REDIRECT, null), "alice");
+
+        assertThat(((OAuthAuthorizationFlow.Step.Redirect) step).url())
+                .isEqualTo(BASE + "/oauth-consent.html?tenant=acme&request=r1");
+        verify(authorizations, never()).issueCode(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    /** Every foot login gets a grant of its own — two installations never share a refresh strand. */
+    @Test
+    void firstPartyClient_approve_alwaysCreatesANewGrant() {
+        when(authorizations.takeForDecision(TENANT, "r1", "alice", "ticket")).thenReturn(Optional.of(footRequest()));
+        when(grants.findReusable(any(), any(), any(), any()))
+                .thenReturn(Optional.of(
+                        OAuthServerGrantDocument.builder().grantId("g-old").build()));
         when(grants.create(any(), any(), any(), any(), isNull(), eq("account"), anyList(), isNull(), any()))
                 .thenReturn(OAuthServerGrantDocument.builder().grantId("g2").build());
         when(authorizations.issueCode(any(), any(), eq("g2"), any(), any(), any(), isNull()))
                 .thenReturn("CODE");
 
-        OAuthAuthorizationFlow.Step step =
-                flow.begin(TENANT, params(OAuthClientResolver.FOOT_CLIENT_ID, REDIRECT, null), "alice");
+        String url = flow.decide(TENANT, "r1", "ticket", true, "alice").orElseThrow();
 
-        assertThat(((OAuthAuthorizationFlow.Step.Redirect) step).url()).startsWith(REDIRECT + "?code=CODE");
+        assertThat(url).startsWith(REDIRECT + "?code=CODE");
+        verify(grants, never()).findReusable(any(), any(), any(), any());
+        verify(audit).authOAuthGrantIssued(TENANT, "alice", OAuthClientResolver.FOOT_CLIENT_ID, "account", null, "g2");
+    }
+
+    /** The foot CLI listens on a loopback IP literal, any port; {@code localhost} is not registered. */
+    @Test
+    void firstPartyRedirects_areLoopbackIpLiteralsOnly() {
+        ResolvedOAuthClient foot = OAuthClientResolver.FIRST_PARTY.get(OAuthClientResolver.FOOT_CLIENT_ID);
+
+        assertThat(foot.allowsRedirect("http://127.0.0.1:53111/callback")).isTrue();
+        assertThat(foot.allowsRedirect("http://[::1]:53111/callback")).isTrue();
+        assertThat(foot.allowsRedirect("http://localhost:53111/callback")).isFalse();
     }
 
     @Test

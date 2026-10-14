@@ -36,6 +36,7 @@ public class ConnectionContext {
     private final @Nullable String displayName;
     /** Open-string profile token; canonical values in {@code de.mhus.vance.api.ws.Profiles}. */
     private final String profile;
+
     private final String clientVersion;
     private final @Nullable String clientName;
     private final String editorId;
@@ -64,12 +65,26 @@ public class ConnectionContext {
      */
     private volatile de.mhus.vance.shared.permission.@Nullable SecurityContext securityContext;
 
+    /**
+     * The OAuth grant behind the handshake credential ({@code jti} of an
+     * OAuth {@code account} token), or {@code null} for a regular login.
+     * Handshake-final; set just after construction like
+     * {@link #clientContext}. A socket outlives the short-lived access token
+     * that opened it, so this is what lets a grant revocation reach an open
+     * connection ({@link OAuthWebSocketRevocationService}).
+     */
+    private volatile @Nullable String oauthGrantId;
+
     public void attach(WebSocketSession webSocketSession) {
         this.webSocketSession = webSocketSession;
     }
 
     public void setClientContext(@Nullable ClientContext clientContext) {
         this.clientContext = clientContext;
+    }
+
+    public void setOauthGrantId(@Nullable String oauthGrantId) {
+        this.oauthGrantId = oauthGrantId;
     }
 
     public boolean hasSession() {
@@ -84,8 +99,7 @@ public class ConnectionContext {
         this.sessionDocument = null;
     }
 
-    public void cacheSecurityContext(
-            de.mhus.vance.shared.permission.SecurityContext context) {
+    public void cacheSecurityContext(de.mhus.vance.shared.permission.SecurityContext context) {
         this.securityContext = context;
     }
 

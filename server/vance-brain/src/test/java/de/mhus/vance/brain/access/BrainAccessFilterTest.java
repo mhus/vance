@@ -171,6 +171,33 @@ class BrainAccessFilterTest {
         assertThat(filter.isClaimsAcceptable(claims, get("/actuator/health"))).isTrue();
     }
 
+    /**
+     * Narrowed and grant-gated credentials express their narrowing relative to
+     * {@code /brain/{tenant}} — off that tree nothing could be checked, so they
+     * are refused instead of passing unchecked.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"INTEGRATION", "OAUTH", "SCRIPT_RUN"})
+    void nonAccessClaims_rejectedOnNonTenantScopedPath(String type) {
+        VanceJwtClaims claims = new VanceJwtClaims(
+                "bob",
+                "acme",
+                null,
+                null,
+                TokenType.valueOf(type),
+                "run-1",
+                null,
+                null,
+                java.util.List.of(),
+                "jti-1",
+                null,
+                null,
+                null);
+        assertThat(filter.isClaimsAcceptable(claims, get("/actuator/health"))).isFalse();
+        assertThat(filter.isClaimsAcceptable(claims, get("/face/addons"))).isFalse();
+        assertThat(filter.isClaimsAcceptable(claims, get("/somewhere/else"))).isFalse();
+    }
+
     @Test
     void scriptRunClaims_delegateToScriptRunAuthService() {
         VanceJwtClaims claims = VanceJwtClaims.user("_script", "acme", null, null, TokenType.SCRIPT_RUN);

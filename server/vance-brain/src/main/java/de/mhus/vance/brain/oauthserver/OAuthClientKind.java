@@ -2,7 +2,7 @@ package de.mhus.vance.brain.oauthserver;
 
 /** Where a client's identity comes from. */
 public enum OAuthClientKind {
-    /** Built-in Vance client (foot CLI) — trusted, may hold the {@code account} scope, no consent page. */
+    /** Built-in Vance client (foot CLI) — trusted, may hold the {@code account} scope; confirms every login on the consent page and gets a grant of its own per login. */
     FIRST_PARTY("first-party"),
     /** Registered through Dynamic Client Registration — everything it says about itself is self-asserted. */
     DCR("dcr"),

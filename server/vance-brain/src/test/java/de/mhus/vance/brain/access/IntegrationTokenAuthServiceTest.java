@@ -127,6 +127,42 @@ class IntegrationTokenAuthServiceTest {
                 .isTrue();
     }
 
+    /**
+     * The mirror image: a tenant-wide profile's door cannot carry a pin to the
+     * tool dispatch, so a token naming a project is refused rather than
+     * served unconfined.
+     */
+    @Test
+    void rejects_aProjectPin_whenTheProfileIsTenantWide() {
+        IntegrationTokenAuthService unpinned = new IntegrationTokenAuthService(
+                tokenService,
+                new NarrowedCredentialCheck(new IntegrationScopeRegistry(List.of(new CaptureProfile(false)))));
+
+        assertThat(unpinned.isAcceptable(
+                        claims("links-capture", "links-proj", "tok-1"),
+                        request("POST", "/brain/acme/addon/links/entry")))
+                .isFalse();
+        verify(tokenService, never()).isActive(anyString(), anyString(), anyString(), any());
+    }
+
+    /** Mixing both kinds in one token can never satisfy both pin rules. */
+    @Test
+    void rejects_aTokenMixingPinnedAndTenantWideProfiles() {
+        IntegrationTokenAuthService mixed = new IntegrationTokenAuthService(
+                tokenService,
+                new NarrowedCredentialCheck(
+                        new IntegrationScopeRegistry(List.of(new CaptureProfile(false), new WsProfile()))));
+
+        assertThat(mixed.isAcceptable(
+                        claims(List.of("links-capture", "ws-profile"), "links-proj", "tok-1"),
+                        request("POST", "/brain/acme/addon/links/entry")))
+                .isFalse();
+        assertThat(mixed.isAcceptable(
+                        claims(List.of("links-capture", "ws-profile"), null, "tok-1"),
+                        request("POST", "/brain/acme/addon/links/entry")))
+                .isFalse();
+    }
+
     @Test
     void rejects_aMissingTokenId() {
         assertThat(service.isAcceptable(

@@ -1,7 +1,6 @@
 package de.mhus.vance.brain.oauthserver;
 
 import de.mhus.vance.api.oauthserver.OAuthGrantDto;
-import de.mhus.vance.shared.audit.AuditService;
 import de.mhus.vance.shared.oauthserver.OAuthServerGrantDocument;
 import de.mhus.vance.shared.oauthserver.OAuthServerGrantService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -29,7 +28,6 @@ import org.springframework.web.server.ResponseStatusException;
 public class OAuthGrantController {
 
     private final OAuthServerGrantService grantService;
-    private final AuditService auditService;
 
     @GetMapping("/brain/{tenant}/oauth/grants")
     public List<OAuthGrantDto> list(@PathVariable("tenant") String tenant, HttpServletRequest request) {
@@ -48,8 +46,8 @@ public class OAuthGrantController {
                 .find(tenant, grantId)
                 .filter(g -> user.equals(g.getUserId()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        // Audited and announced by the grant service, like every revocation.
         grantService.revoke(tenant, grant.getGrantId(), "user");
-        auditService.authOAuthGrantRevoked(tenant, user, grant.getGrantId(), "user");
         return ResponseEntity.noContent().build();
     }
 

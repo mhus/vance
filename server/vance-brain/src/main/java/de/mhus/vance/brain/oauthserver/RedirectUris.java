@@ -13,6 +13,11 @@ import org.jspecify.annotations.Nullable;
  * ({@code 127.0.0.1}, {@code [::1]}, {@code localhost}) — the MCP
  * specification's "localhost or HTTPS". No fragment, no user info.
  *
+ * <p>A redirect URI on the server's own origin is refused
+ * ({@link #isAcceptable(String, String)}): the authorization code would land
+ * on a page of this very application, where it does not belong — the
+ * login and consent pages included.
+ *
  * <p>Matching is <b>exact</b>, with the one exception RFC 8252 §7.3 makes for
  * native apps: on a loopback redirect the port is ignored, because a CLI
  * binds a free port per login and cannot register it in advance. Path and
@@ -38,6 +43,42 @@ public final class RedirectUris {
             return true;
         }
         return "http".equals(scheme) && isLoopbackHost(parsed.getHost());
+    }
+
+    /**
+     * {@link #isAcceptable(String)}, and additionally not on {@code ownOrigin}
+     * — the origin of the server's public base URL ({@link #origin(String)}),
+     * or {@code null} when it is unknown.
+     */
+    public static boolean isAcceptable(@Nullable String uri, @Nullable String ownOrigin) {
+        if (!isAcceptable(uri)) {
+            return false;
+        }
+        return ownOrigin == null || !ownOrigin.equals(origin(uri));
+    }
+
+    /**
+     * Normalized origin {@code scheme://host:port} of an absolute URL —
+     * lower-case scheme and host, explicit default port — or {@code null} when
+     * {@code uri} is not an absolute http(s) URL with a host.
+     */
+    public static @Nullable String origin(@Nullable String uri) {
+        URI parsed = parse(uri);
+        if (parsed == null) {
+            return null;
+        }
+        String scheme = parsed.getScheme().toLowerCase(Locale.ROOT);
+        int port = parsed.getPort();
+        if (port == -1) {
+            if ("https".equals(scheme)) {
+                port = 443;
+            } else if ("http".equals(scheme)) {
+                port = 80;
+            } else {
+                return null;
+            }
+        }
+        return scheme + "://" + parsed.getHost().toLowerCase(Locale.ROOT) + ":" + port;
     }
 
     /** Whether the redirect goes to the user's own machine. */
@@ -90,7 +131,8 @@ public final class RedirectUris {
         }
     }
 
-    private static boolean isLoopbackHost(@Nullable String host) {
+    /** Whether {@code host} names the local machine ({@code 127.0.0.1}, {@code ::1}, {@code localhost}). */
+    static boolean isLoopbackHost(@Nullable String host) {
         return host != null && LOOPBACK_HOSTS.contains(host.toLowerCase(Locale.ROOT));
     }
 

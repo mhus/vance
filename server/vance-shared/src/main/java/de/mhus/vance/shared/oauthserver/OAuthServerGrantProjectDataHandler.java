@@ -1,11 +1,8 @@
 package de.mhus.vance.shared.oauthserver;
 
 import de.mhus.vance.shared.project.maintenance.MappedProjectDataHandler;
-import java.time.Instant;
 import java.util.List;
 import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.mongodb.core.query.Criteria;
-import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Component;
 
 /**
@@ -17,12 +14,20 @@ import org.springframework.stereotype.Component;
  * the pin is a signed claim and cannot follow, and the grant service already
  * refuses a pin that no longer matches the row — the stamp makes the owner's
  * list say so. Unpinned grants ({@code projectId == null}) are not matched.
+ *
+ * <p>Both paths revoke through {@link OAuthServerGrantService} rather than
+ * stamping rows here: the revocation is audited and announced
+ * ({@link OAuthGrantRevokedEvent}), so open connections of the grant end now
+ * and not when the row is gone.
  */
 @Component
 public class OAuthServerGrantProjectDataHandler extends MappedProjectDataHandler {
 
-    public OAuthServerGrantProjectDataHandler(MongoTemplate mongoTemplate) {
+    private final OAuthServerGrantService grantService;
+
+    public OAuthServerGrantProjectDataHandler(MongoTemplate mongoTemplate, OAuthServerGrantService grantService) {
         super(mongoTemplate);
+        this.grantService = grantService;
     }
 
     @Override
@@ -41,12 +46,14 @@ public class OAuthServerGrantProjectDataHandler extends MappedProjectDataHandler
     }
 
     @Override
+    public long delete(String tenantId, String projectId) {
+        grantService.revokeAllForProject(tenantId, projectId, "project-deleted");
+        return super.delete(tenantId, projectId);
+    }
+
+    @Override
     public long rename(String tenantId, String projectId, String newProjectId) {
-        mongoTemplate.updateMulti(
-                scope(tenantId, projectId)
-                        .addCriteria(Criteria.where("revokedAt").is(null)),
-                new Update().set("revokedAt", Instant.now()).set("revokeReason", "project-renamed"),
-                OAuthServerGrantDocument.class);
+        grantService.revokeAllForProject(tenantId, projectId, "project-renamed");
         return super.rename(tenantId, projectId, newProjectId);
     }
 }

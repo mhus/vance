@@ -25,9 +25,12 @@ import org.springframework.data.mongodb.core.mapping.Document;
  * clients may hold.
  *
  * <p>Refresh tokens rotate: {@link #refreshTokenHash} is the one live token
- * of the grant, {@link #previousRefreshTokenHash} the one it replaced. A
- * request presenting the previous one is a replay — a copy of a token that
- * was already used — and revokes the whole grant (OAuth 2.1 §4.3.1).
+ * of the grant, {@link #previousRefreshTokenHashes} the last
+ * {@code OAuthServerGrantService.REPLAY_HISTORY} it replaced, newest last. A
+ * request presenting any of them is a replay — a copy of a token that was
+ * already used — and revokes the whole grant (OAuth 2.1 §4.3.1). Keeping
+ * several generations matters: an attacker who copied a token and refreshed
+ * twice before the real client did would otherwise go unnoticed.
  *
  * <p>No TTL index: an expired or revoked grant stays visible in the owner's
  * list of connected apps, like an integration token row.
@@ -89,7 +92,18 @@ public class OAuthServerGrantDocument {
     @Indexed
     private @Nullable String refreshTokenHash;
 
-    /** SHA-256 of the refresh token the live one replaced — presenting it is a replay. */
+    /**
+     * SHA-256 of the refresh tokens the live one replaced, oldest first and
+     * capped — presenting any of them is a replay.
+     */
+    @Builder.Default
+    private List<String> previousRefreshTokenHashes = new ArrayList<>();
+
+    /**
+     * Legacy single-generation form of {@link #previousRefreshTokenHashes},
+     * written by earlier versions. Still read for replay detection, cleared
+     * when a new refresh strand starts; never written otherwise.
+     */
     private @Nullable String previousRefreshTokenHash;
 
     /** Sliding expiry of the live refresh token. */

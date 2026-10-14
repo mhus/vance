@@ -48,4 +48,44 @@ class McpGlobalAccessConfigTest {
         assertThatThrownBy(() -> McpGlobalAccessConfig.parse("default: allow\naccess: []\n"))
                 .isInstanceOf(IllegalStateException.class);
     }
+
+    /**
+     * A {@code users} list that was written but holds no valid name must not
+     * read as "any account" — that would open the door the entry meant to
+     * narrow. The loader turns the parse error into deny.
+     */
+    @Test
+    void usersListOfOnlyInvalidEntries_failsTheParse() {
+        assertThatThrownBy(() -> McpGlobalAccessConfig.parse("""
+                access:
+                  - name: typo
+                    oauth: true
+                    users: [~, ""]
+                """))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("typo");
+    }
+
+    @Test
+    void explicitlyEmptyUsersList_admitsAnyAccount() {
+        McpGlobalAccessConfig config = McpGlobalAccessConfig.parse("""
+                access:
+                  - name: all-oauth
+                    oauth: true
+                    users: []
+                """);
+
+        assertThat(config.resolve(McpCaller.oauth("bob", "g2")).name()).isEqualTo("all-oauth");
+    }
+
+    @Test
+    void blankToken_failsTheParse() {
+        assertThatThrownBy(() -> McpGlobalAccessConfig.parse("""
+                access:
+                  - name: ci
+                    token: ""
+                """))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("token");
+    }
 }

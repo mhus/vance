@@ -6,8 +6,16 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -64,8 +72,7 @@ class AccessStoreTest {
         store.save(dir, data);
 
         Set<PosixFilePermission> perms = Files.getPosixFilePermissions(file);
-        assertThat(perms).containsExactlyInAnyOrder(
-                PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE);
+        assertThat(perms).containsExactlyInAnyOrder(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE);
     }
 
     @Test
@@ -83,7 +90,66 @@ class AccessStoreTest {
     void load_brokenFile_throws(@TempDir Path dir) throws Exception {
         Files.writeString(store.file(dir), "this: is: not: valid: yaml: [");
 
-        assertThatThrownBy(() -> store.load(dir))
-                .isInstanceOf(AccessStoreException.class);
+        assertThatThrownBy(() -> store.load(dir)).isInstanceOf(AccessStoreException.class);
+    }
+
+    @Test
+    void save_overwritesAtomicallyAndLeavesNoTempFile(@TempDir Path dir) throws Exception {
+        AccessData first = new AccessData();
+        first.setAccessToken("one");
+        store.save(dir, first);
+        AccessData second = new AccessData();
+        second.setAccessToken("two");
+
+        store.save(dir, second);
+
+        assertThat(store.load(dir).orElseThrow().getAccessToken()).isEqualTo("two");
+        try (Stream<Path> files = Files.list(dir)) {
+            assertThat(files.map(f -> f.getFileName().toString())).containsExactly("access.yaml");
+        }
+        Path file = store.file(dir);
+        if (file.getFileSystem().supportedFileAttributeViews().contains("posix")) {
+            assertThat(Files.getPosixFilePermissions(file))
+                    .containsExactlyInAnyOrder(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE);
+        }
+    }
+
+    @Test
+    void withLock_isReentrantAndReturnsTheResult(@TempDir Path dir) throws Exception {
+        String result = store.withLock(dir, () -> store.withLock(dir, () -> "inner"));
+
+        assertThat(result).isEqualTo("inner");
+    }
+
+    @Test
+    void withLock_serialisesConcurrentActions(@TempDir Path dir) throws Exception {
+        AtomicInteger inside = new AtomicInteger();
+        AtomicInteger maxInside = new AtomicInteger();
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(4);
+        try {
+            List<Future<Object>> futures = new java.util.ArrayList<>();
+            for (int i = 0; i < 4; i++) {
+                // A fresh store per task, like separate foot instances sharing the directory.
+                AccessStore own = new AccessStore();
+                futures.add(pool.submit(() -> {
+                    start.await();
+                    return own.withLock(dir, () -> {
+                        maxInside.accumulateAndGet(inside.incrementAndGet(), Math::max);
+                        Thread.sleep(50);
+                        inside.decrementAndGet();
+                        return null;
+                    });
+                }));
+            }
+            start.countDown();
+            for (Future<Object> f : futures) {
+                f.get(10, TimeUnit.SECONDS);
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+
+        assertThat(maxInside.get()).isEqualTo(1);
     }
 }

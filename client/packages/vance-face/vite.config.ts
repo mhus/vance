@@ -220,6 +220,30 @@ function vanceAddonDevServe(): Plugin {
   };
 }
 
+/**
+ * Dev-server stand-in for the gateway's anti-framing headers on the two
+ * pages that take a decision by click — the login and the OAuth consent
+ * page. Framed, a click on them could be stolen (clickjacking); production
+ * sets the same headers in the face nginx. Only the dev server is affected.
+ */
+function vanceNoFramingDevHeaders(): Plugin {
+  const pages = new Set(['/login', '/login.html', '/oauth-consent', '/oauth-consent.html']);
+  return {
+    name: 'vance-no-framing-dev-headers',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const pathname = (req.url ?? '').split('?')[0];
+        if (pages.has(pathname)) {
+          res.setHeader('Content-Security-Policy', "frame-ancestors 'none'");
+          res.setHeader('X-Frame-Options', 'DENY');
+        }
+        next();
+      });
+    },
+  };
+}
+
 export default defineConfig({
   plugins: [
     vue(),
@@ -250,6 +274,7 @@ export default defineConfig({
       },
     }),
     vanceAddonDevServe(),
+    vanceNoFramingDevHeaders(),
   ],
   server: {
     // FACE_PORT / BRAIN_PORT override the defaults for local multi-pod

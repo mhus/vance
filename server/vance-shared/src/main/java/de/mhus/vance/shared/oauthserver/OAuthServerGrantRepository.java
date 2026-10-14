@@ -14,5 +14,7 @@ public interface OAuthServerGrantRepository extends MongoRepository<OAuthServerG
     List<OAuthServerGrantDocument> findByTenantIdAndUserIdAndClientIdAndRevokedAtIsNull(
             String tenantId, String userId, String clientId);
 
-    boolean existsByClientIdAndRevokedAtIsNull(String clientId);
+    List<OAuthServerGrantDocument> findByTenantIdAndUserIdAndRevokedAtIsNull(String tenantId, String userId);
+
+    List<OAuthServerGrantDocument> findByTenantIdAndProjectIdAndRevokedAtIsNull(String tenantId, String projectId);
 }

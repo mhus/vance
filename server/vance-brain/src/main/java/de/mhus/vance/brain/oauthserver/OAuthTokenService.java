@@ -4,6 +4,7 @@ import de.mhus.vance.shared.jwt.JwtService;
 import de.mhus.vance.shared.jwt.TokenType;
 import de.mhus.vance.shared.jwt.VanceJwtClaims;
 import de.mhus.vance.shared.oauthserver.OAuthServerAuthorizationService;
+import de.mhus.vance.shared.oauthserver.OAuthServerClientService;
 import de.mhus.vance.shared.oauthserver.OAuthServerCodeDocument;
 import de.mhus.vance.shared.oauthserver.OAuthServerGrantDocument;
 import de.mhus.vance.shared.oauthserver.OAuthServerGrantService;
@@ -27,6 +28,16 @@ import org.springframework.stereotype.Service;
 /**
  * The token endpoint's logic: redeem a code (PKCE), rotate a refresh token,
  * revoke. Returns OAuth wire maps; errors are {@link OAuthTokenError}.
+ *
+ * <p><b>Check first, spend second.</b> A code or refresh token is only
+ * consumed after everything about the request has been verified — a request
+ * that fails a binding check leaves the credential as it was, so a stranger
+ * holding someone's code cannot burn it by presenting it wrongly, and only a
+ * presenter that passes the client binding can trigger replay revocation.
+ *
+ * <p>Every {@code invalid_grant} carries the same generic description; which
+ * check failed is logged, not answered — the response must not help a caller
+ * probe codes and tokens.
  */
 @Service
 @RequiredArgsConstructor
@@ -36,12 +47,16 @@ public class OAuthTokenService {
     /** RFC 7636 §4.1: 43–128 characters of the unreserved set. */
     private static final Pattern CODE_VERIFIER = Pattern.compile("^[A-Za-z0-9\\-._~]{43,128}$");
 
+    /** The one description every {@code invalid_grant} answer carries. */
+    static final String INVALID_GRANT_DESCRIPTION = "the authorization grant is invalid, expired or revoked";
+
     private final OAuthServerSettings settings;
     private final OAuthServerAuthorizationService authorizations;
     private final OAuthServerGrantService grants;
     private final JwtService jwtService;
     private final UserService userService;
     private final OAuthDoors doors;
+    private final OAuthServerClientService clientService;
 
     /** An OAuth error response of the token endpoint (RFC 6749 §5.2). */
     public static class OAuthTokenError extends RuntimeException {
@@ -64,8 +79,8 @@ public class OAuthTokenService {
         }
     }
 
-    private static OAuthTokenError invalidGrant(String description) {
-        return new OAuthTokenError(HttpStatus.BAD_REQUEST, "invalid_grant", description);
+    private static OAuthTokenError invalidGrant() {
+        return new OAuthTokenError(HttpStatus.BAD_REQUEST, "invalid_grant", INVALID_GRANT_DESCRIPTION);
     }
 
     private static OAuthTokenError invalidRequest(String description) {
@@ -84,39 +99,70 @@ public class OAuthTokenService {
         if (blank(code) || blank(redirectUri) || blank(clientId) || blank(codeVerifier)) {
             throw invalidRequest("code, redirect_uri, client_id and code_verifier are required");
         }
-        OAuthServerAuthorizationService.Redemption redemption = authorizations.redeemCode(tenant, code);
-        if (redemption.replayedGrantId() != null) {
-            // Someone presents a code that was already redeemed: either the
-            // client retried, or the code leaked. OAuth 2.1 §4.1.3 — revoke
-            // what it produced.
-            grants.revoke(tenant, redemption.replayedGrantId(), "code-replay");
-            throw invalidGrant("authorization code already used");
+        OAuthServerCodeDocument found = authorizations.findCode(tenant, code).orElse(null);
+        if (found == null) {
+            log.trace("OAuth code refused tenant='{}' client='{}': unknown code", tenant, clientId);
+            throw invalidGrant();
         }
-        OAuthServerCodeDocument redeemed = redemption.code();
-        if (redeemed == null) {
-            throw invalidGrant("authorization code is invalid or expired");
+        // The binding: who may present this code at all. A failure here changes
+        // nothing — neither the code nor the grant.
+        if (!clientId.equals(found.getClientId())) {
+            log.warn(
+                    "OAuth code refused tenant='{}': presented by client '{}', issued to '{}'",
+                    tenant,
+                    clientId,
+                    found.getClientId());
+            throw invalidGrant();
         }
-        if (!clientId.equals(redeemed.getClientId())) {
-            throw invalidGrant("authorization code was issued to another client");
-        }
-        if (!redirectUri.equals(redeemed.getRedirectUri())) {
-            throw invalidGrant("redirect_uri does not match the authorization request");
+        if (!redirectUri.equals(found.getRedirectUri())) {
+            log.trace("OAuth code refused tenant='{}' client='{}': redirect_uri mismatch", tenant, clientId);
+            throw invalidGrant();
         }
         if (!CODE_VERIFIER.matcher(codeVerifier).matches()
-                || !pkceS256(codeVerifier).equals(redeemed.getCodeChallenge())) {
-            throw invalidGrant("PKCE verification failed");
+                || !pkceS256(codeVerifier).equals(found.getCodeChallenge())) {
+            log.trace("OAuth code refused tenant='{}' client='{}': PKCE verification failed", tenant, clientId);
+            throw invalidGrant();
         }
-        if (!resourceMatches(tenant, resource, redeemed.getResource())) {
+        if (found.getUsedAt() != null) {
+            // The rightful client presents a code a second time: either it
+            // retried, or the code leaked together with the verifier. OAuth 2.1
+            // §4.1.3 — revoke what it produced.
+            grants.revokeAfterReplay(tenant, found.getGrantId(), "code");
+            throw invalidGrant();
+        }
+        if (authorizations.isExpired(found)) {
+            log.trace("OAuth code refused tenant='{}' client='{}': expired", tenant, clientId);
+            throw invalidGrant();
+        }
+        if (!resourceMatches(tenant, resource, found.getResource())) {
             throw new OAuthTokenError(HttpStatus.BAD_REQUEST, "invalid_target", "resource does not match the grant");
         }
-        OAuthServerGrantDocument grant = grants.find(tenant, redeemed.getGrantId())
+        OAuthServerGrantDocument grant = grants.find(tenant, found.getGrantId())
                 .filter(g -> g.getRevokedAt() == null)
-                .orElseThrow(() -> invalidGrant("the grant is no longer active"));
+                .orElse(null);
+        if (grant == null) {
+            log.trace("OAuth code refused tenant='{}' client='{}': grant no longer active", tenant, clientId);
+            throw invalidGrant();
+        }
         requireActiveUser(tenant, grant.getUserId());
+        if (!authorizations.consumeCode(tenant, code)) {
+            // Spent (or expired) between the read and the stamp. Spent means a
+            // concurrent redemption that also passed the binding — a replay.
+            boolean spent = authorizations
+                    .findCode(tenant, code)
+                    .map(c -> c.getUsedAt() != null)
+                    .orElse(false);
+            if (spent) {
+                grants.revokeAfterReplay(tenant, found.getGrantId(), "code");
+            }
+            throw invalidGrant();
+        }
         String refreshToken = grants.startRefreshStrand(grant.getGrantId(), settings.refreshTokenTtl());
         if (refreshToken == null) {
-            throw invalidGrant("the grant is no longer active");
+            log.trace("OAuth code refused tenant='{}' client='{}': grant revoked meanwhile", tenant, clientId);
+            throw invalidGrant();
         }
+        clientService.touch(clientId);
         log.info(
                 "OAuth code redeemed tenant='{}' user='{}' client='{}' scope='{}'",
                 tenant,
@@ -126,31 +172,38 @@ public class OAuthTokenService {
         return tokenResponse(tenant, grant, refreshToken);
     }
 
-    /** {@code grant_type=refresh_token}. */
+    /**
+     * {@code grant_type=refresh_token}. The token is inspected, the request
+     * checked against the grant (resource, account), and only then rotated —
+     * a refused request leaves the token valid.
+     */
     public Map<String, Object> refresh(
             String tenant, @Nullable String refreshToken, @Nullable String clientId, @Nullable String resource) {
         requireEnabled();
         if (blank(refreshToken) || blank(clientId)) {
             throw invalidRequest("refresh_token and client_id are required");
         }
-        OAuthServerGrantService.RefreshOutcome outcome =
-                grants.rotateRefreshToken(tenant, refreshToken, clientId, settings.refreshTokenTtl());
-        if (outcome.failure() != null || outcome.grant() == null || outcome.refreshToken() == null) {
-            throw invalidGrant(
-                    switch (outcome.failure() == null
-                            ? OAuthServerGrantService.RefreshFailure.INVALID
-                            : outcome.failure()) {
-                        case INVALID -> "refresh token is invalid";
-                        case EXPIRED -> "refresh token expired or the grant was revoked";
-                        case REPLAYED -> "refresh token was already used — the grant has been revoked";
-                    });
+        OAuthServerGrantService.RefreshOutcome checked = grants.inspectRefreshToken(tenant, refreshToken, clientId);
+        OAuthServerGrantDocument grant = checked.grant();
+        if (checked.failure() != null || grant == null) {
+            log.trace("OAuth refresh refused tenant='{}' client='{}': {}", tenant, clientId, checked.failure());
+            throw invalidGrant();
         }
-        OAuthServerGrantDocument grant = outcome.grant();
         if (!resourceMatches(tenant, resource, grant.getResource())) {
             throw new OAuthTokenError(HttpStatus.BAD_REQUEST, "invalid_target", "resource does not match the grant");
         }
         requireActiveUser(tenant, grant.getUserId());
-        return tokenResponse(tenant, grant, outcome.refreshToken());
+        OAuthServerGrantService.RefreshOutcome rotated =
+                grants.rotateRefreshToken(tenant, refreshToken, clientId, settings.refreshTokenTtl());
+        if (rotated.failure() != null || rotated.grant() == null || rotated.refreshToken() == null) {
+            log.trace(
+                    "OAuth refresh refused at rotation tenant='{}' client='{}': {}",
+                    tenant,
+                    clientId,
+                    rotated.failure());
+            throw invalidGrant();
+        }
+        return tokenResponse(tenant, rotated.grant(), rotated.refreshToken());
     }
 
     /**
@@ -172,7 +225,7 @@ public class OAuthTokenService {
             }
             return;
         }
-        grants.revokeByRefreshToken(tenant, token);
+        grants.revokeByRefreshToken(tenant, token, clientId);
     }
 
     private Map<String, Object> tokenResponse(String tenant, OAuthServerGrantDocument grant, String refreshToken) {
@@ -203,7 +256,8 @@ public class OAuthTokenService {
     private void requireActiveUser(String tenant, String userId) {
         UserDocument user = userService.findByTenantAndName(tenant, userId).orElse(null);
         if (user == null || user.getStatus() != UserStatus.ACTIVE || !user.isLoginEnabled()) {
-            throw invalidGrant("the account cannot log in");
+            log.trace("OAuth token refused tenant='{}': account '{}' cannot log in", tenant, userId);
+            throw invalidGrant();
         }
     }
 

@@ -184,4 +184,40 @@ class McpProjectAccessConfigTest {
                     mode: ro
                 """)).isInstanceOf(IllegalStateException.class);
     }
+
+    @Test
+    void parse_usersListOfOnlyInvalidEntries_failsClosed() {
+        assertThatThrownBy(() -> McpProjectAccessConfig.parse("""
+                access:
+                  - name: typo
+                    users: [42, ~]
+                    mode: rw
+                """))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("typo");
+    }
+
+    @Test
+    void parse_explicitlyEmptyUsersList_admitsAnyAccount() {
+        McpProjectAccessConfig config = McpProjectAccessConfig.parse("""
+                access:
+                  - name: everyone
+                    users: []
+                    mode: ro
+                """);
+
+        assertThat(config.resolve(McpCaller.account("bob")).name()).isEqualTo("everyone");
+    }
+
+    @Test
+    void parse_nonStringToken_failsClosed() {
+        assertThatThrownBy(() -> McpProjectAccessConfig.parse("""
+                access:
+                  - name: bot
+                    token: 123
+                    mode: ro
+                """))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("token");
+    }
 }

@@ -3,10 +3,11 @@ package de.mhus.vance.shared.integration;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
-import java.util.Optional;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -87,11 +88,19 @@ public class IntegrationTokenService {
      * shows up in the owner's list to be revoked) rather than a token without a
      * row (which would be unrevocable if absence meant "allow" — it does not,
      * but relying on that ordering as well costs nothing).
+     *
+     * @param parentGrantId the OAuth grant whose login minted the token, or
+     *                      {@code null}; see {@link #revokeAllForParentGrant}
      */
     public IntegrationTokenDocument create(
-            String tenantId, String userId, List<String> scopeProfiles,
-            @Nullable String projectId, String label,
-            @Nullable String createdBy, @Nullable Instant expiresAt) {
+            String tenantId,
+            String userId,
+            List<String> scopeProfiles,
+            @Nullable String projectId,
+            String label,
+            @Nullable String createdBy,
+            @Nullable Instant expiresAt,
+            @Nullable String parentGrantId) {
         IntegrationTokenDocument doc = IntegrationTokenDocument.builder()
                 .tokenId(newTokenId())
                 .tenantId(tenantId)
@@ -102,12 +111,18 @@ public class IntegrationTokenService {
                 .createdAt(Instant.now())
                 .createdBy(createdBy)
                 .expiresAt(expiresAt)
+                .parentGrantId(parentGrantId)
                 .build();
         IntegrationTokenDocument saved = repository.save(doc);
-        log.info("IntegrationTokenService.create tenant='{}' user='{}' profiles={} "
+        log.info(
+                "IntegrationTokenService.create tenant='{}' user='{}' profiles={} "
                         + "project='{}' label='{}' expiresAt={}",
-                tenantId, userId, scopeProfiles, projectId == null ? "" : projectId,
-                label, expiresAt);
+                tenantId,
+                userId,
+                scopeProfiles,
+                projectId == null ? "" : projectId,
+                label,
+                expiresAt);
         return saved;
     }
 
@@ -120,8 +135,7 @@ public class IntegrationTokenService {
      * minted as <em>this</em> row. Without it a token whose row was later
      * re-created for another user would keep the old claims alive.
      */
-    public boolean isActive(
-            String tokenId, String tenantId, String userId, @Nullable String projectId) {
+    public boolean isActive(String tokenId, String tenantId, String userId, @Nullable String projectId) {
         Decision cached = cache.get(tokenId);
         if (cached != null && fresh(cached)) {
             return cached.active();
@@ -131,8 +145,7 @@ public class IntegrationTokenService {
         return active;
     }
 
-    private boolean loadAndCheck(
-            String tokenId, String tenantId, String userId, @Nullable String projectId) {
+    private boolean loadAndCheck(String tokenId, String tenantId, String userId, @Nullable String projectId) {
         IntegrationTokenDocument doc = repository.findByTokenId(tokenId).orElse(null);
         if (doc == null) {
             log.debug("Integration token '{}' rejected: no registry row", tokenId);
@@ -143,9 +156,13 @@ public class IntegrationTokenService {
             return false;
         }
         if (!tenantId.equals(doc.getTenantId()) || !userId.equals(doc.getUserId())) {
-            log.debug("Integration token '{}' rejected: identity mismatch — "
-                            + "claims {}/{} row {}/{}",
-                    tokenId, tenantId, userId, doc.getTenantId(), doc.getUserId());
+            log.debug(
+                    "Integration token '{}' rejected: identity mismatch — " + "claims {}/{} row {}/{}",
+                    tokenId,
+                    tenantId,
+                    userId,
+                    doc.getTenantId(),
+                    doc.getUserId());
             return false;
         }
         // The project pin, cross-checked the same way and for the same reason:
@@ -157,9 +174,12 @@ public class IntegrationTokenService {
         // later renamed away would confine to whatever *new* project inherits
         // that name.
         if (!Objects.equals(projectId, doc.getProjectId())) {
-            log.debug("Integration token '{}' rejected: project pin '{}' no longer matches "
+            log.debug(
+                    "Integration token '{}' rejected: project pin '{}' no longer matches "
                             + "the row's '{}' — the project was probably renamed",
-                    tokenId, projectId, doc.getProjectId());
+                    tokenId,
+                    projectId,
+                    doc.getProjectId());
             return false;
         }
         // The signature check already refuses an expired token; this is the row
@@ -175,9 +195,8 @@ public class IntegrationTokenService {
         // stale copy back — and revokedAt is silently null again, permanently.
         // The row *is* the revocation channel, so its writes touch one field
         // each and never carry a snapshot of the others.
-        mongoTemplate.updateFirst(byTokenId(tokenId),
-                new Update().set("lastUsedAt", Instant.now()),
-                IntegrationTokenDocument.class);
+        mongoTemplate.updateFirst(
+                byTokenId(tokenId), new Update().set("lastUsedAt", Instant.now()), IntegrationTokenDocument.class);
         return true;
     }
 
@@ -192,8 +211,7 @@ public class IntegrationTokenService {
     }
 
     public Optional<IntegrationTokenDocument> find(String tenantId, String tokenId) {
-        return repository.findByTokenId(tokenId)
-                .filter(d -> tenantId.equals(d.getTenantId()));
+        return repository.findByTokenId(tokenId).filter(d -> tenantId.equals(d.getTenantId()));
     }
 
     /**
@@ -211,17 +229,56 @@ public class IntegrationTokenService {
         // Conditional on revokedAt still being unset, which is what keeps the
         // original timestamp on a second call — no read-then-write, so two
         // concurrent revokes cannot each believe they were the first.
-        long revoked = mongoTemplate.updateFirst(
-                byTokenId(tokenId).addCriteria(Criteria.where("revokedAt").is(null)),
-                new Update().set("revokedAt", Instant.now()),
-                IntegrationTokenDocument.class).getModifiedCount();
+        long revoked = mongoTemplate
+                .updateFirst(
+                        byTokenId(tokenId)
+                                .addCriteria(Criteria.where("revokedAt").is(null)),
+                        new Update().set("revokedAt", Instant.now()),
+                        IntegrationTokenDocument.class)
+                .getModifiedCount();
         if (revoked > 0) {
-            log.info("IntegrationTokenService.revoke tenant='{}' user='{}' tokenId='{}'",
-                    tenantId, doc.getUserId(), tokenId);
+            log.info(
+                    "IntegrationTokenService.revoke tenant='{}' user='{}' tokenId='{}'",
+                    tenantId,
+                    doc.getUserId(),
+                    tokenId);
         }
         // Local eviction so a revocation is immediate on the pod that took it.
         cache.remove(tokenId);
         return true;
+    }
+
+    /**
+     * Revoke every still-live token minted through the OAuth grant
+     * {@code parentGrantId} — called when that grant is revoked.
+     *
+     * @return the tokens this call revoked (already-revoked ones are not
+     *         listed), so the caller can audit each of them
+     */
+    public List<IntegrationTokenDocument> revokeAllForParentGrant(String tenantId, String parentGrantId) {
+        List<IntegrationTokenDocument> revoked = new ArrayList<>();
+        for (IntegrationTokenDocument doc :
+                repository.findByTenantIdAndParentGrantIdAndRevokedAtIsNull(tenantId, parentGrantId)) {
+            long modified = mongoTemplate
+                    .updateFirst(
+                            byTokenId(doc.getTokenId())
+                                    .addCriteria(Criteria.where("revokedAt").is(null)),
+                            new Update().set("revokedAt", Instant.now()),
+                            IntegrationTokenDocument.class)
+                    .getModifiedCount();
+            cache.remove(doc.getTokenId());
+            if (modified > 0) {
+                revoked.add(doc);
+            }
+        }
+        if (!revoked.isEmpty()) {
+            log.info(
+                    "IntegrationTokenService.revokeAllForParentGrant tenant='{}' grant='{}' revoked={}",
+                    tenantId,
+                    parentGrantId,
+                    revoked.stream().map(IntegrationTokenDocument::getTokenId).toList());
+        }
+        return revoked;
     }
 
     private String newTokenId() {

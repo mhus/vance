@@ -24,6 +24,7 @@ import org.springframework.stereotype.Component;
 public class OAuthServerSettings {
 
     private final @Nullable String baseUrl;
+    private final @Nullable String ownOrigin;
     private final boolean enabled;
     private final Duration accessTokenTtl;
     private final Duration refreshTokenTtl;
@@ -41,6 +42,7 @@ public class OAuthServerSettings {
             @Value("${vance.oauth-server.client-metadata-documents-enabled:true}")
                     boolean clientMetadataDocumentsEnabled) {
         this.baseUrl = normalizeBaseUrl(publicBaseUrl);
+        this.ownOrigin = RedirectUris.origin(this.baseUrl);
         this.enabled = enabledFlag && this.baseUrl != null;
         this.accessTokenTtl = Duration.ofSeconds(Math.max(60, accessTokenTtlSeconds));
         this.refreshTokenTtl = Duration.ofDays(Math.max(1, refreshTokenTtlDays));
@@ -51,6 +53,12 @@ public class OAuthServerSettings {
             log.error(
                     "OAuth server disabled: vance.web.public-base-url '{}' is not an absolute http(s) URL",
                     publicBaseUrl);
+        }
+        if (this.enabled && isPlainHttpOnRemoteHost(this.baseUrl)) {
+            log.warn(
+                    "OAuth server issuer '{}' is plain http on a non-loopback host — authorization codes, "
+                            + "tokens and passwords cross the network unencrypted; use https",
+                    this.baseUrl);
         }
     }
 
@@ -72,6 +80,15 @@ public class OAuthServerSettings {
         return baseUrl() + "/brain/" + tenant;
     }
 
+    /**
+     * Origin of the public base URL ({@code scheme://host:port}, see
+     * {@link RedirectUris#origin(String)}) — no client may register a
+     * redirect URI there. {@code null} when the server is not configured.
+     */
+    public @Nullable String ownOrigin() {
+        return ownOrigin;
+    }
+
     public Duration accessTokenTtl() {
         return accessTokenTtl;
     }
@@ -90,6 +107,15 @@ public class OAuthServerSettings {
 
     public boolean clientMetadataDocumentsEnabled() {
         return clientMetadataDocumentsEnabled;
+    }
+
+    /** Whether {@code baseUrl} is {@code http://} to anything but the local machine. */
+    static boolean isPlainHttpOnRemoteHost(@Nullable String baseUrl) {
+        if (baseUrl == null || !baseUrl.regionMatches(true, 0, "http://", 0, 7)) {
+            return false;
+        }
+        String host = URI.create(baseUrl).getHost();
+        return host == null || !RedirectUris.isLoopbackHost(host);
     }
 
     /**

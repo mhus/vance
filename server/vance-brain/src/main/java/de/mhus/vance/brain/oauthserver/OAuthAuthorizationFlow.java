@@ -2,7 +2,6 @@ package de.mhus.vance.brain.oauthserver;
 
 import de.mhus.vance.api.oauthserver.OAuthConsentRequestDto;
 import de.mhus.vance.shared.audit.AuditService;
-import de.mhus.vance.shared.oauthserver.OAuthSecrets;
 import de.mhus.vance.shared.oauthserver.OAuthServerAuthRequestDocument;
 import de.mhus.vance.shared.oauthserver.OAuthServerAuthorizationService;
 import de.mhus.vance.shared.oauthserver.OAuthServerClientService;
@@ -35,11 +34,31 @@ import org.springframework.stereotype.Service;
  *
  * <p>Every redirect to the client carries {@code iss} (RFC 9207) so the
  * client can tell this authorization server's response from a mix-up.
+ *
+ * <p><b>Consent.</b> Third-party clients (DCR, CIMD) ask once per (user,
+ * client, door); a live grant is then reused without asking again. The
+ * built-in first-party clients ask on <em>every</em> login and get a grant of
+ * their own each time: their scope is the whole account, so a login link
+ * someone else opened must never turn into a silent code, and two foot
+ * installations of the same user must not share — and thereby supersede —
+ * one refresh strand.
+ *
+ * <p>A request is taken out of the store atomically when it is decided, so a
+ * double-submitted consent produces one code, not two.
  */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class OAuthAuthorizationFlow {
+
+    /** Shown for every client resolution failure — the cause goes to the log only. */
+    /** Shown when the OAuth server is switched off. */
+    static final String SERVER_DISABLED = "The OAuth server is not configured on this Vancetope instance.";
+
+    /** Shown when a request expired or was already decided. */
+    static final String REQUEST_GONE = "This sign-in request has expired. Start again from the application.";
+
+    static final String CLIENT_NOT_VERIFIED = "The client could not be verified.";
 
     /** RFC 7636 §4.2: base64url SHA-256 — 43 characters. */
     private static final Pattern S256_CHALLENGE = Pattern.compile("^[A-Za-z0-9_-]{43}$");
@@ -82,7 +101,7 @@ public class OAuthAuthorizationFlow {
      */
     public Step begin(String tenant, AuthorizeParams params, @Nullable String loggedInUser) {
         if (!settings.enabled()) {
-            return new Step.ShowError("The OAuth server is not configured on this Vancetope instance.");
+            return new Step.ShowError(SERVER_DISABLED);
         }
         if (blank(params.clientId())) {
             return new Step.ShowError("The request names no client (client_id is missing).");
@@ -91,7 +110,15 @@ public class OAuthAuthorizationFlow {
         try {
             client = clientResolver.resolve(tenant, params.clientId());
         } catch (InvalidClientException e) {
-            return new Step.ShowError("The client could not be accepted: " + e.getMessage());
+            // The cause stays in the log: echoing it (a DNS failure, an HTTP
+            // status of a metadata URL) would turn this page into an oracle
+            // about hosts the server can reach.
+            log.info(
+                    "OAuth authorize rejected tenant='{}': client '{}' not accepted: {}",
+                    tenant,
+                    params.clientId(),
+                    e.getMessage());
+            return new Step.ShowError(CLIENT_NOT_VERIFIED);
         }
         String redirectUri = params.redirectUri();
         if (blank(redirectUri)) {
@@ -107,6 +134,10 @@ public class OAuthAuthorizationFlow {
 
         // From here on the redirect URI is trusted: errors go back to the client.
         String state = params.state();
+        if (state != null && state.length() > OAuthServerAuthorizationService.MAX_STATE_LENGTH) {
+            // Not echoed: the value is what is wrong.
+            return errorRedirect(tenant, redirectUri, null, "invalid_request", "state is too long");
+        }
         if (!"code".equals(params.responseType())) {
             return errorRedirect(tenant, redirectUri, state, "unsupported_response_type", "only response_type=code");
         }
@@ -150,9 +181,6 @@ public class OAuthAuthorizationFlow {
                 .scopeProfiles(door == null ? List.of() : door.scopeProfiles())
                 .projectId(door == null ? null : door.project())
                 .build());
-        if (client.kind() == OAuthClientKind.DCR) {
-            clientService.touch(client.clientId());
-        }
         return proceed(tenant, request, loggedInUser);
     }
 
@@ -161,7 +189,7 @@ public class OAuthAuthorizationFlow {
         OAuthServerAuthRequestDocument request =
                 authorizations.findRequest(tenant, requestId).orElse(null);
         if (request == null) {
-            return new Step.ShowError("This sign-in request has expired. Start again from the application.");
+            return new Step.ShowError(REQUEST_GONE);
         }
         return proceed(tenant, request, loggedInUser);
     }
@@ -178,30 +206,42 @@ public class OAuthAuthorizationFlow {
         if (bound == null) {
             return new Step.ShowError("This sign-in request belongs to another user.");
         }
-        OAuthDoor door = doorOf(tenant, bound);
         boolean firstParty = OAuthClientKind.FIRST_PARTY.wire().equals(bound.getClientKind());
-        if (firstParty) {
-            return approve(tenant, bound, loggedInUser, door);
-        }
-        // A live grant this user already gave this client for this door: no
-        // second consent — but the door's gate is asked again, the config may
-        // have changed since.
-        Optional<OAuthServerGrantDocument> reusable =
-                grants.findReusable(tenant, loggedInUser, bound.getClientId(), bound.getResource());
-        if (reusable.isPresent()) {
-            return approve(tenant, bound, loggedInUser, door);
+        if (!firstParty) {
+            // A live grant this user already gave this client for this door: no
+            // second consent — but the door's gate is asked again, the config may
+            // have changed since.
+            Optional<OAuthServerGrantDocument> reusable =
+                    grants.findReusable(tenant, loggedInUser, bound.getClientId(), bound.getResource());
+            if (reusable.isPresent()) {
+                OAuthServerAuthRequestDocument taken = authorizations
+                        .take(tenant, bound.getRequestId(), loggedInUser)
+                        .orElse(null);
+                if (taken == null) {
+                    return new Step.ShowError(REQUEST_GONE);
+                }
+                return approve(tenant, taken, loggedInUser, doorOf(tenant, taken));
+            }
         }
         return new Step.Redirect(settings.baseUrl() + "/oauth-consent.html?tenant=" + enc(tenant) + "&request="
                 + enc(bound.getRequestId()));
     }
 
-    /** What the consent page shows; binds the request to the viewing user. */
+    /**
+     * What the consent page shows; binds the request to the viewing user and
+     * hands out a fresh consent ticket (the store keeps only its hash).
+     */
     public Optional<OAuthConsentRequestDto> consentView(String tenant, String requestId, String user) {
+        OAuthServerAuthRequestDocument r =
+                authorizations.bindUser(tenant, requestId, user).orElse(null);
+        if (r == null) {
+            return Optional.empty();
+        }
         return authorizations
-                .bindUser(tenant, requestId, user)
-                .map(r -> OAuthConsentRequestDto.builder()
+                .issueConsentTicket(tenant, requestId, user)
+                .map(ticket -> OAuthConsentRequestDto.builder()
                         .requestId(r.getRequestId())
-                        .consentTicket(r.getConsentTicket())
+                        .consentTicket(ticket)
                         .tenantId(tenant)
                         .userId(user)
                         .clientId(r.getClientId())
@@ -219,20 +259,18 @@ public class OAuthAuthorizationFlow {
 
     /**
      * Apply the user's decision. Returns the URL the browser must go to, or
-     * empty when the request, the user or the ticket do not line up.
+     * empty when the request, the user or the ticket do not line up — or the
+     * request was already decided by a concurrent submission.
      */
     public Optional<String> decide(
             String tenant, String requestId, String consentTicket, boolean approve, String user) {
-        OAuthServerAuthRequestDocument request =
-                authorizations.findRequest(tenant, requestId).orElse(null);
-        if (request == null
-                || !user.equals(request.getUserId())
-                || request.getConsentTicket() == null
-                || !OAuthSecrets.sameHash(request.getConsentTicket(), consentTicket)) {
+        OAuthServerAuthRequestDocument request = authorizations
+                .takeForDecision(tenant, requestId, user, consentTicket)
+                .orElse(null);
+        if (request == null) {
             return Optional.empty();
         }
         if (!approve) {
-            authorizations.deleteRequest(requestId);
             log.info("OAuth consent declined tenant='{}' user='{}' client='{}'", tenant, user, request.getClientId());
             return Optional.of(errorUrl(
                     tenant, request.getRedirectUri(), request.getState(), "access_denied", "the user declined"));
@@ -241,11 +279,13 @@ public class OAuthAuthorizationFlow {
         return step instanceof Step.Redirect redirect ? Optional.of(redirect.url()) : Optional.empty();
     }
 
-    /** Create or reuse the grant, issue a code, send the browser back to the client. */
+    /**
+     * Create or reuse the grant, issue a code, send the browser back to the
+     * client. {@code request} has already been taken out of the store.
+     */
     private Step approve(String tenant, OAuthServerAuthRequestDocument request, String user, @Nullable OAuthDoor door) {
         String denial = gate.denial(tenant, user, door);
         if (denial != null) {
-            authorizations.deleteRequest(request.getRequestId());
             log.info(
                     "OAuth grant refused tenant='{}' user='{}' client='{}' scope='{}': {}",
                     tenant,
@@ -255,27 +295,12 @@ public class OAuthAuthorizationFlow {
                     denial);
             return errorRedirect(tenant, request.getRedirectUri(), request.getState(), "access_denied", denial);
         }
-        OAuthServerGrantDocument grant = grants.findReusable(tenant, user, request.getClientId(), request.getResource())
-                .orElseGet(() -> {
-                    OAuthServerGrantDocument created = grants.create(
-                            tenant,
-                            user,
-                            request.getClientId(),
-                            request.getClientName(),
-                            request.getResource(),
-                            request.getScope(),
-                            request.getScopeProfiles(),
-                            request.getProjectId(),
-                            settings.grantMaxLifetime());
-                    auditService.authOAuthGrantIssued(
-                            tenant,
-                            user,
-                            request.getClientId(),
-                            request.getScope(),
-                            request.getProjectId(),
-                            created.getGrantId());
-                    return created;
-                });
+        boolean firstParty = OAuthClientKind.FIRST_PARTY.wire().equals(request.getClientKind());
+        // First-party: a grant per login, never reused (see class comment).
+        OAuthServerGrantDocument grant = (firstParty
+                        ? Optional.<OAuthServerGrantDocument>empty()
+                        : grants.findReusable(tenant, user, request.getClientId(), request.getResource()))
+                .orElseGet(() -> createGrant(tenant, request, user));
         String code = authorizations.issueCode(
                 tenant,
                 user,
@@ -284,7 +309,7 @@ public class OAuthAuthorizationFlow {
                 request.getRedirectUri(),
                 request.getCodeChallenge(),
                 request.getResource());
-        authorizations.deleteRequest(request.getRequestId());
+        clientService.touch(request.getClientId());
         Map<String, String> params = new LinkedHashMap<>();
         params.put("code", code);
         if (request.getState() != null) {
@@ -292,6 +317,22 @@ public class OAuthAuthorizationFlow {
         }
         params.put("iss", settings.issuer(tenant));
         return new Step.Redirect(appendQuery(request.getRedirectUri(), params));
+    }
+
+    private OAuthServerGrantDocument createGrant(String tenant, OAuthServerAuthRequestDocument request, String user) {
+        OAuthServerGrantDocument created = grants.create(
+                tenant,
+                user,
+                request.getClientId(),
+                request.getClientName(),
+                request.getResource(),
+                request.getScope(),
+                request.getScopeProfiles(),
+                request.getProjectId(),
+                settings.grantMaxLifetime());
+        auditService.authOAuthGrantIssued(
+                tenant, user, request.getClientId(), request.getScope(), request.getProjectId(), created.getGrantId());
+        return created;
     }
 
     private @Nullable OAuthDoor doorOf(String tenant, OAuthServerAuthRequestDocument request) {

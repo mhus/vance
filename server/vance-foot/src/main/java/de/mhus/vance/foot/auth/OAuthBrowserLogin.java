@@ -6,8 +6,11 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
+import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
@@ -22,6 +25,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -49,35 +53,65 @@ public class OAuthBrowserLogin {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final OAuthClient client;
+    private final Consumer<String> browserOpener;
 
     /** Outcome of a browser login. */
     public record Result(OAuthClient.Endpoints endpoints, OAuthClient.Tokens tokens, String username) {}
 
+    /** How the loopback listener answers one request. */
+    enum CallbackDecision {
+        /** Our redirect (exact path, matching state) — completes the login. */
+        ACCEPT,
+        /** Any other path — 404, keep waiting. */
+        NOT_FOUND,
+        /** Not a GET — 405, keep waiting. */
+        METHOD_NOT_ALLOWED,
+        /** The callback path without our state — 400, keep waiting. */
+        BAD_REQUEST
+    }
+
+    @Autowired
     public OAuthBrowserLogin(OAuthClient client) {
+        this(client, OAuthBrowserLogin::openBrowser);
+    }
+
+    /** Test constructor — the browser opener is replaced, so no real browser starts. */
+    OAuthBrowserLogin(OAuthClient client, Consumer<String> browserOpener) {
         this.client = client;
+        this.browserOpener = browserOpener;
     }
 
     /**
-     * Run the login: discover, listen on a loopback port, open the browser,
-     * wait for the redirect, exchange the code.
+     * Run the login: discover, validate the discovered endpoints, listen on a
+     * loopback port, open the browser, wait for the redirect, exchange the
+     * code.
      *
+     * @param allowInsecureTransport {@code vance.brain.allowInsecureTransport} —
+     *                               applied to every discovered endpoint, like to the brain base
      * @param showUrl receives the authorization URL — shown to the user in
      *                case the browser cannot be opened automatically
      */
-    public Result run(String httpBase, String tenant, Consumer<String> showUrl, Duration timeout) throws Exception {
+    public Result run(
+            String httpBase, String tenant, boolean allowInsecureTransport, Consumer<String> showUrl, Duration timeout)
+            throws Exception {
         OAuthClient.Endpoints endpoints = client.discover(httpBase, tenant);
+        validateEndpoints(endpoints, httpBase, tenant, allowInsecureTransport);
         String verifier = random(32);
         String state = random(16);
 
         CompletableFuture<Map<String, String>> callback = new CompletableFuture<>();
-        HttpServer server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
-        server.createContext(CALLBACK_PATH, exchange -> answer(exchange, callback));
+        // Explicitly IPv4 loopback: the redirect URI names 127.0.0.1, and a
+        // listener on another interface (or on ::1 only) would either be
+        // reachable from outside or never see the redirect.
+        HttpServer server = HttpServer.create(new InetSocketAddress(loopbackV4(), 0), 0);
+        server.createContext("/", exchange -> answer(exchange, state, callback));
         server.start();
         try {
             String redirectUri = "http://127.0.0.1:" + server.getAddress().getPort() + CALLBACK_PATH;
             String url = authorizeUrl(endpoints.authorizationEndpoint(), redirectUri, challenge(verifier), state);
+            requireHttpUrl(url);
             showUrl.accept(url);
-            openBrowser(url);
+            browserOpener.accept(url);
 
             Map<String, String> params;
             try {
@@ -95,19 +129,120 @@ public class OAuthBrowserLogin {
     }
 
     /**
-     * Validate the redirect: state must round-trip, an {@code iss} present must
-     * name the issuer discovered (RFC 9207 — a response from another server
-     * is not ours to use), and either a code or an error is there.
+     * Validate the discovery document before anything of it is used: the
+     * issuer must be exactly the one the discovery URL was formed from
+     * (RFC 8414 §3.3 — {@code {httpBase}/brain/{tenant}}), and every endpoint
+     * must be an http(s) URL on the brain's own origin that passes the same
+     * transport rule as the brain base. A document that sends the browser or
+     * the refresh token anywhere else is refused.
+     */
+    static void validateEndpoints(
+            OAuthClient.Endpoints endpoints, String httpBase, String tenant, boolean allowInsecureTransport) {
+        String base = trimSlash(httpBase);
+        String expectedIssuer = base + "/brain/" + tenant;
+        if (!expectedIssuer.equals(endpoints.issuer())) {
+            throw new IllegalStateException("The OAuth discovery of " + base + " names the issuer '"
+                    + endpoints.issuer() + "', expected '" + expectedIssuer
+                    + "' — refusing to sign in (is vance.web.public-base-url the URL you entered?).");
+        }
+        String baseOrigin = origin(base, "brain URL");
+        checkEndpoint("authorization_endpoint", endpoints.authorizationEndpoint(), baseOrigin, allowInsecureTransport);
+        checkEndpoint("token_endpoint", endpoints.tokenEndpoint(), baseOrigin, allowInsecureTransport);
+        String revocation = endpoints.revocationEndpoint();
+        if (revocation != null) {
+            checkEndpoint("revocation_endpoint", revocation, baseOrigin, allowInsecureTransport);
+        }
+    }
+
+    private static void checkEndpoint(String name, String url, String baseOrigin, boolean allowInsecureTransport) {
+        String origin = origin(url, name);
+        if (!origin.equals(baseOrigin)) {
+            throw new IllegalStateException("The OAuth discovery names a " + name + " outside the brain ('" + url
+                    + "' is not on " + baseOrigin + ") — refusing to sign in.");
+        }
+        TransportGuard.assertAllowed(url, null, allowInsecureTransport, false, msg -> {});
+    }
+
+    /**
+     * {@code scheme://host:port} of an absolute http(s) URL, lower-cased with
+     * the default port filled in.
+     *
+     * @throws IllegalStateException for anything else (other scheme, no host,
+     *                               user-info, malformed)
+     */
+    static String origin(String url, String what) {
+        URI uri;
+        try {
+            uri = new URI(url.strip());
+        } catch (URISyntaxException e) {
+            throw new IllegalStateException("The " + what + " is not a valid URL: " + url, e);
+        }
+        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+        if (!scheme.equals("https") && !scheme.equals("http")) {
+            throw new IllegalStateException("The " + what + " is not an http(s) URL: " + url);
+        }
+        String host = uri.getHost();
+        if (host == null || host.isBlank()) {
+            throw new IllegalStateException("The " + what + " has no host: " + url);
+        }
+        if (uri.getRawUserInfo() != null) {
+            throw new IllegalStateException("The " + what + " carries user info: " + url);
+        }
+        int port = uri.getPort() != -1 ? uri.getPort() : scheme.equals("https") ? 443 : 80;
+        return scheme + "://" + host.toLowerCase(Locale.ROOT) + ":" + port;
+    }
+
+    /** Guard before a URL leaves for the platform opener: only an absolute http(s) URL. */
+    static void requireHttpUrl(String url) {
+        origin(url, "authorization URL");
+    }
+
+    /**
+     * Decide how the loopback listener answers a request. Only a GET on the
+     * exact callback path carrying our {@code state} (compared in constant
+     * time) is accepted; everything else is answered and ignored, so a stray
+     * or hostile local request cannot end the login — the user's real
+     * redirect still can, until the timeout.
+     */
+    static CallbackDecision decide(String method, String path, Map<String, String> params, String expectedState) {
+        if (!CALLBACK_PATH.equals(path)) {
+            return CallbackDecision.NOT_FOUND;
+        }
+        if (!"GET".equalsIgnoreCase(method)) {
+            return CallbackDecision.METHOD_NOT_ALLOWED;
+        }
+        return stateMatches(params.get("state"), expectedState)
+                ? CallbackDecision.ACCEPT
+                : CallbackDecision.BAD_REQUEST;
+    }
+
+    /** Constant-time comparison of the returned {@code state} with ours. */
+    static boolean stateMatches(@Nullable String actual, String expected) {
+        if (actual == null) {
+            return false;
+        }
+        return MessageDigest.isEqual(
+                actual.getBytes(StandardCharsets.UTF_8), expected.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * Validate the redirect: state must round-trip, {@code iss} must be
+     * present and name the issuer discovered (RFC 9207 — the brain always
+     * sends it, and a response from another server is not ours to use), and
+     * either a code or an error is there.
      *
      * @return the authorization code
      */
     static String checkCallback(Map<String, String> params, String expectedState, String expectedIssuer) {
-        String iss = params.get("iss");
-        if (iss != null && !iss.equals(expectedIssuer)) {
-            throw new IllegalStateException("The sign-in answer came from another server (" + iss + ")");
-        }
-        if (!expectedState.equals(params.get("state"))) {
+        if (!stateMatches(params.get("state"), expectedState)) {
             throw new IllegalStateException("The sign-in answer does not belong to this login (state mismatch)");
+        }
+        String iss = params.get("iss");
+        if (iss == null) {
+            throw new IllegalStateException("The sign-in answer does not name its server (no iss) — refused");
+        }
+        if (!iss.equals(expectedIssuer)) {
+            throw new IllegalStateException("The sign-in answer came from another server (" + iss + ")");
         }
         String error = params.get("error");
         if (error != null) {
@@ -186,26 +321,63 @@ public class OAuthBrowserLogin {
         return sub.asString();
     }
 
-    private static void answer(HttpExchange exchange, CompletableFuture<Map<String, String>> callback)
+    private static void answer(
+            HttpExchange exchange, String expectedState, CompletableFuture<Map<String, String>> callback)
             throws IOException {
-        Map<String, String> params = parseQuery(exchange.getRequestURI().getRawQuery());
-        boolean ok = params.containsKey("code") && !params.containsKey("error");
+        try (exchange) {
+            Map<String, String> params = parseQuery(exchange.getRequestURI().getRawQuery());
+            CallbackDecision decision =
+                    decide(exchange.getRequestMethod(), exchange.getRequestURI().getPath(), params, expectedState);
+            switch (decision) {
+                case NOT_FOUND -> respond(exchange, 404, "Not found", "");
+                case METHOD_NOT_ALLOWED -> respond(exchange, 405, "Method not allowed", "");
+                case BAD_REQUEST -> {
+                    log.trace("loopback callback without the expected state ignored");
+                    respond(exchange, 400, "Not this sign-in", "This answer does not belong to the running login.");
+                }
+                case ACCEPT -> {
+                    callback.complete(params);
+                    boolean ok = params.containsKey("code") && !params.containsKey("error");
+                    respond(
+                            exchange,
+                            200,
+                            ok ? "Signed in" : "Sign-in failed",
+                            ok
+                                    ? "You can close this tab and return to the terminal."
+                                    : "Return to the terminal for details.");
+                }
+            }
+        }
+    }
+
+    private static void respond(HttpExchange exchange, int status, String title, String text) throws IOException {
         String html = "<!doctype html><html><head><meta charset=\"utf-8\"><title>Vancetope</title>"
                 + "<style>body{font-family:system-ui,sans-serif;max-width:30rem;margin:4rem auto;padding:0 1rem}"
-                + "</style></head><body><h1>" + (ok ? "Signed in" : "Sign-in failed") + "</h1><p>"
-                + (ok ? "You can close this tab and return to the terminal." : "Return to the terminal for details.")
-                + "</p></body></html>";
+                + "</style></head><body><h1>" + title + "</h1><p>" + text + "</p></body></html>";
         byte[] body = html.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "text/html; charset=utf-8");
-        exchange.sendResponseHeaders(200, body.length);
+        exchange.getResponseHeaders().set("Cache-Control", "no-store");
+        exchange.sendResponseHeaders(status, body.length);
         try (OutputStream out = exchange.getResponseBody()) {
             out.write(body);
         }
-        callback.complete(params);
+    }
+
+    private static InetAddress loopbackV4() throws UnknownHostException {
+        return InetAddress.getByAddress("127.0.0.1", new byte[] {127, 0, 0, 1});
+    }
+
+    private static String trimSlash(String value) {
+        String v = value.trim();
+        while (v.endsWith("/")) {
+            v = v.substring(0, v.length() - 1);
+        }
+        return v;
     }
 
     /** Best effort: the platform's URL opener; the URL is shown to the user either way. */
     private static void openBrowser(String url) {
+        requireHttpUrl(url);
         String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
         String[] command;
         if (os.contains("mac")) {

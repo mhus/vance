@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.oauthserver;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.CacheControl;
@@ -17,6 +18,11 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * Token and revocation endpoints — {@code application/x-www-form-urlencoded}
  * in, OAuth JSON out, {@code Cache-Control: no-store} on every answer.
+ *
+ * <p>A token request that repeats a parameter is {@code invalid_request}
+ * (RFC 6749 §3.2: "Request and response parameters MUST NOT be included more
+ * than once") — otherwise which of two {@code client_id}s or
+ * {@code redirect_uri}s is checked would depend on parsing order.
  */
 @RestController
 @RequiredArgsConstructor
@@ -32,6 +38,7 @@ public class OAuthTokenController {
     public ResponseEntity<Map<String, Object>> token(
             @PathVariable("tenant") String tenant, @RequestParam MultiValueMap<String, String> form) {
         try {
+            requireSingleValues(form);
             String grantType = form.getFirst("grant_type");
             Map<String, Object> body;
             if ("authorization_code".equals(grantType)) {
@@ -63,6 +70,15 @@ public class OAuthTokenController {
                     .cacheControl(CacheControl.noStore())
                     .header("Pragma", "no-cache")
                     .body(error);
+        }
+    }
+
+    private static void requireSingleValues(MultiValueMap<String, String> form) {
+        for (Map.Entry<String, List<String>> e : form.entrySet()) {
+            if (e.getValue() != null && e.getValue().size() > 1) {
+                throw new OAuthTokenService.OAuthTokenError(
+                        HttpStatus.BAD_REQUEST, "invalid_request", "parameter '" + e.getKey() + "' is repeated");
+            }
         }
     }
 

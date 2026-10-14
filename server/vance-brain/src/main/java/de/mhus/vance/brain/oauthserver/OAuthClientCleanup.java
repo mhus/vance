@@ -10,8 +10,9 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * Removes dynamically registered clients nobody uses: no authorization
- * request for {@link #UNUSED_AFTER} and no live grant. The registration
+ * Removes dynamically registered clients nobody uses: no authorization code
+ * issued for {@link #UNUSED_AFTER} (the {@code lastUsedAt} stamp, see
+ * {@link OAuthServerClientService#touch}) and no live grant. The registration
  * endpoint is open, so without this the collection only ever grows.
  *
  * <p>Idempotent and safe on every pod at once — deleting an already deleted

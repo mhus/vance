@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.mongodb.core.FindAndModifyOptions;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Query;
@@ -42,6 +43,7 @@ class UserServiceTest {
     private UserRepository repo;
     private MongoTemplate mongoTemplate;
     private UserLifecycleListener listener;
+    private ApplicationEventPublisher events;
     private UserService service;
 
     @BeforeEach
@@ -55,8 +57,13 @@ class UserServiceTest {
         // and the lifecycle tests below would pass without the wiring existing.
         // Fresh stream per call — the service iterates it more than once.
         when(listenerProvider.orderedStream()).thenAnswer(inv -> Stream.of(listener));
-        service = new UserService(repo, mongoTemplate, listenerProvider,
-                mock(de.mhus.vance.shared.megadodo.MegadodoService.class));
+        events = mock(ApplicationEventPublisher.class);
+        service = new UserService(
+                repo,
+                mongoTemplate,
+                listenerProvider,
+                mock(de.mhus.vance.shared.megadodo.MegadodoService.class),
+                events);
         when(repo.save(any(UserDocument.class))).thenAnswer(inv -> inv.getArgument(0));
     }
 
@@ -84,8 +91,7 @@ class UserServiceTest {
     void createServiceAccount_setsServiceFlagsAndDisablesLogin() {
         when(repo.existsByTenantIdAndName(TENANT, "_ci-bot")).thenReturn(false);
 
-        UserDocument user = service.createServiceAccount(
-                TENANT, "_ci-bot", null, "CI bot", null);
+        UserDocument user = service.createServiceAccount(TENANT, "_ci-bot", null, "CI bot", null);
 
         assertThat(user.isServiceAccount()).isTrue();
         assertThat(user.isLoginEnabled()).isFalse();
@@ -99,8 +105,7 @@ class UserServiceTest {
 
     @Test
     void createServiceAccount_rejectsReservedVancePrefix() {
-        assertThatThrownBy(() -> service.createServiceAccount(
-                TENANT, "_vance-admin", null, null, null))
+        assertThatThrownBy(() -> service.createServiceAccount(TENANT, "_vance-admin", null, null, null))
                 .isInstanceOf(UserService.ReservedNameException.class)
                 .hasMessageContaining(UserService.RESERVED_VANCE_PREFIX);
     }
@@ -110,8 +115,7 @@ class UserServiceTest {
         when(repo.findByTenantIdAndName(TENANT, "_vance-admin")).thenReturn(Optional.empty());
         when(repo.existsByTenantIdAndName(TENANT, "_vance-admin")).thenReturn(false);
 
-        UserDocument user = service.ensureVanceServiceAccount(
-                TENANT, "_vance-admin", "uuid-hash", "Anus admin", null);
+        UserDocument user = service.ensureVanceServiceAccount(TENANT, "_vance-admin", "uuid-hash", "Anus admin", null);
 
         assertThat(user.getName()).isEqualTo("_vance-admin");
         assertThat(user.isServiceAccount()).isTrue();
@@ -126,11 +130,9 @@ class UserServiceTest {
                 .serviceAccount(true)
                 .loginEnabled(false)
                 .build();
-        when(repo.findByTenantIdAndName(TENANT, "_vance-admin"))
-                .thenReturn(Optional.of(existing));
+        when(repo.findByTenantIdAndName(TENANT, "_vance-admin")).thenReturn(Optional.of(existing));
 
-        UserDocument user = service.ensureVanceServiceAccount(
-                TENANT, "_vance-admin", "would-be-new-hash", null, null);
+        UserDocument user = service.ensureVanceServiceAccount(TENANT, "_vance-admin", "would-be-new-hash", null, null);
 
         assertThat(user).isSameAs(existing);
         verify(repo, never()).save(any());
@@ -138,8 +140,7 @@ class UserServiceTest {
 
     @Test
     void ensureVanceServiceAccount_rejectsNonReservedName() {
-        assertThatThrownBy(() -> service.ensureVanceServiceAccount(
-                TENANT, "_ci-bot", null, null, null))
+        assertThatThrownBy(() -> service.ensureVanceServiceAccount(TENANT, "_ci-bot", null, null, null))
                 .isInstanceOf(UserService.ReservedNameException.class);
     }
 
@@ -157,11 +158,9 @@ class UserServiceTest {
                 .status(UserStatus.ACTIVE)
                 .build();
         when(repo.findByTenantIdAndName(TENANT, "_ci-bot")).thenReturn(Optional.of(svc));
-        when(repo.save(any(UserDocument.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
+        when(repo.save(any(UserDocument.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        UserDocument updated = service.update(
-                TENANT, "_ci-bot", null, null, null, /* loginEnabled */ true);
+        UserDocument updated = service.update(TENANT, "_ci-bot", null, null, null, /* loginEnabled */ true);
 
         assertThat(updated.isServiceAccount()).isTrue();
         assertThat(updated.isLoginEnabled()).isTrue();
@@ -179,8 +178,7 @@ class UserServiceTest {
                 .email("automaton@acme.invalid")
                 .build();
         when(repo.findByTenantIdAndName(TENANT, "_acme-automaton")).thenReturn(Optional.of(svc));
-        when(repo.save(any(UserDocument.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
+        when(repo.save(any(UserDocument.class))).thenAnswer(inv -> inv.getArgument(0));
 
         UserDocument updated = service.setLoginEnabled(TENANT, "_acme-automaton", true);
 
@@ -201,8 +199,7 @@ class UserServiceTest {
                 .build();
         when(repo.findByTenantIdAndName(TENANT, "alice")).thenReturn(Optional.of(human));
 
-        UserDocument updated = service.update(
-                TENANT, "alice", null, null, null, /* loginEnabled */ false);
+        UserDocument updated = service.update(TENANT, "alice", null, null, null, /* loginEnabled */ false);
 
         assertThat(updated.isLoginEnabled()).isFalse();
     }
@@ -212,14 +209,16 @@ class UserServiceTest {
     @Test
     void isLocked_futureLockedUntil_isTrue() {
         UserDocument u = UserDocument.builder()
-                .lockedUntil(Instant.now().plusSeconds(60)).build();
+                .lockedUntil(Instant.now().plusSeconds(60))
+                .build();
         assertThat(service.isLocked(u)).isTrue();
     }
 
     @Test
     void isLocked_pastLockedUntil_isFalse() {
         UserDocument u = UserDocument.builder()
-                .lockedUntil(Instant.now().minusSeconds(60)).build();
+                .lockedUntil(Instant.now().minusSeconds(60))
+                .build();
         assertThat(service.isLocked(u)).isFalse();
     }
 
@@ -232,35 +231,37 @@ class UserServiceTest {
     void recordFailedLogin_belowThreshold_incrementsOnly_doesNotLock() {
         // findAndModify returns the post-increment doc with a sub-threshold count.
         UserDocument afterInc = UserDocument.builder()
-                .tenantId(TENANT).name("alice")
-                .failedLoginAttempts(2).build();
+                .tenantId(TENANT)
+                .name("alice")
+                .failedLoginAttempts(2)
+                .build();
         when(mongoTemplate.findAndModify(
-                any(Query.class), any(Update.class),
-                any(FindAndModifyOptions.class), eq(UserDocument.class)))
+                        any(Query.class), any(Update.class),
+                        any(FindAndModifyOptions.class), eq(UserDocument.class)))
                 .thenReturn(afterInc);
 
         service.recordFailedLogin(TENANT, "alice");
 
         // No second (lock) write.
-        verify(mongoTemplate, never()).updateFirst(
-                any(Query.class), any(Update.class), eq(UserDocument.class));
+        verify(mongoTemplate, never()).updateFirst(any(Query.class), any(Update.class), eq(UserDocument.class));
     }
 
     @Test
     void recordFailedLogin_atThreshold_locksAndResetsCounter() {
         UserDocument afterInc = UserDocument.builder()
-                .tenantId(TENANT).name("alice")
-                .failedLoginAttempts(UserService.MAX_FAILED_LOGIN_ATTEMPTS).build();
+                .tenantId(TENANT)
+                .name("alice")
+                .failedLoginAttempts(UserService.MAX_FAILED_LOGIN_ATTEMPTS)
+                .build();
         when(mongoTemplate.findAndModify(
-                any(Query.class), any(Update.class),
-                any(FindAndModifyOptions.class), eq(UserDocument.class)))
+                        any(Query.class), any(Update.class),
+                        any(FindAndModifyOptions.class), eq(UserDocument.class)))
                 .thenReturn(afterInc);
 
         service.recordFailedLogin(TENANT, "alice");
 
         ArgumentCaptor<Update> lockUpdate = ArgumentCaptor.forClass(Update.class);
-        verify(mongoTemplate).updateFirst(
-                any(Query.class), lockUpdate.capture(), eq(UserDocument.class));
+        verify(mongoTemplate).updateFirst(any(Query.class), lockUpdate.capture(), eq(UserDocument.class));
         // Lock write sets both lockedUntil and resets the counter.
         org.bson.Document set = lockUpdate.getValue().getUpdateObject().get("$set", org.bson.Document.class);
         assertThat(set).containsKeys("lockedUntil", "failedLoginAttempts");
@@ -270,14 +271,13 @@ class UserServiceTest {
     @Test
     void recordFailedLogin_unknownUser_isNoOp() {
         when(mongoTemplate.findAndModify(
-                any(Query.class), any(Update.class),
-                any(FindAndModifyOptions.class), eq(UserDocument.class)))
+                        any(Query.class), any(Update.class),
+                        any(FindAndModifyOptions.class), eq(UserDocument.class)))
                 .thenReturn(null);
 
         service.recordFailedLogin(TENANT, "ghost");
 
-        verify(mongoTemplate, never()).updateFirst(
-                any(Query.class), any(Update.class), eq(UserDocument.class));
+        verify(mongoTemplate, never()).updateFirst(any(Query.class), any(Update.class), eq(UserDocument.class));
     }
 
     @Test
@@ -286,8 +286,7 @@ class UserServiceTest {
         // "no user" and thereby to SecurityContext.SYSTEM — a real account
         // with that name would inherit the system trust boundary.
         assertThatThrownBy(() -> service.createServiceAccount(
-                TENANT, de.mhus.vance.shared.session.SessionService.SYSTEM_OWNER,
-                null, null, null))
+                        TENANT, de.mhus.vance.shared.session.SessionService.SYSTEM_OWNER, null, null, null))
                 .isInstanceOf(UserService.ReservedNameException.class)
                 .hasMessageContaining("reserved");
         verify(repo, never()).save(any());
@@ -300,7 +299,8 @@ class UserServiceTest {
         // for service-account schemes (_daemon-prod-01) and reused human logins.
         // The listener runs first so a failing grant store aborts the delete
         // rather than orphaning the grant.
-        UserDocument admin = UserDocument.builder().tenantId(TENANT).name("marvin.acme").build();
+        UserDocument admin =
+                UserDocument.builder().tenantId(TENANT).name("marvin.acme").build();
         when(repo.findByTenantIdAndName(TENANT, "marvin.acme")).thenReturn(Optional.of(admin));
 
         service.delete(TENANT, "marvin.acme");
@@ -314,13 +314,12 @@ class UserServiceTest {
     void delete_whenAListenerFails_leavesTheDocumentInPlace() {
         // Fail-closed: a grant whose subject is gone is worse than an account
         // that could not be deleted, so the exception must not be swallowed.
-        UserDocument admin = UserDocument.builder().tenantId(TENANT).name("marvin.acme").build();
+        UserDocument admin =
+                UserDocument.builder().tenantId(TENANT).name("marvin.acme").build();
         when(repo.findByTenantIdAndName(TENANT, "marvin.acme")).thenReturn(Optional.of(admin));
-        doThrow(new IllegalStateException("grant store down"))
-                .when(listener).onUserDeleted(TENANT, "marvin.acme");
+        doThrow(new IllegalStateException("grant store down")).when(listener).onUserDeleted(TENANT, "marvin.acme");
 
-        assertThatThrownBy(() -> service.delete(TENANT, "marvin.acme"))
-                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> service.delete(TENANT, "marvin.acme")).isInstanceOf(IllegalStateException.class);
 
         verify(repo, never()).delete(any(UserDocument.class));
     }
@@ -329,8 +328,7 @@ class UserServiceTest {
     void delete_ofAnUnknownUser_notifiesNobody() {
         when(repo.findByTenantIdAndName(TENANT, "ghost")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.delete(TENANT, "ghost"))
-                .isInstanceOf(UserService.UserNotFoundException.class);
+        assertThatThrownBy(() -> service.delete(TENANT, "ghost")).isInstanceOf(UserService.UserNotFoundException.class);
 
         verify(listener, never()).onUserDeleted(any(), any());
     }
@@ -355,8 +353,7 @@ class UserServiceTest {
         // Nothing left to abort by then — the document is written. Reporting a
         // failed create for an account that exists would be the worse answer.
         when(repo.existsByTenantIdAndName(TENANT, "alice")).thenReturn(false);
-        doThrow(new IllegalStateException("grant store down"))
-                .when(listener).onUserCreated(any());
+        doThrow(new IllegalStateException("grant store down")).when(listener).onUserCreated(any());
 
         UserDocument user = service.create(TENANT, "alice", "hash", null, null);
 
@@ -367,10 +364,9 @@ class UserServiceTest {
     void ensureVanceServiceAccount_onSecondCall_doesNotNotifyAgain() {
         // Fires once per account, not once per call: the second call finds the
         // document and creates nothing.
-        UserDocument existing = UserDocument.builder()
-                .tenantId(TENANT).name("_vance-admin").build();
-        when(repo.findByTenantIdAndName(TENANT, "_vance-admin"))
-                .thenReturn(Optional.of(existing));
+        UserDocument existing =
+                UserDocument.builder().tenantId(TENANT).name("_vance-admin").build();
+        when(repo.findByTenantIdAndName(TENANT, "_vance-admin")).thenReturn(Optional.of(existing));
 
         service.ensureVanceServiceAccount(TENANT, "_vance-admin", null, null, null);
 
@@ -380,7 +376,8 @@ class UserServiceTest {
     @Test
     void setPasswordHash_stampsChangedAt_andClearsLockout() {
         UserDocument locked = UserDocument.builder()
-                .tenantId(TENANT).name("alice")
+                .tenantId(TENANT)
+                .name("alice")
                 .failedLoginAttempts(4)
                 .lockedUntil(Instant.now().plusSeconds(600))
                 .lastFailedLoginAt(Instant.now())
@@ -394,5 +391,17 @@ class UserServiceTest {
         assertThat(saved.getFailedLoginAttempts()).isZero();
         assertThat(saved.getLockedUntil()).isNull();
         assertThat(saved.getLastFailedLoginAt()).isNull();
+    }
+
+    /** OAuth grants listen for this — a new password ends what the old one handed out. */
+    @Test
+    void setPasswordHash_publishesPasswordChanged() {
+        when(repo.findByTenantIdAndName(TENANT, "alice"))
+                .thenReturn(Optional.of(
+                        UserDocument.builder().tenantId(TENANT).name("alice").build()));
+
+        service.setPasswordHash(TENANT, "alice", "new-hash");
+
+        verify(events).publishEvent(new UserPasswordChangedEvent(TENANT, "alice"));
     }
 }

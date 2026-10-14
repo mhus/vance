@@ -26,6 +26,12 @@ vance:
     # ships no default (a known shared secret would authenticate anyone
     # against any deployment that never set the variable).
     token: ${VANCE_INTERNAL_TOKEN:vance-local-dev-internal}
+  web:
+    # The face dev server paired with this brain (`pnpm dev:1`, FACE_PORT
+    # 9901). The OAuth server builds issuer and resource URLs from this, and
+    # sends login/consent redirects there — it must be the URL the browser
+    # and MCP clients actually use.
+    public-base-url: ${VANCE_WEB_PUBLICBASEURL:http://localhost:9901}
   redis:
     enabled: true
     host: localhost

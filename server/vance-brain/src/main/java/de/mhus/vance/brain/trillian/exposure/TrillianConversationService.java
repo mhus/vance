@@ -2,6 +2,7 @@ package de.mhus.vance.brain.trillian.exposure;
 
 import de.mhus.vance.api.inbox.InboxMessagePostRequest;
 import de.mhus.vance.api.inbox.MaximegalonStatus;
+import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.trillian.TrillianHeadService;
 import de.mhus.vance.brain.trillian.TrillianOwnSessions;
 import de.mhus.vance.brain.trillian.TrillianSessionBootstrapper;
@@ -264,7 +265,7 @@ public class TrillianConversationService {
         int cursor = positionAfter(messagesOf(item), afterMessageId);
         List<Contribution> fresh = freshOf(item, cursor, exposed);
         // Something new, or nothing will come any more: answer at once.
-        if (!fresh.isEmpty() || isEnded(item)) {
+        if (!fresh.isEmpty() || isOver(tenantId, item)) {
             return Reply.of(conversationId, fresh, isEnded(item));
         }
         long wait = clampWait(waitMs);
@@ -283,9 +284,8 @@ public class TrillianConversationService {
                         return Reply.of(conversationId, List.of(), true);
                     }
                     fresh = freshOf(reloaded.get(), cursor, exposed);
-                    boolean ended = isEnded(reloaded.get());
-                    if (!fresh.isEmpty() || ended) {
-                        return Reply.of(conversationId, fresh, ended);
+                    if (!fresh.isEmpty() || isOver(tenantId, reloaded.get())) {
+                        return Reply.of(conversationId, fresh, isEnded(reloaded.get()));
                     }
                     long remaining = deadline - System.currentTimeMillis();
                     if (remaining <= 0) {
@@ -390,6 +390,28 @@ public class TrillianConversationService {
 
     private static boolean isEnded(MaximegalonDocument item) {
         return item.getStatus() == MaximegalonStatus.ARCHIVED || item.getStatus() == MaximegalonStatus.DISMISSED;
+    }
+
+    /**
+     * Ended, and no last word on its way: a head archives inside its turn
+     * and its closing reply is posted at the turn's end — after the archive.
+     * While the head of the thread is still running, the read keeps waiting;
+     * the posted reply (message event) or the head's next round wakes it.
+     */
+    private boolean isOver(String tenantId, MaximegalonDocument item) {
+        if (!isEnded(item)) {
+            return false;
+        }
+        String account = item.getAssignedToUserId();
+        if (account == null || item.getId() == null) {
+            return true;
+        }
+        return ownSessions
+                .liveLoopOf(tenantId, account)
+                .flatMap(loop -> headService.headOf(loop, item.getId()))
+                .map(head ->
+                        head.getStatus() != ThinkProcessStatus.RUNNING && head.getStatus() != ThinkProcessStatus.INIT)
+                .orElse(true);
     }
 
     /**

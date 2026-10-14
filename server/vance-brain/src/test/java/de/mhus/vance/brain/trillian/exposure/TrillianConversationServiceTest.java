@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.api.inbox.InboxMessagePostRequest;
 import de.mhus.vance.api.inbox.MaximegalonStatus;
 import de.mhus.vance.api.inbox.MaximegalonType;
+import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.trillian.TrillianHeadService;
 import de.mhus.vance.brain.trillian.TrillianOwnSessions;
 import de.mhus.vance.brain.trillian.nature.TrillianNature;
@@ -439,6 +440,36 @@ class TrillianConversationServiceTest {
         assertThat(reply.closed()).isTrue();
         assertThat(reply.arrived()).isFalse();
         assertThat(System.currentTimeMillis() - started).isLessThan(1_000);
+    }
+
+    @Test
+    void anEndedConversationWhoseHeadIsStillInItsTurn_waitsForTheLastWord() throws Exception {
+        // The head archives inside its turn and posts its closing reply at the
+        // turn's end — after the archive. A read must not answer "closed,
+        // nothing new" in between.
+        MaximegalonDocument archived = conversation("thread-1", CALLER, MaximegalonStatus.ARCHIVED);
+        AtomicReference<MaximegalonDocument> current = new AtomicReference<>(archived);
+        when(threads.findById(TENANT, "thread-1")).thenAnswer(inv -> Optional.of(current.get()));
+        ThinkProcessDocument head = new ThinkProcessDocument();
+        head.setStatus(ThinkProcessStatus.RUNNING);
+        when(headService.headOf(any(), org.mockito.ArgumentMatchers.eq("thread-1")))
+                .thenReturn(Optional.of(head));
+
+        CompletableFuture<TrillianConversationService.Reply> pending =
+                CompletableFuture.supplyAsync(() -> service.read(TENANT, CALLER, "thread-1", null, 10_000));
+        awaitWaiting(1);
+
+        MaximegalonMessage bye = message("m-9", COLIN, "Tschüss!");
+        MaximegalonDocument withBye = conversation("thread-1", CALLER, MaximegalonStatus.ARCHIVED, bye);
+        current.set(withBye);
+        head.setStatus(ThinkProcessStatus.IDLE);
+        service.onThreadMessage(new MaximegalonMessageEvent(withBye, bye));
+
+        TrillianConversationService.Reply reply = pending.get(5, TimeUnit.SECONDS);
+        assertThat(reply.closed()).isTrue();
+        assertThat(reply.messages())
+                .extracting(TrillianConversationService.Contribution::body)
+                .containsExactly("Tschüss!");
     }
 
     // ──────────────────── bounds ────────────────────

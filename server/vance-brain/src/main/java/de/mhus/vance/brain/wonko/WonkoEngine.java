@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -76,6 +77,13 @@ public class WonkoEngine implements ThinkEngine {
     private static final int DEFAULT_MAX_ROUNDS = 6;
     private static final int DEFAULT_MAX_QUESTIONS = 3;
     private static final String DEFAULT_GOAL = "Check the subject for sense, contradictions and gaps.";
+
+    private static final String ASK_FOR_SUBJECT =
+            "What should I review? Open the document in Cortex, or name one or " + "more documents by path or id.";
+
+    private static final Pattern DOCUMENT_ID = Pattern.compile("[0-9a-f]{24}");
+
+    private static final Pattern PATH_LIKE = Pattern.compile("[\\w.-]+(/[\\w.-]+)+|[\\w-]+\\.[a-zA-Z0-9]{1,5}");
 
     /** Prefix of question keys that carry a mandate proposal instead of a topic. */
     static final String PROPOSAL_KEY_PREFIX = "mandate-proposal/";
@@ -141,15 +149,22 @@ public class WonkoEngine implements ThinkEngine {
         WonkoState state = loadState(process);
         if (state.getSubjectRefs().isEmpty()) {
             List<String> refs = subjectRefs(params(process).get(PARAM_SUBJECT));
-            if (refs.isEmpty()) {
-                block(process, ctx, state, "No subject given — set the param `subject` to one or more document paths.");
-                return;
+            if (!refs.isEmpty()) {
+                setSubject(state, refs);
+                persistState(process, state);
             }
-            state.setSubjectRefs(refs);
-            state.setSubjectKey(WonkoRegisterService.subjectKey(refs));
-            persistState(process, state);
         }
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
+        if (state.getSubjectRefs().isEmpty()) {
+            // A chat without a set subject: the first message brings it —
+            // the document bound in Cortex, or ids/paths named in the text.
+            if (!state.isSubjectRequested()) {
+                state.setSubjectRequested(true);
+                persistState(process, state);
+                appendChat(process, ctx, ChatRole.ASSISTANT, ASK_FOR_SUBJECT, null);
+            }
+            return;
+        }
         // The first round runs on the lane, not on the spawner's thread.
         eventEmitter.scheduleTurn(process.getId());
     }
@@ -180,10 +195,10 @@ public class WonkoEngine implements ThinkEngine {
     public void runTurn(ThinkProcessDocument process, ThinkEngineContext ctx) {
         List<SteerMessage> drained = ctx.drainPending();
         WonkoState state = loadState(process);
-        if (state.getSubjectRefs().isEmpty()) {
-            return;
-        }
-        boolean runRound = state.getRound() == 0 && state.getPendingSet() == null && !state.isFinished();
+        boolean runRound = !state.getSubjectRefs().isEmpty()
+                && state.getRound() == 0
+                && state.getPendingSet() == null
+                && !state.isFinished();
         boolean stop = false;
         WonkoRegister register = null;
         for (SteerMessage msg : drained) {
@@ -195,6 +210,10 @@ public class WonkoEngine implements ThinkEngine {
                 continue;
             }
             appendChat(process, ctx, ChatRole.USER, input.content(), null);
+            if (state.getSubjectRefs().isEmpty()) {
+                runRound |= adoptSubject(process, ctx, state, input);
+                continue;
+            }
             if (register == null) {
                 register = loadRegister(process, state);
             }
@@ -244,6 +263,84 @@ public class WonkoEngine implements ThinkEngine {
         }
         return ParentReport.of(
                 "Wonko process " + process.getId() + " " + eventType.name().toLowerCase());
+    }
+
+    // ──────────────────── Subject from the chat ────────────────────
+
+    /**
+     * Takes the subject from a chat message when none was set: the document
+     * bound in Cortex for this turn first, otherwise document ids or paths
+     * named in the text — each checked through {@code doc_read}. The message
+     * text becomes the goal of the review.
+     *
+     * @return {@code true} when a subject was found and the first round can run
+     */
+    private boolean adoptSubject(
+            ThinkProcessDocument process, ThinkEngineContext ctx, WonkoState state, SteerMessage.UserChatInput input) {
+        List<String> found = new ArrayList<>();
+        List<String> missing = new ArrayList<>();
+        if (input.boundDocumentId() != null && !input.boundDocumentId().isBlank()) {
+            resolveDocument(ctx, Map.of("id", input.boundDocumentId()), input.boundDocumentId(), found, missing);
+        }
+        if (found.isEmpty()) {
+            for (String ref : referenceTokens(input.content())) {
+                Map<String, Object> query =
+                        DOCUMENT_ID.matcher(ref).matches() ? Map.of("id", ref) : Map.of("path", ref);
+                resolveDocument(ctx, query, ref, found, missing);
+            }
+        }
+        if (found.isEmpty()) {
+            String tried = missing.isEmpty() ? "" : " (not found: " + String.join(", ", missing) + ")";
+            appendChat(
+                    process,
+                    ctx,
+                    ChatRole.ASSISTANT,
+                    "I have no document to review yet" + tried + ". " + ASK_FOR_SUBJECT,
+                    null);
+            return false;
+        }
+        setSubject(state, found);
+        if (!input.content().isBlank()) {
+            state.setGoal(input.content());
+        }
+        log.info("Wonko id='{}' subject from chat: {}", process.getId(), found);
+        return true;
+    }
+
+    private static void resolveDocument(
+            ThinkEngineContext ctx, Map<String, Object> query, String ref, List<String> found, List<String> missing) {
+        try {
+            Object path = ctx.tools().invoke("doc_read", query).get("path");
+            if (path instanceof String p && !p.isBlank() && !found.contains(p)) {
+                found.add(p);
+            }
+        } catch (RuntimeException e) {
+            missing.add(ref);
+        }
+    }
+
+    /**
+     * Words of a message that look like a document reference: a document id
+     * (24 hex chars) or a path (contains {@code /} or ends in a file
+     * extension). Quotes, backticks and trailing punctuation are stripped.
+     */
+    static List<String> referenceTokens(String text) {
+        List<String> out = new ArrayList<>();
+        for (String raw : text.split("[\\s,;]+")) {
+            String token = raw.replaceAll("^[`'\"(<\\[]+|[`'\")>\\].:!?]+$", "");
+            if (token.isEmpty() || out.contains(token)) {
+                continue;
+            }
+            if (DOCUMENT_ID.matcher(token).matches() || PATH_LIKE.matcher(token).matches()) {
+                out.add(token);
+            }
+        }
+        return out;
+    }
+
+    private static void setSubject(WonkoState state, List<String> refs) {
+        state.setSubjectRefs(new ArrayList<>(refs));
+        state.setSubjectKey(WonkoRegisterService.subjectKey(refs));
     }
 
     // ──────────────────── Answers ────────────────────
@@ -332,7 +429,7 @@ public class WonkoEngine implements ThinkEngine {
             Map<String, Object> json = lightLlmService.callForJson(LightLlmRequest.builder()
                     .recipeName(paramString(process, PARAM_CHECK_RECIPE, DEFAULT_CHECK_RECIPE))
                     .userPrompt(WonkoPrompts.checkPrompt(
-                            goal(process),
+                            goal(process, state),
                             subject,
                             register,
                             paramStrings(process, PARAM_CHECKLIST),
@@ -583,9 +680,12 @@ public class WonkoEngine implements ThinkEngine {
         return p == null ? Map.of() : p;
     }
 
-    private static String goal(ThinkProcessDocument process) {
+    private static String goal(ThinkProcessDocument process, WonkoState state) {
         String goal = process.getGoal();
-        return goal == null || goal.isBlank() ? DEFAULT_GOAL : goal;
+        if (goal != null && !goal.isBlank()) {
+            return goal;
+        }
+        return state.getGoal() == null ? DEFAULT_GOAL : state.getGoal();
     }
 
     private static String paramString(ThinkProcessDocument process, String key, String fallback) {

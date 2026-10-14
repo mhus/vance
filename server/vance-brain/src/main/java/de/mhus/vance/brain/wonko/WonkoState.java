@@ -21,6 +21,12 @@ public class WonkoState {
 
     private List<String> subjectRefs = new ArrayList<>();
 
+    /** Whether Wonko already asked the chat for a subject (no {@code subject} param). */
+    private boolean subjectRequested;
+
+    /** Goal taken from the chat message that named the subject; the process goal wins. */
+    private @Nullable String goal;
+
     /** Rounds asked in this run. */
     private int round;
 

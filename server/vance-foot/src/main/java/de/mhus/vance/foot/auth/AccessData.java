@@ -26,4 +26,20 @@ public class AccessData {
 
     private @Nullable String refreshToken;
     private @Nullable Long refreshExpiresAt;
+
+    /**
+     * How the tokens were obtained: {@code null}/{@code password} = the
+     * brain's {@code /access/{user}} endpoint, {@code oauth} = the browser
+     * login against the OAuth server. Decides which endpoint refreshes them.
+     */
+    private @Nullable String authMethod;
+
+    /** OAuth token endpoint the refresh token belongs to ({@code oauth} only). */
+    private @Nullable String oauthTokenEndpoint;
+
+    /** OAuth revocation endpoint, used by {@code /logout} ({@code oauth} only). */
+    private @Nullable String oauthRevocationEndpoint;
+
+    /** OAuth client id the tokens were issued to ({@code oauth} only). */
+    private @Nullable String oauthClientId;
 }

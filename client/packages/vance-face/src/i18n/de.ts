@@ -2343,6 +2343,59 @@ export default {
     },
   },
 
+  oauthConsent: {
+    pageTitle: 'Zugriff erlauben',
+    loading: 'Lädt…',
+    missingRequest: 'Diese Seite braucht eine Anmelde-Anfrage. Starte die Anmeldung erneut aus dem Programm.',
+    expired: 'Diese Anmelde-Anfrage ist abgelaufen oder gehört einem anderen Benutzer. Starte die Anmeldung erneut aus dem Programm.',
+    wrongTenant: 'Diese Anmelde-Anfrage gilt für den Mandanten „{tenant}“, du bist aber bei einem anderen angemeldet.',
+    signInToTenant: 'Bei {tenant} anmelden',
+    headline: '„{client}“ möchte auf dein Konto zugreifen',
+    client: {
+      dcr: 'Diesen Namen hat das Programm selbst gewählt — er ist nicht geprüft.',
+      cimd: 'Das Programm weist sich über seine Website {host} aus.',
+      firstParty: 'Das ist ein Vancetope-Programm.',
+    },
+    accessLabel: 'Zugriff auf',
+    accountLabel: 'Handelt als',
+    redirectLabel: 'Zugang geht an',
+    door: {
+      mcpProject: 'Die Dokumente des Projekts „{project}“ (MCP)',
+      mcp: 'Alle MCP-Werkzeuge des Mandanten „{tenant}“ — alles, was dein Konto dort darf',
+      agents: 'Die Agenten-Tür des Mandanten „{tenant}“',
+      account: 'Dein gesamtes Konto im Mandanten „{tenant}“',
+    },
+    loopbackWarning:
+      'Der Zugang geht an ein Programm auf diesem Rechner (localhost). Erlaube das nur, wenn du die Anmeldung gerade selbst gestartet hast.',
+    revokeHint: 'Du kannst den Zugriff jederzeit unter „Verbundene Konten“ widerrufen.',
+    approve: 'Erlauben',
+    decline: 'Ablehnen',
+  },
+
+  connectedApps: {
+    title: 'Apps mit Zugriff auf dein Konto',
+    intro:
+      'Programme, die als du handeln können: OAuth-Anmeldungen (z.B. ein MCP-Client) und Integration-Tokens. Ein Widerruf stoppt sie innerhalb von Sekunden.',
+    loading: 'Lädt…',
+    loadFailed: 'Die verbundenen Apps konnten nicht geladen werden.',
+    revokeFailed: 'Widerruf fehlgeschlagen.',
+    revoke: 'Widerrufen',
+    confirmRevoke: 'Zugriff von „{name}“ widerrufen? Das Programm muss sich danach neu anmelden.',
+    lastUsed: 'Zuletzt benutzt: {when}',
+    never: 'nie',
+    tokenBadge: 'Token',
+    empty: {
+      headline: 'Keine verbundenen Apps',
+      body: 'Derzeit hat kein externes Programm Zugriff auf dein Konto.',
+    },
+    scope: {
+      mcpProject: 'MCP-Dokumente des Projekts „{project}“',
+      mcp: 'Alle MCP-Werkzeuge',
+      agents: 'Agenten-Tür',
+      account: 'Gesamtes Konto',
+    },
+  },
+
   connectedAccounts: {
     pageTitle: 'Verbundene Konten',
     loading: 'Laden…',

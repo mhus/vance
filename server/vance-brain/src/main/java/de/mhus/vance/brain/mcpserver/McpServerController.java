@@ -32,7 +32,10 @@ import org.springframework.web.bind.annotation.RestController;
  * ({@link HomeBootstrapService#TENANT_PROJECT_NAME}).
  *
  * <p>Auth is the standard {@code Authorization: Bearer <jwt>} chain — an
- * MCP client configures a 24h access token (service-account login).
+ * MCP client configures a 24h access token (service-account login), an
+ * integration token of the {@code mcp} profile, or logs in through the OAuth
+ * server. The narrowed credentials additionally pass
+ * {@link McpGlobalAccessService}.
  * Per-invocation authorization is enforced downstream by
  * {@link de.mhus.vance.brain.tools.ToolDispatcher}; the endpoint itself
  * requires {@code READ} on the target project.
@@ -47,6 +50,7 @@ public class McpServerController {
 
     private final McpServerService service;
     private final RequestAuthority authority;
+    private final McpGlobalAccessService globalAccess;
 
     @PostMapping(value = "/brain/{tenant}/mcp", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> rpc(
@@ -61,6 +65,24 @@ public class McpServerController {
         // Endpoint-level gate: the caller must at least READ the target
         // project. Per-tool EXECUTE checks run inside ToolDispatcher.
         authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
+
+        // A narrowed credential (OAuth grant for this door, integration token
+        // of the `mcp` profile) additionally needs an entry in the tenant's
+        // mcp-global-access.yaml — the tenant admin decides who may hand the
+        // full catalogue to an outside program. The full-account login token
+        // is not governed by it.
+        McpCaller caller = McpCaller.from(request);
+        if (caller.narrowed() && globalAccess.resolveEntry(tenant, caller) == null) {
+            log.debug(
+                    "MCP global door denied for narrowed {} caller '{}' in tenant '{}'",
+                    caller.kind(),
+                    caller.username(),
+                    tenant);
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .contentType(MediaType.TEXT_PLAIN)
+                    .body("mcp access denied: no entry in " + McpGlobalAccessService.CONFIG_PATH
+                            + " of the _tenant project admits this caller\n");
+        }
 
         String username = (String) request.getAttribute(AccessFilterBase.ATTR_USERNAME);
         McpProtocol.Outcome outcome = service.handle(body, tenant, project, username);

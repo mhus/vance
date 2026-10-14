@@ -172,6 +172,45 @@ public class JwtService {
         return builder.signWith(privateKey).compact();
     }
 
+    /**
+     * Mints a {@link TokenType#OAUTH} access token for one grant.
+     *
+     * <p>{@code grantId} becomes the {@code jti} the liveness check looks up;
+     * {@code audience} is the resource the token is bound to ({@code null}
+     * for the {@code account} scope); an empty {@code scopeProfiles} list is
+     * that same unrestricted scope and is not written as a claim.
+     */
+    public String createOAuthAccessToken(
+            String tenantId,
+            String username,
+            String grantId,
+            String clientId,
+            List<String> scopeProfiles,
+            @Nullable String projectId,
+            @Nullable String audience,
+            Instant expiresAt) {
+        PrivateKey privateKey = signingKey(tenantId);
+
+        var builder = Jwts.builder()
+                .subject(username)
+                .claim(VanceJwtClaims.CLAIM_TENANT_ID, tenantId)
+                .claim(VanceJwtClaims.CLAIM_TOKEN_TYPE, TokenType.OAUTH.wireValue())
+                .claim(VanceJwtClaims.CLAIM_TOKEN_ID, grantId)
+                .claim(VanceJwtClaims.CLAIM_CLIENT_ID, clientId)
+                .issuedAt(Date.from(Instant.now()))
+                .expiration(Date.from(expiresAt));
+        if (!scopeProfiles.isEmpty()) {
+            builder.claim(VanceJwtClaims.CLAIM_SCOPE_PROFILES, List.copyOf(scopeProfiles));
+        }
+        if (projectId != null) {
+            builder.claim(VanceJwtClaims.CLAIM_PROJECT_ID, projectId);
+        }
+        if (audience != null) {
+            builder.audience().add(audience);
+        }
+        return builder.signWith(privateKey).compact();
+    }
+
     private PrivateKey signingKey(String tenantId) {
         PrivateKey privateKey = keyService
                 .getLatestPrivateKey(tenantId, KeyPurpose.JWT_SIGNING)
@@ -266,6 +305,9 @@ public class JwtService {
         List<String> scopeProfiles = scopeProfiles(claims);
         String tokenId = claims.getId();
         String appFolder = claims.get(VanceJwtClaims.CLAIM_APP_FOLDER, String.class);
+        java.util.Set<String> aud = claims.getAudience();
+        String audience = aud == null || aud.isEmpty() ? null : aud.iterator().next();
+        String clientId = claims.get(VanceJwtClaims.CLAIM_CLIENT_ID, String.class);
         return new VanceJwtClaims(
                 username,
                 tenantId,
@@ -277,6 +319,8 @@ public class JwtService {
                 sessionId,
                 scopeProfiles,
                 tokenId,
-                appFolder);
+                appFolder,
+                audience,
+                clientId);
     }
 }

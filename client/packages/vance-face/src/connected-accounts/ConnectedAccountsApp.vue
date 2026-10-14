@@ -9,6 +9,7 @@ import {
   VEmptyState,
 } from '@/components';
 import { useOAuthConnectedAccounts } from '@/composables/useOAuthConnectedAccounts';
+import ConnectedAppsSection from './ConnectedAppsSection.vue';
 
 const { t } = useI18n();
 const state = useOAuthConnectedAccounts();
@@ -117,6 +118,8 @@ async function onDisconnect(providerId: string): Promise<void> {
           </div>
         </VCard>
       </div>
+
+      <ConnectedAppsSection />
     </div>
   </EditorShell>
 </template>

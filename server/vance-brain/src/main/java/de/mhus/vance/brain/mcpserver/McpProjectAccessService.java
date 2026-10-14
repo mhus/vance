@@ -81,9 +81,8 @@ public class McpProjectAccessService {
      * deny. First-match-wins in document order (see
      * {@link McpProjectAccessConfig#resolve}).
      */
-    public McpProjectAccessConfig.@Nullable Entry resolveEntry(
-            String tenantId, String projectId, @Nullable String tokenId) {
-        return load(tenantId, projectId).resolve(tokenId);
+    public McpProjectAccessConfig.@Nullable Entry resolveEntry(String tenantId, String projectId, McpCaller caller) {
+        return load(tenantId, projectId).resolve(caller);
     }
 
     private McpProjectAccessConfig load(String tenantId, String projectId) {

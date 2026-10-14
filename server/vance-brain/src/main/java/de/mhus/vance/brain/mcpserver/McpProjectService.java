@@ -62,25 +62,18 @@ public class McpProjectService {
     private final ObjectMapper objectMapper;
 
     /**
-     * Handle one JSON-RPC frame for the caller identified by
-     * {@code username} and, for integration tokens, {@code tokenId}.
+     * Handle one JSON-RPC frame for {@code caller}.
      */
-    public McpProtocol.Outcome handle(
-            String body, String tenant, String project, @Nullable String username, @Nullable String tokenId) {
-        return McpProtocol.handle(body, req -> dispatch(req, tenant, project, username, tokenId));
+    public McpProtocol.Outcome handle(String body, String tenant, String project, McpCaller caller) {
+        return McpProtocol.handle(body, req -> dispatch(req, tenant, project, caller));
     }
 
-    private Object dispatch(
-            McpJsonRpc.Frame.Request req,
-            String tenant,
-            String project,
-            @Nullable String username,
-            @Nullable String tokenId) {
+    private Object dispatch(McpJsonRpc.Frame.Request req, String tenant, String project, McpCaller caller) {
         return switch (req.method()) {
             case "initialize" -> McpProtocol.initialize(req.params());
             case "ping" -> Map.of();
-            case "tools/list" -> toolsList(tenant, project, tokenId);
-            case "tools/call" -> toolsCall(req.params(), tenant, project, username, tokenId);
+            case "tools/list" -> toolsList(tenant, project, caller);
+            case "tools/call" -> toolsCall(req.params(), tenant, project, caller);
             default ->
                 throw new McpProtocol.RpcError(McpProtocol.METHOD_NOT_FOUND, "Method not found: " + req.method());
         };
@@ -88,8 +81,8 @@ public class McpProjectService {
 
     // ──────────────────── methods ────────────────────
 
-    private Map<String, Object> toolsList(String tenant, String project, @Nullable String tokenId) {
-        McpProjectAccessConfig.Entry entry = accessService.resolveEntry(tenant, project, tokenId);
+    private Map<String, Object> toolsList(String tenant, String project, McpCaller caller) {
+        McpProjectAccessConfig.Entry entry = accessService.resolveEntry(tenant, project, caller);
         if (entry == null) {
             log.debug("MCP project tools/list denied: no access entry for '{}/{}'", tenant, project);
             return McpProtocol.toolsListResult(List.of());
@@ -101,13 +94,10 @@ public class McpProjectService {
     }
 
     private Map<String, Object> toolsCall(
-            @Nullable Map<String, Object> params,
-            String tenant,
-            String project,
-            @Nullable String username,
-            @Nullable String tokenId) {
+            @Nullable Map<String, Object> params, String tenant, String project, McpCaller caller) {
+        String username = caller.username();
         McpProtocol.ToolCall call = McpProtocol.parseToolCall(params);
-        McpProjectAccessConfig.Entry entry = accessService.resolveEntry(tenant, project, tokenId);
+        McpProjectAccessConfig.Entry entry = accessService.resolveEntry(tenant, project, caller);
         if (entry == null) {
             log.debug("MCP project tools/call '{}' denied: no access entry for '{}/{}'", call.name(), tenant, project);
             return McpProtocol.callContent(

@@ -26,10 +26,12 @@ import org.yaml.snakeyaml.Yaml;
  * isError:true} call result, never a 5xx.
  *
  * <p>Entry matching is first-match-wins in document order — the same
- * cascade reading the rest of the configuration tree uses. An entry
- * with a {@code token} id applies only to the integration token carrying
- * that id; an entry without one applies to any authenticated caller,
- * humans included. Admins put specific-token entries first.
+ * cascade reading the rest of the configuration tree uses. Who an entry
+ * applies to is a {@link McpCallerFilter}: {@code token} (one integration
+ * token), {@code oauth} (OAuth grants only / everyone but them) and
+ * {@code users} (named accounts), all of which must match. An entry
+ * with none of them applies to any authenticated caller — humans, integration
+ * tokens and OAuth grants alike. Admins put specific entries first.
  */
 public record McpProjectAccessConfig(List<Entry> access) {
 
@@ -58,14 +60,13 @@ public record McpProjectAccessConfig(List<Entry> access) {
     /**
      * One access rule.
      *
-     * @param name  required, human-facing — names the rule in logs and errors
-     * @param token optional integration-token id ({@code jti} registry row);
-     *              {@code null} = any authenticated caller
-     * @param mode  {@code ro} or {@code rw}
-     * @param paths normalized path prefixes; empty = the whole project
-     *              (writes into {@code _vance/} stay denied regardless)
+     * @param name   required, human-facing — names the rule in logs and errors
+     * @param caller who the rule applies to; {@link McpCallerFilter#ANY} = any authenticated caller
+     * @param mode   {@code ro} or {@code rw}
+     * @param paths  normalized path prefixes; empty = the whole project
+     *               (writes into {@code _vance/} stay denied regardless)
      */
-    public record Entry(String name, @Nullable String token, Mode mode, List<String> paths) {
+    public record Entry(String name, McpCallerFilter caller, Mode mode, List<String> paths) {
 
         public Entry {
             if (name == null || name.isBlank()) {
@@ -74,13 +75,19 @@ public record McpProjectAccessConfig(List<Entry> access) {
             if (mode == null) {
                 throw new IllegalStateException("access entry '" + name + "' needs a 'mode'");
             }
+            if (caller == null) caller = McpCallerFilter.ANY;
             if (paths == null) paths = List.of();
             paths = normalizePrefixes(paths);
         }
 
-        /** Whether this entry applies to the caller identified by {@code tokenId}. */
-        public boolean matchesToken(@Nullable String tokenId) {
-            return token == null || token.equals(tokenId);
+        /** The integration-token id this entry is restricted to, or {@code null}. */
+        public @Nullable String token() {
+            return caller.token();
+        }
+
+        /** Whether this entry applies to {@code who}. */
+        public boolean matches(McpCaller who) {
+            return caller.matches(who);
         }
 
         /** No prefixes configured — the whole project is in scope. */
@@ -106,9 +113,9 @@ public record McpProjectAccessConfig(List<Entry> access) {
      * First entry that applies to the caller, or {@code null} (= deny).
      * Document order decides; see class javadoc.
      */
-    public @Nullable Entry resolve(@Nullable String tokenId) {
+    public @Nullable Entry resolve(McpCaller caller) {
         for (Entry entry : access) {
-            if (entry.matchesToken(tokenId)) return entry;
+            if (entry.matches(caller)) return entry;
         }
         return null;
     }
@@ -156,11 +163,11 @@ public record McpProjectAccessConfig(List<Entry> access) {
 
     private static Entry parseEntry(Map<String, Object> spec) {
         String name = stringOrNull(spec.get("name"));
-        String token = stringOrNull(spec.get("token"));
+        McpCallerFilter caller = McpCallerFilter.parse(spec, String.valueOf(name));
         String modeWire = stringOrNull(spec.get("mode"));
         Mode mode = modeWire == null ? null : Mode.fromWire(modeWire);
         List<String> paths = stringList(spec.get("paths"));
-        return new Entry(name, token, mode, paths);
+        return new Entry(name, caller, mode, paths);
     }
 
     private static @Nullable String stringOrNull(Object value) {

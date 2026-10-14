@@ -10,7 +10,11 @@
  * bundle cannot lock anyone out of the deployment it happens to run in.
  *
  * <p>On success it goes to `next` when that is a safe same-origin path, and to
- * the launcher otherwise. Deliberately a real navigation, not a mode flip: the
+ * the launcher otherwise. A `tenant` parameter (the OAuth authorization
+ * endpoint sends one) pre-fills the tenant and keeps a live session of a
+ * <em>different</em> tenant from short-circuiting the form — otherwise the
+ * browser would bounce between this page and the endpoint, which only
+ * accepts a session of its own tenant. Deliberately a real navigation, not a mode flip: the
  * workspace shell is another bundle, and it wants a clean boot with the
  * cookies that were just set.
  */
@@ -104,8 +108,15 @@ onMounted(async () => {
     username.value = remembered.username;
     rememberUser.value = true;
   }
+  const requestedTenant = readTenantParam();
+  if (requestedTenant && requestedTenant !== tenant.value) {
+    tenant.value = requestedTenant;
+    username.value = '';
+  }
+  // A live session only counts when it belongs to the requested tenant.
+  const sessionFits = !requestedTenant || getSessionData()?.tenantId === requestedTenant;
 
-  if (isAccessAlive()) {
+  if (sessionFits && isAccessAlive()) {
     // Already-alive cookie path (user opened a fresh tab while logged in, or
     // followed a stale link to the door). Nothing to ask — go where they were
     // heading.
@@ -118,7 +129,7 @@ onMounted(async () => {
   // Try a silent re-mint — on success, flash a one-second
   // "Sie wurden eingeloggt" notice before redirecting so the user
   // sees that the page loaded fresh.
-  if (getSessionData() && isRefreshAlive()) {
+  if (sessionFits && getSessionData() && isRefreshAlive()) {
     mode.value = 'auto-login';
     autoLoginNotice.value = t('login.autoLoginNotice');
     const ok = await refreshAccessCookie();
@@ -198,6 +209,11 @@ function goOn(): void {
  * risk and gets rejected to a `null` (which makes the caller fall back to
  * the launcher).
  */
+function readTenantParam(): string | null {
+  const raw = new URLSearchParams(window.location.search).get('tenant');
+  return raw && /^[A-Za-z0-9_.-]+$/.test(raw) ? raw : null;
+}
+
 function readNextParam(): string | null {
   const raw = new URLSearchParams(window.location.search).get('next');
   if (!raw) return null;

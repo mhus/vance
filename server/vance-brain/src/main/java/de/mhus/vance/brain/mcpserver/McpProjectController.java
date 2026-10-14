@@ -1,8 +1,6 @@
 package de.mhus.vance.brain.mcpserver;
 
 import de.mhus.vance.brain.permission.RequestAuthority;
-import de.mhus.vance.shared.access.AccessFilterBase;
-import de.mhus.vance.shared.jwt.VanceJwtClaims;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import jakarta.servlet.http.HttpServletRequest;
@@ -58,14 +56,10 @@ public class McpProjectController {
         // Everything finer is per call inside McpProjectService.
         authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
 
-        String username = (String) request.getAttribute(AccessFilterBase.ATTR_USERNAME);
-        Object claimsRaw = request.getAttribute(AccessFilterBase.ATTR_CLAIMS);
-        // tokenId is only set for INTEGRATION tokens — it is what the
-        // config's per-token entries match against. ACCESS callers have
-        // none and only token-less entries apply to them.
-        String tokenId = claimsRaw instanceof VanceJwtClaims claims ? claims.tokenId() : null;
-
-        McpProtocol.Outcome outcome = service.handle(body, tenant, project, username, tokenId);
+        // The caller decides which entries of mcp-access.yaml apply: per-token
+        // entries match an integration token's jti, `oauth` entries match
+        // door-bound OAuth grants, `users` the account behind either.
+        McpProtocol.Outcome outcome = service.handle(body, tenant, project, McpCaller.from(request));
         if (outcome.noContent()) {
             return ResponseEntity.accepted().build();
         }

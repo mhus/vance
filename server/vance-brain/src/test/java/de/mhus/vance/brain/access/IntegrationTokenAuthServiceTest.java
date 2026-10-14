@@ -43,19 +43,20 @@ class IntegrationTokenAuthServiceTest {
     @BeforeEach
     void setUp() {
         tokenService = mock(IntegrationTokenService.class);
-        when(tokenService.isActive(anyString(), anyString(), anyString(), any())).thenReturn(true);
-        service = new IntegrationTokenAuthService(tokenService,
-                new IntegrationScopeRegistry(List.of(new CaptureProfile(true))));
+        when(tokenService.isActive(anyString(), anyString(), anyString(), any()))
+                .thenReturn(true);
+        service = new IntegrationTokenAuthService(
+                tokenService,
+                new NarrowedCredentialCheck(new IntegrationScopeRegistry(List.of(new CaptureProfile(true)))));
     }
 
     private static VanceJwtClaims claims(String profile, String projectId, String jti) {
         return claims(List.of(profile), projectId, jti);
     }
 
-    private static VanceJwtClaims claims(
-            List<String> profiles, String projectId, String jti) {
-        return VanceJwtClaims.integration("alice", "acme", Instant.now(),
-                Instant.now().plusSeconds(3600), jti, profiles, projectId);
+    private static VanceJwtClaims claims(List<String> profiles, String projectId, String jti) {
+        return VanceJwtClaims.integration(
+                "alice", "acme", Instant.now(), Instant.now().plusSeconds(3600), jti, profiles, projectId);
     }
 
     private static HttpServletRequest request(String method, String uri) {
@@ -68,8 +69,9 @@ class IntegrationTokenAuthServiceTest {
     @Test
     void accepts_aDeclaredSurface() {
         assertThat(service.isAcceptable(
-                claims("links-capture", "links-proj", "tok-1"),
-                request("POST", "/brain/acme/addon/links/entry"))).isTrue();
+                        claims("links-capture", "links-proj", "tok-1"),
+                        request("POST", "/brain/acme/addon/links/entry")))
+                .isTrue();
     }
 
     /**
@@ -79,15 +81,16 @@ class IntegrationTokenAuthServiceTest {
     @Test
     void rejects_anUndeclaredMethodOnADeclaredPath() {
         assertThat(service.isAcceptable(
-                claims("links-capture", "links-proj", "tok-1"),
-                request("DELETE", "/brain/acme/addon/links/entry"))).isFalse();
+                        claims("links-capture", "links-proj", "tok-1"),
+                        request("DELETE", "/brain/acme/addon/links/entry")))
+                .isFalse();
     }
 
     @Test
     void rejects_anUndeclaredPath() {
         assertThat(service.isAcceptable(
-                claims("links-capture", "links-proj", "tok-1"),
-                request("GET", "/brain/acme/documents"))).isFalse();
+                        claims("links-capture", "links-proj", "tok-1"), request("GET", "/brain/acme/documents")))
+                .isFalse();
     }
 
     /**
@@ -98,8 +101,8 @@ class IntegrationTokenAuthServiceTest {
     @Test
     void rejects_anUnknownProfile() {
         assertThat(service.isAcceptable(
-                claims("gone-away", "links-proj", "tok-1"),
-                request("POST", "/brain/acme/addon/links/entry"))).isFalse();
+                        claims("gone-away", "links-proj", "tok-1"), request("POST", "/brain/acme/addon/links/entry")))
+                .isFalse();
     }
 
     /**
@@ -109,34 +112,37 @@ class IntegrationTokenAuthServiceTest {
     @Test
     void rejects_aMissingProjectPin_whenTheProfileRequiresOne() {
         assertThat(service.isAcceptable(
-                claims("links-capture", null, "tok-1"),
-                request("POST", "/brain/acme/addon/links/entry"))).isFalse();
+                        claims("links-capture", null, "tok-1"), request("POST", "/brain/acme/addon/links/entry")))
+                .isFalse();
     }
 
     @Test
     void allowsAMissingProjectPin_whenTheProfileDoesNot() {
-        IntegrationTokenAuthService unpinned = new IntegrationTokenAuthService(tokenService,
-                new IntegrationScopeRegistry(List.of(new CaptureProfile(false))));
+        IntegrationTokenAuthService unpinned = new IntegrationTokenAuthService(
+                tokenService,
+                new NarrowedCredentialCheck(new IntegrationScopeRegistry(List.of(new CaptureProfile(false)))));
 
         assertThat(unpinned.isAcceptable(
-                claims("links-capture", null, "tok-1"),
-                request("POST", "/brain/acme/addon/links/entry"))).isTrue();
+                        claims("links-capture", null, "tok-1"), request("POST", "/brain/acme/addon/links/entry")))
+                .isTrue();
     }
 
     @Test
     void rejects_aMissingTokenId() {
         assertThat(service.isAcceptable(
-                claims("links-capture", "links-proj", null),
-                request("POST", "/brain/acme/addon/links/entry"))).isFalse();
+                        claims("links-capture", "links-proj", null), request("POST", "/brain/acme/addon/links/entry")))
+                .isFalse();
     }
 
     @Test
     void rejects_aRevokedToken() {
-        when(tokenService.isActive(anyString(), anyString(), anyString(), any())).thenReturn(false);
+        when(tokenService.isActive(anyString(), anyString(), anyString(), any()))
+                .thenReturn(false);
 
         assertThat(service.isAcceptable(
-                claims("links-capture", "links-proj", "tok-1"),
-                request("POST", "/brain/acme/addon/links/entry"))).isFalse();
+                        claims("links-capture", "links-proj", "tok-1"),
+                        request("POST", "/brain/acme/addon/links/entry")))
+                .isFalse();
     }
 
     /**
@@ -147,12 +153,12 @@ class IntegrationTokenAuthServiceTest {
      */
     @Test
     void rejects_theWebSocketUpgrade_evenWhenAProfileDeclaresIt() {
-        IntegrationTokenAuthService wsProfile = new IntegrationTokenAuthService(tokenService,
-                new IntegrationScopeRegistry(List.of(new WsProfile())));
+        IntegrationTokenAuthService wsProfile = new IntegrationTokenAuthService(
+                tokenService, new NarrowedCredentialCheck(new IntegrationScopeRegistry(List.of(new WsProfile()))));
 
         assertThat(wsProfile.isAcceptable(
-                claims("ws-profile", "links-proj", "tok-1"),
-                request("GET", "/brain/acme/ws"))).isFalse();
+                        claims("ws-profile", "links-proj", "tok-1"), request("GET", "/brain/acme/ws")))
+                .isFalse();
     }
 
     private record WsProfile() implements IntegrationScopeProfile {
@@ -180,12 +186,15 @@ class IntegrationTokenAuthServiceTest {
      */
     @Test
     void accepts_aSurfaceFromEitherOfTwoCarriedProfiles() {
-        IntegrationTokenAuthService both = new IntegrationTokenAuthService(tokenService,
-                new IntegrationScopeRegistry(List.of(new CaptureProfile(true), new WsProfile())));
+        IntegrationTokenAuthService both = new IntegrationTokenAuthService(
+                tokenService,
+                new NarrowedCredentialCheck(
+                        new IntegrationScopeRegistry(List.of(new CaptureProfile(true), new WsProfile()))));
 
         assertThat(both.isAcceptable(
-                claims(List.of("links-capture", "ws-profile"), "links-proj", "tok-1"),
-                request("POST", "/brain/acme/addon/links/entry"))).isTrue();
+                        claims(List.of("links-capture", "ws-profile"), "links-proj", "tok-1"),
+                        request("POST", "/brain/acme/addon/links/entry")))
+                .isTrue();
     }
 
     /**
@@ -197,15 +206,16 @@ class IntegrationTokenAuthServiceTest {
     @Test
     void rejects_whenOneOfSeveralProfilesIsUnknown() {
         assertThat(service.isAcceptable(
-                claims(List.of("links-capture", "gone-away"), "links-proj", "tok-1"),
-                request("POST", "/brain/acme/addon/links/entry"))).isFalse();
+                        claims(List.of("links-capture", "gone-away"), "links-proj", "tok-1"),
+                        request("POST", "/brain/acme/addon/links/entry")))
+                .isFalse();
     }
 
     @Test
     void rejects_aNonTenantPath() {
         assertThat(service.isAcceptable(
-                claims("links-capture", "links-proj", "tok-1"),
-                request("POST", "/internal/document/changed"))).isFalse();
+                        claims("links-capture", "links-proj", "tok-1"), request("POST", "/internal/document/changed")))
+                .isFalse();
     }
 
     /**
@@ -214,8 +224,8 @@ class IntegrationTokenAuthServiceTest {
      */
     @Test
     void doesNotHitTheRegistry_whenTheSurfaceDoesNotMatch() {
-        service.isAcceptable(claims("links-capture", "links-proj", "tok-1"),
-                request("DELETE", "/brain/acme/addon/links/entry"));
+        service.isAcceptable(
+                claims("links-capture", "links-proj", "tok-1"), request("DELETE", "/brain/acme/addon/links/entry"));
 
         verify(tokenService, never()).isActive(anyString(), anyString(), anyString(), any());
     }

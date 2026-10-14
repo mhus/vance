@@ -121,11 +121,21 @@ public abstract class AccessFilterBase extends OncePerRequestFilter {
         return type == TokenType.ACCESS;
     }
 
+    /**
+     * Value of the {@code WWW-Authenticate} header on a 401 for this request,
+     * or {@code null} for none (the default).
+     *
+     * <p>OAuth-protected routes answer with a {@code Bearer} challenge naming
+     * their protected-resource metadata (RFC 9728 §5.1) — that is how an MCP
+     * client discovers where to log in. Everything else keeps the bare 401.
+     */
+    protected @Nullable String unauthorizedChallenge(HttpServletRequest request) {
+        return null;
+    }
+
     @Override
-    protected void doFilterInternal(
-            HttpServletRequest request,
-            HttpServletResponse response,
-            FilterChain filterChain) throws ServletException, IOException {
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+            throws ServletException, IOException {
 
         if ("OPTIONS".equals(request.getMethod())) {
             filterChain.doFilter(request, response);
@@ -146,7 +156,7 @@ public abstract class AccessFilterBase extends OncePerRequestFilter {
 
         if (!authenticated && shouldRequireAuthentication(request.getRequestURI(), request.getMethod())) {
             log.debug("Rejecting {} {} — no valid bearer token", request.getMethod(), request.getRequestURI());
-            writeUnauthorized(response);
+            writeUnauthorized(response, unauthorizedChallenge(request));
             return;
         }
 
@@ -164,8 +174,7 @@ public abstract class AccessFilterBase extends OncePerRequestFilter {
             // cookie-based session loop.
             token = extractAccessCookie(request);
         }
-        if (token == null
-                && allowsQueryToken(request.getRequestURI(), request.getMethod())) {
+        if (token == null && allowsQueryToken(request.getRequestURI(), request.getMethod())) {
             token = extractQueryToken(request);
         }
         if (token == null) {
@@ -181,19 +190,28 @@ public abstract class AccessFilterBase extends OncePerRequestFilter {
             // only — they must never authenticate API requests. The
             // mint endpoint sits behind shouldRequireAuthentication=false
             // and validates the refresh token itself.
-            log.debug("Refresh token rejected as bearer for {} (user='{}' tenant='{}')",
-                    request.getRequestURI(), claims.username(), claims.tenantId());
+            log.debug(
+                    "Refresh token rejected as bearer for {} (user='{}' tenant='{}')",
+                    request.getRequestURI(),
+                    claims.username(),
+                    claims.tenantId());
             return null;
         }
         if (!isTokenTypeAcceptable(claims.tokenType())) {
-            log.debug("Token type {} rejected as bearer for {} (user='{}' tenant='{}')",
-                    claims.tokenType(), request.getRequestURI(),
-                    claims.username(), claims.tenantId());
+            log.debug(
+                    "Token type {} rejected as bearer for {} (user='{}' tenant='{}')",
+                    claims.tokenType(),
+                    request.getRequestURI(),
+                    claims.username(),
+                    claims.tenantId());
             return null;
         }
         if (!isClaimsAcceptable(claims, request)) {
-            log.debug("Claims rejected by subclass for {} (user='{}' tenant='{}')",
-                    request.getRequestURI(), claims.username(), claims.tenantId());
+            log.debug(
+                    "Claims rejected by subclass for {} (user='{}' tenant='{}')",
+                    request.getRequestURI(),
+                    claims.username(),
+                    claims.tenantId());
             return null;
         }
         return claims;
@@ -225,8 +243,11 @@ public abstract class AccessFilterBase extends OncePerRequestFilter {
         return null;
     }
 
-    private static void writeUnauthorized(HttpServletResponse response) throws IOException {
+    private static void writeUnauthorized(HttpServletResponse response, @Nullable String challenge) throws IOException {
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        if (challenge != null) {
+            response.setHeader("WWW-Authenticate", challenge);
+        }
         response.setContentType("text/plain; charset=UTF-8");
         response.getWriter().write("401 Unauthorized\n");
     }

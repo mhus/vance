@@ -52,6 +52,15 @@ package de.mhus.vance.shared.jwt;
  *       parameter, so that relative sub-resource URLs inside the sandboxed
  *       (opaque-origin) iframe keep carrying it.
  *   </li>
+ *   <li>{@link #OAUTH} — access token issued by the OAuth authorization
+ *       server ({@code planning/oauth-server.md}). Short-lived (1 h);
+ *       {@code jti} is the grant id and the per-request revocation key,
+ *       exactly like {@link #INTEGRATION}. With {@code scp} it is narrowed
+ *       to one door (profile + optional {@code pid}) and bound to that
+ *       resource via {@code aud}; without {@code scp} it is the
+ *       {@code account} scope, a full-account credential only first-party
+ *       clients can obtain.
+ *   </li>
  * </ul>
  *
  * <p>The discriminator is carried in the {@code tt} claim. Tokens that
@@ -64,7 +73,8 @@ public enum TokenType {
     REFRESH,
     SCRIPT_RUN,
     INTEGRATION,
-    DESIGN_PREVIEW;
+    DESIGN_PREVIEW,
+    OAUTH;
 
     /** JSON value for the {@code tt} claim — lower-case enum name. */
     public String wireValue() {

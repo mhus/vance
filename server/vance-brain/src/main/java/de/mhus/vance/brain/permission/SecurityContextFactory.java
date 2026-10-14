@@ -67,12 +67,19 @@ public class SecurityContextFactory {
      * loopback-bound and registry-gated, so this is not what makes it safe, but
      * it does close the gap where a script token reached a project other than
      * the run's — the claim said which one and nobody downstream compared it.
+     *
+     * <p>{@code OAUTH} tokens of the project door carry the same pin and get
+     * the same confinement; unpinned OAuth tokens (global door, agents door,
+     * account scope) come out unconfined, like their integration-token
+     * counterparts.
      */
     private static @org.jspecify.annotations.Nullable String credentialProjectConfinement(HttpServletRequest request) {
         if (!(request.getAttribute(AccessFilterBase.ATTR_CLAIMS) instanceof VanceJwtClaims claims)) {
             return null;
         }
-        boolean confined = claims.tokenType() == TokenType.INTEGRATION || claims.tokenType() == TokenType.SCRIPT_RUN;
+        boolean confined = claims.tokenType() == TokenType.INTEGRATION
+                || claims.tokenType() == TokenType.SCRIPT_RUN
+                || claims.tokenType() == TokenType.OAUTH;
         if (!confined) {
             return null;
         }

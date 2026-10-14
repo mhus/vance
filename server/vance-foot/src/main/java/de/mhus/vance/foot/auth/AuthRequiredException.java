@@ -10,4 +10,8 @@ public class AuthRequiredException extends Exception {
     public AuthRequiredException(String message) {
         super(message);
     }
+
+    public AuthRequiredException(String message, Throwable cause) {
+        super(message, cause);
+    }
 }

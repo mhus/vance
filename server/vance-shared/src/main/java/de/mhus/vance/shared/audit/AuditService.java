@@ -74,9 +74,8 @@ public class AuditService {
     @Nullable
     private ExecutorService worker;
 
-    public AuditService(AuditServiceProperties properties,
-                        MetricService metricService,
-                        List<AuditConsumer> springConsumers) {
+    public AuditService(
+            AuditServiceProperties properties, MetricService metricService, List<AuditConsumer> springConsumers) {
         this.properties = properties;
         this.metricService = metricService;
         int capacity = Math.max(1, properties.getQueueSize());
@@ -88,8 +87,10 @@ public class AuditService {
     void init() {
         AuditMode target = properties.getMode() != null ? properties.getMode() : AuditMode.ASYNC;
         setMode(target);
-        log.info("AuditService initialized: mode={} queueSize={} consumers={}",
-                mode, properties.getQueueSize(),
+        log.info(
+                "AuditService initialized: mode={} queueSize={} consumers={}",
+                mode,
+                properties.getQueueSize(),
                 consumers.stream().map(c -> c.getClass().getSimpleName()).toList());
     }
 
@@ -106,8 +107,10 @@ public class AuditService {
             w.shutdown();
             try {
                 if (!w.awaitTermination(properties.getDrainTimeoutMs(), TimeUnit.MILLISECONDS)) {
-                    log.warn("AuditService worker did not terminate within {}ms — {} events may be in flight",
-                            properties.getDrainTimeoutMs(), queue.size());
+                    log.warn(
+                            "AuditService worker did not terminate within {}ms — {} events may be in flight",
+                            properties.getDrainTimeoutMs(),
+                            queue.size());
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -143,8 +146,12 @@ public class AuditService {
             event.setSeverity(AuditSeverity.INFO);
         }
 
-        metricService.counter("vance.audit.events",
-                "severity", event.getSeverity().name().toLowerCase()).increment();
+        metricService
+                .counter(
+                        "vance.audit.events",
+                        "severity",
+                        event.getSeverity().name().toLowerCase())
+                .increment();
 
         if (mode == AuditMode.SYNC) {
             dispatch(event);
@@ -153,8 +160,11 @@ public class AuditService {
 
         if (!queue.offer(event)) {
             metricService.counter("vance.audit.dropped").increment();
-            log.warn("AuditService queue full (capacity={}) — dropped event action={} actor={}",
-                    properties.getQueueSize(), event.getAction(), event.getActor());
+            log.warn(
+                    "AuditService queue full (capacity={}) — dropped event action={} actor={}",
+                    properties.getQueueSize(),
+                    event.getAction(),
+                    event.getActor());
         }
     }
 
@@ -207,8 +217,11 @@ public class AuditService {
      * for which project" has to be answerable afterwards.
      */
     public void authIntegrationTokenIssued(
-            String tenantId, String username, java.util.List<String> scopeProfiles,
-            @Nullable String projectId, String tokenId) {
+            String tenantId,
+            String username,
+            java.util.List<String> scopeProfiles,
+            @Nullable String projectId,
+            String tokenId) {
         record(AuditEventDto.builder()
                 .action("auth.integration-token.issue")
                 .severity(AuditSeverity.WARN)
@@ -216,8 +229,42 @@ public class AuditService {
                 .tenantId(tenantId)
                 .actor(username)
                 .target("integration-token:" + tokenId)
-                .message("profiles=" + scopeProfiles
-                        + " project=" + (projectId == null ? "-" : projectId))
+                .message("profiles=" + scopeProfiles + " project=" + (projectId == null ? "-" : projectId))
+                .build());
+    }
+
+    /**
+     * A user approved an OAuth client — a grant now exists whose tokens keep
+     * working while nobody is looking. WARN for the same reason as an
+     * integration token mint.
+     */
+    public void authOAuthGrantIssued(
+            String tenantId,
+            String username,
+            String clientId,
+            String scope,
+            @Nullable String projectId,
+            String grantId) {
+        record(AuditEventDto.builder()
+                .action("auth.oauth-grant.issue")
+                .severity(AuditSeverity.WARN)
+                .outcome("success")
+                .tenantId(tenantId)
+                .actor(username)
+                .target("oauth-grant:" + grantId)
+                .message("client=" + clientId + " scope=" + scope + " project=" + (projectId == null ? "-" : projectId))
+                .build());
+    }
+
+    public void authOAuthGrantRevoked(String tenantId, String username, String grantId, String reason) {
+        record(AuditEventDto.builder()
+                .action("auth.oauth-grant.revoke")
+                .severity(AuditSeverity.INFO)
+                .outcome("success")
+                .tenantId(tenantId)
+                .actor(username)
+                .target("oauth-grant:" + grantId)
+                .message(reason)
                 .build());
     }
 
@@ -250,7 +297,7 @@ public class AuditService {
     public void anusLoginSuccess() {
         record(AuditEventDto.builder()
                 .action("anus.login")
-                .severity(AuditSeverity.WARN)  // admin shell access — always WARN
+                .severity(AuditSeverity.WARN) // admin shell access — always WARN
                 .outcome("success")
                 .target("shell:anus")
                 .build());
@@ -269,7 +316,7 @@ public class AuditService {
     public void anusSudoArm() {
         record(AuditEventDto.builder()
                 .action("anus.sudo.arm")
-                .severity(AuditSeverity.WARN)  // unattended admin access — always WARN
+                .severity(AuditSeverity.WARN) // unattended admin access — always WARN
                 .outcome("success")
                 .target("shell:anus")
                 .build());
@@ -278,19 +325,13 @@ public class AuditService {
     // === Settings ===
 
     public void settingsUpdate(
-            String tenantId,
-            String referenceType,
-            String referenceId,
-            String key,
-            SettingType type) {
+            String tenantId, String referenceType, String referenceId, String key, SettingType type) {
         // The value itself is never logged here — too easy for a STRING
         // setting to hold a token. Reviewers cross-reference with the
         // settings collection via tenantId + referenceType + referenceId + key.
         record(AuditEventDto.builder()
                 .action("settings.update")
-                .severity(type.encrypted()
-                        ? AuditSeverity.WARN
-                        : AuditSeverity.INFO)
+                .severity(type.encrypted() ? AuditSeverity.WARN : AuditSeverity.INFO)
                 .tenantId(tenantId)
                 .target("setting:" + key)
                 .details(orderedMap(
@@ -300,11 +341,7 @@ public class AuditService {
                 .build());
     }
 
-    public void settingsPasswordRead(
-            String tenantId,
-            String referenceType,
-            String referenceId,
-            String key) {
+    public void settingsPasswordRead(String tenantId, String referenceType, String referenceId, String key) {
         // Vault decrypt — always WARN, reviewer interest is high.
         record(AuditEventDto.builder()
                 .action("settings.password.read")
@@ -525,8 +562,11 @@ public class AuditService {
                 consumer.consume(event);
             } catch (RuntimeException e) {
                 metricService.exception(consumer.getClass(), "audit.consume", e);
-                log.warn("AuditConsumer {} threw on event action={}: {}",
-                        consumer.getClass().getSimpleName(), event.getAction(), e.toString());
+                log.warn(
+                        "AuditConsumer {} threw on event action={}: {}",
+                        consumer.getClass().getSimpleName(),
+                        event.getAction(),
+                        e.toString());
             }
         }
     }

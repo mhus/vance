@@ -2,6 +2,7 @@ export * from './documentTemplates';
 export * from './integrationConnection';
 export * from './integrationConnectionCodec';
 export * from './integrationTokens';
+export * from './oauthServer';
 export * from './linkPreview';
 export * from './recipes';
 export * from './restClient';

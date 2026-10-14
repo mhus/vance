@@ -31,6 +31,12 @@ import org.jspecify.annotations.Nullable;
  * designer-app folder. {@code projectId} is shared with the script-run and
  * integration shapes — "pinned to that project" means the same thing in all
  * three.
+ *
+ * <p>The OAuth fields ({@link #audience}, {@link #clientId}) are populated
+ * only for {@link TokenType#OAUTH} tokens. An OAuth token reuses the
+ * integration fields with the same meaning — {@code jti} is the grant id (the
+ * revocation key), {@code scp}/{@code pid} the narrowing; an empty {@code scp}
+ * is the unrestricted {@code account} scope.
  */
 public record VanceJwtClaims(
         String username,
@@ -44,7 +50,11 @@ public record VanceJwtClaims(
         List<String> scopeProfiles,
         @Nullable String tokenId,
         /** App-folder scope of a {@link TokenType#DESIGN_PREVIEW} token. */
-        @Nullable String appFolder) {
+        @Nullable String appFolder,
+        /** Resource the token is bound to ({@code aud}) — {@link TokenType#OAUTH} only. */
+        @Nullable String audience,
+        /** OAuth client the token was issued to ({@code cid}) — {@link TokenType#OAUTH} only. */
+        @Nullable String clientId) {
 
     public VanceJwtClaims {
         scopeProfiles = scopeProfiles == null ? List.of() : List.copyOf(scopeProfiles);
@@ -85,6 +95,22 @@ public record VanceJwtClaims(
      */
     public static final String CLAIM_APP_FOLDER = "fld";
 
+    /** JWT claim name for the OAuth client id of a {@link TokenType#OAUTH} token. */
+    public static final String CLAIM_CLIENT_ID = "cid";
+
+    /**
+     * Whether this credential carries the account's full rights — an
+     * {@link TokenType#ACCESS} token, or an {@link TokenType#OAUTH} token of
+     * the unrestricted {@code account} scope (no {@code scp}).
+     *
+     * <p>The question every endpoint asks that mints or extends a credential:
+     * a narrowed credential must not be able to produce credentials, or it
+     * walks out of its own restriction one mint at a time.
+     */
+    public boolean isFullAccountCredential() {
+        return tokenType == TokenType.ACCESS || (tokenType == TokenType.OAUTH && scopeProfiles.isEmpty());
+    }
+
     /**
      * Standard user-token shape — no script-run scope fields. Matches
      * the historical 5-arg construction call-sites.
@@ -96,7 +122,8 @@ public record VanceJwtClaims(
             @Nullable Instant expiresAt,
             TokenType tokenType) {
         return new VanceJwtClaims(
-                username, tenantId, issuedAt, expiresAt, tokenType, null, null, null, List.of(), null, null);
+                username, tenantId, issuedAt, expiresAt, tokenType, null, null, null, List.of(), null, null, null,
+                null);
     }
 
     /**
@@ -121,6 +148,8 @@ public record VanceJwtClaims(
                 projectId,
                 sessionId,
                 List.of(),
+                null,
+                null,
                 null,
                 null);
     }
@@ -153,6 +182,8 @@ public record VanceJwtClaims(
                 null,
                 scopeProfiles,
                 tokenId,
+                null,
+                null,
                 null);
     }
 
@@ -178,6 +209,38 @@ public record VanceJwtClaims(
                 null,
                 List.of(),
                 null,
-                appFolder);
+                appFolder,
+                null,
+                null);
+    }
+
+    /**
+     * OAuth shape — an access token minted for one grant. Type is always
+     * {@link TokenType#OAUTH}; {@code tokenId} is the grant id.
+     */
+    public static VanceJwtClaims oauth(
+            String username,
+            String tenantId,
+            @Nullable Instant issuedAt,
+            @Nullable Instant expiresAt,
+            String grantId,
+            List<String> scopeProfiles,
+            @Nullable String projectId,
+            @Nullable String audience,
+            String clientId) {
+        return new VanceJwtClaims(
+                username,
+                tenantId,
+                issuedAt,
+                expiresAt,
+                TokenType.OAUTH,
+                null,
+                projectId,
+                null,
+                scopeProfiles,
+                grantId,
+                null,
+                audience,
+                clientId);
     }
 }

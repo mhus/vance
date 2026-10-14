@@ -29,6 +29,10 @@ const editorEntries = {
   users: resolve(pkgDir, 'users.html'),
   profile: resolve(pkgDir, 'profile.html'),
   'connected-accounts': resolve(pkgDir, 'connected-accounts.html'),
+  // OAuth server consent page — where an outside program's sign-in request
+  // is approved or declined. A standalone page: the authorization endpoint
+  // redirects the browser here.
+  'oauth-consent': resolve(pkgDir, 'oauth-consent.html'),
   'oauth-providers': resolve(pkgDir, 'oauth-providers.html'),
   'tool-templates': resolve(pkgDir, 'tool-templates.html'),
   // Generic host for federated addon "areas": addon.html?addon=<id> loads the
@@ -263,6 +267,21 @@ export default defineConfig({
         target: `http://localhost:${process.env.BRAIN_PORT ?? 9990}`,
         changeOrigin: true,
         ws: true,
+      },
+      // OAuth discovery at the host root (RFC 8414 / RFC 9728 path
+      // insertion) — answered by the brain's OAuth server. The deployed
+      // gateway routes the same three prefixes.
+      '/.well-known/oauth-authorization-server': {
+        target: `http://localhost:${process.env.BRAIN_PORT ?? 9990}`,
+        changeOrigin: true,
+      },
+      '/.well-known/oauth-protected-resource': {
+        target: `http://localhost:${process.env.BRAIN_PORT ?? 9990}`,
+        changeOrigin: true,
+      },
+      '/.well-known/openid-configuration': {
+        target: `http://localhost:${process.env.BRAIN_PORT ?? 9990}`,
+        changeOrigin: true,
       },
     },
   },

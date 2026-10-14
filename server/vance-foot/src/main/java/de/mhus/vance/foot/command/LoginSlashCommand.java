@@ -34,12 +34,21 @@ import org.springframework.stereotype.Component;
  * never read from config) is prompted for. The whole flow runs on a worker
  * thread because prompt answers arrive on the REPL input thread — blocking it
  * would deadlock.
+ *
+ * <p>{@code /login --browser [project]} signs in through the brain's OAuth
+ * server instead: the browser opens, the user logs in there, the CLI never
+ * sees the password ({@code specification/public/oauth-server.md}).
  */
 @Component
 @Slf4j
 public class LoginSlashCommand implements SlashCommand {
 
     private static final long PROMPT_TIMEOUT_MS = 120_000L;
+
+    static final String BROWSER_FLAG = "--browser";
+
+    /** How long the browser login waits for the user to finish in the browser. */
+    private static final java.time.Duration BROWSER_TIMEOUT = java.time.Duration.ofMinutes(5);
 
     private final FootAuthService auth;
     private final ProjectBindingStore bindingStore;
@@ -56,14 +65,15 @@ public class LoginSlashCommand implements SlashCommand {
         return t;
     });
 
-    public LoginSlashCommand(FootAuthService auth,
-                             ProjectBindingStore bindingStore,
-                             VancePaths paths,
-                             PendingLinePrompt prompt,
-                             GitignoreGuard gitignore,
-                             @Lazy ConnectionService connection,
-                             ChatTerminal terminal,
-                             FootConfig config) {
+    public LoginSlashCommand(
+            FootAuthService auth,
+            ProjectBindingStore bindingStore,
+            VancePaths paths,
+            PendingLinePrompt prompt,
+            GitignoreGuard gitignore,
+            @Lazy ConnectionService connection,
+            ChatTerminal terminal,
+            FootConfig config) {
         this.auth = auth;
         this.bindingStore = bindingStore;
         this.paths = paths;
@@ -82,7 +92,7 @@ public class LoginSlashCommand implements SlashCommand {
     @Override
     public String description() {
         return "Log in and store a renewable token in .vancetope/access.yaml "
-                + "(usage: /login [username [project [password]]]).";
+                + "(usage: /login [username [project [password]]] | /login --browser [project]).";
     }
 
     @PreDestroy
@@ -106,6 +116,10 @@ public class LoginSlashCommand implements SlashCommand {
     // Package-private so the interactive prompt-with-defaults flow can be
     // exercised directly by unit tests without going through the worker thread.
     void runLogin(List<String> args) throws Exception {
+        if (!args.isEmpty() && BROWSER_FLAG.equals(args.get(0))) {
+            runBrowserLogin(args.subList(1, args.size()));
+            return;
+        }
         Optional<ProjectBinding> existing = loadExistingBinding();
         Defaults def = computeDefaults(args, existing.orElse(null), config);
 
@@ -119,8 +133,8 @@ public class LoginSlashCommand implements SlashCommand {
         if (!args.isEmpty() && !args.get(0).isBlank()) {
             username = args.get(0).trim();
         } else {
-            String defaultUser = def.username() != null
-                    ? def.username() : config.getAuth().getUsername();
+            String defaultUser =
+                    def.username() != null ? def.username() : config.getAuth().getUsername();
             username = requireField("Username", defaultUser, false);
             if (username == null) {
                 return; // cancelled / timed out
@@ -160,8 +174,7 @@ public class LoginSlashCommand implements SlashCommand {
         }
 
         terminal.info("Logging in as " + username + " @ " + httpBase + " …");
-        LoginResult result = auth.login(new LoginRequest(
-                httpBase, wsBase, tenant, username, project, password));
+        LoginResult result = auth.login(new LoginRequest(httpBase, wsBase, tenant, username, project, password));
 
         reportGitignore(result.dir());
         reportSuccess(result);
@@ -169,11 +182,48 @@ public class LoginSlashCommand implements SlashCommand {
         reconnect();
     }
 
+    /**
+     * {@code /login --browser [project]}: brain URL, tenant and project are
+     * asked for as usual, then the browser does the rest — no username or
+     * password prompt here.
+     */
+    private void runBrowserLogin(List<String> args) throws Exception {
+        Optional<ProjectBinding> existing = loadExistingBinding();
+        Defaults def = computeDefaults(List.of(), existing.orElse(null), config);
+
+        String url = requireField("Brain URL", def.httpBase(), false);
+        if (url == null) {
+            return;
+        }
+        String tenant = requireField("Tenant", def.tenant(), false);
+        if (tenant == null) {
+            return;
+        }
+        String project;
+        if (!args.isEmpty() && !args.get(0).isBlank()) {
+            project = args.get(0).trim();
+        } else {
+            project = optionalField("Project (blank for none)", def.project());
+        }
+
+        terminal.info("Opening the browser to sign in to " + url + " (tenant " + tenant + ") …");
+        LoginResult result = auth.loginWithBrowser(
+                url,
+                deriveWsBase(url),
+                tenant,
+                project,
+                authorizeUrl -> terminal.info("If no browser opened, visit: " + authorizeUrl),
+                BROWSER_TIMEOUT);
+
+        reportGitignore(result.dir());
+        terminal.info("Signed in as " + result.binding().getUsername() + ".");
+        reportSuccess(result);
+        reconnect();
+    }
+
     private @Nullable String requireField(String label, @Nullable String def, boolean masked) {
         while (true) {
-            String shown = (def != null && !def.isBlank())
-                    ? label + " [" + (masked ? "****" : def) + "]"
-                    : label;
+            String shown = (def != null && !def.isBlank()) ? label + " [" + (masked ? "****" : def) + "]" : label;
             String answer = prompt.ask(shown + ": ", masked, PROMPT_TIMEOUT_MS);
             if (answer == null) {
                 terminal.warn(label + " prompt cancelled — login aborted.");
@@ -214,18 +264,19 @@ public class LoginSlashCommand implements SlashCommand {
     private void reportGitignore(java.nio.file.Path dir) {
         GitignoreGuard.Result result = gitignore.ensureAccessIgnored(dir);
         switch (result.kind()) {
-            case ADDED -> terminal.warn("Added '" + result.entry() + "' to " + result.gitignore()
-                    + " — the access token must not be committed.");
-            case ALREADY_IGNORED, NO_GIT -> { /* nothing to say */ }
+            case ADDED ->
+                terminal.warn("Added '" + result.entry() + "' to " + result.gitignore()
+                        + " — the access token must not be committed.");
+            case ALREADY_IGNORED, NO_GIT -> {
+                /* nothing to say */
+            }
         }
     }
 
     private void reportSuccess(LoginResult result) {
         AccessTokenResponse token = result.token();
-        terminal.info("Logged in — credentials saved to "
-                + result.dir().resolve(VancePaths.ACCESS_FILE));
-        terminal.verbose("Access token expires at "
-                + Instant.ofEpochMilli(token.getExpiresAtTimestamp()));
+        terminal.info("Logged in — credentials saved to " + result.dir().resolve(VancePaths.ACCESS_FILE));
+        terminal.verbose("Access token expires at " + Instant.ofEpochMilli(token.getExpiresAtTimestamp()));
         if (result.binding().getProject() != null) {
             terminal.info("Bound to project '" + result.binding().getProject() + "'.");
         }
@@ -247,14 +298,13 @@ public class LoginSlashCommand implements SlashCommand {
      * Package-private and pure for unit testing; prompting for anything still
      * {@code null} happens in the caller.
      */
-    static Defaults computeDefaults(List<String> args,
-                                    @Nullable ProjectBinding existing,
-                                    FootConfig config) {
+    static Defaults computeDefaults(List<String> args, @Nullable ProjectBinding existing, FootConfig config) {
         String argUser = args.size() >= 1 ? blankToNull(args.get(0)) : null;
         String argProject = args.size() >= 2 ? blankToNull(args.get(1)) : null;
         String argPassword = args.size() >= 3 ? args.get(2) : null;
 
-        boolean hadBinding = existing != null && existing.getBrain() != null
+        boolean hadBinding = existing != null
+                && existing.getBrain() != null
                 && isSet(existing.getBrain().getHttpBase());
 
         String httpBase = hadBinding
@@ -271,8 +321,7 @@ public class LoginSlashCommand implements SlashCommand {
         // Config username is NOT a silent default: a fresh login (no binding)
         // prompts for it (with the config value offered as a prefill by the
         // caller) so the user does not accidentally log in as the dev account.
-        String username = firstSet(argUser,
-                existing != null ? existing.getUsername() : null);
+        String username = firstSet(argUser, existing != null ? existing.getUsername() : null);
 
         // Project: explicit arg wins; else existing binding; else null (prompt).
         String project = firstSet(argProject, existing != null ? existing.getProject() : null);
@@ -293,14 +342,14 @@ public class LoginSlashCommand implements SlashCommand {
     }
 
     /** Resolved defaults; {@code null} fields are prompted for. */
-    record Defaults(String httpBase,
-                    String wsBase,
-                    String tenant,
-                    @Nullable String username,
-                    @Nullable String project,
-                    @Nullable String password,
-                    boolean hadBinding) {
-    }
+    record Defaults(
+            String httpBase,
+            String wsBase,
+            String tenant,
+            @Nullable String username,
+            @Nullable String project,
+            @Nullable String password,
+            boolean hadBinding) {}
 
     private static boolean isSet(@Nullable String v) {
         return v != null && !v.isBlank();

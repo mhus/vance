@@ -28,13 +28,22 @@ import org.junit.jupiter.params.provider.ValueSource;
 class BrainAccessFilterTest {
 
     private ScriptRunAuthService scriptRunAuthService;
+    private final de.mhus.vance.brain.oauthserver.OAuthServerSettings oauthSettings =
+            new de.mhus.vance.brain.oauthserver.OAuthServerSettings(
+                    "https://vance.example.com", true, 3600, 30, 365, true, true);
     private BrainAccessFilter filter;
 
     @BeforeEach
     void setUp() {
         JwtService jwtService = mock(JwtService.class);
         scriptRunAuthService = mock(ScriptRunAuthService.class);
-        filter = new BrainAccessFilter(jwtService, scriptRunAuthService, mock(IntegrationTokenAuthService.class));
+        filter = new BrainAccessFilter(
+                jwtService,
+                scriptRunAuthService,
+                mock(IntegrationTokenAuthService.class),
+                mock(de.mhus.vance.brain.oauthserver.OAuthAccessTokenAuthService.class),
+                oauthSettings,
+                new de.mhus.vance.brain.oauthserver.OAuthDoors(oauthSettings));
     }
 
     // ──────────────── shouldRequireAuthentication: bypass allowlist ────────────────
@@ -58,6 +67,17 @@ class BrainAccessFilterTest {
                 "/brain/acme/addon/designer/skill-preview/doc1/token", // sandboxed iframe, path-token auth
                 "/brain/acme/addon/designer/skill-preview/doc1/token/", // trailing slash tolerated
                 "/brain/acme/addon/designer/content/doc1/token/landing/index.html",
+                "/.well-known/oauth-authorization-server/brain/acme", // OAuth discovery
+                "/.well-known/openid-configuration/brain/acme",
+                "/.well-known/oauth-protected-resource/brain/acme/mcp/docs",
+                "/brain/acme/.well-known/openid-configuration",
+                "/brain/acme/oauth/register",
+                "/brain/acme/oauth/token",
+                "/brain/acme/oauth/revoke",
+                "/brain/acme/oauth/authorize",
+                "/brain/acme/oauth/authorize/resume/r1",
+                "/brain/acme/oauth/resource/mcp",
+                "/brain/acme/oauth/resource/mcp/docs",
             })
     void allowlistedPaths_doNotRequireBearerAuth(String uri) {
         assertThat(filter.shouldRequireAuthentication(uri, "GET")).isFalse();
@@ -81,6 +101,12 @@ class BrainAccessFilterTest {
                 "/brain/acme/addon/designer/skill-preview/doc1", // missing token segment
                 "/brain/acme/addon/designer/skill-preview/doc1/token/extra", // extra segment → not the preview shape
                 "/brain/acme/addon/designer/skill-previewx/doc1/token", // typo must NOT open the bypass
+                "/brain/acme/oauth/grants", // connected apps need a login
+                "/brain/acme/oauth/authorize/consent", // consent needs a login
+                "/brain/acme/oauth/authorize/request/r1",
+                "/brain/acme/oauth/registerx",
+                "/brain/acme/oauth-client/providers", // the OAuth client is not open
+                "/.well-known/other/brain/acme",
             })
     void nonAllowlistedPaths_requireBearerAuth(String uri) {
         assertThat(filter.shouldRequireAuthentication(uri, "GET")).isTrue();
@@ -119,6 +145,7 @@ class BrainAccessFilterTest {
         assertThat(filter.isTokenTypeAcceptable(TokenType.ACCESS)).isTrue();
         assertThat(filter.isTokenTypeAcceptable(TokenType.SCRIPT_RUN)).isTrue();
         assertThat(filter.isTokenTypeAcceptable(TokenType.REFRESH)).isFalse();
+        assertThat(filter.isTokenTypeAcceptable(TokenType.OAUTH)).isTrue();
     }
 
     // ──────────────── isClaimsAcceptable: tenant mismatch + SCRIPT_RUN ────────────────
@@ -173,5 +200,25 @@ class BrainAccessFilterTest {
         HttpServletRequest req = mock(HttpServletRequest.class);
         when(req.getRequestURI()).thenReturn(uri);
         return req;
+    }
+
+    // ──────────────── unauthorizedChallenge: OAuth discovery on the MCP doors ────────────────
+
+    @Test
+    void challenge_onAnMcpDoor_namesItsResourceMetadata() {
+        jakarta.servlet.http.HttpServletRequest request = mock(jakarta.servlet.http.HttpServletRequest.class);
+        org.mockito.Mockito.when(request.getRequestURI()).thenReturn("/brain/acme/mcp/docs");
+
+        assertThat(filter.unauthorizedChallenge(request))
+                .isEqualTo("Bearer resource_metadata=\"https://vance.example.com/brain/acme/oauth/resource/mcp/docs\", "
+                        + "scope=\"mcp-project\"");
+    }
+
+    @Test
+    void challenge_elsewhere_isAbsent() {
+        jakarta.servlet.http.HttpServletRequest request = mock(jakarta.servlet.http.HttpServletRequest.class);
+        org.mockito.Mockito.when(request.getRequestURI()).thenReturn("/brain/acme/sessions");
+
+        assertThat(filter.unauthorizedChallenge(request)).isNull();
     }
 }

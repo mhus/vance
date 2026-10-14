@@ -98,6 +98,10 @@ export * from './documents/WriterRole';
 export * from './oauth/OAuthProviderAdminDto';
 export * from './oauth/OAuthProviderListEntry';
 export * from './oauth/OAuthProviderWriteRequest';
+export * from './oauthserver/OAuthConsentDecisionRequest';
+export * from './oauthserver/OAuthConsentDecisionResponse';
+export * from './oauthserver/OAuthConsentRequestDto';
+export * from './oauthserver/OAuthGrantDto';
 
 export * from './chat/ChatMessageAppendedData';
 export * from './chat/ChatMessageChunkData';

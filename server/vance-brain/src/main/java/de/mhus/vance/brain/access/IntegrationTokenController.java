@@ -93,8 +93,7 @@ public class IntegrationTokenController {
     }
 
     @GetMapping("/brain/{tenant}/integration-tokens")
-    public List<IntegrationTokenDto> list(@PathVariable String tenant,
-                                          HttpServletRequest request) {
+    public List<IntegrationTokenDto> list(@PathVariable String tenant, HttpServletRequest request) {
         String username = requireUser(request);
         List<IntegrationTokenDto> out = new ArrayList<>();
         for (IntegrationTokenDocument doc : tokenService.list(tenant, username)) {
@@ -117,16 +116,15 @@ public class IntegrationTokenController {
         // asked for, and they would find out at the first call.
         List<IntegrationScopeProfile> granted = new ArrayList<>();
         for (String id : req.getScopeProfiles()) {
-            granted.add(profiles.find(id).orElseThrow(() ->
-                    new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                            "Unknown scope profile '" + id + "'")));
+            granted.add(profiles.find(id)
+                    .orElseThrow(() ->
+                            new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown scope profile '" + id + "'")));
         }
 
         String projectId = blankToNull(req.getProjectId());
-        if (granted.stream().anyMatch(IntegrationScopeProfile::requiresProject)
-                && projectId == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "One of the requested scope profiles requires a projectId");
+        if (granted.stream().anyMatch(IntegrationScopeProfile::requiresProject) && projectId == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "One of the requested scope profiles requires a projectId");
         }
         if (projectId != null) {
             authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
@@ -134,32 +132,34 @@ public class IntegrationTokenController {
 
         int days = req.getExpiresInDays() <= 0 ? DEFAULT_EXPIRES_IN_DAYS : req.getExpiresInDays();
         if (days > MAX_EXPIRES_IN_DAYS) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "expiresInDays must be at most " + MAX_EXPIRES_IN_DAYS);
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "expiresInDays must be at most " + MAX_EXPIRES_IN_DAYS);
         }
         Instant expiresAt = Instant.now().plus(Duration.ofDays(days));
 
         // Row first, token second — see IntegrationTokenService.create.
-        List<String> profileIds = granted.stream().map(IntegrationScopeProfile::id).toList();
+        List<String> profileIds =
+                granted.stream().map(IntegrationScopeProfile::id).toList();
         IntegrationTokenDocument doc = tokenService.create(
-                tenant, username, profileIds, projectId,
-                req.getLabel().trim(), username, expiresAt);
-        String token = jwtService.createIntegrationToken(
-                tenant, username, doc.getTokenId(), profileIds, projectId, expiresAt);
+                tenant, username, profileIds, projectId, req.getLabel().trim(), username, expiresAt);
+        String token =
+                jwtService.createIntegrationToken(tenant, username, doc.getTokenId(), profileIds, projectId, expiresAt);
 
-        auditService.authIntegrationTokenIssued(
-                tenant, username, profileIds, projectId, doc.getTokenId());
-        log.info("Minted integration token tenant='{}' user='{}' profiles={} project='{}' "
-                        + "label='{}' jti='{}'",
-                tenant, username, profileIds, projectId == null ? "" : projectId,
-                doc.getLabel(), doc.getTokenId());
+        auditService.authIntegrationTokenIssued(tenant, username, profileIds, projectId, doc.getTokenId());
+        log.info(
+                "Minted integration token tenant='{}' user='{}' profiles={} project='{}' " + "label='{}' jti='{}'",
+                tenant,
+                username,
+                profileIds,
+                projectId == null ? "" : projectId,
+                doc.getLabel(),
+                doc.getTokenId());
         return ResponseEntity.ok(toDto(doc, token));
     }
 
     @DeleteMapping("/brain/{tenant}/integration-tokens/{tokenId}")
-    public ResponseEntity<Void> revoke(@PathVariable String tenant,
-                                       @PathVariable String tokenId,
-                                       HttpServletRequest request) {
+    public ResponseEntity<Void> revoke(
+            @PathVariable String tenant, @PathVariable String tokenId, HttpServletRequest request) {
         String username = requireUser(request);
         IntegrationTokenDocument doc = tokenService.find(tenant, tokenId).orElse(null);
         // Somebody else's token is "not found", not "forbidden" — the same
@@ -185,7 +185,8 @@ public class IntegrationTokenController {
                         // its id: the owner needs to see that the token carries
                         // something dead, not a gap in the list.
                         .map(id -> profiles.find(id)
-                                .map(IntegrationScopeProfile::label).orElse(id))
+                                .map(IntegrationScopeProfile::label)
+                                .orElse(id))
                         .toList())
                 .projectId(doc.getProjectId())
                 .label(doc.getLabel())
@@ -206,14 +207,15 @@ public class IntegrationTokenController {
     }
 
     /**
-     * Refuse anything but a login-issued ACCESS token. An attenuated
-     * credential must not be able to mint credentials.
+     * Refuse anything but a full-account login credential (ACCESS, or an
+     * OAuth token of the {@code account} scope). An attenuated credential
+     * must not be able to mint credentials.
      */
     private static void requireAccessToken(HttpServletRequest request) {
         Object claims = request.getAttribute(AccessFilterBase.ATTR_CLAIMS);
-        if (!(claims instanceof VanceJwtClaims c) || c.tokenType() != TokenType.ACCESS) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Integration tokens can only be minted with a login token");
+        if (!(claims instanceof VanceJwtClaims c) || !c.isFullAccountCredential()) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "Integration tokens can only be minted with a login token");
         }
     }
 

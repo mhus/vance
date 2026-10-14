@@ -19,22 +19,66 @@ class FootAuthServiceTest {
     /** Records every mint call and returns a scripted response. */
     private static final class FakeClient implements AccessTokenClient {
         record Call(String httpBase, String tenant, String username, AccessTokenRequest request) {}
+
         final List<Call> calls = new ArrayList<>();
-        AccessTokenResponse next = AccessTokenResponse.builder().token("minted").expiresAtTimestamp(0L).build();
+        AccessTokenResponse next = AccessTokenResponse.builder()
+                .token("minted")
+                .expiresAtTimestamp(0L)
+                .build();
 
         @Override
-        public AccessTokenResponse mint(String httpBase, String tenant, String username,
-                                        AccessTokenRequest request) {
+        public AccessTokenResponse mint(String httpBase, String tenant, String username, AccessTokenRequest request) {
             calls.add(new Call(httpBase, tenant, username, request));
             return next;
         }
     }
 
+    /** Scripted OAuth token endpoint. */
+    private static final class FakeOAuthClient implements OAuthClient {
+        final List<String> refreshed = new ArrayList<>();
+        final List<String> revoked = new ArrayList<>();
+        boolean refuse;
+
+        @Override
+        public Endpoints discover(String httpBase, String tenant) {
+            return new Endpoints(httpBase + "/brain/" + tenant, "a", "t", "r");
+        }
+
+        @Override
+        public Tokens exchangeCode(Endpoints e, String clientId, String code, String redirectUri, String verifier) {
+            throw new UnsupportedOperationException("not used by these tests");
+        }
+
+        @Override
+        public Tokens refresh(String tokenEndpoint, String clientId, String refreshToken) throws OAuthRefusedException {
+            refreshed.add(refreshToken);
+            if (refuse) {
+                throw new OAuthRefusedException("invalid_grant");
+            }
+            return new Tokens("oauth-access-2", 3600, "rt-2");
+        }
+
+        @Override
+        public void revoke(String revocationEndpoint, String clientId, String token) {
+            revoked.add(token);
+        }
+    }
+
+    private final FakeOAuthClient oauthClient = new FakeOAuthClient();
+
     private final AtomicLong now = new AtomicLong(1_000_000L);
 
     private FootAuthService service(FootConfig config, VancePaths paths, AccessTokenClient client) {
-        return new FootAuthService(config, paths, new AccessStore(), new ProjectBindingStore(),
-                new ProjectBindingApplier(), client, now::get);
+        return new FootAuthService(
+                config,
+                paths,
+                new AccessStore(),
+                new ProjectBindingStore(),
+                new ProjectBindingApplier(),
+                client,
+                oauthClient,
+                new OAuthBrowserLogin(oauthClient),
+                now::get);
     }
 
     private VancePaths localPaths(Path dir) {
@@ -104,7 +148,10 @@ class FootAuthServiceTest {
         FootConfig config = config();
         config.getAuth().setPassword("dev-secret");
         FakeClient client = new FakeClient();
-        client.next = AccessTokenResponse.builder().token("pw-token").expiresAtTimestamp(0L).build();
+        client.next = AccessTokenResponse.builder()
+                .token("pw-token")
+                .expiresAtTimestamp(0L)
+                .build();
 
         AccessTokenResponse token = service(config, localPaths(dir), client).acquireAccessToken();
 
@@ -130,13 +177,15 @@ class FootAuthServiceTest {
         VancePaths paths = localPaths(dir);
         FakeClient client = new FakeClient();
         client.next = AccessTokenResponse.builder()
-                .token("acc").expiresAtTimestamp(now.get() + 3_600_000L)
-                .refreshToken("ref").refreshTokenExpiresAtTimestamp(now.get() + 99_999L)
+                .token("acc")
+                .expiresAtTimestamp(now.get() + 3_600_000L)
+                .refreshToken("ref")
+                .refreshTokenExpiresAtTimestamp(now.get() + 99_999L)
                 .build();
 
-        LoginResult result = service(config, paths, client).login(new LoginRequest(
-                "https://brain.example.com", "wss://brain.example.com",
-                "acme", "mike", "my-project", "pw"));
+        LoginResult result = service(config, paths, client)
+                .login(new LoginRequest(
+                        "https://brain.example.com", "wss://brain.example.com", "acme", "mike", "my-project", "pw"));
 
         // access.yaml written with the refresh token
         Optional<AccessData> access = new AccessStore().load(dir);
@@ -164,5 +213,54 @@ class FootAuthServiceTest {
 
         assertThat(removed).isTrue();
         assertThat(store.exists(dir)).isFalse();
+    }
+
+    private static AccessData oauthLogin(long accessExpiresAt) {
+        AccessData data = new AccessData();
+        data.setUsername("mike");
+        data.setAccessToken("oauth-access-1");
+        data.setAccessExpiresAt(accessExpiresAt);
+        data.setRefreshToken("rt-1");
+        data.setAuthMethod("oauth");
+        data.setOauthTokenEndpoint("https://brain.example.com/brain/acme/oauth/token");
+        data.setOauthRevocationEndpoint("https://brain.example.com/brain/acme/oauth/revoke");
+        data.setOauthClientId("vancetope-foot");
+        return data;
+    }
+
+    @Test
+    void acquire_oauthLogin_refreshesAtTheTokenEndpoint_andPersistsTheRotatedToken(@TempDir Path dir) throws Exception {
+        AccessStore store = new AccessStore();
+        store.save(dir, oauthLogin(now.get() - 1));
+        FakeClient client = new FakeClient();
+
+        AccessTokenResponse token = service(config(), localPaths(dir), client).acquireAccessToken();
+
+        assertThat(token.getToken()).isEqualTo("oauth-access-2");
+        assertThat(oauthClient.refreshed).containsExactly("rt-1");
+        assertThat(client.calls).isEmpty();
+        AccessData saved = store.load(dir).orElseThrow();
+        assertThat(saved.getRefreshToken()).isEqualTo("rt-2");
+        assertThat(saved.getAuthMethod()).isEqualTo("oauth");
+    }
+
+    @Test
+    void acquire_oauthLogin_refused_asksForANewLogin(@TempDir Path dir) throws Exception {
+        new AccessStore().save(dir, oauthLogin(now.get() - 1));
+        oauthClient.refuse = true;
+
+        assertThatThrownBy(() ->
+                        service(config(), localPaths(dir), new FakeClient()).acquireAccessToken())
+                .isInstanceOf(AuthRequiredException.class)
+                .hasMessageContaining("--browser");
+    }
+
+    @Test
+    void logout_oauthLogin_revokesAtTheServer(@TempDir Path dir) {
+        new AccessStore().save(dir, oauthLogin(now.get() + 3_600_000L));
+
+        assertThat(service(config(), localPaths(dir), new FakeClient()).logout())
+                .isTrue();
+        assertThat(oauthClient.revoked).containsExactly("rt-1");
     }
 }

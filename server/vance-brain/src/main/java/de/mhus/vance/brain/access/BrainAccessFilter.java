@@ -1,5 +1,8 @@
 package de.mhus.vance.brain.access;
 
+import de.mhus.vance.brain.oauthserver.OAuthAccessTokenAuthService;
+import de.mhus.vance.brain.oauthserver.OAuthDoors;
+import de.mhus.vance.brain.oauthserver.OAuthServerSettings;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.jwt.JwtService;
 import de.mhus.vance.shared.jwt.TokenType;
@@ -8,6 +11,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
@@ -121,16 +125,48 @@ public class BrainAccessFilter extends AccessFilterBase {
     private static final Pattern DESIGNER_SKILL_PREVIEW_PATH =
             Pattern.compile("^/brain/[^/]+/addon/designer/skill-preview/[^/]+/[^/]+/?$");
 
+    /**
+     * OAuth discovery documents at the host root — RFC 8414 / RFC 9728
+     * well-known URIs with path insertion
+     * ({@code /.well-known/oauth-authorization-server/brain/{tenant}}, …).
+     * Public by definition: a client reads them before it has a token.
+     */
+    private static final Pattern WELL_KNOWN_OAUTH_PATH = Pattern.compile(
+            "^/\\.well-known/(oauth-authorization-server|oauth-protected-resource|openid-configuration)/.*$");
+
+    /** {@code /brain/{tenant}/.well-known/openid-configuration} — the issuer-appended discovery variant. */
+    private static final Pattern TENANT_WELL_KNOWN_PATH =
+            Pattern.compile("^/brain/[^/]+/\\.well-known/(openid-configuration|oauth-authorization-server)/?$");
+
+    /**
+     * The open endpoints of the OAuth server: protected-resource metadata,
+     * client registration, the authorization endpoint (it reads the login
+     * cookie itself when present), token and revocation (the code, PKCE
+     * verifier or refresh token is the credential). Consent and the grant
+     * list are <em>not</em> here — they need a logged-in user.
+     */
+    private static final Pattern OAUTH_SERVER_PUBLIC_PATH = Pattern.compile(
+            "^/brain/[^/]+/oauth/(register|token|revoke|authorize|authorize/resume/[^/]+|resource/.+)/?$");
+
     private final ScriptRunAuthService scriptRunAuthService;
     private final IntegrationTokenAuthService integrationTokenAuthService;
+    private final OAuthAccessTokenAuthService oauthAccessTokenAuthService;
+    private final OAuthServerSettings oauthSettings;
+    private final OAuthDoors oauthDoors;
 
     public BrainAccessFilter(
             JwtService jwtService,
             ScriptRunAuthService scriptRunAuthService,
-            IntegrationTokenAuthService integrationTokenAuthService) {
+            IntegrationTokenAuthService integrationTokenAuthService,
+            OAuthAccessTokenAuthService oauthAccessTokenAuthService,
+            OAuthServerSettings oauthSettings,
+            OAuthDoors oauthDoors) {
         super(jwtService);
         this.scriptRunAuthService = scriptRunAuthService;
         this.integrationTokenAuthService = integrationTokenAuthService;
+        this.oauthAccessTokenAuthService = oauthAccessTokenAuthService;
+        this.oauthSettings = oauthSettings;
+        this.oauthDoors = oauthDoors;
     }
 
     @Override
@@ -186,7 +222,33 @@ public class BrainAccessFilter extends AccessFilterBase {
             // pattern's comment above).
             return false;
         }
+        if (WELL_KNOWN_OAUTH_PATH.matcher(requestUri).matches()
+                || TENANT_WELL_KNOWN_PATH.matcher(requestUri).matches()
+                || OAUTH_SERVER_PUBLIC_PATH.matcher(requestUri).matches()) {
+            // OAuth discovery and the token-less steps of the code flow —
+            // see the patterns' comments above.
+            return false;
+        }
         return true;
+    }
+
+    /**
+     * On the MCP doors a 401 names the door's protected-resource metadata, so
+     * an MCP client can discover the authorization server and log in (RFC 9728
+     * §5.1, MCP authorization spec). The {@code scope} hint is the door's
+     * scope.
+     */
+    @Override
+    protected @Nullable String unauthorizedChallenge(HttpServletRequest request) {
+        if (!oauthSettings.enabled()) {
+            return null;
+        }
+        OAuthDoors.TenantDoor addressed = OAuthDoors.fromRequestPath(request.getRequestURI());
+        if (addressed == null) {
+            return null;
+        }
+        return "Bearer resource_metadata=\"" + oauthDoors.metadataUrl(addressed.tenant(), addressed.door())
+                + "\", scope=\"" + addressed.door().scope() + "\"";
     }
 
     @Override
@@ -205,8 +267,12 @@ public class BrainAccessFilter extends AccessFilterBase {
         // SCRIPT_RUN tokens are loopback-bound and registry-gated —
         // ScriptRunAuthService does the extra checks in isClaimsAcceptable.
         // INTEGRATION tokens are profile- and registry-gated the same way,
-        // via IntegrationTokenAuthService.
-        return type == TokenType.ACCESS || type == TokenType.SCRIPT_RUN || type == TokenType.INTEGRATION;
+        // via IntegrationTokenAuthService. OAUTH tokens are grant-gated and,
+        // when narrowed, audience-bound — OAuthAccessTokenAuthService.
+        return type == TokenType.ACCESS
+                || type == TokenType.SCRIPT_RUN
+                || type == TokenType.INTEGRATION
+                || type == TokenType.OAUTH;
     }
 
     @Override
@@ -227,6 +293,9 @@ public class BrainAccessFilter extends AccessFilterBase {
         }
         if (claims.tokenType() == TokenType.INTEGRATION) {
             return integrationTokenAuthService.isAcceptable(claims, request);
+        }
+        if (claims.tokenType() == TokenType.OAUTH) {
+            return oauthAccessTokenAuthService.isAcceptable(claims, request);
         }
         return true;
     }

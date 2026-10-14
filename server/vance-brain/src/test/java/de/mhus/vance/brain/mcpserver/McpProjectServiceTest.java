@@ -30,6 +30,8 @@ class McpProjectServiceTest {
     private static final String TENANT = "acme";
     private static final String PROJECT = "showcase";
     private static final String USER = "_agent";
+    private static final McpCaller ACCOUNT = McpCaller.account(USER);
+    private static final McpCaller TOKEN = McpCaller.integration(USER, "tok-1");
 
     @Mock
     McpProjectAccessService accessService;
@@ -48,9 +50,9 @@ class McpProjectServiceTest {
 
     @Test
     void toolsList_withoutMatchingEntry_isEmptyCatalogue() {
-        when(accessService.resolveEntry(TENANT, PROJECT, null)).thenReturn(null);
+        when(accessService.resolveEntry(TENANT, PROJECT, ACCOUNT)).thenReturn(null);
 
-        McpProtocol.Outcome out = service.handle(toolsListBody(), TENANT, PROJECT, USER, null);
+        McpProtocol.Outcome out = service.handle(toolsListBody(), TENANT, PROJECT, ACCOUNT);
 
         assertThat(toolNamesOf(out)).isEmpty();
     }
@@ -59,7 +61,7 @@ class McpProjectServiceTest {
     void toolsList_roEntry_listsOnlyReadTools() {
         entry(Mode.RO, List.of());
 
-        McpProtocol.Outcome out = service.handle(toolsListBody(), TENANT, PROJECT, USER, "tok-1");
+        McpProtocol.Outcome out = service.handle(toolsListBody(), TENANT, PROJECT, TOKEN);
 
         assertThat(toolNamesOf(out))
                 .containsExactly(
@@ -70,7 +72,7 @@ class McpProjectServiceTest {
     void toolsList_rwEntry_listsReadAndWriteTools() {
         entry(Mode.RW, List.of());
 
-        McpProtocol.Outcome out = service.handle(toolsListBody(), TENANT, PROJECT, USER, "tok-1");
+        McpProtocol.Outcome out = service.handle(toolsListBody(), TENANT, PROJECT, TOKEN);
 
         assertThat(toolNamesOf(out)).hasSize(8).contains("doc_read", "doc_write");
     }
@@ -79,10 +81,10 @@ class McpProjectServiceTest {
 
     @Test
     void toolsCall_withoutMatchingEntry_isError() {
-        when(accessService.resolveEntry(TENANT, PROJECT, "tok-1")).thenReturn(null);
+        when(accessService.resolveEntry(TENANT, PROJECT, TOKEN)).thenReturn(null);
 
         McpProtocol.Outcome out =
-                service.handle(callBody("doc_read", Map.of("path", "spec/x.md")), TENANT, PROJECT, USER, "tok-1");
+                service.handle(callBody("doc_read", Map.of("path", "spec/x.md")), TENANT, PROJECT, TOKEN);
 
         assertThat(isErrorOf(out)).isTrue();
         assertThat(textOf(out)).contains("mcp-access.yaml");
@@ -93,7 +95,7 @@ class McpProjectServiceTest {
         entry(Mode.RW, List.of());
 
         McpProtocol.Outcome out =
-                service.handle(callBody("doc_delete", Map.of("path", "spec/x.md")), TENANT, PROJECT, USER, "tok-1");
+                service.handle(callBody("doc_delete", Map.of("path", "spec/x.md")), TENANT, PROJECT, TOKEN);
 
         assertThat(isErrorOf(out)).isTrue();
         assertThat(textOf(out)).contains("Unknown tool");
@@ -104,7 +106,7 @@ class McpProjectServiceTest {
         entry(Mode.RO, List.of());
 
         McpProtocol.Outcome out = service.handle(
-                callBody("doc_write", Map.of("path", "spec/x.md", "content", "hi")), TENANT, PROJECT, USER, "tok-1");
+                callBody("doc_write", Map.of("path", "spec/x.md", "content", "hi")), TENANT, PROJECT, TOKEN);
 
         assertThat(isErrorOf(out)).isTrue();
         assertThat(textOf(out)).contains("'ro'");
@@ -117,8 +119,7 @@ class McpProjectServiceTest {
     void toolsCall_idAddressing_isRejected() {
         entry(Mode.RW, List.of());
 
-        McpProtocol.Outcome out =
-                service.handle(callBody("doc_read", Map.of("id", "6626abc")), TENANT, PROJECT, USER, "tok-1");
+        McpProtocol.Outcome out = service.handle(callBody("doc_read", Map.of("id", "6626abc")), TENANT, PROJECT, TOKEN);
 
         assertThat(isErrorOf(out)).isTrue();
         assertThat(textOf(out)).contains("'path' only");
@@ -129,11 +130,7 @@ class McpProjectServiceTest {
         entry(Mode.RW, List.of());
 
         McpProtocol.Outcome out = service.handle(
-                callBody("doc_read", Map.of("projectId", "other", "path", "spec/x.md")),
-                TENANT,
-                PROJECT,
-                USER,
-                "tok-1");
+                callBody("doc_read", Map.of("projectId", "other", "path", "spec/x.md")), TENANT, PROJECT, TOKEN);
 
         assertThat(isErrorOf(out)).isTrue();
         assertThat(textOf(out)).contains("pinned to project '" + PROJECT + "'");
@@ -144,7 +141,7 @@ class McpProjectServiceTest {
         entry(Mode.RW, List.of("spec/"));
 
         McpProtocol.Outcome out =
-                service.handle(callBody("doc_read", Map.of("path", "readme/x.md")), TENANT, PROJECT, USER, "tok-1");
+                service.handle(callBody("doc_read", Map.of("path", "readme/x.md")), TENANT, PROJECT, TOKEN);
 
         assertThat(isErrorOf(out)).isTrue();
         assertThat(textOf(out)).contains("outside the prefixes");
@@ -156,7 +153,7 @@ class McpProjectServiceTest {
         entry(Mode.RO, List.of("spec/"));
 
         McpProtocol.Outcome out =
-                service.handle(callBody("doc_grep_path", Map.of("pattern", "foo")), TENANT, PROJECT, USER, "tok-1");
+                service.handle(callBody("doc_grep_path", Map.of("pattern", "foo")), TENANT, PROJECT, TOKEN);
 
         assertThat(isErrorOf(out)).isTrue();
         assertThat(textOf(out)).contains("path-scoped");
@@ -166,8 +163,8 @@ class McpProjectServiceTest {
     void toolsCall_wildcardScopeUnderPrefixes_isRejected() {
         entry(Mode.RO, List.of("spec/"));
 
-        McpProtocol.Outcome out = service.handle(
-                callBody("doc_list_in_folder", Map.of("pathPrefix", "*")), TENANT, PROJECT, USER, "tok-1");
+        McpProtocol.Outcome out =
+                service.handle(callBody("doc_list_in_folder", Map.of("pathPrefix", "*")), TENANT, PROJECT, TOKEN);
 
         assertThat(isErrorOf(out)).isTrue();
         assertThat(textOf(out)).contains("whole-project scope");
@@ -181,8 +178,7 @@ class McpProjectServiceTest {
                 callBody("doc_write", Map.of("path", "_vance/config/mcp-access.yaml", "content", "own the world")),
                 TENANT,
                 PROJECT,
-                USER,
-                "tok-1");
+                TOKEN);
 
         assertThat(isErrorOf(out)).isTrue();
         assertThat(textOf(out)).contains("never writable");
@@ -199,8 +195,7 @@ class McpProjectServiceTest {
                 callBody("doc_list_in_folder", Map.of("folder", "docs/", "pathPrefix", "secret/")),
                 TENANT,
                 PROJECT,
-                USER,
-                "tok-1");
+                TOKEN);
 
         assertThat(isErrorOf(out)).isTrue();
         assertThat(textOf(out)).contains("outside the prefixes");
@@ -215,8 +210,7 @@ class McpProjectServiceTest {
                 callBody("doc_write", Map.of("path", "//_vance/config/mcp-access.yaml", "content", "own the world")),
                 TENANT,
                 PROJECT,
-                USER,
-                "tok-1");
+                TOKEN);
 
         assertThat(isErrorOf(out)).isTrue();
         assertThat(textOf(out)).contains("never writable");
@@ -228,7 +222,7 @@ class McpProjectServiceTest {
         entry(Mode.RW, List.of());
 
         McpProtocol.Outcome out = service.handle(
-                callBody("doc_write", Map.of("path", "/_vance/", "content", "x")), TENANT, PROJECT, USER, "tok-1");
+                callBody("doc_write", Map.of("path", "/_vance/", "content", "x")), TENANT, PROJECT, TOKEN);
 
         assertThat(isErrorOf(out)).isTrue();
         assertThat(textOf(out)).contains("never writable");
@@ -243,7 +237,7 @@ class McpProjectServiceTest {
                 .thenReturn(Map.of("path", "spec/design.md", "content", "hello"));
 
         McpProtocol.Outcome out =
-                service.handle(callBody("doc_read", Map.of("path", "spec/design.md")), TENANT, PROJECT, USER, "tok-1");
+                service.handle(callBody("doc_read", Map.of("path", "spec/design.md")), TENANT, PROJECT, TOKEN);
 
         assertThat(isErrorOf(out)).isFalse();
         assertThat(textOf(out)).contains("spec/design.md");
@@ -258,7 +252,7 @@ class McpProjectServiceTest {
         when(tools.get("doc_read").troubleshootingHint()).thenReturn("check the path");
 
         McpProtocol.Outcome out =
-                service.handle(callBody("doc_read", Map.of("path", "spec/x.md")), TENANT, PROJECT, USER, "tok-1");
+                service.handle(callBody("doc_read", Map.of("path", "spec/x.md")), TENANT, PROJECT, TOKEN);
 
         assertThat(isErrorOf(out)).isTrue();
         assertThat(textOf(out)).contains("not found").contains("check the path");
@@ -271,7 +265,7 @@ class McpProjectServiceTest {
                 .thenThrow(new IllegalStateException("boom"));
 
         McpProtocol.Outcome out =
-                service.handle(callBody("doc_read", Map.of("path", "spec/x.md")), TENANT, PROJECT, USER, "tok-1");
+                service.handle(callBody("doc_read", Map.of("path", "spec/x.md")), TENANT, PROJECT, TOKEN);
 
         assertThat(isErrorOf(out)).isTrue();
         assertThat(textOf(out)).contains("failed");
@@ -280,8 +274,9 @@ class McpProjectServiceTest {
     // ──────────────────── helpers ────────────────────
 
     private void entry(McpProjectAccessConfig.Mode mode, List<String> paths) {
-        McpProjectAccessConfig.Entry entry = new McpProjectAccessConfig.Entry("test", "tok-1", mode, paths);
-        when(accessService.resolveEntry(TENANT, PROJECT, "tok-1")).thenReturn(entry);
+        McpProjectAccessConfig.Entry entry =
+                new McpProjectAccessConfig.Entry("test", new McpCallerFilter("tok-1", null, List.of()), mode, paths);
+        when(accessService.resolveEntry(TENANT, PROJECT, TOKEN)).thenReturn(entry);
     }
 
     /** Short aliases for the real enum constants, to keep the fixtures readable. */

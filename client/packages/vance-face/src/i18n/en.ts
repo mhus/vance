@@ -2332,6 +2332,59 @@ export default {
     },
   },
 
+  oauthConsent: {
+    pageTitle: 'Allow access',
+    loading: 'Loading…',
+    missingRequest: 'This page needs a sign-in request. Start the sign-in again from the program.',
+    expired: 'This sign-in request has expired or belongs to another user. Start the sign-in again from the program.',
+    wrongTenant: 'This sign-in request is for the tenant "{tenant}", but you are signed in to another one.',
+    signInToTenant: 'Sign in to {tenant}',
+    headline: '"{client}" wants access to your account',
+    client: {
+      dcr: 'The program chose this name itself — it is not verified.',
+      cimd: 'The program is identified by its website {host}.',
+      firstParty: 'This is a Vancetope program.',
+    },
+    accessLabel: 'Access to',
+    accountLabel: 'Acting as',
+    redirectLabel: 'Access goes to',
+    door: {
+      mcpProject: 'The documents of project "{project}" (MCP)',
+      mcp: 'All MCP tools of tenant "{tenant}" — everything your account may do there',
+      agents: 'The agents door of tenant "{tenant}"',
+      account: 'Your whole account in tenant "{tenant}"',
+    },
+    loopbackWarning:
+      'The access goes to a program on this computer (localhost). Only approve if you started this sign-in yourself just now.',
+    revokeHint: 'You can revoke the access at any time under Connected Accounts.',
+    approve: 'Allow',
+    decline: 'Decline',
+  },
+
+  connectedApps: {
+    title: 'Apps with access to your account',
+    intro:
+      'Programs that can act as you: OAuth sign-ins (e.g. an MCP client) and integration tokens. Revoking stops them within seconds.',
+    loading: 'Loading…',
+    loadFailed: 'Could not load the connected apps.',
+    revokeFailed: 'Revoking failed.',
+    revoke: 'Revoke',
+    confirmRevoke: 'Revoke the access of "{name}"? The program will have to sign in again.',
+    lastUsed: 'Last used: {when}',
+    never: 'never',
+    tokenBadge: 'Token',
+    empty: {
+      headline: 'No connected apps',
+      body: 'No outside program currently has access to your account.',
+    },
+    scope: {
+      mcpProject: 'MCP documents of project "{project}"',
+      mcp: 'All MCP tools',
+      agents: 'Agents door',
+      account: 'Whole account',
+    },
+  },
+
   connectedAccounts: {
     pageTitle: 'Connected Accounts',
     loading: 'Loading…',

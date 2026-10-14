@@ -40,8 +40,8 @@ class MaximegalonThreadTest {
     void setUp() {
         repository = mock(MaximegalonRepository.class);
         mongoTemplate = mock(MongoTemplate.class);
-        service = new MaximegalonService(repository, mongoTemplate,
-                mock(ApplicationEventPublisher.class), new InboxEffectRegistry(List.of()));
+        service = new MaximegalonService(
+                repository, mongoTemplate, mock(ApplicationEventPublisher.class), new InboxEffectRegistry(List.of()));
     }
 
     // ──── Seeding on create ─────────────────────────────────────────────
@@ -50,7 +50,8 @@ class MaximegalonThreadTest {
     void create_seedsParticipantsFromOriginatorAndAssignee() {
         when(repository.save(any())).thenAnswer(i -> i.getArgument(0));
 
-        MaximegalonDocument saved = service.create(thread("acme", "alice", "bob").build());
+        MaximegalonDocument saved =
+                service.create(thread("acme", "alice", "bob").build());
 
         assertThat(saved.getParticipants()).containsExactly("alice", "bob");
     }
@@ -59,7 +60,8 @@ class MaximegalonThreadTest {
     void create_marksUnreadForEveryoneButTheCreator() {
         when(repository.save(any())).thenAnswer(i -> i.getArgument(0));
 
-        MaximegalonDocument saved = service.create(thread("acme", "alice", "bob").build());
+        MaximegalonDocument saved =
+                service.create(thread("acme", "alice", "bob").build());
 
         assertThat(saved.getReadBy()).containsExactly("alice");
         assertThat(saved.getUnreadFor()).containsExactly("bob");
@@ -121,14 +123,81 @@ class MaximegalonThreadTest {
         assertThat(rendered).doesNotContain("\"bob\", \"alice\"");
     }
 
+    /**
+     * {@code post} answers the message it wrote — a caller that needs its own
+     * contribution as a cursor must not search for it afterwards, when a
+     * parallel write of the same author may already be the newer one.
+     */
+    @Test
+    void post_answersTheMessageItWrote() {
+        MaximegalonDocument doc = thread("acme", "alice", "bob")
+                .id("t1")
+                .participants(new ArrayList<>(List.of("alice", "bob")))
+                .unreadFor(new ArrayList<>())
+                .build();
+        when(repository.findByIdAndTenantId("t1", "acme")).thenReturn(Optional.of(doc));
+
+        MaximegalonService.Posted posted =
+                service.post("acme", "t1", "bob", "which of the two?", null).orElseThrow();
+
+        assertThat(posted.message().getAuthorUserId()).isEqualTo("bob");
+        assertThat(posted.message().getBody()).isEqualTo("which of the two?");
+        assertThat(posted.message().getId()).isNotBlank();
+        assertThat(posted.item()).isSameAs(doc);
+    }
+
+    @Test
+    void post_onAMissingThread_isEmpty() {
+        when(repository.findByIdAndTenantId("t1", "acme")).thenReturn(Optional.empty());
+
+        assertThat(service.post("acme", "t1", "bob", "hello?", null)).isEmpty();
+    }
+
+    // ──── Open discussions ──────────────────────────────────────────────
+
+    /** Filtered in the query — a desk with a long history costs only its open discussions. */
+    @Test
+    void listOpenDiscussionsAssignedTo_queriesOpenDiscussionsOnTheDesk() {
+        service.listOpenDiscussionsAssignedTo("acme", "_trillian-colin-1");
+
+        ArgumentCaptor<Query> query = ArgumentCaptor.forClass(Query.class);
+        verify(mongoTemplate).find(query.capture(), org.mockito.ArgumentMatchers.eq(MaximegalonDocument.class));
+        String rendered = query.getValue().getQueryObject().toString();
+        assertThat(rendered)
+                .contains("tenantId=acme")
+                .contains("assignedToUserId=_trillian-colin-1")
+                .contains("$nin")
+                .contains("ARCHIVED")
+                .contains("DISMISSED")
+                .contains("tags=discussion");
+    }
+
+    @Test
+    void countOpenDiscussions_countsOneOriginatorOnOneDesk() {
+        when(mongoTemplate.count(any(Query.class), org.mockito.ArgumentMatchers.eq(MaximegalonDocument.class)))
+                .thenReturn(3L);
+
+        assertThat(service.countOpenDiscussions("acme", "road.runner", "_trillian-colin-1"))
+                .isEqualTo(3L);
+
+        ArgumentCaptor<Query> query = ArgumentCaptor.forClass(Query.class);
+        verify(mongoTemplate).count(query.capture(), org.mockito.ArgumentMatchers.eq(MaximegalonDocument.class));
+        String rendered = query.getValue().getQueryObject().toString();
+        assertThat(rendered)
+                .contains("originatorUserId=road.runner")
+                .contains("assignedToUserId=_trillian-colin-1")
+                .contains("tags=discussion")
+                .contains("$nin");
+    }
+
     @Test
     void postMessage_atTheLimit_isRefused() {
         List<MaximegalonMessage> full = new ArrayList<>();
         for (int i = 0; i < MaximegalonService.MAX_MESSAGES; i++) {
             full.add(MaximegalonMessage.builder().id("m" + i).build());
         }
-        MaximegalonDocument doc = thread("acme", "alice", "bob")
-                .id("t1").messages(full).build();
+        MaximegalonDocument doc =
+                thread("acme", "alice", "bob").id("t1").messages(full).build();
         when(repository.findByIdAndTenantId("t1", "acme")).thenReturn(Optional.of(doc));
 
         assertThatThrownBy(() -> service.postMessage("acme", "t1", "bob", "one more", null))
@@ -155,7 +224,10 @@ class MaximegalonThreadTest {
                 .id("t1")
                 .messages(new ArrayList<>(List.of(
                         MaximegalonMessage.builder().id("root").build(),
-                        MaximegalonMessage.builder().id("child").parentId("root").build())))
+                        MaximegalonMessage.builder()
+                                .id("child")
+                                .parentId("root")
+                                .build())))
                 .build();
         when(repository.findByIdAndTenantId("t1", "acme")).thenReturn(Optional.of(doc));
 
@@ -172,7 +244,8 @@ class MaximegalonThreadTest {
     void markRead_leavesStatusUntouched() {
         MaximegalonDocument doc = thread("acme", "alice", "bob")
                 .id("t1")
-                .messages(new ArrayList<>(List.of(MaximegalonMessage.builder().id("m1").build())))
+                .messages(new ArrayList<>(
+                        List.of(MaximegalonMessage.builder().id("m1").build())))
                 .build();
         when(repository.findByIdAndTenantId("t1", "acme")).thenReturn(Optional.of(doc));
 
@@ -212,8 +285,8 @@ class MaximegalonThreadTest {
 
     @Test
     void unfollow_dropsFromParticipantsAndUnread() {
-        MaximegalonDocument doc = thread("acme", "alice", "bob")
-                .id("t1").requiresAction(false).build();
+        MaximegalonDocument doc =
+                thread("acme", "alice", "bob").id("t1").requiresAction(false).build();
         when(repository.findByIdAndTenantId("t1", "acme")).thenReturn(Optional.of(doc));
 
         service.setFollowing("acme", "t1", "cecilia", false);
@@ -226,7 +299,10 @@ class MaximegalonThreadTest {
     @Test
     void unfollow_byAssigneeOfAnOpenAsk_isRefused() {
         MaximegalonDocument doc = thread("acme", "alice", "bob")
-                .id("t1").requiresAction(true).status(MaximegalonStatus.PENDING).build();
+                .id("t1")
+                .requiresAction(true)
+                .status(MaximegalonStatus.PENDING)
+                .build();
         when(repository.findByIdAndTenantId("t1", "acme")).thenReturn(Optional.of(doc));
 
         assertThatThrownBy(() -> service.setFollowing("acme", "t1", "bob", false))
@@ -239,9 +315,13 @@ class MaximegalonThreadTest {
     @Test
     void unfollow_byAssigneeOfAnAnsweredThread_isAllowed() {
         MaximegalonDocument doc = thread("acme", "alice", "bob")
-                .id("t1").requiresAction(true).status(MaximegalonStatus.ANSWERED)
-                .answer(AnswerPayload.builder().outcome(AnswerOutcome.DECIDED)
-                        .answeredBy("bob").build())
+                .id("t1")
+                .requiresAction(true)
+                .status(MaximegalonStatus.ANSWERED)
+                .answer(AnswerPayload.builder()
+                        .outcome(AnswerOutcome.DECIDED)
+                        .answeredBy("bob")
+                        .build())
                 .build();
         when(repository.findByIdAndTenantId("t1", "acme")).thenReturn(Optional.of(doc));
 
@@ -256,7 +336,9 @@ class MaximegalonThreadTest {
     @Test
     void delegate_addsNewAssigneeAsParticipantAndMarksUnread() {
         MaximegalonDocument doc = thread("acme", "alice", "bob")
-                .id("t1").participants(new ArrayList<>(List.of("alice", "bob"))).build();
+                .id("t1")
+                .participants(new ArrayList<>(List.of("alice", "bob")))
+                .build();
         when(repository.findByIdAndTenantId("t1", "acme")).thenReturn(Optional.of(doc));
 
         service.delegate("acme", "t1", "carol", "bob", null);
@@ -271,11 +353,11 @@ class MaximegalonThreadTest {
     /** Five agreements must not ring five bells. */
     @Test
     void react_neverTouchesUnread() {
-        MaximegalonDocument doc = thread("acme", "alice", "bob").id("t1").version(3L).build();
+        MaximegalonDocument doc =
+                thread("acme", "alice", "bob").id("t1").version(3L).build();
         when(repository.findByIdAndTenantId("t1", "acme")).thenReturn(Optional.of(doc));
-        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
-                any(Class.class))).thenReturn(com.mongodb.client.result.UpdateResult
-                        .acknowledged(1, 1L, null));
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class), any(Class.class)))
+                .thenReturn(com.mongodb.client.result.UpdateResult.acknowledged(1, 1L, null));
 
         service.react("acme", "t1", null, "thumbsup", "cecilia", true);
 
@@ -287,14 +369,17 @@ class MaximegalonThreadTest {
     /** A key with nobody behind it would render as a chip showing zero. */
     @Test
     void react_removingTheLastUser_dropsTheReaction() {
-        MaximegalonDocument doc = thread("acme", "alice", "bob").id("t1").version(1L)
+        MaximegalonDocument doc = thread("acme", "alice", "bob")
+                .id("t1")
+                .version(1L)
                 .reactions(new ArrayList<>(List.of(MaximegalonReaction.builder()
-                        .key("thumbsup").userIds(new ArrayList<>(List.of("cecilia"))).build())))
+                        .key("thumbsup")
+                        .userIds(new ArrayList<>(List.of("cecilia")))
+                        .build())))
                 .build();
         when(repository.findByIdAndTenantId("t1", "acme")).thenReturn(Optional.of(doc));
-        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
-                any(Class.class))).thenReturn(com.mongodb.client.result.UpdateResult
-                        .acknowledged(1, 1L, null));
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class), any(Class.class)))
+                .thenReturn(com.mongodb.client.result.UpdateResult.acknowledged(1, 1L, null));
 
         service.react("acme", "t1", null, "thumbsup", "cecilia", false);
 
@@ -311,7 +396,8 @@ class MaximegalonThreadTest {
      */
     @Test
     void removeParticipant_dropsThemFromParticipantsAndFromTheBadge() {
-        MaximegalonDocument doc = thread("acme", "alice", "bob").id("t1")
+        MaximegalonDocument doc = thread("acme", "alice", "bob")
+                .id("t1")
                 .participants(new ArrayList<>(List.of("alice", "bob", "cecilia")))
                 .unreadFor(new ArrayList<>(List.of("cecilia")))
                 .build();
@@ -333,8 +419,7 @@ class MaximegalonThreadTest {
 
         assertThatThrownBy(() -> service.removeParticipant("acme", "t1", "bob", "alice"))
                 .isInstanceOf(MaximegalonRuleException.class)
-                .hasFieldOrPropertyWithValue(
-                        "reason", MaximegalonRuleException.PARTICIPANT_MUST_STAY);
+                .hasFieldOrPropertyWithValue("reason", MaximegalonRuleException.PARTICIPANT_MUST_STAY);
     }
 
     @Test
@@ -344,8 +429,7 @@ class MaximegalonThreadTest {
 
         assertThatThrownBy(() -> service.removeParticipant("acme", "t1", "alice", "bob"))
                 .isInstanceOf(MaximegalonRuleException.class)
-                .hasFieldOrPropertyWithValue(
-                        "reason", MaximegalonRuleException.PARTICIPANT_MUST_STAY);
+                .hasFieldOrPropertyWithValue("reason", MaximegalonRuleException.PARTICIPANT_MUST_STAY);
     }
 
     // ──── Reaction key bound ────────────────────────────────────────────
@@ -361,17 +445,20 @@ class MaximegalonThreadTest {
         List<MaximegalonReaction> full = new ArrayList<>();
         for (int i = 0; i < MaximegalonService.MAX_REACTION_KEYS; i++) {
             full.add(MaximegalonReaction.builder()
-                    .key("k" + i).userIds(new ArrayList<>(List.of("alice"))).build());
+                    .key("k" + i)
+                    .userIds(new ArrayList<>(List.of("alice")))
+                    .build());
         }
-        MaximegalonDocument doc = thread("acme", "alice", "bob").id("t1").version(1L)
-                .reactions(full).build();
+        MaximegalonDocument doc = thread("acme", "alice", "bob")
+                .id("t1")
+                .version(1L)
+                .reactions(full)
+                .build();
         when(repository.findByIdAndTenantId("t1", "acme")).thenReturn(Optional.of(doc));
 
-        assertThatThrownBy(
-                () -> service.react("acme", "t1", null, "brand_new", "bob", true))
+        assertThatThrownBy(() -> service.react("acme", "t1", null, "brand_new", "bob", true))
                 .isInstanceOf(MaximegalonRuleException.class)
-                .hasFieldOrPropertyWithValue(
-                        "reason", MaximegalonRuleException.REACTION_LIMIT_REACHED);
+                .hasFieldOrPropertyWithValue("reason", MaximegalonRuleException.REACTION_LIMIT_REACHED);
     }
 
     @Test
@@ -381,14 +468,18 @@ class MaximegalonThreadTest {
         List<MaximegalonReaction> full = new ArrayList<>();
         for (int i = 0; i < MaximegalonService.MAX_REACTION_KEYS; i++) {
             full.add(MaximegalonReaction.builder()
-                    .key("k" + i).userIds(new ArrayList<>(List.of("alice"))).build());
+                    .key("k" + i)
+                    .userIds(new ArrayList<>(List.of("alice")))
+                    .build());
         }
-        MaximegalonDocument doc = thread("acme", "alice", "bob").id("t1").version(1L)
-                .reactions(full).build();
+        MaximegalonDocument doc = thread("acme", "alice", "bob")
+                .id("t1")
+                .version(1L)
+                .reactions(full)
+                .build();
         when(repository.findByIdAndTenantId("t1", "acme")).thenReturn(Optional.of(doc));
-        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
-                any(Class.class))).thenReturn(com.mongodb.client.result.UpdateResult
-                        .acknowledged(1, 1L, null));
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class), any(Class.class)))
+                .thenReturn(com.mongodb.client.result.UpdateResult.acknowledged(1, 1L, null));
 
         service.react("acme", "t1", null, "k0", "bob", true);
 

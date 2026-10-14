@@ -54,8 +54,15 @@ public class LlmResponseSanitizer {
     /** Qwen-style: {@code <think>…</think>}, multi-line, ungreedy. */
     private static final Pattern THINK_TAG = Pattern.compile("(?is)<think>.*?</think>");
 
-    /** An orphan closing tag left after the paired blocks are gone — and what precedes it. */
-    private static final Pattern ORPHAN_THINK_CLOSE = Pattern.compile("(?is)^.*</think>");
+    /**
+     * An orphan closing tag — and what precedes it. Ungreedy: the reasoning
+     * ends at the <em>first</em> closing tag; a later one is the answer
+     * quoting the tag, not more reasoning.
+     */
+    private static final Pattern ORPHAN_THINK_CLOSE = Pattern.compile("(?is)^.*?</think>");
+
+    /** An opening tag — its presence means every closing tag has a partner. */
+    private static final Pattern THINK_OPEN = Pattern.compile("(?i)<think>");
 
     /**
      * Harmony "analysis"/"commentary" channels — text from the start
@@ -97,7 +104,13 @@ public class LlmResponseSanitizer {
     public String stripUnconditional(String content) {
         if (content == null || content.isEmpty()) return content;
         String out = THINK_TAG.matcher(content).replaceAll("");
-        out = ORPHAN_THINK_CLOSE.matcher(out).replaceAll("");
+        // Only a response that never opened a block can carry an orphan: the
+        // reasoning went to reasoning_content and only the closing tag leaked.
+        // With an opening tag present, a closing tag left over after the pairs
+        // are gone is text the answer quotes.
+        if (!THINK_OPEN.matcher(content).find()) {
+            out = ORPHAN_THINK_CLOSE.matcher(out).replaceFirst("");
+        }
         out = HARMONY_NON_FINAL.matcher(out).replaceAll("");
         for (Pattern p : HARMONY_LEFTOVERS) {
             out = p.matcher(out).replaceAll("");

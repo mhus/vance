@@ -162,4 +162,46 @@ public class ProjectOwnerRequirementService {
         }
         return released;
     }
+
+    /**
+     * The other direction of {@link #releaseNoLongerQualifying}, for waiting
+     * work that is not a document: re-derives the flag for every project a
+     * {@link ProjectOwnerRequirementContributor} reports work in.
+     *
+     * <p>Document work does not need this — its first scheduler or hook fires
+     * the change event that sets the flag. A contributor's work may predate the
+     * contributor: a Trillian loop that was created before loops counted as
+     * waiting work never asked for a recompute, so its hub stays unplaced, the
+     * heartbeat (which only serves held hubs) never reaches it, and the loop
+     * falls silent. The candidate set is what the contributors enumerate — the
+     * live loops, not every project.
+     *
+     * <p>A failure for one project is logged and does not stop the others.
+     *
+     * @return how many projects were newly pinned
+     */
+    public int pinContributedWork() {
+        int pinned = 0;
+        for (ProjectOwnerRequirementContributor contributor :
+                contributors.orderedStream().toList()) {
+            for (ProjectOwnerRequirementContributor.ProjectRef ref : contributor.projectsWithWork()) {
+                try {
+                    boolean before = projectService
+                            .findByTenantAndName(ref.tenantId(), ref.projectId())
+                            .map(ProjectDocument::isOwnerRequired)
+                            .orElse(true);
+                    if (!before && recompute(ref.tenantId(), ref.projectId())) {
+                        pinned++;
+                    }
+                } catch (RuntimeException e) {
+                    log.warn(
+                            "Could not re-derive ownerRequired of '{}/{}': {}",
+                            ref.tenantId(),
+                            ref.projectId(),
+                            e.toString());
+                }
+            }
+        }
+        return pinned;
+    }
 }

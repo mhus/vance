@@ -135,4 +135,72 @@ class ProjectOwnerRequirementServiceTest {
                 .isFalse();
         assertThat(ProjectOwnerRequirementService.isActivationSourcePath(null)).isFalse();
     }
+
+    // ─── boot re-check: pin work that predates the contributor ─────
+
+    @Test
+    void pinContributedWork_pinsAnUnpinnedProjectWithWork() {
+        // A Trillian loop created before loops counted as waiting work: its
+        // hub was never pinned, and no event will ever ask again.
+        contributors.add(
+                contributor(List.of(new ProjectOwnerRequirementContributor.ProjectRef("acme", "_user__trillian-x"))));
+        when(projectService.findByTenantAndName("acme", "_user__trillian-x"))
+                .thenReturn(java.util.Optional.of(project("_user__trillian-x", false)));
+        when(documentService.existsAnyUnderPrefixes(eq("acme"), eq("_user__trillian-x"), anyList(), any()))
+                .thenReturn(false);
+
+        assertThat(service.pinContributedWork()).isEqualTo(1);
+        verify(projectService).setOwnerRequired("acme", "_user__trillian-x", true);
+    }
+
+    @Test
+    void pinContributedWork_leavesAlreadyPinnedAndUnknownProjectsAlone() {
+        contributors.add(contributor(List.of(
+                new ProjectOwnerRequirementContributor.ProjectRef("acme", "pinned"),
+                new ProjectOwnerRequirementContributor.ProjectRef("acme", "gone"))));
+        when(projectService.findByTenantAndName("acme", "pinned"))
+                .thenReturn(java.util.Optional.of(project("pinned", true)));
+        when(projectService.findByTenantAndName("acme", "gone")).thenReturn(java.util.Optional.empty());
+
+        assertThat(service.pinContributedWork()).isZero();
+        verify(projectService, never()).setOwnerRequired(any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
+    }
+
+    @Test
+    void pinContributedWork_oneFailureDoesNotStopTheOthers() {
+        contributors.add(contributor(List.of(
+                new ProjectOwnerRequirementContributor.ProjectRef("acme", "broken"),
+                new ProjectOwnerRequirementContributor.ProjectRef("acme", "hub"))));
+        when(projectService.findByTenantAndName("acme", "broken")).thenThrow(new IllegalStateException("mongo"));
+        when(projectService.findByTenantAndName("acme", "hub"))
+                .thenReturn(java.util.Optional.of(project("hub", false)));
+
+        assertThat(service.pinContributedWork()).isEqualTo(1);
+        verify(projectService).setOwnerRequired("acme", "hub", true);
+    }
+
+    private static ProjectOwnerRequirementContributor contributor(
+            List<ProjectOwnerRequirementContributor.ProjectRef> work) {
+        return new ProjectOwnerRequirementContributor() {
+            @Override
+            public boolean requiresOwner(String tenantId, String projectId) {
+                return work.stream()
+                        .anyMatch(r ->
+                                r.tenantId().equals(tenantId) && r.projectId().equals(projectId));
+            }
+
+            @Override
+            public List<ProjectRef> projectsWithWork() {
+                return work;
+            }
+        };
+    }
+
+    private static de.mhus.vance.shared.project.ProjectDocument project(String name, boolean ownerRequired) {
+        de.mhus.vance.shared.project.ProjectDocument doc = new de.mhus.vance.shared.project.ProjectDocument();
+        doc.setTenantId("acme");
+        doc.setName(name);
+        doc.setOwnerRequired(ownerRequired);
+        return doc;
+    }
 }

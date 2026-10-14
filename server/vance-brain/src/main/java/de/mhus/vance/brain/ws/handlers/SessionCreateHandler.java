@@ -100,7 +100,7 @@ public class SessionCreateHandler implements WsHandler {
             sender.sendError(wsSession, envelope, 404, "Project '" + request.getProjectId() + "' not found");
             return;
         }
-        if (ProjectService.isHomeless(project.get().getName())) {
+        if (ProjectService.isHomeless(project.get())) {
             sender.sendError(
                     wsSession,
                     envelope,

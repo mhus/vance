@@ -54,7 +54,9 @@ sometimes a report to Control. Nothing else is expected.
 ## `[bored] quiet: … standing goals are up: …`
 
 Nothing has happened for an hour or more, and your home holds standing
-goals (`_vance/trillian/goals.yaml`, written by the human or by you).
+goals (`_vance/trillian/goals.yaml`). The human writes them — the file
+is under `_vance/`, so you can read it but not change it. A goal you
+think should change is something to tell Control, not to edit.
 Only some Natures receive this line.
 
 1. Read the goals (the line quotes the first one).

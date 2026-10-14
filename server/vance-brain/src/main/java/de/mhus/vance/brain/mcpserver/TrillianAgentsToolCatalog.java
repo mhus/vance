@@ -199,7 +199,8 @@ public class TrillianAgentsToolCatalog {
             return "Read a conversation you opened with an exposed agent: all contributions, or"
                     + " only those after the message id 'after'. Waits up to 'waitMs' milliseconds"
                     + " when nothing is new yet. Reading stays possible after the conversation"
-                    + " was archived; contributing does not.";
+                    + " was archived; contributing does not. 'closed: true' in the result means the"
+                    + " conversation has ended — nothing new will arrive.";
         }
 
         @Override
@@ -294,6 +295,7 @@ public class TrillianAgentsToolCatalog {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("conversationId", reply.conversationId());
         out.put("arrived", reply.arrived());
+        out.put("closed", reply.closed());
         out.put("messages", messages);
         return out;
     }

@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.trillian;
 
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
+import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
@@ -8,8 +9,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -73,6 +76,17 @@ public class TrillianWakeupService {
     public static final String PARAM_NEXT_WAKEUP_AT = "trillianNextWakeupAt";
     /** engineParamOverrides key: index into {@link #LADDER}. */
     public static final String PARAM_WAKEUP_STEP = "trillianWakeupStep";
+
+    /**
+     * engineParamOverrides key: {@code true} while a {@link #wakeNow} is
+     * owed. A due time alone does not survive the loop's own yield point —
+     * {@link #arm} recomputes it from the ladder, and {@link #disarm} clears
+     * it while a worker runs — so a contribution arriving mid-turn would wait
+     * for the ladder again. The flag keeps the self-check due until a turn
+     * has started ({@link #clearWakeRequest}) or the heartbeat has handed the
+     * self-check over.
+     */
+    public static final String PARAM_WAKE_REQUESTED = "trillianWakeRequested";
 
     /**
      * engineParamOverrides key: epoch millis of the earliest enabled schedule
@@ -149,6 +163,12 @@ public class TrillianWakeupService {
      * forgetting it.
      */
     public void arm(ThinkProcessDocument loop, ZoneId zone) {
+        if (isWakeRequested(loop)) {
+            // Somebody wrote while the loop was busy: the self-check stays
+            // due, whatever the ladder or a running worker would say.
+            keepDue(loop.getId());
+            return;
+        }
         if (!shouldArm(loop)) {
             log.trace(
                     "Trillian wakeup not armed id='{}' — status {} or a worker is running",
@@ -183,10 +203,30 @@ public class TrillianWakeupService {
      * costs a turn only because the unread thread is a finding.
      */
     public void wakeNow(String loopProcessId) {
-        thinkProcessService.setEngineParamOverride(
-                loopProcessId, PARAM_NEXT_WAKEUP_AT, Instant.now().toEpochMilli());
+        thinkProcessService.setEngineParamOverride(loopProcessId, PARAM_WAKE_REQUESTED, true);
+        keepDue(loopProcessId);
         resetCadence(loopProcessId);
         log.trace("Trillian wakeup due now id='{}'", loopProcessId);
+    }
+
+    /**
+     * Drops an owed {@link #wakeNow} — a turn has started and will see what
+     * the request was about, or the heartbeat delivered the self-check (or
+     * found nothing to show). A contribution after this point requests anew.
+     */
+    public void clearWakeRequest(String loopProcessId) {
+        thinkProcessService.setEngineParamOverride(loopProcessId, PARAM_WAKE_REQUESTED, null);
+    }
+
+    /** Whether a {@link #wakeNow} is still owed. */
+    public boolean isWakeRequested(ThinkProcessDocument loop) {
+        Map<String, Object> overrides = loop.getEngineParamOverrides();
+        return overrides != null && Boolean.TRUE.equals(overrides.get(PARAM_WAKE_REQUESTED));
+    }
+
+    private void keepDue(String loopProcessId) {
+        thinkProcessService.setEngineParamOverride(
+                loopProcessId, PARAM_NEXT_WAKEUP_AT, Instant.now().toEpochMilli());
     }
 
     /**
@@ -253,9 +293,26 @@ public class TrillianWakeupService {
         return fallback;
     }
 
-    /** Clears a pending self-check — something is in flight after all. */
+    /**
+     * Clears a pending self-check — something is in flight after all. An
+     * owed {@link #wakeNow} is not something in flight: it stays due.
+     */
     public void disarm(ThinkProcessDocument loop) {
+        if (isWakeRequested(loop)) {
+            log.trace("Trillian wakeup not disarmed id='{}' — a wake is owed", loop.getId());
+            keepDue(loop.getId());
+            return;
+        }
         log.trace("Trillian wakeup disarmed id='{}'", loop.getId());
+        thinkProcessService.setEngineParamOverride(loop.getId(), PARAM_NEXT_WAKEUP_AT, null);
+    }
+
+    /**
+     * Clears the self-check because the heartbeat is handing it over right
+     * now — the owed wake included, unlike {@link #disarm}: this is the wake.
+     */
+    public void consumeWake(ThinkProcessDocument loop) {
+        clearWakeRequest(loop.getId());
         thinkProcessService.setEngineParamOverride(loop.getId(), PARAM_NEXT_WAKEUP_AT, null);
     }
 
@@ -385,11 +442,16 @@ public class TrillianWakeupService {
     }
 
     /**
-     * Every live loop process in the cluster — the only processes that wake
-     * themselves. One indexed query per tick; the heartbeat keeps the ones in
-     * hubs its pod holds.
+     * The live loop processes in {@code projects} — the projects the calling
+     * pod holds. Loops live in their account's hub, so whatever else is held
+     * simply matches nothing. One indexed query per tick, scoped to the pod's
+     * own projects rather than the cluster.
      */
-    public List<ThinkProcessDocument> liveLoops(int limit) {
-        return thinkProcessService.findLiveByEngine(TrillianUserEngine.NAME, limit);
+    public List<ThinkProcessDocument> liveLoopsIn(Collection<ProjectDocument> projects) {
+        Map<String, List<String>> byTenant = projects.stream()
+                .collect(Collectors.groupingBy(
+                        ProjectDocument::getTenantId,
+                        Collectors.mapping(ProjectDocument::getName, Collectors.toList())));
+        return thinkProcessService.findLiveByEngineInProjects(TrillianUserEngine.NAME, byTenant);
     }
 }

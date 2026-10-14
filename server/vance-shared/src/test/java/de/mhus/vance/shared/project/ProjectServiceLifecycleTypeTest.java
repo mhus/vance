@@ -56,7 +56,7 @@ class ProjectServiceLifecycleTypeTest {
         assertThat(ProjectService.isHomeless("_tenant")).isTrue();
         assertThat(ProjectService.isHomeless("_user_marvin")).isFalse();
         assertThat(ProjectService.isHomeless("kunde-x")).isFalse();
-        assertThat(ProjectService.isHomeless(null)).isFalse();
+        assertThat(ProjectService.isHomeless((String) null)).isFalse();
     }
 
     @Test

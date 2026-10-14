@@ -31,8 +31,7 @@ class ProjectManagerServiceTest {
 
     private final ProjectService projectService = mock(ProjectService.class);
     private final ClusterService clusterService = mock(ClusterService.class);
-    private final ProjectManagerService manager =
-            new ProjectManagerService(projectService, clusterService);
+    private final ProjectManagerService manager = new ProjectManagerService(projectService, clusterService);
 
     @BeforeEach
     void stubCluster() {
@@ -43,8 +42,10 @@ class ProjectManagerServiceTest {
     private void givenLease(String podId, Instant claimedAt) {
         when(projectService.findByTenantAndName("acme", "test1"))
                 .thenReturn(Optional.of(ProjectDocument.builder()
-                        .tenantId("acme").name("test1")
-                        .homePodId(podId).homeNode("naga-vorlon")
+                        .tenantId("acme")
+                        .name("test1")
+                        .homePodId(podId)
+                        .homeNode("naga-vorlon")
                         .claimedAt(claimedAt)
                         .build()));
     }
@@ -52,8 +53,7 @@ class ProjectManagerServiceTest {
     @Test
     void validLease_resolvesHolderEndpoint() {
         givenLease("pod-holder", Instant.now());
-        when(clusterService.resolveEndpointByPodId("pod-holder"))
-                .thenReturn(Optional.of("192.168.1.113:9991"));
+        when(clusterService.resolveEndpointByPodId("pod-holder")).thenReturn(Optional.of("192.168.1.113:9991"));
 
         assertThat(manager.findProjectEndpoint("acme", "test1")).contains("192.168.1.113:9991");
     }
@@ -91,7 +91,23 @@ class ProjectManagerServiceTest {
     }
 
     @Test
-    void podlessProject_returnsEmptyWithoutTouchingTheLease() {
-        assertThat(manager.findProjectEndpoint("acme", "_user_marvin")).isEmpty();
+    void homelessTenantProject_returnsEmptyWithoutTouchingTheLease() {
+        assertThat(manager.findProjectEndpoint("acme", "_tenant")).isEmpty();
+        org.mockito.Mockito.verify(projectService, org.mockito.Mockito.never()).findByTenantAndName("acme", "_tenant");
+    }
+
+    @Test
+    void userHub_resolvesItsHolderLikeAnyOtherProject() {
+        when(projectService.findByTenantAndName("acme", "_user_marvin"))
+                .thenReturn(Optional.of(ProjectDocument.builder()
+                        .tenantId("acme")
+                        .name("_user_marvin")
+                        .homePodId("pod-holder")
+                        .homeNode("naga-vorlon")
+                        .claimedAt(Instant.now())
+                        .build()));
+        when(clusterService.resolveEndpointByPodId("pod-holder")).thenReturn(Optional.of("192.168.1.113:9991"));
+
+        assertThat(manager.findProjectEndpoint("acme", "_user_marvin")).contains("192.168.1.113:9991");
     }
 }

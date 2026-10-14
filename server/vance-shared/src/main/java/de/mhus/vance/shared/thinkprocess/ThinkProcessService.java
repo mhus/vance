@@ -423,20 +423,34 @@ public class ThinkProcessService {
     }
 
     /**
-     * Every process running {@code thinkEngine} that is not {@code CLOSED},
-     * across all tenants, capped at {@code limit}.
+     * Every process running {@code thinkEngine} that is not {@code CLOSED}
+     * in one of the given projects, {@code tenantId → project names}.
      *
-     * <p>For heartbeats of self-waking engines (the Trillian user-loop):
-     * one indexed query for the handful of live loops, filtered by the caller
-     * to the projects it holds, instead of a query per held project per tick.
-     * Backed by the {@code engine_status_idx}.
+     * <p>For heartbeats of self-waking engines (the Trillian user-loop): one
+     * indexed query for the live loops in the projects the calling pod holds
+     * — no cluster-wide scan with a cap, which would let a pod miss its own
+     * loops once the cluster carries more of them than the cap. Backed by the
+     * {@code engine_status_idx}. An empty map returns nothing.
      */
-    public List<ThinkProcessDocument> findLiveByEngine(String thinkEngine, int limit) {
-        Query query = new Query(Criteria.where("thinkEngine")
-                        .is(thinkEngine)
-                        .and("status")
-                        .ne(ThinkProcessStatus.CLOSED))
-                .limit(Math.max(1, limit));
+    public List<ThinkProcessDocument> findLiveByEngineInProjects(
+            String thinkEngine, Map<String, ? extends Collection<String>> projectsByTenant) {
+        List<Criteria> scopes = new ArrayList<>();
+        for (Map.Entry<String, ? extends Collection<String>> e : projectsByTenant.entrySet()) {
+            if (!e.getValue().isEmpty()) {
+                scopes.add(Criteria.where("tenantId")
+                        .is(e.getKey())
+                        .and("projectId")
+                        .in(e.getValue()));
+            }
+        }
+        if (scopes.isEmpty()) {
+            return List.of();
+        }
+        Query query = new Query(new Criteria()
+                .andOperator(
+                        Criteria.where("thinkEngine").is(thinkEngine),
+                        Criteria.where("status").ne(ThinkProcessStatus.CLOSED),
+                        new Criteria().orOperator(scopes)));
         return mongoTemplate.find(query, ThinkProcessDocument.class);
     }
 
@@ -445,6 +459,26 @@ public class ThinkProcessService {
      * that is not {@code CLOSED} — the "waiting work" test for self-waking
      * engines. Backed by the {@code engine_status_idx}.
      */
+    /**
+     * The {@code (tenantId, projectId)} of every project holding a process
+     * of {@code thinkEngine} that is not {@code CLOSED}, cluster-wide and
+     * deduplicated — projected to the two fields, no documents loaded.
+     *
+     * <p>For the boot re-check that pins projects whose waiting work is a
+     * self-waking process (the Trillian user-loop). Backed by the
+     * {@code engine_status_idx}.
+     */
+    public List<Map.Entry<String, String>> findProjectsWithLiveEngine(String thinkEngine) {
+        Query query = new Query(
+                Criteria.where("thinkEngine").is(thinkEngine).and("status").ne(ThinkProcessStatus.CLOSED));
+        query.fields().include("tenantId").include("projectId");
+        return mongoTemplate.find(query, ThinkProcessDocument.class).stream()
+                .filter(p -> p.getTenantId() != null && p.getProjectId() != null)
+                .<Map.Entry<String, String>>map(p -> Map.entry(p.getTenantId(), p.getProjectId()))
+                .distinct()
+                .toList();
+    }
+
     public boolean existsLiveByEngineInProject(String tenantId, String projectId, String thinkEngine) {
         Query query = new Query(Criteria.where("thinkEngine")
                 .is(thinkEngine)
@@ -521,6 +555,23 @@ public class ThinkProcessService {
 
     public List<ThinkProcessDocument> findBySession(String tenantId, String sessionId) {
         return repository.findByTenantIdAndSessionId(tenantId, sessionId);
+    }
+
+    /**
+     * The processes of a session that are not {@code CLOSED}. For callers
+     * that only ever look at the living — a session that spawns a process per
+     * conversation accumulates closed rows without bound, and loading all of
+     * them every round to drop them in memory grows with the session's age.
+     * Backed by the {@code tenant_session_status_idx}.
+     */
+    public List<ThinkProcessDocument> findLiveBySession(String tenantId, String sessionId) {
+        Query query = new Query(Criteria.where("tenantId")
+                .is(tenantId)
+                .and("sessionId")
+                .is(sessionId)
+                .and("status")
+                .ne(ThinkProcessStatus.CLOSED));
+        return mongoTemplate.find(query, ThinkProcessDocument.class);
     }
 
     public List<ThinkProcessDocument> findBySessionAndStatus(

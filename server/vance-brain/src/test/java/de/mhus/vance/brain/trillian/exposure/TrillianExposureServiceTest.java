@@ -167,6 +167,26 @@ class TrillianExposureServiceTest {
     }
 
     @Test
+    void theDirectoryIsCachedPerTenant_untilTheTtlOrAConfigChange() {
+        when(userService.all(TENANT)).thenReturn(List.of(trillian(COLIN, UserStatus.ACTIVE)));
+        givenConfig(COLIN, "exposedName: colin\nallowedCounterparts: [road.runner]\ndoors:\n  mcp: true\n");
+
+        service.findByExposedName(TENANT, "colin");
+        service.findByAccount(TENANT, COLIN);
+        service.directory(TENANT);
+        verify(userService, times(1)).all(TENANT);
+
+        service.onRoutedDocumentChanged(new RoutedDocumentChangedEvent.Upserted(
+                TENANT, HomeBootstrapService.hubProjectName(COLIN), TrillianExposureService.CONFIG_PATH, "doc-1"));
+        service.directory(TENANT);
+        verify(userService, times(2)).all(TENANT);
+
+        clock.advance(TrillianExposureService.CACHE_TTL.plusSeconds(1));
+        service.directory(TENANT);
+        verify(userService, times(3)).all(TENANT);
+    }
+
+    @Test
     void headLimitAndIdleOverridesReachTheCaller() {
         givenConfig(COLIN, "exposedName: colin\nheadLimit: 3\nidleMinutes: 90\n");
 

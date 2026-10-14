@@ -138,15 +138,6 @@ public class KindToolSupport {
     }
 
     /**
-     * READ gate for a document resolved directly by id (the branch that
-     * bypasses {@code resolveProject}). Same subject/resolver semantics as
-     * {@link #enforceDocWrite}. (permission-system read path)
-     */
-    public void enforceDocRead(ToolInvocationContext ctx, DocumentDocument doc) {
-        enforceDocWrite(ctx, doc.getProjectId(), doc.getPath(), de.mhus.vance.shared.permission.Action.READ);
-    }
-
-    /**
      * Resolve a document AND authorize {@code action} on it in one step —
      * for mutating tools that persist through {@code DocumentService}
      * directly (notes, move, tag, color, …) instead of {@link #writeBody}

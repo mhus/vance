@@ -71,6 +71,16 @@ class SimpleAuthPermissionBootstrapTest {
         verify(grants, never()).set(any(), any(), any(), any(), any(), any(), any());
     }
 
+    @Test
+    void grantProjectWriter_keepsADeliberateReaderGrant() {
+        PermissionGrantDocument lowered = userGrant("_trillian-colin-5127", GrantRole.READER, "marvin.acme");
+        when(grants.forScope("acme", GrantScopeType.PROJECT, "trillian-test")).thenReturn(List.of(lowered));
+
+        bootstrap.grantProjectWriter("acme", "trillian-test", "_trillian-colin-5127");
+
+        verify(grants, never()).set(any(), any(), any(), any(), any(), any(), any());
+    }
+
     private static PermissionGrantDocument userGrant(String subject, GrantRole role, String createdBy) {
         PermissionGrantDocument g = new PermissionGrantDocument();
         g.setTenantId("acme");

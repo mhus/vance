@@ -1,11 +1,13 @@
 package de.mhus.vance.brain.trillian.exposure;
 
+import de.mhus.vance.api.inbox.InboxMessagePostRequest;
 import de.mhus.vance.api.inbox.MaximegalonStatus;
 import de.mhus.vance.brain.trillian.TrillianHeadService;
 import de.mhus.vance.brain.trillian.TrillianOwnSessions;
 import de.mhus.vance.brain.trillian.TrillianSessionBootstrapper;
 import de.mhus.vance.brain.trillian.nature.TrillianNature;
 import de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry;
+import de.mhus.vance.shared.inbox.MaximegalonArchivedEvent;
 import de.mhus.vance.shared.inbox.MaximegalonDocument;
 import de.mhus.vance.shared.inbox.MaximegalonMessage;
 import de.mhus.vance.shared.inbox.MaximegalonMessageEvent;
@@ -48,13 +50,32 @@ import org.springframework.stereotype.Service;
  *
  * <p>Every refusal is a {@link ToolException} with a stable, greppable
  * reason — the shells surface it as MCP {@code isError} text, so an external
- * agent sees "not allowed" as protocol content, not as an HTTP failure
+ * agent sees a refusal as protocol content, not as an HTTP failure
  * (same convention as the project-scoped MCP surface).
+ *
+ * <p><b>Refusals do not enumerate.</b> A caller the gate refuses learns
+ * nothing it could not learn from {@code agent_list}: an agent that is not
+ * exposed, whose door is closed or that does not allow this caller all
+ * answer {@code agent not exposed}; a conversation that does not exist,
+ * is not a conversation of this door or belongs to someone else all answer
+ * {@code conversation not found}. The distinction is in the log.
  *
  * <p><b>Honest answers at the door.</b> The entry refuses up front what
  * would otherwise rest unheard (§6.7): an inactive Trillian (no live loop)
- * and a reached conversation limit are refused before the thread exists — a thread that lies around
- * with no head is the mechanics' fallback, not the entry's promise.
+ * and a reached conversation limit are refused before the thread exists — a
+ * thread that lies around with no head is the mechanics' fallback, not the
+ * entry's promise.
+ *
+ * <p><b>Bounds.</b> A contribution is capped like every inbox message
+ * ({@link InboxMessagePostRequest#MAX_BODY_CHARS}), a title like a
+ * discussion title ({@link #MAX_TITLE_CHARS}) — the door is the cheapest way
+ * into a model's context and must not be the largest. One caller holds at
+ * most as many open conversations with one Trillian as the Trillian has
+ * heads (multi-headed), or {@link #SINGLE_HEAD_CONVERSATION_LIMIT}
+ * (single-headed, whose one loop answers them all). The count and the create
+ * are serialised per caller and Trillian on this pod, so a burst of parallel
+ * opens cannot slip past the count; across pods the bound can be exceeded by
+ * at most one conversation per pod.
  *
  * <p><b>Reading outlives writing.</b> An archived conversation stays
  * readable (§3.11) — the counterpart can collect the closing contribution
@@ -67,7 +88,9 @@ import org.springframework.stereotype.Service;
  * once — and re-reads the thread every {@link #FALLBACK_POLL_MS} for
  * answers written on another pod. One caller holds at most
  * {@link #MAX_WAITING_PER_CALLER} waiting reads; beyond that a read answers
- * at once instead of parking yet another request thread.
+ * at once instead of parking yet another request thread. A conversation that
+ * ends while a read waits ends the wait: nothing will arrive any more, and
+ * the reply says {@code closed}.
  */
 @Service
 @RequiredArgsConstructor
@@ -88,21 +111,45 @@ public class TrillianConversationService {
     /** Waiting reads one caller may hold at the same time. */
     static final int MAX_WAITING_PER_CALLER = 4;
 
-    /** How the shell sees a message. */
+    /** Title cap — the same as a discussion opened through the inbox REST surface. */
+    public static final int MAX_TITLE_CHARS = 200;
+
+    /**
+     * Open conversations one caller may hold with one single-headed
+     * Trillian. There is no head limit to borrow from — the one loop answers
+     * every thread — so the bound is a fixed one, sized like a Nature's
+     * default head limit.
+     */
+    static final int SINGLE_HEAD_CONVERSATION_LIMIT = 5;
+
+    /** Lock stripes serialising count-then-create per caller and Trillian. */
+    private static final int OPEN_LOCK_STRIPES = 64;
+
+    /**
+     * How the shell sees a message. The Trillian's own contributions carry
+     * its exposed name, not its internal service account — the account is
+     * the server's business, the exposed name is what the counterpart talks to.
+     */
     public record Contribution(
             String id, String author, String body, @Nullable Instant at) {
 
-        static Contribution of(MaximegalonMessage message) {
-            return new Contribution(
-                    message.getId(), message.getAuthorUserId(), message.getBody(), message.getCreatedAt());
+        static Contribution of(MaximegalonMessage message, TrillianExposureService.Exposed exposed) {
+            String author = exposed.account().equals(message.getAuthorUserId())
+                    ? exposed.config().exposedName()
+                    : message.getAuthorUserId();
+            return new Contribution(message.getId(), author, message.getBody(), message.getCreatedAt());
         }
     }
 
-    /** The long-poll answer: what arrived, and whether anything arrived at all. */
-    public record Reply(String conversationId, List<Contribution> messages, boolean arrived) {
+    /**
+     * The long-poll answer: what arrived, whether anything arrived at all,
+     * and whether the conversation has ended — an ended conversation answers
+     * reads but takes no contribution, and nothing new will arrive.
+     */
+    public record Reply(String conversationId, List<Contribution> messages, boolean arrived, boolean closed) {
 
-        static Reply empty(String conversationId) {
-            return new Reply(conversationId, List.of(), false);
+        static Reply of(String conversationId, List<Contribution> messages, boolean closed) {
+            return new Reply(conversationId, messages, !messages.isEmpty(), closed);
         }
     }
 
@@ -118,17 +165,23 @@ public class TrillianConversationService {
     /** Waiting reads per conversation id, woken by the thread's message event. */
     private final ConcurrentHashMap<String, Set<CompletableFuture<Void>>> waiters = new ConcurrentHashMap<>();
 
-    /** Waiting reads per caller — the {@link #MAX_WAITING_PER_CALLER} bound. */
+    /** Waiting reads per {@code tenant\0caller} — the {@link #MAX_WAITING_PER_CALLER} bound. */
     private final ConcurrentHashMap<String, Integer> waitingPerCaller = new ConcurrentHashMap<>();
+
+    /** Fixed stripes, so the lock set does not grow with the callers. */
+    private final Object[] openLocks = newLocks();
 
     /**
      * Opens a conversation. The contribution becomes the thread's body — the
      * shape the thread listener treats as an opener, so the head wakes.
      */
     public Opened open(String tenantId, String caller, String exposedName, @Nullable String title, String text) {
-        TrillianExposureService.Exposed exposed = exposureService
-                .findByExposedName(tenantId, exposedName)
-                .orElseThrow(() -> new ToolException("agent not exposed: '" + exposedName + "'"));
+        requireText(text);
+        if (!titleBlank(title) && title.trim().length() > MAX_TITLE_CHARS) {
+            throw new ToolException("title too long: at most " + MAX_TITLE_CHARS + " characters");
+        }
+        TrillianExposureService.Exposed exposed =
+                exposureService.findByExposedName(tenantId, exposedName).orElseThrow(() -> notExposed(exposedName));
         passGate(exposed, caller);
         ThinkProcessDocument loop = ownSessions
                 .liveLoopOf(tenantId, exposed.account())
@@ -141,19 +194,30 @@ public class TrillianConversationService {
             throw new ToolException("conversation limit reached: '" + exposedName
                     + "' already leads the maximum number of conversations");
         }
-
-        MaximegalonDocument created = threads.create(MaximegalonService.discussion(
-                        tenantId, caller, exposed.account(), titleBlank(title) ? deriveTitle(text) : title.trim(), text)
-                .build());
-        return new Opened(created.getId());
+        int perCaller = conversationLimitOf(tenantId, exposed.account(), nature);
+        synchronized (openLockOf(tenantId, caller, exposed.account())) {
+            if (threads.countOpenDiscussions(tenantId, caller, exposed.account()) >= perCaller) {
+                throw new ToolException("conversation limit reached: you already hold " + perCaller
+                        + " open conversations with '" + exposedName + "' — close one first (agent_close)");
+            }
+            MaximegalonDocument created = threads.create(MaximegalonService.discussion(
+                            tenantId,
+                            caller,
+                            exposed.account(),
+                            titleBlank(title) ? deriveTitle(text) : title.trim(),
+                            text)
+                    .build());
+            return new Opened(created.getId());
+        }
     }
 
     /** Contributes to a conversation the caller opened. The head wakes on the message event. */
     public Contribution send(String tenantId, String caller, String conversationId, String text) {
-        conversationOf(tenantId, caller, conversationId, /* forWrite */ true);
-        Optional<MaximegalonDocument> updated;
+        requireText(text);
+        Conversation conversation = conversationOf(tenantId, caller, conversationId, /* forWrite */ true);
+        Optional<MaximegalonService.Posted> posted;
         try {
-            updated = threads.postMessage(tenantId, conversationId, caller, text, null);
+            posted = threads.post(tenantId, conversationId, caller, text, null);
         } catch (MaximegalonRuleException e) {
             if (MaximegalonRuleException.MESSAGE_LIMIT_REACHED.equals(e.getReason())) {
                 throw new ToolException(
@@ -161,16 +225,14 @@ public class TrillianConversationService {
             }
             throw new ToolException("contribution refused: " + e.getMessage(), e);
         }
-        if (updated.isEmpty()) {
-            throw new ToolException("conversation not found: " + conversationId);
+        if (posted.isEmpty()) {
+            throw notFound(conversationId);
         }
-        // The caller's own message is the cursor — searched by author, not
-        // taken as the last one: the head may answer an earlier contribution
-        // between the write and the re-read, and taking its answer as the
-        // cursor would skip it.
-        MaximegalonMessage sent = lastBy(messagesOf(updated.get()), caller)
-                .orElseThrow(() -> new ToolException("conversation not found: " + conversationId));
-        return Contribution.of(sent);
+        // The message this call wrote is the cursor — not the last one, and
+        // not the caller's last one: the head may answer an earlier
+        // contribution, or a parallel send of the same caller may land,
+        // between the write and the re-read; either would skip an answer.
+        return Contribution.of(posted.get().message(), conversation.exposed());
     }
 
     /**
@@ -181,8 +243,9 @@ public class TrillianConversationService {
      * ending twice is not an error.
      */
     public void close(String tenantId, String caller, String conversationId) {
-        MaximegalonDocument item = conversationOf(tenantId, caller, conversationId, /* forWrite */ false);
-        if (item.getStatus() == MaximegalonStatus.ARCHIVED || item.getStatus() == MaximegalonStatus.DISMISSED) {
+        MaximegalonDocument item = conversationOf(tenantId, caller, conversationId, /* forWrite */ false)
+                .item();
+        if (isEnded(item)) {
             return;
         }
         threads.archive(tenantId, conversationId, caller);
@@ -195,15 +258,18 @@ public class TrillianConversationService {
      */
     public Reply read(
             String tenantId, String caller, String conversationId, @Nullable String afterMessageId, long waitMs) {
-        MaximegalonDocument item = conversationOf(tenantId, caller, conversationId, /* forWrite */ false);
+        Conversation conversation = conversationOf(tenantId, caller, conversationId, /* forWrite */ false);
+        TrillianExposureService.Exposed exposed = conversation.exposed();
+        MaximegalonDocument item = conversation.item();
         int cursor = positionAfter(messagesOf(item), afterMessageId);
-        List<Contribution> fresh = freshOf(item, cursor);
-        if (!fresh.isEmpty()) {
-            return new Reply(conversationId, fresh, true);
+        List<Contribution> fresh = freshOf(item, cursor, exposed);
+        // Something new, or nothing will come any more: answer at once.
+        if (!fresh.isEmpty() || isEnded(item)) {
+            return Reply.of(conversationId, fresh, isEnded(item));
         }
         long wait = clampWait(waitMs);
-        if (wait == 0 || !acquireWait(caller)) {
-            return Reply.empty(conversationId);
+        if (wait == 0 || !acquireWait(tenantId, caller)) {
+            return Reply.of(conversationId, List.of(), false);
         }
         try {
             long deadline = System.currentTimeMillis() + wait;
@@ -214,15 +280,16 @@ public class TrillianConversationService {
                 try {
                     Optional<MaximegalonDocument> reloaded = threads.findById(tenantId, conversationId);
                     if (reloaded.isEmpty()) {
-                        return Reply.empty(conversationId);
+                        return Reply.of(conversationId, List.of(), true);
                     }
-                    fresh = freshOf(reloaded.get(), cursor);
-                    if (!fresh.isEmpty()) {
-                        return new Reply(conversationId, fresh, true);
+                    fresh = freshOf(reloaded.get(), cursor, exposed);
+                    boolean ended = isEnded(reloaded.get());
+                    if (!fresh.isEmpty() || ended) {
+                        return Reply.of(conversationId, fresh, ended);
                     }
                     long remaining = deadline - System.currentTimeMillis();
                     if (remaining <= 0) {
-                        return Reply.empty(conversationId);
+                        return Reply.of(conversationId, List.of(), false);
                     }
                     await(wake, Math.min(FALLBACK_POLL_MS, remaining));
                 } finally {
@@ -230,16 +297,29 @@ public class TrillianConversationService {
                 }
             }
         } finally {
-            releaseWait(caller);
+            releaseWait(tenantId, caller);
         }
     }
 
     /** Wakes the reads waiting on the thread that just got a message. */
     @EventListener
     public void onThreadMessage(MaximegalonMessageEvent event) {
-        String id = event.item().getId();
-        if (id == null) return;
-        Set<CompletableFuture<Void>> waiting = waiters.get(id);
+        wake(event.item().getId());
+    }
+
+    /**
+     * Wakes the reads waiting on a thread that was just archived — an end
+     * without a last word (idle sweep, {@code agent_close}) carries no
+     * message event, and the waiting read must learn it is over.
+     */
+    @EventListener
+    public void onThreadArchived(MaximegalonArchivedEvent event) {
+        wake(event.item().getId());
+    }
+
+    private void wake(@Nullable String conversationId) {
+        if (conversationId == null) return;
+        Set<CompletableFuture<Void>> waiting = waiters.get(conversationId);
         if (waiting != null) {
             waiting.forEach(future -> future.complete(null));
         }
@@ -247,15 +327,69 @@ public class TrillianConversationService {
 
     // ──────────────────── gate helpers ────────────────────
 
-    /** Door open and caller allowed — the per-call part of the gate. */
+    /** A conversation of this door: the thread and the exposure that admits it. */
+    private record Conversation(MaximegalonDocument item, TrillianExposureService.Exposed exposed) {}
+
+    /**
+     * Door open and caller allowed — the per-call part of the gate. Refused
+     * as "not exposed": to this caller, an agent that will not talk to them
+     * through this door is not there (the same view {@code agent_list} gives).
+     */
     private static void passGate(TrillianExposureService.Exposed exposed, String caller) {
         String name = exposed.config().exposedName();
         if (!exposed.config().doors().mcp()) {
-            throw new ToolException("door closed: '" + name + "' does not open the agents door");
+            log.debug("agents door: '{}' refused — '{}' does not open the agents door", caller, name);
+            throw notExposed(name);
         }
         if (!exposed.config().allows(caller)) {
-            throw new ToolException("not allowed: '" + caller + "' is not an allowed counterpart of '" + name + "'");
+            log.debug("agents door: '{}' refused — not an allowed counterpart of '{}'", caller, name);
+            throw notExposed(name);
         }
+    }
+
+    private static ToolException notExposed(String exposedName) {
+        return new ToolException("agent not exposed: '" + exposedName + "'");
+    }
+
+    private static ToolException notFound(String conversationId) {
+        return new ToolException("conversation not found: " + conversationId);
+    }
+
+    private static void requireText(String text) {
+        if (text.length() > InboxMessagePostRequest.MAX_BODY_CHARS) {
+            throw new ToolException(
+                    "contribution too long: at most " + InboxMessagePostRequest.MAX_BODY_CHARS + " characters");
+        }
+    }
+
+    /**
+     * Open conversations one caller may hold with this Trillian: its head
+     * limit when multi-headed (the config may only lower the Nature's), the
+     * fixed single-head bound otherwise.
+     */
+    private int conversationLimitOf(String tenantId, String account, TrillianNature nature) {
+        if (!nature.multiHead()) {
+            return SINGLE_HEAD_CONVERSATION_LIMIT;
+        }
+        int configured = exposureService.headLimitOf(tenantId, account);
+        return configured > 0 ? Math.min(configured, nature.headLimit()) : nature.headLimit();
+    }
+
+    private Object openLockOf(String tenantId, String caller, String account) {
+        int hash = (tenantId + '\0' + caller + '\0' + account).hashCode();
+        return openLocks[Math.floorMod(hash, OPEN_LOCK_STRIPES)];
+    }
+
+    private static Object[] newLocks() {
+        Object[] locks = new Object[OPEN_LOCK_STRIPES];
+        for (int i = 0; i < locks.length; i++) {
+            locks[i] = new Object();
+        }
+        return locks;
+    }
+
+    private static boolean isEnded(MaximegalonDocument item) {
+        return item.getStatus() == MaximegalonStatus.ARCHIVED || item.getStatus() == MaximegalonStatus.DISMISSED;
     }
 
     /**
@@ -267,38 +401,33 @@ public class TrillianConversationService {
      * the conversation for this caller. An archived conversation answers
      * reads and refuses writes: reading outlives writing (§3.11).
      */
-    private MaximegalonDocument conversationOf(
-            String tenantId, String caller, String conversationId, boolean forWrite) {
-        MaximegalonDocument item = threads.findById(tenantId, conversationId)
-                .orElseThrow(() -> new ToolException("conversation not found: " + conversationId));
+    private Conversation conversationOf(String tenantId, String caller, String conversationId, boolean forWrite) {
+        MaximegalonDocument item =
+                threads.findById(tenantId, conversationId).orElseThrow(() -> notFound(conversationId));
         String account = item.getAssignedToUserId();
         if (account == null
                 || !account.startsWith(TrillianSessionBootstrapper.ACCOUNT_PREFIX)
                 // The shape, not the status: an archived conversation still is one.
-                || !TrillianHeadService.isConversationThread(item)) {
-            throw new ToolException("conversation not found: " + conversationId);
-        }
-        if (!caller.equals(item.getOriginatorUserId())) {
-            throw new ToolException("conversation is not yours: " + conversationId);
+                || !TrillianHeadService.isConversationThread(item)
+                || !caller.equals(item.getOriginatorUserId())) {
+            throw notFound(conversationId);
         }
         TrillianExposureService.Exposed exposed = exposureService
                 .findByAccount(tenantId, account)
-                .orElseThrow(() -> new ToolException(
-                        "agent not exposed: the agent of this conversation is no" + " longer exposed"));
+                .orElseThrow(() ->
+                        new ToolException("agent not exposed: the agent of this conversation is no longer exposed"));
         passGate(exposed, caller);
-        if (forWrite
-                && (item.getStatus() == MaximegalonStatus.ARCHIVED
-                        || item.getStatus() == MaximegalonStatus.DISMISSED)) {
+        if (forWrite && isEnded(item)) {
             throw new ToolException("conversation archived: it is read-only now, a new concern is a new conversation");
         }
-        return item;
+        return new Conversation(item, exposed);
     }
 
     // ──────────────────── waiting ────────────────────
 
-    private boolean acquireWait(String caller) {
+    private boolean acquireWait(String tenantId, String caller) {
         boolean[] acquired = {false};
-        waitingPerCaller.compute(caller, (key, count) -> {
+        waitingPerCaller.compute(waitKey(tenantId, caller), (key, count) -> {
             int current = count == null ? 0 : count;
             if (current >= MAX_WAITING_PER_CALLER) {
                 return count;
@@ -315,13 +444,18 @@ public class TrillianConversationService {
         return acquired[0];
     }
 
-    private void releaseWait(String caller) {
-        waitingPerCaller.computeIfPresent(caller, (key, count) -> count <= 1 ? null : count - 1);
+    private void releaseWait(String tenantId, String caller) {
+        waitingPerCaller.computeIfPresent(waitKey(tenantId, caller), (key, count) -> count <= 1 ? null : count - 1);
     }
 
     /** Waiting reads a caller holds right now — test seam for the bound. */
-    int waitingReadsOf(String caller) {
-        return waitingPerCaller.getOrDefault(caller, 0);
+    int waitingReadsOf(String tenantId, String caller) {
+        return waitingPerCaller.getOrDefault(waitKey(tenantId, caller), 0);
+    }
+
+    /** Usernames are unique per tenant only — the bound is per tenant and caller. */
+    private static String waitKey(String tenantId, String caller) {
+        return tenantId + '\0' + caller;
     }
 
     private CompletableFuture<Void> arm(String conversationId) {
@@ -360,17 +494,12 @@ public class TrillianConversationService {
         return item.getMessages() == null ? List.of() : item.getMessages();
     }
 
-    private static List<Contribution> freshOf(MaximegalonDocument item, int cursor) {
-        return messagesOf(item).stream().skip(cursor).map(Contribution::of).toList();
-    }
-
-    private static Optional<MaximegalonMessage> lastBy(List<MaximegalonMessage> messages, String author) {
-        for (int i = messages.size() - 1; i >= 0; i--) {
-            if (author.equals(messages.get(i).getAuthorUserId())) {
-                return Optional.of(messages.get(i));
-            }
-        }
-        return Optional.empty();
+    private static List<Contribution> freshOf(
+            MaximegalonDocument item, int cursor, TrillianExposureService.Exposed exposed) {
+        return messagesOf(item).stream()
+                .skip(cursor)
+                .map(message -> Contribution.of(message, exposed))
+                .toList();
     }
 
     private static int positionAfter(List<MaximegalonMessage> messages, @Nullable String afterMessageId) {

@@ -35,10 +35,8 @@ class KitProvisioningCheckTickTest {
         check = mock(KitProvisioningCheck.class);
         provisioningService = mock(KitProvisioningService.class);
         activationRegistry = new ProjectActivationRegistry();
-        tick = new KitProvisioningCheckTick(
-                properties, check, provisioningService, activationRegistry);
-        when(check.check(any(), any()))
-                .thenReturn(new KitProvisioningCheck.Report(List.of(), List.of(), List.of()));
+        tick = new KitProvisioningCheckTick(properties, check, provisioningService, activationRegistry);
+        when(check.check(any(), any())).thenReturn(new KitProvisioningCheck.Report(List.of(), List.of(), List.of()));
     }
 
     @Test
@@ -62,9 +60,9 @@ class KitProvisioningCheckTickTest {
     }
 
     @Test
-    void podlessProjectsAreChecked_becauseThisPodIsRunningThem() {
-        // Podless projects hold no lease but are genuinely active here, and
-        // the registry is about activation, not ownership.
+    void userHubsAreChecked_whenActiveHere() {
+        // A hub is brought onto its home pod like any other project; the
+        // sweep follows the activation registry, so an active hub is checked.
         activationRegistry.activate("acme", "_user_marvin");
 
         tick.tick();
@@ -92,8 +90,7 @@ class KitProvisioningCheckTickTest {
 
         tick.tick();
 
-        verify(provisioningService, times(1))
-                .provisionCoalesced("acme", "mail-assistant");
+        verify(provisioningService, times(1)).provisionCoalesced("acme", "mail-assistant");
     }
 
     @Test

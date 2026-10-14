@@ -21,8 +21,8 @@ import org.springframework.stereotype.Component;
  * an embedded message on {@link MaximegalonCreatedEvent} (created with the
  * opener in one write) or as a later {@link MaximegalonMessageEvent} — the
  * listener treats both as "a contribution landed" and ignores everything
- * else (answers, read marks, effects). Where the exposure entry (Phase 2)
- * settles is its own choice; the head does not care.
+ * else (answers, read marks, effects). The exposure door opens threads the
+ * same way, so the head does not care where a conversation came from.
  *
  * <p><b>Conditions, all of them cheap-first.</b> Not a conversation (asks
  * carry rights and never reach a head, maximegalon §8), not assigned to a
@@ -33,14 +33,15 @@ import org.springframework.stereotype.Component;
  * ({@code inbox_unread}), and a thread reaching both would be answered
  * twice.
  *
- * <p><b>No exposure check yet.</b> Phase 1 wires the mechanics; the gate
- * against the exposure configuration (who may open conversations at all)
- * sits at the protocol entry and arrives with Phase 2 —
- * {@code planning/trillian-exposure.md} §3.5/§5.
+ * <p><b>No exposure check here.</b> Who may open a conversation at all is
+ * decided at the door ({@code TrillianConversationService}), on every call —
+ * this listener only wires the contribution to its head.
  *
- * <p>Cheap by contract, same as {@link TrillianSessionReplyListener}: this
- * runs synchronously on the appending thread, and the common case (a thread
- * between humans) costs nothing at all.
+ * <p>Synchronous on the appending thread, same as
+ * {@link TrillianSessionReplyListener}. The common case (a thread between
+ * humans) costs nothing; a contribution to a multi-headed Trillian pays for
+ * finding or spawning its head and routing the turn, inside the caller's
+ * request.
  */
 @Component
 @RequiredArgsConstructor

@@ -50,12 +50,23 @@ public class ProjectService {
      *
      * <p>{@link #create} derives {@link LifecycleType#HOMELESS} from this
      * predicate and {@link #setLifecycleType} refuses to change it, so the
-     * name check and the stored lifecycle type always agree. Call sites that
-     * only hold a name use this; call sites that hold the document may read
-     * the lifecycle type instead.
+     * name check and the stored lifecycle type agree for every row it wrote.
+     * Call sites that only hold a name use this; call sites that hold the
+     * document use {@link #isHomeless(ProjectDocument)}, which reads both.
      */
     public static boolean isHomeless(@Nullable String projectName) {
         return TENANT_PROJECT_NAME.equals(projectName);
+    }
+
+    /**
+     * The document form of {@link #isHomeless(String)}: homeless by name or by
+     * stored lifecycle type. Both are read so a row whose lifecycle type was
+     * left behind by an older schema (a hub still marked HOMELESS) is treated
+     * the same everywhere instead of being refused by one call site and
+     * brought up by another.
+     */
+    public static boolean isHomeless(ProjectDocument project) {
+        return project.getLifecycleType() == LifecycleType.HOMELESS || isHomeless(project.getName());
     }
 
     /** Field names — kept here so atomic queries don't drift. */
@@ -939,6 +950,9 @@ public class ProjectService {
      *   <li><b>Still homeless and still wanting to run.</b> A project that got
      *       placed in the meantime has its mark cleared by the claim, but a
      *       suspend does not clear it, so the status filter has to be here.</li>
+     *   <li><b>Placeable at all.</b> A {@link LifecycleType#HOMELESS} row is
+     *       never placed; a stale mark on one must not reach the placement
+     *       evaluation, which refuses it.</li>
      * </ul>
      */
     public List<ProjectDocument> findPendingPlacement(Duration leaseTtl, Duration pendingTtl) {
@@ -948,6 +962,7 @@ public class ProjectService {
                 .andOperator(
                         Criteria.where(F_PENDING_SINCE).ne(null).gt(now.minus(pendingTtl)),
                         Criteria.where(F_STATUS).in(WANTS_TO_RUN),
+                        Criteria.where(F_LIFECYCLE_TYPE).ne(LifecycleType.HOMELESS),
                         stranded));
         return mongoTemplate.find(query, ProjectDocument.class);
     }

@@ -74,7 +74,7 @@ public class ProjectLocator {
                 .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
                         "Project '" + projectName + "' not found in tenant '" + tenantId + "'"));
 
-        if (project.getLifecycleType() == LifecycleType.HOMELESS) {
+        if (ProjectService.isHomeless(project)) {
             return new Location(
                     tenantId, projectName, Optional.empty(), LifecycleType.HOMELESS, project.getStatus(), null);
         }

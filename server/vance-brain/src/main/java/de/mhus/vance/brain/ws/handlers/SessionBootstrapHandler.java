@@ -7,11 +7,14 @@ import de.mhus.vance.api.thinkprocess.BootstrappedProcess;
 import de.mhus.vance.api.thinkprocess.ProcessSpec;
 import de.mhus.vance.api.thinkprocess.SessionBootstrapRequest;
 import de.mhus.vance.api.thinkprocess.SessionBootstrapResponse;
+import de.mhus.vance.api.ws.ErrorData;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.action.ActionExecutorRegistry;
 import de.mhus.vance.brain.action.ActionResult;
 import de.mhus.vance.brain.action.TriggerContext;
+import de.mhus.vance.brain.cluster.placement.PlacementTrigger;
+import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.inbox.InboxPendingSummaryPusher;
 import de.mhus.vance.brain.permission.RequestAuthority;
@@ -29,7 +32,9 @@ import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.PermissionDeniedException;
 import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
@@ -94,6 +99,8 @@ public class SessionBootstrapHandler implements WsHandler {
     private final ActionExecutorRegistry actionRegistry;
     private final LaneScheduler laneScheduler;
     private final SessionBootstrapTargets bootstrapTargets;
+    private final ProjectPlacementService placementService;
+    private final ProjectService projectService;
 
     @Override
     public String type() {
@@ -120,7 +127,8 @@ public class SessionBootstrapHandler implements WsHandler {
             return;
         }
         // Compound entry-point — gate at the tenant level. Per-project /
-        // per-session checks happen inside resumeAndBindSession / spawn paths.
+        // per-session checks happen inside createAndBindSession (Project
+        // START, as session-create) and resumeAndBindSession / spawn paths.
         authority.enforce(ctx, new Resource.Tenant(ctx.getTenantId()), Action.START);
 
         // ── Session: explicit resume / auto-resume / create ──────────────
@@ -154,6 +162,9 @@ public class SessionBootstrapHandler implements WsHandler {
                 session = created.get();
                 sessionCreated = true;
             }
+        } catch (PermissionDeniedException e) {
+            // The dispatcher answers a denial with 403 — not a server error.
+            throw e;
         } catch (RuntimeException e) {
             log.error(
                     "Session bootstrap failed during session step for tenant='{}' user='{}'",
@@ -378,10 +389,26 @@ public class SessionBootstrapHandler implements WsHandler {
             // A candidate whose project another pod holds is skipped: the
             // Face-Pod routed this frame by the newest candidate
             // (SessionBootstrapTargets), so only a lost race lands here, and
-            // the next candidate is as good an answer as any.
+            // the next candidate is as good an answer as any. So is one whose
+            // project cannot be brought at all — closed, gone, or the homeless
+            // tenant project of a session from before user hubs got a home
+            // pod: a stale session must not turn every project-less bootstrap
+            // of its user into an error. The same goes for a project this pod
+            // is not eligible for — it is left to the next candidate rather
+            // than brought onto a pod its labels exclude.
+            if (!placementService.isEligibleHere(candidate.getTenantId(), candidate.getProjectId())) {
+                log.debug(
+                        "session-bootstrap: auto-resume skips '{}': project '{}' is not eligible here",
+                        candidate.getSessionId(),
+                        candidate.getProjectId());
+                continue;
+            }
             try {
                 lifecycleService.bring(candidate.getTenantId(), candidate.getProjectId());
-            } catch (ProjectManagerService.ClaimRejectedException e) {
+            } catch (ProjectManagerService.ClaimRejectedException
+                    | ProjectService.SystemProjectProtectedException
+                    | ProjectService.ProjectClosedException
+                    | ProjectService.ProjectNotFoundException e) {
                 log.debug("session-bootstrap: auto-resume skips '{}': {}", candidate.getSessionId(), e.getMessage());
                 continue;
             }
@@ -403,14 +430,21 @@ public class SessionBootstrapHandler implements WsHandler {
             projectId = bootstrapTargets.defaultProject(ctx);
             log.info("session-bootstrap: defaulted projectId to '{}' (tenant='{}')", projectId, ctx.getTenantId());
         }
-        if (homeBootstrapService
-                .resolveOrAutoProvision(ctx.getTenantId(), projectId)
-                .isEmpty()) {
+        // Same gate as session-create, and before the auto-provision and the
+        // bring: the tenant-level START above only says "may start sessions",
+        // not "may start them in this project" — without it a bootstrap could
+        // open a session in any project of the tenant.
+        authority.enforce(ctx, new Resource.Project(ctx.getTenantId(), projectId), Action.START);
+        Optional<ProjectDocument> project = homeBootstrapService.resolveOrAutoProvision(ctx.getTenantId(), projectId);
+        if (project.isEmpty()) {
             sender.sendError(wsSession, envelope, 404, "Project '" + projectId + "' not found");
             return Optional.empty();
         }
-        if (ProjectService.isHomeless(projectId)) {
+        if (ProjectService.isHomeless(project.get())) {
             sender.sendError(wsSession, envelope, 409, homelessRefusal(projectId));
+            return Optional.empty();
+        }
+        if (!placeElsewhereIfIneligible(wsSession, envelope, project.get())) {
             return Optional.empty();
         }
         // Claim *and* activate — see tryAutoResumeLatest for why a bare claim
@@ -470,7 +504,11 @@ public class SessionBootstrapHandler implements WsHandler {
         // after bring's stale-bind sweep, and the concurrent-owner guard reads
         // the in-memory connection registry, not the Mongo bind, so the sweep
         // cannot mask a live sibling. A holder elsewhere is refused like on
-        // the create path.
+        // the create path, and so is a project this pod is not eligible for.
+        Optional<ProjectDocument> project = projectService.findByTenantAndName(doc.getTenantId(), doc.getProjectId());
+        if (project.isPresent() && !placeElsewhereIfIneligible(wsSession, envelope, project.get())) {
+            return Optional.empty();
+        }
         if (!bringOrRefuse(wsSession, envelope, doc.getTenantId(), doc.getProjectId())) {
             return Optional.empty();
         }
@@ -508,8 +546,10 @@ public class SessionBootstrapHandler implements WsHandler {
     /**
      * Brings the project onto this pod. When another pod holds its lease the
      * frame was routed here on a decision that went stale in between; answers
-     * {@code 409} and returns {@code false} — nothing is bound yet, so there
-     * is nothing to compensate.
+     * {@code 409} with {@link ErrorData#REASON_PROJECT_HELD_ELSEWHERE} and
+     * returns {@code false} — nothing is bound yet, so there is nothing to
+     * compensate. A homeless or closed project is a {@code 409} too, not a
+     * server error.
      */
     private boolean bringOrRefuse(
             WebSocketSession wsSession, WebSocketEnvelope envelope, String tenantId, String projectId)
@@ -517,15 +557,63 @@ public class SessionBootstrapHandler implements WsHandler {
         try {
             lifecycleService.bring(tenantId, projectId);
             return true;
+        } catch (ProjectService.SystemProjectProtectedException e) {
+            sender.sendError(wsSession, envelope, 409, homelessRefusal(projectId));
+            return false;
+        } catch (ProjectService.ProjectClosedException e) {
+            sender.sendError(wsSession, envelope, 409, "Project '" + projectId + "' is closed");
+            return false;
         } catch (ProjectManagerService.ClaimRejectedException e) {
             log.debug("session-bootstrap: project '{}/{}' is held elsewhere: {}", tenantId, projectId, e.getMessage());
             sender.sendError(
                     wsSession,
                     envelope,
                     409,
-                    "Project '" + projectId + "' is owned by another brain process — retry the bootstrap");
+                    "Project '" + projectId + "' is owned by another brain process — retry the bootstrap",
+                    ErrorData.REASON_PROJECT_HELD_ELSEWHERE);
             return false;
         }
+    }
+
+    /**
+     * Eligibility before claiming, as on session-create — a claim we would then
+     * refuse would leave a lease behind that nothing uses. Unlike session-create,
+     * a project-less bootstrap lands here for a project nobody holds (the
+     * Face-Pod routes those locally), so refusing alone would strand the user:
+     * an AUTO project without an owner requirement is never placed by the
+     * distributor. The project is therefore placed where its labels allow, and
+     * the client is told to retry — the retry is routed to the new holder.
+     *
+     * @return {@code true} when this pod may bring the project
+     */
+    private boolean placeElsewhereIfIneligible(
+            WebSocketSession wsSession, WebSocketEnvelope envelope, ProjectDocument project) throws IOException {
+        if (placementService.isEligibleHere(project)) {
+            return true;
+        }
+        try {
+            placementService.place(project, PlacementTrigger.LOCATE);
+        } catch (RuntimeException e) {
+            log.info(
+                    "session-bootstrap: project '{}/{}' cannot be placed: {}",
+                    project.getTenantId(),
+                    project.getName(),
+                    e.getMessage());
+            sender.sendError(
+                    wsSession,
+                    envelope,
+                    409,
+                    "Project '" + project.getName() + "' cannot run on this brain process and is waiting "
+                            + "for a matching one (placement_pending)");
+            return false;
+        }
+        sender.sendError(
+                wsSession,
+                envelope,
+                409,
+                "Project '" + project.getName() + "' was placed on another brain process — retry the bootstrap",
+                ErrorData.REASON_PROJECT_HELD_ELSEWHERE);
+        return false;
     }
 
     // ──────────────────── Helpers ────────────────────

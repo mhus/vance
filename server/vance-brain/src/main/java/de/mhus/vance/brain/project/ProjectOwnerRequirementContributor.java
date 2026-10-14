@@ -13,6 +13,24 @@ package de.mhus.vance.brain.project;
  */
 public interface ProjectOwnerRequirementContributor {
 
+    /** A project, addressed by tenant and name. */
+    record ProjectRef(String tenantId, String projectId) {}
+
     /** Whether the project holds waiting work of this contributor's kind. */
     boolean requiresOwner(String tenantId, String projectId);
+
+    /**
+     * Every project that currently holds waiting work of this contributor's
+     * kind — for the boot re-check that <em>pins</em>
+     * ({@link ProjectOwnerRequirementService#pinContributedWork}). Document
+     * work needs no such list: its first document fires a change event. Work
+     * that is not a document may have existed before the contributor did, and
+     * then no event ever asks for the flag.
+     *
+     * <p>Default: none — a contributor whose answer is always reached through
+     * a recompute it triggers itself does not have to enumerate.
+     */
+    default java.util.List<ProjectRef> projectsWithWork() {
+        return java.util.List.of();
+    }
 }

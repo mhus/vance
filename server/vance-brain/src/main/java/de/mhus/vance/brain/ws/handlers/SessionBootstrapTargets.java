@@ -4,6 +4,7 @@ import de.mhus.vance.api.session.SessionStatus;
 import de.mhus.vance.api.thinkprocess.SessionBootstrapRequest;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.shared.home.HomeBootstrapService;
+import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import java.time.Instant;
@@ -41,11 +42,14 @@ public class SessionBootstrapTargets {
     /**
      * The caller's sessions a project-less bootstrap may resume, newest
      * activity first: not closed, not bound to another connection, created
-     * with the caller's connection profile.
+     * with the caller's connection profile, and not in the homeless tenant
+     * project — sessions from before user hubs got a home pod may still sit
+     * there, and nothing can be brought up for them.
      */
     public List<SessionDocument> autoResumeCandidates(ConnectionContext ctx) {
         return sessionService.listForUser(ctx.getTenantId(), ctx.getUserId()).stream()
                 .filter(s -> s.getStatus() != SessionStatus.CLOSED)
+                .filter(s -> !ProjectService.isHomeless(s.getProjectId()))
                 .filter(s -> s.getBoundConnectionId() == null)
                 .filter(s -> profileMatches(ctx, s))
                 .sorted(Comparator.comparing(

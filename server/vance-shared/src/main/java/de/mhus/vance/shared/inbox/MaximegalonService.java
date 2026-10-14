@@ -61,6 +61,8 @@ public class MaximegalonService {
     private static final String F_TENANT = "tenantId";
     private static final String F_STATUS = "status";
     private static final String F_ASSIGNED = "assignedToUserId";
+    private static final String F_ORIGINATOR = "originatorUserId";
+    private static final String F_TAGS = "tags";
     private static final String F_REQUIRES_ACTION = "requiresAction";
     private static final String F_MESSAGES = "messages";
     private static final String F_PARTICIPANTS = "participants";
@@ -285,6 +287,43 @@ public class MaximegalonService {
             return repository.findByTenantIdAndAssignedToUserId(tenantId, userId);
         }
         return repository.findByTenantIdAndAssignedToUserIdAndStatus(tenantId, userId, status);
+    }
+
+    /**
+     * The open discussions on one user's desk — tagged {@link #TAG_DISCUSSION},
+     * neither archived nor dismissed — <b>with</b> their messages: the
+     * population a reader that answers threads (the Trillian conversation
+     * heads) works on. Filtered in the query, so a desk with a long history of
+     * finished discussions costs only its open ones.
+     */
+    public List<MaximegalonDocument> listOpenDiscussionsAssignedTo(String tenantId, String assignedToUserId) {
+        return mongoTemplate.find(
+                Query.query(openDiscussionsCriteria(tenantId, assignedToUserId)), MaximegalonDocument.class);
+    }
+
+    /**
+     * How many open discussions {@code originatorUserId} holds on
+     * {@code assignedToUserId}'s desk — the per-counterpart bound of an opener
+     * that must not let one caller flood a desk with threads.
+     */
+    public long countOpenDiscussions(String tenantId, String originatorUserId, String assignedToUserId) {
+        return mongoTemplate.count(
+                Query.query(openDiscussionsCriteria(tenantId, assignedToUserId)
+                        .and(F_ORIGINATOR)
+                        .is(originatorUserId)),
+                MaximegalonDocument.class);
+    }
+
+    /** Fresh per call — {@code Criteria.and(…)} mutates the receiver. */
+    private static Criteria openDiscussionsCriteria(String tenantId, String assignedToUserId) {
+        return Criteria.where(F_TENANT)
+                .is(tenantId)
+                .and(F_ASSIGNED)
+                .is(assignedToUserId)
+                .and(F_STATUS)
+                .nin(MaximegalonStatus.ARCHIVED, MaximegalonStatus.DISMISSED)
+                .and(F_TAGS)
+                .is(TAG_DISCUSSION);
     }
 
     /**
@@ -805,6 +844,17 @@ public class MaximegalonService {
      */
     public Optional<MaximegalonDocument> postMessage(
             String tenantId, String itemId, String authorUserId, String body, @Nullable String parentId) {
+        return post(tenantId, itemId, authorUserId, body, parentId).map(Posted::item);
+    }
+
+    /**
+     * As {@link #postMessage}, but answers the message that was written next
+     * to the refreshed thread. A caller that needs <em>its</em> contribution —
+     * as a read cursor, say — must not search for it afterwards: by then a
+     * parallel write of the same author may be the newer one.
+     */
+    public Optional<Posted> post(
+            String tenantId, String itemId, String authorUserId, String body, @Nullable String parentId) {
         Optional<MaximegalonDocument> existing = findById(tenantId, itemId);
         if (existing.isEmpty()) return Optional.empty();
         MaximegalonDocument doc = existing.get();
@@ -844,7 +894,7 @@ public class MaximegalonService {
         mongoTemplate.updateFirst(byId(tenantId, itemId), update, MaximegalonDocument.class);
         MaximegalonDocument refreshed = findById(tenantId, itemId).orElse(doc);
         eventPublisher.publishEvent(new MaximegalonMessageEvent(refreshed, message));
-        return Optional.of(refreshed);
+        return Optional.of(new Posted(refreshed, message));
     }
 
     /**
@@ -1240,6 +1290,9 @@ public class MaximegalonService {
      * still pending, {@code requiresAction} the subset that waits on an answer.
      */
     public record PendingCounts(long total, long requiresAction) {}
+
+    /** A contribution as written: the refreshed thread and the message itself. */
+    public record Posted(MaximegalonDocument item, MaximegalonMessage message) {}
 
     /**
      * Badge numbers: {@code unread} is shown, {@code unreadRequiresAction}

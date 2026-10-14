@@ -4,6 +4,7 @@
 */
 
 export const REASON_SESSION_BOUND_ELSEWHERE = "session_bound_elsewhere";
+export const REASON_PROJECT_HELD_ELSEWHERE = "project_held_elsewhere";
 
 export interface ErrorData {
   errorCode: number;

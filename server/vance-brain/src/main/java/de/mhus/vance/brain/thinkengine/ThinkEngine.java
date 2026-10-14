@@ -182,7 +182,8 @@ public interface ThinkEngine {
      *
      * <p>Default {@code false}. The Trillian conversation head overrides —
      * it talks to an external counterpart with the Trillian's rights, and
-     * the Trillian holds ADMIN on its human's project.
+     * the Trillian is WRITER on its human's project: a counterpart must not
+     * read or change that project through the head.
      */
     default boolean confinedToOwnProject() {
         return false;

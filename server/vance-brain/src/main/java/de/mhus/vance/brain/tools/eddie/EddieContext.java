@@ -260,19 +260,6 @@ public class EddieContext {
     }
 
     /**
-     * A think-process is a "sub-process" when it was spawned by
-     * another process (parentProcessId set). Marvin and Vogon
-     * orchestrators spawn Ford workers this way; those workers
-     * have no business switching projects mid-task.
-     */
-    public boolean isSubProcess(ToolInvocationContext ctx) {
-        return callingProcess(ctx)
-                .map(p -> p.getParentProcessId() != null
-                        && !p.getParentProcessId().isBlank())
-                .orElse(false);
-    }
-
-    /**
      * Whether the calling process may only ever address its own project:
      * a sub-process (hallucination guard) or a process of a confined engine
      * (trust boundary, {@link ThinkEngine#confinedToOwnProject()}).

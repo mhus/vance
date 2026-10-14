@@ -112,6 +112,8 @@ class TrillianHeartbeatTickTest {
 
         tick.tick();
 
+        // An owed wake with nothing to show is spent, not kept due forever.
+        verify(wakeupService).clearWakeRequest(LOOP);
         verify(wakeupService).arm(any(), any());
         verify(thinkProcessService, never()).appendPending(anyString(), any());
         verify(eventEmitter, never()).scheduleTurn(anyString());
@@ -127,7 +129,7 @@ class TrillianHeartbeatTickTest {
 
         tick.tick();
 
-        verify(wakeupService).disarm(any());
+        verify(wakeupService).consumeWake(any());
         verify(eventEmitter).scheduleTurn(LOOP);
         verify(nature).selfCheckDelivered(any(), eq(findings));
     }
@@ -264,12 +266,22 @@ class TrillianHeartbeatTickTest {
     }
 
     @Test
+    void theLoopsAreListedForTheHeldHubsOnly() {
+        givenLoop(ThinkProcessStatus.IDLE);
+        when(wakeupService.isArmed(any())).thenReturn(true);
+
+        tick.tick();
+
+        verify(wakeupService).liveLoopsIn(List.of(hub("proj")));
+    }
+
+    @Test
     void aPodHoldingNoHub_doesNotEvenListTheLoops() {
         when(projectService.findRunningByHomePodId("pod-self")).thenReturn(List.of());
 
         tick.tick();
 
-        verify(wakeupService, never()).liveLoops(org.mockito.ArgumentMatchers.anyInt());
+        verify(wakeupService, never()).liveLoopsIn(any());
     }
 
     private static ProjectDocument hub(String name) {
@@ -292,7 +304,15 @@ class TrillianHeartbeatTickTest {
         loop.setProjectId("proj");
         loop.setStatus(status);
         loop.getEngineParams().put(TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME, "_trillian-void-1535");
-        when(wakeupService.liveLoops(org.mockito.ArgumentMatchers.anyInt())).thenReturn(List.of(loop));
+        // Stands in for the query: only the loops in the projects passed.
+        when(wakeupService.liveLoopsIn(any())).thenAnswer(inv -> {
+            java.util.Collection<ProjectDocument> held = inv.getArgument(0);
+            return held.stream()
+                            .anyMatch(p -> p.getTenantId().equals(loop.getTenantId())
+                                    && p.getName().equals(loop.getProjectId()))
+                    ? List.of(loop)
+                    : List.of();
+        });
     }
 
     private static SelfCheckFinding finding() {

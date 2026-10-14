@@ -4,18 +4,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.api.inbox.InboxMessagePostRequest;
 import de.mhus.vance.api.inbox.MaximegalonStatus;
 import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.brain.trillian.TrillianHeadService;
 import de.mhus.vance.brain.trillian.TrillianOwnSessions;
 import de.mhus.vance.brain.trillian.nature.TrillianNature;
 import de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry;
+import de.mhus.vance.shared.inbox.MaximegalonArchivedEvent;
 import de.mhus.vance.shared.inbox.MaximegalonDocument;
 import de.mhus.vance.shared.inbox.MaximegalonMessage;
 import de.mhus.vance.shared.inbox.MaximegalonMessageEvent;
@@ -74,6 +77,7 @@ class TrillianConversationServiceTest {
         service = new TrillianConversationService(threads, exposureService, ownSessions, natureRegistry, headService);
         TrillianNature multiHead = mock(TrillianNature.class);
         lenient().when(multiHead.multiHead()).thenReturn(true);
+        lenient().when(multiHead.headLimit()).thenReturn(5);
         lenient().when(natureRegistry.resolve(anyString())).thenReturn(multiHead);
         lenient().when(ownSessions.liveLoopOf(TENANT, COLIN)).thenReturn(Optional.of(new ThinkProcessDocument()));
         // A running conversation passes the gate again on every call.
@@ -134,22 +138,23 @@ class TrillianConversationServiceTest {
     }
 
     @Test
-    void openRefusesWhenTheDoorIsClosed() {
+    void openRefusesWhenTheDoorIsClosed_asNotExposed() {
+        // No enumeration: a closed door answers like an agent that is not there.
         givenExposure(colinConfig("road.runner"), false);
 
         assertThatThrownBy(() -> service.open(TENANT, CALLER, "colin", null, "Hi"))
                 .isInstanceOf(ToolException.class)
-                .hasMessageContaining("door closed");
+                .hasMessage("agent not exposed: 'colin'");
         verify(threads, never()).create(any());
     }
 
     @Test
-    void openRefusesACounterpartThatIsNotAllowed() {
+    void openRefusesACounterpartThatIsNotAllowed_asNotExposed() {
         givenExposure(colinConfig(OTHER), true);
 
         assertThatThrownBy(() -> service.open(TENANT, CALLER, "colin", null, "Hi"))
                 .isInstanceOf(ToolException.class)
-                .hasMessageContaining("not allowed");
+                .hasMessage("agent not exposed: 'colin'");
         verify(threads, never()).create(any());
     }
 
@@ -199,13 +204,15 @@ class TrillianConversationServiceTest {
     @Test
     void sendContributesAndReturnsTheMessage() {
         givenConversation("thread-1", CALLER, MaximegalonStatus.PENDING, message("m-1", COLIN, "earlier"));
-        when(threads.postMessage(TENANT, "thread-1", CALLER, "and more", null))
-                .thenReturn(Optional.of(conversation(
-                        "thread-1",
-                        CALLER,
-                        MaximegalonStatus.PENDING,
-                        message("m-1", COLIN, "earlier"),
-                        message("m-2", CALLER, "and more"))));
+        when(threads.post(TENANT, "thread-1", CALLER, "and more", null))
+                .thenReturn(posted(
+                        conversation(
+                                "thread-1",
+                                CALLER,
+                                MaximegalonStatus.PENDING,
+                                message("m-1", COLIN, "earlier"),
+                                message("m-2", CALLER, "and more")),
+                        message("m-2", CALLER, "and more")));
 
         TrillianConversationService.Contribution sent = service.send(TENANT, CALLER, "thread-1", "and more");
 
@@ -215,18 +222,22 @@ class TrillianConversationServiceTest {
     }
 
     @Test
-    void sendTakesTheCallersOwnMessageAsCursor_evenWhenTheHeadAnsweredInBetween() {
-        // The head answered an earlier contribution between the write and
-        // the re-read: its answer must stay ahead of the cursor, not become it.
+    void sendTakesTheMessageItWroteAsCursor_notTheCallersLastOne() {
+        // A parallel send of the same caller landed after this one, and the
+        // head answered in between: the cursor is the message this call
+        // wrote, so the answer to it stays ahead of the cursor.
         givenConversation("thread-1", CALLER, MaximegalonStatus.PENDING, message("m-1", COLIN, "earlier"));
-        when(threads.postMessage(TENANT, "thread-1", CALLER, "and more", null))
-                .thenReturn(Optional.of(conversation(
-                        "thread-1",
-                        CALLER,
-                        MaximegalonStatus.PENDING,
-                        message("m-1", COLIN, "earlier"),
-                        message("m-2", CALLER, "and more"),
-                        message("m-3", COLIN, "the answer to before"))));
+        when(threads.post(TENANT, "thread-1", CALLER, "and more", null))
+                .thenReturn(posted(
+                        conversation(
+                                "thread-1",
+                                CALLER,
+                                MaximegalonStatus.PENDING,
+                                message("m-1", COLIN, "earlier"),
+                                message("m-2", CALLER, "and more"),
+                                message("m-3", COLIN, "the answer to m-2"),
+                                message("m-4", CALLER, "a parallel send")),
+                        message("m-2", CALLER, "and more")));
 
         assertThat(service.send(TENANT, CALLER, "thread-1", "and more").id()).isEqualTo("m-2");
     }
@@ -234,7 +245,7 @@ class TrillianConversationServiceTest {
     @Test
     void sendAtTheMessageLimit_isConversationFull() {
         givenConversation("thread-1", CALLER, MaximegalonStatus.PENDING);
-        when(threads.postMessage(TENANT, "thread-1", CALLER, "one more", null))
+        when(threads.post(TENANT, "thread-1", CALLER, "one more", null))
                 .thenThrow(new MaximegalonRuleException(MaximegalonRuleException.MESSAGE_LIMIT_REACHED, "full"));
 
         assertThatThrownBy(() -> service.send(TENANT, CALLER, "thread-1", "one more"))
@@ -250,8 +261,8 @@ class TrillianConversationServiceTest {
 
         assertThatThrownBy(() -> service.send(TENANT, CALLER, "thread-1", "still there?"))
                 .isInstanceOf(ToolException.class)
-                .hasMessageContaining("not allowed");
-        verify(threads, never()).postMessage(any(), any(), any(), any(), any());
+                .hasMessageContaining("agent not exposed");
+        verify(threads, never()).post(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -262,7 +273,7 @@ class TrillianConversationServiceTest {
         assertThatThrownBy(() -> service.send(TENANT, CALLER, "thread-1", "hello?"))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("agent not exposed");
-        verify(threads, never()).postMessage(any(), any(), any(), any(), any());
+        verify(threads, never()).post(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -275,7 +286,7 @@ class TrillianConversationServiceTest {
 
         assertThatThrownBy(() -> service.read(TENANT, CALLER, "thread-1", null, 0))
                 .isInstanceOf(ToolException.class)
-                .hasMessageContaining("door closed");
+                .hasMessageContaining("agent not exposed");
     }
 
     @Test
@@ -313,7 +324,7 @@ class TrillianConversationServiceTest {
 
         assertThatThrownBy(() -> service.close(TENANT, CALLER, "thread-1"))
                 .isInstanceOf(ToolException.class)
-                .hasMessageContaining("conversation is not yours");
+                .hasMessage("conversation not found: thread-1");
         verify(threads, never()).archive(any(), any(), any());
     }
 
@@ -323,8 +334,8 @@ class TrillianConversationServiceTest {
 
         assertThatThrownBy(() -> service.send(TENANT, CALLER, "thread-1", "hi"))
                 .isInstanceOf(ToolException.class)
-                .hasMessageContaining("conversation is not yours");
-        verify(threads, never()).postMessage(any(), any(), any(), any(), any());
+                .hasMessage("conversation not found: thread-1");
+        verify(threads, never()).post(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -334,7 +345,7 @@ class TrillianConversationServiceTest {
         assertThatThrownBy(() -> service.send(TENANT, CALLER, "thread-1", "hi"))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("conversation archived");
-        verify(threads, never()).postMessage(any(), any(), any(), any(), any());
+        verify(threads, never()).post(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -386,6 +397,115 @@ class TrillianConversationServiceTest {
                 .hasMessageContaining("conversation not found");
     }
 
+    @Test
+    void readFromAnUnknownCursor_readsFromTheStart() {
+        givenConversation(
+                "thread-1",
+                CALLER,
+                MaximegalonStatus.PENDING,
+                message("m-1", COLIN, "one"),
+                message("m-2", CALLER, "two"));
+
+        TrillianConversationService.Reply reply = service.read(TENANT, CALLER, "thread-1", "m-gone", 0);
+
+        assertThat(reply.messages())
+                .extracting(TrillianConversationService.Contribution::id)
+                .containsExactly("m-1", "m-2");
+    }
+
+    @Test
+    void theTrilliansContributions_carryItsExposedName_notItsServiceAccount() {
+        givenConversation(
+                "thread-1",
+                CALLER,
+                MaximegalonStatus.PENDING,
+                message("m-1", COLIN, "hi"),
+                message("m-2", CALLER, "yo"));
+
+        TrillianConversationService.Reply reply = service.read(TENANT, CALLER, "thread-1", null, 0);
+
+        assertThat(reply.messages())
+                .extracting(TrillianConversationService.Contribution::author)
+                .containsExactly("colin", CALLER);
+    }
+
+    @Test
+    void readOnAnEndedConversation_answersAtOnceAndSaysClosed() {
+        givenConversation("thread-1", CALLER, MaximegalonStatus.ARCHIVED, message("m-1", COLIN, "bye"));
+
+        long started = System.currentTimeMillis();
+        TrillianConversationService.Reply reply = service.read(TENANT, CALLER, "thread-1", "m-1", 10_000);
+
+        assertThat(reply.closed()).isTrue();
+        assertThat(reply.arrived()).isFalse();
+        assertThat(System.currentTimeMillis() - started).isLessThan(1_000);
+    }
+
+    // ──────────────────── bounds ────────────────────
+
+    @Test
+    void anOversizedContribution_isRefusedBeforeAnythingHappens() {
+        String tooLong = "x".repeat(InboxMessagePostRequest.MAX_BODY_CHARS + 1);
+
+        assertThatThrownBy(() -> service.open(TENANT, CALLER, "colin", null, tooLong))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("contribution too long");
+        assertThatThrownBy(() -> service.send(TENANT, CALLER, "thread-1", tooLong))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("contribution too long");
+        verify(threads, never()).create(any());
+        verify(threads, never()).post(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void anOversizedTitle_isRefused() {
+        String tooLong = "t".repeat(TrillianConversationService.MAX_TITLE_CHARS + 1);
+
+        assertThatThrownBy(() -> service.open(TENANT, CALLER, "colin", tooLong, "Hi"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("title too long");
+        verify(threads, never()).create(any());
+    }
+
+    @Test
+    void oneCallerHoldsAtMostTheHeadLimitOfOpenConversations() {
+        givenExposure(colinConfig("road.runner"), true);
+        when(headService.hasHeadCapacity(any(), any())).thenReturn(true);
+        when(threads.countOpenDiscussions(TENANT, CALLER, COLIN)).thenReturn(5L);
+
+        assertThatThrownBy(() -> service.open(TENANT, CALLER, "colin", null, "Hi"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("conversation limit reached");
+        verify(threads, never()).create(any());
+    }
+
+    @Test
+    void theConfiguredHeadLimit_lowersThePerCallerBound() {
+        givenExposure(colinConfig("road.runner"), true);
+        when(headService.hasHeadCapacity(any(), any())).thenReturn(true);
+        when(exposureService.headLimitOf(TENANT, COLIN)).thenReturn(2);
+        when(threads.countOpenDiscussions(TENANT, CALLER, COLIN)).thenReturn(2L);
+
+        assertThatThrownBy(() -> service.open(TENANT, CALLER, "colin", null, "Hi"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("conversation limit reached");
+    }
+
+    @Test
+    void aSingleHeadedAgent_boundsTheOpenConversationsPerCaller_too() {
+        givenExposure(colinConfig("road.runner"), true);
+        TrillianNature singleHead = mock(TrillianNature.class);
+        when(singleHead.multiHead()).thenReturn(false);
+        when(natureRegistry.resolve(anyString())).thenReturn(singleHead);
+        when(threads.countOpenDiscussions(eq(TENANT), eq(CALLER), eq(COLIN)))
+                .thenReturn((long) TrillianConversationService.SINGLE_HEAD_CONVERSATION_LIMIT);
+
+        assertThatThrownBy(() -> service.open(TENANT, CALLER, "colin", null, "Hi"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("conversation limit reached");
+        verify(threads, never()).create(any());
+    }
+
     // ──────────────────── waiting ────────────────────
 
     @Test
@@ -411,7 +531,50 @@ class TrillianConversationServiceTest {
                 .containsExactly("m-1");
         assertThat(System.currentTimeMillis() - started)
                 .isLessThan(TrillianConversationService.FALLBACK_POLL_MS + 1_000);
-        assertThat(service.waitingReadsOf(CALLER)).isZero();
+        assertThat(service.waitingReadsOf(TENANT, CALLER)).isZero();
+    }
+
+    @Test
+    void aConversationThatEndsWhileARead_waits_endsTheWait() throws Exception {
+        MaximegalonDocument quiet = conversation("thread-1", CALLER, MaximegalonStatus.PENDING);
+        AtomicReference<MaximegalonDocument> current = new AtomicReference<>(quiet);
+        when(threads.findById(TENANT, "thread-1")).thenAnswer(inv -> Optional.of(current.get()));
+
+        long started = System.currentTimeMillis();
+        CompletableFuture<TrillianConversationService.Reply> pending =
+                CompletableFuture.supplyAsync(() -> service.read(TENANT, CALLER, "thread-1", null, 10_000));
+        awaitWaiting(1);
+
+        // Archived without a further message (idle sweep): the archive
+        // event wakes the read, no fallback poll needed.
+        MaximegalonDocument archived = conversation("thread-1", CALLER, MaximegalonStatus.ARCHIVED);
+        current.set(archived);
+        service.onThreadArchived(new MaximegalonArchivedEvent(archived));
+
+        TrillianConversationService.Reply reply = pending.get(5, TimeUnit.SECONDS);
+        assertThat(reply.closed()).isTrue();
+        assertThat(reply.arrived()).isFalse();
+        assertThat(System.currentTimeMillis() - started)
+                .isLessThan(TrillianConversationService.FALLBACK_POLL_MS + 1_000);
+    }
+
+    @Test
+    void theWaitingBound_isPerTenant() throws Exception {
+        MaximegalonDocument quiet = conversation("thread-1", CALLER, MaximegalonStatus.PENDING);
+        AtomicReference<MaximegalonDocument> current = new AtomicReference<>(quiet);
+        when(threads.findById(TENANT, "thread-1")).thenAnswer(inv -> Optional.of(current.get()));
+
+        CompletableFuture<TrillianConversationService.Reply> pending =
+                CompletableFuture.supplyAsync(() -> service.read(TENANT, CALLER, "thread-1", null, 10_000));
+        awaitWaiting(1);
+
+        assertThat(service.waitingReadsOf("other-tenant", CALLER)).isZero();
+
+        MaximegalonMessage answer = message("m-1", COLIN, "done");
+        MaximegalonDocument answered = conversation("thread-1", CALLER, MaximegalonStatus.PENDING, answer);
+        current.set(answered);
+        service.onThreadMessage(new MaximegalonMessageEvent(answered, answer));
+        assertThat(pending.get(5, TimeUnit.SECONDS).arrived()).isTrue();
     }
 
     @Test
@@ -440,16 +603,16 @@ class TrillianConversationServiceTest {
         for (CompletableFuture<TrillianConversationService.Reply> read : parked) {
             assertThat(read.get(5, TimeUnit.SECONDS).arrived()).isTrue();
         }
-        assertThat(service.waitingReadsOf(CALLER)).isZero();
+        assertThat(service.waitingReadsOf(TENANT, CALLER)).isZero();
         pool.shutdown();
     }
 
     private void awaitWaiting(int expected) throws InterruptedException {
         long until = System.currentTimeMillis() + 5_000;
-        while (service.waitingReadsOf(CALLER) < expected && System.currentTimeMillis() < until) {
+        while (service.waitingReadsOf(TENANT, CALLER) < expected && System.currentTimeMillis() < until) {
             Thread.sleep(10);
         }
-        assertThat(service.waitingReadsOf(CALLER)).isEqualTo(expected);
+        assertThat(service.waitingReadsOf(TENANT, CALLER)).isEqualTo(expected);
     }
 
     // ──────────────────── fixtures ────────────────────
@@ -489,6 +652,10 @@ class TrillianConversationServiceTest {
         item.setTags(new ArrayList<>(List.of(MaximegalonService.TAG_DISCUSSION)));
         item.setMessages(new ArrayList<>(List.of(messages)));
         return item;
+    }
+
+    private static Optional<MaximegalonService.Posted> posted(MaximegalonDocument item, MaximegalonMessage written) {
+        return Optional.of(new MaximegalonService.Posted(item, written));
     }
 
     private static MaximegalonMessage message(String id, String author, String body) {

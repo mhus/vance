@@ -354,6 +354,10 @@ public class TrillianUserEngine implements ThinkEngine {
         TrillianNature nature = natureRegistry.resolve(readNature(process));
         ThinkProcessStatus exitStatus = ThinkProcessStatus.IDLE;
         long turnStartMs = System.currentTimeMillis();
+        // This turn sees whatever an owed wake was about (the unread thread
+        // is in the inbox it reads); a contribution from now on requests
+        // anew, and the yield point keeps that one due.
+        wakeupService.clearWakeRequest(process.getId());
         try {
             nature.beforeUserTurn(process, ctx);
             ChatMessageService chatLog = ctx.chatMessageService();

@@ -161,6 +161,69 @@ class TrillianWakeupServiceTest {
         Object at = armedAt();
         assertThat((Long) at).isBetween(before.toEpochMilli(), Instant.now().toEpochMilli());
         verify(thinkProcessService).setEngineParamOverride(LOOP, TrillianWakeupService.PARAM_WAKEUP_STEP, 0);
+        verify(thinkProcessService).setEngineParamOverride(LOOP, TrillianWakeupService.PARAM_WAKE_REQUESTED, true);
+    }
+
+    @Test
+    void anOwedWake_isNotPushedBackByTheYieldPoint() {
+        // A contribution arrived mid-turn: the turn's own arm() at its yield
+        // point must not trade "due now" for the next ladder step.
+        givenChildren();
+        ThinkProcessDocument loop = loop(ThinkProcessStatus.IDLE);
+        loop.getEngineParamOverrides().put(TrillianWakeupService.PARAM_WAKE_REQUESTED, true);
+        Instant before = Instant.now();
+
+        service().arm(loop, ZONE);
+
+        assertThat((Long) armedAt())
+                .isBetween(before.toEpochMilli(), Instant.now().toEpochMilli());
+        verify(thinkProcessService, never())
+                .setEngineParamOverride(anyString(), eq(TrillianWakeupService.PARAM_WAKEUP_STEP), any());
+    }
+
+    @Test
+    void anOwedWake_survivesARunningWorker() {
+        // A worker that runs for an hour must not make the counterpart wait
+        // for it: the conversation is answered by the loop meanwhile.
+        givenChildren(child(ThinkProcessStatus.RUNNING));
+        ThinkProcessDocument loop = loop(ThinkProcessStatus.IDLE);
+        loop.getEngineParamOverrides().put(TrillianWakeupService.PARAM_WAKE_REQUESTED, true);
+
+        service().arm(loop, ZONE);
+
+        assertThat(armedAt()).isNotNull();
+    }
+
+    @Test
+    void consumingTheWake_clearsTheRequestAndTheDueTime() {
+        ThinkProcessDocument loop = loop(ThinkProcessStatus.IDLE);
+        loop.getEngineParamOverrides().put(TrillianWakeupService.PARAM_WAKE_REQUESTED, true);
+
+        service().consumeWake(loop);
+
+        verify(thinkProcessService).setEngineParamOverride(LOOP, TrillianWakeupService.PARAM_WAKE_REQUESTED, null);
+        assertThat(armedAt()).isNull();
+    }
+
+    @Test
+    void theLoopsAreListedPerTenant_forTheHeldProjects() {
+        de.mhus.vance.shared.project.ProjectDocument a = project("acme", "_user__trillian-a");
+        de.mhus.vance.shared.project.ProjectDocument b = project("acme", "proj");
+        de.mhus.vance.shared.project.ProjectDocument c = project("other", "_user__trillian-c");
+
+        service().liveLoopsIn(List.of(a, b, c));
+
+        verify(thinkProcessService)
+                .findLiveByEngineInProjects(
+                        TrillianUserEngine.NAME,
+                        Map.of("acme", List.of("_user__trillian-a", "proj"), "other", List.of("_user__trillian-c")));
+    }
+
+    private static de.mhus.vance.shared.project.ProjectDocument project(String tenant, String name) {
+        de.mhus.vance.shared.project.ProjectDocument p = new de.mhus.vance.shared.project.ProjectDocument();
+        p.setTenantId(tenant);
+        p.setName(name);
+        return p;
     }
 
     @Test

@@ -852,6 +852,21 @@ public class FrankieEngine implements ThinkEngine {
     }
 
     /**
+     * The turn ended on its own terms with {@code finalText} — the model
+     * replied without a tool call. Called after the reply is persisted,
+     * before the completion guard.
+     *
+     * <p>Frankie's reply is read where it is — in the chat, by the parent
+     * or the user — so the default does nothing. {@link
+     * de.mhus.vance.brain.trillian.TrillianHeadEngine} overrides it: a
+     * head's counterpart reads the thread, not the chat, and an answer that
+     * stays in the chat reaches nobody.
+     */
+    protected void onNaturalStop(ThinkProcessDocument process, String finalText) {
+        // Frankie's reply already sits where its reader looks.
+    }
+
+    /**
      * What a terminating tool call means for a <em>worker</em> process.
      *
      * <p>Frankie closes it: an explicit "done forever" has to release the
@@ -873,21 +888,6 @@ public class FrankieEngine implements ThinkEngine {
      *         alone (which is what closing does — the close already
      *         wrote CLOSED)
      */
-    /**
-     * The turn ended on its own terms with {@code finalText} — the model
-     * replied without a tool call. Called after the reply is persisted,
-     * before the completion guard.
-     *
-     * <p>Frankie's reply is read where it is — in the chat, by the parent
-     * or the user — so the default does nothing. {@link
-     * de.mhus.vance.brain.trillian.TrillianHeadEngine} overrides it: a
-     * head's counterpart reads the thread, not the chat, and an answer that
-     * stays in the chat reaches nobody.
-     */
-    protected void onNaturalStop(ThinkProcessDocument process, String finalText) {
-        // Frankie's reply already sits where its reader looks.
-    }
-
     protected @Nullable ThinkProcessStatus onWorkerTerminate(ThinkProcessDocument process) {
         log.info("Frankie id='{}' worker tool-terminate — CLOSED (DONE)", process.getId());
         thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);

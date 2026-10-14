@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
  * exposed Trillians, at {@code POST /brain/{tenant}/agents} — a separate
  * route on purpose, not part of the global MCP server: that one carries the
  * full tool catalogue and is too powerful to hand out, this one carries
- * exactly three conversation tools
+ * exactly four conversation tools
  * ({@link TrillianAgentsToolCatalog}). The route needs no "mcp" in its
  * name — MCP is the protocol, not the address.
  *

@@ -3,6 +3,7 @@ package de.mhus.vance.brain.mcpserver;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.trillian.exposure.TrillianConversationService;
@@ -21,7 +22,7 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * The MCP shell of the agents door: the fixed inventory over the wire, and
  * every gate refusal as protocol content ({@code isError}), never as an
- * HTTP failure — an external agent must be able to read a "not allowed".
+ * HTTP failure — an external agent must be able to read a refusal.
  */
 @ExtendWith(MockitoExtension.class)
 class TrillianAgentsServiceTest {
@@ -104,7 +105,7 @@ class TrillianAgentsServiceTest {
     @Test
     void aGateRefusalIsErrorContent_notAProtocolFailure() {
         when(conversations.open(anyString(), anyString(), anyString(), any(), anyString()))
-                .thenThrow(new ToolException("not allowed: 'road.runner' is not an allowed counterpart"));
+                .thenThrow(new ToolException("agent not exposed: 'colin'"));
 
         Map<String, Object> result = call("""
                 {"jsonrpc":"2.0","id":1,"method":"tools/call",
@@ -112,7 +113,7 @@ class TrillianAgentsServiceTest {
                 """);
 
         assertThat(isError(result)).isTrue();
-        assertThat(content(result)).contains("not allowed");
+        assertThat(content(result)).contains("agent not exposed");
     }
 
     @Test
@@ -134,7 +135,8 @@ class TrillianAgentsServiceTest {
                 .thenReturn(new TrillianConversationService.Reply(
                         "thread-1",
                         List.of(new TrillianConversationService.Contribution("m-1", COLIN, "Hello yourself!", null)),
-                        true));
+                        true,
+                        false));
 
         Map<String, Object> result = call("""
                 {"jsonrpc":"2.0","id":1,"method":"tools/call",
@@ -156,7 +158,8 @@ class TrillianAgentsServiceTest {
                 .thenReturn(new TrillianConversationService.Reply(
                         "thread-1",
                         List.of(new TrillianConversationService.Contribution("m-3", COLIN, "the answer", null)),
-                        true));
+                        true,
+                        false));
 
         Map<String, Object> result = call("""
                 {"jsonrpc":"2.0","id":1,"method":"tools/call",
@@ -173,7 +176,8 @@ class TrillianAgentsServiceTest {
                 .thenReturn(new TrillianConversationService.Reply(
                         "thread-1",
                         List.of(new TrillianConversationService.Contribution("m-2", COLIN, "new stuff", null)),
-                        true));
+                        true,
+                        false));
 
         Map<String, Object> result = call("""
                 {"jsonrpc":"2.0","id":1,"method":"tools/call",
@@ -184,7 +188,79 @@ class TrillianAgentsServiceTest {
         assertThat(content(result)).contains("new stuff");
     }
 
+    @Test
+    void agentReadReportsAnEndedConversation() {
+        when(conversations.read(TENANT, CALLER, "thread-1", null, TrillianConversationService.DEFAULT_WAIT_MS))
+                .thenReturn(new TrillianConversationService.Reply("thread-1", List.of(), false, true));
+
+        String text = content(call("""
+                {"jsonrpc":"2.0","id":1,"method":"tools/call",
+                 "params":{"name":"agent_read","arguments":{"conversationId":"thread-1"}}}
+                """));
+
+        assertThat(text).contains("\"closed\":true").contains("\"arrived\":false");
+    }
+
+    @Test
+    void agentCloseEndsTheConversation() {
+        Map<String, Object> result = call("""
+                {"jsonrpc":"2.0","id":1,"method":"tools/call",
+                 "params":{"name":"agent_close","arguments":{"conversationId":"thread-1"}}}
+                """);
+
+        assertThat(isError(result)).isFalse();
+        assertThat(content(result)).contains("\"closed\":true");
+        verify(conversations).close(TENANT, CALLER, "thread-1");
+    }
+
+    @Test
+    void agentCloseWithoutAConversationIdIsRefused() {
+        Map<String, Object> result = call("""
+                {"jsonrpc":"2.0","id":1,"method":"tools/call",
+                 "params":{"name":"agent_close","arguments":{}}}
+                """);
+
+        assertThat(isError(result)).isTrue();
+        assertThat(content(result)).contains("'conversationId' is required");
+    }
+
+    @Test
+    void waitMsIsClamped_negativeToZero_largeToTheMaximum_otherwiseTheDefault() {
+        TrillianConversationService.Reply empty =
+                new TrillianConversationService.Reply("thread-1", List.of(), false, false);
+        when(conversations.read(anyString(), anyString(), anyString(), any(), org.mockito.ArgumentMatchers.anyLong()))
+                .thenReturn(empty);
+
+        call(readFrame("-5"));
+        verify(conversations).read(TENANT, CALLER, "thread-1", null, 0);
+        call(readFrame("999999"));
+        verify(conversations).read(TENANT, CALLER, "thread-1", null, TrillianConversationService.MAX_WAIT_MS);
+        call(readFrame("\"soon\""));
+        verify(conversations).read(TENANT, CALLER, "thread-1", null, TrillianConversationService.DEFAULT_WAIT_MS);
+    }
+
+    @Test
+    void anUnexpectedFailure_isGenericErrorContent_withoutInternals() {
+        when(conversations.read(anyString(), anyString(), anyString(), any(), org.mockito.ArgumentMatchers.anyLong()))
+                .thenThrow(new IllegalStateException("E11000 duplicate key in collection maximegalon_items"));
+
+        Map<String, Object> result = call(readFrame("0"));
+
+        assertThat(isError(result)).isTrue();
+        assertThat(content(result))
+                .contains("internal error, reference")
+                .doesNotContain("E11000")
+                .doesNotContain("maximegalon_items");
+    }
+
     // ──────────────────── helpers ────────────────────
+
+    private static String readFrame(String waitMs) {
+        return """
+                {"jsonrpc":"2.0","id":1,"method":"tools/call",
+                 "params":{"name":"agent_read","arguments":{"conversationId":"thread-1","waitMs":%s}}}
+                """.formatted(waitMs);
+    }
 
     @SuppressWarnings("unchecked")
     private Map<String, Object> call(String frame) {

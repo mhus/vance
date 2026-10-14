@@ -1,8 +1,8 @@
 package de.mhus.vance.shared.session;
 
 import com.mongodb.client.result.UpdateResult;
-import de.mhus.vance.api.session.IdlePolicy;
 import de.mhus.vance.api.common.AccentColor;
+import de.mhus.vance.api.session.IdlePolicy;
 import de.mhus.vance.api.session.SessionLifecycleConfig;
 import de.mhus.vance.api.session.SessionMetadataPatchRequest;
 import de.mhus.vance.api.session.SessionStatus;
@@ -12,9 +12,9 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.EnumSet;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
@@ -74,6 +74,7 @@ public class SessionService {
 
     /** Field names — kept in one place so the conditional queries don't drift. */
     private static final String F_SESSION_ID = "sessionId";
+
     private static final String F_PROJECT_ID = "projectId";
     private static final String F_TENANT_ID = "tenantId";
     private static final String F_USER_ID = "userId";
@@ -106,6 +107,7 @@ public class SessionService {
 
     /** Caps for user-facing metadata — see specification/session-lifecycle.md §14. */
     public static final int TITLE_MAX_CHARS = 200;
+
     public static final int ICON_MAX_CHARS = 8;
     public static final int MAX_TAGS = 20;
     public static final int TAG_MAX_CHARS = 50;
@@ -140,13 +142,15 @@ public class SessionService {
      * lazily create) its dedicated {@code _scheduler_<name>} session
      * across brain restarts.
      */
-    public Optional<SessionDocument> findSystemSession(
-            String tenantId, String projectId, String displayName) {
+    public Optional<SessionDocument> findSystemSession(String tenantId, String projectId, String displayName) {
         // Filter out terminal statuses — a CLOSED or ARCHIVED row from
         // a previous lifecycle must not shadow a fresh recreate. See
         // {@code SessionRepository#findFirstByTenantIdAndProjectIdAndDisplayNameAndSystemAndStatusNotIn}.
         return repository.findFirstByTenantIdAndProjectIdAndDisplayNameAndSystemAndStatusNotIn(
-                tenantId, projectId, displayName, true,
+                tenantId,
+                projectId,
+                displayName,
+                true,
                 java.util.List.of(SessionStatus.CLOSED, SessionStatus.ARCHIVED));
     }
 
@@ -172,8 +176,7 @@ public class SessionService {
         return repository.findByTenantIdAndUserId(tenantId, userId);
     }
 
-    public List<SessionDocument> listForUserAndProject(
-            String tenantId, String userId, String projectId) {
+    public List<SessionDocument> listForUserAndProject(String tenantId, String userId, String projectId) {
         return repository.findByTenantIdAndUserIdAndProjectId(tenantId, userId, projectId);
     }
 
@@ -220,8 +223,7 @@ public class SessionService {
         Criteria ownBranch = Criteria.where("userId").is(userId);
         Criteria sharedBranch = Criteria.where("allowMultipleClients").is(true);
 
-        Criteria c = Criteria.where("tenantId").is(tenantId)
-                .orOperator(ownBranch, sharedBranch);
+        Criteria c = Criteria.where("tenantId").is(tenantId).orOperator(ownBranch, sharedBranch);
         if (projectId != null && !projectId.isBlank()) {
             c = c.and("projectId").is(projectId);
         }
@@ -229,8 +231,8 @@ public class SessionService {
         if (tag != null && !tag.isBlank()) {
             c = c.and(F_TAGS).is(tag.trim().toLowerCase(Locale.ROOT));
         }
-        Query q = new Query(c).with(
-                org.springframework.data.domain.Sort.by(
+        Query q = new Query(c)
+                .with(org.springframework.data.domain.Sort.by(
                         org.springframework.data.domain.Sort.Order.desc(F_PINNED),
                         org.springframework.data.domain.Sort.Order.desc(F_LAST_ACTIVITY)));
         return mongoTemplate.find(q, SessionDocument.class);
@@ -253,8 +255,10 @@ public class SessionService {
         TextCriteria tc = TextCriteria.forDefaultLanguage().matching(query);
         Query tq = TextQuery.queryText(tc)
                 .sortByScore()
-                .addCriteria(Criteria.where("tenantId").is(tenantId)
-                        .and(F_SESSION_ID).in(sessionIds))
+                .addCriteria(Criteria.where("tenantId")
+                        .is(tenantId)
+                        .and(F_SESSION_ID)
+                        .in(sessionIds))
                 .limit(limit);
         return mongoTemplate.find(tq, SessionDocument.class);
     }
@@ -274,8 +278,8 @@ public class SessionService {
      * merely orphaned.
      */
     public List<String> findSessionIdsForUser(String tenantId, String userId) {
-        Query query = new Query(Criteria.where(F_TENANT_ID).is(tenantId)
-                .and(F_USER_ID).is(userId));
+        Query query = new Query(
+                Criteria.where(F_TENANT_ID).is(tenantId).and(F_USER_ID).is(userId));
         query.fields().include(F_SESSION_ID);
         return mongoTemplate.find(query, SessionDocument.class).stream()
                 .map(SessionDocument::getSessionId)
@@ -293,8 +297,8 @@ public class SessionService {
      * throw all of it away.
      */
     public List<String> findSessionIdsForProject(String tenantId, String projectId) {
-        Query query = new Query(Criteria.where(F_TENANT_ID).is(tenantId)
-                .and(F_PROJECT_ID).is(projectId));
+        Query query = new Query(
+                Criteria.where(F_TENANT_ID).is(tenantId).and(F_PROJECT_ID).is(projectId));
         query.fields().include(F_SESSION_ID);
         return mongoTemplate.find(query, SessionDocument.class).stream()
                 .map(SessionDocument::getSessionId)
@@ -359,8 +363,7 @@ public class SessionService {
             String profile,
             String clientVersion,
             @Nullable String clientName) {
-        return create(tenantId, userId, projectId, displayName, profile,
-                clientVersion, clientName, false);
+        return create(tenantId, userId, projectId, displayName, profile, clientVersion, clientName, false);
     }
 
     /**
@@ -402,9 +405,13 @@ public class SessionService {
                 .system(system)
                 .build();
         SessionDocument saved = repository.save(doc);
-        log.info("Created session sessionId='{}' tenant='{}' user='{}' project='{}' system={}",
-                saved.getSessionId(), saved.getTenantId(), saved.getUserId(),
-                saved.getProjectId(), system);
+        log.info(
+                "Created session sessionId='{}' tenant='{}' user='{}' project='{}' system={}",
+                saved.getSessionId(),
+                saved.getTenantId(),
+                saved.getUserId(),
+                saved.getProjectId(),
+                system);
         megadodoService.sessionCreated(
                 saved.getTenantId(), saved.getProjectId(), saved.getSessionId(), saved.getUserId());
         return saved;
@@ -430,9 +437,7 @@ public class SessionService {
      */
     public SessionDocument createCopy(SessionDocument source, @Nullable String newTitle) {
         Instant now = Instant.now();
-        List<String> tags = source.getTags() == null
-                ? new ArrayList<>()
-                : new ArrayList<>(source.getTags());
+        List<String> tags = source.getTags() == null ? new ArrayList<>() : new ArrayList<>(source.getTags());
         SessionDocument doc = SessionDocument.builder()
                 .sessionId(newSessionId())
                 .tenantId(source.getTenantId())
@@ -468,9 +473,13 @@ public class SessionService {
                 .allowMultipleClients(source.isAllowMultipleClients())
                 .build();
         SessionDocument saved = repository.save(doc);
-        log.info("Duplicated session source='{}' → copy='{}' tenant='{}' user='{}' project='{}'",
-                source.getSessionId(), saved.getSessionId(), saved.getTenantId(),
-                saved.getUserId(), saved.getProjectId());
+        log.info(
+                "Duplicated session source='{}' → copy='{}' tenant='{}' user='{}' project='{}'",
+                source.getSessionId(),
+                saved.getSessionId(),
+                saved.getTenantId(),
+                saved.getUserId(),
+                saved.getProjectId());
         return saved;
     }
 
@@ -487,10 +496,7 @@ public class SessionService {
                 .set("onSuspend", cfg.getOnSuspend())
                 .set("idleTimeoutMs", cfg.getIdleTimeoutMs())
                 .set("suspendKeepDurationMs", cfg.getSuspendKeepDurationMs());
-        mongoTemplate.updateFirst(
-                new Query(Criteria.where(F_SESSION_ID).is(sessionId)),
-                update,
-                SessionDocument.class);
+        mongoTemplate.updateFirst(new Query(Criteria.where(F_SESSION_ID).is(sessionId)), update, SessionDocument.class);
     }
 
     /**
@@ -499,8 +505,8 @@ public class SessionService {
      * No-op for sessions that are already past INIT.
      */
     public void markBootstrapped(String sessionId) {
-        Query query = new Query(Criteria.where(F_SESSION_ID).is(sessionId)
-                .and(F_STATUS).is(SessionStatus.INIT));
+        Query query = new Query(
+                Criteria.where(F_SESSION_ID).is(sessionId).and(F_STATUS).is(SessionStatus.INIT));
         Update update = new Update().set(F_STATUS, SessionStatus.IDLE);
         mongoTemplate.updateFirst(query, update, SessionDocument.class);
     }
@@ -530,22 +536,24 @@ public class SessionService {
     public boolean tryBind(String sessionId, String editorId) {
         Instant now = Instant.now();
         Instant staleBefore = now.minus(bindStaleAfter);
-        Criteria base = Criteria.where(F_SESSION_ID).is(sessionId)
-                .and(F_STATUS).nin(SessionStatus.CLOSED, SessionStatus.ARCHIVED);
-        Criteria takeoverPredicate = new Criteria().orOperator(
-                Criteria.where(F_BOUND_CONNECTION).isNull(),
-                Criteria.where(F_BOUND_CONNECTION).is(editorId),
-                Criteria.where(F_LAST_ACTIVITY).lt(staleBefore));
+        Criteria base = Criteria.where(F_SESSION_ID)
+                .is(sessionId)
+                .and(F_STATUS)
+                .nin(SessionStatus.CLOSED, SessionStatus.ARCHIVED);
+        Criteria takeoverPredicate = new Criteria()
+                .orOperator(
+                        Criteria.where(F_BOUND_CONNECTION).isNull(),
+                        Criteria.where(F_BOUND_CONNECTION).is(editorId),
+                        Criteria.where(F_LAST_ACTIVITY).lt(staleBefore));
         Query query = new Query(new Criteria().andOperator(base, takeoverPredicate));
-        Update update = new Update()
-                .set(F_BOUND_CONNECTION, editorId)
-                .set(F_LAST_ACTIVITY, now);
+        Update update = new Update().set(F_BOUND_CONNECTION, editorId).set(F_LAST_ACTIVITY, now);
         UpdateResult result = mongoTemplate.updateFirst(query, update, SessionDocument.class);
         boolean bound = result.getModifiedCount() == 1;
         if (bound) {
             log.debug("Bound session '{}' to editor '{}'", sessionId, editorId);
         } else {
-            log.debug("Bind rejected for session '{}' — no matching non-CLOSED/-ARCHIVED record with stale or free bind",
+            log.debug(
+                    "Bind rejected for session '{}' — no matching non-CLOSED/-ARCHIVED record with stale or free bind",
                     sessionId);
         }
         return bound;
@@ -568,18 +576,17 @@ public class SessionService {
      */
     public boolean tryBindWithUserTakeover(String sessionId, String editorId) {
         Instant now = Instant.now();
-        Query query = new Query(Criteria.where(F_SESSION_ID).is(sessionId)
-                .and(F_STATUS).nin(SessionStatus.CLOSED, SessionStatus.ARCHIVED));
-        Update update = new Update()
-                .set(F_BOUND_CONNECTION, editorId)
-                .set(F_LAST_ACTIVITY, now);
+        Query query = new Query(Criteria.where(F_SESSION_ID)
+                .is(sessionId)
+                .and(F_STATUS)
+                .nin(SessionStatus.CLOSED, SessionStatus.ARCHIVED));
+        Update update = new Update().set(F_BOUND_CONNECTION, editorId).set(F_LAST_ACTIVITY, now);
         UpdateResult result = mongoTemplate.updateFirst(query, update, SessionDocument.class);
         boolean bound = result.getMatchedCount() == 1;
         if (bound) {
             log.debug("Bound session '{}' to editor '{}' via same-user takeover", sessionId, editorId);
         } else {
-            log.debug("Bind rejected for session '{}' — no matching non-CLOSED/-ARCHIVED record",
-                    sessionId);
+            log.debug("Bind rejected for session '{}' — no matching non-CLOSED/-ARCHIVED record", sessionId);
         }
         return bound;
     }
@@ -603,11 +610,11 @@ public class SessionService {
      *         missing
      */
     public boolean forceUnbind(String sessionId) {
-        Query query = new Query(Criteria.where(F_SESSION_ID).is(sessionId)
-                .and(F_BOUND_CONNECTION).ne(null));
-        Update update = new Update()
-                .set(F_BOUND_CONNECTION, null)
-                .set(F_LAST_ACTIVITY, Instant.now());
+        Query query = new Query(Criteria.where(F_SESSION_ID)
+                .is(sessionId)
+                .and(F_BOUND_CONNECTION)
+                .ne(null));
+        Update update = new Update().set(F_BOUND_CONNECTION, null).set(F_LAST_ACTIVITY, Instant.now());
         UpdateResult result = mongoTemplate.updateFirst(query, update, SessionDocument.class);
         boolean unbound = result.getModifiedCount() == 1;
         if (unbound) {
@@ -621,11 +628,11 @@ public class SessionService {
      * on sessions that were already unbound — it just does nothing.
      */
     public void unbind(String sessionId, String editorId) {
-        Query query = new Query(Criteria.where(F_SESSION_ID).is(sessionId)
-                .and(F_BOUND_CONNECTION).is(editorId));
-        Update update = new Update()
-                .set(F_BOUND_CONNECTION, null)
-                .set(F_LAST_ACTIVITY, Instant.now());
+        Query query = new Query(Criteria.where(F_SESSION_ID)
+                .is(sessionId)
+                .and(F_BOUND_CONNECTION)
+                .is(editorId));
+        Update update = new Update().set(F_BOUND_CONNECTION, null).set(F_LAST_ACTIVITY, Instant.now());
         UpdateResult result = mongoTemplate.updateFirst(query, update, SessionDocument.class);
         if (result.getModifiedCount() == 1) {
             log.debug("Unbound session '{}' from editor '{}'", sessionId, editorId);
@@ -646,23 +653,25 @@ public class SessionService {
      * unbound).
      */
     public boolean tryEscalateBind(String sessionId, String fromEditorId, String toEditorId) {
-        Query query = new Query(Criteria.where(F_SESSION_ID).is(sessionId)
-                .and(F_BOUND_CONNECTION).is(fromEditorId));
-        Update update = new Update()
-                .set(F_BOUND_CONNECTION, toEditorId)
-                .set(F_LAST_ACTIVITY, Instant.now());
+        Query query = new Query(Criteria.where(F_SESSION_ID)
+                .is(sessionId)
+                .and(F_BOUND_CONNECTION)
+                .is(fromEditorId));
+        Update update = new Update().set(F_BOUND_CONNECTION, toEditorId).set(F_LAST_ACTIVITY, Instant.now());
         UpdateResult result = mongoTemplate.updateFirst(query, update, SessionDocument.class);
         boolean escalated = result.getModifiedCount() == 1;
         if (escalated) {
-            log.info("Escalated session '{}' bind from editor '{}' to '{}'",
-                    sessionId, fromEditorId, toEditorId);
+            log.info("Escalated session '{}' bind from editor '{}' to '{}'", sessionId, fromEditorId, toEditorId);
         }
         return escalated;
     }
 
     /**
-     * Mass-release the {@code boundConnectionId} for every session whose
-     * {@code projectId} is in {@code projectIds}. Used by
+     * Mass-release the {@code boundConnectionId} for every session of
+     * {@code tenantId} whose {@code projectId} is in {@code projectIds}.
+     * Scoped by tenant: project names are only unique per tenant, and hub
+     * names ({@code _user_<login>}) collide across tenants by construction —
+     * an unscoped release would cut live clients of another tenant. Used by
      * {@code ProjectLifecycleService.bring} when the project transitions
      * from non-RUNNING to RUNNING on this pod — any pre-existing bound
      * connection is guaranteed dead, immediate unbind avoids a 409 on
@@ -670,16 +679,23 @@ public class SessionService {
      *
      * @return number of sessions that were released
      */
-    public long unbindAllForProjects(java.util.Collection<String> projectIds) {
+    public long unbindAllForProjects(String tenantId, java.util.Collection<String> projectIds) {
         if (projectIds == null || projectIds.isEmpty()) return 0;
-        Query query = new Query(Criteria.where("projectId").in(projectIds)
-                .and(F_BOUND_CONNECTION).ne(null));
+        Query query = new Query(Criteria.where(F_TENANT_ID)
+                .is(tenantId)
+                .and("projectId")
+                .in(projectIds)
+                .and(F_BOUND_CONNECTION)
+                .ne(null));
         Update update = new Update().set(F_BOUND_CONNECTION, null);
         UpdateResult result = mongoTemplate.updateMulti(query, update, SessionDocument.class);
         long n = result.getModifiedCount();
         if (n > 0) {
-            log.info("Reclaimed {} stale session binding(s) for {} project(s)",
-                    n, projectIds.size());
+            log.info(
+                    "Reclaimed {} stale session binding(s) for {} project(s) in tenant '{}'",
+                    n,
+                    projectIds.size(),
+                    tenantId);
         }
         return n;
     }
@@ -706,8 +722,8 @@ public class SessionService {
      * @return number of sessions that were released
      */
     public long unbindStaleConnections(Instant cutoff) {
-        Query query = new Query(Criteria.where(F_BOUND_CONNECTION).ne(null)
-                .and(F_LAST_ACTIVITY).lt(cutoff));
+        Query query = new Query(
+                Criteria.where(F_BOUND_CONNECTION).ne(null).and(F_LAST_ACTIVITY).lt(cutoff));
         Update update = new Update().set(F_BOUND_CONNECTION, null);
         UpdateResult result = mongoTemplate.updateMulti(query, update, SessionDocument.class);
         long n = result.getModifiedCount();
@@ -738,9 +754,10 @@ public class SessionService {
      */
     public boolean heartbeat(String sessionId, String editorId) {
         Criteria sessionMatch = Criteria.where(F_SESSION_ID).is(sessionId);
-        Criteria sharedOrMine = new Criteria().orOperator(
-                Criteria.where(F_BOUND_CONNECTION).is(editorId),
-                Criteria.where(F_ALLOW_MULTIPLE_CLIENTS).is(true));
+        Criteria sharedOrMine = new Criteria()
+                .orOperator(
+                        Criteria.where(F_BOUND_CONNECTION).is(editorId),
+                        Criteria.where(F_ALLOW_MULTIPLE_CLIENTS).is(true));
         Query query = new Query(new Criteria().andOperator(sessionMatch, sharedOrMine));
         Update update = new Update().set(F_LAST_ACTIVITY, Instant.now());
         UpdateResult result = mongoTemplate.updateFirst(query, update, SessionDocument.class);
@@ -749,21 +766,26 @@ public class SessionService {
         // count as not-modified, but the session is alive — don't drop
         // the connection.
         boolean alive = result.getMatchedCount() == 1;
-        log.trace("heartbeat session='{}' editor='{}' matched={} modified={} alive={}",
-                sessionId, editorId,
-                result.getMatchedCount(), result.getModifiedCount(), alive);
+        log.trace(
+                "heartbeat session='{}' editor='{}' matched={} modified={} alive={}",
+                sessionId,
+                editorId,
+                result.getMatchedCount(),
+                result.getModifiedCount(),
+                alive);
         if (!alive) {
             // Pull the row separately so we can log why the filter
             // missed — owner-bound-elsewhere, shared flag off, session
             // CLOSED, doesn't exist, ...
             SessionDocument current = findBySessionId(sessionId).orElse(null);
             if (current == null) {
-                log.trace("heartbeat-miss session='{}' editor='{}' — no such session",
-                        sessionId, editorId);
+                log.trace("heartbeat-miss session='{}' editor='{}' — no such session", sessionId, editorId);
             } else {
-                log.trace("heartbeat-miss session='{}' editor='{}' "
+                log.trace(
+                        "heartbeat-miss session='{}' editor='{}' "
                                 + "boundConnectionId='{}' allowMultipleClients={} status={}",
-                        sessionId, editorId,
+                        sessionId,
+                        editorId,
                         current.getBoundConnectionId(),
                         current.isAllowMultipleClients(),
                         current.getStatus());
@@ -777,20 +799,21 @@ public class SessionService {
      * a second upload overwrites the first. Pass {@code null} content to
      * clear (the corresponding fields are unset).
      */
-    public void setClientAgentDoc(
-            String sessionId, @Nullable String path, @Nullable String content) {
+    public void setClientAgentDoc(String sessionId, @Nullable String path, @Nullable String content) {
         Query query = new Query(Criteria.where(F_SESSION_ID).is(sessionId));
         Update update = new Update();
         if (content == null) {
             update.unset(F_CLIENT_AGENT_DOC).unset(F_CLIENT_AGENT_DOC_PATH);
         } else {
-            update.set(F_CLIENT_AGENT_DOC, content)
-                    .set(F_CLIENT_AGENT_DOC_PATH, path);
+            update.set(F_CLIENT_AGENT_DOC, content).set(F_CLIENT_AGENT_DOC_PATH, path);
         }
         UpdateResult result = mongoTemplate.updateFirst(query, update, SessionDocument.class);
         if (result.getModifiedCount() == 1) {
-            log.info("Stored client agent doc for session='{}' path='{}' chars={}",
-                    sessionId, path, content == null ? 0 : content.length());
+            log.info(
+                    "Stored client agent doc for session='{}' path='{}' chars={}",
+                    sessionId,
+                    path,
+                    content == null ? 0 : content.length());
         }
     }
 
@@ -805,16 +828,17 @@ public class SessionService {
      *         process linked
      */
     public boolean setChatProcessId(String sessionId, String chatProcessId) {
-        Query query = new Query(Criteria.where(F_SESSION_ID).is(sessionId)
-                .andOperator(new Criteria().orOperator(
-                        Criteria.where(F_CHAT_PROCESS_ID).isNull(),
-                        Criteria.where(F_CHAT_PROCESS_ID).exists(false))));
+        Query query = new Query(Criteria.where(F_SESSION_ID)
+                .is(sessionId)
+                .andOperator(new Criteria()
+                        .orOperator(
+                                Criteria.where(F_CHAT_PROCESS_ID).isNull(),
+                                Criteria.where(F_CHAT_PROCESS_ID).exists(false))));
         Update update = new Update().set(F_CHAT_PROCESS_ID, chatProcessId);
         UpdateResult result = mongoTemplate.updateFirst(query, update, SessionDocument.class);
         boolean ok = result.getModifiedCount() == 1;
         if (ok) {
-            log.debug("Linked chatProcessId='{}' to session='{}'",
-                    chatProcessId, sessionId);
+            log.debug("Linked chatProcessId='{}' to session='{}'", chatProcessId, sessionId);
         }
         return ok;
     }
@@ -833,9 +857,7 @@ public class SessionService {
         } else {
             update = new Update().set(F_CHAT_PROCESS_ID, newChatProcessId);
         }
-        mongoTemplate.updateFirst(
-                new Query(Criteria.where(F_SESSION_ID).is(sessionId)),
-                update, SessionDocument.class);
+        mongoTemplate.updateFirst(new Query(Criteria.where(F_SESSION_ID).is(sessionId)), update, SessionDocument.class);
     }
 
     /**
@@ -871,10 +893,7 @@ public class SessionService {
      * — keeps the chat hot-path adding at most two atomic Mongo ops.
      */
     public void touchChatPreview(
-            String sessionId,
-            @Nullable String role,
-            @Nullable String content,
-            @Nullable Instant at) {
+            String sessionId, @Nullable String role, @Nullable String content, @Nullable Instant at) {
         if (sessionId == null || sessionId.isBlank()) return;
         String preview = truncate(content);
         Instant when = at == null ? Instant.now() : at;
@@ -884,17 +903,17 @@ public class SessionService {
                 .set(F_LAST_MESSAGE_ROLE, role)
                 .set(F_LAST_MESSAGE_AT, when);
         mongoTemplate.updateFirst(
-                new Query(Criteria.where(F_SESSION_ID).is(sessionId)),
-                lastUpdate,
-                SessionDocument.class);
+                new Query(Criteria.where(F_SESSION_ID).is(sessionId)), lastUpdate, SessionDocument.class);
 
         if ("USER".equalsIgnoreCase(role) && preview != null) {
             // Set firstUserMessage only when the field is currently null /
             // missing — captures the session's "topic" once.
-            Query firstQuery = new Query(Criteria.where(F_SESSION_ID).is(sessionId)
-                    .andOperator(new Criteria().orOperator(
-                            Criteria.where(F_FIRST_USER_MESSAGE).isNull(),
-                            Criteria.where(F_FIRST_USER_MESSAGE).exists(false))));
+            Query firstQuery = new Query(Criteria.where(F_SESSION_ID)
+                    .is(sessionId)
+                    .andOperator(new Criteria()
+                            .orOperator(
+                                    Criteria.where(F_FIRST_USER_MESSAGE).isNull(),
+                                    Criteria.where(F_FIRST_USER_MESSAGE).exists(false))));
             Update firstUpdate = new Update().set(F_FIRST_USER_MESSAGE, preview);
             mongoTemplate.updateFirst(firstQuery, firstUpdate, SessionDocument.class);
         }
@@ -937,9 +956,10 @@ public class SessionService {
         // the update no-ops instead of clobbering the freshly-resumed session to
         // CLOSED (killing its running engines). Mirrors suspend()/resume().
         UpdateResult result = mongoTemplate.updateFirst(
-                new Query(Criteria.where(F_SESSION_ID).is(sessionId)
-                        .and(F_STATUS).is(session.getStatus())),
-                update, SessionDocument.class);
+                new Query(
+                        Criteria.where(F_SESSION_ID).is(sessionId).and(F_STATUS).is(session.getStatus())),
+                update,
+                SessionDocument.class);
         if (result.getModifiedCount() == 1) {
             log.info("Closed session '{}'", sessionId);
         }
@@ -955,8 +975,7 @@ public class SessionService {
     public void archive(String sessionId) {
         SessionDocument session = repository.findBySessionId(sessionId).orElse(null);
         if (session == null) return;
-        if (session.getStatus() == SessionStatus.ARCHIVED
-                || session.getStatus() == SessionStatus.CLOSED) {
+        if (session.getStatus() == SessionStatus.ARCHIVED || session.getStatus() == SessionStatus.CLOSED) {
             return;
         }
         Instant now = Instant.now();
@@ -974,9 +993,10 @@ public class SessionService {
         // archiving it — the update no-ops instead of clobbering the
         // freshly-resumed session to ARCHIVED. Mirrors suspend()/resume().
         UpdateResult result = mongoTemplate.updateFirst(
-                new Query(Criteria.where(F_SESSION_ID).is(sessionId)
-                        .and(F_STATUS).is(session.getStatus())),
-                update, SessionDocument.class);
+                new Query(
+                        Criteria.where(F_SESSION_ID).is(sessionId).and(F_STATUS).is(session.getStatus())),
+                update,
+                SessionDocument.class);
         if (result.getModifiedCount() == 1) {
             log.info("Archived session '{}'", sessionId);
         }
@@ -991,8 +1011,8 @@ public class SessionService {
      */
     public void reactivate(String sessionId) {
         Instant now = Instant.now();
-        Query query = new Query(Criteria.where(F_SESSION_ID).is(sessionId)
-                .and(F_STATUS).is(SessionStatus.ARCHIVED));
+        Query query = new Query(
+                Criteria.where(F_SESSION_ID).is(sessionId).and(F_STATUS).is(SessionStatus.ARCHIVED));
         Update update = new Update()
                 .set(F_STATUS, SessionStatus.IDLE)
                 .set(F_REACTIVATED_AT, now)
@@ -1045,12 +1065,12 @@ public class SessionService {
         // an active session to SUSPENDED (orphaning its running engine).
         // Mirrors the guard resume() already applies.
         UpdateResult result = mongoTemplate.updateFirst(
-                new Query(Criteria.where(F_SESSION_ID).is(sessionId)
-                        .and(F_STATUS).is(session.getStatus())),
-                update, SessionDocument.class);
+                new Query(
+                        Criteria.where(F_SESSION_ID).is(sessionId).and(F_STATUS).is(session.getStatus())),
+                update,
+                SessionDocument.class);
         if (result.getModifiedCount() == 1) {
-            log.info("Suspended session '{}' cause={} transitionAt={}",
-                    sessionId, cause, transitionAt);
+            log.info("Suspended session '{}' cause={} transitionAt={}", sessionId, cause, transitionAt);
         }
     }
 
@@ -1059,8 +1079,8 @@ public class SessionService {
      * Caller is responsible for resuming the engines.
      */
     public void resume(String sessionId) {
-        Query query = new Query(Criteria.where(F_SESSION_ID).is(sessionId)
-                .and(F_STATUS).is(SessionStatus.SUSPENDED));
+        Query query = new Query(
+                Criteria.where(F_SESSION_ID).is(sessionId).and(F_STATUS).is(SessionStatus.SUSPENDED));
         Update update = new Update()
                 .set(F_STATUS, SessionStatus.IDLE)
                 .set(F_LAST_ACTIVITY, Instant.now())
@@ -1084,8 +1104,10 @@ public class SessionService {
     public List<SessionDocument> findIdleCandidates(Instant coarseCutoff) {
         Query query = new Query(Criteria.where(F_STATUS)
                 .in(SessionStatus.RUNNING, SessionStatus.IDLE)
-                .and("onIdle").is(IdlePolicy.SUSPEND)
-                .and(F_LAST_ACTIVITY).lt(coarseCutoff));
+                .and("onIdle")
+                .is(IdlePolicy.SUSPEND)
+                .and(F_LAST_ACTIVITY)
+                .lt(coarseCutoff));
         return mongoTemplate.find(query, SessionDocument.class);
     }
 
@@ -1095,8 +1117,10 @@ public class SessionService {
      * query — not part of the lifecycle code path.
      */
     public List<SessionDocument> findOverdueSuspended(Instant cutoff) {
-        Query query = new Query(Criteria.where(F_STATUS).is(SessionStatus.SUSPENDED)
-                .and(F_TRANSITION_AT).lte(cutoff));
+        Query query = new Query(Criteria.where(F_STATUS)
+                .is(SessionStatus.SUSPENDED)
+                .and(F_TRANSITION_AT)
+                .lte(cutoff));
         return mongoTemplate.find(query, SessionDocument.class);
     }
 
@@ -1107,9 +1131,12 @@ public class SessionService {
      */
     public List<SessionDocument> findForcedSuspendedByProject(java.util.Collection<String> projectIds) {
         if (projectIds == null || projectIds.isEmpty()) return List.of();
-        Query query = new Query(Criteria.where(F_STATUS).is(SessionStatus.SUSPENDED)
-                .and(F_SUSPEND_CAUSE).is(SuspendCause.FORCED)
-                .and("projectId").in(projectIds));
+        Query query = new Query(Criteria.where(F_STATUS)
+                .is(SessionStatus.SUSPENDED)
+                .and(F_SUSPEND_CAUSE)
+                .is(SuspendCause.FORCED)
+                .and("projectId")
+                .in(projectIds));
         return mongoTemplate.find(query, SessionDocument.class);
     }
 
@@ -1117,8 +1144,7 @@ public class SessionService {
     public void delete(String sessionId) {
         repository.findBySessionId(sessionId).ifPresent(doc -> {
             repository.delete(doc);
-            megadodoService.sessionDeleted(
-                    doc.getTenantId(), doc.getProjectId(), doc.getSessionId(), doc.getUserId());
+            megadodoService.sessionDeleted(doc.getTenantId(), doc.getProjectId(), doc.getSessionId(), doc.getUserId());
         });
     }
 
@@ -1194,8 +1220,7 @@ public class SessionService {
 
         update.set(F_USER_TOUCHED_AT, Instant.now());
         UpdateResult result = mongoTemplate.updateFirst(
-                new Query(Criteria.where(F_SESSION_ID).is(sessionId)),
-                update, SessionDocument.class);
+                new Query(Criteria.where(F_SESSION_ID).is(sessionId)), update, SessionDocument.class);
         if (result.getModifiedCount() == 1) {
             log.info("Patched metadata on session '{}'", sessionId);
             return true;
@@ -1222,28 +1247,34 @@ public class SessionService {
         if (suggestedTitle != null && !suggestedTitle.isBlank()) {
             String title = suggestedTitle.trim();
             if (title.length() > TITLE_MAX_CHARS) title = title.substring(0, TITLE_MAX_CHARS);
-            Query q = new Query(Criteria.where(F_SESSION_ID).is(sessionId)
-                    .andOperator(new Criteria().orOperator(
-                            Criteria.where(F_TITLE).isNull(),
-                            Criteria.where(F_TITLE).exists(false))));
+            Query q = new Query(Criteria.where(F_SESSION_ID)
+                    .is(sessionId)
+                    .andOperator(new Criteria()
+                            .orOperator(
+                                    Criteria.where(F_TITLE).isNull(),
+                                    Criteria.where(F_TITLE).exists(false))));
             Update u = new Update().set(F_TITLE, title).set(F_TITLE_AUTO, true);
             mongoTemplate.updateFirst(q, u, SessionDocument.class);
         }
         if (suggestedIcon != null && !suggestedIcon.isBlank()) {
             String icon = suggestedIcon;
             if (icon.length() > ICON_MAX_CHARS) icon = icon.substring(0, ICON_MAX_CHARS);
-            Query q = new Query(Criteria.where(F_SESSION_ID).is(sessionId)
-                    .andOperator(new Criteria().orOperator(
-                            Criteria.where(F_ICON).isNull(),
-                            Criteria.where(F_ICON).exists(false))));
+            Query q = new Query(Criteria.where(F_SESSION_ID)
+                    .is(sessionId)
+                    .andOperator(new Criteria()
+                            .orOperator(
+                                    Criteria.where(F_ICON).isNull(),
+                                    Criteria.where(F_ICON).exists(false))));
             Update u = new Update().set(F_ICON, icon);
             mongoTemplate.updateFirst(q, u, SessionDocument.class);
         }
         if (suggestedColor != null) {
-            Query q = new Query(Criteria.where(F_SESSION_ID).is(sessionId)
-                    .andOperator(new Criteria().orOperator(
-                            Criteria.where(F_COLOR).isNull(),
-                            Criteria.where(F_COLOR).exists(false))));
+            Query q = new Query(Criteria.where(F_SESSION_ID)
+                    .is(sessionId)
+                    .andOperator(new Criteria()
+                            .orOperator(
+                                    Criteria.where(F_COLOR).isNull(),
+                                    Criteria.where(F_COLOR).exists(false))));
             Update u = new Update().set(F_COLOR, suggestedColor);
             mongoTemplate.updateFirst(q, u, SessionDocument.class);
         }

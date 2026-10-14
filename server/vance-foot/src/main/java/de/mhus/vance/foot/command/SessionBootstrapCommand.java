@@ -50,10 +50,8 @@ public class SessionBootstrapCommand implements SlashCommand {
     private final ChatTerminal terminal;
     private final FootConfig config;
 
-    public SessionBootstrapCommand(ConnectionService connection,
-                                   SessionService sessions,
-                                   ChatTerminal terminal,
-                                   FootConfig config) {
+    public SessionBootstrapCommand(
+            ConnectionService connection, SessionService sessions, ChatTerminal terminal, FootConfig config) {
         this.connection = connection;
         this.sessions = sessions;
         this.terminal = terminal;
@@ -78,7 +76,8 @@ public class SessionBootstrapCommand implements SlashCommand {
         }
         int sepIdx = args.indexOf("--");
         List<String> rawHead = sepIdx == -1 ? args : args.subList(0, sepIdx);
-        @Nullable String initialMessage = sepIdx == -1
+        @Nullable
+        String initialMessage = sepIdx == -1
                 ? null
                 : String.join(" ", args.subList(sepIdx + 1, args.size())).trim();
         if (initialMessage != null && initialMessage.isEmpty()) {
@@ -89,9 +88,7 @@ public class SessionBootstrapCommand implements SlashCommand {
         // a process spec. On resume (@sessionId) it steals a session held by
         // another live connection of the same user; ignored on create.
         boolean takeoverFlag = rawHead.stream().anyMatch(SessionBootstrapCommand::isTakeoverToken);
-        List<String> head = rawHead.stream()
-                .filter(t -> !isTakeoverToken(t))
-                .toList();
+        List<String> head = rawHead.stream().filter(t -> !isTakeoverToken(t)).toList();
 
         if (head.size() < 2) {
             printUsage();
@@ -129,41 +126,49 @@ public class SessionBootstrapCommand implements SlashCommand {
         boolean daemon = Profiles.DAEMON.equals(config.getClient().getProfile());
         boolean takeover = takeoverFlag || daemon;
 
+        SessionBootstrapRequest request = SessionBootstrapRequest.builder()
+                .projectId(projectId)
+                .sessionId(sessionId)
+                .processes(specs)
+                .initialMessage(initialMessage)
+                .takeover(takeover)
+                .build();
         SessionBootstrapResponse response;
-        try {
-            response = connection.request(
-                    MessageType.SESSION_BOOTSTRAP,
-                    SessionBootstrapRequest.builder()
-                            .projectId(projectId)
-                            .sessionId(sessionId)
-                            .processes(specs)
-                            .initialMessage(initialMessage)
-                            .takeover(takeover)
-                            .build(),
-                    SessionBootstrapResponse.class,
-                    Duration.ofSeconds(30));
-        } catch (BrainException e) {
-            if (e.getErrorCode() == 409
-                    && ErrorData.REASON_SESSION_BOUND_ELSEWHERE.equals(e.getReason())
-                    && sessionId != null) {
-                terminal.error("Session '" + sessionId + "' is open in another connection "
-                        + "of yours. Re-run with --takeover to take it over here:");
-                terminal.info("    /session-bootstrap @" + sessionId + " … --takeover");
-                return;
+        int attempt = 1;
+        while (true) {
+            try {
+                response = connection.request(
+                        MessageType.SESSION_BOOTSTRAP, request, SessionBootstrapResponse.class, Duration.ofSeconds(30));
+                break;
+            } catch (BrainException e) {
+                if (e.getErrorCode() == 409
+                        && ErrorData.REASON_SESSION_BOUND_ELSEWHERE.equals(e.getReason())
+                        && sessionId != null) {
+                    terminal.error("Session '" + sessionId + "' is open in another connection "
+                            + "of yours. Re-run with --takeover to take it over here:");
+                    terminal.info("    /session-bootstrap @" + sessionId + " … --takeover");
+                    return;
+                }
+                // The project moved between the routing decision and the
+                // handler — the same frame, re-sent, is routed to the holder.
+                if (isHeldElsewhere(e) && attempt < MAX_HELD_ELSEWHERE_ATTEMPTS) {
+                    sleepBeforeRetry(attempt);
+                    attempt++;
+                    continue;
+                }
+                throw e;
             }
-            throw e;
         }
 
         sessions.bind(response.getSessionId(), response.getProjectId());
         terminal.info((response.isSessionCreated() ? "Session created: " : "Session resumed: ")
                 + response.getSessionId() + " (project=" + response.getProjectId() + ")");
         for (BootstrappedProcess p : response.getProcessesCreated()) {
-            terminal.info("  + process created: " + p.getName()
-                    + " (engine=" + p.getEngine() + ", status=" + p.getStatus() + ")");
+            terminal.info("  + process created: " + p.getName() + " (engine=" + p.getEngine() + ", status="
+                    + p.getStatus() + ")");
         }
         for (BootstrappedProcess p : response.getProcessesSkipped()) {
-            terminal.info("  ° process skipped (already exists): " + p.getName()
-                    + " (engine=" + p.getEngine() + ")");
+            terminal.info("  ° process skipped (already exists): " + p.getName() + " (engine=" + p.getEngine() + ")");
         }
 
         @Nullable String active = response.getSteeredProcessName();
@@ -184,6 +189,21 @@ public class SessionBootstrapCommand implements SlashCommand {
     private void printUsage() {
         terminal.error("Usage: /session-bootstrap <projectId>|@<sessionId> <recipe>[:name] "
                 + "[more...] [--takeover] [-- <initial message>]");
+    }
+
+    /** Bounded: a project that keeps moving is an incident, not a race. */
+    static final int MAX_HELD_ELSEWHERE_ATTEMPTS = 3;
+
+    static boolean isHeldElsewhere(BrainException e) {
+        return e.getErrorCode() == 409 && ErrorData.REASON_PROJECT_HELD_ELSEWHERE.equals(e.getReason());
+    }
+
+    private static void sleepBeforeRetry(int attempt) {
+        try {
+            Thread.sleep(250L * attempt);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private static boolean isTakeoverToken(String arg) {

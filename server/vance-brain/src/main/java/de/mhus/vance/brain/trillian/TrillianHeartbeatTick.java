@@ -8,6 +8,7 @@ import de.mhus.vance.brain.thinkengine.SteerMessageCodec;
 import de.mhus.vance.brain.trillian.nature.SelfCheckFinding;
 import de.mhus.vance.brain.trillian.nature.TrillianNature;
 import de.mhus.vance.shared.megadodo.MegadodoService;
+import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
@@ -15,8 +16,6 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -55,9 +54,6 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class TrillianHeartbeatTick {
 
-    /** Sanity bound on live loops per scan — not an expected number. */
-    private static final int MAX_LOOPS = 1000;
-
     private final ClusterService clusterService;
     private final ThinkProcessService thinkProcessService;
     private final TrillianWakeupService wakeupService;
@@ -78,16 +74,11 @@ public class TrillianHeartbeatTick {
         int adopted = 0;
         int quiet = 0;
         int woken = 0;
-        Set<String> heldHubs = projectService.findRunningByHomePodId(clusterService.selfPodId()).stream()
-                .map(p -> p.getTenantId() + '/' + p.getName())
-                .collect(Collectors.toUnmodifiableSet());
-        if (heldHubs.isEmpty()) {
+        List<ProjectDocument> held = projectService.findRunningByHomePodId(clusterService.selfPodId());
+        if (held.isEmpty()) {
             return;
         }
-        for (ThinkProcessDocument loop : wakeupService.liveLoops(MAX_LOOPS)) {
-            if (!heldHubs.contains(loop.getTenantId() + '/' + loop.getProjectId())) {
-                continue;
-            }
+        for (ThinkProcessDocument loop : wakeupService.liveLoopsIn(held)) {
             loops++;
             // Overlap-skip: a loop that is mid-turn sees its inbox when the
             // turn drains; a wakeup now would be a second turn for nothing.
@@ -142,6 +133,11 @@ public class TrillianHeartbeatTick {
                         "Trillian heartbeat: loop id='{}' due but nothing to look at " + "— re-arming without a turn",
                         loop.getId());
                 if (ladderDue) {
+                    // An owed wake with nothing to show is spent, too —
+                    // otherwise it would stay due and be re-checked every
+                    // round.
+                    wakeupService.clearWakeRequest(loop.getId());
+                    loop = thinkProcessService.findById(loop.getId()).orElse(loop);
                     wakeupService.arm(loop, zone);
                 } else {
                     // The marker said due, the documents disagree (edited
@@ -280,7 +276,7 @@ public class TrillianHeartbeatTick {
      */
     private boolean wake(ThinkProcessDocument loop, String wakeupId, List<SelfCheckFinding> findings) {
         try {
-            wakeupService.disarm(loop);
+            wakeupService.consumeWake(loop);
             SteerMessage.ExternalCommand check = new SteerMessage.ExternalCommand(
                     Instant.now(),
                     /*idempotencyKey*/ wakeupId,

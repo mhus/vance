@@ -1,5 +1,6 @@
 package de.mhus.vance.anus.cluster;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.contains;
@@ -7,7 +8,6 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static java.util.Objects.requireNonNull;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.anus.brain.AnusBrainClient;
@@ -30,8 +30,7 @@ import org.mockito.ArgumentCaptor;
 class ProjectClusterServiceTest {
 
     private static final String HOME = "/internal/cluster/projects/home";
-    private static final String HELD_BODY =
-            "{\"podId\":\"p-1\",\"endpoint\":\"10.0.0.7:9990\",\"nodeName\":\"pod-a\"}";
+    private static final String HELD_BODY = "{\"podId\":\"p-1\",\"endpoint\":\"10.0.0.7:9990\",\"nodeName\":\"pod-a\"}";
 
     private final AnusBrainClient client = mock(AnusBrainClient.class);
     private final ProjectClusterService service = new ProjectClusterService(client);
@@ -51,15 +50,15 @@ class ProjectClusterServiceTest {
 
     @Test
     void home_a404_isNobodyHoldsIt_andKeepsTheReason() {
-        // The reason matters: "never placed" and "podless, lives wherever the
-        // WS landed" are both 404 and mean different things to a caller.
+        // The reason matters: "never placed" and "homeless, runs nowhere"
+        // are both 404 and mean different things to a caller.
         when(client.internal(contains(HOME), eq("GET"), any()))
-                .thenReturn(new Response(404, "podless project — holds no lease"));
+                .thenReturn(new Response(404, "homeless project — holds no lease"));
 
         var home = service.home("acme", "p1");
 
         assertThat(home.holder()).isEqualTo(Holder.NONE);
-        assertThat(home.detail()).contains("podless");
+        assertThat(home.detail()).contains("homeless");
     }
 
     @Test
@@ -77,8 +76,7 @@ class ProjectClusterServiceTest {
         // Distinct from UNREACHABLE on purpose: the brain did answer, so the
         // operator's next step is different — and treating it as "nobody holds
         // it" would let a delete proceed against a project a pod is working on.
-        when(client.internal(contains(HOME), eq("GET"), any()))
-                .thenReturn(new Response(200, "not json at all"));
+        when(client.internal(contains(HOME), eq("GET"), any())).thenReturn(new Response(200, "not json at all"));
 
         var home = service.home("acme", "p1");
 
@@ -120,14 +118,12 @@ class ProjectClusterServiceTest {
         assertThat(outcome.placement()).isEqualTo(Placement.PLACED);
         // The release has to reach that pod, not any brain: it tears down
         // in-memory state that exists only there.
-        verify(client).internalAt(eq("http://10.0.0.7:9990"), eq("/internal/cluster/release"),
-                eq("POST"), any());
+        verify(client).internalAt(eq("http://10.0.0.7:9990"), eq("/internal/cluster/release"), eq("POST"), any());
     }
 
     @Test
     void drain_nothingToHandOff_countsAsReleased() {
-        when(client.internal(contains(HOME), eq("GET"), any()))
-                .thenReturn(new Response(404, "no live lease"));
+        when(client.internal(contains(HOME), eq("GET"), any())).thenReturn(new Response(404, "no live lease"));
 
         var outcome = service.drain("acme", "p1");
 
@@ -186,8 +182,7 @@ class ProjectClusterServiceTest {
 
         assertThat(decision.verdict()).isEqualTo(DrainVerdict.BLOCKED);
         assertThat(decision.abort())
-                .as("not knowing whether a pod is still working on it is exactly when "
-                        + "proceeding is unsafe")
+                .as("not knowing whether a pod is still working on it is exactly when " + "proceeding is unsafe")
                 .isTrue();
     }
 
@@ -207,8 +202,7 @@ class ProjectClusterServiceTest {
         // The question a rename asks afterwards: place it again, or not? A
         // project nobody held has no state to restore, and placing it would
         // start something the rename did not ask for.
-        when(client.internal(contains(HOME), eq("GET"), any()))
-                .thenReturn(new Response(404, "no live lease"));
+        when(client.internal(contains(HOME), eq("GET"), any())).thenReturn(new Response(404, "no live lease"));
 
         var decision = service.drainBefore("acme", "p1", false, false);
 
@@ -227,10 +221,8 @@ class ProjectClusterServiceTest {
         service.writePlacement("acme", "p1", null, 7);
 
         ArgumentCaptor<String> body = ArgumentCaptor.forClass(String.class);
-        verify(client).internal(eq("/internal/cluster/projects/placement"), eq("POST"),
-                body.capture());
-        assertThat(body.getValue()).contains("homeResourceScore")
-                .doesNotContain("placementSelector");
+        verify(client).internal(eq("/internal/cluster/projects/placement"), eq("POST"), body.capture());
+        assertThat(body.getValue()).contains("homeResourceScore").doesNotContain("placementSelector");
     }
 
     @Test
@@ -241,14 +233,14 @@ class ProjectClusterServiceTest {
 
         ArgumentCaptor<String> body = ArgumentCaptor.forClass(String.class);
         verify(client).internal(any(), any(), body.capture());
-        assertThat(body.getValue()).contains("placementSelector")
-                .doesNotContain("homeResourceScore");
+        assertThat(body.getValue()).contains("placementSelector").doesNotContain("homeResourceScore");
     }
 
     @Test
     void withoutKeys_reportsWhatWasNotThere() {
         ProjectDocument project = ProjectDocument.builder()
-                .tenantId("acme").name("p1")
+                .tenantId("acme")
+                .name("p1")
                 .placementSelector(Map.of("gpu", "true", "region", "eu"))
                 .build();
 
@@ -263,7 +255,8 @@ class ProjectClusterServiceTest {
 
     @Test
     void selectorOf_aProjectWithoutOne_isEmptyNotNull() {
-        ProjectDocument project = ProjectDocument.builder().tenantId("acme").name("p1").build();
+        ProjectDocument project =
+                ProjectDocument.builder().tenantId("acme").name("p1").build();
 
         assertThat(ProjectClusterService.selectorOf(project)).isEmpty();
     }
@@ -280,8 +273,7 @@ class ProjectClusterServiceTest {
         service.writeLifecycleType("acme", "p1", "permanent");
 
         ArgumentCaptor<String> body = ArgumentCaptor.forClass(String.class);
-        verify(client).internal(eq("/internal/cluster/projects/lifecycle-type"), eq("POST"),
-                body.capture());
+        verify(client).internal(eq("/internal/cluster/projects/lifecycle-type"), eq("POST"), body.capture());
         assertThat(body.getValue()).contains("\"lifecycleType\":\"permanent\"");
     }
 
@@ -289,8 +281,7 @@ class ProjectClusterServiceTest {
     void writeLifecycleType_reportsTheRefusalRatherThanSwallowingIt() {
         // 409 is a SYSTEM project: HOMELESS is a property of the entity, not a
         // setting on it.
-        when(client.internal(any(), any(), any()))
-                .thenReturn(new Response(409, "system project protected"));
+        when(client.internal(any(), any(), any())).thenReturn(new Response(409, "system project protected"));
 
         var written = service.writeLifecycleType("acme", "_vance", "PERMANENT");
 
@@ -326,8 +317,7 @@ class ProjectClusterServiceTest {
 
         assertThat(decision.verdict()).isEqualTo(DrainVerdict.BLOCKED);
         assertThat(decision.abort()).isTrue();
-        assertThat(requireNonNull(decision.outcome()).message())
-                .contains("drain failed on 'pod-a'");
+        assertThat(requireNonNull(decision.outcome()).message()).contains("drain failed on 'pod-a'");
     }
 
     @Test

@@ -5,7 +5,6 @@ import de.mhus.vance.brain.tools.kinds.KindToolSupport;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.project.ProjectDocument;
-import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -13,7 +12,6 @@ import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
@@ -32,7 +30,6 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class DocLinkTool implements Tool {
 
-    private final ProjectService projectService;
     private final DocumentService documentService;
     private final DocumentLinkBuilder linkBuilder;
     private final EddieContext eddieContext;
@@ -153,8 +150,11 @@ public class DocLinkTool implements Tool {
     /**
      * The link carries the document's title and path, so building one is a
      * read: both branches pass the document tools' read gate (tenant, READ on
-     * the document, engine confinement) — before, any project of the tenant
-     * was addressable by name and any document by id.
+     * the document, engine confinement). The path branch resolves its project
+     * through {@link EddieContext#resolveProject} like every other doc tool —
+     * Project READ and confinement are checked <em>before</em> the path is
+     * looked up, so a refusal and a missing document cannot be told apart in
+     * a project the caller may not read.
      */
     private DocumentDocument resolveDocument(
             @Nullable String id, @Nullable String path, @Nullable String requestedProject, ToolInvocationContext ctx) {
@@ -166,35 +166,17 @@ public class DocLinkTool implements Tool {
     private DocumentDocument loadDocument(
             @Nullable String id, @Nullable String path, @Nullable String requestedProject, ToolInvocationContext ctx) {
         if (id != null) {
-            DocumentDocument doc = documentService
+            return documentService
                     .findById(id)
+                    .filter(doc -> ctx.tenantId().equals(doc.getTenantId()))
                     .orElseThrow(() -> new ToolException("DOCUMENT_NOT_FOUND: id='" + id + "'"));
-            if (!ctx.tenantId().equals(doc.getTenantId())) {
-                throw new ToolException("CROSS_TENANT_DENIED: document is not in your tenant.");
-            }
-            return doc;
         }
-        String projectName = resolveTargetProjectName(requestedProject, ctx);
+        Map<String, Object> projectParams = requestedProject == null ? Map.of() : Map.of("projectId", requestedProject);
+        ProjectDocument project = eddieContext.resolveProject(projectParams, ctx, false);
+        String projectName = project.getName();
         return documentService
                 .findByPath(ctx.tenantId(), projectName, path)
                 .orElseThrow(() ->
                         new ToolException("DOCUMENT_NOT_FOUND: path='" + path + "' in project '" + projectName + "'"));
-    }
-
-    private String resolveTargetProjectName(@Nullable String requestedProject, ToolInvocationContext ctx) {
-        if (requestedProject == null) {
-            String current = ctx.projectId();
-            if (current == null || current.isBlank()) {
-                throw new ToolException(
-                        "No project specified and no current project in context. " + "Pass `project` explicitly.");
-            }
-            return current;
-        }
-        Optional<ProjectDocument> p = projectService.findByTenantAndName(ctx.tenantId(), requestedProject);
-        if (p.isEmpty()) {
-            throw new ToolException(
-                    "CROSS_PROJECT_NOT_IN_TENANT: project '" + requestedProject + "' does not exist in this tenant.");
-        }
-        return p.get().getName();
     }
 }

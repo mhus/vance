@@ -3,11 +3,11 @@ package de.mhus.vance.brain.trillian;
 import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.brain.trillian.nature.TrillianNature;
 import de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry;
+import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.time.Instant;
-import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -40,9 +40,6 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class TrillianHeadSweepTick {
 
-    /** Sanity bound on live loops per scan — not an expected number. */
-    private static final int MAX_LOOPS = 1000;
-
     private final ClusterService clusterService;
     private final ProjectService projectService;
     private final TrillianWakeupService wakeupService;
@@ -54,22 +51,17 @@ public class TrillianHeadSweepTick {
             initialDelayString = "${vance.trillian.head.sweep-interval-ms:60000}")
     public void tick() {
         Instant now = Instant.now();
-        Set<String> heldHubs = projectService.findRunningByHomePodId(clusterService.selfPodId()).stream()
-                .map(p -> p.getTenantId() + '/' + p.getName())
-                .collect(Collectors.toUnmodifiableSet());
-        if (heldHubs.isEmpty()) {
+        List<ProjectDocument> held = projectService.findRunningByHomePodId(clusterService.selfPodId());
+        if (held.isEmpty()) {
             return;
         }
         int swept = 0;
-        for (ThinkProcessDocument loop : wakeupService.liveLoops(MAX_LOOPS)) {
-            if (!heldHubs.contains(loop.getTenantId() + '/' + loop.getProjectId())) {
-                continue;
-            }
-            TrillianNature nature = natureRegistry.resolve(TrillianSessionBootstrapper.readNature(loop));
-            if (!nature.multiHead()) {
-                continue; // single-headed: no heads, nothing to sweep
-            }
+        for (ThinkProcessDocument loop : wakeupService.liveLoopsIn(held)) {
             try {
+                TrillianNature nature = natureRegistry.resolve(TrillianSessionBootstrapper.readNature(loop));
+                if (!nature.multiHead()) {
+                    continue; // single-headed: no heads, nothing to sweep
+                }
                 headService.sweepLoop(loop, now);
                 swept++;
             } catch (RuntimeException e) {

@@ -6,6 +6,7 @@ import de.mhus.vance.brain.project.ProjectOwnerRequirementService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessStatusChangedEvent;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -21,7 +22,9 @@ import org.springframework.stereotype.Component;
  * <p>The answer changes when a loop is created ({@link TrillianSessionBootstrapper}
  * asks for a recompute) and when it closes (the status listener below). A
  * close missed while the brain was down is caught by the boot re-check of
- * every pinned project ({@code ProjectOwnerRequirementService.releaseNoLongerQualifying}).
+ * every pinned project ({@code ProjectOwnerRequirementService.releaseNoLongerQualifying});
+ * a loop whose hub was never pinned — it predates this contributor — by the
+ * boot re-check that pins ({@link #projectsWithWork()}).
  */
 @Component
 @RequiredArgsConstructor
@@ -36,6 +39,17 @@ public class TrillianOwnerRequirement implements ProjectOwnerRequirementContribu
     @Override
     public boolean requiresOwner(String tenantId, String projectId) {
         return thinkProcessService.existsLiveByEngineInProject(tenantId, projectId, TrillianUserEngine.NAME);
+    }
+
+    /**
+     * Every hub with a live loop — for the boot re-check that pins hubs whose
+     * loop predates this contributor (or whose recompute was missed).
+     */
+    @Override
+    public List<ProjectRef> projectsWithWork() {
+        return thinkProcessService.findProjectsWithLiveEngine(TrillianUserEngine.NAME).stream()
+                .map(e -> new ProjectRef(e.getKey(), e.getValue()))
+                .toList();
     }
 
     /** Re-derives the flag for the hub a loop lives in. */

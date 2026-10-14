@@ -40,6 +40,15 @@ public class ErrorData {
      */
     public static final String REASON_SESSION_BOUND_ELSEWHERE = "session_bound_elsewhere";
 
+    /**
+     * {@code reason} value on a {@code 409} from {@code session-bootstrap} when
+     * the project is held by — or was just placed on — another brain process.
+     * The routing decision went stale between the Face-Pod and the handler; the
+     * same bootstrap, re-sent, is routed to the holder. Clients retry a bounded
+     * number of times with a short backoff, without asking the user.
+     */
+    public static final String REASON_PROJECT_HELD_ELSEWHERE = "project_held_elsewhere";
+
     private int errorCode;
 
     private @Nullable String errorMessage;

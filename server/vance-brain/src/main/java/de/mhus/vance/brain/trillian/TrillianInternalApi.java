@@ -533,7 +533,10 @@ public class TrillianInternalApi {
      * @return the reply-to process id, or empty when the task has none
      */
     public Optional<String> peekReplyTo(String loopProcessId, String taskId) {
-        return thinkProcessService.findById(loopProcessId).flatMap(loop -> replyToOf(loop, taskId));
+        return thinkProcessService
+                .findById(loopProcessId)
+                .flatMap(loop -> replyToOf(loop, taskId))
+                .filter(this::isLiveProcess);
     }
 
     /**
@@ -550,11 +553,29 @@ public class TrillianInternalApi {
      *         report then falls back to the peer, the historic target)
      */
     public Optional<String> consumeReplyTo(String loopProcessId, String taskId) {
-        Optional<String> target = peekReplyTo(loopProcessId, taskId);
-        if (target.isPresent()) {
-            thinkProcessService.setEngineParamEntry(loopProcessId, PARAM_TASK_REPLIES, taskId, null);
+        Optional<String> recorded =
+                thinkProcessService.findById(loopProcessId).flatMap(loop -> replyToOf(loop, taskId));
+        if (recorded.isEmpty()) {
+            return Optional.empty();
         }
-        return target;
+        // Consumed whether or not the head still lives: the report is
+        // final either way, and a dead address must not linger.
+        thinkProcessService.setEngineParamEntry(loopProcessId, PARAM_TASK_REPLIES, taskId, null);
+        return recorded.filter(this::isLiveProcess);
+    }
+
+    /**
+     * Whether a return address can still take a report. A head can close
+     * between handing a task over and the loop draining it — its prune then
+     * ran before the address existed, and the address is recorded for a
+     * process that is gone. Such a report falls back to the peer, like one
+     * without an address, instead of vanishing into a closed process.
+     */
+    private boolean isLiveProcess(String processId) {
+        return thinkProcessService
+                .findById(processId)
+                .map(p -> p.getStatus() != ThinkProcessStatus.CLOSED)
+                .orElse(false);
     }
 
     /**
@@ -583,9 +604,33 @@ public class TrillianInternalApi {
      * Whether a task handed over by {@code replyToProcessId} is still open in
      * the loop — its result has not come back yet. A head waiting for one is
      * not idle, however long the loop works.
+     *
+     * <p>Three places hold such a task: the loop's address map (drained,
+     * being worked on), the loop's inbox (delivered, not drained yet — a loop
+     * with a backlog does not get to it for a while) and the head's outbox
+     * (sent, not delivered yet — cross-pod). Only the first one carries the
+     * address in a field; the other two carry it in the request's payload.
      */
     public boolean hasPendingRepliesFor(ThinkProcessDocument loop, String replyToProcessId) {
-        return taskRepliesOf(loop).containsValue(replyToProcessId);
+        if (taskRepliesOf(loop).containsValue(replyToProcessId)) {
+            return true;
+        }
+        for (EngineMessageDocument m : engineMessageService.findInboxedByTargets(List.of(loop.getId()))) {
+            if (isRequestFrom(m, replyToProcessId)) {
+                return true;
+            }
+        }
+        for (EngineMessageDocument m : engineMessageService.findOutboxedBySenders(List.of(replyToProcessId))) {
+            if (loop.getId().equals(m.getTargetProcessId()) && isRequestFrom(m, replyToProcessId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isRequestFrom(EngineMessageDocument m, String replyToProcessId) {
+        return TASK_EVENT_REQUEST.equals(taskEventOf(m))
+                && replyToProcessId.equals(stringPayload(m, PAYLOAD_KEY_REPLY_TO));
     }
 
     private static Optional<String> replyToOf(ThinkProcessDocument loop, String taskId) {

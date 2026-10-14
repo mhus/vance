@@ -21,7 +21,6 @@ import {
   type RecipeCategoryDto,
   type RecipeListedDto,
   type SessionBootstrapRequest,
-  type SessionBootstrapResponse,
   type SessionGroupDto,
   type SessionSummaryRichDto,
 } from '@vance/generated';
@@ -29,7 +28,7 @@ import { VAlert, VButton, VInput, VModal } from '@/components';
 import { useSessionGroups } from '@/composables/useSessionGroups';
 import { useSessionGroupCollapse } from '@/composables/useSessionGroupCollapse';
 import { filterListedRecipes, groupListedRecipes } from '@/recipes/recipePickerGroups';
-import { markBound, useWsConnection } from '@/ws/wsConnectionStore';
+import { markBound, sendSessionBootstrap, useWsConnection } from '@/ws/wsConnectionStore';
 import { navigateTo } from '@/platform/navigate';
 import { useI18n } from 'vue-i18n';
 
@@ -268,10 +267,7 @@ async function bootstrapNew(chatRecipe: string | null): Promise<void> {
       takeover: false,
     };
     if (chatRecipe) payload.chatRecipe = chatRecipe;
-    const response = await sock.send<SessionBootstrapRequest, SessionBootstrapResponse>(
-      'session-bootstrap',
-      payload,
-    );
+    const response = await sendSessionBootstrap(sock, payload);
     recipeModalOpen.value = false;
     // The bootstrap call bound the session to this WebSocket on the
     // server. Tell the WS store so it knows the session is already

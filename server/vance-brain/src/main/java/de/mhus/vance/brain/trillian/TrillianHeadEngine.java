@@ -62,16 +62,23 @@ import tools.jackson.databind.ObjectMapper;
  * membership.
  *
  * <p><b>What a head may do.</b> Work with the documents of its hub (read
- * and write, under the account's rights — WRITER, so never {@code _vance/}),
- * research the web and the research sources, and answer. Not: run code, or
- * reach other processes. The worker pool is deliberately not
+ * and write, under the account's rights — WRITER, so it reads
+ * {@code _vance/} but never writes there), research the web and the research
+ * sources, and answer. Not: run code, or reach other processes. The worker
+ * pool is deliberately not
  * taken: it carries {@code process_list}/{@code process_stop}/{@code
  * process_steer}, {@code inbox_list} and the wakeup tools, and the head
  * lives in the loop session next to the loop and every other head — a
- * counterpart must not be able to list, steer or stop them, nor read the
- * other conversations. And the head is {@link #confinedToOwnProject()
- * confined to its hub}: the Trillian holds ADMIN on its human's project, and
- * a counterpart must not read that through a {@code projectId} argument.
+ * counterpart must not be able to list, steer or stop them.
+ *
+ * <p>A head is a face of its Trillian, not a principal of its own: the
+ * boundary is the Trillian account's rights. The conversations are all the
+ * Trillian's — a head is handed only its own thread and has no tool that
+ * lists the others, but reading one by id is the account's right, not a
+ * breach. What the head is kept out of is everything beyond the hub: it is
+ * {@link #confinedToOwnProject() confined to it}, because the Trillian is
+ * WRITER on its human's project and a counterpart must not reach that
+ * through a {@code projectId} argument.
  *
  * <p><b>What changes.</b> Four seams, none of Frankie's protocol:
  * <ol>
@@ -319,7 +326,7 @@ public class TrillianHeadEngine extends FrankieEngine {
 
     /**
      * The head talks to an external counterpart with the Trillian's
-     * rights, and the Trillian holds ADMIN on its human's project: every
+     * rights, and the Trillian is WRITER on its human's project: every
      * project-addressed access stays in the head's hub.
      */
     @Override

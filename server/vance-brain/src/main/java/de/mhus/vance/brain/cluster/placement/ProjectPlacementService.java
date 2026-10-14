@@ -7,7 +7,6 @@ import de.mhus.vance.shared.cluster.BrainPodCapacity;
 import de.mhus.vance.shared.cluster.BrainPodDocument;
 import de.mhus.vance.shared.cluster.PodSelector;
 import de.mhus.vance.shared.metric.MetricService;
-import de.mhus.vance.shared.project.LifecycleType;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import java.time.Instant;
@@ -119,6 +118,11 @@ public class ProjectPlacementService {
      * A batch is a distribution. Preferring the local pod for every item would
      * pile the whole round onto one pod — the very thing the buffer prevents.
      *
+     * <p>A homeless row in the batch is a stale input, not a reason to abort
+     * the round for every other project: it answers
+     * {@link PlacementGap#NO_ELIGIBLE_POD} (it is eligible nowhere, see
+     * {@link #isEligibleHere(ProjectDocument)}) without the pending mark.
+     *
      * @return one decision per input, index-aligned.
      */
     public List<PlacementDecision> decideBatch(List<ProjectDocument> projects) {
@@ -126,7 +130,14 @@ public class ProjectPlacementService {
         int[] projected = currentScores(pods);
         List<PlacementDecision> decisions = new ArrayList<>(projects.size());
         for (ProjectDocument project : projects) {
-            requirePlaceable(project);
+            if (ProjectService.isHomeless(project)) {
+                log.warn(
+                        "Placement batch skips homeless project '{}/{}' — it is never placed",
+                        project.getTenantId(),
+                        project.getName());
+                decisions.add(new PlacementDecision.Unschedulable(PlacementGap.NO_ELIGIBLE_POD));
+                continue;
+            }
             PlacementDecision decision = record(project, pick(pods, projected, project));
             if (decision instanceof PlacementDecision.On on) {
                 // Reserve: the pod we just chose counts as that much fuller for
@@ -215,7 +226,7 @@ public class ProjectPlacementService {
      * able to serve, and the same reasoning governs {@link #localHeadroom}.
      */
     public boolean isEligibleHere(ProjectDocument project) {
-        if (project.getLifecycleType() == LifecycleType.HOMELESS) {
+        if (ProjectService.isHomeless(project)) {
             return false;
         }
         return clusterService
@@ -297,7 +308,7 @@ public class ProjectPlacementService {
      * caller bug, not a decision with an answer.
      */
     private static void requirePlaceable(ProjectDocument project) {
-        if (project.getLifecycleType() == LifecycleType.HOMELESS) {
+        if (ProjectService.isHomeless(project)) {
             throw new IllegalArgumentException("Project '" + project.getTenantId() + "/" + project.getName()
                     + "' is homeless — it is never placed");
         }

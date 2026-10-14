@@ -33,7 +33,8 @@ class SessionServiceUnbindStaleTest {
         when(mongo.updateMulti(any(Query.class), any(Update.class), eq(SessionDocument.class)))
                 .thenReturn(result);
 
-        SessionService service = new SessionService(mock(SessionRepository.class), mongo, mock(de.mhus.vance.shared.megadodo.MegadodoService.class));
+        SessionService service = new SessionService(
+                mock(SessionRepository.class), mongo, mock(de.mhus.vance.shared.megadodo.MegadodoService.class));
         Instant cutoff = Instant.parse("2026-06-12T06:00:00Z");
 
         long n = service.unbindStaleConnections(cutoff);
@@ -43,8 +44,7 @@ class SessionServiceUnbindStaleTest {
         ArgumentCaptor<Query> queryCaptor = ArgumentCaptor.forClass(Query.class);
         ArgumentCaptor<Update> updateCaptor = ArgumentCaptor.forClass(Update.class);
         org.mockito.Mockito.verify(mongo)
-                .updateMulti(queryCaptor.capture(), updateCaptor.capture(),
-                        eq(SessionDocument.class));
+                .updateMulti(queryCaptor.capture(), updateCaptor.capture(), eq(SessionDocument.class));
 
         Document queryDoc = queryCaptor.getValue().getQueryObject();
         assertThat(queryDoc).containsKeys("boundConnectionId", "lastActivityAt");
@@ -72,10 +72,34 @@ class SessionServiceUnbindStaleTest {
         when(mongo.updateMulti(any(Query.class), any(Update.class), eq(SessionDocument.class)))
                 .thenReturn(result);
 
-        SessionService service = new SessionService(mock(SessionRepository.class), mongo, mock(de.mhus.vance.shared.megadodo.MegadodoService.class));
+        SessionService service = new SessionService(
+                mock(SessionRepository.class), mongo, mock(de.mhus.vance.shared.megadodo.MegadodoService.class));
 
         long n = service.unbindStaleConnections(Instant.now());
 
         assertThat(n).isZero();
+    }
+
+    @Test
+    void unbindAllForProjects_isScopedToTheTenant() {
+        // Hub names (_user_<login>) collide across tenants — a bring in one
+        // tenant must not cut the live clients of another.
+        MongoTemplate mongo = mock(MongoTemplate.class);
+        UpdateResult result = mock(UpdateResult.class);
+        when(result.getModifiedCount()).thenReturn(1L);
+        when(mongo.updateMulti(any(Query.class), any(Update.class), eq(SessionDocument.class)))
+                .thenReturn(result);
+        SessionService service = new SessionService(
+                mock(SessionRepository.class), mongo, mock(de.mhus.vance.shared.megadodo.MegadodoService.class));
+
+        long n = service.unbindAllForProjects("acme", java.util.List.of("_user_admin"));
+
+        assertThat(n).isEqualTo(1L);
+        ArgumentCaptor<Query> queryCaptor = ArgumentCaptor.forClass(Query.class);
+        org.mockito.Mockito.verify(mongo)
+                .updateMulti(queryCaptor.capture(), any(Update.class), eq(SessionDocument.class));
+        Document queryDoc = queryCaptor.getValue().getQueryObject();
+        assertThat(queryDoc).containsEntry("tenantId", "acme");
+        assertThat(queryDoc).containsKeys("projectId", "boundConnectionId");
     }
 }

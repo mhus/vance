@@ -191,7 +191,7 @@ class MongoPermissionResolverTest {
     }
 
     @Test
-    void r7_podlessHub_ownerHasImplicitAdmin_othersNeedTenantAdmin() {
+    void r7_userHub_ownerHasImplicitAdmin_othersNeedTenantAdmin() {
         // alice owns _user_alice
         assertThat(resolver.isAllowed(alice, new Resource.Document("acme", "_user_alice", "note.md"), Action.WRITE))
                 .isTrue();

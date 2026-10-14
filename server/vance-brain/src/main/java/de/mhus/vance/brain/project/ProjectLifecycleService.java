@@ -285,7 +285,7 @@ public class ProjectLifecycleService {
         // the workspace was off-disk. Stale boundConnectionId values would
         // otherwise reject the first reconnect with 409 Already-Bound. This
         // covers every path: self-pull, distributor, locator, direct-spawn.
-        long unbound = sessionService.unbindAllForProjects(List.of(projectName));
+        long unbound = sessionService.unbindAllForProjects(tenantId, List.of(projectName));
         if (unbound > 0) {
             log.info("Project '{}/{}' bring: cleared {} stale session binding(s)", tenantId, projectName, unbound);
         }

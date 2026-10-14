@@ -16,6 +16,17 @@ import { getSessionData } from '@/platform/webUiSession';
  * Mirrors {@code de.mhus.vance.api.ws.ErrorData.REASON_SESSION_BOUND_ELSEWHERE}.
  */
 const REASON_SESSION_BOUND_ELSEWHERE = 'session_bound_elsewhere';
+
+/**
+ * Server {@code ErrorData.reason} value flagging a {@code session-bootstrap}
+ * refused because the project is held by — or was just placed on — another
+ * brain process. The same frame, re-sent, is routed to the holder.
+ * Mirrors {@code de.mhus.vance.api.ws.ErrorData.REASON_PROJECT_HELD_ELSEWHERE}.
+ */
+const REASON_PROJECT_HELD_ELSEWHERE = 'project_held_elsewhere';
+
+/** Bounded: a project that keeps moving is an incident, not a race. */
+const MAX_HELD_ELSEWHERE_ATTEMPTS = 3;
 import type {
   DocumentChangedNotification,
   DocumentNoteChangedNotification,
@@ -34,6 +45,8 @@ import type {
   RemoteInputRequest,
   RemoteInterruptRequest,
   RemoteOutputBatch,
+  SessionBootstrapRequest,
+  SessionBootstrapResponse,
   SessionResumeRequest,
   SessionResumeResponse,
   ProcessPlanState,
@@ -560,6 +573,33 @@ async function doSendResume(sessionId: string, takeover = false): Promise<void> 
 }
 
 // ─── public surface ─────────────────────────────────────────
+
+/**
+ * Sends a {@code session-bootstrap}, retrying a bounded number of times when
+ * the project moved between the routing decision and the handler
+ * ({@code 409 project_held_elsewhere}). Every other error is the caller's.
+ */
+export async function sendSessionBootstrap(
+  socket: BrainWsApi,
+  payload: SessionBootstrapRequest,
+): Promise<SessionBootstrapResponse> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await socket.send<SessionBootstrapRequest, SessionBootstrapResponse>(
+        'session-bootstrap',
+        payload,
+      );
+    } catch (e) {
+      const heldElsewhere = e instanceof WebSocketRequestError
+        && e.errorCode === 409
+        && e.reason === REASON_PROJECT_HELD_ELSEWHERE;
+      if (!heldElsewhere || attempt >= MAX_HELD_ELSEWHERE_ATTEMPTS) {
+        throw e;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
+    }
+  }
+}
 
 /**
  * Ensure the tab-singleton WebSocket is open. Idempotent — returns the

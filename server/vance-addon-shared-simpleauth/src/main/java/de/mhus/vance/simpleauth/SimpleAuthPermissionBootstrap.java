@@ -39,12 +39,13 @@ public class SimpleAuthPermissionBootstrap implements PermissionBootstrap {
         for (PermissionGrantDocument existing : grants.forScope(tenant, GrantScopeType.PROJECT, project)) {
             if (existing.getSubjectType() == GrantSubjectType.USER
                     && username.equals(existing.getSubjectId())
-                    && existing.getRole() == GrantRole.ADMIN
                     && !CREATED_BY.equals(existing.getCreatedBy())) {
-                // Someone made this account an admin on purpose — that is
-                // theirs to take back, not a seed to overwrite.
+                // Someone set this account's role on purpose — raised to
+                // ADMIN or lowered to READER, it is theirs to change, not a
+                // seed to overwrite.
                 log.info(
-                        "Keeping deliberate ADMIN grant of '{}' on project '{}' in tenant '{}'",
+                        "Keeping deliberate {} grant of '{}' on project '{}' in tenant '{}'",
+                        existing.getRole(),
                         username,
                         project,
                         tenant);

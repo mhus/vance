@@ -8,13 +8,16 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry;
 import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.enginemessage.EngineMessageDocument;
 import de.mhus.vance.shared.enginemessage.EngineMessageService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -31,10 +34,11 @@ class TrillianTaskReplyRoutingTest {
 
     private final ThinkProcessService thinkProcessService = mock(ThinkProcessService.class);
     private final EngineMessageRouter router = mock(EngineMessageRouter.class);
+    private final EngineMessageService engineMessages = mock(EngineMessageService.class);
     private final TrillianInternalApi api = new TrillianInternalApi(
             thinkProcessService,
             router,
-            mock(EngineMessageService.class),
+            engineMessages,
             mock(de.mhus.vance.brain.thinkengine.ProcessEventEmitter.class),
             mock(ChatMessageService.class),
             mock(de.mhus.vance.brain.scheduling.LaneScheduler.class),
@@ -134,7 +138,68 @@ class TrillianTaskReplyRoutingTest {
         assertThat(api.consumeReplyTo("loop-1", "task-99")).isEmpty();
     }
 
+    @Test
+    void anAddressOfAClosedHead_fallsBackToThePeer_andIsConsumed() {
+        // The head closed before the loop drained its request: the prune ran
+        // before the address existed. The report must not go to a dead head.
+        loopWithTaskReplies(Map.of("task-42", "head-1"));
+        ThinkProcessDocument closed = process("head-1");
+        closed.setStatus(ThinkProcessStatus.CLOSED);
+        when(thinkProcessService.findById("head-1")).thenReturn(Optional.of(closed));
+
+        assertThat(api.peekReplyTo("loop-1", "task-42")).isEmpty();
+        assertThat(api.consumeReplyTo("loop-1", "task-42")).isEmpty();
+        verify(thinkProcessService)
+                .setEngineParamEntry("loop-1", TrillianInternalApi.PARAM_TASK_REPLIES, "task-42", null);
+    }
+
+    @Test
+    void aRequestStillInTheLoopsInbox_countsAsPending() {
+        // Delivered, not drained yet: the loop works through a backlog. The
+        // head is waiting all the same.
+        ThinkProcessDocument loop = loopWithTaskReplies(null);
+        when(engineMessages.findInboxedByTargets(List.of("loop-1"))).thenReturn(List.of(request("loop-1", "head-1")));
+
+        assertThat(api.hasPendingRepliesFor(loop, "head-1")).isTrue();
+        assertThat(api.hasPendingRepliesFor(loop, "head-2")).isFalse();
+    }
+
+    @Test
+    void aRequestStillInTheHeadsOutbox_countsAsPending() {
+        ThinkProcessDocument loop = loopWithTaskReplies(null);
+        when(engineMessages.findOutboxedBySenders(List.of("head-1"))).thenReturn(List.of(request("loop-1", "head-1")));
+
+        assertThat(api.hasPendingRepliesFor(loop, "head-1")).isTrue();
+    }
+
+    @Test
+    void aDrainedRequest_countsAsPending_untilItsReport() {
+        ThinkProcessDocument loop = loopWithTaskReplies(Map.of("task-1", "head-1"));
+
+        assertThat(api.hasPendingRepliesFor(loop, "head-1")).isTrue();
+    }
+
+    private static EngineMessageDocument request(String target, String replyTo) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put(TrillianInternalApi.PAYLOAD_KEY_TASK_EVENT, TrillianInternalApi.TASK_EVENT_REQUEST);
+        payload.put(TrillianInternalApi.PAYLOAD_KEY_REPLY_TO, replyTo);
+        EngineMessageDocument m = new EngineMessageDocument();
+        m.setTargetProcessId(target);
+        m.setPayload(payload);
+        return m;
+    }
+
+    private static ThinkProcessDocument process(String id) {
+        ThinkProcessDocument p = new ThinkProcessDocument();
+        p.setId(id);
+        p.setStatus(ThinkProcessStatus.IDLE);
+        return p;
+    }
+
     private ThinkProcessDocument loopWithTaskReplies(Map<String, String> taskReplies) {
+        // The heads a report may go to are alive unless a test says otherwise.
+        when(thinkProcessService.findById("head-1")).thenReturn(Optional.of(process("head-1")));
+        when(thinkProcessService.findById("head-2")).thenReturn(Optional.of(process("head-2")));
         ThinkProcessDocument loop = new ThinkProcessDocument();
         loop.setId("loop-1");
         Map<String, Object> params = new LinkedHashMap<>();

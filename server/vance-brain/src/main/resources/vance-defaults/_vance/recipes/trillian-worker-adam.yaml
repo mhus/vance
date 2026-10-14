@@ -161,6 +161,9 @@ promptPrefix: |
     values beat vague "I did the thing".
 
 params:
+  # Standing instructions live under _vance/ — a head is WRITER on the hub
+  # and must not be able to rewrite what the loop and its workers obey.
+  agentDocument: _vance/trillian/agent.md
   # Pinned Nature (see trillian-adam.yaml for the architectural note).
   nature: 'adam'
   model: trillian-adam:fast,trillian:fast,default:fast,default:analyze

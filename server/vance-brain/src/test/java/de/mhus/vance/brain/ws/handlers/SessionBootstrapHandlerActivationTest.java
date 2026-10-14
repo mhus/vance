@@ -12,9 +12,12 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.session.SessionStatus;
 import de.mhus.vance.api.thinkprocess.SessionBootstrapRequest;
+import de.mhus.vance.api.ws.ErrorData;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.action.ActionExecutorRegistry;
+import de.mhus.vance.brain.cluster.placement.PlacementTrigger;
+import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.events.SessionRosterBroadcaster;
 import de.mhus.vance.brain.inbox.InboxPendingSummaryPusher;
@@ -30,6 +33,9 @@ import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.shared.home.HomeBootstrapService;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.PermissionDeniedException;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.session.SessionDocument;
@@ -131,6 +137,12 @@ class SessionBootstrapHandlerActivationTest {
     @Mock
     private LaneScheduler laneScheduler;
 
+    @Mock
+    private ProjectPlacementService placementService;
+
+    @Mock
+    private ProjectService projectService;
+
     private SessionBootstrapHandler handler;
     private WebSocketSession wsSession;
     private ConnectionContext ctx;
@@ -156,7 +168,9 @@ class SessionBootstrapHandlerActivationTest {
                 authority,
                 actionRegistry,
                 laneScheduler,
-                new SessionBootstrapTargets(sessionService));
+                new SessionBootstrapTargets(sessionService),
+                placementService,
+                projectService);
         wsSession = mock(WebSocketSession.class);
         ctx = new ConnectionContext(TENANT, USER, "Wile", PROFILE, "1.0", "cli", "ed-1", "10.0.0.1");
 
@@ -165,6 +179,9 @@ class SessionBootstrapHandlerActivationTest {
         when(connectionRegistry.register(anyString(), anyString(), anyString(), any(), any(), anyBoolean()))
                 .thenReturn(SessionConnectionRegistry.RegisterResult.accepted());
         when(chatBootstrapper.ensureChatProcess(any(), any(), any())).thenReturn(Optional.empty());
+        // Single-pod default: every project may run here.
+        when(placementService.isEligibleHere(any(ProjectDocument.class))).thenReturn(true);
+        when(placementService.isEligibleHere(anyString(), anyString())).thenReturn(true);
     }
 
     @Test
@@ -258,7 +275,8 @@ class SessionBootstrapHandlerActivationTest {
         handler.handle(
                 ctx, wsSession, envelope(SessionBootstrapRequest.builder().build()));
 
-        verify(sender).sendError(eq(wsSession), any(), eq(409), anyString());
+        verify(sender)
+                .sendError(eq(wsSession), any(), eq(409), anyString(), eq(ErrorData.REASON_PROJECT_HELD_ELSEWHERE));
         verify(sender, never()).sendError(eq(wsSession), any(), eq(500), anyString());
         verify(sessionService, never()).create(anyString(), anyString(), anyString(), any(), any(), any(), any());
     }
@@ -274,7 +292,8 @@ class SessionBootstrapHandlerActivationTest {
                 wsSession,
                 envelope(SessionBootstrapRequest.builder().sessionId(SESSION).build()));
 
-        verify(sender).sendError(eq(wsSession), any(), eq(409), anyString());
+        verify(sender)
+                .sendError(eq(wsSession), any(), eq(409), anyString(), eq(ErrorData.REASON_PROJECT_HELD_ELSEWHERE));
         verify(sessionService, never()).tryBindWithUserTakeover(anyString(), anyString());
     }
 
@@ -293,6 +312,141 @@ class SessionBootstrapHandlerActivationTest {
         verify(sender).sendError(eq(wsSession), any(), eq(409), anyString());
         verify(lifecycleService, never()).bring(anyString(), anyString());
         verify(sessionService, never()).create(anyString(), anyString(), anyString(), any(), any(), any(), any());
+    }
+
+    @Test
+    void explicitCreate_enforcesProjectStart() throws Exception {
+        // The tenant-level START only says "may start sessions" — without the
+        // project gate a bootstrap could open a session in any project.
+        when(homeBootstrapService.resolveOrAutoProvision(TENANT, PROJECT)).thenReturn(Optional.of(project(PROJECT)));
+        when(sessionService.create(anyString(), anyString(), anyString(), any(), any(), any(), any()))
+                .thenReturn(session(SESSION, PROJECT));
+        when(sessionService.tryBind(eq(SESSION), anyString())).thenReturn(true);
+
+        handler.handle(
+                ctx,
+                wsSession,
+                envelope(SessionBootstrapRequest.builder().projectId(PROJECT).build()));
+
+        InOrder order = inOrder(authority, homeBootstrapService, lifecycleService);
+        order.verify(authority).enforce(ctx, new Resource.Project(TENANT, PROJECT), Action.START);
+        order.verify(homeBootstrapService).resolveOrAutoProvision(TENANT, PROJECT);
+        order.verify(lifecycleService).bring(TENANT, PROJECT);
+    }
+
+    @Test
+    void explicitCreate_deniedProject_isADenialNotAServerError() throws Exception {
+        Resource.Project target = new Resource.Project(TENANT, PROJECT);
+        org.mockito.Mockito.doThrow(new PermissionDeniedException(
+                        de.mhus.vance.shared.permission.SecurityContext.user(USER, TENANT, List.of()),
+                        target,
+                        Action.START))
+                .when(authority)
+                .enforce(ctx, target, Action.START);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> handler.handle(
+                        ctx,
+                        wsSession,
+                        envelope(SessionBootstrapRequest.builder()
+                                .projectId(PROJECT)
+                                .build())))
+                .isInstanceOf(PermissionDeniedException.class);
+        verify(lifecycleService, never()).bring(anyString(), anyString());
+        verify(homeBootstrapService, never()).resolveOrAutoProvision(anyString(), anyString());
+    }
+
+    @Test
+    void autoResume_skipsSessionsInTheHomelessTenantProject() throws Exception {
+        // A session from before user hubs got a home pod: nothing can be
+        // brought for it, so it must not even be tried.
+        SessionDocument stale = session("sess-tenant", ProjectService.TENANT_PROJECT_NAME);
+        stale.setLastActivityAt(Instant.now());
+        SessionDocument here = session(SESSION, PROJECT);
+        here.setLastActivityAt(Instant.now().minusSeconds(60));
+        when(sessionService.listForUser(TENANT, USER)).thenReturn(List.of(stale, here));
+        when(sessionService.tryBind(eq(SESSION), anyString())).thenReturn(true);
+
+        handler.handle(
+                ctx, wsSession, envelope(SessionBootstrapRequest.builder().build()));
+
+        verify(lifecycleService, never()).bring(TENANT, ProjectService.TENANT_PROJECT_NAME);
+        verify(sessionService).tryBind(eq(SESSION), anyString());
+        verify(sender, never()).sendError(eq(wsSession), any(), eq(500), anyString());
+    }
+
+    @Test
+    void autoResume_skipsACandidateWhoseProjectIsClosed() throws Exception {
+        SessionDocument closed = session("sess-closed", "closed-project");
+        closed.setLastActivityAt(Instant.now());
+        SessionDocument here = session(SESSION, PROJECT);
+        here.setLastActivityAt(Instant.now().minusSeconds(60));
+        when(sessionService.listForUser(TENANT, USER)).thenReturn(List.of(closed, here));
+        when(lifecycleService.bring(TENANT, "closed-project"))
+                .thenThrow(new ProjectService.ProjectClosedException("closed"));
+        when(sessionService.tryBind(eq(SESSION), anyString())).thenReturn(true);
+
+        handler.handle(
+                ctx, wsSession, envelope(SessionBootstrapRequest.builder().build()));
+
+        verify(sessionService, never()).tryBind(eq("sess-closed"), anyString());
+        verify(sessionService).tryBind(eq(SESSION), anyString());
+        verify(sender, never()).sendError(eq(wsSession), any(), eq(500), anyString());
+    }
+
+    @Test
+    void autoResume_skipsACandidateThisPodIsNotEligibleFor() throws Exception {
+        SessionDocument gpu = session("sess-gpu", "gpu-project");
+        gpu.setLastActivityAt(Instant.now());
+        SessionDocument here = session(SESSION, PROJECT);
+        here.setLastActivityAt(Instant.now().minusSeconds(60));
+        when(sessionService.listForUser(TENANT, USER)).thenReturn(List.of(gpu, here));
+        when(placementService.isEligibleHere(TENANT, "gpu-project")).thenReturn(false);
+        when(sessionService.tryBind(eq(SESSION), anyString())).thenReturn(true);
+
+        handler.handle(
+                ctx, wsSession, envelope(SessionBootstrapRequest.builder().build()));
+
+        verify(lifecycleService, never()).bring(TENANT, "gpu-project");
+        verify(sessionService).tryBind(eq(SESSION), anyString());
+    }
+
+    @Test
+    void createOnAnIneligiblePod_placesTheProjectElsewhereAndAsksForARetry() throws Exception {
+        ProjectDocument gpu = project("gpu-project");
+        when(homeBootstrapService.resolveOrAutoProvision(TENANT, "gpu-project")).thenReturn(Optional.of(gpu));
+        when(placementService.isEligibleHere(gpu)).thenReturn(false);
+
+        handler.handle(
+                ctx,
+                wsSession,
+                envelope(SessionBootstrapRequest.builder()
+                        .projectId("gpu-project")
+                        .build()));
+
+        verify(placementService).place(gpu, PlacementTrigger.LOCATE);
+        verify(sender)
+                .sendError(eq(wsSession), any(), eq(409), anyString(), eq(ErrorData.REASON_PROJECT_HELD_ELSEWHERE));
+        verify(lifecycleService, never()).bring(anyString(), anyString());
+        verify(sessionService, never()).create(anyString(), anyString(), anyString(), any(), any(), any(), any());
+    }
+
+    @Test
+    void createOnAnIneligiblePod_withNowhereToGo_isPlacementPending() throws Exception {
+        ProjectDocument gpu = project("gpu-project");
+        when(homeBootstrapService.resolveOrAutoProvision(TENANT, "gpu-project")).thenReturn(Optional.of(gpu));
+        when(placementService.isEligibleHere(gpu)).thenReturn(false);
+        when(placementService.place(gpu, PlacementTrigger.LOCATE)).thenThrow(new IllegalStateException("no pod"));
+
+        handler.handle(
+                ctx,
+                wsSession,
+                envelope(SessionBootstrapRequest.builder()
+                        .projectId("gpu-project")
+                        .build()));
+
+        verify(sender)
+                .sendError(eq(wsSession), any(), eq(409), org.mockito.ArgumentMatchers.contains("placement_pending"));
+        verify(lifecycleService, never()).bring(anyString(), anyString());
     }
 
     private static SessionDocument session(String sessionId, String projectId) {

@@ -98,6 +98,11 @@ class TrillianHeadServiceTest {
         when(natureRegistry.resolve(any())).thenReturn(nature);
         when(router.dispatch(any(), anyString(), any())).thenReturn(true);
         when(thinkProcessService.findBySession(TENANT, "session-1")).thenReturn(sessionProcesses);
+        when(thinkProcessService.findLiveBySession(TENANT, "session-1"))
+                .thenAnswer(inv -> sessionProcesses.stream()
+                        .filter(p -> p.getStatus() != ThinkProcessStatus.CLOSED)
+                        .toList());
+        when(thinkProcessService.closeProcess(any(), any())).thenReturn(true);
         // The sweep's marker writes land in Mongo and are re-read with the next
         // liveHeads() call; the test's in-memory heads stand in for that
         // re-read, so the mocked write has to actually mutate them.
@@ -426,6 +431,59 @@ class TrillianHeadServiceTest {
         verify(natureRegistry.resolve(any()), never()).headConcluded(any(), any(), any(), any());
     }
 
+    @Test
+    void aHeadClosedConcurrently_isReportedByItsCloserOnly() {
+        // Two sweeps race on the same head (the hub moved pods): the one
+        // whose close did not transition the process fires nothing.
+        sessionProcesses.add(headFor(THREAD));
+        when(threads.findById(TENANT, THREAD)).thenReturn(Optional.of(archivedConversation()));
+        when(thinkProcessService.closeProcess(any(), any())).thenReturn(false);
+
+        service.sweepLoop(loop, Instant.now());
+
+        verify(nature, never()).headConcluded(any(), any(), any(), any());
+        verify(trillianApi, never()).pruneRepliesTo(any(), any());
+    }
+
+    @Test
+    void aHeadLeftInit_byAnInterruptedSpawn_isSetIdle() {
+        ThinkProcessDocument head = headFor(THREAD);
+        head.setStatus(ThinkProcessStatus.INIT);
+        head.setCreatedAt(Instant.now().minus(10, ChronoUnit.MINUTES));
+        sessionProcesses.add(head);
+        when(threads.findById(TENANT, THREAD)).thenReturn(Optional.of(conversationWithMessages()));
+        when(thinkProcessService.updateStatus("head-1", ThinkProcessStatus.IDLE))
+                .thenReturn(true);
+
+        service.sweepLoop(loop, Instant.now());
+
+        verify(thinkProcessService).updateStatus("head-1", ThinkProcessStatus.IDLE);
+    }
+
+    @Test
+    void aHeadBeingSpawned_isLeftInit() {
+        ThinkProcessDocument head = headFor(THREAD);
+        head.setStatus(ThinkProcessStatus.INIT);
+        head.setCreatedAt(Instant.now());
+        sessionProcesses.add(head);
+        when(threads.findById(TENANT, THREAD)).thenReturn(Optional.of(conversationWithMessages()));
+
+        service.sweepLoop(loop, Instant.now());
+
+        verify(thinkProcessService, never()).updateStatus(any(), any());
+    }
+
+    @Test
+    void aSuspendedHead_stillHoldsItsThread() {
+        // Its session's resume cascade brings it back — a second head for the
+        // same thread would answer twice.
+        ThinkProcessDocument head = headFor(THREAD);
+        head.setStatus(ThinkProcessStatus.SUSPENDED);
+        sessionProcesses.add(head);
+
+        assertThat(service.headOf(loop, THREAD)).contains(head);
+    }
+
     // ──────────────────── Sweep: the mechanical ends ────────────────────
 
     @Test
@@ -448,7 +506,6 @@ class TrillianHeadServiceTest {
         sessionProcesses.add(head);
         when(chatMessages.findLatestCreatedAt(TENANT, "head-1"))
                 .thenReturn(Optional.of(Instant.now().minus(2, ChronoUnit.HOURS)));
-        when(threads.findById(TENANT, THREAD)).thenReturn(Optional.of(conversationWithMessages()));
 
         service.sweepLoop(loop, Instant.now());
 
@@ -457,12 +514,31 @@ class TrillianHeadServiceTest {
 
         // Next round: the thread is archived, the closing pass reads the cause.
         when(threads.findById(TENANT, THREAD)).thenReturn(Optional.of(archivedConversation()));
-        when(threads.listForUser(TENANT, ACCOUNT, null)).thenReturn(List.of());
+        when(threads.listOpenDiscussionsAssignedTo(TENANT, ACCOUNT)).thenReturn(List.of());
         service.sweepLoop(loop, Instant.now());
 
         verify(thinkProcessService).closeProcess("head-1", de.mhus.vance.api.thinkprocess.CloseReason.DONE);
         verify(nature).headConcluded(TENANT, ACCOUNT, THREAD, TrillianNature.HeadConclusion.INACTIVITY);
         verify(nature, org.mockito.Mockito.times(1)).headConcluded(any(), any(), any(), any());
+    }
+
+    @Test
+    void anIdleConversation_thatGotAContributionMeanwhile_isNotArchived() {
+        // The round read the thread answered and idle; before the close, the
+        // counterpart wrote again. The fresh read must stop the archive.
+        MaximegalonDocument seen = answeredTwoHoursAgo();
+        givenOpenThread(seen);
+        MaximegalonDocument fresh = conversationWithMessages(
+                message("m-1", "bob", Instant.now().minus(3, ChronoUnit.HOURS)),
+                message("m-2", ACCOUNT, Instant.now().minus(2, ChronoUnit.HOURS)),
+                message("m-3", "bob", Instant.now()));
+        when(threads.findById(TENANT, THREAD)).thenReturn(Optional.of(fresh));
+
+        service.sweepLoop(loop, Instant.now());
+
+        verify(threads, never()).archive(any(), any(), any());
+        verify(threads, never()).postMessage(any(), any(), any(), any(), any());
+        verify(nature, never()).headConcluded(any(), any(), any(), any());
     }
 
     @Test
@@ -719,7 +795,7 @@ class TrillianHeadServiceTest {
         MaximegalonDocument first = conversationWithMessages(message("m-1", "bob", Instant.now()));
         MaximegalonDocument second = conversationWithMessages(message("m-1", "bob", Instant.now()));
         second.setId("thread-2");
-        when(threads.listForUser(TENANT, ACCOUNT, null)).thenReturn(List.of(first, second));
+        when(threads.listOpenDiscussionsAssignedTo(TENANT, ACCOUNT)).thenReturn(List.of(first, second));
 
         List<String> concluded = service.concludeOpenThreads(TENANT, ACCOUNT, nature);
 
@@ -799,7 +875,9 @@ class TrillianHeadServiceTest {
     }
 
     private void givenOpenThread(MaximegalonDocument item) {
-        when(threads.listForUser(TENANT, ACCOUNT, null)).thenReturn(List.of(item));
+        when(threads.listOpenDiscussionsAssignedTo(TENANT, ACCOUNT)).thenReturn(List.of(item));
+        // The idle close re-reads the thread right before archiving.
+        when(threads.findById(TENANT, item.getId())).thenReturn(Optional.of(item));
     }
 
     private static MaximegalonDocument archivedConversation() {

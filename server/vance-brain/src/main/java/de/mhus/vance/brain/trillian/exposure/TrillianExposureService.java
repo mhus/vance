@@ -40,6 +40,13 @@ import org.springframework.stereotype.Service;
  * serves and a pod that missed the event must not serve a revoked exposure
  * forever.
  *
+ * <p>The directory — every exposed Trillian of a tenant — is cached the
+ * same way, per tenant: building it lists the tenant's accounts, and every
+ * call on the door (open, send, read, close) consults it. Evicted together
+ * with the config, so a revocation is as fast on the directory as on the
+ * config; the ambiguity WARN is logged when the directory is built, not on
+ * every call.
+ *
  * <p>Failure semantics are fail-closed, the same in every shape: a missing
  * document, a read error or a malformed document all mean "not exposed" —
  * with a WARN for the malformed case, because that one is an operator
@@ -63,6 +70,11 @@ public class TrillianExposureService {
     private final ConcurrentHashMap<String, Cached> cache = new ConcurrentHashMap<>();
 
     private record Cached(Optional<TrillianExposureConfig> config, Instant expiresAt) {}
+
+    /** Built directory per tenant, same TTL and eviction as the configs. */
+    private final ConcurrentHashMap<String, CachedDirectory> directories = new ConcurrentHashMap<>();
+
+    private record CachedDirectory(List<Exposed> entries, Instant expiresAt) {}
 
     /** A Trillian as the directory shows it: account plus its exposure configuration. */
     public record Exposed(String account, TrillianExposureConfig config) {}
@@ -123,6 +135,16 @@ public class TrillianExposureService {
      * that is an operator mistake worth seeing.
      */
     public List<Exposed> directory(String tenantId) {
+        Instant now = clock.instant();
+        CachedDirectory cached = directories.get(tenantId);
+        if (cached != null && now.isBefore(cached.expiresAt())) return cached.entries();
+
+        List<Exposed> built = buildDirectory(tenantId);
+        directories.put(tenantId, new CachedDirectory(built, now.plus(CACHE_TTL)));
+        return built;
+    }
+
+    private List<Exposed> buildDirectory(String tenantId) {
         List<Exposed> candidates = userService.all(tenantId).stream()
                 .filter(TrillianExposureService::isTrillian)
                 .map(acc -> configOf(tenantId, acc.getName()).map(c -> new Exposed(acc.getName(), c)))
@@ -143,7 +165,7 @@ public class TrillianExposureService {
             }
             unambiguous.add(exposed);
         }
-        return unambiguous;
+        return List.copyOf(unambiguous);
     }
 
     /** Per-Trillian head limit override; {@code 0} = the Nature's default. */
@@ -178,13 +200,14 @@ public class TrillianExposureService {
         }
     }
 
-    /** Drops the cached config when the hub document changes. */
+    /** Drops the cached config — and the tenant's directory — when the hub document changes. */
     @EventListener
     public void onRoutedDocumentChanged(RoutedDocumentChangedEvent event) {
         if (!CONFIG_PATH.equals(event.path())) return;
         if (!event.projectId().startsWith(HomeBootstrapService.HUB_PROJECT_NAME_PREFIX)) return;
         String account = event.projectId().substring(HomeBootstrapService.HUB_PROJECT_NAME_PREFIX.length());
         cache.remove(key(event.tenantId(), account));
+        directories.remove(event.tenantId());
         log.debug("trillian exposure: config changed, cache evicted for '{}/{}'", event.tenantId(), account);
     }
 

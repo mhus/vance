@@ -5,6 +5,7 @@ import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.core.McpJsonRpc;
 import java.util.Map;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -25,9 +26,14 @@ import tools.jackson.databind.ObjectMapper;
  * permission.
  *
  * <p>Denials are always normal MCP responses — {@code isError:true} content
- * with the entry's stable reason ("not allowed", "agent inactive", …) — an
- * external agent must see a refusal as text, not as an HTTP failure. Same
- * convention as the other MCP surfaces.
+ * with the entry's stable reason ("agent not exposed", "agent inactive", …)
+ * — an external agent must see a refusal as text, not as an HTTP failure.
+ * Same convention as the other MCP surfaces.
+ *
+ * <p>An unexpected failure is not a refusal: the caller is an external,
+ * less trusted agent, so it gets a generic text with a correlation id, and
+ * the exception — whose message may name collections, ids or internals —
+ * goes to the log under that id only.
  */
 @Service
 @RequiredArgsConstructor
@@ -70,8 +76,10 @@ public class TrillianAgentsService {
             log.debug("agents tools/call '{}' refused or failed: {}", call.name(), msg);
             return McpProtocol.callContent(msg, true);
         } catch (RuntimeException e) {
-            log.warn("agents tools/call '{}' raised: {}", call.name(), e.toString(), e);
-            return McpProtocol.callContent("Tool '" + call.name() + "' failed: " + e.getMessage(), true);
+            String correlationId = UUID.randomUUID().toString();
+            log.warn("agents tools/call '{}' raised [{}]: {}", call.name(), correlationId, e.toString(), e);
+            return McpProtocol.callContent(
+                    "Tool '" + call.name() + "' failed (internal error, reference " + correlationId + ")", true);
         }
     }
 

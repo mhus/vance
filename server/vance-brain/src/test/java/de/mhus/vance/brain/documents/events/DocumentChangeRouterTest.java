@@ -56,18 +56,16 @@ class DocumentChangeRouterTest {
         when(metrics.counter(any(), any(String[].class))).thenReturn(dummyCounter);
         when(metrics.counter(any())).thenReturn(dummyCounter);
 
-        router = new DocumentChangeRouter(
-                projectService, clusterService, eventPublisher, dispatcher, metrics);
+        router = new DocumentChangeRouter(projectService, clusterService, eventPublisher, dispatcher, metrics);
     }
 
     @Test
     void tenantProject_broadcasts_to_self_and_remote_live_pods() {
-        when(clusterService.liveClusterPods()).thenReturn(List.of(
-                pod(SELF_NODE, "10.0.0.7:8080"),
-                pod(OTHER_NODE, OTHER_ENDPOINT)));
+        when(clusterService.liveClusterPods())
+                .thenReturn(List.of(pod(SELF_NODE, "10.0.0.7:8080"), pod(OTHER_NODE, OTHER_ENDPOINT)));
 
-        DocumentChangeRouter.Classification c = router.classify(upserted("_tenant",
-                "_vance/server-tools/zoho_imap.yaml"));
+        DocumentChangeRouter.Classification c =
+                router.classify(upserted("_tenant", "_vance/server-tools/zoho_imap.yaml"));
 
         assertThat(c.kind()).isEqualTo(DocumentChangeRouter.Kind.BROADCAST);
         assertThat(c.fireSelf()).isTrue();
@@ -76,11 +74,10 @@ class DocumentChangeRouterTest {
 
     @Test
     void tenantProject_broadcast_alone_in_cluster_falls_back_to_self() {
-        when(clusterService.liveClusterPods()).thenReturn(List.of(
-                pod(SELF_NODE, "10.0.0.7:8080")));
+        when(clusterService.liveClusterPods()).thenReturn(List.of(pod(SELF_NODE, "10.0.0.7:8080")));
 
-        DocumentChangeRouter.Classification c = router.classify(upserted("_tenant",
-                "_vance/server-tools/zoho_imap.yaml"));
+        DocumentChangeRouter.Classification c =
+                router.classify(upserted("_tenant", "_vance/server-tools/zoho_imap.yaml"));
 
         assertThat(c.kind()).isEqualTo(DocumentChangeRouter.Kind.SELF);
         assertThat(c.fireSelf()).isTrue();
@@ -88,11 +85,26 @@ class DocumentChangeRouterTest {
     }
 
     @Test
-    void userHubProject_fires_local_only() {
-        // Podless: no remote holder to notify, but Eddie very likely runs on
-        // this pod and its scopes must refresh.
-        DocumentChangeRouter.Classification c = router.classify(upserted("_user_mike",
-                "documents/note.md"));
+    void userHub_leaseHeldByRemotePod_fires_local_and_remote() {
+        // A hub has a home pod like any other project — a change written
+        // elsewhere has to reach the pod running its Eddie / Trillian.
+        when(projectService.findByTenantAndName(TENANT, "_user_mike"))
+                .thenReturn(Optional.of(leased("_user_mike", OTHER_POD, OTHER_NODE)));
+        when(clusterService.resolveEndpointByPodId(OTHER_POD)).thenReturn(Optional.of(OTHER_ENDPOINT));
+
+        DocumentChangeRouter.Classification c = router.classify(upserted("_user_mike", "_vance/recipes/my.yaml"));
+
+        assertThat(c.kind()).isEqualTo(DocumentChangeRouter.Kind.REMOTE);
+        assertThat(c.fireSelf()).isTrue();
+        assertThat(c.remoteEndpoints()).containsExactly(OTHER_ENDPOINT);
+    }
+
+    @Test
+    void userHub_unleased_fires_local_only() {
+        when(projectService.findByTenantAndName(TENANT, "_user_mike"))
+                .thenReturn(Optional.of(leased("_user_mike", null, null)));
+
+        DocumentChangeRouter.Classification c = router.classify(upserted("_user_mike", "_vance/recipes/my.yaml"));
 
         assertThat(c.kind()).isEqualTo(DocumentChangeRouter.Kind.SELF);
         assertThat(c.fireSelf()).isTrue();
@@ -104,8 +116,7 @@ class DocumentChangeRouterTest {
         when(projectService.findByTenantAndName(TENANT, "mail-assistant"))
                 .thenReturn(Optional.of(leased("mail-assistant", SELF_POD, SELF_NODE)));
 
-        DocumentChangeRouter.Classification c = router.classify(upserted("mail-assistant",
-                "documents/mail-triage.js"));
+        DocumentChangeRouter.Classification c = router.classify(upserted("mail-assistant", "documents/mail-triage.js"));
 
         assertThat(c.kind()).isEqualTo(DocumentChangeRouter.Kind.SELF);
         assertThat(c.fireSelf()).isTrue();
@@ -116,11 +127,9 @@ class DocumentChangeRouterTest {
     void regularProject_leaseHeldByRemotePod_fires_local_and_remote() {
         when(projectService.findByTenantAndName(TENANT, "mail-assistant"))
                 .thenReturn(Optional.of(leased("mail-assistant", OTHER_POD, OTHER_NODE)));
-        when(clusterService.resolveEndpointByPodId(OTHER_POD))
-                .thenReturn(Optional.of(OTHER_ENDPOINT));
+        when(clusterService.resolveEndpointByPodId(OTHER_POD)).thenReturn(Optional.of(OTHER_ENDPOINT));
 
-        DocumentChangeRouter.Classification c = router.classify(upserted("mail-assistant",
-                "documents/mail-triage.js"));
+        DocumentChangeRouter.Classification c = router.classify(upserted("mail-assistant", "documents/mail-triage.js"));
 
         assertThat(c.kind()).isEqualTo(DocumentChangeRouter.Kind.REMOTE);
         assertThat(c.fireSelf())
@@ -135,8 +144,7 @@ class DocumentChangeRouterTest {
                 .thenReturn(Optional.of(leased("mail-assistant", OTHER_POD, OTHER_NODE)));
         when(clusterService.resolveEndpointByPodId(OTHER_POD)).thenReturn(Optional.empty());
 
-        DocumentChangeRouter.Classification c = router.classify(upserted("mail-assistant",
-                "documents/mail-triage.js"));
+        DocumentChangeRouter.Classification c = router.classify(upserted("mail-assistant", "documents/mail-triage.js"));
 
         assertThat(c.kind()).isEqualTo(DocumentChangeRouter.Kind.SELF);
         assertThat(c.fireSelf()).isTrue();
@@ -152,8 +160,7 @@ class DocumentChangeRouterTest {
         when(projectService.findByTenantAndName(TENANT, "mail-assistant"))
                 .thenReturn(Optional.of(expiredLease("mail-assistant")));
 
-        DocumentChangeRouter.Classification c = router.classify(upserted("mail-assistant",
-                "documents/mail-triage.js"));
+        DocumentChangeRouter.Classification c = router.classify(upserted("mail-assistant", "documents/mail-triage.js"));
 
         assertThat(c.kind()).isEqualTo(DocumentChangeRouter.Kind.SELF);
         assertThat(c.fireSelf()).isTrue();
@@ -165,19 +172,16 @@ class DocumentChangeRouterTest {
         when(projectService.findByTenantAndName(TENANT, "mail-assistant"))
                 .thenReturn(Optional.of(leased("mail-assistant", null, null)));
 
-        DocumentChangeRouter.Classification c = router.classify(upserted("mail-assistant",
-                "documents/mail-triage.js"));
+        DocumentChangeRouter.Classification c = router.classify(upserted("mail-assistant", "documents/mail-triage.js"));
 
         assertThat(c.kind()).isEqualTo(DocumentChangeRouter.Kind.SELF);
     }
 
     @Test
     void regularProject_unknown_project_fires_local_only() {
-        when(projectService.findByTenantAndName(TENANT, "mail-assistant"))
-                .thenReturn(Optional.empty());
+        when(projectService.findByTenantAndName(TENANT, "mail-assistant")).thenReturn(Optional.empty());
 
-        DocumentChangeRouter.Classification c = router.classify(upserted("mail-assistant",
-                "documents/mail-triage.js"));
+        DocumentChangeRouter.Classification c = router.classify(upserted("mail-assistant", "documents/mail-triage.js"));
 
         assertThat(c.kind()).isEqualTo(DocumentChangeRouter.Kind.SELF);
     }
@@ -197,8 +201,7 @@ class DocumentChangeRouterTest {
     void onDocumentChanged_remote_target_enqueues_and_also_publishes_local() {
         when(projectService.findByTenantAndName(TENANT, "mail-assistant"))
                 .thenReturn(Optional.of(leased("mail-assistant", OTHER_POD, OTHER_NODE)));
-        when(clusterService.resolveEndpointByPodId(OTHER_POD))
-                .thenReturn(Optional.of(OTHER_ENDPOINT));
+        when(clusterService.resolveEndpointByPodId(OTHER_POD)).thenReturn(Optional.of(OTHER_ENDPOINT));
 
         router.onDocumentChanged(upserted("mail-assistant", "documents/mail-triage.js"));
 
@@ -208,9 +211,8 @@ class DocumentChangeRouterTest {
 
     @Test
     void onDocumentChanged_broadcast_publishes_local_AND_enqueues_remotes() {
-        when(clusterService.liveClusterPods()).thenReturn(List.of(
-                pod(SELF_NODE, "10.0.0.7:8080"),
-                pod(OTHER_NODE, OTHER_ENDPOINT)));
+        when(clusterService.liveClusterPods())
+                .thenReturn(List.of(pod(SELF_NODE, "10.0.0.7:8080"), pod(OTHER_NODE, OTHER_ENDPOINT)));
 
         router.onDocumentChanged(upserted("_tenant", "_vance/server-tools/zoho_imap.yaml"));
 
@@ -220,8 +222,7 @@ class DocumentChangeRouterTest {
 
     @Test
     void onDocumentChanged_router_exception_does_not_propagate() {
-        when(projectService.findByTenantAndName(any(), any()))
-                .thenThrow(new RuntimeException("mongo down"));
+        when(projectService.findByTenantAndName(any(), any())).thenThrow(new RuntimeException("mongo down"));
 
         // Must not throw — the document write must not be unwound.
         router.onDocumentChanged(upserted("mail-assistant", "documents/x.md"));

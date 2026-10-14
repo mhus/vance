@@ -2,6 +2,7 @@ package de.mhus.vance.brain.project;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -64,19 +65,29 @@ class ProjectLifecycleBringTest {
         ObjectProvider<PermissionBootstrap> perms = mock(ObjectProvider.class);
 
         service = new ProjectLifecycleService(
-                projectService, projectManager,
+                projectService,
+                projectManager,
                 mock(de.mhus.vance.brain.cluster.placement.ProjectPlacementService.class),
-                workspaceService, sessionService,
-                eventPublisher, registry, rag, chat, router, perms);
+                workspaceService,
+                sessionService,
+                eventPublisher,
+                registry,
+                rag,
+                chat,
+                router,
+                perms);
     }
 
     private void givenClaimedWithStatus(ProjectStatus status) {
         ProjectDocument doc = ProjectDocument.builder()
-                .tenantId(TENANT).name(PROJECT).status(status).build();
+                .tenantId(TENANT)
+                .name(PROJECT)
+                .status(status)
+                .build();
         when(projectManager.claimForLocalPod(TENANT, PROJECT)).thenReturn(doc);
         when(projectService.transitionStatus(eq(TENANT), eq(PROJECT), any(), any()))
                 .thenReturn(doc);
-        when(sessionService.unbindAllForProjects(anyList())).thenReturn(0L);
+        when(sessionService.unbindAllForProjects(anyString(), anyList())).thenReturn(0L);
     }
 
     @Test
@@ -88,9 +99,8 @@ class ProjectLifecycleBringTest {
         service.bring(TENANT, PROJECT);
 
         verify(workspaceService, times(1)).init(TENANT, PROJECT);
-        verify(eventPublisher, times(1))
-                .publishEvent(new ProjectEnginesStartRequested(TENANT, PROJECT));
-        verify(sessionService, times(1)).unbindAllForProjects(anyList());
+        verify(eventPublisher, times(1)).publishEvent(new ProjectEnginesStartRequested(TENANT, PROJECT));
+        verify(sessionService, times(1)).unbindAllForProjects(eq(TENANT), anyList());
     }
 
     @Test
@@ -111,21 +121,20 @@ class ProjectLifecycleBringTest {
         service.bring(TENANT, PROJECT);
 
         verify(workspaceService, times(1)).init(TENANT, PROJECT);
-        verify(eventPublisher, times(1))
-                .publishEvent(new ProjectEnginesStartRequested(TENANT, PROJECT));
+        verify(eventPublisher, times(1)).publishEvent(new ProjectEnginesStartRequested(TENANT, PROJECT));
     }
 
     @Test
     void failedWorkspaceInit_leavesProjectUnactivatedSoTheNextBringRetries() {
         givenClaimedWithStatus(ProjectStatus.SUSPENDED);
         org.mockito.Mockito.doThrow(new IllegalStateException("disk full"))
-                .when(workspaceService).init(TENANT, PROJECT);
+                .when(workspaceService)
+                .init(TENANT, PROJECT);
 
-        org.assertj.core.api.Assertions
-                .assertThatThrownBy(() -> service.bring(TENANT, PROJECT))
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.bring(TENANT, PROJECT))
                 .isInstanceOf(IllegalStateException.class);
 
-        org.assertj.core.api.Assertions
-                .assertThat(registry.isActive(TENANT, PROJECT)).isFalse();
+        org.assertj.core.api.Assertions.assertThat(registry.isActive(TENANT, PROJECT))
+                .isFalse();
     }
 }

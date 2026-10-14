@@ -15,15 +15,15 @@
 # head), none of the control-side user_* tools; confined to its hub.
 #
 # The head's chat log is working memory; the thread is the record.
-# Everything the counterpart gets to see arrives there via
-# thread_message_add.
+# The head's reply is its answer: the engine posts it into the thread.
 #
 # See planning/trillian-exposure.md §3.2.
 
 description: |
   Conversation head — one per discussion thread. Reads contributions,
-  answers in the thread, hands real work to the Trillian's loop as a
-  task, archives the conversation when it is settled.
+  answers in the thread, hands long work to the Trillian's loop as a
+  task. The counterpart ends the conversation; the head archives only
+  when asked to, or when the conversation must close.
 
 engine: trillian-head
 
@@ -32,6 +32,9 @@ engine: trillian-head
 listed: false
 
 params:
+  # Standing instructions live under _vance/ — a head is WRITER on the hub
+  # and must not be able to rewrite what the loop and its workers obey.
+  agentDocument: _vance/trillian/agent.md
   nature: 'colin'
   # Own alias first so a tenant can point heads at a cheaper model
   # than the loop without touching either recipe.

@@ -123,4 +123,16 @@ class LlmResponseSanitizerTest {
     void aPairedBlockAndNoOrphan_keepsTheAnswer() {
         assertThat(sanitizer.stripUnconditional("<think>x</think>Answer")).isEqualTo("Answer");
     }
+
+    @Test
+    void anOrphanEndsAtTheFirstClosingTag_aLaterOneIsQuoted() {
+        assertThat(sanitizer.stripUnconditional("reasoning</think>Use `</think>` to close a block."))
+                .isEqualTo("Use `</think>` to close a block.");
+    }
+
+    @Test
+    void aClosingTagQuotedAfterAPairedBlock_isKept() {
+        assertThat(sanitizer.stripUnconditional("<think>x</think>Close it with `</think>`."))
+                .isEqualTo("Close it with `</think>`.");
+    }
 }

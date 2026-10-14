@@ -14,12 +14,12 @@ import {
   type RecipeCategoryDto,
   type RecipeListedDto,
   type SessionBootstrapRequest,
-  type SessionBootstrapResponse,
   type SessionGroupDto,
   type SessionSummaryRichDto,
 } from '@vance/generated';
 import { filterListedRecipes, groupListedRecipes } from '@/recipes/recipePickerGroups';
 import { recallProject } from '@/platform/lastProject';
+import { sendSessionBootstrap } from '@/ws/wsConnectionStore';
 import { useTenantProjects } from '@composables/useTenantProjects';
 import { useSessionGroups } from '@composables/useSessionGroups';
 import { useSessionGroupCollapse } from '@composables/useSessionGroupCollapse';
@@ -534,9 +534,7 @@ async function bootstrapNew(chatRecipe: string | null): Promise<void> {
       takeover: false,
     };
     if (chatRecipe) payload.chatRecipe = chatRecipe;
-    const response = await props.socket.send<SessionBootstrapRequest, SessionBootstrapResponse>(
-      'session-bootstrap',
-      payload);
+    const response = await sendSessionBootstrap(props.socket, payload);
     recipeModalOpen.value = false;
     emit('session-bootstrapped', response.sessionId);
   } catch (e) {

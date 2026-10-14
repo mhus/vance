@@ -237,6 +237,30 @@ class ProjectPlacementServiceTest {
                 .isEqualTo("cold-other");
     }
 
+    @Test
+    void decideBatch_homelessRow_isSkippedWithoutAbortingTheRound() {
+        // A stale HOMELESS row must not take the whole distributor round down
+        // with it — the others are still placed, and no pending mark is written.
+        when(clusterService.liveClusterPods()).thenReturn(List.of(pod("a", 0, 10)));
+        ProjectDocument stale = ProjectDocument.builder()
+                .tenantId("acme")
+                .name("_user_road.runner")
+                .lifecycleType(LifecycleType.HOMELESS)
+                .homeResourceScore(1)
+                .build();
+
+        List<PlacementDecision> decisions = placement.decideBatch(List.of(stale, project("p1", 1)));
+
+        assertThat(decisions.get(0)).isEqualTo(new PlacementDecision.Unschedulable(PlacementGap.NO_ELIGIBLE_POD));
+        assertThat(((PlacementDecision.On) decisions.get(1)).pod().getNodeName())
+                .isEqualTo("a");
+        verify(projectService, never())
+                .markPendingPlacement(
+                        anyString(),
+                        org.mockito.ArgumentMatchers.eq("_user_road.runner"),
+                        org.mockito.ArgumentMatchers.any());
+    }
+
     // ─── dispatch ───────────────────────────────────────────────────
 
     @Test

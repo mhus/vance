@@ -2,6 +2,7 @@ package de.mhus.vance.brain.trillian;
 
 import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.brain.ai.EngineChatFactory;
+import de.mhus.vance.brain.ai.LlmResponseSanitizer;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.attachment.AttachedUserMessageComposer;
 import de.mhus.vance.brain.context.PromptDateContextResolver;
@@ -26,6 +27,9 @@ import de.mhus.vance.brain.thinkengine.TurnContextHandlerRegistry;
 import de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonMessage;
+import de.mhus.vance.shared.inbox.MaximegalonService;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
@@ -192,14 +196,16 @@ public class TrillianHeadEngine extends FrankieEngine {
     static final String PROMPT_PATH = "_vance/prompts/trillian-head-prompt.md";
 
     private static final String FALLBACK_PROMPT =
-            "You are one conversation of this Trillian. Read each contribution with "
-                    + "thread_get and answer it in the thread with thread_message_add — "
-                    + "plain text here reaches nobody. Do the work yourself: you can read and "
-                    + "write this Trillian's documents and search the web. Hand work that runs "
-                    + "long to your loop with task_enqueue and post its result into the thread. When the matter is settled, post a closing "
-                    + "line and archive the thread with inbox_archive.";
+            "You are one conversation of this Trillian. Your reply is posted into the thread as "
+                    + "your answer — write it to the counterpart, in their language. Do the work "
+                    + "yourself: you can read and write this Trillian's documents and search the web; "
+                    + "hand long work to your loop with task_enqueue. The counterpart ends the "
+                    + "conversation: archive the thread with inbox_archive only when they say they "
+                    + "are done.";
 
     private final TrillianNatureRegistry natureRegistry;
+    private final MaximegalonService threads;
+    private final LlmResponseSanitizer sanitizer;
 
     public TrillianHeadEngine(
             ThinkProcessService thinkProcessService,
@@ -224,7 +230,9 @@ public class TrillianHeadEngine extends FrankieEngine {
             AttachedUserMessageComposer attachedUserMessageComposer,
             ClientTurnContextResolver clientTurnContextResolver,
             SkillTriggerMatcher skillTriggerMatcher,
-            TrillianNatureRegistry natureRegistry) {
+            TrillianNatureRegistry natureRegistry,
+            MaximegalonService threads,
+            LlmResponseSanitizer sanitizer) {
         super(
                 thinkProcessService,
                 properties,
@@ -249,6 +257,8 @@ public class TrillianHeadEngine extends FrankieEngine {
                 clientTurnContextResolver,
                 skillTriggerMatcher);
         this.natureRegistry = natureRegistry;
+        this.threads = threads;
+        this.sanitizer = sanitizer;
     }
 
     @Override
@@ -315,6 +325,58 @@ public class TrillianHeadEngine extends FrankieEngine {
     @Override
     public boolean confinedToOwnProject() {
         return true;
+    }
+
+    /**
+     * The head's reply is its answer: the counterpart reads the thread,
+     * not this chat, so the final text of a turn is posted there as the
+     * Trillian. Without this, an answer the model wrote as plain text — the
+     * natural way to end a turn — reached nobody (observed live, and the
+     * reminder ladder only caught it minutes later).
+     *
+     * <p>Posted once: when the head already put the same text into the
+     * thread with {@code thread_message_add} since the counterpart last
+     * wrote, nothing is posted again.
+     */
+    @Override
+    protected void onNaturalStop(ThinkProcessDocument process, String finalText) {
+        String threadId = TrillianHeadService.headThreadOf(process);
+        String account = TrillianHeadService.accountOf(process);
+        // The thread is outward-facing: reasoning markup never goes there,
+        // whatever the model's catalog entry says about stripping it.
+        String answer = sanitizer.stripUnconditional(finalText).strip();
+        if (threadId == null || account.isBlank() || answer.isEmpty()) {
+            return;
+        }
+        try {
+            MaximegalonDocument thread =
+                    threads.findById(process.getTenantId(), threadId).orElse(null);
+            if (thread == null || alreadyPosted(thread, account, answer)) {
+                return;
+            }
+            threads.postMessage(process.getTenantId(), threadId, account, answer, /*parentId*/ null);
+        } catch (RuntimeException e) {
+            log.warn(
+                    "Trillian head id='{}': posting the answer to thread '{}' failed: {}",
+                    process.getId(),
+                    threadId,
+                    e.toString());
+        }
+    }
+
+    /** Whether the account posted {@code answer} since the counterpart last wrote. */
+    static boolean alreadyPosted(MaximegalonDocument thread, String account, String answer) {
+        List<MaximegalonMessage> messages = thread.getMessages() == null ? List.of() : thread.getMessages();
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            MaximegalonMessage m = messages.get(i);
+            if (!account.equals(m.getAuthorUserId())) {
+                return false;
+            }
+            if (m.getBody() != null && answer.equals(m.getBody().strip())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override

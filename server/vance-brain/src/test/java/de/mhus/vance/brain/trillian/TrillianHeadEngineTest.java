@@ -1,10 +1,20 @@
 package de.mhus.vance.brain.trillian;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
+import de.mhus.vance.brain.ai.LlmResponseSanitizer;
 import de.mhus.vance.brain.prompt.ForeignPromptText;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
+import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.inbox.MaximegalonMessage;
+import de.mhus.vance.shared.inbox.MaximegalonService;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URISyntaxException;
@@ -12,8 +22,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -107,6 +120,8 @@ class TrillianHeadEngineTest {
                 .contains("task_enqueue")
                 .contains("inbox_archive")
                 .contains("reminder=\"true\"")
+                .contains("Your reply is your answer")
+                .contains("The counterpart ends the conversation")
                 .doesNotContain("not a chat partner")
                 .doesNotContain("{{");
     }
@@ -164,10 +179,120 @@ class TrillianHeadEngineTest {
         assertThat(newEngine().confinedToOwnProject()).isTrue();
     }
 
+    // ──────────────────── the reply is the answer ────────────────────
+
+    @Test
+    void theFinalReply_isPostedIntoTheThread_asTheTrillian() {
+        MaximegalonService threads = mock(MaximegalonService.class);
+        when(threads.findById("acme", "thread-1")).thenReturn(Optional.of(thread(message("bob", "Where?"))));
+
+        newEngine(threads).onNaturalStop(head(), "  In _vance/docs.  ");
+
+        verify(threads).postMessage("acme", "thread-1", ACCOUNT, "In _vance/docs.", null);
+    }
+
+    @Test
+    void reasoningMarkup_neverReachesTheThread() {
+        MaximegalonService threads = mock(MaximegalonService.class);
+        when(threads.findById("acme", "thread-1")).thenReturn(Optional.of(thread(message("bob", "Bye!"))));
+
+        newEngine(threads).onNaturalStop(head(), "</think>Erledigt — schönen Tag noch!");
+
+        verify(threads).postMessage("acme", "thread-1", ACCOUNT, "Erledigt — schönen Tag noch!", null);
+    }
+
+    @Test
+    void aReplyTheHeadAlreadyPosted_isNotPostedTwice() {
+        MaximegalonService threads = mock(MaximegalonService.class);
+        when(threads.findById("acme", "thread-1"))
+                .thenReturn(Optional.of(thread(message("bob", "Where?"), message(ACCOUNT, "In _vance/docs."))));
+
+        newEngine(threads).onNaturalStop(head(), "In _vance/docs.");
+
+        verify(threads, never()).postMessage(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void anOlderIdenticalAnswer_doesNotSuppressTheNewOne() {
+        // The same words before the counterpart's latest contribution are an
+        // earlier answer, not this one.
+        MaximegalonService threads = mock(MaximegalonService.class);
+        when(threads.findById("acme", "thread-1"))
+                .thenReturn(Optional.of(thread(
+                        message("bob", "Where?"), message(ACCOUNT, "In _vance/docs."), message("bob", "Again?"))));
+
+        newEngine(threads).onNaturalStop(head(), "In _vance/docs.");
+
+        verify(threads).postMessage("acme", "thread-1", ACCOUNT, "In _vance/docs.", null);
+    }
+
+    @Test
+    void aProcessWithoutAThread_postsNothing() {
+        MaximegalonService threads = mock(MaximegalonService.class);
+        ThinkProcessDocument notAHead = new ThinkProcessDocument();
+        notAHead.setTenantId("acme");
+
+        newEngine(threads).onNaturalStop(notAHead, "Hello");
+
+        verify(threads, never()).postMessage(any(), any(), any(), any(), any());
+    }
+
+    private static final String ACCOUNT = "_trillian-colin-5127";
+
+    private static ThinkProcessDocument head() {
+        ThinkProcessDocument head = new ThinkProcessDocument();
+        head.setId("head-1");
+        head.setTenantId("acme");
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put(TrillianHeadService.PARAM_HEAD_THREAD, "thread-1");
+        params.put(TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME, ACCOUNT);
+        head.setEngineParams(params);
+        return head;
+    }
+
+    private static MaximegalonDocument thread(MaximegalonMessage... messages) {
+        MaximegalonDocument thread = new MaximegalonDocument();
+        thread.setId("thread-1");
+        thread.setTenantId("acme");
+        thread.setMessages(new ArrayList<>(List.of(messages)));
+        return thread;
+    }
+
+    private static MaximegalonMessage message(String author, String body) {
+        return MaximegalonMessage.builder().authorUserId(author).body(body).build();
+    }
+
     private static TrillianHeadEngine newEngine() {
+        return newEngine(null);
+    }
+
+    private static TrillianHeadEngine newEngine(MaximegalonService threads) {
         return new TrillianHeadEngine(
-                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null);
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                threads,
+                new LlmResponseSanitizer());
     }
 
     /** The shipped prompt from {@code target/classes} — see TrillianUserPromptTest#prompt. */

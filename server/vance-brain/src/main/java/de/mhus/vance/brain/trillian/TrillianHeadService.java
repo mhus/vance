@@ -715,7 +715,8 @@ public class TrillianHeadService {
                 : head.getEngineParamOverrides().get(key);
     }
 
-    private static String accountOf(ThinkProcessDocument loop) {
+    /** The Trillian account a loop or head process acts as, from its engineParams; "" when unset. */
+    public static String accountOf(ThinkProcessDocument loop) {
         Object raw = loop.getEngineParams() == null
                 ? null
                 : loop.getEngineParams().get(TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME);

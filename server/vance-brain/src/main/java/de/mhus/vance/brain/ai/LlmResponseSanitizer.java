@@ -31,7 +31,11 @@ import org.springframework.stereotype.Component;
  *
  * <ul>
  *   <li><b>Qwen3 / DeepSeek-R1 / Granite-Reasoning</b> —
- *       {@code <think>…</think>} blocks anywhere in the text.</li>
+ *       {@code <think>…</think>} blocks anywhere in the text, and an
+ *       orphan {@code </think>} whose opening tag never reached the
+ *       content (the reasoning went to {@code reasoning_content}, the
+ *       closing tag leaked — observed with DeepSeek V4): everything up to
+ *       and including it is reasoning.</li>
  *   <li><b>GPT-OSS (harmony format)</b> — {@code <|channel|>analysis}
  *       and {@code <|channel|>commentary} segments. The
  *       {@code <|channel|>final} segment marker is kept as the
@@ -48,16 +52,18 @@ import org.springframework.stereotype.Component;
 public class LlmResponseSanitizer {
 
     /** Qwen-style: {@code <think>…</think>}, multi-line, ungreedy. */
-    private static final Pattern THINK_TAG = Pattern.compile(
-            "(?is)<think>.*?</think>");
+    private static final Pattern THINK_TAG = Pattern.compile("(?is)<think>.*?</think>");
+
+    /** An orphan closing tag left after the paired blocks are gone — and what precedes it. */
+    private static final Pattern ORPHAN_THINK_CLOSE = Pattern.compile("(?is)^.*</think>");
 
     /**
      * Harmony "analysis"/"commentary" channels — text from the start
      * of an {@code <|channel|>analysis} (or commentary) marker up to
      * either the next channel marker or the end of the input.
      */
-    private static final Pattern HARMONY_NON_FINAL = Pattern.compile(
-            "(?is)<\\|channel\\|>(?:analysis|commentary)(?:<\\|message\\|>)?"
+    private static final Pattern HARMONY_NON_FINAL =
+            Pattern.compile("(?is)<\\|channel\\|>(?:analysis|commentary)(?:<\\|message\\|>)?"
                     + ".*?(?=<\\|channel\\|>|<\\|end\\|>|\\z)");
 
     /** Standalone harmony delimiters that survive after channel-stripping. */
@@ -91,6 +97,7 @@ public class LlmResponseSanitizer {
     public String stripUnconditional(String content) {
         if (content == null || content.isEmpty()) return content;
         String out = THINK_TAG.matcher(content).replaceAll("");
+        out = ORPHAN_THINK_CLOSE.matcher(out).replaceAll("");
         out = HARMONY_NON_FINAL.matcher(out).replaceAll("");
         for (Pattern p : HARMONY_LEFTOVERS) {
             out = p.matcher(out).replaceAll("");

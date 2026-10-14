@@ -27,15 +27,13 @@ class LlmResponseSanitizerTest {
     void stripsThinkBlockForQwen3() {
         String raw = "<think>let me think about this\nstep one\nstep two</think>\n\nHere is the answer.";
         ModelInfo model = model("ollama", "qwen3:30b", true);
-        assertThat(sanitizer.strip(raw, model))
-                .isEqualTo("Here is the answer.");
+        assertThat(sanitizer.strip(raw, model)).isEqualTo("Here is the answer.");
     }
 
     @Test
     void stripsMultipleThinkBlocks() {
         String raw = "<think>first</think>part one<think>second</think>part two";
-        assertThat(sanitizer.stripUnconditional(raw))
-                .isEqualTo("part onepart two");
+        assertThat(sanitizer.stripUnconditional(raw)).isEqualTo("part onepart two");
     }
 
     @Test
@@ -45,16 +43,14 @@ class LlmResponseSanitizerTest {
         String raw = "<|channel|>analysis<|message|>The user wants a chart.\n"
                 + "I should call doc_create_kind.<|channel|>final<|message|>"
                 + "Here's the chart you requested.";
-        assertThat(sanitizer.stripUnconditional(raw))
-                .isEqualTo("Here's the chart you requested.");
+        assertThat(sanitizer.stripUnconditional(raw)).isEqualTo("Here's the chart you requested.");
     }
 
     @Test
     void stripsHarmonyCommentaryChannel() {
         String raw = "<|channel|>commentary<|message|>side note for the developer"
                 + "<|channel|>final<|message|>Visible reply.";
-        assertThat(sanitizer.stripUnconditional(raw))
-                .isEqualTo("Visible reply.");
+        assertThat(sanitizer.stripUnconditional(raw)).isEqualTo("Visible reply.");
     }
 
     @Test
@@ -69,8 +65,7 @@ class LlmResponseSanitizerTest {
         // we'd be left with 3-4 blank lines in a row. Collapse to a
         // single blank-line gap so downstream parsing stays stable.
         String raw = "Intro line.\n\n<think>discussion</think>\n\nFollow-up.";
-        assertThat(sanitizer.stripUnconditional(raw))
-                .isEqualTo("Intro line.\n\nFollow-up.");
+        assertThat(sanitizer.stripUnconditional(raw)).isEqualTo("Intro line.\n\nFollow-up.");
     }
 
     @Test
@@ -97,7 +92,12 @@ class LlmResponseSanitizerTest {
     }
 
     private static ModelInfo model(String provider, String name, boolean strip) {
-        return new ModelInfo(provider, name, 8192, 4096, ModelSize.LARGE,
+        return new ModelInfo(
+                provider,
+                name,
+                8192,
+                4096,
+                ModelSize.LARGE,
                 Set.<ModelCapability>of(),
                 ModelInfo.DEFAULT_TIMEOUT_SECONDS,
                 ModelInfo.DEFAULT_ACTION_LOOP_CORRECTIONS,
@@ -105,6 +105,22 @@ class LlmResponseSanitizerTest {
                 /*messageParser*/ null,
                 /*pricing*/ null,
                 OutputTokenParam.MAX_TOKENS,
-                java.util.Set.of(), null);
+                java.util.Set.of(),
+                null);
+    }
+
+    @Test
+    void stripsAnOrphanClosingTag_andTheReasoningBeforeIt() {
+        // DeepSeek V4: the reasoning went to reasoning_content, the closing
+        // tag leaked into the answer.
+        assertThat(sanitizer.stripUnconditional("</think>Erledigt — schönen Tag noch!"))
+                .isEqualTo("Erledigt — schönen Tag noch!");
+        assertThat(sanitizer.stripUnconditional("the user wants a goodbye\n</think>\n\nBye!"))
+                .isEqualTo("Bye!");
+    }
+
+    @Test
+    void aPairedBlockAndNoOrphan_keepsTheAnswer() {
+        assertThat(sanitizer.stripUnconditional("<think>x</think>Answer")).isEqualTo("Answer");
     }
 }

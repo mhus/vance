@@ -15,7 +15,7 @@ class WonkoReportRendererTest {
         WonkoTestData.topic(r, "rounding", WonkoTopicStatus.SETTLED);
         WonkoTopic decided = WonkoTestData.topic(r, "field", WonkoTopicStatus.DECIDED);
         decided.setDecision("amountMinor");
-        decided.setReason("module convention");
+        decided.setDecisionReason("module convention");
         WonkoTestData.topic(r, "currency", WonkoTopicStatus.LATER);
         WonkoTestData.topic(r, "typo", WonkoTopicStatus.OPEN).setWeight(QuestionWeight.MINOR);
         r.getMandate()

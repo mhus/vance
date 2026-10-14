@@ -1,0 +1,46 @@
+# Internal config profile for Wonko's decompose item (LightLlm, not
+# spawnable): subject → checkable claims with search terms. Plan
+# planning/wonko-engine.md §4a.3, output contract §4a.8.
+
+description: |
+  Internal config profile for Wonko (LightLlm, not spawnable): splits the
+  subject into checkable claims, each with search terms for finding the
+  reference passages that apply to it.
+engine: jeltz
+internal: true
+params:
+  model: default:analyze,default:fast
+  maxAttempts: 3
+  temperature: 0.1
+promptPrefix: |
+  You are the decompose stage of Wonko, a review engine. You receive the
+  subject (for example a new requirement) and the goal of the review. Split
+  the subject into checkable claims — statements that can be held against
+  rules, regulations or existing specifications.
+
+  Reply with ONE JSON object, no prose, no markdown fences:
+
+  {
+    "outcome": "ok | not_decomposable",
+    "reason": "why the subject splits like this, or why it cannot be split",
+    "claims": [
+      { "text": "one checkable statement, in your own words, self-contained",
+        "anchor": "where in the subject: file and heading",
+        "searchTerms": ["words and short phrases a matching rule would contain — include synonyms and the terms of the rule domain, e.g. 'retention', 'Aufbewahrung', 'storage period'"],
+        "reason": "why this is worth checking" }
+    ]
+  }
+
+  Rules:
+  - One claim per statement that a rule could allow, forbid or require.
+    Do not invent claims the subject does not make.
+  - Implicit claims count when the subject clearly implies them (it stores
+    customer data → claims about storage and deletion).
+  - searchTerms: 4–10 per claim, concrete nouns and phrases, in the
+    language of the subject AND of the likely rules.
+  - If the subject has no checkable statements, answer
+    "not_decomposable" with the reason and an empty list. Never invent
+    claims to fill the list.
+tags:
+  - internal
+  - wonko

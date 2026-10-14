@@ -34,7 +34,7 @@ class WonkoPromptsTest {
                                     List.of("3", "5"),
                                     "dependsOn",
                                     "retry policy"),
-                            Map.of("key", " ", "title", "dropped", "weight", "minor", "question", "x")),
+                            Map.of("key", " ", "title", " ", "weight", "minor", "question", "x")),
             "categoryChanges",
                     List.of(
                             Map.of("op", "define", "category", "money", "reason", "rounding"),
@@ -43,21 +43,26 @@ class WonkoPromptsTest {
     @Test
     void checkSchema_acceptsAWellFormedReply_rejectsUnknownOp() {
         Map<String, Object> wellFormed = Map.of(
+                "reason",
+                "one gap found",
                 "findings",
-                        List.of(Map.of(
-                                "key",
-                                "retry",
-                                "title",
-                                "Retry",
-                                "weight",
-                                "important",
-                                "question",
-                                "How often?",
-                                "kind",
-                                "text",
-                                "contradictsUser",
-                                false)),
-                "categoryChanges", List.of(Map.of("op", "level", "category", "naming", "level", "decide")));
+                List.of(Map.of(
+                        "key",
+                        "retry",
+                        "title",
+                        "Retry",
+                        "weight",
+                        "important",
+                        "question",
+                        "How often?",
+                        "kind",
+                        "text",
+                        "contradictsUser",
+                        false,
+                        "reason",
+                        "the retry count is not stated")),
+                "categoryChanges",
+                List.of(Map.of("op", "level", "category", "naming", "level", "decide", "reason", "only wording")));
 
         assertThat(JsonSchemaLight.validate(wellFormed, WonkoPrompts.checkSchema())
                         .valid())

@@ -42,7 +42,17 @@ public class WonkoTopic {
 
     private @Nullable String decision;
 
-    private @Nullable String reason;
+    /** Why the topic exists — the model's reason for the finding. */
+    private @Nullable String findingReason;
+
+    /** Why it stands as it does — mandate decision, conflict, discard (code's reason). */
+    private @Nullable String decisionReason;
+
+    /** Reference the finding rests on (document path), when checked against references. */
+    private @Nullable String evidenceRef;
+
+    /** Verbatim passage from {@link #evidenceRef}, verified by code before the topic counts. */
+    private @Nullable String evidenceQuote;
 
     private int askedRound;
 

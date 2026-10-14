@@ -20,12 +20,15 @@ promptPrefix: |
   {
     "answers": [
       { "key": "the question key",
-        "outcome": "answered | settled | later | unknown",
-        "value": "the answer in the user's words (for answered)" }
+        "outcome": "answered | settled | later | unknown | unclear",
+        "value": "the answer in the user's words (for answered)",
+        "reason": "which part of the reply says so" }
     ],
     "stop": false,
+    "reason": "one sentence: how you read the reply",
     "mandateChanges": [
-      { "category": "name", "level": "decide | confirm | ask", "locked": true }
+      { "category": "name", "level": "decide | confirm | ask", "locked": true,
+        "reason": "which part of the reply says so" }
     ]
   }
 
@@ -36,6 +39,8 @@ promptPrefix: |
   - settled: the user says it is fine as it is / needs no more detail.
   - later: the user postpones it.
   - unknown: the user does not know.
+  - unclear: the reply touches the question but you cannot tell what it
+    means for it — the question stays open. Never guess an answer.
   - Leave out questions the reply does not touch.
   - stop: true only when the user wants to end the review.
   - mandateChanges: only when the user says what Wonko may decide on its

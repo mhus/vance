@@ -2,7 +2,9 @@ package de.mhus.vance.brain.wonko;
 
 import de.mhus.vance.api.question.QuestionSetDto;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -41,6 +43,49 @@ public class WonkoState {
 
     private List<RoundStat> stats = new ArrayList<>();
 
+    // ─── check queue (plan §4a) ───
+
+    /** Reference documents the subject is measured against (resolved paths). */
+    private List<String> referencePaths = new ArrayList<>();
+
+    private List<WonkoItem> queue = new ArrayList<>();
+
+    private List<WonkoClaim> claims = new ArrayList<>();
+
+    private List<WonkoPassage> passages = new ArrayList<>();
+
+    /** Findings waiting to be asked (the question pool, §4a.5). */
+    private List<WonkoFinding> pendingFindings = new ArrayList<>();
+
+    /** Topic key → claim id, for rechecking the claim after an answer. */
+    private Map<String, String> topicClaims = new LinkedHashMap<>();
+
+    /** Escape outcomes and discards with their reasons. */
+    private List<WonkoDecision> decisions = new ArrayList<>();
+
+    /** Items per type, for the progress view. */
+    private Map<WonkoItemType, ItemCount> itemCounts = new LinkedHashMap<>();
+
+    private int nextId;
+
+    /** Model calls used in this run. */
+    private int calls;
+
+    /** Model calls allowed before the budget checkpoint asks to go on. */
+    private int callBudget;
+
+    /** A budget checkpoint question is part of the pending set. */
+    private boolean checkpointAsked;
+
+    /** Mandate-loosening proposals waiting for the next question set. */
+    private List<PendingProposal> proposalPool = new ArrayList<>();
+
+    /** The caller's mandate was laid over the remembered one (once per run). */
+    private boolean mandateApplied;
+
+    /** Reference documents a coverage item was already queued for. */
+    private List<String> coveredRefs = new ArrayList<>();
+
     private boolean finished;
 
     private @Nullable String finalReport;
@@ -66,5 +111,13 @@ public class WonkoState {
         private int unknown;
         /** Open (non-minor) topics after the round was planned. */
         private int openAfter;
+    }
+
+    /** Enqueued and finished items of one type. */
+    @Data
+    @NoArgsConstructor
+    public static class ItemCount {
+        private int done;
+        private int total;
     }
 }

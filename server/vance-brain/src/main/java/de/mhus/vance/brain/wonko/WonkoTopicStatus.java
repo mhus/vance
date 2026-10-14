@@ -17,5 +17,7 @@ public enum WonkoTopicStatus {
     /** The user does not know — reported as open, not asked again. */
     UNKNOWN,
     /** Came back as a contradiction after it was answered again — reported, never asked a third time. */
-    CONFLICT
+    CONFLICT,
+    /** The model could not determine it (escape outcome) — reported with its reason, not asked. */
+    UNCLEAR
 }

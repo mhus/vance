@@ -11,6 +11,10 @@ import org.jspecify.annotations.Nullable;
  *
  * @param contradictsUser the finding contradicts something the user stated
  *     explicitly — raises the mandate floor to at least confirm (§6.2)
+ * @param reason why this is a finding — mandatory in every model output (§4a.8)
+ * @param evidenceRef reference document the finding rests on, if any
+ * @param evidenceQuote verbatim passage from {@code evidenceRef} — verified by
+ *     code before the finding may count
  */
 record WonkoFinding(
         String key,
@@ -25,7 +29,10 @@ record WonkoFinding(
         @Nullable String proposal,
         @Nullable String dependsOn,
         @Nullable String context,
-        boolean contradictsUser) {
+        boolean contradictsUser,
+        @Nullable String reason,
+        @Nullable String evidenceRef,
+        @Nullable String evidenceQuote) {
 
     static final String CONCERN_CONTRADICTION = "contradiction";
 

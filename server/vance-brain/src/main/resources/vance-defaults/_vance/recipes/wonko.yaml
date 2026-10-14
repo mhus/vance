@@ -1,24 +1,40 @@
 # Wonko default recipe — review loop: checks a subject for sense,
-# contradictions and gaps and clarifies it with the user in rounds.
-# The loop (rounds, register, mandate rules, convergence) is engine code;
-# the model is called only through the two internal profiles below.
+# contradictions and gaps and clarifies it with the user. The loop (check
+# queue, register, mandate rules, question pool, convergence) is engine
+# code; the model is called only through the internal profiles below, each
+# with a defined result, an escape outcome and a mandatory reason.
 # Plan: planning/wonko-engine.md.
 
 title: "Wonko — Review Loop"
 listed: true
 category: workers
 description: |
-  Reviews documents for sense, contradictions, gaps and vague wording and
-  asks the user several questions per round, each answered separately.
+  Reviews documents for sense, contradictions, gaps and vague wording —
+  alone, or against reference documents such as rules and regulations —
+  and asks the user several questions at once, each answered separately.
   Remembers per subject what was answered or called "good as it is" and
-  decides on its own what its mandate allows. Spawn with `subject` (one
-  or more document paths) and optionally a `mandate`.
+  decides on its own what its mandate allows. Spawn with `subject` (one or
+  more document paths), optionally `references` (a folder ending in "/"
+  or document paths) and a `mandate`.
 
 engine: wonko
 
 params:
+  # Without references: one whole-subject check per pass.
   checkRecipe: wonko-check
   interpretRecipe: wonko-interpret
+  # With references: decompose → locate → compare (parallel) → coverage.
+  decomposeRecipe: wonko-decompose
+  locateRecipe: wonko-locate
+  compareRecipe: wonko-compare
+  coverageRecipe: wonko-coverage
+  maxClaims: 25
+  maxPassagesPerClaim: 4
+  maxCandidates: 12
+  maxLocateDepth: 1
+  # Model calls per run before a checkpoint question asks to go on.
+  maxCalls: 300
+  parallelism: 4
   maxRounds: 6
   # Strict on purpose: the biggest risk is a Wonko that nags.
   maxQuestionsPerRound: 3

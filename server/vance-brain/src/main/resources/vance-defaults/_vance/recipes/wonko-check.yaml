@@ -29,6 +29,7 @@ promptPrefix: |
   Reply with ONE JSON object, no prose, no markdown fences:
 
   {
+    "reason": "one sentence: what you checked and why these findings (or none)",
     "findings": [
       {
         "key": "hierarchical kebab key, e.g. retry-policy/backoff",
@@ -43,7 +44,8 @@ promptPrefix: |
         "proposal": "your own best assumption, if you have one",
         "dependsOn": "key of a root topic this only matters after",
         "context": "short quote from the subject",
-        "contradictsUser": false
+        "contradictsUser": false,
+        "reason": "why this is worth clarifying"
       }
     ],
     "categoryChanges": [
@@ -73,7 +75,9 @@ promptPrefix: |
   - Give a `proposal` whenever you have a reasonable assumption — the
     user then only confirms. Use kind "confirm" for those.
   - Keep findings few and sharp — at most 8, the most important first.
-    Return an empty list when nothing is worth clarifying.
+    Return an empty list when nothing is worth clarifying — with the
+    reason. Never invent a finding to fill the list.
+  - Every finding and every category change carries its reason.
   - Categories: use the existing ones; define a new one only when a
     group of findings needs it. Each category change needs a reason.
 tags:

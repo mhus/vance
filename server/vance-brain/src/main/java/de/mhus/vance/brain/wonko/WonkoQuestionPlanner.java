@@ -78,7 +78,7 @@ final class WonkoQuestionPlanner {
             if (level == MandateLevel.DECIDE && hasProposal) {
                 topic.setStatus(WonkoTopicStatus.DECIDED);
                 topic.setDecision(finding.proposal());
-                topic.setReason("within mandate (category " + topic.getCategory() + ": decide)"
+                topic.setDecisionReason("within mandate (category " + topic.getCategory() + ": decide)"
                         + (finding.context() == null ? "" : " — " + finding.context()));
                 topic.setAnsweredRound(round);
                 decided.add(topic);
@@ -127,11 +127,14 @@ final class WonkoQuestionPlanner {
                 }
                 if (topic.getReaskCount() >= 1) {
                     topic.setStatus(WonkoTopicStatus.CONFLICT);
+                    topic.setDecisionReason("contradiction raised again after the answer — "
+                            + (finding.reason() == null ? "no further reason given" : finding.reason()));
                     yield false;
                 }
                 yield true;
             }
             case SETTLED, DECIDED, UNKNOWN, CONFLICT -> false;
+            case UNCLEAR -> true;
         };
     }
 
@@ -145,6 +148,9 @@ final class WonkoQuestionPlanner {
         topic.setWeight(finding.weight());
         topic.setQuestion(finding.question());
         topic.setProposal(finding.proposal());
+        topic.setFindingReason(finding.reason());
+        topic.setEvidenceRef(finding.evidenceRef());
+        topic.setEvidenceQuote(finding.evidenceQuote());
         topic.setStatus(WonkoTopicStatus.OPEN);
     }
 

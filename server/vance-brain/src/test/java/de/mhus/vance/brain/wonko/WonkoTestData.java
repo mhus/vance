@@ -25,7 +25,10 @@ final class WonkoTestData {
                 proposal,
                 null,
                 "quote",
-                false);
+                false,
+                "because",
+                null,
+                null);
     }
 
     static WonkoFinding dependent(String key, String root) {
@@ -42,7 +45,10 @@ final class WonkoTestData {
                 null,
                 root,
                 null,
-                false);
+                false,
+                "because",
+                null,
+                null);
     }
 
     static WonkoFinding contradiction(String key) {
@@ -59,7 +65,10 @@ final class WonkoTestData {
                 null,
                 null,
                 null,
-                false);
+                false,
+                "because",
+                null,
+                null);
     }
 
     static WonkoTopic topic(WonkoRegister register, String key, WonkoTopicStatus status) {

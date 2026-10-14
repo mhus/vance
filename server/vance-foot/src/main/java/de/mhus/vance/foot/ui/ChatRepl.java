@@ -5,6 +5,7 @@ import de.mhus.vance.foot.command.ChatInputService;
 import de.mhus.vance.foot.command.CommandService;
 import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.ide.IdeSelectionState;
+import de.mhus.vance.foot.question.PendingQuestions;
 import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -48,6 +49,7 @@ public class ChatRepl {
     private final AutoAiService autoAi;
     private final IdeSelectionState ideSelection;
     private final PendingLinePrompt linePrompt;
+    private final PendingQuestions questions;
     private final ThinkingVisibility thinkingVisibility;
     private final ColorResolver colorResolver;
     private final FollowUpSuggestionService followUpService;
@@ -56,18 +58,20 @@ public class ChatRepl {
     private @Nullable Terminal terminal;
     private @Nullable Path historyFile;
 
-    public ChatRepl(ChatInputService input,
-                    ChatTerminal chatTerminal,
-                    InterfaceService interfaceService,
-                    LiveRegion liveRegion,
-                    FootConfig config,
-                    @Lazy CommandService commandService,
-                    AutoAiService autoAi,
-                    IdeSelectionState ideSelection,
-                    PendingLinePrompt linePrompt,
-                    ThinkingVisibility thinkingVisibility,
-                    ColorResolver colorResolver,
-                    FollowUpSuggestionService followUpService) {
+    public ChatRepl(
+            ChatInputService input,
+            ChatTerminal chatTerminal,
+            InterfaceService interfaceService,
+            LiveRegion liveRegion,
+            FootConfig config,
+            @Lazy CommandService commandService,
+            AutoAiService autoAi,
+            IdeSelectionState ideSelection,
+            PendingLinePrompt linePrompt,
+            PendingQuestions questions,
+            ThinkingVisibility thinkingVisibility,
+            ColorResolver colorResolver,
+            FollowUpSuggestionService followUpService) {
         this.input = input;
         this.chatTerminal = chatTerminal;
         this.interfaceService = interfaceService;
@@ -77,6 +81,7 @@ public class ChatRepl {
         this.autoAi = autoAi;
         this.ideSelection = ideSelection;
         this.linePrompt = linePrompt;
+        this.questions = questions;
         this.thinkingVisibility = thinkingVisibility;
         this.colorResolver = colorResolver;
         this.followUpService = followUpService;
@@ -112,10 +117,7 @@ public class ChatRepl {
     public Terminal ensureTerminal() throws IOException {
         @Nullable Terminal existing = terminal;
         if (existing != null) return existing;
-        Terminal t = TerminalBuilder.builder()
-                .system(true)
-                .dumb(true)
-                .build();
+        Terminal t = TerminalBuilder.builder().system(true).dumb(true).build();
         this.terminal = t;
         chatTerminal.attach(t);
         interfaceService.registerJlineTerminal(t);
@@ -140,16 +142,15 @@ public class ChatRepl {
         // No conflict with readline / Lanterna / common terminals.
         liveRegion.setF4Listener(() -> {
             autoAi.toggle();
-            chatTerminal.info(autoAi.isOn()
-                    ? "Auto-AI: ON — every message goes to the AI (escape with @no)."
-                    : "Auto-AI: OFF — type @ai to address the agent.");
+            chatTerminal.info(
+                    autoAi.isOn()
+                            ? "Auto-AI: ON — every message goes to the AI (escape with @no)."
+                            : "Auto-AI: OFF — type @ai to address the agent.");
         });
         // Ctrl+T — toggle thinking/reasoning output visibility.
         liveRegion.setCtrlTListener(() -> {
             boolean now = thinkingVisibility.toggle();
-            chatTerminal.info(now
-                    ? "Thinking output: ON"
-                    : "Thinking output: OFF");
+            chatTerminal.info(now ? "Thinking output: ON" : "Thinking output: OFF");
         });
         // IDE selection events fire on the bridge WS thread; without a
         // repaint hook the status bar only refreshes on the 10 s idle
@@ -203,6 +204,10 @@ public class ChatRepl {
             return;
         }
         if (line == null || line.isBlank()) {
+            // An open question set takes a bare Enter as "confirm".
+            if (questions.isActive()) {
+                input.submitFromRepl("");
+            }
             return;
         }
         appendHistoryFile(historyFile, line);
@@ -296,7 +301,9 @@ public class ChatRepl {
     private static void appendHistoryFile(@Nullable Path file, String line) {
         if (file == null || line == null || line.isEmpty() || line.contains("\n")) return;
         try {
-            Files.writeString(file, line + System.lineSeparator(),
+            Files.writeString(
+                    file,
+                    line + System.lineSeparator(),
                     StandardCharsets.UTF_8,
                     StandardOpenOption.CREATE,
                     StandardOpenOption.APPEND);

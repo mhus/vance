@@ -197,7 +197,7 @@ public final class DebugRestServer {
     private final class InputHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
-            CommandRequest req = readCommandRequest(exchange);
+            CommandRequest req = readCommandRequest(exchange, true);
             if (req == null) {
                 return;
             }
@@ -259,6 +259,16 @@ public final class DebugRestServer {
     }
 
     private @Nullable CommandRequest readCommandRequest(HttpExchange exchange) throws IOException {
+        return readCommandRequest(exchange, false);
+    }
+
+    /**
+     * @param allowBlank whether an empty {@code line} is valid — for
+     *     {@code /debug/input}, which submits a line exactly as typed, where a
+     *     bare Enter is an answer (a line prompt's default, a question set's
+     *     "confirm")
+     */
+    private @Nullable CommandRequest readCommandRequest(HttpExchange exchange, boolean allowBlank) throws IOException {
         if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
             writeJson(exchange, 405, Map.of("error", "method not allowed"));
             return null;
@@ -275,7 +285,7 @@ public final class DebugRestServer {
             writeJson(exchange, 400, Map.of("error", "invalid json: " + e.getMessage()));
             return null;
         }
-        if (req.line == null || req.line.isBlank()) {
+        if (req.line == null || (!allowBlank && req.line.isBlank())) {
             writeJson(exchange, 400, Map.of("error", "field 'line' is required"));
             return null;
         }

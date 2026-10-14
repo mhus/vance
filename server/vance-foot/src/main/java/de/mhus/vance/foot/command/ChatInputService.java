@@ -3,6 +3,7 @@ package de.mhus.vance.foot.command;
 import de.mhus.vance.api.command.EngineCommandOutcome;
 import de.mhus.vance.api.command.ProcessCommandRequest;
 import de.mhus.vance.api.command.ProcessCommandResponse;
+import de.mhus.vance.api.question.QuestionSetAnswerDto;
 import de.mhus.vance.api.thinkprocess.ProcessPauseRequest;
 import de.mhus.vance.api.thinkprocess.ProcessSteerRequest;
 import de.mhus.vance.api.thinkprocess.ProcessSteerResponse;
@@ -10,12 +11,13 @@ import de.mhus.vance.api.thinkprocess.ProcessStopRequest;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.foot.audit.ConversationAuditService;
-import de.mhus.vance.foot.chat.PendingAskUserPicker;
 import de.mhus.vance.foot.chat.QueuedSendState;
 import de.mhus.vance.foot.connection.BrainException;
 import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.ide.IdeContextBuilder;
 import de.mhus.vance.foot.permission.PendingPermissionPrompt;
+import de.mhus.vance.foot.question.PendingQuestions;
+import de.mhus.vance.foot.question.QuestionsWizard;
 import de.mhus.vance.foot.session.SessionService;
 import de.mhus.vance.foot.ui.BusyIndicator;
 import de.mhus.vance.foot.ui.ChatTerminal;
@@ -81,7 +83,7 @@ public class ChatInputService {
     private final PromptGate promptGate;
     private final BusyIndicator busyIndicator;
     private final IdeContextBuilder ideContextBuilder;
-    private final PendingAskUserPicker askUserPicker;
+    private final PendingQuestions questions;
     private final PendingPermissionPrompt pendingPermission;
     private final PendingLinePrompt pendingLine;
 
@@ -110,7 +112,7 @@ public class ChatInputService {
             PromptGate promptGate,
             BusyIndicator busyIndicator,
             IdeContextBuilder ideContextBuilder,
-            PendingAskUserPicker askUserPicker,
+            PendingQuestions questions,
             PendingPermissionPrompt pendingPermission,
             PendingLinePrompt pendingLine,
             AutoAiService autoAi,
@@ -125,7 +127,7 @@ public class ChatInputService {
         this.promptGate = promptGate;
         this.busyIndicator = busyIndicator;
         this.ideContextBuilder = ideContextBuilder;
-        this.askUserPicker = askUserPicker;
+        this.questions = questions;
         this.pendingPermission = pendingPermission;
         this.pendingLine = pendingLine;
         this.autoAi = autoAi;
@@ -151,6 +153,11 @@ public class ChatInputService {
             return InputResult.command(line, true, null);
         }
         String trimmed = line.trim();
+        // An open question set answers the line — Enter included (it confirms);
+        // slash commands still go to the dispatcher.
+        if (questions.isActive() && !trimmed.startsWith("/")) {
+            return answerQuestions(line);
+        }
         if (trimmed.isEmpty()) {
             return InputResult.command("", false, "blank input");
         }
@@ -170,27 +177,29 @@ public class ChatInputService {
                 boolean matched = commandService.execute(trimmed);
                 return InputResult.command(trimmed, matched, null);
             }
-            String chatText = expandPickerShortcut(trimmed);
-            return sendChatLocked(chatText, DEFAULT_CHAT_TIMEOUT);
+            return sendChatLocked(trimmed, DEFAULT_CHAT_TIMEOUT);
         } finally {
             promptGate.exitExclusive();
         }
     }
 
     /**
-     * If an ASK_USER picker is active and the user typed a single
-     * digit matching one of the options (1-based), replace the input
-     * with the option's label so the brain sees a normal text reply.
-     * Non-numeric / out-of-range / no-active-picker → input passes
-     * through verbatim. The picker itself is cleared by the chat
-     * message handler once the USER echo lands.
+     * One line for the open question set. The wizard decides whether it was a
+     * step or the last answer; on the last one the readable text goes out
+     * with the typed {@code questionAnswers}.
      */
-    private String expandPickerShortcut(String trimmed) {
-        if (!askUserPicker.hasActive()) return trimmed;
-        String resolved = askUserPicker.resolveNumericPick(trimmed);
-        if (resolved == null) return trimmed;
-        chatTerminal.verbose("→ picker: " + trimmed + " → " + resolved);
-        return resolved;
+    private InputResult answerQuestions(String line) {
+        QuestionsWizard.Step step = questions.offer(line);
+        QuestionsWizard.Send send = step.send();
+        if (send == null) {
+            return InputResult.command(line.trim(), true, null);
+        }
+        promptGate.enterExclusive();
+        try {
+            return sendChatLocked(send.content(), DEFAULT_CHAT_TIMEOUT, false, send.answers());
+        } finally {
+            promptGate.exitExclusive();
+        }
     }
 
     /**
@@ -215,6 +224,12 @@ public class ChatInputService {
             return;
         }
         String trimmed = raw.trim();
+        // An open question set takes the line (Enter included) — async like
+        // chat, since its last answer is a round-trip.
+        if (questions.isActive() && !trimmed.startsWith("/")) {
+            asyncExecutor.submit(() -> submit(raw));
+            return;
+        }
         if (trimmed.isEmpty()) return;
         // Answer to an active sandbox prompt: handle synchronously on the
         // REPL input thread. Routing it through the async chat executor
@@ -410,6 +425,11 @@ public class ChatInputService {
     }
 
     private InputResult sendChatLocked(String line, Duration timeout, boolean voiceMode) {
+        return sendChatLocked(line, timeout, voiceMode, null);
+    }
+
+    private InputResult sendChatLocked(
+            String line, Duration timeout, boolean voiceMode, @Nullable QuestionSetAnswerDto questionAnswers) {
         SessionService.BoundSession bound = sessions.current();
         if (bound == null) {
             String msg = "No bound session — /connect, then /session-resume or /session-create.";
@@ -459,6 +479,7 @@ public class ChatInputService {
                     .ideContext(ideContextBuilder.buildAndConsumeForSteer().orElse(null))
                     .voiceMode(voiceMode ? Boolean.TRUE : null)
                     .attachments(attachments.isEmpty() ? null : attachments)
+                    .questionAnswers(questionAnswers)
                     .build();
             // Persist-bound ack (planning/active-message-queue.md §2): the
             // reply comes back after the queue write, well before any engine

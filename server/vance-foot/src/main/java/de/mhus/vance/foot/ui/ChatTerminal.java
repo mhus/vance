@@ -3,6 +3,7 @@ package de.mhus.vance.foot.ui;
 import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.markdown.MarkdownAnsiRenderer;
 import de.mhus.vance.foot.markdown.MarkdownRenderState;
+import de.mhus.vance.foot.question.QuestionsText;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -250,8 +251,10 @@ public class ChatTerminal {
      * through to {@link #chat(String)} with header and content
      * concatenated, matching the legacy behaviour bit-for-bit.
      */
-    public void chatMarkdown(String header, String content) {
+    public void chatMarkdown(String header, String rawContent) {
         if (!threshold.get().shows(Verbosity.INFO)) return;
+        // A questions fence reads as questions, not as YAML — in both modes.
+        String content = QuestionsText.replaceFences(rawContent);
         MarkdownRenderState state = markdownState.get();
         MarkdownAnsiRenderer renderer = markdownRenderer.get();
         if (state == null || renderer == null || !state.isEnabled()) {

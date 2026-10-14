@@ -66,6 +66,7 @@ public class LiveRegion {
      * {@link #HANDOFF_MAX_MS}.
      */
     private static final long HANDOFF_QUIET_MS = 25;
+
     private static final long HANDOFF_MAX_MS = 250;
     /** Scheduling slack {@link #pause()} grants the drain on top of {@link #HANDOFF_MAX_MS}. */
     private static final long HANDOFF_SLACK_MS = 150;
@@ -98,6 +99,7 @@ public class LiveRegion {
     private final AtomicInteger inputGeneration = new AtomicInteger();
     /** Static output captured while {@link #paused}; replayed by {@link #resume()}. */
     private final DeferredOutput deferred = new DeferredOutput();
+
     private final AtomicInteger frame = new AtomicInteger();
 
     private volatile @Nullable Terminal terminal;
@@ -144,6 +146,7 @@ public class LiveRegion {
 
     /** Newest-last list of submitted lines for ↑/↓ history navigation. */
     private final java.util.List<String> history = new java.util.ArrayList<>();
+
     private int historyIdx = 0;
     private String pendingInput = "";
 
@@ -165,6 +168,7 @@ public class LiveRegion {
      * thread (and from tests, single-threaded).
      */
     private long idleFetchActivityMs = -1;
+
     private long idleFetchGeneration = -1;
 
     /**
@@ -201,7 +205,8 @@ public class LiveRegion {
         /** Idle delay in milliseconds before a fetch fires. */
         long idleDelayMs();
         /** Current suggestion text, or {@code null} when none. */
-        @Nullable String currentSuggestion();
+        @Nullable
+        String currentSuggestion();
         /** Called when the user accepts the current suggestion (Right-Arrow / Tab). */
         void acceptCurrent();
         /** Called when the user starts typing — clears the visible suggestion. */
@@ -378,8 +383,8 @@ public class LiveRegion {
             th.setDaemon(true);
             return th;
         });
-        anim.scheduleAtFixedRate(this::tickAnimate,
-                ANIMATION_INTERVAL_MS, ANIMATION_INTERVAL_MS, TimeUnit.MILLISECONDS);
+        anim.scheduleAtFixedRate(
+                this::tickAnimate, ANIMATION_INTERVAL_MS, ANIMATION_INTERVAL_MS, TimeUnit.MILLISECONDS);
         animator = anim;
 
         startInputThread();
@@ -478,7 +483,7 @@ public class LiveRegion {
         awaitHandoffDrained();
         if (paused.getAndSet(true)) return;
         Terminal t = terminal;
-        if (t == null) return;   // nothing to tear down — the flag alone gates output
+        if (t == null) return; // nothing to tear down — the flag alone gates output
 
         ScheduledExecutorService anim = animator;
         if (anim != null) {
@@ -498,7 +503,7 @@ public class LiveRegion {
 
         synchronized (writeLock) {
             eraseLive();
-            writeRaw(ESC + "[?2004l");   // disable bracketed paste
+            writeRaw(ESC + "[?2004l"); // disable bracketed paste
         }
         Attributes prev = previousAttrs;
         if (t != null && prev != null) {
@@ -518,8 +523,7 @@ public class LiveRegion {
      */
     private void awaitHandoffDrained() {
         if (!handoffDraining.get()) return;
-        long deadline = System.nanoTime()
-                + TimeUnit.MILLISECONDS.toNanos(HANDOFF_MAX_MS + HANDOFF_SLACK_MS);
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(HANDOFF_MAX_MS + HANDOFF_SLACK_MS);
         while (handoffDraining.get() && System.nanoTime() < deadline) {
             try {
                 Thread.sleep(5);
@@ -568,8 +572,10 @@ public class LiveRegion {
             mod.setLocalFlag(LocalFlag.ECHO, false);
             t.setAttributes(mod);
         } catch (RuntimeException e) {
-            log.warn("LiveRegion.resume: could not re-apply terminal attributes "
-                    + "— input may echo until the next excursion: {}", e.toString());
+            log.warn(
+                    "LiveRegion.resume: could not re-apply terminal attributes "
+                            + "— input may echo until the next excursion: {}",
+                    e.toString());
         } finally {
             restartAfterResume();
         }
@@ -586,7 +592,7 @@ public class LiveRegion {
         // right now either joins the backlog we are about to replay or lands
         // after it — never in front of it.
         synchronized (writeLock) {
-            writeRaw(ESC + "[?2004h");   // re-enable bracketed paste
+            writeRaw(ESC + "[?2004h"); // re-enable bracketed paste
             // The keyboard stays untrusted until the replacement reader has
             // discarded the asynchronous hand-off residue — that is the
             // separate handoffDraining gate. Output is ours again right now;
@@ -607,8 +613,8 @@ public class LiveRegion {
             th.setDaemon(true);
             return th;
         });
-        anim.scheduleAtFixedRate(this::tickAnimate,
-                ANIMATION_INTERVAL_MS, ANIMATION_INTERVAL_MS, TimeUnit.MILLISECONDS);
+        anim.scheduleAtFixedRate(
+                this::tickAnimate, ANIMATION_INTERVAL_MS, ANIMATION_INTERVAL_MS, TimeUnit.MILLISECONDS);
         animator = anim;
 
         startInputThread();
@@ -703,8 +709,8 @@ public class LiveRegion {
             // Reset state — we're going to redraw from scratch.
             liveLines = 0;
             cursorRowInLive = 0;
-            writeRaw(ESC + "[2J");   // erase entire display
-            writeRaw(ESC + "[H");    // cursor home
+            writeRaw(ESC + "[2J"); // erase entire display
+            writeRaw(ESC + "[H"); // cursor home
             paintLiveInner();
         }
     }
@@ -770,10 +776,11 @@ public class LiveRegion {
             // claimIdleFetch must stay the last condition — it consumes
             // the latch, so evaluating it before the threshold check
             // would burn the one fetch this idle period gets.
-            if (idleMs > 0 && idleElapsed >= idleMs
-                    && claimIdleFetch(activityMs, generation)) {
-                log.trace("tickAnimate idle-check: firing fetchIfApplicable — idleElapsed={}ms, threshold={}ms",
-                        idleElapsed, idleMs);
+            if (idleMs > 0 && idleElapsed >= idleMs && claimIdleFetch(activityMs, generation)) {
+                log.trace(
+                        "tickAnimate idle-check: firing fetchIfApplicable — idleElapsed={}ms, threshold={}ms",
+                        idleElapsed,
+                        idleMs);
                 String before = p.currentSuggestion();
                 p.fetchIfApplicable();
                 String after = p.currentSuggestion();
@@ -849,7 +856,9 @@ public class LiveRegion {
                     // terminal state under us. Treat as transient: back
                     // off briefly and retry. If something is genuinely
                     // broken, the next read will see EOF and we exit.
-                    try { Thread.sleep(20); } catch (InterruptedException ie) {
+                    try {
+                        Thread.sleep(20);
+                    } catch (InterruptedException ie) {
                         Thread.currentThread().interrupt();
                         break;
                     }
@@ -860,11 +869,11 @@ public class LiveRegion {
                 // hand-off. A retired reader must not act on the byte it just
                 // took, or two threads interpret the same keyboard.
                 if (!isCurrentInput(generation)) break;
-                if (b == 3 || b == 4) {  // Ctrl-C / Ctrl-D
+                if (b == 3 || b == 4) { // Ctrl-C / Ctrl-D
                     fireQuit();
                     return;
                 }
-                if (b == 20) {  // Ctrl-T — toggle thinking output
+                if (b == 20) { // Ctrl-T — toggle thinking output
                     fireCtrlT();
                     continue;
                 }
@@ -911,7 +920,11 @@ public class LiveRegion {
                         // F4 (auto-AI toggle); everything else is a
                         // drop like the meta-combos below.
                         int ss3;
-                        try { ss3 = r.read(80L); } catch (Exception ignored) { ss3 = -1; }
+                        try {
+                            ss3 = r.read(80L);
+                        } catch (Exception ignored) {
+                            ss3 = -1;
+                        }
                         if (ss3 == 'S') {
                             fireF4();
                             continue;
@@ -931,13 +944,13 @@ public class LiveRegion {
                     // Other meta combos — drop.
                     continue;
                 }
-                if (b == 9) {  // Tab — slash-command completion
+                if (b == 9) { // Tab — slash-command completion
                     handleTab();
-                } else if (b == 127 || b == 8) {  // Backspace / DEL
+                } else if (b == 127 || b == 8) { // Backspace / DEL
                     if (backspaceAtCursor()) {
                         paintLive();
                     }
-                } else if (b == 13 || b == 10) {  // Enter
+                } else if (b == 13 || b == 10) { // Enter
                     String submitted = inputText;
                     if (promptLabel == null) {
                         addToHistory(submitted);
@@ -950,7 +963,9 @@ public class LiveRegion {
                     cursorIdx = 0;
                     inputViewportTop = 0;
                     onInputActivity();
-                    if (!submitted.isEmpty()) {
+                    // A bare Enter is an answer while a prompt label is set —
+                    // a line prompt's default, a question set's "confirm".
+                    if (!submitted.isEmpty() || promptLabel != null) {
                         Consumer<String> sub = submitListener;
                         if (sub != null) {
                             sub.accept(submitted);
@@ -1187,9 +1202,7 @@ public class LiveRegion {
         }
         for (int i = history.size() - 1; i >= 0; i--) {
             String h = history.get(i);
-            if (h.length() > inputText.length()
-                    && h.startsWith(inputText)
-                    && h.indexOf('\n') < 0) {
+            if (h.length() > inputText.length() && h.startsWith(inputText) && h.indexOf('\n') < 0) {
                 return h.substring(inputText.length());
             }
         }
@@ -1240,7 +1253,8 @@ public class LiveRegion {
             paintLive();
             return;
         }
-        emitStatic(ColorResolver.toAnsi(colorResolver.completion()) + "  " + String.join("   ", cands) + ColorResolver.ANSI_RESET);
+        emitStatic(ColorResolver.toAnsi(colorResolver.completion()) + "  " + String.join("   ", cands)
+                + ColorResolver.ANSI_RESET);
     }
 
     private static String commonPrefix(java.util.List<String> ss) {
@@ -1279,7 +1293,7 @@ public class LiveRegion {
                 col++;
             }
         }
-        return new int[] { line, col };
+        return new int[] {line, col};
     }
 
     // ─── CSI parser ────────────────────────────────────────────────
@@ -1295,24 +1309,42 @@ public class LiveRegion {
         }
         boolean changed = false;
         switch (payload) {
-            case "A":  changed = moveUp();    break;
-            case "B":  changed = moveDown();  break;
-            case "C":  changed = moveRight(); break;
-            case "D":  changed = moveLeft();  break;
+            case "A":
+                changed = moveUp();
+                break;
+            case "B":
+                changed = moveDown();
+                break;
+            case "C":
+                changed = moveRight();
+                break;
+            case "D":
+                changed = moveLeft();
+                break;
             // Option/Alt or Ctrl + Left/Right → word jump. Terminals
             // disagree on the modifier byte (3 = Alt, 5 = Ctrl), so
             // accept both.
             case "1;3C":
-            case "1;5C": changed = moveWordRight(); break;
+            case "1;5C":
+                changed = moveWordRight();
+                break;
             case "1;3D":
-            case "1;5D": changed = moveWordLeft();  break;
+            case "1;5D":
+                changed = moveWordLeft();
+                break;
             case "H":
             case "1~":
-            case "7~": changed = moveHome();  break;
+            case "7~":
+                changed = moveHome();
+                break;
             case "F":
             case "4~":
-            case "8~": changed = moveEnd();   break;
-            case "3~": changed = deleteAtCursor(); break;
+            case "8~":
+                changed = moveEnd();
+                break;
+            case "3~":
+                changed = deleteAtCursor();
+                break;
             case "14~":
                 // F4 in CSI form (linux console, some xterms not in
                 // application mode). Symmetric with the SS3 path above.
@@ -1327,14 +1359,22 @@ public class LiveRegion {
     private void fireF4() {
         Runnable r = f4Listener;
         if (r != null) {
-            try { r.run(); } catch (RuntimeException ignored) { /* keep the input loop alive */ }
+            try {
+                r.run();
+            } catch (RuntimeException ignored) {
+                /* keep the input loop alive */
+            }
         }
     }
 
     private void fireCtrlT() {
         Runnable r = ctrlTListener;
         if (r != null) {
-            try { r.run(); } catch (RuntimeException ignored) { /* keep the input loop alive */ }
+            try {
+                r.run();
+            } catch (RuntimeException ignored) {
+                /* keep the input loop alive */
+            }
         }
     }
 
@@ -1476,8 +1516,7 @@ public class LiveRegion {
         int inputStart = 2;
         int inputCount = lines.length - 3;
         int[] cl = cursorLineAndCol();
-        int cursorLineInViewport = Math.max(0,
-                Math.min(cl[0] - inputViewportTop, inputCount - 1));
+        int cursorLineInViewport = Math.max(0, Math.min(cl[0] - inputViewportTop, inputCount - 1));
         int cursorCol = cl[1];
         // The first input line carries the prompt label (if any) as its
         // prefix; continuation lines keep the plain 3-column indent.

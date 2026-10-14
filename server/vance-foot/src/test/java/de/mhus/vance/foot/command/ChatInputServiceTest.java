@@ -2,19 +2,23 @@ package de.mhus.vance.foot.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.api.question.QuestionSetAnswerDto;
+import de.mhus.vance.api.thinkprocess.ProcessSteerRequest;
 import de.mhus.vance.api.thinkprocess.ProcessSteerResponse;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.foot.audit.ConversationAuditService;
-import de.mhus.vance.foot.chat.PendingAskUserPicker;
 import de.mhus.vance.foot.chat.QueuedSendState;
 import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.ide.IdeContextBuilder;
 import de.mhus.vance.foot.permission.PendingPermissionPrompt;
+import de.mhus.vance.foot.question.PendingQuestions;
+import de.mhus.vance.foot.question.QuestionsWizard;
 import de.mhus.vance.foot.session.SessionService;
 import de.mhus.vance.foot.ui.BusyIndicator;
 import de.mhus.vance.foot.ui.ChatTerminal;
@@ -23,6 +27,7 @@ import de.mhus.vance.foot.ui.PromptGate;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 class ChatInputServiceTest {
 
@@ -34,6 +39,7 @@ class ChatInputServiceTest {
     private final QueuedSendState queuedSends = new QueuedSendState();
     private final IdeContextBuilder ideContextBuilder = mock(IdeContextBuilder.class);
     private final AutoAiService autoAi = mock(AutoAiService.class);
+    private final PendingQuestions questions = mock(PendingQuestions.class);
 
     private ChatInputService newService() {
         return new ChatInputService(
@@ -44,7 +50,7 @@ class ChatInputServiceTest {
                 mock(PromptGate.class),
                 busyIndicator,
                 ideContextBuilder,
-                mock(PendingAskUserPicker.class),
+                questions,
                 pendingPermission,
                 pendingLine,
                 autoAi,
@@ -180,5 +186,43 @@ class ChatInputServiceTest {
         assertThat(queuedSends.pickup(List.of("msg-8")))
                 .as("a send with no running turn goes straight into the next one — nothing to wait for")
                 .isZero();
+    }
+
+    // ─── question sets ──────────────────────────────────────────────────
+
+    @Test
+    void openQuestionSet_takesABlankLine_andSendsTheLastAnswerWithQuestionAnswers() throws Exception {
+        when(questions.isActive()).thenReturn(true);
+        QuestionSetAnswerDto answers =
+                QuestionSetAnswerDto.builder().setId("s-1").build();
+        when(questions.offer(""))
+                .thenReturn(new QuestionsWizard.Step(
+                        java.util.List.of(), new QuestionsWizard.Send("10 years", answers), false));
+        when(sessions.current()).thenReturn(new SessionService.BoundSession("s1", "p1", null, null));
+        when(sessions.activeProcess()).thenReturn("wonko");
+        when(autoAi.apply("10 years")).thenReturn("10 years");
+        when(ideContextBuilder.buildAndConsumeForSteer()).thenReturn(java.util.Optional.empty());
+        ProcessSteerResponse ack = new ProcessSteerResponse();
+        ack.setProcessName("wonko");
+        when(connection.request(any(), any(), eq(ProcessSteerResponse.class), any()))
+                .thenReturn(ack);
+
+        newService().submit("");
+
+        ArgumentCaptor<Object> steer = ArgumentCaptor.forClass(Object.class);
+        verify(connection).request(any(), steer.capture(), eq(ProcessSteerResponse.class), any());
+        ProcessSteerRequest request = (ProcessSteerRequest) steer.getValue();
+        assertThat(request.getContent()).isEqualTo("10 years");
+        assertThat(request.getQuestionAnswers()).isSameAs(answers);
+    }
+
+    @Test
+    void openQuestionSet_aStepSendsNothing_slashCommandsStillDispatch() throws Exception {
+        when(questions.isActive()).thenReturn(true);
+        when(questions.offer("2")).thenReturn(new QuestionsWizard.Step(java.util.List.of("(2/3) …"), null, false));
+
+        assertThat(newService().submit("2").ok()).isTrue();
+
+        verify(connection, never()).request(any(), any(), any(), any());
     }
 }

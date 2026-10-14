@@ -5,9 +5,9 @@ import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.foot.audit.ConversationAuditService;
-import de.mhus.vance.foot.chat.PendingAskUserPicker;
 import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.connection.MessageHandler;
+import de.mhus.vance.foot.question.PendingQuestions;
 import de.mhus.vance.foot.session.SessionService;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import de.mhus.vance.foot.ui.ColorResolver;
@@ -15,10 +15,8 @@ import de.mhus.vance.foot.ui.FollowUpSuggestionService;
 import de.mhus.vance.foot.ui.StreamingDisplay;
 import de.mhus.vance.foot.ui.ThinkingVisibility;
 import de.mhus.vance.foot.ui.Verbosity;
-import java.util.List;
 import java.util.Objects;
 import org.jline.utils.AttributedString;
-import org.jline.utils.AttributedStringBuilder;
 import org.jline.utils.AttributedStyle;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -50,26 +48,27 @@ public class ChatMessageAppendedHandler implements MessageHandler {
     private final ChatTerminal terminal;
     private final StreamingDisplay streaming;
     private final SessionService sessions;
-    private final PendingAskUserPicker askUserPicker;
+    private final PendingQuestions questions;
     private final ConversationAuditService audit;
     private final FootConfig config;
     private final ThinkingVisibility thinkingVisibility;
     private final FollowUpSuggestionService followUpService;
     private final ObjectMapper json = JsonMapper.builder().build();
 
-    public ChatMessageAppendedHandler(ChatTerminal terminal,
-                                      StreamingDisplay streaming,
-                                      SessionService sessions,
-                                      PendingAskUserPicker askUserPicker,
-                                      ConversationAuditService audit,
-                                      FootConfig config,
-                                      ThinkingVisibility thinkingVisibility,
-                                      FollowUpSuggestionService followUpService,
-                                      ColorResolver colorResolver) {
+    public ChatMessageAppendedHandler(
+            ChatTerminal terminal,
+            StreamingDisplay streaming,
+            SessionService sessions,
+            PendingQuestions questions,
+            ConversationAuditService audit,
+            FootConfig config,
+            ThinkingVisibility thinkingVisibility,
+            FollowUpSuggestionService followUpService,
+            ColorResolver colorResolver) {
         this.terminal = terminal;
         this.streaming = streaming;
         this.sessions = sessions;
-        this.askUserPicker = askUserPicker;
+        this.questions = questions;
         this.audit = audit;
         this.config = config;
         this.thinkingVisibility = thinkingVisibility;
@@ -84,9 +83,9 @@ public class ChatMessageAppendedHandler implements MessageHandler {
 
     @Override
     public void handle(WebSocketEnvelope envelope) {
-        ChatMessageAppendedData data = json.convertValue(
-                envelope.getData(), ChatMessageAppendedData.class);
-        log.trace("handle: chat-message-appended — role={}, process={}, thinkProcessId={}, activeProcess={}, contentLen={}",
+        ChatMessageAppendedData data = json.convertValue(envelope.getData(), ChatMessageAppendedData.class);
+        log.trace(
+                "handle: chat-message-appended — role={}, process={}, thinkProcessId={}, activeProcess={}, contentLen={}",
                 data.getRole(),
                 data.getProcessName(),
                 data.getThinkProcessId(),
@@ -121,7 +120,7 @@ public class ChatMessageAppendedHandler implements MessageHandler {
             if (isMainProcess(data.getProcessName())) {
                 followUpService.onConversationChanged();
             }
-            maybeUpdatePicker(data);
+            maybeUpdateQuestions(data);
             return;
         }
         String role = data.getRole() == null ? "?" : data.getRole().name().toLowerCase();
@@ -161,7 +160,7 @@ public class ChatMessageAppendedHandler implements MessageHandler {
         if (isMainProcess(data.getProcessName())) {
             followUpService.onConversationChanged();
         }
-        maybeUpdatePicker(data);
+        maybeUpdateQuestions(data);
     }
 
     /**
@@ -184,54 +183,23 @@ public class ChatMessageAppendedHandler implements MessageHandler {
     }
 
     private AttributedString dim(String text) {
-        return ColorResolver.styled(thoughtsStyle)
-                .append(text)
-                .toAttributedString();
+        return ColorResolver.styled(thoughtsStyle).append(text).toAttributedString();
     }
 
     /**
-     * Maintains the active {@link PendingAskUserPicker} state in
-     * lock-step with the incoming chat stream:
-     * <ul>
-     *   <li>USER message → clear; the user has answered (or asked
-     *       something fresh) and any older picker is now stale.</li>
-     *   <li>ASSISTANT message from the main process with non-empty
-     *       {@code meta.askUserOptions} → present the new picker
-     *       and render the numbered hint line right under the
-     *       message.</li>
-     *   <li>ASSISTANT message without options → leave the existing
-     *       picker untouched (it might still apply to a question
-     *       this turn doesn't address).</li>
-     * </ul>
+     * Keeps the open question set in step with the chat stream: a user
+     * message may answer it, an assistant message of the main process with a
+     * {@code questions} fence opens a new one (the fence itself is rendered
+     * readable by {@link ChatTerminal#chatMarkdown}).
      */
-    private void maybeUpdatePicker(ChatMessageAppendedData data) {
+    private void maybeUpdateQuestions(ChatMessageAppendedData data) {
         if (data.getRole() == ChatRole.USER) {
-            askUserPicker.clear();
+            questions.onUserMessage(data.getMeta());
             return;
         }
-        if (data.getRole() != ChatRole.ASSISTANT) return;
-        if (!isMainProcess(data.getProcessName())) return;
-        List<PendingAskUserPicker.Option> opts =
-                PendingAskUserPicker.parseOptions(data.getMeta());
-        if (opts.isEmpty()) return;
-        askUserPicker.present(opts);
-        renderPickerHint(opts);
-    }
-
-    /**
-     * Renders a one-line "[1] Label  [2] Label  …  (Zahl tippen oder
-     * frei antworten)" hint under the question so the user knows the
-     * numeric shortcut is available. The label is the spoken-friendly
-     * form; descriptions are skipped here to keep the hint compact.
-     */
-    private void renderPickerHint(List<PendingAskUserPicker.Option> opts) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < opts.size(); i++) {
-            if (i > 0) sb.append("  ");
-            sb.append('[').append(i + 1).append("] ").append(opts.get(i).label());
+        if (data.getRole() == ChatRole.ASSISTANT && isMainProcess(data.getProcessName())) {
+            questions.onAssistantMessage(data.getContent());
         }
-        sb.append("   (Zahl tippen oder frei antworten)");
-        terminal.chat(sb.toString());
     }
 
     private boolean isMainProcess(@org.jspecify.annotations.Nullable String processName) {

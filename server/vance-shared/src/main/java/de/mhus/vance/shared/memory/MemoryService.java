@@ -39,10 +39,14 @@ public class MemoryService {
      */
     public MemoryDocument save(MemoryDocument entry) {
         MemoryDocument saved = repository.save(entry);
-        log.debug("Memory saved tenant='{}' project='{}' session='{}' process='{}' kind={} id='{}'",
-                saved.getTenantId(), saved.getProjectId(),
-                saved.getSessionId(), saved.getThinkProcessId(),
-                saved.getKind(), saved.getId());
+        log.debug(
+                "Memory saved tenant='{}' project='{}' session='{}' process='{}' kind={} id='{}'",
+                saved.getTenantId(),
+                saved.getProjectId(),
+                saved.getSessionId(),
+                saved.getThinkProcessId(),
+                saved.getKind(),
+                saved.getId());
         return saved;
     }
 
@@ -61,15 +65,13 @@ public class MemoryService {
         List<Instant> intended = new ArrayList<>(copies.size());
         for (MemoryDocument c : copies) intended.add(c.getCreatedAt());
         List<MemoryDocument> saved = repository.saveAll(copies);
-        BulkOperations bulk = mongoTemplate.bulkOps(
-                BulkOperations.BulkMode.UNORDERED, MemoryDocument.class);
+        BulkOperations bulk = mongoTemplate.bulkOps(BulkOperations.BulkMode.UNORDERED, MemoryDocument.class);
         boolean any = false;
         for (int i = 0; i < saved.size(); i++) {
             Instant ts = intended.get(i);
             if (ts == null) continue;
             bulk.updateOne(
-                    new Query(Criteria.where("_id").is(saved.get(i).getId())),
-                    new Update().set("createdAt", ts));
+                    new Query(Criteria.where("_id").is(saved.get(i).getId())), new Update().set("createdAt", ts));
             saved.get(i).setCreatedAt(ts);
             any = true;
         }
@@ -115,22 +117,17 @@ public class MemoryService {
     }
 
     public List<MemoryDocument> listByProcess(String tenantId, String thinkProcessId) {
-        return repository.findByTenantIdAndThinkProcessId(
-                tenantId, thinkProcessId, BY_CREATED);
+        return repository.findByTenantIdAndThinkProcessId(tenantId, thinkProcessId, BY_CREATED);
     }
 
-    public List<MemoryDocument> listByProcessAndKind(
-            String tenantId, String thinkProcessId, MemoryKind kind) {
-        return repository.findByTenantIdAndThinkProcessIdAndKind(
-                tenantId, thinkProcessId, kind, BY_CREATED);
+    public List<MemoryDocument> listByProcessAndKind(String tenantId, String thinkProcessId, MemoryKind kind) {
+        return repository.findByTenantIdAndThinkProcessIdAndKind(tenantId, thinkProcessId, kind, BY_CREATED);
     }
 
     /** Process-scoped, only entries that haven't been superseded yet. */
-    public List<MemoryDocument> activeByProcessAndKind(
-            String tenantId, String thinkProcessId, MemoryKind kind) {
-        return repository
-                .findByTenantIdAndThinkProcessIdAndKindAndSupersededAtIsNull(
-                        tenantId, thinkProcessId, kind, BY_CREATED);
+    public List<MemoryDocument> activeByProcessAndKind(String tenantId, String thinkProcessId, MemoryKind kind) {
+        return repository.findByTenantIdAndThinkProcessIdAndKindAndSupersededAtIsNull(
+                tenantId, thinkProcessId, kind, BY_CREATED);
     }
 
     /**
@@ -141,16 +138,12 @@ public class MemoryService {
      */
     public List<MemoryDocument> activeByProcessKindAndTitle(
             String tenantId, String thinkProcessId, MemoryKind kind, String title) {
-        return repository
-                .findByTenantIdAndThinkProcessIdAndKindAndTitleAndSupersededAtIsNull(
-                        tenantId, thinkProcessId, kind, title,
-                        Sort.by(Sort.Direction.DESC, "createdAt"));
+        return repository.findByTenantIdAndThinkProcessIdAndKindAndTitleAndSupersededAtIsNull(
+                tenantId, thinkProcessId, kind, title, Sort.by(Sort.Direction.DESC, "createdAt"));
     }
 
-    public List<MemoryDocument> listBySessionAndKind(
-            String tenantId, String sessionId, MemoryKind kind) {
-        return repository.findByTenantIdAndSessionIdAndKind(
-                tenantId, sessionId, kind, BY_CREATED);
+    public List<MemoryDocument> listBySessionAndKind(String tenantId, String sessionId, MemoryKind kind) {
+        return repository.findByTenantIdAndSessionIdAndKind(tenantId, sessionId, kind, BY_CREATED);
     }
 
     /**
@@ -163,10 +156,36 @@ public class MemoryService {
         return repository.findByTenantIdAndSessionId(tenantId, sessionId, BY_CREATED);
     }
 
-    public List<MemoryDocument> listByProjectAndKind(
-            String tenantId, String projectId, MemoryKind kind) {
-        return repository.findByTenantIdAndProjectIdAndKind(
-                tenantId, projectId, kind, BY_CREATED);
+    /**
+     * The current (non-superseded) project-scoped entry of {@code kind} whose
+     * {@code metadata.<metadataKey>} equals {@code value} — the lookup for
+     * per-subject chains such as the review register. Project-scoped means no
+     * session and no process: a process- or session-bound entry with the same
+     * metadata is not this chain. Newest first when a write-write race left two.
+     */
+    public Optional<MemoryDocument> activeProjectEntryByMetadata(
+            String tenantId, String projectId, MemoryKind kind, String metadataKey, String value) {
+        Query query = new Query(Criteria.where("tenantId")
+                        .is(tenantId)
+                        .and("projectId")
+                        .is(projectId)
+                        .and("kind")
+                        .is(kind)
+                        .and("sessionId")
+                        .is(null)
+                        .and("thinkProcessId")
+                        .is(null)
+                        .and("supersededAt")
+                        .is(null)
+                        .and("metadata." + metadataKey)
+                        .is(value))
+                .with(Sort.by(Sort.Direction.DESC, "createdAt"))
+                .limit(1);
+        return Optional.ofNullable(mongoTemplate.findOne(query, MemoryDocument.class));
+    }
+
+    public List<MemoryDocument> listByProjectAndKind(String tenantId, String projectId, MemoryKind kind) {
+        return repository.findByTenantIdAndProjectIdAndKind(tenantId, projectId, kind, BY_CREATED);
     }
 
     // ──────────────────── Cleanup ────────────────────
@@ -175,8 +194,7 @@ public class MemoryService {
     public long deleteByProcess(String tenantId, String thinkProcessId) {
         long n = repository.deleteByTenantIdAndThinkProcessId(tenantId, thinkProcessId);
         if (n > 0) {
-            log.info("Deleted {} memory entries for process tenant='{}' process='{}'",
-                    n, tenantId, thinkProcessId);
+            log.info("Deleted {} memory entries for process tenant='{}' process='{}'", n, tenantId, thinkProcessId);
         }
         return n;
     }
@@ -194,11 +212,13 @@ public class MemoryService {
      * untouched.
      */
     public long deleteBySession(String tenantId, String sessionId) {
-        long n = repository.deleteByTenantIdAndSessionIdAndKindNot(
-                tenantId, sessionId, MemoryKind.INSIGHT);
+        long n = repository.deleteByTenantIdAndSessionIdAndKindNot(tenantId, sessionId, MemoryKind.INSIGHT);
         if (n > 0) {
-            log.info("Deleted {} working-memory entries for session tenant='{}' session='{}' "
-                    + "(INSIGHTs preserved)", n, tenantId, sessionId);
+            log.info(
+                    "Deleted {} working-memory entries for session tenant='{}' session='{}' " + "(INSIGHTs preserved)",
+                    n,
+                    tenantId,
+                    sessionId);
         }
         return n;
     }

@@ -249,6 +249,15 @@ export * from './progress/StatusPayload';
 export * from './progress/StatusTag';
 export * from './progress/UsageDelta';
 
+export * from './question/QuestionAnswerDto';
+export * from './question/QuestionDto';
+export * from './question/QuestionKind';
+export * from './question/QuestionOptionDto';
+export * from './question/QuestionOutcome';
+export * from './question/QuestionSetAnswerDto';
+export * from './question/QuestionSetDto';
+export * from './question/QuestionWeight';
+
 export * from './llmtrace/LlmTraceDto';
 export * from './llmtrace/LlmTraceListResponse';
 

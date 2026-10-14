@@ -2,6 +2,7 @@ package de.mhus.vance.shared.thinkprocess;
 
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.MaximegalonType;
+import de.mhus.vance.api.question.QuestionSetAnswerDto;
 import de.mhus.vance.api.thinkprocess.ActiveAppContext;
 import de.mhus.vance.api.thinkprocess.ActiveInboxContext;
 import de.mhus.vance.api.thinkprocess.BoundDocSelection;
@@ -130,6 +131,14 @@ public class PendingMessageDocument {
      * nothing reads it after the drain.
      */
     private @Nullable ActiveInboxContext activeInbox;
+
+    /**
+     * Structured answers to a question set the engine asked earlier
+     * ({@code meta.questionSet}). Persisted with the pending message so it
+     * survives the queue round-trip; the engine reads this typed field and
+     * treats {@link #content} only as the readable short form.
+     */
+    private @Nullable QuestionSetAnswerDto questionAnswers;
 
     // ─── PROCESS_EVENT ───────────────────────────────────────────
     /** {@code ThinkProcessDocument.id} of the emitter. */

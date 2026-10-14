@@ -8,6 +8,7 @@ import { AttachmentRef } from '../attachment/AttachmentRef';
 import { ActiveAppContext } from './ActiveAppContext';
 import { ActiveInboxContext } from './ActiveInboxContext';
 import { BoundDocSelection } from './BoundDocSelection';
+import { QuestionSetAnswerDto } from '../question/QuestionSetAnswerDto';
 
 export interface ProcessSteerRequest {
   processName: string;
@@ -20,4 +21,5 @@ export interface ProcessSteerRequest {
   activeInbox?: ActiveInboxContext;
   boundDocumentId?: string;
   boundDocSelection?: BoundDocSelection;
+  questionAnswers?: QuestionSetAnswerDto;
 }

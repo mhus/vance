@@ -1,0 +1,31 @@
+# Wonko default recipe — review loop: checks a subject for sense,
+# contradictions and gaps and clarifies it with the user in rounds.
+# The loop (rounds, register, mandate rules, convergence) is engine code;
+# the model is called only through the two internal profiles below.
+# Plan: planning/wonko-engine.md.
+
+title: "Wonko — Review Loop"
+listed: true
+category: workers
+description: |
+  Reviews documents for sense, contradictions, gaps and vague wording and
+  asks the user several questions per round, each answered separately.
+  Remembers per subject what was answered or called "good as it is" and
+  decides on its own what its mandate allows. Spawn with `subject` (one
+  or more document paths) and optionally a `mandate`.
+
+engine: wonko
+
+params:
+  checkRecipe: wonko-check
+  interpretRecipe: wonko-interpret
+  maxRounds: 6
+  # Strict on purpose: the biggest risk is a Wonko that nags.
+  maxQuestionsPerRound: 3
+  mandate:
+    default: confirm
+
+tags:
+  - worker
+  - review
+  - engine-default

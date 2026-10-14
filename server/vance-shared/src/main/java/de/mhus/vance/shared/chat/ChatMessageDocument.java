@@ -37,22 +37,20 @@ import org.springframework.data.mongodb.core.mapping.Document;
  */
 @Document(collection = "chat_messages")
 @CompoundIndexes({
-        @CompoundIndex(
-                name = "tenant_session_process_time_idx",
-                def = "{ 'tenantId': 1, 'sessionId': 1, 'thinkProcessId': 1, 'createdAt': 1 }"),
-        @CompoundIndex(
-                name = "tenant_process_tags_time_idx",
-                def = "{ 'tenantId': 1, 'thinkProcessId': 1, 'tags': 1, 'createdAt': -1 }"),
-        // Session-wide scrollback (every process of a session, ordered by
-        // time). tenant_session_process_time_idx cannot serve it: with
-        // thinkProcessId unbound between the equality prefix and the sort
-        // key, Mongo would fall back to a blocking in-memory sort over the
-        // whole session — which risks the 32 MB sort limit on long sessions
-        // with large bodies. See ChatMessageService
-        // .activeHistoryWithInterimForSession.
-        @CompoundIndex(
-                name = "tenant_session_time_idx",
-                def = "{ 'tenantId': 1, 'sessionId': 1, 'createdAt': 1 }")
+    @CompoundIndex(
+            name = "tenant_session_process_time_idx",
+            def = "{ 'tenantId': 1, 'sessionId': 1, 'thinkProcessId': 1, 'createdAt': 1 }"),
+    @CompoundIndex(
+            name = "tenant_process_tags_time_idx",
+            def = "{ 'tenantId': 1, 'thinkProcessId': 1, 'tags': 1, 'createdAt': -1 }"),
+    // Session-wide scrollback (every process of a session, ordered by
+    // time). tenant_session_process_time_idx cannot serve it: with
+    // thinkProcessId unbound between the equality prefix and the sort
+    // key, Mongo would fall back to a blocking in-memory sort over the
+    // whole session — which risks the 32 MB sort limit on long sessions
+    // with large bodies. See ChatMessageService
+    // .activeHistoryWithInterimForSession.
+    @CompoundIndex(name = "tenant_session_time_idx", def = "{ 'tenantId': 1, 'sessionId': 1, 'createdAt': 1 }")
 })
 @Data
 @Builder
@@ -67,6 +65,15 @@ public class ChatMessageDocument {
      * {@code specification/eddie-engine.md} §5.6 / §5.8.
      */
     public static final String META_ASK_USER_OPTIONS = "askUserOptions";
+
+    /**
+     * {@link #meta} key for a structured question set — several questions
+     * asked at once, each answered separately. Value is the
+     * {@code QuestionSetDto} as a map. The answer comes back typed on the
+     * {@code process-steer} request ({@code questionAnswers}), never parsed
+     * out of the text. See {@code planning/wonko-engine.md} §8.3.
+     */
+    public static final String META_QUESTION_SET = "questionSet";
 
     /**
      * {@link #meta} key for the engine-action type that produced the

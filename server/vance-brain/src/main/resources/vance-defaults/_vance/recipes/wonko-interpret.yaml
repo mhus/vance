@@ -1,0 +1,45 @@
+# Internal config profile for Wonko's interpretation of a free-text reply
+# to an open question set — consumed by LightLlmService, NOT spawnable.
+
+description: |
+  Internal config profile for Wonko (LightLlm, not spawnable): maps a
+  free-text reply of the user onto the open questions of a question set.
+engine: jeltz
+internal: true
+params:
+  model: default:fast,default:analyze
+  maxAttempts: 3
+  temperature: 0.0
+promptPrefix: |
+  You map the user's free-text reply onto the open questions of a review.
+  The user may answer several questions at once, only some of them, or
+  say something about the review itself.
+
+  Reply with ONE JSON object, no prose, no markdown fences:
+
+  {
+    "answers": [
+      { "key": "the question key",
+        "outcome": "answered | settled | later | unknown",
+        "value": "the answer in the user's words (for answered)" }
+    ],
+    "stop": false,
+    "mandateChanges": [
+      { "category": "name", "level": "decide | confirm | ask", "locked": true }
+    ]
+  }
+
+  Rules:
+  - answered: the reply gives a substantive answer to that question.
+    For a question with a proposal, an agreement is an answer whose value
+    is the proposal.
+  - settled: the user says it is fine as it is / needs no more detail.
+  - later: the user postpones it.
+  - unknown: the user does not know.
+  - Leave out questions the reply does not touch.
+  - stop: true only when the user wants to end the review.
+  - mandateChanges: only when the user says what Wonko may decide on its
+    own ("decide naming yourself", "always ask me about the data model").
+tags:
+  - internal
+  - wonko

@@ -2,6 +2,7 @@ package de.mhus.vance.shared.enginemessage;
 
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.MaximegalonType;
+import de.mhus.vance.api.question.QuestionSetAnswerDto;
 import de.mhus.vance.api.thinkprocess.ActiveAppContext;
 import de.mhus.vance.api.thinkprocess.ActiveInboxContext;
 import de.mhus.vance.api.thinkprocess.BoundDocSelection;
@@ -59,12 +60,8 @@ import org.springframework.data.mongodb.core.mapping.Document;
  */
 @Document(collection = "engine_messages")
 @CompoundIndexes({
-        @CompoundIndex(
-                name = "outbox_replay",
-                def = "{ 'senderProcessId': 1, 'deliveredAt': 1 }"),
-        @CompoundIndex(
-                name = "inbox_drain",
-                def = "{ 'targetProcessId': 1, 'drainedAt': 1 }")
+    @CompoundIndex(name = "outbox_replay", def = "{ 'senderProcessId': 1, 'deliveredAt': 1 }"),
+    @CompoundIndex(name = "inbox_drain", def = "{ 'targetProcessId': 1, 'drainedAt': 1 }")
 })
 @Data
 @Builder
@@ -123,6 +120,7 @@ public class EngineMessageDocument {
      * of which degraded to the bare login without anything reporting a problem.
      */
     private @Nullable String fromUserDisplayName;
+
     private @Nullable String content;
     /**
      * Per-message voice-mode flag — {@code true} when the originating
@@ -171,6 +169,13 @@ public class EngineMessageDocument {
      * missing here is a field the engine never sees.
      */
     private @Nullable ActiveInboxContext activeInbox;
+
+    /**
+     * Structured question-set answers. Mirrors
+     * {@code PendingMessageDocument.questionAnswers} — this document is the
+     * durable hop to the engine drain, a field missing here never arrives.
+     */
+    private @Nullable QuestionSetAnswerDto questionAnswers;
 
     // ─── PROCESS_EVENT ───────────────────────────────────────────
     /**

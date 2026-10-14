@@ -3,6 +3,7 @@ package de.mhus.vance.brain.thinkengine;
 import de.mhus.vance.api.attachment.AttachmentRef;
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.MaximegalonType;
+import de.mhus.vance.api.question.QuestionSetAnswerDto;
 import de.mhus.vance.api.thinkprocess.ActiveAppContext;
 import de.mhus.vance.api.thinkprocess.ActiveInboxContext;
 import de.mhus.vance.api.thinkprocess.BoundDocSelection;
@@ -37,7 +38,8 @@ public sealed interface SteerMessage
     Instant at();
 
     /** Free-form key for retry-safe delivery; may be {@code null}. */
-    @Nullable String idempotencyKey();
+    @Nullable
+    String idempotencyKey();
 
     /**
      * A user-typed chat message.
@@ -75,7 +77,8 @@ public sealed interface SteerMessage
             @Nullable ActiveAppContext activeApp,
             @Nullable String boundDocumentId,
             @Nullable BoundDocSelection boundDocSelection,
-            @Nullable ActiveInboxContext activeInbox)
+            @Nullable ActiveInboxContext activeInbox,
+            @Nullable QuestionSetAnswerDto questionAnswers)
             implements SteerMessage {
 
         /**
@@ -96,12 +99,42 @@ public sealed interface SteerMessage
          * for {@code voiceMode}, {@code null} for the display name, and
          * {@code null} for the active-app hint.
          */
+        public UserChatInput(Instant at, @Nullable String idempotencyKey, String fromUser, String content) {
+            this(at, idempotencyKey, fromUser, null, content, List.of(), false, null, null, null, null, null);
+        }
+
+        /**
+         * Full-context constructor from before structured question answers
+         * existed. Only the question-set path ({@code process-steer} with
+         * {@code questionAnswers}) needs the canonical form; every other call
+         * site builds an ordinary turn. Equivalent to {@code null} for
+         * {@code questionAnswers}.
+         */
         public UserChatInput(
                 Instant at,
                 @Nullable String idempotencyKey,
                 String fromUser,
-                String content) {
-            this(at, idempotencyKey, fromUser, null, content, List.of(), false, null, null, null, null);
+                @Nullable String fromUserDisplayName,
+                String content,
+                List<AttachmentRef> attachments,
+                boolean voiceMode,
+                @Nullable ActiveAppContext activeApp,
+                @Nullable String boundDocumentId,
+                @Nullable BoundDocSelection boundDocSelection,
+                @Nullable ActiveInboxContext activeInbox) {
+            this(
+                    at,
+                    idempotencyKey,
+                    fromUser,
+                    fromUserDisplayName,
+                    content,
+                    attachments,
+                    voiceMode,
+                    activeApp,
+                    boundDocumentId,
+                    boundDocSelection,
+                    activeInbox,
+                    null);
         }
 
         /**
@@ -116,7 +149,7 @@ public sealed interface SteerMessage
                 String fromUser,
                 String content,
                 List<AttachmentRef> attachments) {
-            this(at, idempotencyKey, fromUser, null, content, attachments, false, null, null, null, null);
+            this(at, idempotencyKey, fromUser, null, content, attachments, false, null, null, null, null, null);
         }
 
         /**
@@ -136,8 +169,18 @@ public sealed interface SteerMessage
                 @Nullable ActiveAppContext activeApp,
                 @Nullable String boundDocumentId,
                 @Nullable BoundDocSelection boundDocSelection) {
-            this(at, idempotencyKey, fromUser, fromUserDisplayName, content, attachments,
-                    voiceMode, activeApp, boundDocumentId, boundDocSelection, null);
+            this(
+                    at,
+                    idempotencyKey,
+                    fromUser,
+                    fromUserDisplayName,
+                    content,
+                    attachments,
+                    voiceMode,
+                    activeApp,
+                    boundDocumentId,
+                    boundDocSelection,
+                    null);
         }
 
         /**
@@ -167,8 +210,7 @@ public sealed interface SteerMessage
                 String content,
                 List<AttachmentRef> attachments,
                 boolean voiceMode) {
-            this(at, idempotencyKey, fromUser, fromUserDisplayName, content,
-                    attachments, voiceMode, null, null, null);
+            this(at, idempotencyKey, fromUser, fromUserDisplayName, content, attachments, voiceMode, null, null, null);
         }
     }
 
@@ -213,8 +255,8 @@ public sealed interface SteerMessage
             @Nullable String humanSummary,
             @Nullable Map<String, Object> payload,
             @Nullable String eventId,
-            @Nullable Instant inResponseToAt) implements SteerMessage {
-    }
+            @Nullable Instant inResponseToAt)
+            implements SteerMessage {}
 
     /**
      * A child process emitted a semantic reply — its complete answer
@@ -249,8 +291,8 @@ public sealed interface SteerMessage
             @Nullable String sourceProcessName,
             String content,
             @Nullable Instant inResponseToAt,
-            @Nullable Map<String, Object> payload) implements SteerMessage {
-    }
+            @Nullable Map<String, Object> payload)
+            implements SteerMessage {}
 
     /**
      * Result of an asynchronously-dispatched tool call. The matching
@@ -264,20 +306,16 @@ public sealed interface SteerMessage
             String toolName,
             ToolCallStatus status,
             @Nullable Object result,
-            @Nullable String error) implements SteerMessage {
-    }
+            @Nullable String error)
+            implements SteerMessage {}
 
     /**
      * High-level command from the client (UI button, slash-command).
      * The engine decides how to react — sometimes by skipping the LLM
      * entirely.
      */
-    record ExternalCommand(
-            Instant at,
-            @Nullable String idempotencyKey,
-            String command,
-            Map<String, Object> params) implements SteerMessage {
-    }
+    record ExternalCommand(Instant at, @Nullable String idempotencyKey, String command, Map<String, Object> params)
+            implements SteerMessage {}
 
     /**
      * The user (or an auto-resolver) answered an inbox item that
@@ -295,8 +333,8 @@ public sealed interface SteerMessage
             @Nullable String idempotencyKey,
             String inboxItemId,
             MaximegalonType itemType,
-            AnswerPayload answer) implements SteerMessage {
-    }
+            AnswerPayload answer)
+            implements SteerMessage {}
 
     /**
      * A peer hub-process of the same user reports a relevant action
@@ -320,6 +358,6 @@ public sealed interface SteerMessage
             String userId,
             PeerEventType type,
             String humanSummary,
-            @Nullable Map<String, Object> payload) implements SteerMessage {
-    }
+            @Nullable Map<String, Object> payload)
+            implements SteerMessage {}
 }

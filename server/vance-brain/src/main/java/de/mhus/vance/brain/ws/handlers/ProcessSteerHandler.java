@@ -239,7 +239,8 @@ public class ProcessSteerHandler implements WsHandler {
                 request.getActiveApp(),
                 request.getBoundDocumentId(),
                 request.getBoundDocSelection(),
-                request.getActiveInbox());
+                request.getActiveInbox(),
+                request.getQuestionAnswers());
         PendingMessageDocument doc = SteerMessageCodec.toDocument(userInput);
         // The sender owns the message id (idempotency by construction —
         // PendingMessageMapper#toEngineMessage). Assign it here so the

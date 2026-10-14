@@ -36,5 +36,15 @@ public enum MemoryKind {
     INSIGHT,
 
     /** Catch-all for engine-specific records that don't fit the above. */
-    OTHER
+    OTHER,
+
+    /**
+     * Review register of the Wonko engine — what was asked, answered, settled
+     * or decided about one review subject. Project-scoped (no session, no
+     * process) so a later run from another session finds it; one chain per
+     * subject, keyed by {@code metadata.subjectKey}. Versioned like
+     * {@link #PLAN}: the latest non-superseded entry is the current register,
+     * the supersede chain is the round history.
+     */
+    REVIEW
 }

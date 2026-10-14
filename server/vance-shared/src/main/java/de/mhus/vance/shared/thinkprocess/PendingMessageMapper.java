@@ -48,11 +48,11 @@ public final class PendingMessageMapper {
             @Nullable String senderProcessId) {
         // The idempotency key is the message id when there is one — that is what
         // makes a cross-pod retry a no-op at the receiver.
-        String messageId = (m.getIdempotencyKey() != null && !m.getIdempotencyKey().isBlank())
-                ? m.getIdempotencyKey()
-                : UUID.randomUUID().toString();
-        Instant createdAt = m.getAt() == null || m.getAt().equals(Instant.EPOCH)
-                ? Instant.now() : m.getAt();
+        String messageId =
+                (m.getIdempotencyKey() != null && !m.getIdempotencyKey().isBlank())
+                        ? m.getIdempotencyKey()
+                        : UUID.randomUUID().toString();
+        Instant createdAt = m.getAt() == null || m.getAt().equals(Instant.EPOCH) ? Instant.now() : m.getAt();
         return EngineMessageDocument.builder()
                 .messageId(messageId)
                 .tenantId(tenantId == null ? "" : tenantId)
@@ -70,6 +70,7 @@ public final class PendingMessageMapper {
                 .boundDocumentId(m.getBoundDocumentId())
                 .boundDocSelection(m.getBoundDocSelection())
                 .activeInbox(m.getActiveInbox())
+                .questionAnswers(m.getQuestionAnswers())
                 // ─── PROCESS_EVENT / TOOL_RESULT / commands / inbox ───
                 .sourceProcessId(m.getSourceProcessId())
                 .eventType(m.getEventType())
@@ -105,6 +106,7 @@ public final class PendingMessageMapper {
                 .boundDocumentId(e.getBoundDocumentId())
                 .boundDocSelection(e.getBoundDocSelection())
                 .activeInbox(e.getActiveInbox())
+                .questionAnswers(e.getQuestionAnswers())
                 .sourceProcessId(e.getSourceProcessId())
                 .eventType(e.getEventType())
                 .eventId(e.getEventId())

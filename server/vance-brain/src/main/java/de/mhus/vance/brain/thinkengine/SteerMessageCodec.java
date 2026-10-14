@@ -4,7 +4,6 @@ import de.mhus.vance.api.attachment.AttachmentRef;
 import de.mhus.vance.api.inbox.AnswerOutcome;
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.MaximegalonType;
-import de.mhus.vance.api.thinkprocess.ActiveAppContext;
 import de.mhus.vance.api.thinkprocess.PeerEventType;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ToolCallStatus;
@@ -43,73 +42,72 @@ public final class SteerMessageCodec {
 
     public static PendingMessageDocument toDocument(SteerMessage msg) {
         PendingMessageDocument.PendingMessageDocumentBuilder b =
-                PendingMessageDocument.builder()
-                        .at(msg.at())
-                        .idempotencyKey(msg.idempotencyKey());
+                PendingMessageDocument.builder().at(msg.at()).idempotencyKey(msg.idempotencyKey());
 
         return switch (msg) {
-            case SteerMessage.UserChatInput u -> b
-                    .type(PendingMessageType.USER_CHAT_INPUT)
-                    .fromUser(u.fromUser())
-                    .fromUserDisplayName(u.fromUserDisplayName())
-                    .content(u.content())
-                    .attachmentDocumentIds(toDocumentIds(u.attachments()))
-                    .voiceMode(u.voiceMode())
-                    .activeApp(u.activeApp())
-                    .boundDocumentId(u.boundDocumentId())
-                    .boundDocSelection(u.boundDocSelection())
-                    .activeInbox(u.activeInbox())
-                    .build();
+            case SteerMessage.UserChatInput u ->
+                b.type(PendingMessageType.USER_CHAT_INPUT)
+                        .fromUser(u.fromUser())
+                        .fromUserDisplayName(u.fromUserDisplayName())
+                        .content(u.content())
+                        .attachmentDocumentIds(toDocumentIds(u.attachments()))
+                        .voiceMode(u.voiceMode())
+                        .activeApp(u.activeApp())
+                        .boundDocumentId(u.boundDocumentId())
+                        .boundDocSelection(u.boundDocSelection())
+                        .activeInbox(u.activeInbox())
+                        .questionAnswers(u.questionAnswers())
+                        .build();
 
-            case SteerMessage.ProcessEvent e -> b
-                    .type(PendingMessageType.PROCESS_EVENT)
-                    .sourceProcessId(e.sourceProcessId())
-                    .eventType(e.type())
-                    .content(e.humanSummary())
-                    .payload(e.payload())
-                    .eventId(e.eventId())
-                    .inResponseToAt(e.inResponseToAt())
-                    .build();
+            case SteerMessage.ProcessEvent e ->
+                b.type(PendingMessageType.PROCESS_EVENT)
+                        .sourceProcessId(e.sourceProcessId())
+                        .eventType(e.type())
+                        .content(e.humanSummary())
+                        .payload(e.payload())
+                        .eventId(e.eventId())
+                        .inResponseToAt(e.inResponseToAt())
+                        .build();
 
-            case SteerMessage.Reply r -> b
-                    .type(PendingMessageType.REPLY)
-                    .sourceProcessId(r.sourceProcessId())
-                    .fromUser(r.sourceProcessName())
-                    .content(r.content())
-                    .payload(r.payload())
-                    .inResponseToAt(r.inResponseToAt())
-                    .build();
+            case SteerMessage.Reply r ->
+                b.type(PendingMessageType.REPLY)
+                        .sourceProcessId(r.sourceProcessId())
+                        .fromUser(r.sourceProcessName())
+                        .content(r.content())
+                        .payload(r.payload())
+                        .inResponseToAt(r.inResponseToAt())
+                        .build();
 
-            case SteerMessage.ToolResult r -> b
-                    .type(PendingMessageType.TOOL_RESULT)
-                    .toolCallId(r.toolCallId())
-                    .toolName(r.toolName())
-                    .toolStatus(r.status())
-                    .error(r.error())
-                    .payload(wrapResult(r.result()))
-                    .build();
+            case SteerMessage.ToolResult r ->
+                b.type(PendingMessageType.TOOL_RESULT)
+                        .toolCallId(r.toolCallId())
+                        .toolName(r.toolName())
+                        .toolStatus(r.status())
+                        .error(r.error())
+                        .payload(wrapResult(r.result()))
+                        .build();
 
-            case SteerMessage.ExternalCommand c -> b
-                    .type(PendingMessageType.EXTERNAL_COMMAND)
-                    .command(c.command())
-                    .payload(c.params())
-                    .build();
+            case SteerMessage.ExternalCommand c ->
+                b.type(PendingMessageType.EXTERNAL_COMMAND)
+                        .command(c.command())
+                        .payload(c.params())
+                        .build();
 
-            case SteerMessage.InboxAnswer ia -> b
-                    .type(PendingMessageType.INBOX_ANSWER)
-                    .inboxItemId(ia.inboxItemId())
-                    .inboxItemType(ia.itemType())
-                    .inboxAnswer(ia.answer())
-                    .build();
+            case SteerMessage.InboxAnswer ia ->
+                b.type(PendingMessageType.INBOX_ANSWER)
+                        .inboxItemId(ia.inboxItemId())
+                        .inboxItemType(ia.itemType())
+                        .inboxAnswer(ia.answer())
+                        .build();
 
-            case SteerMessage.PeerEvent pe -> b
-                    .type(PendingMessageType.PEER_EVENT)
-                    .sourceEddieProcessId(pe.sourceEddieProcessId())
-                    .peerUserId(pe.userId())
-                    .peerEventType(pe.type())
-                    .content(pe.humanSummary())
-                    .payload(pe.payload())
-                    .build();
+            case SteerMessage.PeerEvent pe ->
+                b.type(PendingMessageType.PEER_EVENT)
+                        .sourceEddieProcessId(pe.sourceEddieProcessId())
+                        .peerUserId(pe.userId())
+                        .peerEventType(pe.type())
+                        .content(pe.humanSummary())
+                        .payload(pe.payload())
+                        .build();
         };
     }
 
@@ -123,67 +121,81 @@ public final class SteerMessageCodec {
             throw new IllegalStateException("PendingMessageDocument has null type");
         }
         return switch (t) {
-            case USER_CHAT_INPUT -> new SteerMessage.UserChatInput(
-                    at, idem,
-                    nullToEmpty(d.getFromUser()),
-                    d.getFromUserDisplayName(),
-                    nullToEmpty(d.getContent()),
-                    fromDocumentIds(d.getAttachmentDocumentIds()),
-                    Boolean.TRUE.equals(d.getVoiceMode()),
-                    d.getActiveApp(),
-                    d.getBoundDocumentId(),
-                    d.getBoundDocSelection(),
-                    d.getActiveInbox());
+            case USER_CHAT_INPUT ->
+                new SteerMessage.UserChatInput(
+                        at,
+                        idem,
+                        nullToEmpty(d.getFromUser()),
+                        d.getFromUserDisplayName(),
+                        nullToEmpty(d.getContent()),
+                        fromDocumentIds(d.getAttachmentDocumentIds()),
+                        Boolean.TRUE.equals(d.getVoiceMode()),
+                        d.getActiveApp(),
+                        d.getBoundDocumentId(),
+                        d.getBoundDocSelection(),
+                        d.getActiveInbox(),
+                        d.getQuestionAnswers());
 
-            case PROCESS_EVENT -> new SteerMessage.ProcessEvent(
-                    at, idem,
-                    nullToEmpty(d.getSourceProcessId()),
-                    d.getEventType() == null ? ProcessEventType.SUMMARY : d.getEventType(),
-                    d.getContent(),
-                    d.getPayload(),
-                    d.getEventId(),
-                    d.getInResponseToAt());
+            case PROCESS_EVENT ->
+                new SteerMessage.ProcessEvent(
+                        at,
+                        idem,
+                        nullToEmpty(d.getSourceProcessId()),
+                        d.getEventType() == null ? ProcessEventType.SUMMARY : d.getEventType(),
+                        d.getContent(),
+                        d.getPayload(),
+                        d.getEventId(),
+                        d.getInResponseToAt());
 
-            case REPLY -> new SteerMessage.Reply(
-                    at, idem,
-                    nullToEmpty(d.getSourceProcessId()),
-                    d.getFromUser(),
-                    nullToEmpty(d.getContent()),
-                    d.getInResponseToAt(),
-                    d.getPayload());
+            case REPLY ->
+                new SteerMessage.Reply(
+                        at,
+                        idem,
+                        nullToEmpty(d.getSourceProcessId()),
+                        d.getFromUser(),
+                        nullToEmpty(d.getContent()),
+                        d.getInResponseToAt(),
+                        d.getPayload());
 
-            case TOOL_RESULT -> new SteerMessage.ToolResult(
-                    at, idem,
-                    nullToEmpty(d.getToolCallId()),
-                    nullToEmpty(d.getToolName()),
-                    d.getToolStatus() == null ? ToolCallStatus.SUCCESS : d.getToolStatus(),
-                    unwrapResult(d.getPayload()),
-                    d.getError());
+            case TOOL_RESULT ->
+                new SteerMessage.ToolResult(
+                        at,
+                        idem,
+                        nullToEmpty(d.getToolCallId()),
+                        nullToEmpty(d.getToolName()),
+                        d.getToolStatus() == null ? ToolCallStatus.SUCCESS : d.getToolStatus(),
+                        unwrapResult(d.getPayload()),
+                        d.getError());
 
-            case EXTERNAL_COMMAND -> new SteerMessage.ExternalCommand(
-                    at, idem,
-                    nullToEmpty(d.getCommand()),
-                    d.getPayload() == null ? Collections.emptyMap() : d.getPayload());
+            case EXTERNAL_COMMAND ->
+                new SteerMessage.ExternalCommand(
+                        at,
+                        idem,
+                        nullToEmpty(d.getCommand()),
+                        d.getPayload() == null ? Collections.emptyMap() : d.getPayload());
 
-            case INBOX_ANSWER -> new SteerMessage.InboxAnswer(
-                    at, idem,
-                    nullToEmpty(d.getInboxItemId()),
-                    d.getInboxItemType() == null
-                            ? MaximegalonType.OUTPUT_TEXT : d.getInboxItemType(),
-                    d.getInboxAnswer() == null
-                            ? AnswerPayload.builder()
-                                    .outcome(AnswerOutcome.UNDECIDABLE)
-                                    .reason("Persistent inbox answer was missing")
-                                    .build()
-                            : d.getInboxAnswer());
+            case INBOX_ANSWER ->
+                new SteerMessage.InboxAnswer(
+                        at,
+                        idem,
+                        nullToEmpty(d.getInboxItemId()),
+                        d.getInboxItemType() == null ? MaximegalonType.OUTPUT_TEXT : d.getInboxItemType(),
+                        d.getInboxAnswer() == null
+                                ? AnswerPayload.builder()
+                                        .outcome(AnswerOutcome.UNDECIDABLE)
+                                        .reason("Persistent inbox answer was missing")
+                                        .build()
+                                : d.getInboxAnswer());
 
-            case PEER_EVENT -> new SteerMessage.PeerEvent(
-                    at, idem,
-                    nullToEmpty(d.getSourceEddieProcessId()),
-                    nullToEmpty(d.getPeerUserId()),
-                    d.getPeerEventType() == null ? PeerEventType.NOTE : d.getPeerEventType(),
-                    nullToEmpty(d.getContent()),
-                    d.getPayload());
+            case PEER_EVENT ->
+                new SteerMessage.PeerEvent(
+                        at,
+                        idem,
+                        nullToEmpty(d.getSourceEddieProcessId()),
+                        nullToEmpty(d.getPeerUserId()),
+                        d.getPeerEventType() == null ? PeerEventType.NOTE : d.getPeerEventType(),
+                        nullToEmpty(d.getContent()),
+                        d.getPayload());
         };
     }
 

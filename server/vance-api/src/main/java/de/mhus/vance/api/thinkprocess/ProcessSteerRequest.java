@@ -3,6 +3,7 @@ package de.mhus.vance.api.thinkprocess;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
 import de.mhus.vance.api.attachment.AttachmentRef;
+import de.mhus.vance.api.question.QuestionSetAnswerDto;
 import jakarta.validation.constraints.NotBlank;
 import java.util.List;
 import lombok.AllArgsConstructor;
@@ -129,4 +130,12 @@ public class ProcessSteerRequest {
      * is selected.
      */
     private @Nullable BoundDocSelection boundDocSelection;
+
+    /**
+     * Structured answers to a question set the engine asked in an earlier
+     * message ({@code meta.questionSet}). {@link #content} still carries a
+     * readable short form for the chat history; the engine reads this typed
+     * field, never the text. {@code null} on ordinary turns.
+     */
+    private @Nullable QuestionSetAnswerDto questionAnswers;
 }

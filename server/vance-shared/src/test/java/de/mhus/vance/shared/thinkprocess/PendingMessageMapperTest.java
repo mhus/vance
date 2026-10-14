@@ -1,7 +1,11 @@
 package de.mhus.vance.shared.thinkprocess;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.groups.Tuple.tuple;
 
+import de.mhus.vance.api.question.QuestionAnswerDto;
+import de.mhus.vance.api.question.QuestionOutcome;
+import de.mhus.vance.api.question.QuestionSetAnswerDto;
 import de.mhus.vance.api.thinkprocess.ActiveAppContext;
 import de.mhus.vance.api.thinkprocess.ActiveInboxContext;
 import de.mhus.vance.api.thinkprocess.BoundDocSelection;
@@ -39,15 +43,19 @@ class PendingMessageMapperTest {
                 .content("what is waiting on me?")
                 .voiceMode(true)
                 .attachmentDocumentIds(List.of("doc-a", "doc-b"))
-                .activeApp(ActiveAppContext.builder().folder("apps/wiki").app("wiki").build())
+                .activeApp(ActiveAppContext.builder()
+                        .folder("apps/wiki")
+                        .app("wiki")
+                        .build())
                 .boundDocumentId("bound-1")
                 .boundDocSelection(selection)
                 .activeInbox(ActiveInboxContext.builder()
-                        .threadId("thread-1").messageId("msg-9").build())
+                        .threadId("thread-1")
+                        .messageId("msg-9")
+                        .build())
                 .build();
 
-        EngineMessageDocument engine = PendingMessageMapper.toEngineMessage(
-                pending, "target-1", "acme", "sender-1");
+        EngineMessageDocument engine = PendingMessageMapper.toEngineMessage(pending, "target-1", "acme", "sender-1");
 
         assertThat(engine.getMessageId()).isEqualTo("idem-1");
         assertThat(engine.getTenantId()).isEqualTo("acme");
@@ -92,6 +100,40 @@ class PendingMessageMapperTest {
     }
 
     @Test
+    void roundTrip_returnsTheQuestionAnswersToTheEngine() {
+        QuestionSetAnswerDto answers = QuestionSetAnswerDto.builder()
+                .setId("set-1")
+                .answers(List.of(
+                        QuestionAnswerDto.builder()
+                                .key("retry-policy")
+                                .outcome(QuestionOutcome.ANSWERED)
+                                .value("3 attempts")
+                                .build(),
+                        QuestionAnswerDto.builder()
+                                .key("rounding")
+                                .outcome(QuestionOutcome.SETTLED)
+                                .build()))
+                .build();
+        PendingMessageDocument pending = PendingMessageDocument.builder()
+                .idempotencyKey("idem-3")
+                .type(PendingMessageType.USER_CHAT_INPUT)
+                .fromUser("mara")
+                .content("retry-policy: 3 attempts · rounding: good as it is")
+                .questionAnswers(answers)
+                .build();
+
+        PendingMessageDocument back = PendingMessageMapper.toPendingMessage(
+                PendingMessageMapper.toEngineMessage(pending, "target-1", "acme", ""));
+
+        assertThat(back.getQuestionAnswers()).isNotNull();
+        assertThat(back.getQuestionAnswers().getSetId()).isEqualTo("set-1");
+        assertThat(back.getQuestionAnswers().getAnswers())
+                .extracting(QuestionAnswerDto::getKey, QuestionAnswerDto::getOutcome)
+                .containsExactly(
+                        tuple("retry-policy", QuestionOutcome.ANSWERED), tuple("rounding", QuestionOutcome.SETTLED));
+    }
+
+    @Test
     void toEngineMessage_withoutIdempotencyKey_generatesAMessageId() {
         // The key is what makes a cross-pod retry a no-op at the receiver; a
         // message without one still needs an id, just not a stable one.
@@ -100,8 +142,7 @@ class PendingMessageMapperTest {
                 .sourceProcessId("p-1")
                 .build();
 
-        EngineMessageDocument engine = PendingMessageMapper.toEngineMessage(
-                pending, "target-1", null, null);
+        EngineMessageDocument engine = PendingMessageMapper.toEngineMessage(pending, "target-1", null, null);
 
         assertThat(engine.getMessageId()).isNotBlank();
         assertThat(engine.getTenantId()).isEmpty();

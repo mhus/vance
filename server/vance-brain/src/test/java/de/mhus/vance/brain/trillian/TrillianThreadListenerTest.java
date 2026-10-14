@@ -42,8 +42,9 @@ class TrillianThreadListenerTest {
     private final TrillianOwnSessions ownSessions = mock(TrillianOwnSessions.class);
     private final TrillianNatureRegistry natureRegistry = mock(TrillianNatureRegistry.class);
     private final TrillianHeadService headService = mock(TrillianHeadService.class);
+    private final TrillianWakeupService wakeupService = mock(TrillianWakeupService.class);
     private final TrillianThreadListener listener =
-            new TrillianThreadListener(ownSessions, natureRegistry, headService);
+            new TrillianThreadListener(ownSessions, natureRegistry, headService, wakeupService);
 
     @Test
     void aContributionToAMultiHeadTrillian_reachesTheHeadService() {
@@ -64,12 +65,23 @@ class TrillianThreadListenerTest {
     }
 
     @Test
-    void aSingleHeadedNature_answersThreadsOnItsOwnLoop_notThroughAHead() {
+    void aSingleHeadedNature_answersThreadsOnItsOwnLoop_wokenNow_notThroughAHead() {
         givenLiveLoop("loop-1", /* multiHead */ false);
 
         listener.onThreadMessage(messageEvent(conversation(), message("m-1", "bob", "Where are the docs?")));
 
         verify(headService, never()).dispatchContribution(any(), any(), any(), any());
+        // The self-check is due now — not up to an hour later on the ladder.
+        verify(wakeupService).wakeNow("loop-1");
+    }
+
+    @Test
+    void theTrilliansOwnAnswer_wakesNoSingleHeadedLoop() {
+        givenLiveLoop("loop-1", /* multiHead */ false);
+
+        listener.onThreadMessage(messageEvent(conversation(), message("m-1", ACCOUNT, "Here they are.")));
+
+        verify(wakeupService, never()).wakeNow(any());
     }
 
     @Test

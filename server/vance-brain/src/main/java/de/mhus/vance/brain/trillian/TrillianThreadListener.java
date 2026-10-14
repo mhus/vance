@@ -50,6 +50,7 @@ public class TrillianThreadListener {
     private final TrillianOwnSessions ownSessions;
     private final TrillianNatureRegistry natureRegistry;
     private final TrillianHeadService headService;
+    private final TrillianWakeupService wakeupService;
 
     @EventListener
     public void onThreadCreated(MaximegalonCreatedEvent event) {
@@ -95,7 +96,11 @@ public class TrillianThreadListener {
             }
             TrillianNature nature = natureRegistry.resolve(TrillianSessionBootstrapper.readNature(loop));
             if (!nature.multiHead()) {
-                return; // single-headed: the loop answers its own threads
+                // Single-headed: the loop answers its own threads through its
+                // self-check (inbox_unread). Make that due now instead of
+                // leaving the counterpart to the ladder's 10-60 minutes.
+                wakeupService.wakeNow(loop.getId());
+                return;
             }
             headService.dispatchContribution(loop, nature, item, message);
         } catch (RuntimeException e) {

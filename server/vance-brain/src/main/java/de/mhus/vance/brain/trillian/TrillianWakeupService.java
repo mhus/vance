@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.trillian;
 
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
+import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.time.Duration;
@@ -33,11 +34,24 @@ import org.springframework.stereotype.Service;
  * That is not "in flight", that is stuck, and it is the first thing a
  * wakeup is good for.
  *
- * <p>The schedule decelerates — 10, 20, 40, 60 minutes, and at most
- * every two hours at night — and resets to the first step whenever
+ * <p>The schedule decelerates — by default 10, 20, 40, 60 minutes, and at
+ * most every two hours at night — and resets to the first step whenever
  * something real happens. Exact times do not matter; what matters is
  * that he looks regularly. A tick that runs a minute late has lost
  * nothing.
+ *
+ * <p><b>Per Trillian.</b> Trillians differ in how attentive they need to
+ * be, so the ladder and the night minimum are settings
+ * ({@link #LADDER_KEY}, {@link #NIGHT_MINUTES_KEY}) resolved through the
+ * user/project cascade — tenant default, overridden on the account or on its
+ * hub project. A malformed value falls back to the default with a WARN: a
+ * Trillian that never wakes again is worse than one on the default rhythm.
+ *
+ * <p><b>Woken, not polled, for a conversation.</b> A contribution to a
+ * single-headed Trillian's conversation makes its self-check due now
+ * ({@link #wakeNow}) — the next heartbeat round delivers it, and the unread
+ * thread is the finding. The ladder stays what it is for: noticing what
+ * nobody reports.
  */
 @Service
 @RequiredArgsConstructor
@@ -72,13 +86,30 @@ public class TrillianWakeupService {
     /** Marker value for "computed, no enabled schedule". */
     public static final long NO_SCHEDULE = -1L;
 
+    /** Setting: minutes per quiet round, comma-separated (e.g. {@code 10,20,40,60}). */
+    public static final String LADDER_KEY = "trillian.wakeup.ladder";
+
+    /** Setting: the minimum gap at night (20:00–08:00), in minutes. */
+    public static final String NIGHT_MINUTES_KEY = "trillian.wakeup.night-minutes";
+
+    /** One Trillian's rhythm: the ladder and the night minimum. */
+    public record Cadence(List<Integer> ladder, int nightMinutes) {
+
+        public Cadence {
+            ladder = List.copyOf(ladder);
+        }
+
+        /** The built-in rhythm — see {@link #LADDER} and {@link #NIGHT_MINUTES}. */
+        public static final Cadence DEFAULT = new Cadence(LADDER, NIGHT_MINUTES);
+    }
+
     /**
      * Minutes between self-checks, per consecutive quiet round. Starts at
      * ten rather than five: the first wakeup after a task is rarely the
      * useful one, and a Trillian that stirs every five minutes reads as
      * nervous rather than attentive.
      */
-    static final int[] LADDER = {10, 20, 40, 60};
+    static final List<Integer> LADDER = List.of(10, 20, 40, 60);
 
     /**
      * How far an interval may stray from its nominal length, in either
@@ -107,6 +138,7 @@ public class TrillianWakeupService {
     private final java.util.Random random = new java.util.Random();
 
     private final ThinkProcessService thinkProcessService;
+    private final SettingService settingService;
 
     /**
      * Arms the next self-check, or clears it when the loop has nothing to
@@ -125,18 +157,100 @@ public class TrillianWakeupService {
             disarm(loop);
             return;
         }
-        int step = currentStep(loop);
-        Duration gap = jittered(Duration.ofMinutes(minutesFor(step, zone)));
+        Cadence cadence = cadenceOf(loop);
+        int step = currentStep(loop, cadence);
+        int nominal = minutesFor(cadence, step, LocalTime.now(zone));
+        Duration gap = jittered(Duration.ofMinutes(nominal));
         Instant next = Instant.now().plus(gap);
         thinkProcessService.setEngineParamOverride(loop.getId(), PARAM_NEXT_WAKEUP_AT, next.toEpochMilli());
         thinkProcessService.setEngineParamOverride(
-                loop.getId(), PARAM_WAKEUP_STEP, Math.min(step + 1, LADDER.length - 1));
+                loop.getId(),
+                PARAM_WAKEUP_STEP,
+                Math.min(step + 1, cadence.ladder().size() - 1));
         log.trace(
                 "Trillian wakeup armed id='{}' in {} min (step {}, nominal {})",
                 loop.getId(),
                 gap.toMinutes(),
                 step,
-                minutesFor(step, zone));
+                nominal);
+    }
+
+    /**
+     * Makes the self-check due now and resets the cadence — somebody wrote
+     * to this Trillian, and waiting for the ladder would leave them up to an
+     * hour without an answer. The next heartbeat round wakes the loop (when
+     * it is quiet; a busy loop sees the thread at its next turn anyway), and
+     * costs a turn only because the unread thread is a finding.
+     */
+    public void wakeNow(String loopProcessId) {
+        thinkProcessService.setEngineParamOverride(
+                loopProcessId, PARAM_NEXT_WAKEUP_AT, Instant.now().toEpochMilli());
+        resetCadence(loopProcessId);
+        log.trace("Trillian wakeup due now id='{}'", loopProcessId);
+    }
+
+    /**
+     * This loop's rhythm from the settings cascade — tenant, the Trillian's
+     * account, its hub project; the built-in default where nothing (valid) is
+     * set.
+     */
+    public Cadence cadenceOf(ThinkProcessDocument loop) {
+        String tenantId = loop.getTenantId();
+        String account = TrillianHeadService.accountOf(loop);
+        String ladderRaw = settingService.getStringValueUserProjectCascade(
+                tenantId, account.isBlank() ? null : account, loop.getProjectId(), /*thinkProcessId*/ null, LADDER_KEY);
+        String nightRaw = settingService.getStringValueUserProjectCascade(
+                tenantId,
+                account.isBlank() ? null : account,
+                loop.getProjectId(),
+                /*thinkProcessId*/ null,
+                NIGHT_MINUTES_KEY);
+        return new Cadence(parseLadder(ladderRaw, loop.getId()), parseMinutes(nightRaw, NIGHT_MINUTES, loop.getId()));
+    }
+
+    static List<Integer> parseLadder(@Nullable String raw, String loopId) {
+        if (raw == null || raw.isBlank()) {
+            return LADDER;
+        }
+        try {
+            List<Integer> ladder = java.util.Arrays.stream(raw.split(","))
+                    .map(String::trim)
+                    .map(Integer::valueOf)
+                    .toList();
+            if (!ladder.isEmpty() && ladder.stream().allMatch(m -> m > 0)) {
+                return ladder;
+            }
+        } catch (NumberFormatException e) {
+            // falls through to the warning below
+        }
+        log.warn(
+                "Trillian wakeup: {}='{}' on loop '{}' is not a list of positive minutes — default {}",
+                LADDER_KEY,
+                raw,
+                loopId,
+                LADDER);
+        return LADDER;
+    }
+
+    static int parseMinutes(@Nullable String raw, int fallback, String loopId) {
+        if (raw == null || raw.isBlank()) {
+            return fallback;
+        }
+        try {
+            int minutes = Integer.parseInt(raw.trim());
+            if (minutes > 0) {
+                return minutes;
+            }
+        } catch (NumberFormatException e) {
+            // falls through to the warning below
+        }
+        log.warn(
+                "Trillian wakeup: {}='{}' on loop '{}' is not a positive number of minutes — default {}",
+                NIGHT_MINUTES_KEY,
+                raw,
+                loopId,
+                fallback);
+        return fallback;
     }
 
     /** Clears a pending self-check — something is in flight after all. */
@@ -162,7 +276,7 @@ public class TrillianWakeupService {
 
     /** The current rung (0-based) of the quiet-ladder. */
     public int cadenceStep(ThinkProcessDocument loop) {
-        return currentStep(loop);
+        return currentStep(loop, cadenceOf(loop));
     }
 
     /**
@@ -238,28 +352,27 @@ public class TrillianWakeupService {
         return Duration.ofMillis(Math.max(millis, Duration.ofMinutes(1).toMillis()));
     }
 
-    /** Minutes for this step, capped harder during the night. */
-    int minutesFor(int step, ZoneId zone) {
-        return minutesFor(step, LocalTime.now(zone));
-    }
-
     /**
-     * The same decision against a given time of day, so the ladder and
-     * the night cap can be checked without the caller's wall clock
-     * deciding which of the two answers is correct.
+     * Minutes for this step of {@code cadence}, capped harder during the
+     * night — against a given time of day, so the ladder and the night cap
+     * can be checked without the caller's wall clock deciding which of the
+     * two answers is correct.
      */
-    int minutesFor(int step, LocalTime now) {
-        int minutes = LADDER[Math.max(0, Math.min(step, LADDER.length - 1))];
-        return isNight(now) ? Math.max(minutes, NIGHT_MINUTES) : minutes;
+    static int minutesFor(Cadence cadence, int step, LocalTime now) {
+        List<Integer> ladder = cadence.ladder();
+        int minutes = ladder.get(Math.max(0, Math.min(step, ladder.size() - 1)));
+        return isNight(now) ? Math.max(minutes, cadence.nightMinutes()) : minutes;
     }
 
     static boolean isNight(LocalTime now) {
         return now.isAfter(NIGHT_FROM) || now.isBefore(NIGHT_UNTIL);
     }
 
-    private int currentStep(ThinkProcessDocument loop) {
+    private static int currentStep(ThinkProcessDocument loop, Cadence cadence) {
         Long step = longOverride(loop, PARAM_WAKEUP_STEP);
-        return step == null ? 0 : (int) Math.max(0, Math.min(step, LADDER.length - 1));
+        return step == null
+                ? 0
+                : (int) Math.max(0, Math.min(step, cadence.ladder().size() - 1));
     }
 
     private static @Nullable Long longOverride(ThinkProcessDocument loop, String key) {

@@ -1,5 +1,5 @@
 ---
-triggers: schedule_add, schedule_list, schedule_update, schedule_remove, schedule_due, bored, goals.yaml, appointment, remind me, every morning, termin, erinnere mich
+triggers: schedule_add, schedule_list, schedule_update, schedule_remove, schedule_due, bored, goals.yaml, appointment, remind me, every morning, termin, erinnere mich, self-check, wakeup, trillian.wakeup.ladder
 summary: Your own durable appointments (schedule_*), what a [schedule_due] or [bored] self-check line asks of you, and the standing goals in goals.yaml.
 ---
 # Trillian — schedules and standing goals
@@ -27,6 +27,16 @@ back to you as a self-check line when an entry is due.
 Use a schedule when you promised something for later ("I'll check the
 build tomorrow morning"). Use `wakeup_in` only for minutes-scale polling
 inside ongoing work — it does not survive a restart.
+
+## Your self-check rhythm
+
+Besides your schedules you wake yourself while it is quiet: by default
+after 10, 20, 40, then every 60 minutes (at night at most every 120). Such
+a wakeup costs nothing unless there is something to look at. Your human
+can tune that rhythm for you with the settings `trillian.wakeup.ladder`
+(e.g. `5,10,20`) and `trillian.wakeup.night-minutes` on your home project.
+When someone writes to you in a conversation you are woken right away —
+you do not need a schedule to answer people.
 
 ## `[schedule_due] <name>: <label or payload>`
 

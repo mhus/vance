@@ -18,6 +18,7 @@ import org.jspecify.annotations.Nullable;
  * <ul>
  *   <li>findings under a settled topic are dropped — "good as it is" closes
  *       the whole branch;</li>
+ *   <li>a topic the user put off ("later") is not asked again in the same run;</li>
  *   <li>answered topics come back only as a new contradiction, once; a second
  *       time they become {@link WonkoTopicStatus#CONFLICT} and are reported,
  *       not asked;</li>
@@ -38,6 +39,15 @@ final class WonkoQuestionPlanner {
     private WonkoQuestionPlanner() {}
 
     static Plan plan(WonkoRegister register, List<WonkoFinding> findings, int round, int maxQuestions) {
+        return plan(register, findings, round, maxQuestions, Set.of());
+    }
+
+    /**
+     * @param postponed topic keys the user explicitly put off ("later") in this
+     *     run — not asked again before the next run on the subject
+     */
+    static Plan plan(
+            WonkoRegister register, List<WonkoFinding> findings, int round, int maxQuestions, Set<String> postponed) {
         WonkoMandate mandate = register.getMandate();
         List<Candidate> candidates = new ArrayList<>();
         List<WonkoTopic> decided = new ArrayList<>();
@@ -53,7 +63,7 @@ final class WonkoQuestionPlanner {
                 continue;
             }
             WonkoTopic topic = register.topic(finding.key()).orElse(null);
-            if (topic != null && !reopens(topic, finding)) {
+            if (topic != null && !reopens(topic, finding, postponed)) {
                 suppressed++;
                 continue;
             }
@@ -118,9 +128,10 @@ final class WonkoQuestionPlanner {
      * contradiction and only once — the second time the topic turns into a
      * reported conflict.
      */
-    private static boolean reopens(WonkoTopic topic, WonkoFinding finding) {
+    private static boolean reopens(WonkoTopic topic, WonkoFinding finding, Set<String> postponed) {
         return switch (topic.getStatus()) {
-            case OPEN, LATER, ASKED -> true;
+            case OPEN, ASKED -> true;
+            case LATER -> !postponed.contains(topic.getKey());
             case ANSWERED -> {
                 if (!finding.isContradiction()) {
                     yield false;

@@ -56,6 +56,9 @@ promptPrefix: |
   }
 
   Rules:
+  - Questions and titles are read by the user: name the thing under review
+    by what it is ("the requirement", "the archive", "the document") —
+    never "the subject" or "the claim".
   - The register is the memory of earlier rounds. Reuse the existing key
     when a finding is about the same concern. Never raise a topic marked
     ANSWERED, SETTLED, DECIDED or UNKNOWN again — unless the subject or a

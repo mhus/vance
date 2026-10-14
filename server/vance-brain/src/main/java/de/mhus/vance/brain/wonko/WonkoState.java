@@ -38,6 +38,9 @@ public class WonkoState {
     /** Mandate-loosening proposals inside {@link #pendingSet}, by question key. */
     private List<PendingProposal> pendingProposals = new ArrayList<>();
 
+    /** Topic keys the user explicitly put off in this run — not asked again before the next run. */
+    private List<String> postponedKeys = new ArrayList<>();
+
     /** Free-text statements of the user, handed to every following check. */
     private List<String> userStatements = new ArrayList<>();
 

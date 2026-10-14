@@ -30,6 +30,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -464,6 +465,14 @@ public class WonkoEngine implements ThinkEngine {
         if (state.isCheckpointAsked()) {
             stop |= applyCheckpoint(process, state, answers);
         }
+        for (QuestionAnswerDto a : answers) {
+            // Only an explicit "later" postpones — a question the reply simply
+            // left out stays askable.
+            if (a.getOutcome() == QuestionOutcome.LATER
+                    && !state.getPostponedKeys().contains(a.getKey())) {
+                state.getPostponedKeys().add(a.getKey());
+            }
+        }
         WonkoState.RoundStat answered =
                 WonkoAnswerApplier.apply(register, set, answers, state.getPendingProposals(), state.getRound());
         mergeAnswerStat(state, answered);
@@ -698,7 +707,11 @@ public class WonkoEngine implements ThinkEngine {
         }
         int round = state.getRound() + 1;
         WonkoQuestionPlanner.Plan plan = WonkoQuestionPlanner.plan(
-                register, state.getPendingFindings(), round, turn.params.maxQuestionsPerRound());
+                register,
+                state.getPendingFindings(),
+                round,
+                turn.params.maxQuestionsPerRound(),
+                new HashSet<>(state.getPostponedKeys()));
         // What the planner did not take (deferred, over budget) stays in the pool.
         state.getPendingFindings()
                 .removeIf(f -> register.topic(f.key())

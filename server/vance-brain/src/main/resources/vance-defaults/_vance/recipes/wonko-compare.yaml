@@ -41,6 +41,9 @@ promptPrefix: |
   }
 
   Rules:
+  - Questions and titles are read by the user: name the thing under review
+    by what it is ("the requirement", "the archive", "the document") —
+    never "the subject" or "the claim".
   - One result per passage id.
   - contradicts: the claim, as stated, violates or conflicts with the
     passage. The quote MUST be copied verbatim from the passage — it is

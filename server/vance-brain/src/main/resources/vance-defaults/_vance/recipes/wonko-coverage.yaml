@@ -37,6 +37,9 @@ promptPrefix: |
   }
 
   Rules:
+  - Questions and titles are read by the user: name the thing under review
+    by what it is ("the requirement", "the archive", "the document") —
+    never "the subject" or "the claim".
   - Only obligations that apply to what the subject is about. An
     obligation the subject does address is not missing.
   - The quote MUST be copied verbatim from the "Reference" section — it is

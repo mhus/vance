@@ -130,4 +130,23 @@ class WonkoQuestionPlannerTest {
         assertThat(r.topic("d").orElseThrow().getStatus()).isEqualTo(WonkoTopicStatus.OPEN);
         assertThat(r.topic("c").orElseThrow().getStatus()).isEqualTo(WonkoTopicStatus.ASKED);
     }
+
+    @Test
+    void laterInThisRun_isNotAskedAgain_butInTheNextRun() {
+        WonkoRegister r = register(MandateLevel.ASK);
+        topic(r, "deletion", WonkoTopicStatus.LATER);
+
+        var sameRun = WonkoQuestionPlanner.plan(
+                r,
+                List.of(finding("deletion", QuestionWeight.BLOCKER, null, null)),
+                3,
+                5,
+                java.util.Set.of("deletion"));
+        assertThat(sameRun.questions()).isEmpty();
+        assertThat(r.topic("deletion").orElseThrow().getStatus()).isEqualTo(WonkoTopicStatus.LATER);
+
+        var nextRun =
+                WonkoQuestionPlanner.plan(r, List.of(finding("deletion", QuestionWeight.BLOCKER, null, null)), 1, 5);
+        assertThat(nextRun.questions()).extracting(QuestionDto::getKey).containsExactly("deletion");
+    }
 }

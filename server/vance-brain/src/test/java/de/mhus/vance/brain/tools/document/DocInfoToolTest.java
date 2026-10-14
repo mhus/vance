@@ -28,8 +28,7 @@ import org.junit.jupiter.api.Test;
  */
 class DocInfoToolTest {
 
-    private static final ToolInvocationContext CTX =
-            new ToolInvocationContext("acme", "proj", "sess", "proc", "user");
+    private static final ToolInvocationContext CTX = new ToolInvocationContext("acme", "proj", "sess", "proc", "user");
 
     private DocumentService documentService;
     private EddieContext eddieContext;
@@ -46,14 +45,20 @@ class DocInfoToolTest {
     void invoke_byPath_returnsMetadata_withoutLoadingContent() {
         ProjectDocument project = new ProjectDocument();
         project.setName("proj");
-        when(eddieContext.resolveProject(org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.eq(CTX),
-                org.mockito.ArgumentMatchers.eq(false)))
+        when(eddieContext.resolveProject(
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.eq(CTX),
+                        org.mockito.ArgumentMatchers.eq(false)))
                 .thenReturn(project);
 
         DocumentDocument doc = inlineDoc(
-                "doc-1", "documents/notes/ch1.md", "ch1.md",
-                "Chapter 1", "text/markdown", 1234L, "# Chapter 1\nbody\n");
+                "doc-1",
+                "documents/notes/ch1.md",
+                "ch1.md",
+                "Chapter 1",
+                "text/markdown",
+                1234L,
+                "# Chapter 1\nbody\n");
         doc.setKind("note");
         doc.setTags(List.of("draft"));
         doc.setHeaders(new LinkedHashMap<>(Map.of("kind", "note")));
@@ -68,8 +73,7 @@ class DocInfoToolTest {
         when(documentService.findByPath("acme", "proj", "documents/notes/ch1.md"))
                 .thenReturn(Optional.of(doc));
 
-        Map<String, Object> out = tool.invoke(
-                Map.of("path", "documents/notes/ch1.md"), CTX);
+        Map<String, Object> out = tool.invoke(Map.of("path", "documents/notes/ch1.md"), CTX);
 
         assertThat(out)
                 .containsEntry("id", "doc-1")
@@ -96,19 +100,17 @@ class DocInfoToolTest {
     void invoke_withStats_inlineText_countsLocally() {
         ProjectDocument project = new ProjectDocument();
         project.setName("proj");
-        when(eddieContext.resolveProject(org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.eq(CTX),
-                org.mockito.ArgumentMatchers.eq(false)))
+        when(eddieContext.resolveProject(
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.eq(CTX),
+                        org.mockito.ArgumentMatchers.eq(false)))
                 .thenReturn(project);
 
         DocumentDocument doc = inlineDoc(
-                "doc-2", "documents/n.md", "n.md", null,
-                "text/markdown", 0L, "line one\nline two has four words\n");
-        when(documentService.findByPath("acme", "proj", "documents/n.md"))
-                .thenReturn(Optional.of(doc));
+                "doc-2", "documents/n.md", "n.md", null, "text/markdown", 0L, "line one\nline two has four words\n");
+        when(documentService.findByPath("acme", "proj", "documents/n.md")).thenReturn(Optional.of(doc));
 
-        Map<String, Object> out = tool.invoke(
-                Map.of("path", "documents/n.md", "stats", true), CTX);
+        Map<String, Object> out = tool.invoke(Map.of("path", "documents/n.md", "stats", true), CTX);
 
         assertThat(out)
                 .containsEntry("charCount", "line one\nline two has four words\n".length())
@@ -118,11 +120,14 @@ class DocInfoToolTest {
 
     @Test
     void invoke_byId_rejectsCrossTenant() {
-        DocumentDocument doc = inlineDoc(
-                "doc-3", "documents/x.md", "x.md", null, "text/markdown",
-                0L, "body");
+        DocumentDocument doc = inlineDoc("doc-3", "documents/x.md", "x.md", null, "text/markdown", 0L, "body");
         doc.setTenantId("other-tenant");
         when(documentService.findById("doc-3")).thenReturn(Optional.of(doc));
+        // The id branch's gate (tenant, READ, confinement) is EddieContext's —
+        // see EddieContextTest; the tool must route through it.
+        org.mockito.Mockito.doThrow(new ToolException("Document with id 'doc-3' is not in your tenant"))
+                .when(eddieContext)
+                .requireReadableById(CTX, doc, "doc-3");
 
         assertThatThrownBy(() -> tool.invoke(Map.of("id", "doc-3"), CTX))
                 .isInstanceOf(ToolException.class)
@@ -140,19 +145,16 @@ class DocInfoToolTest {
     void invoke_emptyDocument_statsAllZero() {
         ProjectDocument project = new ProjectDocument();
         project.setName("proj");
-        when(eddieContext.resolveProject(org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.eq(CTX),
-                org.mockito.ArgumentMatchers.eq(false)))
+        when(eddieContext.resolveProject(
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.eq(CTX),
+                        org.mockito.ArgumentMatchers.eq(false)))
                 .thenReturn(project);
 
-        DocumentDocument doc = inlineDoc(
-                "doc-4", "documents/empty.md", "empty.md", null,
-                "text/markdown", 0L, "");
-        when(documentService.findByPath("acme", "proj", "documents/empty.md"))
-                .thenReturn(Optional.of(doc));
+        DocumentDocument doc = inlineDoc("doc-4", "documents/empty.md", "empty.md", null, "text/markdown", 0L, "");
+        when(documentService.findByPath("acme", "proj", "documents/empty.md")).thenReturn(Optional.of(doc));
 
-        Map<String, Object> out = tool.invoke(
-                Map.of("path", "documents/empty.md", "stats", true), CTX);
+        Map<String, Object> out = tool.invoke(Map.of("path", "documents/empty.md", "stats", true), CTX);
 
         assertThat(out)
                 .containsEntry("charCount", 0)
@@ -174,8 +176,7 @@ class DocInfoToolTest {
     }
 
     private DocumentDocument inlineDoc(
-            String id, String path, String name, String title,
-            String mime, long size, String inlineText) {
+            String id, String path, String name, String title, String mime, long size, String inlineText) {
         DocumentDocument d = new DocumentDocument();
         d.setId(id);
         d.setTenantId("acme");

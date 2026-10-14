@@ -6,6 +6,9 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.brain.thinkengine.ThinkEngine;
+import de.mhus.vance.brain.thinkengine.ThinkEngineService;
+import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectKind;
 import de.mhus.vance.shared.project.ProjectService;
@@ -18,6 +21,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 
 /**
  * Focuses on {@link EddieContext#resolveProject} — in particular
@@ -39,6 +43,7 @@ class EddieContextTest {
     private ThinkProcessService thinkProcessService;
     private de.mhus.vance.shared.permission.PermissionService permissionService;
     private de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
+    private ThinkEngineService thinkEngineService;
     private EddieContext eddieContext;
 
     @BeforeEach
@@ -48,7 +53,12 @@ class EddieContextTest {
         permissionService = mock(de.mhus.vance.shared.permission.PermissionService.class);
         contextFactory = mock(de.mhus.vance.brain.permission.SecurityContextFactory.class);
         // These tests cover project-resolution semantics, not authz — allow all.
-        eddieContext = new EddieContext(projectService, thinkProcessService, permissionService, contextFactory);
+        thinkEngineService = mock(ThinkEngineService.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<ThinkEngineService> engines = mock(ObjectProvider.class);
+        when(engines.getObject()).thenReturn(thinkEngineService);
+        eddieContext =
+                new EddieContext(projectService, thinkProcessService, permissionService, contextFactory, engines);
     }
 
     @Nested
@@ -93,7 +103,7 @@ class EddieContextTest {
             assertThatThrownBy(() -> eddieContext.resolveProject(
                             Map.of("projectId", HALLUCINATED), ctx(/*projectId*/ null, PROCESS_ID), false))
                     .isInstanceOf(ToolException.class)
-                    .hasMessageContaining("Sub-process invoked without an inherited projectId");
+                    .hasMessageContaining("Pinned process invoked without an inherited projectId");
         }
 
         @Test
@@ -142,6 +152,88 @@ class EddieContextTest {
                     false);
 
             assertThat(resolved.getName()).isEqualTo("admin-pick");
+        }
+    }
+
+    @Nested
+    class EngineConfinement {
+
+        @Test
+        void aConfinedEnginesProcess_isRefusedAnotherProject_notRedirected() {
+            // The trust boundary: a top-level process of a confined engine
+            // (no parent) never reaches another project — and is told so,
+            // instead of being answered from its own project (it would then
+            // report the other project as empty).
+            arrangeConfinedProcess(PROCESS_ID);
+
+            assertThatThrownBy(() -> eddieContext.resolveProject(
+                            Map.of("projectId", "the-humans-project"), ctx(INHERITED, PROCESS_ID), false))
+                    .isInstanceOf(ToolException.class)
+                    .hasMessageContaining("out of reach");
+            assertThat(eddieContext.isPinnedToOwnProject(ctx(INHERITED, PROCESS_ID)))
+                    .isTrue();
+        }
+
+        @Test
+        void aConfinedEnginesProcess_resolvesItsOwnProject() {
+            arrangeConfinedProcess(PROCESS_ID);
+            arrangeProject(INHERITED, ProjectKind.NORMAL);
+
+            ProjectDocument resolved =
+                    eddieContext.resolveProject(Map.of("projectId", INHERITED), ctx(INHERITED, PROCESS_ID), false);
+
+            assertThat(resolved.getName()).isEqualTo(INHERITED);
+        }
+
+        @Test
+        void aConfinedEnginesProcess_cannotLeaveItsProjectThroughAnId() {
+            arrangeConfinedProcess(PROCESS_ID);
+
+            assertThatThrownBy(() -> eddieContext.requireReadableById(
+                            ctx(INHERITED, PROCESS_ID), doc("the-humans-project"), "doc-1"))
+                    .isInstanceOf(ToolException.class)
+                    .hasMessageContaining("outside this process's project");
+        }
+
+        @Test
+        void aConfinedEnginesProcess_readsItsOwnProjectById_withTheReadCheck() {
+            arrangeConfinedProcess(PROCESS_ID);
+
+            eddieContext.requireReadableById(ctx(INHERITED, PROCESS_ID), doc(INHERITED), "doc-1");
+
+            verify(permissionService)
+                    .enforce(
+                            org.mockito.ArgumentMatchers.any(),
+                            org.mockito.ArgumentMatchers.eq(new de.mhus.vance.shared.permission.Resource.Document(
+                                    TENANT, INHERITED, "notes/a.md")),
+                            org.mockito.ArgumentMatchers.eq(de.mhus.vance.shared.permission.Action.READ));
+        }
+
+        @Test
+        void anUnconfinedProcess_readsAnotherProjectById_onlyWithRead() {
+            // The id branch used to check the tenant alone — any document of
+            // the tenant was readable by id. READ on the document is the gate.
+            arrangeProcess(PROCESS_ID, /*parent*/ null);
+
+            eddieContext.requireReadableById(ctx(INHERITED, PROCESS_ID), doc("other-project"), "doc-1");
+
+            verify(permissionService)
+                    .enforce(
+                            org.mockito.ArgumentMatchers.any(),
+                            org.mockito.ArgumentMatchers.eq(new de.mhus.vance.shared.permission.Resource.Document(
+                                    TENANT, "other-project", "notes/a.md")),
+                            org.mockito.ArgumentMatchers.eq(de.mhus.vance.shared.permission.Action.READ));
+        }
+
+        @Test
+        void aDocumentOfAnotherTenant_isRefusedById() {
+            arrangeProcess(PROCESS_ID, /*parent*/ null);
+            DocumentDocument foreign = doc(INHERITED);
+            foreign.setTenantId("other-tenant");
+
+            assertThatThrownBy(() -> eddieContext.requireReadableById(ctx(INHERITED, PROCESS_ID), foreign, "doc-1"))
+                    .isInstanceOf(ToolException.class)
+                    .hasMessageContaining("not in your tenant");
         }
     }
 
@@ -305,6 +397,23 @@ class EddieContextTest {
         doc.setSessionId(SESSION);
         doc.setParentProcessId(parentProcessId);
         when(thinkProcessService.findById(processId)).thenReturn(Optional.of(doc));
+    }
+
+    private void arrangeConfinedProcess(String processId) {
+        arrangeProcess(processId, /*parent*/ null);
+        thinkProcessService.findById(processId).orElseThrow().setThinkEngine("confined-engine");
+        ThinkEngine engine = mock(ThinkEngine.class);
+        when(engine.confinedToOwnProject()).thenReturn(true);
+        when(thinkEngineService.resolve("confined-engine")).thenReturn(Optional.of(engine));
+    }
+
+    private static DocumentDocument doc(String projectId) {
+        DocumentDocument doc = new DocumentDocument();
+        doc.setId("doc-1");
+        doc.setTenantId(TENANT);
+        doc.setProjectId(projectId);
+        doc.setPath("notes/a.md");
+        return doc;
     }
 
     private void arrangeProject(String name, ProjectKind kind) {

@@ -1,17 +1,23 @@
 package de.mhus.vance.brain.tools.eddie;
 
+import de.mhus.vance.brain.thinkengine.ThinkEngine;
+import de.mhus.vance.brain.thinkengine.ThinkEngineService;
+import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectKind;
 import de.mhus.vance.shared.project.ProjectService;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 /**
@@ -38,6 +44,15 @@ import org.springframework.stereotype.Component;
  * {@link ToolInvocationContext#projectId()} — their LLM cannot
  * hallucinate cross-project access.
  *
+ * <p><b>Engine confinement</b> ({@link ThinkEngine#confinedToOwnProject()})
+ * is the stricter sibling: not a guard against hallucination but a trust
+ * boundary. A confined process acts on behalf of someone who must not reach
+ * beyond its project (a Trillian conversation head talks to an external
+ * counterpart with the Trillian's rights), so every project-addressed
+ * access stays in the process's own project — the path branch here, and
+ * the id branch of the document tools through
+ * {@link #requireReadableById}.
+ *
  * <p>Validation enforces that the resolved project exists and is
  * non-{@link ProjectKind#SYSTEM} when {@code allowSystem == false},
  * <i>except</i> for the caller's own user-hub project
@@ -59,6 +74,12 @@ public class EddieContext {
     private final ThinkProcessService thinkProcessService;
     private final de.mhus.vance.shared.permission.PermissionService permissionService;
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
+    /**
+     * Lazy: the engine registry pulls in every engine, and engines reach
+     * the tool-dispatch path this helper sits on — a direct reference would
+     * close a bean cycle.
+     */
+    private final ObjectProvider<ThinkEngineService> thinkEngineService;
 
     /**
      * Reads the active "spot" project for the calling Eddie process —
@@ -140,23 +161,34 @@ public class EddieContext {
             de.mhus.vance.shared.permission.Action requiredAction) {
         String explicit = paramString(params, "projectId");
         String name;
-        if (isSubProcess(ctx)) {
+        if (isPinnedToOwnProject(ctx)) {
             // Sub-processes (Marvin/Vogon/Ford workers spawned with a
             // parentProcessId) always run in the inherited project. The
             // worker LLM sometimes hallucinates a `projectId` from
             // training-data patterns (e.g. picking another project's
             // name it has seen elsewhere) — either as the tool param
             // or via project_switch into the active-slot. Forcing the
-            // inherited context catches both paths.
+            // inherited context catches both paths. A confined engine's
+            // process takes the same branch, as a trust boundary.
             String inherited = ctx.projectId();
             if (inherited == null || inherited.isBlank()) {
                 throw new ToolException(
-                        "Sub-process invoked without an inherited " + "projectId — engine spawn is broken");
+                        "Pinned process invoked without an inherited " + "projectId — engine spawn is broken");
+            }
+            if (explicit != null
+                    && !inherited.equals(explicit)
+                    && callingProcess(ctx).map(this::confinedEngine).orElse(false)) {
+                // A boundary, not a hallucination: the model asked on
+                // purpose (usually on someone's behalf). Answering from the
+                // own project instead would make it report the other
+                // project as empty — refuse, so it can say so honestly.
+                throw new ToolException("Project '" + explicit + "' is out of reach — this process can only "
+                        + "access its own project '" + inherited + "'");
             }
             if (explicit != null && !inherited.equals(explicit)) {
                 log.warn(
-                        "Sub-process tool ignored hallucinated projectId='{}' "
-                                + "— forced to inherited project '{}' (process='{}')",
+                        "Pinned process tool ignored projectId='{}' "
+                                + "— forced to its own project '{}' (process='{}')",
                         explicit,
                         inherited,
                         ctx.processId());
@@ -164,7 +196,7 @@ public class EddieContext {
                 Optional<String> slot = readActiveProject(ctx);
                 if (slot.isPresent() && !slot.get().equals(inherited)) {
                     log.warn(
-                            "Sub-process tool ignored stale activeProject slot='{}' "
+                            "Pinned process tool ignored stale activeProject slot='{}' "
                                     + "— forced to inherited project '{}' (process='{}')",
                             slot.get(),
                             inherited,
@@ -234,13 +266,62 @@ public class EddieContext {
      * have no business switching projects mid-task.
      */
     public boolean isSubProcess(ToolInvocationContext ctx) {
-        String pid = ctx.processId();
-        if (pid == null || pid.isBlank()) return false;
-        return thinkProcessService
-                .findById(pid)
+        return callingProcess(ctx)
                 .map(p -> p.getParentProcessId() != null
                         && !p.getParentProcessId().isBlank())
                 .orElse(false);
+    }
+
+    /**
+     * Whether the calling process may only ever address its own project:
+     * a sub-process (hallucination guard) or a process of a confined engine
+     * (trust boundary, {@link ThinkEngine#confinedToOwnProject()}).
+     */
+    public boolean isPinnedToOwnProject(ToolInvocationContext ctx) {
+        return callingProcess(ctx)
+                .map(p -> (p.getParentProcessId() != null
+                                && !p.getParentProcessId().isBlank())
+                        || confinedEngine(p))
+                .orElse(false);
+    }
+
+    /**
+     * The gate of the document tools' id branch, which bypasses
+     * {@link #resolveProject}: same tenant, READ on the document itself,
+     * and — for a confined engine's process — inside the process's own
+     * project. Without it any document of the tenant would be readable by
+     * id, and a confined process could leave its project through an id it
+     * was handed.
+     */
+    public void requireReadableById(ToolInvocationContext ctx, DocumentDocument doc, String id) {
+        if (!ctx.tenantId().equals(doc.getTenantId())) {
+            throw new ToolException("Document with id '" + id + "' is not in your tenant");
+        }
+        if (callingProcess(ctx).map(this::confinedEngine).orElse(false)
+                && !Objects.equals(ctx.projectId(), doc.getProjectId())) {
+            throw new ToolException("Document with id '" + id + "' is outside this process's project");
+        }
+        permissionService.enforce(
+                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
+                new de.mhus.vance.shared.permission.Resource.Document(
+                        ctx.tenantId(), doc.getProjectId(), doc.getPath()),
+                de.mhus.vance.shared.permission.Action.READ);
+    }
+
+    private Optional<ThinkProcessDocument> callingProcess(ToolInvocationContext ctx) {
+        String pid = ctx.processId();
+        if (pid == null || pid.isBlank()) return Optional.empty();
+        return thinkProcessService.findById(pid);
+    }
+
+    private boolean confinedEngine(ThinkProcessDocument process) {
+        String engine = process.getThinkEngine();
+        return engine != null
+                && thinkEngineService
+                        .getObject()
+                        .resolve(engine)
+                        .map(ThinkEngine::confinedToOwnProject)
+                        .orElse(false);
     }
 
     private static @Nullable String paramString(@Nullable Map<String, Object> params, String key) {

@@ -43,7 +43,8 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * The conversation head of a multi-headed Trillian: Frankie's loop, made
  * conversational — one process per discussion thread, woken per
- * contribution, answering in its thread, handing real work to its loop.
+ * contribution, answering in its thread, doing the reading and research a
+ * conversation needs itself.
  *
  * <p><b>Why an engine and not a recipe on a chat engine.</b> The same
  * argument as {@link TrillianWorkerEngine}, from the other side: a head
@@ -52,18 +53,28 @@ import tools.jackson.databind.ObjectMapper;
  * work surface. The tools are not the recipe's to pick: {@code
  * thread_message_add} is the head's <em>primary</em> answer channel (a
  * worker-pool classification would demote it to deferred, where a model
- * that must answer may not even find the tool), and nothing of the worker
- * core — file, exec, documents — belongs in a conversation. {@code
- * allowedTools()} is the engine's own small surface; a recipe trims
- * prompts and models, not membership.
+ * that must answer may not even find the tool). {@code allowedTools()} is
+ * the engine's own surface; a recipe trims prompts and models, not
+ * membership.
+ *
+ * <p><b>What a head may do.</b> Read and research — the documents of its
+ * hub, the web, the research sources — and answer. Not: write documents,
+ * run code, or reach other processes. The worker pool is deliberately not
+ * taken: it carries {@code process_list}/{@code process_stop}/{@code
+ * process_steer}, {@code inbox_list} and the wakeup tools, and the head
+ * lives in the loop session next to the loop and every other head — a
+ * counterpart must not be able to list, steer or stop them, nor read the
+ * other conversations. And the head is {@link #confinedToOwnProject()
+ * confined to its hub}: the Trillian holds ADMIN on its human's project, and
+ * a counterpart must not read that through a {@code projectId} argument.
  *
  * <p><b>What changes.</b> Four seams, none of Frankie's protocol:
  * <ol>
  *   <li>{@link #allowedTools()} / {@link #toolPoolLabels()} / {@link
  *       #roles()}: the conversation surface ({@code thread_get}, {@code
- *       thread_message_add}, {@code inbox_archive}, {@code task_enqueue}
- *       plus discovery and scratchpad), nothing demoted by worker-pool
- *       labels, and the {@code trillian-task-requester} role that gates
+ *       thread_message_add}, {@code inbox_archive}, {@code task_enqueue}),
+ *       the read side of the hub's documents, research, discovery and
+ *       scratchpad — nothing demoted by worker-pool labels, and the {@code trillian-task-requester} role that gates
  *       {@code task_enqueue} — the one claim a head shares with Control.
  *       Not the control role itself, which would release the
  *       {@code user_*} steering tools.</li>
@@ -99,11 +110,11 @@ public class TrillianHeadEngine extends FrankieEngine {
     public static final String VERSION = "0.1.0";
 
     /**
-     * The conversation surface. Deliberately thin: a head answers, hands
-     * over, concludes — it does not work (no file/exec/doc surface; that
-     * is what the loop's workers are for, and handing over is one tool
-     * call away). Scratchpad stays: parking an interim finding between
-     * contributions is Frankie-shaped and free.
+     * The head's surface: the conversation, the read side of the hub's
+     * documents, and research. Explicit names, no worker pool — see the
+     * class doc for what the pool would bring along. Scratchpad stays:
+     * parking an interim finding between contributions is Frankie-shaped
+     * and free.
      */
     private static final Set<String> HEAD_TOOLS;
 
@@ -115,7 +126,7 @@ public class TrillianHeadEngine extends FrankieEngine {
         base.add("how_do_i");
         base.add("manual_read");
         base.add("manual_list");
-        base.add("recipe_describe");
+        base.add("tool_result_read");
         // Basics
         base.add("current_time");
         base.add("whoami");
@@ -124,11 +135,35 @@ public class TrillianHeadEngine extends FrankieEngine {
         base.add("scratchpad_get");
         base.add("scratchpad_list");
         base.add("scratchpad_delete");
+        // Read side of the hub's documents — confined to the hub
+        // (confinedToOwnProject), id lookups included.
+        base.add("doc_list");
+        base.add("doc_list_folders");
+        base.add("doc_list_in_folder");
+        base.add("doc_list_by_tag");
+        base.add("doc_find");
+        base.add("doc_count");
+        base.add("doc_grep");
+        base.add("doc_grep_path");
+        base.add("doc_read");
+        base.add("doc_read_lines");
+        base.add("doc_head_tail");
+        base.add("doc_info");
+        base.add("doc_summary");
+        base.add("pdf_read");
+        // Research
+        base.add("web_fetch");
+        base.add("web_search");
+        base.add("research_search");
+        base.add("research_investigate");
+        base.add("research_rich");
+        base.add("research_providers");
         // The conversation
         base.add("thread_get");
         base.add("thread_message_add");
         base.add("inbox_archive");
-        // The handover to the loop
+        // The handover to the loop — for background work the head does not
+        // do itself (anything that writes or runs long)
         base.add("task_enqueue");
         HEAD_TOOLS = Collections.unmodifiableSet(base);
     }
@@ -152,9 +187,11 @@ public class TrillianHeadEngine extends FrankieEngine {
     private static final String FALLBACK_PROMPT =
             "You are one conversation of this Trillian. Read each contribution with "
                     + "thread_get and answer it in the thread with thread_message_add — "
-                    + "plain text here reaches nobody. Hand real work to your loop with "
-                    + "task_enqueue and post its result into the thread. When the matter "
-                    + "is settled, post a closing line and archive the thread with inbox_archive.";
+                    + "plain text here reaches nobody. Look things up yourself: you can read "
+                    + "this Trillian's documents and search the web. Hand work that writes "
+                    + "documents or runs long to your loop with task_enqueue and post its "
+                    + "result into the thread. When the matter is settled, post a closing "
+                    + "line and archive the thread with inbox_archive.";
 
     private final TrillianNatureRegistry natureRegistry;
 
@@ -221,8 +258,8 @@ public class TrillianHeadEngine extends FrankieEngine {
     @Override
     public String description() {
         return "One conversation head per discussion thread of a multi-headed "
-                + "Trillian: answers in its thread, hands work to its loop, "
-                + "concludes with the conversation.";
+                + "Trillian: answers in its thread, reads and researches itself, "
+                + "hands writing work to its loop, concludes with the conversation.";
     }
 
     @Override
@@ -262,6 +299,16 @@ public class TrillianHeadEngine extends FrankieEngine {
     @Override
     public Set<String> roles() {
         return Set.of(TrillianInternalApi.ROLE_TASK_REQUESTER);
+    }
+
+    /**
+     * The head talks to an external counterpart with the Trillian's
+     * rights, and the Trillian holds ADMIN on its human's project: every
+     * project-addressed access stays in the head's hub.
+     */
+    @Override
+    public boolean confinedToOwnProject() {
+        return true;
     }
 
     @Override

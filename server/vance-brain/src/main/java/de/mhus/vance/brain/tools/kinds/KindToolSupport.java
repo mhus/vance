@@ -187,13 +187,10 @@ public class KindToolSupport {
         if (id != null) {
             DocumentDocument doc = bufferService.read(ctx.processId(), id);
             if (doc == null) throw new ToolException("Document with id '" + id + "' not found");
-            if (!ctx.tenantId().equals(doc.getTenantId())) {
-                throw new ToolException("Document with id '" + id + "' is not in your tenant");
-            }
-            // The id branch bypasses resolveProject, so enforce READ on the
-            // target document here — otherwise any tenant document is
-            // readable by id. (permission-system read path)
-            enforceDocRead(ctx, doc);
+            // The id branch bypasses resolveProject: tenant, READ on the
+            // document and engine confinement are checked at one place.
+            // (permission-system read path)
+            eddieContext.requireReadableById(ctx, doc, id);
             return doc;
         }
         // Path branch: resolveProject already enforces Project READ.

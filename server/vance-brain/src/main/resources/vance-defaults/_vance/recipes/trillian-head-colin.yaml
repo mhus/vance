@@ -7,11 +7,12 @@
 #
 # Runs the trillian-head engine — Frankie's loop forked into a
 # conversational shape (TrillianHeadEngine, the same extend as
-# TrillianWorkerEngine) — whose allowedTools() IS the conversation
-# surface: the thread family, the archive tool, and the task handover
-# to its own loop. Nothing of the worker core (file/exec/doc) and none
-# of the control-side user_* tools: a head talks, hands over, and
-# concludes.
+# TrillianWorkerEngine) — whose allowedTools() IS the head's surface:
+# the thread family, the archive tool, the read side of the hub's
+# documents, research, and the task handover to its own loop for work
+# that writes or runs long. No write/exec tools, no process_* or
+# inbox_list (the head lives in the loop session next to every other
+# head), none of the control-side user_* tools; confined to its hub.
 #
 # The head's chat log is working memory; the thread is the record.
 # Everything the counterpart gets to see arrives there via
@@ -49,6 +50,9 @@ allowedToolsAdd:
   - thread_message_add
   - inbox_archive
   - task_enqueue
+  # web_search declares itself deferred; a head that researches for its
+  # counterpart should not have to discover it first.
+  - web_search
 
 # No promptPrefix: the conversation doctrine is the engine's own prompt
 # (_vance/prompts/trillian-head-prompt.md, TrillianHeadEngine), and who

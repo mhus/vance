@@ -172,6 +172,23 @@ public interface ThinkEngine {
     }
 
     /**
+     * Whether every project-addressed tool access of this engine's
+     * processes stays in the process's own project — a trust boundary, not
+     * a hallucination guard: the process acts for someone who must not
+     * reach beyond that project with the account's rights. An explicit
+     * {@code projectId} or an active-project slot is ignored, and a
+     * document loaded by id must lie in the own project
+     * ({@code EddieContext#requireReadableById}).
+     *
+     * <p>Default {@code false}. The Trillian conversation head overrides —
+     * it talks to an external counterpart with the Trillian's rights, and
+     * the Trillian holds ADMIN on its human's project.
+     */
+    default boolean confinedToOwnProject() {
+        return false;
+    }
+
+    /**
      * Whether a process of this engine is a <em>run</em> worth watching in
      * the run view — one with a plan a reader can follow.
      *

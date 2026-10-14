@@ -123,6 +123,41 @@ class TrillianHeadEngineTest {
         assertThat(engine.allowedTools()).doesNotContain("user_reset", "user_attr_set", "user_stop");
     }
 
+    @Test
+    void theHead_readsAndResearches_butReachesNoOtherProcessAndNoOtherConversation() {
+        // A head lives in the loop session next to the loop and every other
+        // head: the worker pool's process_*/inbox_list/wakeup tools would let
+        // a counterpart list, steer or stop them, or read the other
+        // conversations. The read side of the hub and research are the
+        // head's own work.
+        TrillianHeadEngine engine = newEngine();
+
+        assertThat(engine.allowedTools())
+                .contains("doc_find", "doc_read", "doc_count", "doc_grep", "web_search", "research_search")
+                .doesNotContain(
+                        "process_list",
+                        "process_status",
+                        "process_spawn",
+                        "process_stop",
+                        "process_steer",
+                        "inbox_list",
+                        "inbox_post",
+                        "wakeup_in",
+                        "doc_write",
+                        "doc_edit",
+                        "exec_run",
+                        "project_switch",
+                        "doc_link");
+        assertThat(engine.toolPoolLabels()).isEmpty();
+    }
+
+    @Test
+    void theHead_isConfinedToItsHub() {
+        // The Trillian holds ADMIN on its human's project; a counterpart must
+        // not read it through a projectId argument.
+        assertThat(newEngine().confinedToOwnProject()).isTrue();
+    }
+
     private static TrillianHeadEngine newEngine() {
         return new TrillianHeadEngine(
                 null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,

@@ -137,9 +137,7 @@ public class DocInfoTool implements Tool {
             doc = documentService
                     .findById(id)
                     .orElseThrow(() -> new ToolException("Document with id '" + id + "' not found"));
-            if (!ctx.tenantId().equals(doc.getTenantId())) {
-                throw new ToolException("Document with id '" + id + "' is not in your tenant");
-            }
+            eddieContext.requireReadableById(ctx, doc, id);
         } else {
             ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
             doc = documentService

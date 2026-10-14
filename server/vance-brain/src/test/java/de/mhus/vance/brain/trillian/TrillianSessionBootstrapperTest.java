@@ -691,6 +691,36 @@ class TrillianSessionBootstrapperTest {
     }
 
     @Test
+    void ensureUserLoop_whileAnotherCallerBuilds_waitsForTheBuild_insteadOfAnsweringHalfBuilt() {
+        // A closed loop session wakes Control, whose turn rebuilds the loop;
+        // a second caller used to answer "not alive" from the half-built
+        // state. Now it waits for the lease and checks the finished pair.
+        ThinkProcessDocument control = controlProcess();
+        Map<String, Object> wired = new java.util.LinkedHashMap<>();
+        wired.put(TrillianSessionBootstrapper.PARAM_PEER_PROCESS_ID, "new-loop");
+        wired.put(TrillianSessionBootstrapper.PARAM_PEER_SESSION_ID, "new-session");
+        control.setEngineParams(wired);
+        control.setSessionId("sess_control");
+        ThinkProcessDocument newLoop = new ThinkProcessDocument();
+        newLoop.setId("new-loop");
+        newLoop.setStatus(de.mhus.vance.api.thinkprocess.ThinkProcessStatus.IDLE);
+        when(thinkProcessService.findById("control-process-id")).thenReturn(Optional.of(control));
+        when(thinkProcessService.findById("new-loop")).thenReturn(Optional.of(newLoop));
+        when(sessionService.findBySessionId("sess_control")).thenReturn(Optional.of(controlSession()));
+        SessionDocument loopSession = new SessionDocument();
+        loopSession.setSessionId("new-session");
+        loopSession.setStatus(de.mhus.vance.api.session.SessionStatus.IDLE);
+        when(sessionService.findBySessionId("new-session")).thenReturn(Optional.of(loopSession));
+        when(claimService.acquireLease(anyString(), any())).thenReturn(null, null, "lease-token");
+
+        boolean alive = bootstrapper.ensureUserLoop(control);
+
+        org.assertj.core.api.Assertions.assertThat(alive).isTrue();
+        verify(claimService, org.mockito.Mockito.times(3)).acquireLease(anyString(), any());
+        verify(claimService).releaseLease(anyString(), eq("lease-token"));
+    }
+
+    @Test
     void nonControlProcess_isNotBootstrapped() {
         ThinkProcessDocument arthur = new ThinkProcessDocument();
         arthur.setId("chat");

@@ -197,6 +197,11 @@ public class TrillianSessionBootstrapper {
      */
     private static final java.time.Duration BOOTSTRAP_LEASE_TTL = java.time.Duration.ofMinutes(2);
 
+    /** How long ensureUserLoop waits for a concurrent build of the same pair. */
+    private static final java.time.Duration CONCURRENT_BUILD_WAIT = java.time.Duration.ofSeconds(10);
+
+    private static final long CONCURRENT_BUILD_POLL_MS = 200;
+
     private static final String CLIENT_NAME = "trillian-bootstrap";
     private static final String CLIENT_VERSION = "0.1.0";
 
@@ -825,10 +830,10 @@ public class TrillianSessionBootstrapper {
             return false;
         }
         String lease = bootstrapLeaseKey(controlProcess);
-        String leaseToken = claimService.acquireLease(lease, BOOTSTRAP_LEASE_TTL);
+        String leaseToken = acquireAfterConcurrentBuild(lease);
         if (leaseToken == null) {
-            // Someone else is building (or checking) this pair right now;
-            // answer from what is wired at this moment and do not rebuild.
+            // Someone else is still building (or checking) this pair; answer
+            // from what is wired at this moment and do not rebuild.
             return thinkProcessService
                     .findById(controlProcess.getId())
                     .map(this::pairAlive)
@@ -861,6 +866,30 @@ public class TrillianSessionBootstrapper {
                     .isPresent();
         } finally {
             claimService.releaseLease(lease, leaseToken);
+        }
+    }
+
+    /**
+     * The bootstrap lease — waiting briefly when another caller holds it. A
+     * closed loop session wakes Control, whose turn rebuilds the loop; a
+     * caller arriving meanwhile used to answer "not alive" from the half-built
+     * state instead of the rebuilt pair. A rebuild takes a few writes, so a
+     * short bounded wait sees it finished; a holder that takes longer is
+     * answered from what is wired, as before.
+     */
+    private @Nullable String acquireAfterConcurrentBuild(String lease) {
+        long deadline = System.currentTimeMillis() + CONCURRENT_BUILD_WAIT.toMillis();
+        while (true) {
+            String token = claimService.acquireLease(lease, BOOTSTRAP_LEASE_TTL);
+            if (token != null || System.currentTimeMillis() >= deadline) {
+                return token;
+            }
+            try {
+                Thread.sleep(CONCURRENT_BUILD_POLL_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
         }
     }
 

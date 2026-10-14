@@ -196,6 +196,51 @@ class TrillianTaskReplyRoutingTest {
         return p;
     }
 
+    // ──────────────────── concluding, and the worker safety net ────────────────────
+
+    @Test
+    void concludingAHeadsTask_reportsToThatHead_andDropsTheWorkerLink() {
+        ThinkProcessDocument loop = loopWithTaskReplies(Map.of("task-42", "head-1"));
+        givenPeer(loop);
+        api.recordTaskWorker("loop-1", "worker-1", "task-42");
+        when(router.dispatch(any(), anyString(), any())).thenReturn(true);
+
+        assertThat(api.concludeTask("loop-1", "task-42", true, "42 documents")).isPresent();
+
+        verify(router).dispatch(eq("loop-1"), eq("head-1"), any());
+        assertThat(api.taskOfWorker(loop, "worker-1")).isEmpty();
+        assertThat(api.peekReplyTo("loop-1", "task-42")).isEmpty();
+    }
+
+    @Test
+    void concludingControlsTask_reportsToThePeer() {
+        // No return address: the task came from the human's Control —
+        // the safety net works without any exposure or head.
+        ThinkProcessDocument loop = loopWithTaskReplies(null);
+        givenPeer(loop);
+        when(router.dispatch(any(), anyString(), any())).thenReturn(true);
+
+        assertThat(api.concludeTask("loop-1", "task-7", false, "the worker failed"))
+                .isPresent();
+
+        verify(router).dispatch(eq("loop-1"), eq("control-1"), any());
+    }
+
+    @Test
+    void aRecordedWorker_namesItsTask() {
+        ThinkProcessDocument loop = loopWithTaskReplies(null);
+
+        api.recordTaskWorker("loop-1", "worker-1", "task-42");
+
+        assertThat(api.taskOfWorker(loop, "worker-1")).contains("task-42");
+        assertThat(api.taskOfWorker(loop, "worker-2")).isEmpty();
+    }
+
+    private void givenPeer(ThinkProcessDocument loop) {
+        loop.getEngineParams().put(TrillianSessionBootstrapper.PARAM_PEER_PROCESS_ID, "control-1");
+        when(thinkProcessService.findById("control-1")).thenReturn(Optional.of(process("control-1")));
+    }
+
     private ThinkProcessDocument loopWithTaskReplies(Map<String, String> taskReplies) {
         // The heads a report may go to are alive unless a test says otherwise.
         when(thinkProcessService.findById("head-1")).thenReturn(Optional.of(process("head-1")));

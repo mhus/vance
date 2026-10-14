@@ -79,6 +79,16 @@ public class TrillianInternalApi {
     public static final String PARAM_TASK_REPLIES = "taskReplies";
 
     /**
+     * Loop engineParams entry: {@code workerProcessId → taskId} — which task
+     * a worker the loop spawned is working on. Recorded by the loop engine
+     * when a turn that received exactly one task spawned exactly one worker;
+     * consumed when the task is reported. The mechanical safety net behind
+     * {@link #concludeTask}: a worker that finished while the loop forgot to
+     * report still reaches the requester.
+     */
+    public static final String PARAM_TASK_WORKERS = "taskWorkers";
+
+    /**
      * Engine role of the processes that may hand a task to their own loop
      * ({@code task_enqueue}): the human-facing Control and the
      * conversation heads. Its own role, not {@code trillian-control}: a
@@ -598,6 +608,82 @@ public class TrillianInternalApi {
             }
         }
         return removed;
+    }
+
+    /**
+     * Reports a task's outcome to whoever requested it — the head that
+     * handed it over (its recorded return address, consumed here) or the
+     * peer, Control. The one path {@code task_complete}, {@code task_failed}
+     * and the loop engine's safety net share; the worker mapping of the
+     * task is dropped with it.
+     *
+     * @return the dispatched event id, empty when there is no peer or the
+     *         dispatch failed
+     */
+    public Optional<String> concludeTask(String loopProcessId, String taskId, boolean success, String text) {
+        Optional<ThinkProcessDocument> peer = findPeer(loopProcessId);
+        if (peer.isEmpty()) {
+            return Optional.empty();
+        }
+        String target = consumeReplyTo(loopProcessId, taskId).orElse(peer.get().getId());
+        Optional<String> eventId = success
+                ? dispatchTaskEvent(
+                        loopProcessId,
+                        target,
+                        TASK_EVENT_DONE,
+                        taskId,
+                        "Task done: " + truncate(text, 240),
+                        Map.of(PAYLOAD_KEY_RESULT, text))
+                : dispatchTaskEvent(
+                        loopProcessId,
+                        target,
+                        TASK_EVENT_FAILED,
+                        taskId,
+                        "Task failed: " + truncate(text, 240),
+                        Map.of(PAYLOAD_KEY_REASON, text));
+        forgetTaskWorkers(loopProcessId, taskId);
+        return eventId;
+    }
+
+    /** Records that {@code workerProcessId} works on {@code taskId}; false when the write failed. */
+    public boolean recordTaskWorker(String loopProcessId, String workerProcessId, String taskId) {
+        try {
+            return thinkProcessService.setEngineParamEntry(loopProcessId, PARAM_TASK_WORKERS, workerProcessId, taskId);
+        } catch (IllegalArgumentException e) {
+            log.warn("Trillian: could not record worker '{}' for task '{}': {}", workerProcessId, taskId, e.toString());
+            return false;
+        }
+    }
+
+    /** The task a worker of this loop works on, if the loop engine recorded one. */
+    public Optional<String> taskOfWorker(ThinkProcessDocument loop, String workerProcessId) {
+        Object raw =
+                loop.getEngineParams() == null ? null : loop.getEngineParams().get(PARAM_TASK_WORKERS);
+        if (raw instanceof Map<?, ?> map && map.get(workerProcessId) instanceof String taskId && !taskId.isBlank()) {
+            return Optional.of(taskId);
+        }
+        return Optional.empty();
+    }
+
+    /** Drops every worker mapping of {@code taskId} — the task was reported. */
+    public void forgetTaskWorkers(String loopProcessId, String taskId) {
+        thinkProcessService.findById(loopProcessId).ifPresent(loop -> {
+            Object raw = loop.getEngineParams() == null
+                    ? null
+                    : loop.getEngineParams().get(PARAM_TASK_WORKERS);
+            if (!(raw instanceof Map<?, ?> map)) {
+                return;
+            }
+            for (Map.Entry<?, ?> e : map.entrySet()) {
+                if (e.getKey() instanceof String worker && taskId.equals(e.getValue())) {
+                    thinkProcessService.setEngineParamEntry(loopProcessId, PARAM_TASK_WORKERS, worker, null);
+                }
+            }
+        });
+    }
+
+    private static String truncate(String s, int max) {
+        return s.length() <= max ? s : s.substring(0, max - 1) + "…";
     }
 
     /**

@@ -1,7 +1,6 @@
 package de.mhus.vance.brain.trillian.tools;
 
 import de.mhus.vance.brain.trillian.TrillianInternalApi;
-import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -80,23 +79,14 @@ public class TaskCompleteTool implements Tool {
         if (!(rawResult instanceof String result) || result.isBlank()) {
             throw new ToolException("'result' is required and must be non-empty");
         }
-        Optional<ThinkProcessDocument> peerOpt = api.findPeer(ctx.processId());
-        if (peerOpt.isEmpty()) {
+        if (api.findPeer(ctx.processId()).isEmpty()) {
             throw new ToolException(
                     "No Trillian Control peer found — this tool is only available " + "inside a Trillian-User worker");
         }
-        ThinkProcessDocument peer = peerOpt.get();
         // Results return to the requester: a task a conversation head
         // handed over is reported to that head (which posts it into its
         // thread); everything else keeps its historic target, the peer.
-        String target = api.consumeReplyTo(ctx.processId(), taskId).orElse(peer.getId());
-        Optional<String> eventId = api.dispatchTaskEvent(
-                ctx.processId(),
-                target,
-                TrillianInternalApi.TASK_EVENT_DONE,
-                taskId,
-                "Task done: " + truncate(result, 240),
-                Map.of(TrillianInternalApi.PAYLOAD_KEY_RESULT, result));
+        Optional<String> eventId = api.concludeTask(ctx.processId(), taskId, true, result);
         if (eventId.isEmpty()) {
             throw new ToolException("Failed to dispatch task_done event");
         }
@@ -105,9 +95,5 @@ public class TaskCompleteTool implements Tool {
         out.put("status", "reported");
         out.put("eventId", eventId.get());
         return out;
-    }
-
-    private static String truncate(String s, int max) {
-        return s.length() <= max ? s : s.substring(0, max - 1) + "…";
     }
 }

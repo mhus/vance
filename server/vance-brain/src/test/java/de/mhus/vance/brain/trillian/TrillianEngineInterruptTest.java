@@ -65,7 +65,9 @@ import tools.jackson.databind.json.JsonMapper;
  * Control, 24 in the user-loop) and the human sees ESC do nothing.
  *
  * <p>The second test in each pair covers the iteration cap of the
- * user-loop: falling out of it used to drop the task without a word.
+ * user-loop: falling out of it used to drop the task without a word. The
+ * task-worker tests cover the other way a task got lost: a worker finished
+ * and the loop forgot to report it.
  */
 class TrillianEngineInterruptTest {
 
@@ -194,6 +196,96 @@ class TrillianEngineInterruptTest {
         userLoop().runTurn(process, ctx);
 
         verify(trillianApi, never()).dispatchTaskEvent(any(), any(), any(), any(), any(), any());
+    }
+
+    // ──────────────────── task-worker safety net ────────────────────
+
+    @Test
+    void userLoop_aFinishedWorkerWhoseTaskTheTurnForgets_isReportedMechanically() {
+        // Live: the loop answered a worker's DONE with "Task … done, awaiting
+        // more." and no tool call — the result never left the loop.
+        when(ctx.drainPending()).thenReturn(List.of(workerDone("worker-1", "Created notes/x.md.")));
+        when(trillianApi.taskOfWorker(any(), eq("worker-1"))).thenReturn(Optional.of(TASK_ID));
+        chatModel.alwaysReply(AiMessage.from("Task done, awaiting more."));
+
+        userLoop().runTurn(process, ctx);
+
+        verify(trillianApi).concludeTask(PROC_ID, TASK_ID, true, "Created notes/x.md.");
+    }
+
+    @Test
+    void userLoop_aTaskTheTurnReportedItself_isNotReportedAgain() {
+        when(ctx.drainPending()).thenReturn(List.of(workerDone("worker-1", "Created notes/x.md.")));
+        lenient().when(trillianApi.taskOfWorker(any(), eq("worker-1"))).thenReturn(Optional.of(TASK_ID));
+        chatModel.replyInOrder(
+                toolCall("task_complete", "{\"taskId\":\"" + TASK_ID + "\",\"result\":\"done\"}"),
+                AiMessage.from("Task done, awaiting more."));
+
+        userLoop().runTurn(process, ctx);
+
+        verify(trillianApi, never()).concludeTask(any(), any(), org.mockito.ArgumentMatchers.anyBoolean(), any());
+        verify(trillianApi).forgetTaskWorkers(PROC_ID, TASK_ID);
+    }
+
+    @Test
+    void userLoop_aTurnWithOneTaskAndOneSpawnedWorker_recordsTheirLink() {
+        when(ctx.drainPending()).thenReturn(List.of(taskRequest(TASK_ID)));
+        ThinkProcessDocument worker = new ThinkProcessDocument();
+        worker.setId("worker-1");
+        worker.setCreatedAt(Instant.now().plusSeconds(1));
+        when(thinkProcessService.findByParentProcessId(PROC_ID)).thenReturn(List.of(worker));
+        chatModel.alwaysReply(AiMessage.from("Worker spawned, awaiting result."));
+
+        userLoop().runTurn(process, ctx);
+
+        verify(trillianApi).recordTaskWorker(PROC_ID, "worker-1", TASK_ID);
+    }
+
+    @Test
+    void userLoop_twoWorkersForOneTask_areAmbiguous_andNotLinked() {
+        when(ctx.drainPending()).thenReturn(List.of(taskRequest(TASK_ID)));
+        ThinkProcessDocument a = new ThinkProcessDocument();
+        a.setId("worker-a");
+        a.setCreatedAt(Instant.now().plusSeconds(1));
+        ThinkProcessDocument b = new ThinkProcessDocument();
+        b.setId("worker-b");
+        b.setCreatedAt(Instant.now().plusSeconds(1));
+        when(thinkProcessService.findByParentProcessId(PROC_ID)).thenReturn(List.of(a, b));
+        chatModel.alwaysReply(AiMessage.from("Workers spawned."));
+
+        userLoop().runTurn(process, ctx);
+
+        verify(trillianApi, never()).recordTaskWorker(any(), any(), any());
+    }
+
+    @Test
+    void userLoop_aTaskEndedWithoutAToolCall_isNudgedOnce_thenReportedAsNotTakenUp() {
+        // Live: "Worker spawned, awaiting result." — and no process_spawn.
+        when(ctx.drainPending()).thenReturn(List.of(taskRequest(TASK_ID)));
+        chatModel.alwaysReply(AiMessage.from("Worker spawned, awaiting result."));
+
+        userLoop().runTurn(process, ctx);
+
+        assertThat(chatModel.callCount()).isEqualTo(2);
+        verify(trillianApi)
+                .concludeTask(
+                        eq(PROC_ID),
+                        eq(TASK_ID),
+                        eq(false),
+                        org.mockito.ArgumentMatchers.contains("did not take this task up"));
+    }
+
+    @Test
+    void userLoop_aNudgedTurnThatActs_reportsNothing() {
+        when(ctx.drainPending()).thenReturn(List.of(taskRequest(TASK_ID)));
+        chatModel.replyInOrder(
+                AiMessage.from("Worker spawned, awaiting result."),
+                toolCall("process_spawn", "{\"name\":\"w\"}"),
+                AiMessage.from("Worker spawned, awaiting result."));
+
+        userLoop().runTurn(process, ctx);
+
+        verify(trillianApi, never()).concludeTask(any(), any(), org.mockito.ArgumentMatchers.anyBoolean(), any());
     }
 
     @Test
@@ -353,6 +445,11 @@ class TrillianEngineInterruptTest {
                 null);
     }
 
+    private static SteerMessage workerDone(String workerId, String summary) {
+        return new SteerMessage.ProcessEvent(
+                Instant.now(), null, workerId, ProcessEventType.DONE, summary, null, null, null);
+    }
+
     private static AiMessage toolCall(String name) {
         return toolCall(name, "{}");
     }
@@ -370,10 +467,17 @@ class TrillianEngineInterruptTest {
     /** Replays one scripted message per call, or the same one forever. */
     private static class ScriptedStreamingChatModel implements StreamingChatModel {
         private @org.jspecify.annotations.Nullable AiMessage repeated;
+        private final java.util.ArrayDeque<AiMessage> queued = new java.util.ArrayDeque<>();
         private int calls;
 
         void alwaysReply(AiMessage msg) {
             this.repeated = msg;
+        }
+
+        /** These replies in order, then the last one forever. */
+        void replyInOrder(AiMessage... msgs) {
+            queued.addAll(List.of(msgs));
+            this.repeated = msgs[msgs.length - 1];
         }
 
         int callCount() {
@@ -383,6 +487,11 @@ class TrillianEngineInterruptTest {
         @Override
         public void chat(ChatRequest request, StreamingChatResponseHandler handler) {
             calls++;
+            if (!queued.isEmpty()) {
+                handler.onCompleteResponse(
+                        ChatResponse.builder().aiMessage(queued.poll()).build());
+                return;
+            }
             if (repeated == null) {
                 handler.onError(new IllegalStateException("no scripted response"));
                 return;

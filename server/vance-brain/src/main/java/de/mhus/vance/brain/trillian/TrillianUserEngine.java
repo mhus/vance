@@ -2,6 +2,7 @@ package de.mhus.vance.brain.trillian;
 
 import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.api.thinkprocess.CloseReason;
+import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.ai.AiChat;
 import de.mhus.vance.brain.ai.AiChatException;
@@ -42,7 +43,9 @@ import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -354,6 +357,10 @@ public class TrillianUserEngine implements ThinkEngine {
         TrillianNature nature = natureRegistry.resolve(readNature(process));
         ThinkProcessStatus exitStatus = ThinkProcessStatus.IDLE;
         long turnStartMs = System.currentTimeMillis();
+        // What this turn received and which tasks it reported itself — the
+        // task-worker bookkeeping at the end reads both.
+        List<SteerMessage> drained = List.of();
+        Set<String> reportedThisTurn = new HashSet<>();
         // This turn sees whatever an owed wake was about (the unread thread
         // is in the inbox it reads); a contribution from now on requests
         // anew, and the yield point keeps that one due.
@@ -361,7 +368,7 @@ public class TrillianUserEngine implements ThinkEngine {
         try {
             nature.beforeUserTurn(process, ctx);
             ChatMessageService chatLog = ctx.chatMessageService();
-            List<SteerMessage> drained = ctx.drainPending();
+            drained = ctx.drainPending();
             List<SteerMessage> extras = persistUserInputAndCollectExtras(process, chatLog, drained);
             recordReplyAddresses(process, drained);
 
@@ -425,6 +432,12 @@ public class TrillianUserEngine implements ThinkEngine {
             // saw "Queued (taskId=…)" and would otherwise never hear
             // anything again.
             List<String> openTasks = new ArrayList<>(openTaskIds(drained));
+            // A turn that holds a task and ends without a single tool call has
+            // done nothing for it — live, the model wrote "Worker spawned,
+            // awaiting result." without calling process_spawn. One nudge, then
+            // the task is reported as not taken up.
+            boolean calledAnyTool = false;
+            boolean nudged = false;
 
             for (int iter = 0; iter < MAX_TOOL_LOOP_ITERATIONS; iter++) {
                 // Both interrupt channels, same as every other engine: the
@@ -477,6 +490,20 @@ public class TrillianUserEngine implements ThinkEngine {
                             toolCalls);
                 }
 
+                if (!reply.hasToolExecutionRequests() && !calledAnyTool && !openTasks.isEmpty()) {
+                    if (!nudged) {
+                        nudged = true;
+                        log.info(
+                                "TrillianUser id='{}' ended a turn holding {} task(s) without a tool call — nudging",
+                                process.getId(),
+                                openTasks.size());
+                        messages.add(reply);
+                        messages.add(UserMessage.from(untakenTaskNudge(openTasks)));
+                        continue;
+                    }
+                    reportUntakenTasks(process, openTasks);
+                    openTasks.clear();
+                }
                 if (!reply.hasToolExecutionRequests()) {
                     String finalText = reply.text() == null ? "" : reply.text();
                     if (!finalText.isBlank()) {
@@ -504,6 +531,7 @@ public class TrillianUserEngine implements ThinkEngine {
                 }
 
                 messages.add(reply);
+                calledAnyTool = true;
                 for (ToolExecutionRequest call : reply.toolExecutionRequests()) {
                     if (log.isTraceEnabled()) {
                         log.trace(
@@ -519,6 +547,9 @@ public class TrillianUserEngine implements ThinkEngine {
                     String reported = reportedTaskId(call);
                     if (reported != null) {
                         openTasks.remove(reported);
+                        if (!"task_needs_input".equals(call.name())) {
+                            reportedThisTurn.add(reported);
+                        }
                     }
                 }
                 executeToolBatch(reply.toolExecutionRequests(), tools, messages, process.getId());
@@ -536,6 +567,7 @@ public class TrillianUserEngine implements ThinkEngine {
             exitStatus = ThinkProcessStatus.BLOCKED;
             throw ex;
         } finally {
+            settleTaskWorkers(process, drained, reportedThisTurn, Instant.ofEpochMilli(turnStartMs));
             try {
                 nature.afterUserTurn(process, ctx);
             } catch (RuntimeException natureEx) {
@@ -695,6 +727,104 @@ public class TrillianUserEngine implements ThinkEngine {
             } catch (RuntimeException e) {
                 log.warn(
                         "TrillianUser id='{}' could not report stalled task '{}': {}",
+                        process.getId(),
+                        taskId,
+                        e.toString());
+            }
+        }
+    }
+
+    /**
+     * The mechanical safety net behind the reporting tools: a task whose
+     * worker finished reaches its requester even when the loop forgets
+     * {@code task_complete}. Observed live — the loop answered a worker's
+     * DONE with "Task … done, awaiting more." and no tool call; the result
+     * never left the loop, and a conversation head waited for it forever.
+     *
+     * <ol>
+     *   <li>A task reported this turn drops its worker mapping.</li>
+     *   <li>A drained DONE/FAILED of a mapped worker whose task this turn did
+     *       not report is reported here — DONE as the result, FAILED as the
+     *       reason, with the worker's summary as text — through the same
+     *       path as the tools ({@link TrillianInternalApi#concludeTask}).</li>
+     *   <li>A turn that received exactly one task and spawned exactly one
+     *       worker records {@code worker → task}. Anything else is
+     *       ambiguous and stays the model's to report.</li>
+     * </ol>
+     *
+     * <p>Independent of who asked: Control's tasks and a head's tasks take
+     * the same path. Best-effort — bookkeeping must not fail the turn.
+     */
+    private void settleTaskWorkers(
+            ThinkProcessDocument process, List<SteerMessage> drained, Set<String> reportedThisTurn, Instant turnStart) {
+        try {
+            for (String taskId : reportedThisTurn) {
+                trillianApi.forgetTaskWorkers(process.getId(), taskId);
+            }
+            ThinkProcessDocument fresh =
+                    thinkProcessService.findById(process.getId()).orElse(process);
+            for (SteerMessage m : drained) {
+                if (!(m instanceof SteerMessage.ProcessEvent pe)
+                        || (pe.type() != ProcessEventType.DONE && pe.type() != ProcessEventType.FAILED)) {
+                    continue;
+                }
+                String taskId =
+                        trillianApi.taskOfWorker(fresh, pe.sourceProcessId()).orElse(null);
+                if (taskId == null || reportedThisTurn.contains(taskId)) {
+                    continue;
+                }
+                boolean done = pe.type() == ProcessEventType.DONE;
+                String text = pe.humanSummary() == null || pe.humanSummary().isBlank()
+                        ? (done ? "The worker finished." : "The worker failed.")
+                        : pe.humanSummary();
+                trillianApi.concludeTask(process.getId(), taskId, done, text);
+                log.info(
+                        "TrillianUser id='{}' reported task '{}' for its finished worker '{}' — the turn did not",
+                        process.getId(),
+                        taskId,
+                        pe.sourceProcessId());
+            }
+            List<String> received = openTaskIds(drained);
+            if (received.size() == 1 && !reportedThisTurn.contains(received.get(0))) {
+                List<ThinkProcessDocument> spawned = thinkProcessService.findByParentProcessId(process.getId()).stream()
+                        .filter(c ->
+                                c.getCreatedAt() != null && !c.getCreatedAt().isBefore(turnStart))
+                        .toList();
+                if (spawned.size() == 1) {
+                    trillianApi.recordTaskWorker(process.getId(), spawned.get(0).getId(), received.get(0));
+                }
+            }
+        } catch (RuntimeException e) {
+            log.warn("TrillianUser id='{}' task-worker bookkeeping failed: {}", process.getId(), e.toString());
+        }
+    }
+
+    /** The in-turn correction for a turn that holds tasks and called no tool. */
+    static String untakenTaskNudge(List<String> taskIds) {
+        return "You received task " + String.join(", ", taskIds) + " and ended your turn without a tool call. "
+                + "Writing that a worker was spawned does nothing — spawning means calling process_spawn "
+                + "(or cross_process_create). Act on the task now with a tool call, or report it with "
+                + "task_complete, task_failed or task_needs_input.";
+    }
+
+    /**
+     * Reports tasks the loop did not take up — no tool call even after the
+     * nudge — as failed, so the requester (Control or a conversation head)
+     * is not left waiting for a worker that was never started.
+     */
+    private void reportUntakenTasks(ThinkProcessDocument process, List<String> taskIds) {
+        for (String taskId : taskIds) {
+            try {
+                trillianApi.concludeTask(
+                        process.getId(),
+                        taskId,
+                        false,
+                        "The user-loop did not take this task up — it ended its turn without starting a "
+                                + "worker or reporting. Raise it again if it still matters.");
+                log.warn("TrillianUser id='{}' reported task '{}' as not taken up", process.getId(), taskId);
+            } catch (RuntimeException e) {
+                log.warn(
+                        "TrillianUser id='{}' could not report untaken task '{}': {}",
                         process.getId(),
                         taskId,
                         e.toString());

@@ -14,6 +14,7 @@ import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.brain.trillian.exposure.TrillianExposureService;
 import de.mhus.vance.brain.trillian.nature.TrillianNature;
 import de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry;
+import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.inbox.MaximegalonDocument;
 import de.mhus.vance.shared.inbox.MaximegalonMessage;
 import de.mhus.vance.shared.inbox.MaximegalonService;
@@ -122,9 +123,10 @@ public class TrillianHeadService {
     private final TrillianModelGate modelGate;
     private final TrillianInternalApi trillianApi;
     private final TrillianExposureService exposureService;
+    private final ChatMessageService chatMessages;
     private final Duration reminderAfter;
     private final Duration fallbackAfter;
-    private final Duration inactivityAfter;
+    private final Duration idleAfter;
 
     public TrillianHeadService(
             ThinkProcessService thinkProcessService,
@@ -136,9 +138,10 @@ public class TrillianHeadService {
             TrillianModelGate modelGate,
             TrillianInternalApi trillianApi,
             TrillianExposureService exposureService,
+            ChatMessageService chatMessages,
             @Value("${vance.trillian.head.reminder-after-ms:300000}") long reminderAfterMs,
             @Value("${vance.trillian.head.fallback-after-ms:3600000}") long fallbackAfterMs,
-            @Value("${vance.trillian.head.inactivity-ms:604800000}") long inactivityMs) {
+            @Value("${vance.trillian.head.idle-ms:3600000}") long idleMs) {
         this.thinkProcessService = thinkProcessService;
         this.thinkEngineService = thinkEngineService;
         this.recipeResolver = recipeResolver;
@@ -148,9 +151,10 @@ public class TrillianHeadService {
         this.modelGate = modelGate;
         this.trillianApi = trillianApi;
         this.exposureService = exposureService;
+        this.chatMessages = chatMessages;
         this.reminderAfter = Duration.ofMillis(reminderAfterMs);
         this.fallbackAfter = Duration.ofMillis(fallbackAfterMs);
-        this.inactivityAfter = Duration.ofMillis(inactivityMs);
+        this.idleAfter = Duration.ofMillis(idleMs);
     }
 
     // ──────────────────── Dispatch: a contribution landed ────────────────────
@@ -543,29 +547,26 @@ public class TrillianHeadService {
             }
             return; // near the limit, answering again is what the nudge covers
         }
-        // Inactivity: no contribution from anyone for the configured window.
-        // The head goes in the next round's heads-first pass, with the cause.
-        Instant lastActivity = messages.isEmpty() ? item.getCreatedAt() : createdAtOf(messages, item);
-        Duration effectiveInactivity = exposureService
-                .inactivityOf(loop.getTenantId(), accountOf(loop))
-                .orElse(inactivityAfter);
-        if (lastActivity != null && Duration.between(lastActivity, now).compareTo(effectiveInactivity) > 0) {
-            endConversation(
-                    loop,
-                    nature,
-                    item,
-                    head,
-                    TrillianNature.HeadConclusion.INACTIVITY,
-                    "(automated) This conversation has been inactive and is now closed. "
-                            + "Please open a new conversation to continue.");
-            return;
-        }
         // A body-only opener nobody answered yet is an owed contribution like
         // any other — refused at the head limit, or arrived while the loop
         // was down, it would otherwise rest forever.
         MaximegalonMessage last = messages.isEmpty() ? openerOf(item).orElse(null) : messages.get(messages.size() - 1);
         if (last == null || accountOf(loop).equals(authorOf(last))) {
-            return; // answered — nothing owed
+            // Answered — nothing owed. Idle: the head is not working, no task
+            // of it is open in the loop, and nothing happened — a contribution,
+            // a head turn — for the idle window. The head goes in the next
+            // round's heads-first pass, with the cause.
+            if (isIdle(loop, item, messages, head, now)) {
+                endConversation(
+                        loop,
+                        nature,
+                        item,
+                        head,
+                        TrillianNature.HeadConclusion.INACTIVITY,
+                        "(automated) This conversation has been idle and is now closed. "
+                                + "Please open a new conversation for a new concern.");
+            }
+            return;
         }
         Duration age = last.getCreatedAt() == null ? null : Duration.between(last.getCreatedAt(), now);
         if (head.isEmpty()) {
@@ -605,6 +606,42 @@ public class TrillianHeadService {
                             + "write again and it will be picked up.");
             thinkProcessService.setEngineParamOverride(head.get().getId(), OVERRIDE_NUDGED_FOR, null);
         }
+    }
+
+    /**
+     * Whether the conversation sits idle: nothing running, nothing pending,
+     * nothing new for the idle window. Measured on the head, not only on the
+     * thread — a head that works for an hour, or waits for its loop, is not
+     * idle although nobody writes; the window starts at its last turn or the
+     * last contribution, whichever is later. Only asked when nothing is owed:
+     * an unanswered contribution is the reminder ladder's, whose fallback
+     * post then starts the window.
+     */
+    private boolean isIdle(
+            ThinkProcessDocument loop,
+            MaximegalonDocument item,
+            List<MaximegalonMessage> messages,
+            Optional<ThinkProcessDocument> head,
+            Instant now) {
+        Instant lastActivity = messages.isEmpty() ? item.getCreatedAt() : createdAtOf(messages, item);
+        if (head.isPresent()) {
+            ThinkProcessDocument h = head.get();
+            if (h.getStatus() == ThinkProcessStatus.RUNNING || h.getStatus() == ThinkProcessStatus.INIT) {
+                return false;
+            }
+            if (trillianApi.hasPendingRepliesFor(loop, h.getId())) {
+                return false;
+            }
+            Instant lastTurn = chatMessages
+                    .findLatestCreatedAt(loop.getTenantId(), h.getId())
+                    .orElse(null);
+            if (lastTurn != null && (lastActivity == null || lastTurn.isAfter(lastActivity))) {
+                lastActivity = lastTurn;
+            }
+        }
+        Duration window =
+                exposureService.idleOf(loop.getTenantId(), accountOf(loop)).orElse(idleAfter);
+        return lastActivity != null && Duration.between(lastActivity, now).compareTo(window) > 0;
     }
 
     /**

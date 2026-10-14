@@ -290,6 +290,34 @@ class TrillianConversationServiceTest {
     }
 
     @Test
+    void closeArchivesTheConversation_asTheCaller() {
+        givenConversation("thread-1", CALLER, MaximegalonStatus.PENDING);
+
+        service.close(TENANT, CALLER, "thread-1");
+
+        verify(threads).archive(TENANT, "thread-1", CALLER);
+    }
+
+    @Test
+    void closingTwice_isNoError() {
+        givenConversation("thread-1", CALLER, MaximegalonStatus.ARCHIVED);
+
+        service.close(TENANT, CALLER, "thread-1");
+
+        verify(threads, never()).archive(any(), any(), any());
+    }
+
+    @Test
+    void closeRefusesSomeoneElsesConversation() {
+        givenConversation("thread-1", OTHER, MaximegalonStatus.PENDING);
+
+        assertThatThrownBy(() -> service.close(TENANT, CALLER, "thread-1"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("conversation is not yours");
+        verify(threads, never()).archive(any(), any(), any());
+    }
+
+    @Test
     void sendRefusesSomeoneElsesConversation() {
         givenConversation("thread-1", OTHER, MaximegalonStatus.PENDING);
 
@@ -437,7 +465,7 @@ class TrillianConversationServiceTest {
                 config.description(),
                 config.allowedCounterparts(),
                 config.headLimit(),
-                config.inactivityDays(),
+                config.idleMinutes(),
                 new TrillianExposureConfig.Doors(mcpDoor, false));
         when(exposureService.findByExposedName(TENANT, "colin"))
                 .thenReturn(Optional.of(new TrillianExposureService.Exposed(COLIN, effective)));

@@ -174,6 +174,21 @@ public class TrillianConversationService {
     }
 
     /**
+     * Ends a conversation the caller opened — the explicit counterpart of a
+     * goodbye in words, for a counterpart (usually an agent) that is done and
+     * would otherwise just go quiet. The thread is archived as the caller; the
+     * head closes with it on the next sweep round. Already archived is fine:
+     * ending twice is not an error.
+     */
+    public void close(String tenantId, String caller, String conversationId) {
+        MaximegalonDocument item = conversationOf(tenantId, caller, conversationId, /* forWrite */ false);
+        if (item.getStatus() == MaximegalonStatus.ARCHIVED || item.getStatus() == MaximegalonStatus.DISMISSED) {
+            return;
+        }
+        threads.archive(tenantId, conversationId, caller);
+    }
+
+    /**
      * Reads the conversation, optionally waiting for something new: the
      * counterpart has no push channel, waiting is the protocol (§3.7).
      * Positional cursor by message id; an unknown cursor reads from the start.

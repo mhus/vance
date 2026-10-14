@@ -19,8 +19,9 @@ import org.yaml.snakeyaml.Yaml;
  * request time, never mapped from a config identity (maximegalon §9).
  * {@code headLimit} lowers the Nature's head limit when greater than zero
  * (it never lifts it — the Nature's limit is the bound on cost and flood
- * abuse); {@code inactivityDays} overrides the global inactivity setting
- * when greater than zero. {@code
+ * abuse); {@code idleMinutes} overrides the server's idle window (how long a
+ * conversation may sit with nothing owed and nothing running before it is
+ * closed) when greater than zero. {@code
  * doors} says which shells may stand in front of the protocol entry — the
  * MCP door ({@code POST /brain/{tenant}/agents}) is the first.
  *
@@ -32,7 +33,7 @@ public record TrillianExposureConfig(
         String description,
         List<String> allowedCounterparts,
         int headLimit,
-        int inactivityDays,
+        int idleMinutes,
         Doors doors) {
 
     /** Which shells in front of the protocol entry are open. */
@@ -61,12 +62,7 @@ public record TrillianExposureConfig(
                 ? new Doors(boolOf(doorsMap.get("mcp")), boolOf(doorsMap.get("a2a")))
                 : Doors.NONE;
         return new TrillianExposureConfig(
-                exposedName,
-                description,
-                allowed,
-                intOf(root.get("headLimit")),
-                intOf(root.get("inactivityDays")),
-                doors);
+                exposedName, description, allowed, intOf(root.get("headLimit")), intOf(root.get("idleMinutes")), doors);
     }
 
     /** Whether {@code account} may open conversations with this Trillian. */

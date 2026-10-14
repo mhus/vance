@@ -22,6 +22,7 @@ import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.brain.trillian.exposure.TrillianExposureService;
 import de.mhus.vance.brain.trillian.nature.TrillianNature;
 import de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry;
+import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.inbox.MaximegalonDocument;
 import de.mhus.vance.shared.inbox.MaximegalonMessage;
 import de.mhus.vance.shared.inbox.MaximegalonService;
@@ -55,7 +56,7 @@ class TrillianHeadServiceTest {
     // rather than days.
     private static final long REMINDER_MS = 60_000;
     private static final long FALLBACK_MS = 120_000;
-    private static final long INACTIVITY_MS = 600_000;
+    private static final long IDLE_MS = 600_000;
 
     private final ThinkProcessService thinkProcessService = mock(ThinkProcessService.class);
     private final ThinkEngineService thinkEngineService = mock(ThinkEngineService.class);
@@ -66,6 +67,7 @@ class TrillianHeadServiceTest {
     private final TrillianModelGate modelGate = mock(TrillianModelGate.class);
     private final TrillianInternalApi trillianApi = mock(TrillianInternalApi.class);
     private final TrillianExposureService exposureService = mock(TrillianExposureService.class);
+    private final ChatMessageService chatMessages = mock(ChatMessageService.class);
 
     private final TrillianNature nature = mock(TrillianNature.class);
     private final TrillianHeadService service = new TrillianHeadService(
@@ -78,9 +80,10 @@ class TrillianHeadServiceTest {
             modelGate,
             trillianApi,
             exposureService,
+            chatMessages,
             REMINDER_MS,
             FALLBACK_MS,
-            INACTIVITY_MS);
+            IDLE_MS);
 
     private final ThinkProcessDocument loop = loop();
 
@@ -426,9 +429,9 @@ class TrillianHeadServiceTest {
     // ──────────────────── Sweep: the mechanical ends ────────────────────
 
     @Test
-    void anInactiveConversation_isClosedWithAFarewell() {
-        givenOpenThread(
-                conversationWithMessages(message("m-1", "bob", Instant.now().minus(2, ChronoUnit.HOURS))));
+    void anIdleConversation_isClosedWithAFarewell() {
+        // Answered two hours ago, nothing since — nothing owed, nothing running.
+        givenOpenThread(answeredTwoHoursAgo());
 
         service.sweepLoop(loop, Instant.now());
 
@@ -439,11 +442,12 @@ class TrillianHeadServiceTest {
     }
 
     @Test
-    void anInactiveConversationWithAHead_reportsInactivity_whenTheHeadCloses() {
-        givenOpenThread(
-                conversationWithMessages(message("m-1", "bob", Instant.now().minus(2, ChronoUnit.HOURS))));
+    void anIdleConversationWithAHead_reportsInactivity_whenTheHeadCloses() {
+        givenOpenThread(answeredTwoHoursAgo());
         ThinkProcessDocument head = headFor(THREAD);
         sessionProcesses.add(head);
+        when(chatMessages.findLatestCreatedAt(TENANT, "head-1"))
+                .thenReturn(Optional.of(Instant.now().minus(2, ChronoUnit.HOURS)));
         when(threads.findById(TENANT, THREAD)).thenReturn(Optional.of(conversationWithMessages()));
 
         service.sweepLoop(loop, Instant.now());
@@ -459,6 +463,75 @@ class TrillianHeadServiceTest {
         verify(thinkProcessService).closeProcess("head-1", de.mhus.vance.api.thinkprocess.CloseReason.DONE);
         verify(nature).headConcluded(TENANT, ACCOUNT, THREAD, TrillianNature.HeadConclusion.INACTIVITY);
         verify(nature, org.mockito.Mockito.times(1)).headConcluded(any(), any(), any(), any());
+    }
+
+    @Test
+    void aHeadStillWorking_isNotIdle() {
+        // The head runs a long turn; nobody writes meanwhile.
+        givenOpenThread(answeredTwoHoursAgo());
+        ThinkProcessDocument head = headFor(THREAD);
+        head.setStatus(ThinkProcessStatus.RUNNING);
+        sessionProcesses.add(head);
+
+        service.sweepLoop(loop, Instant.now());
+
+        verify(threads, never()).archive(any(), any(), any());
+    }
+
+    @Test
+    void aHeadWaitingForItsLoop_isNotIdle() {
+        // The head handed a long task to its loop and waits for the result.
+        givenOpenThread(answeredTwoHoursAgo());
+        sessionProcesses.add(headFor(THREAD));
+        when(trillianApi.hasPendingRepliesFor(loop, "head-1")).thenReturn(true);
+
+        service.sweepLoop(loop, Instant.now());
+
+        verify(threads, never()).archive(any(), any(), any());
+    }
+
+    @Test
+    void aRecentHeadTurn_restartsTheIdleWindow() {
+        // The last contribution is old, but the head just finished a turn
+        // (the result of its task came in) — the window starts there.
+        givenOpenThread(answeredTwoHoursAgo());
+        sessionProcesses.add(headFor(THREAD));
+        when(chatMessages.findLatestCreatedAt(TENANT, "head-1"))
+                .thenReturn(Optional.of(Instant.now().minus(1, ChronoUnit.MINUTES)));
+
+        service.sweepLoop(loop, Instant.now());
+
+        verify(threads, never()).archive(any(), any(), any());
+    }
+
+    @Test
+    void anOwedAnswer_isNeverClosedForIdleness_theLadderAnswersFirst() {
+        // The counterpart wrote two hours ago and nobody answered: the
+        // reminder ladder owns that, idleness starts only after its post.
+        givenOpenThread(
+                conversationWithMessages(message("m-1", "bob", Instant.now().minus(2, ChronoUnit.HOURS))));
+        sessionProcesses.add(headFor(THREAD));
+
+        service.sweepLoop(loop, Instant.now());
+
+        verify(threads, never()).archive(any(), any(), any());
+        verify(router).dispatch(any(), eq("head-1"), any());
+    }
+
+    @Test
+    void theExposureConfig_setsTheIdleWindow() {
+        givenOpenThread(answeredTwoHoursAgo());
+        when(exposureService.idleOf(TENANT, ACCOUNT)).thenReturn(Optional.of(java.time.Duration.ofHours(3)));
+
+        service.sweepLoop(loop, Instant.now());
+
+        verify(threads, never()).archive(any(), any(), any());
+    }
+
+    private static MaximegalonDocument answeredTwoHoursAgo() {
+        return conversationWithMessages(
+                message("m-1", "bob", Instant.now().minus(3, ChronoUnit.HOURS)),
+                message("m-2", ACCOUNT, Instant.now().minus(2, ChronoUnit.HOURS)));
     }
 
     @Test

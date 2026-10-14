@@ -153,12 +153,12 @@ public class TrillianExposureService {
                 .orElse(0);
     }
 
-    /** Per-Trillian inactivity override; empty = the global setting applies. */
-    public Optional<Duration> inactivityOf(String tenantId, String account) {
-        int days = configOf(tenantId, account)
-                .map(TrillianExposureConfig::inactivityDays)
+    /** Per-Trillian idle window override; empty = the server's window applies. */
+    public Optional<Duration> idleOf(String tenantId, String account) {
+        int minutes = configOf(tenantId, account)
+                .map(TrillianExposureConfig::idleMinutes)
                 .orElse(0);
-        return days > 0 ? Optional.of(Duration.ofDays(days)) : Optional.empty();
+        return minutes > 0 ? Optional.of(Duration.ofMinutes(minutes)) : Optional.empty();
     }
 
     private Optional<TrillianExposureConfig> readAndParse(String tenantId, String account) {

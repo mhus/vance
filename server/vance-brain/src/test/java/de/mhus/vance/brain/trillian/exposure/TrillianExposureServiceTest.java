@@ -167,17 +167,17 @@ class TrillianExposureServiceTest {
     }
 
     @Test
-    void headLimitAndInactivityOverridesReachTheCaller() {
-        givenConfig(COLIN, "exposedName: colin\nheadLimit: 3\ninactivityDays: 7\n");
+    void headLimitAndIdleOverridesReachTheCaller() {
+        givenConfig(COLIN, "exposedName: colin\nheadLimit: 3\nidleMinutes: 90\n");
 
         assertThat(service.headLimitOf(TENANT, COLIN)).isEqualTo(3);
-        assertThat(service.inactivityOf(TENANT, COLIN)).contains(Duration.ofDays(7));
+        assertThat(service.idleOf(TENANT, COLIN)).contains(Duration.ofMinutes(90));
 
         givenConfig(COLIN, "exposedName: colin\n");
         clock.advance(TrillianExposureService.CACHE_TTL.plusSeconds(1));
 
         assertThat(service.headLimitOf(TENANT, COLIN)).isZero();
-        assertThat(service.inactivityOf(TENANT, COLIN)).isEmpty();
+        assertThat(service.idleOf(TENANT, COLIN)).isEmpty();
     }
 
     // ──────────────────── fixtures ────────────────────

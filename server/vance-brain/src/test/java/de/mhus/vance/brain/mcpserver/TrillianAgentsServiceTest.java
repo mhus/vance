@@ -53,7 +53,9 @@ class TrillianAgentsServiceTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> tools =
                 (List<Map<String, Object>>) result(result).get("tools");
-        assertThat(tools).extracting(t -> t.get("name")).containsExactly("agent_list", "agent_send", "agent_read");
+        assertThat(tools)
+                .extracting(t -> t.get("name"))
+                .containsExactly("agent_list", "agent_send", "agent_read", "agent_close");
     }
 
     @Test

@@ -21,7 +21,7 @@ class TrillianExposureConfigTest {
                   - wile.coyote
                   - road.runner
                 headLimit: 3
-                inactivityDays: 7
+                idleMinutes: 90
                 doors:
                   mcp: true
                   a2a: false
@@ -31,7 +31,7 @@ class TrillianExposureConfigTest {
         assertThat(config.description()).startsWith("Colin");
         assertThat(config.allowedCounterparts()).containsExactly("wile.coyote", "road.runner");
         assertThat(config.headLimit()).isEqualTo(3);
-        assertThat(config.inactivityDays()).isEqualTo(7);
+        assertThat(config.idleMinutes()).isEqualTo(90);
         assertThat(config.doors().mcp()).isTrue();
         assertThat(config.doors().a2a()).isFalse();
 
@@ -46,7 +46,7 @@ class TrillianExposureConfigTest {
 
         assertThat(config.description()).isEmpty();
         assertThat(config.headLimit()).isZero();
-        assertThat(config.inactivityDays()).isZero();
+        assertThat(config.idleMinutes()).isZero();
         assertThat(config.doors().mcp()).isFalse();
         assertThat(config.doors().a2a()).isFalse();
     }

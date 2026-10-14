@@ -579,6 +579,15 @@ public class TrillianInternalApi {
         return removed;
     }
 
+    /**
+     * Whether a task handed over by {@code replyToProcessId} is still open in
+     * the loop — its result has not come back yet. A head waiting for one is
+     * not idle, however long the loop works.
+     */
+    public boolean hasPendingRepliesFor(ThinkProcessDocument loop, String replyToProcessId) {
+        return taskRepliesOf(loop).containsValue(replyToProcessId);
+    }
+
     private static Optional<String> replyToOf(ThinkProcessDocument loop, String taskId) {
         Object target = taskRepliesOf(loop).get(taskId);
         return target instanceof String s && !s.isBlank() ? Optional.of(s) : Optional.empty();

@@ -22,10 +22,11 @@ import org.springframework.stereotype.Component;
  * accident (the same discipline the project-scoped surface applies with its
  * fixed {@code doc_*} list).
  *
- * <p>Three tools, one purpose ({@code planning/trillian-exposure.md} §3.8):
+ * <p>Four tools, one purpose ({@code planning/trillian-exposure.md} §3.8):
  * {@code agent_list} (the directory), {@code agent_send} (open a
  * conversation or contribute, waiting for the head's answer with long-poll),
- * {@code agent_read} (new contributions since a cursor, with long-poll).
+ * {@code agent_read} (new contributions since a cursor, with long-poll),
+ * {@code agent_close} (end a conversation you are done with).
  * The Trillian is chosen by its exposed name as a call argument — the door
  * is one route, not one route per agent.
  */
@@ -42,7 +43,7 @@ public class TrillianAgentsToolCatalog {
             TrillianExposureService exposureService, TrillianConversationService conversations) {
         this.exposureService = exposureService;
         this.conversations = conversations;
-        this.tools = List.of(new AgentListTool(), new AgentSendTool(), new AgentReadTool());
+        this.tools = List.of(new AgentListTool(), new AgentSendTool(), new AgentReadTool(), new AgentCloseTool());
     }
 
     /** The fixed inventory. */
@@ -233,6 +234,48 @@ public class TrillianAgentsToolCatalog {
             TrillianConversationService.Reply reply = conversations.read(
                     ctx.tenantId(), callerOf(ctx), conversationId, stringOf(params, "after"), waitOf(params));
             return replyResult(reply);
+        }
+    }
+
+    /** {@code agent_close} — end a conversation the caller is done with. */
+    private class AgentCloseTool implements Tool {
+
+        @Override
+        public String name() {
+            return "agent_close";
+        }
+
+        @Override
+        public String description() {
+            return "End a conversation you opened with an exposed agent when you are done with it."
+                    + " It stays readable with agent_read; a new concern is a new conversation."
+                    + " Conversations you leave alone are closed after a while of idleness.";
+        }
+
+        @Override
+        public boolean primary() {
+            return true;
+        }
+
+        @Override
+        public Map<String, Object> paramsSchema() {
+            return Map.of(
+                    "type",
+                    "object",
+                    "properties",
+                    Map.of("conversationId", Map.of("type", "string", "description", "The conversation to end")),
+                    "required",
+                    List.of("conversationId"));
+        }
+
+        @Override
+        public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
+            String conversationId = requireString(params, "conversationId");
+            conversations.close(ctx.tenantId(), callerOf(ctx), conversationId);
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("conversationId", conversationId);
+            out.put("closed", true);
+            return out;
         }
     }
 

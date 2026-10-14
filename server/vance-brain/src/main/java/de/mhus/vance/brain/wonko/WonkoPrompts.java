@@ -67,7 +67,25 @@ final class WonkoPrompts {
             List<UserMandateChange> mandateChanges,
             List<WonkoDecision> unclear) {}
 
+    /** What a free message outside the answers to a question set is about. */
+    enum RouteIntent {
+        /** The subject changed or the user wants it checked again — a fresh run. */
+        RECHECK,
+        /** New information about the subject — the claims are compared again with it in view. */
+        STATEMENT,
+        /** A question or remark that wants an answer, not a review. */
+        QUESTION,
+        /** Cannot tell — ask back. */
+        UNCLEAR
+    }
+
+    /** Result of routing a free message; {@code answer} is set for question and unclear. */
+    record RouteResult(
+            RouteIntent intent, String reason, @Nullable String answer) {}
+
     static final String CANNOT_DETERMINE = "cannot_determine";
+
+    private static final int MAX_ROUTE_REPORT_CHARS = 12_000;
 
     private static final List<String> CONCERNS = List.of("contradiction", "gap", "vague", "implausible", "intent");
 
@@ -374,6 +392,67 @@ final class WonkoPrompts {
         }
         sb.append("\n## The user's reply\n").append(userText).append('\n');
         return sb.toString();
+    }
+
+    // ──────────────────── route (free messages) ────────────────────
+
+    static String routePrompt(
+            List<String> subjectRefs, @Nullable String report, @Nullable QuestionSetDto pending, String userText) {
+        StringBuilder sb = new StringBuilder("## Subject under review\n");
+        subjectRefs.forEach(r -> sb.append("- ").append(r).append('\n'));
+        if (report != null && !report.isBlank()) {
+            String text = report.length() > MAX_ROUTE_REPORT_CHARS
+                    ? report.substring(0, MAX_ROUTE_REPORT_CHARS) + "\n…"
+                    : report;
+            sb.append("\n## Current state of the review\n").append(text).append('\n');
+        }
+        if (pending != null) {
+            sb.append("\n## Questions still waiting for the user\n");
+            for (QuestionDto q : pending.getQuestions()) {
+                sb.append("- [")
+                        .append(q.getWeight().name().toLowerCase(Locale.ROOT))
+                        .append("] ")
+                        .append(q.getText());
+                if (q.getContext() != null) {
+                    sb.append(" — evidence: \"").append(q.getContext()).append('"');
+                }
+                if (q.getProposal() != null) {
+                    sb.append(" — proposal: ").append(q.getProposal());
+                }
+                sb.append('\n');
+            }
+        }
+        sb.append("\n## The user's message\n").append(userText).append('\n');
+        return sb.toString();
+    }
+
+    static Map<String, Object> routeSchema() {
+        return object(
+                List.of("intent", "reason"),
+                Map.of(
+                        "intent", enumOf("recheck", "statement", "question", "unclear"),
+                        "reason", string(),
+                        "answer", string()));
+    }
+
+    /**
+     * Reads the route reply. A question or unclear message without an answer
+     * text is useless to the user — it falls back to unclear with no answer,
+     * and the caller says so in its own words.
+     */
+    static RouteResult parseRoute(Map<String, Object> json) {
+        String raw = str(json.get("intent"));
+        RouteIntent intent;
+        try {
+            intent = raw == null ? RouteIntent.UNCLEAR : RouteIntent.valueOf(raw.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            intent = RouteIntent.UNCLEAR;
+        }
+        String answer = str(json.get("answer"));
+        if ((intent == RouteIntent.QUESTION || intent == RouteIntent.UNCLEAR) && answer == null) {
+            intent = RouteIntent.UNCLEAR;
+        }
+        return new RouteResult(intent, nz(str(json.get("reason"))), answer);
     }
 
     static Map<String, Object> interpretSchema() {

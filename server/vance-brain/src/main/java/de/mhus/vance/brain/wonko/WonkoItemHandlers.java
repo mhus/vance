@@ -459,7 +459,7 @@ class WonkoItemHandlers {
             return prompt;
         }
         return languageBlock + "\n" + prompt + "\n\n" + languageBlock
-                + "Write every title, question, proposal and reason in the chat language above. Quotes stay "
+                + "Write every title, question, proposal, answer and reason in the chat language above. Quotes stay "
                 + "verbatim in the language of their source.\n";
     }
 

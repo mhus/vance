@@ -5,7 +5,7 @@ import { safeUrl } from '@vance/shared';
 import { uiTheme, paletteStyle } from '@composables/useUiTheme';
 import { useI18n } from 'vue-i18n';
 import QuestionCanvas, { type QuestionOption } from './QuestionCanvas.vue';
-import { QUESTIONS_ACTIONABLE_KEY } from '@/kindViews/questionsAnswers';
+import { QUESTIONS_CONTEXT_KEY, type QuestionsChatContext } from '@/kindViews/questionsAnswers';
 
 // Action-type values mirror constants in
 // {@code ChatMessageDocument.ACTION_TYPE_*}.
@@ -71,11 +71,12 @@ const props = withDefaults(defineProps<{
    */
   optionsActionable?: boolean;
   /**
-   * Whether a {@code questions} fence in this message may still be
-   * answered — true only while no later USER message exists. Handed to
-   * the fence's wizard through {@link QUESTIONS_ACTIONABLE_KEY}.
+   * Where this message stands in the conversation, for a {@code questions}
+   * fence in it — whether the wizard may still send. Handed to the fence's
+   * wizard through {@link QUESTIONS_CONTEXT_KEY}; without it the wizard is
+   * read-only.
    */
-  questionsActionable?: boolean;
+  questionsContext?: QuestionsChatContext;
   /**
    * UserId of the message author for USER turns (from
    * {@code ChatMessageDto.senderUserId}). {@code null} for legacy rows
@@ -95,10 +96,10 @@ const props = withDefaults(defineProps<{
   worker: false,
   lineMaxChars: () => uiTheme.lineMaxChars,
   optionsActionable: true,
-  questionsActionable: false,
+  questionsContext: undefined,
 });
 
-provide(QUESTIONS_ACTIONABLE_KEY, toRef(props, 'questionsActionable'));
+provide(QUESTIONS_CONTEXT_KEY, toRef(props, 'questionsContext'));
 
 const emit = defineEmits<{
   (e: 'pickOption', label: string): void;

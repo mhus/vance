@@ -253,7 +253,10 @@ public class WonkoEngine implements ThinkEngine {
                         msg.getClass().getSimpleName());
                 continue;
             }
-            appendChat(process, ctx, ChatRole.USER, input.content(), null);
+            QuestionSetDto open = state.getPendingSet();
+            if (open == null || state.getSubjectRefs().isEmpty()) {
+                appendChat(process, ctx, ChatRole.USER, input.content(), null);
+            }
             if (state.getSubjectRefs().isEmpty()) {
                 if (adoptSubject(process, ctx, state, input)) {
                     seedQueue(process, ctx, state);
@@ -263,28 +266,105 @@ public class WonkoEngine implements ThinkEngine {
             if (register == null) {
                 register = loadRegister(process, state);
             }
-            if (state.getPendingSet() != null) {
+            if (open != null) {
                 stop |= applyAnswer(process, register, state, input);
+                // The user message is recorded after the answer is applied, so
+                // it can say whether it answered the set.
+                appendChat(
+                        process,
+                        ctx,
+                        ChatRole.USER,
+                        input.content(),
+                        state.getPendingSet() == null
+                                ? Map.of(ChatMessageDocument.META_QUESTIONS_ANSWERED, open.getId())
+                                : null);
                 if (state.getPendingSet() != null) {
+                    // Nothing of it answered the open questions: a question to
+                    // Wonko, or a reply it cannot read — the set stays open.
+                    WonkoPrompts.RouteResult route = route(process, state, register, input.content());
                     appendChat(
                             process,
                             ctx,
                             ChatRole.ASSISTANT,
-                            "I could not map that reply onto the open questions — they are still open.",
+                            route != null && route.answer() != null
+                                    ? route.answer()
+                                    : "I could not map that reply onto the open questions — they are still open.",
                             null);
                 }
             } else if (!input.content().isBlank()) {
-                // A statement outside a question set: the loop goes again with it.
-                state.getUserStatements().add(input.content());
-                state.setFinished(false);
-                state.setFinalReport(null);
-                requeueAfterStatement(state);
+                routeFreeMessage(process, ctx, state, register, input.content());
             }
         }
         if (register != null) {
             registerService.save(process.getTenantId(), process.getProjectId(), register);
         }
         return stop;
+    }
+
+    /**
+     * A message outside a question set (plan §8.3): the route judge decides
+     * whether it asks for a new run, brings information for the claims, or
+     * just wants an answer — a question about the review must not restart it.
+     * Without a verdict the message counts as a statement, as before.
+     */
+    private void routeFreeMessage(
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx,
+            WonkoState state,
+            WonkoRegister register,
+            String text) {
+        WonkoPrompts.RouteResult route = route(process, state, register, text);
+        WonkoPrompts.RouteIntent intent = route == null ? WonkoPrompts.RouteIntent.STATEMENT : route.intent();
+        log.info(
+                "Wonko id='{}' routed a message as {}{}",
+                process.getId(),
+                intent,
+                route == null ? " (route failed)" : " — " + route.reason());
+        switch (intent) {
+            case RECHECK -> {
+                state.resetRun();
+                seedQueue(process, ctx, state);
+            }
+            case STATEMENT -> {
+                state.getUserStatements().add(text);
+                state.setFinished(false);
+                state.setFinalReport(null);
+                requeueAfterStatement(state);
+            }
+            case QUESTION, UNCLEAR ->
+                appendChat(
+                        process,
+                        ctx,
+                        ChatRole.ASSISTANT,
+                        route != null && route.answer() != null
+                                ? route.answer()
+                                : "I did not understand that — should I check the subject again?",
+                        null);
+        }
+    }
+
+    /** The route judge; {@code null} when the call fails. */
+    private WonkoPrompts.@Nullable RouteResult route(
+            ThinkProcessDocument process, WonkoState state, WonkoRegister register, String text) {
+        String report = state.getFinalReport() != null
+                ? state.getFinalReport()
+                : WonkoReportRenderer.render(register, "", state);
+        try {
+            return WonkoPrompts.parseRoute(lightLlmService.callForJson(LightLlmRequest.builder()
+                    .recipeName(new WonkoParams(params(process)).routeRecipe())
+                    .userPrompt(WonkoItemHandlers.withLanguage(
+                            languageContextResolver.formatBlock(process),
+                            WonkoPrompts.routePrompt(state.getSubjectRefs(), report, state.getPendingSet(), text)))
+                    .schema(WonkoPrompts.routeSchema())
+                    .tenantId(process.getTenantId())
+                    .projectId(process.getProjectId())
+                    .processId(process.getId())
+                    .userId(userIdFor(process))
+                    .build()));
+        } catch (RuntimeException e) {
+            log.warn("Wonko id='{}' could not route a message: {}", process.getId(), e.toString());
+            return null;
+        }
     }
 
     /** First items of a run: decompose against references, or the whole-subject check. */
@@ -453,6 +533,12 @@ public class WonkoEngine implements ThinkEngine {
                 // mapping; the statement still reaches the next check.
                 log.warn("Wonko id='{}' could not interpret a free-text reply: {}", process.getId(), e.toString());
                 state.getUserStatements().add(input.content());
+                return false;
+            }
+            if (interpreted.answers().isEmpty()
+                    && !interpreted.stop()
+                    && interpreted.mandateChanges().isEmpty()) {
+                // Not an answer to the set — it stays open, the caller routes the message.
                 return false;
             }
             for (WonkoPrompts.UserMandateChange change : interpreted.mandateChanges()) {

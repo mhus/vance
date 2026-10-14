@@ -23,6 +23,7 @@ params:
   # Without references: one whole-subject check per pass.
   checkRecipe: wonko-check
   interpretRecipe: wonko-interpret
+  routeRecipe: wonko-route
   # With references: decompose → locate → compare (parallel) → coverage.
   decomposeRecipe: wonko-decompose
   locateRecipe: wonko-locate

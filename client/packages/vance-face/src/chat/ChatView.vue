@@ -26,7 +26,7 @@ import {
   type RosterChange,
 } from '@/cortex/composables/useSessionRoster';
 import MessageBubble from './MessageBubble.vue';
-import type { QuestionAnswersDetail } from '@/kindViews/questionsAnswers';
+import type { QuestionAnswersDetail, QuestionsChatContext } from '@/kindViews/questionsAnswers';
 import FollowUpGhost from './FollowUpGhost.vue';
 import PlanModeIndicator from './PlanModeIndicator.vue';
 import ChatActivityStrip from './ChatActivityStrip.vue';
@@ -316,6 +316,41 @@ function hasLaterUserMessage(index: number): boolean {
     if (String(list[i]?.role) === 'USER') return true;
   }
   return false;
+}
+
+const QUESTIONS_FENCE = '```questions';
+
+/** Question-set ids a user message was marked as the answer to (`meta.questionsAnswered`). */
+const answeredQuestionSetIds = computed<ReadonlySet<string>>(() => {
+  const ids = new Set<string>();
+  for (const m of allMessages.value) {
+    const id = m.meta?.['questionsAnswered'];
+    if (String(m.role) === 'USER' && typeof id === 'string') ids.add(id);
+  }
+  return ids;
+});
+
+/**
+ * The questions context of a message — only for messages that carry a
+ * `questions` fence, so the other bubbles keep a stable (absent) prop.
+ */
+function questionsContextFor(index: number): QuestionsChatContext | undefined {
+  const list = allMessages.value;
+  const own = list[index];
+  if (!own || String(own.role) === 'USER' || !own.content?.includes(QUESTIONS_FENCE)) return undefined;
+  let laterQuestions = false;
+  for (let i = index + 1; i < list.length; i++) {
+    const m = list[i];
+    if (m && String(m.role) !== 'USER' && m.content?.includes(QUESTIONS_FENCE)) {
+      laterQuestions = true;
+      break;
+    }
+  }
+  return {
+    laterUserMessage: hasLaterUserMessage(index),
+    laterQuestions,
+    answeredSetIds: answeredQuestionSetIds.value,
+  };
 }
 
 /** The wizard of a {@code questions} fence dispatched its answers (bubbling DOM event). */
@@ -1061,7 +1096,7 @@ onBeforeUnmount(() => {
             :worker="isWorkerMessage(msg)"
             :meta="msg.meta"
             :options-actionable="msg.messageId === activeAskUserMessageId"
-            :questions-actionable="!hasLaterUserMessage(idx)"
+            :questions-context="questionsContextFor(idx)"
             :sender-user-id="msg.senderUserId"
             :sender-display-name="msg.senderDisplayName"
             :current-user-id="currentUserId"

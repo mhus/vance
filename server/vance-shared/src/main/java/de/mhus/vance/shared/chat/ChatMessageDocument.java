@@ -67,6 +67,14 @@ public class ChatMessageDocument {
     public static final String META_ASK_USER_OPTIONS = "askUserOptions";
 
     /**
+     * {@link #meta} key on a user message that answered a {@code questions}
+     * fence: the id of the question set it answered. The chat shows a set
+     * with an id as answered only once a message carries it — a question
+     * back to the engine leaves the set open (spec doc-kind-questions §4).
+     */
+    public static final String META_QUESTIONS_ANSWERED = "questionsAnswered";
+
+    /**
      * {@link #meta} key for the engine-action type that produced the
      * chat message — typically one of {@code ANSWER}, {@code ASK_USER},
      * {@code REJECT}, {@code WAIT}, {@code RELAY} (engine-specific).

@@ -30,7 +30,8 @@ import type { FenceMeta } from '@/kindRenderers/parseFenceLang';
 import { parseQuestions } from './questionsCodec';
 import {
   QUESTION_ANSWERS_EVENT,
-  QUESTIONS_ACTIONABLE_KEY,
+  QUESTIONS_CONTEXT_KEY,
+  questionsActionable,
   answerLabel,
   readableAnswers,
   setIdFor,
@@ -69,9 +70,14 @@ const parsed = computed<{ set?: QuestionSetDto; error?: string }>(() => {
   }
 });
 
-const actionableRef = inject(QUESTIONS_ACTIONABLE_KEY, ref(false));
+const contextRef = inject(QUESTIONS_CONTEXT_KEY, ref(undefined));
 const sent = ref(false);
-const interactive = computed(() => props.mode === 'inline' && actionableRef.value && !sent.value);
+/** Whether the conversation still waits for this set — see questionsActionable. */
+const actionable = computed(() => {
+  const set = parsed.value.set;
+  return contextRef.value !== undefined && set !== undefined && questionsActionable(contextRef.value, set);
+});
+const interactive = computed(() => props.mode === 'inline' && actionable.value && !sent.value);
 
 const page = ref(0);
 const answers = ref<Record<string, QuestionAnswerDto>>({});
@@ -203,7 +209,7 @@ function send(): void {
           <VButton variant="primary" size="sm" @click="send">{{ t('kindViews.questions.send') }}</VButton>
           <VButton v-if="total > 0" variant="ghost" size="sm" @click="goTo(total - 1)">{{ t('kindViews.questions.back') }}</VButton>
         </div>
-        <div v-else-if="mode === 'inline' && (sent || !actionableRef)" class="text-xs opacity-60">
+        <div v-else-if="mode === 'inline' && (sent || !actionable)" class="text-xs opacity-60">
           {{ t('kindViews.questions.answered') }}
         </div>
       </template>

@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { QuestionOutcome } from '@vance/generated';
 import { parseQuestions } from './questionsCodec';
-import { readableAnswers, setIdFor, toSetAnswer, type OutcomeLabels } from './questionsAnswers';
+import {
+  questionsActionable,
+  readableAnswers,
+  setIdFor,
+  toSetAnswer,
+  type OutcomeLabels,
+} from './questionsAnswers';
 
 const BODY = `questions:
   - key: region
@@ -55,5 +61,19 @@ describe('questionsAnswers', () => {
     }, LABELS);
 
     expect(text).toBe('- Which region? → eu-central-1\n- 10 years? → confirmed\n- Who owns it? → later');
+  });
+
+  it('keeps a set with an id open until a message is marked as its answer', () => {
+    const withId = parseQuestions('id: s-1\n' + BODY);
+    const base = { laterUserMessage: true, laterQuestions: false, answeredSetIds: new Set<string>() };
+    expect(questionsActionable(base, withId)).toBe(true);
+    expect(questionsActionable({ ...base, answeredSetIds: new Set(['s-1']) }, withId)).toBe(false);
+    expect(questionsActionable({ ...base, laterQuestions: true }, withId)).toBe(false);
+  });
+
+  it('closes a set without an id with any later user message', () => {
+    const base = { laterUserMessage: false, laterQuestions: false, answeredSetIds: new Set<string>() };
+    expect(questionsActionable(base, set)).toBe(true);
+    expect(questionsActionable({ ...base, laterUserMessage: true }, set)).toBe(false);
   });
 });

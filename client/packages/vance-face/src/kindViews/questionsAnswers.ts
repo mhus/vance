@@ -11,8 +11,37 @@ import {
   type QuestionSetDto,
 } from '@vance/generated';
 
-/** `true` while the question set is the conversation's open end (no later user message). */
-export const QUESTIONS_ACTIONABLE_KEY: InjectionKey<Ref<boolean>> = Symbol('vance:questions-actionable');
+/** What the chat knows about the conversation after a bubble that carries a `questions` fence. */
+export interface QuestionsChatContext {
+  /** A user message follows the bubble. */
+  laterUserMessage: boolean;
+  /** A later message carries another `questions` fence — the set is superseded. */
+  laterQuestions: boolean;
+  /** Set ids a user message marked as answered (`meta.questionsAnswered`). */
+  answeredSetIds: ReadonlySet<string>;
+}
+
+export const NO_QUESTIONS_CONTEXT: QuestionsChatContext = {
+  laterUserMessage: false,
+  laterQuestions: false,
+  answeredSetIds: new Set<string>(),
+};
+
+/** The chat bubble tells the wizard where it stands in the conversation. */
+export const QUESTIONS_CONTEXT_KEY: InjectionKey<Ref<QuestionsChatContext | undefined>> =
+  Symbol('vance:questions-context');
+
+/**
+ * Whether the wizard may still send. A newer set supersedes it. A set with
+ * an id is open until a user message is marked as its answer — a question
+ * back to the engine leaves it open. Without an id any later user message
+ * closes it.
+ */
+export function questionsActionable(ctx: QuestionsChatContext, set: QuestionSetDto): boolean {
+  if (ctx.laterQuestions) return false;
+  if (set.id) return !ctx.answeredSetIds.has(set.id);
+  return !ctx.laterUserMessage;
+}
 
 /** Bubbling DOM event the wizard dispatches; the chat view turns it into a process-steer. */
 export const QUESTION_ANSWERS_EVENT = 'vance-question-answers';

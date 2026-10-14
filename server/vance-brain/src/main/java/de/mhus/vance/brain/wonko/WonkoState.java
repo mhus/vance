@@ -93,6 +93,36 @@ public class WonkoState {
 
     private @Nullable String finalReport;
 
+    /**
+     * Starts a fresh run on the same subject — the subject changed, so
+     * claims, passages and findings of the last run are stale. Kept: the
+     * subject, the goal, what the user said and whether the mandate is
+     * applied; everything durable lives in the register anyway.
+     */
+    public void resetRun() {
+        round = 0;
+        pendingSet = null;
+        pendingProposals = new ArrayList<>();
+        postponedKeys = new ArrayList<>();
+        stats = new ArrayList<>();
+        referencePaths = new ArrayList<>();
+        queue = new ArrayList<>();
+        claims = new ArrayList<>();
+        passages = new ArrayList<>();
+        pendingFindings = new ArrayList<>();
+        topicClaims = new LinkedHashMap<>();
+        decisions = new ArrayList<>();
+        itemCounts = new LinkedHashMap<>();
+        nextId = 0;
+        calls = 0;
+        callBudget = 0;
+        checkpointAsked = false;
+        proposalPool = new ArrayList<>();
+        coveredRefs = new ArrayList<>();
+        finished = false;
+        finalReport = null;
+    }
+
     /** A mandate proposal awaiting the user's yes/no. */
     @Data
     @NoArgsConstructor

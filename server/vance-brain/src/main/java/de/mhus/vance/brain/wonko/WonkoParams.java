@@ -14,6 +14,10 @@ record WonkoParams(Map<String, Object> raw) {
         return string("interpretRecipe", "wonko-interpret");
     }
 
+    String routeRecipe() {
+        return string("routeRecipe", "wonko-route");
+    }
+
     String decomposeRecipe() {
         return string("decomposeRecipe", "wonko-decompose");
     }

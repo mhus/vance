@@ -48,3 +48,9 @@ function onChange(event: Event): void {
     <span v-if="help" class="text-xs opacity-70 mt-1">{{ help }}</span>
   </label>
 </template>
+
+<style scoped>
+/* Unchecked boxes stay neutral; the accent shows only when checked
+   (corporate-design §3.1 — colour means something). */
+.checkbox:not(:checked):not(:indeterminate) { border-color: var(--v-border); }
+</style>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { VBadge } from '@vance/components';
+import { VBadge, VIcon } from '@vance/components';
 import {
   inboxCountLoaded,
   inboxUnread,
@@ -74,7 +74,7 @@ onUnmounted(() => {
     @click="(e: MouseEvent) => handleShellLinkClick(e, '/inbox')"
   >
     <VBadge :variant="attention ? 'warning' : 'neutral'" size="sm" :outline="!attention">
-      <span class="mr-1" aria-hidden="true">✉</span>
+      <VIcon name="inbox" class="mr-1" />
       {{ unread }}
     </VBadge>
   </a>

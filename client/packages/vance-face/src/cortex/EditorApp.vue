@@ -1810,7 +1810,7 @@ const helpOpen = ref(false);
 /** Left segment of the topbar's right-panel switcher; the help "?" is
  *  the right one and appears only when {@link shellHelpPath} is set. */
 const panelToggle = computed(() => ({
-  icon: '💬',
+  icon: 'chat' as const,
   title: toggleTooltip.value,
   active: rightPanelOpen.value,
 }));

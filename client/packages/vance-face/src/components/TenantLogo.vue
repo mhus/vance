@@ -33,5 +33,5 @@ const failed = ref(false);
     alt=""
     @error="failed = true"
   />
-  <VanceLogo v-else size="sm" class="text-primary" />
+  <VanceLogo v-else size="sm" class="text-(--v-brand-mark)" />
 </template>

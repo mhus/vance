@@ -28,6 +28,7 @@
   --v-accent-pressed: var(--v-navy-900);
   --v-accent-text: var(--v-navy-600);     /* links, accent text, active icons */
   --v-accent-on: #FFFFFF;               /* text on a filled accent */
+  --v-brand-mark: var(--v-navy-800);     /* the 𝑣 mark: navy on light, label on dark (§2.2) */
   --v-selection: var(--v-navy-50);
   --v-focus-ring: rgba(179, 196, 236, 0.6);
 
@@ -81,6 +82,7 @@
   --v-accent-pressed: var(--v-navy-600);
   --v-accent-text: var(--v-navy-300);
   --v-accent-on: #FFFFFF;
+  --v-brand-mark: var(--v-label);
   --v-selection: var(--v-navy-950);
   --v-focus-ring: rgba(95, 127, 207, 0.5);
 

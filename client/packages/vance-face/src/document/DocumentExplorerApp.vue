@@ -19,7 +19,10 @@ import {
   VButton,
   VCheckbox,
   VEmptyState,
+  VIcon,
+  VIconButton,
   VInput,
+  VToolbar,
   VModal,
   VSelect,
   RowActionsMenu,
@@ -998,71 +1001,53 @@ function confirmNewFolder(): void {
       @dragleave="onDragLeave"
       @drop="onDrop"
     >
-      <!-- Path crumb + search + actions -->
-      <div class="px-6 pt-4 pb-3 border-b border-base-300 bg-base-100 flex items-center gap-3 flex-wrap">
-        <VButton
-          variant="ghost"
-          size="sm"
+      <!-- Path crumb + search + actions (corporate-design §6.2): context left,
+           icon actions right, "New document" the one primary action. -->
+      <VToolbar>
+        <VIconButton
+          icon="back"
+          :label="$t('documents.pathBack')"
           :disabled="!docsState.pathPrefix.value"
-          :title="$t('documents.pathBack')"
           @click="pathSegmentBack"
-        >←</VButton>
-        <nav class="flex items-center gap-1 text-sm font-mono opacity-80 flex-1 min-w-0 truncate">
-          <button
-            type="button"
-            class="opacity-70 hover:opacity-100 hover:underline"
-            @click="navigateToRoot"
-          >/</button>
+        />
+        <nav class="doc-crumbs">
+          <button type="button" class="doc-crumb" @click="navigateToRoot">/</button>
           <template v-for="(seg, idx) in breadcrumbSegments" :key="idx">
-            <span v-if="idx > 0" class="opacity-40">/</span>
-            <button
-              type="button"
-              class="opacity-70 hover:opacity-100 hover:underline"
-              @click="navigateToSegment(idx)"
-            >{{ seg }}</button>
+            <span v-if="idx > 0" class="doc-crumb-sep">/</span>
+            <button type="button" class="doc-crumb" @click="navigateToSegment(idx)">{{ seg }}</button>
           </template>
         </nav>
-        <div class="w-[180px] shrink-0">
-          <VInput
-            v-model="search"
-            size="sm"
-            :placeholder="$t('documents.searchPlaceholder')"
-          />
-        </div>
-        <VButton
-          variant="secondary"
-          size="sm"
-          :title="$t('documents.newFolder')"
-          @click="openNewFolder"
-        >+ 📁</VButton>
-        <VButton
-          variant="primary"
-          size="sm"
-          :title="$t('documents.newDocument')"
-          @click="openCreateInNotepad"
-        >{{ $t('documents.addNew') }}</VButton>
-        <VButton
-          variant="secondary"
-          size="sm"
-          :title="$t('documents.openCortexTitle')"
-          @click="openInCortex"
-        >{{ $t('documents.openCortex') }}</VButton>
-      </div>
+        <template #end>
+          <div class="w-[200px] shrink-0">
+            <VInput
+              v-model="search"
+              size="sm"
+              :placeholder="$t('documents.searchPlaceholder')"
+            />
+          </div>
+          <VIconButton icon="add-folder" :label="$t('documents.newFolder')" @click="openNewFolder" />
+          <VIconButton icon="open-in-app" :label="$t('documents.openCortexTitle')" @click="openInCortex" />
+          <VButton variant="primary" size="sm" icon="add" @click="openCreateInNotepad">
+            {{ $t('documents.addNew') }}
+          </VButton>
+        </template>
+      </VToolbar>
 
       <!-- Installed kits — only at the project root, where "this project"
            is what the user is looking at. No "update available" badge:
            knowing that would mean fetching every kit's remote on load. -->
       <div
         v-if="kitsVisible"
-        class="px-6 py-2 border-b border-base-300 bg-base-200/40 flex items-center gap-3 text-sm"
+        class="doc-infobar"
       >
-        <span class="opacity-80">
+        <VIcon name="kit" class="doc-infobar-icon" />
+        <span>
           {{ $t('documents.kits.installed', { count: kitState.installed.value.length }) }}
         </span>
-        <span class="opacity-60 truncate">{{ kitNames }}</span>
+        <span class="truncate">— {{ kitNames }}</span>
         <div class="flex-1"></div>
         <VButton
-          variant="ghost"
+          variant="plain"
           size="sm"
           :loading="kitState.busy.value"
           @click="updateAllKits"
@@ -1072,18 +1057,19 @@ function confirmNewFolder(): void {
       <!-- Bulk-action bar — appears once at least one document is selected -->
       <div
         v-if="selectedCount > 0"
-        class="px-6 py-2 border-b border-base-300 bg-base-200/50 flex items-center gap-3 text-sm"
+        class="doc-selectionbar"
       >
         <span class="font-medium">
           {{ $t('documents.selection.count', { count: selectedCount }) }}
         </span>
-        <VButton variant="ghost" size="sm" @click="clearSelection">
+        <VButton variant="plain" size="sm" @click="clearSelection">
           {{ $t('documents.selection.clear') }}
         </VButton>
         <div class="flex-1"></div>
         <VButton
-          variant="ghost"
+          variant="secondary"
           size="sm"
+          icon="download"
           :loading="exportBusy"
           :disabled="bulkBusy"
           @click="exportSelected"
@@ -1101,6 +1087,7 @@ function confirmNewFolder(): void {
         <VButton
           variant="secondary"
           size="sm"
+          icon="copy"
           :disabled="bulkBusy || exportBusy"
           @click="openCopyModal"
         >
@@ -1109,6 +1096,7 @@ function confirmNewFolder(): void {
         <VButton
           variant="danger"
           size="sm"
+          icon="delete"
           :disabled="bulkBusy || exportBusy"
           @click="showTrashModal = true"
         >
@@ -1149,14 +1137,14 @@ function confirmNewFolder(): void {
                  holds for five minutes, so without this the only way out of a
                  just-fixed misconfiguration is waiting. -->
             <template v-if="mountEmptyReason?.retryable" #action>
-              <VButton size="sm" variant="ghost" @click="retryMount">
+              <VButton size="sm" variant="secondary" icon="refresh" @click="retryMount">
                 {{ $t('documents.empty.mountRetry') }}
               </VButton>
             </template>
           </VEmptyState>
         </div>
         <table v-else class="w-full text-sm">
-          <thead class="text-xs uppercase opacity-60 sticky top-0 bg-base-100 z-[1]">
+          <thead class="doc-thead sticky top-0 z-[1]">
             <tr>
               <th class="text-left pl-4 pr-1 py-2 w-8">
                 <VCheckbox
@@ -1180,8 +1168,8 @@ function confirmNewFolder(): void {
             <tr
               v-for="folder in docsState.subFolders.value"
               :key="`f:${folder}`"
-              class="border-b border-base-200 hover:bg-base-200/60 cursor-pointer"
-              :class="{ 'bg-primary/5': isFolderSelected(folder) }"
+              class="doc-row"
+              :class="{ 'doc-row-selected': isFolderSelected(folder) }"
               @click="navigateIntoFolder(folder)"
             >
               <td class="pl-4 pr-1 py-1.5" @click.stop>
@@ -1190,9 +1178,9 @@ function confirmNewFolder(): void {
                   @update:model-value="toggleFolder(folder)"
                 />
               </td>
-              <td class="px-2 py-1.5">📁</td>
+              <td class="px-2 py-1.5"><VIcon name="folder" class="doc-row-icon" /></td>
               <td class="px-2 py-1.5 font-medium">{{ folder }}</td>
-              <td class="px-2 py-1.5 opacity-50">{{ $t('explorer.folder') }}</td>
+              <td class="px-2 py-1.5 doc-meta">{{ $t('explorer.folder') }}</td>
               <td class="px-2 py-1.5"></td>
               <td class="px-2 py-1.5"></td>
               <td class="px-2 py-1.5"></td>
@@ -1208,8 +1196,8 @@ function confirmNewFolder(): void {
             <tr
               v-for="doc in docsState.items.value"
               :key="doc.id"
-              class="border-b border-base-200 hover:bg-base-200/60 cursor-pointer"
-              :class="{ 'bg-primary/5': isSelected(doc.id) }"
+              class="doc-row"
+              :class="{ 'doc-row-selected': isSelected(doc.id) }"
               @click="openInNotepad(doc.id)"
             >
               <td class="pl-4 pr-1 py-1.5" @click.stop>
@@ -1255,24 +1243,24 @@ function confirmNewFolder(): void {
 
       <div
         v-if="totalPages > 1"
-        class="border-t border-base-300 bg-base-100 px-4 py-2 flex items-center gap-2 text-sm"
+        class="doc-pager"
       >
-        <VButton
-          variant="ghost"
-          size="sm"
+        <VIconButton
+          icon="back"
+          :label="$t('documents.pagePrevious')"
           :disabled="docsState.page.value === 0"
           @click="gotoPage(docsState.page.value - 1)"
-        >←</VButton>
+        />
         <span class="opacity-70">
           {{ docsState.page.value + 1 }} / {{ totalPages }}
           <span class="opacity-50 ml-2">({{ docsState.totalCount.value }} {{ t('documents.totalItems') }})</span>
         </span>
-        <VButton
-          variant="ghost"
-          size="sm"
+        <VIconButton
+          icon="forward"
+          :label="$t('documents.pageNext')"
           :disabled="docsState.page.value >= totalPages - 1"
           @click="gotoPage(docsState.page.value + 1)"
-        >→</VButton>
+        />
       </div>
 
       <!-- External file drop overlay -->
@@ -1310,13 +1298,13 @@ function confirmNewFolder(): void {
       <template #actions>
         <VButton
           v-if="bulkBusy"
-          variant="ghost"
+          variant="secondary"
           :disabled="bulkAbort"
           @click="bulkAbort = true"
         >
           {{ $t('documents.selection.stop') }}
         </VButton>
-        <VButton v-else variant="ghost" @click="showMoveModal = false">
+        <VButton v-else variant="secondary" @click="showMoveModal = false">
           {{ $t('common.cancel') }}
         </VButton>
         <VButton variant="primary" :loading="bulkBusy" @click="confirmMove">
@@ -1365,13 +1353,13 @@ function confirmNewFolder(): void {
       <template #actions>
         <VButton
           v-if="bulkBusy"
-          variant="ghost"
+          variant="secondary"
           :disabled="bulkAbort"
           @click="bulkAbort = true"
         >
           {{ $t('documents.selection.stop') }}
         </VButton>
-        <VButton v-else variant="ghost" @click="showCopyModal = false">
+        <VButton v-else variant="secondary" @click="showCopyModal = false">
           {{ $t('common.cancel') }}
         </VButton>
         <VButton variant="primary" :loading="bulkBusy" @click="confirmCopy">
@@ -1395,13 +1383,13 @@ function confirmNewFolder(): void {
       <template #actions>
         <VButton
           v-if="bulkBusy"
-          variant="ghost"
+          variant="secondary"
           :disabled="bulkAbort"
           @click="bulkAbort = true"
         >
           {{ $t('documents.selection.stop') }}
         </VButton>
-        <VButton v-else variant="ghost" @click="showTrashModal = false">
+        <VButton v-else variant="secondary" @click="showTrashModal = false">
           {{ $t('common.cancel') }}
         </VButton>
         <VButton variant="danger" filled :loading="bulkBusy" @click="confirmTrash">
@@ -1430,13 +1418,13 @@ function confirmNewFolder(): void {
       <template #actions>
         <VButton
           v-if="bulkBusy"
-          variant="ghost"
+          variant="secondary"
           :disabled="bulkAbort"
           @click="bulkAbort = true"
         >
           {{ $t('documents.selection.stop') }}
         </VButton>
-        <VButton v-else variant="ghost" @click="renameTarget = null">
+        <VButton v-else variant="secondary" @click="renameTarget = null">
           {{ $t('common.cancel') }}
         </VButton>
         <VButton variant="primary" :loading="bulkBusy" @click="confirmRename">
@@ -1458,7 +1446,7 @@ function confirmNewFolder(): void {
         }) }}
       </p>
       <template #actions>
-        <VButton variant="ghost" :disabled="deleteBusy" @click="pendingDelete = null">
+        <VButton variant="secondary" :disabled="deleteBusy" @click="pendingDelete = null">
           {{ $t('common.cancel') }}
         </VButton>
         <VButton variant="danger" filled :loading="deleteBusy" @click="confirmRowDelete">
@@ -1479,7 +1467,7 @@ function confirmNewFolder(): void {
         />
       </form>
       <template #actions>
-        <VButton variant="ghost" @click="showNewFolderModal = false">
+        <VButton variant="secondary" @click="showNewFolderModal = false">
           {{ $t('common.cancel') }}
         </VButton>
         <VButton variant="primary" @click="confirmNewFolder">
@@ -1489,3 +1477,32 @@ function confirmNewFolder(): void {
     </VModal>
   </EditorShell>
 </template>
+
+<style scoped>
+/* corporate-design §6.2/§7.3 — path crumbs, info and selection bars, rows. */
+.doc-crumbs { display: flex; align-items: center; gap: 2px; min-width: 0; overflow: hidden; font-family: var(--v-font-mono); font-size: 12.5px; }
+.doc-crumb { padding: 2px 4px; border: 0; border-radius: 4px; background: transparent; color: var(--v-label-secondary); cursor: pointer; white-space: nowrap; }
+.doc-crumb:hover { background: var(--v-fill); color: var(--v-label); }
+.doc-crumb-sep { color: var(--v-label-tertiary); }
+.doc-infobar,
+.doc-selectionbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 2px 16px;
+  border-bottom: 1px solid var(--v-separator);
+  font-size: 12px;
+  color: var(--v-label-secondary);
+}
+.doc-selectionbar { background: var(--v-selection); color: var(--v-label); font-size: 13px; }
+.doc-infobar-icon { color: var(--v-label-tertiary); }
+.doc-thead { background: var(--v-surface); font-size: 12px; font-weight: 500; color: var(--v-label-secondary); }
+.doc-thead :deep(th) { border-bottom: 1px solid var(--v-separator); }
+.doc-row { border-bottom: 1px solid var(--v-separator); cursor: pointer; }
+.doc-row:hover { background: color-mix(in srgb, var(--v-fill) 50%, transparent); }
+.doc-row-selected { background: var(--v-selection); }
+.doc-row-icon { color: var(--v-label-secondary); }
+.doc-meta { color: var(--v-label-secondary); }
+.doc-pager { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-top: 1px solid var(--v-separator); font-size: 13px; color: var(--v-label-secondary); }
+</style>

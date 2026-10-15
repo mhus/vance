@@ -14,6 +14,7 @@ import {
 } from '@/platform';
 import { editorHref } from '@/platform/editorHref';
 import { SOURCE_CODE_URL } from '@/platform/sourceCode';
+import { VIcon, VIconButton, type IconName } from '@vance/components';
 import { setUiLocale, UI_LOCALES, type Locale } from '@/i18n';
 import InboxBadge from './InboxBadge.vue';
 import ProcessCountsBadge from './ProcessCountsBadge.vue';
@@ -62,7 +63,7 @@ interface Props {
    * segment means (a session picker, an outline, …) and of making the
    * two mutually exclusive. Omit it and the "?" stands alone.
    */
-  panelToggle?: { icon: string; title: string; active: boolean };
+  panelToggle?: { icon: IconName; title: string; active: boolean };
   /**
    * When true, the page title renders as a clickable element that
    * emits {@code title-click} on activation. Used by editors with a
@@ -179,7 +180,7 @@ function openFook(): void {
 </script>
 
 <template>
-  <header class="navbar bg-base-100 shadow-sm border-b border-base-300 px-4 gap-2">
+  <header class="v-topbar">
     <!-- Logo doubles as a "home" link back to the editor list.
          Mark (mathematical italic v) + wordmark; the mark carries the
          brand on small viewports where horizontal room is tight. -->
@@ -195,7 +196,7 @@ function openFook(): void {
       @click="onHomeClick"
     >
       <TenantLogo />
-      <span class="font-bold text-lg font-mono">vancetope</span>
+      <span class="v-wordmark">vancetope</span>
     </a>
     <!-- Server identity from the pod-written /config.json. The title
          renders as a clickable link to the backlink URL when both are
@@ -233,7 +234,7 @@ function openFook(): void {
         @click="emit('title-click')"
       >{{ title }}</button>
       <span v-else class="font-semibold align-middle">{{ title }}</span>
-      <span v-if="breadcrumbs.length" class="opacity-50 mx-2 align-middle">·</span>
+      <VIcon v-if="breadcrumbs.length" name="forward" class="v-crumb-sep" />
       <span class="opacity-70 align-middle">
         <template v-for="(crumb, idx) in breadcrumbs" :key="idx">
           <!-- pointerdown.stop like the title: the shell resets the focus
@@ -247,12 +248,12 @@ function openFook(): void {
             @click="crumbOnClick(crumb)?.()"
           >{{ crumbText(crumb) }}</button>
           <span v-else>{{ crumbText(crumb) }}</span>
-          <span v-if="idx < breadcrumbs.length - 1" class="mx-1 opacity-40">›</span>
+          <VIcon v-if="idx < breadcrumbs.length - 1" name="forward" class="v-crumb-sep" />
         </template>
       </span>
     </div>
 
-    <div class="flex-none flex items-center gap-3">
+    <div class="flex-none flex items-center gap-2">
       <!-- Pending-inbox badge — self-hiding at zero, present on every
            editor page so a waiting question is visible without opening
            the inbox. REST-pulled on mount + tab-refocus. -->
@@ -278,12 +279,7 @@ function openFook(): void {
 
       <span
         v-if="connectionState"
-        :class="[
-          'inline-block w-2.5 h-2.5 rounded-full',
-          connectionState === 'connected' ? 'bg-success' : '',
-          connectionState === 'idle' ? 'bg-base-content/40' : '',
-          connectionState === 'occupied' ? 'bg-error' : '',
-        ]"
+        :class="['v-status-dot', `v-status-${connectionState}`]"
         :title="connectionTooltip ?? defaultConnectionTooltip"
       />
 
@@ -292,41 +288,30 @@ function openFook(): void {
            right panel shows. Either segment may be absent — with only
            one, the group reads as a single button. The drawer itself is
            rendered by EditorShell. -->
-      <div
-        v-if="panelToggle || helpPath"
-        class="join border border-base-content/15 rounded-md overflow-hidden"
-      >
-        <button
-          v-if="panelToggle"
-          type="button"
-          class="btn btn-ghost btn-sm join-item rounded-none"
-          :class="panelToggle.active ? 'btn-active' : ''"
-          :title="panelToggle.title"
-          :aria-pressed="panelToggle.active"
-          @click="emit('toggle-panel')"
-        >
-          <span aria-hidden="true">{{ panelToggle.icon }}</span>
-        </button>
-        <button
-          v-if="helpPath"
-          type="button"
-          class="btn btn-ghost btn-sm join-item rounded-none"
-          :class="helpOpen ? 'btn-active' : ''"
-          :title="$t('header.help.toggle')"
-          :aria-pressed="helpOpen"
-          @click="onToggleHelp"
-        >?</button>
-      </div>
+      <VIconButton
+        v-if="panelToggle"
+        :icon="panelToggle.icon"
+        :label="panelToggle.title"
+        :active="panelToggle.active"
+        @click="emit('toggle-panel')"
+      />
+      <VIconButton
+        v-if="helpPath"
+        icon="help"
+        :label="$t('header.help.toggle')"
+        :active="helpOpen"
+        @click="onToggleHelp"
+      />
 
       <div class="dropdown dropdown-end">
-        <div tabindex="0" role="button" class="btn btn-ghost btn-sm">
-          <span class="font-mono text-xs opacity-70">{{ tenantId }}</span>
-          <span>·</span>
-          <span>{{ username }}</span>
+        <div tabindex="0" role="button" class="v-user-button">
+          <span class="v-tenant">{{ tenantId }}</span>
+          <span class="v-user">{{ username }}</span>
+          <VIcon name="expand" class="v-user-chevron" />
         </div>
         <ul
           tabindex="0"
-          class="dropdown-content menu bg-base-100 rounded-box z-[1] mt-2 w-48 p-2 shadow"
+          class="dropdown-content menu v-menu z-[1] mt-2 w-56 p-1"
         >
           <li class="menu-title">
             <span>{{ $t('header.menu.languageHeader') }}</span>
@@ -342,18 +327,19 @@ function openFook(): void {
           </li>
           <li class="divider-row"><div class="divider my-1" /></li>
           <template v-if="inFacelift">
-            <li><a @click="onSwitchAccount">{{ $t('header.menu.switchAccount') }}</a></li>
-            <li><a @click="onManageAccounts">{{ $t('header.menu.manageAccounts') }}</a></li>
-            <li><a @click="onAddAccount">{{ $t('header.menu.addAccount') }}</a></li>
+            <li><a @click="onSwitchAccount"><VIcon name="swap" />{{ $t('header.menu.switchAccount') }}</a></li>
+            <li><a @click="onManageAccounts"><VIcon name="team" />{{ $t('header.menu.manageAccounts') }}</a></li>
+            <li><a @click="onAddAccount"><VIcon name="add" />{{ $t('header.menu.addAccount') }}</a></li>
             <li class="divider-row"><div class="divider my-1" /></li>
           </template>
-          <li><a @click="openFook">{{ $t('fook.menuLabel') }}</a></li>
-          <li><a href="/profile.html">{{ $t('common.profile') }}</a></li>
-          <li><a :href="editorHref('settings', { scope: 'user' })">{{ $t('common.settings') }}</a></li>
+          <li><a href="/profile.html"><VIcon name="user" />{{ $t('common.profile') }}</a></li>
+          <li><a :href="editorHref('settings', { scope: 'user' })"><VIcon name="settings" />{{ $t('common.settings') }}</a></li>
+          <li><a @click="openFook"><VIcon name="report-bug" />{{ $t('fook.menuLabel') }}</a></li>
           <li>
-            <a :href="SOURCE_CODE_URL" target="_blank" rel="noopener noreferrer">{{ $t('header.menu.sourceCode') }}</a>
+            <a :href="SOURCE_CODE_URL" target="_blank" rel="noopener noreferrer"><VIcon name="code" />{{ $t('header.menu.sourceCode') }}</a>
           </li>
-          <li><a @click="logout">{{ $t('common.signOut') }}</a></li>
+          <li class="divider-row"><div class="divider my-1" /></li>
+          <li><a @click="logout"><VIcon name="sign-out" />{{ $t('common.signOut') }}</a></li>
         </ul>
       </div>
     </div>
@@ -363,6 +349,43 @@ function openFook(): void {
 </template>
 
 <style scoped>
+/* Corporate design §7.1: the window ground with a hairline, no shadow; 44 px. */
+.v-topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 12px;
+  background: var(--v-bg);
+  border-bottom: 1px solid var(--v-separator);
+  color: var(--v-label);
+}
+.v-wordmark { font-size: 15px; font-weight: 600; letter-spacing: -0.02em; }
+.v-crumb-sep { display: inline-block; vertical-align: middle; margin: 0 4px; color: var(--v-label-tertiary); }
+.v-status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 4px; margin: 0 4px; }
+.v-status-connected { background: var(--v-success); }
+.v-status-idle { background: var(--v-label-tertiary); }
+.v-status-occupied { background: var(--v-danger); }
+.v-user-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--v-radius-control);
+  font-size: 13px;
+  cursor: pointer;
+}
+.v-user-button:hover { background: var(--v-fill); }
+.v-tenant { color: var(--v-label-secondary); }
+.v-user { font-weight: 500; }
+.v-user-chevron { color: var(--v-label-tertiary); }
+.v-menu {
+  background: var(--v-surface-raised);
+  border-radius: 10px;
+  box-shadow: var(--v-shadow-float);
+}
+.v-menu :deep(.v-icon) { color: var(--v-label-secondary); }
 .crumb-link {
   background: transparent;
   border: none;

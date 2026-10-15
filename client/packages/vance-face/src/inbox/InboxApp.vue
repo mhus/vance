@@ -847,7 +847,7 @@ const clientToolService = new InboxClientToolService({
 });
 
 const panelToggle = computed(() => ({
-  icon: '💬',
+  icon: 'chat' as const,
   title: chatPanelOpen.value ? t('inbox.chat.hide') : t('inbox.chat.show'),
   active: chatPanelOpen.value,
 }));

@@ -7,6 +7,7 @@ import {
   refreshAccessCookie,
 } from '@/platform';
 import { useHelp } from '@/composables/useHelp';
+import type { IconName } from '@vance/components';
 import EditorTopbar, { type Crumb } from './EditorTopbar.vue';
 import MarkdownView from './MarkdownView.vue';
 import NotificationToasts from '@/notification/NotificationToasts.vue';
@@ -90,7 +91,7 @@ interface Props {
    * editor's job: it owns its panel state and can watch
    * {@code v-model:help-open}.
    */
-  panelToggle?: { icon: string; title: string; active: boolean };
+  panelToggle?: { icon: IconName; title: string; active: boolean };
   /**
    * Renders the page title as a clickable element that emits the
    * {@code title-click} event. Editors with a sidebar typically wire

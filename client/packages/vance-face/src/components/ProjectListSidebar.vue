@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { VAlert, VButton, VEmptyState, VInput, VModal, VSelect } from '@vance/components';
+import { VAlert, VButton, VEmptyState, VIcon, VIconButton, VInput, VModal, VSelect } from '@vance/components';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type {
@@ -813,14 +813,14 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
       <span v-else />
       <div class="flex items-center gap-1">
         <slot name="header-extra" />
-        <VButton
+        <VIconButton
           v-if="editEnabled"
-          variant="ghost"
+          icon="add-folder"
           size="sm"
-          :title="t('common.projectPicker.addGroup')"
+          :label="t('common.projectPicker.addGroup')"
           @pointerdown.stop
           @click="openCreateGroup"
-        >📂+</VButton>
+        />
       </div>
     </div>
 
@@ -875,27 +875,27 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
                 : t('common.projectPicker.collapseGroup')"
               @pointerdown.stop
               @click.stop="toggleGroupCollapsed(block.group)"
-            >{{ isGroupCollapsed(block.group) ? '▸' : '▾' }}</button>
+            ><VIcon :name="isGroupCollapsed(block.group) ? 'forward' : 'expand'" /></button>
             <button
               type="button"
               class="flex-1 text-left px-2 py-1.5 rounded text-sm transition-colors flex items-center gap-2"
               :class="isGroupSelected(block.group)
-                ? 'bg-primary/10 text-primary font-medium'
-                : 'hover:bg-base-200'"
+                ? 'bg-(--v-selection) text-(--v-accent-text) font-medium'
+                : 'hover:bg-(--v-fill)'"
               @pointerdown.stop
               @click="selectGroup(block.group); emit('focus-main')"
             >
               <span class="flex-1 truncate">{{ block.group.title || block.group.name }}</span>
               <slot name="row-suffix" :kind="'group'" :item="block.group" />
             </button>
-            <button
+            <VIconButton
               v-if="editEnabled"
-              type="button"
-              class="text-xs opacity-50 hover:opacity-100 px-1"
-              :title="t('common.projectPicker.addProjectToGroup')"
+              icon="add"
+              size="sm"
+              :label="t('common.projectPicker.addProjectToGroup')"
               @pointerdown.stop
               @click="openCreateProject(block.group.name)"
-            >+</button>
+            />
           </div>
         </template>
         <!-- Label row. Both named groups and the ungrouped
@@ -905,7 +905,7 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
         <button
           v-else-if="block.groupLabel"
           type="button"
-          class="flex items-center justify-between px-2 py-1 rounded text-left hover:bg-base-200 transition-colors w-full"
+          class="flex items-center justify-between px-2 py-1 rounded text-left hover:bg-(--v-fill) transition-colors w-full"
           :title="isGroupCollapsed(block.group)
             ? t('common.projectPicker.expandGroup')
             : t('common.projectPicker.collapseGroup')"
@@ -913,9 +913,7 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
           @click="toggleGroupCollapsed(block.group)"
         >
           <span class="flex items-center gap-1.5 min-w-0">
-            <span class="text-xs opacity-50 w-3 inline-block text-center">{{
-              isGroupCollapsed(block.group) ? '▸' : '▾'
-            }}</span>
+            <VIcon :name="isGroupCollapsed(block.group) ? 'forward' : 'expand'" class="opacity-60" />
             <span class="text-xs opacity-50 truncate">{{ block.groupLabel }}</span>
           </span>
           <span
@@ -925,7 +923,7 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
             role="button"
             @pointerdown.stop
             @click.stop="openCreateProject(block.group?.name ?? null)"
-          >+</span>
+          ><VIcon name="add" /></span>
         </button>
         <button
           v-for="p in block.projects"
@@ -936,8 +934,8 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
           class="text-left px-2 py-1.5 rounded text-sm transition-colors flex items-center gap-2"
           :class="[
             isProjectSelected(p)
-              ? 'bg-primary/10 text-primary font-medium'
-              : 'hover:bg-base-200',
+              ? 'bg-(--v-selection) text-(--v-accent-text) font-medium'
+              : 'hover:bg-(--v-fill)',
             showGroupRows ? 'pl-6' : '',
             editEnabled ? 'cursor-grab active:cursor-grabbing' : '',
             draggingProject === p.name ? 'opacity-50' : '',
@@ -966,12 +964,13 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
 
       <VButton
         v-if="editEnabled && !loading && !error"
-        variant="ghost"
+        variant="plain"
         size="sm"
+        icon="add"
         block
         @pointerdown.stop
         @click="openCreateProject(null)"
-      >+ {{ t('common.projectPicker.addProject') }}</VButton>
+      >{{ t('common.projectPicker.addProject') }}</VButton>
     </template>
 
     <!-- ── Create-group modal ── -->
@@ -999,7 +998,7 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
       </form>
       <template #actions>
         <VButton
-          variant="ghost"
+          variant="secondary"
           :disabled="creating"
           @click="showCreateGroup = false"
         >{{ t('common.cancel') }}</VButton>
@@ -1118,7 +1117,7 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
       </form>
       <template #actions>
         <VButton
-          variant="ghost"
+          variant="secondary"
           :disabled="creating"
           @click="showCreateProject = false"
         >{{ t('common.cancel') }}</VButton>

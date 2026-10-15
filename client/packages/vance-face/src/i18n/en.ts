@@ -1055,6 +1055,8 @@ export default {
     title: 'Documents',
     loading: 'Loading documents…',
     totalItems: 'items',
+    pagePrevious: 'Previous page',
+    pageNext: 'Next page',
     empty: {
       noProjectHeadline: 'No project selected',
       noProjectBody: 'Pick a project on the left to view its documents.',
@@ -1082,9 +1084,9 @@ export default {
     },
     mountSearchDelegated:
       'Hits from the external source “{mount}” — they span the whole mount, not just this folder.',
-    newDocument: '+ New document',
+    newDocument: 'New document',
     /** Short form for the toolbar button, where the full label does not fit. */
-    addNew: '+ New',
+    addNew: 'New document',
     openCortex: 'Cortex',
     openCortexTitle: 'Open this project in the Cortex editor',
     dropHint: 'Drop files here to upload',

@@ -10,7 +10,7 @@
 import type { Component } from 'vue';
 import {
   AppWindow, Archive, ArchiveRestore, ArrowDown, ArrowLeft, ArrowLeftRight, ArrowRight, ArrowUp,
-  ArrowUpDown, Bell, Bot, Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
+  ArrowUpDown, Bell, Bot, Bug, Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
   CircleCheck, CircleHelp, CircleX, Code, Copy, Crop, Download, Ellipsis, ExternalLink, Eye, EyeOff,
   File, FileText, Folder, FolderOpen, FolderPlus, Globe, GripVertical, History, House, Image, Inbox,
   Info, KeyRound, LayoutGrid, Link, List, ListFilter, Loader, Lock, LockOpen, LogOut, MapPin,
@@ -18,6 +18,10 @@ import {
   Paperclip, Palette, Pause, Pencil, Pin, Play, Plus, Redo2, RotateCw, Save, Search, Send, Settings,
   Share, Sparkles, Square, SquareKanban, Star, Sun, Table, Tag, Terminal, TriangleAlert, Trash2,
   Undo2, Upload, User, Users, Volume2, Wrench, X,
+  // document kinds and file types
+  Braces, BrainCircuit, Contact, Database, FileArchive, FileAudio, FileCode, FileImage, FileJson,
+  FileQuestionMark, FileSpreadsheet, FileType, FileVideo, ListChecks, ListTree, Presentation, QrCode,
+  Waypoints,
 } from 'lucide-vue-next';
 
 export const ICONS = {
@@ -60,6 +64,7 @@ export const ICONS = {
   'maximize': Maximize2,
   'minimize': Minimize2,
   'sign-out': LogOut,
+  'report-bug': Bug,
 
   // navigation
   'back': ChevronLeft,
@@ -110,6 +115,30 @@ export const ICONS = {
   'help': CircleHelp,
   'light': Sun,
   'dark': Moon,
+
+  // document kinds (front-matter `kind`) and file types — DocumentIcon
+  'kind-list': ListChecks,
+  'kind-tree': ListTree,
+  'kind-text': FileText,
+  'kind-mindmap': BrainCircuit,
+  'kind-graph': Waypoints,
+  'kind-sheet': FileSpreadsheet,
+  'kind-slides': Presentation,
+  'kind-data': Database,
+  'kind-records': Contact,
+  'kind-qrcode': QrCode,
+  'kind-questions': FileQuestionMark,
+  'kind-schema': Braces,
+  'file-pdf': FileType,
+  'file-structured': FileJson,
+  'file-web': Globe,
+  'file-style': Palette,
+  'file-database': Database,
+  'file-image': FileImage,
+  'file-video': FileVideo,
+  'file-audio': FileAudio,
+  'file-archive': FileArchive,
+  'file-code': FileCode,
 
   // states
   'check': Check,

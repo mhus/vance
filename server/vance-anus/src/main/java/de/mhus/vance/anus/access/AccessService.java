@@ -1,6 +1,7 @@
 package de.mhus.vance.anus.access;
 
 import de.mhus.vance.shared.audit.AuditService;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
@@ -8,6 +9,7 @@ import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.DelegatingPasswordEncoder;
 import org.springframework.security.crypto.password.NoOpPasswordEncoder;
@@ -47,13 +49,15 @@ public class AccessService {
 
     private final AccessProperties properties;
     private final AuditService auditService;
+    private final Clock clock;
     private final PasswordEncoder encoder;
     /** The configured credential, or blank if none is set. Blank ⇒ login disabled. */
     private final String effectiveHash;
     /** {@code true} iff a non-blank credential was configured. */
     private final boolean configured;
 
-    @Nullable private volatile Instant authorizedUntil;
+    @Nullable
+    private volatile Instant authorizedUntil;
     /**
      * Marks the window as armed by {@code --sudo} rather than a password
      * login. Suppresses the "login disabled" warning (irrelevant in one-shot
@@ -62,9 +66,16 @@ public class AccessService {
      */
     private volatile boolean sudoMode;
 
+    @Autowired
     public AccessService(AccessProperties properties, AuditService auditService) {
+        this(properties, auditService, Clock.systemUTC());
+    }
+
+    /** Test seam: the window is measured against {@code clock}. */
+    AccessService(AccessProperties properties, AuditService auditService, Clock clock) {
         this.properties = properties;
         this.auditService = auditService;
+        this.clock = clock;
         this.encoder = buildEncoder();
         this.effectiveHash = StringUtils.defaultString(properties.getPasswordHash());
         this.configured = StringUtils.isNotBlank(this.effectiveHash);
@@ -162,7 +173,7 @@ public class AccessService {
      * read-only check, used by {@code StatusCommand}.
      */
     public synchronized boolean isAuthorized() {
-        return authorizedUntil != null && Instant.now().isBefore(authorizedUntil);
+        return authorizedUntil != null && clock.instant().isBefore(authorizedUntil);
     }
 
     /** Remaining time on the window, or {@link Duration#ZERO} if expired/not set. */
@@ -170,7 +181,7 @@ public class AccessService {
         if (authorizedUntil == null) {
             return Duration.ZERO;
         }
-        Duration left = Duration.between(Instant.now(), authorizedUntil);
+        Duration left = Duration.between(clock.instant(), authorizedUntil);
         return left.isNegative() ? Duration.ZERO : left;
     }
 
@@ -181,16 +192,15 @@ public class AccessService {
      * stays consistent.
      */
     public synchronized void requireAuthorized() {
-        if (authorizedUntil == null || !Instant.now().isBefore(authorizedUntil)) {
+        if (authorizedUntil == null || !clock.instant().isBefore(authorizedUntil)) {
             authorizedUntil = null;
-            throw new NotAuthorizedException(
-                    "Not authorized. Run 'login' first.");
+            throw new NotAuthorizedException("Not authorized. Run 'login' first.");
         }
         extendWindow();
     }
 
     private void extendWindow() {
-        authorizedUntil = Instant.now().plus(properties.getTimeout());
+        authorizedUntil = clock.instant().plus(properties.getTimeout());
     }
 
     /**

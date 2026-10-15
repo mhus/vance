@@ -7,7 +7,11 @@ import de.mhus.vance.shared.audit.AuditService;
 import de.mhus.vance.shared.audit.AuditServiceProperties;
 import de.mhus.vance.shared.metric.MetricService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,6 +23,31 @@ class AccessServiceTest {
     private AccessProperties props;
     private AccessService service;
     private AuditService auditService;
+    private MutableClock clock;
+
+    /** A clock the test moves by hand — window assertions must not race real time. */
+    private static final class MutableClock extends Clock {
+        private Instant now = Instant.parse("2026-01-01T00:00:00Z");
+
+        void advance(Duration d) {
+            now = now.plus(d);
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            return now;
+        }
+    }
 
     @BeforeEach
     void setUp() {
@@ -26,15 +55,15 @@ class AccessServiceTest {
         props.setPasswordHash(new BCryptPasswordEncoder(4).encode(SECRET));
         props.setTimeout(Duration.ofMinutes(5));
         auditService = noopAudit();
-        service = new AccessService(props, auditService);
+        clock = new MutableClock();
+        service = new AccessService(props, auditService, clock);
     }
 
     private static AuditService noopAudit() {
         // SYNC default + empty consumer list = no-op; @PostConstruct is
         // not invoked under direct construction, which is fine — mode is
         // already SYNC from the field initializer.
-        return new AuditService(new AuditServiceProperties(),
-                new MetricService(new SimpleMeterRegistry()), List.of());
+        return new AuditService(new AuditServiceProperties(), new MetricService(new SimpleMeterRegistry()), List.of());
     }
 
     @Test
@@ -124,16 +153,12 @@ class AccessServiceTest {
         props.setTimeout(Duration.ofSeconds(2));
         assertThat(service.login(SECRET)).isTrue();
 
-        Duration before = service.remaining();
-        // Walk the clock forward a tick by busy-waiting so 'remaining' shrinks.
-        sleepMillis(50);
-        service.requireAuthorized();
-        Duration after = service.remaining();
+        clock.advance(Duration.ofMillis(500));
+        assertThat(service.remaining()).isEqualTo(Duration.ofMillis(1500));
 
-        // Sliding window: after the call, remaining must be ≥ before — the
-        // call refreshed the deadline. Equality is allowed if both samples
-        // landed in the same millisecond.
-        assertThat(after).isGreaterThanOrEqualTo(before);
+        // Sliding window: the call re-arms the full timeout from "now".
+        service.requireAuthorized();
+        assertThat(service.remaining()).isEqualTo(Duration.ofSeconds(2));
     }
 
     @Test
@@ -145,8 +170,7 @@ class AccessServiceTest {
 
         assertThat(service.isAuthorized()).isFalse();
         assertThat(service.remaining()).isEqualTo(Duration.ZERO);
-        assertThatThrownBy(() -> service.requireAuthorized())
-                .isInstanceOf(NotAuthorizedException.class);
+        assertThatThrownBy(() -> service.requireAuthorized()).isInstanceOf(NotAuthorizedException.class);
     }
 
     @Test
@@ -189,8 +213,7 @@ class AccessServiceTest {
         assertThat(service.isAuthorized()).isFalse();
         // sudoMode is a one-way arm marker for the current window — once
         // logout drops the window, requireAuthorized() must throw again.
-        assertThatThrownBy(() -> service.requireAuthorized())
-                .isInstanceOf(NotAuthorizedException.class);
+        assertThatThrownBy(() -> service.requireAuthorized()).isInstanceOf(NotAuthorizedException.class);
     }
 
     @Test
@@ -199,18 +222,9 @@ class AccessServiceTest {
         service.login(SECRET);
         assertThat(service.isAuthorized()).isTrue();
 
-        sleepMillis(120);
+        clock.advance(Duration.ofMillis(50));
 
-        assertThatThrownBy(() -> service.requireAuthorized())
-                .isInstanceOf(NotAuthorizedException.class);
+        assertThatThrownBy(() -> service.requireAuthorized()).isInstanceOf(NotAuthorizedException.class);
         assertThat(service.isAuthorized()).isFalse();
-    }
-
-    private static void sleepMillis(long ms) {
-        try {
-            Thread.sleep(ms);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
     }
 }

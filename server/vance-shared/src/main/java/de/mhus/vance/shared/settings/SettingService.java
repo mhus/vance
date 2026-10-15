@@ -327,7 +327,7 @@ public class SettingService {
      *
      * <ul>
      *   <li>{@link #SCOPE_PROJECT} — settings owned by a project. The
-     *       {@code _vance} system project is the tenant-wide default
+     *       {@code _tenant} system project is the tenant-wide default
      *       layer; per-user {@code _user_<login>} projects carry user
      *       settings; user-created projects carry project settings.</li>
      *   <li>{@link #SCOPE_THINK_PROCESS} — settings owned by a single
@@ -337,7 +337,7 @@ public class SettingService {
      * <p>{@link #SCOPE_TENANT} and {@link #SCOPE_USER} remain as
      * <b>wire-format aliases</b> for the admin REST API; the admin
      * controller maps them to {@code SCOPE_PROJECT} with
-     * {@code _vance} / {@code _user_<login>} as the reference id.
+     * {@code _tenant} / {@code _user_<login>} as the reference id.
      */
     public static final String SCOPE_TENANT = "tenant";
 
@@ -347,7 +347,7 @@ public class SettingService {
 
     /**
      * Resolves {@code key} along the project cascade
-     * {@code think-process → <projectId>-project → _vance-project}
+     * {@code think-process → <projectId>-project → _tenant}
      * and returns the value of the innermost scope that has it set.
      * {@code null} if no scope defines the key. Password settings are
      * skipped (use {@link #getDecryptedPasswordCascade}).
@@ -377,7 +377,7 @@ public class SettingService {
 
     /**
      * Boolean cascade variant of {@link #getStringValueCascade}. Walks
-     * {@code think-process → project → _vance} and returns the first
+     * {@code think-process → project → _tenant} and returns the first
      * scope that defines {@code key}, parsed with the same
      * {@code true/1/yes/on} semantics as {@link #getBooleanValue}.
      * Falls back to {@code defaultValue} when no scope holds the key.
@@ -401,7 +401,7 @@ public class SettingService {
 
     /**
      * Cascade variant of {@link #getDecryptedPassword} — walks
-     * {@code think-process → project → _vance} and returns the
+     * {@code think-process → project → _tenant} and returns the
      * decrypted plaintext of the innermost layer that holds the key.
      * Returns {@code null} when nothing is set or decryption fails.
      */
@@ -421,7 +421,7 @@ public class SettingService {
     /**
      * Returns all settings whose key starts with {@code keyPrefix},
      * merged across the project cascade
-     * {@code _vance → project → think-process}. Inner scopes overwrite
+     * {@code _tenant → project → think-process}. Inner scopes overwrite
      * outer scopes per-key. Password settings are skipped.
      *
      * <p>The user-layer is <b>not</b> included — same rationale as
@@ -444,7 +444,7 @@ public class SettingService {
 
     /**
      * Cascade with explicit user-override:
-     * {@code think-process → _user_<userId> → <projectId>-project → _vance}.
+     * {@code think-process → _user_<userId> → <projectId>-project → _tenant}.
      *
      * <p>Use only when user-overrides are <b>desired</b> for this key —
      * e.g. a recipe with {@code useUserCredentials=true} that wants
@@ -477,7 +477,7 @@ public class SettingService {
 
     /**
      * Boolean variant of {@link #getStringValueUserProjectCascade} — same
-     * cascade ({@code think-process → _user_<userId> → project → _vance}),
+     * cascade ({@code think-process → _user_<userId> → project → _tenant}),
      * parsed with the {@code true/1/yes/on} semantics of
      * {@link #getBooleanValue}. Falls back to {@code defaultValue} when no
      * scope holds the key.
@@ -545,7 +545,7 @@ public class SettingService {
     /**
      * User-private setting with a tenant-wide default fallback. If the
      * user has the key set, return that; otherwise return the
-     * {@code _vance}-project value (or {@code null} if neither layer
+     * {@code _tenant}-project value (or {@code null} if neither layer
      * carries it). The {@code <projectId>}-layer is intentionally
      * skipped — that's the whole point of "user vs. project" being
      * separate cascades.

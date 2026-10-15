@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.trillian;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -36,11 +37,15 @@ class TrillianModelGateTest {
                 .doesNotThrowAnyException();
     }
 
+    private void setAt(String project, String value) {
+        when(settingService.getStringValue(
+                        "acme", SettingService.SCOPE_PROJECT, project, TrillianModelGate.ALLOWED_MODELS_KEY))
+                .thenReturn(value);
+    }
+
     @Test
     void aRestrictedAllowlist_refusesWithModelAndSettingNamed() {
-        when(settingService.getStringValueUserProjectCascade(
-                        "acme", "_trillian-void-1", "proj", null, TrillianModelGate.ALLOWED_MODELS_KEY))
-                .thenReturn("selfhosted:*");
+        setAt("_user__trillian-void-1", "selfhosted:*");
 
         assertThatThrownBy(
                         () -> gate.checkLoopModel("acme", "_trillian-void-1", "proj", "_user__trillian-void-1", null))
@@ -55,7 +60,39 @@ class TrillianModelGateTest {
 
         verify(resolver).resolveOrDefault("trillian-void:analyze", "acme", "_user__trillian-void-1", null);
         verify(settingService)
-                .getStringValueUserProjectCascade(
-                        "acme", "_trillian-void-1", "proj", null, TrillianModelGate.ALLOWED_MODELS_KEY);
+                .getStringValue("acme", SettingService.SCOPE_PROJECT, "proj", TrillianModelGate.ALLOWED_MODELS_KEY);
+    }
+
+    @Test
+    void cascade_hubWinsOverProjectAndTenant() {
+        setAt("_user__trillian-void-1", "cloud:*");
+        setAt("proj", "selfhosted:*");
+        setAt("_tenant", "selfhosted:*");
+
+        assertThat(gate.allowlistFor("acme", "_trillian-void-1", "proj")).isEqualTo("cloud:*");
+    }
+
+    @Test
+    void cascade_fallsThroughToTenant() {
+        setAt("_tenant", "selfhosted:*");
+
+        assertThat(gate.allowlistFor("acme", "_trillian-void-1", "proj")).isEqualTo("selfhosted:*");
+    }
+
+    @Test
+    void blankValue_isSkipped_soAnEmptiedFieldCannotLiftATenantRestriction() {
+        setAt("_user__trillian-void-1", "");
+        setAt("proj", "  ");
+        setAt("_tenant", "selfhosted:*");
+
+        assertThat(gate.allowlistFor("acme", "_trillian-void-1", "proj")).isEqualTo("selfhosted:*");
+    }
+
+    @Test
+    void explicitStar_liftsATenantRestrictionForOneProject() {
+        setAt("proj", "*");
+        setAt("_tenant", "selfhosted:*");
+
+        assertThat(gate.allowlistFor("acme", "_trillian-void-1", "proj")).isEqualTo("*");
     }
 }

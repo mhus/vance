@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
  * just has no working side.
  *
  * <p><b>Scope cascade.</b> Resolved like {@link TrillianModelGate}'s
- * allowlist: hub ({@code _user_<trillian>}) → project → {@code _vance},
+ * allowlist: hub ({@code _user_<trillian>}) → project → {@code _tenant},
  * read <b>without</b> the think-process scope so a {@code setting_set}
  * cannot switch its own gate back on. That makes the setting answer two
  * questions with one key: {@code false} in a Trillian's hub deactivates

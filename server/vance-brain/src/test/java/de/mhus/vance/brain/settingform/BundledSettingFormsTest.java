@@ -323,6 +323,34 @@ class BundledSettingFormsTest {
                 .isFalse();
     }
 
+    /**
+     * The two unattended-engine model gates share one form. The bound keys
+     * must stay in sync with the gates' constants, and the form must be
+     * offered in every scope — Trillian reads hub → project → _tenant,
+     * Wowbagger project → _tenant.
+     */
+    @Test
+    void agent_model_allowlists_bindToTheGateKeys() throws IOException {
+        ResolvedSettingForm f = loadBundled("agent-model-allowlists");
+
+        assertThat(f.fields())
+                .extracting(field -> field.getBindsTo().getKey())
+                .containsExactly(
+                        de.mhus.vance.brain.trillian.TrillianModelGate.ALLOWED_MODELS_KEY,
+                        de.mhus.vance.brain.wowbagger.WowbaggerPoolService.ALLOWED_MODELS_KEY);
+        assertThat(f.fields()).allSatisfy(field -> {
+            assertThat(field.getType()).isEqualTo("string");
+            assertThat(field.isRequired()).isFalse();
+        });
+
+        assertThat(f.defaultScope()).isEqualTo("tenant");
+        assertThat(SettingFormLoader.isAvailableIn(f.availableIn(), "_tenant")).isTrue();
+        assertThat(SettingFormLoader.isAvailableIn(f.availableIn(), "research-2026"))
+                .isTrue();
+        assertThat(SettingFormLoader.isAvailableIn(f.availableIn(), "_user_trillian-void-1"))
+                .isTrue();
+    }
+
     private ResolvedSettingForm loadBundled(String name) throws IOException {
         String resourcePath = "vance-defaults/_vance/setting_forms/" + name + ".yaml";
         String yaml = readClasspath(resourcePath);

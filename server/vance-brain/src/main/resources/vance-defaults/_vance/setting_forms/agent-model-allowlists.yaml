@@ -1,0 +1,59 @@
+title:
+  de: "Modell-Freigaben für autonome Agenten"
+  en: "Model allowlists for autonomous agents"
+description:
+  de: "Welche Modelle die beiden unbeaufsichtigt laufenden Engines
+       benutzen dürfen: der Trillian-User-Loop und die Wowbagger-Worker.
+       Format beider Felder: komma-separierte Muster mit `*`-Wildcards,
+       gematcht gegen `providerInstance:modelName` oder den nackten
+       Modellnamen, ohne Groß-/Kleinschreibung — z.B.
+       `ollama:*, cortecs:glm-*`. Die Freigaben gelten nur für neue
+       Starts; laufende Loops und Pools bleiben unberührt."
+  en: "Which models the two unattended engines may run on: the
+       Trillian user loop and the Wowbagger workers. Format of both
+       fields: comma-separated patterns with `*` wildcards, matched
+       case-insensitively against `providerInstance:modelName` or the
+       bare model name — e.g. `ollama:*, cortecs:glm-*`. The allowlists
+       gate new starts only; running loops and pools are not touched."
+icon: shield
+category: ai
+defaultScope: tenant
+# No availableIn → offered in every scope. Trillian reads its allowlist over
+# the Trillian's hub `_user_<trillian>` → project → `_tenant`; Wowbagger over
+# project → `_tenant`. The first layer with a non-blank value wins — values
+# are not merged, so a project or hub value replaces the tenant one; a blank
+# value is skipped by both gates.
+
+fields:
+
+  - name: trillianAllowedModels
+    type: string
+    label:
+      de: "Trillian — erlaubte Modelle für den User-Loop"
+      en: "Trillian — allowed models for the user loop"
+    help:
+      de: "Auf keiner Ebene gesetzt = alle Modelle erlaubt. Gesetzt im Hub
+           eines Trillians (`_user_<trillian>`) gilt die Liste nur für
+           diesen Trillian. Ein leerer Wert im Projekt oder Hub fällt auf
+           die nächste Ebene zurück; um eine Tenant-Einschränkung für ein
+           Projekt aufzuheben, dort ausdrücklich `*` eintragen."
+      en: "Unset on every layer = every model allowed. Set in a Trillian's hub
+           (`_user_<trillian>`) the list applies to that Trillian only.
+           An empty project or hub value falls back to the next layer; to
+           lift a tenant restriction for one project, set `*` there
+           explicitly."
+    bindsTo:
+      key: "trillian.allowed-models"
+
+  - name: wowbaggerAllowedModels
+    type: string
+    label:
+      de: "Wowbagger — erlaubte Worker-Modelle"
+      en: "Wowbagger — allowed worker models"
+    help:
+      de: "Fail-closed: Ohne Eintrag startet kein Wowbagger-Pool. Ein
+           leerer Wert im Projekt fällt auf den Tenant-Wert zurück."
+      en: "Fail-closed: without an entry no Wowbagger pool starts. An
+           empty project value falls back to the tenant value."
+    bindsTo:
+      key: "wowbagger.allowed-models"

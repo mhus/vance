@@ -101,7 +101,7 @@ defineExpose({ open: openDialog });
             type="button"
             class="edge-swatch"
             :class="{ 'edge-swatch--active': color === c.value }"
-            :style="c.value ? { background: c.value } : { background: '#ffffff' }"
+            :style="c.value ? { background: c.value } : { background: 'var(--v-surface)' }"
             :title="c.label"
             @click="color = c.value"
           >{{ c.value ? '' : '×' }}</button>
@@ -126,14 +126,14 @@ defineExpose({ open: openDialog });
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--v-border);
   cursor: pointer;
   font-size: 11px;
   line-height: 1;
-  color: #64748b;
+  color: var(--v-label-secondary);
 }
 .edge-swatch--active {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--v-accent);
   outline-offset: 1px;
 }
 </style>

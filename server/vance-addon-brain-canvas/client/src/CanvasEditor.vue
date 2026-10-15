@@ -700,20 +700,24 @@ async function addNode(type: 'text' | 'doc' | 'link' | 'group'): Promise<void> {
 </template>
 
 <style scoped>
+/* Vue Flow's own edge labels default to a white plate — follow the tokens
+   so they read in dark mode too (corporate-design §3). */
+:deep(.vue-flow__edge-textbg) { fill: var(--v-surface-raised); }
+:deep(.vue-flow__edge-text) { fill: var(--v-label); }
 .cv-panel {
   display: flex;
   align-items: center;
   gap: 4px;
   padding: 5px 7px;
-  background: #ffffff;
-  border: 1px solid #d1d5db;
+  background: var(--v-surface-raised);
+  border: 1px solid var(--v-border);
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--v-shadow-float);
 }
 .cv-panel-sep {
   width: 1px;
   height: 20px;
-  background: #e2e8f0;
+  background: var(--v-separator);
   margin: 0 2px;
 }
 

@@ -45,13 +45,30 @@ const props = defineProps<{
 
 const t = useT();
 
+// Stored values stay as they always were (documents keep "1"…"6" and these
+// hex text colours); only the RENDERING maps them onto the corporate-design
+// content palette and meaning tokens, which follow light and dark mode
+// (corporate-design.md §3.3/§3.4).
 const TEXT_COLORS = ['#111827', '#dc2626', '#2563eb', '#16a34a', '#ca8a04'];
+const TEXT_TOKEN: Record<string, string> = {
+  '#111827': 'var(--v-label)',
+  '#dc2626': 'var(--v-danger)',
+  '#2563eb': 'var(--v-accent-text)',
+  '#16a34a': 'var(--v-success)',
+  '#ca8a04': 'var(--v-warning)',
+};
 
 const COLORS = ['1', '2', '3', '4', '5', '6'];
-const PALETTE: Record<string, string> = {
-  '1': '#fecaca', '2': '#fed7aa', '3': '#fef08a',
-  '4': '#bbf7d0', '5': '#bfdbfe', '6': '#ddd6fe',
+const CONTENT: Record<string, string> = {
+  '1': 'pink', '2': 'orange', '3': 'yellow',
+  '4': 'green', '5': 'teal', '6': 'purple',
 };
+const PALETTE: Record<string, string> = Object.fromEntries(
+  COLORS.map((c) => [c, `var(--v-content-${CONTENT[c]}-bg)`]),
+);
+const PALETTE_FG: Record<string, string> = Object.fromEntries(
+  COLORS.map((c) => [c, `var(--v-content-${CONTENT[c]}-fg)`]),
+);
 const FONT_PX: Record<string, string> = { s: '11px', m: '13px', l: '16px' };
 
 const node = computed(() => props.data.node);
@@ -69,29 +86,30 @@ const POS: Record<string, Position> = {
 const bg = computed(() => {
   const c = node.value.color;
   if (c) return PALETTE[c] ?? c;
-  return kind.value === 'text' ? '#fef9c3' : '#ffffff';
+  return kind.value === 'text' ? 'var(--v-content-yellow-bg)' : 'var(--v-surface)';
 });
-
-function hexToRgba(hex: string, a: number): string {
-  const m = /^#?([0-9a-fA-F]{6})$/.exec(hex.trim());
-  if (!m) return hex;
-  const n = Number.parseInt(m[1], 16);
-  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
-}
 
 const groupColor = computed(() =>
   node.value.color ? (PALETTE[node.value.color] ?? node.value.color) : null,
 );
+// color-mix works for tokens and for a custom hex alike.
 const groupBg = computed(() =>
-  groupColor.value ? hexToRgba(groupColor.value, 0.18) : 'rgba(148, 163, 184, 0.08)',
+  `color-mix(in srgb, ${groupColor.value ?? 'var(--v-label-tertiary)'} ${groupColor.value ? 45 : 8}%, transparent)`,
 );
-const groupBorder = computed(() => groupColor.value ?? '#94a3b8');
+const groupBorder = computed(() =>
+  node.value.color && PALETTE_FG[node.value.color] ? PALETTE_FG[node.value.color] : (groupColor.value ?? 'var(--v-label-tertiary)'),
+);
+
+/** Default text colour: the content colour's ink on a coloured card, else the label. */
+const defaultText = computed(() =>
+  node.value.color && PALETTE_FG[node.value.color] ? PALETTE_FG[node.value.color] : 'var(--v-label)',
+);
 
 const textStyle = computed(() => ({
   fontSize: FONT_PX[node.value.fontSize ?? 'm'] ?? '13px',
   fontWeight: node.value.bold ? '700' : '400',
   fontStyle: node.value.italic ? 'italic' : 'normal',
-  color: node.value.textColor ?? '#1f2937',
+  color: node.value.textColor ? (TEXT_TOKEN[node.value.textColor] ?? node.value.textColor) : defaultText.value,
 }));
 
 function basename(uri: string): string {
@@ -379,7 +397,7 @@ function copyLink(): void {
         <button
           class="cv-swatch"
           :title="t('canvas.node.noColour')"
-          style="background: #ffffff"
+          style="background: var(--v-surface)"
           :class="{ 'cv-active': !node.color }"
           @click="patch({ color: undefined })"
         ><VIcon name="close" class="mx-auto" /></button>
@@ -405,7 +423,7 @@ function copyLink(): void {
             v-for="tc in TEXT_COLORS"
             :key="tc"
             class="cv-tcolor"
-            :style="{ color: tc }"
+            :style="{ color: TEXT_TOKEN[tc] ?? tc }"
             :class="{ 'cv-active': node.textColor === tc }"
             :title="t('canvas.node.textColour')"
             @click="patch({ textColor: tc })"
@@ -438,7 +456,7 @@ function copyLink(): void {
 
     <NodeResizer
       v-if="editable"
-      color="#111827"
+      color="var(--v-accent)"
       :min-width="120"
       :min-height="40"
       :is-visible="selected === true"
@@ -567,7 +585,7 @@ function copyLink(): void {
   width: 100%;
   box-sizing: border-box;
   line-height: 1.35;
-  color: #1f2937;
+  color: var(--v-label);
 }
 .canvas-node--selected {
   /* Theme-aware neutral (matches the workpage active-block ring): dark-grey in
@@ -580,11 +598,11 @@ function copyLink(): void {
 }
 /* Recolour VueFlow's default (blue) resize border/handles to black. */
 :deep(.vue-flow__resize-control.line) {
-  border-color: #111827;
+  border-color: var(--v-label);
 }
 :deep(.vue-flow__resize-control.handle) {
-  background: #111827;
-  border-color: #111827;
+  background: var(--v-label);
+  border-color: var(--v-label);
 }
 
 .canvas-node--text {
@@ -604,9 +622,9 @@ function copyLink(): void {
   z-index: 5;
   padding: 0 4px;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.75);
+  background: color-mix(in srgb, var(--v-surface) 80%, transparent);
   font-size: 9px;
-  color: #475569;
+  color: var(--v-label-secondary);
   pointer-events: none;
 }
 .canvas-note-edit {
@@ -622,7 +640,7 @@ function copyLink(): void {
 
 .canvas-node--doc,
 .canvas-node--link {
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--v-border);
   border-radius: 8px;
   padding: 8px 10px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
@@ -637,15 +655,15 @@ function copyLink(): void {
   width: 20px;
   height: 20px;
   border-radius: 5px;
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px solid #d1d5db;
+  background: color-mix(in srgb, var(--v-surface-raised) 90%, transparent);
+  border: 1px solid var(--v-border);
   cursor: pointer;
   font-size: 12px;
   line-height: 1;
-  color: #1f2937;
+  color: var(--v-label);
 }
 .canvas-embed-open:hover {
-  background: #ffffff;
+  background: var(--v-surface);
 }
 .canvas-embed-host {
   height: 100%;
@@ -693,24 +711,24 @@ function copyLink(): void {
   cursor: pointer;
   font-size: 12px;
   line-height: 1;
-  color: #6b7280;
+  color: var(--v-label-secondary);
   transition: background 0.15s ease;
 }
 .canvas-card-copy-btn:hover {
-  background: #f1f5f9;
-  color: #1f2937;
-  border-color: #cbd5e1;
+  background: var(--v-fill);
+  color: var(--v-label);
+  border-color: var(--v-border);
 }
 .canvas-card-sub {
   margin-top: 2px;
   font-size: 10px;
-  color: #6b7280;
+  color: var(--v-label-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .canvas-card-error {
-  color: #b91c1c;
+  color: var(--v-danger);
   white-space: normal;
 }
 /* Anchor and button forms of the link title must look identical — which of the
@@ -724,7 +742,7 @@ function copyLink(): void {
   border: 0;
   padding: 0;
   font: inherit;
-  color: #1d4ed8;
+  color: var(--v-accent-text);
   cursor: pointer;
   text-decoration: none;
   overflow: hidden;
@@ -736,26 +754,26 @@ function copyLink(): void {
 }
 .canvas-link-title-input {
   width: 100%;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--v-border);
   border-radius: 3px;
   padding: 1px 4px;
   font-size: 13px;
   font-weight: 600;
-  background: #ffffff;
-  color: #1f2937;
+  background: var(--v-surface);
+  color: var(--v-label);
 }
 
 .canvas-node--group {
-  border: 2px dashed #94a3b8;
+  border: 2px dashed var(--v-label-tertiary);
   border-radius: 10px;
-  background: rgba(148, 163, 184, 0.08);
+  background: color-mix(in srgb, var(--v-label-tertiary) 8%, transparent);
   font-size: 12px;
   height: 100%;
 }
 .canvas-group-label {
   padding: 4px 8px;
   font-weight: 600;
-  color: #475569;
+  color: var(--v-label-secondary);
 }
 
 /* Connectors */
@@ -764,8 +782,8 @@ function copyLink(): void {
   height: 5px;
   min-width: 5px;
   min-height: 5px;
-  background: #94a3b8;
-  border: 1px solid #ffffff;
+  background: var(--v-label-tertiary);
+  border: 1px solid var(--v-surface);
 }
 .cv-handle--hidden {
   opacity: 0;
@@ -778,8 +796,8 @@ function copyLink(): void {
   align-items: center;
   gap: 3px;
   padding: 4px 6px;
-  background: #ffffff;
-  border: 1px solid #d1d5db;
+  background: var(--v-surface);
+  border: 1px solid var(--v-border);
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
 }
@@ -787,11 +805,11 @@ function copyLink(): void {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--v-border);
   cursor: pointer;
   font-size: 10px;
   line-height: 1;
-  color: #64748b;
+  color: var(--v-label-secondary);
 }
 .cv-btn {
   min-width: 22px;
@@ -802,10 +820,10 @@ function copyLink(): void {
   background: transparent;
   cursor: pointer;
   font-size: 12px;
-  color: #1f2937;
+  color: var(--v-label);
 }
 .cv-btn:hover {
-  background: #f1f5f9;
+  background: var(--v-fill);
 }
 .cv-tcolor {
   min-width: 20px;
@@ -818,24 +836,24 @@ function copyLink(): void {
   font-size: 13px;
 }
 .cv-tcolor:hover {
-  background: #f1f5f9;
+  background: var(--v-fill);
 }
 .cv-active {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--v-accent);
   outline-offset: 0;
 }
 .cv-btn.cv-active {
   outline: none;
-  background: #dbeafe;
-  border-color: #93c5fd;
+  background: var(--v-selection);
+  border-color: var(--v-accent);
 }
 .cv-danger:hover {
-  background: #fee2e2;
+  background: color-mix(in srgb, var(--v-danger) 12%, transparent);
 }
 .cv-sep {
   width: 1px;
   height: 18px;
-  background: #e2e8f0;
+  background: var(--v-separator);
   margin: 0 2px;
 }
 </style>

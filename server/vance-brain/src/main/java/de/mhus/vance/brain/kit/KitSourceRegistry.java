@@ -94,7 +94,13 @@ public class KitSourceRegistry {
      *
      * <p>A replacement that brings no keys of its own keeps the bundled
      * ones — overriding the default library to change its policy or title
-     * must not quietly leave it with nothing to verify against.
+     * must not quietly leave it with nothing to verify against. A ring the
+     * tenant does write replaces the bundled one completely and for as long
+     * as it stands, including keys a later release bundles (spec
+     * {@code kits.md} §12.1, limits of the compromise path).
+     *
+     * @throws KitException when {@code kit-sources.yaml} is malformed — see
+     *         {@link #readDocument}
      */
     public List<KitSourceDto> configuredSources(String tenantId) {
         List<KitSourceDto> sources = new ArrayList<>(readDocument(tenantId));

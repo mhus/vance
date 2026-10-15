@@ -22,6 +22,7 @@ import de.mhus.vance.api.kit.KitSourceType;
 import de.mhus.vance.api.kit.KitSourcesDto;
 import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.shared.kit.KitException;
+import java.security.GeneralSecurityException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -31,6 +32,7 @@ import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.yaml.snakeyaml.DumperOptions;
+import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 
 /**
@@ -581,7 +583,11 @@ public final class KitYamlMapper {
     @SuppressWarnings("unchecked")
     public static KitSourcesDto parseSources(String yamlText) {
         final String label = "kit-sources.yaml";
-        Map<String, Object> map = loadMap(yamlText, label);
+        // Strict about duplicate keys, unlike the other kit files: a second
+        // `publicKeys` entry under the same id (or a second `signature:`)
+        // would otherwise silently replace the first, and which key a source
+        // trusts is not something to leave to the order of lines.
+        Map<String, Object> map = loadMap(yamlText, label, false);
 
         List<KitSourceDto> sources = new ArrayList<>();
         Object raw = map.get("sources");
@@ -652,6 +658,12 @@ public final class KitYamlMapper {
      * The key ring of a source: key id → PEM public key. Null when absent,
      * so the default library's fallback to its bundled keys can tell "said
      * nothing" from a ring — an empty map is refused for the same reason.
+     *
+     * <p>Every key is parsed here, not only when a kit is verified: a broken
+     * PEM found at verification time can only be reported as a failed
+     * signature ("wrong key, or the signature was altered"), which sends the
+     * user looking at the kit instead of at this file. Two ids that are equal
+     * after trimming are refused for the same reason duplicate YAML keys are.
      */
     private static @Nullable Map<String, String> parsePublicKeys(@Nullable Object raw, String label) {
         if (raw == null) return null;
@@ -667,7 +679,19 @@ public final class KitYamlMapper {
                 throw new KitException(
                         label + ": 'publicKeys' entry '" + entry.getKey() + "' must map a key id to a PEM public key");
             }
-            keys.put(keyId.trim(), pem);
+            String id = keyId.trim();
+            if (keys.containsKey(id)) {
+                throw new KitException(label + ": 'publicKeys' names key id '" + id + "' more than once");
+            }
+            try {
+                KitSignature.parsePublicKey(pem);
+            } catch (GeneralSecurityException | IllegalArgumentException e) {
+                throw new KitException(
+                        label + ": 'publicKeys' entry '" + id + "' is not a PEM-encoded " + KitSignature.ALGORITHM
+                                + " public key (" + e.getMessage() + ")",
+                        e);
+            }
+            keys.put(id, pem);
         }
         return keys;
     }
@@ -1267,9 +1291,21 @@ public final class KitYamlMapper {
 
     // ──────────────────── helpers ────────────────────
 
-    @SuppressWarnings("unchecked")
     private static Map<String, Object> loadMap(String yamlText, String label) {
-        Yaml yaml = new Yaml();
+        return loadMap(yamlText, label, true);
+    }
+
+    /**
+     * @param allowDuplicateKeys SnakeYAML's default ({@code true}) lets a
+     *        repeated key silently replace the earlier one; the kit files
+     *        have always been read that way, so only callers that need to
+     *        refuse it pass {@code false}
+     */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> loadMap(String yamlText, String label, boolean allowDuplicateKeys) {
+        LoaderOptions options = new LoaderOptions();
+        options.setAllowDuplicateKeys(allowDuplicateKeys);
+        Yaml yaml = new Yaml(options);
         Object parsed;
         try {
             parsed = yaml.load(yamlText);

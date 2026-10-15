@@ -126,7 +126,11 @@ public class StoreAddonController {
             HttpServletRequest request) {
 
         personalActor(tenant, projectId, request);
-        return overview.overview(tenant, projectId, actor(request));
+        try {
+            return overview.overview(tenant, projectId, actor(request));
+        } catch (KitException e) {
+            throw sourcesError(e);
+        }
     }
 
     /**
@@ -613,7 +617,7 @@ public class StoreAddonController {
 
         String actor = personalActor(tenant, projectId, request);
         List<Connection> out = new ArrayList<>();
-        for (KitSourceDto source : sources.configuredSources(tenant)) {
+        for (KitSourceDto source : configuredSources(tenant)) {
             if (source.getType() != KitSourceType.LIBRARY) continue;
             String token = credentials
                     .resolve(tenant, projectId, actor, source.getUrl(), null)
@@ -661,7 +665,7 @@ public class StoreAddonController {
         String actor = personalActor(tenant, projectId, request);
         List<String> operated = new ArrayList<>();
         List<String> developed = new ArrayList<>();
-        for (KitSourceDto source : sources.configuredSources(tenant)) {
+        for (KitSourceDto source : configuredSources(tenant)) {
             if (source.getType() != KitSourceType.LIBRARY) continue;
             String token = credentials
                     .resolve(tenant, projectId, actor, source.getUrl(), null)
@@ -1308,12 +1312,30 @@ public class StoreAddonController {
      * one.
      */
     private KitSourceDto library(String tenantId, String sourceId) {
-        return sources.configuredSources(tenantId).stream()
+        return configuredSources(tenantId).stream()
                 .filter(source -> source.getId().equals(sourceId))
                 .filter(source -> source.getType() == KitSourceType.LIBRARY)
                 .findFirst()
                 .orElseThrow(() ->
                         new ResponseStatusException(HttpStatus.NOT_FOUND, "no library source '" + sourceId + "'"));
+    }
+
+    /**
+     * The tenant's configured sources, with a malformed {@code kit-sources.yaml}
+     * as a readable 400 instead of a 500 — the message names what is wrong in
+     * the file, and this screen is where somebody reads it.
+     */
+    private List<KitSourceDto> configuredSources(String tenantId) {
+        try {
+            return sources.configuredSources(tenantId);
+        } catch (KitException e) {
+            throw sourcesError(e);
+        }
+    }
+
+    private static ResponseStatusException sourcesError(KitException e) {
+        log.warn("StoreAddonController: kit sources unreadable: {}", e.getMessage());
+        return new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
     }
 
     /** {@code library:1.2.0} → {@code 1.2.0}; a git commit hash is no version. */

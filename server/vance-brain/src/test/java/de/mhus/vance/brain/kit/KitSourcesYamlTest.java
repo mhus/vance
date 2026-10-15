@@ -18,6 +18,12 @@ import org.junit.jupiter.api.Test;
  */
 class KitSourcesYamlTest {
 
+    private static final String TEST_KEY_BASE64 = "MCowBQYDK2VwAyEAcqV6ocaiL3YO/RCUfea1PGn7T+Wyz/5HjhrwFqzWOmw=";
+
+    /** A real Ed25519 public key — the parser checks every key it is given. */
+    private static final String TEST_KEY =
+            "-----BEGIN PUBLIC KEY-----\n" + TEST_KEY_BASE64 + "\n-----END PUBLIC KEY-----\n";
+
     @Test
     void sources_fullEntry_parses() {
         KitSourcesDto parsed = KitYamlMapper.parseSources("""
@@ -29,7 +35,7 @@ class KitSourcesYamlTest {
                     publicKeys:
                       vancetope-library-2026: |
                         -----BEGIN PUBLIC KEY-----
-                        abc
+                        MCowBQYDK2VwAyEAcqV6ocaiL3YO/RCUfea1PGn7T+Wyz/5HjhrwFqzWOmw=
                         -----END PUBLIC KEY-----
                   - id: house-kits
                     type: git
@@ -190,6 +196,73 @@ class KitSourcesYamlTest {
     }
 
     @Test
+    void sources_brokenPem_isRefusedAtParseTime() {
+        // Found only at verification, a broken key reads as "wrong key, or
+        // the signature was altered" — and sends the user to the kit
+        // instead of to this file.
+        assertThatThrownBy(() -> KitYamlMapper.parseSources("""
+                sources:
+                  - id: lib
+                    type: library
+                    url: https://library.example
+                    publicKeys:
+                      lib-2026: |
+                        -----BEGIN PUBLIC KEY-----
+                        abc
+                        -----END PUBLIC KEY-----
+                """))
+                .isInstanceOf(KitException.class)
+                .hasMessageContaining("lib-2026")
+                .hasMessageContaining("PEM");
+    }
+
+    @Test
+    void sources_keyIdsEqualAfterTrim_areRefused() {
+        assertThatThrownBy(() -> KitYamlMapper.parseSources("""
+                sources:
+                  - id: lib
+                    type: library
+                    url: https://library.example
+                    publicKeys:
+                      "lib-2026": |
+                        -----BEGIN PUBLIC KEY-----
+                        %1$s
+                        -----END PUBLIC KEY-----
+                      " lib-2026 ": |
+                        -----BEGIN PUBLIC KEY-----
+                        %1$s
+                        -----END PUBLIC KEY-----
+                """.formatted(TEST_KEY_BASE64)))
+                .isInstanceOf(KitException.class)
+                .hasMessageContaining("lib-2026")
+                .hasMessageContaining("more than once");
+    }
+
+    @Test
+    void sources_duplicateYamlKey_isRefusedNotOverwritten() {
+        // SnakeYAML's default keeps the last of two equal keys. For a key
+        // ring that means the line further down silently decides which key
+        // is trusted.
+        assertThatThrownBy(() -> KitYamlMapper.parseSources("""
+                sources:
+                  - id: lib
+                    type: library
+                    url: https://library.example
+                    publicKeys:
+                      lib-2026: |
+                        -----BEGIN PUBLIC KEY-----
+                        %1$s
+                        -----END PUBLIC KEY-----
+                      lib-2026: |
+                        -----BEGIN PUBLIC KEY-----
+                        %1$s
+                        -----END PUBLIC KEY-----
+                """.formatted(TEST_KEY_BASE64)))
+                .isInstanceOf(KitException.class)
+                .hasMessageContaining("duplicate key");
+    }
+
+    @Test
     void sources_roundTrip() {
         KitSourcesDto original = KitSourcesDto.builder()
                 .sources(List.of(KitSourceDto.builder()
@@ -197,7 +270,7 @@ class KitSourcesYamlTest {
                         .type(KitSourceType.LIBRARY)
                         .url("https://library.example")
                         .signature(KitSignaturePolicy.WARN)
-                        .publicKeys(Map.of("lib-2026", "-----BEGIN PUBLIC KEY-----\nabc\n-----END PUBLIC KEY-----\n"))
+                        .publicKeys(Map.of("lib-2026", TEST_KEY))
                         .build()))
                 .build();
         KitSourcesDto parsed = KitYamlMapper.parseSources(KitYamlMapper.writeSources(original));

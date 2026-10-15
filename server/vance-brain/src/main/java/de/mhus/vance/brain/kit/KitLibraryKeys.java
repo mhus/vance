@@ -17,7 +17,11 @@ import java.util.Map;
  * brains that are a release or two behind keep installing; a later
  * release drops the retired one. A compromised key cannot wait for that —
  * a tenant replaces the ring in {@code kit-sources.yaml} right away,
- * which wins over this one.
+ * which wins over this one — for as long as that entry stands, so it
+ * also hides keys later releases add here (limits of that path: §12.1).
+ *
+ * <p>The id is shared with the delivery side's default
+ * {@code vance.delivery.signing-key-id}; {@code KitLibraryKeysTest} pins it.
  */
 public final class KitLibraryKeys {
 

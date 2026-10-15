@@ -44,9 +44,8 @@ public class KitLibraryService {
     private final KitRecordStore recordStore;
     private final KitStoreCredentials storeCredentials;
     private final ObjectMapper json = JsonMapper.builder().build();
-    private final HttpClient http = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10))
-            .build();
+    private final HttpClient http =
+            HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
 
     /**
      * Everything the tenant's libraries offer, marked up with what is
@@ -54,30 +53,38 @@ public class KitLibraryService {
      *
      * <p>A library that cannot be reached contributes nothing and a
      * warning — one unreachable service must not blank out the others.
+     *
+     * <p>A malformed {@code kit-sources.yaml} is different: it is not one
+     * library failing but the list of libraries being unknown, so it is
+     * thrown as the {@link KitException} {@link KitSourceRegistry} raises,
+     * with its message naming the file. Swallowing it into an empty list
+     * would read as "no libraries configured" — the same silent widening
+     * the registry refuses. Callers turn it into an answer the user can act
+     * on (the admin endpoint into a 400 carrying the message).
+     *
+     * @throws KitException when the tenant's kit-sources.yaml is malformed
      */
-    public List<KitLibraryEntryDto> list(
-            String tenantId, String projectId, @Nullable String userId) {
+    public List<KitLibraryEntryDto> list(String tenantId, String projectId, @Nullable String userId) {
+        List<KitSourceDto> configured = sources.configuredSources(tenantId);
         Set<String> installed = installedKeys(tenantId, projectId);
         List<KitLibraryEntryDto> out = new ArrayList<>();
-        for (KitSourceDto source : sources.configuredSources(tenantId)) {
+        for (KitSourceDto source : configured) {
             if (source.getType() != KitSourceType.LIBRARY) continue;
-            // Per source, not once for the caller: someone may be signed in
-            // to one library and not another, and a token is only ever valid
-            // at the library it was issued by.
-            KitAccess access = storeCredentials.resolve(
-                    tenantId, projectId, userId, source.getUrl(), null);
             try {
+                // Per source, not once for the caller: someone may be signed in
+                // to one library and not another, and a token is only ever valid
+                // at the library it was issued by. Inside the try for the same
+                // reason as the fetch: one library's problem stays its own.
+                KitAccess access = storeCredentials.resolve(tenantId, projectId, userId, source.getUrl(), null);
                 out.addAll(fetch(source, access.token(), installed));
             } catch (KitException e) {
-                log.warn("KitLibraryService: library '{}' is not listable: {}",
-                        source.getId(), e.getMessage());
+                log.warn("KitLibraryService: library '{}' is not listable: {}", source.getId(), e.getMessage());
             }
         }
         return out;
     }
 
-    private List<KitLibraryEntryDto> fetch(
-            KitSourceDto source, @Nullable String token, Set<String> installed) {
+    private List<KitLibraryEntryDto> fetch(KitSourceDto source, @Nullable String token, Set<String> installed) {
         if (token == null || token.isBlank()) {
             throw new KitException("no token for library '" + source.getId() + "'");
         }
@@ -88,7 +95,8 @@ public class KitLibraryService {
                     HttpRequest.newBuilder(uri)
                             .timeout(TIMEOUT)
                             .header("Authorization", "Bearer " + token)
-                            .GET().build(),
+                            .GET()
+                            .build(),
                     HttpResponse.BodyHandlers.ofString());
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
@@ -100,8 +108,8 @@ public class KitLibraryService {
 
         List<RemoteEntry> remote;
         try {
-            remote = json.readValue(response.body(),
-                    json.getTypeFactory().constructCollectionType(List.class, RemoteEntry.class));
+            remote = json.readValue(
+                    response.body(), json.getTypeFactory().constructCollectionType(List.class, RemoteEntry.class));
         } catch (RuntimeException e) {
             throw new KitException("returned something that is not a kit list", e);
         }
@@ -121,8 +129,7 @@ public class KitLibraryService {
                     .version(entry.version())
                     .licenseExpiresAt(entry.licenseExpiresAt())
                     .downloadable(entry.downloadable())
-                    .installed(installed.contains(
-                            KitRecordId.hash(source.getUrl(), path)))
+                    .installed(installed.contains(KitRecordId.hash(source.getUrl(), path)))
                     .build());
         }
         return out;

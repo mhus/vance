@@ -51,9 +51,15 @@ public class KitSourceDto {
      * with either verifies. A kit names its key, and only that key is
      * tried.
      *
-     * <p>Null or empty falls back to the keys bundled for the default
-     * library — which is only meaningful for that one, so any other
-     * source enforcing signatures has to bring its own.
+     * <p>Null means "no ring configured". Only an entry whose {@code url}
+     * is the default library's ({@code https://library.vancetope.com},
+     * compared ignoring case and trailing slashes) then gets the keys
+     * bundled with the release; every other source has no keys at all, and
+     * a signed kit from it fails verification as {@code NO_KEY} (refused
+     * under {@code required}, let through and marked under {@code warn}).
+     * A ring that is present replaces the bundled keys
+     * entirely — also for the default library. An empty map is not a way
+     * to say "none": the parser refuses it.
      */
     private @Nullable Map<String, String> publicKeys;
 

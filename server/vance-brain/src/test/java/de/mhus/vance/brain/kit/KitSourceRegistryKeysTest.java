@@ -55,6 +55,28 @@ class KitSourceRegistryKeysTest {
     }
 
     @Test
+    void defaultLibrary_overriddenUnderAnotherSpelling_keepsTheBundledKeys() {
+        // Case and trailing slashes do not change where a url points. An
+        // override spelled differently is still the default library — it
+        // must neither lose the bundled keys nor sit beside a second,
+        // built-in entry for the same host.
+        givenSources("""
+                sources:
+                  - id: library
+                    type: library
+                    url: HTTPS://Library.Vancetope.com//
+                    title: Our library
+                """);
+
+        assertThat(registry.resolve(TENANT, KitSourceRegistry.DEFAULT_LIBRARY_URL + "/kits/security")
+                        .getPublicKeys())
+                .isEqualTo(KitLibraryKeys.bundled());
+        assertThat(registry.configuredSources(TENANT))
+                .singleElement()
+                .satisfies(source -> assertThat(source.getTitle()).isEqualTo("Our library"));
+    }
+
+    @Test
     void defaultLibrary_overriddenWithARing_trustsOnlyThatRing() {
         givenSources("""
                 sources:
@@ -64,7 +86,7 @@ class KitSourceRegistryKeysTest {
                     publicKeys:
                       replacement-key: |
                         -----BEGIN PUBLIC KEY-----
-                        abc
+                        MCowBQYDK2VwAyEAcqV6ocaiL3YO/RCUfea1PGn7T+Wyz/5HjhrwFqzWOmw=
                         -----END PUBLIC KEY-----
                 """);
 

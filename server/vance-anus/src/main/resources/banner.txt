@@ -3,3 +3,7 @@
 \ \  __ \  \ \ \-.  \  \ \ \_\ \  \ \___  \
  \ \_\ \_\  \ \_\\"\_\  \ \_____\  \/\_____\
   \/_/\/_/   \/_/ \/_/   \/_____/   \/_____/
+
+Vance Anus
+Copyright (c) 2024-present Mike Hummel. Licensed under the GNU AGPLv3, without warranty.
+Source: https://github.com/mhus/vance

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Client surface of the Finance Brain addon. Registers the kind: finance-tree editor (hierarchical income/expense model) rendered in Cortex.",
-  "license": "SEE LICENSE IN ../../../../client/LICENSE.txt",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./dist/index.d.ts",

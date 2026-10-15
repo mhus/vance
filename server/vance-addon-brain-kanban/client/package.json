@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Client surface of the Kanban Brain addon — TypeScript DTOs (generated from Java), REST helpers and the Vue board editor. Federation remote consumed by vance-face.",
-  "license": "SEE LICENSE IN ../../../../client/LICENSE.txt",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./dist/index.d.ts",

@@ -5,4 +5,5 @@
   \/_/     \/_____/   \/_____/     \/_/
 
 Vancetope
-Copyright (c) 2024-present, Mike Hummel. All rights reserved.
+Copyright (c) 2024-present Mike Hummel. Licensed under the GNU AGPLv3, without warranty.
+Source: https://github.com/mhus/vance

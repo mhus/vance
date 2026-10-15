@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Vance Web-UI: Vue 3 + Vite + Tailwind + DaisyUI multi-page app. One HTML entry per editor.",
-  "license": "SEE LICENSE IN ../../LICENSE.txt",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
     "dev": "vite",

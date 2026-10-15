@@ -72,5 +72,5 @@ much slower.
 
 ## Licence
 
-Business Source License 1.1, converting to AGPL v3 on 2029-06-23. The
-full text is in `LICENSE.txt` at the root of this archive.
+GNU Affero General Public License v3.0 (`AGPL-3.0-only`). The full text
+is in `LICENSE.txt` at the root of this archive.

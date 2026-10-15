@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Client surface of the Links addon. Registers the application:links app kind — a grouped list of external URLs rendered as preview cards; picture and teaser come from the brain's link-preview proxy unless the reader typed their own.",
-  "license": "SEE LICENSE IN ../../../../client/LICENSE.txt",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./dist/index.d.ts",

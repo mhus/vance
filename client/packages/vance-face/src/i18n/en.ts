@@ -503,6 +503,7 @@ export default {
       switchAccount: 'Switch account',
       manageAccounts: 'Manage accounts',
       addAccount: 'Add account',
+      sourceCode: 'Source code (AGPLv3)',
     },
     help: {
       toggle: 'Toggle help',
@@ -515,6 +516,8 @@ export default {
   },
 
   login: {
+    license: 'Open source under the GNU AGPLv3',
+    sourceCode: 'Source code',
     autoLoginNotice: 'You have been signed in',
     invalidCredentials: 'Invalid credentials.',
     loginFailed: 'Login failed.',

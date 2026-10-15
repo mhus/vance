@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "age-encrypted documents, client side: thin wrapper around age-encryption (typage) for X25519 identities, passphrases and ASCII armor. No crypto of its own — the server never sees plaintext. Mirrors AgeDocumentKind on the Java side.",
-  "license": "SEE LICENSE IN ../../LICENSE.txt",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",

@@ -45,6 +45,7 @@ import { setUiLocale } from '@/i18n';
 // is imported precisely FOR its side effect), so the import dodges it here.
 import { VAlert, VButton, VCard, VCheckbox, VInput } from '@vance/components';
 import VanceLogo from '@/components/VanceLogo.vue';
+import { SOURCE_CODE_URL } from '@/platform/sourceCode';
 import PanicEasterEgg from './PanicEasterEgg.vue';
 
 const { t } = useI18n();
@@ -347,6 +348,10 @@ function readNextParam(): string | null {
           </VButton>
         </form>
       </VCard>
+      <p class="mt-2 text-xs opacity-60">
+        {{ $t('login.license') }} ·
+        <a :href="SOURCE_CODE_URL" target="_blank" rel="noopener noreferrer" class="underline">{{ $t('login.sourceCode') }}</a>
+      </p>
     </div>
   </div>
 </template>

@@ -4,7 +4,7 @@
 
 **A personal project.** Vancetope is something I built to develop LLM agents — and to shape them until I could actually work productively with them. Over time everything I found interesting went in, plus a few things I think others might get something out of.
 
-It's a project, not a product — no support contract, no roadmap promises. The source is public: read it, run it, take it for a spin. It's source-available, not classic open source, and where it goes from here I'm keeping open.
+It's a project, not a product — no support contract, no roadmap promises. The source is public: read it, run it, take it for a spin. It's open source under the GNU AGPLv3.
 
 > [!WARNING]
 > **Beta.** Vancetope is in active development. APIs, data model, configuration keys and engine behaviour can change between releases. Good for hands-on experimentation; not hardened for unattended production use.
@@ -106,8 +106,12 @@ Assets live on each [GitHub release](https://github.com/mhus/vance/releases).
 
 ## License
 
-**Business Source License 1.1** — see [`LICENSE.txt`](LICENSE.txt). Source-available, not classic open source. On **2029-06-23** (three years after initial release) it converts automatically to **AGPLv3**.
+**GNU Affero General Public License v3.0** (`AGPL-3.0-only`) — see [`LICENSE.txt`](LICENSE.txt).
 
-Permitted under the Additional Use Grant (including production): personal use, education, research, internal business use, consulting, and customer-specific deployments (one instance per customer). Not permitted: offering Vancetope as a hosted/managed/SaaS service to third parties where Vancetope forms a substantial part of the service. A commercial license for uses outside the grant is available per LICENSE.txt.
+Use it, run it in production, change it, share it. If you modify Vancetope and let others use it over a network, you have to offer them the source of your modified version under the same licence (AGPL §13).
+
+This applies from release **0.6.0** on; releases up to and including 0.5.0 were published under the Business Source License 1.1.
+
+Copyright (c) 2024–2026 Mike Hummel. Contributions are accepted under the [`CLA`](CLA.md).
 
 Enterprise-oriented features (SSO, audit, team management) live separately in [`vance-ee`](https://github.com/mhus/vance-ee) under their own license.

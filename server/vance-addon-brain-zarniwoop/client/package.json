@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Client surface of the Search addon. Registers the application:search app kind — a search surface for people over the brain's existing Zarniwoop providers, with per-modality rendering; a hit opens in place and only offers a full text where one exists.",
-  "license": "SEE LICENSE IN ../../../../client/LICENSE.txt",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./dist/index.d.ts",

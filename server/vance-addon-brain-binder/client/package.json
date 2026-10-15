@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Client surface of the Binder Brain addon. Registers the application:binder app kind — a section-grouped, drag-and-drop list of references to arbitrary project documents, rendered per-kind read-only with a deep-link into Cortex for editing.",
-  "license": "SEE LICENSE IN ../../../../client/LICENSE.txt",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./dist/index.d.ts",

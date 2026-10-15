@@ -502,6 +502,7 @@ export default {
       switchAccount: 'Konto wechseln',
       manageAccounts: 'Konten verwalten',
       addAccount: 'Konto hinzufügen',
+      sourceCode: 'Quellcode (AGPLv3)',
     },
     help: {
       toggle: 'Hilfe ein-/ausblenden',
@@ -514,6 +515,8 @@ export default {
   },
 
   login: {
+    license: 'Open Source unter der GNU AGPLv3',
+    sourceCode: 'Quellcode',
     autoLoginNotice: 'Sie wurden eingeloggt',
     invalidCredentials: 'Ungültige Anmeldedaten.',
     loginFailed: 'Anmeldung fehlgeschlagen.',

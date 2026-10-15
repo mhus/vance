@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Shared Notion-style block editor (Tiptap-based) + Markdown-Superset codec for Vance. Consumed by the workspace addon (workpage editor + master-detail view) and any other host that wants to embed the editor. Single source of truth for the workpage block schema, NodeViews and Markdown round-trip.",
-  "license": "SEE LICENSE IN ../../../LICENSE.txt",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./dist/index.d.ts",

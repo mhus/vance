@@ -9,6 +9,18 @@ breaking changes; a patch bump (`0.1.0` → `0.1.1`) is fixes only.
 
 ## [Unreleased]
 
+### Changed
+
+- **Licence** — Vancetope is now open source under the GNU Affero General
+  Public License v3.0 (`AGPL-3.0-only`), from release 0.6.0 on. It replaces
+  the Business Source License 1.1, which would have converted to AGPLv3 on
+  2029-06-23; releases up to and including 0.5.0 remain under BSL 1.1.
+
+### Added
+
+- **Source link** — the login page and the user menu link to the source code,
+  as AGPLv3 §13 asks of a network service.
+
 ## [0.5.0] - 2026-10-15
 
 ### Added

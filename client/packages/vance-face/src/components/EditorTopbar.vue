@@ -13,6 +13,7 @@ import {
   logout as serverLogout,
 } from '@/platform';
 import { editorHref } from '@/platform/editorHref';
+import { SOURCE_CODE_URL } from '@/platform/sourceCode';
 import { setUiLocale } from '@/i18n';
 import InboxBadge from './InboxBadge.vue';
 import ProcessCountsBadge from './ProcessCountsBadge.vue';
@@ -356,6 +357,9 @@ function openFook(): void {
           <li><a @click="openFook">{{ $t('fook.menuLabel') }}</a></li>
           <li><a href="/profile.html">{{ $t('common.profile') }}</a></li>
           <li><a :href="editorHref('settings', { scope: 'user' })">{{ $t('common.settings') }}</a></li>
+          <li>
+            <a :href="SOURCE_CODE_URL" target="_blank" rel="noopener noreferrer">{{ $t('header.menu.sourceCode') }}</a>
+          </li>
           <li><a @click="logout">{{ $t('common.signOut') }}</a></li>
         </ul>
       </div>

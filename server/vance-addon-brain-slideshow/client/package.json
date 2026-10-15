@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Client surface of the Slideshow Brain addon — TypeScript DTOs (generated from Java), REST helpers and the Vue editor component. Self-contained: source consumed by Vite at runtime (main → src/), pre-built .vue.d.ts emitted by vue-tsc for downstream type checking (types → dist/). In production, dist/ also contains the federation remoteEntry.js for loader.path-style dynamic injection at runtime.",
-  "license": "SEE LICENSE IN ../../../client/LICENSE.txt",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./dist/index.d.ts",

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Vancetope Capture \u2014 browser extension that saves the current page into a Vancetope link list. Chrome (MV3); Firefox and Safari are follow-ups.",
-  "license": "SEE LICENSE IN ../../LICENSE.txt",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
     "build": "tsc -b && vite build",

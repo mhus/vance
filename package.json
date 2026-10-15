@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Vance Web-UI workspace — pnpm monorepo with @vance/generated, @vance/shared, @vance/vance-face.",
-  "license": "SEE LICENSE IN LICENSE.txt",
+  "license": "AGPL-3.0-only",
   "scripts": {
     "build": "pnpm -r build",
     "dev": "pnpm --filter @vance/vance-face dev",

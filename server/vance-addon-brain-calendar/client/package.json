@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Client surface of the Calendar Brain addon — TypeScript DTOs (generated from Java), REST helpers, the Vue planner editor (AppEditor) and the per-document Calendar Kind view + codec. Federation remote consumed by vance-face.",
-  "license": "SEE LICENSE IN ../../../../client/LICENSE.txt",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./dist/index.d.ts",

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Client surface of the Designer Brain addon — a designer app shows the design folders under an app folder and previews the selected design in a sandboxed iframe served by the addon's path-token content route. TypeScript DTOs (generated from Java), REST helpers and the Vue app component.",
-  "license": "SEE LICENSE IN ../../../client/LICENSE.txt",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./dist/index.d.ts",

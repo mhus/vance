@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Client surface of the GTD Brain addon. Registers the application:gtd kind — derived buckets (Inbox/Today/Upcoming/Anytime/Someday), action detail with when-picker, capture and search.",
-  "license": "SEE LICENSE IN ../../../../client/LICENSE.txt",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./dist/index.d.ts",

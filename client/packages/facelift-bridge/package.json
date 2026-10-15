@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Vance Facelift — thin Capacitor wrapper around the deployed Vance web UI. Native account picker + brain URL switching; the live website handles auth and editors itself.",
-  "license": "SEE LICENSE IN ../../LICENSE.txt",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
     "dev": "vite",

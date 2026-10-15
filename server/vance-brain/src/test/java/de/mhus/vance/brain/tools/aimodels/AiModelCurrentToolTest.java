@@ -32,7 +32,7 @@ import org.junit.jupiter.api.Test;
 class AiModelCurrentToolTest {
 
     private static final String TENANT = "acme";
-    private static final String PROJECT = "model-sipgate-coding";
+    private static final String PROJECT = "model-acme-coding";
     private static final String PROCESS = "proc1";
     private static final String SESSION = "sess1";
 

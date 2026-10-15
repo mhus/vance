@@ -142,7 +142,7 @@ class LlmTraceRecorderTest {
                 recordingService(rows),
                 process(),
                 "arthur",
-                "coding-proxy:sipgate-coding-pro",
+                "coding-proxy:acme-coding-pro",
                 request,
                 ChatResponse.builder()
                         .aiMessage(AiMessage.from("ok"))

@@ -36,7 +36,7 @@ import org.junit.jupiter.api.Test;
 class SettingGetToolTest {
 
     private static final String TENANT = "acme";
-    private static final String PROJECT = "model-sipgate-coding";
+    private static final String PROJECT = "model-acme-coding";
     private static final String USER = "road.runner";
     private static final String PROCESS = "proc1";
 

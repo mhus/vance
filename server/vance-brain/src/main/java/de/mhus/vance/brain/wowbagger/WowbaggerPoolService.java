@@ -863,7 +863,7 @@ public class WowbaggerPoolService {
     /**
      * Pattern match: comma-separated patterns, {@code *} wildcards,
      * case-insensitive, against the full {@code providerInstance:modelName}
-     * and the bare {@code modelName} alike — {@code sipgate-coding-pro} and
+     * and the bare {@code modelName} alike — {@code acme-coding-pro} and
      * {@code coding-proxy:*} both work. A {@code null}/blank allowlist approves
      * nothing (fail-closed).
      */

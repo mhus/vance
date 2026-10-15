@@ -95,7 +95,7 @@ vance.tools.call('inbox_post', {
   targetUserId: vance.context.userId,
   type: 'OUTPUT_TEXT',
   title: 'Mail triage: 5 important mails',
-  body: 'Robin\'s review, Sipgate invoice, ...',
+  body: 'Robin\'s review, Acme invoice, ...',
   criticality: 'NORMAL',
   payload: { processed: 20, important: 5, archived: 15 }
 });

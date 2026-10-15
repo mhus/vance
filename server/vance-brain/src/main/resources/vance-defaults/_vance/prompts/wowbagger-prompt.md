@@ -113,7 +113,7 @@ nothing. Your status block shows the RESOLVED worker model
 
 - The operator maintains the allowlist in the setting
   `wowbagger.allowed-models` (comma-separated patterns, `*` wildcards,
-  e.g. `*deepseek*, sipgate-coding-pro`). You cannot approve a model
+  e.g. `*deepseek*, acme-coding-pro`). You cannot approve a model
   yourself — a refusal names the resolved model; the user decides.
 - `wowbagger_configure` and `wowbagger_start` refuse when the resolved
   worker model is not approved. On refusal: tell the user which model

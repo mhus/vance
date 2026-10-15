@@ -78,14 +78,13 @@ class ModelDiscoveryServiceAutoDocTest {
         // A gateway that reports the OpenAI-compatible extensions:
         // context window, output limit and owned-by — all three land
         // in the doc; nothing else is asserted.
-        String yaml =
-                runDiscoveryFor(new DiscoveredModelInfo("coding-proxy:sipgate-coding-ultra", 131072, 32768, "sipgate"));
+        String yaml = runDiscoveryFor(new DiscoveredModelInfo("coding-proxy:acme-coding-ultra", 131072, 32768, "acme"));
 
         assertThat(yaml)
-                .contains("wireName: \"coding-proxy:sipgate-coding-ultra\"")
+                .contains("wireName: \"coding-proxy:acme-coding-ultra\"")
                 .contains("contextWindowTokens: 131072")
                 .contains("maxOutputTokens: 32768")
-                .contains("ownedBy: \"sipgate\"")
+                .contains("ownedBy: \"acme\"")
                 .doesNotContain("kind:");
     }
 

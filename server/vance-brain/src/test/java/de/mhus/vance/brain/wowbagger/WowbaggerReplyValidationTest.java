@@ -84,7 +84,7 @@ class WowbaggerReplyValidationTest {
         chunk.setLastError("boom");
         state.getWave().add(chunk);
         state.getFailedChunks().add(chunk);
-        state.setWorkerRecipe("wowbagger-worker-sipgate");
+        state.setWorkerRecipe("wowbagger-worker-acme");
         state.setFinished(false);
 
         // The engineParams persistence form: state → Map → state.
@@ -92,7 +92,7 @@ class WowbaggerReplyValidationTest {
         WowbaggerState back = WowbaggerPoolService.normalize(mapper.convertValue(raw, WowbaggerState.class));
 
         assertThat(back.getTask()).isEqualTo("classify");
-        assertThat(back.getWorkerRecipe()).isEqualTo("wowbagger-worker-sipgate");
+        assertThat(back.getWorkerRecipe()).isEqualTo("wowbagger-worker-acme");
         assertThat(back.getThreadsDesired()).isEqualTo(4);
         assertThat(back.getPointer()).isEqualTo(40);
         assertThat(back.getRecordsDone()).isEqualTo(20);
@@ -139,11 +139,11 @@ class WowbaggerReplyValidationTest {
         // Full instance:model form, bare model name, wildcards, commas, case.
         assertThat(WowbaggerPoolService.modelApproved("cortecs:deepseek-v4-flash-0731", "*deepseek*"))
                 .isTrue();
-        assertThat(WowbaggerPoolService.modelApproved("coding-proxy:sipgate-coding-pro", "sipgate-coding-pro"))
+        assertThat(WowbaggerPoolService.modelApproved("coding-proxy:acme-coding-pro", "acme-coding-pro"))
                 .isTrue();
-        assertThat(WowbaggerPoolService.modelApproved("coding-proxy:sipgate-coding-pro", "coding-proxy:*"))
+        assertThat(WowbaggerPoolService.modelApproved("coding-proxy:acme-coding-pro", "coding-proxy:*"))
                 .isTrue();
-        assertThat(WowbaggerPoolService.modelApproved("coding-proxy:sipgate-coding-pro", "*SIPGATE*"))
+        assertThat(WowbaggerPoolService.modelApproved("coding-proxy:acme-coding-pro", "*ACME*"))
                 .isTrue();
         assertThat(WowbaggerPoolService.modelApproved("openai:gpt-x", "*deepseek*, *cheap*, openai:gpt-x"))
                 .isTrue();
@@ -156,7 +156,7 @@ class WowbaggerReplyValidationTest {
                 .isFalse();
         assertThat(WowbaggerPoolService.modelApproved("openai:cheap-model", "  "))
                 .isFalse();
-        assertThat(WowbaggerPoolService.modelApproved("openai:gpt-expensive", "*deepseek*, sipgate-coding-pro"))
+        assertThat(WowbaggerPoolService.modelApproved("openai:gpt-expensive", "*deepseek*, acme-coding-pro"))
                 .isFalse();
         // Bare "*" approves everything — the operator's explicit opt-out.
         assertThat(WowbaggerPoolService.modelApproved("openai:anything", "*")).isTrue();

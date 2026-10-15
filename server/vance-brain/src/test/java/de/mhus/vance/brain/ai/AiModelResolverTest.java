@@ -184,17 +184,17 @@ class AiModelResolverTest {
         // value that is a named instance must not leak into the wire-name
         // position (AiChatConfig would reject it as unknown provider).
         when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.default.provider")))
-                .thenReturn("sipgate-coding");
+                .thenReturn("acme-coding");
         when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.default.model")))
-                .thenReturn("sipgate-coding-pro");
-        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.provider.sipgate-coding.type")))
+                .thenReturn("acme-coding-pro");
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.provider.acme-coding.type")))
                 .thenReturn("openai");
 
         AiModelResolver.Resolved r = resolver.resolveOrDefault(null, "acme", null, null);
 
         assertThat(r.provider()).isEqualTo("openai");
-        assertThat(r.providerInstance()).isEqualTo("sipgate-coding");
-        assertThat(r.modelName()).isEqualTo("sipgate-coding-pro");
+        assertThat(r.providerInstance()).isEqualTo("acme-coding");
+        assertThat(r.modelName()).isEqualTo("acme-coding-pro");
     }
 
     @Test

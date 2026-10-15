@@ -47,7 +47,7 @@ class AiModelsDiscoverToolTest {
         contextFactory = mock(SecurityContextFactory.class);
         when(contextFactory.forToolSubject(TENANT, USER)).thenReturn(SecurityContext.user(USER, TENANT, List.of()));
         tool = new AiModelsDiscoverTool(discoveryService, permissionService, contextFactory);
-        ctx = new ToolInvocationContext(TENANT, "model-sipgate-coding", "sess1", "proc1", USER);
+        ctx = new ToolInvocationContext(TENANT, "model-acme-coding", "sess1", "proc1", USER);
     }
 
     @Test

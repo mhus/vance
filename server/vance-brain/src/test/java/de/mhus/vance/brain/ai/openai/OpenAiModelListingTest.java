@@ -83,13 +83,13 @@ class OpenAiModelListingTest {
     void codingProxyStyleEntry_carriesAllObservations() throws Exception {
         // The shape the user observed at the coding-proxy endpoint:
         // max_input / max_output alongside the id.
-        DiscoveredModelInfo info = OpenAiModelListing.parse(entry("{\"id\":\"sipgate-coding-ultra\","
+        DiscoveredModelInfo info = OpenAiModelListing.parse(entry("{\"id\":\"acme-coding-ultra\","
                 + "\"max_input\":131072,\"max_output\":32768,"
-                + "\"owned_by\":\"sipgate\"}"));
-        assertThat(info.wireName()).isEqualTo("sipgate-coding-ultra");
+                + "\"owned_by\":\"acme\"}"));
+        assertThat(info.wireName()).isEqualTo("acme-coding-ultra");
         assertThat(info.contextWindowTokens()).isEqualTo(131072);
         assertThat(info.maxOutputTokens()).isEqualTo(32768);
-        assertThat(info.ownedBy()).isEqualTo("sipgate");
+        assertThat(info.ownedBy()).isEqualTo("acme");
     }
 
     @Test

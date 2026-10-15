@@ -7,7 +7,7 @@ import org.jspecify.annotations.Nullable;
  * Pattern match for model allowlists ({@code *.allowed-models} settings):
  * comma-separated patterns with {@code *} wildcards, matched
  * case-insensitively against the full {@code providerInstance:modelName}
- * and the bare {@code modelName} alike — {@code sipgate-coding-pro} and
+ * and the bare {@code modelName} alike — {@code acme-coding-pro} and
  * {@code coding-proxy:*} both work.
  *
  * <p><b>Blank means "nothing approved"</b> here, which is the Wowbagger

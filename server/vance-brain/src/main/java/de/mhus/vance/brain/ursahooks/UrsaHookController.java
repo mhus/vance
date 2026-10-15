@@ -2,7 +2,12 @@ package de.mhus.vance.brain.ursahooks;
 
 import de.mhus.vance.api.megadodo.MegadodoEventDto;
 import de.mhus.vance.api.megadodo.MegadodoRefType;
-import de.mhus.vance.api.ursahooks.*;
+import de.mhus.vance.api.ursahooks.UrsaHookDto;
+import de.mhus.vance.api.ursahooks.UrsaHookEventName;
+import de.mhus.vance.api.ursahooks.UrsaHookSaveRequest;
+import de.mhus.vance.api.ursahooks.UrsaHookScriptSpec;
+import de.mhus.vance.api.ursahooks.UrsaHookSource;
+import de.mhus.vance.api.ursahooks.UrsaHookSummary;
 import de.mhus.vance.brain.megadodo.MegadodoMapper;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.megadodo.MegadodoEventDocument;

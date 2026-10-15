@@ -8,9 +8,9 @@
     "fallbackTitle": "Finanzbaum",
     "reload": "Neu laden",
     "unit": "Einheit",
-    "report": "Bericht",
+    "report": "Bericht…",
     "loading": "Lädt…",
-    "createRoot": "＋ Wurzelknoten anlegen",
+    "createRoot": "Wurzelknoten erstellen",
     "pickNode": "Einen Knoten auswählen, um ihn zu bearbeiten.",
     "save": {
       "saved": "gespeichert",
@@ -29,7 +29,8 @@
     },
     "values": {
       "heading": "Wert-Blöcke",
-      "add": "＋ Wert",
+      "add": "Wert",
+      "remove": "Wert-Block entfernen",
       "amount": "Betrag",
       "mode": "Modus",
       "modeRecurring": "wiederkehrend",
@@ -64,18 +65,19 @@
     "reportModal": {
       "title": "Bericht erzeugen",
       "processor": "Prozessor",
-      "from": "von",
-      "to": "bis",
+      "from": "Von",
+      "to": "Bis",
       "granularity": "Granularität",
-      "chartType": "Diagrammtyp (Serie)",
+      "chartType": "Diagrammtyp (Reihen)",
       "focus": "Fokus (Bewertung, optional)",
-      "persist": "als Dokument speichern",
+      "persist": "Als Dokument speichern",
       "outputPath": "Ausgabepfad",
       "outputPathPlaceholder": "reports/q1.chart.yaml",
       "generating": "Erzeugt…",
       "generate": "Erzeugen",
       "running": "Bericht wird erzeugt…",
-      "savedTo": "Gespeichert unter {path}"
+      "savedTo": "Gespeichert unter {path}",
+      "close": "Schließen"
     },
     "tree": {
       "perUnit": "pro {unit}",
@@ -87,7 +89,7 @@
       "delete": "Löschen"
     },
     "summary": {
-      "edit": "Bearbeiten",
+      "edit": "Bearbeiten…",
       "perYear": "/ Jahr",
       "oneTime": "einmalig: {amount}",
       "empty": "Leer — zum Anlegen öffnen.",

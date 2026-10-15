@@ -19,8 +19,8 @@
       "blocked": "bloqueado",
       "newCard": "Novo cartão",
       "cardTitlePlaceholder": "Título do cartão",
+      "column": "Coluna",
       "assigneePlaceholder": "Responsável (opcional)",
-      "dueDatePlaceholder": "Data de vencimento AAAA-MM-DD (opcional)",
       "error": {
         "load": "Não foi possível carregar o quadro: {message}",
         "rebuild": "Falha na reconstrução: {message}",

@@ -19,8 +19,8 @@
       "blocked": "已阻止",
       "newCard": "新卡片",
       "cardTitlePlaceholder": "卡片标题",
+      "column": "列",
       "assigneePlaceholder": "经办人（可选）",
-      "dueDatePlaceholder": "截止日期 YYYY-MM-DD（可选）",
       "error": {
         "load": "无法加载看板：{message}",
         "rebuild": "重建失败：{message}",

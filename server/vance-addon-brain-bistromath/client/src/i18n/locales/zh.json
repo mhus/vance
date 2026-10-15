@@ -19,7 +19,7 @@
     "view": {
       "fallbackTitle": "视图",
       "recheck": "重新检查",
-      "openApp": "打开应用 ↗",
+      "openApp": "打开应用",
       "openAppTip": "打开此视图所属的应用",
       "previewPre": "预览 — 没有程序运行，因此任何绑定到",
       "previewMid": "的内容都为空，并且",

@@ -4,10 +4,12 @@
     "tabClosed": "閉じる",
     "tabArchived": "アーカイブ済み",
     "searchPlaceholder": "課題を検索…",
+    "search": "検索",
+    "deleteIssue": "課題を削除",
     "untitled": "(タイトルなし)",
     "noMatch": "一致する課題はありません。",
     "rebuildTip": "インデックスと統計を再構築",
-    "newIssuePlaceholder": "＋ 新しい課題のタイトル…",
+    "newIssuePlaceholder": "新しい課題のタイトル…",
     "allLabels": "すべて",
     "loading": "読み込み中…",
     "nothingHere": "ここには何もありません。",
@@ -46,6 +48,9 @@
       "create": "作成に失敗しました。",
       "search": "検索に失敗しました。",
       "rebuild": "再構築に失敗しました。"
+    },
+    "common": {
+      "delete": "削除"
     }
   }
 }

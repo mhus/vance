@@ -3,7 +3,8 @@
     "common": {
       "cancel": "キャンセル",
       "searching": "検索中…",
-      "noHits": "一致なし。"
+      "noHits": "一致なし。",
+      "remove": "削除"
     },
     "app": {
       "fallbackTitle": "バインダー",

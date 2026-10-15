@@ -4,10 +4,12 @@
     "tabClosed": "Fechadas",
     "tabArchived": "Arquivadas",
     "searchPlaceholder": "Buscar issues…",
+    "search": "Buscar",
+    "deleteIssue": "Excluir issue",
     "untitled": "(sem título)",
     "noMatch": "Nenhuma issue encontrada.",
     "rebuildTip": "Reconstruir índice + estatísticas",
-    "newIssuePlaceholder": "＋ Novo título de issue…",
+    "newIssuePlaceholder": "Título da nova issue…",
     "allLabels": "todas",
     "loading": "Carregando…",
     "nothingHere": "Nada aqui.",
@@ -46,6 +48,9 @@
       "create": "Falha ao criar.",
       "search": "Falha na busca.",
       "rebuild": "Falha ao reconstruir."
+    },
+    "common": {
+      "delete": "Excluir"
     }
   }
 }

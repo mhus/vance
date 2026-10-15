@@ -8,9 +8,9 @@
     "fallbackTitle": "Drzewo finansowe",
     "reload": "Przeładuj",
     "unit": "Jednostka",
-    "report": "Raport",
+    "report": "Raport…",
     "loading": "Ładowanie…",
-    "createRoot": "＋ Utwórz węzeł główny",
+    "createRoot": "Utwórz węzeł główny",
     "pickNode": "Wybierz węzeł, aby go edytować.",
     "save": {
       "saved": "zapisano",
@@ -29,7 +29,8 @@
     },
     "values": {
       "heading": "Bloki wartości",
-      "add": "＋ wartość",
+      "add": "Wartość",
+      "remove": "Usuń blok wartości",
       "amount": "Kwota",
       "mode": "Tryb",
       "modeRecurring": "cykliczne",
@@ -64,18 +65,19 @@
     "reportModal": {
       "title": "Generuj raport",
       "processor": "Procesor",
-      "from": "od",
-      "to": "do",
-      "granularity": "ziarnistość",
-      "chartType": "typ wykresu (serie)",
-      "focus": "fokus (ocena, opcjonalnie)",
-      "persist": "zapisz jako dokument",
-      "outputPath": "ścieżka wyjściowa",
+      "from": "Od",
+      "to": "Do",
+      "granularity": "Granularność",
+      "chartType": "Typ wykresu (serie)",
+      "focus": "Fokus (ocena, opcjonalnie)",
+      "persist": "Zapisz jako dokument",
+      "outputPath": "Ścieżka wyjściowa",
       "outputPathPlaceholder": "reports/q1.chart.yaml",
       "generating": "Generowanie…",
       "generate": "Generuj",
       "running": "Generowanie raportu…",
-      "savedTo": "Zapisano do {path}"
+      "savedTo": "Zapisano do {path}",
+      "close": "Zamknij"
     },
     "tree": {
       "perUnit": "za {unit}",
@@ -87,7 +89,7 @@
       "delete": "Usuń"
     },
     "summary": {
-      "edit": "Edytuj",
+      "edit": "Edytuj…",
       "perYear": "/ rok",
       "oneTime": "jednorazowo: {amount}",
       "empty": "Pusto — otwórz, aby dodać węzły.",

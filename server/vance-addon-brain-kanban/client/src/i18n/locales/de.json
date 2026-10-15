@@ -19,8 +19,8 @@
       "blocked": "blockiert",
       "newCard": "Neue Karte",
       "cardTitlePlaceholder": "Titel der Karte",
+      "column": "Spalte",
       "assigneePlaceholder": "Zuständig (optional)",
-      "dueDatePlaceholder": "Fällig YYYY-MM-DD (optional)",
       "error": {
         "load": "Board konnte nicht geladen werden: {message}",
         "rebuild": "Neu bauen fehlgeschlagen: {message}",

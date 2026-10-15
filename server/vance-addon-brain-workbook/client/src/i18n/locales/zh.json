@@ -12,7 +12,8 @@
       "save": "保存",
       "saving": "正在保存…",
       "saved": "已保存",
-      "searching": "正在搜索…"
+      "searching": "正在搜索…",
+      "delete": "删除"
     },
     "app": {
       "fallbackTitle": "工作簿",

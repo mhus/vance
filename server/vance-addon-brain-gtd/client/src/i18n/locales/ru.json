@@ -4,7 +4,8 @@
       "loading": "Загрузка…",
       "saving": "Сохранение…",
       "saved": "Сохранено",
-      "saveFailed": "Ошибка сохранения"
+      "saveFailed": "Ошибка сохранения",
+      "delete": "Удалить"
     },
     "bucket": {
       "inbox": "Входящие",
@@ -16,19 +17,20 @@
     },
     "app": {
       "searchPlaceholder": "Поиск действий…",
+      "search": "Поиск",
       "untitled": "(без названия)",
       "noMatch": "Нет подходящих действий.",
       "rebuildTip": "Перестроить представления — перемещает завершенные действия в Корзину",
       "projects": "Проекты",
       "contexts": "Контексты",
-      "capturePlaceholder": "＋ Захватить во Входящие…",
+      "capturePlaceholder": "Захватить во Входящие…",
       "nothingHere": "Здесь ничего нет.",
       "bucketLabel": "Корзина",
       "whenHint": "когда:",
       "anytimeValue": "(когда угодно)",
       "project": "Проект",
       "noProject": "(без проекта)",
-      "newProject": "＋ Новый проект…",
+      "newProject": "Новый проект…",
       "deadline": "Срок",
       "contextsPlaceholder": "@звонки, @дом",
       "done": "Готово",

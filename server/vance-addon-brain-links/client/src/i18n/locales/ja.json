@@ -4,7 +4,8 @@
       "cancel": "キャンセル",
       "save": "保存",
       "create": "作成",
-      "close": "閉じる"
+      "close": "閉じる",
+      "remove": "削除"
     },
     "app": {
       "pastePlaceholder": "リンクを貼り付け — 複数可、1行に1つ",

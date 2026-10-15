@@ -4,10 +4,12 @@
     "tabClosed": "Fermé",
     "tabArchived": "Archivé",
     "searchPlaceholder": "Rechercher des problèmes…",
+    "search": "Rechercher",
+    "deleteIssue": "Supprimer le problème",
     "untitled": "(sans titre)",
     "noMatch": "Aucun problème correspondant.",
     "rebuildTip": "Reconstruire l'index + les statistiques",
-    "newIssuePlaceholder": "＋ Nouveau titre de problème…",
+    "newIssuePlaceholder": "Titre du nouveau problème…",
     "allLabels": "tous",
     "loading": "Chargement…",
     "nothingHere": "Rien ici.",
@@ -46,6 +48,9 @@
       "create": "Échec de la création.",
       "search": "Échec de la recherche.",
       "rebuild": "Échec de la reconstruction."
+    },
+    "common": {
+      "delete": "Supprimer"
     }
   }
 }

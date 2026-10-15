@@ -4,7 +4,8 @@
       "loading": "読み込み中…",
       "saving": "保存中…",
       "saved": "保存しました",
-      "saveFailed": "保存に失敗しました"
+      "saveFailed": "保存に失敗しました",
+      "delete": "削除"
     },
     "bucket": {
       "inbox": "受信箱",
@@ -16,19 +17,20 @@
     },
     "app": {
       "searchPlaceholder": "アクションを検索…",
+      "search": "検索",
       "untitled": "(無題)",
       "noMatch": "一致するアクションはありません。",
       "rebuildTip": "ビューを再構築 — 完了したアクションをゴミ箱に移動します",
       "projects": "プロジェクト",
       "contexts": "コンテキスト",
-      "capturePlaceholder": "＋ 受信箱にキャプチャ…",
+      "capturePlaceholder": "受信箱にキャプチャ…",
       "nothingHere": "ここには何もありません。",
       "bucketLabel": "バケット",
       "whenHint": "いつ:",
       "anytimeValue": "(いつでも)",
       "project": "プロジェクト",
       "noProject": "(プロジェクトなし)",
-      "newProject": "＋ 新しいプロジェクト…",
+      "newProject": "新しいプロジェクト…",
       "deadline": "期限",
       "contextsPlaceholder": "@calls, @home",
       "done": "完了",

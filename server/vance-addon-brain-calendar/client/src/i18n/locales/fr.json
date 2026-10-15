@@ -20,7 +20,9 @@
       "today": "Aujourd'hui",
       "empty": "Aucun événement à venir.",
       "addToCalendar": "Ajouter au calendrier",
-      "allDay": "Toute la journée"
+      "allDay": "Toute la journée",
+      "previousMonth": "Mois précédent",
+      "nextMonth": "Mois suivant"
     },
     "planner": {
       "reload": "Recharger",
@@ -42,7 +44,7 @@
       "colEventA": "Événement A",
       "colEventB": "Événement B",
       "colOverlap": "Chevauchement",
-      "addEvent": "Ajouter un événement",
+      "addEvent": "Ajouter un événement…",
       "noEventsHeadline": "Aucun événement dans ce couloir",
       "noEventsBody": "Ajoutez le premier événement pour commencer.",
       "allDayTag": "toute la journée",
@@ -51,8 +53,6 @@
       "addToOutlook": "Ajouter à Outlook",
       "newEvent": "Nouvel événement",
       "eventTitlePlaceholder": "Titre de l'événement",
-      "startPlaceholder": "Début (AAAA-MM-JJ ou AAAA-MM-JJTHH:mm)",
-      "endPlaceholder": "Fin (facultatif)",
       "error": {
         "load": "Impossible de charger le planificateur : {message}",
         "rebuild": "La reconstruction a échoué : {message}",
@@ -89,6 +89,7 @@
       "zoomIn": "Zoomer",
       "fitTip": "Ajuster toutes les entrées",
       "fit": "Ajuster",
+      "closeDetail": "Fermer",
       "unreadable": "{n} entrée a une position que cet axe {axis} ne peut pas lire et n'est pas dessinée : {list} | {n} entrées ont une position que cet axe {axis} ne peut pas lire et ne sont pas dessinées : {list}",
       "empty": "Cette chronologie n'a aucune entrée qui peut être placée sur son axe.",
       "now": "maintenant",

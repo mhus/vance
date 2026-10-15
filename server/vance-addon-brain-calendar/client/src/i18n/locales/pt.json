@@ -20,7 +20,9 @@
       "today": "Hoje",
       "empty": "Nenhum evento futuro.",
       "addToCalendar": "Adicionar ao calendário",
-      "allDay": "Dia inteiro"
+      "allDay": "Dia inteiro",
+      "previousMonth": "Mês anterior",
+      "nextMonth": "Próximo mês"
     },
     "planner": {
       "reload": "Recarregar",
@@ -42,7 +44,7 @@
       "colEventA": "Evento A",
       "colEventB": "Evento B",
       "colOverlap": "Sobreposição",
-      "addEvent": "Adicionar evento",
+      "addEvent": "Adicionar evento…",
       "noEventsHeadline": "Nenhum evento nesta raia",
       "noEventsBody": "Adicione o primeiro evento para começar.",
       "allDayTag": "dia inteiro",
@@ -51,8 +53,6 @@
       "addToOutlook": "Adicionar ao Outlook",
       "newEvent": "Novo evento",
       "eventTitlePlaceholder": "Título do evento",
-      "startPlaceholder": "Início (AAAA-MM-DD ou AAAA-MM-DDTHH:mm)",
-      "endPlaceholder": "Fim (opcional)",
       "error": {
         "load": "Não foi possível carregar o planejador: {message}",
         "rebuild": "Falha na reconstrução: {message}",
@@ -89,6 +89,7 @@
       "zoomIn": "Aumentar zoom",
       "fitTip": "Ajustar todas as entradas",
       "fit": "Ajustar",
+      "closeDetail": "Fechar",
       "unreadable": "{n} entrada tem uma posição que este eixo {axis} não consegue ler e não é desenhada: {list} | {n} entradas têm uma posição que este eixo {axis} não consegue ler e não são desenhadas: {list}",
       "empty": "Esta linha do tempo não tem entradas que possam ser colocadas em seu eixo.",
       "now": "agora",

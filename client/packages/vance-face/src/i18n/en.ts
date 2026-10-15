@@ -12,7 +12,7 @@
 export default {
   preview: {
     title: 'UI preview',
-    intro: "Every building block of {'@'}vance/components in its states — the reference for corporate-design.md. Switch the theme to check dark mode.",
+    intro: "Every building block of the component library in its states — the reference for corporate-design.md. Switch the theme to check dark mode.",
     themeLight: 'Light',
     themeDark: 'Dark',
     buttons: 'Buttons — four roles',

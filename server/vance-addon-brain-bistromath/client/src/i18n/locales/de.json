@@ -19,7 +19,7 @@
     "view": {
       "fallbackTitle": "View",
       "recheck": "Neu prüfen",
-      "openApp": "Die App öffnen ↗",
+      "openApp": "App öffnen",
       "openAppTip": "Die App öffnen, zu der diese View gehört",
       "previewPre": "Vorschau — es läuft kein Programm, alles was an",
       "previewMid": "gebunden ist bleibt leer und",

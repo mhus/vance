@@ -3,7 +3,8 @@
     "common": {
       "cancel": "Abbrechen",
       "searching": "Suche…",
-      "noHits": "Keine Treffer."
+      "noHits": "Keine Treffer.",
+      "remove": "Entfernen"
     },
     "app": {
       "fallbackTitle": "Binder",

@@ -1,10 +1,70 @@
 {
+  "preview": {
+    "title": "UIプレビュー",
+    "intro": "コンポーネントライブラリのすべての構成要素とその状態 — corporate-design.mdの参照用です。テーマを切り替えてダークモードを確認してください。",
+    "themeLight": "ライト",
+    "themeDark": "ダーク",
+    "buttons": "ボタン — 4つの役割",
+    "sizes": "サイズと状態",
+    "iconButtons": "アイコンボタン — ツールチップとラベルが必要です",
+    "toolbar": "ツールバー",
+    "groups": "グループ化されたリスト",
+    "fields": "フィールド",
+    "status": "ステータス",
+    "empty": "空の状態",
+    "icons": "アイコン語彙",
+    "dialog": "確認ダイアログ",
+    "primary": "保存",
+    "secondary": "キャンセル",
+    "plain": "詳細を見る",
+    "danger": "削除…",
+    "dangerFilled": "削除",
+    "withIcon": "新規ドキュメント",
+    "loading": "保存中",
+    "disabled": "無効",
+    "refresh": "更新",
+    "download": "ダウンロード",
+    "share": "共有",
+    "pinned": "ピン留め済み",
+    "delete": "削除",
+    "close": "閉じる",
+    "back": "戻る",
+    "more": "その他",
+    "openInCortex": "Cortexで開く",
+    "documentTitle": "intro.md",
+    "groupAppearance": "外観",
+    "groupNote": "「システム」はコンピューターの設定に従います。",
+    "rowLanguage": "インターフェース言語",
+    "rowLanguageValue": "日本語",
+    "rowCompact": "コンパクトリスト",
+    "rowNotify": "エージェントの完了時に通知",
+    "rowSignOut": "サインアウト",
+    "fieldName": "プロジェクト名",
+    "fieldNameHelp": "テナント内の全員に表示されます。",
+    "fieldModel": "モデル",
+    "fieldModelError": "このモデルは設定されていません。",
+    "fieldKind": "種類",
+    "fieldNotes": "メモ",
+    "fieldAgree": "エージェントにこのドキュメントの編集を許可する",
+    "alertInfo": "エージェントはこのドキュメントを読み取れますが、変更はできません。",
+    "alertWarning": "2つのKitに更新があります。",
+    "alertError": "サーバーへの接続が失われました。",
+    "alertSuccess": "保存しました。",
+    "badge": "バッジ",
+    "emptyHeadline": "まだドキュメントがありません",
+    "emptyBody": "最初のドキュメントを作成するか、フォルダーをインポートしてください。",
+    "dialogOpen": "プロジェクトを削除…",
+    "dialogTitle": "「ウェディングプランニング」を削除しますか？",
+    "dialogBody": "プロジェクトとその42個のドキュメントが削除されます。この操作は元に戻せません。"
+  },
   "newVersion": {
     "message": "新しいバージョンのVanceが利用可能です。",
     "action": "再読み込み",
     "dismiss": "後で"
   },
   "common": {
+    "expand": "展開",
+    "collapse": "折りたたむ",
     "save": "保存",
     "saving": "保存中…",
     "saved": "保存しました。",
@@ -63,12 +123,15 @@
         "invalidInput": "無効な入力: {message}",
         "generic": "エラー: {message}"
       }
-    }
+    },
+    "confirm": "確認",
+    "archive": "アーカイブ",
+    "remove": "削除"
   },
   "fook": {
     "menuLabel": "バグ/機能を報告",
     "title": "バグを報告または機能をリクエスト",
-    "intro": "何が起こったか、何を期待したか、またはVanceに何を望むかを説明してください。具体的に — Fookがあなたのテキストを読み取り、種類、重要度、タイトルを決定します。結果は受信トレイに届きます。",
+    "intro": "何が起こったのか、何を期待したのか、Vancetopeに何を望むのかを具体的に記述してください。Fookはあなたのテキストから種類、重要度、タイトルを抽出し、結果をあなたの受信トレイに送信します。",
     "placeholder": "何がうまくいかなかったか、または変更したいことは何ですか？再現手順があると助かります。",
     "submit": "送信",
     "submitted": "送信済み — Fookがトリアージ中です。提出ID:",
@@ -94,8 +157,6 @@
   "processPanel": {
     "title": "このセッションのプロセス",
     "count": "プロセス {n}件",
-    "filterLive": "フィルター: ライブ",
-    "filterAll": "フィルター: すべて",
     "closeReason": {
       "DONE": "完了",
       "INCOMPLETE": "未完了",
@@ -125,7 +186,10 @@
     "noConnection": "接続なし — プロセスはバインドされたセッションでのみ表示されます。",
     "previewTitle": "プロセス — {session}",
     "previewReadOnly": "参加していないセッションのプレビュー — 読み取り専用。",
-    "openSession": "セッションを開く"
+    "openSession": "セッションを開く",
+    "segmentLive": "ライブ",
+    "segmentAll": "すべて",
+    "filterLabel": "プロセスを表示"
   },
   "cortex": {
     "confirmDiscardUnsaved": "「{label}」を保存できませんでした（{reason}）。\n\n閉じて変更を破棄しますか？",
@@ -181,10 +245,19 @@
     "hactar": {
       "applyToEditor": "エディターに適用",
       "thinking": "スラートが考え中…",
-      "generatedScript": "生成されたスクリプト:",
+      "generatedScript": "生成されたスクリプト",
       "regenerate": "再生成",
       "failed": "失敗:",
-      "close": "閉じる"
+      "close": "閉じる",
+      "titleUpdate": "Slart · このスクリプトを更新",
+      "titleGenerate": "Slart · 新しいスクリプトを生成",
+      "update": "更新",
+      "generate": "生成",
+      "updateDescription": "Slartは現在のスクリプト本体を認識し、可能な限りその構造を保持します。新しいバージョンは新しいSlartバケットに格納されます — {apply}をクリックしない限り、元のドキュメントは変更されません。",
+      "promptLabelUpdate": "何を変更しますか？",
+      "promptLabelGenerate": "スクリプトは何をすべきですか？",
+      "promptPlaceholderUpdate": "例: 「受信トレイが空の場合もSlack通知を送信する。」",
+      "promptPlaceholderGenerate": "例: 「args.nから数値を読み取り、その階乗を返す。」"
     },
     "rightPanel": {
       "title": "右パネル",
@@ -211,6 +284,7 @@
       "create": "作成"
     },
     "notes": {
+      "lineShort": "{line}行目",
       "empty": "メモはありません。行番号の横または＋ボタンをクリックしてください。",
       "jumpToLine": "{line}行目にジャンプ",
       "title": "メモ",
@@ -263,22 +337,29 @@
       "appView": "アプリ表示",
       "app": "アプリ",
       "rawManifest": "生YAMLマニフェストエディタ",
+      "reload": "サーバーからリロード",
+      "reloadDirty": "リロード（未保存の変更を破棄）",
+      "viewEditToggle": "表示/編集切り替え",
+      "renderedView": "レンダリングされたビュー",
+      "unsaved": "未保存の変更",
       "edit": "編集",
       "rawSource": "生ソースエディタ",
       "cancelRun": "実行中のプロセスをキャンセル",
-      "cancelRunLabel": "■ キャンセル",
+      "cancelRunLabel": "キャンセル",
       "quickValidate": "クイック検証 — 解析 + ヘッダーチェック",
       "deepReview": "詳細レビュー — LLM静的レビュー (低速、サーバー側でキャッシュ)",
       "generateScript": "自由記述から新しいスクリプトを生成 (Slart SCRIPT_JS)",
-      "generate": "✨ 生成",
+      "generate": "生成",
       "updateScript": "このスクリプトを更新 — 変更内容を記述するとSlartが構造を維持して書き換えます",
-      "update": "✨ 更新",
+      "update": "更新",
       "properties": "プロパティ",
       "path": "パス:",
       "mime": "MIME:",
       "readOnly": "読み取り専用",
       "closeLog": "ログパネルを閉じる",
-      "result": "結果:"
+      "result": "結果:",
+      "reloadDirtyTitle": "未保存の変更を破棄しますか？",
+      "reloadDirtyMessage": "{path}をリロードすると、未保存の編集が保存済みのバージョンに置き換えられます。"
     },
     "age": {
       "save": "保存",
@@ -321,6 +402,7 @@
       }
     },
     "tabs": {
+      "empty": "開いているドキュメントがありません — ツリーから選択するか、新しいファイルを作成してください。",
       "close": "閉じる"
     },
     "tree": {
@@ -337,7 +419,8 @@
       "pathLabel": "フォルダパス",
       "pathPlaceholder": "documents/notes",
       "cancel": "キャンセル",
-      "create": "作成"
+      "create": "作成",
+      "description": "フォルダーはファイルが格納されるまで仮想です — このエントリはクライアント側のものであり、何かが移動されない限り更新時に消えます。"
     },
     "openDocument": {
       "title": "ドキュメントを開く",
@@ -514,6 +597,12 @@
     "open": "開く"
   },
   "chat": {
+    "pageTitle": "チャット",
+    "openCortex": "Cortexを開く",
+    "composer": {
+      "showTools": "ツールを表示",
+      "hideTools": "ツールを非表示"
+    },
     "breadcrumb": {
       "unnamedSession": "セッション"
     },
@@ -667,7 +756,10 @@
       "cancel": "閉じる",
       "pendingNone": "変更なし",
       "pending": "{n} 件の変更",
-      "removeToggle": "記憶から削除"
+      "removeToggle": "記憶から削除",
+      "roleUser": "ユーザー",
+      "roleAssistant": "AI",
+      "roleSystem": "システム"
     },
     "clients": {
       "heading": "実行中のCLIクライアント",
@@ -691,7 +783,8 @@
     "picker": {
       "tabs": {
         "sessions": "セッション",
-        "clients": "クライアント"
+        "clients": "クライアント",
+        "label": "表示"
       },
       "projectsTitle": "プロジェクト",
       "loading": "読み込み中…",
@@ -733,7 +826,6 @@
       "recipeFilterNoMatch": "{filter} に一致するレシピはありません。",
       "recipeBadgeTooltip": "セッションチャットプロセスのレシピ",
       "groups": {
-        "create": "+ グループ",
         "createTooltip": "セッショングループを作成",
         "createTitle": "セッショングループを作成",
         "nameLabel": "名前",
@@ -745,8 +837,10 @@
         "moveDown": "下に移動",
         "delete": "グループを削除",
         "confirmDelete": "グループ「{name}」を削除しますか？セッションはグループから削除されるだけで、削除はされません。",
-        "emptyDropHint": "ここにセッションをドラッグ"
-      }
+        "emptyDropHint": "ここにセッションをドラッグ",
+        "newGroup": "新しいグループ…"
+      },
+      "newSessionEllipsis": "新しいセッション…"
     },
     "search": {
       "title": "セッションを検索",
@@ -783,7 +877,9 @@
       "title": "ウィザード",
       "emptyHeadline": "利用可能なウィザードはありません",
       "emptyBody": "ウィザードは _vance/wizards/ にあるYAML形式で、構造化されたプロンプトに変換されます。",
-      "submit": "プロンプトを生成"
+      "submit": "プロンプトを生成",
+      "refresh": "リストを更新",
+      "back": "リストに戻る"
     },
     "skills": {
       "tabLabel": "スキル",
@@ -922,6 +1018,8 @@
     "title": "ドキュメント",
     "loading": "ドキュメントを読み込み中…",
     "totalItems": "アイテム",
+    "pagePrevious": "前のページ",
+    "pageNext": "次のページ",
     "empty": {
       "noProjectHeadline": "プロジェクトが選択されていません",
       "noProjectBody": "左側でプロジェクトを選択して、ドキュメントを表示してください。",
@@ -939,8 +1037,8 @@
       "searchUnavailableBody": "ソース「{mount}」に到達できませんでした。再試行するとうまくいくかもしれません。"
     },
     "mountSearchDelegated": "外部ソース「{mount}」からのヒット — このフォルダーだけでなく、マウント全体にわたります。",
-    "newDocument": "+ 新規ドキュメント",
-    "addNew": "+ 新規",
+    "newDocument": "新規ドキュメント",
+    "addNew": "新規ドキュメント",
     "openCortex": "Cortex",
     "openCortexTitle": "このプロジェクトをCortexエディターで開く",
     "dropHint": "ファイルをここにドロップしてアップロード",
@@ -1039,6 +1137,7 @@
       "clearSelection": "選択を解除"
     },
     "checklistEditor": {
+      "clearFilter": "フィルターをクリア",
       "addItem": "項目を追加",
       "deleteItem": "項目を削除",
       "clickToEdit": "クリックして編集",
@@ -1253,8 +1352,10 @@
       "uploadFile": "ファイルをアップロード",
       "templateLoading": "テンプレートを読み込み中…",
       "templateNone": "利用可能なテンプレートはありません。",
-      "templateAllTags": "すべて",
+      "templateAllTags": "すべてのタグ",
+      "templateFilter": "テンプレートをフィルター…",
       "templateBack": "テンプレート",
+      "prefilledFrom": "事前入力元: {source}",
       "templateNameFixed": "このテンプレートは固定ファイル名を使用します。",
       "pathLabel": "パス",
       "pathPlaceholder": "notes/example.md",
@@ -1631,7 +1732,7 @@
       "emptyAll": "まだアクティビティは記録されていません。"
     },
     "tabs2": {
-      "more": "その他 ▾",
+      "more": "その他",
       "liveTools": "ライブツール"
     },
     "prakMeta": {
@@ -1873,7 +1974,7 @@
       "chatLoading": "チャットを読み込み中…",
       "chatEmptyHeadline": "メッセージなし",
       "chatEmptyBody": "このプロセスにはチャット履歴がありません。",
-      "archivedToMemory": "→ メモリ {id}",
+      "archivedToMemory": "メモリ: {id}",
       "memoryLoading": "メモリを読み込み中…",
       "memoryEmptyHeadline": "メモリなし",
       "memoryEmptyBody": "このプロセスにスコープされたエンジン側のメモリエントリーはありません。",
@@ -2155,14 +2256,17 @@
     "loading": "読み込み中…",
     "searchPlaceholder": "テンプレートを検索…",
     "projectIdLabel": "プロジェクト",
-    "install": "インストール",
     "apply": "適用",
     "previouslyApplied": "{at}に{by}によって以前適用されました。フォームは事前に入力されています。更新するには調整して再適用してください。セキュリティのため、パスワードフィールドは空白のままです。",
     "noInputs": "このテンプレートには入力がありません。適用してインストールしてください。",
     "empty": {
       "headline": "利用可能なテンプレートはありません",
       "body": "テナント管理者に_tenant/config/tool-templates.yamlでツールテンプレートカタログを populate するよう依頼してください。"
-    }
+    },
+    "applyFailed": "適用に失敗しました。",
+    "unknownUser": "不明",
+    "connectProvider": "{provider}を接続…",
+    "openConnectedAccounts": "接続済みアカウントを開く"
   },
   "oauthConsent": {
     "pageTitle": "アクセスを許可",
@@ -2244,7 +2348,6 @@
     "confirmRemoveSecret": "保存されているクライアントシークレットを削除しますか？新しいシークレットを設定するまで、新しい接続は機能しません。",
     "sidebar": {
       "providersLabel": "プロバイダー",
-      "addNew": "+ 新規",
       "noProvidersHeadline": "OAuthプロバイダーなし",
       "noProvidersBody": "「+ 新規」をクリックして追加してください。",
       "secretSet": "シークレット設定済み",
@@ -2299,8 +2402,6 @@
     "sidebar": {
       "usersTitle": "ユーザー",
       "teamsTitle": "チーム",
-      "addUser": "+ ユーザー",
-      "addTeam": "+ チーム",
       "showInternalUsers": "内部ユーザーを表示",
       "memberCountSingular": "{count}人のメンバー",
       "memberCountPlural": "{count}人のメンバー",
@@ -2540,12 +2641,12 @@
     "projectLabel": "プロジェクト",
     "listLabel": "スケジューラー",
     "refresh": "更新",
-    "new": "+ 新規スケジューラー",
+    "new": "新規スケジューラー…",
     "create": "作成",
     "enabled": "有効",
     "disabled": "無効",
     "emptyTitle": "スケジューラーがありません",
-    "emptyBody": "このプロジェクトで新規作成するには「+ 新規」を使用してください。",
+    "emptyBody": "このプロジェクトで新規スケジューラー…を使用して作成します。",
     "selectTitle": "スケジューラーを選択",
     "selectBody": "左側の項目を選択するか、新規作成してください。",
     "newTitle": "新規スケジューラー",
@@ -2554,7 +2655,7 @@
     "namePatternHint": "小文字、英数字、「-_」を使用し、最大64文字。",
     "invalidNameHint": "名前は上記のパターンと一致する必要があります。",
     "duplicateNameHint": "この名前のスケジューラーはすでに存在します。",
-    "deleteTitle": "スケジューラーを削除",
+    "deleteTitle": "スケジューラーを削除しますか？",
     "deleteBody": "スケジューラー「{name}」を完全に削除しますか？過去の実行はイベントログに残ります。",
     "runHistory": "実行履歴",
     "noEvents": "まだイベントはありません。",
@@ -2620,12 +2721,12 @@
     "projectLabel": "プロジェクト",
     "listLabel": "フック",
     "refresh": "更新",
-    "new": "+ 新規フック",
+    "new": "新規フック…",
     "create": "作成",
     "enabled": "有効",
     "disabled": "無効",
     "emptyTitle": "フックがありません",
-    "emptyBody": "このプロジェクトで新規作成するには「+ 新規」を使用してください。",
+    "emptyBody": "このプロジェクトで新規フック…を使用して作成します。",
     "selectTitle": "フックを選択",
     "selectBody": "左側の項目を選択するか、新規作成してください。",
     "newTitle": "新規フック",
@@ -2635,7 +2736,7 @@
     "namePatternHint": "小文字、英数字、「-_」を使用し、最大64文字。",
     "invalidNameHint": "名前は上記のパターンと一致する必要があります。",
     "duplicateNameHint": "このイベント/名前のフックはすでに存在します。",
-    "deleteTitle": "フックを削除",
+    "deleteTitle": "フックを削除しますか？",
     "deleteBody": "フック「{event}/{name}」を完全に削除しますか？過去の実行はイベントログに残ります。",
     "runHistory": "実行履歴",
     "noEvents": "まだイベントはありません。",
@@ -2985,7 +3086,7 @@
       "confirm": "委任"
     },
     "compose": {
-      "button": "新規メッセージ",
+      "button": "新規メッセージ…",
       "title": "新規受信トレイメッセージ",
       "body": "同僚、チーム、または自分自身の受信トレイにメッセージを書き込みます。これによりスレッドが開かれ、返信はその議論内で行われ、リクエストとしては行われません。",
       "recipient": "宛先",
@@ -3091,7 +3192,8 @@
       "talkCommandsSave": "コマンドを保存",
       "talkCommandsResetBtn": "デフォルトにリセット",
       "talkCommandsSaved": "音声コマンドを保存しました。",
-      "talkCommandsReset": "デフォルトにリセットしました。"
+      "talkCommandsReset": "デフォルトにリセットしました。",
+      "talkTriggerNamesPlaceholder": "コンピューター"
     },
     "teams": {
       "title": "チーム",
@@ -3153,7 +3255,10 @@
       "type": "タイプ",
       "series": "シリーズ",
       "echartsOverride": "EChartsオーバーライド",
-      "raw": "生データ"
+      "raw": "生データ",
+      "switchTypeTitle": "チャートタイプを変更しますか？",
+      "switchTypeMessage": "{to}チャートは{from}とは異なるデータポイント形状を必要とします。既存のシリーズデータは保存時に破棄されます。",
+      "switchTypeConfirm": "タイプを変更"
     },
     "diagram": {
       "downloadSvg": "↓ SVG"
@@ -3546,6 +3651,7 @@
     }
   },
   "form": {
+    "removeItem": "削除",
     "filterPlaceholder": "フィルター…",
     "noMatches": "フィルターに一致するものはありません。",
     "selectedCount": "{count}件選択済み",

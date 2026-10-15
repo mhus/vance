@@ -1,10 +1,70 @@
 {
+  "preview": {
+    "title": "Aperçu de l'interface",
+    "intro": "Tous les blocs de construction de la bibliothèque de composants dans leurs états — la référence pour corporate-design.md. Changez le thème pour vérifier le mode sombre.",
+    "themeLight": "Clair",
+    "themeDark": "Sombre",
+    "buttons": "Boutons — quatre rôles",
+    "sizes": "Tailles et états",
+    "iconButtons": "Boutons icône — info-bulle et libellé requis",
+    "toolbar": "Barre d'outils",
+    "groups": "Liste groupée",
+    "fields": "Champs",
+    "status": "Statut",
+    "empty": "État vide",
+    "icons": "Vocabulaire des icônes",
+    "dialog": "Boîte de dialogue de confirmation",
+    "primary": "Enregistrer",
+    "secondary": "Annuler",
+    "plain": "En savoir plus",
+    "danger": "Supprimer…",
+    "dangerFilled": "Supprimer",
+    "withIcon": "Nouveau document",
+    "loading": "Enregistrement",
+    "disabled": "Désactivé",
+    "refresh": "Actualiser",
+    "download": "Télécharger",
+    "share": "Partager",
+    "pinned": "Épinglé",
+    "delete": "Supprimer",
+    "close": "Fermer",
+    "back": "Retour",
+    "more": "Plus",
+    "openInCortex": "Ouvrir dans Cortex",
+    "documentTitle": "intro.md",
+    "groupAppearance": "Apparence",
+    "groupNote": "« Système » suit les paramètres de votre ordinateur.",
+    "rowLanguage": "Langue de l'interface",
+    "rowLanguageValue": "Français",
+    "rowCompact": "Listes compactes",
+    "rowNotify": "Notifier quand un agent a terminé",
+    "rowSignOut": "Se déconnecter",
+    "fieldName": "Nom du projet",
+    "fieldNameHelp": "Visible par tous les membres du Tenant.",
+    "fieldModel": "Modèle",
+    "fieldModelError": "Ce modèle n'est pas configuré.",
+    "fieldKind": "Type",
+    "fieldNotes": "Notes",
+    "fieldAgree": "Autoriser les agents à modifier ce document",
+    "alertInfo": "Les agents peuvent lire ce document mais pas le modifier.",
+    "alertWarning": "Deux Kits ont une mise à jour.",
+    "alertError": "La connexion au serveur a été perdue.",
+    "alertSuccess": "Enregistré.",
+    "badge": "Badge",
+    "emptyHeadline": "Aucun document pour l'instant",
+    "emptyBody": "Créez le premier ou importez un dossier.",
+    "dialogOpen": "Supprimer le projet…",
+    "dialogTitle": "Supprimer « Planification de mariage » ?",
+    "dialogBody": "Le projet et ses 42 documents seront supprimés. Cette action est irréversible."
+  },
   "newVersion": {
     "message": "Une nouvelle version de Vance est disponible.",
     "action": "Recharger",
     "dismiss": "Plus tard"
   },
   "common": {
+    "expand": "Développer",
+    "collapse": "Réduire",
     "save": "Enregistrer",
     "saving": "Enregistrement…",
     "saved": "Enregistré.",
@@ -63,12 +123,15 @@
         "invalidInput": "Saisie invalide : {message}",
         "generic": "Erreur : {message}"
       }
-    }
+    },
+    "confirm": "Confirmer",
+    "archive": "Archiver",
+    "remove": "Retirer"
   },
   "fook": {
     "menuLabel": "Signaler un bug / une fonctionnalité",
     "title": "Signaler un bug ou demander une fonctionnalité",
-    "intro": "Décrivez ce qui s'est passé, ce que vous attendiez ou ce que vous souhaiteriez que Vance fasse. Soyez concret — Fook lit votre texte et en déduit le type, la gravité et le titre. Vous recevrez un élément dans votre boîte de réception avec le résultat.",
+    "intro": "Décrivez concrètement ce qui s'est passé, ce que vous attendiez, ou ce que vous souhaiteriez que Vancetope fasse. Fook déduit le type, la gravité et le titre de votre texte et envoie le résultat à votre boîte de réception.",
     "placeholder": "Qu'est-ce qui n'a pas fonctionné, ou que voudriez-vous changer ? Les étapes de reproduction aident.",
     "submit": "Envoyer",
     "submitted": "Soumis — Fook est en train de trier. ID de soumission :",
@@ -94,8 +157,6 @@
   "processPanel": {
     "title": "Processus de cette session",
     "count": "{n} processus",
-    "filterLive": "Filtre : en direct",
-    "filterAll": "Filtre : tout",
     "closeReason": {
       "DONE": "terminé",
       "INCOMPLETE": "incomplet",
@@ -125,7 +186,10 @@
     "noConnection": "Aucune connexion — les processus ne sont visibles qu'avec une session liée.",
     "previewTitle": "Processus — {session}",
     "previewReadOnly": "Aperçu d'une session à laquelle vous ne participez pas — lecture seule.",
-    "openSession": "Ouvrir la session"
+    "openSession": "Ouvrir la session",
+    "segmentLive": "En direct",
+    "segmentAll": "Tout",
+    "filterLabel": "Afficher les processus"
   },
   "cortex": {
     "confirmDiscardUnsaved": "« {label} » n'a pas pu être enregistré ({reason}).\n\nFermer quand même et annuler les modifications ?",
@@ -181,10 +245,19 @@
     "hactar": {
       "applyToEditor": "Appliquer à l'éditeur",
       "thinking": "Slart réfléchit…",
-      "generatedScript": "Script généré :",
+      "generatedScript": "Script généré",
       "regenerate": "Re-générer",
       "failed": "ÉCHEC :",
-      "close": "Fermer"
+      "close": "Fermer",
+      "titleUpdate": "Slart · mettre à jour ce script",
+      "titleGenerate": "Slart · générer un nouveau script",
+      "update": "Mettre à jour",
+      "generate": "Générer",
+      "updateDescription": "Slart examine le corps du script actuel et préserve sa structure autant que possible. La nouvelle version atterrit dans un nouveau Slart bucket — le document original ne change que si vous cliquez sur {apply}.",
+      "promptLabelUpdate": "Que doit changer ?",
+      "promptLabelGenerate": "Que doit faire le script ?",
+      "promptPlaceholderUpdate": "Exemple : 'Envoyer aussi une notification Slack lorsque la boîte de réception est vide.'",
+      "promptPlaceholderGenerate": "Exemple : 'Lire un nombre depuis args.n et retourner sa factorielle.'"
     },
     "rightPanel": {
       "title": "Panneau de droite",
@@ -211,6 +284,7 @@
       "create": "Créer"
     },
     "notes": {
+      "lineShort": "Ligne {line}",
       "empty": "Aucune note. Cliquez à côté d'un numéro de ligne ou sur le bouton ＋.",
       "jumpToLine": "Aller à la ligne {line}",
       "title": "Notes",
@@ -263,22 +337,29 @@
       "appView": "Vue App",
       "app": "App",
       "rawManifest": "Éditeur de manifeste YAML brut",
+      "reload": "Recharger depuis le serveur",
+      "reloadDirty": "Recharger (annule les modifications non enregistrées)",
+      "viewEditToggle": "Basculer vue / édition",
+      "renderedView": "Vue rendue",
+      "unsaved": "Modifications non enregistrées",
       "edit": "Modifier",
       "rawSource": "Éditeur de source brute",
       "cancelRun": "Annuler l'exécution en cours",
-      "cancelRunLabel": "■ Annuler",
+      "cancelRunLabel": "Annuler",
       "quickValidate": "Validation rapide — analyse + vérification d'en-tête",
       "deepReview": "Analyse approfondie — revue statique LLM (lent, mis en cache côté serveur)",
       "generateScript": "Générer un nouveau script à partir d'une description textuelle (Slart SCRIPT_JS)",
-      "generate": "✨ Générer",
+      "generate": "Générer",
       "updateScript": "Mettre à jour ce script — décrivez le changement et Slart le réécrit en préservant la structure",
-      "update": "✨ Mettre à jour",
+      "update": "Mettre à jour",
       "properties": "Propriétés",
       "path": "Chemin :",
       "mime": "MIME :",
       "readOnly": "lecture seule",
       "closeLog": "Fermer le panneau de journal",
-      "result": "résultat :"
+      "result": "résultat :",
+      "reloadDirtyTitle": "Annuler les modifications non enregistrées ?",
+      "reloadDirtyMessage": "Le rechargement de {path} remplacera vos modifications non enregistrées par la version stockée."
     },
     "age": {
       "save": "Enregistrer",
@@ -321,6 +402,7 @@
       }
     },
     "tabs": {
+      "empty": "Aucun document ouvert — choisissez-en un dans l'arborescence, ou créez un nouveau fichier.",
       "close": "fermer"
     },
     "tree": {
@@ -329,7 +411,7 @@
       "reload": "Recharger l'arborescence des documents",
       "loading": "chargement",
       "loadingText": "chargement…",
-      "delete": "supprimer",
+      "delete": "Supprimer",
       "empty": "vide"
     },
     "newFolder": {
@@ -337,7 +419,8 @@
       "pathLabel": "Chemin du dossier",
       "pathPlaceholder": "documents/notes",
       "cancel": "Annuler",
-      "create": "Créer"
+      "create": "Créer",
+      "description": "Les dossiers sont virtuels tant qu'aucun fichier n'y réside — cette entrée est côté client et disparaît à l'actualisation si rien n'y est déplacé."
     },
     "openDocument": {
       "title": "Ouvrir un document",
@@ -514,6 +597,12 @@
     "open": "Ouvrir"
   },
   "chat": {
+    "pageTitle": "Chat",
+    "openCortex": "Ouvrir Cortex",
+    "composer": {
+      "showTools": "Afficher les outils",
+      "hideTools": "Masquer les outils"
+    },
     "breadcrumb": {
       "unnamedSession": "Session"
     },
@@ -667,7 +756,10 @@
       "cancel": "Fermer",
       "pendingNone": "Aucune modification",
       "pending": "{n} modification(s)",
-      "removeToggle": "Supprimer de la mémoire"
+      "removeToggle": "Supprimer de la mémoire",
+      "roleUser": "Utilisateur",
+      "roleAssistant": "IA",
+      "roleSystem": "Système"
     },
     "clients": {
       "heading": "Clients CLI en cours d'exécution",
@@ -691,7 +783,8 @@
     "picker": {
       "tabs": {
         "sessions": "Sessions",
-        "clients": "Clients"
+        "clients": "Clients",
+        "label": "Vue"
       },
       "projectsTitle": "Projets",
       "loading": "Chargement…",
@@ -733,7 +826,6 @@
       "recipeFilterNoMatch": "Aucune Recette ne correspond à \"{filter}\".",
       "recipeBadgeTooltip": "Recette du processus de session-chat",
       "groups": {
-        "create": "+ Groupe",
         "createTooltip": "Créer un groupe de sessions",
         "createTitle": "Créer un groupe de sessions",
         "nameLabel": "Nom",
@@ -745,8 +837,10 @@
         "moveDown": "Déplacer vers le bas",
         "delete": "Supprimer le groupe",
         "confirmDelete": "Supprimer le groupe \"{name}\" ? Ses sessions sont uniquement retirées du groupe, pas supprimées.",
-        "emptyDropHint": "Faites glisser une session ici"
-      }
+        "emptyDropHint": "Faites glisser une session ici",
+        "newGroup": "Nouveau groupe…"
+      },
+      "newSessionEllipsis": "Nouvelle session…"
     },
     "search": {
       "title": "Rechercher des sessions",
@@ -783,7 +877,9 @@
       "title": "Assistants",
       "emptyHeadline": "Aucun assistant disponible",
       "emptyBody": "Les assistants sont des formulaires YAML sous _vance/wizards/ qui se transforment en invites structurées.",
-      "submit": "Générer l'invite"
+      "submit": "Générer l'invite",
+      "refresh": "Actualiser la liste",
+      "back": "Retour à la liste"
     },
     "skills": {
       "tabLabel": "Skills",
@@ -922,6 +1018,8 @@
     "title": "Documents",
     "loading": "Chargement des documents…",
     "totalItems": "éléments",
+    "pagePrevious": "Page précédente",
+    "pageNext": "Page suivante",
     "empty": {
       "noProjectHeadline": "Aucun projet sélectionné",
       "noProjectBody": "Sélectionnez un projet à gauche pour afficher ses documents.",
@@ -939,8 +1037,8 @@
       "searchUnavailableBody": "La source « {mount} » n'a pas pu être atteinte. Réessayer pourrait fonctionner."
     },
     "mountSearchDelegated": "Résultats de la source externe « {mount} » — ils couvrent l'ensemble du montage, pas seulement ce dossier.",
-    "newDocument": "+ Nouveau document",
-    "addNew": "+ Nouveau",
+    "newDocument": "Nouveau document",
+    "addNew": "Nouveau document",
     "openCortex": "Cortex",
     "openCortexTitle": "Ouvrir ce projet dans l'éditeur Cortex",
     "dropHint": "Déposez les fichiers ici pour les télécharger",
@@ -1039,6 +1137,7 @@
       "clearSelection": "Désélectionner tout"
     },
     "checklistEditor": {
+      "clearFilter": "Effacer le filtre",
       "addItem": "Ajouter un élément",
       "deleteItem": "Supprimer l'élément",
       "clickToEdit": "Cliquer pour modifier",
@@ -1253,8 +1352,10 @@
       "uploadFile": "Uploader un fichier",
       "templateLoading": "Chargement des modèles…",
       "templateNone": "Aucun modèle disponible.",
-      "templateAllTags": "Tous",
+      "templateAllTags": "Tous les tags",
+      "templateFilter": "Filtrer les modèles…",
       "templateBack": "Modèles",
+      "prefilledFrom": "Prérempli depuis : {source}",
       "templateNameFixed": "Ce modèle utilise un nom de fichier fixe.",
       "pathLabel": "Chemin",
       "pathPlaceholder": "notes/exemple.md",
@@ -1631,7 +1732,7 @@
       "emptyAll": "Aucune activité enregistrée pour l'instant."
     },
     "tabs2": {
-      "more": "Plus ▾",
+      "more": "Plus",
       "liveTools": "Outils en direct"
     },
     "prakMeta": {
@@ -1873,7 +1974,7 @@
       "chatLoading": "Chargement du chat…",
       "chatEmptyHeadline": "Aucun message",
       "chatEmptyBody": "Ce processus n'a pas d'historique de chat.",
-      "archivedToMemory": "→ mémoire {id}",
+      "archivedToMemory": "Mémoire : {id}",
       "memoryLoading": "Chargement de la mémoire…",
       "memoryEmptyHeadline": "Aucune mémoire",
       "memoryEmptyBody": "Aucune entrée de mémoire côté engine n'est associée à ce processus.",
@@ -2155,14 +2256,17 @@
     "loading": "Chargement…",
     "searchPlaceholder": "Rechercher des modèles…",
     "projectIdLabel": "Projet",
-    "install": "Installer",
     "apply": "Appliquer",
     "previouslyApplied": "Appliqué précédemment le {at} par {by}. Formulaire pré-rempli — ajustez et réappliquez pour mettre à jour. Les champs de mot de passe restent vides pour la sécurité.",
     "noInputs": "Ce modèle n'a pas d'entrées — appliquez-le pour l'installer.",
     "empty": {
       "headline": "Aucun modèle disponible",
       "body": "Demandez à votre administrateur de tenant de remplir le catalogue de modèles d'outils à _tenant/config/tool-templates.yaml."
-    }
+    },
+    "applyFailed": "Échec de l'application.",
+    "unknownUser": "inconnu",
+    "connectProvider": "Connecter {provider}…",
+    "openConnectedAccounts": "Ouvrir les comptes connectés"
   },
   "oauthConsent": {
     "pageTitle": "Autoriser l'accès",
@@ -2244,7 +2348,6 @@
     "confirmRemoveSecret": "Supprimer le secret client stocké ? Aucune nouvelle connexion ne fonctionnera tant que vous n'en aurez pas défini un nouveau.",
     "sidebar": {
       "providersLabel": "Fournisseurs",
-      "addNew": "+ Nouveau",
       "noProvidersHeadline": "Aucun fournisseur OAuth",
       "noProvidersBody": "Cliquez sur + Nouveau pour en ajouter un.",
       "secretSet": "secret défini",
@@ -2299,8 +2402,6 @@
     "sidebar": {
       "usersTitle": "Utilisateurs",
       "teamsTitle": "Équipes",
-      "addUser": "+ Utilisateur",
-      "addTeam": "+ Équipe",
       "showInternalUsers": "Afficher les utilisateurs internes",
       "memberCountSingular": "{count} membre",
       "memberCountPlural": "{count} membres",
@@ -2540,12 +2641,12 @@
     "projectLabel": "Projet",
     "listLabel": "Planificateurs",
     "refresh": "Actualiser",
-    "new": "+ Nouveau planificateur",
+    "new": "Nouveau planificateur…",
     "create": "Créer",
     "enabled": "activé",
     "disabled": "désactivé",
     "emptyTitle": "Aucun planificateur",
-    "emptyBody": "Utilisez + Nouveau pour en créer un dans ce projet.",
+    "emptyBody": "Utilisez Nouveau planificateur… pour en créer un dans ce projet.",
     "selectTitle": "Choisir un planificateur",
     "selectBody": "Choisissez une entrée à gauche ou créez-en une nouvelle.",
     "newTitle": "Nouveau planificateur",
@@ -2554,7 +2655,7 @@
     "namePatternHint": "Minuscules, alphanumérique + \"-_\", 64 caractères max.",
     "invalidNameHint": "Le nom doit correspondre au modèle ci-dessus.",
     "duplicateNameHint": "Un planificateur avec ce nom existe déjà.",
-    "deleteTitle": "Supprimer le planificateur",
+    "deleteTitle": "Supprimer le planificateur ?",
     "deleteBody": "Supprimer définitivement le planificateur \"{name}\" ? Les exécutions passées restent dans le journal des événements.",
     "runHistory": "Historique des exécutions",
     "noEvents": "Aucun événement pour l'instant.",
@@ -2620,12 +2721,12 @@
     "projectLabel": "Projet",
     "listLabel": "Hooks",
     "refresh": "Actualiser",
-    "new": "+ Nouveau hook",
+    "new": "Nouveau hook…",
     "create": "Créer",
     "enabled": "activé",
     "disabled": "désactivé",
     "emptyTitle": "Aucun hook",
-    "emptyBody": "Utilisez + Nouveau pour en créer un dans ce projet.",
+    "emptyBody": "Utilisez Nouveau hook… pour en créer un dans ce projet.",
     "selectTitle": "Choisir un hook",
     "selectBody": "Choisissez une entrée à gauche ou créez-en une nouvelle.",
     "newTitle": "Nouveau hook",
@@ -2635,7 +2736,7 @@
     "namePatternHint": "Minuscules, alphanumérique + \"-_\", 64 caractères max.",
     "invalidNameHint": "Le nom doit correspondre au modèle ci-dessus.",
     "duplicateNameHint": "Un hook avec cet événement/nom existe déjà.",
-    "deleteTitle": "Supprimer le hook",
+    "deleteTitle": "Supprimer le hook ?",
     "deleteBody": "Supprimer définitivement le hook \"{event}/{name}\" ? Les exécutions passées restent dans le journal des événements.",
     "runHistory": "Historique des exécutions",
     "noEvents": "Aucun événement pour l'instant.",
@@ -2985,7 +3086,7 @@
       "confirm": "Déléguer"
     },
     "compose": {
-      "button": "Nouveau message",
+      "button": "Nouveau message…",
       "title": "Nouveau message de boîte de réception",
       "body": "Écrivez un message dans la boîte de réception de quelqu'un — un collègue, une équipe, ou vous-même. Cela ouvre un fil de discussion : une réponse se fait dans la discussion, jamais comme une requête.",
       "recipient": "À",
@@ -3091,7 +3192,8 @@
       "talkCommandsSave": "Enregistrer les commandes",
       "talkCommandsResetBtn": "Réinitialiser aux valeurs par défaut",
       "talkCommandsSaved": "Commandes vocales enregistrées.",
-      "talkCommandsReset": "Réinitialiser aux valeurs par défaut."
+      "talkCommandsReset": "Réinitialiser aux valeurs par défaut.",
+      "talkTriggerNamesPlaceholder": "Ordinateur"
     },
     "teams": {
       "title": "Équipes",
@@ -3153,7 +3255,10 @@
       "type": "Type",
       "series": "Série",
       "echartsOverride": "Remplacement ECharts",
-      "raw": "Brut"
+      "raw": "Brut",
+      "switchTypeTitle": "Changer le type de graphique ?",
+      "switchTypeMessage": "Un graphique {to} nécessite une forme de point de données différente de {from}. Les données de série existantes sont supprimées lors de l'enregistrement.",
+      "switchTypeConfirm": "Changer le type"
     },
     "diagram": {
       "downloadSvg": "↓ SVG"
@@ -3546,6 +3651,7 @@
     }
   },
   "form": {
+    "removeItem": "Supprimer",
     "filterPlaceholder": "Filtrer…",
     "noMatches": "Aucun résultat ne correspond au filtre.",
     "selectedCount": "{count} sélectionnés",

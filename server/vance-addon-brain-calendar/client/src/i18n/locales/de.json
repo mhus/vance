@@ -20,7 +20,9 @@
       "today": "Heute",
       "empty": "Keine anstehenden Termine.",
       "addToCalendar": "Zum Kalender hinzufügen",
-      "allDay": "Ganztägig"
+      "allDay": "Ganztägig",
+      "previousMonth": "Vorheriger Monat",
+      "nextMonth": "Nächster Monat"
     },
     "planner": {
       "reload": "Neu laden",
@@ -42,7 +44,7 @@
       "colEventA": "Termin A",
       "colEventB": "Termin B",
       "colOverlap": "Überlappung",
-      "addEvent": "Termin hinzufügen",
+      "addEvent": "Termin hinzufügen…",
       "noEventsHeadline": "Keine Termine in dieser Spur",
       "noEventsBody": "Den ersten Termin anlegen, um zu starten.",
       "allDayTag": "ganztägig",
@@ -51,8 +53,6 @@
       "addToOutlook": "Zu Outlook hinzufügen",
       "newEvent": "Neuer Termin",
       "eventTitlePlaceholder": "Titel des Termins",
-      "startPlaceholder": "Beginn (YYYY-MM-DD oder YYYY-MM-DDTHH:mm)",
-      "endPlaceholder": "Ende (optional)",
       "error": {
         "load": "Planer konnte nicht geladen werden: {message}",
         "rebuild": "Neu bauen fehlgeschlagen: {message}",
@@ -89,6 +89,7 @@
       "zoomIn": "Vergrößern",
       "fitTip": "Alle Einträge einpassen",
       "fit": "Einpassen",
+      "closeDetail": "Schließen",
       "unreadable": "{n} Eintrag hat eine Position, die diese {axis}-Achse nicht lesen kann, und wird nicht gezeichnet: {list} | {n} Einträge haben eine Position, die diese {axis}-Achse nicht lesen kann, und werden nicht gezeichnet: {list}",
       "empty": "Diese Timeline hat keine Einträge, die auf ihrer Achse platziert werden können.",
       "now": "jetzt",

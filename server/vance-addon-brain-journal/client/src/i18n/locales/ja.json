@@ -2,6 +2,9 @@
   "journal": {
     "today": "今日",
     "searchPlaceholder": "エントリーを検索…",
+    "search": "検索",
+    "previousMonth": "前月",
+    "nextMonth": "翌月",
     "untitled": "(無題)",
     "noMatch": "一致するエントリーはありません。",
     "rebuilding": "再構築中…",
@@ -29,6 +32,9 @@
       "delete": "削除に失敗しました。",
       "search": "検索に失敗しました。",
       "rebuild": "再構築に失敗しました。"
+    },
+    "common": {
+      "delete": "削除"
     }
   }
 }

@@ -19,7 +19,7 @@
     "view": {
       "fallbackTitle": "Vue",
       "recheck": "Revérifier",
-      "openApp": "Ouvrir l'app ↗",
+      "openApp": "Ouvrir l'app",
       "openAppTip": "Ouvrir l'app à laquelle appartient cette vue",
       "previewPre": "Aperçu — aucun programme n'est en cours d'exécution, donc tout ce qui est lié à",
       "previewMid": "est vide et",

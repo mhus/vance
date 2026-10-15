@@ -19,8 +19,8 @@
       "blocked": "bloqueado",
       "newCard": "Nueva tarjeta",
       "cardTitlePlaceholder": "Título de la tarjeta",
+      "column": "Columna",
       "assigneePlaceholder": "Asignado (opcional)",
-      "dueDatePlaceholder": "Fecha de vencimiento AAAA-MM-DD (opcional)",
       "error": {
         "load": "No se pudo cargar el tablero: {message}",
         "rebuild": "Fallo al reconstruir: {message}",

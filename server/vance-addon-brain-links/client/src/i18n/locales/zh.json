@@ -4,7 +4,8 @@
       "cancel": "取消",
       "save": "保存",
       "create": "创建",
-      "close": "关闭"
+      "close": "关闭",
+      "remove": "移除"
     },
     "app": {
       "pastePlaceholder": "粘贴一个或多个链接，每行一个",

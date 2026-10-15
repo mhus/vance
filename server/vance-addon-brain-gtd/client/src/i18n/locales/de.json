@@ -4,7 +4,8 @@
       "loading": "Lädt…",
       "saving": "Speichert…",
       "saved": "Gespeichert",
-      "saveFailed": "Speichern fehlgeschlagen"
+      "saveFailed": "Speichern fehlgeschlagen",
+      "delete": "Löschen"
     },
     "bucket": {
       "inbox": "Eingang",
@@ -16,19 +17,20 @@
     },
     "app": {
       "searchPlaceholder": "Aktionen suchen…",
+      "search": "Suchen",
       "untitled": "(ohne Titel)",
       "noMatch": "Keine passende Aktion.",
       "rebuildTip": "Ansichten neu bauen — erledigte Aktionen wandern in den Papierkorb",
       "projects": "Projekte",
       "contexts": "Kontexte",
-      "capturePlaceholder": "＋ In den Eingang notieren…",
+      "capturePlaceholder": "In den Eingang notieren…",
       "nothingHere": "Nichts hier.",
       "bucketLabel": "Liste",
       "whenHint": "wann:",
       "anytimeValue": "(irgendwann)",
       "project": "Projekt",
       "noProject": "(kein Projekt)",
-      "newProject": "＋ Neues Projekt…",
+      "newProject": "Neues Projekt…",
       "deadline": "Frist",
       "contextsPlaceholder": "@telefon, @zuhause",
       "done": "Erledigt",

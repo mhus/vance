@@ -6,12 +6,14 @@
       "cancel": "Abbrechen",
       "create": "Anlegen",
       "creating": "Wird angelegt…",
-      "loading": "Lädt…"
+      "loading": "Lädt…",
+      "delete": "Löschen"
     },
     "app": {
       "fallbackTitle": "Wiki",
       "indexTitle": "Index",
       "searchPlaceholder": "Seiten suchen…",
+      "search": "Suchen",
       "noMatch": "Keine passende Seite.",
       "createNamed": "Seite „{name}“ anlegen",
       "createNamedInSpace": "Seite „{name}“ in {space} anlegen",
@@ -29,8 +31,8 @@
       "missingPre": "Ein Wiki öffnet auf seiner",
       "missingMid": "Seite. Jetzt anlegen — oder den",
       "indexLink": "Index",
-      "createMain": "＋ „main“-Seite anlegen",
-      "noPageSelected": "Keine Seite ausgewählt. Mit ＋ Neu eine anlegen.",
+      "createMain": "Seite „main“ anlegen",
+      "noPageSelected": "Keine Seite ausgewählt. Lege eine neue an.",
       "generatedBadge": "generiert · nur lesen",
       "deletePage": "Seite löschen",
       "status": {
@@ -62,7 +64,7 @@
     "notes": {
       "title": "Notizen",
       "newNote": "Neue Notiz",
-      "empty": "Noch keine Notizen. ＋ klicken, um eine anzulegen.",
+      "empty": "Noch keine Notizen. Füge eine mit dem Plus-Button hinzu.",
       "done": "Erledigt",
       "markDone": "Als erledigt markieren",
       "delete": "Löschen",

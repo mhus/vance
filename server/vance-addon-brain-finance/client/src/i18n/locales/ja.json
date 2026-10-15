@@ -8,9 +8,9 @@
     "fallbackTitle": "財務ツリー",
     "reload": "再読み込み",
     "unit": "単位",
-    "report": "レポート",
+    "report": "レポート…",
     "loading": "読み込み中…",
-    "createRoot": "＋ ルートノードを作成",
+    "createRoot": "ルートノードを作成",
     "pickNode": "編集するノードを選択してください。",
     "save": {
       "saved": "保存済み",
@@ -29,7 +29,8 @@
     },
     "values": {
       "heading": "値ブロック",
-      "add": "＋ 値",
+      "add": "値",
+      "remove": "値ブロックを削除",
       "amount": "金額",
       "mode": "モード",
       "modeRecurring": "定期",
@@ -64,10 +65,10 @@
     "reportModal": {
       "title": "レポートを生成",
       "processor": "プロセッサー",
-      "from": "から",
-      "to": "まで",
+      "from": "開始日",
+      "to": "終了日",
       "granularity": "粒度",
-      "chartType": "チャートタイプ（シリーズ）",
+      "chartType": "チャートタイプ（系列）",
       "focus": "フォーカス（評価、任意）",
       "persist": "ドキュメントとして保存",
       "outputPath": "出力パス",
@@ -75,7 +76,8 @@
       "generating": "生成中…",
       "generate": "生成",
       "running": "レポートを生成中…",
-      "savedTo": "{path} に保存されました"
+      "savedTo": "{path} に保存されました",
+      "close": "閉じる"
     },
     "tree": {
       "perUnit": "{unit} あたり",
@@ -87,7 +89,7 @@
       "delete": "削除"
     },
     "summary": {
-      "edit": "編集",
+      "edit": "編集…",
       "perYear": "/ 年",
       "oneTime": "一度限り: {amount}",
       "empty": "空です — ノードを追加するには開いてください。",

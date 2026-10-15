@@ -19,7 +19,7 @@
     "view": {
       "fallbackTitle": "Widok",
       "recheck": "Sprawdź ponownie",
-      "openApp": "Otwórz aplikację ↗",
+      "openApp": "Otwórz aplikację",
       "openAppTip": "Otwórz aplikację, do której należy ten widok",
       "previewPre": "Podgląd — żaden program nie działa, więc wszystko powiązane z",
       "previewMid": "jest puste, a",

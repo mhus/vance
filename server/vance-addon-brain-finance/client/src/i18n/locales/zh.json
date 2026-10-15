@@ -8,9 +8,9 @@
     "fallbackTitle": "财务树",
     "reload": "重新加载",
     "unit": "单位",
-    "report": "报告",
+    "report": "报告…",
     "loading": "加载中…",
-    "createRoot": "＋ 创建根节点",
+    "createRoot": "创建根节点",
     "pickNode": "选择一个节点进行编辑。",
     "save": {
       "saved": "已保存",
@@ -29,7 +29,8 @@
     },
     "values": {
       "heading": "值块",
-      "add": "＋ 值",
+      "add": "值",
+      "remove": "移除值块",
       "amount": "金额",
       "mode": "模式",
       "modeRecurring": "循环",
@@ -75,7 +76,8 @@
       "generating": "生成中…",
       "generate": "生成",
       "running": "正在生成报告…",
-      "savedTo": "已保存到 {path}"
+      "savedTo": "已保存到 {path}",
+      "close": "关闭"
     },
     "tree": {
       "perUnit": "每{unit}",
@@ -87,7 +89,7 @@
       "delete": "删除"
     },
     "summary": {
-      "edit": "编辑",
+      "edit": "编辑…",
       "perYear": "/ 年",
       "oneTime": "一次性：{amount}",
       "empty": "空 — 打开以添加节点。",

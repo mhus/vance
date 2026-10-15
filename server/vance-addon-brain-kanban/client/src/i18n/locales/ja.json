@@ -19,8 +19,8 @@
       "blocked": "ブロック済み",
       "newCard": "新規カード",
       "cardTitlePlaceholder": "カードのタイトル",
+      "column": "列",
       "assigneePlaceholder": "担当者（任意）",
-      "dueDatePlaceholder": "期日 YYYY-MM-DD（任意）",
       "error": {
         "load": "ボードを読み込めませんでした: {message}",
         "rebuild": "再構築に失敗しました: {message}",

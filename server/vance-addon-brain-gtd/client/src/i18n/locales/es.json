@@ -4,7 +4,8 @@
       "loading": "Cargando…",
       "saving": "Guardando…",
       "saved": "Guardado",
-      "saveFailed": "Error al guardar"
+      "saveFailed": "Error al guardar",
+      "delete": "Eliminar"
     },
     "bucket": {
       "inbox": "Bandeja de entrada",
@@ -16,19 +17,20 @@
     },
     "app": {
       "searchPlaceholder": "Buscar acciones…",
+      "search": "Buscar",
       "untitled": "(sin título)",
       "noMatch": "Ninguna acción coincide.",
       "rebuildTip": "Reconstruir vistas — mueve las acciones completadas a la Papelera",
       "projects": "Proyectos",
       "contexts": "Contextos",
-      "capturePlaceholder": "＋ Capturar a Bandeja de entrada…",
+      "capturePlaceholder": "Capturar a la Bandeja de entrada…",
       "nothingHere": "Nada por aquí.",
       "bucketLabel": "Cubo",
       "whenHint": "cuándo:",
       "anytimeValue": "(cualquier momento)",
       "project": "Proyecto",
       "noProject": "(sin proyecto)",
-      "newProject": "＋ Nuevo proyecto…",
+      "newProject": "Nuevo proyecto…",
       "deadline": "Fecha límite",
       "contextsPlaceholder": "@llamadas, @casa",
       "done": "Hecho",

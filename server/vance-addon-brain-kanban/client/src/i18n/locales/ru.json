@@ -19,8 +19,8 @@
       "blocked": "заблокировано",
       "newCard": "Новая карточка",
       "cardTitlePlaceholder": "Название карточки",
+      "column": "Колонка",
       "assigneePlaceholder": "Исполнитель (необязательно)",
-      "dueDatePlaceholder": "Срок YYYY-MM-DD (необязательно)",
       "error": {
         "load": "Не удалось загрузить доску: {message}",
         "rebuild": "Перестроение не удалось: {message}",

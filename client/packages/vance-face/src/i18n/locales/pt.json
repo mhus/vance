@@ -1,10 +1,70 @@
 {
+  "preview": {
+    "title": "Pré-visualização da UI",
+    "intro": "Todos os blocos de construção da biblioteca de componentes em seus estados — a referência para corporate-design.md. Alterne o tema para verificar o modo escuro.",
+    "themeLight": "Claro",
+    "themeDark": "Escuro",
+    "buttons": "Botões — quatro funções",
+    "sizes": "Tamanhos e estados",
+    "iconButtons": "Botões de ícone — tooltip e label obrigatórios",
+    "toolbar": "Barra de ferramentas",
+    "groups": "Lista agrupada",
+    "fields": "Campos",
+    "status": "Status",
+    "empty": "Estado vazio",
+    "icons": "Vocabulário de ícones",
+    "dialog": "Diálogo de confirmação",
+    "primary": "Salvar",
+    "secondary": "Cancelar",
+    "plain": "Saiba mais",
+    "danger": "Excluir…",
+    "dangerFilled": "Excluir",
+    "withIcon": "Novo documento",
+    "loading": "Salvando",
+    "disabled": "Desativado",
+    "refresh": "Atualizar",
+    "download": "Baixar",
+    "share": "Compartilhar",
+    "pinned": "Fixado",
+    "delete": "Excluir",
+    "close": "Fechar",
+    "back": "Voltar",
+    "more": "Mais",
+    "openInCortex": "Abrir no Cortex",
+    "documentTitle": "intro.md",
+    "groupAppearance": "Aparência",
+    "groupNote": "“Sistema” segue a configuração do seu computador.",
+    "rowLanguage": "Idioma da interface",
+    "rowLanguageValue": "Português (Brasil)",
+    "rowCompact": "Listas compactas",
+    "rowNotify": "Notificar quando um agente terminar",
+    "rowSignOut": "Sair",
+    "fieldName": "Nome do projeto",
+    "fieldNameHelp": "Visível para todos no Tenant.",
+    "fieldModel": "Modelo",
+    "fieldModelError": "Este modelo não está configurado.",
+    "fieldKind": "Tipo",
+    "fieldNotes": "Notas",
+    "fieldAgree": "Permitir que agentes editem este documento",
+    "alertInfo": "Agentes podem ler este documento, mas não alterá-lo.",
+    "alertWarning": "Dois Kits têm uma atualização.",
+    "alertError": "A conexão com o servidor foi perdida.",
+    "alertSuccess": "Salvo.",
+    "badge": "Distintivo",
+    "emptyHeadline": "Nenhum documento ainda",
+    "emptyBody": "Crie o primeiro ou importe uma pasta.",
+    "dialogOpen": "Excluir projeto…",
+    "dialogTitle": "Excluir “Planejamento de casamento”?",
+    "dialogBody": "O projeto e seus 42 documentos serão removidos. Esta ação não pode ser desfeita."
+  },
   "newVersion": {
     "message": "Uma nova versão do Vance está disponível.",
     "action": "Recarregar",
     "dismiss": "Mais tarde"
   },
   "common": {
+    "expand": "Expandir",
+    "collapse": "Recolher",
     "save": "Salvar",
     "saving": "Salvando…",
     "saved": "Salvo.",
@@ -63,12 +123,15 @@
         "invalidInput": "Entrada inválida: {message}",
         "generic": "Erro: {message}"
       }
-    }
+    },
+    "confirm": "Confirmar",
+    "archive": "Arquivar",
+    "remove": "Remover"
   },
   "fook": {
     "menuLabel": "Reportar um bug / recurso",
     "title": "Reportar um bug ou solicitar um recurso",
-    "intro": "Descreva o que aconteceu, o que você esperava, ou o que você gostaria que Vance fizesse. Seja concreto — Fook lê seu texto e escolhe o tipo, gravidade e título a partir dele. Você receberá um item na caixa de entrada com o resultado.",
+    "intro": "Descreva concretamente o que aconteceu, o que você esperava ou o que você gostaria que Vancetope fizesse. Fook extrai o tipo, a gravidade e o título do seu texto e envia o resultado para sua caixa de entrada.",
     "placeholder": "O que deu errado, ou o que você gostaria de mudar? Passos para reproduzir ajudam.",
     "submit": "Enviar",
     "submitted": "Enviado — Fook está triando. ID da submissão:",
@@ -94,8 +157,6 @@
   "processPanel": {
     "title": "Processos desta sessão",
     "count": "{n} processo(s)",
-    "filterLive": "Filtro: ao vivo",
-    "filterAll": "Filtro: todos",
     "closeReason": {
       "DONE": "concluído",
       "INCOMPLETE": "incompleto",
@@ -125,7 +186,10 @@
     "noConnection": "Sem conexão — processos visíveis apenas com uma sessão vinculada.",
     "previewTitle": "Processos — {session}",
     "previewReadOnly": "Prévia de uma sessão da qual você não participa — somente leitura.",
-    "openSession": "Abrir sessão"
+    "openSession": "Abrir sessão",
+    "segmentLive": "Ao vivo",
+    "segmentAll": "Todos",
+    "filterLabel": "Mostrar processos"
   },
   "cortex": {
     "confirmDiscardUnsaved": "“{label}” não pôde ser salvo ({reason}).\n\nFechar mesmo assim e descartar as alterações?",
@@ -181,10 +245,19 @@
     "hactar": {
       "applyToEditor": "Aplicar ao editor",
       "thinking": "Slart está pensando…",
-      "generatedScript": "Script gerado:",
+      "generatedScript": "Script gerado",
       "regenerate": "Gerar novamente",
       "failed": "FALHOU:",
-      "close": "Fechar"
+      "close": "Fechar",
+      "titleUpdate": "Slart · atualizar este script",
+      "titleGenerate": "Slart · gerar um novo script",
+      "update": "Atualizar",
+      "generate": "Gerar",
+      "updateDescription": "Slart vê o corpo do script atual e preserva sua estrutura sempre que possível. A nova versão chega em um novo bucket Slart — o documento original só muda se você clicar em {apply}.",
+      "promptLabelUpdate": "O que deve mudar?",
+      "promptLabelGenerate": "O que o script deve fazer?",
+      "promptPlaceholderUpdate": "Exemplo: 'Também enviar uma notificação Slack quando a caixa de entrada estiver vazia.'",
+      "promptPlaceholderGenerate": "Exemplo: 'Ler um número de args.n e retornar seu fatorial.'"
     },
     "rightPanel": {
       "title": "Painel direito",
@@ -211,6 +284,7 @@
       "create": "Criar"
     },
     "notes": {
+      "lineShort": "Linha {line}",
       "empty": "Nenhuma nota. Clique ao lado de um número de linha ou no botão ＋.",
       "jumpToLine": "Ir para a linha {line}",
       "title": "Notas",
@@ -263,22 +337,29 @@
       "appView": "Visualização de App",
       "app": "App",
       "rawManifest": "Editor de manifesto YAML bruto",
+      "reload": "Recarregar do servidor",
+      "reloadDirty": "Recarregar (descarta alterações não salvas)",
+      "viewEditToggle": "Alternar visualização / edição",
+      "renderedView": "Visualização renderizada",
+      "unsaved": "Alterações não salvas",
       "edit": "Editar",
       "rawSource": "Editor de código-fonte bruto",
       "cancelRun": "Cancelar a execução em andamento",
-      "cancelRunLabel": "■ Cancelar",
+      "cancelRunLabel": "Cancelar",
       "quickValidate": "Validação rápida — análise + verificação de cabeçalho",
       "deepReview": "Revisão profunda — revisão estática LLM (lenta, cacheada no servidor)",
       "generateScript": "Gerar um novo script a partir de uma descrição de texto livre (Slart SCRIPT_JS)",
-      "generate": "✨ Gerar",
+      "generate": "Gerar",
       "updateScript": "Atualizar este script — descreva a mudança e Slart o reescreverá preservando a estrutura",
-      "update": "✨ Atualizar",
+      "update": "Atualizar",
       "properties": "Propriedades",
       "path": "Caminho:",
       "mime": "MIME:",
       "readOnly": "somente leitura",
       "closeLog": "Fechar painel de log",
-      "result": "resultado:"
+      "result": "resultado:",
+      "reloadDirtyTitle": "Descartar alterações não salvas?",
+      "reloadDirtyMessage": "Recarregar {path} substitui suas edições não salvas pela versão armazenada."
     },
     "age": {
       "save": "Salvar",
@@ -321,6 +402,7 @@
       }
     },
     "tabs": {
+      "empty": "Nenhum documento aberto — escolha um na árvore ou crie um novo arquivo.",
       "close": "fechar"
     },
     "tree": {
@@ -329,7 +411,7 @@
       "reload": "Recarregar árvore de documentos",
       "loading": "carregando",
       "loadingText": "carregando…",
-      "delete": "excluir",
+      "delete": "Excluir",
       "empty": "vazio"
     },
     "newFolder": {
@@ -337,7 +419,8 @@
       "pathLabel": "Caminho da pasta",
       "pathPlaceholder": "documentos/notas",
       "cancel": "Cancelar",
-      "create": "Criar"
+      "create": "Criar",
+      "description": "Pastas são virtuais até que um arquivo resida nelas — esta entrada é do lado do cliente e desaparece ao atualizar, a menos que algo seja movido para ela."
     },
     "openDocument": {
       "title": "Abrir documento",
@@ -514,6 +597,12 @@
     "open": "Abrir"
   },
   "chat": {
+    "pageTitle": "Chat",
+    "openCortex": "Abrir Cortex",
+    "composer": {
+      "showTools": "Mostrar ferramentas",
+      "hideTools": "Ocultar ferramentas"
+    },
     "breadcrumb": {
       "unnamedSession": "Sessão"
     },
@@ -667,7 +756,10 @@
       "cancel": "Fechar",
       "pendingNone": "Nenhuma alteração",
       "pending": "{n} alteração(ões)",
-      "removeToggle": "Remover da memória"
+      "removeToggle": "Remover da memória",
+      "roleUser": "Usuário",
+      "roleAssistant": "IA",
+      "roleSystem": "Sistema"
     },
     "clients": {
       "heading": "Clientes CLI em execução",
@@ -691,7 +783,8 @@
     "picker": {
       "tabs": {
         "sessions": "Sessões",
-        "clients": "Clientes"
+        "clients": "Clientes",
+        "label": "Visualizar"
       },
       "projectsTitle": "Projetos",
       "loading": "Carregando…",
@@ -733,7 +826,6 @@
       "recipeFilterNoMatch": "Nenhuma Recipe corresponde a \"{filter}\".",
       "recipeBadgeTooltip": "Recipe do processo de chat da sessão",
       "groups": {
-        "create": "+ Grupo",
         "createTooltip": "Criar grupo de sessões",
         "createTitle": "Criar grupo de sessões",
         "nameLabel": "Nome",
@@ -745,8 +837,10 @@
         "moveDown": "Mover para baixo",
         "delete": "Excluir grupo",
         "confirmDelete": "Excluir grupo \"{name}\"? As sessões serão apenas removidas do grupo, não excluídas.",
-        "emptyDropHint": "Arraste uma sessão para cá"
-      }
+        "emptyDropHint": "Arraste uma sessão para cá",
+        "newGroup": "Novo grupo…"
+      },
+      "newSessionEllipsis": "Nova sessão…"
     },
     "search": {
       "title": "Buscar sessões",
@@ -783,7 +877,9 @@
       "title": "Wizards",
       "emptyHeadline": "Nenhum Wizard disponível",
       "emptyBody": "Wizards são formulários YAML em _vance/wizards/ que se transformam em prompts estruturados.",
-      "submit": "Gerar prompt"
+      "submit": "Gerar prompt",
+      "refresh": "Atualizar a lista",
+      "back": "Voltar à lista"
     },
     "skills": {
       "tabLabel": "Skills",
@@ -922,6 +1018,8 @@
     "title": "Documentos",
     "loading": "Carregando documentos…",
     "totalItems": "itens",
+    "pagePrevious": "Página anterior",
+    "pageNext": "Próxima página",
     "empty": {
       "noProjectHeadline": "Nenhum projeto selecionado",
       "noProjectBody": "Escolha um projeto à esquerda para ver seus documentos.",
@@ -939,8 +1037,8 @@
       "searchUnavailableBody": "A fonte “{mount}” não pôde ser alcançada. Tentar novamente pode funcionar."
     },
     "mountSearchDelegated": "Resultados da fonte externa “{mount}” — eles abrangem todo o mount, não apenas esta pasta.",
-    "newDocument": "+ Novo documento",
-    "addNew": "+ Novo",
+    "newDocument": "Novo documento",
+    "addNew": "Novo documento",
     "openCortex": "Cortex",
     "openCortexTitle": "Abrir este projeto no editor Cortex",
     "dropHint": "Arraste arquivos para cá para fazer upload",
@@ -1039,6 +1137,7 @@
       "clearSelection": "Limpar seleção"
     },
     "checklistEditor": {
+      "clearFilter": "Limpar filtro",
       "addItem": "Adicionar item",
       "deleteItem": "Excluir item",
       "clickToEdit": "Clique para editar",
@@ -1253,8 +1352,10 @@
       "uploadFile": "Carregar arquivo",
       "templateLoading": "Carregando modelos…",
       "templateNone": "Nenhum modelo disponível.",
-      "templateAllTags": "Todos",
+      "templateAllTags": "Todas as tags",
+      "templateFilter": "Filtrar modelos…",
       "templateBack": "Modelos",
+      "prefilledFrom": "Preenchido de: {source}",
       "templateNameFixed": "Este modelo usa um nome de arquivo fixo.",
       "pathLabel": "Caminho",
       "pathPlaceholder": "notas/exemplo.md",
@@ -1631,7 +1732,7 @@
       "emptyAll": "Nenhuma atividade registrada ainda."
     },
     "tabs2": {
-      "more": "Mais ▾",
+      "more": "Mais",
       "liveTools": "Ferramentas Ativas"
     },
     "prakMeta": {
@@ -1873,7 +1974,7 @@
       "chatLoading": "Carregando chat…",
       "chatEmptyHeadline": "Nenhuma mensagem",
       "chatEmptyBody": "Este processo não tem histórico de chat.",
-      "archivedToMemory": "→ memória {id}",
+      "archivedToMemory": "Memória: {id}",
       "memoryLoading": "Carregando memória…",
       "memoryEmptyHeadline": "Nenhuma memória",
       "memoryEmptyBody": "Nenhuma entrada de memória do engine está no escopo deste processo.",
@@ -2155,14 +2256,17 @@
     "loading": "Carregando…",
     "searchPlaceholder": "Buscar modelos…",
     "projectIdLabel": "Projeto",
-    "install": "Instalar",
     "apply": "Aplicar",
     "previouslyApplied": "Aplicado anteriormente em {at} por {by}. Formulário pré-preenchido — ajuste e reaplique para atualizar. Campos de senha permanecem em branco por segurança.",
     "noInputs": "Este modelo não tem entradas — aplique para instalá-lo.",
     "empty": {
       "headline": "Nenhum modelo disponível",
       "body": "Peça ao administrador do seu tenant para preencher o catálogo de modelos de ferramentas em _tenant/config/tool-templates.yaml."
-    }
+    },
+    "applyFailed": "Falha ao aplicar.",
+    "unknownUser": "desconhecido",
+    "connectProvider": "Conectar {provider}…",
+    "openConnectedAccounts": "Abrir contas conectadas"
   },
   "oauthConsent": {
     "pageTitle": "Permitir acesso",
@@ -2244,7 +2348,6 @@
     "confirmRemoveSecret": "Remover o segredo do cliente armazenado? Nenhuma nova conexão funcionará até que você defina um novo.",
     "sidebar": {
       "providersLabel": "Provedores",
-      "addNew": "+ Novo",
       "noProvidersHeadline": "Nenhum provedor OAuth",
       "noProvidersBody": "Clique em + Novo para adicionar um.",
       "secretSet": "segredo definido",
@@ -2299,8 +2402,6 @@
     "sidebar": {
       "usersTitle": "Usuários",
       "teamsTitle": "Equipes",
-      "addUser": "+ Usuário",
-      "addTeam": "+ Equipe",
       "showInternalUsers": "Mostrar usuários internos",
       "memberCountSingular": "{count} membro",
       "memberCountPlural": "{count} membros",
@@ -2540,12 +2641,12 @@
     "projectLabel": "Projeto",
     "listLabel": "Agendadores",
     "refresh": "Atualizar",
-    "new": "+ Novo agendador",
+    "new": "Novo agendador…",
     "create": "Criar",
     "enabled": "ativado",
     "disabled": "desativado",
     "emptyTitle": "Nenhum agendador",
-    "emptyBody": "Use + Novo para criar um neste projeto.",
+    "emptyBody": "Use Novo agendador… para criar um neste projeto.",
     "selectTitle": "Escolha um agendador",
     "selectBody": "Escolha uma entrada à esquerda ou crie uma nova.",
     "newTitle": "Novo agendador",
@@ -2554,7 +2655,7 @@
     "namePatternHint": "Minúsculas, alfanumérico + \"-_\", máx. 64 caracteres.",
     "invalidNameHint": "O nome deve corresponder ao padrão acima.",
     "duplicateNameHint": "Já existe um agendador com este nome.",
-    "deleteTitle": "Excluir agendador",
+    "deleteTitle": "Excluir agendador?",
     "deleteBody": "Remover permanentemente o agendador \"{name}\"? As execuções anteriores permanecem no log de eventos.",
     "runHistory": "Histórico de execuções",
     "noEvents": "Nenhum evento ainda.",
@@ -2620,12 +2721,12 @@
     "projectLabel": "Projeto",
     "listLabel": "Hooks",
     "refresh": "Atualizar",
-    "new": "+ Novo hook",
+    "new": "Novo hook…",
     "create": "Criar",
     "enabled": "ativado",
     "disabled": "desativado",
     "emptyTitle": "Nenhum hook",
-    "emptyBody": "Use + Novo para criar um neste projeto.",
+    "emptyBody": "Use Novo hook… para criar um neste projeto.",
     "selectTitle": "Escolha um hook",
     "selectBody": "Escolha uma entrada à esquerda ou crie uma nova.",
     "newTitle": "Novo hook",
@@ -2635,7 +2736,7 @@
     "namePatternHint": "Minúsculas, alfanumérico + \"-_\", máx. 64 caracteres.",
     "invalidNameHint": "O nome deve corresponder ao padrão acima.",
     "duplicateNameHint": "Já existe um hook com este evento/nome.",
-    "deleteTitle": "Excluir hook",
+    "deleteTitle": "Excluir hook?",
     "deleteBody": "Remover permanentemente o hook \"{event}/{name}\"? As execuções anteriores permanecem no log de eventos.",
     "runHistory": "Histórico de execuções",
     "noEvents": "Nenhum evento ainda.",
@@ -2985,7 +3086,7 @@
       "confirm": "Delegar"
     },
     "compose": {
-      "button": "Nova mensagem",
+      "button": "Nova mensagem…",
       "title": "Nova mensagem na caixa de entrada",
       "body": "Escreva uma mensagem para a caixa de entrada de alguém — um colega, uma equipe ou a sua própria. Isso abre um tópico: uma resposta ocorre em sua discussão, nunca como uma solicitação.",
       "recipient": "Para",
@@ -3091,7 +3192,8 @@
       "talkCommandsSave": "Salvar comandos",
       "talkCommandsResetBtn": "Redefinir para os padrões",
       "talkCommandsSaved": "Comandos de voz salvos.",
-      "talkCommandsReset": "Redefinir para os padrões."
+      "talkCommandsReset": "Redefinir para os padrões.",
+      "talkTriggerNamesPlaceholder": "Computador"
     },
     "teams": {
       "title": "Equipes",
@@ -3153,7 +3255,10 @@
       "type": "Tipo",
       "series": "Série",
       "echartsOverride": "Sobrescrita ECharts",
-      "raw": "Bruto"
+      "raw": "Bruto",
+      "switchTypeTitle": "Mudar tipo de gráfico?",
+      "switchTypeMessage": "Um gráfico {to} precisa de um formato de ponto de dados diferente de {from}. Os dados da série existente serão descartados ao salvar.",
+      "switchTypeConfirm": "Mudar tipo"
     },
     "diagram": {
       "downloadSvg": "↓ SVG"
@@ -3546,6 +3651,7 @@
     }
   },
   "form": {
+    "removeItem": "Remover",
     "filterPlaceholder": "Filtrar…",
     "noMatches": "Nada corresponde ao filtro.",
     "selectedCount": "{count} selecionado(s)",

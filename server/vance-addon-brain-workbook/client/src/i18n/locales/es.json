@@ -12,7 +12,8 @@
       "save": "Guardar",
       "saving": "Guardando…",
       "saved": "Guardado",
-      "searching": "Buscando…"
+      "searching": "Buscando…",
+      "delete": "Eliminar"
     },
     "app": {
       "fallbackTitle": "Workbook",

@@ -4,7 +4,8 @@
       "cancel": "Cancelar",
       "save": "Guardar",
       "create": "Crear",
-      "close": "Cerrar"
+      "close": "Cerrar",
+      "remove": "Eliminar"
     },
     "app": {
       "pastePlaceholder": "Pega un enlace — o varios, uno por línea",

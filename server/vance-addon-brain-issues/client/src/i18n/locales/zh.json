@@ -4,10 +4,12 @@
     "tabClosed": "关闭",
     "tabArchived": "已归档",
     "searchPlaceholder": "搜索问题…",
+    "search": "搜索",
+    "deleteIssue": "删除问题",
     "untitled": "（无标题）",
     "noMatch": "没有匹配的问题。",
     "rebuildTip": "重建索引 + 统计",
-    "newIssuePlaceholder": "＋ 新问题标题…",
+    "newIssuePlaceholder": "新问题标题…",
     "allLabels": "全部",
     "loading": "加载中…",
     "nothingHere": "这里什么都没有。",
@@ -46,6 +48,9 @@
       "create": "创建失败。",
       "search": "搜索失败。",
       "rebuild": "重建失败。"
+    },
+    "common": {
+      "delete": "删除"
     }
   }
 }

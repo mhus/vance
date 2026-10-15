@@ -12,7 +12,8 @@
       "save": "保存",
       "saving": "保存中…",
       "saved": "保存済み",
-      "searching": "検索中…"
+      "searching": "検索中…",
+      "delete": "削除"
     },
     "app": {
       "fallbackTitle": "ワークブック",

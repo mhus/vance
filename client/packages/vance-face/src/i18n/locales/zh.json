@@ -1,10 +1,70 @@
 {
+  "preview": {
+    "title": "UI 预览",
+    "intro": "组件库的每个构建块及其状态——corporate-design.md 的参考。切换主题以检查深色模式。",
+    "themeLight": "浅色",
+    "themeDark": "深色",
+    "buttons": "按钮 — 四种角色",
+    "sizes": "尺寸和状态",
+    "iconButtons": "图标按钮 — 需要工具提示和标签",
+    "toolbar": "工具栏",
+    "groups": "分组列表",
+    "fields": "字段",
+    "status": "状态",
+    "empty": "空状态",
+    "icons": "图标词汇",
+    "dialog": "确认对话框",
+    "primary": "保存",
+    "secondary": "取消",
+    "plain": "了解更多",
+    "danger": "删除…",
+    "dangerFilled": "删除",
+    "withIcon": "新建文档",
+    "loading": "正在保存",
+    "disabled": "已禁用",
+    "refresh": "刷新",
+    "download": "下载",
+    "share": "分享",
+    "pinned": "已固定",
+    "delete": "删除",
+    "close": "关闭",
+    "back": "返回",
+    "more": "更多",
+    "openInCortex": "在 Cortex 中打开",
+    "documentTitle": "intro.md",
+    "groupAppearance": "外观",
+    "groupNote": "“系统”遵循您计算机的设置。",
+    "rowLanguage": "界面语言",
+    "rowLanguageValue": "英语",
+    "rowCompact": "紧凑列表",
+    "rowNotify": "代理完成时通知",
+    "rowSignOut": "退出",
+    "fieldName": "项目名称",
+    "fieldNameHelp": "租户中的所有人可见。",
+    "fieldModel": "模型",
+    "fieldModelError": "此模型未配置。",
+    "fieldKind": "类型",
+    "fieldNotes": "备注",
+    "fieldAgree": "允许代理编辑此文档",
+    "alertInfo": "代理可以阅读此文档，但不能更改。",
+    "alertWarning": "两个 Kit 有更新。",
+    "alertError": "与服务器的连接已断开。",
+    "alertSuccess": "已保存。",
+    "badge": "徽章",
+    "emptyHeadline": "暂无文档",
+    "emptyBody": "创建第一个或导入文件夹。",
+    "dialogOpen": "删除项目…",
+    "dialogTitle": "删除“婚礼策划”？",
+    "dialogBody": "项目及其 42 个文档将被删除。此操作无法撤消。"
+  },
   "newVersion": {
     "message": "Vance 有新版本可用。",
     "action": "重新加载",
     "dismiss": "稍后"
   },
   "common": {
+    "expand": "展开",
+    "collapse": "折叠",
     "save": "保存",
     "saving": "正在保存…",
     "saved": "已保存。",
@@ -63,12 +123,15 @@
         "invalidInput": "输入无效：{message}",
         "generic": "错误：{message}"
       }
-    }
+    },
+    "confirm": "确认",
+    "archive": "归档",
+    "remove": "移除"
   },
   "fook": {
     "menuLabel": "报告错误/功能",
     "title": "报告错误或请求功能",
-    "intro": "描述发生了什么、您期望什么，或者您希望 Vance 做什么。请具体 — Fook 会阅读您的文本并从中选择类型、严重性和标题。您将收到一封包含结果的收件箱邮件。",
+    "intro": "具体描述发生了什么、您期望什么，或者您希望 Vancetope 做什么。Fook 会从您的文本中提取类型、严重性和标题，并将结果发送到您的收件箱。",
     "placeholder": "出了什么问题，或者您想改变什么？重现步骤会有帮助。",
     "submit": "提交",
     "submitted": "已提交 — Fook 正在分类。提交 ID：",
@@ -94,8 +157,6 @@
   "processPanel": {
     "title": "此会话的进程",
     "count": "{n} 个进程",
-    "filterLive": "筛选：活动",
-    "filterAll": "筛选：所有",
     "closeReason": {
       "DONE": "完成",
       "INCOMPLETE": "未完成",
@@ -125,7 +186,10 @@
     "noConnection": "无连接 — 仅在绑定会话后才能查看进程。",
     "previewTitle": "进程 — {session}",
     "previewReadOnly": "您未加入的会话预览 — 只读。",
-    "openSession": "打开会话"
+    "openSession": "打开会话",
+    "segmentLive": "实时",
+    "segmentAll": "全部",
+    "filterLabel": "显示进程"
   },
   "cortex": {
     "confirmDiscardUnsaved": "“{label}”无法保存 ({reason})。\n\n是否仍要关闭并放弃更改？",
@@ -181,10 +245,19 @@
     "hactar": {
       "applyToEditor": "应用到编辑器",
       "thinking": "Slart 正在思考…",
-      "generatedScript": "生成的脚本：",
+      "generatedScript": "生成的脚本",
       "regenerate": "重新生成",
       "failed": "失败：",
-      "close": "关闭"
+      "close": "关闭",
+      "titleUpdate": "Slart · 更新此脚本",
+      "titleGenerate": "Slart · 生成新脚本",
+      "update": "更新",
+      "generate": "生成",
+      "updateDescription": "Slart 会查看当前脚本主体，并在可能的情况下保留其结构。新版本会进入一个新的 Slart 存储桶 — 只有在您点击 {apply} 时，原始文档才会更改。",
+      "promptLabelUpdate": "应该更改什么？",
+      "promptLabelGenerate": "脚本应该做什么？",
+      "promptPlaceholderUpdate": "示例：“当收件箱为空时，也发送 Slack 通知。”",
+      "promptPlaceholderGenerate": "示例：“从 args.n 读取一个数字并返回其阶乘。”"
     },
     "rightPanel": {
       "title": "右侧面板",
@@ -211,6 +284,7 @@
       "create": "创建"
     },
     "notes": {
+      "lineShort": "行 {line}",
       "empty": "无笔记。点击行号旁或“＋”按钮。",
       "jumpToLine": "跳转到第 {line} 行",
       "title": "笔记",
@@ -263,22 +337,29 @@
       "appView": "应用视图",
       "app": "应用",
       "rawManifest": "原始 YAML 清单编辑器",
+      "reload": "从服务器重新加载",
+      "reloadDirty": "重新加载（放弃未保存的更改）",
+      "viewEditToggle": "查看/编辑切换",
+      "renderedView": "渲染视图",
+      "unsaved": "未保存的更改",
       "edit": "编辑",
       "rawSource": "原始源编辑器",
       "cancelRun": "取消正在运行的执行",
-      "cancelRunLabel": "■ 取消",
+      "cancelRunLabel": "取消",
       "quickValidate": "快速验证 — 解析 + 标题检查",
       "deepReview": "深度审查 — LLM 静态审查（慢，服务器端缓存）",
       "generateScript": "从自由文本描述生成新脚本 (Slart SCRIPT_JS)",
-      "generate": "✨ 生成",
+      "generate": "生成",
       "updateScript": "更新此脚本 — 描述更改，Slart 将重写并保留结构",
-      "update": "✨ 更新",
+      "update": "更新",
       "properties": "属性",
       "path": "路径：",
       "mime": "MIME：",
       "readOnly": "只读",
       "closeLog": "关闭日志面板",
-      "result": "结果："
+      "result": "结果：",
+      "reloadDirtyTitle": "放弃未保存的更改？",
+      "reloadDirtyMessage": "重新加载 {path} 会用存储的版本替换您未保存的编辑。"
     },
     "age": {
       "save": "保存",
@@ -321,6 +402,7 @@
       }
     },
     "tabs": {
+      "empty": "没有打开的文档 — 从树中选择一个，或创建一个新文件。",
       "close": "关闭"
     },
     "tree": {
@@ -337,7 +419,8 @@
       "pathLabel": "文件夹路径",
       "pathPlaceholder": "documents/notes",
       "cancel": "取消",
-      "create": "创建"
+      "create": "创建",
+      "description": "文件夹在其中有文件之前是虚拟的 — 此条目是客户端的，除非有内容移入其中，否则刷新后会消失。"
     },
     "openDocument": {
       "title": "打开文档",
@@ -514,6 +597,12 @@
     "open": "打开"
   },
   "chat": {
+    "pageTitle": "聊天",
+    "openCortex": "打开 Cortex",
+    "composer": {
+      "showTools": "显示工具",
+      "hideTools": "隐藏工具"
+    },
     "breadcrumb": {
       "unnamedSession": "会话"
     },
@@ -667,7 +756,10 @@
       "cancel": "关闭",
       "pendingNone": "无更改",
       "pending": "{n} 处更改",
-      "removeToggle": "从记忆中移除"
+      "removeToggle": "从记忆中移除",
+      "roleUser": "用户",
+      "roleAssistant": "AI",
+      "roleSystem": "系统"
     },
     "clients": {
       "heading": "正在运行的 CLI 客户端",
@@ -691,7 +783,8 @@
     "picker": {
       "tabs": {
         "sessions": "会话",
-        "clients": "客户端"
+        "clients": "客户端",
+        "label": "视图"
       },
       "projectsTitle": "项目",
       "loading": "正在加载…",
@@ -733,7 +826,6 @@
       "recipeFilterNoMatch": "没有 Recipe 符合 \"{filter}\"。",
       "recipeBadgeTooltip": "会话聊天流程的 Recipe",
       "groups": {
-        "create": "+ 群组",
         "createTooltip": "创建会话群组",
         "createTitle": "创建会话群组",
         "nameLabel": "名称",
@@ -745,8 +837,10 @@
         "moveDown": "下移",
         "delete": "删除群组",
         "confirmDelete": "删除群组 \"{name}\"？其会话只会从群组中移除，而不会被删除。",
-        "emptyDropHint": "拖动一个会话到此处"
-      }
+        "emptyDropHint": "拖动一个会话到此处",
+        "newGroup": "新建组…"
+      },
+      "newSessionEllipsis": "新建会话…"
     },
     "search": {
       "title": "搜索会话",
@@ -783,7 +877,9 @@
       "title": "向导",
       "emptyHeadline": "没有可用的向导",
       "emptyBody": "向导是 _vance/wizards/ 下的 YAML 表单，它们会转换为结构化提示。",
-      "submit": "生成提示"
+      "submit": "生成提示",
+      "refresh": "刷新列表",
+      "back": "返回列表"
     },
     "skills": {
       "tabLabel": "技能",
@@ -922,6 +1018,8 @@
     "title": "文档",
     "loading": "正在加载文档…",
     "totalItems": "项",
+    "pagePrevious": "上一页",
+    "pageNext": "下一页",
     "empty": {
       "noProjectHeadline": "未选择项目",
       "noProjectBody": "在左侧选择一个项目以查看其文档。",
@@ -939,8 +1037,8 @@
       "searchUnavailableBody": "源“{mount}”无法访问。重试可能会成功。"
     },
     "mountSearchDelegated": "来自外部源“{mount}”的命中 — 它们涵盖整个挂载点，而不仅仅是此文件夹。",
-    "newDocument": "+ 新建文档",
-    "addNew": "+ 新建",
+    "newDocument": "新建文档",
+    "addNew": "新建文档",
     "openCortex": "Cortex",
     "openCortexTitle": "在 Cortex 编辑器中打开此项目",
     "dropHint": "将文件拖放到此处上传",
@@ -1039,6 +1137,7 @@
       "clearSelection": "清除选择"
     },
     "checklistEditor": {
+      "clearFilter": "清除筛选",
       "addItem": "添加项目",
       "deleteItem": "删除项目",
       "clickToEdit": "点击编辑",
@@ -1253,8 +1352,10 @@
       "uploadFile": "上传文件",
       "templateLoading": "正在加载模板…",
       "templateNone": "无可用模板。",
-      "templateAllTags": "全部",
+      "templateAllTags": "所有标签",
+      "templateFilter": "筛选模板…",
       "templateBack": "模板",
+      "prefilledFrom": "预填充来源：{source}",
       "templateNameFixed": "此模板使用固定文件名。",
       "pathLabel": "路径",
       "pathPlaceholder": "notes/example.md",
@@ -1631,7 +1732,7 @@
       "emptyAll": "尚未记录任何活动。"
     },
     "tabs2": {
-      "more": "更多 ▾",
+      "more": "更多",
       "liveTools": "实时工具"
     },
     "prakMeta": {
@@ -1873,7 +1974,7 @@
       "chatLoading": "正在加载聊天…",
       "chatEmptyHeadline": "无消息",
       "chatEmptyBody": "此进程没有聊天历史记录。",
-      "archivedToMemory": "→ 内存 {id}",
+      "archivedToMemory": "记忆：{id}",
       "memoryLoading": "正在加载内存…",
       "memoryEmptyHeadline": "无内存",
       "memoryEmptyBody": "没有引擎侧内存条目作用于此进程。",
@@ -2155,14 +2256,17 @@
     "loading": "加载中…",
     "searchPlaceholder": "搜索模板…",
     "projectIdLabel": "项目",
-    "install": "安装",
     "apply": "应用",
     "previouslyApplied": "上次由 {by} 在 {at} 应用。表单已预填——调整并重新应用以更新。为安全起见，密码字段留空。",
     "noInputs": "此模板没有输入——应用即可安装。",
     "empty": {
       "headline": "无可用模板",
       "body": "请您的租户管理员在 _tenant/config/tool-templates.yaml 填充工具模板目录。"
-    }
+    },
+    "applyFailed": "应用失败。",
+    "unknownUser": "未知用户",
+    "connectProvider": "连接 {provider}…",
+    "openConnectedAccounts": "打开已连接账户"
   },
   "oauthConsent": {
     "pageTitle": "允许访问",
@@ -2244,7 +2348,6 @@
     "confirmRemoveSecret": "删除存储的客户端密钥？在设置新密钥之前，新的连接将无法工作。",
     "sidebar": {
       "providersLabel": "提供商",
-      "addNew": "+ 新建",
       "noProvidersHeadline": "无 OAuth 提供商",
       "noProvidersBody": "点击“+ 新建”添加一个。",
       "secretSet": "密钥已设置",
@@ -2299,8 +2402,6 @@
     "sidebar": {
       "usersTitle": "用户",
       "teamsTitle": "团队",
-      "addUser": "+ 用户",
-      "addTeam": "+ 团队",
       "showInternalUsers": "显示内部用户",
       "memberCountSingular": "{count} 名成员",
       "memberCountPlural": "{count} 名成员",
@@ -2540,12 +2641,12 @@
     "projectLabel": "项目",
     "listLabel": "调度器",
     "refresh": "刷新",
-    "new": "+ 新建调度器",
+    "new": "新建调度器…",
     "create": "创建",
     "enabled": "已启用",
     "disabled": "已禁用",
     "emptyTitle": "无调度器",
-    "emptyBody": "使用“+ 新建”在此项目中创建一个。",
+    "emptyBody": "使用“新建调度器…”在此项目中创建一个。",
     "selectTitle": "选择一个调度器",
     "selectBody": "选择左侧条目或新建一个。",
     "newTitle": "新建调度器",
@@ -2554,7 +2655,7 @@
     "namePatternHint": "小写字母、数字、“- _”，最多 64 个字符。",
     "invalidNameHint": "名称必须符合上述模式。",
     "duplicateNameHint": "已存在同名调度器。",
-    "deleteTitle": "删除调度器",
+    "deleteTitle": "删除调度器？",
     "deleteBody": "永久删除调度器“{name}”？过去的运行记录保留在事件日志中。",
     "runHistory": "运行历史",
     "noEvents": "暂无事件。",
@@ -2620,12 +2721,12 @@
     "projectLabel": "项目",
     "listLabel": "Hook",
     "refresh": "刷新",
-    "new": "+ 新建 Hook",
+    "new": "新建 Hook…",
     "create": "创建",
     "enabled": "已启用",
     "disabled": "已禁用",
     "emptyTitle": "无 Hook",
-    "emptyBody": "使用“+ 新建”在此项目中创建一个。",
+    "emptyBody": "使用“新建 Hook…”在此项目中创建一个。",
     "selectTitle": "选择一个 Hook",
     "selectBody": "选择左侧条目或新建一个。",
     "newTitle": "新建 Hook",
@@ -2635,7 +2736,7 @@
     "namePatternHint": "小写字母、数字、“- _”，最多 64 个字符。",
     "invalidNameHint": "名称必须符合上述模式。",
     "duplicateNameHint": "此事件/名称的 Hook 已存在。",
-    "deleteTitle": "删除 Hook",
+    "deleteTitle": "删除 Hook？",
     "deleteBody": "永久删除 Hook “{event}/{name}”？过去的运行记录保留在事件日志中。",
     "runHistory": "运行历史",
     "noEvents": "暂无事件。",
@@ -2985,7 +3086,7 @@
       "confirm": "委托"
     },
     "compose": {
-      "button": "新消息",
+      "button": "新消息…",
       "title": "新收件箱消息",
       "body": "向某人的收件箱发送消息 — 同事、团队或您自己。它会开启一个线程：回复将在其讨论中进行，而不是作为请求。",
       "recipient": "收件人",
@@ -3091,7 +3192,8 @@
       "talkCommandsSave": "保存命令",
       "talkCommandsResetBtn": "重置为默认值",
       "talkCommandsSaved": "语音命令已保存。",
-      "talkCommandsReset": "重置为默认值。"
+      "talkCommandsReset": "重置为默认值。",
+      "talkTriggerNamesPlaceholder": "电脑"
     },
     "teams": {
       "title": "团队",
@@ -3153,7 +3255,10 @@
       "type": "类型",
       "series": "系列",
       "echartsOverride": "ECharts 覆盖",
-      "raw": "原始"
+      "raw": "原始",
+      "switchTypeTitle": "更改图表类型？",
+      "switchTypeMessage": "{to} 图表需要与 {from} 不同的数据点形状。现有系列数据将在保存时丢弃。",
+      "switchTypeConfirm": "更改类型"
     },
     "diagram": {
       "downloadSvg": "↓ SVG"
@@ -3546,6 +3651,7 @@
     }
   },
   "form": {
+    "removeItem": "移除",
     "filterPlaceholder": "筛选…",
     "noMatches": "没有匹配项。",
     "selectedCount": "已选择 {count} 项",

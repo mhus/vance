@@ -19,8 +19,8 @@
       "blocked": "zablokowane",
       "newCard": "Nowa karta",
       "cardTitlePlaceholder": "Tytuł karty",
+      "column": "Kolumna",
       "assigneePlaceholder": "Osoba przypisana (opcjonalnie)",
-      "dueDatePlaceholder": "Termin YYYY-MM-DD (opcjonalnie)",
       "error": {
         "load": "Nie udało się załadować tablicy: {message}",
         "rebuild": "Przebudowa nie powiodła się: {message}",

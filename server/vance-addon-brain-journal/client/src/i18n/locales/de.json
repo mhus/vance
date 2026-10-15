@@ -2,6 +2,9 @@
   "journal": {
     "today": "Heute",
     "searchPlaceholder": "Einträge suchen…",
+    "search": "Suchen",
+    "previousMonth": "Vorheriger Monat",
+    "nextMonth": "Nächster Monat",
     "untitled": "(ohne Titel)",
     "noMatch": "Kein passender Eintrag.",
     "rebuilding": "Baut neu…",
@@ -29,6 +32,9 @@
       "delete": "Löschen fehlgeschlagen.",
       "search": "Suche fehlgeschlagen.",
       "rebuild": "Neu bauen fehlgeschlagen."
+    },
+    "common": {
+      "delete": "Löschen"
     }
   }
 }

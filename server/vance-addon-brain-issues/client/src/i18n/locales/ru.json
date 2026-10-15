@@ -4,10 +4,12 @@
     "tabClosed": "Закрытые",
     "tabArchived": "В архиве",
     "searchPlaceholder": "Поиск задач…",
+    "search": "Поиск",
+    "deleteIssue": "Удалить задачу",
     "untitled": "(без названия)",
     "noMatch": "Нет совпадений.",
     "rebuildTip": "Перестроить индекс + статистику",
-    "newIssuePlaceholder": "＋ Новая задача…",
+    "newIssuePlaceholder": "Название новой задачи…",
     "allLabels": "все",
     "loading": "Загрузка…",
     "nothingHere": "Здесь ничего нет.",
@@ -46,6 +48,9 @@
       "create": "Ошибка создания.",
       "search": "Ошибка поиска.",
       "rebuild": "Ошибка перестроения."
+    },
+    "common": {
+      "delete": "Удалить"
     }
   }
 }

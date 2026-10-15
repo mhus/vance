@@ -2,6 +2,9 @@
   "journal": {
     "today": "今天",
     "searchPlaceholder": "搜索条目…",
+    "search": "搜索",
+    "previousMonth": "上个月",
+    "nextMonth": "下个月",
     "untitled": "（无标题）",
     "noMatch": "无匹配条目。",
     "rebuilding": "正在重建…",
@@ -29,6 +32,9 @@
       "delete": "删除失败。",
       "search": "搜索失败。",
       "rebuild": "重建失败。"
+    },
+    "common": {
+      "delete": "删除"
     }
   }
 }

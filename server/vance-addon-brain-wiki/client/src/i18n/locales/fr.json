@@ -6,12 +6,14 @@
       "cancel": "Annuler",
       "create": "Créer",
       "creating": "Création…",
-      "loading": "Chargement…"
+      "loading": "Chargement…",
+      "delete": "Supprimer"
     },
     "app": {
       "fallbackTitle": "Wiki",
       "indexTitle": "Index",
       "searchPlaceholder": "Rechercher des pages…",
+      "search": "Rechercher",
       "noMatch": "Aucune page correspondante.",
       "createNamed": "Créer la page « {name} »",
       "createNamedInSpace": "Créer la page « {name} » dans {space}",
@@ -29,8 +31,8 @@
       "missingPre": "Un wiki s'ouvre sur sa page",
       "missingMid": ". Créez-la maintenant — ou ouvrez l'",
       "indexLink": "index",
-      "createMain": "＋ Créer la page « main »",
-      "noPageSelected": "Aucune page sélectionnée. Créez-en une avec ＋ Nouveau.",
+      "createMain": "Créer la page « main »",
+      "noPageSelected": "Aucune page sélectionnée. Créez-en une avec Nouveau.",
       "generatedBadge": "généré · lecture seule",
       "deletePage": "Supprimer la page",
       "status": {
@@ -62,7 +64,7 @@
     "notes": {
       "title": "Notes",
       "newNote": "Nouvelle note",
-      "empty": "Aucune note pour l'instant. Cliquez sur ＋ pour en ajouter une.",
+      "empty": "Aucune note pour l'instant. Ajoutez-en une avec le bouton plus.",
       "done": "Terminé",
       "markDone": "Marquer comme terminé",
       "delete": "Supprimer",

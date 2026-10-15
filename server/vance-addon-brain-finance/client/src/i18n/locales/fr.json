@@ -8,9 +8,9 @@
     "fallbackTitle": "Arbre financier",
     "reload": "Recharger",
     "unit": "Unité",
-    "report": "Rapport",
+    "report": "Rapport…",
     "loading": "Chargement…",
-    "createRoot": "＋ Créer un nœud racine",
+    "createRoot": "Créer un nœud racine",
     "pickNode": "Sélectionnez un nœud pour le modifier.",
     "save": {
       "saved": "enregistré",
@@ -29,7 +29,8 @@
     },
     "values": {
       "heading": "Blocs de valeur",
-      "add": "＋ valeur",
+      "add": "Valeur",
+      "remove": "Supprimer le bloc de valeur",
       "amount": "Montant",
       "mode": "Mode",
       "modeRecurring": "récurrent",
@@ -64,18 +65,19 @@
     "reportModal": {
       "title": "Générer un rapport",
       "processor": "Processeur",
-      "from": "du",
-      "to": "au",
-      "granularity": "granularité",
-      "chartType": "type de graphique (séries)",
-      "focus": "focus (évaluation, facultatif)",
-      "persist": "enregistrer comme document",
-      "outputPath": "chemin de sortie",
+      "from": "Du",
+      "to": "Au",
+      "granularity": "Granularité",
+      "chartType": "Type de graphique (séries)",
+      "focus": "Focus (évaluation, facultatif)",
+      "persist": "Enregistrer comme document",
+      "outputPath": "Chemin de sortie",
       "outputPathPlaceholder": "reports/q1.chart.yaml",
       "generating": "Génération…",
       "generate": "Générer",
       "running": "Génération du rapport…",
-      "savedTo": "Enregistré dans {path}"
+      "savedTo": "Enregistré dans {path}",
+      "close": "Fermer"
     },
     "tree": {
       "perUnit": "par {unit}",
@@ -87,7 +89,7 @@
       "delete": "Supprimer"
     },
     "summary": {
-      "edit": "Modifier",
+      "edit": "Modifier…",
       "perYear": "/ an",
       "oneTime": "unique : {amount}",
       "empty": "Vide — ouvrez pour ajouter des nœuds.",

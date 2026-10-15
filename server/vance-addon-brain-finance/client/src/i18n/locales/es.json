@@ -8,9 +8,9 @@
     "fallbackTitle": "Árbol de finanzas",
     "reload": "Recargar",
     "unit": "Unidad",
-    "report": "Informe",
+    "report": "Informe…",
     "loading": "Cargando…",
-    "createRoot": "＋ Crear nodo raíz",
+    "createRoot": "Crear nodo raíz",
     "pickNode": "Selecciona un nodo para editarlo.",
     "save": {
       "saved": "guardado",
@@ -29,7 +29,8 @@
     },
     "values": {
       "heading": "Bloques de valor",
-      "add": "＋ valor",
+      "add": "Valor",
+      "remove": "Eliminar bloque de valor",
       "amount": "Cantidad",
       "mode": "Modo",
       "modeRecurring": "recurrente",
@@ -64,18 +65,19 @@
     "reportModal": {
       "title": "Generar informe",
       "processor": "Procesador",
-      "from": "desde",
-      "to": "hasta",
-      "granularity": "granularidad",
-      "chartType": "tipo de gráfico (serie)",
-      "focus": "enfoque (evaluación, opcional)",
-      "persist": "guardar como documento",
-      "outputPath": "ruta de salida",
+      "from": "Desde",
+      "to": "Hasta",
+      "granularity": "Granularidad",
+      "chartType": "Tipo de gráfico (series)",
+      "focus": "Enfoque (evaluación, opcional)",
+      "persist": "Guardar como documento",
+      "outputPath": "Ruta de salida",
       "outputPathPlaceholder": "reports/q1.chart.yaml",
       "generating": "Generando…",
       "generate": "Generar",
       "running": "Generando informe…",
-      "savedTo": "Guardado en {path}"
+      "savedTo": "Guardado en {path}",
+      "close": "Cerrar"
     },
     "tree": {
       "perUnit": "por {unit}",
@@ -87,7 +89,7 @@
       "delete": "Eliminar"
     },
     "summary": {
-      "edit": "Editar",
+      "edit": "Editar…",
       "perYear": "/ año",
       "oneTime": "única: {amount}",
       "empty": "Vacío — abre para añadir nodos.",

@@ -20,7 +20,9 @@
       "today": "Dziś",
       "empty": "Brak nadchodzących wydarzeń.",
       "addToCalendar": "Dodaj do kalendarza",
-      "allDay": "Cały dzień"
+      "allDay": "Cały dzień",
+      "previousMonth": "Poprzedni miesiąc",
+      "nextMonth": "Następny miesiąc"
     },
     "planner": {
       "reload": "Przeładuj",
@@ -42,7 +44,7 @@
       "colEventA": "Wydarzenie A",
       "colEventB": "Wydarzenie B",
       "colOverlap": "Nakładanie się",
-      "addEvent": "Dodaj wydarzenie",
+      "addEvent": "Dodaj wydarzenie…",
       "noEventsHeadline": "Brak wydarzeń w tej linii",
       "noEventsBody": "Dodaj pierwsze wydarzenie, aby rozpocząć.",
       "allDayTag": "cały dzień",
@@ -51,8 +53,6 @@
       "addToOutlook": "Dodaj do Outlooka",
       "newEvent": "Nowe wydarzenie",
       "eventTitlePlaceholder": "Tytuł wydarzenia",
-      "startPlaceholder": "Początek (RRRR-MM-DD lub RRRR-MM-DDTHH:mm)",
-      "endPlaceholder": "Koniec (opcjonalnie)",
       "error": {
         "load": "Nie można załadować planisty: {message}",
         "rebuild": "Odbudowa nie powiodła się: {message}",
@@ -89,6 +89,7 @@
       "zoomIn": "Przybliż",
       "fitTip": "Dopasuj wszystkie wpisy",
       "fit": "Dopasuj",
+      "closeDetail": "Zamknij",
       "unreadable": "{n} wpis ma pozycję, której ta oś {axis} nie może odczytać i nie jest rysowany: {list} | {n} wpisy mają pozycję, której ta oś {axis} nie może odczytać i nie są rysowane: {list} | {n} wpisów ma pozycję, której ta oś {axis} nie może odczytać i nie są rysowane: {list}",
       "empty": "Ta oś czasu nie ma wpisów, które można umieścić na jej osi.",
       "now": "teraz",

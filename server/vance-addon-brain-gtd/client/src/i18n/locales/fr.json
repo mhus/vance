@@ -4,7 +4,8 @@
       "loading": "Chargement…",
       "saving": "Enregistrement…",
       "saved": "Enregistré",
-      "saveFailed": "Échec de l'enregistrement"
+      "saveFailed": "Échec de l'enregistrement",
+      "delete": "Supprimer"
     },
     "bucket": {
       "inbox": "Boîte de réception",
@@ -16,19 +17,20 @@
     },
     "app": {
       "searchPlaceholder": "Rechercher des actions…",
+      "search": "Rechercher",
       "untitled": "(sans titre)",
       "noMatch": "Aucune action correspondante.",
       "rebuildTip": "Reconstruire les vues — déplace les actions terminées vers la corbeille",
       "projects": "Projets",
       "contexts": "Contextes",
-      "capturePlaceholder": "＋ Capturer vers la boîte de réception…",
+      "capturePlaceholder": "Capturer dans la Boîte de réception…",
       "nothingHere": "Rien ici.",
       "bucketLabel": "Catégorie",
       "whenHint": "quand :",
       "anytimeValue": "(n'importe quand)",
       "project": "Projet",
       "noProject": "(aucun projet)",
-      "newProject": "＋ Nouveau projet…",
+      "newProject": "Nouveau projet…",
       "deadline": "Échéance",
       "contextsPlaceholder": "@appels, @maison",
       "done": "Terminé",

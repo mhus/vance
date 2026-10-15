@@ -4,7 +4,8 @@
       "cancel": "Abbrechen",
       "save": "Speichern",
       "create": "Anlegen",
-      "close": "Schließen"
+      "close": "Schließen",
+      "remove": "Entfernen"
     },
     "app": {
       "pastePlaceholder": "Link einfügen — oder mehrere, einen pro Zeile",

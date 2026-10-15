@@ -20,7 +20,9 @@
       "today": "今日",
       "empty": "今後のイベントはありません。",
       "addToCalendar": "カレンダーに追加",
-      "allDay": "終日"
+      "allDay": "終日",
+      "previousMonth": "前月",
+      "nextMonth": "翌月"
     },
     "planner": {
       "reload": "再読み込み",
@@ -42,7 +44,7 @@
       "colEventA": "イベントA",
       "colEventB": "イベントB",
       "colOverlap": "重複",
-      "addEvent": "イベントを追加",
+      "addEvent": "イベントを追加…",
       "noEventsHeadline": "このレーンにイベントはありません",
       "noEventsBody": "最初のイベントを追加して開始してください。",
       "allDayTag": "終日",
@@ -51,8 +53,6 @@
       "addToOutlook": "Outlookに追加",
       "newEvent": "新規イベント",
       "eventTitlePlaceholder": "イベントのタイトル",
-      "startPlaceholder": "開始 (YYYY-MM-DD または YYYY-MM-DDTHH:mm)",
-      "endPlaceholder": "終了 (任意)",
       "error": {
         "load": "プランナーを読み込めませんでした: {message}",
         "rebuild": "再構築に失敗しました: {message}",
@@ -89,6 +89,7 @@
       "zoomIn": "ズームイン",
       "fitTip": "すべてのエントリをフィット",
       "fit": "フィット",
+      "closeDetail": "閉じる",
       "unreadable": "{axis}軸で読み取れない位置にあるエントリが{n}件あり、描画されません: {list}",
       "empty": "このタイムラインには、軸に配置できるエントリがありません。",
       "now": "現在",

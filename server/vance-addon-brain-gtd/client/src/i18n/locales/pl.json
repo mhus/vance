@@ -4,7 +4,8 @@
       "loading": "Ładowanie…",
       "saving": "Zapisywanie…",
       "saved": "Zapisano",
-      "saveFailed": "Zapisywanie nie powiodło się"
+      "saveFailed": "Zapisywanie nie powiodło się",
+      "delete": "Usuń"
     },
     "bucket": {
       "inbox": "Skrzynka odbiorcza",
@@ -16,19 +17,20 @@
     },
     "app": {
       "searchPlaceholder": "Szukaj działań…",
+      "search": "Szukaj",
       "untitled": "(bez tytułu)",
       "noMatch": "Brak pasującego działania.",
       "rebuildTip": "Przebuduj widoki — przenosi ukończone działania do Kosza",
       "projects": "Projekty",
       "contexts": "Konteksty",
-      "capturePlaceholder": "＋ Dodaj do skrzynki odbiorczej…",
+      "capturePlaceholder": "Przechwyć do Skrzynki odbiorczej…",
       "nothingHere": "Nic tu nie ma.",
       "bucketLabel": "Kategoria",
       "whenHint": "kiedy:",
       "anytimeValue": "(kiedykolwiek)",
       "project": "Projekt",
       "noProject": "(brak projektu)",
-      "newProject": "＋ Nowy projekt…",
+      "newProject": "Nowy projekt…",
       "deadline": "Termin",
       "contextsPlaceholder": "@rozmowy, @dom",
       "done": "Gotowe",

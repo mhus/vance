@@ -3,7 +3,8 @@
     "common": {
       "cancel": "取消",
       "searching": "正在搜索…",
-      "noHits": "无匹配项。"
+      "noHits": "无匹配项。",
+      "remove": "移除"
     },
     "app": {
       "fallbackTitle": "Binder",

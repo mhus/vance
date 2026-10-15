@@ -4,10 +4,12 @@
     "tabClosed": "Zamknięte",
     "tabArchived": "Zarchiwizowane",
     "searchPlaceholder": "Szukaj zadań…",
+    "search": "Szukaj",
+    "deleteIssue": "Usuń zadanie",
     "untitled": "(bez tytułu)",
     "noMatch": "Brak pasujących zadań.",
     "rebuildTip": "Przebuduj indeks + statystyki",
-    "newIssuePlaceholder": "＋ Nowe zadanie…",
+    "newIssuePlaceholder": "Tytuł nowego zadania…",
     "allLabels": "wszystkie",
     "loading": "Ładowanie…",
     "nothingHere": "Nic tu nie ma.",
@@ -46,6 +48,9 @@
       "create": "Tworzenie nie powiodło się.",
       "search": "Wyszukiwanie nie powiodło się.",
       "rebuild": "Przebudowa nie powiodła się."
+    },
+    "common": {
+      "delete": "Usuń"
     }
   }
 }

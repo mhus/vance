@@ -4,7 +4,8 @@
       "loading": "Carregando…",
       "saving": "Salvando…",
       "saved": "Salvo",
-      "saveFailed": "Falha ao salvar"
+      "saveFailed": "Falha ao salvar",
+      "delete": "Excluir"
     },
     "bucket": {
       "inbox": "Caixa de Entrada",
@@ -16,19 +17,20 @@
     },
     "app": {
       "searchPlaceholder": "Buscar ações…",
+      "search": "Buscar",
       "untitled": "(sem título)",
       "noMatch": "Nenhuma ação correspondente.",
       "rebuildTip": "Reconstruir visualizações — move ações concluídas para o Lixo",
       "projects": "Projetos",
       "contexts": "Contextos",
-      "capturePlaceholder": "＋ Capturar para a Caixa de Entrada…",
+      "capturePlaceholder": "Capturar para a Caixa de Entrada…",
       "nothingHere": "Nada aqui.",
       "bucketLabel": "Balde",
       "whenHint": "quando:",
       "anytimeValue": "(qualquer hora)",
       "project": "Projeto",
       "noProject": "(nenhum projeto)",
-      "newProject": "＋ Novo projeto…",
+      "newProject": "Novo projeto…",
       "deadline": "Prazo",
       "contextsPlaceholder": "@ligações, @casa",
       "done": "Concluído",

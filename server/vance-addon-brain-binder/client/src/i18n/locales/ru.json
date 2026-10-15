@@ -3,7 +3,8 @@
     "common": {
       "cancel": "Отмена",
       "searching": "Поиск…",
-      "noHits": "Совпадений нет."
+      "noHits": "Совпадений нет.",
+      "remove": "Удалить"
     },
     "app": {
       "fallbackTitle": "Binder",

@@ -19,8 +19,8 @@
       "blocked": "bloqué",
       "newCard": "Nouvelle carte",
       "cardTitlePlaceholder": "Titre de la carte",
+      "column": "Colonne",
       "assigneePlaceholder": "Assigné (facultatif)",
-      "dueDatePlaceholder": "Date d'échéance AAAA-MM-JJ (facultatif)",
       "error": {
         "load": "Impossible de charger le tableau : {message}",
         "rebuild": "La reconstruction a échoué : {message}",

@@ -12,7 +12,8 @@
       "save": "Сохранить",
       "saving": "Сохранение…",
       "saved": "Сохранено",
-      "searching": "Поиск…"
+      "searching": "Поиск…",
+      "delete": "Удалить"
     },
     "app": {
       "fallbackTitle": "Workbook",

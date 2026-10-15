@@ -2,6 +2,9 @@
   "journal": {
     "today": "Aujourd'hui",
     "searchPlaceholder": "Rechercher des entrées…",
+    "search": "Rechercher",
+    "previousMonth": "Mois précédent",
+    "nextMonth": "Mois suivant",
     "untitled": "(sans titre)",
     "noMatch": "Aucune entrée correspondante.",
     "rebuilding": "Reconstruction…",
@@ -29,6 +32,9 @@
       "delete": "Échec de la suppression.",
       "search": "Échec de la recherche.",
       "rebuild": "Échec de la reconstruction."
+    },
+    "common": {
+      "delete": "Supprimer"
     }
   }
 }

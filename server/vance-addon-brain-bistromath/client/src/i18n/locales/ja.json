@@ -19,7 +19,7 @@
     "view": {
       "fallbackTitle": "ビュー",
       "recheck": "再確認",
-      "openApp": "アプリを開く ↗",
+      "openApp": "アプリを開く",
       "openAppTip": "このビューが属するアプリを開きます",
       "previewPre": "プレビュー — プログラムは実行されていません。そのため、",
       "previewMid": "にバインドされているものは空で、",

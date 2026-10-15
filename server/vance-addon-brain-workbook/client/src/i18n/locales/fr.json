@@ -12,7 +12,8 @@
       "save": "Enregistrer",
       "saving": "Enregistrement…",
       "saved": "Enregistré",
-      "searching": "Recherche…"
+      "searching": "Recherche…",
+      "delete": "Supprimer"
     },
     "app": {
       "fallbackTitle": "Workbook",

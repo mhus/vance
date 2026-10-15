@@ -3,7 +3,8 @@
     "common": {
       "cancel": "Annuler",
       "searching": "Recherche…",
-      "noHits": "Aucun résultat."
+      "noHits": "Aucun résultat.",
+      "remove": "Supprimer"
     },
     "app": {
       "fallbackTitle": "Classeur",

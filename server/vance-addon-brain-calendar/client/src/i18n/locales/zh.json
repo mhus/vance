@@ -20,7 +20,9 @@
       "today": "今天",
       "empty": "没有即将发生的事件。",
       "addToCalendar": "添加到日历",
-      "allDay": "全天"
+      "allDay": "全天",
+      "previousMonth": "上个月",
+      "nextMonth": "下个月"
     },
     "planner": {
       "reload": "重新加载",
@@ -42,7 +44,7 @@
       "colEventA": "事件 A",
       "colEventB": "事件 B",
       "colOverlap": "重叠",
-      "addEvent": "添加事件",
+      "addEvent": "添加事件…",
       "noEventsHeadline": "此泳道中没有事件",
       "noEventsBody": "添加第一个事件以开始。",
       "allDayTag": "全天",
@@ -51,8 +53,6 @@
       "addToOutlook": "添加到 Outlook",
       "newEvent": "新建事件",
       "eventTitlePlaceholder": "事件标题",
-      "startPlaceholder": "开始（YYYY-MM-DD 或 YYYY-MM-DDTHH:mm）",
-      "endPlaceholder": "结束（可选）",
       "error": {
         "load": "无法加载规划器：{message}",
         "rebuild": "重建失败：{message}",
@@ -89,6 +89,7 @@
       "zoomIn": "放大",
       "fitTip": "适应所有条目",
       "fit": "适应",
+      "closeDetail": "关闭",
       "unreadable": "{n} 个条目的位置无法被此 {axis} 轴读取，因此未绘制：{list} | {n} 个条目的位置无法被此 {axis} 轴读取，因此未绘制：{list}",
       "empty": "此时间线没有可放置在其轴上的条目。",
       "now": "现在",

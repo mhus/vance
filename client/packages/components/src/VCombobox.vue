@@ -152,7 +152,7 @@ function scrollActiveIntoView(): void {
 
 <template>
   <label class="v-field flex flex-col gap-1 w-full">
-    <span v-if="label" class="v-field-label text-sm">{{ label }}</span>
+    <span v-if="label" class="v-field-label text-xs font-semibold text-(--v-label-secondary)">{{ label }}</span>
     <div class="relative w-full">
       <input
         type="text"

@@ -21,6 +21,7 @@ export interface Props<TValue extends string> {
   ariaLabel?: string;
   /** Show icons only (labels move to the tooltip) — for narrow bars. */
   iconOnly?: boolean;
+  disabled?: boolean;
 }
 
 defineProps<Props<TValue>>();
@@ -38,6 +39,7 @@ defineEmits<{ (e: 'update:modelValue', value: TValue): void }>();
       :aria-pressed="opt.value === modelValue ? 'true' : 'false'"
       :aria-label="iconOnly ? opt.label : undefined"
       :title="opt.title ?? (iconOnly ? opt.label : undefined)"
+      :disabled="disabled"
       @click="$emit('update:modelValue', opt.value)"
     >
       <VIcon v-if="opt.icon" :name="opt.icon" />
@@ -47,6 +49,7 @@ defineEmits<{ (e: 'update:modelValue', value: TValue): void }>();
 </template>
 
 <style scoped>
+.v-segment-item:disabled { opacity: 0.5; cursor: default; }
 .v-segment {
   display: inline-flex;
   gap: 2px;

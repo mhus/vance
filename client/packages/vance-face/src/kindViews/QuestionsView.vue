@@ -168,7 +168,7 @@ function send(): void {
           </blockquote>
           <div v-if="current.kind === QuestionKind.CONFIRM && current.proposal" class="flex flex-col gap-2">
             <div class="text-sm"><span class="opacity-70">{{ t('kindViews.questions.proposal') }}</span> {{ current.proposal }}</div>
-            <VButton variant="primary" size="sm" @click="answer(QuestionOutcome.ANSWERED, current.proposal)">
+            <VButton variant="secondary" size="sm" @click="answer(QuestionOutcome.ANSWERED, current.proposal)">
               {{ t('kindViews.questions.confirm') }}
             </VButton>
           </div>
@@ -186,7 +186,7 @@ function send(): void {
           </div>
           <VTextarea v-model="draft" :rows="2" :mono="false" :placeholder="t('kindViews.questions.freeText')" />
           <div class="flex flex-wrap gap-2">
-            <VButton variant="primary" size="sm" @click="answerWithText">
+            <VButton variant="secondary" size="sm" @click="answerWithText">
               {{ single ? t('kindViews.questions.send') : t('kindViews.questions.next') }}
             </VButton>
             <VButton variant="plain" size="sm" @click="answer(QuestionOutcome.SETTLED)">{{ labels.settled }}</VButton>

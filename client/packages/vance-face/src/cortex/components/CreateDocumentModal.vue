@@ -17,8 +17,11 @@ import {
   VAlert,
   VButton,
   VFileInput,
+  VGroup,
+  VGroupRow,
   VInput,
   VModal,
+  VSegment,
   VSelect,
 } from '@/components';
 import { useI18n } from 'vue-i18n';
@@ -97,6 +100,7 @@ const creating = ref(false);
 const templates = ref<TemplateSummaryDto[]>([]);
 const templatesLoading = ref(false);
 const templateTag = ref<string | null>(null);
+const templateQuery = ref('');
 const selectedTemplate = ref<TemplateDto | null>(null);
 const templateLoading = ref(false);
 const templateName = ref('');
@@ -130,6 +134,7 @@ watch(
     // Template mode is the default entry point; reset its picker state
     // and kick off the listing.
     templateTag.value = null;
+    templateQuery.value = '';
     selectedTemplate.value = null;
     templateName.value = '';
     templateValues.value = {};
@@ -485,14 +490,35 @@ const availableTags = computed<string[]>(() => {
 
 const filteredTemplates = computed<TemplateSummaryDto[]>(() => {
   const tag = templateTag.value;
-  if (!tag) return templates.value;
-  return templates.value.filter((tmpl) => (tmpl.tags ?? []).includes(tag));
+  const query = templateQuery.value.trim().toLowerCase();
+  return templates.value.filter((tmpl) => {
+    if (tag && !(tmpl.tags ?? []).includes(tag)) return false;
+    if (!query) return true;
+    return [tmpl.title, tmpl.description, tmpl.name, ...(tmpl.tags ?? [])]
+      .some((text) => (text ?? '').toLowerCase().includes(query));
+  });
 });
+
+const createModeOptions = computed(() => [
+  { value: 'template' as const, label: t('documents.create.fromTemplate') },
+  { value: 'inline' as const, label: t('documents.create.typeContent') },
+  { value: 'upload' as const, label: t('documents.create.uploadFile') },
+]);
+
+const templateTagOptions = computed(() => [
+  { value: '', label: t('documents.create.templateAllTags') },
+  ...availableTags.value.map((tag) => ({ value: tag, label: `#${tag}` })),
+]);
+
+function templateTagsLabel(tmpl: TemplateSummaryDto): string | undefined {
+  const tags = tmpl.tags ?? [];
+  return tags.length > 0 ? tags.map((tag) => `#${tag}`).join(' ') : undefined;
+}
 
 const templateNameFixed = computed(() => selectedTemplate.value?.nameMode === 'fixed');
 
 function setTemplateTag(tag: string | null): void {
-  templateTag.value = tag;
+  templateTag.value = tag || null;
 }
 
 async function selectTemplate(summary: TemplateSummaryDto): Promise<void> {
@@ -630,37 +656,21 @@ async function submit(): Promise<void> {
     :close-on-backdrop="false"
     @update:model-value="(v: boolean) => emit('update:open', v)"
   >
-    <div class="flex gap-2 mb-4">
-      <VButton
-        :variant="createMode === 'template' ? 'primary' : 'secondary'"
-        size="sm"
-        :disabled="creating"
-        @click="setCreateMode('template')"
-      >{{ $t('documents.create.fromTemplate') }}</VButton>
-      <VButton
-        :variant="createMode === 'inline' ? 'primary' : 'secondary'"
-        size="sm"
-        :disabled="creating"
-        @click="setCreateMode('inline')"
-      >{{ $t('documents.create.typeContent') }}</VButton>
-      <VButton
-        :variant="createMode === 'upload' ? 'primary' : 'secondary'"
-        size="sm"
-        :disabled="creating"
-        @click="setCreateMode('upload')"
-      >{{ $t('documents.create.uploadFile') }}</VButton>
-    </div>
+    <VSegment
+      class="mb-4"
+      :model-value="createMode"
+      :options="createModeOptions"
+      :disabled="creating"
+      @update:model-value="setCreateMode"
+    />
 
-    <form class="flex flex-col gap-3" @submit.prevent="submit">
+    <form id="create-document-form" class="flex flex-col gap-4" @submit.prevent="submit">
       <VAlert v-if="createError" variant="error">
         <span>{{ createError }}</span>
       </VAlert>
-      <div
-        v-if="draftSource"
-        class="text-xs italic opacity-70 bg-base-200 rounded px-2 py-1"
-      >
-        Prefilled from: {{ draftSource }}
-      </div>
+      <p v-if="draftSource" class="text-xs text-(--v-label-secondary)">
+        {{ $t('documents.create.prefilledFrom', { source: draftSource }) }}
+      </p>
 
       <template v-if="createMode === 'template'">
         <!-- Picker: no template selected yet -->
@@ -669,47 +679,38 @@ async function submit(): Promise<void> {
             {{ $t('documents.create.templateLoading') }}
           </div>
           <template v-else>
-            <div v-if="availableTags.length > 0" class="flex flex-wrap gap-1">
-              <VButton
-                :variant="templateTag === null ? 'primary' : 'secondary'"
-                size="sm"
-                @click="setTemplateTag(null)"
-              >{{ $t('documents.create.templateAllTags') }}</VButton>
-              <VButton
-                v-for="tag in availableTags"
-                :key="tag"
-                :variant="templateTag === tag ? 'primary' : 'secondary'"
-                size="sm"
-                @click="setTemplateTag(tag)"
-              >{{ tag }}</VButton>
+            <div class="flex gap-2">
+              <div class="flex-1 min-w-0">
+                <VInput
+                  v-model="templateQuery"
+                  :placeholder="$t('documents.create.templateFilter')"
+                />
+              </div>
+              <div v-if="availableTags.length > 0" class="w-44 shrink-0">
+                <VSelect
+                  :model-value="templateTag ?? ''"
+                  :options="templateTagOptions"
+                  @update:model-value="setTemplateTag"
+                />
+              </div>
             </div>
             <div
               v-if="filteredTemplates.length === 0"
-              class="text-sm opacity-70 py-4 text-center"
+              class="text-sm text-(--v-label-secondary) py-4 text-center"
             >
               {{ $t('documents.create.templateNone') }}
             </div>
-            <ul v-else class="flex flex-col gap-2 max-h-72 overflow-y-auto">
-              <li v-for="tmpl in filteredTemplates" :key="tmpl.name">
-                <button
-                  type="button"
-                  class="w-full text-left rounded border border-base-300 hover:border-primary
-                         hover:bg-base-200 p-3 transition-colors"
-                  :disabled="templateLoading"
-                  @click="selectTemplate(tmpl)"
-                >
-                  <div class="font-medium">{{ tmpl.title }}</div>
-                  <div class="text-xs opacity-70">{{ tmpl.description }}</div>
-                  <div v-if="(tmpl.tags ?? []).length" class="mt-1 flex flex-wrap gap-1">
-                    <span
-                      v-for="tag in tmpl.tags"
-                      :key="tag"
-                      class="text-[10px] uppercase tracking-wide opacity-60"
-                    >#{{ tag }}</span>
-                  </div>
-                </button>
-              </li>
-            </ul>
+            <VGroup v-else>
+              <VGroupRow
+                v-for="tmpl in filteredTemplates"
+                :key="tmpl.name"
+                navigates
+                :label="tmpl.title"
+                :description="tmpl.description"
+                :meta="templateTagsLabel(tmpl)"
+                @click="!templateLoading && selectTemplate(tmpl)"
+              />
+            </VGroup>
           </template>
         </template>
 
@@ -829,21 +830,23 @@ async function submit(): Promise<void> {
         />
       </template>
 
-      <div class="flex justify-end gap-2 pt-2">
-        <VButton
-          type="button"
-          variant="secondary"
-          :disabled="creating"
-          @click="close"
-        >{{ $t('cortex.create.cancel') }}</VButton>
-        <VButton
-          v-if="createMode !== 'template' || selectedTemplate"
-          type="submit"
-          variant="primary"
-          :loading="creating"
-          :disabled="!projectId"
-        >{{ $t('cortex.create.create') }}</VButton>
-      </div>
     </form>
+
+    <template #actions>
+      <VButton
+        type="button"
+        variant="secondary"
+        :disabled="creating"
+        @click="close"
+      >{{ $t('cortex.create.cancel') }}</VButton>
+      <VButton
+        v-if="createMode !== 'template' || selectedTemplate"
+        type="submit"
+        form="create-document-form"
+        variant="primary"
+        :loading="creating"
+        :disabled="!projectId"
+      >{{ $t('cortex.create.create') }}</VButton>
+    </template>
   </VModal>
 </template>

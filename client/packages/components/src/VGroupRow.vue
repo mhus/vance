@@ -7,6 +7,10 @@ import type { IconName } from './icons';
 
 interface Props {
   label?: string;
+  /** Short mono identifier next to the label — a recipe or template name. */
+  meta?: string;
+  /** Second line under the label in secondary colour, at most two lines. */
+  description?: string;
   /** Optional leading icon in a small navy tile. */
   icon?: IconName;
   /** Read-only value shown on the right, in secondary colour. */
@@ -36,7 +40,13 @@ defineEmits<{ (e: 'click', event: MouseEvent | KeyboardEvent): void }>();
   >
     <span v-if="icon" class="v-group-row-tile"><VIcon :name="icon" :size="16" /></span>
     <span :class="['v-group-row-label', { 'v-group-row-danger': danger }]">
-      <slot name="label">{{ label }}</slot>
+      <span class="v-group-row-title">
+        <slot name="label">{{ label }}</slot>
+        <code v-if="meta" class="v-group-row-meta">{{ meta }}</code>
+      </span>
+      <span v-if="description || $slots.description" class="v-group-row-description">
+        <slot name="description">{{ description }}</slot>
+      </span>
     </span>
     <span v-if="value" class="v-group-row-value">{{ value }}</span>
     <slot />
@@ -85,7 +95,22 @@ defineEmits<{ (e: 'click', event: MouseEvent | KeyboardEvent): void }>();
   flex-shrink: 0;
 }
 .v-group-row-tile :deep(.v-icon) { width: 13px; height: 13px; }
-.v-group-row-label { flex: 1 1 auto; min-width: 0; }
+.v-group-row-label { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.v-group-row-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.v-group-row-meta {
+  font-family: var(--v-font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  color: var(--v-label-tertiary);
+}
+.v-group-row-description {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--v-label-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 .v-group-row-danger { color: var(--v-danger); }
 .v-group-row-value { color: var(--v-label-secondary); }
 .v-group-row-chevron { color: var(--v-label-tertiary); }

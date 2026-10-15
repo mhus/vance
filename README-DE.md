@@ -29,7 +29,7 @@ Jede Zeile von Vancetope ist AI-geschrieben — dirigiert, reviewt und geformt v
 - **Auftrag rein, nachvollziehbares Ergebnis raus.** Arbeit läuft als persistenter Think-Process in MongoDB, nicht im RAM einer Session. Dokumente sind versioniert (`document_archives`), Tool-Calls führen Source-Blocks mit, Inbox-Items halten Antworten und Delegationen fest. Ergebnis = Output + der Weg dorthin.
 - **Gedächtnis, das bleibt.** Arbeit verdichtet sich zu Summaries und bleibt abrufbar; scope-aware Recall (RAG) läuft die Kaskade entlang, sodass ein Prozess auf das zurückgreift, was Projekt und Tenant schon wissen — nicht nur auf den aktuellen Chat.
 - **Es läuft von selbst.** Das Ursa-Trigger-Subsystem feuert Recipes, Scripts oder Workflows aus drei Pfaden — Scheduler (zeitbasiert), Lifecycle-Hooks und externe Webhooks. Agenten handeln auf Timer oder Ereignis, nicht nur im Chat-Turn.
-- **Die richtige Engine für den Auftrag.** Engines sind Java-Algorithmen mit Lifecycle — nicht der LLM steuert den Ablauf, sondern Code. `vogon` fährt strikte Phasen-Pipelines mit Gates, `marvin` baut dynamische Task-Trees, `frankie` läuft als Focused-Worker mit definierten Stop-Pfaden, `trillian` koordiniert agentic User-Loops cross-project, `arthur`/`eddie` halten die User-Session, `slartibartfast`/`hactar` generieren und führen Scripts aus. Welche Engine? Das entscheidet das Recipe.
+- **Die richtige Engine für den Auftrag.** Engines sind Java-Algorithmen mit Lifecycle — nicht der LLM steuert den Ablauf, sondern Code. Zum Beispiel fährt `vogon` strikte Phasen-Pipelines mit Gates, `marvin` baut dynamische Task-Trees, `frankie` läuft als Focused-Worker mit definierten Stop-Pfaden, `trillian` koordiniert agentic User-Loops cross-project, `arthur`/`eddie` halten die User-Session, `slartibartfast`/`hactar` generieren und führen Scripts aus. Welche Engine? Das entscheidet das Recipe.
 - **Recipes statt Code-Änderungen.** Ein Recipe ist YAML-Konfig: Engine + Default-Params + Prompt-Prefix + Tool-Anpassungen. Wenige Engines (strukturelle Algorithmen), viele Recipes (benannte Konfigurationsbündel). Für einen neuen Auftragstyp schreibt man ein Recipe — kein Java.
 - **Project Kits & Cascade.** Recipes, Prompts, Tools und Settings kommen per Cascade: Bundled-Defaults → Tenant → Projekt. Project Kits sind Git-Bundles, die ein Projekt sofort produktiv machen; Teams pflegen ihre Kits zentral, Projekte ziehen sich was sie brauchen.
 - **Mehrere Clients, ein Brain.** CLI (`vance-foot`) — direkt auf Terminal-Ebene arbeiten, aber immer im Projekt mit allem, was drin hinterlegt ist. Web-UI (`vance-face`). Mobile (`vance-facelift` — Capacitor-Wrapper um die deployte Web-UI, ein isolierter WebView pro Account). Das Brain ist Single Source of Truth; Clients sind unterschiedliche Zugänge, keine Views auf dasselbe.
@@ -52,25 +52,18 @@ Kein Team-Chat-Ersatz (Slack/Teams), kein Projektmanagement-Tool (Jira/Linear), 
 
 ## Engines im Überblick
 
-| Engine | Rolle | Was sie tut |
-|---|---|---|
-| `arthur` | Reactive Session | Reaktive User-Chat-Engine: nimmt Inbox-Events entgegen, ruft LLM + Tools, antwortet im Chat. Referenz-Implementierung für das Engine-Framework. |
-| `eddie` | Default Session | Standard-User-Session-Engine. Koordiniert User-Eingaben und delegiert Aufträge an Worker-Engines. |
-| `ford` | Single-LLM Worker | Ein Turn = ein LLM-Call mit Tool-Loop. Schneller Generalist, Default-Worker für die Orchestrator-Engines. |
-| `marvin` | Deep-Think | Vertikale Dekomposition mit dynamisch wachsendem Task-Tree in Mongo (PLAN/WORKER/USER_INPUT/AGGREGATE, Pre-Order DFS). Für tiefe, baumartige Bearbeitung. |
-| `vogon` | Strategy-Runner | Deterministische Phasen-Pipeline mit Gates, Checkpoints, Loops, Forks und Escalation. Für strukturierte Workflows mit harten Übergaben. |
-| `zaphod` | Multi-Head | Horizontale Multi-Perspektive: mehrere Köpfe arbeiten parallel an derselben Frage, Zaphod synthetisiert. Für Sichten-Vergleich und Quervalidierung. |
-| `jeltz` | Schema-Loop | Single-Shot mit JSON-Schema-Validation: Frage rein, schema-validiertes JSON raus. Retries bei Schema-Verstößen, danach strukturierter Fehler. |
-| `frankie` | Focused Worker | Endless-by-design Worker mit vier definierten Stop-Pfaden (natural / `_terminate` / external / safety-net). Erstes produktives Recipe: `coding`. |
-| `trillian` | Agentic Loop | Agentic User-Loop mit Service-Account: zwei Sessions (Mensch-Control + headless `_trillian-…`-User-Loop), cross-project-spawn-fähig. Für autonome, persistente Worker-Loops. |
-| `slartibartfast` | Authoring | Meta-Engine, die Recipes (YAML) und Scripts (SCRIPT_JS) generiert oder updated. Übergibt typischerweise an Hactar zur Ausführung. |
-| `hactar` | Script-Execution | Pure Script-Executor: lädt SCRIPT_JS, validiert minimal, führt aus. Authoring lebt in Slartibartfast, Hactar ist nur Runtime. |
-| `agrajag` | Tool-Health | Service-Engine zur Tool-Fehler-Klassifikation per LLM. Diagnostiziert, warum ein Tool-Call gescheitert ist. |
-| `magrathea` | Workflow-Runtime | Keine Think-Engine, sondern eigene Lifecycle-Klasse: führt YAML-Workflows aus (Phasen, Schritte, Sub-Process-Spawns). Mischbar mit Engine-Aufrufen. |
-| `fook` | Triage-Service | Bug- und Feature-Triage: Reporter (LLM, Web-Menü, Foot `/support`) schicken Freitext, Fook entscheidet per LightLLM-Call `new_ticket`/`merge_into`/`discard` und legt Tickets im `_vance`-Tenant ab. Optionaler Upstream-Transfer zu GitHub Issues. |
-| `fenchurch` | Bild-Service | Vancetope's einziger Bildgenerator: Service + Tool-Set (`image_generate`, `image_style_*`), synchroner Provider-Call, konkatenative Style-Cascade über Tenant→User→Projekt→Session. Aliase `default:image` / `default:image-high`. |
-| `zarniwoop` | Research-Service | Einheitlicher Such-/Recherche-Layer mit pluggable Protokollen (Web, Wikipedia, OpenAlex, arXiv, OpenLibrary, …). Ein Endpoint = eine Instanz mit eigenen Quotas und Scopes. |
-| `ursa` | Trigger-System | Keine Engine, sondern das Auslöser-Subsystem mit drei Pfaden: **Scheduler** (zeitbasiert), **Ursahooks** (interne Lifecycle-Events) und **Events** (externe HTTP-Calls). Alle drei feuern dieselbe `TriggerAction`-Hierarchie (Recipe / Script / Workflow). |
+Eine Auswahl — die vollständige, aktuelle Liste steht unter [vancetope.com/agents](https://www.vancetope.com/agents/#engines), die mitgelieferten Recipes unter [vancetope.com/recipes](https://www.vancetope.com/recipes/).
+
+| Engine | Was sie tut |
+|---|---|
+| `arthur` / `eddie` | Halten die User-Session: chatten, Aufträge an Worker delegieren, Ergebnisse zusammenführen. |
+| `ford` | Schneller Generalist-Worker — ein LLM-Call mit Tool-Loop pro Turn. |
+| `frankie` | Fokussierter, endless-by-design Worker mit definierten Stop-Pfaden; fährt das `coding`-Recipe. |
+| `marvin` | Deep-Think: ein Task-Tree, der während der Arbeit wächst. |
+| `vogon` | Deterministische Phasen-Pipeline mit Gates, Checkpoints, Loops und Eskalation. |
+| `trillian` | Persistenter Agenten-Loop mit eigenem Service-Account, projektübergreifend. |
+
+Um die Engines herum liegen Dienste wie `zarniwoop` (Recherche), `fenchurch` (Bilder), `hotblack` (Audio), `fook` (Triage) und das Trigger-Subsystem `ursa` (Scheduler, Hooks, Webhooks).
 
 ## Tech-Stack
 
@@ -78,7 +71,7 @@ Java 25 + Spring Boot 4 + MongoDB + langchain4j/langgraph4j (Brain) · TypeScrip
 
 ## Status
 
-In aktiver Entwicklung. Brain, CLI und Web-UI laufen lokal; zwölf Think-Engines sind implementiert (`arthur`, `eddie`, `ford`, `marvin`, `vogon`, `zaphod`, `jeltz`, `frankie`, `trillian`, `slartibartfast`, `hactar`, `agrajag`) plus Workflow-Runtime `magrathea` und die Dienste `fook`, `fenchurch`, `zarniwoop`. Tenants, Service-Accounts und Rechte sind im Datenmodell aktiv; die kollaborativen Multi-User-Features kommen schrittweise.
+In aktiver Entwicklung. Brain, CLI, Web-UI, Desktop- und Mobile-Apps laufen lokal oder selbst gehostet. Tenants, Service-Accounts und Rechte sind im Datenmodell aktiv; die kollaborativen Multi-User-Features kommen schrittweise.
 
 ## Dokumentation
 

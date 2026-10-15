@@ -156,4 +156,17 @@ class SsoConfigParserTest {
         assertThat(config.preparationProvider("acme", "mike@gmail.com")).isEmpty();
         assertThat(config.preparationProvider("mhus", "mike@example.org")).isEmpty();
     }
+
+    @Test
+    void droppedEntries_areReportedToTheCaller() {
+        java.util.List<String> problems = new java.util.ArrayList<>();
+        SsoConfigParser.parse(PROVIDER + """
+                domains:
+                  - {domain: acme.com, tenant: ghost, provider: google}
+                  - {domain: ok.com, tenant: acme, provider: google}
+                """, TENANTS, problems);
+
+        assertThat(problems).hasSize(1);
+        assertThat(problems.get(0)).contains("acme.com").contains("ghost");
+    }
 }

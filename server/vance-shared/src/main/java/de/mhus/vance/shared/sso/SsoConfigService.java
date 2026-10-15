@@ -3,11 +3,13 @@ package de.mhus.vance.shared.sso;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.home.HomeBootstrapService;
+import de.mhus.vance.shared.permission.WriteActor;
 import de.mhus.vance.shared.tenant.TenantDocument;
 import de.mhus.vance.shared.tenant.TenantService;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -68,6 +70,40 @@ public class SsoConfigService {
     /** Drops the cached config; the next {@link #config()} reads the document again. */
     public void invalidate() {
         cached = null;
+    }
+
+    /** The document's text as stored, if there is one — for the admin shell. */
+    public Optional<String> readRaw() {
+        return documentService
+                .findByPath(TenantService.SYSTEM_TENANT, HomeBootstrapService.TENANT_PROJECT_NAME, CONFIG_PATH)
+                .map(documentService::readContent);
+    }
+
+    /**
+     * What {@code yaml} would mean, without writing it. Every entry that would be
+     * dropped is added to {@code problems}.
+     */
+    public SsoConfig validate(String yaml, List<String> problems) {
+        return SsoConfigParser.parse(yaml, this::tenantUsable, problems);
+    }
+
+    /**
+     * Replaces the config document. Operator path only (admin shell) — the
+     * document lives in the system tenant, and writing it decides which
+     * domain's sign-ins land in which tenant.
+     */
+    public void write(String yaml, String writtenBy) {
+        documentService.upsertText(
+                TenantService.SYSTEM_TENANT,
+                HomeBootstrapService.TENANT_PROJECT_NAME,
+                CONFIG_PATH,
+                "SSO login",
+                null,
+                yaml,
+                writtenBy,
+                WriteActor.SYSTEM);
+        invalidate();
+        log.info("SSO config written by '{}'", writtenBy);
     }
 
     private SsoConfig readAndParse() {

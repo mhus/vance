@@ -2,6 +2,7 @@ package de.mhus.vance.shared.sso;
 
 import de.mhus.vance.shared.user.ExternalEmails;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -11,6 +12,7 @@ import java.util.Set;
 import java.util.function.Predicate;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.slf4j.helpers.MessageFormatter;
 import org.yaml.snakeyaml.Yaml;
 
 /**
@@ -39,34 +41,44 @@ public final class SsoConfigParser {
      * @param tenantExists whether a tenant name exists
      */
     public static SsoConfig parse(String yamlBody, Predicate<String> tenantExists) {
+        return parse(yamlBody, tenantExists, new ArrayList<>());
+    }
+
+    /**
+     * Same as {@link #parse(String, Predicate)}, and every dropped entry is
+     * also added to {@code problems} — the admin shell shows them before it
+     * writes the file, so a typo does not silently disable a domain.
+     */
+    public static SsoConfig parse(String yamlBody, Predicate<String> tenantExists, List<String> problems) {
         Object parsed;
         try {
             parsed = new Yaml().load(yamlBody);
         } catch (RuntimeException e) {
-            log.error("SSO config: YAML does not parse — SSO disabled: {}", e.getMessage());
+            problem(problems, "SSO config: YAML does not parse — SSO disabled: {}", e.getMessage());
             return SsoConfig.EMPTY;
         }
         if (parsed == null) {
             return SsoConfig.EMPTY;
         }
         if (!(parsed instanceof Map<?, ?> root)) {
-            log.error("SSO config: top level must be a map — SSO disabled");
+            problem(problems, "SSO config: top level must be a map — SSO disabled");
             return SsoConfig.EMPTY;
         }
-        Map<String, SsoConfig.Provider> providers = parseProviders(root.get("providers"));
-        Map<String, SsoConfig.DomainRule> domains = parseDomains(root.get("domains"), providers, tenantExists);
+        Map<String, SsoConfig.Provider> providers = parseProviders(root.get("providers"), problems);
+        Map<String, SsoConfig.DomainRule> domains =
+                parseDomains(root.get("domains"), providers, tenantExists, problems);
         SsoConfig.ConsumerAccounts consumer =
-                parseConsumerAccounts(root.get("consumerAccounts"), providers, tenantExists);
+                parseConsumerAccounts(root.get("consumerAccounts"), providers, tenantExists, problems);
         return new SsoConfig(providers, domains, consumer);
     }
 
-    private static Map<String, SsoConfig.Provider> parseProviders(@Nullable Object raw) {
+    private static Map<String, SsoConfig.Provider> parseProviders(@Nullable Object raw, List<String> problems) {
         Map<String, SsoConfig.Provider> out = new LinkedHashMap<>();
         if (raw == null) {
             return out;
         }
         if (!(raw instanceof Map<?, ?> map)) {
-            log.error("SSO config: 'providers' must be a map — no provider configured");
+            problem(problems, "SSO config: 'providers' must be a map — no provider configured");
             return out;
         }
         for (Map.Entry<?, ?> e : map.entrySet()) {
@@ -74,7 +86,7 @@ public final class SsoConfigParser {
             try {
                 out.put(key, parseProvider(key, e.getValue()));
             } catch (IllegalStateException ex) {
-                log.error("SSO config: provider '{}' dropped: {}", key, ex.getMessage());
+                problem(problems, "SSO config: provider '{}' dropped: {}", key, ex.getMessage());
             }
         }
         return out;
@@ -106,13 +118,16 @@ public final class SsoConfigParser {
     }
 
     private static Map<String, SsoConfig.DomainRule> parseDomains(
-            @Nullable Object raw, Map<String, SsoConfig.Provider> providers, Predicate<String> tenantExists) {
+            @Nullable Object raw,
+            Map<String, SsoConfig.Provider> providers,
+            Predicate<String> tenantExists,
+            List<String> problems) {
         Map<String, SsoConfig.DomainRule> out = new LinkedHashMap<>();
         if (raw == null) {
             return out;
         }
         if (!(raw instanceof List<?> list)) {
-            log.error("SSO config: 'domains' must be a list — no domain configured");
+            problem(problems, "SSO config: 'domains' must be a list — no domain configured");
             return out;
         }
         Set<String> duplicates = new HashSet<>();
@@ -124,12 +139,12 @@ public final class SsoConfigParser {
                     // Two tenants claiming one domain: neither wins.
                     out.remove(rule.domain());
                     duplicates.add(rule.domain());
-                    log.error("SSO config: domain '{}' is listed more than once — dropped", rule.domain());
+                    problem(problems, "SSO config: domain '{}' is listed more than once — dropped", rule.domain());
                     continue;
                 }
                 out.put(rule.domain(), rule);
             } catch (IllegalStateException ex) {
-                log.error("SSO config: domain entry '{}' dropped: {}", label, ex.getMessage());
+                problem(problems, "SSO config: domain entry '{}' dropped: {}", label, ex.getMessage());
             }
         }
         return out;
@@ -157,7 +172,10 @@ public final class SsoConfigParser {
     }
 
     private static SsoConfig.@Nullable ConsumerAccounts parseConsumerAccounts(
-            @Nullable Object raw, Map<String, SsoConfig.Provider> providers, Predicate<String> tenantExists) {
+            @Nullable Object raw,
+            Map<String, SsoConfig.Provider> providers,
+            Predicate<String> tenantExists,
+            List<String> problems) {
         if (raw == null) {
             return null;
         }
@@ -178,9 +196,15 @@ public final class SsoConfigParser {
             }
             return new SsoConfig.ConsumerAccounts(provider, tenants, maxSession(spec.get("maxSessionDays")));
         } catch (IllegalStateException ex) {
-            log.error("SSO config: 'consumerAccounts' dropped: {}", ex.getMessage());
+            problem(problems, "SSO config: 'consumerAccounts' dropped: {}", ex.getMessage());
             return null;
         }
+    }
+
+    /** Logs a dropped entry at ERROR and records it for the caller. */
+    private static void problem(List<String> problems, String format, Object... args) {
+        log.error(format, args);
+        problems.add(MessageFormatter.arrayFormat(format, args).getMessage());
     }
 
     private static String providerKey(Map<?, ?> spec, Map<String, SsoConfig.Provider> providers) {

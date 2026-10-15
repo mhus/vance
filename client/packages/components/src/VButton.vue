@@ -9,25 +9,13 @@
 //
 // An action shown as an icon alone is VIconButton, not this. `icon` puts a
 // leading icon in front of the label (menus, the primary "New document").
-//
-// `ghost`, `link`, `neutral` and `outline` are the pre-CI variants, kept so
-// existing call sites render unchanged while views migrate (corporate-design
-// §10.4) — do not use them in new code.
+// There are no other variants on purpose — a fifth look is how the UI drifted
+// before.
 import { computed } from 'vue';
 import VIcon from './VIcon.vue';
 import type { IconName } from './icons';
 
-type Variant =
-  | 'primary'
-  | 'secondary'
-  | 'plain'
-  | 'danger'
-  /** @deprecated pre-CI — use `plain`, or VIconButton for an icon-only action */
-  | 'ghost'
-  /** @deprecated pre-CI — use `plain` */
-  | 'link'
-  /** @deprecated pre-CI — use `secondary` */
-  | 'neutral';
+type Variant = 'primary' | 'secondary' | 'plain' | 'danger';
 
 interface Props {
   variant?: Variant;
@@ -42,8 +30,6 @@ interface Props {
   icon?: IconName;
   /** With `variant="danger"`: the filled red button of a confirmation. */
   filled?: boolean;
-  /** @deprecated pre-CI DaisyUI outline — renders as `secondary`. */
-  outline?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -54,7 +40,6 @@ const props = withDefaults(defineProps<Props>(), {
   block: false,
   size: 'md',
   filled: false,
-  outline: false,
 });
 
 defineEmits<{ (e: 'click', event: MouseEvent): void }>();
@@ -66,9 +51,6 @@ const VARIANT_CLASSES: Record<Variant, string> = {
   secondary: 'v-btn-secondary',
   plain: 'btn-ghost v-btn-plain',
   danger: 'btn-ghost v-btn-danger',
-  ghost: 'btn-ghost',
-  link: 'btn-ghost v-btn-plain',
-  neutral: 'v-btn-secondary',
 };
 
 const SIZE_CLASSES: Record<'xs' | 'sm' | 'md', string> = {
@@ -79,7 +61,6 @@ const SIZE_CLASSES: Record<'xs' | 'sm' | 'md', string> = {
 
 const variantClass = computed<string>(() => {
   if (props.variant === 'danger' && props.filled) return 'btn-error';
-  if (props.outline && props.variant !== 'danger') return 'v-btn-secondary';
   return VARIANT_CLASSES[props.variant];
 });
 

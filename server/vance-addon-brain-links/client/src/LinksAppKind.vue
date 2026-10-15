@@ -641,7 +641,7 @@ function message(e: unknown): string {
       <VButton
         v-if="counts[''] > 0"
         size="sm"
-        :variant="activeGroup === '' ? 'primary' : 'ghost'"
+        :variant="activeGroup === '' ? 'primary' : 'secondary'"
         @click="activeGroup = ''"
       >
         {{ t('links.app.ungrouped', { count: counts[''] }) }}

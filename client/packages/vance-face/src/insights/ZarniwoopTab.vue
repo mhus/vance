@@ -253,7 +253,6 @@ const now = Date.now();
                   v-if="inst.activeCooldownSubject && inst.activeCooldownSignature"
                   variant="secondary"
                   size="xs"
-                  :outline="true"
                   class="mt-1"
                   :disabled="state.loading.value"
                   :title="$t('insights.zarniwoop.clearCooldownTitle')"

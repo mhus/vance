@@ -14,15 +14,16 @@ import org.springframework.stereotype.Service;
  *
  * <h2>Resolution order</h2>
  * <ol>
- *   <li>Blank or {@code text} input → {@code existingKind} when it is a
- *       specific kind (on update) — {@code text} is not a decision, see below.</li>
+ *   <li>Blank input → {@code existingKind} when it is a specific kind (on
+ *       update). An existing {@code text} is not a decision (it is also the
+ *       silent create fallback), so detection may still re-type it.</li>
  *   <li>…then detection: the kind claiming the document's <em>path</em> first
  *       (config trees, {@link de.mhus.vance.shared.document.kind.KindHandler#detectsPath}),
  *       then the kind claiming the <em>body</em>
  *       ({@link de.mhus.vance.shared.document.kind.KindHandler#detects}). Location beats body
  *       shape — see {@link KindRegistry#detectKind(String, String)}.</li>
  *   <li>…then {@code existingKind} (on update) or {@code "text"} (on create).</li>
- *   <li>An explicit kind resolves against the {@link KindRegistry}: exact
+ *   <li>An explicit kind — {@code text} included — resolves against the {@link KindRegistry}: exact
  *       case-insensitive match, then substring match — the request <em>contains</em>
  *       a registered kind name (so {@code "diagramm"} → {@code "diagram"},
  *       {@code "user-mindmap"} → {@code "mindmap"}). Only the
@@ -74,13 +75,13 @@ public class KindResolver {
      * {@link KindRegistry} closes that path without teaching this resolver
      * anything about individual kinds — the handler owns its marker.
      *
-     * <p>Only consulted when neither side names a <em>specific</em> kind: a
-     * requested kind is a decision, and so is the kind an existing document
-     * already carries. {@code text} is neither — it is the name of
-     * "unspecified" (see below), so an overwrite of a {@code kind: text}
-     * document is re-detected and can end up as {@code diagram} once the
-     * body grows a ```mermaid fence. Pinned by
-     * {@code KindResolverTest.existingText_isReplacedByDetection}.
+     * <p>Only consulted when the caller names no kind and the existing
+     * document carries no <em>specific</em> kind: a requested kind — even
+     * {@code text} — is a decision, and so is an existing specific kind. An
+     * existing {@code text} is not (it is also what an un-kinded create fell
+     * back to), so an overwrite without {@code kind} is re-detected and can
+     * end up as {@code diagram} once the body grows a ```mermaid fence.
+     * Pinned by {@code KindResolverTest.existingText_isReplacedByDetection}.
      */
     public String resolve(@Nullable String requested, @Nullable String existingKind, @Nullable String content) {
         return resolve(requested, existingKind, content, /*documentPath*/ null);
@@ -94,13 +95,25 @@ public class KindResolver {
         String norm = requested == null ? "" : requested.trim().toLowerCase();
         String existing = existingKind == null ? "" : existingKind.trim().toLowerCase();
 
-        // `text` is not a commitment — it is the name of "unspecified", and
-        // it is what a model picks when it does not decide. Measured: of 33
-        // doc_write calls in one MermaidVariety run, 30 passed an explicit
-        // kind, and every mis-typed diagram carried kind=text next to a
-        // ```mermaid body. Treating it as a decision meant the registered
-        // kinds never got asked. A specific kind still wins outright.
-        if (norm.isEmpty() || FALLBACK_KIND.equals(norm)) {
+        // A requested `text` is a decision, like any other explicit kind:
+        // detection only runs when the caller names no kind at all.
+        //
+        // History — if mis-typed diagrams come back, read this first. From
+        // 2026-08-15 (d1af5ea62) a requested `text` counted as "unspecified"
+        // and let detection claim the body. Reason: in a MermaidVariety run
+        // (gemma4) 30 of 33 doc_write calls passed an explicit kind, and every
+        // mis-typed diagram carried kind=text next to a ```mermaid body —
+        // models picked `text` when they did not decide. Loosening lifted the
+        // run from 3–4/9 to 8/9.
+        // Cost of that loosening: a deliberate `text` was overruled too. Prose
+        // with one embedded ```mermaid block was stored as `diagram` (the prose
+        // shrinks to _preamble/_postamble in the diagram editor) and failed the
+        // diagram self-check — GitHub issue #70. Models have since become
+        // reliable at choosing the kind, so the explicit `text` wins again.
+        // Re-loosening means: add `|| FALLBACK_KIND.equals(norm)` here, and
+        // first narrow DiagramCodec.looksLikeDiagram to diagram-only bodies,
+        // otherwise #70 returns.
+        if (norm.isEmpty()) {
             if (!existing.isEmpty() && !FALLBACK_KIND.equals(existing)) {
                 return existing;
             }

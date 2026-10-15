@@ -142,13 +142,12 @@ class KindResolverTest {
         assertThat(resolver.resolve("frobnicate", "slides")).isEqualTo("slides");
     }
 
-    // ── `text` is not a commitment ──────────────────────────────
+    // ── a requested `text` is a decision ────────────────────────
     //
-    // It is the name of "unspecified" and what a model picks when it does
-    // not decide: of 33 doc_write calls in one MermaidVariety run, 30 passed
-    // an explicit kind and every mis-typed diagram carried kind=text beside a
-    // ```mermaid body. So `text` lets the registered kinds claim the content;
-    // a specific kind never does.
+    // Detection only runs when no kind is requested. From d1af5ea62 until
+    // GitHub issue #70 a requested `text` counted as "unspecified" — see the
+    // history comment in KindResolver before loosening this again. An
+    // existing `text` stays unspecific: it is also the silent create fallback.
 
     private KindResolver resolverDetecting(String detected) {
         KindRegistry registry = registryWith(KNOWN_KINDS);
@@ -158,8 +157,21 @@ class KindResolverTest {
     }
 
     @Test
-    void requestedText_withDetectableBody_yieldsDetectedKind() {
-        assertThat(resolverDetecting("diagram").resolve("text", null, "```mermaid\nflowchart TD\n```"))
+    void requestedText_withDetectableBody_staysText() {
+        // Issue #70: prose with an embedded mermaid block, written as text.
+        assertThat(resolverDetecting("diagram").resolve("text", null, "Intro\n```mermaid\nflowchart TD\n```"))
+                .isEqualTo("text");
+    }
+
+    @Test
+    void requestedText_overwritingText_isNotReDetected() {
+        assertThat(resolverDetecting("diagram").resolve("text", "text", "```mermaid\nflowchart TD\n```"))
+                .isEqualTo("text");
+    }
+
+    @Test
+    void blankRequest_withDetectableBody_yieldsDetectedKind() {
+        assertThat(resolverDetecting("diagram").resolve(null, null, "```mermaid\nflowchart TD\n```"))
                 .isEqualTo("diagram");
     }
 
@@ -176,9 +188,15 @@ class KindResolverTest {
     }
 
     @Test
-    void existingSpecificKind_survivesATextRequest() {
-        // Overwriting a diagram with kind=text must not retype the document.
+    void textRequest_retypesAnExistingSpecificKind() {
+        // An explicit kind change is allowed — text included.
         assertThat(resolverDetecting("mindmap").resolve("text", "diagram", "```mermaid\nflowchart TD\n```"))
+                .isEqualTo("text");
+    }
+
+    @Test
+    void existingSpecificKind_survivesABlankRequest() {
+        assertThat(resolverDetecting("mindmap").resolve(null, "diagram", "```mermaid\nflowchart TD\n```"))
                 .isEqualTo("diagram");
     }
 

@@ -86,6 +86,46 @@ class KindResolverTest {
                 .isEqualTo("vance-research-source");
     }
 
+    // ── a requested `text` loses against the location, not the body ──
+
+    private static final String RESEARCH_PATH = "_vance/config/research/serper.yaml";
+
+    private KindResolver resolverClaimingPathOnly(String path, String claim) {
+        KindRegistry registry = registryWith(KNOWN_KINDS);
+        // The body would claim `diagram` — a requested text must never ask it.
+        when(registry.detectKind(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn("diagram");
+        when(registry.detectKind(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.isNull()))
+                .thenReturn(null);
+        when(registry.detectKind(org.mockito.ArgumentMatchers.eq(path), org.mockito.ArgumentMatchers.isNull()))
+                .thenReturn(claim);
+        return new KindResolver(registry);
+    }
+
+    @Test
+    void requestedText_atAClaimedPath_takesThePathKind() {
+        // A text-typed write into the config tree would skip the source
+        // validation silently — the location is what the document is.
+        KindResolver r = resolverClaimingPathOnly(RESEARCH_PATH, "vance-research-source");
+        assertThat(r.resolve("text", null, "protocol: serper", RESEARCH_PATH)).isEqualTo("vance-research-source");
+        assertThat(r.resolve("Text", null, "protocol: serper", RESEARCH_PATH)).isEqualTo("vance-research-source");
+    }
+
+    @Test
+    void requestedText_overwritingASourceAtItsPath_doesNotDowngradeIt() {
+        KindResolver r = resolverClaimingPathOnly(RESEARCH_PATH, "vance-research-source");
+        assertThat(r.resolve("text", "vance-research-source", "protocol: serper", RESEARCH_PATH))
+                .isEqualTo("vance-research-source");
+    }
+
+    @Test
+    void requestedText_atAnUnclaimedPath_staysText_evenWithADetectableBody() {
+        // Issue #70 stays fixed: only the location may override a requested text.
+        KindResolver r = resolverClaimingPathOnly(RESEARCH_PATH, "vance-research-source");
+        assertThat(r.resolve("text", null, "Intro\n```mermaid\nflowchart TD\n```", "notes/intro.md"))
+                .isEqualTo("text");
+    }
+
     // ── formula-specific cases ──────────────────────────────────
 
     @Test

@@ -51,6 +51,9 @@ promptPrefix: |
     results into the document", "write a summary into a page", or "yes"
     to your own offer of such a task. Put the instruction into task, in
     the user's words made explicit (which document, which results).
+  - worker: only when the section "A worker waits for the user" appears
+    below — the message answers that worker or continues its task. It
+    goes to the worker unchanged. Never choose it without that section.
   - unclear: you cannot tell what the user wants.
 
   followUp: when the message asks for a review AND for something after it

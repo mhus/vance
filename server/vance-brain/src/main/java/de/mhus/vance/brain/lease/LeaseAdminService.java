@@ -101,10 +101,9 @@ public class LeaseAdminService {
         sweeper.sweepRound();
     }
 
-    /** Same liveness criterion as the sweeper and the dispatcher — there must not be two opinions. */
+    /** Same liveness criterion as the sweeper and the dispatcher — {@link LeasePodLiveness}. */
     private boolean isPodAlive(String podId) {
-        return podId.equals(cluster.selfPodId())
-                || cluster.resolveEndpointByPodId(podId).isPresent();
+        return LeasePodLiveness.isAlive(cluster, podId);
     }
 
     /** Counter key → number of holders that book it; the reference value reconcile corrects towards. */

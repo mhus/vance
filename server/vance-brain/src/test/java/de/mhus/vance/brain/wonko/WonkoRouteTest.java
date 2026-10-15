@@ -20,15 +20,38 @@ class WonkoRouteTest {
     void schema_requiresIntentAndReason() {
         assertThat(JsonSchemaLight.validate(
                                 Map.of("intent", "question", "reason", "asks", "answer", "Fine."),
-                                WonkoPrompts.routeSchema())
+                                WonkoPrompts.routeSchema(false))
                         .valid())
                 .isTrue();
-        assertThat(JsonSchemaLight.validate(Map.of("intent", "question"), WonkoPrompts.routeSchema())
+        assertThat(JsonSchemaLight.validate(Map.of("intent", "question"), WonkoPrompts.routeSchema(false))
                         .valid())
                 .isFalse();
-        assertThat(JsonSchemaLight.validate(Map.of("intent", "chat", "reason", "x"), WonkoPrompts.routeSchema())
+        assertThat(JsonSchemaLight.validate(Map.of("intent", "chat", "reason", "x"), WonkoPrompts.routeSchema(false))
                         .valid())
                 .isFalse();
+    }
+
+    @Test
+    void schema_offersWorkerOnlyWhileAWorkerWaits() {
+        Map<String, Object> worker = Map.of("intent", "worker", "reason", "answers the worker");
+        assertThat(JsonSchemaLight.validate(worker, WonkoPrompts.routeSchema(true))
+                        .valid())
+                .isTrue();
+        assertThat(JsonSchemaLight.validate(worker, WonkoPrompts.routeSchema(false))
+                        .valid())
+                .isFalse();
+        assertThat(WonkoPrompts.parseRoute(worker).intent()).isEqualTo(WonkoPrompts.RouteIntent.WORKER);
+    }
+
+    @Test
+    void routePrompt_namesTheWaitingWorkerAndTheClosedOffer() {
+        String prompt = WonkoPrompts.routePrompt(
+                List.of("req.md"), List.of(), null, null, List.of(), "A", "Which one: A or B?", "work the results in");
+
+        assertThat(prompt)
+                .contains("## A worker waits for the user", "Which one: A or B?", "Intent worker")
+                .contains("## Your offer the user did not confirm", "You offered to run: work the results in")
+                .endsWith("## The user's message\nA\n");
     }
 
     @Test
@@ -71,7 +94,9 @@ class WonkoRouteTest {
                 List.of(
                         new WonkoPrompts.Turn("assistant", "Shall I work the five points in?"),
                         new WonkoPrompts.Turn("user", "x".repeat(700))),
-                "what do you think?");
+                "what do you think?",
+                null,
+                null);
 
         assertThat(prompt)
                 .contains(

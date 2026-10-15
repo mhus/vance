@@ -61,13 +61,12 @@ public class ResourceLeaseSweeper {
     }
 
     private void reapDeadPods() {
-        String selfPod = cluster.selfPodId();
         Set<String> pods = new HashSet<>();
         for (ResourceLeaseHolderDocument holder : leaseService.listHolders()) {
             pods.add(holder.getPod());
         }
         for (String pod : pods) {
-            if (pod.equals(selfPod) || cluster.resolveEndpointByPodId(pod).isPresent()) {
+            if (LeasePodLiveness.isAlive(cluster, pod)) {
                 continue;
             }
             dispatch(leaseService.reapPod(pod));

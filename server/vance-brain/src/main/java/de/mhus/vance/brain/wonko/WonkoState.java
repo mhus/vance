@@ -103,19 +103,41 @@ public class WonkoState {
     /** Confirmed follow-ups waiting to enter the intake — drained in the same turn. */
     private List<String> followUpInputs = new ArrayList<>();
 
+    /**
+     * Free-text answers to an offered follow-up — not a confirmation: the
+     * offer is closed, the text enters the intake as a free message with the
+     * closed offer in view. Drained in the same turn.
+     */
+    private List<FollowUpReply> followUpReplies = new ArrayList<>();
+
     /** The worker the router's {@code work} started; {@code null} when none runs. */
     private @Nullable String workerName;
 
     private @Nullable String workerId;
 
-    /** The worker asked the user something — the next free message goes to it. */
+    /**
+     * The worker ended its turn with a reply and waits for its next input —
+     * a question to the user or a result, the route judge tells which by the
+     * user's next message. A tool loop signals this by its reply alone (a
+     * natural stop leaves the worker IDLE; no lifecycle event follows).
+     */
     private boolean workerWaiting;
+
+    /** The worker's last reply while it waits — what the route judge reads the next message against. */
+    private @Nullable String workerLastReply;
 
     /** The worker's answer of this exchange reached the chat already (a reply came). */
     private boolean workerReplied;
 
     /** The subject's text fingerprint when the work started — a change triggers one recheck. */
     private @Nullable String subjectFingerprint;
+
+    /**
+     * The worker changed the subject while a question set was open — the
+     * recheck waits until the set is answered, so the answers are not lost
+     * to a reset run.
+     */
+    private boolean recheckDeferred;
 
     /**
      * Starts a fresh run on the same subject — the subject changed, so
@@ -146,6 +168,17 @@ public class WonkoState {
         coveredRefs = new ArrayList<>();
         finished = false;
         finalReport = null;
+        // A fresh run is the recheck a worker's change was waiting for.
+        recheckDeferred = false;
+    }
+
+    /** A free-text answer to an offered follow-up: the closed offer and what the user wrote instead. */
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class FollowUpReply {
+        private String offer = "";
+        private String text = "";
     }
 
     /** A mandate proposal awaiting the user's yes/no. */

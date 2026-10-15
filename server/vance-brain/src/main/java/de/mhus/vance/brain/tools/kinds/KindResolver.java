@@ -23,7 +23,9 @@ import org.springframework.stereotype.Service;
  *       ({@link de.mhus.vance.shared.document.kind.KindHandler#detects}). Location beats body
  *       shape — see {@link KindRegistry#detectKind(String, String)}.</li>
  *   <li>…then {@code existingKind} (on update) or {@code "text"} (on create).</li>
- *   <li>An explicit kind — {@code text} included — resolves against the {@link KindRegistry}: exact
+ *   <li>An explicit {@code text} stays {@code text} — unless the document's <em>path</em> is
+ *       claimed by a kind: location beats a requested {@code text}, the body never does.</li>
+ *   <li>Any other explicit kind resolves against the {@link KindRegistry}: exact
  *       case-insensitive match, then substring match — the request <em>contains</em>
  *       a registered kind name (so {@code "diagramm"} → {@code "diagram"},
  *       {@code "user-mindmap"} → {@code "mindmap"}). Only the
@@ -124,6 +126,10 @@ public class KindResolver {
             return !existing.isEmpty() ? existing : FALLBACK_KIND;
         }
 
+        if (FALLBACK_KIND.equals(norm)) {
+            return resolveRequestedText(documentPath);
+        }
+
         if (registry.isKnown(norm)) {
             return norm;
         }
@@ -139,5 +145,25 @@ public class KindResolver {
 
         // Unresolvable: keep existing on update, fall back to text on create.
         return !existing.isEmpty() ? existing : FALLBACK_KIND;
+    }
+
+    /**
+     * A requested {@code text}: a decision against <em>body</em> detection
+     * (#70), but not against the document's <em>location</em>. A path claim
+     * ({@link de.mhus.vance.shared.document.kind.KindHandler#detectsPath} —
+     * recipes, research/feed/mount sources, hooks, guards, models, prompts,
+     * wizards) says what every document in that config tree is; written as
+     * {@code text} it would skip the kind's validation silently, and an
+     * overwrite of an existing source with {@code kind=text} would downgrade
+     * it. So the path claim wins — the kind's validator then reports a
+     * malformed body instead of the write slipping past it. Only the path is
+     * asked; the body never re-types a requested {@code text}.
+     */
+    private String resolveRequestedText(@Nullable String documentPath) {
+        if (documentPath == null || documentPath.isBlank()) {
+            return FALLBACK_KIND;
+        }
+        String claimed = registry.detectKind(documentPath, /*content*/ null);
+        return claimed != null ? claimed : FALLBACK_KIND;
     }
 }

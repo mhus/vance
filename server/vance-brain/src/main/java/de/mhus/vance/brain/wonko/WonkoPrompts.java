@@ -77,6 +77,12 @@ final class WonkoPrompts {
         QUESTION,
         /** A task that needs tools (change a document, write something) — a worker does it. */
         WORK,
+        /**
+         * The message answers the worker that waits for the user, or continues
+         * its task — it goes to the worker unchanged. Offered to the judge only
+         * while a worker waits.
+         */
+        WORKER,
         /** Cannot tell — ask back. */
         UNCLEAR
     }
@@ -107,6 +113,8 @@ final class WonkoPrompts {
     private static final int MAX_ROUTE_REPORT_CHARS = 12_000;
 
     private static final int MAX_ROUTE_SUBJECT_CHARS = 30_000;
+
+    private static final int MAX_ROUTE_WORKER_REPLY_CHARS = 4_000;
 
     private static final List<String> CONCERNS = List.of("contradiction", "gap", "vague", "implausible", "intent");
 
@@ -417,13 +425,26 @@ final class WonkoPrompts {
 
     // ──────────────────── route (free messages) ────────────────────
 
+    /**
+     * The route judge's prompt.
+     *
+     * @param workerReply the last reply of a worker that waits for the user
+     *                    ({@code ""} when it said nothing), {@code null} when
+     *                    no worker waits — then intent {@code worker} is not
+     *                    offered
+     * @param closedOffer a follow-up Wonko offered that the user answered with
+     *                    this message instead of confirming it — the offer is
+     *                    closed unless the message clearly agrees
+     */
     static String routePrompt(
             List<String> subjectRefs,
             List<SubjectDoc> subject,
             @Nullable String report,
             @Nullable QuestionSetDto pending,
             List<Turn> recent,
-            String userText) {
+            String userText,
+            @Nullable String workerReply,
+            @Nullable String closedOffer) {
         StringBuilder sb = new StringBuilder("## Subject under review\n");
         subjectRefs.forEach(r -> sb.append("- ").append(r).append('\n'));
         int budget = MAX_ROUTE_SUBJECT_CHARS;
@@ -476,15 +497,42 @@ final class WonkoPrompts {
                         .append('\n');
             }
         }
+        if (workerReply != null) {
+            sb.append("\n## A worker waits for the user\n")
+                    .append("A worker did a task for this review and ended its turn with the reply below; it now"
+                            + " waits for its next input.\n");
+            if (!workerReply.isBlank()) {
+                String text = workerReply.length() > MAX_ROUTE_WORKER_REPLY_CHARS
+                        ? workerReply.substring(0, MAX_ROUTE_WORKER_REPLY_CHARS) + "\n…"
+                        : workerReply;
+                sb.append("````\n").append(text.strip()).append("\n````\n");
+            }
+            sb.append("Intent worker: the message answers the worker or continues its task (\"the second one\","
+                    + " \"yes, do that\", \"also fix the title\") — it goes to the worker unchanged. Choose another"
+                    + " intent only when the message is clearly meant for the review itself.\n");
+        }
+        if (closedOffer != null) {
+            sb.append("\n## Your offer the user did not confirm\n")
+                    .append("You offered to run: ")
+                    .append(closedOffer.strip())
+                    .append("\nThe user replied with the message below instead of confirming it, so the offer is"
+                            + " closed. Choose work for it only when the message clearly agrees to it or asks for it"
+                            + " in other words — then put the task as the user wants it. A refusal or a \"not now\" is"
+                            + " a question: acknowledge it in one short sentence.\n");
+        }
         sb.append("\n## The user's message\n").append(userText).append('\n');
         return sb.toString();
     }
 
-    static Map<String, Object> routeSchema() {
+    /** The route reply's schema; {@code worker} is a valid intent only while a worker waits. */
+    static Map<String, Object> routeSchema(boolean workerWaiting) {
         return object(
                 List.of("intent", "reason"),
                 Map.of(
-                        "intent", enumOf("recheck", "statement", "question", "work", "unclear"),
+                        "intent",
+                                workerWaiting
+                                        ? enumOf("recheck", "statement", "question", "work", "worker", "unclear")
+                                        : enumOf("recheck", "statement", "question", "work", "unclear"),
                         "reason", string(),
                         "answer", string(),
                         "lookup", string(),

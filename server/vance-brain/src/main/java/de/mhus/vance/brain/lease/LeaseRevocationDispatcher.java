@@ -23,9 +23,10 @@ import org.springframework.stereotype.Component;
  *       pod with the holder's payload (e.g. DELETE the remote session)</li>
  * </ul>
  *
- * <p>"Pod alive" uses the same criterion as project ownership —
- * {@link ClusterService#resolveEndpointByPodId}. There must not be two
- * opinions about whether a pod lives.
+ * <p>"Pod alive" is {@link LeasePodLiveness} — the criterion of project
+ * ownership ({@link ClusterService#resolveEndpointByPodId}), and this pod is
+ * always alive. The sweeper and the operator view use the same method; there
+ * must not be two opinions about whether a pod lives.
  */
 @Component
 @Slf4j
@@ -65,12 +66,15 @@ public class LeaseRevocationDispatcher implements LeaseRevocationListener {
     public void dispatch(List<LeaseHolderInfo> holders) {
         String selfPod = cluster.selfPodId();
         for (LeaseHolderInfo info : holders) {
-            String endpoint = cluster.resolveEndpointByPodId(info.pod()).orElse(null);
+            if (info.pod().equals(selfPod)) {
+                // This pod is alive by definition — its own endpoint row may lag.
+                registry.dispatch(info);
+                continue;
+            }
+            String endpoint = LeasePodLiveness.isAlive(cluster, info.pod())
+                    ? cluster.resolveEndpointByPodId(info.pod()).orElse(null)
+                    : null;
             if (endpoint != null) {
-                if (info.pod().equals(selfPod)) {
-                    registry.dispatch(info);
-                    continue;
-                }
                 try {
                     revokedClient.post(endpoint, info);
                 } catch (RuntimeException e) {

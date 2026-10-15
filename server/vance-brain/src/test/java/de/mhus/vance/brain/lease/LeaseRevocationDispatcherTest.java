@@ -64,6 +64,18 @@ class LeaseRevocationDispatcherTest {
     }
 
     @Test
+    void dispatch_holderOnThisPod_withoutOwnEndpoint_stillRunsHandlerLocally() {
+        // This pod is alive by definition — a lagging heartbeat row must not
+        // turn a pod-bound resource running here into "died with the pod".
+        when(cluster.resolveEndpointByPodId(SELF)).thenReturn(Optional.empty());
+
+        dispatcher.dispatch(List.of(holder(SELF, true)));
+
+        assertThat(capturedDispatch().token()).isEqualTo("rl-1");
+        verify(revokedClient, never()).post(any(), any());
+    }
+
+    @Test
     void dispatch_holderOnAliveForeignPod_forwardsViaInternalPost() {
         when(cluster.resolveEndpointByPodId(OTHER)).thenReturn(Optional.of("http://other"));
 

@@ -18,7 +18,7 @@
  * workspace shell is another bundle, and it wants a clean boot with the
  * cookies that were just set.
  */
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   clearLegacyAuth,
@@ -108,6 +108,38 @@ const ssoEmail = ref('');
 const ssoBusy = ref(false);
 const showSso = computed<boolean>(() => ssoDomains.value || ssoConsumer.value);
 
+/**
+ * The tenant a private-Google sign-in would go to: the one the page is bound
+ * to (`?tenant=`), else whatever stands in the tenant field — typed or
+ * remembered. The app and a bare `/login.html` carry no `?tenant=`, and the
+ * button must not depend on how the page was opened.
+ */
+const ssoTenant = computed<string | null>(() => {
+  const bound = readTenantParam();
+  if (bound) return bound;
+  const typed = tenant.value.trim();
+  return /^[A-Za-z0-9_.-]+$/.test(typed) ? typed : null;
+});
+
+// Ask again when the tenant changes — debounced, the field is typed into.
+let ssoOptionsTimer: ReturnType<typeof setTimeout> | undefined;
+let ssoOptionsSeq = 0;
+watch(
+  ssoTenant,
+  (value) => {
+    if (ssoOptionsTimer !== undefined) clearTimeout(ssoOptionsTimer);
+    ssoOptionsTimer = setTimeout(() => {
+      const seq = ++ssoOptionsSeq;
+      void fetchSsoOptions(value).then((options) => {
+        if (seq !== ssoOptionsSeq) return;
+        ssoDomains.value = options?.domains === true;
+        ssoConsumer.value = options?.sso === true;
+      });
+    }, 300);
+  },
+  { immediate: true },
+);
+
 onMounted(async () => {
   void loadRuntimeConfig().then((cfg) => {
     runtimeCfg.value = cfg;
@@ -127,10 +159,6 @@ onMounted(async () => {
     rememberUser.value = true;
   }
   const requestedTenant = readTenantParam();
-  void fetchSsoOptions(requestedTenant).then((options) => {
-    ssoDomains.value = options?.domains === true;
-    ssoConsumer.value = options?.sso === true;
-  });
   const ssoError = new URLSearchParams(window.location.search).get('sso_error');
   if (ssoError) {
     // The server redirects back here with a coarse code only; the reason is
@@ -234,7 +262,10 @@ async function onSubmit(): Promise<void> {
 async function onSso(): Promise<void> {
   error.value = null;
   const email = ssoEmail.value.trim();
+  // A domain sign-in finds its tenant by the address — only a page bound by
+  // URL narrows it. A private account needs the tenant from the page or field.
   const boundTenant = readTenantParam();
+  const consumerTenant = ssoTenant.value;
   ssoBusy.value = true;
   try {
     if (email) {
@@ -252,7 +283,7 @@ async function onSso(): Promise<void> {
       error.value = t('login.sso.emailRequired');
       return;
     }
-    await startSso(email || null, boundTenant);
+    await startSso(email || null, consumerTenant);
   } finally {
     ssoBusy.value = false;
   }

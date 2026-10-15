@@ -113,11 +113,12 @@ public class SsoAccountResolver {
                     in.tenant(), name, null, in.provider(), in.issuer(), in.subject(), in.email());
         } catch (UserService.UserAlreadyExistsException | UserService.ReservedNameException e) {
             return Outcome.reject("name-taken");
-        } catch (RuntimeException e) {
-            // Unique index on (issuer, subject): a concurrent first sign-in of
-            // the same person created the account a moment ago.
-            log.debug("SSO auto-create failed tenant='{}' name='{}': {}", in.tenant(), name, e.toString());
-            return Outcome.reject("name-taken");
+        } catch (UserService.ExternalIdentityException e) {
+            // A concurrent first sign-in of the same person bound the subject a
+            // moment ago. The account is created in one write, so nothing is
+            // left behind.
+            log.trace("SSO auto-create refused tenant='{}' name='{}': {}", in.tenant(), name, e.getMessage());
+            return Outcome.reject("identity-taken");
         }
         auditService.authSsoIdentity(in.tenant(), name, "user-created", null);
         return Outcome.ok(created);

@@ -7,6 +7,7 @@ import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.jwt.JwtService;
 import de.mhus.vance.shared.jwt.TokenType;
 import de.mhus.vance.shared.jwt.VanceJwtClaims;
+import de.mhus.vance.shared.sso.SsoConfigParser;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -26,6 +27,9 @@ import org.springframework.stereotype.Component;
  *       i.e. a user authenticated for tenant A cannot reach
  *       {@code /brain/B/...}.</li>
  * </ol>
+ * An ACCESS token must in addition lie above its account's token floor
+ * ({@link LoginSessionCheck}) — that is how a session started with a password
+ * ends when the account switches to SSO.
  */
 @Component
 @Slf4j
@@ -161,16 +165,19 @@ public class BrainAccessFilter extends AccessFilterBase {
      * by nature — the caller is not logged in yet, and the tenant is not known
      * until the e-mail domain names it, so the path carries none. The callback
      * authenticates through the pending request, the state cookie and the ID
-     * token; the endpoints budget themselves per client address.
+     * token; the endpoints budget themselves per client address. The provider
+     * segment uses the parser's own key rule, so every configurable provider
+     * has a reachable callback.
      */
-    private static final Pattern SSO_PATH =
-            Pattern.compile("^/brain/_sso/(discover|options|start|redeem|[a-z0-9-]+/callback)/?$");
+    private static final Pattern SSO_PATH = Pattern.compile(
+            "^/brain/_sso/(discover|options|start|redeem|" + SsoConfigParser.PROVIDER_KEY_REGEX + "/callback)/?$");
 
     private final ScriptRunAuthService scriptRunAuthService;
     private final IntegrationTokenAuthService integrationTokenAuthService;
     private final OAuthAccessTokenAuthService oauthAccessTokenAuthService;
     private final OAuthServerSettings oauthSettings;
     private final OAuthDoors oauthDoors;
+    private final LoginSessionCheck loginSessionCheck;
 
     public BrainAccessFilter(
             JwtService jwtService,
@@ -178,13 +185,15 @@ public class BrainAccessFilter extends AccessFilterBase {
             IntegrationTokenAuthService integrationTokenAuthService,
             OAuthAccessTokenAuthService oauthAccessTokenAuthService,
             OAuthServerSettings oauthSettings,
-            OAuthDoors oauthDoors) {
+            OAuthDoors oauthDoors,
+            LoginSessionCheck loginSessionCheck) {
         super(jwtService);
         this.scriptRunAuthService = scriptRunAuthService;
         this.integrationTokenAuthService = integrationTokenAuthService;
         this.oauthAccessTokenAuthService = oauthAccessTokenAuthService;
         this.oauthSettings = oauthSettings;
         this.oauthDoors = oauthDoors;
+        this.loginSessionCheck = loginSessionCheck;
     }
 
     @Override
@@ -318,7 +327,7 @@ public class BrainAccessFilter extends AccessFilterBase {
                         claims.username());
                 return false;
             }
-            return true;
+            return loginSessionCheck.admitsAccessToken(claims);
         }
         String pathTenant = matcher.group(1);
         if (!pathTenant.equals(claims.tenantId())) {
@@ -334,6 +343,6 @@ public class BrainAccessFilter extends AccessFilterBase {
         if (claims.tokenType() == TokenType.OAUTH) {
             return oauthAccessTokenAuthService.isAcceptable(claims, request);
         }
-        return true;
+        return claims.tokenType() != TokenType.ACCESS || loginSessionCheck.admitsAccessToken(claims);
     }
 }

@@ -4,7 +4,10 @@ import de.mhus.vance.api.oauthserver.OAuthConsentDecisionRequest;
 import de.mhus.vance.api.oauthserver.OAuthConsentDecisionResponse;
 import de.mhus.vance.api.oauthserver.OAuthConsentRequestDto;
 import de.mhus.vance.shared.access.AccessFilterBase;
+import de.mhus.vance.shared.jwt.TokenType;
 import de.mhus.vance.shared.jwt.VanceJwtClaims;
+import de.mhus.vance.shared.oauthserver.OAuthServerGrantDocument;
+import de.mhus.vance.shared.oauthserver.OAuthServerGrantService;
 import de.mhus.vance.shared.tenant.TenantService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -47,6 +50,7 @@ public class OAuthAuthorizeController {
     private final OAuthAuthorizationFlow flow;
     private final TenantService tenantService;
     private final OAuthServerSettings settings;
+    private final OAuthServerGrantService grants;
 
     @GetMapping("/brain/{tenant}/oauth/authorize")
     public ResponseEntity<String> authorize(
@@ -128,15 +132,36 @@ public class OAuthAuthorizeController {
     }
 
     /**
-     * Hard end of the login session on this request ({@code sxp} — SSO
-     * logins), or {@code null}. A grant created from the session inherits it.
+     * Hard end of the login session on this request, or {@code null} for none.
+     * A grant created from the session inherits it.
+     *
+     * <ul>
+     *   <li>ACCESS token: its {@code sxp} (SSO logins).</li>
+     *   <li>OAuth token of the {@code account} scope: the end of the grant it
+     *       belongs to. Grant tokens carry no {@code sxp}, but the grant itself
+     *       was capped by the session it came from — a grant minted from a grant
+     *       must not outlive its parent, or a capped SSO session would extend
+     *       itself one authorization at a time. A grant that cannot be found
+     *       ends the session now.</li>
+     * </ul>
      */
-    static @Nullable Instant sessionEnd(HttpServletRequest request) {
-        if (request.getAttribute(AccessFilterBase.ATTR_CLAIMS) instanceof VanceJwtClaims claims
-                && claims.isFullAccountCredential()) {
+    @Nullable
+    Instant sessionEnd(HttpServletRequest request) {
+        if (!(request.getAttribute(AccessFilterBase.ATTR_CLAIMS) instanceof VanceJwtClaims claims)
+                || !claims.isFullAccountCredential()) {
+            return null;
+        }
+        if (claims.tokenType() != TokenType.OAUTH) {
             return claims.sessionExpiresAt();
         }
-        return null;
+        String grantId = claims.tokenId();
+        OAuthServerGrantDocument grant = grantId == null || grantId.isBlank()
+                ? null
+                : grants.find(claims.tenantId(), grantId).orElse(null);
+        if (grant == null) {
+            return Instant.now();
+        }
+        return grant.getAbsoluteExpiresAt();
     }
 
     private static String requireLoggedInUser(HttpServletRequest request) {

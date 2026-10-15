@@ -126,6 +126,20 @@ public class UserDocument {
     private @Nullable Instant passwordChangedAt;
 
     /**
+     * Login tokens (ACCESS, REFRESH) issued at or before this instant are void
+     * for this account — checked by the access filter and by every re-mint.
+     * Set when the account's way in changes such that earlier sessions must not
+     * survive it: {@link UserService#prepareExternalIdentity} stamps it, so no
+     * session started with the old password outlives the switch to SSO (and
+     * none comes back after a later unlink). {@code null} means no floor.
+     *
+     * <p>Deliberately separate from {@link #passwordChangedAt}: a user changing
+     * their own password must not be thrown out of the session they changed it
+     * in.
+     */
+    private @Nullable Instant tokensNotBefore;
+
+    /**
      * The external sign-in (SSO) this account is prepared for or bound to;
      * {@code null} for a password account. See {@link ExternalIdentity}.
      */
@@ -133,4 +147,23 @@ public class UserDocument {
 
     @CreatedDate
     private @Nullable Instant createdAt;
+
+    /**
+     * Whether a login token issued at {@code issuedAt} is still acceptable
+     * under {@link #tokensNotBefore}. JWT {@code iat} has whole seconds, so the
+     * floor is compared at second granularity and a token from the floor's own
+     * second counts as before it — a session cannot start in the same second
+     * the account switched its way in.
+     */
+    public boolean acceptsTokenIssuedAt(@Nullable Instant issuedAt) {
+        return issuedAfterFloor(tokensNotBefore, issuedAt);
+    }
+
+    /** {@link #acceptsTokenIssuedAt} for a floor read elsewhere (e.g. a cache). */
+    public static boolean issuedAfterFloor(@Nullable Instant tokensNotBefore, @Nullable Instant issuedAt) {
+        if (tokensNotBefore == null) {
+            return true;
+        }
+        return issuedAt != null && issuedAt.getEpochSecond() > tokensNotBefore.getEpochSecond();
+    }
 }

@@ -33,6 +33,12 @@ import org.jspecify.annotations.Nullable;
 @AllArgsConstructor
 public class ExternalIdentity {
 
+    /** Google's issuer in its canonical spelling. */
+    public static final String GOOGLE_ISSUER = "https://accounts.google.com";
+
+    /** The scheme-less spelling Google may also put into {@code iss}. */
+    static final String GOOGLE_ISSUER_BARE = "accounts.google.com";
+
     /** Provider key from the SSO config, e.g. {@code google}. */
     private String provider = "";
 
@@ -56,6 +62,21 @@ public class ExternalIdentity {
     private @Nullable Instant linkedAt;
 
     private @Nullable Instant lastLoginAt;
+
+    /**
+     * The one spelling of an issuer that is stored and looked up. Google may
+     * send {@code iss} with or without scheme (OIDC Core §3.1.3.7 allows both
+     * for Google); both name the same identity provider, and since the issuer
+     * is half of the identity key, two spellings would be two identities. A
+     * trailing slash is dropped for the same reason.
+     */
+    public static String canonicalIssuer(String issuer) {
+        String trimmed = issuer.trim();
+        while (trimmed.endsWith("/")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 1);
+        }
+        return GOOGLE_ISSUER_BARE.equals(trimmed) ? GOOGLE_ISSUER : trimmed;
+    }
 
     /** Whether the subject is bound — the account can sign in only this way. */
     public boolean isLinked() {

@@ -24,6 +24,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -32,6 +33,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.util.HtmlUtils;
 
 /**
  * The open SSO endpoints under {@code /brain/_sso/} — no tenant in the path,
@@ -42,7 +44,9 @@ import org.springframework.web.bind.annotation.RestController;
  *   <li>{@code GET discover?email=} — does this address sign in via SSO?</li>
  *   <li>{@code GET options?tenant=} — does this tenant's login page offer a
  *       private Google account?</li>
- *   <li>{@code GET start?email=&tenant=&next=} — off to the identity provider.</li>
+ *   <li>{@code GET start?email=&tenant=&next=} — off to the identity provider.
+ *       With {@code app_redirect} (native app) first a confirmation page that
+ *       names the app receiving the login.</li>
  *   <li>{@code GET {provider}/callback} — back from it; on success the same
  *       cookies as the password login, then on to {@code next}. For a native
  *       app ({@code app_redirect} at start) a one-time code to the app instead.</li>
@@ -52,6 +56,14 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <p>Failures redirect to the login page with a coarse {@code sso_error} —
  * the reason is in the audit log, not in the URL.
+ *
+ * <p>Budgets per client address, one per kind of request, so a busy NAT
+ * address that used up its lookups can still finish the sign-ins it started:
+ * lookups ({@code discover}, {@code options}), starts, and redeems each count
+ * on their own. The callback is not budgeted — it is single-use by its state
+ * and the state cookie, every live one stems from a budgeted start, and
+ * refusing it would only throw away a sign-in the person already completed at
+ * the provider.
  */
 @RestController
 public class SsoController {
@@ -66,7 +78,16 @@ public class SsoController {
     private final WebUiCookieService webUiCookieService;
     private final boolean cookieSecure;
     private final int requestsPerAddress;
-    private final Cache<String, AtomicInteger> budget;
+    private final Cache<BudgetKey, AtomicInteger> budget;
+
+    /** What a request is counted against. */
+    enum Budget {
+        LOOKUP,
+        START,
+        REDEEM
+    }
+
+    private record BudgetKey(Budget budget, String address) {}
 
     public SsoController(
             SsoLoginService ssoLoginService,
@@ -86,7 +107,7 @@ public class SsoController {
     @GetMapping("/brain/_sso/discover")
     public ResponseEntity<SsoOptionsDto> discover(
             @RequestParam(value = "email", required = false) @Nullable String email, HttpServletRequest request) {
-        if (!withinBudget(request)) {
+        if (!withinBudget(Budget.LOOKUP, request)) {
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build();
         }
         return options(ssoLoginService.providerForEmail(email), false);
@@ -95,7 +116,7 @@ public class SsoController {
     @GetMapping("/brain/_sso/options")
     public ResponseEntity<SsoOptionsDto> tenantOptions(
             @RequestParam(value = "tenant", required = false) @Nullable String tenant, HttpServletRequest request) {
-        if (!withinBudget(request)) {
+        if (!withinBudget(Budget.LOOKUP, request)) {
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build();
         }
         return options(
@@ -104,31 +125,43 @@ public class SsoController {
     }
 
     @GetMapping("/brain/_sso/start")
-    public ResponseEntity<Void> start(
+    public ResponseEntity<?> start(
             @RequestParam(value = "email", required = false) @Nullable String email,
             @RequestParam(value = "tenant", required = false) @Nullable String tenant,
             @RequestParam(value = "next", required = false) @Nullable String next,
             @RequestParam(value = "app_redirect", required = false) @Nullable String appRedirect,
             @RequestParam(value = "app_challenge", required = false) @Nullable String appChallenge,
             HttpServletRequest request) {
-        if (!withinBudget(request)) {
+        if (!withinBudget(Budget.START, request)) {
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build();
         }
         SsoLoginService.Start started = ssoLoginService.start(email, tenant, next, appRedirect, appChallenge);
-        if (started instanceof SsoLoginService.Start.Failure failure) {
-            return toLogin(failure.code(), failure.tenant(), SsoLoginService.safeNext(next));
-        }
-        SsoLoginService.Start.Redirect redirect = (SsoLoginService.Start.Redirect) started;
-        return ResponseEntity.status(HttpStatus.FOUND)
-                .cacheControl(CacheControl.noStore())
-                .location(URI.create(redirect.url()))
-                .header(
-                        HttpHeaders.SET_COOKIE,
-                        stateCookie(
-                                redirect.state(),
-                                // The cookie lives exactly as long as the pending request.
-                                SsoLoginRequestService.TTL.toSeconds()))
-                .build();
+        // The state cookie lives exactly as long as the pending request.
+        long cookieSeconds = SsoLoginRequestService.TTL.toSeconds();
+        return switch (started) {
+            case SsoLoginService.Start.Failure failure ->
+                toLogin(failure.code(), failure.tenant(), SsoLoginService.safeNext(next));
+            case SsoLoginService.Start.Redirect redirect ->
+                ResponseEntity.status(HttpStatus.FOUND)
+                        .cacheControl(CacheControl.noStore())
+                        .location(URI.create(redirect.url()))
+                        .header(HttpHeaders.SET_COOKIE, stateCookie(redirect.state(), cookieSeconds))
+                        .build();
+            case SsoLoginService.Start.ConfirmApp confirm ->
+                ResponseEntity.ok()
+                        .cacheControl(CacheControl.noStore())
+                        .contentType(new MediaType(MediaType.TEXT_HTML, StandardCharsets.UTF_8))
+                        .header(HttpHeaders.SET_COOKIE, stateCookie(confirm.state(), cookieSeconds))
+                        // Nothing may frame the page (a hidden click on "Continue"),
+                        // run script in it or take the provider URL along as referrer.
+                        .header(
+                                "Content-Security-Policy",
+                                "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none';"
+                                        + " base-uri 'none'; form-action 'none'")
+                        .header("X-Frame-Options", "DENY")
+                        .header("Referrer-Policy", "no-referrer")
+                        .body(appConfirmPage(confirm));
+        };
     }
 
     @GetMapping("/brain/_sso/{provider}/callback")
@@ -138,9 +171,6 @@ public class SsoController {
             @RequestParam(value = "state", required = false) @Nullable String state,
             @RequestParam(value = "error", required = false) @Nullable String error,
             HttpServletRequest request) {
-        if (!withinBudget(request)) {
-            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build();
-        }
         SsoLoginService.Callback result =
                 ssoLoginService.callback(provider, code, state, error, readStateCookie(request));
         if (result instanceof SsoLoginService.Callback.AppHandoff handoff) {
@@ -181,7 +211,7 @@ public class SsoController {
     @PostMapping("/brain/_sso/redeem")
     public ResponseEntity<AccessTokenResponse> redeem(
             @Valid @RequestBody SsoRedeemRequest body, HttpServletRequest request) {
-        if (!withinBudget(request)) {
+        if (!withinBudget(Budget.REDEEM, request)) {
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build();
         }
         SsoLoginService.Redeemed redeemed =
@@ -268,9 +298,43 @@ public class SsoController {
         return null;
     }
 
-    private boolean withinBudget(HttpServletRequest request) {
-        String address = ClientAddresses.of(request);
-        return budget.get(address, k -> new AtomicInteger()).incrementAndGet() <= requestsPerAddress;
+    boolean withinBudget(Budget kind, HttpServletRequest request) {
+        BudgetKey key = new BudgetKey(kind, ClientAddresses.of(request));
+        return budget.get(key, k -> new AtomicInteger()).incrementAndGet() <= requestsPerAddress;
+    }
+
+    /**
+     * The confirmation in front of a native-app sign-in (sso-login.md §8.1):
+     * who receives the login, and the warning to stop here unless the app is
+     * waiting. Static HTML, no script; "Continue" is a plain link to the
+     * provider, valid only in this browser (state cookie).
+     */
+    static String appConfirmPage(SsoLoginService.Start.ConfirmApp confirm) {
+        String account = confirm.email() == null
+                ? ""
+                : "<p>Account: <strong>" + HtmlUtils.htmlEscape(confirm.email()) + "</strong></p>";
+        return "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+                + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+                + "<title>Sign in to the Vancetope app</title>"
+                + "<style>body{font-family:system-ui,sans-serif;max-width:32rem;margin:4rem auto;padding:0 1rem;"
+                + "color:#1f2937;background:#fafafa;line-height:1.5}h1{font-size:1.25rem}"
+                + ".warn{border-left:3px solid #b45309;padding-left:.75rem}"
+                + "a.go{display:inline-block;margin-top:1rem;padding:.6rem 1.1rem;border-radius:.375rem;"
+                + "background:#1e3a5f;color:#fff;text-decoration:none}"
+                + "@media (prefers-color-scheme:dark){body{color:#e5e7eb;background:#111827}"
+                + "a.go{background:#3b5b85}}</style>"
+                + "</head><body><h1>Sign in to the Vancetope app</h1>"
+                + "<p>This sign-in will be handed to <strong>"
+                + HtmlUtils.htmlEscape(confirm.receiver())
+                + "</strong>.</p>"
+                + account
+                + "<p class=\"warn\">Continue only if you just chose &ldquo;Continue with Google&rdquo; in the Vancetope app"
+                + " and it is waiting for you. If you opened this page from a link someone sent you, close it —"
+                + " continuing would sign that person's app in as you.</p>"
+                + "<a class=\"go\" id=\"continue\" href=\""
+                + HtmlUtils.htmlEscape(confirm.url())
+                + "\">Continue to Google</a>"
+                + "</body></html>";
     }
 
     private static String enc(String value) {

@@ -208,6 +208,29 @@ class SsoLoginServiceTest {
     }
 
     @Test
+    void start_unparseableNext_fallsBackToRoot() throws Exception {
+        SsoLoginService.Callback result =
+                signIn("wile@acme.com", null, "/a b|c", "wile@acme.com", b -> b.claim("hd", "acme.com"));
+
+        assertThat(((SsoLoginService.Callback.Success) result).next()).isEqualTo("/");
+    }
+
+    @Test
+    void issuer_isPassedOnInItsCanonicalSpelling() throws Exception {
+        // Google may send iss without scheme — still the same identity.
+        signIn(
+                "wile@acme.com",
+                null,
+                null,
+                "wile@acme.com",
+                b -> b.issuer("accounts.google.com").claim("hd", "acme.com"));
+
+        ArgumentCaptor<SsoAccountResolver.SignIn> in = ArgumentCaptor.forClass(SsoAccountResolver.SignIn.class);
+        verify(accounts).resolve(in.capture());
+        assertThat(in.getValue().issuer()).isEqualTo("https://accounts.google.com");
+    }
+
+    @Test
     void start_unsafeNext_isDropped() throws Exception {
         SsoLoginService.Callback result =
                 signIn("wile@acme.com", null, "//evil.example/x", "wile@acme.com", b -> b.claim("hd", "acme.com"));
@@ -304,6 +327,13 @@ class SsoLoginServiceTest {
         assertThat(SsoLoginService.safeNext("https://evil")).isNull();
         assertThat(SsoLoginService.safeNext("/\\evil")).isNull();
         assertThat(SsoLoginService.safeNext("/a\nb")).isNull();
+        // Must parse as the callback's Location — refused at start, not after the sign-in.
+        assertThat(SsoLoginService.safeNext("/a b")).isNull();
+        assertThat(SsoLoginService.safeNext("/a|b")).isNull();
+        assertThat(SsoLoginService.safeNext("/a{b}")).isNull();
+        assertThat(SsoLoginService.safeNext("/a\"b")).isNull();
+        assertThat(SsoLoginService.safeNext("/%zz")).isNull();
+        assertThat(SsoLoginService.safeNext("/brain/acme/x?y=%20z#f")).isEqualTo("/brain/acme/x?y=%20z#f");
         assertThat(SsoLoginService.tenantOf("/brain/acme/oauth/authorize/resume/x"))
                 .isEqualTo("acme");
         assertThat(SsoLoginService.tenantOf("/brain/_sso/start")).isNull();
@@ -347,7 +377,7 @@ class SsoLoginServiceTest {
     @Test
     void appSignIn_handsOverACode_insteadOfIssuingCookies() throws Exception {
         when(handoffs.create(eq("acme"), eq("wile"), any(), eq(CHALLENGE))).thenReturn("handoff-1");
-        SsoLoginService.Start.Redirect start = (SsoLoginService.Start.Redirect)
+        SsoLoginService.Start.ConfirmApp start = (SsoLoginService.Start.ConfirmApp)
                 service.start("wile@acme.com", null, null, "http://127.0.0.1:53123/sso-done", CHALLENGE);
         when(oidc.exchangeCode(any(), anyString(), anyString(), anyString(), anyString(), anyString()))
                 .thenReturn(tokens.token(
@@ -363,7 +393,7 @@ class SsoLoginServiceTest {
 
     @Test
     void appSignIn_refusal_goesBackToTheApp() throws Exception {
-        SsoLoginService.Start.Redirect start = (SsoLoginService.Start.Redirect)
+        SsoLoginService.Start.ConfirmApp start = (SsoLoginService.Start.ConfirmApp)
                 service.start("wile@acme.com", null, null, "vance-facelift://sso-done", CHALLENGE);
         when(oidc.exchangeCode(any(), anyString(), anyString(), anyString(), anyString(), anyString()))
                 .thenReturn(tokens.token("sub-1", "wile@acme.com", stored.get().getNonce(), b -> b));
@@ -372,6 +402,23 @@ class SsoLoginServiceTest {
 
         assertThat(result).isInstanceOf(SsoLoginService.Callback.Failure.class);
         assertThat(((SsoLoginService.Callback.Failure) result).appRedirect()).isEqualTo("vance-facelift://sso-done");
+    }
+
+    @Test
+    void appStart_neverGoesToTheProviderDirectly_butNamesTheReceivingApp() {
+        // Anybody can build an app start link with a challenge of their own;
+        // the person in the browser must see where the login goes first.
+        SsoLoginService.Start mobile =
+                service.start("wile@acme.com", null, null, "vance-facelift://sso-done", CHALLENGE);
+        SsoLoginService.Start desktop =
+                service.start("wile@acme.com", null, null, "http://127.0.0.1:53123/sso-done", CHALLENGE);
+
+        assertThat(mobile).isInstanceOf(SsoLoginService.Start.ConfirmApp.class);
+        SsoLoginService.Start.ConfirmApp m = (SsoLoginService.Start.ConfirmApp) mobile;
+        assertThat(m.receiver()).isEqualTo("the Vancetope app on this device");
+        assertThat(m.email()).isEqualTo("wile@acme.com");
+        assertThat(m.url()).startsWith("https://accounts.google.com/o/oauth2/v2/auth?");
+        assertThat(((SsoLoginService.Start.ConfirmApp) desktop).receiver()).contains("local port 53123");
     }
 
     @Test

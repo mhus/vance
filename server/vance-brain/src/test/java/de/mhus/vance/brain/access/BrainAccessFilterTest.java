@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.access;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -28,6 +29,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 class BrainAccessFilterTest {
 
     private ScriptRunAuthService scriptRunAuthService;
+    private LoginSessionCheck loginSessionCheck;
     private final de.mhus.vance.brain.oauthserver.OAuthServerSettings oauthSettings =
             new de.mhus.vance.brain.oauthserver.OAuthServerSettings(
                     "https://vance.example.com", true, 3600, 30, 365, true, true);
@@ -37,13 +39,16 @@ class BrainAccessFilterTest {
     void setUp() {
         JwtService jwtService = mock(JwtService.class);
         scriptRunAuthService = mock(ScriptRunAuthService.class);
+        loginSessionCheck = mock(LoginSessionCheck.class);
+        when(loginSessionCheck.admitsAccessToken(any())).thenReturn(true);
         filter = new BrainAccessFilter(
                 jwtService,
                 scriptRunAuthService,
                 mock(IntegrationTokenAuthService.class),
                 mock(de.mhus.vance.brain.oauthserver.OAuthAccessTokenAuthService.class),
                 oauthSettings,
-                new de.mhus.vance.brain.oauthserver.OAuthDoors(oauthSettings));
+                new de.mhus.vance.brain.oauthserver.OAuthDoors(oauthSettings),
+                loginSessionCheck);
     }
 
     // ──────────────── shouldRequireAuthentication: bypass allowlist ────────────────
@@ -78,6 +83,12 @@ class BrainAccessFilterTest {
                 "/brain/acme/oauth/authorize/resume/r1",
                 "/brain/acme/oauth/resource/mcp",
                 "/brain/acme/oauth/resource/mcp/docs",
+                "/brain/_sso/discover",
+                "/brain/_sso/options",
+                "/brain/_sso/start",
+                "/brain/_sso/redeem",
+                "/brain/_sso/google/callback",
+                "/brain/_sso/google-ws/callback",
             })
     void allowlistedPaths_doNotRequireBearerAuth(String uri) {
         assertThat(filter.shouldRequireAuthentication(uri, "GET")).isFalse();
@@ -107,6 +118,9 @@ class BrainAccessFilterTest {
                 "/brain/acme/oauth/registerx",
                 "/brain/acme/oauth-client/providers", // the OAuth client is not open
                 "/.well-known/other/brain/acme",
+                "/brain/_sso/google_ws/callback", // not a valid provider key
+                "/brain/_sso/google/callback/extra",
+                "/brain/_sso/other",
             })
     void nonAllowlistedPaths_requireBearerAuth(String uri) {
         assertThat(filter.shouldRequireAuthentication(uri, "GET")).isTrue();
@@ -197,6 +211,26 @@ class BrainAccessFilterTest {
         assertThat(filter.isClaimsAcceptable(claims, get("/actuator/health"))).isFalse();
         assertThat(filter.isClaimsAcceptable(claims, get("/face/addons"))).isFalse();
         assertThat(filter.isClaimsAcceptable(claims, get("/somewhere/else"))).isFalse();
+    }
+
+    @Test
+    void accessClaims_belowTheAccountsTokenFloor_areRejected_onEveryPath() {
+        VanceJwtClaims claims = access("bob", "acme");
+        when(loginSessionCheck.admitsAccessToken(claims)).thenReturn(false);
+
+        assertThat(filter.isClaimsAcceptable(claims, get("/brain/acme/sessions")))
+                .isFalse();
+        assertThat(filter.isClaimsAcceptable(claims, get("/actuator/health"))).isFalse();
+    }
+
+    @Test
+    void scriptRunClaims_doNotConsultTheLoginSessionCheck() {
+        VanceJwtClaims claims = VanceJwtClaims.user("_script", "acme", null, null, TokenType.SCRIPT_RUN);
+        HttpServletRequest req = get("/brain/acme/documents/doc1/content");
+        when(scriptRunAuthService.isAcceptable(claims, req)).thenReturn(true);
+        when(loginSessionCheck.admitsAccessToken(any())).thenReturn(false);
+
+        assertThat(filter.isClaimsAcceptable(claims, req)).isTrue();
     }
 
     @Test

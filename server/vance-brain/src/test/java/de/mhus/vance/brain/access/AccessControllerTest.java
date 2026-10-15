@@ -357,6 +357,63 @@ class AccessControllerTest {
                         org.mockito.ArgumentMatchers.eq(sessionEnd));
     }
 
+    @Test
+    void refreshLogin_passwordSessionFromBeforeTheSwitchToSso_isRejected() {
+        // Offboarding at Google must end every way in — including the refresh
+        // chain of a session that began with the password the account had.
+        Instant preparedAt = Instant.now().minusSeconds(10);
+        UserDocument sso = activeUser();
+        sso.setPasswordHash(null);
+        sso.setTokensNotBefore(preparedAt);
+        sso.setExternalIdentity(de.mhus.vance.shared.user.ExternalIdentity.builder()
+                .provider("google")
+                .issuer(de.mhus.vance.shared.user.ExternalIdentity.GOOGLE_ISSUER)
+                .expectedEmail("alice@acme.com")
+                .build());
+        when(userService.findByTenantAndName(TENANT, USERNAME)).thenReturn(Optional.of(sso));
+        when(jwtService.validateToken("old-refresh")).thenReturn(Optional.of(refreshClaims(TENANT, USERNAME)));
+
+        AccessTokenRequest req =
+                AccessTokenRequest.builder().refreshToken("old-refresh").build();
+        ResponseEntity<AccessTokenResponse> resp = controller.createToken(TENANT, USERNAME, req, emptyRequest());
+
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        verify(auditService).authLoginFailure(TENANT, USERNAME, "session-superseded");
+    }
+
+    @Test
+    void refreshLogin_ssoAccount_withoutSessionEnd_isRejected() {
+        UserDocument sso = activeUser();
+        sso.setPasswordHash(null);
+        sso.setExternalIdentity(de.mhus.vance.shared.user.ExternalIdentity.builder()
+                .provider("google")
+                .issuer(de.mhus.vance.shared.user.ExternalIdentity.GOOGLE_ISSUER)
+                .subject("sub-1")
+                .build());
+        when(userService.findByTenantAndName(TENANT, USERNAME)).thenReturn(Optional.of(sso));
+        when(jwtService.validateToken("uncapped")).thenReturn(Optional.of(refreshClaims(TENANT, USERNAME)));
+
+        AccessTokenRequest req =
+                AccessTokenRequest.builder().refreshToken("uncapped").build();
+
+        assertThat(controller.createToken(TENANT, USERNAME, req, emptyRequest()).getStatusCode())
+                .isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    void refresh_accessTokenFromBeforeTheTokenFloor_isRejected() {
+        UserDocument user = activeUser();
+        user.setTokensNotBefore(Instant.now().minusSeconds(10));
+        when(userService.findByTenantAndName(TENANT, USERNAME)).thenReturn(Optional.of(user));
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getAttribute(AccessFilterBase.ATTR_USERNAME)).thenReturn(USERNAME);
+        when(req.getAttribute(AccessFilterBase.ATTR_CLAIMS)).thenReturn(accessClaims(TENANT, USERNAME));
+
+        ResponseEntity<RefreshTokenResponse> resp = controller.refreshToken(TENANT, req);
+
+        assertThat(resp.getStatusCode().value()).isEqualTo(401);
+    }
+
     private static VanceJwtClaims ssoRefreshClaims(Instant sessionEnd) {
         return new VanceJwtClaims(
                 USERNAME,

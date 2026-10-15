@@ -1,6 +1,7 @@
 package de.mhus.vance.shared.sso;
 
 import de.mhus.vance.shared.user.ExternalEmails;
+import de.mhus.vance.shared.user.ExternalIdentity;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -10,6 +11,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.helpers.MessageFormatter;
@@ -23,13 +25,34 @@ import org.yaml.snakeyaml.Yaml;
  * here can widen access: an invalid {@code allow} list is not read as "everyone",
  * an unknown tenant is not created, a plaintext secret is not accepted. The
  * password login of everybody else is never affected.
+ *
+ * <p><b>Unknown keys are errors.</b> A misspelt key is otherwise a missing
+ * one, and a missing {@code allow} means "the whole domain": {@code alow:}
+ * would silently open a domain. An entry with a key it does not know is
+ * dropped; an unknown key at the top level is reported (nothing there can
+ * widen access, so the rest is still read).
  */
 @Slf4j
 public final class SsoConfigParser {
 
     public static final String GOOGLE = "google";
-    public static final String GOOGLE_ISSUER = "https://accounts.google.com";
+    public static final String GOOGLE_ISSUER = ExternalIdentity.GOOGLE_ISSUER;
     public static final String GOOGLE_DISCOVERY = GOOGLE_ISSUER + "/.well-known/openid-configuration";
+
+    /**
+     * What a provider key may look like. It is a path segment of the callback
+     * ({@code /brain/_sso/<key>/callback}), and the access filter opens exactly
+     * this shape — a key outside it would have an unreachable callback.
+     */
+    public static final String PROVIDER_KEY_REGEX = "[a-z0-9-]+";
+
+    private static final Pattern PROVIDER_KEY = Pattern.compile("^" + PROVIDER_KEY_REGEX + "$");
+
+    private static final Set<String> ROOT_KEYS = Set.of("providers", "domains", "consumerAccounts");
+    private static final Set<String> PROVIDER_FIELDS = Set.of("type", "clientId", "clientSecret", "issuer");
+    private static final Set<String> DOMAIN_FIELDS =
+            Set.of("domain", "tenant", "provider", "autoCreate", "allow", "maxSessionDays");
+    private static final Set<String> CONSUMER_FIELDS = Set.of("provider", "tenants", "maxSessionDays");
 
     /** The system tenant holds the config and is never a sign-in target. */
     private static final String SYSTEM_TENANT = "_vance";
@@ -64,6 +87,15 @@ public final class SsoConfigParser {
             problem(problems, "SSO config: top level must be a map — SSO disabled");
             return SsoConfig.EMPTY;
         }
+        for (Object key : root.keySet()) {
+            if (!ROOT_KEYS.contains(String.valueOf(key))) {
+                problem(
+                        problems,
+                        "SSO config: unknown top-level key '{}' — ignored (known: {})",
+                        key,
+                        String.join(", ", ROOT_KEYS.stream().sorted().toList()));
+            }
+        }
         Map<String, SsoConfig.Provider> providers = parseProviders(root.get("providers"), problems);
         Map<String, SsoConfig.DomainRule> domains =
                 parseDomains(root.get("domains"), providers, tenantExists, problems);
@@ -84,6 +116,10 @@ public final class SsoConfigParser {
         for (Map.Entry<?, ?> e : map.entrySet()) {
             String key = String.valueOf(e.getKey()).trim().toLowerCase(Locale.ROOT);
             try {
+                if (!PROVIDER_KEY.matcher(key).matches()) {
+                    throw new IllegalStateException(
+                            "key must match " + PROVIDER_KEY_REGEX + " (it is a path segment of the callback)");
+                }
                 out.put(key, parseProvider(key, e.getValue()));
             } catch (IllegalStateException ex) {
                 problem(problems, "SSO config: provider '{}' dropped: {}", key, ex.getMessage());
@@ -96,6 +132,7 @@ public final class SsoConfigParser {
         if (!(raw instanceof Map<?, ?> spec)) {
             throw new IllegalStateException("must be a map");
         }
+        onlyKnownFields(spec, PROVIDER_FIELDS);
         String type = requiredString(spec, "type");
         if (!GOOGLE.equals(type)) {
             throw new IllegalStateException("type '" + type + "' is not supported (only 'google')");
@@ -112,7 +149,7 @@ public final class SsoConfigParser {
         }
         // Issuer override: the identity provider is not Google itself but
         // speaks its protocol (the QA fake). Endpoints come from its discovery.
-        String trimmed = issuer.endsWith("/") ? issuer.substring(0, issuer.length() - 1) : issuer;
+        String trimmed = ExternalIdentity.canonicalIssuer(issuer);
         return new SsoConfig.Provider(
                 key, type, clientId, clientSecret, trimmed, trimmed + "/.well-known/openid-configuration");
     }
@@ -155,6 +192,7 @@ public final class SsoConfigParser {
         if (!(raw instanceof Map<?, ?> spec)) {
             throw new IllegalStateException("must be a map");
         }
+        onlyKnownFields(spec, DOMAIN_FIELDS);
         String domain = requiredString(spec, "domain").trim().toLowerCase(Locale.ROOT);
         if (!domain.contains(".") || domain.contains("@") || domain.contains(" ")) {
             throw new IllegalStateException("'" + domain + "' is not a domain");
@@ -165,7 +203,11 @@ public final class SsoConfigParser {
         }
         String tenant = checkedTenant(requiredString(spec, "tenant"), tenantExists);
         String provider = providerKey(spec, providers);
-        boolean autoCreate = Boolean.TRUE.equals(spec.get("autoCreate"));
+        Object rawAutoCreate = spec.get("autoCreate");
+        if (rawAutoCreate != null && !(rawAutoCreate instanceof Boolean)) {
+            throw new IllegalStateException("'autoCreate' must be true or false");
+        }
+        boolean autoCreate = Boolean.TRUE.equals(rawAutoCreate);
         Set<String> allow = parseAllow(spec.get("allow"));
         Duration maxSession = maxSession(spec.get("maxSessionDays"));
         return new SsoConfig.DomainRule(domain, tenant, provider, autoCreate, allow, maxSession);
@@ -183,6 +225,7 @@ public final class SsoConfigParser {
             if (!(raw instanceof Map<?, ?> spec)) {
                 throw new IllegalStateException("must be a map");
             }
+            onlyKnownFields(spec, CONSUMER_FIELDS);
             String provider = providerKey(spec, providers);
             if (!(spec.get("tenants") instanceof List<?> list) || list.isEmpty()) {
                 throw new IllegalStateException("'tenants' must be a non-empty list");
@@ -205,6 +248,16 @@ public final class SsoConfigParser {
     private static void problem(List<String> problems, String format, Object... args) {
         log.error(format, args);
         problems.add(MessageFormatter.arrayFormat(format, args).getMessage());
+    }
+
+    /** Refuses an entry carrying a key it does not know — a typo must not read as "absent". */
+    private static void onlyKnownFields(Map<?, ?> spec, Set<String> known) {
+        for (Object key : spec.keySet()) {
+            if (!known.contains(String.valueOf(key))) {
+                throw new IllegalStateException("unknown key '" + key + "' (known: "
+                        + String.join(", ", known.stream().sorted().toList()) + ")");
+            }
+        }
     }
 
     private static String providerKey(Map<?, ?> spec, Map<String, SsoConfig.Provider> providers) {

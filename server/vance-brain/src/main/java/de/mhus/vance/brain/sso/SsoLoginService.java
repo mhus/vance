@@ -13,11 +13,14 @@ import de.mhus.vance.shared.sso.SsoLoginRequestDocument;
 import de.mhus.vance.shared.sso.SsoLoginRequestService;
 import de.mhus.vance.shared.tenant.TenantService;
 import de.mhus.vance.shared.user.ExternalEmails;
+import de.mhus.vance.shared.user.ExternalIdentity;
 import de.mhus.vance.shared.user.UserDocument;
 import de.mhus.vance.shared.user.UserService;
 import de.mhus.vance.shared.user.UserStatus;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.core.SecretResolver;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.Key;
@@ -69,6 +72,7 @@ public class SsoLoginService {
     private static final Pattern TENANT_PATH = Pattern.compile("^/brain/([^/?#]+)(?:[/?#].*)?$");
 
     private static final Pattern TENANT_NAME = Pattern.compile("^[A-Za-z0-9_.-]+$");
+    /** Both spellings Google may put into {@code iss}; stored is always the canonical one. */
     private static final Set<String> GOOGLE_ISSUERS = Set.of(SsoConfigParser.GOOGLE_ISSUER, "accounts.google.com");
 
     /** Failure codes toward the browser — deliberately coarse. */
@@ -180,6 +184,21 @@ public class SsoLoginService {
         /** Send the browser to {@code url}; {@code state} goes into the state cookie. */
         record Redirect(String url, String state) implements Start {}
 
+        /**
+         * A native-app sign-in: show the person a confirmation page that names
+         * who receives the login, and go to the provider ({@code url}) only from
+         * there. {@code state} goes into the state cookie as for
+         * {@link Redirect}.
+         *
+         * @param receiver human-readable description of the app that gets the session
+         * @param email    the address the sign-in was started for, if any
+         */
+        record ConfirmApp(
+                String url,
+                String state,
+                String receiver,
+                @Nullable String email) implements Start {}
+
         record Failure(String code, @Nullable String tenant) implements Start {}
     }
 
@@ -223,6 +242,16 @@ public class SsoLoginService {
      * hands a one-time code to {@code appRedirect}. The app's WebView redeems it
      * with the verifier behind {@code appChallenge} ({@link #redeem}). Both or
      * neither must be given.
+     *
+     * <p>An app start never goes to the provider directly but answers
+     * {@link Start.ConfirmApp}: anybody can build such a start link with a
+     * challenge of their own and send it around, and whoever owns the redirect
+     * on the victim's device (a foreign app registering the scheme, a process on
+     * the loopback port) would then redeem the victim's session. The person in
+     * the browser must see that the login is handed to an app, and which, before
+     * the provider is asked. The state cookie set with the page binds the rest
+     * to this browser: a link to the provider built elsewhere fails at the
+     * callback.
      */
     public Start start(
             @Nullable String email,
@@ -321,7 +350,25 @@ public class SsoLoginService {
         if (email != null && !email.isBlank()) {
             params.put("login_hint", email.trim());
         }
-        return new Start.Redirect(endpoints.authorizationEndpoint() + "?" + query(params), state);
+        String url = endpoints.authorizationEndpoint() + "?" + query(params);
+        if (appRedirect != null) {
+            return new Start.ConfirmApp(url, state, appReceiver(appRedirect), normalized);
+        }
+        return new Start.Redirect(url, state);
+    }
+
+    /**
+     * Who receives a native-app login, in words the person in the browser can
+     * check against what they are doing. Only the two accepted redirect shapes
+     * reach here ({@link #validAppRedirect}).
+     */
+    static String appReceiver(String appRedirect) {
+        if (SCHEME_APP_REDIRECT.equals(appRedirect)) {
+            return "the Vancetope app on this device";
+        }
+        Matcher m = LOOPBACK_APP_REDIRECT.matcher(appRedirect);
+        String port = m.matches() ? m.group(2) : "?";
+        return "the Vancetope desktop app on this computer (local port " + port + ")";
     }
 
     // ─── callback ──────────────────────────────────────────────────────
@@ -430,11 +477,13 @@ public class SsoLoginService {
         if (tenant == null || normalized == null || token.email() == null) {
             return new Callback.Failure(FAIL_REJECTED, tenantHint, request.getAppRedirect());
         }
+        // Half of the identity key: one spelling, whichever Google sent.
+        String issuer = ExternalIdentity.canonicalIssuer(token.issuer());
 
         SsoAccountResolver.Outcome outcome = accounts.resolve(new SsoAccountResolver.SignIn(
                 tenant,
                 providerKey,
-                token.issuer(),
+                issuer,
                 token.subject(),
                 token.email(),
                 normalized,
@@ -448,7 +497,7 @@ public class SsoLoginService {
         UserDocument user = outcome.user();
 
         Instant sessionEnd = clock.instant().plus(policy.maxSession());
-        audit.authSsoLoginSuccess(tenant, user.getName(), providerKey, token.issuer(), request.getMode());
+        audit.authSsoLoginSuccess(tenant, user.getName(), providerKey, issuer, request.getMode());
         if (request.getAppRedirect() != null && request.getAppChallenge() != null) {
             String handoff = handoffs.create(tenant, user.getName(), sessionEnd, request.getAppChallenge());
             return new Callback.AppHandoff(withQuery(request.getAppRedirect(), Map.of("code", handoff)));
@@ -596,7 +645,11 @@ public class SsoLoginService {
     /**
      * A same-origin path, or {@code null}. Same rule as the login page's
      * {@code readNextParam}: starts with one slash, no scheme-relative
-     * {@code //host}, no backslashes or control characters.
+     * {@code //host}, no backslashes or control characters — and it must be a
+     * valid URI reference as it stands, since it becomes the callback's
+     * {@code Location}. A path that does not parse ({@code "/a b"},
+     * {@code "/a|b"}) is refused here at start, not discovered at the callback
+     * after the sign-in was already spent.
      */
     static @Nullable String safeNext(@Nullable String next) {
         if (next == null || next.isBlank()) {
@@ -610,6 +663,14 @@ public class SsoLoginService {
             if (c < 0x20 || c == 0x7F) {
                 return null;
             }
+        }
+        try {
+            URI uri = new URI(next);
+            if (uri.getScheme() != null || uri.getRawAuthority() != null) {
+                return null;
+            }
+        } catch (URISyntaxException e) {
+            return null;
         }
         return next;
     }

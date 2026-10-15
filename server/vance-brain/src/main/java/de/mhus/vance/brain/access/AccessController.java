@@ -197,6 +197,16 @@ public class AccessController {
                         claims.username());
                 return rejectLogin(tenant, username, "refresh-token-identity-mismatch");
             }
+            if (!LoginSessionCheck.mayRenew(user, claims)) {
+                // Issued before the account's token floor (the session began
+                // with a password the account no longer has), or an SSO
+                // account presenting a session without a hard end.
+                log.debug(
+                        "Login rejected: refresh token no longer renews this account's session (tenant='{}' name='{}')",
+                        tenant,
+                        username);
+                return rejectLogin(tenant, username, "session-superseded");
+            }
             sessionExpiresAt = claims.sessionExpiresAt();
             if (LoginTokenIssuer.sessionEnded(sessionExpiresAt)) {
                 log.debug(
@@ -290,6 +300,10 @@ public class AccessController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
+        if (!LoginSessionCheck.mayRenew(userOpt.get(), claims)) {
+            log.debug("Refresh rejected: session superseded tenant='{}' name='{}'", tenant, username);
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
         if (LoginTokenIssuer.sessionEnded(claims.sessionExpiresAt())) {
             log.debug("Refresh rejected: SSO session ended tenant='{}' name='{}'", tenant, username);
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();

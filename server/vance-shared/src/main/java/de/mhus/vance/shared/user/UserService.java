@@ -10,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.mongodb.core.FindAndModifyOptions;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -212,6 +213,28 @@ public class UserService {
             @Nullable String email,
             boolean loginEnabled,
             boolean serviceAccount) {
+        return doCreate(tenantId, name, passwordHash, title, email, loginEnabled, serviceAccount, null);
+    }
+
+    /**
+     * Creates the account in one write. An {@code externalIdentity} goes into
+     * that same first write: saved without it and patched afterwards, a
+     * collision on the identity indexes would leave a password-less account
+     * behind that nobody asked for — and the lifecycle listeners would already
+     * have seen it.
+     *
+     * @throws ExternalIdentityException when {@code externalIdentity} collides
+     *     with another account's (unique index on subject or prepared address)
+     */
+    private UserDocument doCreate(
+            String tenantId,
+            String name,
+            @Nullable String passwordHash,
+            @Nullable String title,
+            @Nullable String email,
+            boolean loginEnabled,
+            boolean serviceAccount,
+            @Nullable ExternalIdentity externalIdentity) {
         if (RESERVED_NAMES.contains(name)) {
             throw new ReservedNameException(
                     "User name '" + name + "' is reserved for internal, " + "non-principal use and cannot be created");
@@ -228,8 +251,17 @@ public class UserService {
                 .status(UserStatus.ACTIVE)
                 .loginEnabled(loginEnabled)
                 .serviceAccount(serviceAccount)
+                .externalIdentity(externalIdentity)
                 .build();
-        UserDocument saved = repository.save(user);
+        UserDocument saved;
+        try {
+            saved = repository.save(user);
+        } catch (DuplicateKeyException e) {
+            if (externalIdentity == null) {
+                throw e;
+            }
+            throw identityConflict(tenantId, name, e);
+        }
         megadodoService.userCreated(tenantId, name, serviceAccount);
         // Best-effort, and one listener's failure does not hide the next:
         // the account exists by now, so there is nothing left to abort.
@@ -350,10 +382,16 @@ public class UserService {
 
     // ──────────────────── External sign-in (SSO) ────────────────────
 
-    /** The account bound to {@code (issuer, subject)}, in any tenant. */
+    /**
+     * The account bound to {@code (issuer, subject)}, in any tenant. The
+     * issuer is compared in its canonical spelling
+     * ({@link ExternalIdentity#canonicalIssuer}).
+     */
     public Optional<UserDocument> findByExternalSubject(String issuer, String subject) {
-        Query query = new Query(
-                Criteria.where(F_EXT_ISSUER).is(issuer).and(F_EXT_SUBJECT).is(subject));
+        Query query = new Query(Criteria.where(F_EXT_ISSUER)
+                .is(ExternalIdentity.canonicalIssuer(issuer))
+                .and(F_EXT_SUBJECT)
+                .is(subject));
         return Optional.ofNullable(mongoTemplate.findOne(query, UserDocument.class));
     }
 
@@ -372,17 +410,32 @@ public class UserService {
     }
 
     /**
+     * The account in {@code tenantId} that holds {@code normalizedEmail} as its
+     * prepared address — still waiting or already linked. The address stays on
+     * the account after the first sign-in, and the unique index counts both.
+     */
+    private Optional<UserDocument> findByExpectedEmail(String tenantId, String normalizedEmail) {
+        Query query = new Query(Criteria.where(F_TENANT_ID)
+                .is(tenantId)
+                .and(F_EXT_EXPECTED_EMAIL)
+                .is(normalizedEmail));
+        return Optional.ofNullable(mongoTemplate.findOne(query, UserDocument.class));
+    }
+
+    /**
      * Prepares an account for an external sign-in: the first sign-in from
      * {@code email} at {@code issuer} will be bound to it.
      *
-     * <p>A missing account is created without a password. An existing one
-     * loses its password, and {@link UserPasswordChangedEvent} ends what was
-     * issued under it (OAuth grants) — afterwards the external sign-in is the
-     * only way in. Service accounts are refused, as are accounts already bound
-     * to an external subject (unlink first).
+     * <p>A missing account is created without a password — with the identity
+     * in the same write. An existing one loses its password; every login token
+     * issued before ({@link UserDocument#getTokensNotBefore()}) is void, and
+     * {@link UserPasswordChangedEvent} ends the OAuth grants — afterwards the
+     * external sign-in is the only way in. Service accounts are refused, as are
+     * accounts already bound to an external subject (unlink first).
      *
      * @throws ExternalIdentityException if the address is malformed, uses plus
-     *     addressing, or the account cannot be prepared
+     *     addressing, is already held by another account, or the account cannot
+     *     be prepared
      * @throws ReservedNameException on a service-account name for a new account
      */
     public UserDocument prepareExternalIdentity(
@@ -391,22 +444,34 @@ public class UserService {
         if (normalized == null || ExternalEmails.hasPlusTag(normalized)) {
             throw new ExternalIdentityException("'" + email + "' is not a usable address for an external sign-in");
         }
-        Optional<UserDocument> holder = findPreparedByEmail(tenantId, normalized);
+        Optional<UserDocument> holder = findByExpectedEmail(tenantId, normalized);
         if (holder.isPresent() && !holder.get().getName().equals(name)) {
-            throw new ExternalIdentityException("'" + normalized + "' is already prepared for user '"
-                    + holder.get().getName() + "' in tenant '" + tenantId + "'");
+            throw new ExternalIdentityException("'" + normalized + "' is already "
+                    + (isLinked(holder.get()) ? "linked to" : "prepared for")
+                    + " user '" + holder.get().getName() + "' in tenant '" + tenantId + "'");
         }
+        Instant now = Instant.now();
         ExternalIdentity identity = ExternalIdentity.builder()
                 .provider(provider)
-                .issuer(issuer)
+                .issuer(ExternalIdentity.canonicalIssuer(issuer))
                 .expectedEmail(normalized)
-                .preparedAt(Instant.now())
+                .preparedAt(now)
                 .build();
         Optional<UserDocument> existing = repository.findByTenantIdAndName(tenantId, name);
         if (existing.isEmpty()) {
-            UserDocument created = create(tenantId, name, null, null, normalized);
-            created.setExternalIdentity(identity);
-            UserDocument saved = repository.save(created);
+            if (name.startsWith(SERVICE_ACCOUNT_PREFIX)) {
+                throw new ReservedNameException("User name '" + name + "' starts with the reserved '"
+                        + SERVICE_ACCOUNT_PREFIX + "' prefix — service accounts cannot sign in externally");
+            }
+            UserDocument saved = doCreate(
+                    tenantId,
+                    name,
+                    null,
+                    null,
+                    normalized,
+                    /* loginEnabled */ true,
+                    /* serviceAccount */ false,
+                    identity);
             log.info(
                     "Prepared new user for external sign-in tenantId='{}' name='{}' provider='{}'",
                     tenantId,
@@ -419,12 +484,15 @@ public class UserService {
             throw new ExternalIdentityException(
                     "User '" + name + "' is a service account and cannot sign in externally");
         }
-        if (user.getExternalIdentity() != null && user.getExternalIdentity().isLinked()) {
+        if (isLinked(user)) {
             throw new ExternalIdentityException(
                     "User '" + name + "' is already linked to an external identity" + " — unlink it first");
         }
         user.setPasswordHash(null);
-        user.setPasswordChangedAt(Instant.now());
+        user.setPasswordChangedAt(now);
+        // Sessions started with the password end here — the access filter and
+        // every re-mint refuse tokens issued up to now.
+        user.setTokensNotBefore(now);
         user.setFailedLoginAttempts(0);
         user.setLockedUntil(null);
         user.setLastFailedLoginAt(null);
@@ -432,7 +500,13 @@ public class UserService {
         if (user.getEmail() == null) {
             user.setEmail(normalized);
         }
-        UserDocument saved = repository.save(user);
+        UserDocument saved;
+        try {
+            saved = repository.save(user);
+        } catch (DuplicateKeyException e) {
+            // A concurrent preparation took the address between check and write.
+            throw identityConflict(tenantId, name, e);
+        }
         log.info(
                 "Prepared user for external sign-in tenantId='{}' name='{}' provider='{}' (password removed)",
                 tenantId,
@@ -449,17 +523,18 @@ public class UserService {
      * {@code issuer}.
      *
      * @return the linked account, or empty when no such prepared account is
-     *     (still) there
+     *     (still) there, or the subject is already bound to another account
      */
     public Optional<UserDocument> linkExternalIdentity(
             String tenantId, String name, String issuer, String normalizedEmail, String subject, String email) {
         Instant now = Instant.now();
+        String canonicalIssuer = ExternalIdentity.canonicalIssuer(issuer);
         Query query = new Query(Criteria.where(F_TENANT_ID)
                 .is(tenantId)
                 .and(F_NAME)
                 .is(name)
                 .and(F_EXT_ISSUER)
-                .is(issuer)
+                .is(canonicalIssuer)
                 .and(F_EXT_EXPECTED_EMAIL)
                 .is(normalizedEmail)
                 .and(F_EXT_SUBJECT)
@@ -469,20 +544,33 @@ public class UserService {
                 .set(F_EXT_EMAIL, email)
                 .set(F_EXT_LINKED_AT, now)
                 .set(F_EXT_LAST_LOGIN_AT, now);
-        UserDocument linked = mongoTemplate.findAndModify(
-                query, update, FindAndModifyOptions.options().returnNew(true), UserDocument.class);
+        UserDocument linked;
+        try {
+            linked = mongoTemplate.findAndModify(
+                    query, update, FindAndModifyOptions.options().returnNew(true), UserDocument.class);
+        } catch (DuplicateKeyException e) {
+            // The subject was bound to another account a moment ago.
+            log.info(
+                    "External identity not linked tenantId='{}' name='{}': subject already bound elsewhere",
+                    tenantId,
+                    name);
+            return Optional.empty();
+        }
         if (linked != null) {
-            log.info("Linked external identity tenantId='{}' name='{}' issuer='{}'", tenantId, name, issuer);
+            log.info("Linked external identity tenantId='{}' name='{}' issuer='{}'", tenantId, name, canonicalIssuer);
         }
         return Optional.ofNullable(linked);
     }
 
     /**
      * Creates a new account already bound to an external subject — the
-     * {@code autoCreate} path. No password, ever.
+     * {@code autoCreate} path. No password, ever; the identity is part of the
+     * first write.
      *
      * @throws UserAlreadyExistsException if the name is taken
      * @throws ReservedNameException on a reserved or service-account name
+     * @throws ExternalIdentityException if the subject is already bound to an
+     *     account
      */
     public UserDocument createExternal(
             String tenantId,
@@ -492,19 +580,43 @@ public class UserService {
             String issuer,
             String subject,
             String email) {
-        UserDocument created = create(tenantId, name, null, title, email);
+        if (name.startsWith(SERVICE_ACCOUNT_PREFIX)) {
+            throw new ReservedNameException("User name '" + name + "' starts with the reserved '"
+                    + SERVICE_ACCOUNT_PREFIX + "' prefix — service accounts cannot sign in externally");
+        }
+        String canonicalIssuer = ExternalIdentity.canonicalIssuer(issuer);
+        Optional<UserDocument> bound = findByExternalSubject(canonicalIssuer, subject);
+        if (bound.isPresent()) {
+            throw new ExternalIdentityException("The external subject is already bound to user '"
+                    + bound.get().getName() + "' in tenant '" + bound.get().getTenantId() + "'");
+        }
         Instant now = Instant.now();
-        created.setExternalIdentity(ExternalIdentity.builder()
+        ExternalIdentity identity = ExternalIdentity.builder()
                 .provider(provider)
-                .issuer(issuer)
+                .issuer(canonicalIssuer)
                 .subject(subject)
                 .email(email)
                 .linkedAt(now)
                 .lastLoginAt(now)
-                .build());
-        UserDocument saved = repository.save(created);
+                .build();
+        UserDocument saved = doCreate(
+                tenantId, name, null, title, email, /* loginEnabled */ true, /* serviceAccount */ false, identity);
         log.info("Created user via external sign-in tenantId='{}' name='{}' provider='{}'", tenantId, name, provider);
         return saved;
+    }
+
+    private static boolean isLinked(UserDocument user) {
+        return user.getExternalIdentity() != null && user.getExternalIdentity().isLinked();
+    }
+
+    private static ExternalIdentityException identityConflict(String tenantId, String name, DuplicateKeyException e) {
+        log.info(
+                "External identity of user '{}' in tenant '{}' collides with another account: {}",
+                name,
+                tenantId,
+                e.getMessage());
+        return new ExternalIdentityException("User '" + name + "' in tenant '" + tenantId
+                + "' cannot be stored: the address or the external identity is already held by another account");
     }
 
     /** Stamps the last external sign-in and the address it carried. Best-effort. */

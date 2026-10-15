@@ -169,4 +169,96 @@ class SsoConfigParserTest {
         assertThat(problems).hasSize(1);
         assertThat(problems.get(0)).contains("acme.com").contains("ghost");
     }
+
+    // ─── unknown keys and provider keys ────────────────────────────────
+
+    @Test
+    void misspeltAllow_dropsTheDomain_insteadOfOpeningIt() {
+        java.util.List<String> problems = new java.util.ArrayList<>();
+        SsoConfig config = SsoConfigParser.parse(PROVIDER + """
+                domains:
+                  - {domain: acme.com, tenant: acme, provider: google, alow: [wile]}
+                """, TENANTS, problems);
+
+        assertThat(config.domain("acme.com")).isEmpty();
+        assertThat(problems).singleElement().asString().contains("acme.com").contains("alow");
+    }
+
+    @Test
+    void unknownProviderField_dropsTheProvider_andItsDomains() {
+        java.util.List<String> problems = new java.util.ArrayList<>();
+        SsoConfig config = SsoConfigParser.parse("""
+                providers:
+                  google:
+                    type: google
+                    clientId: x
+                    clientSecret: "{{secret:vault:k}}"
+                    isuer: "http://localhost:7777"
+                domains:
+                  - {domain: acme.com, tenant: acme, provider: google}
+                """, TENANTS, problems);
+
+        assertThat(config.provider("google")).isEmpty();
+        assertThat(config.domain("acme.com")).isEmpty();
+        assertThat(problems).anySatisfy(p -> assertThat(p).contains("isuer"));
+    }
+
+    @Test
+    void unknownConsumerAccountsField_dropsConsumerAccounts() {
+        java.util.List<String> problems = new java.util.ArrayList<>();
+        SsoConfig config = SsoConfigParser.parse(PROVIDER + """
+                consumerAccounts: {provider: google, tenants: [mhus], maxSessionDay: 3}
+                """, TENANTS, problems);
+
+        assertThat(config.consumerAccounts()).isNull();
+        assertThat(problems).singleElement().asString().contains("maxSessionDay");
+    }
+
+    @Test
+    void unknownTopLevelKey_isReported_restIsRead() {
+        java.util.List<String> problems = new java.util.ArrayList<>();
+        SsoConfig config = SsoConfigParser.parse(PROVIDER + """
+                domains:
+                  - {domain: acme.com, tenant: acme, provider: google}
+                consumerAcounts: {provider: google, tenants: [mhus]}
+                """, TENANTS, problems);
+
+        assertThat(config.domain("acme.com")).isPresent();
+        assertThat(config.consumerAccounts()).isNull();
+        assertThat(problems).singleElement().asString().contains("consumerAcounts");
+    }
+
+    @Test
+    void autoCreate_mustBeABoolean() {
+        SsoConfig config = SsoConfigParser.parse(PROVIDER + """
+                domains:
+                  - {domain: acme.com, tenant: acme, provider: google, autoCreate: "yes please"}
+                """, TENANTS);
+
+        assertThat(config.domain("acme.com")).isEmpty();
+    }
+
+    @Test
+    void providerKey_outsideThePathSegmentRule_isDropped() {
+        java.util.List<String> problems = new java.util.ArrayList<>();
+        SsoConfig config = SsoConfigParser.parse("""
+                providers:
+                  google_ws: {type: google, clientId: x, clientSecret: "{{secret:vault:k}}"}
+                  google.ws: {type: google, clientId: x, clientSecret: "{{secret:vault:k}}"}
+                  google-ws: {type: google, clientId: x, clientSecret: "{{secret:vault:k}}"}
+                """, TENANTS, problems);
+
+        assertThat(config.providers()).containsOnlyKeys("google-ws");
+        assertThat(problems).hasSize(2);
+    }
+
+    @Test
+    void issuerOverride_isStoredInCanonicalForm() {
+        SsoConfig config = SsoConfigParser.parse("""
+                providers:
+                  google: {type: google, clientId: x, clientSecret: "{{secret:vault:k}}", issuer: "accounts.google.com"}
+                """, TENANTS);
+
+        assertThat(config.provider("google").orElseThrow().issuer()).isEqualTo(SsoConfigParser.GOOGLE_ISSUER);
+    }
 }

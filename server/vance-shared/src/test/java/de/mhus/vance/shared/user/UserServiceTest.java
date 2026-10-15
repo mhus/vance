@@ -492,4 +492,124 @@ class UserServiceTest {
                 .isInstanceOf(UserService.ExternalIdentityException.class)
                 .hasMessageContaining("other");
     }
+
+    @Test
+    void prepare_existingUser_voidsEveryEarlierLoginToken() {
+        UserDocument user = UserDocument.builder()
+                .tenantId(TENANT)
+                .name("wile")
+                .passwordHash("hash")
+                .build();
+        when(repo.findByTenantIdAndName(TENANT, "wile")).thenReturn(Optional.of(user));
+        Instant before = Instant.now().minusSeconds(5);
+
+        UserDocument prepared = service.prepareExternalIdentity(TENANT, "wile", "google", "iss", "wile@acme.com");
+
+        assertThat(prepared.getTokensNotBefore()).isNotNull().isAfter(before);
+        assertThat(prepared.getPasswordChangedAt()).isEqualTo(prepared.getTokensNotBefore());
+        assertThat(prepared.acceptsTokenIssuedAt(before)).isFalse();
+        assertThat(prepared.acceptsTokenIssuedAt(Instant.now().plusSeconds(2))).isTrue();
+    }
+
+    @Test
+    void prepare_missingUser_storesTheIdentityInTheFirstWrite() {
+        when(repo.findByTenantIdAndName(TENANT, "mike")).thenReturn(Optional.empty());
+        when(repo.existsByTenantIdAndName(TENANT, "mike")).thenReturn(false);
+
+        service.prepareExternalIdentity(TENANT, "mike", "google", "accounts.google.com", "mike@gmail.com");
+
+        ArgumentCaptor<UserDocument> saved = ArgumentCaptor.forClass(UserDocument.class);
+        verify(repo).save(saved.capture());
+        assertThat(saved.getValue().getExternalIdentity()).isNotNull();
+        assertThat(saved.getValue().getExternalIdentity().getIssuer()).isEqualTo(ExternalIdentity.GOOGLE_ISSUER);
+        // Listeners see the account as it is, never a password-less one without identity.
+        ArgumentCaptor<UserDocument> announced = ArgumentCaptor.forClass(UserDocument.class);
+        verify(listener).onUserCreated(announced.capture());
+        assertThat(announced.getValue().getExternalIdentity()).isNotNull();
+    }
+
+    @Test
+    void prepare_refusesAddressAlreadyLinkedToAnotherAccount() {
+        UserDocument other = UserDocument.builder()
+                .tenantId(TENANT)
+                .name("other")
+                .externalIdentity(ExternalIdentity.builder()
+                        .provider("google")
+                        .issuer("iss")
+                        .subject("s1")
+                        .expectedEmail("wile@acme.com")
+                        .build())
+                .build();
+        when(mongoTemplate.findOne(any(Query.class), eq(UserDocument.class))).thenReturn(other);
+
+        assertThatThrownBy(() -> service.prepareExternalIdentity(TENANT, "wile", "google", "iss", "wile@acme.com"))
+                .isInstanceOf(UserService.ExternalIdentityException.class)
+                .hasMessageContaining("linked to user 'other'");
+        verify(repo, never()).save(any());
+    }
+
+    @Test
+    void prepare_indexCollision_becomesAnExternalIdentityException() {
+        when(repo.findByTenantIdAndName(TENANT, "mike")).thenReturn(Optional.empty());
+        when(repo.existsByTenantIdAndName(TENANT, "mike")).thenReturn(false);
+        when(repo.save(any(UserDocument.class)))
+                .thenThrow(new org.springframework.dao.DuplicateKeyException("external_expected_email_idx"));
+
+        assertThatThrownBy(() -> service.prepareExternalIdentity(TENANT, "mike", "google", "iss", "mike@gmail.com"))
+                .isInstanceOf(UserService.ExternalIdentityException.class);
+        verify(listener, never()).onUserCreated(any());
+    }
+
+    @Test
+    void createExternal_refusesSubjectBoundElsewhere_beforeWriting() {
+        UserDocument bound =
+                UserDocument.builder().tenantId("other").name("wile").build();
+        when(mongoTemplate.findOne(any(Query.class), eq(UserDocument.class))).thenReturn(bound);
+
+        assertThatThrownBy(() -> service.createExternal(
+                        TENANT, "wile", null, "google", ExternalIdentity.GOOGLE_ISSUER, "sub-1", "wile@acme.com"))
+                .isInstanceOf(UserService.ExternalIdentityException.class);
+        verify(repo, never()).save(any());
+    }
+
+    @Test
+    void createExternal_writesOnce_withTheBoundIdentity() {
+        when(repo.existsByTenantIdAndName(TENANT, "wile")).thenReturn(false);
+
+        UserDocument created = service.createExternal(
+                TENANT, "wile", null, "google", "accounts.google.com/", "sub-1", "wile@acme.com");
+
+        verify(repo).save(any(UserDocument.class));
+        assertThat(created.getPasswordHash()).isNull();
+        assertThat(created.getExternalIdentity().getSubject()).isEqualTo("sub-1");
+        assertThat(created.getExternalIdentity().getIssuer()).isEqualTo(ExternalIdentity.GOOGLE_ISSUER);
+    }
+
+    @Test
+    void linkExternalIdentity_subjectBoundConcurrently_isEmpty_notAnError() {
+        when(mongoTemplate.findAndModify(
+                        any(Query.class), any(Update.class), any(FindAndModifyOptions.class), eq(UserDocument.class)))
+                .thenThrow(new org.springframework.dao.DuplicateKeyException("external_subject_idx"));
+
+        assertThat(service.linkExternalIdentity(TENANT, "wile", "iss", "wile@acme.com", "sub-1", "wile@acme.com"))
+                .isEmpty();
+    }
+
+    @Test
+    void findByExternalSubject_looksUpTheCanonicalIssuer() {
+        service.findByExternalSubject("accounts.google.com", "sub-1");
+
+        ArgumentCaptor<Query> query = ArgumentCaptor.forClass(Query.class);
+        verify(mongoTemplate).findOne(query.capture(), eq(UserDocument.class));
+        assertThat(query.getValue().getQueryObject().get("externalIdentity.issuer"))
+                .isEqualTo(ExternalIdentity.GOOGLE_ISSUER);
+    }
+
+    @Test
+    void canonicalIssuer_oneSpellingPerProvider() {
+        assertThat(ExternalIdentity.canonicalIssuer("accounts.google.com")).isEqualTo(ExternalIdentity.GOOGLE_ISSUER);
+        assertThat(ExternalIdentity.canonicalIssuer("https://accounts.google.com/"))
+                .isEqualTo(ExternalIdentity.GOOGLE_ISSUER);
+        assertThat(ExternalIdentity.canonicalIssuer(" http://localhost:7777/ ")).isEqualTo("http://localhost:7777");
+    }
 }

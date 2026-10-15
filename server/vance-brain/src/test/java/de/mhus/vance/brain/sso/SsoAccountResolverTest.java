@@ -127,6 +127,18 @@ class SsoAccountResolverTest {
     }
 
     @Test
+    void autoCreate_lostRaceForTheSubject_isRejected_withoutAnAccountLeftBehind() {
+        when(users.existsByTenantAndName("acme", "wile")).thenReturn(false);
+        when(users.createExternal(any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(new UserService.ExternalIdentityException("subject already bound"));
+
+        SsoAccountResolver.Outcome outcome = resolver.resolve(signIn("acme", true));
+
+        assertThat(outcome.user()).isNull();
+        assertThat(outcome.rejection()).isEqualTo("identity-taken");
+    }
+
+    @Test
     void nameFor_refusesServiceAccountShape_andPlus() {
         assertThat(SsoAccountResolver.nameFor("wile.coyote@acme.com")).isEqualTo("wile.coyote");
         assertThat(SsoAccountResolver.nameFor("_admin@acme.com")).isNull();

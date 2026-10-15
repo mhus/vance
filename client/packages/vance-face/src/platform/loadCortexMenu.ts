@@ -18,6 +18,7 @@
  */
 
 import { loadRemote } from '@module-federation/runtime';
+import { addonLocalesSettled } from '@/i18n/addonLocales';
 import { addonRemoteName, loadAddonManifest, type AddonMenuItem } from './addonManifest';
 import { ensureAddonRemotesRegistered } from './addonRegistry';
 import {
@@ -119,6 +120,8 @@ async function activate(
   const expose = (decl.expose ?? DEFAULT_EXPOSE).replace(/^\.\//, '');
   const handlerName = decl.handler ?? DEFAULT_HANDLER;
   const mod = await loadRemote<MenuExpose>(`${addonRemoteName(addonName)}/${expose}`);
+  // Whatever the handler opens should speak the active locale from the start.
+  await addonLocalesSettled();
   const fn = (mod?.[handlerName] ?? mod?.default?.[handlerName]) as
     | ((ctx: CortexMenuContext) => void | Promise<void>)
     | undefined;

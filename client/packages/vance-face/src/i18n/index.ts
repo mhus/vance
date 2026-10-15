@@ -23,6 +23,7 @@ import {
   type LocaleMessageTree,
 } from '@vance/shared/i18n';
 import { getActiveLanguage } from '@/platform';
+import { trackAddonLocaleLoad } from './addonLocales';
 import en from './en';
 import { isUiLocale, pluralIndex, THREE_FORM_LOCALES, type Locale } from './locales';
 
@@ -129,6 +130,11 @@ async function ensureLocale(locale: Locale): Promise<void> {
 // extend a host namespace — its `documents.detail.tab*` key lands next to the
 // built-in ones instead of replacing the branch.
 //
+// Only English comes eagerly; the active locale's json is fetched right after
+// registration. That load is tracked (`./addonLocales`), and every host loader
+// of an addon expose awaits it before handing the expose out — so a lazily
+// loaded addon's first view paints in the user's language, not in English.
+//
 // An addon built against an older `@vance/shared` hands over no lazy locales
 // (only `en`/`de` eagerly) — it simply has nothing to load later.
 onI18nMessages((id, bundle, lazy = {}) => {
@@ -137,8 +143,16 @@ onI18nMessages((id, bundle, lazy = {}) => {
   }
   addonLoaders.set(id, lazy);
   // A remote that arrives after the user picked a language catches up at once.
-  for (const locale of wanted) void loadInto(id, locale, lazy[locale]);
+  const jobs = [...wanted].map((locale) => loadInto(id, locale, lazy[locale]));
+  if (jobs.length > 0) trackAddonLocaleLoad(Promise.all(jobs).then(() => undefined));
 });
+
+/**
+ * Bumped per locale request (startup and {@link setUiLocale}). Requests may
+ * overlap — a slow `de` load, then an immediate `en` — and only the latest one
+ * may flip the locale, or the earlier one would win late.
+ */
+let localeGeneration = 0;
 
 function applyLocale(locale: Locale): void {
   // The exposed `.global.locale` is a Ref<string> when legacy is false.
@@ -152,8 +166,9 @@ function applyLocale(locale: Locale): void {
  */
 export const i18nReady: Promise<void> = (async () => {
   const locale = resolveStartupLocale();
+  const generation = ++localeGeneration;
   await ensureLocale(locale);
-  applyLocale(locale);
+  if (generation === localeGeneration) applyLocale(locale);
 })();
 
 /** Install on the given Vue app. Call before {@code app.mount()}. */
@@ -175,7 +190,9 @@ export function installI18n(app: App): void {
 export async function setUiLocale(value: string | null): Promise<void> {
   const next = value ?? 'en';
   if (!isUiLocale(next)) return;
+  const generation = ++localeGeneration;
   await ensureLocale(next);
+  if (generation !== localeGeneration) return;
   applyLocale(next);
 }
 

@@ -30,6 +30,7 @@
  */
 
 import { registerRemotes, loadRemote } from '@module-federation/runtime';
+import { addonLocalesSettled } from '@/i18n/addonLocales';
 import {
   addonRemoteEntry,
   addonRemoteName,
@@ -150,6 +151,10 @@ function loadAddon(name: string): Promise<void> {
       const mod = await loadRemote<RegisterExpose>(`${addonRemoteName(name)}/register`);
       const fn = mod?.register ?? mod?.default?.register;
       if (typeof fn === 'function') fn();
+      // The expose registered its messages on import; the active locale's
+      // json is still on its way. Waiting here keeps the addon's first view
+      // from painting in English and flipping a moment later.
+      await addonLocalesSettled();
     } catch (e) {
       // `./register` absent or threw — non-fatal: the addon simply
       // contributes nothing and the host carries on with built-in kinds.

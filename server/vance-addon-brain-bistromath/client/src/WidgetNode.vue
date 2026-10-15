@@ -153,13 +153,34 @@ const tabsAsSegment = computed<boolean>(
   () => tabOptions.value.length >= 2 && tabOptions.value.length <= 4,
 );
 
-/** Elements of a `repeat`. Anything not a list repeats zero times. */
 /** A button's role from the view (ViewParser checks the closed set), secondary by default. */
 const buttonVariant = computed<'primary' | 'secondary' | 'plain' | 'danger'>(() => {
   const v = node.value.variant;
   return v === 'primary' || v === 'plain' || v === 'danger' ? v : 'secondary';
 });
 
+/** ViewParser's closed status palette for `badge` and `alert`. */
+type StatusVariant = 'neutral' | 'info' | 'success' | 'warning' | 'error';
+
+function statusVariant(v: string | undefined): StatusVariant | undefined {
+  return v === 'neutral' || v === 'info' || v === 'success' || v === 'warning' || v === 'error'
+    ? v
+    : undefined;
+}
+
+/** A badge's tone from the view, neutral by default — VBadge knows the whole palette. */
+const badgeVariant = computed<StatusVariant>(() => statusVariant(node.value.variant) ?? 'neutral');
+
+/**
+ * An alert's tone from the view. VAlert has no neutral surface — a notice
+ * always means something — so `neutral` (valid for a badge) lands on `info`.
+ */
+const alertVariant = computed<Exclude<StatusVariant, 'neutral'>>(() => {
+  const v = statusVariant(node.value.variant);
+  return v === undefined || v === 'neutral' ? 'info' : v;
+});
+
+/** Elements of a `repeat`. Anything not a list repeats zero times. */
 const items = computed<unknown[]>(() => (Array.isArray(bound.value) ? bound.value : []));
 
 /**
@@ -698,14 +719,14 @@ const headingClass = computed(() =>
 
   <VBadge
     v-else-if="node.type === 'badge'"
-    :variant="(node.variant ?? 'neutral') as never"
+    :variant="badgeVariant"
   >
     {{ textValue }}
   </VBadge>
 
   <VAlert
     v-else-if="node.type === 'alert'"
-    :variant="(node.variant ?? 'info') as never"
+    :variant="alertVariant"
     class="whitespace-pre-line"
   >
     {{ textValue }}

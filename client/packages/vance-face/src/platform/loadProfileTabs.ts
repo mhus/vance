@@ -31,6 +31,7 @@
 
 import { registerRemotes, loadRemote } from '@module-federation/runtime';
 import { markRaw, type Component } from 'vue';
+import { addonLocalesSettled } from '@/i18n/addonLocales';
 import { addonRemoteEntry, addonRemoteName, loadAddonManifest } from './addonManifest';
 import { asUiLevel, getActiveUiLevel, rankOf } from './webUiSession';
 
@@ -86,6 +87,8 @@ export async function loadProfileTabs(): Promise<ProfileTab[]> {
       );
       const resolved = (mod as { default?: Component })?.default ?? (mod as Component);
       if (!resolved) return null;
+      // The tab's translations for the active locale load after its import.
+      await addonLocalesSettled();
       return {
         id: addon.name,
         label: addon.profile!.label!,

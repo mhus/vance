@@ -7,8 +7,10 @@
  * <ul>
  *   <li>The <b>messages</b> travel through the globalThis registry in
  *       {@code @vance/shared/i18n}. Registering happens as a side effect of
- *       importing this module — a component that translates imports {@link useT}
- *       from here, so its bundle cannot render before its strings arrived.</li>
+ *       importing this module: English arrives with it, the active locale's
+ *       json is fetched right after, and the host's addon loader waits for
+ *       that fetch before handing the expose out — so a translating component
+ *       paints in the user's language from the start.</li>
  *   <li>The <b>lookup</b> goes through {@code useT()} of
  *       {@code @vance/components}, which reads the host's {@code $t} off the
  *       app context. No vue-i18n on this package's dependency list.</li>

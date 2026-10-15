@@ -26,7 +26,7 @@ import {
   MIN_RATE,
   MIN_VOLUME,
 } from '@vance/shared';
-import { setUiLocale, UI_LOCALES } from '@/i18n';
+import { isUiLocale, setUiLocale, UI_LOCALES } from '@/i18n';
 import {
   EditorShell,
   type SideTab,
@@ -339,7 +339,11 @@ watch(profile, (current) => {
   if (!current) return;
   titleDraft.value = current.title ?? '';
   emailDraft.value = current.email ?? '';
-  languageDraft.value = current.webUiSettings?.[LANGUAGE_KEY] ?? '';
+  // A stored language the UI no longer ships (e.g. `it`, dropped with the
+  // generated locales) is what startup does with it too: the browser default.
+  // Showing it as that keeps the select from rendering an empty choice.
+  const storedLanguage = current.webUiSettings?.[LANGUAGE_KEY] ?? '';
+  languageDraft.value = isUiLocale(storedLanguage) ? storedLanguage : '';
   chatLanguageDraft.value = current.webUiSettings?.[CHAT_LANGUAGE_KEY] ?? '';
   themeDraft.value = asTheme(current.webUiSettings?.[THEME_KEY]);
   uiLevelDraft.value = asUiLevel(current.webUiSettings?.[UI_LEVEL_KEY]);

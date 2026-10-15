@@ -788,7 +788,7 @@ function message(e: unknown): string {
                      the pile it is the whole interaction, and hunting for it on
                      hover would make working through a list tiring. -->
                 <VIconButton icon="check" :label="viewed(entry) ? t('links.app.putBack') : t('links.app.markSeen')" size="sm"
-                  :variant="viewed(entry) ? 'primary' : 'secondary'"
+                  :active="viewed(entry)"
                   :disabled="busy"
                   @click.stop="onToggleViewed(entry)"
                  />

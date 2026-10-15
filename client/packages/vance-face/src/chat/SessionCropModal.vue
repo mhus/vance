@@ -221,7 +221,7 @@ function rowState(m: ChatMessageDto): 'willRemove' | 'willRestore' | 'removed' |
         <div class="flex gap-2">
           <VButton
             v-if="pendingCount > 0"
-            variant="ghost"
+            variant="plain"
             size="sm"
             :disabled="saving"
             @click="reset"

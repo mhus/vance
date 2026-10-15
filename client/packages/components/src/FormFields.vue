@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import VButton from './VButton.vue';
+import VIconButton from './VIconButton.vue';
 import VCheckbox from './VCheckbox.vue';
 import VInput from './VInput.vue';
 import VSelect from './VSelect.vue';
@@ -63,6 +64,8 @@ interface Props {
   selectedCountLabel?: (count: number) => string;
   /** The button that empties a multi-select. */
   clearSelectionLabel?: string;
+  /** The icon button that removes one item of a repeat field. */
+  removeItemLabel?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -73,6 +76,7 @@ const props = withDefaults(defineProps<Props>(), {
   filterLabel: 'Filter…',
   noMatchesLabel: 'No matches',
   customValueHintLabel: 'Custom value (not in the list)',
+  removeItemLabel: 'Remove',
   selectedCountLabel: () => (n: number) => `${n} selected`,
   clearSelectionLabel: 'Clear',
 });
@@ -430,14 +434,13 @@ function canRemove(field: FormFieldDto): boolean {
         >
           <div class="flex justify-between items-center -mb-1">
             <span class="text-xs uppercase tracking-wide opacity-60">#{{ idx + 1 }}</span>
-            <VButton
-              variant="ghost"
+            <VIconButton
+              icon="close"
               size="sm"
+              :label="removeItemLabel"
               :disabled="disabled || !canRemove(field)"
               @click="removeRepeatItem(field, idx)"
-            >
-              ✕
-            </VButton>
+            />
           </div>
           <FormFields
             :fields="field.item ?? []"
@@ -457,12 +460,13 @@ function canRemove(field: FormFieldDto): boolean {
         </div>
 
         <VButton
-          variant="ghost"
+          variant="plain"
           size="sm"
+          icon="add"
           :disabled="disabled || !canAdd(field)"
           @click="addRepeatItem(field)"
         >
-          + {{ labelOf(field) }}
+          {{ labelOf(field) }}
         </VButton>
       </fieldset>
 

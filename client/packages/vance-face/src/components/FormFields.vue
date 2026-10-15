@@ -59,6 +59,7 @@ const lang = computed(() => props.preferredLang ?? locale.value);
     :custom-value-hint-label="t('form.customValueHint')"
     :selected-count-label="(n: number) => t('form.selectedCount', { count: n })"
     :clear-selection-label="t('form.clearSelection')"
+    :remove-item-label="t('form.removeItem')"
     @update:model-value="(v: Record<string, FormValue>) => emit('update:modelValue', v)"
   />
 </template>

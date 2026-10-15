@@ -992,7 +992,7 @@ const breadcrumbs = computed<string[]>(() => {
         >{{ $t('inbox.compose.button') }}</VButton>
         <VButton
           v-if="selection.kind !== 'archive' && inbox.items.value.length > 0"
-          variant="ghost"
+          variant="plain"
           size="sm"
           @click="openBulkArchive"
         >{{ $t('inbox.bulkArchive.button') }}</VButton>

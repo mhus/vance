@@ -3801,6 +3801,7 @@ export default {
     },
   },
   form: {
+    removeItem: 'Remove',
     filterPlaceholder: 'Filter…',
     noMatches: 'Nothing matches the filter.',
     selectedCount: '{count} selected',

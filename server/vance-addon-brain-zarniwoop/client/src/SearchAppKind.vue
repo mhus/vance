@@ -664,7 +664,7 @@ function message(e: unknown): string {
         v-if="activeFacetCount > 0"
         class="mb-1"
         size="sm"
-        variant="ghost"
+        variant="plain"
         @click="clearFacets()"
       >
         {{ t('search.clear') }}

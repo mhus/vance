@@ -411,6 +411,7 @@ async function runReport(): Promise<void> {
           <span class="opacity-70">{{ t('finance.reportModal.processor') }}</span>
           <select v-model="reportForm.processor" class="fx-in">
             <option v-for="p in processors" :key="p.type" :value="p.type">
+              <!-- eslint-disable-next-line vue/no-restricted-syntax -- an <option> holds text only, no icon -->
               {{ p.title }} → {{ p.outputKind }}
             </option>
           </select>

@@ -110,12 +110,14 @@ function downloadPng(): void {
       <VAlert v-if="renderError" variant="error">
         {{ t('kindViews.qrcode.error') }} {{ renderError }}
       </VAlert>
+      <!-- eslint-disable vue/no-restricted-syntax -- a QR code needs a white quiet zone to scan, in dark mode too -->
       <canvas
         ref="canvasRef"
-        class="rounded border border-base-300 bg-white max-w-full h-auto"
+        class="rounded border border-(--v-separator) bg-white max-w-full h-auto"
         :aria-label="t('kindViews.qrcode.canvasLabel')"
         role="img"
       />
+      <!-- eslint-enable vue/no-restricted-syntax -->
       <div v-if="parsed.label" class="text-sm text-base-content/70">
         {{ parsed.label }}
       </div>

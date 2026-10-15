@@ -26,6 +26,7 @@ import type {
 } from '@vance/generated';
 import { groupTargets, useApplicationPicker } from './useApplicationPicker';
 import { vanceRef } from './vanceUri';
+import VIcon from './VIcon.vue';
 
 /** One place inside the surrounding app, as the host describes it. */
 export interface AppLinkTarget {
@@ -374,7 +375,7 @@ watch(tab, async (next) => {
         <!-- step 2: pick a place inside it, or the app itself -->
         <template v-else>
           <div class="link-picker__actions link-picker__actions--row">
-            <button type="button" class="link-picker__btn" @click="apps.back()">← Back</button>
+            <button type="button" class="link-picker__btn inline-flex items-center gap-1" @click="apps.back()"><VIcon name="back" />Back</button>
             <span class="link-picker__crumb">
               {{ apps.openApp.value.title || apps.openApp.value.path }}
             </span>

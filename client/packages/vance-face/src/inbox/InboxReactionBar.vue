@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { VButton } from '@vance/components';
+import { VButton, VIconButton } from '@vance/components';
 import { getUsername } from '@vance/shared';
 import type { MaximegalonReactionDto } from '@vance/generated';
 
@@ -99,13 +99,14 @@ function pick(key: string): void {
       :disabled="busy"
       @click="emit('react', c.key, !c.mine)"
     >{{ c.char }}<span class="ml-1 text-xs">{{ c.count }}</span></VButton>
-    <VButton
+    <VIconButton
+      icon="emoji"
       size="sm"
-      variant="plain"
-      :title="t('inboxThread.addReaction')"
+      :label="t('inboxThread.addReaction')"
+      :active="paletteOpen"
       :disabled="busy"
       @click="paletteOpen = !paletteOpen"
-    >&#9786;+</VButton>
+    />
     <template v-if="paletteOpen">
       <VButton
         v-for="r in PALETTE"

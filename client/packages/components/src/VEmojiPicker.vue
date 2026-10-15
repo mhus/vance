@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
+import VIcon from './VIcon.vue';
 
 interface Props {
   modelValue: string | null | undefined;
@@ -108,9 +109,10 @@ function applyCustom(): void {
             type="button"
             class="btn btn-xs"
             :disabled="!custom.trim()"
+            :aria-label="'Apply'"
             @click="applyCustom"
           >
-            ✓
+            <VIcon name="check" />
           </button>
         </div>
         <button

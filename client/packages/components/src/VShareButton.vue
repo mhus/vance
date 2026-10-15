@@ -20,6 +20,7 @@
  * See specification/public/milliways-system.md.
  */
 import { inject } from 'vue';
+import VIcon from './VIcon.vue';
 
 /**
  * What is being shared. At least one of `link` / `snippet` / `documentPath`
@@ -63,5 +64,5 @@ function onClick(): void {
     :title="label"
     :aria-label="label"
     @click.stop="onClick"
-  >📤<span v-if="showLabel" class="ml-1">{{ label }}</span></button>
+  ><VIcon name="share" class="inline-block align-[-3px]" /><span v-if="showLabel" class="ml-1">{{ label }}</span></button>
 </template>

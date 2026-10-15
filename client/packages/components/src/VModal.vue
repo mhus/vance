@@ -1,5 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import VIconButton from './VIconButton.vue';
+import { useT } from './useT';
+
+const t = useT();
 
 interface Props {
   /** Two-way bound visibility flag. */
@@ -110,12 +114,7 @@ onUnmounted(() => {
         <h3 class="text-lg font-semibold">
           <slot name="header">{{ title }}</slot>
         </h3>
-        <button
-          type="button"
-          class="btn btn-sm btn-circle btn-ghost"
-          aria-label="Close"
-          @click="onClose"
-        >✕</button>
+        <VIconButton icon="close" :label="t('common.close')" @click="onClose" />
       </header>
 
       <div :class="height ? 'flex-1 min-h-0' : undefined">

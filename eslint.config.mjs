@@ -11,6 +11,9 @@ import { defineConfigWithVueTs, vueTsConfigs } from '@vue/eslint-config-typescri
 import pluginVue from 'eslint-plugin-vue'
 import globals from 'globals'
 
+// Tailwind palette utilities (bg-blue-500, text-gray-400, border-white …).
+const PALETTE = String.raw`\b(?:bg|text|border|ring|fill|stroke|outline|divide|from|to|via|accent|caret|decoration|shadow)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3}\b|\b(?:bg|text|border)-(?:white|black)\b`
+
 export default defineConfigWithVueTs(
     {
         name: 'vance/ignores',
@@ -54,6 +57,33 @@ export default defineConfigWithVueTs(
     },
     pluginVue.configs['flat/recommended'],
     vueTsConfigs.recommended,
+    // Corporate design (specification/public/corporate-design.md, agent/face.md):
+    // what the CI forbids in templates is forbidden here too, so it cannot
+    // creep back. Emoji / Unicode symbols are not icons (§5 — use VIcon or
+    // VIconButton), Tailwind palette colours are not colours (§3 — use the
+    // --v-* tokens). User content is data, not template text, and stays free.
+    // The Facelift native shell is excluded until it is migrated (§10.4).
+    {
+        name: 'vance/corporate-design',
+        files: ['client/packages/vance-face/**/*.vue', 'client/packages/components/**/*.vue', 'server/**/client/**/*.vue'],
+        rules: {
+            'vue/no-restricted-syntax': [
+                'error',
+                {
+                    selector: String.raw`VElement[name='template'] VText[value=/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{2190}-\u{21FF}\u{25A0}-\u{25FF}]/u]`,
+                    message: 'Emoji / Unicode symbols are not icons — use <VIcon> or <VIconButton> (corporate-design.md §5).',
+                },
+                {
+                    selector: String.raw`VAttribute[directive=false][key.name='class'] > VLiteral[value=/${PALETTE}/]`,
+                    message: 'Tailwind palette colour — use a --v-* token, e.g. text-(--v-danger) (corporate-design.md §3).',
+                },
+                {
+                    selector: String.raw`VAttribute[directive=true][key.argument.name='class'] Literal[value=/${PALETTE}/]`,
+                    message: 'Tailwind palette colour — use a --v-* token, e.g. text-(--v-danger) (corporate-design.md §3).',
+                },
+            ],
+        },
+    },
     {
         name: 'vance/rules',
         rules: {

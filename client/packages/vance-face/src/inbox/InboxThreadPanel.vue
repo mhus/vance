@@ -228,7 +228,7 @@ watch(() => [props.item.participants, props.error], () => {
         <span
           v-for="p in item.participants"
           :key="p"
-          class="text-sm px-2 py-0.5 rounded bg-black/5 dark:bg-white/10 inline-flex items-center gap-1"
+          class="text-sm px-2 py-0.5 rounded bg-(--v-fill) inline-flex items-center gap-1"
         >
           {{ p }}
           <button
@@ -279,7 +279,7 @@ watch(() => [props.item.participants, props.error], () => {
           class="flex flex-col gap-1 rounded px-2 py-1 -mx-2 cursor-pointer transition-colors"
           :class="selectedMessageId === node.message.id
             ? 'ring-2 ring-primary bg-primary/5'
-            : 'hover:bg-black/5 dark:hover:bg-white/5'"
+            : 'hover:bg-(--v-fill)'"
           @click="toggleSelected(node.message.id)"
         >
           <div class="flex items-baseline gap-2">
@@ -315,7 +315,7 @@ watch(() => [props.item.participants, props.error], () => {
             class="flex flex-col gap-1 rounded px-2 py-1 -mx-2 cursor-pointer transition-colors"
             :class="selectedMessageId === reply.id
               ? 'ring-2 ring-primary bg-primary/5'
-              : 'hover:bg-black/5 dark:hover:bg-white/5'"
+              : 'hover:bg-(--v-fill)'"
             @click="toggleSelected(reply.id)"
           >
             <div

@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
+import VIcon from './VIcon.vue';
+import VIconButton from './VIconButton.vue';
 
 interface Props {
   /**
@@ -142,7 +144,7 @@ function formatSize(bytes: number): string {
       />
 
       <template v-if="modelValue.length === 0">
-        <span class="text-2xl mb-2 opacity-60" aria-hidden="true">⬆</span>
+        <VIcon name="upload" :size="20" class="mb-2 opacity-60" />
         <span class="text-sm">
           {{ multiple ? 'Drop files here, or' : 'Drop a file here, or' }}
           <span class="link link-primary">browse</span>
@@ -159,16 +161,16 @@ function formatSize(bytes: number): string {
             :key="`${file.name}-${idx}`"
             class="flex items-center gap-2 text-sm"
           >
-            <span aria-hidden="true">📄</span>
+            <VIcon name="document" class="opacity-60" />
             <span class="font-mono truncate flex-1">{{ file.name }}</span>
             <span class="text-xs opacity-60 shrink-0">{{ formatSize(file.size) }}</span>
-            <button
-              type="button"
-              class="btn btn-ghost btn-xs"
+            <VIconButton
+              icon="close"
+              size="sm"
+              label="Remove file"
               :disabled="disabled"
-              aria-label="Remove file"
               @click.stop.prevent="removeAt(idx)"
-            >✕</button>
+            />
           </li>
         </ul>
         <div class="mt-3 text-xs opacity-70">

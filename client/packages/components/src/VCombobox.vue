@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Option } from './VSelect.vue';
 import { computed, nextTick, ref } from 'vue';
+import VIcon from './VIcon.vue';
 
 /**
  * Editable dropdown: a text input with a filtered option list.
@@ -166,7 +167,7 @@ function scrollActiveIntoView(): void {
         @blur="commit"
         @keydown="onKeydown"
       />
-      <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs opacity-60">▾</span>
+      <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center opacity-60"><VIcon name="expand" /></span>
       <!-- mousedown.prevent keeps focus on the input, so a click on an option
            lands before the blur-commit and cannot race it. -->
       <ul

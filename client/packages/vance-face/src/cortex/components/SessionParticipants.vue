@@ -64,7 +64,7 @@ function tooltip(p: SessionParticipantDto): string {
       v-for="p in visible"
       :key="p.editorId"
       class="inline-flex h-7 w-7 items-center justify-center rounded-full
-             border-2 border-white dark:border-gray-900 text-xs font-semibold text-white shadow"
+             border-2 border-(--v-surface) text-xs font-semibold text-(--v-accent-on) shadow"
       :style="{ backgroundColor: colourFor(p.userId) }"
       :title="tooltip(p)"
     >
@@ -73,8 +73,8 @@ function tooltip(p: SessionParticipantDto): string {
     <span
       v-if="overflow > 0"
       class="inline-flex h-7 w-7 items-center justify-center rounded-full
-             border-2 border-white dark:border-gray-900 bg-gray-300 dark:bg-gray-700
-             text-xs font-semibold text-gray-800 dark:text-gray-100 shadow"
+             border-2 border-(--v-surface) bg-(--v-fill)
+             text-xs font-semibold text-(--v-label) shadow"
       :title="participants
         .slice(max)
         .map((p) => p.displayName || p.userId)

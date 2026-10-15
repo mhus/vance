@@ -635,6 +635,7 @@ defineExpose({ reload });
           class="flex-1 min-h-0 flex justify-center"
           :class="previewLetterbox"
         >
+          <!-- eslint-disable vue/no-restricted-syntax -- white stands in for the browser page behind the device preview -->
           <iframe
             v-if="previewUrl && selectedDesign"
             :key="iframeKey"
@@ -646,6 +647,7 @@ defineExpose({ reload });
             referrerpolicy="no-referrer"
             :title="selectedDesign.name"
           />
+          <!-- eslint-enable vue/no-restricted-syntax -->
         </div>
       </div>
     </div>
@@ -749,7 +751,8 @@ defineExpose({ reload });
             <!-- Style preview: same opaque-origin sandbox as the main
                  preview; without a style.css the skill shows a plain
                  box instead of pretending. -->
-            <div class="w-44 shrink-0 h-32 rounded-md border border-base-300 overflow-hidden bg-white">
+            <!-- eslint-disable-next-line vue/no-restricted-syntax -- stands in for the browser page canvas of the skill preview -->
+            <div class="w-44 shrink-0 h-32 rounded-md border border-(--v-separator) overflow-hidden bg-white">
               <iframe
                 v-if="skillPreviewUrl(skill)"
                 :src="skillPreviewUrl(skill)"

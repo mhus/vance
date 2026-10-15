@@ -7,6 +7,7 @@ import {
   VButton,
   VCard,
   VEmptyState,
+  VInput,
   VModal,
 } from '@/components';
 import { useSchedulers } from '@/composables/useSchedulers';
@@ -158,7 +159,7 @@ function formatTimestamp(value?: Date | string | null): string {
 
 <template>
   <div class="flex flex-col gap-3 p-2">
-    <div v-if="!projectId" class="opacity-60 text-sm">
+    <div v-if="!projectId" class="text-sm text-(--v-label-secondary)">
       {{ $t('scheduler.pickProject') }}
     </div>
 
@@ -168,7 +169,7 @@ function formatTimestamp(value?: Date | string | null): string {
         <VButton icon="refresh" size="sm" variant="plain" @click="refreshList">
           {{ t('scheduler.refresh') }}
         </VButton>
-        <VButton size="sm" variant="primary" @click="openNewModal">
+        <VButton icon="add" size="sm" variant="secondary" @click="openNewModal">
           {{ t('scheduler.new') }}
         </VButton>
       </div>
@@ -186,7 +187,7 @@ function formatTimestamp(value?: Date | string | null): string {
               <button
                 :class="[
                   'w-full text-left p-2 rounded',
-                  selectedName === s.name ? 'bg-primary/15' : 'hover:bg-base-200',
+                  selectedName === s.name ? 'bg-(--v-selection)' : 'hover:bg-(--v-fill)',
                 ]"
                 @click="selectScheduler(s.name)"
               >
@@ -195,14 +196,16 @@ function formatTimestamp(value?: Date | string | null): string {
                   <span
                     :class="[
                       'text-xs px-1.5 py-0.5 rounded',
-                      s.enabled ? 'bg-success/20 text-success' : 'bg-base-300 text-base-content/60',
+                      s.enabled
+                        ? 'text-(--v-success)'
+                        : 'bg-(--v-fill) text-(--v-label-secondary)',
                     ]"
                   >
                     {{ s.enabled ? t('scheduler.enabled') : t('scheduler.disabled') }}
                   </span>
                 </div>
-                <div class="text-xs text-base-content/60 truncate">{{ s.description }}</div>
-                <div class="text-xs text-base-content/50 font-mono">{{ s.cron }}</div>
+                <div class="text-xs text-(--v-label-secondary) truncate">{{ s.description }}</div>
+                <div class="text-xs text-(--v-label-tertiary) font-mono">{{ s.cron }}</div>
               </button>
             </li>
           </ul>
@@ -219,7 +222,7 @@ function formatTimestamp(value?: Date | string | null): string {
             <template #header>
               <div class="flex items-center justify-between w-full">
                 <span>{{ state.current.value.name }}</span>
-                <span class="text-xs text-base-content/60">{{ state.current.value.source }}</span>
+                <span class="text-xs text-(--v-label-secondary)">{{ state.current.value.source }}</span>
               </div>
             </template>
 
@@ -257,22 +260,24 @@ function formatTimestamp(value?: Date | string | null): string {
         <!-- Right: run history -->
         <aside class="col-span-3 flex flex-col gap-2">
           <h3 class="text-sm font-semibold">{{ t('scheduler.runHistory') }}</h3>
-          <div v-if="!state.events.value.length" class="text-sm text-base-content/60">
+          <div v-if="!state.events.value.length" class="text-sm text-(--v-label-secondary)">
             {{ t('scheduler.noEvents') }}
           </div>
           <ul v-else class="space-y-2">
             <li
               v-for="e in state.events.value"
               :key="e.id"
-              class="border border-base-300 rounded p-2 text-xs space-y-0.5"
+              class="border border-(--v-separator) rounded p-2 text-xs space-y-0.5"
             >
               <div class="flex items-center justify-between">
                 <span class="font-mono font-semibold">
                   {{ e.outcome ?? e.phase.toLowerCase() }}
                 </span>
-                <span class="text-base-content/60">{{ formatTimestamp(e.timestamp) }}</span>
+                <span class="text-(--v-label-secondary)">{{ formatTimestamp(e.timestamp) }}</span>
               </div>
-              <div :class="e.outcome === 'failure' ? 'text-error' : 'text-base-content/60'">
+              <div
+                :class="e.outcome === 'failure' ? 'text-(--v-danger)' : 'text-(--v-label-secondary)'"
+              >
                 {{ e.message }}
               </div>
             </li>
@@ -281,31 +286,32 @@ function formatTimestamp(value?: Date | string | null): string {
       </div>
     </template>
 
-    <VModal v-model="showNewModal" :title="t('scheduler.newTitle')">
-      <div class="space-y-3">
-        <label class="block">
-          <span class="text-sm font-semibold">{{ t('scheduler.nameLabel') }}</span>
-          <input
-            v-model="newName"
-            class="input w-full mt-1"
-            :placeholder="t('scheduler.namePlaceholder')"
-            @keyup.enter="createScheduler"
-          />
-        </label>
-        <p class="text-xs text-base-content/60">{{ t('scheduler.namePatternHint') }}</p>
+    <VModal v-model="showNewModal" size="sm" :title="t('scheduler.newTitle')">
+      <form id="scheduler-new-form" class="flex flex-col gap-4" @submit.prevent="createScheduler">
+        <VInput
+          v-model="newName"
+          :label="t('scheduler.nameLabel')"
+          :placeholder="t('scheduler.namePlaceholder')"
+          :help="t('scheduler.namePatternHint')"
+        />
         <VAlert v-if="newError" variant="error">{{ newError }}</VAlert>
-      </div>
+      </form>
       <template #actions>
         <VButton variant="secondary" @click="showNewModal = false">
           {{ t('common.cancel') }}
         </VButton>
-        <VButton variant="primary" :loading="state.busy.value" @click="createScheduler">
+        <VButton
+          type="submit"
+          form="scheduler-new-form"
+          variant="primary"
+          :loading="state.busy.value"
+        >
           {{ t('scheduler.create') }}
         </VButton>
       </template>
     </VModal>
 
-    <VModal v-model="showDeleteModal" :title="t('scheduler.deleteTitle')">
+    <VModal v-model="showDeleteModal" size="sm" :title="t('scheduler.deleteTitle')">
       <p>{{ t('scheduler.deleteBody', { name: selectedName }) }}</p>
       <template #actions>
         <VButton variant="secondary" @click="showDeleteModal = false">

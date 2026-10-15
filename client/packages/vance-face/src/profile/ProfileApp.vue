@@ -31,7 +31,6 @@ import {
   EditorShell,
   type SideTab,
   VAlert,
-  VBadge,
   VButton,
   VCard,
   VCheckbox,
@@ -554,7 +553,7 @@ async function onResetTalkCommands(): Promise<void> {
     <div class="container mx-auto px-4 py-8 max-w-5xl flex flex-col gap-6">
       <VAlert v-if="error" variant="error">{{ error }}</VAlert>
 
-      <div v-if="loading && !profile" class="text-sm opacity-60">
+      <div v-if="loading && !profile" class="text-sm text-(--v-label-secondary)">
         {{ $t('profile.loading') }}
       </div>
 
@@ -562,10 +561,9 @@ async function onResetTalkCommands(): Promise<void> {
         <VSideTabs v-model="activeTab" :tabs="tabs" sync-hash>
         <template #identity>
         <!-- Identity ─────────────────────────────────────────────────────── -->
-        <VCard>
-          <h2 class="text-lg font-semibold mb-3">{{ $t('profile.identity.title') }}</h2>
+        <VCard :title="$t('profile.identity.title')">
           <div class="flex flex-col gap-3">
-            <div class="text-sm opacity-70">
+            <div class="text-sm text-(--v-label-secondary)">
               <span class="font-mono">{{ profile.tenantId }}</span>
               <span class="mx-1">·</span>
               <span class="font-mono">{{ profile.name }}</span>
@@ -591,13 +589,13 @@ async function onResetTalkCommands(): Promise<void> {
               >
                 {{ $t('common.save') }}
               </VButton>
-              <span v-if="identitySaved" class="text-success text-sm">
+              <span v-if="identitySaved" class="text-(--v-success) text-sm">
                 {{ identitySaved }}
               </span>
             </div>
             <div
               v-if="profile.brainVersion"
-              class="text-xs opacity-50 pt-2 mt-1 border-t border-base-300"
+              class="text-xs text-(--v-label-tertiary) pt-2 mt-1 border-t border-(--v-separator)"
             >
               {{ $t('profile.identity.serverVersion') }}:
               <span class="font-mono">{{ profile.brainVersion }}</span>
@@ -609,9 +607,8 @@ async function onResetTalkCommands(): Promise<void> {
 
         <template #security>
         <!-- Security ─────────────────────────────────────────────────────── -->
-        <VCard>
-          <h2 class="text-lg font-semibold mb-3">{{ $t('profile.security.title') }}</h2>
-          <p class="text-sm opacity-70 mb-3">
+        <VCard :title="$t('profile.security.title')">
+          <p class="text-sm text-(--v-label-secondary) mb-3">
             {{ $t('profile.security.description') }}
           </p>
           <div class="flex flex-col gap-3 max-w-md">
@@ -646,7 +643,7 @@ async function onResetTalkCommands(): Promise<void> {
               >
                 {{ $t('profile.security.submit') }}
               </VButton>
-              <span v-if="passwordSaved" class="text-success text-sm">
+              <span v-if="passwordSaved" class="text-(--v-success) text-sm">
                 {{ passwordSaved }}
               </span>
             </div>
@@ -656,9 +653,8 @@ async function onResetTalkCommands(): Promise<void> {
 
         <template #preferences>
         <!-- Preferences ──────────────────────────────────────────────────── -->
-        <VCard>
-          <h2 class="text-lg font-semibold mb-3">{{ $t('profile.preferences.title') }}</h2>
-          <p class="text-sm opacity-70 mb-3">
+        <VCard :title="$t('profile.preferences.title')">
+          <p class="text-sm text-(--v-label-secondary) mb-3">
             {{ $t('profile.preferences.description') }}
           </p>
           <div class="flex flex-col gap-3">
@@ -669,7 +665,7 @@ async function onResetTalkCommands(): Promise<void> {
               :disabled="loading"
               @update:model-value="onLanguageChanged"
             />
-            <span v-if="languageSaved" class="text-success text-sm">
+            <span v-if="languageSaved" class="text-(--v-success) text-sm">
               {{ languageSaved }}
             </span>
             <VSelect
@@ -679,10 +675,10 @@ async function onResetTalkCommands(): Promise<void> {
               :disabled="loading"
               @update:model-value="onChatLanguageChanged"
             />
-            <p class="text-xs opacity-60 -mt-2">
+            <p class="text-xs text-(--v-label-secondary) -mt-2">
               {{ $t('profile.preferences.chatLanguageDescription') }}
             </p>
-            <span v-if="chatLanguageSaved" class="text-success text-sm">
+            <span v-if="chatLanguageSaved" class="text-(--v-success) text-sm">
               {{ chatLanguageSaved }}
             </span>
             <VSelect
@@ -692,10 +688,10 @@ async function onResetTalkCommands(): Promise<void> {
               :disabled="loading"
               @update:model-value="onTimezoneChanged"
             />
-            <p class="text-xs opacity-60 -mt-2">
+            <p class="text-xs text-(--v-label-secondary) -mt-2">
               {{ $t('profile.preferences.timezoneDescription') }}
             </p>
-            <span v-if="timezoneSaved" class="text-success text-sm">
+            <span v-if="timezoneSaved" class="text-(--v-success) text-sm">
               {{ timezoneSaved }}
             </span>
             <VSelect
@@ -705,7 +701,7 @@ async function onResetTalkCommands(): Promise<void> {
               :disabled="loading"
               @update:model-value="onThemeChanged"
             />
-            <span v-if="themeSaved" class="text-success text-sm">
+            <span v-if="themeSaved" class="text-(--v-success) text-sm">
               {{ themeSaved }}
             </span>
             <VSelect
@@ -715,10 +711,10 @@ async function onResetTalkCommands(): Promise<void> {
               :disabled="loading"
               @update:model-value="onUiLevelChanged"
             />
-            <p class="text-xs opacity-60 -mt-2">
+            <p class="text-xs text-(--v-label-secondary) -mt-2">
               {{ $t('profile.preferences.uiLevelDescription') }}
             </p>
-            <span v-if="uiLevelSaved" class="text-success text-sm">
+            <span v-if="uiLevelSaved" class="text-(--v-success) text-sm">
               {{ uiLevelSaved }}
             </span>
             <VCheckbox
@@ -728,7 +724,7 @@ async function onResetTalkCommands(): Promise<void> {
               :disabled="loading"
               @update:model-value="onOpenDocsNewTabChanged"
             />
-            <span v-if="openDocsNewTabSaved" class="text-success text-sm">
+            <span v-if="openDocsNewTabSaved" class="text-(--v-success) text-sm">
               {{ openDocsNewTabSaved }}
             </span>
           </div>
@@ -737,9 +733,8 @@ async function onResetTalkCommands(): Promise<void> {
 
         <template #speech>
         <!-- Speech & Audio ───────────────────────────────────────────────── -->
-        <VCard>
-          <h2 class="text-lg font-semibold mb-3">{{ $t('profile.speech.title') }}</h2>
-          <p class="text-sm opacity-70 mb-3">
+        <VCard :title="$t('profile.speech.title')">
+          <p class="text-sm text-(--v-label-secondary) mb-3">
             {{ $t('profile.speech.description') }}
           </p>
           <div class="flex flex-col gap-3">
@@ -751,13 +746,13 @@ async function onResetTalkCommands(): Promise<void> {
                 :disabled="loading"
                 @update:model-value="onSpeechVoiceChanged"
               />
-              <span v-if="speechVoiceSaved" class="text-success text-sm">
+              <span v-if="speechVoiceSaved" class="text-(--v-success) text-sm">
                 {{ speechVoiceSaved }}
               </span>
               <div>
                 <div class="text-sm font-medium mb-1 flex justify-between">
                   <span>{{ $t('profile.speech.rate') }}</span>
-                  <span class="opacity-70">{{ speechRateDraft.toFixed(2) }}×</span>
+                  <span class="text-(--v-label-secondary)">{{ speechRateDraft.toFixed(2) }}×</span>
                 </div>
                 <VRange
                   class="w-full"
@@ -770,14 +765,14 @@ async function onResetTalkCommands(): Promise<void> {
                   @input="speechRateDraft = $event"
                   @change="onSpeechRateInput"
                 />
-                <span v-if="speechRateSaved" class="text-success text-sm">
+                <span v-if="speechRateSaved" class="text-(--v-success) text-sm">
                   {{ speechRateSaved }}
                 </span>
               </div>
               <div>
                 <div class="text-sm font-medium mb-1 flex justify-between">
                   <span>{{ $t('profile.speech.volume') }}</span>
-                  <span class="opacity-70">{{ Math.round(speechVolumeDraft * 100) }}%</span>
+                  <span class="text-(--v-label-secondary)">{{ Math.round(speechVolumeDraft * 100) }}%</span>
                 </div>
                 <VRange
                   class="w-full"
@@ -790,22 +785,22 @@ async function onResetTalkCommands(): Promise<void> {
                   @input="speechVolumeDraft = $event"
                   @change="onSpeechVolumeInput"
                 />
-                <span v-if="speechVolumeSaved" class="text-success text-sm">
+                <span v-if="speechVolumeSaved" class="text-(--v-success) text-sm">
                   {{ speechVolumeSaved }}
                 </span>
               </div>
             </template>
-            <p v-else class="text-sm opacity-60">
+            <p v-else class="text-sm text-(--v-label-secondary)">
               {{ $t('profile.speech.voiceUnsupported') }}
             </p>
 
             <!-- Talk-mode spoken commands ─────────────────────────────── -->
-            <div class="border-t border-base-300 pt-4 mt-2 flex flex-col gap-3">
+            <div class="border-t border-(--v-separator) pt-4 mt-2 flex flex-col gap-3">
               <div>
                 <h3 class="text-sm font-semibold">
                   {{ $t('profile.speech.talkCommandsTitle') }}
                 </h3>
-                <p class="text-xs opacity-60 mt-1">
+                <p class="text-xs text-(--v-label-secondary) mt-1">
                   {{ $t('profile.speech.talkCommandsDescription') }}
                 </p>
               </div>
@@ -814,7 +809,7 @@ async function onResetTalkCommands(): Promise<void> {
                 :label="$t('profile.speech.talkTriggerNames')"
                 :help="$t('profile.speech.talkTriggerNamesHelp')"
                 :disabled="loading"
-                placeholder="Computer, Vance"
+                :placeholder="$t('profile.speech.talkTriggerNamesPlaceholder')"
               />
               <VCheckbox
                 v-model="talkRequireNameDraft"
@@ -844,7 +839,7 @@ async function onResetTalkCommands(): Promise<void> {
                 <VButton variant="plain" :disabled="loading" @click="onResetTalkCommands">
                   {{ $t('profile.speech.talkCommandsResetBtn') }}
                 </VButton>
-                <span v-if="talkCommandsSaved" class="text-success text-sm">
+                <span v-if="talkCommandsSaved" class="text-(--v-success) text-sm">
                   {{ talkCommandsSaved }}
                 </span>
               </div>
@@ -856,9 +851,8 @@ async function onResetTalkCommands(): Promise<void> {
 
         <template #teams>
         <!-- Teams ────────────────────────────────────────────────────────── -->
-        <VCard>
-          <h2 class="text-lg font-semibold mb-3">{{ $t('profile.teams.title') }}</h2>
-          <p v-if="profile.teams.length === 0" class="text-sm opacity-70">
+        <VCard :title="$t('profile.teams.title')">
+          <p v-if="profile.teams.length === 0" class="text-sm text-(--v-label-secondary)">
             {{ $t('profile.teams.empty') }}
           </p>
           <ul v-else class="flex flex-col gap-2">
@@ -871,22 +865,21 @@ async function onResetTalkCommands(): Promise<void> {
                 <div class="font-semibold">
                   {{ team.title || team.name }}
                 </div>
-                <div class="text-xs opacity-70 font-mono">{{ team.name }}</div>
+                <div class="text-xs text-(--v-label-secondary) font-mono">{{ team.name }}</div>
               </div>
               <div class="flex items-center gap-2">
-                <span class="text-xs opacity-70">
+                <span class="text-xs text-(--v-label-secondary)">
                   {{
                     team.members.length === 1
                       ? $t('profile.teams.memberCountOne', { count: team.members.length })
                       : $t('profile.teams.memberCountOther', { count: team.members.length })
                   }}
                 </span>
-                <VBadge
+                <span
                   v-if="!team.enabled"
-                  variant="warning"
-                  size="sm"
+                  class="text-xs text-(--v-warning)"
                   :title="$t('profile.teams.disabledTooltip')"
-                >{{ $t('profile.teams.disabled') }}</VBadge>
+                >{{ $t('profile.teams.disabled') }}</span>
               </div>
             </li>
           </ul>

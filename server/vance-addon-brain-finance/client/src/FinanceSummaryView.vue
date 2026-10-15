@@ -96,7 +96,12 @@ async function onEditClosed(): Promise<void> {
       <div v-else class="opacity-50 text-xs">{{ t('finance.summary.empty') }}</div>
     </div>
 
-    <VModal v-model="editOpen" :title="t('finance.summary.modalTitle')" @update:model-value="(o: boolean) => !o && onEditClosed()">
+    <VModal
+      v-model="editOpen"
+      :title="t('finance.summary.modalTitle')"
+      size="xl"
+      @update:model-value="(o: boolean) => !o && onEditClosed()"
+    >
       <div class="h-[70vh]">
         <FinanceKind
           v-if="editOpen && projectId && path"

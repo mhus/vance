@@ -35,7 +35,7 @@ import {
 import type { DocumentDto } from '@vance/generated';
 import type { EmbedRef } from '@/kindRenderers/parseVanceUri';
 import type { FenceMeta } from '@/kindRenderers/parseFenceLang';
-import { VCheckbox, VInput, VSelect, VTextarea } from '@/components';
+import { VCheckbox, VInput, VSelect, VTextarea, useConfirm } from '@/components';
 
 // Register ECharts modules once. Modular import keeps the bundle under
 // ~600 KB; the full ECharts build would be ~1.1 MB.
@@ -62,6 +62,7 @@ echarts.use([
 defineOptions({ name: 'ChartView' });
 
 const { t } = useI18n();
+const confirmAction = useConfirm();
 
 const props = withDefaults(defineProps<{
   mode?: 'editor' | 'inline' | 'embedded';
@@ -246,15 +247,16 @@ const AXIS_TYPE_OPTIONS: { value: AxisType; label: string }[] = [
   { value: 'log', label: 'Log' },
 ];
 
-function onChartTypeChange(newType: ChartType): void {
+async function onChartTypeChange(newType: ChartType): Promise<void> {
   const oldType = localHeader.value.chartType;
   if (oldType === newType) return;
 
   if (localSeries.value.length > 0 && !shapesCompatible(oldType, newType)) {
-    const confirmed = window.confirm(
-      `Switching from ${oldType} to ${newType} requires a different data-point shape. `
-      + 'The existing series data will be dropped on save. Continue?',
-    );
+    const confirmed = await confirmAction({
+      title: t('kindViews.chart.switchTypeTitle'),
+      message: t('kindViews.chart.switchTypeMessage', { from: oldType, to: newType }),
+      confirmLabel: t('kindViews.chart.switchTypeConfirm'),
+    });
     if (!confirmed) return;
     // Clear the data; let the user repopulate via Raw-Tab.
     localSeries.value = localSeries.value.map((s) => ({ ...s, data: [] }));
@@ -566,7 +568,7 @@ const showsAxes = computed(() => !isNamedValueShaped(localHeader.value.chartType
         :model-value="localHeader.chartType"
         :options="CHART_TYPE_OPTIONS"
         class="w-44"
-        @update:model-value="(v: ChartType | null) => { if (v) onChartTypeChange(v); }"
+        @update:model-value="(v: ChartType | null) => { if (v) void onChartTypeChange(v); }"
       />
       <VInput
         :model-value="localHeader.title ?? ''"

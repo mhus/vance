@@ -7,6 +7,7 @@ import {
   VButton,
   VCard,
   VEmptyState,
+  VInput,
   VModal,
   VSelect,
 } from '@/components';
@@ -200,7 +201,7 @@ function formatTimestamp(value?: Date | string | null): string {
 
 <template>
   <div class="flex flex-col gap-3 p-2">
-    <div v-if="!projectId" class="opacity-60 text-sm">
+    <div v-if="!projectId" class="text-sm text-(--v-label-secondary)">
       {{ $t('ursahooks.pickProject') }}
     </div>
 
@@ -210,7 +211,7 @@ function formatTimestamp(value?: Date | string | null): string {
         <VButton icon="refresh" size="sm" variant="plain" @click="refreshList">
           {{ t('ursahooks.refresh') }}
         </VButton>
-        <VButton size="sm" variant="primary" @click="openNewModal">
+        <VButton icon="add" size="sm" variant="secondary" @click="openNewModal">
           {{ t('ursahooks.new') }}
         </VButton>
       </div>
@@ -225,13 +226,15 @@ function formatTimestamp(value?: Date | string | null): string {
           <span class="text-sm font-semibold">{{ t('ursahooks.listLabel') }}</span>
           <template v-if="groupedHooks.length">
             <section v-for="group in groupedHooks" :key="group.event" class="space-y-1">
-              <h4 class="text-xs font-semibold opacity-70 font-mono">{{ group.event }}</h4>
+              <h4 class="text-xs font-semibold text-(--v-label-secondary) font-mono">{{ group.event }}</h4>
               <ul class="space-y-1">
                 <li v-for="h in group.hooks" :key="h.name">
                   <button
                     :class="[
                       'w-full text-left p-2 rounded',
-                      isSelected(group.event, h.name) ? 'bg-primary/15' : 'hover:bg-base-200',
+                      isSelected(group.event, h.name)
+                        ? 'bg-(--v-selection)'
+                        : 'hover:bg-(--v-fill)',
                     ]"
                     @click="selectHook(group.event, h.name)"
                   >
@@ -240,13 +243,15 @@ function formatTimestamp(value?: Date | string | null): string {
                       <span
                         :class="[
                           'text-xs px-1.5 py-0.5 rounded',
-                          h.enabled ? 'bg-success/20 text-success' : 'bg-base-300 text-base-content/60',
+                          h.enabled
+                            ? 'text-(--v-success)'
+                            : 'bg-(--v-fill) text-(--v-label-secondary)',
                         ]"
                       >
                         {{ h.enabled ? t('ursahooks.enabled') : t('ursahooks.disabled') }}
                       </span>
                     </div>
-                    <div class="text-xs text-base-content/60 truncate">
+                    <div class="text-xs text-(--v-label-secondary) truncate">
                       {{ h.description || h.actionType }}
                     </div>
                   </button>
@@ -269,7 +274,7 @@ function formatTimestamp(value?: Date | string | null): string {
                 <span class="font-mono text-sm">
                   {{ state.current.value.event }} / {{ state.current.value.name }}
                 </span>
-                <span class="text-xs text-base-content/60">{{ state.current.value.source }}</span>
+                <span class="text-xs text-(--v-label-secondary)">{{ state.current.value.source }}</span>
               </div>
             </template>
 
@@ -299,22 +304,24 @@ function formatTimestamp(value?: Date | string | null): string {
         <!-- Right: run history -->
         <aside class="col-span-3 flex flex-col gap-2">
           <h3 class="text-sm font-semibold">{{ t('ursahooks.runHistory') }}</h3>
-          <div v-if="!state.events.value.length" class="text-sm text-base-content/60">
+          <div v-if="!state.events.value.length" class="text-sm text-(--v-label-secondary)">
             {{ t('ursahooks.noEvents') }}
           </div>
           <ul v-else class="space-y-2">
             <li
               v-for="e in state.events.value"
               :key="e.id"
-              class="border border-base-300 rounded p-2 text-xs space-y-0.5"
+              class="border border-(--v-separator) rounded p-2 text-xs space-y-0.5"
             >
               <div class="flex items-center justify-between">
                 <span class="font-mono font-semibold">
                   {{ e.outcome ?? e.phase.toLowerCase() }}
                 </span>
-                <span class="text-base-content/60">{{ formatTimestamp(e.timestamp) }}</span>
+                <span class="text-(--v-label-secondary)">{{ formatTimestamp(e.timestamp) }}</span>
               </div>
-              <div :class="e.outcome === 'failure' ? 'text-error' : 'text-base-content/60'">
+              <div
+                :class="e.outcome === 'failure' ? 'text-(--v-danger)' : 'text-(--v-label-secondary)'"
+              >
                 {{ e.message }}
               </div>
             </li>
@@ -323,36 +330,37 @@ function formatTimestamp(value?: Date | string | null): string {
       </div>
     </template>
 
-    <VModal v-model="showNewModal" :title="t('ursahooks.newTitle')">
-      <div class="space-y-3">
+    <VModal v-model="showNewModal" size="sm" :title="t('ursahooks.newTitle')">
+      <form id="ursahook-new-form" class="flex flex-col gap-4" @submit.prevent="createHook">
         <VSelect
           v-model="newEvent"
           :options="eventOptions"
           :label="t('ursahooks.eventLabel')"
         />
-        <label class="block">
-          <span class="text-sm font-semibold">{{ t('ursahooks.nameLabel') }}</span>
-          <input
-            v-model="newName"
-            class="input w-full mt-1"
-            :placeholder="t('ursahooks.namePlaceholder')"
-            @keyup.enter="createHook"
-          />
-        </label>
-        <p class="text-xs text-base-content/60">{{ t('ursahooks.namePatternHint') }}</p>
+        <VInput
+          v-model="newName"
+          :label="t('ursahooks.nameLabel')"
+          :placeholder="t('ursahooks.namePlaceholder')"
+          :help="t('ursahooks.namePatternHint')"
+        />
         <VAlert v-if="newError" variant="error">{{ newError }}</VAlert>
-      </div>
+      </form>
       <template #actions>
         <VButton variant="secondary" @click="showNewModal = false">
           {{ t('common.cancel') }}
         </VButton>
-        <VButton variant="primary" :loading="state.busy.value" @click="createHook">
+        <VButton
+          type="submit"
+          form="ursahook-new-form"
+          variant="primary"
+          :loading="state.busy.value"
+        >
           {{ t('ursahooks.create') }}
         </VButton>
       </template>
     </VModal>
 
-    <VModal v-model="showDeleteModal" :title="t('ursahooks.deleteTitle')">
+    <VModal v-model="showDeleteModal" size="sm" :title="t('ursahooks.deleteTitle')">
       <p>{{ t('ursahooks.deleteBody', { event: selectedEvent, name: selectedName }) }}</p>
       <template #actions>
         <VButton variant="secondary" @click="showDeleteModal = false">

@@ -64,6 +64,7 @@ function confirm(): void {
   <VModal
     :model-value="modelValue"
     :title="t('chat.sessionHeader.moveTitle')"
+    size="sm"
     :close-on-backdrop="false"
     @update:model-value="emit('update:modelValue', $event)"
   >
@@ -80,7 +81,7 @@ function confirm(): void {
         :placeholder="t('chat.sessionHeader.moveTargetPlaceholder')"
         :disabled="saving"
       />
-      <p v-else class="text-sm opacity-70">
+      <p v-else class="text-sm text-(--v-label-secondary)">
         {{ t('chat.sessionHeader.moveNoProjects') }}
       </p>
 
@@ -93,7 +94,7 @@ function confirm(): void {
       </VButton>
       <VButton
         variant="danger"
-          filled
+        filled
         :loading="saving"
         :disabled="saving || !selected"
         @click="confirm"

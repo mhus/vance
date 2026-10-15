@@ -57,5 +57,8 @@ export default {
       search: 'Search failed.',
       rebuild: 'Rebuild failed.',
     },
+    common: {
+      delete: 'Delete',
+    },
   },
 };

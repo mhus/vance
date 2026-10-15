@@ -10,6 +10,7 @@ import {
   VSelect,
   VTagEditor,
   useLinkPickerHost,
+  useConfirm,
 } from '@vance/components';
 import { AccentColor } from '@vance/generated';
 import { postComposeRun, pollComposeRun, cancelComposeRun } from '@vance/shared';
@@ -59,6 +60,7 @@ const AUTOSAVE_MS = 800;
 
 // ── Attribute edit state ──────────────────────────────────────────
 const t = useT();
+const confirmAction = useConfirm();
 
 const title = ref(props.card.title);
 const priority = ref(props.card.priority ?? '');
@@ -300,8 +302,11 @@ function arraysEqual(a: string[], b: string[]): boolean {
   return true;
 }
 
-function confirmDelete(): void {
-  if (window.confirm(t('kanban.detail.confirmDelete', { title: props.card.title }))) emit('delete');
+async function confirmDelete(): Promise<void> {
+  if (await confirmAction({
+    message: t('kanban.detail.confirmDelete', { title: props.card.title }),
+    confirmLabel: t('kanban.common.delete'),
+  })) emit('delete');
 }
 
 // Called by the board before switching to another card, so pending edits
@@ -428,7 +433,7 @@ onBeforeUnmount(() => {
         @close="closeLinkPicker"
       />
       <template #actions>
-        <span class="text-xs text-base-content/50 mr-auto self-center">
+        <span class="text-xs text-(--v-label-secondary) mr-auto self-center">
           {{ saveStatusLabel }}
         </span>
         <VButton variant="primary" @click="onContentModal(false)">{{ t('kanban.common.done') }}</VButton>
@@ -436,7 +441,7 @@ onBeforeUnmount(() => {
     </VModal>
 
     <div class="flex items-center justify-end p-4 border-t border-base-300">
-      <VButton variant="danger" class="text-error" @click="confirmDelete">{{ t('kanban.common.delete') }}</VButton>
+      <VButton variant="danger" @click="confirmDelete">{{ t('kanban.common.delete') }}</VButton>
     </div>
   </div>
 </template>

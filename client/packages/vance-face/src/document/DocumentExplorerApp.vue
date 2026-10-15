@@ -1276,25 +1276,24 @@ function confirmNewFolder(): void {
     <VModal
       v-model="showMoveModal"
       :title="$t('documents.selection.moveTitle')"
+      :description="bulkBusy ? undefined : $t('documents.selection.moveBody', { count: selectedCount })"
+      size="sm"
       :close-on-backdrop="!bulkBusy"
     >
-      <p v-if="bulkBusy" class="text-sm mb-3">
+      <p v-if="bulkBusy" class="text-sm">
         {{ $t('documents.selection.moveRunning', { moved: bulkProgress }) }}
       </p>
-      <template v-else>
-        <p class="text-sm mb-3 opacity-80">
-          {{ $t('documents.selection.moveBody', { count: selectedCount }) }}
-        </p>
+      <div v-else class="flex flex-col gap-1">
         <VInput
           v-model="moveTargetPath"
           :label="$t('documents.selection.moveTargetLabel')"
           :placeholder="$t('documents.selection.customPathPlaceholder')"
           :suggestions="moveFolderSuggestions"
         />
-        <p v-if="docsState.foldersTruncated.value" class="text-xs opacity-60 mt-1">
+        <p v-if="docsState.foldersTruncated.value" class="text-xs text-(--v-label-secondary)">
           {{ $t('documents.selection.folderSuggestionsTruncated') }}
         </p>
-      </template>
+      </div>
       <template #actions>
         <VButton
           v-if="bulkBusy"
@@ -1317,39 +1316,38 @@ function confirmNewFolder(): void {
     <VModal
       v-model="showCopyModal"
       :title="$t('documents.selection.copyTitle')"
+      :description="bulkBusy ? undefined : $t('documents.selection.copyBody', { count: selectedCount })"
+      size="sm"
       :close-on-backdrop="!bulkBusy"
     >
-      <p v-if="bulkBusy" class="text-sm mb-3">
+      <p v-if="bulkBusy" class="text-sm">
         {{ $t('documents.selection.copyRunning', { copied: bulkProgress }) }}
       </p>
-      <template v-else>
-        <p class="text-sm mb-3 opacity-80">
-          {{ $t('documents.selection.copyBody', { count: selectedCount }) }}
-        </p>
+      <div v-else class="flex flex-col gap-4">
         <VSelect
           v-model="copyTargetProject"
           :options="copyProjectOptions"
           :label="$t('documents.selection.copyTargetProjectLabel')"
           @update:model-value="onCopyProjectChange"
         />
-        <VInput
-          v-model="copyTargetPath"
-          :label="$t('documents.selection.copyTargetFolderLabel')"
-          :placeholder="$t('documents.selection.customPathPlaceholder')"
-          :suggestions="copyFolderSuggestions"
-          :disabled="copyFoldersLoading"
-          class="mt-3"
-        />
-        <p v-if="copyFoldersTruncated" class="text-xs opacity-60 mt-1">
-          {{ $t('documents.selection.folderSuggestionsTruncated') }}
-        </p>
+        <div class="flex flex-col gap-1">
+          <VInput
+            v-model="copyTargetPath"
+            :label="$t('documents.selection.copyTargetFolderLabel')"
+            :placeholder="$t('documents.selection.customPathPlaceholder')"
+            :suggestions="copyFolderSuggestions"
+            :disabled="copyFoldersLoading"
+          />
+          <p v-if="copyFoldersTruncated" class="text-xs text-(--v-label-secondary)">
+            {{ $t('documents.selection.folderSuggestionsTruncated') }}
+          </p>
+        </div>
         <VCheckbox
           v-model="copyOverwrite"
           :label="$t('documents.selection.copyOverwriteLabel')"
           :help="$t('documents.selection.copyOverwriteHelp')"
-          class="mt-3"
         />
-      </template>
+      </div>
       <template #actions>
         <VButton
           v-if="bulkBusy"
@@ -1372,12 +1370,13 @@ function confirmNewFolder(): void {
     <VModal
       v-model="showTrashModal"
       :title="$t('documents.selection.trashTitle')"
+      size="sm"
       :close-on-backdrop="!bulkBusy"
     >
       <p v-if="bulkBusy" class="text-sm">
         {{ $t('documents.selection.trashRunning', { trashed: bulkProgress }) }}
       </p>
-      <p v-else class="text-sm opacity-80">
+      <p v-else class="text-sm">
         {{ $t('documents.selection.trashBody', { count: selectedCount }) }}
       </p>
       <template #actions>
@@ -1402,13 +1401,14 @@ function confirmNewFolder(): void {
     <VModal
       :model-value="renameTarget !== null"
       :title="$t('documents.rename.title')"
+      size="sm"
       :close-on-backdrop="!bulkBusy"
       @update:model-value="(v) => { if (!v && !bulkBusy) renameTarget = null; }"
     >
       <p v-if="bulkBusy" class="text-sm">
         {{ $t('documents.rename.running', { renamed: bulkProgress }) }}
       </p>
-      <form v-else @submit.prevent="confirmRename">
+      <form v-else id="document-rename-form" @submit.prevent="confirmRename">
         <VInput
           v-model="renameName"
           :label="$t('documents.rename.label')"
@@ -1427,7 +1427,7 @@ function confirmNewFolder(): void {
         <VButton v-else variant="secondary" @click="renameTarget = null">
           {{ $t('common.cancel') }}
         </VButton>
-        <VButton variant="primary" :loading="bulkBusy" @click="confirmRename">
+        <VButton type="submit" form="document-rename-form" variant="primary" :loading="bulkBusy">
           {{ $t('documents.rename.confirm') }}
         </VButton>
       </template>
@@ -1437,10 +1437,11 @@ function confirmNewFolder(): void {
     <VModal
       :model-value="pendingDelete !== null"
       :title="$t('documents.selection.trashTitle')"
+      size="sm"
       :close-on-backdrop="!deleteBusy"
       @update:model-value="(v) => { if (!v) pendingDelete = null; }"
     >
-      <p class="text-sm opacity-80">
+      <p class="text-sm">
         {{ $t('documents.rowMenu.deleteBody', {
           name: pendingDelete ? (pendingDelete.title || fileBasename(pendingDelete.path)) : '',
         }) }}
@@ -1456,8 +1457,8 @@ function confirmNewFolder(): void {
     </VModal>
 
     <!-- New (virtual) folder -->
-    <VModal v-model="showNewFolderModal" :title="$t('documents.newFolderDialog.title')">
-      <form @submit.prevent="confirmNewFolder">
+    <VModal v-model="showNewFolderModal" :title="$t('documents.newFolderDialog.title')" size="sm">
+      <form id="document-new-folder-form" @submit.prevent="confirmNewFolder">
         <VInput
           v-model="newFolderName"
           :label="$t('documents.newFolderDialog.nameLabel')"
@@ -1470,7 +1471,7 @@ function confirmNewFolder(): void {
         <VButton variant="secondary" @click="showNewFolderModal = false">
           {{ $t('common.cancel') }}
         </VButton>
-        <VButton variant="primary" @click="confirmNewFolder">
+        <VButton type="submit" form="document-new-folder-form" variant="primary">
           {{ $t('documents.newFolderDialog.create') }}
         </VButton>
       </template>

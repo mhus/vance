@@ -6,6 +6,7 @@ import {
   type FocusZone,
   MarkdownView,
   VAlert,
+  VBadge,
   VButton,
   VCard,
   VEmptyState,
@@ -636,6 +637,13 @@ const filteredMemoryEntries = computed(() => {
 // ─── Chat tab — STRENGTH:* tag helpers ────────────────────────────────
 
 const STRENGTH_PREFIX = 'STRENGTH:';
+
+/** Strong and pinned memory stands out in the accent, the rest stays grey. */
+function strengthBadgeVariant(strength: string | null): 'neutral' | 'info' | 'primary' {
+  if (strength === 'pinned') return 'primary';
+  if (strength === 'strong') return 'info';
+  return 'neutral';
+}
 
 function strengthTag(tags: string[] | undefined): string | null {
   if (!tags) return null;
@@ -1351,11 +1359,11 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                 <div class="flex items-center justify-between gap-2 text-xs opacity-60 mb-1">
                   <span class="flex items-center gap-2">
                     <span class="font-mono">{{ m.role }}</span>
-                    <span
+                    <VBadge
                       v-if="strengthTag(m.tags)"
-                      class="badge"
-                      :class="`badge--strength-${strengthTag(m.tags)}`"
-                    >{{ strengthTag(m.tags) }}</span>
+                      size="sm"
+                      :variant="strengthBadgeVariant(strengthTag(m.tags))"
+                    >{{ strengthTag(m.tags) }}</VBadge>
                   </span>
                   <span>
                     {{ fmt(m.createdAt) }}
@@ -1369,11 +1377,12 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                   v-if="otherTags(m.tags).length > 0"
                   class="mt-2 flex flex-wrap gap-1 text-xs opacity-70"
                 >
-                  <span
+                  <VBadge
                     v-for="tag in otherTags(m.tags)"
                     :key="tag"
-                    class="badge badge--secondary font-mono"
-                  >{{ tag }}</span>
+                    size="sm"
+                    class="font-mono"
+                  >{{ tag }}</VBadge>
                 </div>
               </li>
             </ul>
@@ -1401,10 +1410,11 @@ function clickProcessByMongoId(id: string | undefined | null): void {
               >
                 <div class="text-xs opacity-60 mb-2 flex flex-wrap gap-x-3 gap-y-1 items-center">
                   <span class="font-mono">{{ m.kind }}</span>
-                  <span
+                  <VBadge
                     v-if="isPrakMemory(m.metadata)"
-                    class="badge badge--prak"
-                  >{{ $t('insights.process.prakBadge') }}</span>
+                    size="sm"
+                    variant="info"
+                  >{{ $t('insights.process.prakBadge') }}</VBadge>
                   <span>{{ fmt(m.createdAt) }}</span>
                   <span v-if="m.supersededByMemoryId">
                     {{ $t('insights.process.supersededBy', { id: m.supersededByMemoryId }) }}
@@ -1419,7 +1429,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                   class="prak-meta-row text-xs flex flex-wrap gap-x-3 gap-y-1 mb-2"
                 >
                   <template v-for="(v, k) in [extractPrakMeta(m.metadata)]" :key="k">
-                    <span v-if="v.type" class="badge badge--secondary font-mono">{{ v.type }}</span>
+                    <VBadge v-if="v.type" size="sm" class="font-mono">{{ v.type }}</VBadge>
                     <span v-if="v.importance != null">
                       {{ $t('insights.prakMeta.importance') }} <strong>{{ v.importance }}</strong>/5
                     </span>
@@ -1430,11 +1440,11 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                     <span v-if="v.decay">
                       {{ $t('insights.prakMeta.decay') }} <strong>{{ v.decay }}</strong>
                     </span>
-                    <span
+                    <VBadge
                       v-for="label in (v.labels || [])"
                       :key="`lbl-${label}`"
-                      class="badge badge--secondary"
-                    >{{ label }}</span>
+                      size="sm"
+                    >{{ label }}</VBadge>
                   </template>
                 </div>
                 <p
@@ -1774,21 +1784,6 @@ function clickProcessByMongoId(id: string | undefined | null): void {
 .chat-msg--strength-strong { box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-info) 40%, transparent); }
 .chat-msg--strength-pinned { box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-primary) 60%, transparent); }
 
-.badge {
-  display: inline-block;
-  padding: 0.05rem 0.4rem;
-  border-radius: 0.25rem;
-  font-size: 0.7rem;
-  line-height: 1.25;
-  background: color-mix(in oklab, var(--color-base-content) 8%, transparent);
-  border: 1px solid color-mix(in oklab, var(--color-base-content) 12%, transparent);
-}
-.badge--secondary  { opacity: 0.75; }
-.badge--prak       { background: color-mix(in oklab, var(--color-info) 18%, transparent); border-color: color-mix(in oklab, var(--color-info) 40%, transparent); }
-.badge--strength-weak   { background: color-mix(in oklab, var(--color-base-content) 10%, transparent); opacity: 0.7; }
-.badge--strength-normal { background: color-mix(in oklab, var(--color-base-content) 12%, transparent); }
-.badge--strength-strong { background: color-mix(in oklab, var(--color-info) 20%, transparent); border-color: color-mix(in oklab, var(--color-info) 50%, transparent); font-weight: 600; }
-.badge--strength-pinned { background: color-mix(in oklab, var(--color-primary) 20%, transparent); border-color: color-mix(in oklab, var(--color-primary) 60%, transparent); font-weight: 600; }
 
 .prak-meta-row { padding: 0.25rem 0; opacity: 0.85; }
 

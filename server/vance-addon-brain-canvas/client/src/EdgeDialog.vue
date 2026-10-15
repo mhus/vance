@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { VButton, VCheckbox, VInput, VModal } from '@vance/components';
+import { VButton, VCheckbox, VIcon, VInput, VModal } from '@vance/components';
 import { useT } from './i18n';
 
 /**
@@ -87,13 +87,14 @@ defineExpose({ open: openDialog });
   <VModal
     :model-value="open"
     :title="t('canvas.edge.title')"
+    size="sm"
     :close-on-backdrop="false"
     @update:model-value="onToggle"
   >
-    <div class="flex flex-col gap-3">
-      <VInput v-model="label" :label="t('canvas.edge.label')" @keyup.enter="submit" />
+    <form id="canvas-edge-dialog-form" class="flex flex-col gap-4" @submit.prevent="submit">
+      <VInput v-model="label" :label="t('canvas.edge.label')" />
       <div>
-        <div class="mb-1 text-xs opacity-60">{{ t('canvas.edge.colour') }}</div>
+        <div class="mb-1 text-xs font-semibold text-(--v-label-secondary)">{{ t('canvas.edge.colour') }}</div>
         <div class="flex flex-wrap gap-1.5">
           <button
             v-for="c in colorOptions"
@@ -103,8 +104,9 @@ defineExpose({ open: openDialog });
             :class="{ 'edge-swatch--active': color === c.value }"
             :style="c.value ? { background: c.value } : { background: 'var(--v-surface)' }"
             :title="c.label"
+            :aria-label="c.label"
             @click="color = c.value"
-          >{{ c.value ? '' : '×' }}</button>
+          ><VIcon v-if="!c.value" name="close" /></button>
         </div>
       </div>
       <div class="flex flex-wrap gap-4">
@@ -113,11 +115,12 @@ defineExpose({ open: openDialog });
         <VCheckbox v-model="dashed" :label="t('canvas.edge.dashed')" />
         <VCheckbox v-model="thick" :label="t('canvas.edge.thick')" />
       </div>
-      <div class="mt-1 flex justify-end gap-2">
-        <VButton size="sm" variant="secondary" @click="finish(null)">{{ t('canvas.common.cancel') }}</VButton>
-        <VButton size="sm" variant="primary" @click="submit">{{ t('canvas.common.ok') }}</VButton>
-      </div>
-    </div>
+    </form>
+
+    <template #actions>
+      <VButton variant="secondary" @click="finish(null)">{{ t('canvas.common.cancel') }}</VButton>
+      <VButton type="submit" form="canvas-edge-dialog-form" variant="primary">{{ t('canvas.common.ok') }}</VButton>
+    </template>
   </VModal>
 </template>
 
@@ -128,8 +131,9 @@ defineExpose({ open: openDialog });
   border-radius: 50%;
   border: 1px solid var(--v-border);
   cursor: pointer;
-  font-size: 11px;
-  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--v-label-secondary);
 }
 .edge-swatch--active {

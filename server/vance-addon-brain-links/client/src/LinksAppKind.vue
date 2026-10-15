@@ -10,6 +10,7 @@ import {
   VShareButton,
   vanceRef,
   VIconButton,
+  useConfirm,
 } from '@vance/components';
 import { safeUrl } from '@vance/shared';
 import LinkPicture from './LinkPicture.vue';
@@ -53,6 +54,7 @@ const folder = computed(() => {
 });
 
 const t = useT();
+const confirmAction = useConfirm();
 
 const view = ref<LinksView | null>(null);
 const entries = computed<LinkEntryView[]>(() => view.value?.entries ?? []);
@@ -353,7 +355,10 @@ async function addFromDraft(): Promise<void> {
 
 async function onRemove(entry: LinkEntryView): Promise<void> {
   const label = entry.title ?? entry.host;
-  if (!window.confirm(t('links.app.confirmRemove', { label }))) return;
+  if (!await confirmAction({
+    message: t('links.app.confirmRemove', { label }),
+    confirmLabel: t('links.common.remove'),
+  })) return;
   await run(() => removeLink(props.document.projectId, folder.value, entry.url));
 }
 

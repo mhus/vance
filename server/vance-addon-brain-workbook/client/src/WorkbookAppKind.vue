@@ -9,6 +9,7 @@ import {
   VIcon,
   VIconButton,
   VLinkPicker,
+  useConfirm,
 } from '@vance/components';
 import { getUsername } from '@vance/shared/auth';
 import { WorkPageEditor, parseDocument, type ComposeRunResult } from '@vance/block-editor';
@@ -61,6 +62,7 @@ const props = defineProps<{
 
 const projectId = computed(() => props.document.projectId);
 const t = useT();
+const confirmAction = useConfirm();
 
 const folder = computed(() => props.document.path.replace(/\/_app\.yaml$/, ''));
 // Sidebar header — prefer the manifest title from `_app.yaml`
@@ -1144,7 +1146,10 @@ async function togglePinLanding(page: WorkbookPageView) {
 
 async function confirmDelete(page: WorkbookPageView) {
   closeCtxMenu();
-  if (!window.confirm(t('workbook.app.confirmDelete', { title: page.title }))) return;
+  if (!await confirmAction({
+    message: t('workbook.app.confirmDelete', { title: page.title }),
+    confirmLabel: t('workbook.common.delete'),
+  })) return;
   try {
     await deleteWorkbookPage(projectId.value, folder.value, page.id);
     if (page.id === activePageId.value) {

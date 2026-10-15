@@ -19,9 +19,12 @@ interface Props {
   navigates?: boolean;
   /** Label in danger colour — "Sign out", "Delete project…". */
   danger?: boolean;
+  /** Shown but not available: tertiary label, does not navigate. */
+  disabled?: boolean;
 }
 
-withDefaults(defineProps<Props>(), { navigates: false, danger: false });
+const props = withDefaults(defineProps<Props>(), { navigates: false, danger: false, disabled: false });
+const active = (): boolean => props.navigates && !props.disabled;
 
 defineEmits<{ (e: 'click', event: MouseEvent | KeyboardEvent): void }>();
 </script>
@@ -32,11 +35,12 @@ defineEmits<{ (e: 'click', event: MouseEvent | KeyboardEvent): void }>();
        cannot nest. -->
   <div
     :role="navigates ? 'button' : undefined"
-    :tabindex="navigates ? 0 : undefined"
-    :class="['v-group-row', { 'v-group-row-nav': navigates, 'v-group-row-icon': icon }]"
-    @click="(e: MouseEvent) => navigates && $emit('click', e)"
-    @keydown.enter.self="(e: KeyboardEvent) => navigates && $emit('click', e)"
-    @keydown.space.self.prevent="(e: KeyboardEvent) => navigates && $emit('click', e)"
+    :tabindex="active() ? 0 : undefined"
+    :aria-disabled="navigates && disabled ? 'true' : undefined"
+    :class="['v-group-row', { 'v-group-row-nav': active(), 'v-group-row-icon': icon, 'v-group-row-disabled': disabled }]"
+    @click="(e: MouseEvent) => active() && $emit('click', e)"
+    @keydown.enter.self="(e: KeyboardEvent) => active() && $emit('click', e)"
+    @keydown.space.self.prevent="(e: KeyboardEvent) => active() && $emit('click', e)"
   >
     <span v-if="icon" class="v-group-row-tile"><VIcon :name="icon" :size="16" /></span>
     <span :class="['v-group-row-label', { 'v-group-row-danger': danger }]">
@@ -50,7 +54,7 @@ defineEmits<{ (e: 'click', event: MouseEvent | KeyboardEvent): void }>();
     </span>
     <span v-if="value" class="v-group-row-value">{{ value }}</span>
     <slot />
-    <VIcon v-if="navigates" name="forward" class="v-group-row-chevron" />
+    <VIcon v-if="active()" name="forward" class="v-group-row-chevron" />
   </div>
 </template>
 
@@ -112,6 +116,7 @@ defineEmits<{ (e: 'click', event: MouseEvent | KeyboardEvent): void }>();
   overflow: hidden;
 }
 .v-group-row-danger { color: var(--v-danger); }
+.v-group-row-disabled .v-group-row-title { color: var(--v-label-tertiary); }
 .v-group-row-value { color: var(--v-label-secondary); }
 .v-group-row-chevron { color: var(--v-label-tertiary); }
 </style>

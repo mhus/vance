@@ -46,6 +46,7 @@ export * from './usePointers';
 // Translation access for bundles without vue-i18n on their dependency list —
 // every addon remote, and this package itself.
 export * from './useT';
+export * from './useConfirm';
 export { default as FormFields } from './FormFields.vue';
 export type { FormValue, FormValueObject } from './FormFields.vue';
 export { default as VAlert } from './VAlert.vue';
@@ -77,6 +78,7 @@ export { default as VFileInput } from './VFileInput.vue';
 export { default as VInput } from './VInput.vue';
 export { default as VLinkPicker } from './VLinkPicker.vue';
 export { default as VModal } from './VModal.vue';
+export { default as VConfirmDialog } from './VConfirmDialog.vue';
 export { default as VPagination } from './VPagination.vue';
 export { default as VSelect } from './VSelect.vue';
 export { default as VShareButton } from './VShareButton.vue';

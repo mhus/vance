@@ -6,10 +6,14 @@ import {
   VButton,
   VCard,
   VCheckbox,
+  VGroup,
+  VGroupRow,
   VIcon,
+  VIconButton,
   VInput,
   VModal,
   VSelect,
+  useConfirm,
 } from '@/components';
 import { useKitAdmin } from '@/composables/useKitAdmin';
 import { useKitSourceProjects } from '@/composables/useKitSourceProjects';
@@ -42,6 +46,7 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n();
+const confirmAction = useConfirm();
 const kitState = useKitAdmin();
 const kitSourceProjects = useKitSourceProjects();
 
@@ -214,10 +219,17 @@ function licenceExpiry(record: KitInstalledRecordDto): 'expired' | 'soon' | null
 }
 
 async function uninstallKit(record: KitInstalledRecordDto): Promise<void> {
-  if (!confirm(t('scopes.kit.confirmUninstall', { name: record.kit.name }))) return;
+  if (!await confirmAction({
+    message: t('scopes.kit.confirmUninstall', { name: record.kit.name }),
+    confirmLabel: t('scopes.kit.uninstall'),
+    danger: false,
+  })) return;
   // Asked separately and defaulting to no: forgetting a kit is cheap to
   // undo, deleting the files it brought is not.
-  const prune = confirm(t('scopes.kit.confirmUninstallPrune', { name: record.kit.name }));
+  const prune = await confirmAction({
+    message: t('scopes.kit.confirmUninstallPrune', { name: record.kit.name }),
+    confirmLabel: t('common.delete'),
+  });
   banner.value = null;
   try {
     await kitState.uninstall(props.projectName, record.id, prune);
@@ -228,7 +240,11 @@ async function uninstallKit(record: KitInstalledRecordDto): Promise<void> {
 }
 
 async function promoteKit(record: KitInstalledRecordDto): Promise<void> {
-  if (!confirm(t('scopes.kit.confirmPromote', { name: record.kit.name }))) return;
+  if (!await confirmAction({
+    message: t('scopes.kit.confirmPromote', { name: record.kit.name }),
+    confirmLabel: t('scopes.kit.promote'),
+    danger: false,
+  })) return;
   banner.value = null;
   try {
     await kitState.promote(props.projectName, record.id);
@@ -395,24 +411,24 @@ watch(
       <span>{{ kitState.error.value }}</span>
     </VAlert>
 
-    <div v-if="kitState.loading.value" class="opacity-70 text-sm">
+    <div v-if="kitState.loading.value" class="text-sm text-(--v-label-secondary)">
       {{ t('scopes.kit.loading') }}
     </div>
     <div v-else class="flex flex-col gap-3 text-sm">
-      <div v-if="kitState.installed.value.length === 0" class="opacity-70">
+      <div v-if="kitState.installed.value.length === 0" class="text-(--v-label-secondary)">
         {{ t('scopes.kit.none') }}
       </div>
       <div
         v-for="record in kitState.installed.value"
         :key="record.id"
-        class="flex flex-col gap-1 border-b border-base-300 pb-2 last:border-b-0"
+        class="flex flex-col gap-1 border-b border-(--v-separator) pb-2 last:border-b-0"
       >
         <div class="flex items-baseline justify-between gap-2">
           <span class="font-semibold">{{ record.kit.name }}</span>
           <div class="flex items-center gap-2 shrink-0">
             <span
               v-if="record.signatureStatus === 'VERIFIED'"
-              class="inline-flex items-center gap-1 text-xs opacity-70"
+              class="inline-flex items-center gap-1 text-xs text-(--v-label-secondary)"
               :title="t('scopes.kit.signature.verifiedHelp')"
             ><VIcon name="check" />{{ t('scopes.kit.signature.verified') }}</span>
             <!-- Only FAILED is called out. `unsigned` is the normal state
@@ -423,7 +439,7 @@ watch(
               class="inline-flex items-center gap-1 text-xs text-(--v-warning)"
               :title="t('scopes.kit.signature.failedHelp')"
             ><VIcon name="warning" />{{ t('scopes.kit.signature.failed') }}</span>
-            <span v-if="record.kit.version" class="opacity-60 text-xs">
+            <span v-if="record.kit.version" class="text-xs text-(--v-label-secondary)">
               {{ t('scopes.kit.versionPrefix', { version: record.kit.version }) }}
             </span>
           </div>
@@ -439,49 +455,49 @@ watch(
         </VAlert>
         <div
           v-else-if="licenceExpiry(record) === 'soon'"
-          class="text-xs opacity-70"
+          class="text-xs text-(--v-label-secondary)"
         >{{ t('scopes.kit.licenceExpiringSoon', {
             date: record.descriptor?.licenseExpiresAt }) }}</div>
-        <div v-if="record.kit.description" class="opacity-80">{{ record.kit.description }}</div>
-        <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs opacity-80">
-          <dt v-if="record.descriptor?.vendor" class="opacity-60">
+        <div v-if="record.kit.description">{{ record.kit.description }}</div>
+        <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+          <dt v-if="record.descriptor?.vendor" class="text-(--v-label-secondary)">
             {{ t('scopes.kit.vendor') }}
           </dt>
           <dd v-if="record.descriptor?.vendor">{{ record.descriptor.vendor }}</dd>
-          <dt v-if="record.descriptor?.license" class="opacity-60">
+          <dt v-if="record.descriptor?.license" class="text-(--v-label-secondary)">
             {{ t('scopes.kit.license') }}
           </dt>
           <dd v-if="record.descriptor?.license">{{ record.descriptor.license }}</dd>
           <!-- Only shown for purchased kits; a git kit has none of this. -->
-          <dt v-if="record.descriptor?.licensedTo" class="opacity-60">
+          <dt v-if="record.descriptor?.licensedTo" class="text-(--v-label-secondary)">
             {{ t('scopes.kit.licensedTo') }}
           </dt>
           <dd v-if="record.descriptor?.licensedTo">{{ record.descriptor.licensedTo }}</dd>
-          <dt v-if="record.descriptor?.licenseExpiresAt" class="opacity-60">
+          <dt v-if="record.descriptor?.licenseExpiresAt" class="text-(--v-label-secondary)">
             {{ t('scopes.kit.licenseExpires') }}
           </dt>
           <dd v-if="record.descriptor?.licenseExpiresAt">
             {{ record.descriptor.licenseExpiresAt }}
           </dd>
-          <dt class="opacity-60">{{ t('scopes.kit.origin') }}</dt>
+          <dt class="text-(--v-label-secondary)">{{ t('scopes.kit.origin') }}</dt>
           <dd class="break-all font-mono">{{ record.origin.url }}</dd>
-          <dt v-if="record.origin.path" class="opacity-60">{{ t('scopes.kit.path') }}</dt>
+          <dt v-if="record.origin.path" class="text-(--v-label-secondary)">{{ t('scopes.kit.path') }}</dt>
           <dd v-if="record.origin.path">{{ record.origin.path }}</dd>
-          <dt v-if="record.origin.branch" class="opacity-60">{{ t('scopes.kit.branch') }}</dt>
+          <dt v-if="record.origin.branch" class="text-(--v-label-secondary)">{{ t('scopes.kit.branch') }}</dt>
           <dd v-if="record.origin.branch">{{ record.origin.branch }}</dd>
-          <dt v-if="record.origin.commit" class="opacity-60">{{ t('scopes.kit.commit') }}</dt>
+          <dt v-if="record.origin.commit" class="text-(--v-label-secondary)">{{ t('scopes.kit.commit') }}</dt>
           <dd v-if="record.origin.commit" class="font-mono">
             {{ record.origin.commit.slice(0, 12) }}
           </dd>
-          <dt v-if="record.origin.installedAt" class="opacity-60">
+          <dt v-if="record.origin.installedAt" class="text-(--v-label-secondary)">
             {{ t('scopes.kit.installed') }}
           </dt>
           <dd v-if="record.origin.installedAt">{{ record.origin.installedAt }}</dd>
-          <dt class="opacity-60">{{ t('scopes.kit.documents') }}</dt>
+          <dt class="text-(--v-label-secondary)">{{ t('scopes.kit.documents') }}</dt>
           <dd>{{ record.artefacts?.documents?.length ?? 0 }}</dd>
-          <dt class="opacity-60">{{ t('scopes.kit.settings') }}</dt>
+          <dt class="text-(--v-label-secondary)">{{ t('scopes.kit.settings') }}</dt>
           <dd>{{ record.artefacts?.settings?.length ?? 0 }}</dd>
-          <dt v-if="(record.descriptor?.inherits?.length ?? 0) > 0" class="opacity-60">
+          <dt v-if="(record.descriptor?.inherits?.length ?? 0) > 0" class="text-(--v-label-secondary)">
             {{ t('scopes.kit.inherits') }}
           </dt>
           <dd v-if="(record.descriptor?.inherits?.length ?? 0) > 0">
@@ -522,9 +538,9 @@ watch(
            when someone actually turned it on. -->
       <div
         v-if="kitState.manifest.value"
-        class="border-t border-base-300 pt-2 text-xs opacity-80"
+        class="border-t border-(--v-separator) pt-2 text-xs"
       >
-        <div class="font-semibold opacity-90">
+        <div class="font-semibold">
           {{ t('scopes.kit.isSource', { name: kitState.manifest.value.kit.name }) }}
         </div>
         <div class="flex flex-wrap justify-end gap-2 pt-2">
@@ -543,8 +559,9 @@ watch(
           @click="updateAllKits"
         >{{ t('scopes.kit.updateAll') }}</VButton>
         <VButton
-          variant="primary"
+          variant="secondary"
           size="sm"
+          icon="add"
           :loading="kitState.busy.value"
           @click="openKitDialog('install')"
         >{{ t('scopes.kit.install') }}</VButton>
@@ -552,9 +569,9 @@ watch(
     </div>
     <div
       v-if="kitState.lastResult.value"
-      class="mt-3 border-t border-base-300 pt-2 text-xs opacity-80"
+      class="mt-3 border-t border-(--v-separator) pt-2 text-xs"
     >
-      <div class="font-semibold opacity-90 mb-1">
+      <div class="font-semibold mb-1">
         {{ kitState.lastResult.value.version
           ? t('scopes.kit.lastOperationVersion', {
               mode: kitState.lastResult.value.mode,
@@ -586,14 +603,14 @@ watch(
               + (kitState.lastResult.value.toolsUpdated?.length ?? 0),
           }) }}
         </li>
-        <li v-if="(kitState.lastResult.value.skippedPasswords?.length ?? 0) > 0" class="opacity-90">
+        <li v-if="(kitState.lastResult.value.skippedPasswords?.length ?? 0) > 0">
           {{ t('scopes.kit.passwordsSkipped', {
             count: kitState.lastResult.value.skippedPasswords.length }) }}
         </li>
         <li
           v-for="(w, i) in (kitState.lastResult.value.warnings ?? [])"
           :key="'kw-' + i"
-          class="flex items-start gap-1 opacity-90"
+          class="flex items-start gap-1"
         ><VIcon name="warning" class="text-(--v-warning)" />{{ w }}</li>
       </ul>
     </div>
@@ -601,83 +618,59 @@ watch(
 
   <!-- ─── Install / Update / Export dialog ─── -->
   <VModal v-model="showKitDialog" :title="kitDialogTitle" :close-on-backdrop="false">
-    <div class="flex flex-col gap-3">
+    <form id="kit-dialog-form" class="flex flex-col gap-4" @submit.prevent="submitKitDialog">
       <VAlert v-if="kitState.error.value" variant="error">
         <span>{{ kitState.error.value }}</span>
       </VAlert>
       <!-- Project picker: kits authored in this install. Same
            only-when-non-empty rule as the library block below. -->
-      <div
+      <VGroup
         v-if="kitDialogMode === 'install' && kitProjectOffers.length > 0"
-        class="flex flex-col gap-2 border border-base-300 rounded p-3"
+        :label="t('scopes.kit.projects.title')"
+        :note="t('scopes.kit.projects.description')"
       >
-        <div class="text-sm font-semibold">{{ t('scopes.kit.projects.title') }}</div>
-        <p class="text-xs opacity-70">{{ t('scopes.kit.projects.description') }}</p>
-        <div
+        <VGroupRow
           v-for="entry in kitProjectOffers"
           :key="entry.projectId"
-          class="flex items-center gap-2 text-sm"
-        >
-          <div class="flex-1 min-w-0">
-            <div class="flex items-baseline gap-2">
-              <span class="font-medium truncate">{{ entry.kitName }}</span>
-              <span v-if="entry.version" class="text-xs opacity-60">
-                {{ t('scopes.kit.versionPrefix', { version: entry.version }) }}
-              </span>
-            </div>
-            <div class="text-xs opacity-60 truncate">
-              {{ entry.projectTitle
-                ? `${entry.projectTitle} (${entry.projectId})` : entry.projectId }}
-            </div>
-          </div>
-          <VButton variant="secondary" size="sm" @click="pickFromProject(entry)">
-            {{ t('scopes.kit.projects.choose') }}
-          </VButton>
-        </div>
-      </div>
+          navigates
+          :label="entry.kitName"
+          :meta="entry.version
+            ? t('scopes.kit.versionPrefix', { version: entry.version }) : undefined"
+          :description="entry.projectTitle
+            ? `${entry.projectTitle} (${entry.projectId})` : entry.projectId"
+          @click="pickFromProject(entry)"
+        />
+      </VGroup>
 
       <!-- Library picker: only rendered when a library answered. With
            none configured there is nothing to show and nothing to
            explain. -->
       <div
-        v-if="kitDialogMode === 'install' && (libraryLoading || libraryEntries.length > 0)"
-        class="flex flex-col gap-2 border border-base-300 rounded p-3"
+        v-if="kitDialogMode === 'install' && libraryLoading"
+        class="text-xs text-(--v-label-secondary)"
       >
-        <div class="text-sm font-semibold">{{ t('scopes.kit.library.title') }}</div>
-        <div v-if="libraryLoading" class="text-xs opacity-70">
-          {{ t('scopes.kit.library.loading') }}
-        </div>
-        <div
+        {{ t('scopes.kit.library.loading') }}
+      </div>
+      <VGroup
+        v-else-if="kitDialogMode === 'install' && libraryEntries.length > 0"
+        :label="t('scopes.kit.library.title')"
+      >
+        <!-- Owned but not deliverable stays visible and inert: hiding
+             it would look like the entitlement vanished. -->
+        <VGroupRow
           v-for="entry in libraryEntries"
           :key="entry.sourceId + '/' + entry.kitId"
-          class="flex items-center gap-2 text-sm"
-        >
-          <div class="flex-1 min-w-0">
-            <div class="flex items-baseline gap-2">
-              <span class="font-medium truncate">{{ entry.displayName }}</span>
-              <span v-if="entry.version" class="text-xs opacity-60">
-                {{ t('scopes.kit.versionPrefix', { version: entry.version }) }}
-              </span>
-              <span v-if="entry.installed" class="text-xs opacity-60">
-                {{ t('scopes.kit.library.alreadyInstalled') }}
-              </span>
-            </div>
-            <div v-if="entry.vendor || entry.license" class="text-xs opacity-60 truncate">
-              {{ [entry.vendor, entry.license].filter(Boolean).join(' · ') }}
-            </div>
-          </div>
-          <!-- Owned but not deliverable stays visible and disabled: hiding
-               it would look like the entitlement vanished. -->
-          <VButton
-            variant="secondary"
-            size="sm"
-            :disabled="!entry.downloadable"
-            :title="entry.downloadable
-              ? undefined : t('scopes.kit.library.notDeliverable')"
-            @click="pickFromLibrary(entry)"
-          >{{ t('scopes.kit.library.choose') }}</VButton>
-        </div>
-      </div>
+          :navigates="entry.downloadable"
+          :label="entry.displayName"
+          :meta="entry.version
+            ? t('scopes.kit.versionPrefix', { version: entry.version }) : undefined"
+          :description="entry.downloadable
+            ? [entry.vendor, entry.license].filter(Boolean).join(' · ') || undefined
+            : t('scopes.kit.library.notDeliverable')"
+          :value="entry.installed ? t('scopes.kit.library.alreadyInstalled') : undefined"
+          @click="pickFromLibrary(entry)"
+        />
+      </VGroup>
 
       <VInput
         v-model="kitForm.url"
@@ -749,18 +742,20 @@ watch(
         :label="t('scopes.kit.dialog.keepPasswords')"
         :help="t('scopes.kit.dialog.keepPasswordsHelp')"
       />
-      <div class="flex justify-end gap-2 pt-2">
-        <VButton variant="secondary" @click="showKitDialog = false">
-          {{ t('scopes.common.cancel') }}
-        </VButton>
-        <VButton
-          variant="primary"
-          :disabled="kitNeedsUrl && !kitForm.url.trim()"
-          :loading="kitState.busy.value"
-          @click="submitKitDialog"
-        >{{ kitDialogSubmitLabel }}</VButton>
-      </div>
-    </div>
+    </form>
+
+    <template #actions>
+      <VButton variant="secondary" @click="showKitDialog = false">
+        {{ t('scopes.common.cancel') }}
+      </VButton>
+      <VButton
+        type="submit"
+        form="kit-dialog-form"
+        variant="primary"
+        :disabled="kitNeedsUrl && !kitForm.url.trim()"
+        :loading="kitState.busy.value"
+      >{{ kitDialogSubmitLabel }}</VButton>
+    </template>
   </VModal>
 
   <!-- ─── Per-kit config dialog ─── -->
@@ -769,7 +764,7 @@ watch(
     :title="t('scopes.kit.config.title', { name: kitConfigRecord?.kit.name ?? '' })"
     :close-on-backdrop="false"
   >
-    <div class="flex flex-col gap-3">
+    <form id="kit-config-form" class="flex flex-col gap-4" @submit.prevent="submitKitConfig">
       <VAlert v-if="kitState.error.value" variant="error">
         <span>{{ kitState.error.value }}</span>
       </VAlert>
@@ -788,13 +783,18 @@ watch(
 
       <div class="flex flex-col gap-2">
         <div class="flex items-baseline justify-between">
-          <span class="text-sm font-semibold">{{ t('scopes.kit.config.rules') }}</span>
-          <VButton variant="secondary" size="sm" @click="addKitPolicyRule">
+          <span class="text-xs font-semibold text-(--v-label-secondary)">
+            {{ t('scopes.kit.config.rules') }}
+          </span>
+          <VButton variant="secondary" size="sm" icon="add" @click="addKitPolicyRule">
             {{ t('scopes.kit.config.addRule') }}
           </VButton>
         </div>
-        <p class="text-xs opacity-70">{{ t('scopes.kit.config.rulesHelp') }}</p>
-        <div v-if="kitConfigForm.rules.length === 0" class="text-xs opacity-60">
+        <p class="text-xs text-(--v-label-secondary)">{{ t('scopes.kit.config.rulesHelp') }}</p>
+        <div
+          v-if="kitConfigForm.rules.length === 0"
+          class="text-xs text-(--v-label-secondary)"
+        >
           {{ t('scopes.kit.config.noRules') }}
         </div>
         <div
@@ -825,22 +825,26 @@ watch(
               :options="kitPolicyActionOptions"
             />
           </div>
-          <VButton variant="secondary" size="sm" @click="removeKitPolicyRule(index)">
-            {{ t('scopes.common.delete') }}
-          </VButton>
+          <VIconButton
+            icon="delete"
+            danger
+            :label="t('scopes.common.delete')"
+            @click="removeKitPolicyRule(index)"
+          />
         </div>
       </div>
+    </form>
 
-      <div class="flex justify-end gap-2 pt-2">
-        <VButton variant="secondary" @click="showKitConfigDialog = false">
-          {{ t('scopes.common.cancel') }}
-        </VButton>
-        <VButton
-          variant="primary"
-          :loading="kitState.busy.value"
-          @click="submitKitConfig"
-        >{{ t('scopes.common.save') }}</VButton>
-      </div>
-    </div>
+    <template #actions>
+      <VButton variant="secondary" @click="showKitConfigDialog = false">
+        {{ t('scopes.common.cancel') }}
+      </VButton>
+      <VButton
+        type="submit"
+        form="kit-config-form"
+        variant="primary"
+        :loading="kitState.busy.value"
+      >{{ t('scopes.common.save') }}</VButton>
+    </template>
   </VModal>
 </template>

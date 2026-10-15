@@ -7,6 +7,7 @@ import {
   VBadge,
   VButton,
   VEmptyState,
+  VGroup,
   VInput,
   VModal,
   VTextarea,
@@ -512,6 +513,7 @@ defineExpose({ reload });
       <VButton
         variant="primary"
         size="sm"
+        icon="add"
         @click="openCreateModal"
       >{{ t('designer.create') }}</VButton>
       <VButton
@@ -654,7 +656,7 @@ defineExpose({ reload });
 
     <!-- Create modal -->
     <VModal v-model="createModal" :title="t('designer.createTitle')">
-      <div class="flex flex-col gap-3">
+      <form id="designer-create-form" class="flex flex-col gap-4" @submit.prevent="submitCreate">
         <VInput
           v-model="createName"
           :label="t('designer.nameLabel')"
@@ -671,20 +673,23 @@ defineExpose({ reload });
           :label="t('designer.descriptionLabel')"
           :rows="2"
         />
-      </div>
+      </form>
       <template #actions>
-        <div class="flex justify-end gap-2">
-          <VButton variant="secondary" @click="createModal = false">{{ t('designer.cancel') }}</VButton>
-          <VButton variant="primary" :disabled="!createName.trim()" @click="submitCreate">
-            {{ t('designer.create') }}
-          </VButton>
-        </div>
+        <VButton variant="secondary" @click="createModal = false">{{ t('designer.cancel') }}</VButton>
+        <VButton
+          type="submit"
+          form="designer-create-form"
+          variant="primary"
+          :disabled="!createName.trim()"
+        >
+          {{ t('designer.createAction') }}
+        </VButton>
       </template>
     </VModal>
 
     <!-- Edit meta modal -->
     <VModal v-model="editModal" :title="t('designer.editTitle')">
-      <div class="flex flex-col gap-3">
+      <form id="designer-edit-form" class="flex flex-col gap-4" @submit.prevent="submitEdit">
         <VInput
           v-model="editTitle"
           :label="t('designer.titleLabel')"
@@ -695,24 +700,20 @@ defineExpose({ reload });
           :label="t('designer.descriptionLabel')"
           :rows="2"
         />
-      </div>
+      </form>
       <template #actions>
-        <div class="flex justify-end gap-2">
-          <VButton variant="secondary" @click="editModal = false">{{ t('designer.cancel') }}</VButton>
-          <VButton variant="primary" @click="submitEdit">{{ t('designer.save') }}</VButton>
-        </div>
+        <VButton variant="secondary" @click="editModal = false">{{ t('designer.cancel') }}</VButton>
+        <VButton type="submit" form="designer-edit-form" variant="primary">{{ t('designer.save') }}</VButton>
       </template>
     </VModal>
 
     <!-- Delete confirm modal -->
-    <VModal v-model="deleteModal" :title="t('designer.deleteTitle')">
-      <p>{{ t('designer.deleteConfirm', { name: deleteName }) }}</p>
-      <p class="text-sm text-base-content/60 mt-1">{{ t('designer.deleteTrashNote') }}</p>
+    <VModal v-model="deleteModal" :title="t('designer.deleteTitle')" size="sm">
+      <p class="text-sm">{{ t('designer.deleteConfirm', { name: deleteName }) }}</p>
+      <p class="text-sm text-(--v-label-secondary) mt-1">{{ t('designer.deleteTrashNote') }}</p>
       <template #actions>
-        <div class="flex justify-end gap-2">
-          <VButton variant="secondary" @click="deleteModal = false">{{ t('designer.cancel') }}</VButton>
-          <VButton variant="danger" filled @click="submitDelete">{{ t('designer.deleteDesign') }}</VButton>
-        </div>
+        <VButton variant="secondary" @click="deleteModal = false">{{ t('designer.cancel') }}</VButton>
+        <VButton variant="danger" filled @click="submitDelete">{{ t('designer.deleteDesign') }}</VButton>
       </template>
     </VModal>
 
@@ -720,20 +721,15 @@ defineExpose({ reload });
          small sandboxed style preview on the left (the skill's real
          style.css around a fixed demo body, served by the addon's
          token-authenticated skill-preview route), name, description and
-         activation state on the right. -->
-    <VModal v-model="skillsModal" :title="t('designer.skills.title')" size="md" class="designer-skills-modal">
-      <div class="flex flex-col gap-3 h-full">
-        <div class="flex items-center gap-2">
-          <div class="flex-1 text-sm text-base-content/60">
-            <span v-if="chatOpen">{{ t('designer.skills.chatHint') }}</span>
-            <span v-else>{{ t('designer.skills.noChatHint') }}</span>
-          </div>
-          <VIconButton icon="refresh" :label="t('designer.skills.refresh')" size="sm"
-            :loading="skillsLoading"
-            @click="loadSkills"
-           />
-        </div>
-
+         activation state on the right. A fixed height keeps the frame
+         still while the list loads; the rows scroll inside. -->
+    <VModal
+      v-model="skillsModal"
+      :title="t('designer.skills.title')"
+      :description="chatOpen ? t('designer.skills.chatHint') : t('designer.skills.noChatHint')"
+      height="80vh"
+    >
+      <div class="flex flex-col gap-4 h-full">
         <VAlert v-if="skillsError" variant="error">{{ skillsError }}</VAlert>
 
         <VEmptyState
@@ -742,88 +738,70 @@ defineExpose({ reload });
           :body="t('designer.skills.emptyBody')"
         />
 
-        <div v-else class="flex flex-col gap-2 flex-1 min-h-0 overflow-y-auto">
-          <div
-            v-for="skill in skills"
-            :key="skill.name"
-            class="flex gap-3 items-stretch rounded-lg border border-base-300 p-2"
-          >
-            <!-- Style preview: same opaque-origin sandbox as the main
-                 preview; without a style.css the skill shows a plain
-                 box instead of pretending. -->
-            <!-- eslint-disable-next-line vue/no-restricted-syntax -- stands in for the browser page canvas of the skill preview -->
-            <div class="w-44 shrink-0 h-32 rounded-md border border-(--v-separator) overflow-hidden bg-white">
-              <iframe
-                v-if="skillPreviewUrl(skill)"
-                :src="skillPreviewUrl(skill)"
-                class="w-full h-full border-0"
-                sandbox="allow-scripts"
-                referrerpolicy="no-referrer"
-                :title="t('designer.skills.previewOf', { name: skill.title })"
-              />
-              <div
-                v-else
-                class="w-full h-full flex items-center justify-center text-center text-xs text-base-content/40 px-2"
-              >{{ t('designer.skills.noStyle') }}</div>
-            </div>
+        <div v-else class="flex-1 min-h-0 overflow-y-auto">
+          <VGroup>
+            <div
+              v-for="skill in skills"
+              :key="skill.name"
+              class="flex gap-3 items-stretch p-3 border-t border-(--v-separator) first:border-t-0"
+            >
+              <!-- Style preview: same opaque-origin sandbox as the main
+                   preview; without a style.css the skill shows a plain
+                   box instead of pretending. -->
+              <!-- eslint-disable-next-line vue/no-restricted-syntax -- stands in for the browser page canvas of the skill preview -->
+              <div class="w-44 shrink-0 h-32 rounded-md border border-(--v-separator) overflow-hidden bg-white">
+                <iframe
+                  v-if="skillPreviewUrl(skill)"
+                  :src="skillPreviewUrl(skill)"
+                  class="w-full h-full border-0"
+                  sandbox="allow-scripts"
+                  referrerpolicy="no-referrer"
+                  :title="t('designer.skills.previewOf', { name: skill.title })"
+                />
+                <div
+                  v-else
+                  class="w-full h-full flex items-center justify-center text-center text-xs text-(--v-label-tertiary) px-2"
+                >{{ t('designer.skills.noStyle') }}</div>
+              </div>
 
-            <div class="flex-1 min-w-0 flex flex-col gap-1">
-              <div class="flex items-center gap-1.5 flex-wrap">
-                <span class="font-semibold">{{ skill.title }}</span>
-                <VBadge v-if="skill.active" variant="success" size="xs" outline>
-                  {{ t('designer.skills.activeBadge') }}
-                </VBadge>
-                <VBadge variant="neutral" size="xs" outline>{{ skill.source }}</VBadge>
-              <div v-if="chatOpen" class="flex items-center gap-1">
-                <!-- ▶ — composer prefill (the user may append arguments and
-                     submits); ✕ — direct CLEAR round-trip, disabled when the
-                     recipe bound the skill. Same pair the SkillPanel offers. -->
-                <VIconButton icon="play" :label="t('designer.skills.play')" size="sm"
-                  v-if="composePrompt && !skill.active"
-                  @click="playSkill(skill)"
-                 />
-                <VIconButton icon="close" :label="skill.fromRecipe
-                    ? t('designer.skills.recipeBound')
-                    : t('designer.skills.clear')" size="sm"
-                  v-if="processSkillClear && skill.active"
-                  :loading="clearingSkill === skill.name"
-                  :disabled="skill.fromRecipe"
-                  @click="clearSkill(skill)"
-                 />
+              <div class="flex-1 min-w-0 flex flex-col gap-1">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="font-semibold">{{ skill.title }}</span>
+                  <VBadge v-if="skill.active" variant="success" size="xs" outline>
+                    {{ t('designer.skills.activeBadge') }}
+                  </VBadge>
+                  <VBadge variant="neutral" size="xs" outline>{{ skill.source }}</VBadge>
+                  <div v-if="chatOpen" class="flex items-center gap-1">
+                    <!-- play — composer prefill (the user may append arguments
+                         and submits); close — direct CLEAR round-trip, disabled
+                         when the recipe bound the skill. Same pair the
+                         SkillPanel offers. -->
+                    <VIconButton icon="play" :label="t('designer.skills.play')" size="sm"
+                      v-if="composePrompt && !skill.active"
+                      @click="playSkill(skill)"
+                    />
+                    <VIconButton icon="close" :label="skill.fromRecipe
+                        ? t('designer.skills.recipeBound')
+                        : t('designer.skills.clear')" size="sm"
+                      v-if="processSkillClear && skill.active"
+                      :loading="clearingSkill === skill.name"
+                      :disabled="skill.fromRecipe"
+                      @click="clearSkill(skill)"
+                    />
+                  </div>
+                </div>
+                <div class="text-[11px] text-(--v-label-tertiary) font-mono truncate">{{ skill.name }}</div>
+                <div v-if="skill.description" class="text-xs text-(--v-label-secondary)">{{ skill.description }}</div>
               </div>
-              </div>
-              <div class="text-[11px] opacity-50 font-mono truncate">{{ skill.name }}</div>
-              <div v-if="skill.description" class="text-xs opacity-70">{{ skill.description }}</div>
             </div>
-          </div>
+          </VGroup>
         </div>
       </div>
+      <template #actions>
+        <VButton variant="secondary" icon="refresh" :loading="skillsLoading" @click="loadSkills">
+          {{ t('designer.skills.refresh') }}
+        </VButton>
+      </template>
     </VModal>
   </div>
 </template>
-
-<style scoped>
-/*
- * The skills catalogue keeps a fixed 80%-viewport frame instead of
- * growing with its content: header and chat hint stay put, the rows
- * scroll inside. The class rides on the VModal's root (Vue merges the
- * fallthrough class onto the dialog element); the box itself is
- * VModal-internal, hence :deep — sizing the box from outside is the
- * intended escape hatch, VModal deliberately owns no height knob.
- */
-.designer-skills-modal :deep(.modal-box) {
-  height: 80vh;
-  display: flex;
-  flex-direction: column;
-}
-
-/*
- * VModal wraps the default slot in a plain div; the frame only works
- * if that wrapper stretches — then the slot's own h-full column and
- * the list's flex-1/min-h-0 do the rest.
- */
-.designer-skills-modal :deep(.modal-box > div) {
-  flex: 1;
-  min-height: 0;
-}
-</style>

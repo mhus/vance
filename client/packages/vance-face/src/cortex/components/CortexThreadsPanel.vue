@@ -271,19 +271,18 @@ function when(at: Date | string | undefined): string {
 <template>
   <div class="h-full min-h-0 flex flex-col">
     <div
-      class="px-3 py-1.5 text-xs border-b border-base-300 bg-base-200/40 text-base-content/60
+      class="px-3 py-1.5 text-xs border-b border-(--v-separator) text-(--v-label-secondary)
              flex items-center gap-2 shrink-0"
     >
-      <VButton
+      <VIconButton
         v-if="openThreadId"
+        icon="back"
         size="sm"
-        variant="plain"
-        class="-ml-2"
-        :title="t('cortexThreads.backToList')"
-        :aria-label="t('cortexThreads.backToList')"
+        class="-ml-1"
+        :label="t('cortexThreads.backToList')"
         @click="backToList"
-      >‹</VButton>
-      <span v-else class="uppercase tracking-wide opacity-70">
+      />
+      <span v-else class="uppercase tracking-wide">
         {{ t('cortexThreads.heading') }}
       </span>
       <span class="truncate flex-1">{{ activeDocument?.title || activeDocument?.path }}</span>
@@ -294,7 +293,7 @@ function when(at: Date | string | undefined): string {
     </div>
 
     <div v-if="!activeDocument" class="flex-1 flex items-center justify-center p-3">
-      <p class="text-sm opacity-60">{{ t('cortexThreads.noDocument') }}</p>
+      <p class="text-sm text-(--v-label-secondary)">{{ t('cortexThreads.noDocument') }}</p>
     </div>
 
     <div v-else class="flex-1 min-h-0 overflow-y-auto">
@@ -302,7 +301,7 @@ function when(at: Date | string | undefined): string {
         <span>{{ inbox.error.value }}</span>
       </VAlert>
 
-      <div v-if="inbox.loading.value && !openThreadId" class="p-3 text-xs opacity-60">
+      <div v-if="inbox.loading.value && !openThreadId" class="p-3 text-xs text-(--v-label-secondary)">
         {{ t('cortexThreads.loading') }}
       </div>
 
@@ -317,7 +316,7 @@ function when(at: Date | string | undefined): string {
           <li
             v-for="item in inbox.items.value"
             :key="item.id ?? ''"
-            class="border-b border-base-300 px-3 py-2 cursor-pointer hover:bg-base-200
+            class="border-b border-(--v-separator) px-3 py-2 cursor-pointer hover:bg-(--v-fill)
                    flex flex-col gap-1"
             @click="openThread(item)"
           >
@@ -325,20 +324,20 @@ function when(at: Date | string | undefined): string {
               <span class="text-sm truncate flex-1">
                 {{ item.title || t('cortexThreads.noTitle') }}
               </span>
-              <span class="text-xs opacity-50 shrink-0">{{ when(item.createdAt) }}</span>
+              <span class="text-xs text-(--v-label-tertiary) shrink-0">{{ when(item.createdAt) }}</span>
             </div>
-            <div class="flex items-center gap-2 text-xs opacity-70 flex-wrap">
+            <div class="flex items-center gap-2 text-xs text-(--v-label-secondary) flex-wrap">
               <span>{{ item.type }}</span>
               <!-- The one thing worth colouring: something is waiting on a
                    person, and this panel cannot settle it. -->
               <span
                 v-if="item.requiresAction && item.status === MaximegalonStatus.PENDING"
-                class="text-warning"
+                class="text-(--v-warning)"
               >{{ t('cortexThreads.awaitingAnswer') }}</span>
-              <span v-else-if="item.status !== MaximegalonStatus.PENDING" class="opacity-60">
+              <span v-else-if="item.status !== MaximegalonStatus.PENDING" class="text-(--v-label-tertiary)">
                 {{ item.status }}
               </span>
-              <span v-if="item.messageCount" class="opacity-60">
+              <span v-if="item.messageCount" class="text-(--v-label-tertiary)">
                 {{ t('inbox.list.replies', item.messageCount) }}
               </span>
             </div>
@@ -354,7 +353,7 @@ function when(at: Date | string | undefined): string {
              no pagination, so a cut list would otherwise read as complete. -->
         <p
           v-if="inbox.itemsTruncated.value"
-          class="px-3 py-2 text-xs opacity-60 border-t border-base-300"
+          class="px-3 py-2 text-xs text-(--v-label-secondary) border-t border-(--v-separator)"
         >{{ t('cortexThreads.truncated', { count: inbox.items.value.length }) }}</p>
       </template>
 
@@ -364,7 +363,7 @@ function when(at: Date | string | undefined): string {
           <span class="font-semibold">
             {{ inbox.selected.value.title || t('cortexThreads.noTitle') }}
           </span>
-          <span class="text-xs opacity-60">{{ inbox.selected.value.type }}</span>
+          <span class="text-xs text-(--v-label-secondary)">{{ inbox.selected.value.type }}</span>
         </div>
         <MarkdownView
           v-if="inbox.selected.value.body"
@@ -376,7 +375,7 @@ function when(at: Date | string | undefined): string {
         <a
           v-if="inbox.selected.value.requiresAction
             && inbox.selected.value.status === MaximegalonStatus.PENDING"
-          class="text-xs underline opacity-80 hover:opacity-100"
+          class="text-xs text-(--v-accent-text) hover:underline"
           :href="inboxLink(inbox.selected.value.id ?? '')"
         >{{ t('cortexThreads.answerInInbox') }}</a>
 
@@ -393,14 +392,16 @@ function when(at: Date | string | undefined): string {
         />
       </div>
 
-      <div v-else class="p-3 text-xs opacity-60">{{ t('cortexThreads.loading') }}</div>
+      <div v-else class="p-3 text-xs text-(--v-label-secondary)">{{ t('cortexThreads.loading') }}</div>
     </div>
 
-    <VModal v-model="openOpen" :title="t('cortexThreads.newTitle')" :close-on-backdrop="!creating">
-      <div class="flex flex-col gap-3">
-        <p class="text-sm opacity-80">
-          {{ t('cortexThreads.newIntro', { doc: activeDocument?.title || activeDocument?.path }) }}
-        </p>
+    <VModal
+      v-model="openOpen"
+      :title="t('cortexThreads.newTitle')"
+      :description="t('cortexThreads.newIntro', { doc: activeDocument?.title || activeDocument?.path })"
+      :close-on-backdrop="!creating"
+    >
+      <div class="flex flex-col gap-4">
         <VAlert v-if="inbox.error.value" variant="error">
           <span>{{ inbox.error.value }}</span>
         </VAlert>

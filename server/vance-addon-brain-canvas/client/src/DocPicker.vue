@@ -4,8 +4,11 @@ import {
   groupTargets,
   useApplicationPicker,
   VButton,
+  VGroup,
+  VGroupRow,
   VInput,
   VModal,
+  VSegment,
 } from '@vance/components';
 import { searchDocuments } from './api';
 import type { CanvasDocItem } from './generated/canvas/CanvasDocItem';
@@ -62,6 +65,14 @@ type TabId = 'doc' | 'app' | 'starred' | 'apps';
 const tab = ref<TabId>('doc');
 const appTargets = ref<AppTargets | null>(null);
 const appQuery = ref('');
+
+// "This app" only exists when a host supplied the surrounding app's places.
+const tabOptions = computed<{ value: TabId; label: string }[]>(() => [
+  { value: 'doc', label: t('canvas.picker.tabDocument') },
+  ...(appTargets.value ? [{ value: 'app' as const, label: t('canvas.picker.tabThisApp') }] : []),
+  { value: 'starred', label: t('canvas.picker.tabStarred') },
+  { value: 'apps', label: t('canvas.picker.tabApps') },
+]);
 
 // `projectId` is a plain let (set per open()), so the picker reads it lazily.
 const apps = useApplicationPicker(() => projectId);
@@ -171,38 +182,8 @@ defineExpose({ open: openPicker });
     :close-on-backdrop="false"
     @update:model-value="onToggle"
   >
-    <div class="flex flex-col gap-2">
-      <div class="flex gap-1">
-        <VButton
-          size="sm"
-          :variant="tab === 'doc' ? 'primary' : 'secondary'"
-          @click="tab = 'doc'"
-        >
-          {{ t('canvas.picker.tabDocument') }}
-        </VButton>
-        <VButton
-          v-if="appTargets"
-          size="sm"
-          :variant="tab === 'app' ? 'primary' : 'secondary'"
-          @click="tab = 'app'"
-        >
-          {{ t('canvas.picker.tabThisApp') }}
-        </VButton>
-        <VButton
-          size="sm"
-          :variant="tab === 'starred' ? 'primary' : 'secondary'"
-          @click="tab = 'starred'"
-        >
-          {{ t('canvas.picker.tabStarred') }}
-        </VButton>
-        <VButton
-          size="sm"
-          :variant="tab === 'apps' ? 'primary' : 'secondary'"
-          @click="tab = 'apps'"
-        >
-          {{ t('canvas.picker.tabApps') }}
-        </VButton>
-      </div>
+    <div class="flex flex-col gap-4">
+      <VSegment v-model="tab" :options="tabOptions" />
 
       <template v-if="tab === 'doc'">
         <VInput
@@ -210,21 +191,21 @@ defineExpose({ open: openPicker });
           :placeholder="t('canvas.picker.searchPlaceholder')"
           @update:model-value="onQuery"
         />
-        <div class="max-h-80 overflow-auto rounded border border-base-300">
-          <div v-if="loading" class="p-3 text-sm opacity-60">{{ t('canvas.common.searching') }}</div>
-          <button
+        <div v-if="loading" class="text-sm text-(--v-label-secondary)">{{ t('canvas.common.searching') }}</div>
+        <div v-if="!loading && results.length === 0" class="text-sm text-(--v-label-secondary)">
+          {{ t('canvas.picker.noHits') }}
+        </div>
+        <VGroup v-if="results.length > 0">
+          <VGroupRow
             v-for="it in results"
             :key="it.id"
-            class="flex w-full flex-col items-start gap-0.5 border-b border-base-200 px-3 py-2 text-left hover:bg-base-200"
+            navigates
+            :label="it.title || it.path"
+            :meta="it.kind ?? undefined"
+            :description="it.path"
             @click="pick(it)"
-          >
-            <span class="text-sm font-medium">{{ it.title || it.path }}</span>
-            <span class="text-xs opacity-60">{{ it.kind ? it.kind + ' · ' : '' }}{{ it.path }}</span>
-          </button>
-          <div v-if="!loading && results.length === 0" class="p-3 text-sm opacity-60">
-            {{ t('canvas.picker.noHits') }}
-          </div>
-        </div>
+          />
+        </VGroup>
       </template>
 
       <template v-else-if="tab === 'app' && appTargets">
@@ -232,104 +213,97 @@ defineExpose({ open: openPicker });
           v-model="appQuery"
           :placeholder="t('canvas.picker.filterPlaceholder')"
         />
-        <div class="max-h-80 overflow-auto rounded border border-base-300">
-          <button
-            class="flex w-full flex-col items-start gap-0.5 border-b border-base-200 px-3 py-2 text-left hover:bg-base-200"
+        <VGroup>
+          <VGroupRow
+            navigates
+            :label="appTargets.appLabel"
+            :description="t('canvas.picker.appItself')"
             @click="pickApp()"
-          >
-            <span class="text-sm font-medium">{{ appTargets.appLabel }}</span>
-            <span class="text-xs opacity-60">{{ t('canvas.picker.appItself') }}</span>
-          </button>
-          <button
+          />
+          <VGroupRow
             v-for="target in filteredTargets"
             :key="target.handle"
-            class="flex w-full flex-col items-start gap-0.5 border-b border-base-200 px-3 py-2 text-left hover:bg-base-200"
+            navigates
+            :label="target.label"
             @click="pickTarget(target)"
-          >
-            <span class="text-sm font-medium">{{ target.label }}</span>
-          </button>
-          <div v-if="filteredTargets.length === 0" class="p-3 text-sm opacity-60">
-            {{ t('canvas.picker.noCanvasMatch') }}
-          </div>
+          />
+        </VGroup>
+        <div v-if="filteredTargets.length === 0" class="text-sm text-(--v-label-secondary)">
+          {{ t('canvas.picker.noCanvasMatch') }}
         </div>
       </template>
 
       <!-- Favourites / apps: pick an app, then optionally a place inside it. -->
       <template v-else-if="tab === 'starred' || tab === 'apps'">
-        <div v-if="apps.error.value" class="p-3 text-sm text-error">{{ apps.error.value }}</div>
-        <div v-else-if="apps.loading.value" class="p-3 text-sm opacity-60">
+        <div v-if="apps.error.value" class="text-sm text-(--v-danger)">{{ apps.error.value }}</div>
+        <div v-else-if="apps.loading.value" class="text-sm text-(--v-label-secondary)">
           {{ t('canvas.common.loading') }}
         </div>
 
         <template v-else-if="!apps.openApp.value">
-          <div class="max-h-80 overflow-auto rounded border border-base-300">
-            <button
+          <div
+            v-if="(tab === 'starred' ? apps.starred.value : apps.project.value).length === 0"
+            class="text-sm text-(--v-label-secondary)"
+          >
+            {{ tab === 'starred'
+              ? t('canvas.picker.noStarredApps')
+              : t('canvas.picker.noProjectApps') }}
+          </div>
+          <VGroup v-else>
+            <VGroupRow
               v-for="a in (tab === 'starred' ? apps.starred.value : apps.project.value)"
               :key="a.project + a.path"
-              class="flex w-full flex-col items-start gap-0.5 border-b border-base-200 px-3 py-2 text-left hover:bg-base-200"
+              navigates
+              :label="(a.icon ? a.icon + ' ' : '') + (a.title || a.path)"
+              :meta="a.app"
+              :description="a.project === projectId ? a.path : a.project + '/' + a.path"
               @click="apps.choose(a)"
-            >
-              <span class="text-sm font-medium">
-                <span v-if="a.icon">{{ a.icon }} </span>{{ a.title || a.path }}
-              </span>
-              <span class="text-xs opacity-60">
-                {{ a.app }} · {{ a.project === projectId ? a.path : a.project + '/' + a.path }}
-              </span>
-            </button>
-            <div
-              v-if="(tab === 'starred' ? apps.starred.value : apps.project.value).length === 0"
-              class="p-3 text-sm opacity-60"
-            >
-              {{ tab === 'starred'
-                ? t('canvas.picker.noStarredApps')
-                : t('canvas.picker.noProjectApps') }}
-            </div>
-          </div>
+            />
+          </VGroup>
         </template>
 
         <template v-else>
           <div class="flex items-center gap-2">
             <VButton icon="back" size="sm" variant="secondary" @click="apps.back()">{{ t('canvas.common.back') }}</VButton>
-            <span class="truncate text-sm opacity-70">
+            <span class="truncate text-sm text-(--v-label-secondary)">
               {{ apps.openApp.value.title || apps.openApp.value.path }}
             </span>
           </div>
-          <div v-if="apps.targetsError.value" class="p-3 text-sm text-error">
+          <div v-if="apps.targetsError.value" class="text-sm text-(--v-danger)">
             {{ apps.targetsError.value }}
           </div>
-          <div v-else-if="apps.targetsLoading.value" class="p-3 text-sm opacity-60">
+          <div v-else-if="apps.targetsLoading.value" class="text-sm text-(--v-label-secondary)">
             {{ t('canvas.common.loading') }}
           </div>
-          <div v-else class="max-h-80 overflow-auto rounded border border-base-300">
-            <button
-              class="flex w-full flex-col items-start gap-0.5 border-b border-base-200 px-3 py-2 text-left hover:bg-base-200"
-              @click="pickForeign(apps.openApp.value, null)"
+          <template v-else>
+            <VGroup>
+              <VGroupRow
+                navigates
+                :label="apps.openApp.value.title || apps.openApp.value.path"
+                :description="t('canvas.picker.appItselfNoPlace')"
+                @click="pickForeign(apps.openApp.value, null)"
+              />
+            </VGroup>
+            <VGroup
+              v-for="g in groupTargets(apps.targets.value)"
+              :key="g.name ?? ''"
+              :label="g.name ?? undefined"
             >
-              <span class="text-sm font-medium">
-                {{ apps.openApp.value.title || apps.openApp.value.path }}
-              </span>
-              <span class="text-xs opacity-60">{{ t('canvas.picker.appItselfNoPlace') }}</span>
-            </button>
-            <template v-for="g in groupTargets(apps.targets.value)" :key="g.name ?? ''">
-              <div v-if="g.name" class="px-3 pt-2 text-xs uppercase tracking-wide opacity-50">
-                {{ g.name }}
-              </div>
-              <button
+              <VGroupRow
                 v-for="target in g.items"
                 :key="target.handle"
-                class="flex w-full flex-col items-start gap-0.5 border-b border-base-200 px-3 py-2 text-left hover:bg-base-200"
+                navigates
+                :label="target.label"
                 @click="pickForeign(apps.openApp.value, target.handle)"
-              >
-                <span class="text-sm font-medium">{{ target.label }}</span>
-              </button>
-            </template>
-          </div>
+              />
+            </VGroup>
+          </template>
         </template>
       </template>
-
-      <div class="flex justify-end">
-        <VButton size="sm" variant="secondary" @click="finish(null)">{{ t('canvas.common.cancel') }}</VButton>
-      </div>
     </div>
+
+    <template #actions>
+      <VButton variant="secondary" @click="finish(null)">{{ t('canvas.common.cancel') }}</VButton>
+    </template>
   </VModal>
 </template>

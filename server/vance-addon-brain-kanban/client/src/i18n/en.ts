@@ -26,8 +26,8 @@ export default {
       blocked: 'blocked',
       newCard: 'New card',
       cardTitlePlaceholder: 'Card title',
+      column: 'Column',
       assigneePlaceholder: 'Assignee (optional)',
-      dueDatePlaceholder: 'Due date YYYY-MM-DD (optional)',
       error: {
         load: 'Could not load board: {message}',
         rebuild: 'Rebuild failed: {message}',

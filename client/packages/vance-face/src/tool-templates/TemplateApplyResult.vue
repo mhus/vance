@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { ToolTemplateApplyResultDto } from '@vance/generated';
-import { VAlert, VButton } from '@/components';
+import { VAlert } from '@/components';
 
 interface Props {
   result: ToolTemplateApplyResultDto;
 }
 
+// The dialog's actions — Close and, for an oauth-connect post-install step,
+// Connect — live in the parent's VModal #actions slot (corporate-design.md
+// §6.4); this component only renders the report.
 const props = defineProps<Props>();
-
-defineEmits<{ (e: 'close'): void }>();
 
 interface StatRow {
   key: string;
@@ -35,10 +36,6 @@ const rows = computed<StatRow[]>(() => {
 });
 
 const postInstall = computed(() => props.result.postInstall ?? null);
-
-function onConnect(): void {
-  window.location.href = '/connected-accounts.html';
-}
 </script>
 
 <template>
@@ -61,19 +58,6 @@ function onConnect(): void {
         <span v-if="postInstall.message">{{ postInstall.message }}</span>
         <span v-else>Post-install: {{ postInstall.kind }}</span>
       </VAlert>
-      <div v-if="postInstall.kind === 'oauth-connect'" class="flex justify-end">
-        <VButton variant="primary" @click="onConnect">
-          {{ postInstall.provider
-            ? `Connect ${postInstall.provider}`
-            : 'Open Connected Accounts' }}
-        </VButton>
-      </div>
     </section>
-
-    <div class="flex justify-end gap-2 pt-2">
-      <VButton variant="plain" @click="$emit('close')">
-        {{ $t('common.cancel') }}
-      </VButton>
-    </div>
   </div>
 </template>

@@ -16,7 +16,7 @@ import {
   pollComposeRun,
   cancelComposeRun,
 } from '@vance/shared';
-import { useDocumentPrefixReaction, useLinkPickerHost, useLocale, VIconButton, VLinkPicker } from '@vance/components';
+import { useDocumentPrefixReaction, useLinkPickerHost, useLocale, VIconButton, VLinkPicker, useConfirm } from '@vance/components';
 import { WorkPageEditor, type ComposeRunResult } from '@vance/block-editor';
 import {
   scanJournal,
@@ -54,6 +54,7 @@ const folder = computed(() => props.document.path.replace(/\/_app\.yaml$/, ''));
 const title = computed(() => view.value?.title ?? props.document.title ?? folder.value);
 
 const t = useT();
+const confirmAction = useConfirm();
 const locale = useLocale();
 
 const view = ref<JournalView | null>(null);
@@ -275,7 +276,10 @@ function onMetaChange(): void {
 async function deleteEntry(): Promise<void> {
   const date = selectedDate.value;
   if (!date || !entryExists.value) return;
-  if (!window.confirm(t('journal.confirmDelete', { date }))) return;
+  if (!await confirmAction({
+    message: t('journal.confirmDelete', { date }),
+    confirmLabel: t('journal.common.delete'),
+  })) return;
   try {
     await deleteJournalEntry(projectId.value, folder.value, date);
     entryExists.value = false;

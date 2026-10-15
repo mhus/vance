@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { VAlert, VButton, VCard } from '@vance/components';
+import { VAlert, VButton, VCard, useConfirm } from '@vance/components';
 import { computed, nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type {
@@ -55,6 +55,7 @@ const emit = defineEmits<{
 }>();
 
 const { t, locale } = useI18n();
+const confirmAction = useConfirm();
 
 const form = ref<SettingFormDto | null>(null);
 const loading = ref(false);
@@ -168,7 +169,10 @@ async function onValidate(): Promise<void> {
 
 async function onReset(): Promise<void> {
   if (!form.value) return;
-  if (!confirm(t('settingForms.confirmReset'))) return;
+  if (!await confirmAction({
+    message: t('settingForms.confirmReset'),
+    confirmLabel: t('settingForms.reset'),
+  })) return;
   submitting.value = true;
   submitError.value = null;
   errors.value = {};

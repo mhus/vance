@@ -12,6 +12,7 @@ import type {
   DocumentArchiveListResponse,
   DocumentArchiveSummary,
 } from '@vance/generated';
+import { useConfirm } from '@vance/components';
 import { useT } from './i18n';
 
 const props = defineProps<{
@@ -23,6 +24,7 @@ const emit = defineEmits<{
 }>();
 
 const t = useT();
+const confirmAction = useConfirm();
 
 const items = ref<DocumentArchiveSummary[]>([]);
 const loading = ref(false);
@@ -55,7 +57,11 @@ watch(() => props.documentId, (id) => void load(id), { immediate: true });
 async function restore(archiveId: string): Promise<void> {
   const id = props.documentId;
   if (!id) return;
-  if (!window.confirm(t('wiki.versions.confirmRestore'))) return;
+  if (!await confirmAction({
+    message: t('wiki.versions.confirmRestore'),
+    confirmLabel: t('wiki.versions.restore'),
+    danger: false,
+  })) return;
   busyId.value = archiveId;
   error.value = null;
   try {

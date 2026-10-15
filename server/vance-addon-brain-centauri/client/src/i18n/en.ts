@@ -22,7 +22,7 @@ export default {
     noFullText: 'No full text for this entry yet — the source fetches bodies on its own schedule.',
     clipped: 'Clipped',
     clip: 'Clip',
-    report: 'Report',
+    report: 'Report…',
     askTranslation: 'Ask for translation',
     openInSource: 'Open in source',
     loading: 'Loading…',

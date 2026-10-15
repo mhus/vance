@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { VButton, VColorPicker, VEmojiPicker, VTagEditor, VIcon, VIconButton } from '@vance/components';
+import {
+  VButton, VColorPicker, VEmojiPicker, VTagEditor, VIcon, VIconButton, useConfirm,
+} from '@vance/components';
 import {
   AccentColor,
   type SessionSummaryRichDto,
@@ -32,6 +34,7 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const confirmAction = useConfirm();
 
 const session = ref<SessionSummaryRichDto | null>(null);
 const loading = ref(false);
@@ -204,19 +207,30 @@ async function onTags(value: string[]): Promise<void> {
 
 async function onArchive(): Promise<void> {
   if (!session.value) return;
-  if (!window.confirm(t('chat.sessionHeader.archiveConfirm'))) return;
+  if (!await confirmAction({
+    message: t('chat.sessionHeader.archiveConfirm'),
+    confirmLabel: t('chat.sessionHeader.archive'),
+    danger: false,
+  })) return;
   await archiveAction();
 }
 
 async function onReactivate(): Promise<void> {
   if (!session.value) return;
-  if (!window.confirm(t('chat.sessionHeader.reactivateConfirm'))) return;
+  if (!await confirmAction({
+    message: t('chat.sessionHeader.reactivateConfirm'),
+    confirmLabel: t('chat.sessionHeader.reactivate'),
+    danger: false,
+  })) return;
   await reactivateAction();
 }
 
 async function onDelete(): Promise<void> {
   if (!session.value) return;
-  if (!window.confirm(t('chat.sessionHeader.deleteConfirm'))) return;
+  if (!await confirmAction({
+    message: t('chat.sessionHeader.deleteConfirm'),
+    confirmLabel: t('chat.sessionHeader.delete'),
+  })) return;
   await removeAction();
 }
 </script>

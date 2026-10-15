@@ -13,6 +13,7 @@ export default {
       saving: 'Saving…',
       saved: 'Saved',
       saveFailed: 'Save failed',
+      delete: 'Delete',
     },
     // Keyed by bucket id so the template can resolve `gtd.bucket.<id>` —
     // a module-level label map could not follow a language switch.

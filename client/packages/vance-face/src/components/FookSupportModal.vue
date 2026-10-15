@@ -86,29 +86,26 @@ async function onSubmit(): Promise<void> {
   <VModal
     :model-value="modelValue"
     :title="t('fook.title')"
+    :description="t('fook.intro')"
     :close-on-backdrop="!loading"
     @update:model-value="(v) => emit('update:modelValue', v)"
   >
-    <p class="mb-3 text-sm opacity-80">{{ t('fook.intro') }}</p>
+    <div class="flex flex-col gap-4">
+      <VTextarea
+        v-if="!submissionId"
+        v-model="text"
+        :placeholder="t('fook.placeholder')"
+        :rows="8"
+        :disabled="loading"
+      />
 
-    <VTextarea
-      v-if="!submissionId"
-      v-model="text"
-      :placeholder="t('fook.placeholder')"
-      :rows="8"
-      :disabled="loading"
-    />
+      <VAlert v-if="submissionId" variant="success">
+        {{ t('fook.submitted') }}
+        <code class="ml-1 font-mono text-xs">{{ submissionId }}</code>
+      </VAlert>
 
-    <VAlert
-      v-if="submissionId"
-      variant="success"
-      class="mt-2"
-    >
-      {{ t('fook.submitted') }}
-      <code class="ml-1 font-mono text-xs">{{ submissionId }}</code>
-    </VAlert>
-
-    <VAlert v-if="error" variant="error" class="mt-2">{{ error }}</VAlert>
+      <VAlert v-if="error" variant="error">{{ error }}</VAlert>
+    </div>
 
     <template #actions>
       <VButton variant="secondary" :disabled="loading" @click="close">

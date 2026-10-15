@@ -80,7 +80,7 @@ async function onEdit(next: SheetDocument): Promise<void> {
     <div v-if="model" class="flex flex-col gap-2 p-2">
       <div class="flex items-center gap-2">
         <span class="font-semibold flex-1 truncate">{{ document?.title || $t('kindViews.sheet.label') }}</span>
-        <span class="opacity-50 text-xs tabular-nums">{{ dims.rows }}×{{ dims.cols }}</span>
+        <span class="text-(--v-label-tertiary) text-xs tabular-nums">{{ dims.rows }}×{{ dims.cols }}</span>
         <VButton variant="plain" @click="editOpen = true">{{ $t('kindViews.sheet.edit') }}</VButton>
       </div>
       <div class="preview-wrap">
@@ -100,9 +100,9 @@ async function onEdit(next: SheetDocument): Promise<void> {
         </table>
       </div>
     </div>
-    <div v-else class="opacity-50 p-2">{{ $t('kindViews.sheet.empty') }}</div>
+    <div v-else class="text-(--v-label-secondary) p-2">{{ $t('kindViews.sheet.empty') }}</div>
 
-    <VModal v-model="editOpen" :title="$t('kindViews.sheet.label')">
+    <VModal v-model="editOpen" :title="document?.title || $t('kindViews.sheet.label')" size="xl">
       <div class="edit-host">
         <SheetView
           v-if="editOpen && model"
@@ -120,8 +120,8 @@ async function onEdit(next: SheetDocument): Promise<void> {
 .preview-wrap {
   overflow: auto;
   max-height: 14rem;
-  border: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
-  border-radius: 0.4rem;
+  border: 1px solid var(--v-separator);
+  border-radius: var(--v-radius-control);
 }
 .sheet-preview {
   border-collapse: collapse;
@@ -130,7 +130,7 @@ async function onEdit(next: SheetDocument): Promise<void> {
 }
 .sheet-preview th,
 .sheet-preview td {
-  border: 1px solid color-mix(in oklab, var(--color-base-content) 10%, transparent);
+  border: 1px solid var(--v-separator);
   padding: 0.15rem 0.4rem;
   text-align: left;
   white-space: nowrap;
@@ -139,17 +139,17 @@ async function onEdit(next: SheetDocument): Promise<void> {
   text-overflow: ellipsis;
 }
 .sheet-preview th {
-  background: var(--color-base-200);
-  font-family: ui-monospace, monospace;
+  background: var(--v-fill);
+  font-family: var(--v-font-mono);
   font-weight: 600;
-  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
+  color: var(--v-label-secondary);
   text-align: center;
 }
 .sheet-preview .rownum,
 .sheet-preview .corner {
-  background: var(--color-base-200);
-  color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
-  font-family: ui-monospace, monospace;
+  background: var(--v-fill);
+  color: var(--v-label-tertiary);
+  font-family: var(--v-font-mono);
   text-align: center;
 }
 .edit-host {

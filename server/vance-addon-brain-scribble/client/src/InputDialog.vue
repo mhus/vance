@@ -68,22 +68,23 @@ defineExpose({ open: openDialog });
   <VModal
     :model-value="open"
     :title="title"
+    size="sm"
     :close-on-backdrop="false"
     @update:model-value="onToggle"
   >
-    <div class="flex flex-col gap-3">
+    <form id="scribble-input-dialog-form" class="flex flex-col gap-4" @submit.prevent="submit">
       <VInput
         v-for="f in fields"
         :key="f.key"
         v-model="f.value"
         :label="f.label"
         :placeholder="f.placeholder"
-        @keyup.enter="submit"
       />
-      <div class="mt-1 flex justify-end gap-2">
-        <VButton size="sm" variant="secondary" @click="finish(null)">{{ t('scribble.common.cancel') }}</VButton>
-        <VButton size="sm" variant="primary" @click="submit">{{ t('scribble.common.ok') }}</VButton>
-      </div>
-    </div>
+    </form>
+
+    <template #actions>
+      <VButton variant="secondary" @click="finish(null)">{{ t('scribble.common.cancel') }}</VButton>
+      <VButton type="submit" form="scribble-input-dialog-form" variant="primary">{{ t('scribble.common.ok') }}</VButton>
+    </template>
   </VModal>
 </template>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { VAlert, VButton, VModal } from '@/components';
+import { VAlert, VButton, VIconButton, VModal } from '@/components';
 import { useDocumentArchives } from '@/composables/useDocumentArchives';
 import type { DocumentDto } from '@vance/generated';
 
@@ -139,11 +139,14 @@ async function copyToNewFile(): Promise<void> {
 </script>
 
 <template>
-  <div class="mt-3 border border-base-300 rounded-md overflow-hidden">
-    <div class="flex items-center justify-between px-3 py-2 bg-base-200 text-xs uppercase opacity-70">
+  <div class="mt-3 border border-(--v-separator) rounded-(--v-radius-group) overflow-hidden">
+    <div
+      class="flex items-center justify-between px-3 py-2 border-b border-(--v-separator)
+             text-xs uppercase text-(--v-label-secondary)"
+    >
       <span>
         {{ $t('documents.archives.heading') }}
-        <span class="ml-2 font-mono normal-case opacity-100">{{ count }}</span>
+        <span class="ml-2 font-mono normal-case">{{ count }}</span>
       </span>
     </div>
 
@@ -155,23 +158,23 @@ async function copyToNewFile(): Promise<void> {
       <div class="flex items-center justify-between gap-3">
         <VButton
           size="sm"
-          variant="primary"
+          variant="secondary"
           :loading="acting"
           :disabled="acting || !document"
           @click="createVersion"
         >
           {{ $t('documents.archives.createNow') }}
         </VButton>
-        <span v-if="flash" class="text-xs opacity-70">{{ flash }}</span>
+        <span v-if="flash" class="text-xs text-(--v-label-secondary)">{{ flash }}</span>
       </div>
 
-      <p v-if="!archives.loading.value && count === 0" class="text-sm italic opacity-60">
+      <p v-if="!archives.loading.value && count === 0" class="text-sm text-(--v-label-secondary)">
         {{ $t('documents.archives.empty') }}
       </p>
 
       <ul
         v-if="count > 0"
-        class="flex flex-col divide-y divide-base-300 min-h-24 max-h-48 overflow-y-auto"
+        class="flex flex-col divide-y divide-(--v-separator) min-h-24 max-h-48 overflow-y-auto"
       >
         <li
           v-for="archive in archives.items.value"
@@ -180,11 +183,11 @@ async function copyToNewFile(): Promise<void> {
         >
           <button
             type="button"
-            class="flex-1 text-left flex flex-col gap-0.5 hover:underline cursor-pointer"
+            class="flex-1 min-w-0 text-left flex flex-col gap-0.5 hover:underline cursor-pointer"
             @click="openPreview(archive.id)"
           >
             <span class="text-sm font-mono">{{ formatDate(archive.archivedAtMs) }}</span>
-            <span class="text-xs opacity-70 truncate">
+            <span class="text-xs text-(--v-label-secondary) truncate">
               {{ archive.path }}
               <template v-if="archive.size">
                 · {{ archive.size }} B
@@ -192,30 +195,28 @@ async function copyToNewFile(): Promise<void> {
             </span>
           </button>
           <div class="flex gap-1 shrink-0">
-            <VButton
+            <VIconButton
+              icon="restore"
               size="sm"
-              variant="plain"
+              :label="$t('documents.archives.restore')"
               :disabled="acting"
               @click="confirmRestore = archive.id"
-            >
-              {{ $t('documents.archives.restore') }}
-            </VButton>
-            <VButton
+            />
+            <VIconButton
+              icon="copy"
               size="sm"
-              variant="plain"
+              :label="$t('documents.archives.restoreCopy')"
               :disabled="acting"
               @click="confirmCopy = archive.id"
-            >
-              {{ $t('documents.archives.restoreCopy') }}
-            </VButton>
-            <VButton
+            />
+            <VIconButton
+              icon="delete"
               size="sm"
-              variant="danger"
+              danger
+              :label="$t('documents.archives.delete')"
               :disabled="acting"
               @click="confirmDelete = archive.id"
-            >
-              {{ $t('documents.archives.delete') }}
-            </VButton>
+            />
           </div>
         </li>
       </ul>
@@ -224,29 +225,25 @@ async function copyToNewFile(): Promise<void> {
     <!-- Preview modal — read-only display of the archived body. -->
     <VModal
       :model-value="archives.preview.value !== null"
+      :title="$t('documents.archives.previewTitle', {
+        when: archives.preview.value ? formatDate(archives.preview.value.archivedAtMs) : '',
+      })"
+      :description="archives.preview.value
+        ? [archives.preview.value.path, archives.preview.value.mimeType].filter(Boolean).join(' · ')
+        : undefined"
+      size="lg"
       @update:model-value="(v) => v || archives.clearPreview()"
     >
-      <template #title>
-        {{ $t('documents.archives.previewTitle', {
-          when: archives.preview.value ? formatDate(archives.preview.value.archivedAtMs) : '',
-        }) }}
-      </template>
-      <div v-if="archives.preview.value" class="flex flex-col gap-2 max-h-[60vh] overflow-y-auto">
-        <div class="text-xs opacity-70 font-mono">
-          {{ archives.preview.value.path }}
-          <template v-if="archives.preview.value.mimeType">
-            · {{ archives.preview.value.mimeType }}
-          </template>
-        </div>
+      <template v-if="archives.preview.value">
         <pre
           v-if="archives.preview.value.inline && archives.preview.value.inlineText !== undefined"
-          class="text-xs whitespace-pre-wrap font-mono bg-base-200 p-2 rounded-md"
+          class="text-xs whitespace-pre-wrap font-mono bg-(--v-fill) p-2 rounded-(--v-radius-control)"
         >{{ archives.preview.value.inlineText }}</pre>
-        <p v-else class="text-sm italic opacity-60">
+        <p v-else class="text-sm text-(--v-label-secondary)">
           {{ $t('documents.archives.previewBinary') }}
         </p>
-      </div>
-      <template #footer>
+      </template>
+      <template #actions>
         <VButton variant="secondary" @click="archives.clearPreview()">
           {{ $t('documents.archives.close') }}
         </VButton>
@@ -256,11 +253,12 @@ async function copyToNewFile(): Promise<void> {
     <!-- Confirm restore. -->
     <VModal
       :model-value="confirmRestore !== null"
+      :title="$t('documents.archives.confirmRestoreTitle')"
+      size="sm"
       @update:model-value="(v) => v || (confirmRestore = null)"
     >
-      <template #title>{{ $t('documents.archives.confirmRestoreTitle') }}</template>
       <p class="text-sm">{{ $t('documents.archives.confirmRestoreBody') }}</p>
-      <template #footer>
+      <template #actions>
         <VButton variant="secondary" :disabled="acting" @click="confirmRestore = null">
           {{ $t('documents.archives.cancel') }}
         </VButton>
@@ -273,11 +271,12 @@ async function copyToNewFile(): Promise<void> {
     <!-- Confirm restore into a new file. -->
     <VModal
       :model-value="confirmCopy !== null"
+      :title="$t('documents.archives.confirmCopyTitle')"
+      size="sm"
       @update:model-value="(v) => v || (confirmCopy = null)"
     >
-      <template #title>{{ $t('documents.archives.confirmCopyTitle') }}</template>
       <p class="text-sm">{{ $t('documents.archives.confirmCopyBody') }}</p>
-      <template #footer>
+      <template #actions>
         <VButton variant="secondary" :disabled="acting" @click="confirmCopy = null">
           {{ $t('documents.archives.cancel') }}
         </VButton>
@@ -290,11 +289,12 @@ async function copyToNewFile(): Promise<void> {
     <!-- Confirm delete. -->
     <VModal
       :model-value="confirmDelete !== null"
+      :title="$t('documents.archives.confirmDeleteTitle')"
+      size="sm"
       @update:model-value="(v) => v || (confirmDelete = null)"
     >
-      <template #title>{{ $t('documents.archives.confirmDeleteTitle') }}</template>
       <p class="text-sm">{{ $t('documents.archives.confirmDeleteBody') }}</p>
-      <template #footer>
+      <template #actions>
         <VButton variant="secondary" :disabled="acting" @click="confirmDelete = null">
           {{ $t('documents.archives.cancel') }}
         </VButton>

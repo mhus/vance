@@ -16,6 +16,7 @@ import {
   VModal,
   type FocusZone,
   type PickerNode,
+  useConfirm,
 } from '@/components';
 import RawSettingsPanel from './RawSettingsPanel.vue';
 import ActionsTab from './ActionsTab.vue';
@@ -69,6 +70,7 @@ import {
  */
 
 const { t } = useI18n();
+const confirmAction = useConfirm();
 const adminGroups = useAdminProjectGroups();
 const adminProjects = useAdminProjects();
 const profile = useProfile();
@@ -480,7 +482,10 @@ async function addEntry(): Promise<void> {
 }
 
 async function deleteEntry(row: SettingsDocRow): Promise<void> {
-  if (!window.confirm(t('settings.areas.confirmDeleteEntry', { name: row.title }))) return;
+  if (!await confirmAction({
+    message: t('settings.areas.confirmDeleteEntry', { name: row.title }),
+    confirmLabel: t('common.delete'),
+  })) return;
   areaLoading.value = true;
   try {
     await brainFetch<void>(
@@ -850,9 +855,10 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
     <!-- ─── Bereiche: add-entry dialog ─── -->
     <VModal
       v-model="showAddDialog"
+      size="sm"
       :title="t(activeArea?.settingsProvider?.titleKey ?? 'settings.pageTitle')"
     >
-      <div class="flex flex-col gap-3">
+      <form id="settings-add-entry-form" class="flex flex-col gap-4" @submit.prevent="addEntry">
         <VAlert v-if="addError" variant="error">{{ addError }}</VAlert>
         <VInput
           v-model="newEntryName"
@@ -861,21 +867,20 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
           :help="activeArea?.settingsProvider?.createHintKey
             ? t(activeArea.settingsProvider.createHintKey)
             : undefined"
-          @keydown.enter="addEntry"
         />
-        <div class="flex justify-end gap-2">
-          <VButton variant="secondary" size="sm" @click="showAddDialog = false">
-            {{ t('settings.raw.cancel') }}
-          </VButton>
-          <VButton
-            variant="primary"
-            size="sm"
-            :disabled="!newEntryName.trim()"
-            :loading="addBusy"
-            @click="addEntry"
-          >{{ t('settings.areas.addEntry') }}</VButton>
-        </div>
-      </div>
+      </form>
+      <template #actions>
+        <VButton variant="secondary" @click="showAddDialog = false">
+          {{ t('settings.raw.cancel') }}
+        </VButton>
+        <VButton
+          type="submit"
+          form="settings-add-entry-form"
+          variant="primary"
+          :disabled="!newEntryName.trim()"
+          :loading="addBusy"
+        >{{ t('settings.areas.addEntry') }}</VButton>
+      </template>
     </VModal>
   </EditorShell>
 </template>

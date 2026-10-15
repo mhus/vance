@@ -10,6 +10,8 @@ import {
   VCard,
   VCheckbox,
   VEmptyState,
+  VGroup,
+  VGroupRow,
   VInput,
   VModal,
   VSelect,
@@ -953,13 +955,13 @@ const breadcrumbs = computed<string[]>(() => {
           @click="selectArchive"
         >{{ $t('inbox.sidebar.archive') }}</button>
 
-        <div class="mt-3 text-xs uppercase opacity-50 px-2">
+        <div class="mt-3 text-xs uppercase text-(--v-label-tertiary) px-2">
           {{ $t('inbox.sidebar.teamInbox') }}
         </div>
-        <div v-if="teamsState.loading.value" class="px-2 text-xs opacity-60">
+        <div v-if="teamsState.loading.value" class="px-2 text-xs text-(--v-label-secondary)">
           {{ $t('inbox.sidebar.loadingTeams') }}
         </div>
-        <div v-else-if="teamsState.teams.value.length === 0" class="px-2 text-xs opacity-60">
+        <div v-else-if="teamsState.teams.value.length === 0" class="px-2 text-xs text-(--v-label-secondary)">
           {{ $t('inbox.sidebar.noTeams') }}
         </div>
         <button
@@ -982,27 +984,28 @@ const breadcrumbs = computed<string[]>(() => {
            to archive there). Mirrors the documents picker sub-header. -->
       <div
         v-if="!inbox.selected.value"
-        class="px-6 pt-4 pb-3 border-b border-base-300 bg-base-100 flex items-center gap-3"
+        class="px-6 pt-4 pb-3 border-b border-(--v-separator) bg-(--v-surface) flex items-center gap-3"
       >
         <div class="flex-1 min-w-0 font-semibold truncate">{{ viewLabel }}</div>
         <VButton
-          variant="primary"
-          size="sm"
-          @click="openCompose"
-        >{{ $t('inbox.compose.button') }}</VButton>
-        <VButton
           v-if="selection.kind !== 'archive' && inbox.items.value.length > 0"
-          variant="plain"
+          variant="secondary"
           size="sm"
           @click="openBulkArchive"
         >{{ $t('inbox.bulkArchive.button') }}</VButton>
+        <VButton
+          variant="primary"
+          size="sm"
+          icon="add"
+          @click="openCompose"
+        >{{ $t('inbox.compose.button') }}</VButton>
       </div>
 
       <!-- Sub-header B: detail mode. Back-button on the left + the
            item title; type and criticality move to the right. -->
       <div
         v-else
-        class="px-6 pt-4 pb-3 border-b border-base-300 bg-base-100 flex items-center gap-x-3 gap-y-1 flex-wrap"
+        class="px-6 pt-4 pb-3 border-b border-(--v-separator) bg-(--v-surface) flex items-center gap-x-3 gap-y-1 flex-wrap"
       >
         <div class="flex items-center gap-3 min-w-0 flex-1 basis-[16rem]">
           <VIconButton icon="back" :label="$t('inbox.detail.backToList')" size="sm"
@@ -1012,12 +1015,13 @@ const breadcrumbs = computed<string[]>(() => {
             {{ inbox.selected.value.title || $t('inbox.detail.noTitle') }}
           </span>
         </div>
-        <div class="text-xs opacity-70 flex items-center gap-3 shrink-0">
+        <div class="text-xs text-(--v-label-secondary) flex items-center gap-3 shrink-0">
           <span>{{ inbox.selected.value.type }}</span>
           <VBadge
             v-if="inbox.selected.value.criticality !== Criticality.NORMAL"
             variant="warning"
             size="sm"
+            soft
           >{{ inbox.selected.value.criticality }}</VBadge>
         </div>
       </div>
@@ -1058,22 +1062,22 @@ const breadcrumbs = computed<string[]>(() => {
             <span class="font-medium truncate">
               {{ item.title || $t('inbox.list.noTitle') }}
             </span>
-            <span class="text-xs opacity-60 shrink-0">{{ formatTimestamp(item.createdAt) }}</span>
+            <span class="text-xs text-(--v-label-tertiary) shrink-0">{{ formatTimestamp(item.createdAt) }}</span>
           </div>
-          <div class="flex items-center gap-2 text-xs opacity-70">
+          <div class="flex items-center gap-2 text-xs text-(--v-label-secondary)">
             <VBadge v-if="isUnread(item)" variant="primary" size="sm">
               {{ $t('inbox.list.unread') }}
             </VBadge>
             <span>{{ item.type }}</span>
-            <VBadge v-if="item.criticality !== Criticality.NORMAL" variant="warning" size="sm">{{ item.criticality }}</VBadge>
-            <span v-if="item.assignedToUserId !== currentUser" class="opacity-60 inline-flex items-center gap-1">
+            <VBadge v-if="item.criticality !== Criticality.NORMAL" variant="warning" size="sm" soft>{{ item.criticality }}</VBadge>
+            <span v-if="item.assignedToUserId !== currentUser" class="text-(--v-label-tertiary) inline-flex items-center gap-1">
               <VIcon name="arrow-right" />{{ item.assignedToUserId }}
             </span>
-            <span v-if="item.status !== MaximegalonStatus.PENDING" class="opacity-60">{{ item.status }}</span>
+            <span v-if="item.status !== MaximegalonStatus.PENDING" class="text-(--v-label-tertiary)">{{ item.status }}</span>
             <!-- That a thread has a discussion is worth seeing before opening
                  it. Absent when the server sent no count (an older brain) and
                  when there is none — "0 replies" is noise on every row. -->
-            <span v-if="item.messageCount" class="opacity-60">
+            <span v-if="item.messageCount" class="text-(--v-label-tertiary)">
               {{ $t('inbox.list.replies', item.messageCount) }}
             </span>
           </div>
@@ -1108,11 +1112,11 @@ const breadcrumbs = computed<string[]>(() => {
               <span class="font-semibold truncate">
                 {{ inbox.selected.value.title || $t('inbox.detail.noTitle') }}
               </span>
-              <span class="text-xs opacity-60">{{ inbox.selected.value.type }}</span>
+              <span class="text-xs text-(--v-label-secondary)">{{ inbox.selected.value.type }}</span>
             </div>
           </template>
 
-          <div class="text-xs opacity-60 flex flex-wrap gap-3 mb-3">
+          <div class="text-xs text-(--v-label-secondary) flex flex-wrap gap-3 mb-3">
             <span>{{ $t('inbox.detail.fromLabel', { user: inbox.selected.value.originatorUserId }) }}</span>
             <span>{{ $t('inbox.detail.toLabel', { user: inbox.selected.value.assignedToUserId }) }}</span>
             <span>{{ $t('inbox.detail.statusLabel', { status: inbox.selected.value.status }) }}</span>
@@ -1139,14 +1143,14 @@ const breadcrumbs = computed<string[]>(() => {
               </div>
               <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
                 <template v-for="fact in inbox.effect.value.facts" :key="fact.label">
-                  <dt class="opacity-70">{{ fact.label }}</dt>
+                  <dt class="text-(--v-label-secondary)">{{ fact.label }}</dt>
                   <dd class="font-medium break-all">{{ fact.value }}</dd>
                 </template>
               </dl>
               <div v-if="inbox.effect.value.statusDetail" class="text-sm">
                 {{ $t('inbox.effect.detail', { detail: inbox.effect.value.statusDetail }) }}
               </div>
-              <div v-if="isEffectPending" class="text-xs opacity-80">
+              <div v-if="isEffectPending" class="text-xs text-(--v-label-secondary)">
                 {{ $t('inbox.effect.hint') }}
               </div>
             </div>
@@ -1156,26 +1160,26 @@ const breadcrumbs = computed<string[]>(() => {
             v-if="inbox.selected.value.body"
             :source="inbox.selected.value.body"
           />
-          <div v-else class="opacity-60 italic">{{ $t('inbox.detail.noBody') }}</div>
+          <div v-else class="text-(--v-label-secondary)">{{ $t('inbox.detail.noBody') }}</div>
 
           <!-- The document this item points at. A share carries a
                pointer, never the content — so the link out is the whole
                point of the item, not an extra. -->
           <div
             v-if="sharedDocument"
-            class="mt-3 p-3 rounded border border-base-300 flex items-center justify-between gap-3"
+            class="mt-3 p-3 rounded-(--v-radius-group) border border-(--v-separator) flex items-center justify-between gap-3"
           >
             <div class="min-w-0">
-              <div class="text-xs opacity-60">{{ $t('share.inbox.documentLabel') }}</div>
+              <div class="text-xs text-(--v-label-secondary)">{{ $t('share.inbox.documentLabel') }}</div>
               <div class="font-medium truncate">
                 {{ sharedDocument.title || sharedDocument.path }}
               </div>
-              <div class="text-xs opacity-60 font-mono truncate">
+              <div class="text-xs text-(--v-label-tertiary) font-mono truncate">
                 {{ sharedDocument.projectId }}/{{ sharedDocument.path }}
               </div>
             </div>
             <VButton
-              variant="primary"
+              variant="secondary"
               size="sm"
               :href="cortexLink(sharedDocument)"
             >{{ $t('share.inbox.openInCortex') }}</VButton>
@@ -1185,21 +1189,21 @@ const breadcrumbs = computed<string[]>(() => {
                a share can carry a link, a snippet, a document, or several. -->
           <div
             v-if="sharedLink"
-            class="mt-3 p-3 rounded border border-base-300"
+            class="mt-3 p-3 rounded-(--v-radius-group) border border-(--v-separator)"
           >
-            <div class="text-xs opacity-60">{{ $t('share.inbox.linkLabel') }}</div>
+            <div class="text-xs text-(--v-label-secondary)">{{ $t('share.inbox.linkLabel') }}</div>
             <a
               :href="sharedLink.href"
               target="_blank"
               rel="noopener noreferrer nofollow"
-              class="font-medium underline break-all"
+              class="font-medium text-(--v-accent-text) hover:underline break-all"
             >{{ sharedLink.title }}</a>
           </div>
 
           <!-- Foreign text: a quote, never Markdown. -->
           <blockquote
             v-if="sharedSnippet"
-            class="mt-3 border-l-2 border-base-300 pl-3 text-sm opacity-80 whitespace-pre-wrap"
+            class="mt-3 border-l-2 border-(--v-separator) pl-3 text-sm text-(--v-label-secondary) whitespace-pre-wrap"
           >{{ sharedSnippet }}</blockquote>
 
           <div
@@ -1207,16 +1211,16 @@ const breadcrumbs = computed<string[]>(() => {
             class="mt-3 text-xs"
           >
             <details>
-              <summary class="cursor-pointer opacity-70">{{ $t('inbox.detail.payload') }}</summary>
-              <pre class="text-xs bg-base-200 p-2 rounded mt-1 overflow-auto">{{ JSON.stringify(inbox.selected.value.payload, null, 2) }}</pre>
+              <summary class="cursor-pointer text-(--v-label-secondary)">{{ $t('inbox.detail.payload') }}</summary>
+              <pre class="text-xs bg-(--v-fill) p-2 rounded-(--v-radius-control) mt-1 overflow-auto">{{ JSON.stringify(inbox.selected.value.payload, null, 2) }}</pre>
             </details>
           </div>
 
           <div
             v-if="inbox.selected.value.answer"
-            class="mt-3 p-3 rounded bg-base-200 text-sm"
+            class="mt-3 p-3 rounded-(--v-radius-group) bg-(--v-fill) text-sm"
           >
-            <div class="opacity-70 text-xs mb-1">{{ $t('inbox.detail.answer') }}</div>
+            <div class="text-(--v-label-secondary) text-xs mb-1">{{ $t('inbox.detail.answer') }}</div>
             <div>{{ $t('inbox.detail.answerOutcome', { outcome: inbox.selected.value.answer.outcome }) }}</div>
             <div v-if="inbox.selected.value.answer.value">
               {{ $t('inbox.detail.answerValue') }}
@@ -1225,7 +1229,7 @@ const breadcrumbs = computed<string[]>(() => {
             <div v-if="inbox.selected.value.answer.reason">
               {{ $t('inbox.detail.answerReason', { reason: inbox.selected.value.answer.reason }) }}
             </div>
-            <div class="opacity-60 text-xs mt-1">
+            <div class="text-(--v-label-secondary) text-xs mt-1">
               {{ $t('inbox.detail.answerBy', { user: inbox.selected.value.answer.answeredBy }) }}
             </div>
           </div>
@@ -1242,10 +1246,10 @@ const breadcrumbs = computed<string[]>(() => {
                 v-if="isAsk(inbox.selected.value) && inbox.selected.value.type === MaximegalonType.APPROVAL"
                 class="flex flex-wrap gap-2"
               >
-                <VButton variant="primary" :loading="submitting" @click="submitApproval(true)">
+                <VButton variant="secondary" :loading="submitting" @click="submitApproval(true)">
                   {{ $t('inbox.actions.yes') }}
                 </VButton>
-                <VButton variant="plain" :loading="submitting" @click="submitApproval(false)">
+                <VButton variant="secondary" :loading="submitting" @click="submitApproval(false)">
                   {{ $t('inbox.actions.no') }}
                 </VButton>
               </div>
@@ -1259,11 +1263,11 @@ const breadcrumbs = computed<string[]>(() => {
                 <VButton
                   v-for="opt in decisionOptions(inbox.selected.value)"
                   :key="opt"
-                  variant="primary"
+                  variant="secondary"
                   :loading="submitting"
                   @click="submitDecision(opt)"
                 >{{ opt }}</VButton>
-                <span v-if="decisionOptions(inbox.selected.value).length === 0" class="text-xs opacity-60">
+                <span v-if="decisionOptions(inbox.selected.value).length === 0" class="text-xs text-(--v-label-secondary)">
                   {{ $t('inbox.actions.noOptionsHint') }}
                 </span>
               </div>
@@ -1297,14 +1301,15 @@ const breadcrumbs = computed<string[]>(() => {
                    as a different intent. -->
               <div
                 v-if="isAsk(inbox.selected.value)"
-                class="flex flex-wrap items-center gap-2 pt-3 border-t border-base-300"
+                class="flex flex-wrap items-center gap-2 pt-3 border-t border-(--v-separator)"
               >
-                <VInput
-                  v-model="reasonText"
-                  :placeholder="$t('inbox.actions.reasonPlaceholder')"
-                  :disabled="submitting"
-                  class="flex-1 min-w-[14rem]"
-                />
+                <div class="flex-1 min-w-[14rem]">
+                  <VInput
+                    v-model="reasonText"
+                    :placeholder="$t('inbox.actions.reasonPlaceholder')"
+                    :disabled="submitting"
+                  />
+                </div>
                 <VButton variant="plain" :loading="submitting" @click="submitInsufficientInfo">
                   {{ $t('inbox.actions.insufficientInfo') }}
                 </VButton>
@@ -1318,7 +1323,7 @@ const breadcrumbs = computed<string[]>(() => {
                    may want to dismiss / archive / send to documents. -->
               <div
                 class="flex flex-wrap gap-2 justify-end"
-                :class="isAsk(inbox.selected.value) ? 'pt-3 border-t border-base-300' : ''"
+                :class="isAsk(inbox.selected.value) ? 'pt-3 border-t border-(--v-separator)' : ''"
               >
                 <VButton
                   variant="plain"
@@ -1336,15 +1341,17 @@ const breadcrumbs = computed<string[]>(() => {
                   :disabled="submitting"
                   @click="dismissItem"
                 >{{ $t('inbox.actions.dismiss') }}</VButton>
+                <!-- Primary only when there is nothing to answer: on an ask item
+                     the answer is the point, and archiving must not out-shout it. -->
                 <VButton
                   v-if="inbox.selected.value.status === MaximegalonStatus.ARCHIVED"
-                  variant="primary"
+                  :variant="isAsk(inbox.selected.value) ? 'secondary' : 'primary'"
                   :loading="submitting"
                   @click="unarchiveItem"
                 >{{ $t('inbox.actions.unarchive') }}</VButton>
                 <VButton
                   v-else
-                  variant="primary"
+                  :variant="isAsk(inbox.selected.value) ? 'secondary' : 'primary'"
                   :loading="submitting"
                   @click="archiveItem"
                 >{{ $t('inbox.actions.archive') }}</VButton>
@@ -1378,12 +1385,13 @@ const breadcrumbs = computed<string[]>(() => {
     <VModal
       v-model="showBulkArchive"
       :title="$t('inbox.bulkArchive.title')"
+      :description="$t('inbox.bulkArchive.body')"
+      size="sm"
       :close-on-backdrop="!bulkArchiveBusy"
     >
-      <div class="flex flex-col gap-3">
-        <p class="text-sm opacity-80">{{ $t('inbox.bulkArchive.body') }}</p>
+      <div class="flex flex-col gap-4">
         <fieldset class="flex flex-col gap-1.5">
-          <legend class="text-xs uppercase opacity-60 mb-1">
+          <legend class="text-xs font-semibold text-(--v-label-secondary) mb-1">
             {{ $t('inbox.bulkArchive.typesLegend') }}
           </legend>
           <VCheckbox
@@ -1394,7 +1402,7 @@ const breadcrumbs = computed<string[]>(() => {
             :disabled="bulkArchiveBusy"
           />
         </fieldset>
-        <div class="text-xs opacity-70">
+        <div class="text-xs text-(--v-label-secondary)">
           <span v-if="bulkArchiveCandidates.length === 0">
             {{ $t('inbox.bulkArchive.countNone') }}
           </span>
@@ -1410,8 +1418,7 @@ const breadcrumbs = computed<string[]>(() => {
           @click="showBulkArchive = false"
         >{{ $t('inbox.bulkArchive.cancel') }}</VButton>
         <VButton
-          variant="danger"
-          filled
+          variant="primary"
           :loading="bulkArchiveBusy"
           :disabled="bulkArchiveCandidates.length === 0"
           @click="submitBulkArchive"
@@ -1423,10 +1430,11 @@ const breadcrumbs = computed<string[]>(() => {
     <VModal
       v-model="delegateOpen"
       :title="$t('inbox.delegate.title')"
+      :description="$t('inbox.delegate.body')"
+      size="sm"
       :close-on-backdrop="!delegating"
     >
-      <p class="text-sm opacity-80 mb-3">{{ $t('inbox.delegate.body') }}</p>
-      <div class="flex flex-col gap-3">
+      <div class="flex flex-col gap-4">
         <VSelect
           v-model="delegateTarget"
           :options="delegateOptions"
@@ -1457,36 +1465,38 @@ const breadcrumbs = computed<string[]>(() => {
     <VModal
       v-model="composeOpen"
       :title="$t('inbox.compose.title')"
+      :description="$t('inbox.compose.body')"
       :close-on-backdrop="!composing"
     >
-      <p class="text-sm opacity-80 mb-3">{{ $t('inbox.compose.body') }}</p>
-      <div class="flex flex-col gap-3">
+      <div class="flex flex-col gap-4">
         <!-- The address: either a picked target, or the search that picks one.
              Pickers are not directories — the list is bounded, and refining
              the query is the way forward. -->
-        <div
-          v-if="composeTarget"
-          class="flex items-center gap-2 p-2 rounded border border-base-300"
-        >
-          <VBadge :variant="composeTarget.kind === 'team' ? 'primary' : 'ghost'" size="sm">
-            {{ composeTarget.kind === 'team'
-              ? $t('inbox.compose.teamLabel') : $t('inbox.compose.userLabel') }}
-          </VBadge>
-          <span class="flex-1 min-w-0 truncate font-medium">{{ composeTarget.label }}</span>
-          <VBadge
-            v-if="composeTarget.kind === 'user' && composeTarget.name === currentUser"
-            variant="info"
-            size="sm"
-            soft
-          >{{ $t('inbox.compose.selfLabel') }}</VBadge>
-          <VButton
-            variant="secondary"
-            size="sm"
-            :disabled="composing"
-            @click="clearComposeTarget"
-          >{{ $t('inbox.compose.change') }}</VButton>
+        <div v-if="composeTarget" class="flex flex-col gap-1">
+          <span class="text-xs font-semibold text-(--v-label-secondary)">
+            {{ $t('inbox.compose.recipient') }}
+          </span>
+          <VGroup>
+            <VGroupRow
+              :icon="composeTarget.kind === 'team' ? 'team' : 'user'"
+              :label="composeTarget.label"
+            >
+              <VBadge
+                v-if="composeTarget.kind === 'user' && composeTarget.name === currentUser"
+                variant="info"
+                size="sm"
+                soft
+              >{{ $t('inbox.compose.selfLabel') }}</VBadge>
+              <VButton
+                variant="secondary"
+                size="sm"
+                :disabled="composing"
+                @click="clearComposeTarget"
+              >{{ $t('inbox.compose.change') }}</VButton>
+            </VGroupRow>
+          </VGroup>
         </div>
-        <template v-else>
+        <div v-else class="flex flex-col gap-2">
           <VInput
             ref="composeSearchInput"
             v-model="composeQuery"
@@ -1496,31 +1506,29 @@ const breadcrumbs = computed<string[]>(() => {
           />
           <div
             v-if="inbox.recipientResults.value.length > 0"
-            class="flex flex-col gap-1 max-h-64 overflow-y-auto"
+            class="max-h-64 overflow-y-auto"
           >
-            <button
-              v-for="r in inbox.recipientResults.value"
-              :key="r.kind + ':' + r.name"
-              type="button"
-              class="flex items-center gap-2 px-2 py-1.5 rounded text-left"
-              :disabled="composing"
-              @click="pickRecipient(r)"
-            >
-              <VBadge variant="ghost" size="sm">
-                {{ r.kind === InboxRecipientKind.TEAM
-                  ? $t('inbox.compose.teamLabel') : $t('inbox.compose.userLabel') }}
-              </VBadge>
-              <span class="truncate">{{ r.displayName }}</span>
-              <VBadge v-if="r.name === currentUser" variant="info" size="sm" soft>
-                {{ $t('inbox.compose.selfLabel') }}
-              </VBadge>
-            </button>
+            <VGroup>
+              <VGroupRow
+                v-for="r in inbox.recipientResults.value"
+                :key="r.kind + ':' + r.name"
+                navigates
+                :icon="r.kind === InboxRecipientKind.TEAM ? 'team' : 'user'"
+                :label="r.displayName"
+                :meta="r.displayName !== r.name ? r.name : undefined"
+                @click="!composing && pickRecipient(r)"
+              >
+                <VBadge v-if="r.name === currentUser" variant="info" size="sm" soft>
+                  {{ $t('inbox.compose.selfLabel') }}
+                </VBadge>
+              </VGroupRow>
+            </VGroup>
           </div>
-          <div v-else class="text-xs opacity-60">{{ $t('inbox.compose.noMatches') }}</div>
-          <div v-if="inbox.recipientsTruncated.value" class="text-xs opacity-60">
+          <div v-else class="text-xs text-(--v-label-secondary)">{{ $t('inbox.compose.noMatches') }}</div>
+          <div v-if="inbox.recipientsTruncated.value" class="text-xs text-(--v-label-secondary)">
             {{ $t('inbox.compose.truncated', { n: inbox.recipientResults.value.length }) }}
           </div>
-        </template>
+        </div>
         <VInput
           v-model="composeTitle"
           :label="$t('inbox.compose.subject')"
@@ -1532,12 +1540,12 @@ const breadcrumbs = computed<string[]>(() => {
           :rows="6"
           :disabled="composing"
         />
+        <!-- Inline, not behind the modal: the user is mid-interaction with the
+             search — an error they cannot see helps nobody. -->
+        <VAlert v-if="composeErrorText" variant="error">
+          <span>{{ composeErrorText }}</span>
+        </VAlert>
       </div>
-      <!-- Inline, not behind the modal: the user is mid-interaction with the
-           search — an error they cannot see helps nobody. -->
-      <VAlert v-if="composeErrorText" variant="error" class="mt-3">
-        <span>{{ composeErrorText }}</span>
-      </VAlert>
       <template #actions>
         <VButton variant="secondary" :disabled="composing" @click="composeOpen = false">
           {{ $t('inbox.compose.cancel') }}
@@ -1587,19 +1595,19 @@ const breadcrumbs = computed<string[]>(() => {
   display: block;
   text-align: left;
   padding: 0.4rem 0.6rem;
-  border-radius: 0.375rem;
+  border-radius: var(--v-radius-control);
   font-size: 0.875rem;
   background: transparent;
   cursor: pointer;
   width: 100%;
 }
 .sidebar-item:hover {
-  background: color-mix(in oklab, var(--color-base-content) 8%, transparent);
+  background: var(--v-fill);
 }
 .sidebar-item--active {
-  background: color-mix(in oklab, var(--color-primary) 15%, transparent);
-  color: var(--color-primary);
-  font-weight: 600;
+  background: var(--v-selection);
+  color: var(--v-accent-text);
+  font-weight: 500;
 }
 .sidebar-item--child {
   padding-left: 1.5rem;
@@ -1608,15 +1616,10 @@ const breadcrumbs = computed<string[]>(() => {
 
 .list-row {
   padding: 0.6rem 0.75rem;
-  border-radius: 0.5rem;
+  border-radius: var(--v-radius-control);
   cursor: pointer;
-  border: 1px solid transparent;
 }
 .list-row:hover {
-  background: color-mix(in oklab, var(--color-base-content) 4%, transparent);
-}
-.list-row--active {
-  background: color-mix(in oklab, var(--color-primary) 8%, transparent);
-  border-color: color-mix(in oklab, var(--color-primary) 40%, transparent);
+  background: color-mix(in srgb, var(--v-fill) 50%, transparent);
 }
 </style>

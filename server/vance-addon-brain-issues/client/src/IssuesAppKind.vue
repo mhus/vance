@@ -16,7 +16,7 @@ import {
   pollComposeRun,
   cancelComposeRun,
 } from '@vance/shared';
-import { useDocumentPrefixReaction, useLinkPickerHost, VIconButton, VLinkPicker } from '@vance/components';
+import { useDocumentPrefixReaction, useLinkPickerHost, VIconButton, VLinkPicker, useConfirm } from '@vance/components';
 import { WorkPageEditor, type ComposeRunResult } from '@vance/block-editor';
 import {
   scanIssues,
@@ -52,6 +52,7 @@ const folder = computed(() => props.document.path.replace(/\/_app\.yaml$/, ''));
 const title = computed(() => view.value?.title ?? props.document.title ?? folder.value);
 
 const t = useT();
+const confirmAction = useConfirm();
 
 const view = ref<IssuesView | null>(null);
 const error = ref<string | null>(null);
@@ -223,7 +224,10 @@ async function toggleArchive(): Promise<void> {
 async function removeIssue(): Promise<void> {
   const path = selectedPath.value;
   if (!path) return;
-  if (!window.confirm(t('issues.confirmDelete'))) return;
+  if (!await confirmAction({
+    message: t('issues.confirmDelete'),
+    confirmLabel: t('issues.common.delete'),
+  })) return;
   try {
     await deleteIssue(projectId.value, path);
     detail.value = null;

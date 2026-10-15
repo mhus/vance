@@ -8,8 +8,10 @@ import {
   VButton,
   VCard,
   VEmptyState,
+  VIconButton,
   VInput,
   VModal,
+  useConfirm,
 } from '@/components';
 import { useAdminOAuthProviders } from '@/composables/useAdminOAuthProviders';
 import type { OAuthProviderWriteRequest } from '@vance/generated';
@@ -17,6 +19,7 @@ import type { OAuthProviderWriteRequest } from '@vance/generated';
 const PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
 
 const { t } = useI18n();
+const confirmAction = useConfirm();
 const state = useAdminOAuthProviders();
 
 const selectedProviderId = ref<string | null>(null);
@@ -76,7 +79,10 @@ async function save(): Promise<void> {
 
 async function removeClientSecret(): Promise<void> {
   if (!selectedProviderId.value) return;
-  if (!confirm(t('oauthProviders.confirmRemoveSecret'))) return;
+  if (!await confirmAction({
+    message: t('oauthProviders.confirmRemoveSecret'),
+    confirmLabel: t('oauthProviders.cards.removeSecret'),
+  })) return;
   const body: OAuthProviderWriteRequest = {
     yaml: form.yaml,
     clientSecret: '',
@@ -91,7 +97,10 @@ async function removeClientSecret(): Promise<void> {
 
 async function deleteProvider(): Promise<void> {
   if (!selectedProviderId.value) return;
-  if (!confirm(t('oauthProviders.confirmDelete', { id: selectedProviderId.value }))) return;
+  if (!await confirmAction({
+    message: t('oauthProviders.confirmDelete', { id: selectedProviderId.value }),
+    confirmLabel: t('common.delete'),
+  })) return;
   try {
     await state.remove(selectedProviderId.value);
     selectedProviderId.value = null;
@@ -162,15 +171,18 @@ function selectProvider(providerId: string): void {
     <template #sidebar>
       <nav class="flex flex-col gap-1 p-2">
         <div class="flex items-center justify-between px-2 mb-1">
-          <span class="text-xs uppercase opacity-50">
+          <span class="text-xs uppercase text-(--v-label-secondary)">
             {{ $t('oauthProviders.sidebar.providersLabel') }}
           </span>
-          <VButton variant="plain" size="sm" @click="openNewProvider">
-            {{ $t('oauthProviders.sidebar.addNew') }}
-          </VButton>
+          <VIconButton
+            icon="add"
+            size="sm"
+            :label="$t('oauthProviders.newModal.title')"
+            @click="openNewProvider"
+          />
         </div>
 
-        <div v-if="state.loading.value" class="px-2 text-xs opacity-60">
+        <div v-if="state.loading.value" class="px-2 text-xs text-(--v-label-secondary)">
           {{ $t('oauthProviders.loading') }}
         </div>
         <VEmptyState
@@ -191,7 +203,7 @@ function selectProvider(providerId: string): void {
             <span class="font-mono text-sm truncate">{{ p.providerId }}</span>
             <span class="text-xs px-1.5 py-0.5 rounded badge-type">{{ p.typeId }}</span>
           </div>
-          <div class="flex items-center gap-2 text-xs opacity-60">
+          <div class="flex items-center gap-2 text-xs">
             <span
               :class="p.hasClientSecret ? 'badge-secret-set' : 'badge-secret-missing'"
             >
@@ -224,7 +236,7 @@ function selectProvider(providerId: string): void {
           <div class="flex items-center justify-between gap-3">
             <div>
               <div class="font-mono text-lg">{{ selected.providerId }}</div>
-              <div class="text-sm opacity-70">
+              <div class="text-sm text-(--v-label-secondary)">
                 <span class="badge-type">{{ selected.typeId }}</span>
                 <span class="ml-2">
                   {{ $t('oauthProviders.detail.clientIdLabel') }}
@@ -248,7 +260,7 @@ function selectProvider(providerId: string): void {
         </VCard>
 
         <VCard :title="$t('oauthProviders.cards.yamlTitle')">
-          <p class="text-xs opacity-70 mb-2">
+          <p class="text-xs text-(--v-label-secondary) mb-2">
             {{ $t('oauthProviders.cards.yamlHelp') }}
           </p>
           <CodeEditor
@@ -259,7 +271,7 @@ function selectProvider(providerId: string): void {
         </VCard>
 
         <VCard :title="$t('oauthProviders.cards.secretTitle')">
-          <p class="text-xs opacity-70 mb-2">
+          <p class="text-xs text-(--v-label-secondary) mb-2">
             {{ selected.hasClientSecret
               ? $t('oauthProviders.cards.secretIsSet')
               : $t('oauthProviders.cards.secretIsMissing') }}
@@ -284,8 +296,17 @@ function selectProvider(providerId: string): void {
     </div>
 
     <!-- ─── New-provider modal ─── -->
-    <VModal v-model="showNewModal" :title="$t('oauthProviders.newModal.title')">
-      <div class="flex flex-col gap-3">
+    <VModal
+      v-model="showNewModal"
+      size="sm"
+      :title="$t('oauthProviders.newModal.title')"
+      :description="$t('oauthProviders.newModal.stubInfo')"
+    >
+      <form
+        id="oauth-provider-new-form"
+        class="flex flex-col gap-4"
+        @submit.prevent="submitNewProvider"
+      >
         <VAlert v-if="newProviderError" variant="error">
           <span>{{ newProviderError }}</span>
         </VAlert>
@@ -295,20 +316,18 @@ function selectProvider(providerId: string): void {
           :help="$t('oauthProviders.newModal.idHelp')"
           required
         />
-        <p class="text-xs opacity-70">
-          {{ $t('oauthProviders.newModal.stubInfo') }}
-        </p>
-        <div class="flex justify-end gap-2">
-          <VButton variant="secondary" @click="showNewModal = false">
-            {{ $t('oauthProviders.newModal.cancel') }}
-          </VButton>
-          <VButton
-            variant="primary"
-            :loading="state.busy.value"
-            @click="submitNewProvider"
-          >{{ $t('oauthProviders.newModal.create') }}</VButton>
-        </div>
-      </div>
+      </form>
+      <template #actions>
+        <VButton variant="secondary" @click="showNewModal = false">
+          {{ $t('oauthProviders.newModal.cancel') }}
+        </VButton>
+        <VButton
+          type="submit"
+          form="oauth-provider-new-form"
+          variant="primary"
+          :loading="state.busy.value"
+        >{{ $t('oauthProviders.newModal.create') }}</VButton>
+      </template>
     </VModal>
   </EditorShell>
 </template>
@@ -324,27 +343,17 @@ function selectProvider(providerId: string): void {
   width: 100%;
   border: 1px solid transparent;
 }
-.provider-item:hover { background: color-mix(in oklab, var(--color-base-content) 6%, transparent); }
+.provider-item:hover { background: var(--v-fill); }
 .provider-item--active {
-  background: color-mix(in oklab, var(--color-primary) 12%, transparent);
-  border-color: color-mix(in oklab, var(--color-primary) 30%, transparent);
+  background: var(--v-selection);
+  color: var(--v-accent-text);
 }
 .badge-type {
-  background: color-mix(in oklab, var(--color-info) 18%, transparent);
-  color: var(--color-info-content);
+  background: var(--v-fill);
+  color: var(--v-label-secondary);
   padding: 0 0.4rem;
   border-radius: 0.25rem;
 }
-.badge-secret-set {
-  background: color-mix(in oklab, var(--color-success) 18%, transparent);
-  color: var(--color-success-content);
-  padding: 0 0.4rem;
-  border-radius: 0.25rem;
-}
-.badge-secret-missing {
-  background: color-mix(in oklab, var(--color-warning) 18%, transparent);
-  color: var(--color-warning-content);
-  padding: 0 0.4rem;
-  border-radius: 0.25rem;
-}
+.badge-secret-set { color: var(--v-success); }
+.badge-secret-missing { color: var(--v-warning); }
 </style>

@@ -23,7 +23,7 @@ import {
   generateKeyPair,
 } from '@vance/age';
 
-import { VAlert, VButton, VFileInput, VInput, VModal, VSelect, VTextarea } from '@/components';
+import { VAlert, VButton, VFileInput, VInput, VModal, VSegment, VTextarea } from '@/components';
 import { transformAgeTab } from '@/cortex/ageDocument';
 import { useAgeKeyStore } from '@/cortex/stores/ageKeyStore';
 import { useCortexStore } from '@/cortex/stores/cortexStore';
@@ -201,13 +201,11 @@ async function confirmDecrypt(): Promise<void> {
     :title="mode === 'encrypt'
       ? $t('cortex.age.transform.encryptTitle')
       : $t('cortex.age.transform.decryptTitle')"
+    :description="$t('cortex.age.transform.intro')"
     :close-on-backdrop="false"
     @update:model-value="(v: boolean) => emit('update:modelValue', v)"
   >
-    <div class="space-y-4">
-      <p class="text-sm">
-        {{ $t('cortex.age.transform.intro') }}
-      </p>
+    <div class="flex flex-col gap-4">
       <VInput
         v-model="targetPath"
         :label="$t('cortex.age.transform.targetLabel')"
@@ -219,14 +217,19 @@ async function confirmDecrypt(): Promise<void> {
       </VAlert>
 
       <!-- ── Encrypt: the key that can decrypt ─────────────────────── -->
-      <div v-if="mode === 'encrypt'" class="space-y-3">
-        <VSelect
-          v-model="keyMode"
-          :options="keyModeOptions"
-          :label="$t('cortex.age.transform.keySection')"
-        />
+      <div v-if="mode === 'encrypt'" class="flex flex-col gap-3">
+        <div class="flex flex-col gap-1">
+          <span class="text-xs font-semibold text-(--v-label-secondary)">
+            {{ $t('cortex.age.transform.keySection') }}
+          </span>
+          <VSegment
+            v-model="keyMode"
+            :options="keyModeOptions"
+            :aria-label="$t('cortex.age.transform.keySection')"
+          />
+        </div>
         <template v-if="keyMode === 'identities'">
-          <p v-if="ageKeys.identities.length" class="text-xs opacity-70">
+          <p v-if="ageKeys.identities.length" class="text-xs text-(--v-label-secondary)">
             {{ $t('cortex.age.transform.identitiesInfo', { n: ageKeys.identities.length }) }}
           </p>
           <VTextarea
@@ -239,23 +242,24 @@ async function confirmDecrypt(): Promise<void> {
             <VButton size="sm" variant="secondary" :disabled="!identityText.trim()" @click="addPastedIdentity">
               {{ $t('cortex.age.transform.addIdentity') }}
             </VButton>
-            <VFileInput
-              v-model="identityFiles"
-              class="max-w-xs"
-              :accept="'.txt,text/plain'"
-              :label="$t('cortex.age.identityFileLabel')"
-              @update:model-value="onImportIdentityFile"
-            />
+            <div class="max-w-xs">
+              <VFileInput
+                v-model="identityFiles"
+                :accept="'.txt,text/plain'"
+                :label="$t('cortex.age.identityFileLabel')"
+                @update:model-value="onImportIdentityFile"
+              />
+            </div>
           </div>
           <template v-if="!generated">
-            <VButton variant="secondary" size="sm" icon="key" @click="onGenerate">
+            <VButton variant="secondary" size="sm" @click="onGenerate">
               {{ $t('cortex.age.transform.generate') }}
             </VButton>
           </template>
           <template v-else>
             <VAlert variant="warning">{{ $t('cortex.age.transform.generatedWarning') }}</VAlert>
-            <pre class="overflow-x-auto rounded border border-base-300 p-2 font-mono text-xs whitespace-pre-wrap">{{ generated.identity }}</pre>
-            <VButton size="sm" icon="download" @click="downloadKeyFile">
+            <pre class="overflow-x-auto rounded-(--v-radius-control) border border-(--v-separator) p-2 font-mono text-xs whitespace-pre-wrap">{{ generated.identity }}</pre>
+            <VButton variant="secondary" size="sm" @click="downloadKeyFile">
               {{ $t('cortex.age.transform.downloadKey') }}
             </VButton>
           </template>
@@ -267,13 +271,13 @@ async function confirmDecrypt(): Promise<void> {
             :label="$t('cortex.age.passphraseLabel')"
             autocomplete="off"
           />
-          <p class="text-xs opacity-60">{{ $t('cortex.age.transform.passphraseCostHint') }}</p>
+          <p class="text-xs text-(--v-label-secondary)">{{ $t('cortex.age.transform.passphraseCostHint') }}</p>
         </template>
       </div>
 
       <!-- ── Decrypt: bring a fitting key ──────────────────────────── -->
-      <div v-else class="space-y-3">
-        <p v-if="ageKeys.hasSecrets" class="text-xs opacity-70">
+      <div v-else class="flex flex-col gap-3">
+        <p v-if="ageKeys.hasSecrets" class="text-xs text-(--v-label-secondary)">
           {{ $t('cortex.age.keyCount', {
             identities: ageKeys.identities.length,
             passphrases: ageKeys.passphrases.length,
@@ -285,13 +289,14 @@ async function confirmDecrypt(): Promise<void> {
           :label="$t('cortex.age.identityLabel')"
           :placeholder="'AGE-SECRET-KEY-1…'"
         />
-        <VFileInput
-          v-model="identityFiles"
-          class="max-w-xs"
-          :accept="'.txt,text/plain'"
-          :label="$t('cortex.age.identityFileLabel')"
-          @update:model-value="onImportIdentityFile"
-        />
+        <div class="max-w-xs">
+          <VFileInput
+            v-model="identityFiles"
+            :accept="'.txt,text/plain'"
+            :label="$t('cortex.age.identityFileLabel')"
+            @update:model-value="onImportIdentityFile"
+          />
+        </div>
         <VInput
           v-model="passphraseText"
           type="password"
@@ -307,7 +312,7 @@ async function confirmDecrypt(): Promise<void> {
       <VButton variant="secondary" :disabled="busy" @click="emit('update:modelValue', false)">
         {{ $t('common.cancel') }}
       </VButton>
-      <VButton :loading="busy" :disabled="!canConfirm" @click="onConfirm">
+      <VButton variant="primary" :loading="busy" :disabled="!canConfirm" @click="onConfirm">
         {{ mode === 'encrypt'
           ? $t('cortex.age.transform.confirmEncrypt')
           : $t('cortex.age.transform.confirmDecrypt') }}

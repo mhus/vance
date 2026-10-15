@@ -5,7 +5,7 @@
  * opening one means (Cortex navigates carrying its open tabs, the inbox
  * swaps the panel in place).
  *
- * <p>The "+ New session" button opens a recipe-selection modal inline and
+ * <p>The "New session" button opens a recipe-selection modal inline and
  * bootstraps via WebSocket rather than sending the user to /chat —
  * whatever the host had on screen survives.
  */
@@ -24,7 +24,17 @@ import {
   type SessionGroupDto,
   type SessionSummaryRichDto,
 } from '@vance/generated';
-import { VAlert, VButton, VIcon, VInput, VModal, VIconButton } from '@/components';
+import {
+  VAlert,
+  VButton,
+  VCheckbox,
+  VGroup,
+  VGroupRow,
+  VIcon,
+  VIconButton,
+  VInput,
+  VModal,
+} from '@/components';
 import { useSessionGroups } from '@/composables/useSessionGroups';
 import { useSessionGroupCollapse } from '@/composables/useSessionGroupCollapse';
 import { filterListedRecipes, groupListedRecipes } from '@/recipes/recipePickerGroups';
@@ -51,7 +61,7 @@ const filter = ref('');
 const showArchived = ref(false);
 
 // ─── Inline recipe picker + session bootstrap ───
-// Mirrors PickerView.vue's recipe modal so the "+" button stays in
+// Mirrors PickerView.vue's recipe modal so the add button stays in
 // /cortex instead of redirecting to /chat (which would wipe
 // the user's open tabs). On success we emit `open-session` so
 // EditorApp's enterSession() navigates to /cortex?sessionId=…
@@ -181,8 +191,8 @@ const COLOR_BORDER: Record<AccentColor, string> = {
 };
 
 function colorBorderClass(session: SessionSummaryRichDto): string {
-  if (session.color === undefined) return 'border-l-base-300';
-  return COLOR_BORDER[session.color] ?? 'border-l-base-300';
+  if (session.color === undefined) return 'border-l-(--v-separator)';
+  return COLOR_BORDER[session.color] ?? 'border-l-(--v-separator)';
 }
 
 function toEpochMillis(d: Date | string | number | undefined): number {
@@ -248,6 +258,7 @@ async function openRecipeModal(): Promise<void> {
  * to the /chat redirect if the socket itself is unavailable.
  */
 async function bootstrapNew(chatRecipe: string | null): Promise<void> {
+  if (bootstrapping.value) return;
   const sock = socket.value;
   if (!sock) {
     // Socket not ready — fall back to the legacy /chat flow rather
@@ -308,46 +319,42 @@ watch(showArchived, () => {
 
 <template>
   <div class="h-full flex flex-col min-h-0 text-sm">
-    <div class="flex items-center gap-1 px-2 py-1.5 border-b border-base-300 shrink-0">
+    <div class="flex items-center gap-1 px-2 py-1.5 border-b border-(--v-separator) shrink-0">
       <span class="font-semibold flex-1">{{ $t('shell.sessions') }}</span>
-      <span class="opacity-50 text-xs">{{ filtered.length }}</span>
-      <VIconButton icon="add" :label="$t('chat.picker.newSession')" size="sm"
+      <span class="text-xs text-(--v-label-tertiary)">{{ filtered.length }}</span>
+      <VIconButton
+        icon="add"
+        :label="$t('chat.picker.newSession')"
+        size="sm"
         @click="openRecipeModal"
-       />
+      />
     </div>
 
-    <div class="px-2 py-1.5 border-b border-base-300 shrink-0 flex flex-col gap-1.5">
+    <div class="px-2 py-1.5 border-b border-(--v-separator) shrink-0 flex flex-col gap-1.5">
       <VInput
         v-model="filter"
         :placeholder="$t('chat.picker.sessionFilterPlaceholder')"
       />
-      <label class="flex items-center gap-1.5 text-xs opacity-70 cursor-pointer">
-        <input
-          v-model="showArchived"
-          type="checkbox"
-          class="checkbox checkbox-xs"
-        />
-        {{ $t('chat.picker.showArchived') }}
-      </label>
+      <VCheckbox v-model="showArchived" :label="$t('chat.picker.showArchived')" />
     </div>
 
     <div class="flex-1 min-h-0 overflow-y-auto">
       <VAlert v-if="error" variant="error" class="m-2">{{ error }}</VAlert>
 
-      <div v-if="loading" class="p-3 text-xs opacity-60">
+      <div v-if="loading" class="p-3 text-xs text-(--v-label-secondary)">
         {{ $t('chat.picker.sessionsLoading') }}
       </div>
 
       <div
         v-else-if="sessions.length === 0"
-        class="p-3 text-xs opacity-60"
+        class="p-3 text-xs text-(--v-label-secondary)"
       >
         {{ $t('chat.picker.noSessions') }}
       </div>
 
       <div
         v-else-if="filtered.length === 0"
-        class="p-3 text-xs opacity-60"
+        class="p-3 text-xs text-(--v-label-secondary)"
       >
         {{ $t('chat.picker.sessionFilterNoMatch', { filter }) }}
       </div>
@@ -357,48 +364,51 @@ watch(showArchived, () => {
           <!-- Group header — only when the project has groups (read-only). -->
           <div
             v-if="hasGroups"
-            class="flex items-center gap-1.5 px-2 py-1 bg-base-200/50 border-b border-base-300
+            class="flex items-center gap-1.5 px-2 py-1 bg-(--v-bg) border-b border-(--v-separator)
                    cursor-pointer select-none sticky top-0 z-10"
             @click="toggleCollapsed(block.group)"
           >
-            <VIcon :name="isCollapsed(block.group) ? 'forward' : 'expand'" class="opacity-60" />
+            <VIcon
+              :name="isCollapsed(block.group) ? 'forward' : 'expand'"
+              class="text-(--v-label-secondary)"
+            />
             <span class="font-semibold text-xs truncate flex-1">
               {{ block.group
                 ? (block.group.title || block.group.name)
                 : $t('chat.picker.groups.ungrouped') }}
             </span>
-            <span class="opacity-50 text-xs">{{ block.sessions.length }}</span>
+            <span class="text-xs text-(--v-label-tertiary)">{{ block.sessions.length }}</span>
           </div>
 
           <ul v-show="!isCollapsed(block.group)" class="flex flex-col">
             <li
               v-for="session in block.sessions"
               :key="session.sessionId"
-              class="border-b border-base-300 border-l-2 px-2 py-1.5 cursor-pointer
-                     hover:bg-base-200 flex items-start gap-2"
+              class="border-b border-(--v-separator) border-l-2 px-2 py-1.5 cursor-pointer
+                     hover:bg-(--v-fill) flex items-start gap-2"
               :class="[
                 colorBorderClass(session),
-                session.status === SessionStatus.ARCHIVED ? 'opacity-60' : '',
+                session.status === SessionStatus.ARCHIVED ? 'text-(--v-label-secondary)' : '',
               ]"
               @click="openSession(session)"
             >
-          <span class="shrink-0 w-5 text-center leading-none mt-0.5">
-            <span v-if="session.icon">{{ session.icon }}</span>
-            <VIcon v-else name="chat" class="inline-block text-(--v-label-tertiary)" />
-          </span>
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-1 min-w-0">
-              <span
-                v-if="session.pinned"
-                class="shrink-0 inline-flex text-(--v-label-secondary)"
-                :title="$t('chat.sessionHeader.pinTooltip')"
-              ><VIcon name="pin" /></span>
-              <span class="truncate">{{ sessionTitle(session) }}</span>
-            </div>
-            <div class="text-xs opacity-50 truncate">
-              {{ formatRelativeTime(session.lastActivityAt) }}
-            </div>
-          </div>
+              <span class="shrink-0 w-5 text-center leading-none mt-0.5">
+                <span v-if="session.icon">{{ session.icon }}</span>
+                <VIcon v-else name="chat" class="inline-block text-(--v-label-tertiary)" />
+              </span>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-1 min-w-0">
+                  <span
+                    v-if="session.pinned"
+                    class="shrink-0 inline-flex text-(--v-label-secondary)"
+                    :title="$t('chat.sessionHeader.pinTooltip')"
+                  ><VIcon name="pin" /></span>
+                  <span class="truncate">{{ sessionTitle(session) }}</span>
+                </div>
+                <div class="text-xs text-(--v-label-tertiary) truncate">
+                  {{ formatRelativeTime(session.lastActivityAt) }}
+                </div>
+              </div>
             </li>
           </ul>
         </div>
@@ -409,86 +419,52 @@ watch(showArchived, () => {
     <VModal
       v-model="recipeModalOpen"
       :title="$t('chat.picker.recipeModalTitle')"
+      :description="$t('chat.picker.recipeModalIntro')"
     >
-      <div class="space-y-3">
-        <p class="text-sm opacity-70">{{ $t('chat.picker.recipeModalIntro') }}</p>
-
+      <div class="flex flex-col gap-4">
         <VInput
           v-model="recipeFilter"
-          size="sm"
           :placeholder="$t('chat.picker.recipeFilterPlaceholder')"
         />
 
         <VAlert v-if="recipesError" variant="error">{{ recipesError }}</VAlert>
         <VAlert v-if="bootstrapError" variant="error">{{ bootstrapError }}</VAlert>
 
-        <ul class="flex flex-col gap-2 max-h-[60vh] overflow-y-auto">
-          <li>
-            <button
-              type="button"
-              class="w-full text-left rounded-lg border border-base-300 hover:border-primary p-3 transition-colors"
-              :disabled="bootstrapping"
-              @click="bootstrapNew(null)"
-            >
-              <div class="font-semibold">{{ $t('chat.picker.recipeDefaultName') }}</div>
-              <div class="text-xs opacity-70 mt-1">
-                {{ $t('chat.picker.recipeDefaultDescription') }}
-              </div>
-            </button>
-          </li>
+        <VGroup>
+          <VGroupRow
+            navigates
+            :label="$t('chat.picker.recipeDefaultName')"
+            :description="$t('chat.picker.recipeDefaultDescription')"
+            @click="bootstrapNew(null)"
+          />
+        </VGroup>
 
-          <li v-if="recipesLoading" class="text-sm opacity-60 px-1">
-            {{ $t('chat.picker.sessionsLoading') }}
-          </li>
+        <p v-if="recipesLoading" class="text-sm text-(--v-label-secondary)">
+          {{ $t('chat.picker.sessionsLoading') }}
+        </p>
 
-          <li
-            v-if="recipeFilter.trim() && !recipesLoading && recipeGroups.length === 0"
-            class="text-sm opacity-60 px-1"
-          >
-            {{ $t('chat.picker.recipeFilterNoMatch', { filter: recipeFilter.trim() }) }}
-          </li>
+        <p
+          v-if="recipeFilter.trim() && !recipesLoading && recipeGroups.length === 0"
+          class="text-sm text-(--v-label-secondary)"
+        >
+          {{ $t('chat.picker.recipeFilterNoMatch', { filter: recipeFilter.trim() }) }}
+        </p>
 
-          <template
-            v-for="group in recipeGroups"
-            :key="group.key ?? '__other__'"
-          >
-            <li
-              v-if="group.label"
-              class="text-xs font-semibold uppercase tracking-wide opacity-60 px-1 pt-3"
-            >
-              {{ group.label }}
-            </li>
-            <li
-              v-for="recipe in group.recipes"
-              :key="recipe.name"
-            >
-              <button
-                type="button"
-                class="w-full text-left rounded-lg border border-base-300 hover:border-primary p-3 transition-colors"
-                :disabled="bootstrapping"
-                @click="bootstrapNew(recipe.name)"
-              >
-                <div class="flex items-baseline gap-2 min-w-0">
-                  <span class="font-semibold truncate">
-                    {{ recipe.title || recipe.name }}
-                  </span>
-                  <span
-                    v-if="recipe.title"
-                    class="text-xs opacity-50 font-mono truncate"
-                  >
-                    {{ recipe.name }}
-                  </span>
-                </div>
-                <div
-                  v-if="recipe.description"
-                  class="text-xs opacity-70 mt-1 whitespace-pre-line line-clamp-3"
-                >
-                  {{ recipe.description }}
-                </div>
-              </button>
-            </li>
-          </template>
-        </ul>
+        <VGroup
+          v-for="group in recipeGroups"
+          :key="group.key ?? '__other__'"
+          :label="group.label || undefined"
+        >
+          <VGroupRow
+            v-for="recipe in group.recipes"
+            :key="recipe.name"
+            navigates
+            :label="recipe.title || recipe.name"
+            :meta="recipe.title ? recipe.name : undefined"
+            :description="recipe.description ?? undefined"
+            @click="bootstrapNew(recipe.name)"
+          />
+        </VGroup>
       </div>
       <template #actions>
         <VButton variant="secondary" :disabled="bootstrapping" @click="recipeModalOpen = false">

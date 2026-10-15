@@ -21,7 +21,15 @@
  */
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { VAlert, VButton, VIcon, VInput, VModal } from '@vance/components';
+import {
+  VAlert,
+  VButton,
+  VGroup,
+  VGroupRow,
+  VIcon,
+  VInput,
+  VModal,
+} from '@vance/components';
 import {
   RestError,
   fetchShareForm,
@@ -202,7 +210,7 @@ function close(): void {
     :title="t('share.title', { name: displayTitle })"
     @update:model-value="close"
   >
-    <VAlert v-if="error" variant="error" class="mb-3">
+    <VAlert v-if="error" variant="error" class="mb-4">
       <span>{{ error }}</span>
     </VAlert>
 
@@ -227,50 +235,49 @@ function close(): void {
           :href="linkHref"
           target="_blank"
           rel="noopener noreferrer nofollow"
-          class="text-xs underline opacity-70 hover:opacity-100 break-all"
+          class="text-xs underline text-(--v-label-secondary) hover:text-(--v-label) break-all"
         ><VIcon name="link" class="inline-block align-text-bottom mr-1" />{{ props.subject.link }}</a>
         <!-- Foreign text: a quote, never Markdown. Whatever a search hit
              contains stays inert here. -->
         <blockquote
           v-if="props.subject.snippet"
-          class="border-l-2 border-base-300 pl-2 text-xs opacity-70 whitespace-pre-wrap
-                 max-h-24 overflow-y-auto"
+          class="border-l-2 border-(--v-separator) pl-2 text-xs text-(--v-label-secondary)
+                 whitespace-pre-wrap max-h-24 overflow-y-auto"
         >{{ props.subject.snippet }}</blockquote>
-        <span v-if="fileName" class="text-xs opacity-60 font-mono">
+        <span v-if="fileName" class="text-xs text-(--v-label-secondary) font-mono">
           <VIcon name="document" class="inline-block align-text-bottom mr-1" />{{ props.subject.documentPath }}
         </span>
       </section>
 
       <template v-if="picked">
-        <p class="text-sm opacity-70 mb-3">
+        <p class="text-sm text-(--v-label-secondary) mb-4">
           {{ t('share.viaLabel', { handler: labelOf(picked) }) }}
         </p>
         <FormFields v-model="values" :fields="fields" :disabled="submitting" />
       </template>
 
       <template v-else>
-        <p v-if="loading" class="text-sm opacity-70">{{ t('share.loading') }}</p>
-        <p v-else-if="handlers.length === 0" class="text-sm opacity-70">
+        <p v-if="loading" class="text-sm text-(--v-label-secondary)">{{ t('share.loading') }}</p>
+        <p v-else-if="handlers.length === 0" class="text-sm text-(--v-label-secondary)">
           {{ t('share.noHandlers') }}
         </p>
-        <ul v-else class="flex flex-col gap-2">
-          <li v-for="handler in handlers" :key="handler.id">
-            <button
-              type="button"
-              class="w-full text-left p-3 rounded border border-base-300
-                     enabled:hover:bg-base-200 disabled:opacity-50
-                     disabled:cursor-not-allowed"
-              :disabled="!handler.available"
-              :title="handler.statusText ?? undefined"
-              @click="pick(handler)"
-            >
-              <span class="font-medium">{{ labelOf(handler) }}</span>
-              <span v-if="handler.statusText" class="block text-xs opacity-70 mt-0.5">
-                {{ handler.statusText }}
+        <!-- Unavailable handlers stay listed, greyed, with the reason — a
+             missing entry would read as "not possible". -->
+        <VGroup v-else>
+          <VGroupRow
+            v-for="handler in handlers"
+            :key="handler.id"
+            :navigates="handler.available"
+            :description="handler.statusText ?? undefined"
+            @click="pick(handler)"
+          >
+            <template #label>
+              <span :class="{ 'text-(--v-label-tertiary)': !handler.available }">
+                {{ labelOf(handler) }}
               </span>
-            </button>
-          </li>
-        </ul>
+            </template>
+          </VGroupRow>
+        </VGroup>
       </template>
     </template>
 

@@ -183,27 +183,29 @@ function pick(doc: DocumentSearchItem): void {
         @keydown="onSearchKeydown"
       />
       <VAlert v-if="error" variant="error">{{ error }}</VAlert>
-      <div v-if="loading" class="flex flex-1 items-center justify-center text-sm opacity-60">
+      <div v-if="loading" class="flex flex-1 items-center justify-center text-sm text-(--v-label-secondary)">
         {{ $t('cortex.openDocument.searching') }}
       </div>
-      <div v-else-if="results.length === 0" class="flex flex-1 items-center justify-center text-sm opacity-60">
+      <div v-else-if="results.length === 0" class="flex flex-1 items-center justify-center text-sm text-(--v-label-secondary)">
         {{ $t('cortex.openDocument.noResults') }}
       </div>
-      <ul v-else class="min-h-0 flex-1 overflow-y-auto text-sm">
+      <ul v-else role="listbox" class="min-h-0 flex-1 overflow-y-auto text-sm">
         <li
           v-for="(doc, i) in results"
           :key="doc.id"
           :ref="itemRef(i)"
-          class="flex cursor-pointer flex-col gap-0.5 rounded px-2 py-1.5"
-          :class="i === selectedIndex ? 'bg-primary/15' : 'hover:bg-base-200'"
+          role="option"
+          :aria-selected="i === selectedIndex"
+          class="flex cursor-pointer flex-col gap-0.5 rounded-(--v-radius-control) px-2 py-1.5"
+          :class="i === selectedIndex ? 'bg-(--v-selection) text-(--v-accent-text)' : 'hover:bg-(--v-fill)'"
           @click="pick(doc)"
           @mouseenter="selectedIndex = i"
         >
           <span class="truncate">{{ doc.title || doc.path }}</span>
-          <span class="truncate text-xs opacity-60">{{ doc.path }}</span>
+          <span class="open-doc-path truncate text-xs text-(--v-label-secondary)">{{ doc.path }}</span>
         </li>
       </ul>
-      <div v-if="results.length > 0 && total > results.length" class="text-xs opacity-60">
+      <div v-if="results.length > 0 && total > results.length" class="text-xs text-(--v-label-secondary)">
         {{ $t('cortex.openDocument.truncated', { shown: results.length, total }) }}
       </div>
     </div>

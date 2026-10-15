@@ -15,7 +15,10 @@ import {
   VButton,
   VCheckbox,
   VEmptyState,
-  VIcon,
+  VGroup,
+  VGroupRow,
+  VIconButton,
+  VInput,
   VModal,
   VSelect,
 } from '../components/index';
@@ -156,10 +159,28 @@ function previewTimestamp(value: Date | string | number | undefined): string {
 }
 
 // Focus the input on first render — keyboard-driven dialog UX.
-const inputRef = ref<HTMLInputElement | null>(null);
+const inputRef = ref<InstanceType<typeof VInput> | null>(null);
 onMounted(() => {
-  setTimeout(() => inputRef.value?.focus(), 0);
+  setTimeout(() => inputRef.value?.input?.focus(), 0);
 });
+
+/** Second line of a metadata hit: project, then the session's tags. */
+function metadataLine(session: SessionSummaryRichDto): string {
+  const tags = (session.tags ?? []).map((tag) => `#${tag}`);
+  return [session.projectId, ...tags].filter((part) => !!part).join(' · ');
+}
+
+/** Right-hand context of a content hit: project and when the match was said. */
+function contentHitContext(hit: SessionSearchHitDto): string {
+  const when = hit.matchedAt ? previewTimestamp(hit.matchedAt) : '';
+  return [hit.session.projectId, when].filter((part) => !!part).join(' · ');
+}
+
+function openPreviewed(): void {
+  const session = previewSession.value;
+  if (session) emit('pick', session.sessionId);
+  closePreview();
+}
 onBeforeUnmount(() => {
   if (debounceTimer) clearTimeout(debounceTimer);
 });
@@ -171,20 +192,19 @@ onBeforeUnmount(() => {
     :title="t('chat.search.title')"
     @update:model-value="onModalChange"
   >
-    <div class="flex flex-col gap-3">
+    <div class="flex flex-col gap-4">
       <div class="flex items-center gap-2">
-        <input
-          ref="inputRef"
-          v-model="query"
-          type="search"
-          class="input flex-1"
-          :placeholder="t('chat.search.placeholder')"
-          @keyup.enter="runSearch"
-        />
-        <VSelect
-          v-model="scope"
-          :options="SCOPE_OPTIONS"
-        />
+        <div class="flex-1 min-w-0">
+          <VInput
+            ref="inputRef"
+            v-model="query"
+            :placeholder="t('chat.search.placeholder')"
+            @keyup.enter="runSearch"
+          />
+        </div>
+        <div class="w-40 shrink-0">
+          <VSelect v-model="scope" :options="SCOPE_OPTIONS" />
+        </div>
       </div>
       <VCheckbox
         v-model="includeArchived"
@@ -193,7 +213,7 @@ onBeforeUnmount(() => {
 
       <VAlert v-if="error" variant="error">{{ error }}</VAlert>
 
-      <div v-if="loading" class="text-sm opacity-60">
+      <div v-if="loading" class="text-sm text-(--v-label-secondary)">
         {{ t('chat.picker.loading') }}
       </div>
 
@@ -209,104 +229,57 @@ onBeforeUnmount(() => {
         :body="t('chat.search.noResultsBody')"
       />
 
-      <div v-else class="flex flex-col gap-4 max-h-96 overflow-y-auto pr-1">
-        <section v-if="metadataHits.length > 0" class="flex flex-col gap-2">
-          <h4 class="text-xs uppercase tracking-wide opacity-60 font-semibold">
-            {{ t('chat.search.headlineMetadata') }}
-          </h4>
-          <button
+      <template v-else>
+        <VGroup v-if="metadataHits.length > 0" :label="t('chat.search.headlineMetadata')">
+          <VGroupRow
             v-for="hit in metadataHits"
             :key="`m-${hit.session.sessionId}`"
-            type="button"
-            class="text-left rounded border border-base-300 hover:border-primary p-3 flex items-start gap-3 bg-base-100"
+            navigates
+            :description="metadataLine(hit.session)"
             @click="pick(hit)"
           >
-            <div class="text-xl shrink-0">
-              <span v-if="hit.session.icon">{{ hit.session.icon }}</span>
-              <VIcon v-else name="chat" :size="20" class="inline-block text-(--v-label-tertiary)" />
-            </div>
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-2 min-w-0">
-                <span class="font-medium truncate">{{ sessionTitle(hit.session) }}</span>
+            <template #label>
+              <span class="flex items-center gap-2 min-w-0">
+                <span v-if="hit.session.icon" class="shrink-0">{{ hit.session.icon }}</span>
+                <span class="truncate">{{ sessionTitle(hit.session) }}</span>
                 <span
                   v-if="isArchived(hit.session)"
-                  class="text-xs uppercase tracking-wide shrink-0 text-(--v-warning)"
-                >
-                  {{ t('chat.sessionHeader.archived') }}
-                </span>
-              </div>
-              <div
-                v-if="hit.session.tags && hit.session.tags.length > 0"
-                class="flex flex-wrap gap-1 mt-1"
-              >
-                <span
-                  v-for="tag in hit.session.tags"
-                  :key="tag"
-                  class="text-[10px] px-1.5 py-0.5 rounded bg-base-200"
-                >
-                  {{ tag }}
-                </span>
-              </div>
-              <div class="text-xs opacity-60 truncate mt-1">
-                {{ hit.session.projectId }}
-              </div>
-            </div>
-          </button>
-        </section>
+                  class="text-xs shrink-0 text-(--v-warning)"
+                >{{ t('chat.sessionHeader.archived') }}</span>
+              </span>
+            </template>
+          </VGroupRow>
+        </VGroup>
 
-        <section v-if="contentHits.length > 0" class="flex flex-col gap-2">
-          <h4 class="text-xs uppercase tracking-wide opacity-60 font-semibold">
-            {{ t('chat.search.headlineContent') }}
-          </h4>
-          <div
+        <VGroup v-if="contentHits.length > 0" :label="t('chat.search.headlineContent')">
+          <VGroupRow
             v-for="hit in contentHits"
             :key="`c-${hit.session.sessionId}-${hit.matchedMessageId ?? ''}`"
-            class="rounded border border-base-300 p-3 bg-base-100"
+            navigates
+            :meta="hit.matchedRole ?? undefined"
+            :description="hit.snippet ?? undefined"
+            :value="contentHitContext(hit)"
+            @click="pick(hit)"
           >
-            <div class="flex items-start gap-3">
-              <div class="text-xl shrink-0">
-                <span v-if="hit.session.icon">{{ hit.session.icon }}</span>
-                <VIcon v-else name="chat" :size="20" class="inline-block text-(--v-label-tertiary)" />
-              </div>
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2 min-w-0">
-                  <span class="font-medium truncate">{{ sessionTitle(hit.session) }}</span>
-                  <span
-                    v-if="isArchived(hit.session)"
-                    class="text-xs uppercase tracking-wide shrink-0 text-(--v-warning)"
-                  >
-                    {{ t('chat.sessionHeader.archived') }}
-                  </span>
-                  <span
-                    v-if="hit.matchedRole"
-                    class="text-[10px] uppercase tracking-wide px-1 py-0.5 rounded bg-base-200 shrink-0"
-                  >
-                    {{ hit.matchedRole }}
-                  </span>
-                </div>
-                <p
-                  v-if="hit.snippet"
-                  class="text-sm opacity-80 mt-1 line-clamp-3"
-                >
-                  {{ hit.snippet }}
-                </p>
-                <div class="text-xs opacity-60 mt-1">
-                  {{ hit.session.projectId }}
-                  <span v-if="hit.matchedAt"> · {{ previewTimestamp(hit.matchedAt) }}</span>
-                </div>
-              </div>
-              <div class="shrink-0 flex flex-col gap-1">
-                <VButton size="sm" variant="secondary" @click="showPreview(hit)">
-                  {{ t('chat.search.preview') }}
-                </VButton>
-                <VButton size="sm" variant="primary" @click="pick(hit)">
-                  {{ t('chat.search.open') }}
-                </VButton>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
+            <template #label>
+              <span class="flex items-center gap-2 min-w-0">
+                <span v-if="hit.session.icon" class="shrink-0">{{ hit.session.icon }}</span>
+                <span class="truncate">{{ sessionTitle(hit.session) }}</span>
+                <span
+                  v-if="isArchived(hit.session)"
+                  class="text-xs shrink-0 text-(--v-warning)"
+                >{{ t('chat.sessionHeader.archived') }}</span>
+              </span>
+            </template>
+            <VIconButton
+              icon="show"
+              size="sm"
+              :label="t('chat.search.preview')"
+              @click.stop="showPreview(hit)"
+            />
+          </VGroupRow>
+        </VGroup>
+      </template>
     </div>
 
     <template #actions>
@@ -320,38 +293,35 @@ onBeforeUnmount(() => {
   <VModal
     :model-value="previewSessionId !== null"
     :title="previewSession ? sessionTitle(previewSession) : t('chat.search.preview')"
+    size="lg"
     @update:model-value="(v) => { if (!v) closePreview(); }"
   >
-    <div v-if="previewLoading" class="text-sm opacity-60">
+    <div v-if="previewLoading" class="text-sm text-(--v-label-secondary)">
       {{ t('chat.search.previewLoading') }}
     </div>
     <VAlert v-else-if="previewError" variant="error">{{ previewError }}</VAlert>
-    <div v-else class="flex flex-col gap-3 max-h-96 overflow-y-auto pr-1">
+    <div v-else class="flex flex-col gap-3">
       <div
         v-for="msg in previewMessages"
         :key="msg.messageId ?? `${msg.createdAt}`"
-        class="rounded border border-base-200 p-2"
+        class="rounded-md border border-(--v-separator) p-2"
       >
-        <div class="text-[10px] uppercase tracking-wide opacity-60 mb-1">
+        <div class="text-[10px] uppercase tracking-wide text-(--v-label-secondary) mb-1">
           {{ msg.role }}
           <span v-if="msg.createdAt"> · {{ previewTimestamp(msg.createdAt) }}</span>
         </div>
         <MarkdownView :source="msg.content ?? ''" />
       </div>
-      <div v-if="previewMessages.length === 0" class="text-sm opacity-60">
+      <div v-if="previewMessages.length === 0" class="text-sm text-(--v-label-secondary)">
         {{ t('chat.picker.noSessionsBody') }}
       </div>
     </div>
     <template #actions>
-      <VButton
-        v-if="previewSession"
-        variant="primary"
-        @click="(previewSession && emit('pick', previewSession.sessionId)); closePreview();"
-      >
-        {{ t('chat.search.open') }}
-      </VButton>
       <VButton variant="secondary" @click="closePreview">
         {{ t('chat.search.previewClose') }}
+      </VButton>
+      <VButton v-if="previewSession" variant="primary" @click="openPreviewed">
+        {{ t('chat.search.open') }}
       </VButton>
     </template>
   </VModal>

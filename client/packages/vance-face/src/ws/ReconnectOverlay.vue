@@ -20,6 +20,7 @@
  * no animation, the rest of the UI is back to normal immediately.
  */
 import { useI18n } from 'vue-i18n';
+import { VButton } from '@/components';
 import { manualReconnect, useWsConnection } from './wsConnectionStore';
 
 const { t } = useI18n();
@@ -84,17 +85,13 @@ const { status, reconnectAttempts, maxReconnectAttempts, lastError } =
           </div>
           <div
             v-if="lastError"
-            class="text-xs text-base-content/50 font-mono break-all"
+            class="text-xs text-(--v-label-secondary) font-mono break-all"
           >
             {{ lastError }}
           </div>
-          <button
-            type="button"
-            class="btn btn-primary btn-sm"
-            @click="manualReconnect"
-          >
+          <VButton variant="primary" size="sm" @click="manualReconnect">
             {{ t('reconnect.tryAgain') }}
-          </button>
+          </VButton>
         </div>
       </div>
     </div>

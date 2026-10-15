@@ -143,6 +143,9 @@ export default {
         generic: 'Error: {message}',
       },
     },
+    confirm: 'Confirm',
+    archive: 'Archive',
+    remove: 'Remove',
   },
 
   fook: {
@@ -183,8 +186,6 @@ export default {
   processPanel: {
     title: 'Processes of this session',
     count: '{n} process(es)',
-    filterLive: 'Filter: live',
-    filterAll: 'Filter: all',
     closeReason: {
       DONE: 'done',
       INCOMPLETE: 'incomplete',
@@ -216,6 +217,9 @@ export default {
     previewTitle: 'Processes — {session}',
     previewReadOnly: 'Preview of a session you are not in — read-only.',
     openSession: 'Open session',
+    segmentLive: 'Live',
+    segmentAll: 'All',
+    filterLabel: 'Show processes',
   },
 
   cortex: {
@@ -275,10 +279,19 @@ export default {
     hactar: {
       applyToEditor: 'Apply to editor',
       thinking: 'Slart is thinking…',
-      generatedScript: 'Generated script:',
+      generatedScript: 'Generated script',
       regenerate: 'Re-generate',
       failed: 'FAILED:',
       close: 'Close',
+      titleUpdate: 'Slart · update this script',
+      titleGenerate: 'Slart · generate a new script',
+      update: 'Update',
+      generate: 'Generate',
+      updateDescription: 'Slart sees the current script body and preserves its structure where possible. The new version lands in a fresh Slart bucket — the original document only changes if you click {apply}.',
+      promptLabelUpdate: 'What should change?',
+      promptLabelGenerate: 'What should the script do?',
+      promptPlaceholderUpdate: "Example: 'Also send a Slack notification when the inbox is empty.'",
+      promptPlaceholderGenerate: "Example: 'Read a number from args.n and return its factorial.'",
     },
     rightPanel: {
       title: 'Right panel',
@@ -380,6 +393,8 @@ export default {
       readOnly: 'read-only',
       closeLog: 'Close log panel',
       result: 'result:',
+      reloadDirtyTitle: 'Discard unsaved changes?',
+      reloadDirtyMessage: 'Reloading {path} replaces your unsaved edits with the stored version.',
     },
     age: {
       save: 'Save',
@@ -445,7 +460,7 @@ export default {
       reload: 'Reload document tree',
       loading: 'loading',
       loadingText: 'loading…',
-      delete: 'delete',
+      delete: 'Delete',
       empty: 'empty',
     },
     newFolder: {
@@ -454,6 +469,7 @@ export default {
       pathPlaceholder: 'documents/notes',
       cancel: 'Cancel',
       create: 'Create',
+      description: 'Folders are virtual until a file lives in them — this entry is client-side and disappears on refresh unless something gets moved into it.',
     },
     openDocument: {
       title: 'Open document',
@@ -813,6 +829,9 @@ export default {
       pendingNone: 'No changes',
       pending: '{n} change(s)',
       removeToggle: 'Remove from memory',
+      roleUser: 'User',
+      roleAssistant: 'AI',
+      roleSystem: 'System',
     },
     clients: {
       heading: 'Running CLI clients',
@@ -839,6 +858,7 @@ export default {
       tabs: {
         sessions: 'Sessions',
         clients: 'Clients',
+        label: 'View',
       },
       projectsTitle: 'Projects',
       loading: 'Loading…',
@@ -882,7 +902,6 @@ export default {
       recipeFilterNoMatch: 'No recipes match "{filter}".',
       recipeBadgeTooltip: 'Recipe of the session-chat process',
       groups: {
-        create: '+ Group',
         createTooltip: 'Create session group',
         createTitle: 'Create session group',
         nameLabel: 'Name',
@@ -895,7 +914,9 @@ export default {
         delete: 'Delete group',
         confirmDelete: 'Delete group "{name}"? Its sessions are only removed from the group, not deleted.',
         emptyDropHint: 'Drag a session here',
+        newGroup: 'New group…',
       },
+      newSessionEllipsis: 'New session…',
     },
     search: {
       title: 'Search sessions',
@@ -2405,7 +2426,6 @@ export default {
     loading: 'Loading…',
     searchPlaceholder: 'Search templates…',
     projectIdLabel: 'Project',
-    install: 'Install',
     apply: 'Apply',
     previouslyApplied: 'Previously applied on {at} by {by}. Form pre-filled — adjust and re-apply to update. Password fields stay blank for security.',
     noInputs: 'This template has no inputs — apply to install it.',
@@ -2413,6 +2433,10 @@ export default {
       headline: 'No templates available',
       body: 'Ask your tenant administrator to populate the tool-templates catalog at _tenant/config/tool-templates.yaml.',
     },
+    applyFailed: 'Apply failed.',
+    unknownUser: 'unknown',
+    connectProvider: 'Connect {provider}…',
+    openConnectedAccounts: 'Open connected accounts',
   },
 
   oauthConsent: {
@@ -2506,7 +2530,6 @@ export default {
       'Remove the stored client secret? No new connections will work until you set a new one.',
     sidebar: {
       providersLabel: 'Providers',
-      addNew: '+ New',
       noProvidersHeadline: 'No OAuth providers',
       noProvidersBody: 'Click + New to add one.',
       secretSet: 'secret set',
@@ -2568,8 +2591,6 @@ export default {
     sidebar: {
       usersTitle: 'Users',
       teamsTitle: 'Teams',
-      addUser: '+ User',
-      addTeam: '+ Team',
       showInternalUsers: 'Show internal users',
       memberCountSingular: '{count} member',
       memberCountPlural: '{count} members',
@@ -2829,12 +2850,12 @@ export default {
     projectLabel: 'Project',
     listLabel: 'Schedulers',
     refresh: 'Refresh',
-    new: '+ New scheduler',
+    new: 'New scheduler…',
     create: 'Create',
     enabled: 'enabled',
     disabled: 'disabled',
     emptyTitle: 'No schedulers',
-    emptyBody: 'Use + New to create one in this project.',
+    emptyBody: 'Use New scheduler… to create one in this project.',
     selectTitle: 'Pick a scheduler',
     selectBody: 'Choose an entry on the left or create a new one.',
     newTitle: 'New scheduler',
@@ -2843,7 +2864,7 @@ export default {
     namePatternHint: 'Lowercase, alphanumeric + "-_", max 64 chars.',
     invalidNameHint: 'Name must match the pattern above.',
     duplicateNameHint: 'A scheduler with this name already exists.',
-    deleteTitle: 'Delete scheduler',
+    deleteTitle: 'Delete scheduler?',
     deleteBody: 'Permanently remove scheduler "{name}"? Past runs stay in the event log.',
     runHistory: 'Run history',
     noEvents: 'No events yet.',
@@ -2912,12 +2933,12 @@ export default {
     projectLabel: 'Project',
     listLabel: 'Hooks',
     refresh: 'Refresh',
-    new: '+ New hook',
+    new: 'New hook…',
     create: 'Create',
     enabled: 'enabled',
     disabled: 'disabled',
     emptyTitle: 'No hooks',
-    emptyBody: 'Use + New to create one in this project.',
+    emptyBody: 'Use New hook… to create one in this project.',
     selectTitle: 'Pick a hook',
     selectBody: 'Choose an entry on the left or create a new one.',
     newTitle: 'New hook',
@@ -2927,7 +2948,7 @@ export default {
     namePatternHint: 'Lowercase, alphanumeric + "-_", max 64 chars.',
     invalidNameHint: 'Name must match the pattern above.',
     duplicateNameHint: 'A hook with this event/name already exists.',
-    deleteTitle: 'Delete hook',
+    deleteTitle: 'Delete hook?',
     deleteBody: 'Permanently remove hook "{event}/{name}"? Past runs stay in the event log.',
     runHistory: 'Run history',
     noEvents: 'No events yet.',
@@ -3315,7 +3336,7 @@ export default {
       confirm: 'Delegate',
     },
     compose: {
-      button: 'New message',
+      button: 'New message…',
       title: 'New inbox message',
       body:
         'Write a message into somebody\u2019s inbox — a colleague\u2019s, a team\u2019s, or your own. '
@@ -3436,6 +3457,7 @@ export default {
       talkCommandsResetBtn: 'Reset to defaults',
       talkCommandsSaved: 'Voice commands saved.',
       talkCommandsReset: 'Reset to defaults.',
+      talkTriggerNamesPlaceholder: 'Computer',
     },
     teams: {
       title: 'Teams',
@@ -3498,6 +3520,9 @@ export default {
       series: 'Series',
       echartsOverride: 'ECharts override',
       raw: 'Raw',
+      switchTypeTitle: 'Change chart type?',
+      switchTypeMessage: 'A {to} chart needs a different data-point shape than {from}. The existing series data is dropped on save.',
+      switchTypeConfirm: 'Change type',
     },
     diagram: {
       downloadSvg: '↓ SVG',

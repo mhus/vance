@@ -16,9 +16,10 @@ import {
   revokeIntegrationToken,
   revokeOAuthGrant,
 } from '@vance/shared';
-import { VAlert, VBadge, VButton, VCard, VEmptyState } from '@/components';
+import { VAlert, VBadge, VButton, VCard, VEmptyState, useConfirm } from '@/components';
 
 const { t, locale } = useI18n();
+const confirmAction = useConfirm();
 
 const grants = ref<OAuthGrantDto[]>([]);
 const tokens = ref<IntegrationTokenDto[]>([]);
@@ -64,7 +65,10 @@ function scopeText(g: OAuthGrantDto): string {
 }
 
 async function onRevokeGrant(g: OAuthGrantDto): Promise<void> {
-  if (!confirm(t('connectedApps.confirmRevoke', { name: g.clientName }))) return;
+  if (!await confirmAction({
+    message: t('connectedApps.confirmRevoke', { name: g.clientName }),
+    confirmLabel: t('connectedApps.revoke'),
+  })) return;
   busy.value = true;
   try {
     await revokeOAuthGrant(g.grantId);
@@ -77,7 +81,10 @@ async function onRevokeGrant(g: OAuthGrantDto): Promise<void> {
 }
 
 async function onRevokeToken(tk: IntegrationTokenDto): Promise<void> {
-  if (!confirm(t('connectedApps.confirmRevoke', { name: tk.label }))) return;
+  if (!await confirmAction({
+    message: t('connectedApps.confirmRevoke', { name: tk.label }),
+    confirmLabel: t('connectedApps.revoke'),
+  })) return;
   busy.value = true;
   try {
     await revokeIntegrationToken(tk.tokenId);

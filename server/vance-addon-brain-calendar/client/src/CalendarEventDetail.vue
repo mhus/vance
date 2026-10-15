@@ -8,6 +8,7 @@ import {
   VSelect,
   VTagEditor,
   VTextarea,
+  useConfirm,
 } from '@vance/components';
 import type { CalendarEventUpdateRequest } from './generated/calendar/CalendarEventUpdateRequest';
 import type { CalendarEventView } from './generated/calendar/CalendarEventView';
@@ -25,6 +26,7 @@ const emit = defineEmits<{
 }>();
 
 const t = useT();
+const confirmAction = useConfirm();
 
 const title = ref(props.event.title);
 const start = ref(props.event.start);
@@ -87,8 +89,11 @@ function save(): void {
   emit('update', patch);
 }
 
-function confirmDelete(): void {
-  if (window.confirm(t('calendar.detail.confirmDelete', { title: props.event.title }))) emit('delete');
+async function confirmDelete(): Promise<void> {
+  if (await confirmAction({
+    message: t('calendar.detail.confirmDelete', { title: props.event.title }),
+    confirmLabel: t('calendar.common.delete'),
+  })) emit('delete');
 }
 </script>
 

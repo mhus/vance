@@ -57,7 +57,7 @@ export default {
       colEventA: 'Event A',
       colEventB: 'Event B',
       colOverlap: 'Overlap',
-      addEvent: 'Add event',
+      addEvent: 'Add event…',
       noEventsHeadline: 'No events in this lane',
       noEventsBody: 'Add the first event to get started.',
       allDayTag: 'all-day',
@@ -66,8 +66,6 @@ export default {
       addToOutlook: 'Add to Outlook',
       newEvent: 'New event',
       eventTitlePlaceholder: 'Event title',
-      startPlaceholder: 'Start (YYYY-MM-DD or YYYY-MM-DDTHH:mm)',
-      endPlaceholder: 'End (optional)',
       error: {
         load: 'Could not load planner: {message}',
         rebuild: 'Rebuild failed: {message}',

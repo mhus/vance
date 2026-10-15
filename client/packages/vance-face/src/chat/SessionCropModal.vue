@@ -128,9 +128,9 @@ function close(): void {
 
 function roleLabel(role: ChatRole): string {
   switch (role) {
-    case ChatRole.USER: return 'User';
-    case ChatRole.ASSISTANT: return 'AI';
-    case ChatRole.SYSTEM: return 'System';
+    case ChatRole.USER: return t('chat.crop.roleUser');
+    case ChatRole.ASSISTANT: return t('chat.crop.roleAssistant');
+    case ChatRole.SYSTEM: return t('chat.crop.roleSystem');
     default: return String(role);
   }
 }
@@ -151,30 +151,32 @@ function rowState(m: ChatMessageDto): 'willRemove' | 'willRestore' | 'removed' |
   <VModal
     :model-value="modelValue"
     :title="t('chat.crop.title')"
+    :description="t('chat.crop.description')"
+    size="lg"
     :close-on-backdrop="false"
     @update:model-value="(v) => emit('update:modelValue', v)"
   >
-    <div class="flex flex-col gap-3" style="max-height: 70vh">
-      <p class="text-xs opacity-70">{{ t('chat.crop.description') }}</p>
-
+    <div class="flex flex-col gap-4">
       <VAlert v-if="error" variant="error">{{ error }}</VAlert>
 
-      <div v-if="loading" class="text-sm opacity-60 py-6 text-center">
+      <div v-if="loading" class="text-sm text-(--v-label-secondary) py-6 text-center">
         {{ t('chat.crop.loading') }}
       </div>
-      <div v-else-if="messages.length === 0" class="text-sm opacity-60 py-6 text-center">
+      <div
+        v-else-if="messages.length === 0"
+        class="text-sm text-(--v-label-secondary) py-6 text-center"
+      >
         {{ t('chat.crop.empty') }}
       </div>
 
-      <ul v-else class="flex flex-col gap-2 overflow-y-auto pr-1" style="max-height: 52vh">
+      <ul v-else class="flex flex-col gap-2">
         <li
           v-for="(m, index) in messages"
           :key="m.messageId"
-          class="rounded-md border p-2 flex gap-2 items-start transition-colors"
+          class="crop-row"
           :class="{
-            'border-base-300': rowState(m) === 'plain',
-            'border-error/50 bg-error/5': rowState(m) === 'willRemove' || rowState(m) === 'removed',
-            'border-success/50 bg-success/5': rowState(m) === 'willRestore',
+            'crop-row-remove': rowState(m) === 'willRemove' || rowState(m) === 'removed',
+            'crop-row-restore': rowState(m) === 'willRestore',
           }"
         >
           <input
@@ -182,61 +184,102 @@ function rowState(m: ChatMessageDto): 'willRemove' | 'willRestore' | 'removed' |
             class="mt-1 shrink-0"
             :checked="isMarked(m.messageId)"
             :title="t('chat.crop.removeToggle')"
+            :aria-label="t('chat.crop.removeToggle')"
             @change="toggle(m.messageId)"
           />
           <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-2 text-[11px] uppercase tracking-wide opacity-60">
+            <div
+              class="flex items-center gap-2 text-[11px] uppercase tracking-wide
+                     text-(--v-label-secondary)"
+            >
               <span>{{ roleLabel(m.role) }}</span>
               <span
                 v-if="rowState(m) === 'removed'"
-                class="px-1 rounded bg-error/15 text-error normal-case"
+                class="crop-badge crop-badge-remove"
               >{{ t('chat.crop.removedBadge') }}</span>
               <span
                 v-else-if="rowState(m) === 'willRemove'"
-                class="px-1 rounded bg-error/15 text-error normal-case"
+                class="crop-badge crop-badge-remove"
               >{{ t('chat.crop.willRemove') }}</span>
               <span
                 v-else-if="rowState(m) === 'willRestore'"
-                class="px-1 rounded bg-success/15 text-success normal-case"
+                class="crop-badge crop-badge-restore"
               >{{ t('chat.crop.willRestore') }}</span>
             </div>
             <div
-              class="text-sm whitespace-pre-wrap break-words"
-              :class="isMarked(m.messageId) ? 'line-through opacity-50' : ''"
-              style="display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden"
+              class="crop-content text-sm whitespace-pre-wrap break-words"
+              :class="{ 'line-through text-(--v-label-tertiary)': isMarked(m.messageId) }"
             >{{ m.content }}</div>
           </div>
-          <VIconButton icon="crop" :label="t('chat.crop.cropFromHere')" size="sm"
+          <VIconButton
+            icon="crop"
+            :label="t('chat.crop.cropFromHere')"
+            size="sm"
             @click="cropFrom(index)"
-           />
+          />
         </li>
       </ul>
     </div>
 
     <template #actions>
-      <div class="flex items-center justify-between w-full gap-3">
-        <span class="text-xs opacity-60">
-          {{ pendingCount === 0 ? t('chat.crop.pendingNone') : t('chat.crop.pending', { n: pendingCount }) }}
-        </span>
-        <div class="flex gap-2">
-          <VButton
-            v-if="pendingCount > 0"
-            variant="plain"
-            size="sm"
-            :disabled="saving"
-            @click="reset"
-          >{{ t('chat.crop.undoCrop') }}</VButton>
-          <VButton variant="secondary" size="sm" :disabled="saving" @click="close">
-            {{ t('chat.crop.cancel') }}
-          </VButton>
-          <VButton
-            variant="primary"
-            size="sm"
-            :disabled="saving || pendingCount === 0"
-            @click="apply"
-          >{{ t('chat.crop.apply') }}</VButton>
-        </div>
-      </div>
+      <span class="mr-auto text-xs text-(--v-label-secondary)">
+        {{ pendingCount === 0 ? t('chat.crop.pendingNone') : t('chat.crop.pending', { n: pendingCount }) }}
+      </span>
+      <VButton
+        v-if="pendingCount > 0"
+        variant="plain"
+        :disabled="saving"
+        @click="reset"
+      >{{ t('chat.crop.undoCrop') }}</VButton>
+      <VButton variant="secondary" :disabled="saving" @click="close">
+        {{ t('chat.crop.cancel') }}
+      </VButton>
+      <VButton
+        variant="primary"
+        :loading="saving"
+        :disabled="saving || pendingCount === 0"
+        @click="apply"
+      >{{ t('chat.crop.apply') }}</VButton>
     </template>
   </VModal>
 </template>
+
+<style scoped>
+/* A message row; removal / restore states tint via the semantic tokens. */
+.crop-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--v-separator);
+  border-radius: 6px;
+  transition: background-color 120ms, border-color 120ms;
+}
+.crop-row-remove {
+  border-color: color-mix(in srgb, var(--v-danger) 50%, transparent);
+  background: color-mix(in srgb, var(--v-danger) 5%, transparent);
+}
+.crop-row-restore {
+  border-color: color-mix(in srgb, var(--v-success) 50%, transparent);
+  background: color-mix(in srgb, var(--v-success) 5%, transparent);
+}
+.crop-badge {
+  padding: 0 4px;
+  border-radius: 4px;
+  text-transform: none;
+}
+.crop-badge-remove {
+  color: var(--v-danger);
+  background: color-mix(in srgb, var(--v-danger) 15%, transparent);
+}
+.crop-badge-restore {
+  color: var(--v-success);
+  background: color-mix(in srgb, var(--v-success) 15%, transparent);
+}
+.crop-content {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+</style>

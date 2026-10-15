@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue';
 import type { ZarniwoopInsightsDto } from '@vance/generated';
-import { VAlert, VButton, VEmptyState } from '@/components';
+import { VAlert, VBadge, VButton, VEmptyState } from '@/components';
 import { useToolHealth, useZarniwoopInsights } from '@/composables/useProjectInsights';
 import { useI18n } from 'vue-i18n';
 
@@ -196,16 +196,16 @@ const now = Date.now();
                   :disabled="state.loading.value"
                   @change="toggleInstance(inst)"
                 />
-                <span
+                <VBadge
                   v-if="inst.manualOverride"
-                  class="badge badge--tag"
+                  size="sm"
                   :title="$t('insights.zarniwoop.overrideTitle', {
                     mode: inst.manualOverride,
                     fallback: inst.defaultEnabled
                       ? $t('insights.zarniwoop.enabled')
                       : $t('insights.zarniwoop.disabled'),
                   })"
-                >{{ $t('insights.zarniwoop.override') }}</span>
+                >{{ $t('insights.zarniwoop.override') }}</VBadge>
                 <span
                   v-else-if="!inst.defaultEnabled"
                   class="opacity-60 text-xs"
@@ -227,11 +227,12 @@ const now = Date.now();
             </td>
             <td class="font-mono opacity-80">{{ inst.protocol }}</td>
             <td class="text-xs">
-              <span
+              <VBadge
                 v-for="m in inst.modalities"
                 :key="m"
-                class="badge badge--tag mr-1"
-              >{{ m.toLowerCase() }}</span>
+                size="sm"
+                class="mr-1"
+              >{{ m.toLowerCase() }}</VBadge>
             </td>
             <td>
               <span :class="availabilityClass(inst.availability)">

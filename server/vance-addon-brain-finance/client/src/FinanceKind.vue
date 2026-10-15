@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
-import { VAlert, VButton, VModal, VIconButton } from '@vance/components';
+import { VAlert, VButton, VCheckbox, VIconButton, VInput, VModal, VSelect } from '@vance/components';
 import FinanceTreeNode from './FinanceTreeNode.vue';
 import * as ops from './treeOps';
 import { calc, generateReport, getSnapshot, getTree, listProcessors, putTree } from './api';
@@ -200,6 +200,18 @@ const reportForm = reactive({
   persist: false,
   outputPath: '',
 });
+
+const processorOptions = computed(() =>
+  processors.value.map((p) => ({ value: p.type, label: `${p.title} (${p.outputKind})` })),
+);
+
+const granularityOptions = computed<{ value: Granularity; label: string }[]>(() =>
+  (['day', 'week', 'month', 'year'] as const).map((g) => ({ value: g, label: t(`finance.period.${g}`) })),
+);
+
+const chartTypeOptions = computed(() =>
+  (['line', 'bar', 'area', 'scatter'] as const).map((c) => ({ value: c, label: t(`finance.chartType.${c}`) })),
+);
 
 function openReport(): void {
   if (!reportForm.processor && processors.value.length > 0) {
@@ -406,78 +418,65 @@ async function runReport(): Promise<void> {
 
     <!-- Report modal -->
     <VModal v-model="reportOpen" :title="t('finance.reportModal.title')">
-      <div class="flex flex-col gap-2 text-sm">
-        <label class="flex flex-col gap-0.5">
-          <span class="opacity-70">{{ t('finance.reportModal.processor') }}</span>
-          <select v-model="reportForm.processor" class="fx-in">
-            <option v-for="p in processors" :key="p.type" :value="p.type">
-              <!-- eslint-disable-next-line vue/no-restricted-syntax -- an <option> holds text only, no icon -->
-              {{ p.title }} → {{ p.outputKind }}
-            </option>
-          </select>
-        </label>
+      <form id="finance-report-form" class="flex flex-col gap-4" @submit.prevent="runReport">
+        <VSelect
+          :model-value="reportForm.processor"
+          :options="processorOptions"
+          :label="t('finance.reportModal.processor')"
+          @update:model-value="(v) => { reportForm.processor = v ?? ''; }"
+        />
         <div class="flex gap-2">
-          <label class="flex flex-col gap-0.5">
-            <span class="opacity-70">{{ t('finance.reportModal.from') }}</span>
-            <input type="date" v-model="reportForm.from" class="fx-in" />
-          </label>
-          <label class="flex flex-col gap-0.5">
-            <span class="opacity-70">{{ t('finance.reportModal.to') }}</span>
-            <input type="date" v-model="reportForm.to" class="fx-in" />
-          </label>
-          <label class="flex flex-col gap-0.5">
-            <span class="opacity-70">{{ t('finance.reportModal.granularity') }}</span>
-            <select v-model="reportForm.granularity" class="fx-in">
-              <option value="day">{{ t('finance.period.day') }}</option>
-              <option value="week">{{ t('finance.period.week') }}</option>
-              <option value="month">{{ t('finance.period.month') }}</option>
-              <option value="year">{{ t('finance.period.year') }}</option>
-            </select>
-          </label>
+          <div class="min-w-0 flex-1">
+            <VInput v-model="reportForm.from" type="date" :label="t('finance.reportModal.from')" />
+          </div>
+          <div class="min-w-0 flex-1">
+            <VInput v-model="reportForm.to" type="date" :label="t('finance.reportModal.to')" />
+          </div>
+          <div class="min-w-0 flex-1">
+            <VSelect
+              :model-value="reportForm.granularity"
+              :options="granularityOptions"
+              :label="t('finance.reportModal.granularity')"
+              @update:model-value="(v) => { if (v) reportForm.granularity = v; }"
+            />
+          </div>
         </div>
-        <label class="flex flex-col gap-0.5">
-          <span class="opacity-70">{{ t('finance.reportModal.chartType') }}</span>
-          <select v-model="reportForm.chartType" class="fx-in">
-            <option value="line">{{ t('finance.chartType.line') }}</option>
-            <option value="bar">{{ t('finance.chartType.bar') }}</option>
-            <option value="area">{{ t('finance.chartType.area') }}</option>
-            <option value="scatter">{{ t('finance.chartType.scatter') }}</option>
-          </select>
-        </label>
-        <label class="flex flex-col gap-0.5">
-          <span class="opacity-70">{{ t('finance.reportModal.focus') }}</span>
-          <input v-model="reportForm.focus" class="fx-in" />
-        </label>
-        <label class="flex items-center gap-1">
-          <input type="checkbox" v-model="reportForm.persist" />
-          <span class="opacity-70">{{ t('finance.reportModal.persist') }}</span>
-        </label>
-        <label v-if="reportForm.persist" class="flex flex-col gap-0.5">
-          <span class="opacity-70">{{ t('finance.reportModal.outputPath') }}</span>
-          <input
-            v-model="reportForm.outputPath"
-            class="fx-in"
-            :placeholder="t('finance.reportModal.outputPathPlaceholder')"
-          />
-        </label>
+        <VSelect
+          :model-value="reportForm.chartType"
+          :options="chartTypeOptions"
+          :label="t('finance.reportModal.chartType')"
+          @update:model-value="(v) => { if (v) reportForm.chartType = v; }"
+        />
+        <VInput v-model="reportForm.focus" :label="t('finance.reportModal.focus')" />
+        <VCheckbox v-model="reportForm.persist" :label="t('finance.reportModal.persist')" />
+        <VInput
+          v-if="reportForm.persist"
+          v-model="reportForm.outputPath"
+          :label="t('finance.reportModal.outputPath')"
+          :placeholder="t('finance.reportModal.outputPathPlaceholder')"
+        />
 
-        <VButton
-          variant="primary"
-          :loading="reportRunning"
-          :disabled="reportRunning || !reportForm.processor"
-          @click="runReport"
-        >
-          {{ reportRunning ? t('finance.reportModal.generating') : t('finance.reportModal.generate') }}
-        </VButton>
-
-        <div v-if="reportRunning" class="mt-2 opacity-60">{{ t('finance.reportModal.running') }}</div>
-        <div v-else-if="reportResult" class="mt-2">
+        <div v-if="reportRunning" class="text-sm text-(--v-label-secondary)">{{ t('finance.reportModal.running') }}</div>
+        <div v-else-if="reportResult" class="text-sm">
           <div v-if="reportResult.path" class="text-(--v-success)">
             {{ t('finance.reportModal.savedTo', { path: reportResult.path }) }}
           </div>
           <pre v-else class="max-h-64 overflow-auto text-xs bg-(--v-fill) p-2 rounded">{{ reportResult.body }}</pre>
         </div>
-      </div>
+      </form>
+
+      <template #actions>
+        <VButton variant="secondary" @click="reportOpen = false">{{ t('finance.reportModal.close') }}</VButton>
+        <VButton
+          type="submit"
+          form="finance-report-form"
+          variant="primary"
+          :loading="reportRunning"
+          :disabled="reportRunning || !reportForm.processor"
+        >
+          {{ reportRunning ? t('finance.reportModal.generating') : t('finance.reportModal.generate') }}
+        </VButton>
+      </template>
     </VModal>
   </div>
 </template>

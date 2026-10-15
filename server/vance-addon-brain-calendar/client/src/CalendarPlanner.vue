@@ -415,28 +415,46 @@ defineExpose({ reload: load });
 
     <!-- New-event modal -->
     <VModal v-model="showCreateModal" :title="t('calendar.planner.newEvent')">
-      <div class="flex flex-col gap-3">
-        <VInput v-model="newEventForm.title" :placeholder="t('calendar.planner.eventTitlePlaceholder')" />
-        <VInput v-model="newEventForm.start" :placeholder="t('calendar.planner.startPlaceholder')" />
+      <form id="calendar-new-event-form" class="flex flex-col gap-4" @submit.prevent="submitCreate">
         <VInput
-          :model-value="newEventForm.end ?? ''"
-          :placeholder="t('calendar.planner.endPlaceholder')"
-          @update:model-value="(v) => newEventForm.end = v"
+          v-model="newEventForm.title"
+          :label="t('calendar.detail.fieldTitle')"
+          :placeholder="t('calendar.planner.eventTitlePlaceholder')"
         />
+        <div class="flex gap-2">
+          <div class="min-w-0 flex-1">
+            <VInput
+              v-model="newEventForm.start"
+              :label="t('calendar.detail.start')"
+              :placeholder="t('calendar.detail.startPlaceholder')"
+            />
+          </div>
+          <div class="min-w-0 flex-1">
+            <VInput
+              :model-value="newEventForm.end ?? ''"
+              :label="t('calendar.detail.end')"
+              :placeholder="t('calendar.detail.endPlaceholder')"
+              @update:model-value="(v) => newEventForm.end = v"
+            />
+          </div>
+        </div>
         <VSelect
           :model-value="newEventForm.lane ?? ''"
           :options="planner?.lanes.map((l) => ({ value: l.name, label: l.title ?? l.name })) ?? []"
+          :label="t('calendar.detail.lane')"
           @update:model-value="(v) => newEventForm.lane = (v as string | null) ?? ''"
         />
-        <div class="flex justify-end gap-2 pt-2">
-          <VButton variant="secondary" @click="showCreateModal = false">{{ t('calendar.common.cancel') }}</VButton>
-          <VButton
-            variant="primary"
-            :disabled="!newEventForm.title.trim() || !newEventForm.start.trim()"
-            @click="submitCreate"
-          >{{ t('calendar.common.create') }}</VButton>
-        </div>
-      </div>
+      </form>
+
+      <template #actions>
+        <VButton variant="secondary" @click="showCreateModal = false">{{ t('calendar.common.cancel') }}</VButton>
+        <VButton
+          type="submit"
+          form="calendar-new-event-form"
+          variant="primary"
+          :disabled="!newEventForm.title.trim() || !newEventForm.start.trim()"
+        >{{ t('calendar.common.create') }}</VButton>
+      </template>
     </VModal>
   </div>
 </template>

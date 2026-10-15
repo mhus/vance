@@ -63,12 +63,20 @@ const sessionId = computed<string>(() => props.sessionId ?? '_cortex');
 
 const title = computed<string>(() =>
   props.mode === 'UPDATE'
-    ? 'Slart · update this script'
-    : 'Slart · generate a new script',
+    ? t('cortex.hactar.titleUpdate')
+    : t('cortex.hactar.titleGenerate'),
 );
 
 const cta = computed<string>(() =>
-  props.mode === 'UPDATE' ? 'Update' : 'Generate',
+  props.mode === 'UPDATE' ? t('cortex.hactar.update') : t('cortex.hactar.generate'),
+);
+
+// The update hint only applies while the prompt is shown — once a script
+// came back, the dialog is about applying it.
+const description = computed<string | undefined>(() =>
+  props.mode === 'UPDATE' && !result.value?.code
+    ? t('cortex.hactar.updateDescription', { apply: t('cortex.hactar.applyToEditor') })
+    : undefined,
 );
 
 function initialPrompt(): string {
@@ -178,66 +186,58 @@ onBeforeUnmount(() => {
   <VModal
     v-model="visible"
     :title="title"
+    :description="description"
     :close-on-backdrop="false"
     @update:model-value="(v: boolean) => !v && close()"
   >
-    <div class="space-y-3 p-1">
-      <div v-if="!result || !result.code">
-        <label class="flex items-center">
-          <span class="text-sm font-semibold">
-            {{
-              mode === 'UPDATE'
-                ? 'What should change?'
-                : 'What should the script do?'
-            }}
-          </span>
-        </label>
+    <div class="flex flex-col gap-4">
+      <template v-if="!result || !result.code">
         <VTextarea
           v-model="prompt"
           :rows="6"
-          :placeholder="
-            mode === 'UPDATE'
-              ? 'Example: \'Also send a Slack notification when the inbox is empty.\''
-              : 'Example: \'Read a number from args.n and return its factorial.\''
-          "
+          :label="mode === 'UPDATE'
+            ? $t('cortex.hactar.promptLabelUpdate')
+            : $t('cortex.hactar.promptLabelGenerate')"
+          :placeholder="mode === 'UPDATE'
+            ? $t('cortex.hactar.promptPlaceholderUpdate')
+            : $t('cortex.hactar.promptPlaceholderGenerate')"
         />
-        <div v-if="mode === 'UPDATE'" class="text-xs opacity-70 mt-1">
-          Slart sees the current script body and preserves its
-          structure where possible. The new version lands in a
-          fresh Slart bucket — the original document only changes
-          if you click <em>{{ $t('cortex.hactar.applyToEditor') }}</em>.
-        </div>
-        <div class="flex items-center gap-2 mt-3">
-          <VButton variant="primary" :loading="busy" @click="start">
-            {{ cta }}
-          </VButton>
-          <span v-if="polling" class="text-sm opacity-70">{{ $t('cortex.hactar.thinking') }}</span>
-          <span v-if="result?.status" class="text-sm font-mono opacity-70">
+        <div
+          v-if="polling || result?.status"
+          class="flex items-center gap-2 text-sm text-(--v-label-secondary)"
+        >
+          <span v-if="polling">{{ $t('cortex.hactar.thinking') }}</span>
+          <span v-if="result?.status" class="font-mono">
             {{ result.status }}<span v-if="result.reason"> / {{ result.reason }}</span>
           </span>
         </div>
-      </div>
+      </template>
 
       <VAlert v-if="error" variant="error">{{ error }}</VAlert>
 
-      <div v-if="result?.code">
-        <div class="font-semibold mb-1">{{ $t('cortex.hactar.generatedScript') }}</div>
+      <div v-if="result?.code" class="flex flex-col gap-1">
+        <span class="text-xs font-semibold text-(--v-label-secondary)">
+          {{ $t('cortex.hactar.generatedScript') }}
+        </span>
         <pre
-          class="bg-base-200 p-2 rounded text-xs max-h-72 overflow-y-auto whitespace-pre-wrap font-mono"
+          class="bg-(--v-fill) p-2 rounded-(--v-radius-control) text-xs max-h-72 overflow-y-auto whitespace-pre-wrap font-mono"
         >{{ result.code }}</pre>
-        <div class="flex gap-2 mt-3">
-          <VButton variant="primary" @click="applyResult">{{ $t('cortex.hactar.applyToEditor') }}</VButton>
-          <VButton variant="secondary" @click="result = null">{{ $t('cortex.hactar.regenerate') }}</VButton>
-        </div>
       </div>
 
-      <div v-if="result?.failureReason" class="text-sm text-error">
+      <div v-if="result?.failureReason" class="text-sm text-(--v-danger)">
         <span class="font-semibold">{{ $t('cortex.hactar.failed') }}</span> {{ result.failureReason }}
       </div>
     </div>
 
     <template #actions>
       <VButton variant="secondary" @click="close">{{ $t('cortex.hactar.close') }}</VButton>
+      <template v-if="result?.code">
+        <VButton variant="secondary" @click="result = null">{{ $t('cortex.hactar.regenerate') }}</VButton>
+        <VButton variant="primary" @click="applyResult">{{ $t('cortex.hactar.applyToEditor') }}</VButton>
+      </template>
+      <VButton v-else variant="primary" :loading="busy" @click="start">
+        {{ cta }}
+      </VButton>
     </template>
   </VModal>
 </template>

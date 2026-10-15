@@ -17,7 +17,16 @@ import type {
   SkillCategoryDto,
   SkillSummaryDto,
 } from '@vance/generated';
-import { VAlert, VBadge, VButton, VEmptyState, VInput, VModal, VToggle, VIconButton } from '@components/index';
+import {
+  VAlert,
+  VBadge,
+  VEmptyState,
+  VIconButton,
+  VInput,
+  VModal,
+  VSelect,
+  VToggle,
+} from '@components/index';
 import { groupCategorized } from '@/util/categoryGroups';
 
 interface Props {
@@ -283,6 +292,18 @@ function modeLabel(mode: SkillActivation): string {
   }
 }
 
+/** The activation ladder as select options, lowest level first. */
+const modeOptions = computed(() => [
+  SkillActivation.HIDDEN,
+  SkillActivation.MANUAL,
+  SkillActivation.TRIGGER,
+  SkillActivation.AGENT,
+].map((mode) => ({ value: mode, label: modeLabel(mode) })));
+
+function onModeChange(mode: SkillActivation | null): void {
+  if (mode) void setMode(mode);
+}
+
 /** i18n key of the short mode badge in the row list. */
 function modeBadgeKey(mode: SkillActivation): string {
   switch (mode) {
@@ -328,7 +349,7 @@ watch(() => props.sessionKey, refresh);
 <template>
   <div class="p-3 flex flex-col gap-3 min-h-0">
     <div class="flex items-center gap-2 px-1">
-      <div class="text-xs uppercase tracking-wide opacity-60 font-semibold shrink-0">
+      <div class="text-xs uppercase tracking-wide text-(--v-label-secondary) font-semibold shrink-0">
         {{ t('chat.skills.title') }}
       </div>
       <div class="flex-1 min-w-0 flex items-center justify-end gap-2">
@@ -376,16 +397,16 @@ watch(() => props.sessionKey, refresh);
       >
         <div
           v-if="group.label"
-          class="text-xs font-semibold uppercase tracking-wide opacity-60 px-1 pt-2"
+          class="text-xs font-semibold uppercase tracking-wide text-(--v-label-secondary) px-1 pt-2"
         >
           {{ group.label }}
         </div>
         <div
           v-for="row in group.items"
           :key="row.summary.name"
-        class="bg-base-200 rounded px-2.5 py-2 text-left text-sm"
-        :class="{ 'opacity-50': !row.summary.enabled || effectiveLevel(row.summary) === SkillActivation.HIDDEN }"
-      >
+          class="bg-(--v-fill) rounded-md px-2.5 py-2 text-left text-sm"
+          :class="{ 'opacity-50': !row.summary.enabled || effectiveLevel(row.summary) === SkillActivation.HIDDEN }"
+        >
         <div class="flex items-center gap-2">
           <div class="flex-1 min-w-0 flex flex-col gap-1">
             <div class="flex items-center gap-1.5 flex-wrap">
@@ -414,8 +435,8 @@ watch(() => props.sessionKey, refresh);
                 {{ row.summary.source }}
               </VBadge>
             </div>
-            <div class="text-[11px] opacity-50 font-mono truncate">{{ row.summary.name }}</div>
-            <div v-if="row.summary.description" class="text-xs opacity-70 line-clamp-2">
+            <div class="text-[11px] text-(--v-label-tertiary) font-mono truncate">{{ row.summary.name }}</div>
+            <div v-if="row.summary.description" class="text-xs text-(--v-label-secondary) line-clamp-2">
               {{ row.summary.description }}
             </div>
           </div>
@@ -429,14 +450,12 @@ watch(() => props.sessionKey, refresh);
             :disabled="row.ref.fromRecipe"
             @click="clear(row.summary.name)"
            />
-          <VButton
-            variant="plain"
+          <VIconButton
+            icon="info"
+            :label="t('chat.skills.info')"
             size="sm"
-            :title="t('chat.skills.info')"
             @click="detail = row.summary"
-          >
-            ℹ
-          </VButton>
+          />
         </div>
       </div>
       </template>
@@ -457,41 +476,31 @@ watch(() => props.sessionKey, refresh);
               : detail.lifecycle === 'turn' ? t('chat.skills.turnBadge') : t('chat.skills.stickyBadge') }}
           </VBadge>
         </div>
-        <div v-if="detail.description" class="opacity-80">{{ detail.description }}</div>
-        <div class="text-xs opacity-60">
+        <div v-if="detail.description" class="text-(--v-label-secondary)">{{ detail.description }}</div>
+        <div class="text-xs text-(--v-label-secondary)">
           {{ isMacro(detail)
             ? t('chat.skills.lifecycleShotHint')
             : detail.lifecycle === 'turn' ? t('chat.skills.lifecycleTurnHint') : t('chat.skills.lifecycleStickyHint') }}
         </div>
 
-        <div class="flex items-center gap-2">
-          <label for="skill-mode-select" class="text-xs uppercase tracking-wide opacity-60 font-semibold">
-            {{ t('chat.skills.modeLabel') }}
-          </label>
-          <select
-            id="skill-mode-select"
-            class="rounded border bg-transparent px-2 py-1 text-sm"
-            :value="detail.activation"
-            :disabled="modeSaving"
-            @change="setMode(($event.target as HTMLSelectElement).value as SkillActivation)"
-          >
-            <option :value="SkillActivation.HIDDEN">{{ modeLabel(SkillActivation.HIDDEN) }}</option>
-            <option :value="SkillActivation.MANUAL">{{ modeLabel(SkillActivation.MANUAL) }}</option>
-            <option :value="SkillActivation.TRIGGER">{{ modeLabel(SkillActivation.TRIGGER) }}</option>
-            <option :value="SkillActivation.AGENT">{{ modeLabel(SkillActivation.AGENT) }}</option>
-          </select>
-          <span class="text-xs opacity-60">
-            {{ detail.activationSource === 'OVERRIDE'
+        <div class="w-64 max-w-full">
+          <VSelect
+            :model-value="detail.activation"
+            :options="modeOptions"
+            :label="t('chat.skills.modeLabel')"
+            :help="detail.activationSource === 'OVERRIDE'
               ? t('chat.skills.modeOverrideHint', { scope: detail.activationOverrideScope ?? 'USER' })
-              : t('chat.skills.modeAuthorHint') }}
-          </span>
+              : t('chat.skills.modeAuthorHint')"
+            :disabled="modeSaving"
+            @update:model-value="onModeChange"
+          />
         </div>
-        <div v-if="detail.relevant === false" class="text-xs opacity-70">
+        <div v-if="detail.relevant === false" class="text-xs text-(--v-label-secondary)">
           {{ t('chat.skills.notRelevantHint') }}
         </div>
 
         <div v-if="triggerTokens(detail).length">
-          <div class="text-xs uppercase tracking-wide opacity-60 font-semibold mb-1">
+          <div class="text-xs uppercase tracking-wide text-(--v-label-secondary) font-semibold mb-1">
             {{ t('chat.skills.autoTrigger') }}
           </div>
           <div class="flex flex-wrap gap-1">
@@ -505,12 +514,12 @@ watch(() => props.sessionKey, refresh);
               >
                 {{ keyword }}
               </VBadge>
-              <span v-if="trigger.pattern" class="font-mono text-xs opacity-70">
+              <span v-if="trigger.pattern" class="font-mono text-xs text-(--v-label-secondary)">
                 /{{ trigger.pattern }}/
               </span>
             </template>
           </div>
-          <div class="text-[11px] opacity-50 mt-1">
+          <div class="text-[11px] text-(--v-label-tertiary) mt-1">
             {{ effectiveLevel(detail) === SkillActivation.TRIGGER
               ? t('chat.skills.autoTriggerTitle')
               : t('chat.skills.autoTriggerInactive') }}
@@ -518,7 +527,7 @@ watch(() => props.sessionKey, refresh);
         </div>
 
         <div v-if="(detail.arguments ?? []).length">
-          <div class="text-xs uppercase tracking-wide opacity-60 font-semibold mb-1">
+          <div class="text-xs uppercase tracking-wide text-(--v-label-secondary) font-semibold mb-1">
             {{ t('chat.skills.argumentsLabel') }}
           </div>
           <div class="flex flex-col gap-1.5">
@@ -530,36 +539,36 @@ watch(() => props.sessionKey, refresh);
                   {{ t('chat.skills.requiredLabel') }}
                 </VBadge>
               </div>
-              <div v-if="arg.description" class="text-xs opacity-60">{{ arg.description }}</div>
+              <div v-if="arg.description" class="text-xs text-(--v-label-secondary)">{{ arg.description }}</div>
             </div>
           </div>
-          <div class="text-[11px] opacity-50 mt-1">{{ t('chat.skills.argumentsHint') }}</div>
+          <div class="text-[11px] text-(--v-label-tertiary) mt-1">{{ t('chat.skills.argumentsHint') }}</div>
         </div>
 
         <div v-if="(detail.tools ?? []).length">
-          <div class="text-xs uppercase tracking-wide opacity-60 font-semibold mb-1">
+          <div class="text-xs uppercase tracking-wide text-(--v-label-secondary) font-semibold mb-1">
             {{ t('chat.skills.toolsLabel') }}
           </div>
           <div class="flex flex-wrap gap-1">
-            <span v-for="tool in detail.tools" :key="tool" class="font-mono text-xs opacity-70">
+            <span v-for="tool in detail.tools" :key="tool" class="font-mono text-xs text-(--v-label-secondary)">
               {{ tool }}
             </span>
           </div>
         </div>
 
         <div v-if="(detail.manualPaths ?? []).length">
-          <div class="text-xs uppercase tracking-wide opacity-60 font-semibold mb-1">
+          <div class="text-xs uppercase tracking-wide text-(--v-label-secondary) font-semibold mb-1">
             {{ t('chat.skills.manualPathsLabel') }}
           </div>
           <div class="flex flex-col gap-0.5">
-            <span v-for="path in detail.manualPaths" :key="path" class="font-mono text-xs opacity-70">
+            <span v-for="path in detail.manualPaths" :key="path" class="font-mono text-xs text-(--v-label-secondary)">
               {{ path }}
             </span>
           </div>
         </div>
 
         <div v-if="(detail.referenceDocs ?? []).length">
-          <div class="text-xs uppercase tracking-wide opacity-60 font-semibold mb-1">
+          <div class="text-xs uppercase tracking-wide text-(--v-label-secondary) font-semibold mb-1">
             {{ t('chat.skills.referenceDocsLabel') }}
           </div>
           <div class="flex flex-col gap-1">
@@ -570,13 +579,13 @@ watch(() => props.sessionKey, refresh);
                   {{ doc.loadMode === 'ON_DEMAND' ? t('chat.skills.onDemandLabel') : t('chat.skills.inlineLabel') }}
                 </VBadge>
               </div>
-              <div v-if="doc.summary" class="text-xs opacity-60">{{ doc.summary }}</div>
+              <div v-if="doc.summary" class="text-xs text-(--v-label-secondary)">{{ doc.summary }}</div>
             </div>
           </div>
         </div>
 
         <div v-if="(detail.scripts ?? []).length">
-          <div class="text-xs uppercase tracking-wide opacity-60 font-semibold mb-1">
+          <div class="text-xs uppercase tracking-wide text-(--v-label-secondary) font-semibold mb-1">
             {{ t('chat.skills.scriptsLabel') }}
           </div>
           <div class="flex flex-col gap-1">
@@ -585,28 +594,28 @@ watch(() => props.sessionKey, refresh);
                 <span class="font-mono text-xs">skill_{{ detail.name }}__{{ script.name }}</span>
                 <VBadge variant="neutral" size="xs" outline>{{ script.target }}</VBadge>
               </div>
-              <div v-if="script.description" class="text-xs opacity-60">{{ script.description }}</div>
+              <div v-if="script.description" class="text-xs text-(--v-label-secondary)">{{ script.description }}</div>
             </div>
           </div>
         </div>
 
         <div v-if="(detail.activate ?? []).length">
-          <div class="text-xs uppercase tracking-wide opacity-60 font-semibold mb-1">
+          <div class="text-xs uppercase tracking-wide text-(--v-label-secondary) font-semibold mb-1">
             {{ t('chat.skills.activateLabel') }}
           </div>
           <div class="flex flex-col gap-0.5">
-            <span v-for="(cmd, i) in detail.activate" :key="i" class="font-mono text-xs opacity-70">
+            <span v-for="(cmd, i) in detail.activate" :key="i" class="font-mono text-xs text-(--v-label-secondary)">
               {{ cmd }}
             </span>
           </div>
         </div>
 
         <div v-if="(detail.deactivate ?? []).length">
-          <div class="text-xs uppercase tracking-wide opacity-60 font-semibold mb-1">
+          <div class="text-xs uppercase tracking-wide text-(--v-label-secondary) font-semibold mb-1">
             {{ t('chat.skills.deactivateLabel') }}
           </div>
           <div class="flex flex-col gap-0.5">
-            <span v-for="(cmd, i) in detail.deactivate" :key="i" class="font-mono text-xs opacity-70">
+            <span v-for="(cmd, i) in detail.deactivate" :key="i" class="font-mono text-xs text-(--v-label-secondary)">
               {{ cmd }}
             </span>
           </div>

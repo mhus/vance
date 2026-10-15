@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, inject, onMounted, ref, watch, type Component } from 'vue';
-import { cortexDeepLink, VAlert, VButton, VInput, VIcon, VIconButton, type IconName } from '@vance/components';
+import { cortexDeepLink, VAlert, VButton, VInput, VIcon, VIconButton, type IconName, useConfirm } from '@vance/components';
 import DocPicker from './DocPicker.vue';
 import {
   addEntry,
@@ -26,6 +26,7 @@ const props = defineProps<{
 }>();
 
 const t = useT();
+const confirmAction = useConfirm();
 
 const folder = computed(() => {
   const p = props.document.path;
@@ -143,7 +144,10 @@ async function onAdd(): Promise<void> {
 }
 
 async function onRemove(e: BinderEntryView): Promise<void> {
-  if (!window.confirm(t('binder.app.confirmRemove', { title: e.title }))) return;
+  if (!await confirmAction({
+    message: t('binder.app.confirmRemove', { title: e.title }),
+    confirmLabel: t('binder.common.remove'),
+  })) return;
   await run(() => removeEntry(props.document.projectId, folder.value, e.ref));
 }
 

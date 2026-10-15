@@ -422,45 +422,61 @@ defineExpose({ reload });
 
     <!-- New-card modal -->
     <VModal v-model="showCreateModal" :title="t('kanban.board.newCard')">
-      <div class="flex flex-col gap-3">
-        <VInput v-model="newCardForm.title" :placeholder="t('kanban.board.cardTitlePlaceholder')" />
+      <form id="kanban-new-card-form" class="flex flex-col gap-4" @submit.prevent="submitCreate">
+        <VInput
+          v-model="newCardForm.title"
+          :label="t('kanban.detail.fieldTitle')"
+          :placeholder="t('kanban.board.cardTitlePlaceholder')"
+        />
         <div class="flex gap-2">
-          <VSelect
-            :model-value="newCardForm.column ?? ''"
-            :options="board?.columns.map((c) => ({ value: c.name, label: c.title ?? c.name })) ?? []"
-            class="flex-1"
-            @update:model-value="(v) => newCardForm.column = (v as string | null) ?? ''"
-          />
-          <VSelect
-            :model-value="newCardForm.priority ?? ''"
-            :options="[
-              { value: '', label: t('kanban.priority.none') },
-              { value: 'low', label: t('kanban.priority.low') },
-              { value: 'med', label: t('kanban.priority.med') },
-              { value: 'high', label: t('kanban.priority.high') },
-              { value: 'critical', label: t('kanban.priority.critical') },
-            ]"
-            class="flex-1"
-            @update:model-value="(v) => newCardForm.priority = (v as string | null) ?? ''"
-          />
+          <div class="min-w-0 flex-1">
+            <VSelect
+              :model-value="newCardForm.column ?? ''"
+              :options="board?.columns.map((c) => ({ value: c.name, label: c.title ?? c.name })) ?? []"
+              :label="t('kanban.board.column')"
+              @update:model-value="(v) => newCardForm.column = (v as string | null) ?? ''"
+            />
+          </div>
+          <div class="min-w-0 flex-1">
+            <VSelect
+              :model-value="newCardForm.priority ?? ''"
+              :options="[
+                { value: '', label: t('kanban.priority.none') },
+                { value: 'low', label: t('kanban.priority.low') },
+                { value: 'med', label: t('kanban.priority.med') },
+                { value: 'high', label: t('kanban.priority.high') },
+                { value: 'critical', label: t('kanban.priority.critical') },
+              ]"
+              :label="t('kanban.detail.priority')"
+              @update:model-value="(v) => newCardForm.priority = (v as string | null) ?? ''"
+            />
+          </div>
         </div>
         <VInput
           :model-value="newCardForm.assignee ?? ''"
+          :label="t('kanban.detail.assignee')"
           :placeholder="t('kanban.board.assigneePlaceholder')"
           @update:model-value="(v) => newCardForm.assignee = v"
         />
         <VInput
           :model-value="newCardForm.dueDate ?? ''"
-          :placeholder="t('kanban.board.dueDatePlaceholder')"
+          type="date"
+          :label="t('kanban.detail.dueDate')"
           @update:model-value="(v) => newCardForm.dueDate = v"
         />
-        <div class="flex justify-end gap-2 pt-2">
-          <VButton variant="secondary" @click="showCreateModal = false">{{ t('kanban.common.cancel') }}</VButton>
-          <VButton variant="primary" :disabled="!newCardForm.title.trim()" @click="submitCreate">
-            {{ t('kanban.common.create') }}
-          </VButton>
-        </div>
-      </div>
+      </form>
+
+      <template #actions>
+        <VButton variant="secondary" @click="showCreateModal = false">{{ t('kanban.common.cancel') }}</VButton>
+        <VButton
+          type="submit"
+          form="kanban-new-card-form"
+          variant="primary"
+          :disabled="!newCardForm.title.trim()"
+        >
+          {{ t('kanban.common.create') }}
+        </VButton>
+      </template>
     </VModal>
   </div>
 </template>

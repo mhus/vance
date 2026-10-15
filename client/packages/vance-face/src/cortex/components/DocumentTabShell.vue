@@ -24,6 +24,7 @@
  */
 import { computed, inject, onBeforeUnmount, provide, ref, shallowRef, toRef, watch } from 'vue';
 import type { Ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
   CodeEditor,
   VButton,
@@ -32,6 +33,7 @@ import {
   VSegment,
   accentColorDotClass,
   provideDocumentReferrer,
+  useConfirm,
 } from '@/components';
 import { brainFetch, brainFetchBlob } from '@vance/shared';
 import type { DocumentDto, FollowUpRequestDto, FollowUpResponseDto } from '@vance/generated';
@@ -69,6 +71,8 @@ const emit = defineEmits<{
 }>();
 
 const store = useCortexStore();
+const { t } = useI18n();
+const confirmAction = useConfirm();
 
 // Safety net for the lazy addon load. cortexStore.openFile awaits the owning
 // addon before the tab reaches us, so the common path resolves correctly on the
@@ -188,9 +192,11 @@ async function onManualSave(): Promise<void> {
 async function onReload(): Promise<void> {
   if (reloading.value) return;
   if (props.document.dirty) {
-    const ok = window.confirm(
-      `Discard unsaved changes in ${props.document.path}?`,
-    );
+    const ok = await confirmAction({
+      title: t('cortex.shell.reloadDirtyTitle'),
+      message: t('cortex.shell.reloadDirtyMessage', { path: props.document.path }),
+      confirmLabel: t('cortex.shell.reload'),
+    });
     if (!ok) return;
   }
   reloading.value = true;

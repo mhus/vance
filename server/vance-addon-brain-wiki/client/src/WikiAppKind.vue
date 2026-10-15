@@ -18,6 +18,7 @@ import {
   VIcon,
   VIconButton,
   VLinkPicker,
+  useConfirm,
 } from '@vance/components';
 import {
   WorkPageEditor,
@@ -73,6 +74,7 @@ const title = computed(
 );
 
 const t = useT();
+const confirmAction = useConfirm();
 
 const view = ref<WikiView | null>(null);
 const error = ref<string | null>(null);
@@ -507,7 +509,11 @@ async function openWikiLink(target: string): Promise<void> {
     const question = resp.createSpace
       ? t('wiki.app.confirmCreateInSpace', { name, space: resp.createSpace })
       : t('wiki.app.confirmCreate', { name });
-    if (!window.confirm(question)) return;
+    if (!await confirmAction({
+      message: question,
+      confirmLabel: t('wiki.common.create'),
+      danger: false,
+    })) return;
     const created = await createWikiPage(projectId.value, folder.value, {
       title: name,
       ...(resp.createSpace ? { space: resp.createSpace } : {}),
@@ -638,7 +644,10 @@ async function submitNewPage(): Promise<void> {
 async function deleteActivePage(): Promise<void> {
   const p = activePageView.value;
   if (!p || activeIsIndex.value) return;
-  if (!window.confirm(t('wiki.app.confirmDelete', { title: p.title }))) return;
+  if (!await confirmAction({
+    message: t('wiki.app.confirmDelete', { title: p.title }),
+    confirmLabel: t('wiki.common.delete'),
+  })) return;
   try {
     await deleteWikiPage(projectId.value, folder.value, p.id);
     activePageId.value = null;

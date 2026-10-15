@@ -10,8 +10,9 @@ export default {
     loading: 'Loading designs…',
     designs: '{count} design(s)',
     files: '{count} file(s)',
-    create: 'New design',
+    create: 'New design…',
     createTitle: 'New design',
+    createAction: 'Create',
     nameLabel: 'Name',
     namePlaceholder: 'landing-page',
     nameHelp: 'Folder name — letters, digits, dashes. Becomes <name>/index.html.',
@@ -23,7 +24,7 @@ export default {
     save: 'Save',
     cancel: 'Cancel',
     deleteDesign: 'Delete',
-    deleteTitle: 'Delete design',
+    deleteTitle: 'Delete design?',
     deleteConfirm: 'Delete the design "{name}" and all its files?',
     deleteTrashNote: 'The files move to the trash — recoverable from there.',
     dragHandle: 'Drag to reorder · click to preview',
@@ -46,7 +47,7 @@ export default {
       'Click "New design" to create the first one — or ask the chat ' +
       '("create a design landing-page in this app").',
     skills: {
-      button: 'Design skills',
+      button: 'Design skills…',
       title: 'Design skills',
       refresh: 'Refresh skill list',
       activeBadge: 'active',

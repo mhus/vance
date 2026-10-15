@@ -1,5 +1,15 @@
 <script setup lang="ts">
-import { VAlert, VButton, VEmptyState, VIcon, VIconButton, VInput, VModal, VSelect } from '@vance/components';
+import {
+  VAlert,
+  VButton,
+  VEmptyState,
+  VIcon,
+  VIconButton,
+  VInput,
+  VModal,
+  VSegment,
+  VSelect,
+} from '@vance/components';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type {
@@ -407,9 +417,9 @@ const kitSourceProjects = useKitSourceProjects();
 let kitProjectsRequested = false;
 
 const kitTabs = computed(() => [
-  { id: 'catalog' as const, label: t('common.projectPicker.createProject.tabCatalog') },
-  { id: 'project' as const, label: t('common.projectPicker.createProject.tabProject') },
-  { id: 'manual' as const, label: t('common.projectPicker.createProject.tabManual') },
+  { value: 'catalog' as const, label: t('common.projectPicker.createProject.tabCatalog') },
+  { value: 'project' as const, label: t('common.projectPicker.createProject.tabProject') },
+  { value: 'manual' as const, label: t('common.projectPicker.createProject.tabManual') },
 ]);
 
 function openKitTab(tab: 'catalog' | 'project' | 'manual'): void {
@@ -797,7 +807,7 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
 <template>
   <div class="p-4 flex flex-col gap-4">
     <!-- Header row: section label on the left, optional host
-         controls (e.g. a 🔍 search button) plus Add-Group button on
+         controls (e.g. a search button) plus Add-Group button on
          the right. The row is suppressed only when {@code heading}
          is empty AND there are no extras. -->
     <div
@@ -806,7 +816,7 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
     >
       <div
         v-if="heading"
-        class="text-xs uppercase tracking-wide opacity-60 font-semibold px-2"
+        class="text-xs uppercase tracking-wide text-(--v-label-secondary) font-semibold px-2"
       >
         {{ heading }}
       </div>
@@ -831,7 +841,7 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
       :placeholder="filterPlaceholder"
     />
 
-    <div v-if="loading" class="text-sm opacity-60 px-2">
+    <div v-if="loading" class="text-sm text-(--v-label-secondary) px-2">
       <slot name="loading">…</slot>
     </div>
 
@@ -852,10 +862,8 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
       <div
         v-for="block in filteredProjectsByGroup"
         :key="block.group?.name ?? '_ungrouped'"
-        class="flex flex-col gap-1 rounded transition-colors"
-        :class="dragHoverKey === blockKey(block)
-          ? 'bg-primary/5 outline outline-2 outline-primary/40 outline-offset-2'
-          : ''"
+        class="project-block flex flex-col gap-1"
+        :class="{ 'project-block-drop': dragHoverKey === blockKey(block) }"
         @dragover="onBlockDragOver(block, $event)"
         @dragleave="onBlockDragLeave(block)"
         @drop="onBlockDrop(block, $event)"
@@ -867,15 +875,15 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
              stay distinct actions in tree mode. -->
         <template v-if="block.group && showGroupRows">
           <div class="flex items-center gap-1">
-            <button
-              type="button"
-              class="px-1 py-1.5 text-xs opacity-60 hover:opacity-100"
-              :title="isGroupCollapsed(block.group)
+            <VIconButton
+              size="sm"
+              :icon="isGroupCollapsed(block.group) ? 'forward' : 'expand'"
+              :label="isGroupCollapsed(block.group)
                 ? t('common.projectPicker.expandGroup')
                 : t('common.projectPicker.collapseGroup')"
               @pointerdown.stop
               @click.stop="toggleGroupCollapsed(block.group)"
-            ><VIcon :name="isGroupCollapsed(block.group) ? 'forward' : 'expand'" /></button>
+            />
             <button
               type="button"
               class="flex-1 text-left px-2 py-1.5 rounded text-sm transition-colors flex items-center gap-2"
@@ -913,12 +921,15 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
           @click="toggleGroupCollapsed(block.group)"
         >
           <span class="flex items-center gap-1.5 min-w-0">
-            <VIcon :name="isGroupCollapsed(block.group) ? 'forward' : 'expand'" class="opacity-60" />
-            <span class="text-xs opacity-50 truncate">{{ block.groupLabel }}</span>
+            <VIcon
+              :name="isGroupCollapsed(block.group) ? 'forward' : 'expand'"
+              class="text-(--v-label-secondary)"
+            />
+            <span class="text-xs text-(--v-label-tertiary) truncate">{{ block.groupLabel }}</span>
           </span>
           <span
             v-if="editEnabled"
-            class="text-xs opacity-50 hover:opacity-100 px-1"
+            class="text-xs text-(--v-label-tertiary) hover:text-(--v-label) px-1"
             :title="t('common.projectPicker.addProjectToGroup')"
             role="button"
             @pointerdown.stop
@@ -957,7 +968,7 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
       />
       <div
         v-else-if="projectFilter && filteredProjectsCount === 0"
-        class="text-xs opacity-60 px-2"
+        class="text-xs text-(--v-label-secondary) px-2"
       >
         <slot name="filter-no-match" :filter="projectFilter" />
       </div>
@@ -977,9 +988,14 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
     <VModal
       v-model="showCreateGroup"
       :title="t('common.projectPicker.createGroup.title')"
+      size="sm"
       :close-on-backdrop="!creating"
     >
-      <form class="flex flex-col gap-3" @submit.prevent="submitCreateGroup">
+      <form
+        id="create-project-group-form"
+        class="flex flex-col gap-4"
+        @submit.prevent="submitCreateGroup"
+      >
         <VAlert v-if="creationError" variant="error">
           <span>{{ creationError }}</span>
         </VAlert>
@@ -1003,10 +1019,11 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
           @click="showCreateGroup = false"
         >{{ t('common.cancel') }}</VButton>
         <VButton
+          type="submit"
+          form="create-project-group-form"
           variant="primary"
           :loading="creating"
           :disabled="!newGroupName.trim()"
-          @click="submitCreateGroup"
         >{{ t('common.projectPicker.createGroup.submit') }}</VButton>
       </template>
     </VModal>
@@ -1017,7 +1034,11 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
       :title="t('common.projectPicker.createProject.title')"
       :close-on-backdrop="!creating"
     >
-      <form class="flex flex-col gap-3" @submit.prevent="submitCreateProject">
+      <form
+        id="create-project-form"
+        class="flex flex-col gap-4"
+        @submit.prevent="submitCreateProject"
+      >
         <VAlert v-if="creationError" variant="error">
           <span>{{ creationError }}</span>
         </VAlert>
@@ -1039,28 +1060,21 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
           :options="groupSelectOptions"
           :disabled="creating"
         />
-        <!-- Three ways to name a kit, one at a time. The tab strip is
-             always there (Manual works without any configuration); what is
-             empty is said inside the tab it belongs to. -->
+        <!-- Three ways to name a kit, one at a time — a segment control
+             (corporate-design.md §6.4). It is always there (Manual works
+             without any configuration); what is empty is said inside the
+             mode it belongs to. -->
         <div v-if="!hideKitField" class="flex flex-col gap-2">
-          <span class="text-sm font-semibold">
+          <span class="text-xs font-semibold text-(--v-label-secondary)">
             {{ t('common.projectPicker.createProject.kit') }}
           </span>
-          <div role="tablist" class="flex gap-1 border-b border-base-300">
-            <button
-              v-for="tab in kitTabs"
-              :key="tab.id"
-              type="button"
-              role="tab"
-              :aria-selected="kitTab === tab.id"
-              class="px-3 py-1.5 text-sm font-semibold border-b-2 transition-colors"
-              :class="kitTab === tab.id
-                ? 'border-primary text-primary'
-                : 'border-transparent opacity-60 hover:opacity-100'"
-              :disabled="creating"
-              @click="openKitTab(tab.id)"
-            >{{ tab.label }}</button>
-          </div>
+          <VSegment
+            :model-value="kitTab"
+            :options="kitTabs"
+            :aria-label="t('common.projectPicker.createProject.kit')"
+            :disabled="creating"
+            @update:model-value="openKitTab"
+          />
 
           <template v-if="kitTab === 'catalog'">
             <VSelect
@@ -1071,13 +1085,13 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
               :options="effectiveKitOptions"
               :disabled="creating"
             />
-            <p v-else class="text-xs opacity-70">
+            <p v-else class="text-xs text-(--v-label-secondary)">
               {{ t('common.projectPicker.createProject.kitCatalogEmpty') }}
             </p>
           </template>
 
           <template v-else-if="kitTab === 'project'">
-            <p v-if="kitSourceProjects.loading.value" class="text-xs opacity-70">
+            <p v-if="kitSourceProjects.loading.value" class="text-xs text-(--v-label-secondary)">
               {{ t('common.projectPicker.createProject.kitProjectLoading') }}
             </p>
             <VSelect
@@ -1088,7 +1102,7 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
               :options="kitProjectOptions"
               :disabled="creating"
             />
-            <p v-else class="text-xs opacity-70">
+            <p v-else class="text-xs text-(--v-label-secondary)">
               {{ t('common.projectPicker.createProject.kitProjectEmpty') }}
             </p>
           </template>
@@ -1122,12 +1136,27 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
           @click="showCreateProject = false"
         >{{ t('common.cancel') }}</VButton>
         <VButton
+          type="submit"
+          form="create-project-form"
           variant="primary"
           :loading="creating"
           :disabled="!newProjectName.trim()"
-          @click="submitCreateProject"
         >{{ t('common.projectPicker.createProject.submit') }}</VButton>
       </template>
     </VModal>
   </div>
 </template>
+
+<style scoped>
+/* A group block; while a project is dragged over it, it shows the accent
+   outline as the drop target. */
+.project-block {
+  border-radius: var(--v-radius-control);
+  transition: background-color var(--v-duration) ease-out;
+}
+.project-block-drop {
+  background: color-mix(in srgb, var(--v-accent) 5%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--v-accent) 40%, transparent);
+  outline-offset: 2px;
+}
+</style>

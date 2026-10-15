@@ -12,6 +12,7 @@ export default {
       cancel: 'Cancel',
       searching: 'Searching…',
       noHits: 'No matches.',
+      remove: 'Remove',
     },
     app: {
       fallbackTitle: 'Binder',

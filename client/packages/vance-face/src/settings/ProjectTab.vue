@@ -10,6 +10,7 @@ import {
   VInput,
   VModal,
   VSelect,
+  useConfirm,
 } from '@/components';
 import KitAdminSection from './KitAdminSection.vue';
 import { useAdminProjects } from '@/composables/useAdminProjects';
@@ -47,6 +48,7 @@ const emit = defineEmits<{
 }>();
 
 const { t, locale } = useI18n();
+const confirmAction = useConfirm();
 const projectsState = useAdminProjects();
 
 const banner = ref<string | null>(null);
@@ -110,7 +112,11 @@ async function saveProject(): Promise<void> {
 }
 
 async function archiveProject(): Promise<void> {
-  if (!confirm(t('scopes.project.confirmArchive', { name: props.projectName }))) return;
+  if (!await confirmAction({
+    message: t('scopes.project.confirmArchive', { name: props.projectName }),
+    confirmLabel: t('common.archive'),
+    danger: false,
+  })) return;
   try {
     await projectsState.archive(props.projectName);
     banner.value = t('scopes.project.archived');
@@ -238,7 +244,10 @@ async function saveSessionGroupRename(name: string): Promise<void> {
 }
 
 async function deleteSessionGroupAction(name: string): Promise<void> {
-  if (!confirm(t('scopes.sessionGroups.confirmDelete', { name }))) return;
+  if (!await confirmAction({
+    message: t('scopes.sessionGroups.confirmDelete', { name }),
+    confirmLabel: t('common.delete'),
+  })) return;
   try {
     await sessionGroupsState.remove(props.projectName, name);
     banner.value = t('scopes.sessionGroups.deleted', { name });
@@ -330,7 +339,7 @@ function onProjectContentLanguageChanged(value: string | null): void {
       <VAlert v-if="isArchivedProject" variant="warning" class="mb-3">
         <span>{{ t('scopes.project.archivedNote') }}</span>
       </VAlert>
-      <div v-if="!project" class="opacity-70">{{ t('scopes.loading') }}</div>
+      <div v-if="!project" class="text-(--v-label-secondary)">{{ t('scopes.loading') }}</div>
       <div v-else class="flex flex-col gap-3">
         <VInput
           :model-value="project.name"
@@ -351,12 +360,12 @@ function onProjectContentLanguageChanged(value: string | null): void {
           :options="groupSelectOptions"
         />
         <VCheckbox v-model="form.enabled" :label="t('scopes.common.enabled')" />
-        <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm opacity-80">
-          <dt class="opacity-60">{{ t('scopes.project.statusLabel') }}</dt>
+        <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+          <dt class="text-(--v-label-secondary)">{{ t('scopes.project.statusLabel') }}</dt>
           <dd>{{ project.status }}</dd>
-          <dt class="opacity-60">{{ t('scopes.project.podLabel') }}</dt>
+          <dt class="text-(--v-label-secondary)">{{ t('scopes.project.podLabel') }}</dt>
           <dd>{{ project.homeNode ?? t('scopes.common.none') }}</dd>
-          <dt class="opacity-60">{{ t('scopes.project.claimedLabel') }}</dt>
+          <dt class="text-(--v-label-secondary)">{{ t('scopes.project.claimedLabel') }}</dt>
           <dd>{{ project.claimedAt ?? t('scopes.common.none') }}</dd>
           <!-- Read-only, and that is the decision, not a gap: what this
                changes is capacity in the cluster, not content in the project,
@@ -364,16 +373,16 @@ function onProjectContentLanguageChanged(value: string | null): void {
                `project lifecycle-type`). Shown because the two non-default
                values are facts a tenant has to be able to explain — above
                all EPHEMERAL, which silently stops the project's scheduler. -->
-          <dt class="opacity-60">{{ t('scopes.project.lifecycleLabel') }}</dt>
-          <dd :class="{ 'text-warning': project.lifecycleType === 'EPHEMERAL' }">
+          <dt class="text-(--v-label-secondary)">{{ t('scopes.project.lifecycleLabel') }}</dt>
+          <dd :class="{ 'text-(--v-warning)': project.lifecycleType === 'EPHEMERAL' }">
             {{ project.lifecycleType ?? t('scopes.common.none') }}
-            <span v-if="lifecycleNote" class="opacity-70">— {{ lifecycleNote }}</span>
+            <span v-if="lifecycleNote" class="text-(--v-label-secondary)">— {{ lifecycleNote }}</span>
           </dd>
           <template v-if="project.placementPendingSince">
-            <dt class="opacity-60">{{ t('scopes.project.placementPendingLabel') }}</dt>
-            <dd class="text-warning">{{ project.placementPendingSince }}</dd>
+            <dt class="text-(--v-label-secondary)">{{ t('scopes.project.placementPendingLabel') }}</dt>
+            <dd class="text-(--v-warning)">{{ project.placementPendingSince }}</dd>
           </template>
-          <dt class="opacity-60">{{ t('scopes.project.createdLabel') }}</dt>
+          <dt class="text-(--v-label-secondary)">{{ t('scopes.project.createdLabel') }}</dt>
           <dd>{{ project.createdAt ?? t('scopes.common.none') }}</dd>
         </dl>
         <div class="flex justify-between">
@@ -399,7 +408,7 @@ function onProjectContentLanguageChanged(value: string | null): void {
 
     <!-- Languages -->
     <VCard :title="t('scopes.project.languagesCardTitle')">
-      <p class="text-sm opacity-70 mb-3">
+      <p class="text-sm text-(--v-label-secondary) mb-3">
         {{ t('scopes.project.languagesDescription') }}
       </p>
       <div class="flex flex-col gap-3">
@@ -410,7 +419,7 @@ function onProjectContentLanguageChanged(value: string | null): void {
           :disabled="settingsState.busy.value || isArchivedProject"
           @update:model-value="onProjectChatLanguageChanged"
         />
-        <p class="text-xs opacity-60 -mt-2">
+        <p class="text-xs text-(--v-label-secondary) -mt-2">
           {{ t('scopes.project.chatLanguageHelp') }}
         </p>
         <VSelect
@@ -420,7 +429,7 @@ function onProjectContentLanguageChanged(value: string | null): void {
           :disabled="settingsState.busy.value || isArchivedProject"
           @update:model-value="onProjectContentLanguageChanged"
         />
-        <p class="text-xs opacity-60 -mt-2">
+        <p class="text-xs text-(--v-label-secondary) -mt-2">
           {{ t('scopes.project.contentLanguageHelp') }}
         </p>
       </div>
@@ -428,7 +437,7 @@ function onProjectContentLanguageChanged(value: string | null): void {
 
     <!-- Session groups -->
     <VCard :title="t('scopes.sessionGroups.cardTitle')">
-      <p class="text-sm opacity-70 mb-3">
+      <p class="text-sm text-(--v-label-secondary) mb-3">
         {{ t('scopes.sessionGroups.description') }}
       </p>
 
@@ -437,7 +446,7 @@ function onProjectContentLanguageChanged(value: string | null): void {
         :headline="t('scopes.sessionGroups.empty')"
       />
 
-      <ul v-else class="flex flex-col divide-y divide-base-300">
+      <ul v-else class="flex flex-col divide-y divide-(--v-separator)">
         <li
           v-for="g in sessionGroupsState.groups.value"
           :key="g.name"
@@ -453,7 +462,7 @@ function onProjectContentLanguageChanged(value: string | null): void {
                 {{ t('scopes.common.cancel') }}
               </VButton>
               <VButton
-                variant="primary"
+                variant="secondary"
                 size="sm"
                 :loading="sessionGroupsState.busy.value"
                 @click="saveSessionGroupRename(g.name)"
@@ -464,9 +473,9 @@ function onProjectContentLanguageChanged(value: string | null): void {
             <div class="flex items-center justify-between gap-2">
               <div class="min-w-0">
                 <div class="text-sm font-semibold truncate">{{ g.title || g.name }}</div>
-                <div class="text-xs opacity-60 font-mono truncate">{{ g.name }}</div>
+                <div class="text-xs text-(--v-label-secondary) font-mono truncate">{{ g.name }}</div>
               </div>
-              <span class="opacity-60 text-xs whitespace-nowrap">
+              <span class="text-(--v-label-secondary) text-xs whitespace-nowrap">
                 {{ t('scopes.sessionGroups.sessionCount', { count: g.sessionIds.length }) }}
               </span>
             </div>
@@ -485,7 +494,7 @@ function onProjectContentLanguageChanged(value: string | null): void {
         </li>
       </ul>
 
-      <div class="border-t border-base-300 pt-3 mt-2 flex flex-col gap-2">
+      <div class="border-t border-(--v-separator) pt-3 mt-2 flex flex-col gap-2">
         <VInput
           v-model="newSessionGroupName"
           :label="t('scopes.sessionGroups.nameLabel')"
@@ -496,8 +505,9 @@ function onProjectContentLanguageChanged(value: string | null): void {
           :label="t('scopes.sessionGroups.titleLabel')"
         />
         <VButton
-          variant="primary"
+          variant="secondary"
           size="sm"
+          icon="add"
           :disabled="!newSessionGroupName.trim()"
           :loading="sessionGroupsState.busy.value"
           @click="createSessionGroupAction"
@@ -515,102 +525,115 @@ function onProjectContentLanguageChanged(value: string | null): void {
   <VModal
     v-model="showCopyDialog"
     :title="t('scopes.project.copy.title', { name: projectName })"
+    :description="copyReport ? undefined : t('scopes.project.copy.description')"
     :close-on-backdrop="false"
   >
-    <div class="flex flex-col gap-3">
+    <form
+      v-if="!copyReport"
+      id="project-copy-form"
+      class="flex flex-col gap-4"
+      @submit.prevent="submitCopy"
+    >
       <VAlert v-if="projectsState.error.value" variant="error">
         <span>{{ projectsState.error.value }}</span>
       </VAlert>
+      <VInput
+        v-model="copyForm.name"
+        :label="t('scopes.project.copy.nameLabel')"
+        :help="t('scopes.project.copy.nameHelp')"
+      />
+      <VInput v-model="copyForm.title" :label="t('scopes.common.title')" />
+      <VSelect
+        v-model="copyForm.projectGroupId"
+        :label="t('scopes.project.groupLabel')"
+        :options="groupSelectOptions"
+      />
+      <VCheckbox
+        v-model="copyForm.includeSecrets"
+        :label="t('scopes.project.copy.includeSecrets')"
+        :help="t('scopes.project.copy.includeSecretsHelp')"
+      />
+      <VAlert variant="info">
+        <span>{{ t('scopes.project.copy.notCopiedHint') }}</span>
+      </VAlert>
+    </form>
 
-      <template v-if="!copyReport">
-        <p class="text-sm opacity-80">{{ t('scopes.project.copy.description') }}</p>
-        <VInput
-          v-model="copyForm.name"
-          :label="t('scopes.project.copy.nameLabel')"
-          :help="t('scopes.project.copy.nameHelp')"
-        />
-        <VInput v-model="copyForm.title" :label="t('scopes.common.title')" />
-        <VSelect
-          v-model="copyForm.projectGroupId"
-          :label="t('scopes.project.groupLabel')"
-          :options="groupSelectOptions"
-        />
-        <VCheckbox v-model="copyForm.includeSecrets" :label="t('scopes.project.copy.includeSecrets')" />
-        <p class="text-xs opacity-70">{{ t('scopes.project.copy.includeSecretsHelp') }}</p>
-        <VAlert variant="info">
-          <span>{{ t('scopes.project.copy.notCopiedHint') }}</span>
-        </VAlert>
-        <div class="flex justify-end gap-2 pt-2">
-          <VButton variant="secondary" @click="showCopyDialog = false">
-            {{ t('scopes.common.cancel') }}
-          </VButton>
-          <VButton
-            variant="primary"
-            :disabled="copyForm.name.trim() === ''"
-            :loading="projectsState.busy.value"
-            @click="submitCopy"
-          >{{ t('scopes.project.copy.submit') }}</VButton>
-        </div>
-      </template>
+    <div v-else class="flex flex-col gap-4">
+      <VAlert v-if="projectsState.error.value" variant="error">
+        <span>{{ projectsState.error.value }}</span>
+      </VAlert>
+      <VAlert :variant="copyReport.documentsFailed > 0 ? 'warning' : 'success'">
+        <span>{{ t('scopes.project.copy.done', { name: copyReport.project?.name ?? copyForm.name }) }}</span>
+      </VAlert>
+      <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+        <dt class="text-(--v-label-secondary)">{{ t('scopes.project.copy.documentsCopied') }}</dt>
+        <dd>{{ copyReport.documentsCopied }}</dd>
+        <dt class="text-(--v-label-secondary)">{{ t('scopes.project.copy.documentsExcluded') }}</dt>
+        <dd>{{ copyReport.documentsExcluded }}</dd>
+        <template v-if="copyReport.documentsFailed > 0">
+          <dt class="text-(--v-label-secondary)">{{ t('scopes.project.copy.documentsFailed') }}</dt>
+          <dd class="text-(--v-danger)">{{ copyReport.documentsFailed }}</dd>
+        </template>
+        <dt class="text-(--v-label-secondary)">{{ t('scopes.project.copy.settingsCopied') }}</dt>
+        <dd>{{ copyReport.settingsCopied }}</dd>
+        <dt class="text-(--v-label-secondary)">{{ t('scopes.project.copy.secretsCopied') }}</dt>
+        <dd>{{ copyReport.secretsCopied }}</dd>
+      </dl>
 
-      <template v-else>
-        <VAlert :variant="copyReport.documentsFailed > 0 ? 'warning' : 'success'">
-          <span>{{ t('scopes.project.copy.done', { name: copyReport.project?.name ?? copyForm.name }) }}</span>
-        </VAlert>
-        <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-          <dt class="opacity-60">{{ t('scopes.project.copy.documentsCopied') }}</dt>
-          <dd>{{ copyReport.documentsCopied }}</dd>
-          <dt class="opacity-60">{{ t('scopes.project.copy.documentsExcluded') }}</dt>
-          <dd>{{ copyReport.documentsExcluded }}</dd>
-          <template v-if="copyReport.documentsFailed > 0">
-            <dt class="opacity-60">{{ t('scopes.project.copy.documentsFailed') }}</dt>
-            <dd class="text-error">{{ copyReport.documentsFailed }}</dd>
-          </template>
-          <dt class="opacity-60">{{ t('scopes.project.copy.settingsCopied') }}</dt>
-          <dd>{{ copyReport.settingsCopied }}</dd>
-          <dt class="opacity-60">{{ t('scopes.project.copy.secretsCopied') }}</dt>
-          <dd>{{ copyReport.secretsCopied }}</dd>
-        </dl>
+      <VAlert v-if="copyReport.statusNote" variant="info">
+        <span>{{ copyReport.statusNote }}</span>
+      </VAlert>
 
-        <VAlert v-if="copyReport.statusNote" variant="info">
-          <span>{{ copyReport.statusNote }}</span>
-        </VAlert>
+      <div v-if="copyReport.secretsSkipped.length > 0" class="flex flex-col gap-1">
+        <span class="text-sm font-semibold">
+          {{ t('scopes.project.copy.secretsSkipped') }}
+        </span>
+        <p class="text-xs text-(--v-label-secondary)">
+          {{ t('scopes.project.copy.secretsSkippedHelp') }}
+        </p>
+        <ul class="list-disc pl-5 text-xs font-mono">
+          <li v-for="key in copyReport.secretsSkipped" :key="key">{{ key }}</li>
+        </ul>
+      </div>
 
-        <div v-if="copyReport.secretsSkipped.length > 0" class="flex flex-col gap-1">
-          <span class="text-sm font-semibold">
-            {{ t('scopes.project.copy.secretsSkipped') }}
-          </span>
-          <p class="text-xs opacity-70">{{ t('scopes.project.copy.secretsSkippedHelp') }}</p>
-          <ul class="list-disc pl-5 text-xs font-mono">
-            <li v-for="key in copyReport.secretsSkipped" :key="key">{{ key }}</li>
-          </ul>
-        </div>
+      <div v-if="copyReport.failures.length > 0" class="flex flex-col gap-1">
+        <span class="text-sm font-semibold text-(--v-danger)">
+          {{ t('scopes.project.copy.failures') }}
+        </span>
+        <ul class="list-disc pl-5 text-xs">
+          <li v-for="(line, index) in copyReport.failures" :key="index">{{ line }}</li>
+        </ul>
+      </div>
 
-        <div v-if="copyReport.failures.length > 0" class="flex flex-col gap-1">
-          <span class="text-sm font-semibold text-error">
-            {{ t('scopes.project.copy.failures') }}
-          </span>
-          <ul class="list-disc pl-5 text-xs">
-            <li v-for="(line, index) in copyReport.failures" :key="index">{{ line }}</li>
-          </ul>
-        </div>
-
-        <div class="flex flex-col gap-1">
-          <span class="text-sm font-semibold">{{ t('scopes.project.copy.notCopied') }}</span>
-          <ul class="list-disc pl-5 text-xs opacity-70">
-            <li v-for="(line, index) in copyReport.notCopied" :key="index">{{ line }}</li>
-          </ul>
-        </div>
-
-        <div class="flex justify-end gap-2 pt-2">
-          <VButton variant="secondary" @click="showCopyDialog = false">
-            {{ t('scopes.common.close') }}
-          </VButton>
-          <VButton variant="primary" @click="openCopiedProject">
-            {{ t('scopes.project.copy.open') }}
-          </VButton>
-        </div>
-      </template>
+      <div class="flex flex-col gap-1">
+        <span class="text-sm font-semibold">{{ t('scopes.project.copy.notCopied') }}</span>
+        <ul class="list-disc pl-5 text-xs text-(--v-label-secondary)">
+          <li v-for="(line, index) in copyReport.notCopied" :key="index">{{ line }}</li>
+        </ul>
+      </div>
     </div>
+
+    <template #actions>
+      <template v-if="!copyReport">
+        <VButton variant="secondary" @click="showCopyDialog = false">
+          {{ t('scopes.common.cancel') }}
+        </VButton>
+        <VButton
+          type="submit"
+          form="project-copy-form"
+          variant="primary"
+          :disabled="copyForm.name.trim() === ''"
+          :loading="projectsState.busy.value"
+        >{{ t('scopes.project.copy.submit') }}</VButton>
+      </template>
+      <template v-else>
+        <VButton variant="secondary" @click="showCopyDialog = false">
+          {{ t('scopes.common.close') }}
+        </VButton>
+        <VButton variant="primary" @click="openCopiedProject">
+          {{ t('scopes.project.copy.open') }}
+        </VButton>
+      </template>
+    </template>
   </VModal>
 </template>

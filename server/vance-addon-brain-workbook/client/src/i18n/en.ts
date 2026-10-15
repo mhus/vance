@@ -25,6 +25,7 @@ export default {
       saving: 'Saving…',
       saved: 'Saved',
       searching: 'Searching…',
+      delete: 'Delete',
     },
     app: {
       fallbackTitle: 'Workbook',

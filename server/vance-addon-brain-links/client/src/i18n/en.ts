@@ -12,6 +12,7 @@ export default {
       save: 'Save',
       create: 'Create',
       close: 'Close',
+      remove: 'Remove',
     },
     app: {
       pastePlaceholder: 'Paste a link — or several, one per line',

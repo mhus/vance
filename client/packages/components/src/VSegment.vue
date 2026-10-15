@@ -52,6 +52,8 @@ defineEmits<{ (e: 'update:modelValue', value: TValue): void }>();
 .v-segment-item:disabled { opacity: 0.5; cursor: default; }
 .v-segment {
   display: inline-flex;
+  /* Keep its own width inside a column flex container (dialog bodies). */
+  align-self: flex-start;
   gap: 2px;
   padding: 2px;
   border-radius: 8px;

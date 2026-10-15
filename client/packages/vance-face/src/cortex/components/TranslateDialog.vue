@@ -167,7 +167,7 @@ async function copyResult(): Promise<void> {
     :title="mode === 'selection'
       ? t('cortex.translate.titleSelection')
       : t('cortex.translate.title', { name: sourceName })"
-    :size="result ? 'lg' : 'md'"
+    :size="result ? 'lg' : 'sm'"
     @update:model-value="close"
   >
     <VAlert v-if="error" variant="error" class="mb-3">
@@ -187,14 +187,18 @@ async function copyResult(): Promise<void> {
       <!-- Read-only but selectable: a disabled <textarea> is dimmed and, in
            some browsers, cannot be marked with the mouse — which is the one
            thing a reader wants to do here when the clipboard is unavailable. -->
-      <span class="text-sm">{{ t('cortex.translate.resultLabel') }}</span>
-      <pre
-        class="mt-1 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded
-               border border-base-300 p-2 text-sm"
-      >{{ result }}</pre>
+      <div class="flex flex-col gap-1">
+        <span class="text-xs font-semibold text-(--v-label-secondary)">
+          {{ t('cortex.translate.resultLabel') }}
+        </span>
+        <pre
+          class="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-(--v-radius-control)
+                 border border-(--v-separator) p-2 text-sm"
+        >{{ result }}</pre>
+      </div>
     </template>
 
-    <div v-else class="flex flex-col gap-3">
+    <div v-else class="flex flex-col gap-4">
       <VSelect
         v-model="language"
         :options="options"
@@ -218,7 +222,7 @@ async function copyResult(): Promise<void> {
           @update:model-value="onNameInput"
         />
       </div>
-      <p class="text-xs opacity-60">
+      <p class="text-xs text-(--v-label-secondary)">
         {{ t('cortex.translate.sourceInfo', { chars: sourceText.length }) }}
       </p>
     </div>

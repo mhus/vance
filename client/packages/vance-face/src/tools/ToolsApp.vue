@@ -16,6 +16,7 @@ import {
   VSelect,
   VTextarea,
   VIconButton,
+  useConfirm,
 } from '@/components';
 import { useTenantProjects } from '@/composables/useTenantProjects';
 import { useAdminServerTools } from '@/composables/useAdminServerTools';
@@ -34,6 +35,7 @@ const TENANT_PROJECT = '_tenant';
 const NAME_PATTERN = /^[a-z0-9][a-z0-9_]*$/;
 
 const { t } = useI18n();
+const confirmAction = useConfirm();
 const tenantProjects = useTenantProjects();
 const toolsState = useAdminServerTools();
 
@@ -242,7 +244,10 @@ async function save(): Promise<void> {
 
 async function deleteTool(): Promise<void> {
   if (!selectedName.value || !selectedProject.value) return;
-  if (!confirm(t('tools.confirmDelete', { name: selectedName.value }))) return;
+  if (!await confirmAction({
+    message: t('tools.confirmDelete', { name: selectedName.value }),
+    confirmLabel: t('common.delete'),
+  })) return;
   try {
     await toolsState.remove(selectedProject.value, selectedName.value);
     selectedName.value = null;
@@ -359,11 +364,11 @@ function sourceBadgeClass(source: string | undefined): string {
            selected but no tool is opened. -->
       <div
         v-if="selectedProject && !inDetailMode"
-        class="px-6 pt-4 pb-3 border-b border-base-300 bg-base-100 flex items-center gap-3"
+        class="px-6 pt-4 pb-3 border-b border-(--v-separator) bg-(--v-surface) flex items-center gap-3"
       >
         <div class="flex-1 min-w-0 flex items-baseline gap-2 truncate">
           <span class="font-semibold truncate">{{ projectTitle }}</span>
-          <span class="font-mono text-sm opacity-50 truncate">{{ selectedProject }}</span>
+          <span class="font-mono text-sm text-(--v-label-tertiary) truncate">{{ selectedProject }}</span>
         </div>
         <VIconButton icon="add" :label="$t('tools.sidebar.addNew')" size="sm"
           @click="openNewTool"
@@ -374,7 +379,7 @@ function sourceBadgeClass(source: string | undefined): string {
            type badge. Mirrors the documents detail sub-header. -->
       <div
         v-else-if="selectedProject && selectedTool"
-        class="px-6 pt-4 pb-3 border-b border-base-300 bg-base-100 flex items-center gap-x-3 gap-y-1 flex-wrap"
+        class="px-6 pt-4 pb-3 border-b border-(--v-separator) bg-(--v-surface) flex items-center gap-x-3 gap-y-1 flex-wrap"
       >
         <div class="flex items-center gap-3 min-w-0 flex-1 basis-[16rem]">
           <VIconButton icon="back" :label="$t('tools.detail.backToList')" size="sm"
@@ -382,7 +387,7 @@ function sourceBadgeClass(source: string | undefined): string {
            />
           <span class="font-semibold font-mono truncate">{{ selectedTool.name }}</span>
         </div>
-        <div class="text-xs opacity-70 flex items-center gap-3 shrink-0">
+        <div class="text-xs text-(--v-label-secondary) flex items-center gap-3 shrink-0">
           <span
             v-if="selectedTool.source"
             :class="['badge-source', sourceBadgeClass(selectedTool.source)]"
@@ -391,7 +396,6 @@ function sourceBadgeClass(source: string | undefined): string {
           <span class="badge-type px-1.5 py-0.5 rounded text-xs">{{ selectedTool.type }}</span>
           <span
             v-if="selectedTool.updatedAtTimestamp"
-            class="opacity-70"
           >{{ $t('tools.detail.lastEdit', {
             at: new Date(selectedTool.updatedAtTimestamp).toLocaleString(),
           }) }}</span>
@@ -420,7 +424,7 @@ function sourceBadgeClass(source: string | undefined): string {
 
           <!-- ── List view ── -->
           <template v-else-if="!inDetailMode">
-            <div v-if="toolsState.loading.value" class="text-xs opacity-60 px-2">
+            <div v-if="toolsState.loading.value" class="text-xs text-(--v-label-secondary) px-2">
               {{ $t('tools.loading') }}
             </div>
             <VEmptyState
@@ -446,9 +450,9 @@ function sourceBadgeClass(source: string | undefined): string {
                   </span>
                   <span class="text-xs px-1.5 py-0.5 rounded badge-type shrink-0">{{ tool.type }}</span>
                 </div>
-                <div class="flex items-center gap-2 text-xs opacity-60 mt-0.5">
+                <div class="flex items-center gap-2 text-xs text-(--v-label-secondary) mt-0.5">
                   <span v-if="!tool.enabled" class="badge-disabled">{{ $t('tools.sidebar.disabled') }}</span>
-                  <span v-if="tool.primary" class="badge-primary">{{ $t('tools.sidebar.primary') }}</span>
+                  <span v-if="tool.primary" class="tag-primary">{{ $t('tools.sidebar.primary') }}</span>
                   <span v-if="tool.defaultDeferred" class="badge-deferred">{{ $t('tools.sidebar.deferred') }}</span>
                   <span class="truncate">{{ tool.description }}</span>
                 </div>
@@ -501,7 +505,7 @@ function sourceBadgeClass(source: string | undefined): string {
 
             <VCard :title="$t('tools.cards.packTitle')">
               <div class="flex flex-col gap-3">
-                <p class="text-xs opacity-70">{{ $t('tools.cards.packHelp') }}</p>
+                <p class="text-xs text-(--v-label-secondary)">{{ $t('tools.cards.packHelp') }}</p>
                 <VCheckbox
                   v-model="form.defaultDeferred"
                   :label="$t('tools.fields.defaultDeferred')"
@@ -517,7 +521,7 @@ function sourceBadgeClass(source: string | undefined): string {
             </VCard>
 
             <VCard :title="$t('tools.cards.parametersTitle')">
-              <p class="text-xs opacity-70 mb-2">{{ $t('tools.cards.parametersHelp') }}</p>
+              <p class="text-xs text-(--v-label-secondary) mb-2">{{ $t('tools.cards.parametersHelp') }}</p>
               <CodeEditor
                 v-model="form.parametersJson"
                 mime-type="application/json"
@@ -544,21 +548,21 @@ function sourceBadgeClass(source: string | undefined): string {
     <template #right-panel>
       <div v-if="inDetailMode" class="p-4 flex flex-col gap-4">
         <section>
-          <h3 class="text-xs uppercase opacity-60 mb-2">{{ $t('tools.rightPanel.typeSchemaTitle') }}</h3>
-          <div v-if="!selectedTypeSchema" class="text-xs opacity-60">
+          <h3 class="text-xs uppercase text-(--v-label-secondary) mb-2">{{ $t('tools.rightPanel.typeSchemaTitle') }}</h3>
+          <div v-if="!selectedTypeSchema" class="text-xs text-(--v-label-secondary)">
             {{ $t('tools.rightPanel.pickTypeHint') }}
           </div>
           <div v-else>
             <div class="font-mono text-sm mb-1">{{ selectedTypeSchema.typeId }}</div>
-            <pre class="text-xs whitespace-pre-wrap break-words bg-base-200 p-2 rounded">{{
+            <pre class="text-xs whitespace-pre-wrap break-words bg-(--v-fill) p-2 rounded">{{
               JSON.stringify(selectedTypeSchema.parametersSchema, null, 2)
             }}</pre>
           </div>
         </section>
 
         <section>
-          <h3 class="text-xs uppercase opacity-60 mb-2">{{ $t('tools.rightPanel.cascadeTitle') }}</h3>
-          <p class="text-xs opacity-70">{{ $t('tools.rightPanel.cascadeBody') }}</p>
+          <h3 class="text-xs uppercase text-(--v-label-secondary) mb-2">{{ $t('tools.rightPanel.cascadeTitle') }}</h3>
+          <p class="text-xs text-(--v-label-secondary)">{{ $t('tools.rightPanel.cascadeBody') }}</p>
         </section>
       </div>
     </template>
@@ -569,7 +573,7 @@ function sourceBadgeClass(source: string | undefined): string {
     <template #footer>
       <div
         v-if="inDetailMode"
-        class="px-6 py-3 flex items-center gap-2 bg-base-100"
+        class="px-6 py-3 flex items-center gap-2 bg-(--v-surface)"
       >
         <VButton
           variant="danger"
@@ -586,8 +590,13 @@ function sourceBadgeClass(source: string | undefined): string {
     </template>
 
     <!-- ─── New-tool modal ─── -->
-    <VModal v-model="showNewModal" :title="$t('tools.newModal.title')">
-      <div class="flex flex-col gap-3">
+    <VModal
+      v-model="showNewModal"
+      size="sm"
+      :title="$t('tools.newModal.title')"
+      :description="$t('tools.newModal.stubInfo', { project: selectedProject })"
+    >
+      <form id="tool-new-form" class="flex flex-col gap-4" @submit.prevent="submitNewTool">
         <VAlert v-if="newError" variant="error">
           <span>{{ newError }}</span>
         </VAlert>
@@ -603,20 +612,18 @@ function sourceBadgeClass(source: string | undefined): string {
           :label="$t('tools.fields.type')"
           required
         />
-        <p class="text-xs opacity-70">
-          {{ $t('tools.newModal.stubInfo', { project: selectedProject }) }}
-        </p>
-        <div class="flex justify-end gap-2">
-          <VButton variant="secondary" @click="showNewModal = false">
-            {{ $t('tools.newModal.cancel') }}
-          </VButton>
-          <VButton
-            variant="primary"
-            :loading="toolsState.busy.value"
-            @click="submitNewTool"
-          >{{ $t('tools.newModal.create') }}</VButton>
-        </div>
-      </div>
+      </form>
+      <template #actions>
+        <VButton variant="secondary" @click="showNewModal = false">
+          {{ $t('tools.newModal.cancel') }}
+        </VButton>
+        <VButton
+          type="submit"
+          form="tool-new-form"
+          variant="primary"
+          :loading="toolsState.busy.value"
+        >{{ $t('tools.newModal.create') }}</VButton>
+      </template>
     </VModal>
   </EditorShell>
 </template>
@@ -632,33 +639,18 @@ function sourceBadgeClass(source: string | undefined): string {
   width: 100%;
   border: 1px solid transparent;
 }
-.tool-item:hover { background: color-mix(in oklab, var(--color-base-content) 6%, transparent); }
+.tool-item:hover { background: var(--v-fill); }
 .tool-item--active {
-  background: color-mix(in oklab, var(--color-primary) 12%, transparent);
-  border-color: color-mix(in oklab, var(--color-primary) 30%, transparent);
+  background: var(--v-selection);
+  color: var(--v-accent-text);
 }
 .badge-type {
-  background: color-mix(in oklab, var(--color-info) 18%, transparent);
-  color: var(--color-info-content);
+  background: var(--v-fill);
+  color: var(--v-label-secondary);
 }
-.badge-primary {
-  background: color-mix(in oklab, var(--color-success) 18%, transparent);
-  color: var(--color-success-content);
-  padding: 0 0.4rem;
-  border-radius: 0.25rem;
-}
-.badge-disabled {
-  background: color-mix(in oklab, var(--color-base-content) 10%, transparent);
-  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
-  padding: 0 0.4rem;
-  border-radius: 0.25rem;
-}
-.badge-deferred {
-  background: color-mix(in oklab, var(--color-warning) 18%, transparent);
-  color: var(--color-warning-content);
-  padding: 0 0.4rem;
-  border-radius: 0.25rem;
-}
+.tag-primary { color: var(--v-accent-text); }
+.badge-disabled { color: var(--v-label-tertiary); }
+.badge-deferred { color: var(--v-warning); }
 .badge-source {
   font-size: 0.65rem;
   padding: 0.05rem 0.5rem;
@@ -667,22 +659,10 @@ function sourceBadgeClass(source: string | undefined): string {
   text-transform: uppercase;
   font-weight: 600;
   line-height: 1.2;
-  border: 1px solid transparent;
+  border: 1px solid var(--v-separator);
   white-space: nowrap;
 }
-.badge-source--project {
-  background: color-mix(in oklab, var(--color-success) 18%, transparent);
-  color: var(--color-success-content);
-  border-color: color-mix(in oklab, var(--color-success) 35%, transparent);
-}
-.badge-source--tenant {
-  background: color-mix(in oklab, var(--color-info) 18%, transparent);
-  color: var(--color-info-content);
-  border-color: color-mix(in oklab, var(--color-info) 35%, transparent);
-}
-.badge-source--bundled {
-  background: color-mix(in oklab, var(--color-base-content) 8%, transparent);
-  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
-  border-color: color-mix(in oklab, var(--color-base-content) 20%, transparent);
-}
+.badge-source--project { color: var(--v-success); }
+.badge-source--tenant { color: var(--v-accent-text); }
+.badge-source--bundled { color: var(--v-label-secondary); }
 </style>

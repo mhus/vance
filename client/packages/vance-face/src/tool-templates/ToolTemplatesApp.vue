@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type {
   ToolTemplateAppliedStateDto,
   ToolTemplateApplyResultDto,
@@ -10,8 +11,9 @@ import {
   EditorShell,
   VAlert,
   VButton,
-  VCard,
   VEmptyState,
+  VGroup,
+  VGroupRow,
   VInput,
   VModal,
 } from '@/components';
@@ -19,6 +21,7 @@ import { useToolTemplates } from '@/composables/useToolTemplates';
 import TemplateInputForm from './TemplateInputForm.vue';
 import TemplateApplyResult from './TemplateApplyResult.vue';
 
+const { t } = useI18n();
 const state = useToolTemplates();
 
 const search = ref('');
@@ -125,6 +128,11 @@ function closeDetail(): void {
   applyError.value = null;
 }
 
+/** Post-install step of an applied template: the OAuth dance starts there. */
+function openConnectedAccounts(): void {
+  window.location.href = '/connected-accounts.html';
+}
+
 function onModalToggle(open: boolean): void {
   if (!open) closeDetail();
 }
@@ -138,7 +146,7 @@ async function onApply(): Promise<void> {
       inputs: inputs.value,
     });
   } catch (e) {
-    applyError.value = e instanceof Error ? e.message : 'Apply failed.';
+    applyError.value = e instanceof Error ? e.message : t('toolTemplates.applyFailed');
   }
 }
 </script>
@@ -150,23 +158,24 @@ async function onApply(): Promise<void> {
         <span>{{ state.error.value }}</span>
       </VAlert>
 
-      <VCard>
-        <p class="text-sm opacity-70">{{ $t('toolTemplates.intro') }}</p>
-      </VCard>
+      <p class="text-sm text-(--v-label-secondary)">{{ $t('toolTemplates.intro') }}</p>
 
       <div class="flex items-center gap-3">
-        <VInput
-          v-model="search"
-          :placeholder="$t('toolTemplates.searchPlaceholder')"
-          class="flex-1"
-        />
-        <label class="flex items-center gap-2 text-xs opacity-70">
+        <div class="flex-1 min-w-0">
+          <VInput
+            v-model="search"
+            :placeholder="$t('toolTemplates.searchPlaceholder')"
+          />
+        </div>
+        <label class="flex items-center gap-2 text-xs text-(--v-label-secondary)">
           <span>{{ $t('toolTemplates.projectIdLabel') }}</span>
-          <VInput v-model="projectId" class="w-48 font-mono" />
+          <div class="w-48 font-mono">
+            <VInput v-model="projectId" />
+          </div>
         </label>
       </div>
 
-      <div v-if="state.loading.value" class="text-sm opacity-60">
+      <div v-if="state.loading.value" class="text-sm text-(--v-label-secondary)">
         {{ $t('toolTemplates.loading') }}
       </div>
 
@@ -177,80 +186,88 @@ async function onApply(): Promise<void> {
       />
 
       <div v-else class="flex flex-col gap-6">
-        <section v-for="bucket in grouped" :key="bucket.category" class="flex flex-col gap-2">
-          <h2 class="text-xs uppercase tracking-wide opacity-60">
-            {{ bucket.category }}
-          </h2>
-          <VCard
+        <VGroup v-for="bucket in grouped" :key="bucket.category" :label="bucket.category">
+          <VGroupRow
             v-for="entry in bucket.entries"
             :key="entry.name"
-            class="cursor-pointer hover:bg-base-200/40"
+            navigates
+            :label="entry.title ?? entry.name"
+            :meta="entry.name"
+            :description="entry.description"
             @click="openDetail(entry)"
-          >
-            <div class="flex items-start justify-between gap-3">
-              <div class="flex flex-col gap-1 min-w-0">
-                <div class="font-medium">{{ entry.title ?? entry.name }}</div>
-                <div class="font-mono text-xs opacity-50">{{ entry.name }}</div>
-                <div v-if="entry.description" class="text-sm opacity-70">
-                  {{ entry.description }}
-                </div>
-              </div>
-              <VButton variant="primary" @click.stop="openDetail(entry)">
-                {{ $t('toolTemplates.install') }}
-              </VButton>
-            </div>
-          </VCard>
-        </section>
+          />
+        </VGroup>
       </div>
     </div>
 
     <VModal
       :model-value="modalOpen"
       :title="descriptor?.title ?? selected?.title ?? selected?.name ?? ''"
+      :description="descriptor?.description"
       @update:model-value="onModalToggle"
     >
-      <div v-if="state.busy.value && !descriptor" class="text-sm opacity-60">
+      <div v-if="state.busy.value && !descriptor" class="text-sm text-(--v-label-secondary)">
         {{ $t('toolTemplates.loading') }}
       </div>
 
-      <div v-else-if="descriptor && !applyResult" class="flex flex-col gap-4">
+      <form
+        v-else-if="descriptor && !applyResult"
+        id="tool-template-apply-form"
+        class="flex flex-col gap-4"
+        @submit.prevent="onApply"
+      >
         <VAlert v-if="applied" variant="info">
           <span>
             {{ $t('toolTemplates.previouslyApplied', {
               at: applied.appliedAt,
-              by: applied.appliedBy ?? 'unknown',
+              by: applied.appliedBy ?? $t('toolTemplates.unknownUser'),
             }) }}
           </span>
         </VAlert>
-        <p v-if="descriptor.description" class="text-sm opacity-70 whitespace-pre-wrap">
-          {{ descriptor.description }}
-        </p>
         <TemplateInputForm
           v-if="descriptor.inputs && descriptor.inputs.length > 0"
           :inputs="descriptor.inputs"
           v-model="inputs"
         />
-        <p v-else class="text-sm opacity-60">{{ $t('toolTemplates.noInputs') }}</p>
+        <p v-else class="text-sm text-(--v-label-secondary)">{{ $t('toolTemplates.noInputs') }}</p>
 
         <VAlert v-if="applyError" variant="error">
           <span>{{ applyError }}</span>
         </VAlert>
-
-        <div class="flex justify-end gap-2 pt-2">
-          <VButton variant="secondary" @click="closeDetail">
-            {{ $t('common.cancel') }}
-          </VButton>
-          <VButton variant="primary" :loading="state.busy.value" @click="onApply">
-            {{ $t('toolTemplates.apply') }}
-          </VButton>
-        </div>
-      </div>
+      </form>
 
       <TemplateApplyResult
         v-else-if="applyResult"
         :result="applyResult"
-        @close="closeDetail"
       />
+
+      <template v-if="descriptor && !applyResult" #actions>
+        <VButton variant="secondary" @click="closeDetail">
+          {{ $t('common.cancel') }}
+        </VButton>
+        <VButton
+          type="submit"
+          form="tool-template-apply-form"
+          variant="primary"
+          :loading="state.busy.value"
+        >
+          {{ $t('toolTemplates.apply') }}
+        </VButton>
+      </template>
+      <template v-else-if="applyResult" #actions>
+        <VButton variant="secondary" @click="closeDetail">
+          {{ $t('common.close') }}
+        </VButton>
+        <VButton
+          v-if="applyResult.postInstall?.kind === 'oauth-connect'"
+          variant="primary"
+          @click="openConnectedAccounts"
+        >
+          {{ applyResult.postInstall.provider
+            ? $t('toolTemplates.connectProvider', { provider: applyResult.postInstall.provider })
+            : $t('toolTemplates.openConnectedAccounts') }}
+        </VButton>
+      </template>
     </VModal>
   </EditorShell>
 </template>

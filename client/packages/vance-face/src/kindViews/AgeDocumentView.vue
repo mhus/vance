@@ -19,7 +19,7 @@
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
-import { VAlert, VButton, VFileInput, VIcon, VInput, VTextarea } from '@/components';
+import { VAlert, VButton, VFileInput, VIcon, VInput, VTextarea, useConfirm } from '@/components';
 import { useAgeKeyStore } from '@/cortex/stores/ageKeyStore';
 import { useCortexStore } from '@/cortex/stores/cortexStore';
 import type { DocumentDto } from '@vance/generated';
@@ -32,6 +32,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), { mode: 'embedded' });
 
 const { t } = useI18n();
+const confirmAction = useConfirm();
 const cortex = useCortexStore();
 const ageKeys = useAgeKeyStore();
 
@@ -109,11 +110,14 @@ async function onUnlock(): Promise<void> {
   }
 }
 
-function onForget(): void {
+async function onForget(): Promise<void> {
   // A dirty age tab cannot save without a key — say so before wiping.
   const dirtyUnlocked = cortex.openTabs.some((x) => x.age && !x.age.locked && x.dirty);
   if (dirtyUnlocked) {
-    const ok = window.confirm(t('cortex.age.forgetDirtyWarning'));
+    const ok = await confirmAction({
+      message: t('cortex.age.forgetDirtyWarning'),
+      confirmLabel: t('cortex.age.forget'),
+    });
     if (!ok) return;
   }
   ageKeys.lock();

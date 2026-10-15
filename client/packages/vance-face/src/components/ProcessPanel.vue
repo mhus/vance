@@ -12,7 +12,15 @@ import type {
   ProcessSummary,
 } from '@vance/generated';
 import { getSessionProcessMessages, listSessionProcesses } from '@vance/shared';
-import { VAlert, VButton, VEmptyState, VInput, VModal } from '@vance/components';
+import {
+  VAlert,
+  VButton,
+  VEmptyState,
+  VIconButton,
+  VInput,
+  VModal,
+  VSegment,
+} from '@vance/components';
 import MarkdownView from './MarkdownView.vue';
 
 /**
@@ -237,8 +245,19 @@ function roleOf(msg: ChatMessageDto): string {
   return String(msg.role ?? '').toLowerCase();
 }
 
-async function toggleTerminated(): Promise<void> {
-  includeTerminated.value = !includeTerminated.value;
+type ListFilter = 'live' | 'all';
+
+const listFilter = computed<ListFilter>(() => (includeTerminated.value ? 'all' : 'live'));
+
+const listFilterOptions = computed(() => [
+  { value: 'live' as const, label: t('processPanel.segmentLive') },
+  { value: 'all' as const, label: t('processPanel.segmentAll') },
+]);
+
+async function setListFilter(filter: ListFilter): Promise<void> {
+  const next = filter === 'all';
+  if (next === includeTerminated.value) return;
+  includeTerminated.value = next;
   await loadList();
 }
 </script>
@@ -252,44 +271,47 @@ async function toggleTerminated(): Promise<void> {
     size="xl"
     @update:model-value="(v) => emit('update:modelValue', v)"
   >
-    <VAlert v-if="error" variant="error" class="mb-3">{{ error }}</VAlert>
+    <VAlert v-if="error" variant="error" class="mb-4">{{ error }}</VAlert>
 
     <div class="flex gap-4 min-h-[24rem]">
       <!-- Master list -->
       <div class="w-1/3 min-w-[14rem] flex flex-col gap-2">
         <div class="flex items-center justify-between gap-2">
-          <span class="text-xs opacity-70">
+          <span class="text-xs text-(--v-label-secondary)">
             {{ t('processPanel.count', { n: rows.length }) }}
           </span>
-          <VButton size="xs" variant="secondary" @click="toggleTerminated">
-            {{ includeTerminated ? t('processPanel.filterAll') : t('processPanel.filterLive') }}
-          </VButton>
+          <VSegment
+            :model-value="listFilter"
+            :options="listFilterOptions"
+            :aria-label="t('processPanel.filterLabel')"
+            @update:model-value="setListFilter"
+          />
         </div>
 
         <VEmptyState v-if="!hasRows && !loading" :headline="t('processPanel.empty')" />
 
-        <ul v-else class="flex flex-col gap-1 overflow-y-auto">
+        <ul v-else class="flex flex-col gap-0.5 overflow-y-auto">
           <li v-for="row in rows" :key="row.id">
             <button
               type="button"
-              class="w-full text-left px-2 py-1 rounded"
-              :class="[
-                selected?.id === row.id ? 'bg-base-300' : 'hover:bg-base-200',
+              class="process-row"
+              :class="{
+                'process-row-selected': selected?.id === row.id,
                 // Terminal rows are history — keep them visible, but visually
                 // subordinate to what is actually running.
-                isClosed(row) ? 'opacity-60' : '',
-              ]"
+                'process-row-closed': isClosed(row),
+              }"
               @click="openDetail(row)"
             >
               <div class="flex items-center gap-2">
                 <span class="font-mono text-xs truncate">{{ row.name }}</span>
-                <span class="text-[10px] opacity-60">{{ statusOf(row) }}</span>
+                <span class="text-[10px] text-(--v-label-secondary)">{{ statusOf(row) }}</span>
                 <span
                   v-if="isClosed(row) && closeReasonLabel(row)"
-                  class="text-[10px] px-1 rounded bg-base-200 shrink-0"
+                  class="text-[10px] px-1 rounded bg-(--v-fill) shrink-0"
                 >{{ closeReasonLabel(row) }}</span>
               </div>
-              <div class="text-[10px] opacity-60 truncate">
+              <div class="text-[10px] text-(--v-label-secondary) truncate">
                 {{ row.thinkEngine }}<template v-if="row.goal"> · {{ row.goal }}</template>
               </div>
             </button>
@@ -298,77 +320,112 @@ async function toggleTerminated(): Promise<void> {
       </div>
 
       <!-- Detail -->
-      <div class="flex-1 flex flex-col gap-2 border-l border-base-300 pl-4">
+      <div class="flex-1 min-w-0 flex flex-col gap-2 border-l border-(--v-separator) pl-4">
         <VEmptyState v-if="!selected" :headline="t('processPanel.pickOne')" />
 
         <template v-else>
-          <div class="text-xs opacity-70">
-            <span class="font-mono">{{ selected.name }}</span>
-            · {{ selected.thinkEngine }}
-            · {{ detailStatus }}
+          <div class="flex items-center gap-2">
+            <div class="flex-1 min-w-0 text-xs text-(--v-label-secondary)">
+              <span class="font-mono">{{ selected.name }}</span>
+              · {{ selected.thinkEngine }}
+              · {{ detailStatus }}
+            </div>
+            <VIconButton
+              icon="refresh"
+              size="sm"
+              :label="t('processPanel.reload')"
+              :disabled="busy"
+              @click="openDetail(selected)"
+            />
           </div>
-          <p v-if="selected.goal" class="text-xs opacity-60">{{ selected.goal }}</p>
+          <p v-if="selected.goal" class="text-xs text-(--v-label-secondary)">{{ selected.goal }}</p>
 
           <VAlert v-if="detailError" variant="error">{{ detailError }}</VAlert>
           <VAlert v-if="actionNote" variant="info">{{ actionNote }}</VAlert>
 
           <div class="flex-1 overflow-y-auto text-sm flex flex-col gap-2">
-            <p v-if="detailLoading" class="opacity-60">{{ t('processPanel.loading') }}</p>
-            <p v-else-if="detail && (detail.messages?.length ?? 0) === 0" class="opacity-60">
+            <p v-if="detailLoading" class="text-(--v-label-secondary)">{{ t('processPanel.loading') }}</p>
+            <p
+              v-else-if="detail && (detail.messages?.length ?? 0) === 0"
+              class="text-(--v-label-secondary)"
+            >
               {{ t('processPanel.silent') }}
             </p>
             <template v-else-if="detail">
-              <p v-if="detail.olderTruncated" class="text-xs opacity-50">
+              <p v-if="detail.olderTruncated" class="text-xs text-(--v-label-tertiary)">
                 {{ t('processPanel.olderTruncated', { n: detail.olderTruncated }) }}
               </p>
               <div v-for="msg in detail.messages" :key="msg.messageId" class="flex flex-col">
-                <span class="text-[10px] uppercase opacity-50">{{ roleOf(msg) }}</span>
+                <span class="text-[10px] uppercase text-(--v-label-tertiary)">{{ roleOf(msg) }}</span>
                 <MarkdownView :source="msg.content ?? ''" />
               </div>
             </template>
           </div>
 
+          <!-- Composer: field and its send button form one flush row. -->
           <div v-if="!preview" class="flex items-center gap-2">
-            <VInput
-              v-model="steerText"
-              :placeholder="t('processPanel.steerPlaceholder')"
-              :disabled="busy"
-              class="flex-1"
-              @keydown.enter="steer"
-            />
-            <VButton size="sm" :disabled="busy || !steerText.trim()" @click="steer">
+            <div class="flex-1 min-w-0">
+              <VInput
+                v-model="steerText"
+                :placeholder="t('processPanel.steerPlaceholder')"
+                :disabled="busy"
+                @keydown.enter="steer"
+              />
+            </div>
+            <VButton
+              variant="primary"
+              :disabled="busy || !steerText.trim()"
+              @click="steer"
+            >
               {{ t('processPanel.steer') }}
-            </VButton>
-          </div>
-
-          <!-- Preview mode: read-only. Steering and lifecycle need the
-               session bound, so the only action offered is opening it. -->
-          <div v-if="preview" class="flex items-center gap-2">
-            <span class="text-xs opacity-60 flex-1">{{ t('processPanel.previewReadOnly') }}</span>
-            <VButton size="xs" @click="emit('open-session', sessionId as string)">
-              {{ t('processPanel.openSession') }}
-            </VButton>
-            <VButton size="xs" variant="secondary" @click="openDetail(selected)">
-              {{ t('processPanel.reload') }}
-            </VButton>
-          </div>
-
-          <div v-else class="flex items-center gap-2">
-            <VButton size="xs" variant="secondary" :disabled="busy" @click="lifecycle('process-pause')">
-              {{ t('processPanel.pause') }}
-            </VButton>
-            <VButton size="xs" variant="secondary" :disabled="busy" @click="lifecycle('process-resume')">
-              {{ t('processPanel.resume') }}
-            </VButton>
-            <VButton size="xs" variant="secondary" :disabled="busy" @click="lifecycle('process-stop')">
-              {{ t('processPanel.stop') }}
-            </VButton>
-            <VButton size="xs" variant="secondary" :disabled="busy" @click="openDetail(selected)">
-              {{ t('processPanel.reload') }}
             </VButton>
           </div>
         </template>
       </div>
     </div>
+
+    <template v-if="selected" #actions>
+      <!-- Preview mode: read-only. Steering and lifecycle need the
+           session bound, so the only action offered is opening it. -->
+      <template v-if="preview">
+        <span class="mr-auto text-xs text-(--v-label-secondary)">
+          {{ t('processPanel.previewReadOnly') }}
+        </span>
+        <VButton variant="secondary" @click="emit('open-session', sessionId as string)">
+          {{ t('processPanel.openSession') }}
+        </VButton>
+      </template>
+      <template v-else>
+        <VButton variant="secondary" :disabled="busy" @click="lifecycle('process-pause')">
+          {{ t('processPanel.pause') }}
+        </VButton>
+        <VButton variant="secondary" :disabled="busy" @click="lifecycle('process-resume')">
+          {{ t('processPanel.resume') }}
+        </VButton>
+        <VButton variant="danger" :disabled="busy" @click="lifecycle('process-stop')">
+          {{ t('processPanel.stop') }}
+        </VButton>
+      </template>
+    </template>
   </VModal>
 </template>
+
+<style scoped>
+/* Master-list row (corporate-design.md §7.3): hover = fill at 50 %,
+   selection = the selection token with accent text. */
+.process-row {
+  display: block;
+  width: 100%;
+  padding: 4px 8px;
+  border-radius: var(--v-radius-control);
+  text-align: left;
+  transition: background-color var(--v-duration, 150ms) ease-out;
+}
+.process-row:hover { background: color-mix(in srgb, var(--v-fill) 50%, transparent); }
+.process-row-selected,
+.process-row-selected:hover {
+  background: var(--v-selection);
+  color: var(--v-accent-text);
+}
+.process-row-closed { color: var(--v-label-secondary); }
+</style>

@@ -31,6 +31,7 @@ import {
   VIcon,
   VIconButton,
   ShareModal,
+  useConfirm,
 } from '@/components';
 import { brainFetch } from '@vance/shared';
 import type {
@@ -853,6 +854,7 @@ provide('vance:share', openShare);
 // `t` is bound as `msg` because `t` is taken half a dozen times in this file
 // as the name of a tab in a callback.
 const { t: msg } = useI18n();
+const confirmAction = useConfirm();
 
 /** Errors and warnings from a menu entry. One line, dismissed by the next. */
 const menuNotice = ref<{ text: string; variant: 'error' | 'warning' } | null>(null);
@@ -1481,7 +1483,10 @@ async function onOpenDocumentPick(id: string): Promise<void> {
 }
 
 async function onDelete(id: string): Promise<void> {
-  if (!confirm(msg('cortex.confirmDelete'))) return;
+  if (!await confirmAction({
+    message: msg('cortex.confirmDelete'),
+    confirmLabel: msg('common.delete'),
+  })) return;
   await store.deleteFile(id);
 }
 
@@ -1632,7 +1637,10 @@ async function requestCloseTab(id: string): Promise<void> {
     } catch (e) {
       const reason = e instanceof Error ? e.message : String(e);
       const label = tab.title || tab.path;
-      if (!window.confirm(msg('cortex.confirmDiscardUnsaved', { label, reason }))) {
+      if (!await confirmAction({
+        message: msg('cortex.confirmDiscardUnsaved', { label, reason }),
+        confirmLabel: msg('common.close'),
+      })) {
         return;
       }
     }

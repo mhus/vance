@@ -13,8 +13,10 @@ import {
   VInput,
   VModal,
   VPagination,
+  VSegment,
   VSelect,
   type FormValue,
+  type SegmentOption,
 } from '@vance/components';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
@@ -137,6 +139,19 @@ const visibleTabs = computed(() =>
 watch(visibleTabs, (tabs) => {
   if (activeTab.value >= tabs.length) activeTab.value = Math.max(0, tabs.length - 1);
 });
+
+/** The reachable tabs as options; the value is the index, as a string. */
+const tabOptions = computed<SegmentOption<string>[]>(() =>
+  visibleTabs.value.map((child, i) => ({
+    value: String(i),
+    label: child.label ?? t('bistromath.widget.tab', { number: i + 1 }),
+  })),
+);
+
+/** A segment control carries 2–4 options; outside that range the tabs are a row. */
+const tabsAsSegment = computed<boolean>(
+  () => tabOptions.value.length >= 2 && tabOptions.value.length <= 4,
+);
 
 /** Elements of a `repeat`. Anything not a list repeats zero times. */
 const items = computed<unknown[]>(() => (Array.isArray(bound.value) ? bound.value : []));
@@ -534,6 +549,19 @@ function cell(row: Record<string, unknown>, column: string): string {
   return String(v);
 }
 
+/**
+ * A dialog's direct `button` children are its action row, not part of its
+ * content (corporate-design.md §6.4): the footer stays put while the content
+ * scrolls, wherever the author listed the buttons. Nested buttons — inside a
+ * row or a form — stay where the author put them.
+ */
+const dialogContent = computed<ViewNode[]>(() =>
+  node.value.children.filter((c) => c.type !== 'button'),
+);
+const dialogActions = computed<ViewNode[]>(() =>
+  node.value.children.filter((c) => c.type === 'button'),
+);
+
 const headingClass = computed(() =>
   depth.value === 0 ? 'text-xl font-semibold' : 'text-base font-semibold',
 );
@@ -608,10 +636,13 @@ const headingClass = computed(() =>
     />
   </div>
 
+  <!-- Secondary, always (corporate-design.md §6.1): a view lists many buttons,
+       and "has a handler" is true of nearly all of them — making that primary
+       filled a view with navy. The view schema has no button role yet. -->
   <VButton
     v-else-if="node.type === 'button'"
     size="sm"
-    :variant="hasHandler('click') ? 'primary' : 'secondary'"
+    variant="secondary"
     @click="fire('click')"
   >
     {{ node.label }}
@@ -830,15 +861,26 @@ const headingClass = computed(() =>
   </div>
 
   <div v-else-if="node.type === 'tabs'" class="flex min-h-0 flex-col gap-2">
-    <div class="flex flex-wrap gap-1">
+    <!-- 2–4 tabs are modes of one view: a segment control (corporate-design.md
+         §6.3/§6.4). More do not fit one pill — a wrapping row of plain buttons,
+         the open one lifted to secondary. -->
+    <VSegment
+      v-if="tabsAsSegment"
+      :model-value="String(activeTab)"
+      :options="tabOptions"
+      :aria-label="node.label"
+      @update:model-value="(v: string) => (activeTab = Number(v))"
+    />
+    <div v-else class="flex flex-wrap gap-1">
       <VButton
-        v-for="(child, i) in visibleTabs"
-        :key="i"
+        v-for="opt in tabOptions"
+        :key="opt.value"
         size="sm"
-        :variant="activeTab === i ? 'primary' : 'secondary'"
-        @click="activeTab = i"
+        :variant="String(activeTab) === opt.value ? 'secondary' : 'plain'"
+        :aria-pressed="String(activeTab) === opt.value ? 'true' : 'false'"
+        @click="activeTab = Number(opt.value)"
       >
-        {{ child.label ?? t('bistromath.widget.tab', { number: i + 1 }) }}
+        {{ opt.label }}
       </VButton>
     </div>
     <WidgetNode
@@ -905,9 +947,9 @@ const headingClass = computed(() =>
     :title="node.label ?? undefined"
     @update:model-value="() => node.show && emit('state', node.show, false)"
   >
-    <div class="flex flex-col gap-3">
+    <div class="flex flex-col gap-4">
       <WidgetNode
-        v-for="(child, i) in node.children"
+        v-for="(child, i) in dialogContent"
         :key="i"
         :node="child"
         :state="state"
@@ -919,6 +961,20 @@ const headingClass = computed(() =>
         @state="(k, v) => emit('state', k, v)"
       />
     </div>
+    <template v-if="dialogActions.length > 0" #actions>
+      <WidgetNode
+        v-for="(child, i) in dialogActions"
+        :key="i"
+        :node="child"
+        :state="state"
+        :record-key="recordKey"
+        :resolve="resolve"
+        :scope="scope"
+        :depth="depth + 1"
+        @action="(a, k) => emit('action', a, k)"
+        @state="(k, v) => emit('state', k, v)"
+      />
+    </template>
   </VModal>
 
   <!-- Unreachable while the server enforces the whitelist. A visible failure

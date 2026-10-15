@@ -71,8 +71,8 @@ function close(): void {
     :close-on-backdrop="false"
     @update:model-value="(v: boolean) => { if (!v) emit('cancel'); }"
   >
-    <div class="flex flex-col gap-3">
-      <p class="truncate font-mono text-xs opacity-60" :title="entry.url">{{ entry.url }}</p>
+    <div class="flex flex-col gap-4">
+      <p class="truncate font-mono text-xs text-(--v-label-secondary)" :title="entry.url">{{ entry.url }}</p>
 
       <VInput
         v-model="title"

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { VButton, VInput, VModal } from '@vance/components';
+import { VButton, VGroup, VGroupRow, VInput, VModal } from '@vance/components';
 import { searchDocuments } from './api';
 import type { BinderDocItem } from './generated/binder/BinderDocItem';
 import { useT } from './i18n';
@@ -73,30 +73,31 @@ defineExpose({ open: openPicker });
     :close-on-backdrop="false"
     @update:model-value="onToggle"
   >
-    <div class="flex flex-col gap-2">
+    <div class="flex flex-col gap-4">
       <VInput
         v-model="query"
         :placeholder="t('binder.picker.searchPlaceholder')"
         @update:model-value="onQuery"
       />
-      <div class="max-h-80 overflow-auto rounded border border-base-300">
-        <div v-if="loading" class="p-3 text-sm opacity-60">{{ t('binder.common.searching') }}</div>
-        <button
+      <div v-if="loading" class="text-sm text-(--v-label-secondary)">{{ t('binder.common.searching') }}</div>
+      <div v-if="!loading && results.length === 0" class="text-sm text-(--v-label-secondary)">
+        {{ t('binder.common.noHits') }}
+      </div>
+      <VGroup v-if="results.length > 0">
+        <VGroupRow
           v-for="it in results"
           :key="it.id"
-          class="flex w-full flex-col items-start gap-0.5 border-b border-base-200 px-3 py-2 text-left hover:bg-base-200"
+          navigates
+          :label="it.title || it.path"
+          :meta="it.kind ?? undefined"
+          :description="it.path"
           @click="pick(it)"
-        >
-          <span class="text-sm font-medium">{{ it.title || it.path }}</span>
-          <span class="text-xs opacity-60">{{ it.kind ? it.kind + ' · ' : '' }}{{ it.path }}</span>
-        </button>
-        <div v-if="!loading && results.length === 0" class="p-3 text-sm opacity-60">
-          {{ t('binder.common.noHits') }}
-        </div>
-      </div>
-      <div class="flex justify-end">
-        <VButton size="sm" variant="secondary" @click="finish(null)">{{ t('binder.common.cancel') }}</VButton>
-      </div>
+        />
+      </VGroup>
     </div>
+
+    <template #actions>
+      <VButton variant="secondary" @click="finish(null)">{{ t('binder.common.cancel') }}</VButton>
+    </template>
   </VModal>
 </template>

@@ -8,6 +8,7 @@ import {
   VInput,
   VSelect,
   VTextarea,
+  useConfirm,
 } from '@/components';
 import { useScopeSettings } from '@/composables/useScopeSettings';
 import { isEncryptedSettingType } from '@vance/shared';
@@ -34,6 +35,7 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n();
+const confirmAction = useConfirm();
 const settingsState = useScopeSettings();
 
 
@@ -119,7 +121,10 @@ async function saveEditSetting(s: SettingDto): Promise<void> {
 }
 
 async function deleteSetting(s: SettingDto): Promise<void> {
-  if (!window.confirm(t('settings.raw.confirmDelete', { key: s.key }))) return;
+  if (!await confirmAction({
+    message: t('settings.raw.confirmDelete', { key: s.key }),
+    confirmLabel: t('common.delete'),
+  })) return;
   try {
     await settingsState.remove(props.referenceType, props.referenceId, s.key);
   } catch {
@@ -162,7 +167,7 @@ async function addSetting(): Promise<void> {
       :body="t('settings.raw.emptyBody')"
     />
 
-    <ul class="flex flex-col divide-y divide-base-300">
+    <ul class="flex flex-col divide-y divide-(--v-separator)">
       <li
         v-for="s in settingsState.settings.value"
         :key="s.key"
@@ -170,7 +175,7 @@ async function addSetting(): Promise<void> {
       >
         <div class="flex items-center justify-between gap-2">
           <span class="font-mono text-sm truncate">{{ s.key }}</span>
-          <span class="opacity-60 text-xs">{{ s.type }}</span>
+          <span class="text-xs text-(--v-label-secondary)">{{ s.type }}</span>
         </div>
         <template v-if="editingKey === s.key">
           <VInput
@@ -203,8 +208,8 @@ async function addSetting(): Promise<void> {
           </div>
         </template>
         <template v-else>
-          <div class="text-sm break-words opacity-80">{{ settingValueLabel(s) }}</div>
-          <div v-if="s.description" class="text-xs opacity-60">{{ s.description }}</div>
+          <div class="text-sm break-words">{{ settingValueLabel(s) }}</div>
+          <div v-if="s.description" class="text-xs text-(--v-label-secondary)">{{ s.description }}</div>
           <div class="flex justify-end gap-2">
             <VButton variant="plain" size="sm" @click="startEditSetting(s)">
               {{ t('settings.raw.edit') }}
@@ -217,8 +222,8 @@ async function addSetting(): Promise<void> {
       </li>
     </ul>
 
-    <div class="border-t border-base-300 pt-3 flex flex-col gap-2">
-      <h4 class="text-xs uppercase opacity-60">{{ t('settings.raw.addTitle') }}</h4>
+    <div class="border-t border-(--v-separator) pt-3 flex flex-col gap-2">
+      <h4 class="text-xs uppercase text-(--v-label-secondary)">{{ t('settings.raw.addTitle') }}</h4>
       <VInput
         v-model="newSettingKey"
         :label="t('settings.raw.keyLabel')"
@@ -246,8 +251,9 @@ async function addSetting(): Promise<void> {
         :rows="2"
       />
       <VButton
-        variant="primary"
+        variant="secondary"
         size="sm"
+        icon="add"
         :disabled="!newSettingKey.trim()"
         :loading="settingsState.busy.value"
         @click="addSetting"

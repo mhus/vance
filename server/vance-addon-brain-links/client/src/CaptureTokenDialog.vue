@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { VAlert, VButton, VInput, VModal } from '@vance/components';
+import { VAlert, VButton, VGroup, VGroupRow, VInput, VModal, useConfirm } from '@vance/components';
 import {
   connectionBlobFor,
   createIntegrationToken,
@@ -54,6 +54,7 @@ const profiles = ref<IntegrationScopeProfileDto[]>([]);
 const chosen = ref<string[]>([PROFILE]);
 
 const t = useT();
+const confirmAction = useConfirm();
 
 const open = ref(true);
 const busy = ref(false);
@@ -150,7 +151,10 @@ async function onCreate(): Promise<void> {
 }
 
 async function onRevoke(token: IntegrationTokenDto): Promise<void> {
-  if (!window.confirm(t('links.capture.confirmRevoke', { label: token.label }))) return;
+  if (!await confirmAction({
+    message: t('links.capture.confirmRevoke', { label: token.label }),
+    confirmLabel: t('links.capture.revoke'),
+  })) return;
   busy.value = true;
   error.value = null;
   try {
@@ -215,15 +219,11 @@ function message(e: unknown): string {
   <VModal
     :model-value="open"
     :title="t('links.capture.title')"
-    size="lg"
+    :description="t('links.capture.intro')"
     :close-on-backdrop="false"
     @update:model-value="onClose()"
   >
     <div class="flex flex-col gap-4">
-      <p class="text-sm opacity-70">
-        {{ t('links.capture.intro') }}
-      </p>
-
       <!-- The honest scope. Stated up front, not in a footnote: somebody
            handing this to a tool has to know what it reaches. -->
       <VAlert variant="info">
@@ -235,61 +235,63 @@ function message(e: unknown): string {
       <VAlert v-if="error" variant="error" class="whitespace-pre-line">{{ error }}</VAlert>
 
       <!-- Existing tokens -->
-      <div class="flex flex-col gap-2">
-        <span class="text-xs font-semibold uppercase tracking-wide opacity-50">
-          {{ t('links.capture.existing') }}
-        </span>
-        <p v-if="mine.length === 0 && !busy" class="text-sm opacity-60">
-          {{ t('links.capture.none') }}
-        </p>
-        <div
-          v-for="row in mine"
-          :key="row.tokenId"
-          class="flex items-center gap-3 rounded border border-base-300 px-3 py-2"
-        >
-          <div class="flex min-w-0 flex-1 flex-col">
-            <span
-              class="truncate font-medium"
-              :class="integrationTokenIsLive(row) ? '' : 'line-through opacity-50'"
-            >
-              {{ row.label }}
+      <p v-if="mine.length === 0 && !busy" class="text-sm text-(--v-label-secondary)">
+        {{ t('links.capture.none') }}
+      </p>
+      <VGroup v-if="mine.length > 0" :label="t('links.capture.existing')">
+        <VGroupRow v-for="row in mine" :key="row.tokenId">
+          <!-- One column in the label slot rather than the description
+               slot: the description clamps at two lines, and the dates line
+               must never be cut — it is what reveals a forgotten token. -->
+          <template #label>
+            <span class="flex min-w-0 flex-col gap-0.5">
+              <span
+                class="truncate"
+                :class="integrationTokenIsLive(row) ? '' : 'line-through text-(--v-label-tertiary)'"
+              >
+                {{ row.label }}
+              </span>
+              <!-- What it carries. The list is every token of the project, not
+                   just this addon's, so the capability is the only thing that
+                   tells two rows apart — and the reason to revoke one. -->
+              <span class="truncate text-xs text-(--v-label-secondary)">
+                {{ (row.scopeProfileLabels ?? []).join(' · ') || t('links.capture.noCapability') }}
+              </span>
+              <!-- Last used is the only thing that ever reveals a token nobody
+                   remembers handing out. -->
+              <span class="text-xs text-(--v-label-secondary)">
+                {{ t('links.capture.created', { date: stamp(row.createdAtTimestamp) }) }} ·
+                {{ t('links.capture.expires', { date: stamp(row.expiresAtTimestamp) }) }} ·
+                {{ t('links.capture.lastUsed', {
+                  date: row.lastUsedAtTimestamp
+                    ? stamp(row.lastUsedAtTimestamp)
+                    : t('links.capture.never'),
+                }) }}
+                <template v-if="row.revokedAtTimestamp">
+                  · {{ t('links.capture.revoked', { date: stamp(row.revokedAtTimestamp) }) }}
+                </template>
+              </span>
             </span>
-            <!-- What it carries. The list is every token of the project, not
-                 just this addon's, so the capability is the only thing that
-                 tells two rows apart — and the reason to revoke one. -->
-            <span class="truncate text-xs opacity-70">
-              {{ (row.scopeProfileLabels ?? []).join(' · ') || t('links.capture.noCapability') }}
-            </span>
-            <!-- Last used is the only thing that ever reveals a token nobody
-                 remembers handing out. -->
-            <span class="text-xs opacity-60">
-              {{ t('links.capture.created', { date: stamp(row.createdAtTimestamp) }) }} ·
-              {{ t('links.capture.expires', { date: stamp(row.expiresAtTimestamp) }) }} ·
-              {{ t('links.capture.lastUsed', {
-                date: row.lastUsedAtTimestamp
-                  ? stamp(row.lastUsedAtTimestamp)
-                  : t('links.capture.never'),
-              }) }}
-              <template v-if="row.revokedAtTimestamp">
-                · {{ t('links.capture.revoked', { date: stamp(row.revokedAtTimestamp) }) }}
-              </template>
-            </span>
-          </div>
+          </template>
           <VButton
             v-if="integrationTokenIsLive(row)"
-            size="xs"
-            variant="secondary"
+            size="sm"
+            variant="danger"
             :disabled="busy"
             @click="onRevoke(row)"
           >
             {{ t('links.capture.revoke') }}
           </VButton>
-        </div>
-      </div>
+        </VGroupRow>
+      </VGroup>
 
       <!-- Mint -->
-      <div class="flex flex-col gap-2 border-t border-base-300 pt-4">
-        <span class="text-xs font-semibold uppercase tracking-wide opacity-50">
+      <form
+        id="links-capture-form"
+        class="flex flex-col gap-4 border-t border-(--v-separator) pt-4"
+        @submit.prevent="onCreate()"
+      >
+        <span class="text-xs font-semibold text-(--v-label-secondary)">
           {{ t('links.capture.newToken') }}
         </span>
         <!-- What the token will be able to do. Each line is a profile the
@@ -305,12 +307,12 @@ function message(e: unknown): string {
             <input v-model="chosen" type="checkbox" :value="p.id" :disabled="busy" class="mt-1" />
             <span class="flex min-w-0 flex-col">
               <span>{{ p.label }}</span>
-              <span class="font-mono text-xs opacity-50">{{ p.surfaces.join(' · ') }}</span>
+              <span class="font-mono text-xs text-(--v-label-secondary)">{{ p.surfaces.join(' · ') }}</span>
             </span>
           </label>
         </div>
 
-        <div class="flex items-end gap-2">
+        <div class="flex gap-2">
           <div class="min-w-0 flex-1">
             <VInput
               v-model="label"
@@ -322,22 +324,19 @@ function message(e: unknown): string {
           <div class="w-32 flex-none">
             <VInput v-model="days" :label="t('links.capture.days')" :disabled="busy" />
           </div>
-          <VButton variant="primary" :disabled="busy" @click="onCreate()">
-            {{ t('links.common.create') }}
-          </VButton>
         </div>
-        <p v-if="live.length > 0" class="text-xs opacity-60">
+        <p v-if="live.length > 0" class="text-xs text-(--v-label-secondary)">
           {{ t('links.capture.liveTokens', { n: live.length }, live.length) }}
         </p>
-      </div>
+      </form>
 
       <!-- The one moment the value exists -->
-      <div v-if="freshBlob" class="flex flex-col gap-2 border-t border-base-300 pt-4">
+      <div v-if="freshBlob" class="flex flex-col gap-2 border-t border-(--v-separator) pt-4">
         <div class="flex items-center gap-2">
-          <span class="text-xs font-semibold uppercase tracking-wide opacity-50">
+          <span class="text-xs font-semibold text-(--v-label-secondary)">
             {{ t('links.capture.connectionString') }}
           </span>
-          <VButton size="xs" :variant="copied ? 'primary' : 'secondary'" @click="onCopy()">
+          <VButton size="xs" variant="secondary" :icon="copied ? 'check' : 'copy'" @click="onCopy()">
             {{ copied ? t('links.capture.copiedButton') : t('links.capture.copyButton') }}
           </VButton>
         </div>
@@ -354,9 +353,9 @@ function message(e: unknown): string {
              for the case where the clipboard button is refused. -->
         <pre
           class="max-h-40 select-all overflow-y-auto whitespace-pre-wrap break-all rounded
-                 border border-base-300 p-2 text-xs"
+                 border border-(--v-separator) p-2 text-xs"
         >{{ freshBlob }}</pre>
-        <p class="text-xs opacity-60">
+        <p class="text-xs text-(--v-label-secondary)">
           {{ t('links.capture.blobHint') }}
         </p>
       </div>
@@ -364,6 +363,9 @@ function message(e: unknown): string {
 
     <template #actions>
       <VButton variant="secondary" @click="onClose()">{{ t('links.common.close') }}</VButton>
+      <VButton type="submit" form="links-capture-form" variant="primary" :disabled="busy">
+        {{ t('links.common.create') }}
+      </VButton>
     </template>
   </VModal>
 </template>

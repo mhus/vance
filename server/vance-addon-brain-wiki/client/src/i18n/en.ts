@@ -19,6 +19,7 @@ export default {
       create: 'Create',
       creating: 'Creating…',
       loading: 'Loading…',
+      delete: 'Delete',
     },
     app: {
       fallbackTitle: 'Wiki',

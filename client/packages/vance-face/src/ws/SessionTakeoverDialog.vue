@@ -56,12 +56,12 @@ function onCancel(): void {
   <VModal
     :model-value="open"
     :title="t('sessionTakeover.title')"
+    :description="t('sessionTakeover.body')"
+    size="sm"
     :close-on-backdrop="false"
     @update:model-value="(v) => { if (!v) onCancel(); }"
   >
-    <p class="text-sm opacity-80">{{ t('sessionTakeover.body') }}</p>
-
-    <VAlert v-if="failed" variant="error" class="mt-3">
+    <VAlert v-if="failed" variant="error">
       {{ t('sessionTakeover.failed') }}
     </VAlert>
 

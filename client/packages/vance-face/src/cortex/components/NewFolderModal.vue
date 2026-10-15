@@ -56,24 +56,22 @@ function submit(): void {
   <VModal
     :model-value="open"
     :title="$t('cortex.newFolder.title')"
+    :description="$t('cortex.newFolder.description')"
+    size="sm"
     @update:model-value="(v: boolean) => emit('update:open', v)"
   >
-    <form class="space-y-3 p-2" @submit.prevent="submit">
+    <form id="new-folder-form" class="flex flex-col gap-4" @submit.prevent="submit">
       <VInput
         v-model="path"
         :label="$t('cortex.newFolder.pathLabel')"
         :placeholder="$t('cortex.newFolder.pathPlaceholder')"
       />
-      <p class="text-xs opacity-60">
-        Folders are virtual until a file lives in them — this entry is
-        client-side and disappears on refresh unless something gets
-        moved into it.
-      </p>
       <VAlert v-if="error" variant="error">{{ error }}</VAlert>
-      <div class="flex justify-end gap-2 pt-2">
-        <VButton type="button" variant="secondary" @click="close">{{ $t('cortex.newFolder.cancel') }}</VButton>
-        <VButton type="submit" variant="primary">{{ $t('cortex.newFolder.create') }}</VButton>
-      </div>
     </form>
+
+    <template #actions>
+      <VButton type="button" variant="secondary" @click="close">{{ $t('cortex.newFolder.cancel') }}</VButton>
+      <VButton type="submit" form="new-folder-form" variant="primary">{{ $t('cortex.newFolder.create') }}</VButton>
+    </template>
   </VModal>
 </template>

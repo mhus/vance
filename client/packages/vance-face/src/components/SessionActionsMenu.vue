@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { VColorPicker, VIcon, VIconButton } from '@vance/components';
+import { VColorPicker, VIcon, VIconButton, useConfirm } from '@vance/components';
 import {
   AccentColor,
   type SessionSummaryRichDto,
@@ -42,6 +42,7 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const confirmAction = useConfirm();
 
 // Local mirror of the card's session so the composable can read/update it
 // without mutating the prop. Kept in sync when the parent swaps the entry.
@@ -161,13 +162,15 @@ async function onColor(value: AccentColor | null): Promise<void> {
   closeMenu();
 }
 
-function onCrop(): void {
+async function onCrop(): Promise<void> {
   closeMenu();
   // Warn when a client is connected (someone may be working on it) —
   // cropping removes messages from the shared memory. Consistent with the
   // Compact action.
-  if (props.session.bound
-      && !window.confirm(t('chat.crop.connectedConfirm'))) {
+  if (props.session.bound && !await confirmAction({
+    message: t('chat.crop.connectedConfirm'),
+    confirmLabel: t('chat.sessionHeader.crop'),
+  })) {
     return;
   }
   emit('crop', props.session.sessionId);
@@ -177,8 +180,11 @@ async function onCompact(): Promise<void> {
   closeMenu();
   // Warn when a client is connected (someone may be working on it) — the
   // compaction itself still runs safely on the lane between turns.
-  if (props.session.bound
-      && !window.confirm(t('chat.sessionHeader.compactConnectedConfirm'))) {
+  if (props.session.bound && !await confirmAction({
+    message: t('chat.sessionHeader.compactConnectedConfirm'),
+    confirmLabel: t('chat.sessionHeader.compact'),
+    danger: false,
+  })) {
     return;
   }
   await compactAction();
@@ -216,20 +222,31 @@ async function onMoveConfirm(targetProjectId: string): Promise<void> {
 }
 
 async function onArchive(): Promise<void> {
-  if (!window.confirm(t('chat.sessionHeader.archiveConfirm'))) return;
   closeMenu();
+  if (!await confirmAction({
+    message: t('chat.sessionHeader.archiveConfirm'),
+    confirmLabel: t('chat.sessionHeader.archive'),
+    danger: false,
+  })) return;
   await archiveAction();
 }
 
 async function onReactivate(): Promise<void> {
-  if (!window.confirm(t('chat.sessionHeader.reactivateConfirm'))) return;
   closeMenu();
+  if (!await confirmAction({
+    message: t('chat.sessionHeader.reactivateConfirm'),
+    confirmLabel: t('chat.sessionHeader.reactivate'),
+    danger: false,
+  })) return;
   await reactivateAction();
 }
 
 async function onDelete(): Promise<void> {
-  if (!window.confirm(t('chat.sessionHeader.deleteConfirm'))) return;
   closeMenu();
+  if (!await confirmAction({
+    message: t('chat.sessionHeader.deleteConfirm'),
+    confirmLabel: t('chat.sessionHeader.delete'),
+  })) return;
   await removeAction();
 }
 </script>

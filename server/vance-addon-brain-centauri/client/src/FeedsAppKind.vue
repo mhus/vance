@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
-  VAlert, VButton, VCard, VCheckbox, VEmptyState, VInput, VModal, VSelect, VShareButton,
+  VAlert, VButton, VCard, VCheckbox, VEmptyState, VGroup, VGroupRow, VInput, VModal, VSelect, VShareButton,
   VIcon, VIconButton, VTextarea, VToggle, useAppEntry, useLocale, vanceRef,
 } from '@vance/components';
 import { RestError, safeUrl } from '@vance/shared';
@@ -1426,15 +1426,14 @@ function slug(title: string): string {
       v-if="picker"
       v-model="pickerOpen"
       :title="`${picker.facet.label} · ${picker.sourceName}`"
-      size="lg"
     >
-      <div class="flex flex-col gap-3">
+      <div class="flex flex-col gap-4">
         <!-- Breadcrumb. Present even at the root, so the control looks the
              same wherever you are in the tree. -->
         <div v-if="picker.facet.hierarchical" class="flex flex-wrap items-center gap-1 text-sm">
           <button class="hover:underline" @click="breadcrumbTo(-1)">{{ t('feeds.all') }}</button>
           <template v-for="(node, i) in picker.path" :key="node.id">
-            <VIcon name="forward" class="opacity-50" />
+            <VIcon name="forward" class="text-(--v-label-tertiary)" />
             <button class="hover:underline" @click="breadcrumbTo(i)">{{ node.label }}</button>
           </template>
         </div>
@@ -1445,7 +1444,7 @@ function slug(title: string): string {
           <button
             v-for="id in selectedFacetValues(picker.facet.key)"
             :key="id"
-            class="inline-flex items-center gap-1 rounded bg-base-200 px-2 py-0.5 text-xs hover:line-through"
+            class="inline-flex items-center gap-1 rounded bg-(--v-fill) px-2 py-0.5 text-xs hover:line-through"
             @click="toggleFacetValue(picker.facet.key, id)"
           >
             {{ labelOf(id) }}
@@ -1453,25 +1452,22 @@ function slug(title: string): string {
           </button>
         </div>
 
-        <p v-if="picker.loading" class="text-sm opacity-60">{{ t('feeds.loading') }}</p>
+        <p v-if="picker.loading" class="text-sm text-(--v-label-secondary)">{{ t('feeds.loading') }}</p>
         <VEmptyState
           v-else-if="picker.level.length === 0"
           :headline="t('feeds.nothingBelowHeadline')"
           :body="t('feeds.nothingBelowBody')"
         />
 
-        <div v-else class="max-h-96 overflow-y-auto">
-          <div
-            v-for="value in picker.level"
-            :key="value.id"
-            class="flex items-center gap-2 border-b border-base-200 py-1 last:border-0"
-          >
-            <VCheckbox
-              :model-value="selectedFacetValues(picker.facet.key).includes(value.id)"
-              :label="value.label"
-              @update:model-value="toggleFacetValue(picker.facet.key, value.id)"
-            />
-            <div class="flex-1"></div>
+        <VGroup v-else>
+          <VGroupRow v-for="value in picker.level" :key="value.id">
+            <template #label>
+              <VCheckbox
+                :model-value="selectedFacetValues(picker.facet.key).includes(value.id)"
+                :label="value.label"
+                @update:model-value="toggleFacetValue(picker.facet.key, value.id)"
+              />
+            </template>
             <!-- Any node is selectable, so the chevron is a separate target:
                  going deeper and choosing are different intentions. -->
             <VIconButton
@@ -1481,8 +1477,8 @@ function slug(title: string): string {
               :label="t('feeds.drillInto')"
               @click="drillInto(value)"
             />
-          </div>
-        </div>
+          </VGroupRow>
+        </VGroup>
       </div>
 
       <template #actions>
@@ -1491,9 +1487,13 @@ function slug(title: string): string {
       </template>
     </VModal>
 
-    <VModal v-model="reportOpen" :title="t('feeds.reportTitle')">
-      <div v-if="report" class="flex flex-col gap-3">
-        <p class="text-sm opacity-70">{{ report.item.title }}</p>
+    <VModal
+      v-model="reportOpen"
+      :title="t('feeds.reportTitle')"
+      :description="report?.item.title"
+      size="sm"
+    >
+      <form v-if="report" id="feeds-report-form" class="flex flex-col gap-4" @submit.prevent="submitReport()">
         <VSelect
           :model-value="report.reason"
           :options="reportReasons"
@@ -1508,15 +1508,15 @@ function slug(title: string): string {
         />
         <!-- The reader is looking at a form in their own workspace and has no
              reason to suspect the text leaves the house. So it says so. -->
-        <p class="text-xs opacity-60">
+        <p class="text-xs text-(--v-label-secondary)">
           {{ t('feeds.reportDisclaimerPre') }}
           <strong>{{ sourceName(report.item.sourceId) }}</strong>.
           {{ t('feeds.reportDisclaimerPost') }}
         </p>
-      </div>
+      </form>
       <template #actions>
         <VButton variant="secondary" @click="reportOpen = false">{{ t('feeds.cancel') }}</VButton>
-        <VButton variant="primary" @click="submitReport()">{{ t('feeds.send') }}</VButton>
+        <VButton type="submit" form="feeds-report-form" variant="primary">{{ t('feeds.send') }}</VButton>
       </template>
     </VModal>
   </div>

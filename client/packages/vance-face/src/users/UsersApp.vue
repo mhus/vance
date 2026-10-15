@@ -10,10 +10,12 @@ import {
   VCard,
   VCheckbox,
   VEmptyState,
+  VIconButton,
   VInput,
   VModal,
   VSelect,
   VTextarea,
+  useConfirm,
 } from '@/components';
 import { useAdminUsers } from '@/composables/useAdminUsers';
 import { useAdminTeams } from '@/composables/useAdminTeams';
@@ -28,6 +30,7 @@ import {
 } from '@vance/generated';
 
 const { t } = useI18n();
+const confirmAction = useConfirm();
 const usersState = useAdminUsers();
 const teamsState = useAdminTeams();
 const settingsState = useScopeSettings();
@@ -234,7 +237,10 @@ async function saveEditUserSetting(s: SettingDto): Promise<void> {
 
 async function deleteUserSetting(s: SettingDto): Promise<void> {
   if (selection.value?.kind !== 'user') return;
-  if (!confirm(t('users.user.settings.confirmDelete', { key: s.key }))) return;
+  if (!await confirmAction({
+    message: t('users.user.settings.confirmDelete', { key: s.key }),
+    confirmLabel: t('common.delete'),
+  })) return;
   try {
     await settingsState.remove('user', selection.value.name, s.key);
   } catch {
@@ -305,7 +311,10 @@ async function deleteUser(): Promise<void> {
     formError.value = t('users.user.cantDeleteSelf');
     return;
   }
-  if (!confirm(t('users.user.confirmDelete', { name: selection.value.name }))) return;
+  if (!await confirmAction({
+    message: t('users.user.confirmDelete', { name: selection.value.name }),
+    confirmLabel: t('common.delete'),
+  })) return;
   const name = selection.value.name;
   try {
     await usersState.remove(name);
@@ -330,7 +339,10 @@ async function saveTeam(): Promise<void> {
 
 async function deleteTeam(): Promise<void> {
   if (selection.value?.kind !== 'team') return;
-  if (!confirm(t('users.team.confirmDelete', { name: selection.value.name }))) return;
+  if (!await confirmAction({
+    message: t('users.team.confirmDelete', { name: selection.value.name }),
+    confirmLabel: t('common.delete'),
+  })) return;
   const name = selection.value.name;
   try {
     await teamsState.remove(name);
@@ -473,10 +485,15 @@ function fmt(value: unknown): string {
       <nav class="flex flex-col gap-3 p-2">
         <section>
           <div class="flex items-center justify-between px-2 mb-1">
-            <span class="text-xs uppercase opacity-50">{{ $t('users.sidebar.usersTitle') }}</span>
-            <VButton variant="plain" size="sm" @click="openCreateUser">
-              {{ $t('users.sidebar.addUser') }}
-            </VButton>
+            <span class="text-xs uppercase text-(--v-label-secondary)">
+              {{ $t('users.sidebar.usersTitle') }}
+            </span>
+            <VIconButton
+              icon="add"
+              size="sm"
+              :label="$t('users.createUser.title')"
+              @click="openCreateUser"
+            />
           </div>
           <div class="px-2 mb-1">
             <VCheckbox
@@ -484,7 +501,7 @@ function fmt(value: unknown): string {
               :label="$t('users.sidebar.showInternalUsers')"
             />
           </div>
-          <div v-if="usersState.loading.value" class="px-2 text-xs opacity-60">
+          <div v-if="usersState.loading.value" class="px-2 text-xs text-(--v-label-secondary)">
             {{ $t('users.loading') }}
           </div>
           <button
@@ -507,7 +524,7 @@ function fmt(value: unknown): string {
                 }"
               >{{ u.status?.toLowerCase() }}</span>
             </div>
-            <div v-if="u.title || u.email" class="text-xs opacity-60 truncate">
+            <div v-if="u.title || u.email" class="text-xs text-(--v-label-secondary) truncate">
               {{ u.title }}<span v-if="u.title && u.email"> · </span>{{ u.email }}
             </div>
           </button>
@@ -515,12 +532,17 @@ function fmt(value: unknown): string {
 
         <section>
           <div class="flex items-center justify-between px-2 mb-1">
-            <span class="text-xs uppercase opacity-50">{{ $t('users.sidebar.teamsTitle') }}</span>
-            <VButton variant="plain" size="sm" @click="openCreateTeam">
-              {{ $t('users.sidebar.addTeam') }}
-            </VButton>
+            <span class="text-xs uppercase text-(--v-label-secondary)">
+              {{ $t('users.sidebar.teamsTitle') }}
+            </span>
+            <VIconButton
+              icon="add"
+              size="sm"
+              :label="$t('users.createTeam.title')"
+              @click="openCreateTeam"
+            />
           </div>
-          <div v-if="teamsState.loading.value" class="px-2 text-xs opacity-60">
+          <div v-if="teamsState.loading.value" class="px-2 text-xs text-(--v-label-secondary)">
             {{ $t('users.loading') }}
           </div>
           <button
@@ -534,7 +556,7 @@ function fmt(value: unknown): string {
           >
             <div class="flex items-center justify-between gap-2">
               <span class="font-mono text-sm truncate">{{ team.name }}</span>
-              <span class="text-xs opacity-60">
+              <span class="text-xs text-(--v-label-secondary)">
                 {{
                   team.members.length === 1
                     ? $t('users.sidebar.memberCountSingular', { count: team.members.length })
@@ -542,7 +564,7 @@ function fmt(value: unknown): string {
                 }}
               </span>
             </div>
-            <div class="text-xs opacity-60 truncate">
+            <div class="text-xs text-(--v-label-secondary) truncate">
               {{ team.title }}
               <span v-if="!team.enabled">{{ ' ' + $t('users.sidebar.disabledSuffix') }}</span>
             </div>
@@ -575,7 +597,7 @@ function fmt(value: unknown): string {
 
       <!-- ─── User detail ─── -->
       <template v-else-if="selection.kind === 'user'">
-        <div v-if="!selectedUser" class="opacity-70">{{ $t('users.loading') }}</div>
+        <div v-if="!selectedUser" class="text-(--v-label-secondary)">{{ $t('users.loading') }}</div>
         <template v-else>
           <VCard :title="$t('users.user.cardTitle', { name: selectedUser.name })">
             <VAlert v-if="isOwnAccount" variant="info" class="mb-3">
@@ -596,8 +618,8 @@ function fmt(value: unknown): string {
                 :options="userStatusOptions"
                 :label="$t('users.user.statusLabel')"
               />
-              <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm opacity-80">
-                <dt class="opacity-60">{{ $t('users.user.createdLabel') }}</dt>
+              <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                <dt class="text-(--v-label-secondary)">{{ $t('users.user.createdLabel') }}</dt>
                 <dd>{{ fmt(selectedUser.createdAt) }}</dd>
               </dl>
               <div class="flex justify-between">
@@ -621,7 +643,7 @@ function fmt(value: unknown): string {
 
           <!-- ─── User settings ─── -->
           <VCard :title="$t('users.user.settings.cardTitle')">
-            <p class="text-xs opacity-70 mb-3">
+            <p class="text-xs text-(--v-label-secondary) mb-3">
               {{ $t('users.user.settings.intro', { name: selectedUser.name }) }}
             </p>
 
@@ -631,7 +653,7 @@ function fmt(value: unknown): string {
               :body="$t('users.user.settings.noSettingsBody')"
             />
 
-            <ul class="flex flex-col divide-y divide-base-300">
+            <ul class="flex flex-col divide-y divide-(--v-separator)">
               <li
                 v-for="s in settingsState.settings.value"
                 :key="s.key"
@@ -639,7 +661,7 @@ function fmt(value: unknown): string {
               >
                 <div class="flex items-center justify-between gap-2">
                   <span class="font-mono text-sm truncate">{{ s.key }}</span>
-                  <span class="opacity-60 text-xs">{{ s.type }}</span>
+                  <span class="text-xs text-(--v-label-secondary)">{{ s.type }}</span>
                 </div>
                 <template v-if="editingKey === s.key">
                   <VInput
@@ -664,7 +686,7 @@ function fmt(value: unknown): string {
                       {{ $t('users.user.settings.cancel') }}
                     </VButton>
                     <VButton
-                      variant="primary"
+                      variant="secondary"
                       size="sm"
                       :loading="settingsState.busy.value"
                       @click="saveEditUserSetting(s)"
@@ -673,9 +695,11 @@ function fmt(value: unknown): string {
                 </template>
                 <template v-else>
                   <div class="text-sm break-words">
-                    <span class="opacity-70">{{ s.value ?? $t('users.user.settings.empty') }}</span>
+                    <span class="text-(--v-label-secondary)">
+                      {{ s.value ?? $t('users.user.settings.empty') }}
+                    </span>
                   </div>
-                  <div v-if="s.description" class="text-xs opacity-60">{{ s.description }}</div>
+                  <div v-if="s.description" class="text-xs text-(--v-label-secondary)">{{ s.description }}</div>
                   <div class="flex justify-end gap-2 mt-1">
                     <VButton variant="plain" size="sm" @click="startEditUserSetting(s)">
                       {{ $t('users.user.settings.edit') }}
@@ -688,8 +712,8 @@ function fmt(value: unknown): string {
               </li>
             </ul>
 
-            <div class="border-t border-base-300 pt-3 mt-2 flex flex-col gap-2">
-              <h4 class="text-xs uppercase opacity-60">
+            <div class="border-t border-(--v-separator) pt-3 mt-2 flex flex-col gap-2">
+              <h4 class="text-xs uppercase text-(--v-label-secondary)">
                 {{ $t('users.user.settings.addTitle') }}
               </h4>
               <VInput
@@ -719,8 +743,9 @@ function fmt(value: unknown): string {
                 :rows="2"
               />
               <VButton
-                variant="primary"
+                variant="secondary"
                 size="sm"
+                icon="add"
                 :disabled="!newSettingKey.trim()"
                 :loading="settingsState.busy.value"
                 @click="addUserSetting"
@@ -732,7 +757,7 @@ function fmt(value: unknown): string {
 
       <!-- ─── Team detail ─── -->
       <template v-else-if="selection.kind === 'team'">
-        <div v-if="!selectedTeam" class="opacity-70">{{ $t('users.loading') }}</div>
+        <div v-if="!selectedTeam" class="text-(--v-label-secondary)">{{ $t('users.loading') }}</div>
         <template v-else>
           <VCard :title="$t('users.team.cardTitle', { name: selectedTeam.name })">
             <div class="flex flex-col gap-3">
@@ -754,8 +779,8 @@ function fmt(value: unknown): string {
                   ? $t('users.team.memberHelpSingular', { count: splitLines(teamForm.membersText).length })
                   : $t('users.team.memberHelpPlural', { count: splitLines(teamForm.membersText).length })"
               />
-              <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm opacity-80">
-                <dt class="opacity-60">{{ $t('users.team.createdLabel') }}</dt>
+              <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                <dt class="text-(--v-label-secondary)">{{ $t('users.team.createdLabel') }}</dt>
                 <dd>{{ fmt(selectedTeam.createdAt) }}</dd>
               </dl>
               <div class="flex justify-between">
@@ -778,14 +803,14 @@ function fmt(value: unknown): string {
     <!-- ─── Right panel: help ─── -->
     <template #right-panel>
       <div class="p-4 flex flex-col gap-4">
-        <h3 class="text-xs uppercase opacity-60 mb-2">{{ $t('users.helpPanel.title') }}</h3>
-        <div v-if="help.loading.value" class="text-xs opacity-60">
+        <h3 class="text-xs uppercase text-(--v-label-secondary) mb-2">{{ $t('users.helpPanel.title') }}</h3>
+        <div v-if="help.loading.value" class="text-xs text-(--v-label-secondary)">
           {{ $t('users.helpPanel.loading') }}
         </div>
-        <div v-else-if="help.error.value" class="text-xs opacity-60">
+        <div v-else-if="help.error.value" class="text-xs text-(--v-label-secondary)">
           {{ $t('users.helpPanel.unavailable', { error: help.error.value }) }}
         </div>
-        <div v-else-if="!help.content.value" class="text-xs opacity-60">
+        <div v-else-if="!help.content.value" class="text-xs text-(--v-label-secondary)">
           {{ $t('users.helpPanel.empty') }}
         </div>
         <MarkdownView v-else :source="help.content.value" />
@@ -793,8 +818,8 @@ function fmt(value: unknown): string {
     </template>
 
     <!-- ─── Create-user modal ─── -->
-    <VModal v-model="showCreateUser" :title="$t('users.createUser.title')">
-      <div class="flex flex-col gap-3">
+    <VModal v-model="showCreateUser" size="sm" :title="$t('users.createUser.title')">
+      <form id="user-create-form" class="flex flex-col gap-4" @submit.prevent="submitCreateUser">
         <VAlert v-if="newUserError" variant="error">
           <span>{{ newUserError }}</span>
         </VAlert>
@@ -810,24 +835,26 @@ function fmt(value: unknown): string {
           v-model="newUserPassword"
           :label="$t('users.createUser.passwordLabel')"
           type="password"
+          autocomplete="new-password"
           :help="$t('users.createUser.passwordHelp')"
         />
-        <div class="flex justify-end gap-2">
-          <VButton variant="secondary" @click="showCreateUser = false">
-            {{ $t('users.createUser.cancel') }}
-          </VButton>
-          <VButton
-            variant="primary"
-            :loading="usersState.busy.value"
-            @click="submitCreateUser"
-          >{{ $t('users.createUser.create') }}</VButton>
-        </div>
-      </div>
+      </form>
+      <template #actions>
+        <VButton variant="secondary" @click="showCreateUser = false">
+          {{ $t('users.createUser.cancel') }}
+        </VButton>
+        <VButton
+          type="submit"
+          form="user-create-form"
+          variant="primary"
+          :loading="usersState.busy.value"
+        >{{ $t('users.createUser.create') }}</VButton>
+      </template>
     </VModal>
 
     <!-- ─── Create-team modal ─── -->
-    <VModal v-model="showCreateTeam" :title="$t('users.createTeam.title')">
-      <div class="flex flex-col gap-3">
+    <VModal v-model="showCreateTeam" size="sm" :title="$t('users.createTeam.title')">
+      <form id="team-create-form" class="flex flex-col gap-4" @submit.prevent="submitCreateTeam">
         <VAlert v-if="newTeamError" variant="error">
           <span>{{ newTeamError }}</span>
         </VAlert>
@@ -844,30 +871,33 @@ function fmt(value: unknown): string {
           :placeholder="$t('users.createTeam.membersPlaceholder')"
           :rows="4"
         />
-        <div class="flex justify-end gap-2">
-          <VButton variant="secondary" @click="showCreateTeam = false">
-            {{ $t('users.createTeam.cancel') }}
-          </VButton>
-          <VButton
-            variant="primary"
-            :loading="teamsState.busy.value"
-            @click="submitCreateTeam"
-          >{{ $t('users.createTeam.create') }}</VButton>
-        </div>
-      </div>
+      </form>
+      <template #actions>
+        <VButton variant="secondary" @click="showCreateTeam = false">
+          {{ $t('users.createTeam.cancel') }}
+        </VButton>
+        <VButton
+          type="submit"
+          form="team-create-form"
+          variant="primary"
+          :loading="teamsState.busy.value"
+        >{{ $t('users.createTeam.create') }}</VButton>
+      </template>
     </VModal>
 
     <!-- ─── Set-password modal ─── -->
-    <VModal v-model="showSetPassword" :title="$t('users.setPassword.title')">
-      <div class="flex flex-col gap-3">
+    <VModal
+      v-model="showSetPassword"
+      size="sm"
+      :title="$t('users.setPassword.title')"
+      :description="$t('users.setPassword.intro', {
+        name: selection?.kind === 'user' ? selection.name : '',
+      })"
+    >
+      <form id="user-set-password-form" class="flex flex-col gap-4" @submit.prevent="submitSetPassword">
         <VAlert v-if="passwordError" variant="error">
           <span>{{ passwordError }}</span>
         </VAlert>
-        <p class="text-sm opacity-80">
-          {{ $t('users.setPassword.intro', {
-            name: selection?.kind === 'user' ? selection.name : '',
-          }) }}
-        </p>
         <VInput
           v-model="passwordPlaintext"
           :label="$t('users.setPassword.newPasswordLabel')"
@@ -883,17 +913,18 @@ function fmt(value: unknown): string {
           required
           autocomplete="new-password"
         />
-        <div class="flex justify-end gap-2">
-          <VButton variant="secondary" @click="showSetPassword = false">
-            {{ $t('users.setPassword.cancel') }}
-          </VButton>
-          <VButton
-            variant="primary"
-            :loading="usersState.busy.value"
-            @click="submitSetPassword"
-          >{{ $t('users.setPassword.submit') }}</VButton>
-        </div>
-      </div>
+      </form>
+      <template #actions>
+        <VButton variant="secondary" @click="showSetPassword = false">
+          {{ $t('users.setPassword.cancel') }}
+        </VButton>
+        <VButton
+          type="submit"
+          form="user-set-password-form"
+          variant="primary"
+          :loading="usersState.busy.value"
+        >{{ $t('users.setPassword.submit') }}</VButton>
+      </template>
     </VModal>
   </EditorShell>
 </template>
@@ -910,13 +941,13 @@ function fmt(value: unknown): string {
   border: 1px solid transparent;
   margin-bottom: 0.15rem;
 }
-.row-item:hover { background: color-mix(in oklab, var(--color-base-content) 6%, transparent); }
+.row-item:hover { background: var(--v-fill); }
 .row-item--active {
-  background: color-mix(in oklab, var(--color-primary) 12%, transparent);
-  border-color: color-mix(in oklab, var(--color-primary) 30%, transparent);
+  background: var(--v-selection);
+  color: var(--v-accent-text);
 }
 
-.badge-active   { background: color-mix(in oklab, var(--color-success) 18%, transparent); color: var(--color-success-content); }
-.badge-disabled { background: color-mix(in oklab, var(--color-base-content) 10%, transparent);  color: color-mix(in oklab, var(--color-base-content) 60%, transparent); }
-.badge-pending  { background: color-mix(in oklab, var(--color-warning) 18%, transparent); color: var(--color-warning-content); }
+.badge-active   { color: var(--v-success); }
+.badge-disabled { background: var(--v-fill); color: var(--v-label-secondary); }
+.badge-pending  { color: var(--v-warning); }
 </style>

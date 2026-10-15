@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { VAlert, VButton, VCard, VCheckbox, VInput } from '@/components';
+import { VAlert, VButton, VCard, VCheckbox, VInput, useConfirm } from '@/components';
 import { useAdminProjectGroups } from '@/composables/useAdminProjectGroups';
 import type { ProjectGroupSummary } from '@vance/generated';
 
@@ -26,6 +26,7 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const confirmAction = useConfirm();
 const groupsState = useAdminProjectGroups();
 
 const ARCHIVED_GROUP = 'archived';
@@ -55,7 +56,10 @@ async function saveGroup(): Promise<void> {
 }
 
 async function deleteGroup(): Promise<void> {
-  if (!window.confirm(t('scopes.group.confirmDelete', { name: props.name }))) return;
+  if (!await confirmAction({
+    message: t('scopes.group.confirmDelete', { name: props.name }),
+    confirmLabel: t('common.delete'),
+  })) return;
   try {
     await groupsState.remove(props.name);
     emit('banner', t('scopes.group.deleted', { name: props.name }));

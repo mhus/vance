@@ -17,7 +17,7 @@ import {
   pollComposeRun,
   cancelComposeRun,
 } from '@vance/shared';
-import { useDocumentPrefixReaction, useLinkPickerHost, VButton, VIcon, VIconButton, VLinkPicker } from '@vance/components';
+import { useDocumentPrefixReaction, useLinkPickerHost, VButton, VIcon, VIconButton, VLinkPicker, useConfirm } from '@vance/components';
 import { WorkPageEditor, type ComposeRunResult } from '@vance/block-editor';
 import {
   scanGtd,
@@ -53,6 +53,7 @@ const folder = computed(() => props.document.path.replace(/\/_app\.yaml$/, ''));
 const title = computed(() => view.value?.title ?? props.document.title ?? folder.value);
 
 const t = useT();
+const confirmAction = useConfirm();
 
 const view = ref<GtdView | null>(null);
 const error = ref<string | null>(null);
@@ -366,7 +367,10 @@ async function removeAction(): Promise<void> {
   const path = selectedPath.value;
   if (!path) return;
   if (selectedIsInTrash.value
-      && !window.confirm(t('gtd.app.confirmDelete'))) {
+      && !await confirmAction({
+        message: t('gtd.app.confirmDelete'),
+        confirmLabel: t('gtd.common.delete'),
+      })) {
     return;
   }
   try {

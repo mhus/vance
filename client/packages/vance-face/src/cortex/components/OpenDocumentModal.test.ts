@@ -32,7 +32,6 @@ vi.mock('@/components', async () => {
 
 import OpenDocumentModal from './OpenDocumentModal.vue';
 
-const SELECTED = 'bg-primary/15';
 
 function doc(id: string, path: string): DocumentSearchItem {
   return { id, path, title: path, kind: null, mimeType: null };
@@ -65,8 +64,8 @@ async function key(wrapper: ReturnType<typeof mountOpen>, key: string) {
 }
 
 function selectedPath(wrapper: ReturnType<typeof mountOpen>): string {
-  const li = wrapper.findAll('li').find((el) => el.classes().includes(SELECTED));
-  return li?.find('span.opacity-60')?.text() ?? '(none)';
+  const li = wrapper.findAll('li').find((el) => el.attributes('aria-selected') === 'true');
+  return li?.find('span.open-doc-path')?.text() ?? '(none)';
 }
 
 describe('OpenDocumentModal', () => {

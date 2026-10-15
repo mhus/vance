@@ -7,11 +7,13 @@ import {
   VButton,
   VCard,
   VEmptyState,
+  useConfirm,
 } from '@/components';
 import { useOAuthConnectedAccounts } from '@/composables/useOAuthConnectedAccounts';
 import ConnectedAppsSection from './ConnectedAppsSection.vue';
 
 const { t } = useI18n();
+const confirmAction = useConfirm();
 const state = useOAuthConnectedAccounts();
 
 onMounted(state.reload);
@@ -41,7 +43,10 @@ function onConnect(providerId: string): void {
 }
 
 async function onDisconnect(providerId: string): Promise<void> {
-  if (!confirm(t('connectedAccounts.confirmDisconnect', { provider: providerId }))) return;
+  if (!await confirmAction({
+    message: t('connectedAccounts.confirmDisconnect', { provider: providerId }),
+    confirmLabel: t('connectedAccounts.disconnect'),
+  })) return;
   await state.disconnect(providerId);
 }
 </script>

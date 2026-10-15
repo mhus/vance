@@ -30,10 +30,14 @@ import {
   VButton,
   VCheckbox,
   VEmptyState,
+  VGroup,
+  VGroupRow,
   VInput,
   VModal,
   VIcon,
   VIconButton,
+  VSegment,
+  useConfirm,
 } from '@components/index';
 import ProcessPanel from '@components/ProcessPanel.vue';
 import ClientsPanel from './ClientsPanel.vue';
@@ -41,6 +45,7 @@ import SessionSearchModal from './SessionSearchModal.vue';
 import SessionCropModal from './SessionCropModal.vue';
 
 const { t, locale } = useI18n();
+const confirmAction = useConfirm();
 
 const props = defineProps<{
   socket: BrainWsApi;
@@ -149,6 +154,11 @@ const pickerToolsOpen = ref(false);
  * sidebar rather than filtering by it.
  */
 const mainTab = ref<'sessions' | 'clients'>('sessions');
+
+const mainTabOptions = computed(() => [
+  { value: 'sessions' as const, label: t('chat.picker.tabs.sessions') },
+  { value: 'clients' as const, label: t('chat.picker.tabs.clients') },
+]);
 
 const filteredSessions = computed<SessionSummaryRichDto[]>(() => {
   const needle = sessionFilter.value.trim().toLowerCase();
@@ -294,7 +304,10 @@ async function submitCreateGroup(): Promise<void> {
 async function deleteGroup(g: SessionGroupDto): Promise<void> {
   const project = selectedProjectName.value;
   if (!project) return;
-  if (!window.confirm(t('chat.picker.groups.confirmDelete', { name: g.title || g.name }))) return;
+  if (!await confirmAction({
+    message: t('chat.picker.groups.confirmDelete', { name: g.title || g.name }),
+    confirmLabel: t('common.delete'),
+  })) return;
   try {
     await sessionGroupsState.remove(project, g.name);
   } catch {
@@ -430,7 +443,7 @@ function isHardBlocked(session: SessionSummaryRichDto): boolean {
   return props.username === null || session.userId !== props.username;
 }
 
-function pickSession(session: SessionSummaryRichDto): void {
+async function pickSession(session: SessionSummaryRichDto): Promise<void> {
   if (session.status === SessionStatus.ARCHIVED) return;
   // Multi-user routing — see planning/multi-user-sessions.md §2.5.
   //  - Bound + shared (allowMultipleClients): always joinable, no
@@ -443,7 +456,11 @@ function pickSession(session: SessionSummaryRichDto): void {
   if (session.bound && !session.allowMultipleClients) {
     const mine = props.username !== null && session.userId === props.username;
     if (!mine) return;
-    if (!window.confirm(t('chat.picker.hijackConfirm'))) return;
+    if (!await confirmAction({
+      message: t('chat.picker.hijackConfirm'),
+      confirmLabel: t('sessionTakeover.takeOver'),
+      danger: false,
+    })) return;
   }
   emit('session-picked', session.sessionId);
 }
@@ -466,7 +483,7 @@ function openProcessPreview(session: SessionSummaryRichDto): void {
 function openPreviewedSession(): void {
   const session = processPreviewSession.value;
   processPreviewOpen.value = false;
-  if (session) pickSession(session);
+  if (session) void pickSession(session);
 }
 
 /**
@@ -490,7 +507,11 @@ function showNotice(message: string): void {
 }
 
 async function reactivateAndOpen(session: SessionSummaryRichDto): Promise<void> {
-  if (!window.confirm(t('chat.sessionHeader.reactivateConfirm'))) return;
+  if (!await confirmAction({
+    message: t('chat.sessionHeader.reactivateConfirm'),
+    confirmLabel: t('chat.sessionHeader.reactivate'),
+    danger: false,
+  })) return;
   reactivating.value = session.sessionId;
   try {
     await reactivateSession(session.sessionId);
@@ -525,7 +546,7 @@ async function openRecipeModal(): Promise<void> {
 }
 
 async function bootstrapNew(chatRecipe: string | null): Promise<void> {
-  if (!selectedProjectName.value) return;
+  if (!selectedProjectName.value || bootstrapping.value) return;
   bootstrapping.value = true;
   bootstrapError.value = null;
   try {
@@ -630,8 +651,8 @@ const COLOR_BORDER: Record<AccentColor, string> = {
 };
 
 function colorBorderClass(session: SessionSummaryRichDto): string {
-  if (session.color === undefined) return 'border-l-base-300';
-  return COLOR_BORDER[session.color] ?? 'border-l-base-300';
+  if (session.color === undefined) return 'border-l-(--v-separator)';
+  return COLOR_BORDER[session.color] ?? 'border-l-(--v-separator)';
 }
 
 function onSearchPick(sessionId: string): void {
@@ -740,14 +761,14 @@ onBeforeUnmount(stopAutoScroll);
            same row when there's room (flex-wrap drops the cluster to
            the next line on medium widths; the {@code ⋯} toggle hides
            the cluster entirely on phones — see scoped style below). -->
-      <div class="px-6 pt-4 pb-3 border-b border-base-300 bg-base-100 flex items-center gap-3 relative">
+      <div class="px-6 pt-4 pb-3 border-b border-(--v-separator) bg-(--v-surface) flex items-center gap-3 relative">
         <!-- Project info — takes the available space; title truncates
              on overflow. The technical name is shown only on viewports
              with room for it (≥ sm). On phone-narrow, only the title
              plus the {@code ⋯} toggle share the row. -->
         <div v-if="selectedProjectName" class="flex-1 min-w-0 flex items-baseline gap-2">
           <h2 class="text-lg font-semibold truncate">{{ projectTitle(selectedProjectName) }}</h2>
-          <span class="hidden sm:inline text-sm opacity-50 font-mono truncate">{{ selectedProjectName }}</span>
+          <span class="hidden sm:inline text-sm text-(--v-label-tertiary) font-mono truncate">{{ selectedProjectName }}</span>
         </div>
         <h2 v-else class="flex-1 min-w-0 text-lg font-semibold">
           {{ $t('chat.picker.pickAProject') }}
@@ -756,22 +777,11 @@ onBeforeUnmount(stopAutoScroll);
         <!-- Sessions ⇄ Clients. A running CLI client is a peer to a session,
              not a separate universe — one switches between "what I was
              talking to" and "what is running for me right now". -->
-        <div class="flex items-center gap-1">
-          <VButton
-            size="sm"
-            :variant="mainTab === 'sessions' ? 'secondary' : 'secondary'"
-            @click="mainTab = 'sessions'"
-          >
-            {{ $t('chat.picker.tabs.sessions') }}
-          </VButton>
-          <VButton
-            size="sm"
-            :variant="mainTab === 'clients' ? 'secondary' : 'secondary'"
-            @click="mainTab = 'clients'"
-          >
-            {{ $t('chat.picker.tabs.clients') }}
-          </VButton>
-        </div>
+        <VSegment
+          v-model="mainTab"
+          :options="mainTabOptions"
+          :aria-label="$t('chat.picker.tabs.label')"
+        />
 
         <!-- Phone-only menu toggle. CSS in scoped block hides it on
              wider screens and turns .picker-tools into a popup. -->
@@ -801,18 +811,24 @@ onBeforeUnmount(stopAutoScroll);
             :label="$t('chat.picker.showArchived')"
           />
           <VButton
-            variant="plain"
+            variant="secondary"
+            icon="add"
             :disabled="!selectedProjectName"
             :title="$t('chat.picker.groups.createTooltip')"
             @click="openCreateGroup"
           >
-            {{ $t('chat.picker.groups.create') }}
+            {{ $t('chat.picker.groups.newGroup') }}
           </VButton>
-          <VIconButton icon="add" :label="$t('chat.picker.newSession')"
+          <!-- The view's one primary action, rightmost (corporate-design.md §6.2). -->
+          <VButton
+            variant="primary"
+            icon="add"
             :disabled="!selectedProjectName || bootstrapping"
             :loading="bootstrapping"
             @click="openRecipeModal"
-           />
+          >
+            {{ $t('chat.picker.newSessionEllipsis') }}
+          </VButton>
         </div>
       </div>
 
@@ -836,7 +852,7 @@ onBeforeUnmount(stopAutoScroll);
           {{ sessionGroupsState.error.value }}
         </VAlert>
 
-        <div v-if="sessionsLoading" class="text-sm opacity-60">
+        <div v-if="sessionsLoading" class="text-sm text-(--v-label-secondary)">
           {{ $t('chat.picker.sessionsLoading') }}
         </div>
 
@@ -848,7 +864,7 @@ onBeforeUnmount(stopAutoScroll);
 
         <div
           v-else-if="sessions.length > 0 && filteredSessions.length === 0"
-          class="text-sm opacity-60"
+          class="text-sm text-(--v-label-secondary)"
         >
           {{ $t('chat.picker.sessionFilterNoMatch', { filter: sessionFilter }) }}
         </div>
@@ -857,10 +873,8 @@ onBeforeUnmount(stopAutoScroll);
           <div
             v-for="block in sessionBlocks"
             :key="block.group ? block.group.name : '__ungrouped__'"
-            class="rounded-lg transition-shadow"
-            :class="hasGroups && dragHoverKey === groupKey(block.group)
-              ? 'ring-2 ring-primary/50 bg-primary/5'
-              : ''"
+            class="session-block"
+            :class="{ 'session-block-drop': hasGroups && dragHoverKey === groupKey(block.group) }"
             @dragover="onBlockDragOver(block, $event)"
             @dragleave="onBlockDragLeave(block)"
             @drop="onBlockDrop(block, $event)"
@@ -880,7 +894,7 @@ onBeforeUnmount(stopAutoScroll);
                   ? (block.group.title || block.group.name)
                   : $t('chat.picker.groups.ungrouped') }}
               </span>
-              <span class="opacity-50 text-xs">{{ block.sessions.length }}</span>
+              <span class="text-xs text-(--v-label-tertiary)">{{ block.sessions.length }}</span>
               <div v-if="block.group" class="ml-auto flex items-center gap-0.5">
                 <VIconButton icon="arrow-up" :label="$t('chat.picker.groups.moveUp')" size="sm"
                   :disabled="groupIndex(block.group) === 0"
@@ -890,9 +904,13 @@ onBeforeUnmount(stopAutoScroll);
                   :disabled="groupIndex(block.group) === sessionGroupsState.groups.value.length - 1"
                   @click="moveGroup(groupIndex(block.group), 1)"
                  />
-                <VIconButton icon="close" :label="$t('chat.picker.groups.delete')" size="sm"
+                <VIconButton
+                  icon="delete"
+                  :label="$t('chat.picker.groups.delete')"
+                  size="sm"
+                  danger
                   @click="deleteGroup(block.group)"
-                 />
+                />
               </div>
             </div>
 
@@ -904,21 +922,22 @@ onBeforeUnmount(stopAutoScroll);
               <li
                 v-for="session in block.sessions"
                 :key="session.sessionId"
-                class="card bg-base-100 shadow-sm border border-base-300 border-l-4"
+                class="session-card border-l-4"
                 :class="[
                   colorBorderClass(session),
-                  isHardBlocked(session) ? 'opacity-60' : '',
-                  session.status !== SessionStatus.ARCHIVED && !isHardBlocked(session)
-                    ? 'hover:border-primary cursor-pointer'
-                    : '',
-                  session.status === SessionStatus.ARCHIVED ? 'bg-base-200/40' : '',
+                  {
+                    'session-card-blocked': isHardBlocked(session),
+                    'session-card-open': session.status !== SessionStatus.ARCHIVED
+                      && !isHardBlocked(session),
+                    'session-card-archived': session.status === SessionStatus.ARCHIVED,
+                  },
                 ]"
                 :draggable="hasGroups"
                 @click="pickSession(session)"
                 @dragstart="onSessionDragStart(session, $event)"
                 @dragend="onSessionDragEnd"
               >
-            <div class="card-body p-4 flex flex-row items-start gap-3">
+            <div class="p-4 flex flex-row items-start gap-3">
               <div class="text-2xl leading-none shrink-0 mt-0.5 w-8 text-center">
                 <span v-if="session.icon">{{ session.icon }}</span>
                 <VIcon v-else name="chat" :size="20" class="inline-block text-(--v-label-tertiary)" />
@@ -943,7 +962,8 @@ onBeforeUnmount(stopAutoScroll);
                   </span>
                   <span
                     v-if="session.titleAutoGenerated && session.title"
-                    class="text-[10px] uppercase tracking-wide px-1 py-0.5 rounded bg-base-200 opacity-60 shrink-0"
+                    class="text-[10px] uppercase tracking-wide px-1 py-0.5 rounded bg-(--v-fill)
+                           text-(--v-label-secondary) shrink-0"
                     :title="$t('chat.sessionHeader.autoTitle')"
                   >{{ $t('chat.sessionHeader.autoTitleBadge') }}</span>
                   <span
@@ -955,16 +975,19 @@ onBeforeUnmount(stopAutoScroll);
                 </div>
                 <div
                   v-if="session.lastMessagePreview"
-                  class="text-xs opacity-70 truncate mt-0.5"
+                  class="text-xs text-(--v-label-secondary) truncate mt-0.5"
                   :title="session.lastMessagePreview"
                 >
                   {{ session.lastMessagePreview }}
                 </div>
-                <div class="text-xs opacity-60 truncate mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                <div
+                  class="text-xs text-(--v-label-secondary) truncate mt-0.5 flex flex-wrap items-center
+                         gap-x-2 gap-y-0.5"
+                >
                   <span>{{ session.status }} · {{ formatRelativeTime(session.lastActivityAt) }}</span>
                   <span
                     v-if="session.chatRecipe"
-                    class="font-mono opacity-70"
+                    class="font-mono text-(--v-label-tertiary)"
                     :title="$t('chat.picker.recipeBadgeTooltip')"
                   >
                     <VIcon name="recipe" class="inline-block align-text-bottom" />
@@ -978,7 +1001,7 @@ onBeforeUnmount(stopAutoScroll);
                   <span
                     v-for="tag in session.tags"
                     :key="tag"
-                    class="text-[10px] px-1.5 py-0.5 rounded bg-base-200"
+                    class="text-[10px] px-1.5 py-0.5 rounded bg-(--v-fill)"
                   >
                     {{ tag }}
                   </span>
@@ -997,7 +1020,7 @@ onBeforeUnmount(stopAutoScroll);
                 </span>
                 <VButton
                   v-if="session.status === SessionStatus.ARCHIVED"
-                  variant="primary"
+                  variant="secondary"
                   size="sm"
                   :disabled="reactivating === session.sessionId"
                   @click.stop="reactivateAndOpen(session)"
@@ -1025,7 +1048,7 @@ onBeforeUnmount(stopAutoScroll);
               </li>
               <li
                 v-if="hasGroups && block.sessions.length === 0"
-                class="text-xs opacity-40 px-2 py-2 italic"
+                class="text-xs text-(--v-label-tertiary) px-2 py-2 italic"
               >{{ $t('chat.picker.groups.emptyDropHint') }}</li>
             </ul>
           </div>
@@ -1056,86 +1079,52 @@ onBeforeUnmount(stopAutoScroll);
     <VModal
       v-model="recipeModalOpen"
       :title="$t('chat.picker.recipeModalTitle')"
+      :description="$t('chat.picker.recipeModalIntro')"
     >
-      <div class="space-y-3">
-        <p class="text-sm opacity-70">{{ $t('chat.picker.recipeModalIntro') }}</p>
-
+      <div class="flex flex-col gap-4">
         <VInput
           v-model="recipeFilter"
-          size="sm"
           :placeholder="$t('chat.picker.recipeFilterPlaceholder')"
         />
 
         <VAlert v-if="recipesError" variant="error">{{ recipesError }}</VAlert>
         <VAlert v-if="bootstrapError" variant="error">{{ bootstrapError }}</VAlert>
 
-        <ul class="flex flex-col gap-2 max-h-[60vh] overflow-y-auto">
-          <li>
-            <button
-              type="button"
-              class="w-full text-left rounded-lg border border-base-300 hover:border-primary p-3 transition-colors"
-              :disabled="bootstrapping"
-              @click="bootstrapNew(null)"
-            >
-              <div class="font-semibold">{{ $t('chat.picker.recipeDefaultName') }}</div>
-              <div class="text-xs opacity-70 mt-1">
-                {{ $t('chat.picker.recipeDefaultDescription') }}
-              </div>
-            </button>
-          </li>
+        <VGroup>
+          <VGroupRow
+            navigates
+            :label="$t('chat.picker.recipeDefaultName')"
+            :description="$t('chat.picker.recipeDefaultDescription')"
+            @click="bootstrapNew(null)"
+          />
+        </VGroup>
 
-          <li v-if="recipesLoading" class="text-sm opacity-60 px-1">
-            {{ $t('chat.picker.sessionsLoading') }}
-          </li>
+        <p v-if="recipesLoading" class="text-sm text-(--v-label-secondary)">
+          {{ $t('chat.picker.sessionsLoading') }}
+        </p>
 
-          <li
-            v-if="recipeFilter.trim() && !recipesLoading && recipeGroups.length === 0"
-            class="text-sm opacity-60 px-1"
-          >
-            {{ $t('chat.picker.recipeFilterNoMatch', { filter: recipeFilter.trim() }) }}
-          </li>
+        <p
+          v-if="recipeFilter.trim() && !recipesLoading && recipeGroups.length === 0"
+          class="text-sm text-(--v-label-secondary)"
+        >
+          {{ $t('chat.picker.recipeFilterNoMatch', { filter: recipeFilter.trim() }) }}
+        </p>
 
-          <template
-            v-for="group in recipeGroups"
-            :key="group.key ?? '__other__'"
-          >
-            <li
-              v-if="group.label"
-              class="text-xs font-semibold uppercase tracking-wide opacity-60 px-1 pt-3"
-            >
-              {{ group.label }}
-            </li>
-            <li
-              v-for="recipe in group.recipes"
-              :key="recipe.name"
-            >
-              <button
-                type="button"
-                class="w-full text-left rounded-lg border border-base-300 hover:border-primary p-3 transition-colors"
-                :disabled="bootstrapping"
-                @click="bootstrapNew(recipe.name)"
-              >
-                <div class="flex items-baseline gap-2 min-w-0">
-                  <span class="font-semibold truncate">
-                    {{ recipe.title || recipe.name }}
-                  </span>
-                  <span
-                    v-if="recipe.title"
-                    class="text-xs opacity-50 font-mono truncate"
-                  >
-                    {{ recipe.name }}
-                  </span>
-                </div>
-                <div
-                  v-if="recipe.description"
-                  class="text-xs opacity-70 mt-1 whitespace-pre-line line-clamp-3"
-                >
-                  {{ recipe.description }}
-                </div>
-              </button>
-            </li>
-          </template>
-        </ul>
+        <VGroup
+          v-for="group in recipeGroups"
+          :key="group.key ?? '__other__'"
+          :label="group.label || undefined"
+        >
+          <VGroupRow
+            v-for="recipe in group.recipes"
+            :key="recipe.name"
+            navigates
+            :label="recipe.title || recipe.name"
+            :meta="recipe.title ? recipe.name : undefined"
+            :description="recipe.description ?? undefined"
+            @click="bootstrapNew(recipe.name)"
+          />
+        </VGroup>
       </div>
       <template #actions>
         <VButton variant="secondary" :disabled="bootstrapping" @click="recipeModalOpen = false">
@@ -1147,8 +1136,13 @@ onBeforeUnmount(stopAutoScroll);
     <VModal
       v-model="showCreateGroup"
       :title="$t('chat.picker.groups.createTitle')"
+      size="sm"
     >
-      <div class="flex flex-col gap-3">
+      <form
+        id="create-session-group-form"
+        class="flex flex-col gap-4"
+        @submit.prevent="submitCreateGroup"
+      >
         <VAlert v-if="sessionGroupsState.error.value" variant="error">
           {{ sessionGroupsState.error.value }}
         </VAlert>
@@ -1156,23 +1150,22 @@ onBeforeUnmount(stopAutoScroll);
           v-model="newGroupName"
           :label="$t('chat.picker.groups.nameLabel')"
           :help="$t('chat.picker.groups.nameHint')"
-          @keyup.enter="submitCreateGroup"
         />
         <VInput
           v-model="newGroupTitle"
           :label="$t('chat.picker.groups.titleLabel')"
-          @keyup.enter="submitCreateGroup"
         />
-      </div>
+      </form>
       <template #actions>
         <VButton variant="secondary" @click="showCreateGroup = false">
           {{ $t('common.cancel') }}
         </VButton>
         <VButton
+          type="submit"
+          form="create-session-group-form"
           variant="primary"
           :disabled="!newGroupName.trim()"
           :loading="sessionGroupsState.busy.value"
-          @click="submitCreateGroup"
         >{{ $t('chat.picker.groups.add') }}</VButton>
       </template>
     </VModal>
@@ -1210,11 +1203,38 @@ onBeforeUnmount(stopAutoScroll);
     top: 100%;
     right: 0.5rem;
     z-index: 20;
-    padding: 0.75rem;
-    background-color: var(--color-base-100);
-    border: 1px solid var(--color-base-300);
-    border-radius: 0.5rem;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    padding: 12px;
+    background-color: var(--v-surface-raised);
+    border-radius: var(--v-radius-group);
+    box-shadow: var(--v-shadow-float);
   }
 }
+
+/* A session group block; while a session is dragged over it, it shows
+   the accent ring as the drop target. */
+.session-block {
+  border-radius: var(--v-radius-group);
+  transition: box-shadow var(--v-duration) ease-out, background-color var(--v-duration) ease-out;
+}
+.session-block-drop {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--v-accent) 50%, transparent);
+  background: color-mix(in srgb, var(--v-accent) 5%, transparent);
+}
+
+/* Session card: content in the flow — surface with a hairline, no shadow
+   (corporate-design.md §7.1). The coloured left border comes from the
+   session's accent colour. */
+.session-card {
+  border-top: 1px solid var(--v-separator);
+  border-right: 1px solid var(--v-separator);
+  border-bottom: 1px solid var(--v-separator);
+  border-radius: var(--v-radius-group);
+  background: var(--v-surface);
+  transition: background-color var(--v-duration) ease-out;
+}
+.session-card-open { cursor: pointer; }
+.session-card-open:hover { background: color-mix(in srgb, var(--v-fill) 50%, transparent); }
+.session-card-archived { background: var(--v-bg); }
+/* Held by another client: still listed, but visibly out of reach. */
+.session-card-blocked { opacity: 0.6; }
 </style>

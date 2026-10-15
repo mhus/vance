@@ -1,0 +1,23 @@
+<!doctype html>
+<!-- Source of the Chrome Web Store "small promo tile" (440x280, required).
+     The PNG next to it is committed; re-render after a change with
+       chrome --headless --hide-scrollbars --force-device-scale-factor=1 \
+         --window-size=440,280 --screenshot=promo-tile-440x280.png promo-tile.html
+     The mark is the vance-face favicon glyph, inlined because the tile
+     shows it in white on the brand blue rather than blue on white. -->
+<html><head><meta charset="utf-8"><style>
+  html, body { margin: 0; width: 440px; height: 280px; overflow: hidden; }
+  body { background: #1e3a8a; color: #fff; display: flex; align-items: center;
+         gap: 28px; padding: 0 40px; box-sizing: border-box;
+         font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; }
+  svg { width: 112px; height: 112px; flex: none; }
+  h1 { margin: 0; font-size: 34px; line-height: 1.05; font-weight: 700; letter-spacing: -0.5px; }
+  p { margin: 12px 0 0; font-size: 17px; line-height: 1.3; opacity: 0.85; }
+</style></head><body>
+  <svg viewBox="0 0 1024 1024">
+    <rect width="1024" height="1024" rx="180" fill="#ffffff"/>
+    <path fill="#1e3a8a" transform="matrix(1.720655737704918 0 0 -1.720655737704918 54.305573770491776 916.3540983606558)"
+      d="M200 476 53 465V437C53 437 83 440 99 440C117 440 123 426 123 409C123 389 116 365 113 354L93 278C82 236 71 183 71 135C71 58 100 -9 200 -9C380 -9 479 206 479 358C479 429 448 479 403 479C382 479 365 464 365 437C365 393 426 369 426 299C426 206 368 55 231 55C170 55 153 99 153 151C153 196 166 249 175 284L222 476Z"/>
+  </svg>
+  <div><h1>Vancetope<br>Capture</h1><p>Save the page you are on into your own Vancetope.</p></div>
+</body></html>

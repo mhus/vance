@@ -7,6 +7,7 @@ import {
   verifyPin,
 } from '@/lock/lockStore';
 import { tryBiometricUnlock } from '@/lock/biometric';
+import { VButton } from '@vance/components';
 import PinPad from '@/components/PinPad.vue';
 
 const router = useRouter();
@@ -51,21 +52,21 @@ function proceed(): void {
 </script>
 
 <template>
-  <div class="flex h-full flex-col items-center justify-center px-6">
-    <div class="mb-2 text-2xl font-semibold">Vancetope</div>
-    <div class="mb-6 text-sm text-gray-400">Enter PIN to unlock</div>
+  <div class="flex h-full flex-col items-center justify-center bg-(--v-bg) px-6 text-(--v-label)">
+    <h1 class="mb-1 text-[22px] leading-7 font-semibold">Vancetope</h1>
+    <p class="mb-8 text-sm text-(--v-label-secondary)">Enter PIN to unlock</p>
 
     <PinPad v-model:value="pin" @submit="onSubmit" />
 
-    <p v-if="error" class="mt-4 text-sm text-red-400">{{ error }}</p>
+    <p v-if="error" role="alert" class="mt-4 text-sm text-(--v-danger)">{{ error }}</p>
 
-    <button
+    <VButton
       v-if="biometricAvailable"
-      type="button"
-      class="mt-6 text-sm text-blue-400 underline"
+      variant="plain"
+      class="mt-6"
       @click="runBiometric"
     >
       Use Face ID / Touch ID
-    </button>
+    </VButton>
   </div>
 </template>

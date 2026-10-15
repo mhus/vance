@@ -1,0 +1,91 @@
+/* DaisyUI 5 with the corporate-design themes. Import after tokens.css in the
+   Tailwind entry of every app that renders @vance/components — the
+   components use DaisyUI classes (btn, input, modal …), and these themes make
+   them speak the CI. */
+/* daisyUI 5 loads as a CSS plugin now, not via tailwind.config's plugins[]. */
+@plugin "daisyui" {
+  themes: light --default, dark --prefersdark;
+}
+
+/* Corporate design (specification/public/corporate-design.md): the values
+   live in tokens.css; the two DaisyUI themes below are overridden to point at
+   them, so every btn/alert/badge/input already speaks the CI. Theme names stay
+   "light" / "dark" — themeWeb.ts writes them to <html data-theme>, and chat
+   themes and diagram codecs key off the same names. */
+@plugin "daisyui/theme" {
+  name: "light";
+  default: true;
+  color-scheme: light;
+  --color-base-100: var(--v-surface);
+  --color-base-200: var(--v-bg);
+  --color-base-300: var(--v-fill);
+  --color-base-content: var(--v-label);
+  --color-primary: var(--v-accent);
+  --color-primary-content: var(--v-accent-on);
+  /* secondary is neutral, never a second hue (CI §6.1) */
+  --color-secondary: var(--v-fill);
+  --color-secondary-content: var(--v-label);
+  --color-accent: var(--v-accent);
+  --color-accent-content: var(--v-accent-on);
+  --color-neutral: #3A3A3C;
+  --color-neutral-content: #FFFFFF;
+  --color-info: var(--v-navy-600);
+  --color-info-content: #FFFFFF;
+  --color-success: var(--v-success);
+  --color-success-content: #FFFFFF;
+  --color-warning: var(--v-warning);
+  --color-warning-content: #FFFFFF;
+  --color-error: var(--v-danger);
+  --color-error-content: #FFFFFF;
+  --radius-selector: 0.375rem;
+  --radius-field: 0.375rem;
+  --radius-box: 0.625rem;
+  --border: 1px;
+  /* flat: no bevel or noise on controls (CI §7.1 — shadows only for floating layers) */
+  --depth: 0;
+  --noise: 0;
+}
+
+@plugin "daisyui/theme" {
+  name: "dark";
+  prefersdark: true;
+  color-scheme: dark;
+  --color-base-100: var(--v-surface);
+  --color-base-200: var(--v-bg);
+  --color-base-300: var(--v-fill);
+  --color-base-content: var(--v-label);
+  --color-primary: var(--v-accent);
+  --color-primary-content: var(--v-accent-on);
+  --color-secondary: var(--v-fill);
+  --color-secondary-content: var(--v-label);
+  --color-accent: var(--v-accent);
+  --color-accent-content: var(--v-accent-on);
+  --color-neutral: #48484D;
+  --color-neutral-content: #F5F5F7;
+  --color-info: var(--v-navy-500);
+  --color-info-content: #FFFFFF;
+  --color-success: var(--v-success);
+  --color-success-content: #0B2A16;
+  --color-warning: var(--v-warning);
+  --color-warning-content: #3A2400;
+  --color-error: var(--v-danger);
+  --color-error-content: #2A0405;
+  --radius-selector: 0.375rem;
+  --radius-field: 0.375rem;
+  --radius-box: 0.625rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+/* Focus on fields (CI §6.3): accent border plus a soft ring — DaisyUI's own
+   is a 2 px outline in the text colour, which reads as black. */
+:where(.input, .select, .textarea):focus,
+:where(.input, .select, .textarea):focus-within {
+  outline: none;
+  border-color: var(--v-accent);
+  box-shadow: 0 0 0 3px var(--v-focus-ring);
+}
+
+/* Modal backdrop from the scrim token, light and dark. */
+.modal:is([open], .modal-open, :target) { background-color: var(--v-scrim); }

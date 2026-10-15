@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { VButton, VGroup, VGroupRow, VIcon } from '@vance/components';
 import type { Account } from '@/accounts/accountStore';
 
 defineProps<{
@@ -15,56 +16,52 @@ const emit = defineEmits<{
 </script>
 
 <template>
+  <!-- Scrim: no token exists for it, so a neutral black at 40 % — the same
+       in light and dark, like the native sheets it imitates. -->
   <div
-    class="fixed inset-0 z-50 flex flex-col justify-end bg-black/60"
+    class="fixed inset-0 z-50 flex flex-col justify-end bg-(--v-scrim)"
     @click.self="emit('close')"
   >
+    <!-- A floating layer (corporate-design §7.1): raised surface, the only
+         place with a shadow. -->
     <div
-      class="rounded-t-2xl bg-gray-900 pb-4 shadow-2xl"
+      class="switcher-sheet rounded-t-(--v-radius-modal) bg-(--v-surface-raised) text-(--v-label) shadow-(--v-shadow-float)"
       style="padding-bottom: max(1rem, env(safe-area-inset-bottom))"
     >
       <div class="flex justify-center pt-2">
-        <span class="h-1 w-10 rounded-full bg-gray-700"></span>
+        <span class="h-1 w-10 rounded-full bg-(--v-fill)"></span>
       </div>
-      <h2 class="px-4 py-3 text-sm font-semibold uppercase tracking-wide text-gray-400">
+      <h2 class="px-4 pt-3 pb-3 text-[17px] leading-[22px] font-semibold">
         Switch account
       </h2>
-      <ul class="max-h-[60vh] overflow-y-auto">
-        <li
-          v-for="a in accounts"
-          :key="a.id"
-          class="border-t border-gray-800"
-        >
-          <button
-            type="button"
-            class="flex w-full items-center justify-between px-4 py-3 text-left"
-            :class="a.id === activeId ? 'bg-gray-800' : ''"
+      <div class="max-h-[60vh] overflow-y-auto px-4">
+        <VGroup>
+          <VGroupRow
+            v-for="a in accounts"
+            :key="a.id"
+            :label="a.displayName"
+            :description="a.faceUrl"
+            navigates
             @click="emit('select', a.id)"
           >
-            <div class="min-w-0 flex-1">
-              <p class="truncate font-medium">{{ a.displayName }}</p>
-              <p class="mt-0.5 truncate text-xs text-gray-500">{{ a.faceUrl }}</p>
-            </div>
-            <span v-if="a.id === activeId" class="ml-3 text-blue-400">●</span>
-          </button>
-        </li>
-      </ul>
-      <div class="flex gap-2 border-t border-gray-800 px-4 pt-3">
-        <button
-          type="button"
-          class="flex-1 rounded border border-gray-700 px-3 py-2 text-sm"
-          @click="emit('add')"
-        >
+            <VIcon v-if="a.id === activeId" name="check" class="text-(--v-accent-text)" />
+          </VGroupRow>
+        </VGroup>
+      </div>
+      <div class="flex gap-2 px-4 pt-4">
+        <VButton variant="secondary" icon="add" class="flex-1" @click="emit('add')">
           Add account
-        </button>
-        <button
-          type="button"
-          class="flex-1 rounded border border-gray-700 px-3 py-2 text-sm"
-          @click="emit('manage')"
-        >
+        </VButton>
+        <VButton variant="secondary" class="flex-1" @click="emit('manage')">
           Manage
-        </button>
+        </VButton>
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+/* The sheet is already a white (raised) ground — like inside VModal, the
+   group needs its hairline to stay a group. */
+.switcher-sheet :deep(.v-group) { box-shadow: inset 0 0 0 1px var(--v-separator); }
+</style>

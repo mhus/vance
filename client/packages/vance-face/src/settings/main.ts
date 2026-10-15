@@ -6,6 +6,9 @@ import SettingsApp from './SettingsApp.vue';
 import { registerBuiltInKinds } from '@/document/builtInKinds';
 import { i18n, i18nReady } from '@/i18n';
 import '@/style/app.css';
+// Fonts outside the Tailwind entry: Vite has to see the file at its own
+// path to resolve the relative font URLs.
+import '@vance/components/fonts.css';
 
 await ensureAuthenticated();
 // The kind registry carries the settings-doc contributions (settingsProvider);

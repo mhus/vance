@@ -7,6 +7,7 @@ import {
   isPinConfigured,
   setPin,
 } from '@/lock/lockStore';
+import { VButton } from '@vance/components';
 import PinPad from '@/components/PinPad.vue';
 
 type Step = 'enter' | 'confirm';
@@ -80,12 +81,12 @@ function onBack(): void {
 </script>
 
 <template>
-  <div class="flex h-full flex-col items-center justify-center px-6">
-    <div class="mb-2 text-2xl font-semibold">Vancetope</div>
-    <div v-if="step === 'enter'" class="mb-6 text-sm text-gray-400">
+  <div class="flex h-full flex-col items-center justify-center bg-(--v-bg) px-6 text-(--v-label)">
+    <h1 class="mb-1 text-[22px] leading-7 font-semibold">Vancetope</h1>
+    <p v-if="step === 'enter'" class="mb-8 text-sm text-(--v-label-secondary)">
       Set a PIN to protect the app
-    </div>
-    <div v-else class="mb-6 text-sm text-gray-400">Confirm PIN</div>
+    </p>
+    <p v-else class="mb-8 text-sm text-(--v-label-secondary)">Confirm PIN</p>
 
     <PinPad
       v-if="step === 'enter'"
@@ -98,36 +99,38 @@ function onBack(): void {
       @submit="onConfirmSubmit"
     />
 
-    <p v-if="error" class="mt-4 text-sm text-red-400">{{ error }}</p>
+    <p v-if="error" role="alert" class="mt-4 text-sm text-(--v-danger)">{{ error }}</p>
 
-    <button
+    <VButton
       v-if="step === 'confirm'"
-      type="button"
-      class="mt-3 text-xs text-gray-400 underline"
+      variant="plain"
+      size="sm"
+      icon="back"
+      class="mt-3"
       @click="onBack"
     >
       Back
-    </button>
+    </VButton>
 
-    <button
+    <VButton
       v-if="canDecline && step === 'enter'"
-      type="button"
+      variant="plain"
+      class="mt-6"
       :disabled="submitting"
-      class="mt-6 text-sm text-blue-400 disabled:opacity-50"
       @click="onDecline"
     >
       Not now
-    </button>
+    </VButton>
 
-    <p class="mt-10 max-w-xs text-center text-xs text-gray-500">
+    <p class="mt-10 max-w-xs text-center text-xs text-(--v-label-secondary)">
       The PIN is stored only on this device. Removing the app deletes
       it; you will choose a new PIN on the next install.
     </p>
     <p
       v-if="canDecline"
-      class="mt-2 max-w-xs text-center text-xs text-gray-500"
+      class="mt-2 max-w-xs text-center text-xs text-(--v-label-secondary)"
     >
-      You can set one later under Accounts → Security.
+      You can set one later in Accounts, under Security.
     </p>
   </div>
 </template>

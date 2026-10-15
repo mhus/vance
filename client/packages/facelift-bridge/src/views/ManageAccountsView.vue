@@ -15,6 +15,7 @@ import {
 } from '@/lock/lockStore';
 import { isBiometricSupported, tryBiometricUnlock } from '@/lock/biometric';
 import { isDesktop } from '@/platform';
+import { VButton, VGroup, VGroupRow, VIconButton, VToggle } from '@vance/components';
 
 const router = useRouter();
 // Desktop has no app-lock, so the whole Security section (Change PIN +
@@ -106,92 +107,75 @@ const hasAccounts = computed(() => accounts.value.length > 0);
 </script>
 
 <template>
-  <div class="flex h-full flex-col">
+  <div class="flex h-full flex-col bg-(--v-bg) text-(--v-label)">
     <header
-      class="flex shrink-0 items-center gap-3 border-b border-gray-800 bg-gray-900 px-3"
-      style="padding-top: env(safe-area-inset-top); padding-bottom: 0.5rem"
+      class="flex shrink-0 items-center gap-3 px-4"
+      style="padding-top: max(0.75rem, env(safe-area-inset-top)); padding-bottom: 0.5rem"
     >
-      <button
-        v-if="hasAccounts"
-        type="button"
-        class="px-1 py-2 text-sm text-blue-400"
-        @click="goBack"
-      >
+      <h1 class="flex-1 text-[22px] leading-7 font-semibold">Accounts</h1>
+      <VButton v-if="hasAccounts" variant="plain" @click="goBack">
         Done
-      </button>
-      <h1 class="flex-1 text-sm font-semibold">Accounts</h1>
+      </VButton>
     </header>
-    <div class="flex-1 overflow-y-auto p-4">
-      <p v-if="loading" class="text-sm text-gray-400">Loading…</p>
-      <p v-else-if="accounts.length === 0" class="text-sm text-gray-400">
-        No accounts yet.
-      </p>
-      <ul v-else class="space-y-2">
-        <li
-          v-for="a in accounts"
-          :key="a.id"
-          class="flex items-center justify-between rounded border border-gray-800 bg-gray-900 p-3"
-          :class="a.id === activeId ? 'ring-1 ring-blue-500' : ''"
-        >
-          <button
-            type="button"
-            class="min-w-0 flex-1 text-left"
+    <div class="flex-1 overflow-y-auto px-4 pt-2 pb-6">
+      <div class="mx-auto flex max-w-[720px] flex-col gap-6">
+        <p v-if="loading" class="px-4 text-sm text-(--v-label-secondary)">Loading…</p>
+        <p v-else-if="accounts.length === 0" class="px-4 text-sm text-(--v-label-secondary)">
+          No accounts yet.
+        </p>
+        <VGroup v-else>
+          <VGroupRow
+            v-for="a in accounts"
+            :key="a.id"
+            :label="a.displayName"
+            :description="a.faceUrl"
+            :value="a.id === activeId ? 'Active' : undefined"
+            navigates
             @click="onEdit(a.id)"
           >
-            <p class="truncate font-medium">{{ a.displayName }}</p>
-            <p class="mt-1 truncate text-xs text-gray-500">{{ a.faceUrl }}</p>
-            <p v-if="a.id === activeId" class="mt-1 text-xs text-blue-400">Active</p>
-          </button>
-          <button
-            type="button"
-            class="ml-3 text-xs text-red-400"
-            @click="onRemove(a)"
+            <VIconButton
+              icon="delete"
+              label="Remove"
+              tooltip="left"
+              danger
+              @click.stop="onRemove(a)"
+            />
+          </VGroupRow>
+        </VGroup>
+
+        <VGroup
+          v-if="!isDesktopApp"
+          label="Security"
+          :note="pinConfigured ? undefined : 'No PIN set — the app opens without asking.'"
+        >
+          <VGroupRow
+            :label="pinConfigured ? 'Change PIN' : 'Set PIN'"
+            navigates
+            @click="onChangePin"
+          />
+          <VGroupRow
+            v-if="biometricSupported && pinConfigured"
+            label="Use Face ID / Touch ID"
           >
-            Remove
-          </button>
-        </li>
-      </ul>
+            <VToggle
+              :model-value="biometricEnabled"
+              title="Use Face ID / Touch ID"
+              @update:model-value="onToggleBiometric"
+            />
+          </VGroupRow>
+        </VGroup>
+      </div>
     </div>
-    <section v-if="!isDesktopApp" class="border-t border-gray-800 px-4 py-3">
-      <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
-        Security
-      </h2>
-      <button
-        type="button"
-        class="flex w-full items-center justify-between rounded border border-gray-800 bg-gray-900 px-3 py-2 text-left text-sm"
-        @click="onChangePin"
-      >
-        <span>{{ pinConfigured ? 'Change PIN' : 'Set PIN' }}</span>
-        <span class="text-gray-500">›</span>
-      </button>
-      <p v-if="!pinConfigured" class="mt-2 text-xs text-gray-500">
-        No PIN set — the app opens without asking.
-      </p>
-      <label
-        v-if="biometricSupported && pinConfigured"
-        class="mt-2 flex w-full items-center justify-between rounded border border-gray-800 bg-gray-900 px-3 py-2 text-sm"
-      >
-        <span>Use Face ID / Touch ID</span>
-        <input
-          type="checkbox"
-          :checked="biometricEnabled"
-          class="h-5 w-5"
-          @change="onToggleBiometric"
-        />
-      </label>
-    </section>
 
     <footer
-      class="border-t border-gray-800 p-4"
+      class="border-t border-(--v-separator) px-4 pt-3"
       style="padding-bottom: max(1rem, env(safe-area-inset-bottom))"
     >
-      <button
-        type="button"
-        class="w-full rounded bg-blue-500 px-3 py-2 font-medium text-white"
-        @click="goAdd"
-      >
-        Add account
-      </button>
+      <div class="mx-auto max-w-[720px]">
+        <VButton variant="primary" icon="add" block @click="goAdd">
+          Add account
+        </VButton>
+      </div>
     </footer>
   </div>
 </template>

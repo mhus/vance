@@ -5,8 +5,13 @@ import { StatusBar, Style } from '@capacitor/status-bar';
 import App from './App.vue';
 import { listAccounts, pushSnapshotToShareExtension } from './accounts/accountStore';
 import { createAppRouter } from './router';
+import { followSystemTheme } from './theme';
 import './style.css';
+// Fonts outside the Tailwind entry: Vite has to see the file at its own
+// path to resolve the relative font URLs.
+import '@vance/components/fonts.css';
 
+followSystemTheme();
 createApp(App).use(createAppRouter()).mount('#app');
 
 // Native bridge configuration. All calls go through Capacitor's
@@ -15,9 +20,9 @@ createApp(App).use(createAppRouter()).mount('#app');
 if (Capacitor.isNativePlatform()) {
   void (async () => {
     try {
-      // Light content (white text/icons) sits cleanly on the
-      // bg-gray-900 header and on the dark splash background.
-      await StatusBar.setStyle({ style: Style.Light });
+      // The shell follows the system appearance, so does the status
+      // bar text (Default = dark on light, light on dark).
+      await StatusBar.setStyle({ style: Style.Default });
     } catch (e) {
       console.warn('StatusBar.setStyle failed', e);
     }

@@ -3,6 +3,7 @@ import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { addAccount } from '@/accounts/accountStore';
 import { verifyVanceUrl } from '@/accounts/verifyVanceUrl';
+import { VAlert, VButton, VInput } from '@vance/components';
 
 const router = useRouter();
 
@@ -64,55 +65,62 @@ function onCancel(): void {
 </script>
 
 <template>
-  <div class="flex h-full flex-col">
+  <div class="flex h-full flex-col bg-(--v-bg) text-(--v-label)">
     <header
-      class="flex shrink-0 items-center gap-3 border-b border-gray-800 bg-gray-900 px-3"
-      style="padding-top: env(safe-area-inset-top); padding-bottom: 0.5rem"
+      class="shrink-0 px-4"
+      style="padding-top: max(0.75rem, env(safe-area-inset-top)); padding-bottom: 0.5rem"
     >
-      <button
-        type="button"
-        class="px-1 py-2 text-sm text-blue-400"
-        @click="onCancel"
-      >
-        Cancel
-      </button>
-      <h1 class="flex-1 text-sm font-semibold">Add account</h1>
+      <h1 class="text-[22px] leading-7 font-semibold">Add account</h1>
     </header>
-    <form class="flex-1 space-y-4 overflow-y-auto p-4" @submit.prevent="onSubmit">
-      <label class="block">
-        <span class="mb-1 block text-xs uppercase tracking-wide text-gray-400">URL</span>
-        <input
-          v-model="faceUrl"
-          type="url"
-          autocomplete="off"
-          autocapitalize="none"
-          spellcheck="false"
-          inputmode="url"
-          placeholder="https://eddie.mhus.de"
-          class="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 outline-none focus:border-blue-400"
-        />
-      </label>
-      <label class="block">
-        <span class="mb-1 block text-xs uppercase tracking-wide text-gray-400">Label (optional)</span>
-        <input
+    <form
+      id="add-account-form"
+      class="flex-1 overflow-y-auto px-4 pt-2 pb-6"
+      @submit.prevent="onSubmit"
+    >
+      <div class="mx-auto flex max-w-[720px] flex-col gap-4">
+        <!-- A raw field rather than VInput: the URL needs spellcheck and
+             inputmode on the <input> itself, which VInput does not pass
+             through. Same markup and look as VInput. -->
+        <label class="flex w-full flex-col gap-1">
+          <span class="text-xs font-semibold text-(--v-label-secondary)">URL</span>
+          <input
+            v-model="faceUrl"
+            type="url"
+            autocomplete="off"
+            autocapitalize="none"
+            spellcheck="false"
+            inputmode="url"
+            placeholder="https://eddie.mhus.de"
+            class="input w-full [--size:2rem]"
+          />
+        </label>
+        <VInput
           v-model="displayName"
-          type="text"
+          label="Label (optional)"
           autocomplete="off"
           placeholder="e.g. Private, Work"
-          class="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 outline-none focus:border-blue-400"
+          help="Defaults to the host part of the URL."
         />
-        <p class="mt-1 text-xs text-gray-500">
-          Defaults to the host part of the URL.
-        </p>
-      </label>
-      <p v-if="error" class="text-sm text-red-400">{{ error }}</p>
-      <button
-        type="submit"
-        :disabled="submitting"
-        class="w-full rounded bg-blue-500 px-3 py-2 font-medium text-white disabled:opacity-50"
-      >
-        {{ submitting ? 'Saving…' : 'Save' }}
-      </button>
+        <VAlert v-if="error" variant="error">{{ error }}</VAlert>
+      </div>
     </form>
+    <footer
+      class="border-t border-(--v-separator) px-4 pt-3"
+      style="padding-bottom: max(1rem, env(safe-area-inset-bottom))"
+    >
+      <div class="mx-auto flex max-w-[720px] justify-end gap-2">
+        <VButton variant="secondary" @click="onCancel">
+          Cancel
+        </VButton>
+        <VButton
+          variant="primary"
+          type="submit"
+          form="add-account-form"
+          :disabled="submitting"
+        >
+          {{ submitting ? 'Saving…' : 'Save' }}
+        </VButton>
+      </div>
+    </footer>
   </div>
 </template>

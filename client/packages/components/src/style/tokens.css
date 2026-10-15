@@ -2,8 +2,9 @@
    §3–§7, workbench repo). Prefixed --v- because DaisyUI owns --border,
    --depth …; the DaisyUI themes in app.css map onto these.
    Identical copy of specification/public/corporate-design/tokens.css, the one
-   the sample pages use — change both together. themeWeb.ts sets
-   data-theme="dark" on <html>, which switches the dark set below. */
+   the sample pages use — change both together. Shared by every surface:
+   vance-face (themeWeb.ts sets data-theme="dark" on <html>) and the
+   facelift shell. */
 
 :root, .light {
   /* brand — navy */
@@ -61,6 +62,7 @@
   --v-radius-group: 10px;
   --v-radius-modal: 14px;
   --v-shadow-float: 0 8px 24px rgba(0, 0, 0, 0.14), 0 0 0 1px rgba(0, 0, 0, 0.06);
+  --v-scrim: rgba(0, 0, 0, 0.32);              /* backdrop behind modals and sheets */
   --v-duration: 150ms;
 
   color-scheme: light;
@@ -100,6 +102,7 @@
   --v-content-pink-bg: #47263A;   --v-content-pink-fg: #F0A9C9;
 
   --v-shadow-float: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --v-scrim: rgba(0, 0, 0, 0.56);              /* backdrop behind modals and sheets */
 
   color-scheme: dark;
 }

@@ -5,6 +5,16 @@ import { VanceAccountWebView } from '@vance/facelift-account-webview';
 import { getAccount, updateAccount } from '@/accounts/accountStore';
 import { verifyVanceUrl } from '@/accounts/verifyVanceUrl';
 import { isDesktop } from '@/platform';
+import {
+  VAlert,
+  VButton,
+  VGroup,
+  VGroupRow,
+  VIconButton,
+  VInput,
+  VSelect,
+  VToggle,
+} from '@vance/components';
 import type { AgentPolicy, AgentPolicyRules } from '@vance/facelift-account-webview';
 
 const route = useRoute();
@@ -329,346 +339,324 @@ function onCancel(): void {
 </script>
 
 <template>
-  <div class="flex h-full flex-col">
+  <div class="flex h-full flex-col bg-(--v-bg) text-(--v-label)">
     <header
-      class="flex shrink-0 items-center gap-3 border-b border-gray-800 bg-gray-900 px-3"
-      style="padding-top: env(safe-area-inset-top); padding-bottom: 0.5rem"
+      class="shrink-0 px-4"
+      style="padding-top: max(0.75rem, env(safe-area-inset-top)); padding-bottom: 0.5rem"
     >
-      <button
-        type="button"
-        class="px-1 py-2 text-sm text-blue-400"
-        @click="onCancel"
-      >
-        Cancel
-      </button>
-      <h1 class="flex-1 text-sm font-semibold">Edit account</h1>
-      <button
-        type="button"
-        :disabled="submitting || notFound"
-        class="px-1 py-2 text-sm font-medium text-blue-400 disabled:opacity-50"
-        @click="onSubmit"
-      >
-        Save
-      </button>
+      <h1 class="text-[22px] leading-7 font-semibold">Edit account</h1>
     </header>
-    <div v-if="notFound" class="flex-1 p-4 text-sm text-red-400">
-      Account not found.
+    <div v-if="notFound" class="flex-1 px-4 pt-2">
+      <div class="mx-auto max-w-[720px]">
+        <VAlert variant="error">Account not found.</VAlert>
+      </div>
     </div>
-    <form v-else class="flex-1 space-y-4 overflow-y-auto p-4" @submit.prevent="onSubmit">
-      <label class="block">
-        <span class="mb-1 block text-xs uppercase tracking-wide text-gray-400">URL</span>
-        <input
-          v-model="faceUrl"
-          type="url"
-          autocomplete="off"
-          autocapitalize="none"
-          spellcheck="false"
-          inputmode="url"
-          class="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 outline-none focus:border-blue-400"
-        />
-        <p class="mt-1 text-xs text-gray-500">
-          Changing the URL wipes this account's local session — you will need to sign in again.
-        </p>
-      </label>
-      <label class="block">
-        <span class="mb-1 block text-xs uppercase tracking-wide text-gray-400">Label</span>
-        <input
-          v-model="displayName"
-          type="text"
-          autocomplete="off"
-          class="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 outline-none focus:border-blue-400"
-        />
-      </label>
-      <div
-        v-if="isDesktopApp"
-        class="block rounded border border-gray-800 p-3"
-      >
-        <span class="mb-1 block text-xs uppercase tracking-wide text-gray-400">Agent tools</span>
-        <div class="flex items-center gap-2">
-          <code
-            class="min-w-0 flex-1 truncate rounded bg-gray-800 px-2 py-2 text-sm text-gray-300"
-            :title="workdir"
-          >
-            {{ workdir || '—' }}
-          </code>
-          <button
-            type="button"
-            class="shrink-0 rounded bg-gray-800 px-3 py-2 text-sm text-blue-400"
-            @click="chooseWorkdir"
-          >
-            Choose…
-          </button>
+    <form v-else class="flex-1 overflow-y-auto px-4 pt-2 pb-6" @submit.prevent="onSubmit">
+      <div class="mx-auto flex max-w-[720px] flex-col gap-6">
+        <div class="flex flex-col gap-4">
+          <!-- A raw field rather than VInput: the URL needs spellcheck and
+               inputmode on the <input> itself, which VInput does not pass
+               through. Same markup and look as VInput. -->
+          <label class="flex w-full flex-col gap-1">
+            <span class="text-xs font-semibold text-(--v-label-secondary)">URL</span>
+            <input
+              v-model="faceUrl"
+              type="url"
+              autocomplete="off"
+              autocapitalize="none"
+              spellcheck="false"
+              inputmode="url"
+              class="input w-full [--size:2rem]"
+            />
+            <span class="text-xs text-(--v-label-secondary)">
+              Changing the URL wipes this account's local session — you will need to sign in again.
+            </span>
+          </label>
+          <VInput v-model="displayName" label="Label" autocomplete="off" />
         </div>
-        <p class="mt-1 text-xs text-gray-500">
-          Working directory for the agent tools — relative paths and the session
-          environment resolve against it. Changes apply with the next agent request.
-        </p>
-        <div class="mt-4 border-t border-gray-800 pt-3">
-          <span class="mb-1 block text-xs uppercase tracking-wide text-gray-400">Pack home</span>
-          <div class="flex items-center gap-2">
-            <code
-              class="min-w-0 flex-1 truncate rounded bg-gray-800 px-2 py-2 text-sm text-gray-300"
-              :title="packHome ?? ''"
+
+        <!-- Desktop only: agent tools of this account. -->
+        <template v-if="isDesktopApp">
+          <VGroup label="Agent tools">
+            <VGroupRow label="Working directory">
+              <template #description>
+                <code class="font-mono" :title="workdir">{{ workdir || '—' }}</code>
+              </template>
+              <VButton variant="secondary" size="sm" @click="chooseWorkdir">
+                Choose…
+              </VButton>
+            </VGroupRow>
+            <VGroupRow
+              label="Restrict to workdir"
+              description="Paths outside the working directory are denied without asking. Explicit policy rules below still win."
             >
-              {{ packHome || '— (your real home)' }}
-            </code>
-            <button
-              type="button"
-              class="shrink-0 rounded bg-gray-800 px-3 py-2 text-sm text-blue-400"
-              @click="choosePackHome"
-            >
-              Choose…
-            </button>
-            <button
-              v-if="packHome"
-              type="button"
-              class="shrink-0 rounded bg-gray-800 px-3 py-2 text-xs text-gray-400"
-              @click="clearPackHome"
-            >
-              Reset
-            </button>
-          </div>
-          <p class="mt-1 text-xs text-gray-500">
-            HOME for MCP pack processes (profiles, session data) — the npm cache
-            stays on your real home. The current project
-            <template v-if="currentProject">is <strong>{{ currentProject }}</strong></template>
-            <template v-else>reports here once you select one in the app</template>.
-          </p>
-          <div v-if="Object.keys(packHomeByProject).length > 0" class="mt-2 space-y-1">
-            <div
-              v-for="(home, key) in packHomeByProject"
-              :key="key"
-              class="flex items-center gap-2"
-            >
-              <code class="w-40 shrink-0 truncate rounded bg-gray-800 px-2 py-1 text-xs" :class="key === currentKey ? 'text-blue-400' : 'text-gray-400'">
-                {{ key }}
-              </code>
-              <code class="min-w-0 flex-1 truncate rounded bg-gray-800 px-2 py-1 text-xs text-gray-300" :title="home">
-                {{ home }}
-              </code>
-              <button
-                type="button"
-                class="shrink-0 rounded bg-gray-800 px-2 py-1 text-xs text-blue-400"
+              <VToggle
+                :model-value="confined"
+                title="Restrict to workdir"
+                @update:model-value="toggleConfined"
+              />
+            </VGroupRow>
+            <VGroupRow :description="packsStatus ?? 'MCP servers from ~/.vancetope/mcp.json — reload after editing.'">
+              <template #label>Tool packs</template>
+              <VButton variant="secondary" size="sm" icon="refresh" @click="reloadPacks">
+                Reload tool packs
+              </VButton>
+            </VGroupRow>
+            <template #note>
+              Working directory for the agent tools — relative paths and the session
+              environment resolve against it. Changes apply with the next agent request.
+            </template>
+          </VGroup>
+
+          <VGroup label="Pack home">
+            <VGroupRow label="Default">
+              <template #description>
+                <code class="font-mono" :title="packHome ?? ''">{{ packHome || '— (your real home)' }}</code>
+              </template>
+              <VButton variant="secondary" size="sm" @click="choosePackHome">
+                Choose…
+              </VButton>
+              <VButton v-if="packHome" variant="danger" size="sm" @click="clearPackHome">
+                Reset
+              </VButton>
+            </VGroupRow>
+            <VGroupRow v-for="(home, key) in packHomeByProject" :key="key">
+              <template #label>
+                <code
+                  class="truncate font-mono text-xs"
+                  :class="key === currentKey ? 'text-(--v-accent-text)' : ''"
+                >{{ key }}</code>
+              </template>
+              <template #description>
+                <code class="font-mono" :title="home">{{ home }}</code>
+              </template>
+              <VIconButton
+                icon="folder-open"
+                label="Choose…"
+                tooltip="left"
                 @click="choosePackHomeFor(String(key))"
-              >
-                …
-              </button>
-              <button
-                type="button"
-                class="shrink-0 rounded bg-gray-800 px-2 py-1 text-xs text-red-400"
+              />
+              <VIconButton
+                icon="delete"
+                label="Remove"
+                tooltip="left"
+                danger
                 @click="removePackHomeFor(String(key))"
-              >
-                ✕
-              </button>
-            </div>
-          </div>
-          <button
-            v-if="currentProject !== null"
-            type="button"
-            class="mt-2 rounded bg-gray-800 px-3 py-1.5 text-xs text-blue-400"
-            @click="addPackHomeForCurrentProject"
-          >
-            Add home for “{{ currentProject }}”…
-          </button>
-        </div>
-        <div class="mt-4 border-t border-gray-800 pt-3">
-          <span class="mb-1 block text-xs uppercase tracking-wide text-gray-400">Pack credentials</span>
-          <p v-if="packSecrets.length === 0" class="text-xs text-gray-500">
-            None of your tool packs needs a login. Packs that do list their credentials here.
-          </p>
-          <div v-else class="space-y-1">
-            <div
-              v-for="s in packSecrets"
-              :key="s.name"
-              class="flex items-center gap-2"
+              />
+            </VGroupRow>
+            <VGroupRow v-if="currentProject !== null">
+              <template #label>
+                <VButton variant="plain" size="sm" icon="add" @click="addPackHomeForCurrentProject">
+                  Add home for “{{ currentProject }}”…
+                </VButton>
+              </template>
+            </VGroupRow>
+            <template #note>
+              HOME for MCP pack processes (profiles, session data) — the npm cache
+              stays on your real home. The current project
+              <template v-if="currentProject">is <strong class="font-semibold">{{ currentProject }}</strong></template>
+              <template v-else>reports here once you select one in the app</template>.
+            </template>
+          </VGroup>
+
+          <VGroup label="Pack credentials">
+            <VGroupRow v-if="packSecrets.length === 0">
+              <template #label>
+                <span class="text-(--v-label-secondary)">
+                  None of your tool packs needs a login. Packs that do list their credentials here.
+                </span>
+              </template>
+            </VGroupRow>
+            <VGroupRow
+              v-for="sec in packSecrets"
+              :key="sec.name"
             >
-              <code class="w-44 shrink-0 truncate rounded bg-gray-800 px-2 py-1 text-xs" :class="s.set ? 'text-gray-300' : 'text-amber-400'">
-                {{ s.name }}
-              </code>
-              <span class="min-w-0 flex-1 truncate text-xs text-gray-500" :title="s.packs.join(', ')">
-                {{ s.packs.join(', ') }}
-              </span>
+              <template #label>
+                <code class="truncate font-mono text-xs">{{ sec.name }}</code>
+              </template>
+              <template #description>
+                <span :title="sec.packs.join(', ')">{{ sec.packs.join(', ') }}</span>
+              </template>
+              <!-- Status as text in its meaning colour (corporate-design §3.3). -->
               <span
-                class="shrink-0 rounded px-2 py-0.5 text-[10px] uppercase"
-                :class="s.set ? 'bg-green-900/40 text-green-400' : 'bg-amber-900/40 text-amber-400'"
+                class="shrink-0 text-xs font-medium"
+                :class="sec.set ? 'text-(--v-success)' : 'text-(--v-warning)'"
               >
-                {{ s.set ? 'set' : 'missing' }}
+                {{ sec.set ? 'set' : 'missing' }}
               </span>
-              <button
-                type="button"
-                class="shrink-0 rounded bg-gray-800 px-2 py-1 text-xs text-blue-400"
-                @click="askSecret(s.name)"
-              >
-                {{ s.set ? 'Change…' : 'Set…' }}
-              </button>
-              <button
-                v-if="s.set"
-                type="button"
-                class="shrink-0 rounded bg-gray-800 px-2 py-1 text-xs text-red-400"
-                @click="clearSecret(s.name)"
-              >
+              <VButton variant="secondary" size="sm" @click="askSecret(sec.name)">
+                {{ sec.set ? 'Change…' : 'Set…' }}
+              </VButton>
+              <VButton v-if="sec.set" variant="danger" size="sm" @click="clearSecret(sec.name)">
                 Clear
-              </button>
-            </div>
-          </div>
-        </div>
-        <div class="mt-3 flex items-center gap-2">
-          <button
-            type="button"
-            class="rounded bg-gray-800 px-3 py-1.5 text-xs text-blue-400"
-            @click="reloadPacks"
-          >
-            Reload tool packs
-          </button>
-          <span v-if="packsStatus" class="text-xs text-gray-400">{{ packsStatus }}</span>
-          <span v-else class="text-xs text-gray-500">
-            MCP servers from ~/.vancetope/mcp.json — reload after editing.
-          </span>
-        </div>
-        <label class="mt-3 flex items-start gap-2">
-          <input
-            type="checkbox"
-            class="mt-1"
-            :checked="confined"
-            @change="toggleConfined"
-          />
-          <span>
-            <span class="text-sm text-gray-300">Restrict to workdir</span>
-            <span class="block text-xs text-gray-500">
-              Paths outside the working directory are denied without asking. Explicit
-              policy rules below still win.
-            </span>
-          </span>
-        </label>
-      </div>
+              </VButton>
+            </VGroupRow>
+          </VGroup>
 
-      <div
-        v-if="isDesktopApp"
-        class="block rounded border border-gray-800 p-3"
-      >
-        <span class="mb-1 block text-xs uppercase tracking-wide text-gray-400">Sandbox policy</span>
-        <div v-if="policyGroups.length === 0" class="text-xs text-gray-500">
-          No rules yet — everything outside the deny floor asks. "Allow always" answers
-          from the dialogs collect here.
-        </div>
-        <div v-else class="space-y-2">
-          <div v-for="group in policyGroups" :key="group.label">
-            <span class="text-xs text-gray-400">{{ group.label }}</span>
-            <ul class="mt-0.5 space-y-1">
-              <li v-for="rule in group.rules" :key="rule" class="flex items-center gap-2">
-                <code class="min-w-0 flex-1 truncate rounded bg-gray-800 px-2 py-1 text-xs text-gray-300">{{ rule }}</code>
-                <button
-                  type="button"
-                  class="shrink-0 rounded bg-gray-800 px-2 py-1 text-xs text-red-400"
-                  @click="revokePolicyRule(group.domain, group.list, rule)"
+          <div class="flex flex-col gap-4">
+            <VGroup label="Sandbox policy">
+              <VGroupRow v-if="policyGroups.length === 0">
+                <template #label>
+                  <span class="text-(--v-label-secondary)">
+                    No rules yet — everything outside the deny floor asks. "Allow always" answers
+                    from the dialogs collect here.
+                  </span>
+                </template>
+              </VGroupRow>
+              <template v-for="group in policyGroups" :key="group.label">
+                <VGroupRow
+                  v-for="rule in group.rules"
+                  :key="`${group.label}:${rule}`"
+                  :description="group.label"
                 >
-                  Revoke
-                </button>
-              </li>
-            </ul>
-          </div>
-        </div>
-        <p class="mt-2 text-xs text-gray-600">
-          Always denied (not removable):
-          {{ policy?.denyFloor?.join(', ') }}
-        </p>
-        <div class="mt-3 flex flex-wrap items-center gap-2">
-          <select
-            v-model="addDomain"
-            class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs"
-          >
-            <option value="paths">paths</option>
-            <option value="commands">commands</option>
-            <option value="delete">delete</option>
-          </select>
-          <select
-            v-model="addList"
-            class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs"
-          >
-            <option value="deny">deny</option>
-            <option value="allow">allow</option>
-          </select>
-          <input
-            v-model="addRule"
-            type="text"
-            placeholder="e.g. ~/Documents/** or ^rm .*"
-            class="min-w-0 flex-1 rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs"
-            @keyup.enter="addPolicyRule"
-          />
-          <button
-            type="button"
-            class="rounded bg-gray-800 px-3 py-1 text-xs text-blue-400"
-            @click="addPolicyRule"
-          >
-            Add rule
-          </button>
-          <button
-            v-if="policyGroups.length > 0"
-            type="button"
-            class="rounded bg-gray-800 px-3 py-1 text-xs text-red-400"
-            @click="resetPolicy"
-          >
-            Reset policy
-          </button>
-        </div>
-        <p class="mt-1 text-xs text-gray-500">
-          Path rules are globs, command rules are regular expressions.
-        </p>
+                  <template #label>
+                    <code class="truncate font-mono text-xs">{{ rule }}</code>
+                  </template>
+                  <VButton
+                    variant="danger"
+                    size="sm"
+                    @click="revokePolicyRule(group.domain, group.list, rule)"
+                  >
+                    Revoke
+                  </VButton>
+                </VGroupRow>
+              </template>
+            </VGroup>
+            <p class="px-4 text-xs text-(--v-label-secondary)">
+              Always denied (not removable):
+              {{ policy?.denyFloor?.join(', ') }}
+            </p>
 
-        <div class="mt-3 flex items-center gap-2 border-t border-gray-800 pt-3">
-          <span class="text-xs text-gray-500">
-            Sandbox:
-            <span :class="policy?.sandbox ? 'text-green-400' : 'text-red-400'">
-              {{ policy?.sandbox ? 'on' : 'OFF' }}
-            </span>
-          </span>
-          <button
-            v-if="policy?.sandbox && !sandboxArmed"
-            type="button"
-            class="rounded bg-gray-800 px-3 py-1 text-xs text-red-400"
-            @click="armDisableSandbox"
-          >
-            Disable sandbox…
-          </button>
-          <button
-            v-if="policy?.sandbox && sandboxArmed"
-            type="button"
-            class="rounded bg-red-900 px-3 py-1 text-xs text-red-200"
-            @click="setSandbox(false)"
-          >
-            Confirm: disable sandbox
-          </button>
-          <button
-            v-if="policy && !policy.sandbox"
-            type="button"
-            class="rounded bg-gray-800 px-3 py-1 text-xs text-green-400"
-            @click="setSandbox(true)"
-          >
-            Enable sandbox
-          </button>
-        </div>
-        <p
-          v-if="policy && !policy.sandbox"
-          class="mt-1 rounded border border-red-900 bg-red-950 px-2 py-1 text-xs text-red-400"
-        >
-          The sandbox is disabled: every file operation and shell command runs
-          without confirmation — the deny floor included. Only for accounts
-          you fully trust.
-        </p>
+            <div class="flex flex-wrap items-end gap-2">
+              <div class="w-32">
+                <VSelect
+                  :model-value="addDomain"
+                  :options="[
+                    { value: 'paths', label: 'paths' },
+                    { value: 'commands', label: 'commands' },
+                    { value: 'delete', label: 'delete' },
+                  ]"
+                  @update:model-value="(v) => { if (v !== null) addDomain = v }"
+                />
+              </div>
+              <div class="w-24">
+                <VSelect
+                  :model-value="addList"
+                  :options="[
+                    { value: 'deny', label: 'deny' },
+                    { value: 'allow', label: 'allow' },
+                  ]"
+                  @update:model-value="(v) => { if (v !== null) addList = v }"
+                />
+              </div>
+              <div class="min-w-40 flex-1">
+                <VInput
+                  v-model="addRule"
+                  placeholder="e.g. ~/Documents/** or ^rm .*"
+                  @keyup.enter="addPolicyRule"
+                />
+              </div>
+              <VButton variant="secondary" icon="add" @click="addPolicyRule">
+                Add rule
+              </VButton>
+              <VButton
+                v-if="policyGroups.length > 0"
+                variant="danger"
+                @click="resetPolicy"
+              >
+                Reset policy
+              </VButton>
+            </div>
+            <p class="px-4 text-xs text-(--v-label-secondary)">
+              Path rules are globs, command rules are regular expressions.
+            </p>
+
+            <VGroup>
+              <VGroupRow>
+                <template #label>
+                  <span>
+                    Sandbox:
+                    <span
+                      class="font-medium"
+                      :class="policy?.sandbox ? 'text-(--v-success)' : 'text-(--v-danger)'"
+                    >
+                      {{ policy?.sandbox ? 'on' : 'OFF' }}
+                    </span>
+                  </span>
+                </template>
+                <VButton
+                  v-if="policy?.sandbox && !sandboxArmed"
+                  variant="danger"
+                  size="sm"
+                  @click="armDisableSandbox"
+                >
+                  Disable sandbox…
+                </VButton>
+                <VButton
+                  v-if="policy?.sandbox && sandboxArmed"
+                  variant="danger"
+                  filled
+                  size="sm"
+                  @click="setSandbox(false)"
+                >
+                  Confirm: disable sandbox
+                </VButton>
+                <VButton
+                  v-if="policy && !policy.sandbox"
+                  variant="secondary"
+                  size="sm"
+                  @click="setSandbox(true)"
+                >
+                  Enable sandbox
+                </VButton>
+              </VGroupRow>
+            </VGroup>
+            <VAlert v-if="policy && !policy.sandbox" variant="error">
+              The sandbox is disabled: every file operation and shell command runs
+              without confirmation — the deny floor included. Only for accounts
+              you fully trust.
+            </VAlert>
+          </div>
+        </template>
+        <VAlert v-if="error" variant="error">{{ error }}</VAlert>
       </div>
-      <p v-if="error" class="text-sm text-red-400">{{ error }}</p>
     </form>
 
+    <footer
+      class="border-t border-(--v-separator) px-4 pt-3"
+      style="padding-bottom: max(1rem, env(safe-area-inset-bottom))"
+    >
+      <div class="mx-auto flex max-w-[720px] justify-end gap-2">
+        <VButton variant="secondary" @click="onCancel">
+          Cancel
+        </VButton>
+        <VButton
+          variant="primary"
+          :disabled="submitting || notFound"
+          @click="onSubmit"
+        >
+          Save
+        </VButton>
+      </div>
+    </footer>
+
     <!-- Credential entry: the value goes to the main via IPC and never
-         back. Enter submits, Escape cancels. -->
+         back. Enter submits, Escape cancels. Built here rather than with
+         VModal, whose close button reads its label from the host's i18n —
+         the shell has none, so it would show the raw key. Same anatomy:
+         raised surface, radius 14, shadow, actions right-aligned. -->
     <div
       v-if="secretDraft !== null"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-(--v-scrim) p-4"
       @keydown.esc="secretDraft = null"
     >
-      <div class="w-96 rounded border border-gray-700 bg-gray-900 p-4">
-        <p class="mb-2 text-sm text-gray-300">
-          Credential <code class="text-blue-400">{{ secretDraft.name }}</code> —
+      <div
+        role="dialog"
+        aria-modal="true"
+        class="w-full max-w-[440px] rounded-(--v-radius-modal) bg-(--v-surface-raised) p-6 text-(--v-label) shadow-(--v-shadow-float)"
+      >
+        <p class="mb-4 text-sm">
+          Credential <code class="font-mono text-(--v-accent-text)">{{ secretDraft.name }}</code> —
           stored encrypted in your OS keychain.
         </p>
         <input
@@ -676,24 +664,16 @@ function onCancel(): void {
           v-model="secretDraft.value"
           type="password"
           autocomplete="off"
-          class="mb-3 w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm outline-none focus:border-blue-400"
+          class="input w-full [--size:2rem]"
           @keydown.enter="submitSecret"
         />
-        <div class="flex justify-end gap-2">
-          <button
-            type="button"
-            class="rounded bg-gray-800 px-3 py-1.5 text-xs text-gray-400"
-            @click="secretDraft = null"
-          >
+        <div class="mt-6 flex justify-end gap-2">
+          <VButton variant="secondary" @click="secretDraft = null">
             Cancel
-          </button>
-          <button
-            type="button"
-            class="rounded bg-blue-600 px-3 py-1.5 text-xs text-white"
-            @click="submitSecret"
-          >
+          </VButton>
+          <VButton variant="primary" @click="submitSecret">
             Save
-          </button>
+          </VButton>
         </div>
       </div>
     </div>

@@ -1,21 +1,26 @@
 @import "tailwindcss";
+/* Corporate design (specification/public/corporate-design.md): the same
+   tokens, fonts and DaisyUI themes as the web UI, so the shell around it
+   looks like part of the same app. */
+@import "@vance/components/tokens.css";
+@import "@vance/components/theme.css";
 /* Legacy JS config (content globs) — v4 no longer auto-detects it. */
 @config "../tailwind.config.js";
 
-:root {
-  color-scheme: dark;
-}
+/* `dark:` utilities follow the class theme.ts sets on <html>. */
+@custom-variant dark (&:where(.dark, .dark *));
 
 html,
 body,
 #app {
   height: 100%;
   margin: 0;
-  background: #0f1419;
-  color: #e5e7eb;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--v-bg);
+  color: var(--v-label);
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
   /* Capacitor sets safe-area-inset-* env vars on iOS — the shell adds
-     padding via env() in BottomTabBar.vue + EditorShell layout. */
+     padding via env() in its views. */
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
 }

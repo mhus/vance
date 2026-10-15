@@ -167,6 +167,9 @@ importers:
         specifier: ^1.0.0
         version: 1.0.0(vue@3.5.43(@typescript/typescript6@6.0.2))
     devDependencies:
+      daisyui:
+        specifier: ^5.7.47
+        version: 5.7.47
       vue:
         specifier: ^3.5.43
         version: 3.5.43(@typescript/typescript6@6.0.2)
@@ -204,6 +207,9 @@ importers:
       '@capacitor/status-bar':
         specifier: ^8.0.4
         version: 8.0.4(@capacitor/core@8.5.3)
+      '@vance/components':
+        specifier: workspace:*
+        version: link:../components
       '@vance/facelift-account-webview':
         specifier: workspace:*
         version: link:../facelift-account-webview
@@ -229,6 +235,9 @@ importers:
       '@vitejs/plugin-vue':
         specifier: ^6.0.10
         version: 6.0.10(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))(vue@3.5.43(@typescript/typescript6@6.0.2))
+      daisyui:
+        specifier: ^5.7.47
+        version: 5.7.47
       postcss:
         specifier: ^8.5.29
         version: 8.5.29

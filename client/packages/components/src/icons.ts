@@ -25,7 +25,7 @@ import {
   SlidersHorizontal, StickyNote,
   // sheet editing
   AlignCenter, AlignLeft, AlignRight, BetweenHorizontalEnd, BetweenHorizontalStart,
-  BetweenVerticalEnd, BetweenVerticalStart, Bold, Eraser, Italic, PanelBottom, PanelTop,
+  BetweenVerticalEnd, BetweenVerticalStart, Bold, Delete, Eraser, Italic, PanelBottom, PanelTop,
   // chat
   Brain, CornerDownRight, Ear, Flag, FlaskConical, Hourglass, Phone, Pilcrow, VolumeX,
   Building2,
@@ -191,6 +191,7 @@ export const ICONS = {
   'device-phone': Smartphone,
   'rotate': RotateCwSquare,
   'eraser': Eraser,
+  'backspace': Delete,
   'touch': Pointer,
   'fit': Expand,
   'ocr': ScanText,

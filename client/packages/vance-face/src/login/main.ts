@@ -4,6 +4,9 @@ import { createPinia } from 'pinia';
 import LoginApp from './LoginApp.vue';
 import { i18n, i18nReady } from '@/i18n';
 import '@/style/app.css';
+// Fonts outside the Tailwind entry: Vite has to see the file at its own
+// path to resolve the relative font URLs.
+import '@vance/components/fonts.css';
 
 // No `ensureAuthenticated()` here, obviously — this IS the authentication.
 // And no addon manifest, no Kind registry, no WebSocket: the login screen is

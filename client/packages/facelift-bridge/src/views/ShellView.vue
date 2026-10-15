@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, nextTick, ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router';
 import type { PluginListenerHandle } from '@capacitor/core';
 import { VanceAccountWebView, type AccountWebViewBounds } from '@vance/facelift-account-webview';
+import { VButton, VIcon, VIconButton } from '@vance/components';
 import {
   type Account,
   getAccount,
@@ -425,106 +426,71 @@ async function goAdd(): Promise<void> {
 
 <template>
   <div class="flex h-full flex-col">
+    <!-- Window chrome on the grey ground (corporate-design §7.1), a
+         hairline below; the native WebView of the account sits under it. -->
     <header
       ref="headerEl"
-      class="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-gray-800 bg-gray-900 px-3 text-white"
+      class="flex shrink-0 flex-wrap items-center gap-x-1 gap-y-1 border-b border-(--v-separator) bg-(--v-bg) px-3 text-(--v-label)"
       style="padding-top: env(safe-area-inset-top, 60px); padding-bottom: 0.5rem; min-height: 110px"
     >
       <button
         v-if="active !== null"
         type="button"
-        class="flex min-w-0 flex-1 items-center gap-1 py-2 text-left"
+        class="flex min-w-0 flex-1 items-center gap-1 rounded-(--v-radius-control) py-2 text-left focus-visible:shadow-[0_0_0_3px_var(--v-focus-ring)] focus-visible:outline-none"
         @click="showSwitcher = true"
       >
-        <span class="truncate text-sm font-medium">{{ active.displayName }}</span>
-        <span class="text-xs text-gray-400">v</span>
+        <span class="truncate text-[15px] leading-5 font-semibold">{{ active.displayName }}</span>
+        <VIcon name="expand" class="text-(--v-label-secondary)" />
       </button>
-      <span v-else class="flex-1 py-2 text-sm text-gray-400">Vancetope</span>
-      <!-- Agent-tools release button — dual-purpose: background = on/off,
-           icon = activity (red + pulsing while an invoke is in flight).
-           Desktop only; acts on the active account. -->
-      <button
+      <span v-else class="flex-1 py-2 text-[15px] leading-5 font-semibold">Vancetope</span>
+      <!-- Agent-tools release button — dual-purpose: `active` = on/off,
+           icon = activity (danger + pulsing while an invoke is in flight;
+           VIconButton has no busy-tone of its own, so the tone is forced
+           from here). Desktop only; acts on the active account. -->
+      <VIconButton
         v-if="isDesktopApp && active !== null"
-        type="button"
-        class="flex h-9 w-9 items-center justify-center rounded"
-        :class="toolsEnabled ? 'bg-blue-600' : 'bg-gray-800'"
-        :title="toolsTitle"
-        :aria-label="toolsTitle"
+        icon="terminal"
+        :label="toolsTitle"
+        :active="toolsEnabled"
+        :class="toolsActive ? 'animate-pulse text-(--v-danger)!' : ''"
         @click="toggleTools"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          class="h-5 w-5"
-          :class="toolsActive ? 'animate-pulse text-red-400' : toolsEnabled ? 'text-white' : 'text-gray-500'"
-        >
-          <polyline points="4 17 10 11 4 5" />
-          <line x1="12" y1="19" x2="20" y2="19" />
-        </svg>
-      </button>
-      <button
+      />
+      <VIconButton
         v-if="active !== null"
-        type="button"
-        class="flex h-9 w-9 items-center justify-center rounded bg-gray-800 text-gray-200"
-        title="Home"
-        aria-label="Home"
+        icon="home"
+        label="Home"
         @click="onHome"
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5">
-          <path d="M3 12L12 3l9 9" />
-          <path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10" />
-        </svg>
-      </button>
-      <button
+      />
+      <VIconButton
         v-if="active !== null"
-        type="button"
-        class="flex h-9 w-9 items-center justify-center rounded bg-gray-800 text-gray-200"
-        title="Reload"
-        aria-label="Reload"
+        icon="refresh"
+        label="Reload"
         @click="onReload"
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5">
-          <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-          <path d="M21 3v6h-6" />
-        </svg>
-      </button>
-      <button
-        type="button"
-        class="flex h-9 w-9 items-center justify-center rounded bg-gray-800 text-gray-200"
-        title="Manage accounts"
-        aria-label="Manage accounts"
+      />
+      <VIconButton
+        icon="settings"
+        label="Manage accounts"
+        tooltip="left"
         @click="goManage"
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5">
-          <circle cx="12" cy="12" r="3" />
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-        </svg>
-      </button>
+      />
 
       <!-- Live tabs (planning/desktop-profile-tabs.md): one WebView per
            tab, max 10, RAM-only. The header grows → bounds follow via the
            ResizeObserver. Same markup ships to iOS (stage 2 wires the
-           plugin side). -->
+           plugin side). The active tab lifts onto the content surface. -->
       <div
         v-if="active !== null && tabs.length > 0"
-        class="flex w-full items-end gap-1 overflow-x-auto px-1 pb-1"
+        class="flex w-full items-center gap-1 overflow-x-auto px-1 pb-1"
       >
         <button
           v-for="tab in tabs"
           :key="tab.id"
           type="button"
-          class="group flex max-w-44 shrink-0 items-center gap-1 rounded-t px-2 py-1 text-xs"
+          class="group flex h-7 max-w-44 shrink-0 items-center gap-1 rounded-(--v-radius-control) px-2 text-xs transition-colors duration-150 ease-out focus-visible:shadow-[0_0_0_3px_var(--v-focus-ring)] focus-visible:outline-none"
           :class="
             tab.id === activeTabId
-              ? 'bg-gray-800 text-white'
-              : 'bg-gray-950 text-gray-400 hover:text-gray-200'
+              ? 'bg-(--v-surface) font-medium text-(--v-label)'
+              : 'text-(--v-label-secondary) hover:bg-(--v-fill)/50 hover:text-(--v-label)'
           "
           :title="tab.title"
           @click="switchTab(tab.id)"
@@ -532,46 +498,43 @@ async function goAdd(): Promise<void> {
           <span class="truncate">{{ tab.title }}</span>
           <span
             v-if="tabs.length > 1"
-            class="ml-1 rounded px-0.5 text-[10px] text-gray-500 hover:bg-gray-700 hover:text-red-400"
+            class="ml-1 flex size-4 items-center justify-center rounded text-(--v-label-tertiary) hover:bg-(--v-fill) hover:text-(--v-label)"
+            title="Close tab"
             @click.stop="closeTab(tab.id)"
           >
-            ✕
+            <VIcon name="close" class="size-3" />
           </span>
         </button>
-        <button
+        <VIconButton
           v-if="tabs.length < MAX_TABS"
-          type="button"
-          class="shrink-0 rounded bg-gray-800 px-2 py-1 text-xs text-gray-400 hover:text-white"
-          title="New tab"
-          aria-label="New tab"
+          icon="add"
+          label="New tab"
+          size="sm"
+          class="shrink-0"
           @click="newTab"
-        >
-          +
-        </button>
+        />
       </div>
     </header>
 
-    <main class="relative flex-1 overflow-hidden">
-      <!-- Empty-state for "no accounts yet". When an account is
-           active, this area is visually covered by the native
-           WKWebView owned by VanceAccountWebView; we don't render
-           any HTML here in that case. -->
+    <main class="relative flex-1 overflow-hidden bg-(--v-bg)">
+      <!-- Empty-state for "no accounts yet" (corporate-design §8: icon,
+           one sentence, one action). When an account is active, this
+           area is visually covered by the native WKWebView owned by
+           VanceAccountWebView; we don't render any HTML here in that case. -->
       <div
         v-if="active === null"
-        class="flex h-full flex-col items-center justify-center gap-4 px-6 text-center"
+        class="flex h-full flex-col items-center justify-center gap-3 px-6 text-center"
       >
-        <p class="text-lg font-medium">No account yet</p>
-        <p class="text-sm text-gray-400">
+        <!-- VIcon only offers 16/20; the 32 px empty-state size is set here. -->
+        <VIcon name="user" class="size-8 text-(--v-label-tertiary)" />
+        <p class="text-[22px] leading-7 font-semibold">No account yet</p>
+        <p class="max-w-sm text-sm text-(--v-label-secondary)">
           Vancetope connects to a Vancetope server you or your
           organisation runs. Add its web address to get started.
         </p>
-        <button
-          type="button"
-          class="rounded bg-blue-500 px-4 py-2 font-medium text-white"
-          @click="goAdd"
-        >
+        <VButton variant="primary" icon="add" class="mt-2" @click="goAdd">
           Add account
-        </button>
+        </VButton>
       </div>
     </main>
 

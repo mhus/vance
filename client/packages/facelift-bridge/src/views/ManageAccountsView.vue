@@ -15,9 +15,10 @@ import {
 } from '@/lock/lockStore';
 import { isBiometricSupported, tryBiometricUnlock } from '@/lock/biometric';
 import { isDesktop } from '@/platform';
-import { VButton, VGroup, VGroupRow, VIconButton, VToggle } from '@vance/components';
+import { VButton, VGroup, VGroupRow, VIconButton, VToggle, useConfirm } from '@vance/components';
 
 const router = useRouter();
+const confirmAction = useConfirm();
 // Desktop has no app-lock, so the whole Security section (Change PIN +
 // Face ID / Touch ID) is hidden there — see platform.ts / router guard.
 const isDesktopApp = isDesktop();
@@ -84,7 +85,12 @@ function onChangePin(): void {
 }
 
 async function onRemove(a: Account): Promise<void> {
-  if (!confirm(`Remove "${a.displayName}"?`)) return;
+  const confirmed = await confirmAction({
+    title: `Remove ${a.displayName}?`,
+    message: 'The account and its stored sign-in are removed from this device. You can add it again later.',
+    confirmLabel: 'Remove',
+  });
+  if (!confirmed) return;
   await removeAccount(a.id);
   // Tear down the cached native WebView for this account and wipe
   // its persistent WKWebsiteDataStore. A future re-add of the same

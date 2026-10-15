@@ -26,7 +26,20 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), { navigates: false, danger: false, disabled: false });
 const active = (): boolean => props.navigates && !props.disabled;
 
-defineEmits<{ (e: 'click', event: MouseEvent | KeyboardEvent): void }>();
+const emit = defineEmits<{ (e: 'click', event: MouseEvent | KeyboardEvent): void }>();
+
+/**
+ * A click on a control inside the row (a delete icon, a toggle) belongs to
+ * that control — the row must not navigate as well.
+ */
+function onRowClick(event: MouseEvent): void {
+  if (!active()) return;
+  const row = event.currentTarget as HTMLElement;
+  const control = (event.target as HTMLElement).closest('button, a, input, select, textarea, label, [role="button"]');
+  if (control && control !== row && row.contains(control)) return;
+  emit('click', event);
+}
+
 </script>
 
 <template>
@@ -38,9 +51,9 @@ defineEmits<{ (e: 'click', event: MouseEvent | KeyboardEvent): void }>();
     :tabindex="active() ? 0 : undefined"
     :aria-disabled="navigates && disabled ? 'true' : undefined"
     :class="['v-group-row', { 'v-group-row-nav': active(), 'v-group-row-icon': icon, 'v-group-row-disabled': disabled }]"
-    @click="(e: MouseEvent) => active() && $emit('click', e)"
-    @keydown.enter.self="(e: KeyboardEvent) => active() && $emit('click', e)"
-    @keydown.space.self.prevent="(e: KeyboardEvent) => active() && $emit('click', e)"
+    @click="onRowClick"
+    @keydown.enter.self="(e: KeyboardEvent) => active() && emit('click', e)"
+    @keydown.space.self.prevent="(e: KeyboardEvent) => active() && emit('click', e)"
   >
     <span v-if="icon" class="v-group-row-tile"><VIcon :name="icon" :size="16" /></span>
     <span :class="['v-group-row-label', { 'v-group-row-danger': danger }]">

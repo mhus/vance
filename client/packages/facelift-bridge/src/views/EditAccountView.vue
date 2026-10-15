@@ -12,6 +12,7 @@ import {
   VGroupRow,
   VIconButton,
   VInput,
+  VModal,
   VSelect,
   VToggle,
 } from '@vance/components';
@@ -641,41 +642,28 @@ function onCancel(): void {
     </footer>
 
     <!-- Credential entry: the value goes to the main via IPC and never
-         back. Enter submits, Escape cancels. Built here rather than with
-         VModal, whose close button reads its label from the host's i18n —
-         the shell has none, so it would show the raw key. Same anatomy:
-         raised surface, radius 14, shadow, actions right-aligned. -->
-    <div
-      v-if="secretDraft !== null"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-(--v-scrim) p-4"
-      @keydown.esc="secretDraft = null"
+         back. Enter submits, Escape cancels. -->
+    <VModal
+      :model-value="secretDraft !== null"
+      size="sm"
+      title="Set credential"
+      :description="secretDraft ? `${secretDraft.name} — stored encrypted in your OS keychain.` : undefined"
+      :close-on-backdrop="false"
+      @update:model-value="(open: boolean) => { if (!open) secretDraft = null; }"
     >
-      <div
-        role="dialog"
-        aria-modal="true"
-        class="w-full max-w-[440px] rounded-(--v-radius-modal) bg-(--v-surface-raised) p-6 text-(--v-label) shadow-(--v-shadow-float)"
-      >
-        <p class="mb-4 text-sm">
-          Credential <code class="font-mono text-(--v-accent-text)">{{ secretDraft.name }}</code> —
-          stored encrypted in your OS keychain.
-        </p>
+      <form v-if="secretDraft" id="secret-form" @submit.prevent="submitSecret">
         <input
           ref="secretInput"
           v-model="secretDraft.value"
           type="password"
           autocomplete="off"
           class="input w-full [--size:2rem]"
-          @keydown.enter="submitSecret"
         />
-        <div class="mt-6 flex justify-end gap-2">
-          <VButton variant="secondary" @click="secretDraft = null">
-            Cancel
-          </VButton>
-          <VButton variant="primary" @click="submitSecret">
-            Save
-          </VButton>
-        </div>
-      </div>
-    </div>
+      </form>
+      <template #actions>
+        <VButton variant="secondary" @click="secretDraft = null">Cancel</VButton>
+        <VButton variant="primary" type="submit" form="secret-form">Save</VButton>
+      </template>
+    </VModal>
   </div>
 </template>

@@ -25,9 +25,12 @@ body,
   -webkit-tap-highlight-color: transparent;
 }
 
-button,
-input,
-textarea {
-  font: inherit;
-  color: inherit;
+/* In the base layer, so component styles (DaisyUI btn colours) win over it. */
+@layer base {
+  button,
+  input,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
 }

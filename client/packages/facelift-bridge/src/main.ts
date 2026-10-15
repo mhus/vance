@@ -6,13 +6,16 @@ import App from './App.vue';
 import { listAccounts, pushSnapshotToShareExtension } from './accounts/accountStore';
 import { createAppRouter } from './router';
 import { followSystemTheme } from './theme';
+import { installComponentMessages } from './messages';
 import './style.css';
 // Fonts outside the Tailwind entry: Vite has to see the file at its own
 // path to resolve the relative font URLs.
 import '@vance/components/fonts.css';
 
 followSystemTheme();
-createApp(App).use(createAppRouter()).mount('#app');
+const app = createApp(App).use(createAppRouter());
+installComponentMessages(app);
+app.mount('#app');
 
 // Native bridge configuration. All calls go through Capacitor's
 // no-op stub when the bundle runs in a plain browser (e.g. via

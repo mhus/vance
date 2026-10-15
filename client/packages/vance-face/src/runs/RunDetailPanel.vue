@@ -61,7 +61,7 @@ function render(value: unknown): string {
           v-for="action in detail.allowedActions"
           :key="action"
           size="sm"
-          :variant="action === 'STOP' ? 'danger' : 'ghost'"
+          :variant="action === 'STOP' ? 'danger' : 'secondary'"
           :disabled="acting"
           @click="emit('action', action)"
         >{{ t(`runs.action.${action}`) }}</VButton>
@@ -110,7 +110,7 @@ function render(value: unknown): string {
     <VCard v-if="detail.children?.length" :title="t('runs.detail.children')">
       <ul class="children">
         <li v-for="child in detail.children" :key="child.runId">
-          <VButton size="sm" variant="ghost" @click="emit('open-run', child.runId)">
+          <VButton size="sm" variant="plain" @click="emit('open-run', child.runId)">
             {{ child.name || child.runId }}
           </VButton>
           <span v-if="child.fromStep" class="from-step">{{ child.fromStep }}</span>

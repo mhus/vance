@@ -225,7 +225,7 @@ async function copyResult(): Promise<void> {
 
     <template #actions>
       <template v-if="result">
-        <VButton variant="ghost" @click="copyResult">
+        <VButton variant="secondary" @click="copyResult">
           {{ copied ? t('cortex.translate.copied') : t('cortex.translate.copy') }}
         </VButton>
         <VButton variant="primary" @click="close">
@@ -233,7 +233,7 @@ async function copyResult(): Promise<void> {
         </VButton>
       </template>
       <template v-else>
-        <VButton variant="ghost" :disabled="running" @click="close">
+        <VButton variant="secondary" :disabled="running" @click="close">
           {{ t('cortex.translate.cancel') }}
         </VButton>
         <VButton variant="primary" :loading="running" :disabled="!canSubmit" @click="submit">

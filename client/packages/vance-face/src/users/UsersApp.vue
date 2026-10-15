@@ -474,7 +474,7 @@ function fmt(value: unknown): string {
         <section>
           <div class="flex items-center justify-between px-2 mb-1">
             <span class="text-xs uppercase opacity-50">{{ $t('users.sidebar.usersTitle') }}</span>
-            <VButton variant="ghost" size="sm" @click="openCreateUser">
+            <VButton variant="plain" size="sm" @click="openCreateUser">
               {{ $t('users.sidebar.addUser') }}
             </VButton>
           </div>
@@ -516,7 +516,7 @@ function fmt(value: unknown): string {
         <section>
           <div class="flex items-center justify-between px-2 mb-1">
             <span class="text-xs uppercase opacity-50">{{ $t('users.sidebar.teamsTitle') }}</span>
-            <VButton variant="ghost" size="sm" @click="openCreateTeam">
+            <VButton variant="plain" size="sm" @click="openCreateTeam">
               {{ $t('users.sidebar.addTeam') }}
             </VButton>
           </div>
@@ -608,7 +608,7 @@ function fmt(value: unknown): string {
                     :loading="usersState.busy.value"
                     @click="deleteUser"
                   >{{ $t('users.user.delete') }}</VButton>
-                  <VButton variant="ghost" @click="openSetPassword">
+                  <VButton variant="plain" @click="openSetPassword">
                     {{ $t('users.user.setPassword') }}
                   </VButton>
                 </div>
@@ -660,7 +660,7 @@ function fmt(value: unknown): string {
                     :rows="2"
                   />
                   <div class="flex justify-end gap-2 mt-1">
-                    <VButton variant="ghost" size="sm" @click="cancelEditUserSetting">
+                    <VButton variant="plain" size="sm" @click="cancelEditUserSetting">
                       {{ $t('users.user.settings.cancel') }}
                     </VButton>
                     <VButton
@@ -677,10 +677,10 @@ function fmt(value: unknown): string {
                   </div>
                   <div v-if="s.description" class="text-xs opacity-60">{{ s.description }}</div>
                   <div class="flex justify-end gap-2 mt-1">
-                    <VButton variant="ghost" size="sm" @click="startEditUserSetting(s)">
+                    <VButton variant="plain" size="sm" @click="startEditUserSetting(s)">
                       {{ $t('users.user.settings.edit') }}
                     </VButton>
-                    <VButton variant="ghost" size="sm" @click="deleteUserSetting(s)">
+                    <VButton variant="danger" size="sm" @click="deleteUserSetting(s)">
                       {{ $t('users.user.settings.delete') }}
                     </VButton>
                   </div>
@@ -813,7 +813,7 @@ function fmt(value: unknown): string {
           :help="$t('users.createUser.passwordHelp')"
         />
         <div class="flex justify-end gap-2">
-          <VButton variant="ghost" @click="showCreateUser = false">
+          <VButton variant="secondary" @click="showCreateUser = false">
             {{ $t('users.createUser.cancel') }}
           </VButton>
           <VButton
@@ -845,7 +845,7 @@ function fmt(value: unknown): string {
           :rows="4"
         />
         <div class="flex justify-end gap-2">
-          <VButton variant="ghost" @click="showCreateTeam = false">
+          <VButton variant="secondary" @click="showCreateTeam = false">
             {{ $t('users.createTeam.cancel') }}
           </VButton>
           <VButton
@@ -884,7 +884,7 @@ function fmt(value: unknown): string {
           autocomplete="new-password"
         />
         <div class="flex justify-end gap-2">
-          <VButton variant="ghost" @click="showSetPassword = false">
+          <VButton variant="secondary" @click="showSetPassword = false">
             {{ $t('users.setPassword.cancel') }}
           </VButton>
           <VButton

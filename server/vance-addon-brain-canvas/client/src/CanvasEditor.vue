@@ -644,14 +644,14 @@ async function addNode(type: 'text' | 'doc' | 'link' | 'group'): Promise<void> {
     >
       <Panel v-if="isEditable" position="top-left">
         <div class="cv-panel">
-          <VButton size="sm" @click="addNode('text')">📝 {{ t('canvas.board.note') }}</VButton>
-          <VButton size="sm" @click="addNode('doc')">📄 {{ t('canvas.board.doc') }}</VButton>
-          <VButton size="sm" @click="addNode('link')">🔗 {{ t('canvas.board.link') }}</VButton>
+          <VButton icon="note" size="sm" @click="addNode('text')">{{ t('canvas.board.note') }}</VButton>
+          <VButton icon="document" size="sm" @click="addNode('doc')">{{ t('canvas.board.doc') }}</VButton>
+          <VButton icon="link" size="sm" @click="addNode('link')">{{ t('canvas.board.link') }}</VButton>
           <VButton size="sm" @click="addNode('group')">▢ {{ t('canvas.board.group') }}</VButton>
           <span class="cv-panel-sep"></span>
           <VButton
             size="sm"
-            :variant="selectMode ? 'primary' : 'ghost'"
+            :variant="selectMode ? 'primary' : 'secondary'"
             :title="t('canvas.board.selectHint')"
             @click="selectMode = !selectMode"
           >⬚ {{ t('canvas.board.select') }}</VButton>

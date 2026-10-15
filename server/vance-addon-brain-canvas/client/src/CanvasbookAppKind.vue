@@ -262,8 +262,8 @@ onBeforeUnmount(() => {
   <div class="flex h-full w-full flex-col">
     <div class="flex items-center gap-2 border-b border-base-300 p-2">
       <div class="relative">
-        <VButton size="sm" @click="menuOpen = !menuOpen">
-          ☰ {{ activeTitle }} ▾
+        <VButton icon="menu" size="sm" @click="menuOpen = !menuOpen">
+          {{ activeTitle }} ▾
         </VButton>
         <div
           v-if="menuOpen"
@@ -283,8 +283,8 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </div>
-      <VButton size="sm" variant="ghost" @click="addPage">+ {{ t('canvas.book.addCanvas') }}</VButton>
-      <VButton size="sm" variant="ghost" @click="rebuild">↻ {{ t('canvas.book.rebuildIndex') }}</VButton>
+      <VButton icon="add" size="sm" variant="plain" @click="addPage">{{ t('canvas.book.addCanvas') }}</VButton>
+      <VButton icon="refresh" size="sm" variant="plain" @click="rebuild">{{ t('canvas.book.rebuildIndex') }}</VButton>
       <span class="ml-auto flex items-center gap-1.5 text-xs">
         <span
           class="inline-block h-2 w-2 rounded-full"

@@ -15,6 +15,7 @@ import {
   VModal,
   VSelect,
   VTextarea,
+  VIconButton,
 } from '@/components';
 import { useTenantProjects } from '@/composables/useTenantProjects';
 import { useAdminServerTools } from '@/composables/useAdminServerTools';
@@ -364,12 +365,9 @@ function sourceBadgeClass(source: string | undefined): string {
           <span class="font-semibold truncate">{{ projectTitle }}</span>
           <span class="font-mono text-sm opacity-50 truncate">{{ selectedProject }}</span>
         </div>
-        <VButton
-          variant="primary"
-          size="sm"
-          :title="$t('tools.sidebar.addNew')"
+        <VIconButton icon="add" :label="$t('tools.sidebar.addNew')" size="sm"
           @click="openNewTool"
-        >+</VButton>
+         />
       </div>
 
       <!-- Sub-header B: detail mode. Back-button + tool name +
@@ -379,12 +377,9 @@ function sourceBadgeClass(source: string | undefined): string {
         class="px-6 pt-4 pb-3 border-b border-base-300 bg-base-100 flex items-center gap-x-3 gap-y-1 flex-wrap"
       >
         <div class="flex items-center gap-3 min-w-0 flex-1 basis-[16rem]">
-          <VButton
-            variant="ghost"
-            size="sm"
-            :title="$t('tools.detail.backToList')"
+          <VIconButton icon="back" :label="$t('tools.detail.backToList')" size="sm"
             @click="backToList"
-          >←</VButton>
+           />
           <span class="font-semibold font-mono truncate">{{ selectedTool.name }}</span>
         </div>
         <div class="text-xs opacity-70 flex items-center gap-3 shrink-0">
@@ -612,7 +607,7 @@ function sourceBadgeClass(source: string | undefined): string {
           {{ $t('tools.newModal.stubInfo', { project: selectedProject }) }}
         </p>
         <div class="flex justify-end gap-2">
-          <VButton variant="ghost" @click="showNewModal = false">
+          <VButton variant="secondary" @click="showNewModal = false">
             {{ $t('tools.newModal.cancel') }}
           </VButton>
           <VButton

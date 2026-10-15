@@ -483,7 +483,7 @@ const ALL_STATUSES: ChecklistStatus[] = [
         }}
       </span>
       <span class="grow" />
-      <VButton variant="ghost" size="sm" @click="clearSelection">
+      <VButton variant="plain" size="sm" @click="clearSelection">
         {{ t('documents.checklistEditor.clearSelection') }}
       </VButton>
       <VButton variant="danger" size="sm" @click="deleteSelected">
@@ -596,8 +596,8 @@ const ALL_STATUSES: ChecklistStatus[] = [
     </VueDraggable>
 
     <div class="add-row">
-      <VButton variant="ghost" size="sm" @click="addItem">
-        + {{ t('documents.checklistEditor.addItem') }}
+      <VButton icon="add" variant="plain" size="sm" @click="addItem">
+        {{ t('documents.checklistEditor.addItem') }}
       </VButton>
     </div>
   </div>

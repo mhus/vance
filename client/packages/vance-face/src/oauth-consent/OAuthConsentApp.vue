@@ -219,7 +219,7 @@ async function decide(approve: boolean): Promise<void> {
           <p class="text-sm opacity-70">{{ $t('oauthConsent.revokeHint') }}</p>
 
           <div class="flex gap-2 justify-end">
-            <VButton variant="ghost" :disabled="busy" @click="decide(false)">
+            <VButton variant="plain" :disabled="busy" @click="decide(false)">
               {{ $t('oauthConsent.decline') }}
             </VButton>
             <VButton :loading="busy" :disabled="!approveArmed" @click="decide(true)">

@@ -166,10 +166,10 @@ function onForget(): void {
         <VButton size="sm" :loading="unlockBusy" @click="onUnlock">
           {{ $t('cortex.age.unlock') }}
         </VButton>
-        <VButton v-if="ageKeys.hasSecrets" size="sm" variant="ghost" @click="onUnlock">
+        <VButton v-if="ageKeys.hasSecrets" size="sm" variant="plain" @click="onUnlock">
           {{ $t('cortex.age.tryAgain') }}
         </VButton>
-        <VButton v-if="ageKeys.hasSecrets" size="sm" variant="ghost" @click="onForget">
+        <VButton v-if="ageKeys.hasSecrets" size="sm" variant="plain" @click="onForget">
           {{ $t('cortex.age.forget') }}
         </VButton>
         <span

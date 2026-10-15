@@ -1,7 +1,15 @@
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
-  VAlert, VBadge, VButton, VCard, VEmptyState, VInput, VShareButton, vanceRef,
+  VAlert,
+  VBadge,
+  VButton,
+  VCard,
+  VEmptyState,
+  VInput,
+  VShareButton,
+  vanceRef,
+  VIconButton,
 } from '@vance/components';
 import { safeUrl } from '@vance/shared';
 import LinkPicture from './LinkPicture.vue';
@@ -573,26 +581,18 @@ function message(e: unknown): string {
       <VButton variant="primary" :disabled="busy || !draft.trim()" @click="addFromDraft()">
         {{ t('links.app.add') }}
       </VButton>
-      <VButton variant="ghost" :disabled="busy" :title="t('links.app.newGroup')" @click="onNewGroup()">
+      <VButton variant="plain" :disabled="busy" :title="t('links.app.newGroup')" @click="onNewGroup()">
         {{ t('links.app.newGroupButton') }}
       </VButton>
-      <VButton
-        variant="ghost"
+      <VIconButton icon="refresh" :label="t('links.app.rebuildTip')"
         :disabled="busy"
-        :title="t('links.app.rebuildTip')"
         @click="onRebuild()"
-      >
-        ↻
-      </VButton>
+       />
       <!-- Capture access. Its own control rather than an item in a card's ⋯
            menu: it is about the list as a whole, not about any one link. -->
-      <VButton
-        variant="ghost"
-        :title="t('links.app.captureTip')"
+      <VIconButton icon="settings" :label="t('links.app.captureTip')"
         @click="settingsOpen = true"
-      >
-        ⚙
-      </VButton>
+       />
     </div>
 
     <VAlert v-if="error" variant="error" class="whitespace-pre-line">{{ error }}</VAlert>
@@ -603,7 +603,7 @@ function message(e: unknown): string {
            number the reader came for. -->
       <VButton
         size="sm"
-        :variant="stackMode ? 'primary' : 'ghost'"
+        :variant="stackMode ? 'primary' : 'secondary'"
         :title="stackMode ? t('links.app.backToList') : t('links.app.readPile')"
         @click="mode = stackMode ? 'list' : 'stack'"
       >
@@ -613,7 +613,7 @@ function message(e: unknown): string {
       <template v-if="stackMode">
         <VButton
           size="sm"
-          variant="ghost"
+          variant="plain"
           :title="stackOrder === 'newest' ? t('links.app.newestFirst') : t('links.app.oldestFirst')"
           @click="stackOrder = stackOrder === 'newest' ? 'oldest' : 'newest'"
         >
@@ -621,7 +621,7 @@ function message(e: unknown): string {
         </VButton>
         <VButton
           size="sm"
-          :variant="showSeen ? 'primary' : 'ghost'"
+          :variant="showSeen ? 'primary' : 'secondary'"
           @click="showSeen = !showSeen"
         >
           {{ t('links.app.showSeen') }}
@@ -633,7 +633,7 @@ function message(e: unknown): string {
       </div>
       <VButton
         size="sm"
-        :variant="activeGroup === null ? 'primary' : 'ghost'"
+        :variant="activeGroup === null ? 'primary' : 'secondary'"
         @click="activeGroup = null"
       >
         {{ t('links.app.all', { count: entries.length }) }}
@@ -650,7 +650,7 @@ function message(e: unknown): string {
         v-for="g in groups"
         :key="g"
         size="sm"
-        :variant="activeGroup === g ? 'primary' : 'ghost'"
+        :variant="activeGroup === g ? 'primary' : 'secondary'"
         @click="activeGroup = g"
       >
         {{ g }} {{ counts[g] ?? 0 }}
@@ -687,15 +687,9 @@ function message(e: unknown): string {
               {{ section.group }}
             </span>
             <span class="text-xs opacity-40">{{ section.items.length }}</span>
-            <VButton
-              size="xs"
-              variant="ghost"
-              class="opacity-0 group-hover/heading:opacity-100"
-              :title="t('links.app.renameGroupTip')"
+            <VIconButton icon="edit" :label="t('links.app.renameGroupTip')" size="sm"
               @click="onRenameGroup(section.group)"
-            >
-              ✎
-            </VButton>
+             />
           </div>
           <div
             v-else-if="!stackMode"
@@ -788,22 +782,18 @@ function message(e: unknown): string {
                 <!-- The tick is the one control that stays visible always: in
                      the pile it is the whole interaction, and hunting for it on
                      hover would make working through a list tiring. -->
-                <VButton
-                  size="xs"
-                  :variant="viewed(entry) ? 'primary' : 'ghost'"
+                <VIconButton icon="check" :label="viewed(entry) ? t('links.app.putBack') : t('links.app.markSeen')" size="sm"
+                  :variant="viewed(entry) ? 'primary' : 'secondary'"
                   :disabled="busy"
-                  :title="viewed(entry) ? t('links.app.putBack') : t('links.app.markSeen')"
                   @click.stop="onToggleViewed(entry)"
-                >
-                  ✓
-                </VButton>
+                 />
                 <!-- Copy the address. Revealed on hover like the ⋯ menu, and
                      kept visible while the entry is the selected one. Copied
                      shows as the button turning primary rather than as a ✓ —
                      the tick above it is already spoken for. -->
                 <VButton
                   size="xs"
-                  :variant="copiedUrl === entry.url ? 'primary' : 'ghost'"
+                  :variant="copiedUrl === entry.url ? 'primary' : 'secondary'"
                   :class="isSelected(entry) ? '' : 'opacity-0 group-hover/card:opacity-100'"
                   :title="copiedUrl === entry.url ? t('links.app.copied') : t('links.app.copyLink')"
                   @click.stop="onCopy(entry)"
@@ -812,7 +802,7 @@ function message(e: unknown): string {
                 </VButton>
                 <VButton
                   size="xs"
-                  variant="ghost"
+                  variant="plain"
                   class="opacity-0 group-hover/card:opacity-100"
                   :title="t('links.app.actions')"
                   @click.stop="openMenu = openMenu === entry.url ? null : entry.url"
@@ -829,13 +819,13 @@ function message(e: unknown): string {
                     show-label
                     @click.stop="openMenu = null"
                   />
-                  <VButton size="xs" variant="ghost" @click.stop="editing = entry; openMenu = null">
+                  <VButton size="xs" variant="plain" @click.stop="editing = entry; openMenu = null">
                     {{ t('links.app.edit') }}
                   </VButton>
-                  <VButton size="xs" variant="ghost" @click.stop="onRefreshPreview(entry)">
+                  <VButton size="xs" variant="plain" @click.stop="onRefreshPreview(entry)">
                     {{ t('links.app.refreshPreview') }}
                   </VButton>
-                  <VButton size="xs" variant="ghost" @click.stop="onRemove(entry)">
+                  <VButton size="xs" variant="danger" @click.stop="onRemove(entry)">
                     {{ t('links.app.remove') }}
                   </VButton>
                 </div>

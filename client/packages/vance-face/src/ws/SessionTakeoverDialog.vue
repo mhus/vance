@@ -66,7 +66,7 @@ function onCancel(): void {
     </VAlert>
 
     <template #actions>
-      <VButton variant="ghost" :disabled="loading" @click="onCancel">
+      <VButton variant="secondary" :disabled="loading" @click="onCancel">
         {{ t('sessionTakeover.cancel') }}
       </VButton>
       <VButton

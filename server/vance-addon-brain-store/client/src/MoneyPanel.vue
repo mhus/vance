@@ -235,7 +235,7 @@ onMounted(load);
             {{ t('store.money.owedHint') }}
           </p>
         </div>
-        <VButton size="sm" variant="secondary" outline :disabled="loading" @click="load">
+        <VButton size="sm" variant="secondary" :disabled="loading" @click="load">
           {{ t('store.common.refresh') }}
         </VButton>
       </div>
@@ -286,7 +286,7 @@ onMounted(load);
             {{ t('store.money.openPayoutsHint') }}
           </p>
         </div>
-        <VButton size="sm" variant="secondary" outline :disabled="loading" @click="reconcile">
+        <VButton size="sm" variant="secondary" :disabled="loading" @click="reconcile">
           {{ t('store.money.askRail') }}
         </VButton>
       </div>
@@ -313,7 +313,7 @@ onMounted(load);
             v-if="payout.status === 'FAILED'"
             size="sm"
             variant="secondary"
-            outline
+           
             :disabled="loading"
             @click="release(payout.payoutName)"
           >{{ t('store.money.release') }}</VButton>
@@ -349,7 +349,7 @@ onMounted(load);
             v-if="refunding !== order.orderId"
             size="sm"
             variant="secondary"
-            outline
+           
             @click="refunding = order.orderId"
           >{{ t('store.money.refund') }}</VButton>
         </div>
@@ -366,7 +366,7 @@ onMounted(load);
           </label>
           <div class="flex gap-2">
             <VButton :disabled="loading" @click="refund(order)">{{ t('store.money.confirmRefund') }}</VButton>
-            <VButton variant="secondary" outline @click="refunding = ''">{{ t('store.common.cancel') }}</VButton>
+            <VButton variant="secondary" @click="refunding = ''">{{ t('store.common.cancel') }}</VButton>
           </div>
         </div>
       </div>
@@ -393,7 +393,7 @@ onMounted(load);
             v-if="classifying !== order.orderId"
             size="sm"
             variant="secondary"
-            outline
+           
             @click="classifying = order.orderId; classifyCountry = order.billingCountry ?? ''"
           >{{ t('store.money.classify') }}</VButton>
         </div>
@@ -416,7 +416,7 @@ onMounted(load);
             <VButton :disabled="loading || !classifyCountry.trim()" @click="classify(order)">
               {{ t('store.common.apply') }}
             </VButton>
-            <VButton variant="secondary" outline @click="classifying = ''">{{ t('store.common.cancel') }}</VButton>
+            <VButton variant="secondary" @click="classifying = ''">{{ t('store.common.cancel') }}</VButton>
           </div>
         </div>
       </div>
@@ -433,7 +433,7 @@ onMounted(load);
           <VButton
             size="sm"
             variant="secondary"
-            outline
+           
             :disabled="loading"
             @click="reissue(note.payoutName)"
           >{{ t('store.money.writeAgain') }}</VButton>
@@ -463,7 +463,7 @@ onMounted(load);
           computation — a printed report that disagreed with this one is
           the copy somebody would file.
         -->
-        <VButton size="sm" variant="secondary" outline :disabled="loading" @click="downloadReport">
+        <VButton size="sm" variant="secondary" :disabled="loading" @click="downloadReport">
           PDF
         </VButton>
       </div>

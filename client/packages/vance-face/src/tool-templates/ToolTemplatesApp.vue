@@ -237,7 +237,7 @@ async function onApply(): Promise<void> {
         </VAlert>
 
         <div class="flex justify-end gap-2 pt-2">
-          <VButton variant="ghost" @click="closeDetail">
+          <VButton variant="secondary" @click="closeDetail">
             {{ $t('common.cancel') }}
           </VButton>
           <VButton variant="primary" :loading="state.busy.value" @click="onApply">

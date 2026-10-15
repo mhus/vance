@@ -91,7 +91,7 @@ const structuredRenderer = computed(() => {
         :mime-type="result.mimeType"
         :read-only="true"
       />
-      <VButton v-else variant="link" size="sm" :href="url">
+      <VButton v-else variant="plain" size="sm" :href="url">
         Download {{ output.path }}
       </VButton>
     </template>

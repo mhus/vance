@@ -787,7 +787,7 @@ function message(e: unknown): string {
           v-for="v in scan.views"
           :key="v.handle"
           size="sm"
-          :variant="view?.handle === v.handle ? 'primary' : 'ghost'"
+          :variant="view?.handle === v.handle ? 'primary' : 'secondary'"
           @click="onNavigate(v.handle)"
         >
           {{ v.title ?? v.handle }}
@@ -798,7 +798,7 @@ function message(e: unknown): string {
 
       <VButton
         v-if="scan"
-        variant="ghost"
+        variant="plain"
         size="sm"
         :title="t('bistromath.app.loadsTip', { count: scan.requires.scripts.length })"
         @click="showLoads = !showLoads"
@@ -807,7 +807,7 @@ function message(e: unknown): string {
       </VButton>
 
       <VButton
-        variant="ghost"
+        variant="plain"
         size="sm"
         :disabled="busy"
         :title="t('bistromath.app.rebuildTip')"

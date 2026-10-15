@@ -95,7 +95,7 @@ defineExpose({ open: openPicker });
         </div>
       </div>
       <div class="flex justify-end">
-        <VButton size="sm" variant="ghost" @click="finish(null)">{{ t('binder.common.cancel') }}</VButton>
+        <VButton size="sm" variant="secondary" @click="finish(null)">{{ t('binder.common.cancel') }}</VButton>
       </div>
     </div>
   </VModal>

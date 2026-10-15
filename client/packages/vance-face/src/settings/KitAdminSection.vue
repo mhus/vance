@@ -489,7 +489,7 @@ watch(
         </dl>
         <div class="flex flex-wrap justify-end gap-2 pt-1">
           <VButton
-            variant="ghost"
+            variant="plain"
             size="sm"
             @click="openKitConfigDialog(record)"
           >{{ t('scopes.kit.configure') }}</VButton>
@@ -497,19 +497,19 @@ watch(
                already some other kit's source — it can only be one. -->
           <VButton
             v-if="!kitState.manifest.value && !record.descriptor?.artifact"
-            variant="ghost"
+            variant="plain"
             size="sm"
             :loading="kitState.busy.value"
             @click="promoteKit(record)"
           >{{ t('scopes.kit.promote') }}</VButton>
           <VButton
-            variant="ghost"
+            variant="plain"
             size="sm"
             :loading="kitState.busy.value"
             @click="uninstallKit(record)"
           >{{ t('scopes.kit.uninstall') }}</VButton>
           <VButton
-            variant="ghost"
+            variant="plain"
             size="sm"
             :loading="kitState.busy.value"
             @click="updateInstalledKit(record)"
@@ -527,7 +527,7 @@ watch(
           {{ t('scopes.kit.isSource', { name: kitState.manifest.value.kit.name }) }}
         </div>
         <div class="flex flex-wrap justify-end gap-2 pt-2">
-          <VButton variant="ghost" size="sm" @click="openKitDialog('export')">
+          <VButton variant="plain" size="sm" @click="openKitDialog('export')">
             {{ t('scopes.kit.export') }}
           </VButton>
         </div>
@@ -629,7 +629,7 @@ watch(
                 ? `${entry.projectTitle} (${entry.projectId})` : entry.projectId }}
             </div>
           </div>
-          <VButton variant="ghost" size="sm" @click="pickFromProject(entry)">
+          <VButton variant="secondary" size="sm" @click="pickFromProject(entry)">
             {{ t('scopes.kit.projects.choose') }}
           </VButton>
         </div>
@@ -668,7 +668,7 @@ watch(
           <!-- Owned but not deliverable stays visible and disabled: hiding
                it would look like the entitlement vanished. -->
           <VButton
-            variant="ghost"
+            variant="secondary"
             size="sm"
             :disabled="!entry.downloadable"
             :title="entry.downloadable
@@ -749,7 +749,7 @@ watch(
         :help="t('scopes.kit.dialog.keepPasswordsHelp')"
       />
       <div class="flex justify-end gap-2 pt-2">
-        <VButton variant="ghost" @click="showKitDialog = false">
+        <VButton variant="secondary" @click="showKitDialog = false">
           {{ t('scopes.common.cancel') }}
         </VButton>
         <VButton
@@ -788,7 +788,7 @@ watch(
       <div class="flex flex-col gap-2">
         <div class="flex items-baseline justify-between">
           <span class="text-sm font-semibold">{{ t('scopes.kit.config.rules') }}</span>
-          <VButton variant="ghost" size="sm" @click="addKitPolicyRule">
+          <VButton variant="secondary" size="sm" @click="addKitPolicyRule">
             {{ t('scopes.kit.config.addRule') }}
           </VButton>
         </div>
@@ -824,14 +824,14 @@ watch(
               :options="kitPolicyActionOptions"
             />
           </div>
-          <VButton variant="ghost" size="sm" @click="removeKitPolicyRule(index)">
+          <VButton variant="secondary" size="sm" @click="removeKitPolicyRule(index)">
             {{ t('scopes.common.delete') }}
           </VButton>
         </div>
       </div>
 
       <div class="flex justify-end gap-2 pt-2">
-        <VButton variant="ghost" @click="showKitConfigDialog = false">
+        <VButton variant="secondary" @click="showKitConfigDialog = false">
           {{ t('scopes.common.cancel') }}
         </VButton>
         <VButton

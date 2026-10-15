@@ -987,7 +987,7 @@ onBeforeUnmount(() => {
       <span class="flex-1 min-w-0 truncate">
         {{ $t('chat.mediation.banner', { project: mediation.workerProjectName }) }}
       </span>
-      <VButton variant="ghost" size="sm" @click="emit('hub')">
+      <VButton variant="plain" size="sm" @click="emit('hub')">
         {{ $t('chat.mediation.backToHub') }}
       </VButton>
     </div>

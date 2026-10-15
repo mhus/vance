@@ -107,7 +107,7 @@ function attributePairs(item: TrillianInsightsDto): string[] {
   <div class="flex flex-col gap-3 p-4">
     <!-- ─── Toolbar ─── -->
     <div class="flex flex-wrap items-end gap-3 text-sm">
-      <VButton variant="ghost" size="sm" @click="refresh">
+      <VButton variant="plain" size="sm" @click="refresh">
         {{ $t('insights.trillian.refresh') }}
       </VButton>
       <div class="text-xs opacity-60 ml-auto">
@@ -143,7 +143,7 @@ function attributePairs(item: TrillianInsightsDto): string[] {
         <div class="ml-auto flex gap-2">
           <VButton
             size="xs"
-            variant="ghost"
+            variant="plain"
             :disabled="busyId === item.control.processId || !canPause(item)"
             @click="pause(item)"
           >
@@ -151,7 +151,7 @@ function attributePairs(item: TrillianInsightsDto): string[] {
           </VButton>
           <VButton
             size="xs"
-            variant="ghost"
+            variant="plain"
             :disabled="busyId === item.control.processId || !canResume(item)"
             @click="resume(item)"
           >

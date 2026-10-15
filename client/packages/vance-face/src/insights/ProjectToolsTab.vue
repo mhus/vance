@@ -481,7 +481,7 @@ const filteredTools = computed<EffectiveToolDto[]>(() => {
                         </td>
                         <td>
                           <VButton
-                            variant="neutral"
+                            variant="secondary"
                             size="xs"
                             :outline="true"
                             @click="onClearCooldown(tool.name, cd)"

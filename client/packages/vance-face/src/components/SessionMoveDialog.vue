@@ -88,7 +88,7 @@ function confirm(): void {
     </div>
 
     <template #actions>
-      <VButton variant="ghost" :disabled="saving" @click="close">
+      <VButton variant="secondary" :disabled="saving" @click="close">
         {{ t('chat.sessionHeader.moveCancel') }}
       </VButton>
       <VButton

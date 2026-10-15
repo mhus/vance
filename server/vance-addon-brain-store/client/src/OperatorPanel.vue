@@ -107,7 +107,7 @@ async function run(
             <VButton
               size="sm"
               variant="secondary"
-              outline
+             
               @click="rejecting = `vendor:${vendor.name}`"
             >
               {{ t('store.operator.refuse') }}
@@ -171,7 +171,7 @@ async function run(
             <VButton
               size="sm"
               variant="secondary"
-              outline
+             
               @click="rejecting = `release:${release.vendorName}/${release.kitId}/${release.version}`"
             >
               {{ t('store.operator.refuse') }}

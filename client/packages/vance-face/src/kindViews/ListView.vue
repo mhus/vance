@@ -342,7 +342,7 @@ function autoGrow(event: Event): void {
         }}
       </span>
       <span class="grow" />
-      <VButton variant="ghost" size="sm" @click="clearSelection">
+      <VButton variant="plain" size="sm" @click="clearSelection">
         {{ t('documents.listEditor.clearSelection') }}
       </VButton>
       <VButton variant="danger" size="sm" @click="deleteSelected">
@@ -404,8 +404,8 @@ function autoGrow(event: Event): void {
     </VueDraggable>
 
     <div class="add-row">
-      <VButton variant="ghost" size="sm" @click="addItem">
-        + {{ t('documents.listEditor.addItem') }}
+      <VButton icon="add" variant="plain" size="sm" @click="addItem">
+        {{ t('documents.listEditor.addItem') }}
       </VButton>
     </div>
   </div>

@@ -32,6 +32,7 @@ import {
   VEmptyState,
   VInput,
   VModal,
+  VIconButton,
 } from '@components/index';
 import ProcessPanel from '@components/ProcessPanel.vue';
 import ClientsPanel from './ClientsPanel.vue';
@@ -716,15 +717,10 @@ onBeforeUnmount(stopAutoScroll);
         @data-changed="onProjectListDataChanged"
       >
         <template #header-extra>
-          <VButton
-            variant="ghost"
-            size="sm"
-            :title="$t('chat.picker.searchTooltip')"
+          <VIconButton icon="search" :label="$t('chat.picker.searchTooltip')" size="sm"
             @pointerdown.stop
             @click="searchOpen = true; emit('focus-main')"
-          >
-            🔍
-          </VButton>
+           />
         </template>
         <template #loading>
           {{ $t('chat.picker.loading') }}
@@ -760,14 +756,14 @@ onBeforeUnmount(stopAutoScroll);
         <div class="flex items-center gap-1">
           <VButton
             size="sm"
-            :variant="mainTab === 'sessions' ? 'secondary' : 'ghost'"
+            :variant="mainTab === 'sessions' ? 'secondary' : 'secondary'"
             @click="mainTab = 'sessions'"
           >
             {{ $t('chat.picker.tabs.sessions') }}
           </VButton>
           <VButton
             size="sm"
-            :variant="mainTab === 'clients' ? 'secondary' : 'ghost'"
+            :variant="mainTab === 'clients' ? 'secondary' : 'secondary'"
             @click="mainTab = 'clients'"
           >
             {{ $t('chat.picker.tabs.clients') }}
@@ -778,7 +774,7 @@ onBeforeUnmount(stopAutoScroll);
              wider screens and turns .picker-tools into a popup. -->
         <VButton
           v-if="mainTab === 'sessions'"
-          variant="ghost"
+          variant="plain"
           size="sm"
           class="picker-tools-toggle"
           :title="pickerToolsOpen ? 'Hide tools' : 'Show tools'"
@@ -803,22 +799,18 @@ onBeforeUnmount(stopAutoScroll);
             :label="$t('chat.picker.showArchived')"
           />
           <VButton
-            variant="ghost"
+            variant="plain"
             :disabled="!selectedProjectName"
             :title="$t('chat.picker.groups.createTooltip')"
             @click="openCreateGroup"
           >
             {{ $t('chat.picker.groups.create') }}
           </VButton>
-          <VButton
-            variant="primary"
+          <VIconButton icon="add" :label="$t('chat.picker.newSession')"
             :disabled="!selectedProjectName || bootstrapping"
             :loading="bootstrapping"
-            :title="$t('chat.picker.newSession')"
             @click="openRecipeModal"
-          >
-            +
-          </VButton>
+           />
         </div>
       </div>
 
@@ -885,26 +877,17 @@ onBeforeUnmount(stopAutoScroll);
               </span>
               <span class="opacity-50 text-xs">{{ block.sessions.length }}</span>
               <div v-if="block.group" class="ml-auto flex items-center gap-0.5">
-                <VButton
-                  variant="ghost"
-                  size="sm"
+                <VIconButton icon="arrow-up" :label="$t('chat.picker.groups.moveUp')" size="sm"
                   :disabled="groupIndex(block.group) === 0"
-                  :title="$t('chat.picker.groups.moveUp')"
                   @click="moveGroup(groupIndex(block.group), -1)"
-                >▲</VButton>
-                <VButton
-                  variant="ghost"
-                  size="sm"
+                 />
+                <VIconButton icon="arrow-down" :label="$t('chat.picker.groups.moveDown')" size="sm"
                   :disabled="groupIndex(block.group) === sessionGroupsState.groups.value.length - 1"
-                  :title="$t('chat.picker.groups.moveDown')"
                   @click="moveGroup(groupIndex(block.group), 1)"
-                >▼</VButton>
-                <VButton
-                  variant="ghost"
-                  size="sm"
-                  :title="$t('chat.picker.groups.delete')"
+                 />
+                <VIconButton icon="close" :label="$t('chat.picker.groups.delete')" size="sm"
                   @click="deleteGroup(block.group)"
-                >✕</VButton>
+                 />
               </div>
             </div>
 
@@ -1016,14 +999,9 @@ onBeforeUnmount(stopAutoScroll);
                   {{ $t('chat.sessionHeader.reactivate') }}
                 </VButton>
                 <div class="flex items-center gap-0.5">
-                  <VButton
-                    variant="ghost"
-                    size="sm"
-                    :title="$t('chat.picker.processesTooltip')"
+                  <VIconButton icon="chat" :label="$t('chat.picker.processesTooltip')" size="sm"
                     @click.stop="openProcessPreview(session)"
-                  >
-                    🧵
-                  </VButton>
+                   />
                   <SessionActionsMenu
                     :session="session"
                     @changed="refreshSessions"
@@ -1154,7 +1132,7 @@ onBeforeUnmount(stopAutoScroll);
         </ul>
       </div>
       <template #actions>
-        <VButton variant="ghost" :disabled="bootstrapping" @click="recipeModalOpen = false">
+        <VButton variant="secondary" :disabled="bootstrapping" @click="recipeModalOpen = false">
           {{ $t('common.cancel') }}
         </VButton>
       </template>
@@ -1181,7 +1159,7 @@ onBeforeUnmount(stopAutoScroll);
         />
       </div>
       <template #actions>
-        <VButton variant="ghost" @click="showCreateGroup = false">
+        <VButton variant="secondary" @click="showCreateGroup = false">
           {{ $t('common.cancel') }}
         </VButton>
         <VButton

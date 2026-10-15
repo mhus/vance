@@ -226,7 +226,7 @@ onBeforeUnmount(() => {
       <h3 class="flex-1 text-sm font-semibold opacity-70">
         {{ t('chat.clients.heading') }}
       </h3>
-      <VButton size="sm" variant="ghost" :loading="loading" @click="refresh">
+      <VButton size="sm" variant="plain" :loading="loading" @click="refresh">
         {{ t('chat.clients.refresh') }}
       </VButton>
     </div>
@@ -275,13 +275,13 @@ onBeforeUnmount(() => {
           }) }}
         </span>
         <span class="flex-1" />
-        <VButton size="sm" variant="ghost" @click="interrupt(false)">
+        <VButton size="sm" variant="plain" @click="interrupt(false)">
           {{ t('chat.clients.pause') }}
         </VButton>
-        <VButton size="sm" variant="ghost" @click="interrupt(true)">
+        <VButton size="sm" variant="plain" @click="interrupt(true)">
           {{ t('chat.clients.stop') }}
         </VButton>
-        <VButton size="sm" variant="ghost" @click="releaseSelection()">
+        <VButton size="sm" variant="plain" @click="releaseSelection()">
           {{ t('chat.clients.detach') }}
         </VButton>
       </div>

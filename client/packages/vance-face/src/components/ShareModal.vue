@@ -279,14 +279,14 @@ function close(): void {
         {{ t('share.close') }}
       </VButton>
       <template v-else-if="picked">
-        <VButton variant="ghost" :disabled="submitting" @click="back">
+        <VButton variant="secondary" :disabled="submitting" @click="back">
           {{ t('share.back') }}
         </VButton>
         <VButton variant="primary" :loading="submitting" @click="submit">
           {{ t('share.submit') }}
         </VButton>
       </template>
-      <VButton v-else variant="ghost" @click="close">
+      <VButton v-else variant="secondary" @click="close">
         {{ t('share.cancel') }}
       </VButton>
     </template>

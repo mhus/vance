@@ -385,7 +385,7 @@ function onProjectContentLanguageChanged(value: string | null): void {
           >{{ t('scopes.project.archive') }}</VButton>
           <div class="flex gap-2">
             <VButton
-              variant="ghost"
+              variant="plain"
               :loading="projectsState.busy.value"
               @click="openCopyDialog"
             >{{ t('scopes.project.copy.action') }}</VButton>
@@ -449,7 +449,7 @@ function onProjectContentLanguageChanged(value: string | null): void {
               :label="t('scopes.sessionGroups.titleLabel')"
             />
             <div class="flex justify-end gap-2 mt-1">
-              <VButton variant="ghost" size="sm" @click="cancelSessionGroupRename">
+              <VButton variant="plain" size="sm" @click="cancelSessionGroupRename">
                 {{ t('scopes.common.cancel') }}
               </VButton>
               <VButton
@@ -471,11 +471,11 @@ function onProjectContentLanguageChanged(value: string | null): void {
               </span>
             </div>
             <div class="flex justify-end gap-2 mt-1">
-              <VButton variant="ghost" size="sm" @click="startEditSessionGroup(g)">
+              <VButton variant="plain" size="sm" @click="startEditSessionGroup(g)">
                 {{ t('scopes.sessionGroups.rename') }}
               </VButton>
               <VButton
-                variant="ghost"
+                variant="danger"
                 size="sm"
                 :loading="sessionGroupsState.busy.value"
                 @click="deleteSessionGroupAction(g.name)"
@@ -541,7 +541,7 @@ function onProjectContentLanguageChanged(value: string | null): void {
           <span>{{ t('scopes.project.copy.notCopiedHint') }}</span>
         </VAlert>
         <div class="flex justify-end gap-2 pt-2">
-          <VButton variant="ghost" @click="showCopyDialog = false">
+          <VButton variant="secondary" @click="showCopyDialog = false">
             {{ t('scopes.common.cancel') }}
           </VButton>
           <VButton
@@ -603,7 +603,7 @@ function onProjectContentLanguageChanged(value: string | null): void {
         </div>
 
         <div class="flex justify-end gap-2 pt-2">
-          <VButton variant="ghost" @click="showCopyDialog = false">
+          <VButton variant="secondary" @click="showCopyDialog = false">
             {{ t('scopes.common.close') }}
           </VButton>
           <VButton variant="primary" @click="openCopiedProject">

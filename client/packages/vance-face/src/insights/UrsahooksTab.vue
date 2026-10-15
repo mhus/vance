@@ -207,8 +207,8 @@ function formatTimestamp(value?: Date | string | null): string {
     <template v-else>
       <!-- Top toolbar: refresh + new -->
       <div class="flex items-center gap-2 flex-wrap">
-        <VButton size="sm" variant="ghost" @click="refreshList">
-          ↻ {{ t('ursahooks.refresh') }}
+        <VButton icon="refresh" size="sm" variant="plain" @click="refreshList">
+          {{ t('ursahooks.refresh') }}
         </VButton>
         <VButton size="sm" variant="primary" @click="openNewModal">
           {{ t('ursahooks.new') }}
@@ -276,7 +276,7 @@ function formatTimestamp(value?: Date | string | null): string {
             <CodeEditor v-model="yamlDraft" mime-type="application/yaml" :rows="22" />
 
             <template #actions>
-              <VButton variant="ghost" @click="showDeleteModal = true">
+              <VButton variant="danger" @click="showDeleteModal = true">
                 {{ t('common.delete') }}
               </VButton>
               <VButton
@@ -343,7 +343,7 @@ function formatTimestamp(value?: Date | string | null): string {
         <VAlert v-if="newError" variant="error">{{ newError }}</VAlert>
       </div>
       <template #actions>
-        <VButton variant="ghost" @click="showNewModal = false">
+        <VButton variant="secondary" @click="showNewModal = false">
           {{ t('common.cancel') }}
         </VButton>
         <VButton variant="primary" :loading="state.busy.value" @click="createHook">
@@ -355,7 +355,7 @@ function formatTimestamp(value?: Date | string | null): string {
     <VModal v-model="showDeleteModal" :title="t('ursahooks.deleteTitle')">
       <p>{{ t('ursahooks.deleteBody', { event: selectedEvent, name: selectedName }) }}</p>
       <template #actions>
-        <VButton variant="ghost" @click="showDeleteModal = false">
+        <VButton variant="secondary" @click="showDeleteModal = false">
           {{ t('common.cancel') }}
         </VButton>
         <VButton variant="danger" filled :loading="state.busy.value" @click="confirmDelete">

@@ -254,7 +254,7 @@ async function onClearCooldown(
       </div>
 
       <VButton
-        variant="neutral"
+        variant="secondary"
         size="sm"
         :outline="true"
         :disabled="!scopeId || health.loading.value"
@@ -400,7 +400,7 @@ async function onClearCooldown(
                       </td>
                       <td class="px-2 py-1">
                         <VButton
-                          variant="neutral"
+                          variant="secondary"
                           size="xs"
                           :outline="true"
                           :title="$t('insights.toolHealth.clearTitle')"

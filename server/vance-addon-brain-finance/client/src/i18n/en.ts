@@ -37,7 +37,8 @@ export default {
     },
     values: {
       heading: 'Value blocks',
-      add: '＋ value',
+      add: 'Value',
+    remove: 'Remove value block',
       amount: 'Amount',
       mode: 'Mode',
       modeRecurring: 'recurring',

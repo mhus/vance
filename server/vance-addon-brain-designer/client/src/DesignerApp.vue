@@ -10,6 +10,7 @@ import {
   VInput,
   VModal,
   VTextarea,
+  VIconButton,
 } from '@vance/components';
 import { VueDraggable } from 'vue-draggable-plus';
 import {
@@ -507,7 +508,7 @@ defineExpose({ reload });
       <div class="flex-1" />
       <!-- The design-skill catalogue: every skill tagged `design`, each
            with a live style preview of its style.css. -->
-      <VButton variant="ghost" @click="openSkillsModal">{{ t('designer.skills.button') }}</VButton>
+      <VButton variant="plain" @click="openSkillsModal">{{ t('designer.skills.button') }}</VButton>
       <VButton
         variant="primary"
         size="sm"
@@ -515,11 +516,11 @@ defineExpose({ reload });
       >{{ t('designer.create') }}</VButton>
       <VButton
         v-if="selectedDesign"
-        variant="ghost"
+        variant="plain"
         @click="reloadPreview"
       >{{ t('designer.reload') }}</VButton>
       <VButton
-        variant="ghost"
+        variant="plain"
         @click="load"
       >{{ t('designer.refresh') }}</VButton>
     </div>
@@ -670,7 +671,7 @@ defineExpose({ reload });
       </div>
       <template #actions>
         <div class="flex justify-end gap-2">
-          <VButton variant="ghost" @click="createModal = false">{{ t('designer.cancel') }}</VButton>
+          <VButton variant="secondary" @click="createModal = false">{{ t('designer.cancel') }}</VButton>
           <VButton variant="primary" :disabled="!createName.trim()" @click="submitCreate">
             {{ t('designer.create') }}
           </VButton>
@@ -694,7 +695,7 @@ defineExpose({ reload });
       </div>
       <template #actions>
         <div class="flex justify-end gap-2">
-          <VButton variant="ghost" @click="editModal = false">{{ t('designer.cancel') }}</VButton>
+          <VButton variant="secondary" @click="editModal = false">{{ t('designer.cancel') }}</VButton>
           <VButton variant="primary" @click="submitEdit">{{ t('designer.save') }}</VButton>
         </div>
       </template>
@@ -706,7 +707,7 @@ defineExpose({ reload });
       <p class="text-sm text-base-content/60 mt-1">{{ t('designer.deleteTrashNote') }}</p>
       <template #actions>
         <div class="flex justify-end gap-2">
-          <VButton variant="ghost" @click="deleteModal = false">{{ t('designer.cancel') }}</VButton>
+          <VButton variant="secondary" @click="deleteModal = false">{{ t('designer.cancel') }}</VButton>
           <VButton variant="danger" filled @click="submitDelete">{{ t('designer.deleteDesign') }}</VButton>
         </div>
       </template>
@@ -724,13 +725,10 @@ defineExpose({ reload });
             <span v-if="chatOpen">{{ t('designer.skills.chatHint') }}</span>
             <span v-else>{{ t('designer.skills.noChatHint') }}</span>
           </div>
-          <VButton
-            variant="ghost"
-            size="sm"
+          <VIconButton icon="refresh" :label="t('designer.skills.refresh')" size="sm"
             :loading="skillsLoading"
-            :title="t('designer.skills.refresh')"
             @click="loadSkills"
-          >⟳</VButton>
+           />
         </div>
 
         <VAlert v-if="skillsError" variant="error">{{ skillsError }}</VAlert>
@@ -776,24 +774,18 @@ defineExpose({ reload });
                 <!-- ▶ — composer prefill (the user may append arguments and
                      submits); ✕ — direct CLEAR round-trip, disabled when the
                      recipe bound the skill. Same pair the SkillPanel offers. -->
-                <VButton
+                <VIconButton icon="play" :label="t('designer.skills.play')" size="sm"
                   v-if="composePrompt && !skill.active"
-                  variant="ghost"
-                  size="sm"
-                  :title="t('designer.skills.play')"
                   @click="playSkill(skill)"
-                >▶</VButton>
-                <VButton
+                 />
+                <VIconButton icon="close" :label="skill.fromRecipe
+                    ? t('designer.skills.recipeBound')
+                    : t('designer.skills.clear')" size="sm"
                   v-if="processSkillClear && skill.active"
-                  variant="ghost"
-                  size="sm"
                   :loading="clearingSkill === skill.name"
                   :disabled="skill.fromRecipe"
-                  :title="skill.fromRecipe
-                    ? t('designer.skills.recipeBound')
-                    : t('designer.skills.clear')"
                   @click="clearSkill(skill)"
-                >✕</VButton>
+                 />
               </div>
               </div>
               <div class="text-[11px] opacity-50 font-mono truncate">{{ skill.name }}</div>

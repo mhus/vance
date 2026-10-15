@@ -895,7 +895,7 @@ function openInCortex(): void {
     <template v-if="liveOk" #topbar-extra>
       <VButton
         size="sm"
-        variant="ghost"
+        variant="plain"
         class="hidden md:inline-flex"
         @click="openInCortex"
       >
@@ -923,7 +923,7 @@ function openInCortex(): void {
               <VButton variant="secondary" @click="backToPicker">
                 {{ $t('chat.pickAnotherSession') }}
               </VButton>
-              <VButton variant="ghost" @click="openAndBind(activeSessionId ?? '')">
+              <VButton variant="plain" @click="openAndBind(activeSessionId ?? '')">
                 {{ $t('chat.tryAgain') }}
               </VButton>
             </div>
@@ -940,7 +940,7 @@ function openInCortex(): void {
               >
                 {{ $t('chat.backToPicker') }}
               </VButton>
-              <VButton variant="ghost" @click="retryConnect">
+              <VButton variant="plain" @click="retryConnect">
                 {{ $t('chat.tryAgain') }}
               </VButton>
             </div>

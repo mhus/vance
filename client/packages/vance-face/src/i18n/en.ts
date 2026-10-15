@@ -926,6 +926,8 @@ export default {
       emptyBody:
         'Wizards are YAML forms under _vance/wizards/ that turn into structured prompts.',
       submit: 'Generate prompt',
+      refresh: 'Refresh the list',
+      back: 'Back to the list',
     },
     skills: {
       tabLabel: 'Skills',

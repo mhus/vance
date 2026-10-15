@@ -131,7 +131,7 @@ function barWidth(role: ToolUsageRoleInsightsDto, tool: ToolUsageEntryInsightsDt
           />
         </div>
         <VButton
-          variant="neutral"
+          variant="secondary"
           size="xs"
           class="ml-auto"
           :disabled="state.loading.value"

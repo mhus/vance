@@ -632,19 +632,19 @@ async function submit(): Promise<void> {
   >
     <div class="flex gap-2 mb-4">
       <VButton
-        :variant="createMode === 'template' ? 'primary' : 'ghost'"
+        :variant="createMode === 'template' ? 'primary' : 'secondary'"
         size="sm"
         :disabled="creating"
         @click="setCreateMode('template')"
       >{{ $t('documents.create.fromTemplate') }}</VButton>
       <VButton
-        :variant="createMode === 'inline' ? 'primary' : 'ghost'"
+        :variant="createMode === 'inline' ? 'primary' : 'secondary'"
         size="sm"
         :disabled="creating"
         @click="setCreateMode('inline')"
       >{{ $t('documents.create.typeContent') }}</VButton>
       <VButton
-        :variant="createMode === 'upload' ? 'primary' : 'ghost'"
+        :variant="createMode === 'upload' ? 'primary' : 'secondary'"
         size="sm"
         :disabled="creating"
         @click="setCreateMode('upload')"
@@ -671,14 +671,14 @@ async function submit(): Promise<void> {
           <template v-else>
             <div v-if="availableTags.length > 0" class="flex flex-wrap gap-1">
               <VButton
-                :variant="templateTag === null ? 'primary' : 'ghost'"
+                :variant="templateTag === null ? 'primary' : 'secondary'"
                 size="sm"
                 @click="setTemplateTag(null)"
               >{{ $t('documents.create.templateAllTags') }}</VButton>
               <VButton
                 v-for="tag in availableTags"
                 :key="tag"
-                :variant="templateTag === tag ? 'primary' : 'ghost'"
+                :variant="templateTag === tag ? 'primary' : 'secondary'"
                 size="sm"
                 @click="setTemplateTag(tag)"
               >{{ tag }}</VButton>
@@ -832,7 +832,7 @@ async function submit(): Promise<void> {
       <div class="flex justify-end gap-2 pt-2">
         <VButton
           type="button"
-          variant="ghost"
+          variant="secondary"
           :disabled="creating"
           @click="close"
         >{{ $t('cortex.create.cancel') }}</VButton>

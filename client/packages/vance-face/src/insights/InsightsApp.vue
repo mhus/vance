@@ -843,7 +843,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
 
         <VButton
           v-if="sessionsState.hasMore.value"
-          variant="ghost"
+          variant="plain"
           size="sm"
           class="self-center mt-1"
           :loading="sessionsState.loadingMore.value"
@@ -1002,7 +1002,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
               </div>
               <div class="flex items-center gap-2 flex-wrap">
                 <VButton
-                  variant="ghost"
+                  variant="plain"
                   size="sm"
                   :disabled="control.busy.value"
                   :title="$t('insights.control.stopAllTooltip')"
@@ -1011,7 +1011,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                   {{ $t('insights.control.stopAll') }}
                 </VButton>
                 <VButton
-                  variant="ghost"
+                  variant="plain"
                   size="sm"
                   :disabled="control.busy.value"
                   :title="$t('insights.control.forceStopAllTooltip')"
@@ -1020,7 +1020,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                   {{ $t('insights.control.forceStopAll') }}
                 </VButton>
                 <VButton
-                  variant="ghost"
+                  variant="plain"
                   size="sm"
                   :loading="exportLoading"
                   :disabled="exportLoading"
@@ -1030,7 +1030,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                   {{ $t('insights.session.exportButton') }}
                 </VButton>
                 <VButton
-                  variant="ghost"
+                  variant="plain"
                   size="sm"
                   :disabled="control.busy.value"
                   :title="selectedSession.allowMultipleClients ? $t('insights.session.sharedOnTooltip') : $t('insights.session.sharedOffTooltip')"
@@ -1183,7 +1183,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
               </div>
               <div class="flex items-center gap-2 flex-wrap">
                 <VButton
-                  variant="ghost"
+                  variant="plain"
                   size="sm"
                   :disabled="control.busy.value || selectedProcess.status === 'CLOSED'"
                   :title="$t('insights.control.stopTooltip')"
@@ -1192,7 +1192,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                   {{ $t('insights.control.stop') }}
                 </VButton>
                 <VButton
-                  variant="ghost"
+                  variant="plain"
                   size="sm"
                   :disabled="control.busy.value || selectedProcess.status === 'CLOSED'"
                   :title="$t('insights.control.forceStopTooltip')"

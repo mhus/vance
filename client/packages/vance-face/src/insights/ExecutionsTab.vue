@@ -114,7 +114,7 @@ function shortId(id: string): string {
           </div>
         </div>
 
-        <VButton variant="ghost" size="sm" @click="refresh">
+        <VButton variant="plain" size="sm" @click="refresh">
           {{ $t('insights.executions.refresh') }}
         </VButton>
 
@@ -224,7 +224,7 @@ function shortId(id: string): string {
                       />
                       <span class="opacity-70">{{ $t('insights.executions.lines') }}</span>
                     </label>
-                    <VButton variant="ghost" size="sm" @click="loadTail(row.id)">
+                    <VButton variant="plain" size="sm" @click="loadTail(row.id)">
                       {{ $t('insights.executions.refreshTail') }}
                     </VButton>
                   </div>

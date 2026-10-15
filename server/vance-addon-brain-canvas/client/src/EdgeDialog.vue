@@ -114,7 +114,7 @@ defineExpose({ open: openDialog });
         <VCheckbox v-model="thick" :label="t('canvas.edge.thick')" />
       </div>
       <div class="mt-1 flex justify-end gap-2">
-        <VButton size="sm" variant="ghost" @click="finish(null)">{{ t('canvas.common.cancel') }}</VButton>
+        <VButton size="sm" variant="secondary" @click="finish(null)">{{ t('canvas.common.cancel') }}</VButton>
         <VButton size="sm" variant="primary" @click="submit">{{ t('canvas.common.ok') }}</VButton>
       </div>
     </div>

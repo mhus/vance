@@ -41,7 +41,7 @@ import {
   uploadChatboxAttachments,
   ChatboxUploadError,
 } from '@composables/useChatboxUpload';
-import { VAlert, VButton, VDropdown, VRange, VTextarea } from '@components/index';
+import { VAlert, VButton, VDropdown, VRange, VTextarea, VIconButton } from '@components/index';
 import { OPTIMISTIC_PREFIX } from './optimisticEcho';
 import { matchTalkCommand, stripCommandTail } from './talkCommands';
 import { caretInFirstLine, pushHistoryEntry } from './composerHistory';
@@ -1470,13 +1470,10 @@ onBeforeUnmount(() => {
       >
         <span aria-hidden="true">📄</span>
         <span class="font-mono truncate max-w-xs">{{ doc.label }}</span>
-        <VButton
-          variant="ghost"
-          size="sm"
+        <VIconButton icon="close" :label="$t('chat.attachments.remove')" size="sm"
           :disabled="sendBlocked"
-          :title="$t('chat.attachments.remove')"
           @click="removeAttachedDoc(idx)"
-        >✕</VButton>
+         />
       </div>
       <div
         v-for="(file, idx) in selectedFiles"
@@ -1487,13 +1484,10 @@ onBeforeUnmount(() => {
         <span aria-hidden="true">📎</span>
         <span class="font-mono truncate max-w-xs">{{ file.name }}</span>
         <span class="text-xs opacity-60">{{ formatBytes(file.size) }}</span>
-        <VButton
-          variant="ghost"
-          size="sm"
+        <VIconButton icon="close" :label="$t('chat.attachments.remove')" size="sm"
           :disabled="sendBlocked"
-          :title="$t('chat.attachments.remove')"
           @click="removeFile(idx)"
-        >✕</VButton>
+         />
       </div>
     </div>
 
@@ -1551,7 +1545,7 @@ onBeforeUnmount(() => {
         <!-- Narrow-viewport menu toggle. CSS hides it on wide screens
              and turns .composer-tools into a popup on narrow. -->
         <VButton
-          variant="ghost"
+          variant="plain"
           size="sm"
           class="composer-tools-toggle"
           :title="composerToolsOpen ? 'Hide tools' : 'Show tools'"
@@ -1566,7 +1560,7 @@ onBeforeUnmount(() => {
           <div v-if="speechSupported || speakerSupported" class="flex gap-1 items-center">
             <VButton
               v-if="talkModeSupported"
-              variant="ghost"
+              variant="plain"
               size="sm"
               :class="talkStatus === 'ACTIVE' ? 'text-success animate-pulse'
                 : talkStatus === 'LISTENING' ? 'text-info'
@@ -1579,19 +1573,14 @@ onBeforeUnmount(() => {
             >
               {{ talkStatus === 'PAUSED' ? '⏸️' : talkStatus === 'LISTENING' ? '👂' : '📞' }}
             </VButton>
-            <VButton
+            <VIconButton icon="voice" :label="speechRecording ? $t('chat.speech.stopSpeechToText') : $t('chat.speech.startSpeechToText')" size="sm"
               v-if="speechSupported"
-              variant="ghost"
-              size="sm"
               :class="speechRecording ? 'text-error animate-pulse' : ''"
-              :title="speechRecording ? $t('chat.speech.stopSpeechToText') : $t('chat.speech.startSpeechToText')"
               @click="toggleSpeech"
-            >
-              🎤
-            </VButton>
+             />
             <VButton
               v-if="speakerSupported"
-              variant="ghost"
+              variant="plain"
               size="sm"
               :class="speakerEnabled ? (speakerSpeaking ? 'text-success animate-pulse' : 'text-success') : ''"
               :title="speakerEnabled ? $t('chat.speech.muteIncoming') : $t('chat.speech.readAloud')"
@@ -1670,7 +1659,7 @@ onBeforeUnmount(() => {
           </VDropdown>
           <VButton
             v-else
-            variant="ghost"
+            variant="plain"
             size="sm"
             :disabled="sendBlocked || !chatProcessName"
             :title="$t('chat.attachments.pickerTooltip')"
@@ -1684,7 +1673,7 @@ onBeforeUnmount(() => {
              Stays pinned next to the input in every viewport (it is NOT
              part of the collapsible tools cluster). -->
         <VButton
-          variant="ghost"
+          variant="plain"
           size="sm"
           :class="multiline ? 'btn-active text-primary' : ''"
           :title="multiline ? $t('chat.multilineToggleSingle') : $t('chat.multilineToggleMulti')"
@@ -1693,25 +1682,15 @@ onBeforeUnmount(() => {
         >
           ¶
         </VButton>
-        <VButton
-          variant="primary"
-          size="sm"
+        <VIconButton icon="play" :label="$t('chat.send')" size="sm"
           :disabled="(!composerText.trim() && selectedFiles.length === 0 && selectedDocs.length === 0)
             || sendBlocked || !chatProcessName"
           :loading="sendBlocked"
-          :title="$t('chat.send')"
           @click="send"
-        >
-          ▶
-        </VButton>
-        <VButton
-          variant="danger"
-          size="sm"
-          :title="$t('chat.pauseTooltip')"
+         />
+        <VIconButton icon="pause" :label="$t('chat.pauseTooltip')" size="sm"
           @click="pause"
-        >
-          ⏸
-        </VButton>
+         />
       </div>
     </div>
   </div>

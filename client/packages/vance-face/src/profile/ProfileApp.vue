@@ -841,7 +841,7 @@ async function onResetTalkCommands(): Promise<void> {
                 <VButton variant="primary" :loading="loading" @click="onSaveTalkCommands">
                   {{ $t('profile.speech.talkCommandsSave') }}
                 </VButton>
-                <VButton variant="ghost" :disabled="loading" @click="onResetTalkCommands">
+                <VButton variant="plain" :disabled="loading" @click="onResetTalkCommands">
                   {{ $t('profile.speech.talkCommandsResetBtn') }}
                 </VButton>
                 <span v-if="talkCommandsSaved" class="text-success text-sm">

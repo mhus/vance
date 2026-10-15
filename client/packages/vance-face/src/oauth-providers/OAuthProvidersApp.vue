@@ -165,7 +165,7 @@ function selectProvider(providerId: string): void {
           <span class="text-xs uppercase opacity-50">
             {{ $t('oauthProviders.sidebar.providersLabel') }}
           </span>
-          <VButton variant="ghost" size="sm" @click="openNewProvider">
+          <VButton variant="plain" size="sm" @click="openNewProvider">
             {{ $t('oauthProviders.sidebar.addNew') }}
           </VButton>
         </div>
@@ -274,7 +274,7 @@ function selectProvider(providerId: string): void {
           <div class="flex gap-2 mt-2">
             <VButton
               v-if="selected.hasClientSecret"
-              variant="ghost"
+              variant="danger"
               :loading="state.busy.value"
               @click="removeClientSecret"
             >{{ $t('oauthProviders.cards.removeSecret') }}</VButton>
@@ -299,7 +299,7 @@ function selectProvider(providerId: string): void {
           {{ $t('oauthProviders.newModal.stubInfo') }}
         </p>
         <div class="flex justify-end gap-2">
-          <VButton variant="ghost" @click="showNewModal = false">
+          <VButton variant="secondary" @click="showNewModal = false">
             {{ $t('oauthProviders.newModal.cancel') }}
           </VButton>
           <VButton

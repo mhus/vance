@@ -227,7 +227,7 @@ onBeforeUnmount(() => {
         >{{ result.code }}</pre>
         <div class="flex gap-2 mt-3">
           <VButton variant="primary" @click="applyResult">{{ $t('cortex.hactar.applyToEditor') }}</VButton>
-          <VButton variant="ghost" @click="result = null">{{ $t('cortex.hactar.regenerate') }}</VButton>
+          <VButton variant="secondary" @click="result = null">{{ $t('cortex.hactar.regenerate') }}</VButton>
         </div>
       </div>
 
@@ -237,7 +237,7 @@ onBeforeUnmount(() => {
     </div>
 
     <template #actions>
-      <VButton variant="ghost" @click="close">{{ $t('cortex.hactar.close') }}</VButton>
+      <VButton variant="secondary" @click="close">{{ $t('cortex.hactar.close') }}</VButton>
     </template>
   </VModal>
 </template>

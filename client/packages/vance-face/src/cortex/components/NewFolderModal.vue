@@ -71,7 +71,7 @@ function submit(): void {
       </p>
       <VAlert v-if="error" variant="error">{{ error }}</VAlert>
       <div class="flex justify-end gap-2 pt-2">
-        <VButton type="button" variant="ghost" @click="close">{{ $t('cortex.newFolder.cancel') }}</VButton>
+        <VButton type="button" variant="secondary" @click="close">{{ $t('cortex.newFolder.cancel') }}</VButton>
         <VButton type="submit" variant="primary">{{ $t('cortex.newFolder.create') }}</VButton>
       </div>
     </form>

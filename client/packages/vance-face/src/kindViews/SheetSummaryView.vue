@@ -81,7 +81,7 @@ async function onEdit(next: SheetDocument): Promise<void> {
       <div class="flex items-center gap-2">
         <span class="font-semibold flex-1 truncate">{{ document?.title || $t('kindViews.sheet.label') }}</span>
         <span class="opacity-50 text-xs tabular-nums">{{ dims.rows }}×{{ dims.cols }}</span>
-        <VButton variant="ghost" @click="editOpen = true">{{ $t('kindViews.sheet.edit') }}</VButton>
+        <VButton variant="plain" @click="editOpen = true">{{ $t('kindViews.sheet.edit') }}</VButton>
       </div>
       <div class="preview-wrap">
         <table class="sheet-preview">

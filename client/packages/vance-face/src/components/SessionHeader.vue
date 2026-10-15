@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { VButton, VColorPicker, VEmojiPicker, VTagEditor } from '@vance/components';
+import { VButton, VColorPicker, VEmojiPicker, VTagEditor, VIconButton } from '@vance/components';
 import {
   AccentColor,
   type SessionSummaryRichDto,
@@ -278,7 +278,7 @@ async function onDelete(): Promise<void> {
            chat project, not session metadata. -->
       <VButton
         v-if="canSave"
-        variant="ghost"
+        variant="plain"
         size="sm"
         :disabled="exporting"
         :title="t('chat.export.saveAsDocumentTooltip')"
@@ -369,16 +369,11 @@ async function onDelete(): Promise<void> {
       </div>
 
       <!-- Archive / Reactivate / Delete -->
-      <VButton
+      <VIconButton icon="archive" :label="t('chat.sessionHeader.archiveTooltip')" size="sm"
         v-if="!isArchived"
-        variant="ghost"
-        size="sm"
         :disabled="saving"
-        :title="t('chat.sessionHeader.archiveTooltip')"
         @click="onArchive"
-      >
-        📦
-      </VButton>
+       />
       <VButton
         v-else
         variant="primary"
@@ -389,15 +384,10 @@ async function onDelete(): Promise<void> {
         {{ t('chat.sessionHeader.reactivate') }}
       </VButton>
 
-      <VButton
-        variant="ghost"
-        size="sm"
+      <VIconButton icon="delete" :label="t('chat.sessionHeader.delete')" size="sm"
         :disabled="saving"
-        :title="t('chat.sessionHeader.delete')"
         @click="onDelete"
-      >
-        🗑️
-      </VButton>
+       />
     </template>
 
     <!-- ─── Compact layout: overflow menu ─── -->

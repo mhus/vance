@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { VAlert, VButton, VEmptyState, VInput, VModal, VSelect, VTextarea } from '@/components';
+import { VAlert, VButton, VEmptyState, VInput, VModal, VSelect, VTextarea, VIconButton } from '@/components';
 import { MaximegalonStatus, type MaximegalonDto } from '@vance/generated';
 import { useInbox } from '@/composables/useInbox';
 import { useTeams } from '@/composables/useTeams';
@@ -277,7 +277,7 @@ function when(at: Date | string | undefined): string {
       <VButton
         v-if="openThreadId"
         size="sm"
-        variant="ghost"
+        variant="plain"
         class="-ml-2"
         :title="t('cortexThreads.backToList')"
         :aria-label="t('cortexThreads.backToList')"
@@ -287,14 +287,10 @@ function when(at: Date | string | undefined): string {
         {{ t('cortexThreads.heading') }}
       </span>
       <span class="truncate flex-1">{{ activeDocument?.title || activeDocument?.path }}</span>
-      <VButton
+      <VIconButton icon="add" :label="t('cortexThreads.newTitle')" size="sm"
         v-if="activeDocument && !openThreadId"
-        size="sm"
-        variant="ghost"
-        class="shrink-0 -mr-2"
-        :title="t('cortexThreads.newTitle')"
         @click="openDialog"
-      >+</VButton>
+       />
     </div>
 
     <div v-if="!activeDocument" class="flex-1 flex items-center justify-center p-3">
@@ -431,7 +427,7 @@ function when(at: Date | string | undefined): string {
         />
       </div>
       <template #actions>
-        <VButton variant="ghost" :disabled="creating" @click="openOpen = false">
+        <VButton variant="secondary" :disabled="creating" @click="openOpen = false">
           {{ t('cortexThreads.newCancel') }}
         </VButton>
         <VButton

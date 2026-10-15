@@ -347,8 +347,8 @@ onBeforeUnmount(() => {
   <div class="flex h-full w-full flex-col">
     <div class="no-print flex items-center gap-2 border-b border-slate-200 p-2">
       <div class="relative">
-        <VButton size="sm" @click="menuOpen = !menuOpen">
-          ☰ {{ activeTitle }} ▾
+        <VButton icon="menu" size="sm" @click="menuOpen = !menuOpen">
+          {{ activeTitle }} ▾
         </VButton>
         <div
           v-if="menuOpen"
@@ -368,11 +368,11 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </div>
-      <VButton size="sm" variant="ghost" @click="addSheet">+ {{ t('scribble.book.addSheet') }}</VButton>
-      <VButton size="sm" variant="ghost" @click="rebuild">↻ {{ t('scribble.book.rebuildIndex') }}</VButton>
+      <VButton icon="add" size="sm" variant="plain" @click="addSheet">{{ t('scribble.book.addSheet') }}</VButton>
+      <VButton icon="refresh" size="sm" variant="plain" @click="rebuild">{{ t('scribble.book.rebuildIndex') }}</VButton>
       <VButton
         size="sm"
-        variant="ghost"
+        variant="plain"
         :class="activeEnabled ? '' : 'opacity-50'"
         :title="t('scribble.book.toggleEnabled')"
         :aria-label="t('scribble.book.toggleEnabled')"
@@ -382,7 +382,7 @@ onBeforeUnmount(() => {
       </VButton>
       <VButton
         size="sm"
-        variant="ghost"
+        variant="plain"
         :class="activeDefault ? 'text-amber-500' : 'text-slate-300'"
         :title="t('scribble.book.toggleDefault')"
         :aria-label="t('scribble.book.toggleDefault')"
@@ -392,7 +392,7 @@ onBeforeUnmount(() => {
       </VButton>
       <VButton
         size="sm"
-        variant="ghost"
+        variant="plain"
         :disabled="busy !== null"
         :title="t('scribble.book.ocr')"
         :aria-label="t('scribble.book.ocr')"
@@ -402,7 +402,7 @@ onBeforeUnmount(() => {
       </VButton>
       <VButton
         size="sm"
-        variant="ghost"
+        variant="plain"
         :disabled="busy !== null"
         :title="t('scribble.book.pdf')"
         :aria-label="t('scribble.book.pdf')"

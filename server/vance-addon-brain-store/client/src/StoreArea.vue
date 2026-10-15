@@ -725,7 +725,7 @@ onUnmounted(() => {
                     ? '…'
                     : t('store.area.confirmPrice', { price: priceOf(entry) }) }}
                 </VButton>
-                <VButton size="sm" variant="secondary" outline @click="buyingPath = ''">
+                <VButton size="sm" variant="secondary" @click="buyingPath = ''">
                   {{ t('store.common.cancel') }}
                 </VButton>
               </div>

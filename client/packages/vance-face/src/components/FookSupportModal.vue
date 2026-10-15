@@ -111,7 +111,7 @@ async function onSubmit(): Promise<void> {
     <VAlert v-if="error" variant="error" class="mt-2">{{ error }}</VAlert>
 
     <template #actions>
-      <VButton variant="ghost" :disabled="loading" @click="close">
+      <VButton variant="secondary" :disabled="loading" @click="close">
         {{ submissionId ? t('common.close') : t('common.cancel') }}
       </VButton>
       <VButton

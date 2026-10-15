@@ -680,7 +680,7 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
         <!-- Level 3: open entry, inline view -->
         <template v-if="activeArea && activeEntry">
           <div class="flex items-center gap-2">
-            <VButton variant="ghost" size="sm" @click="backToEntryList">
+            <VButton variant="plain" size="sm" @click="backToEntryList">
               {{ t('settings.areas.backToEntries') }}
             </VButton>
           </div>
@@ -694,7 +694,7 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
         <!-- Level 2: entry list of the open area -->
         <template v-else-if="activeArea">
           <div class="flex items-center justify-between gap-2">
-            <VButton variant="ghost" size="sm" @click="backToAreas">
+            <VButton variant="plain" size="sm" @click="backToAreas">
               {{ t('settings.areas.backToAreas') }}
             </VButton>
             <VButton
@@ -731,7 +731,7 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
                 <div class="font-semibold truncate">{{ row.title }}</div>
                 <div v-if="row.path" class="text-xs opacity-60 font-mono truncate">{{ row.path }}</div>
               </button>
-              <VButton variant="ghost" size="sm" @click="deleteEntry(row)">
+              <VButton variant="danger" size="sm" @click="deleteEntry(row)">
                 {{ t('settings.areas.deleteEntry') }}
               </VButton>
             </li>
@@ -766,7 +766,7 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
       <template v-else-if="effectiveTab === 'forms'">
         <template v-if="activeForm">
           <div class="flex items-center gap-2">
-            <VButton variant="ghost" size="sm" @click="backToFormsListing">
+            <VButton variant="plain" size="sm" @click="backToFormsListing">
               {{ t('settings.backToListing') }}
             </VButton>
           </div>
@@ -870,7 +870,7 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
           @keydown.enter="addEntry"
         />
         <div class="flex justify-end gap-2">
-          <VButton variant="ghost" size="sm" @click="showAddDialog = false">
+          <VButton variant="secondary" size="sm" @click="showAddDialog = false">
             {{ t('settings.raw.cancel') }}
           </VButton>
           <VButton

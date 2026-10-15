@@ -155,13 +155,13 @@ function fmtScore(score: number): string {
             {{ state.busy.value ? $t('insights.rag.working') : $t('insights.rag.reindex') }}
           </VButton>
           <VButton
-            variant="ghost"
+            variant="plain"
             :disabled="state.busy.value"
             @click="rebuildConfirmOpen = true"
           >
             {{ $t('insights.rag.rebuildButton') }}
           </VButton>
-          <VButton variant="ghost" :disabled="state.busy.value" @click="refresh">
+          <VButton variant="plain" :disabled="state.busy.value" @click="refresh">
             {{ $t('insights.rag.refresh') }}
           </VButton>
         </div>
@@ -181,7 +181,7 @@ function fmtScore(score: number): string {
           </p>
           <div class="flex gap-2">
             <VButton variant="danger" filled @click="rebuild">{{ $t('insights.rag.confirmYes') }}</VButton>
-            <VButton variant="ghost" @click="rebuildConfirmOpen = false">{{ $t('insights.rag.cancel') }}</VButton>
+            <VButton variant="plain" @click="rebuildConfirmOpen = false">{{ $t('insights.rag.cancel') }}</VButton>
           </div>
         </div>
 

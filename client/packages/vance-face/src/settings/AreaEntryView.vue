@@ -177,7 +177,7 @@ watch(
           >↗</a>
           <VButton
             variant="secondary"
-            outline
+           
             size="sm"
             :loading="saving"
             @click="apply"

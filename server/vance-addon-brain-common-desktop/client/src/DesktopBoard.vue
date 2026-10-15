@@ -68,7 +68,7 @@ defineExpose({ reload: load });
   <div class="flex flex-col h-full p-4 gap-4 overflow-auto">
     <div class="flex items-center justify-between">
       <h1 class="text-xl font-semibold">{{ title ?? folder }}</h1>
-      <VButton variant="ghost" size="sm" :loading="loading" @click="load">
+      <VButton variant="plain" size="sm" :loading="loading" @click="load">
         {{ t('desktop.refresh') }}
       </VButton>
     </div>
@@ -144,12 +144,12 @@ defineExpose({ reload: load });
         </div>
 
         <template #actions>
-          <VButton size="sm" variant="neutral" @click="openCard(card)">
+          <VButton size="sm" variant="secondary" @click="openCard(card)">
             {{ t('desktop.open') }}
           </VButton>
           <VButton
             size="sm"
-            variant="ghost"
+            variant="plain"
             class="px-2"
             :title="t('desktop.openInNewWindow')"
             @click="openCardNewWindow(card)"

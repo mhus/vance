@@ -189,9 +189,9 @@ function send(): void {
             <VButton variant="primary" size="sm" @click="answerWithText">
               {{ single ? t('kindViews.questions.send') : t('kindViews.questions.next') }}
             </VButton>
-            <VButton variant="ghost" size="sm" @click="answer(QuestionOutcome.SETTLED)">{{ labels.settled }}</VButton>
-            <VButton variant="ghost" size="sm" @click="answer(QuestionOutcome.LATER)">{{ labels.later }}</VButton>
-            <VButton variant="ghost" size="sm" @click="answer(QuestionOutcome.UNKNOWN)">{{ labels.unknown }}</VButton>
+            <VButton variant="plain" size="sm" @click="answer(QuestionOutcome.SETTLED)">{{ labels.settled }}</VButton>
+            <VButton variant="plain" size="sm" @click="answer(QuestionOutcome.LATER)">{{ labels.later }}</VButton>
+            <VButton variant="plain" size="sm" @click="answer(QuestionOutcome.UNKNOWN)">{{ labels.unknown }}</VButton>
             <VButton v-if="page > 0" variant="ghost" size="sm" @click="goTo(page - 1)">{{ t('kindViews.questions.back') }}</VButton>
           </div>
         </div>

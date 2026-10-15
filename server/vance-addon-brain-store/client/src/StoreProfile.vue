@@ -217,7 +217,7 @@ onMounted(load);
             v-if="entry.accountId && !entry.developer && applying !== entry.sourceId"
             size="sm"
             variant="secondary"
-            outline
+           
             @click="openApply(entry)"
           >
             {{ t('store.profile.becomeDeveloper') }}
@@ -239,7 +239,7 @@ onMounted(load);
           v-if="receiptsFor !== entry.sourceId"
           size="sm"
           variant="secondary"
-          outline
+         
           :disabled="loading"
           @click="showReceipts(entry)"
         >{{ t('store.profile.receipts') }}</VButton>
@@ -260,7 +260,7 @@ onMounted(load);
             <button class="underline opacity-70" @click="openReceipt(entry, receipt)">{{ t('store.common.pdf') }}</button>
           </div>
           <div>
-            <VButton size="sm" variant="secondary" outline @click="receiptsFor = ''">
+            <VButton size="sm" variant="secondary" @click="receiptsFor = ''">
               {{ t('store.common.hide') }}
             </VButton>
           </div>
@@ -283,7 +283,7 @@ onMounted(load);
         />
         <div class="flex gap-2">
           <VButton :disabled="loading" @click="submitSignIn(entry)">{{ t('store.profile.signIn') }}</VButton>
-          <VButton variant="secondary" outline @click="signingIn = ''">{{ t('store.common.cancel') }}</VButton>
+          <VButton variant="secondary" @click="signingIn = ''">{{ t('store.common.cancel') }}</VButton>
         </div>
       </div>
 
@@ -328,7 +328,7 @@ onMounted(load);
           >
             {{ t('store.common.apply') }}
           </VButton>
-          <VButton variant="secondary" outline @click="applying = ''">{{ t('store.common.cancel') }}</VButton>
+          <VButton variant="secondary" @click="applying = ''">{{ t('store.common.cancel') }}</VButton>
         </div>
       </div>
     </VCard>

@@ -261,7 +261,7 @@ async function toggleTerminated(): Promise<void> {
           <span class="text-xs opacity-70">
             {{ t('processPanel.count', { n: rows.length }) }}
           </span>
-          <VButton size="xs" variant="ghost" @click="toggleTerminated">
+          <VButton size="xs" variant="secondary" @click="toggleTerminated">
             {{ includeTerminated ? t('processPanel.filterAll') : t('processPanel.filterLive') }}
           </VButton>
         </div>
@@ -348,22 +348,22 @@ async function toggleTerminated(): Promise<void> {
             <VButton size="xs" @click="emit('open-session', sessionId as string)">
               {{ t('processPanel.openSession') }}
             </VButton>
-            <VButton size="xs" variant="ghost" @click="openDetail(selected)">
+            <VButton size="xs" variant="secondary" @click="openDetail(selected)">
               {{ t('processPanel.reload') }}
             </VButton>
           </div>
 
           <div v-else class="flex items-center gap-2">
-            <VButton size="xs" variant="ghost" :disabled="busy" @click="lifecycle('process-pause')">
+            <VButton size="xs" variant="secondary" :disabled="busy" @click="lifecycle('process-pause')">
               {{ t('processPanel.pause') }}
             </VButton>
-            <VButton size="xs" variant="ghost" :disabled="busy" @click="lifecycle('process-resume')">
+            <VButton size="xs" variant="secondary" :disabled="busy" @click="lifecycle('process-resume')">
               {{ t('processPanel.resume') }}
             </VButton>
-            <VButton size="xs" variant="ghost" :disabled="busy" @click="lifecycle('process-stop')">
+            <VButton size="xs" variant="secondary" :disabled="busy" @click="lifecycle('process-stop')">
               {{ t('processPanel.stop') }}
             </VButton>
-            <VButton size="xs" variant="ghost" :disabled="busy" @click="openDetail(selected)">
+            <VButton size="xs" variant="secondary" :disabled="busy" @click="openDetail(selected)">
               {{ t('processPanel.reload') }}
             </VButton>
           </div>

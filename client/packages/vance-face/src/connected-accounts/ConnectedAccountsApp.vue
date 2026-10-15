@@ -100,7 +100,7 @@ async function onDisconnect(providerId: string): Promise<void> {
               </VButton>
               <template v-else>
                 <VButton
-                  variant="ghost"
+                  variant="plain"
                   :loading="state.busy.value"
                   @click="onConnect(p.providerId)"
                 >

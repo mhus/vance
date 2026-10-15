@@ -199,11 +199,11 @@ defineExpose({ reload: load });
             ? `⏸ ${t('slideshow.pause')}`
             : `▶ ${t('slideshow.play', { seconds: show.autoplaySeconds })}` }}
         </VButton>
-        <VButton size="sm" variant="ghost" @click="toggleFullscreen">
+        <VButton size="sm" variant="plain" @click="toggleFullscreen">
           {{ fullscreen ? t('slideshow.exitFullscreen') : t('slideshow.fullscreen') }}
         </VButton>
-        <VButton size="sm" variant="ghost" @click="load">{{ t('slideshow.reload') }}</VButton>
-        <VButton size="sm" variant="ghost" @click="rebuild">{{ t('slideshow.rebuild') }}</VButton>
+        <VButton size="sm" variant="plain" @click="load">{{ t('slideshow.reload') }}</VButton>
+        <VButton size="sm" variant="plain" @click="rebuild">{{ t('slideshow.rebuild') }}</VButton>
       </div>
     </div>
 

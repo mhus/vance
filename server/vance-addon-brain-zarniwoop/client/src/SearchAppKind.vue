@@ -560,7 +560,7 @@ function message(e: unknown): string {
         {{ t('search.search') }}
       </VButton>
       <VButton
-        variant="ghost"
+        variant="plain"
         :disabled="loading || !query.trim()"
         :title="t('search.investigateTip')"
         @click="runInvestigate()"
@@ -569,14 +569,14 @@ function message(e: unknown): string {
       </VButton>
       <VButton
         v-if="!configTab && query.trim()"
-        variant="ghost"
+        variant="plain"
         :disabled="loading"
         :title="t('search.saveSearchTip')"
         @click="saveCurrent()"
       >
         {{ t('search.saveSearch') }}
       </VButton>
-      <VButton variant="ghost" @click="configTab = !configTab">
+      <VButton variant="plain" @click="configTab = !configTab">
         {{ configTab ? t('search.back') : t('search.settings') }}
       </VButton>
     </div>
@@ -589,7 +589,7 @@ function message(e: unknown): string {
         v-for="m in available"
         :key="m"
         size="sm"
-        :variant="modality === m ? 'primary' : 'ghost'"
+        :variant="modality === m ? 'primary' : 'secondary'"
         @click="selectModality(m)"
       >
         {{ t(`search.modality.${m}`) }}
@@ -703,7 +703,7 @@ function message(e: unknown): string {
               </span>
             </div>
           </div>
-          <VButton class="mt-2" size="sm" variant="ghost" :disabled="loading"
+          <VButton class="mt-2" size="sm" variant="plain" :disabled="loading"
                    @click="reloadProviders()">
             {{ t('search.reloadProviders') }}
           </VButton>
@@ -723,7 +723,7 @@ function message(e: unknown): string {
               class="w-24"
               @update:model-value="(v: string) => (num = Number(v) || 10)"
             />
-            <VButton size="sm" variant="ghost" :disabled="loading" @click="persist()">
+            <VButton size="sm" variant="plain" :disabled="loading" @click="persist()">
               {{ t('search.saveDefaults') }}
             </VButton>
           </div>
@@ -742,8 +742,8 @@ function message(e: unknown): string {
             >
               <span class="flex-1 truncate">{{ saved.name }}</span>
               <span class="text-xs opacity-60">{{ saved.modality }}</span>
-              <VButton size="sm" variant="ghost" @click="runSaved(saved)">{{ t('search.run') }}</VButton>
-              <VButton size="sm" variant="ghost" @click="removeSaved(saved.name)">
+              <VButton size="sm" variant="plain" @click="runSaved(saved)">{{ t('search.run') }}</VButton>
+              <VButton size="sm" variant="danger" @click="removeSaved(saved.name)">
                 {{ t('search.remove') }}
               </VButton>
             </div>

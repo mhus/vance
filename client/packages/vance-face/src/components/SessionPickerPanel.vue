@@ -24,7 +24,7 @@ import {
   type SessionGroupDto,
   type SessionSummaryRichDto,
 } from '@vance/generated';
-import { VAlert, VButton, VInput, VModal } from '@/components';
+import { VAlert, VButton, VInput, VModal, VIconButton } from '@/components';
 import { useSessionGroups } from '@/composables/useSessionGroups';
 import { useSessionGroupCollapse } from '@/composables/useSessionGroupCollapse';
 import { filterListedRecipes, groupListedRecipes } from '@/recipes/recipePickerGroups';
@@ -311,14 +311,9 @@ watch(showArchived, () => {
     <div class="flex items-center gap-1 px-2 py-1.5 border-b border-base-300 shrink-0">
       <span class="font-semibold flex-1">{{ $t('shell.sessions') }}</span>
       <span class="opacity-50 text-xs">{{ filtered.length }}</span>
-      <VButton
-        size="sm"
-        variant="ghost"
-        :title="$t('chat.picker.newSession')"
+      <VIconButton icon="add" :label="$t('chat.picker.newSession')" size="sm"
         @click="openRecipeModal"
-      >
-        +
-      </VButton>
+       />
     </div>
 
     <div class="px-2 py-1.5 border-b border-base-300 shrink-0 flex flex-col gap-1.5">
@@ -498,7 +493,7 @@ watch(showArchived, () => {
         </ul>
       </div>
       <template #actions>
-        <VButton variant="ghost" :disabled="bootstrapping" @click="recipeModalOpen = false">
+        <VButton variant="secondary" :disabled="bootstrapping" @click="recipeModalOpen = false">
           {{ $t('common.cancel') }}
         </VButton>
       </template>

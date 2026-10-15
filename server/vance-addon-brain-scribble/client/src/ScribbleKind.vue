@@ -202,7 +202,7 @@ async function runPdf(): Promise<void> {
         <span>{{ saveLabel }}</span>
         <VButton
           size="sm"
-          variant="ghost"
+          variant="plain"
           :disabled="busy !== null"
           :title="t('scribble.book.ocr')"
           :aria-label="t('scribble.book.ocr')"
@@ -212,7 +212,7 @@ async function runPdf(): Promise<void> {
         </VButton>
         <VButton
           size="sm"
-          variant="ghost"
+          variant="plain"
           :disabled="busy !== null"
           :title="t('scribble.book.pdf')"
           :aria-label="t('scribble.book.pdf')"

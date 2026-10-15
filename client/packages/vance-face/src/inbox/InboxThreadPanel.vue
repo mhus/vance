@@ -301,7 +301,7 @@ watch(() => [props.item.participants, props.error], () => {
             @click.stop
             @react="(key: string, on: boolean) => emit('react', key, on, node.message.id)"
           >
-            <VButton size="sm" variant="ghost" @click="startReply(node.message.id)">
+            <VButton size="sm" variant="plain" @click="startReply(node.message.id)">
               {{ t('inboxThread.reply') }}
             </VButton>
           </InboxReactionBar>
@@ -348,7 +348,7 @@ watch(() => [props.item.participants, props.error], () => {
     <div class="flex flex-col gap-2">
       <div v-if="replyTo" class="flex items-center gap-2 text-xs opacity-70">
         <span>{{ t('inboxThread.replyingTo') }}</span>
-        <VButton size="sm" variant="ghost" @click="replyTo = null">
+        <VButton size="sm" variant="plain" @click="replyTo = null">
           {{ t('inboxThread.cancelReply') }}
         </VButton>
       </div>
@@ -367,7 +367,7 @@ watch(() => [props.item.participants, props.error], () => {
               :disabled="busy"
             />
           </div>
-          <VButton size="sm" variant="ghost" :disabled="busy" @click="submitInvite">
+          <VButton size="sm" variant="plain" :disabled="busy" @click="submitInvite">
             {{ t('inboxThread.invite') }}
           </VButton>
         </div>

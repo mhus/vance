@@ -327,14 +327,14 @@ function actionLabel(action: string): string {
       <div class="flex gap-2 justify-end mt-2 flex-wrap">
         <VButton
           v-if="form.clearable"
-          variant="ghost"
+          variant="plain"
           size="sm"
           :disabled="submitting"
           @click="onReset"
         >
           {{ t('settingForms.reset') }}
         </VButton>
-        <VButton variant="ghost" size="sm" :loading="submitting" @click="onValidate">
+        <VButton variant="plain" size="sm" :loading="submitting" @click="onValidate">
           {{ t('settingForms.preview') }}
         </VButton>
         <VButton variant="primary" size="sm" :loading="submitting" @click="onApply">

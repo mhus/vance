@@ -611,7 +611,7 @@ const headingClass = computed(() =>
   <VButton
     v-else-if="node.type === 'button'"
     size="sm"
-    :variant="hasHandler('click') ? 'primary' : 'ghost'"
+    :variant="hasHandler('click') ? 'primary' : 'secondary'"
     @click="fire('click')"
   >
     {{ node.label }}
@@ -835,7 +835,7 @@ const headingClass = computed(() =>
         v-for="(child, i) in visibleTabs"
         :key="i"
         size="sm"
-        :variant="activeTab === i ? 'primary' : 'ghost'"
+        :variant="activeTab === i ? 'primary' : 'secondary'"
         @click="activeTab = i"
       >
         {{ child.label ?? t('bistromath.widget.tab', { number: i + 1 }) }}

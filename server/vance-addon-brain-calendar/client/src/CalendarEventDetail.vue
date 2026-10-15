@@ -163,9 +163,9 @@ function confirmDelete(): void {
     </div>
 
     <div class="flex items-center justify-between p-4 border-t border-base-300">
-      <VButton variant="ghost" class="text-error" @click="confirmDelete">{{ t('calendar.common.delete') }}</VButton>
+      <VButton variant="danger" class="text-error" @click="confirmDelete">{{ t('calendar.common.delete') }}</VButton>
       <div class="flex gap-2">
-        <VButton variant="ghost" :disabled="!dirty" @click="emit('close')">{{ t('calendar.detail.discard') }}</VButton>
+        <VButton variant="danger" :disabled="!dirty" @click="emit('close')">{{ t('calendar.detail.discard') }}</VButton>
         <VButton variant="primary" :disabled="!dirty" @click="save">{{ t('calendar.common.save') }}</VButton>
       </div>
     </div>

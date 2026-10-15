@@ -72,7 +72,7 @@ async function onEditClosed(): Promise<void> {
     <div v-else-if="tree" class="flex flex-col gap-2 p-2">
       <div class="flex items-center gap-2">
         <span class="font-semibold flex-1 truncate">{{ tree.title || t('finance.fallbackTitle') }}</span>
-        <VButton variant="ghost" @click="editOpen = true">{{ t('finance.summary.edit') }}</VButton>
+        <VButton variant="plain" @click="editOpen = true">{{ t('finance.summary.edit') }}</VButton>
       </div>
 
       <div class="flex items-baseline gap-2">

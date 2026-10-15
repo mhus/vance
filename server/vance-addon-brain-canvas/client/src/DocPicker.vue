@@ -175,7 +175,7 @@ defineExpose({ open: openPicker });
       <div class="flex gap-1">
         <VButton
           size="sm"
-          :variant="tab === 'doc' ? 'primary' : 'ghost'"
+          :variant="tab === 'doc' ? 'primary' : 'secondary'"
           @click="tab = 'doc'"
         >
           {{ t('canvas.picker.tabDocument') }}
@@ -183,21 +183,21 @@ defineExpose({ open: openPicker });
         <VButton
           v-if="appTargets"
           size="sm"
-          :variant="tab === 'app' ? 'primary' : 'ghost'"
+          :variant="tab === 'app' ? 'primary' : 'secondary'"
           @click="tab = 'app'"
         >
           {{ t('canvas.picker.tabThisApp') }}
         </VButton>
         <VButton
           size="sm"
-          :variant="tab === 'starred' ? 'primary' : 'ghost'"
+          :variant="tab === 'starred' ? 'primary' : 'secondary'"
           @click="tab = 'starred'"
         >
           {{ t('canvas.picker.tabStarred') }}
         </VButton>
         <VButton
           size="sm"
-          :variant="tab === 'apps' ? 'primary' : 'ghost'"
+          :variant="tab === 'apps' ? 'primary' : 'secondary'"
           @click="tab = 'apps'"
         >
           {{ t('canvas.picker.tabApps') }}
@@ -289,7 +289,7 @@ defineExpose({ open: openPicker });
 
         <template v-else>
           <div class="flex items-center gap-2">
-            <VButton size="sm" variant="ghost" @click="apps.back()">← {{ t('canvas.common.back') }}</VButton>
+            <VButton icon="back" size="sm" variant="secondary" @click="apps.back()">{{ t('canvas.common.back') }}</VButton>
             <span class="truncate text-sm opacity-70">
               {{ apps.openApp.value.title || apps.openApp.value.path }}
             </span>
@@ -328,7 +328,7 @@ defineExpose({ open: openPicker });
       </template>
 
       <div class="flex justify-end">
-        <VButton size="sm" variant="ghost" @click="finish(null)">{{ t('canvas.common.cancel') }}</VButton>
+        <VButton size="sm" variant="secondary" @click="finish(null)">{{ t('canvas.common.cancel') }}</VButton>
       </div>
     </div>
   </VModal>

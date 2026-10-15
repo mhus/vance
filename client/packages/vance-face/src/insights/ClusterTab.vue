@@ -237,7 +237,7 @@ const sortedPods = computed<BrainPodInsightsDto[]>(() => {
   <div class="flex flex-col gap-3 p-4">
     <!-- ─── Toolbar ─── -->
     <div class="flex flex-wrap items-end gap-3 text-sm">
-      <VButton variant="ghost" size="sm" @click="refresh">
+      <VButton variant="plain" size="sm" @click="refresh">
         {{ $t('insights.cluster.refresh') }}
       </VButton>
       <div class="text-xs opacity-60 ml-auto">

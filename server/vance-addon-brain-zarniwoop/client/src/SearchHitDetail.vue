@@ -54,7 +54,7 @@ function shareSubject(hit: SearchHitView) {
         <VButton
           v-if="!fullText && !fullTextUrl"
           size="sm"
-          variant="ghost"
+          variant="plain"
           :disabled="loadingBody"
           @click="$emit('load')"
         >

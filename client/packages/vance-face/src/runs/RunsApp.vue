@@ -111,8 +111,8 @@ onMounted(async () => {
     focus-model="auto"
   >
     <template #topbar-extra>
-      <VButton size="sm" variant="ghost" :disabled="loading" @click="refresh">
-        ⟳ {{ t('runs.refresh') }}
+      <VButton icon="refresh" size="sm" variant="plain" :disabled="loading" @click="refresh">
+        {{ t('runs.refresh') }}
       </VButton>
     </template>
 

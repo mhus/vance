@@ -486,12 +486,12 @@ function contrastText(bgColor: string): string {
 <template>
   <div :class="['graph-view', `graph-view--${mode}`]" tabindex="0" @keydown="onKeyDown">
     <div v-if="isEditor" class="toolbar">
-      <VButton size="sm" variant="primary" @click="addNode">
-        + {{ t('documents.graphView.addNode') }}
+      <VButton icon="add" size="sm" variant="primary" @click="addNode">
+        {{ t('documents.graphView.addNode') }}
       </VButton>
       <VButton
         size="sm"
-        variant="ghost"
+        variant="plain"
         :disabled="localNodes.length === 0"
         :title="t('documents.graphView.autoLayoutHint')"
         @click="runAutoLayout"

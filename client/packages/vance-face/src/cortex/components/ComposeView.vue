@@ -290,7 +290,7 @@ onUnmounted(() => {
         :disabled="cancelling || (running && !canStop)"
         @click="onRunButton"
       >{{ runGlyph }}</VButton>
-      <VButton variant="ghost" size="sm" :disabled="running" @click="clearOutput">
+      <VButton variant="plain" size="sm" :disabled="running" @click="clearOutput">
         {{ t('compose.clearOutput') }}
       </VButton>
       <span v-if="cancelling" class="text-sm opacity-70">{{ $t('cortex.compose.stopping') }}</span>

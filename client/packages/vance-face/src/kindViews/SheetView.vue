@@ -1223,38 +1223,38 @@ function applyNumberFormat(raw: string, code: string): string {
     <div class="toolbar">
       <VButton
         size="sm"
-        variant="ghost"
+        variant="plain"
         :title="t('documents.sheetView.insertRowAbove')"
         @click="insertRowAbove"
       ><span class="ico">▭↑</span></VButton>
       <VButton
         size="sm"
-        variant="ghost"
+        variant="plain"
         :title="t('documents.sheetView.insertRow')"
         @click="insertRowBelow"
       ><span class="ico">▭↓</span></VButton>
       <VButton
         size="sm"
-        variant="ghost"
+        variant="plain"
         :title="t('documents.sheetView.insertColumnLeft')"
         @click="insertColumnLeft"
       ><span class="ico">←▯</span></VButton>
       <VButton
         size="sm"
-        variant="ghost"
+        variant="plain"
         :title="t('documents.sheetView.insertColumn')"
         @click="insertColumnRight"
       ><span class="ico">▯→</span></VButton>
       <VButton
         size="sm"
-        variant="ghost"
+        variant="plain"
         :disabled="activeRow == null"
         :title="t('documents.sheetView.deleteRow')"
         @click="deleteSelectedRow"
       ><span class="ico ico--danger">▭✕</span></VButton>
       <VButton
         size="sm"
-        variant="ghost"
+        variant="plain"
         :disabled="!activeColumn || localSchema.length <= 1"
         :title="t('documents.sheetView.deleteColumn')"
         @click="deleteSelectedColumn"
@@ -1262,21 +1262,21 @@ function applyNumberFormat(raw: string, code: string): string {
       <VButton
         v-if="activeColumn"
         size="sm"
-        variant="ghost"
+        variant="plain"
         :title="t('documents.sheetView.columnBorderHint')"
         @click="cycleColumnBorder"
       ><span class="ico">▯</span> {{ columnBorderLabel }}</VButton>
       <VButton
         v-if="activeRow != null"
         size="sm"
-        variant="ghost"
+        variant="plain"
         :title="t('documents.sheetView.rowBorderHint')"
         @click="cycleRowBorder"
       ><span class="ico">▭</span> {{ rowBorderLabel }}</VButton>
       <VButton
         v-if="canRecalc"
         size="sm"
-        variant="ghost"
+        variant="plain"
         :disabled="recalcing"
         :title="t('documents.sheetView.recalcHint')"
         @click="recalc"
@@ -1284,21 +1284,21 @@ function applyNumberFormat(raw: string, code: string): string {
       <VButton
         v-if="canRecalc"
         size="sm"
-        variant="ghost"
+        variant="plain"
         :title="t('documents.sheetView.importFile')"
         @click="triggerImport"
       ><span class="ico">⬆</span></VButton>
       <VButton
         v-if="canRecalc"
         size="sm"
-        variant="ghost"
+        variant="plain"
         :title="t('documents.sheetView.exportXlsx')"
         @click="exportFile('xlsx')"
       ><span class="ico">⬇</span> xlsx</VButton>
       <VButton
         v-if="canRecalc"
         size="sm"
-        variant="ghost"
+        variant="plain"
         :title="t('documents.sheetView.exportCsv')"
         @click="exportFile('csv')"
       ><span class="ico">⬇</span> csv</VButton>
@@ -1535,7 +1535,7 @@ function applyNumberFormat(raw: string, code: string): string {
         </label>
         <VButton
           size="sm"
-          variant="ghost"
+          variant="plain"
           :disabled="!selectionHasFormat"
           @click="clearCellFormat"
         >{{ t('documents.sheetView.clearFormat') }}</VButton>

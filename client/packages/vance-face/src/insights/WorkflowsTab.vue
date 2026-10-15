@@ -462,7 +462,7 @@ function processSelectHandler(run: MagratheaProcessDto): void {
                     }) }}
                   </span>
                   <VButton
-                    variant="ghost"
+                    variant="plain"
                     size="sm"
                     @click="refreshRuns"
                   >{{ $t('insights.workflows.runs.refresh') }}</VButton>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { VAlert, VButton, VModal } from '@components/index';
+import { VAlert, VButton, VModal, VIconButton } from '@components/index';
 import { ChatRole, type ChatMessageDto } from '@vance/generated';
 import { cropSession, getCropMessages } from '@vance/shared';
 import { computed, ref, watch } from 'vue';
@@ -206,13 +206,9 @@ function rowState(m: ChatMessageDto): 'willRemove' | 'willRestore' | 'removed' |
               style="display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden"
             >{{ m.content }}</div>
           </div>
-          <VButton
-            variant="ghost"
-            size="xs"
-            class="shrink-0"
-            :title="t('chat.crop.cropFromHere')"
+          <VIconButton icon="crop" :label="t('chat.crop.cropFromHere')" size="sm"
             @click="cropFrom(index)"
-          >✂</VButton>
+           />
         </li>
       </ul>
     </div>
@@ -230,7 +226,7 @@ function rowState(m: ChatMessageDto): 'willRemove' | 'willRestore' | 'removed' |
             :disabled="saving"
             @click="reset"
           >{{ t('chat.crop.undoCrop') }}</VButton>
-          <VButton variant="ghost" size="sm" :disabled="saving" @click="close">
+          <VButton variant="secondary" size="sm" :disabled="saving" @click="close">
             {{ t('chat.crop.cancel') }}
           </VButton>
           <VButton

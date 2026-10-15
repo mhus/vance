@@ -194,7 +194,7 @@ async function copyToNewFile(): Promise<void> {
           <div class="flex gap-1 shrink-0">
             <VButton
               size="sm"
-              variant="ghost"
+              variant="plain"
               :disabled="acting"
               @click="confirmRestore = archive.id"
             >
@@ -202,7 +202,7 @@ async function copyToNewFile(): Promise<void> {
             </VButton>
             <VButton
               size="sm"
-              variant="ghost"
+              variant="plain"
               :disabled="acting"
               @click="confirmCopy = archive.id"
             >
@@ -210,7 +210,7 @@ async function copyToNewFile(): Promise<void> {
             </VButton>
             <VButton
               size="sm"
-              variant="ghost"
+              variant="danger"
               :disabled="acting"
               @click="confirmDelete = archive.id"
             >
@@ -247,7 +247,7 @@ async function copyToNewFile(): Promise<void> {
         </p>
       </div>
       <template #footer>
-        <VButton variant="ghost" @click="archives.clearPreview()">
+        <VButton variant="secondary" @click="archives.clearPreview()">
           {{ $t('documents.archives.close') }}
         </VButton>
       </template>
@@ -261,7 +261,7 @@ async function copyToNewFile(): Promise<void> {
       <template #title>{{ $t('documents.archives.confirmRestoreTitle') }}</template>
       <p class="text-sm">{{ $t('documents.archives.confirmRestoreBody') }}</p>
       <template #footer>
-        <VButton variant="ghost" :disabled="acting" @click="confirmRestore = null">
+        <VButton variant="secondary" :disabled="acting" @click="confirmRestore = null">
           {{ $t('documents.archives.cancel') }}
         </VButton>
         <VButton variant="primary" :loading="acting" @click="restoreArchive">
@@ -278,7 +278,7 @@ async function copyToNewFile(): Promise<void> {
       <template #title>{{ $t('documents.archives.confirmCopyTitle') }}</template>
       <p class="text-sm">{{ $t('documents.archives.confirmCopyBody') }}</p>
       <template #footer>
-        <VButton variant="ghost" :disabled="acting" @click="confirmCopy = null">
+        <VButton variant="secondary" :disabled="acting" @click="confirmCopy = null">
           {{ $t('documents.archives.cancel') }}
         </VButton>
         <VButton variant="primary" :loading="acting" @click="copyToNewFile">
@@ -295,7 +295,7 @@ async function copyToNewFile(): Promise<void> {
       <template #title>{{ $t('documents.archives.confirmDeleteTitle') }}</template>
       <p class="text-sm">{{ $t('documents.archives.confirmDeleteBody') }}</p>
       <template #footer>
-        <VButton variant="ghost" :disabled="acting" @click="confirmDelete = null">
+        <VButton variant="secondary" :disabled="acting" @click="confirmDelete = null">
           {{ $t('documents.archives.cancel') }}
         </VButton>
         <VButton variant="danger" filled :loading="acting" @click="deleteArchive">

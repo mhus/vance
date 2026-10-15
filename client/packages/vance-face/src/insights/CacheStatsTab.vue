@@ -217,7 +217,7 @@ async function reload(): Promise<void> {
       </VCard>
 
       <div class="flex justify-end">
-        <VButton variant="ghost" :disabled="loading" @click="reload">
+        <VButton variant="plain" :disabled="loading" @click="reload">
           {{ t('insights.cacheStats.reload') }}
         </VButton>
       </div>

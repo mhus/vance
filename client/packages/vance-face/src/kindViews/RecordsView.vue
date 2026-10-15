@@ -511,7 +511,7 @@ const hasOverflow = computed(() =>
     <!-- Toolbar: schema-mode toggle and (when active) inline error. -->
     <div class="records-toolbar">
       <VButton
-        :variant="schemaMode ? 'primary' : 'ghost'"
+        :variant="schemaMode ? 'primary' : 'secondary'"
         size="sm"
         @click="toggleSchemaMode"
       >
@@ -532,7 +532,7 @@ const hasOverflow = computed(() =>
         }}
       </span>
       <span class="grow" />
-      <VButton variant="ghost" size="sm" @click="clearSelection">
+      <VButton variant="plain" size="sm" @click="clearSelection">
         {{ t('documents.recordsEditor.clearSelection') }}
       </VButton>
       <VButton variant="danger" size="sm" @click="deleteSelected">
@@ -675,8 +675,8 @@ const hasOverflow = computed(() =>
     </div>
 
     <div v-if="!schemaMode" class="add-row">
-      <VButton variant="ghost" size="sm" @click="addRowAndEdit">
-        + {{ t('documents.recordsEditor.addRow') }}
+      <VButton icon="add" variant="plain" size="sm" @click="addRowAndEdit">
+        {{ t('documents.recordsEditor.addRow') }}
       </VButton>
     </div>
   </div>

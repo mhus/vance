@@ -72,8 +72,8 @@ function openApp(): void {
     <div class="flex flex-wrap items-center gap-2">
       <span class="font-semibold">{{ view?.title ?? document.title ?? t('bistromath.view.fallbackTitle') }}</span>
       <span class="flex-1" />
-      <VButton variant="ghost" size="sm" :disabled="busy" @click="load()">{{ t('bistromath.view.recheck') }}</VButton>
-      <VButton variant="ghost" size="sm" :title="t('bistromath.view.openAppTip')" @click="openApp()">
+      <VButton variant="plain" size="sm" :disabled="busy" @click="load()">{{ t('bistromath.view.recheck') }}</VButton>
+      <VButton variant="plain" size="sm" :title="t('bistromath.view.openAppTip')" @click="openApp()">
         {{ t('bistromath.view.openApp') }}
       </VButton>
     </div>

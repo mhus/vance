@@ -1045,10 +1045,10 @@ function slug(title: string): string {
 <template>
   <div class="flex h-full flex-col gap-3 p-3">
     <div class="flex items-center gap-2">
-      <VButton :variant="tab === 'stream' ? 'primary' : 'ghost'" @click="tab = 'stream'">
+      <VButton :variant="tab === 'stream' ? 'primary' : 'secondary'" @click="tab = 'stream'">
         {{ t('feeds.tabStream') }}
       </VButton>
-      <VButton :variant="tab === 'config' ? 'primary' : 'ghost'" @click="tab = 'config'">
+      <VButton :variant="tab === 'config' ? 'primary' : 'secondary'" @click="tab = 'config'">
         {{ t('feeds.tabConfig') }}
       </VButton>
       <div class="flex-1"></div>
@@ -1060,7 +1060,7 @@ function slug(title: string): string {
         :title="t('feeds.autoRefresh', { seconds: AUTO_REFRESH_INTERVAL_MS / 1000 })"
         @update:model-value="(v: boolean) => (autoRefresh = v)"
       />
-      <VButton variant="ghost" :disabled="loading || refreshing" @click="refreshNow()">
+      <VButton variant="plain" :disabled="loading || refreshing" @click="refreshNow()">
         {{ t('feeds.refresh') }}
       </VButton>
     </div>
@@ -1222,7 +1222,7 @@ function slug(title: string): string {
                 <VShareButton :subject="shareSubject(item)" />
                 <VButton
                   size="sm"
-                  variant="ghost"
+                  variant="plain"
                   :disabled="!!clipped[entryKey(item)]"
                   @click="clip(item)"
                 >
@@ -1231,7 +1231,7 @@ function slug(title: string): string {
                 <VButton
                   v-if="signalsFor(item.sourceId).includes('REPORT') && !signalled[entryKey(item)]"
                   size="sm"
-                  variant="ghost"
+                  variant="plain"
                   @click="openReport(item)"
                 >
                   {{ t('feeds.report') }}
@@ -1239,7 +1239,7 @@ function slug(title: string): string {
                 <VButton
                   v-if="signalsFor(item.sourceId).includes('REQUEST') && !signalled[entryKey(item)]"
                   size="sm"
-                  variant="ghost"
+                  variant="plain"
                   @click="requestKind(item, 'TRANSLATION')"
                 >
                   {{ t('feeds.askTranslation') }}
@@ -1270,7 +1270,7 @@ function slug(title: string): string {
              a round that appends nothing changes nothing. This is the way
              forward that does not depend on that. -->
         <div v-else-if="hasMore && items.length > 0" class="p-2 text-center">
-          <VButton size="sm" variant="ghost" @click="nextPage()">{{ t('feeds.loadMore') }}</VButton>
+          <VButton size="sm" variant="plain" @click="nextPage()">{{ t('feeds.loadMore') }}</VButton>
         </div>
         <p
           v-else-if="!hasMore && items.length > 0"
@@ -1296,7 +1296,7 @@ function slug(title: string): string {
               :headline="t('feeds.noSourcesHeadline')"
               :body="t('feeds.noSourcesBody')"
             />
-            <VButton variant="ghost" @click="reloadSources(true)">{{ t('feeds.reloadSources') }}</VButton>
+            <VButton variant="plain" @click="reloadSources(true)">{{ t('feeds.reloadSources') }}</VButton>
           </div>
           <div v-else class="flex flex-col gap-2">
             <!-- A source that could not be described is reported, not hidden:
@@ -1331,9 +1331,9 @@ function slug(title: string): string {
                 :options="selectorsFor(stream.source)"
                 @update:model-value="(v: string | null) => (stream.selector = v ?? '')"
               />
-              <VButton size="sm" variant="ghost" @click="removeStream(index)">{{ t('feeds.remove') }}</VButton>
+              <VButton size="sm" variant="danger" @click="removeStream(index)">{{ t('feeds.remove') }}</VButton>
             </div>
-            <VButton size="sm" variant="ghost" @click="addStream()">{{ t('feeds.addStream') }}</VButton>
+            <VButton size="sm" variant="plain" @click="addStream()">{{ t('feeds.addStream') }}</VButton>
           </div>
         </VCard>
 
@@ -1400,7 +1400,7 @@ function slug(title: string): string {
                 <span class="max-w-md truncate text-sm opacity-80">
                   {{ facetSummary(entry.facet.key) }}
                 </span>
-                <VButton size="sm" variant="ghost" @click="openPicker(entry)">{{ t('feeds.choose') }}</VButton>
+                <VButton size="sm" variant="plain" @click="openPicker(entry)">{{ t('feeds.choose') }}</VButton>
                 <VButton
                   v-if="selectedFacetValues(entry.facet.key).length > 0"
                   size="sm"
@@ -1416,7 +1416,7 @@ function slug(title: string): string {
 
         <div class="flex gap-2">
           <VButton variant="primary" @click="persist()">{{ t('feeds.save') }}</VButton>
-          <VButton variant="ghost" @click="reload()">{{ t('feeds.discard') }}</VButton>
+          <VButton variant="danger" @click="reload()">{{ t('feeds.discard') }}</VButton>
         </div>
       </div>
     </div>
@@ -1475,7 +1475,7 @@ function slug(title: string): string {
             <VButton
               v-if="picker.facet.hierarchical"
               size="sm"
-              variant="ghost"
+              variant="secondary"
               @click="drillInto(value)"
             >
               ›
@@ -1485,7 +1485,7 @@ function slug(title: string): string {
       </div>
 
       <template #actions>
-        <VButton variant="ghost" @click="clearFacet(picker.facet.key)">{{ t('feeds.clearAll') }}</VButton>
+        <VButton variant="secondary" @click="clearFacet(picker.facet.key)">{{ t('feeds.clearAll') }}</VButton>
         <VButton variant="primary" @click="pickerOpen = false">{{ t('feeds.done') }}</VButton>
       </template>
     </VModal>
@@ -1514,7 +1514,7 @@ function slug(title: string): string {
         </p>
       </div>
       <template #actions>
-        <VButton variant="ghost" @click="reportOpen = false">{{ t('feeds.cancel') }}</VButton>
+        <VButton variant="secondary" @click="reportOpen = false">{{ t('feeds.cancel') }}</VButton>
         <VButton variant="primary" @click="submitReport()">{{ t('feeds.send') }}</VButton>
       </template>
     </VModal>

@@ -230,8 +230,8 @@ defineExpose({ reload: load });
               { n: planner.conflicts.length }, planner.conflicts.length) }}</span>
           </template>
         </span>
-        <VButton size="sm" variant="ghost" @click="load">{{ t('calendar.planner.reload') }}</VButton>
-        <VButton size="sm" variant="ghost" @click="rebuild">{{ t('calendar.planner.rebuild') }}</VButton>
+        <VButton size="sm" variant="plain" @click="load">{{ t('calendar.planner.reload') }}</VButton>
+        <VButton size="sm" variant="plain" @click="rebuild">{{ t('calendar.planner.rebuild') }}</VButton>
       </div>
     </div>
 
@@ -337,8 +337,8 @@ defineExpose({ reload: load });
             <h2 class="text-lg font-semibold">
               {{ planner?.lanes.find((l) => l.name === activeTab)?.title ?? activeTab }}
             </h2>
-            <VButton size="sm" variant="primary" @click="openCreateModal(activeTab)">
-              + {{ t('calendar.planner.addEvent') }}
+            <VButton icon="add" size="sm" variant="primary" @click="openCreateModal(activeTab)">
+              {{ t('calendar.planner.addEvent') }}
             </VButton>
           </div>
           <div class="flex-1 overflow-y-auto p-4">
@@ -429,7 +429,7 @@ defineExpose({ reload: load });
           @update:model-value="(v) => newEventForm.lane = (v as string | null) ?? ''"
         />
         <div class="flex justify-end gap-2 pt-2">
-          <VButton variant="ghost" @click="showCreateModal = false">{{ t('calendar.common.cancel') }}</VButton>
+          <VButton variant="secondary" @click="showCreateModal = false">{{ t('calendar.common.cancel') }}</VButton>
           <VButton
             variant="primary"
             :disabled="!newEventForm.title.trim() || !newEventForm.start.trim()"

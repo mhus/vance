@@ -162,7 +162,7 @@ const now = Date.now();
           {{ $t('insights.zarniwoop.callsBreakdown', { ok: totals.ok, errors: totals.errors }) }}
         </div>
         <VButton
-          variant="neutral"
+          variant="secondary"
           size="xs"
           class="ml-auto"
           @click="reload"
@@ -214,7 +214,7 @@ const now = Date.now();
               </label>
               <VButton
                 v-if="inst.manualOverride"
-                variant="link"
+                variant="plain"
                 size="xs"
                 class="mt-1"
                 @click="resetOverride(inst)"
@@ -251,7 +251,7 @@ const now = Date.now();
                 </div>
                 <VButton
                   v-if="inst.activeCooldownSubject && inst.activeCooldownSignature"
-                  variant="neutral"
+                  variant="secondary"
                   size="xs"
                   :outline="true"
                   class="mt-1"

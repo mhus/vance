@@ -13,7 +13,7 @@ import {
   RestError,
   type FormValue,
 } from '@vance/shared';
-import { FormFields, VAlert, VButton, VEmptyState } from '@components/index';
+import { FormFields, VAlert, VButton, VEmptyState, VIconButton } from '@components/index';
 
 interface Props {
   projectId?: string;
@@ -208,14 +208,13 @@ defineExpose({ openWizard });
         <div class="text-xs uppercase tracking-wide opacity-60 font-semibold">
           {{ t('chat.wizards.title') }}
         </div>
-        <VButton
-          variant="ghost"
+        <VIconButton
+          icon="refresh"
           size="sm"
-          :loading="listLoading"
+          :label="t('chat.wizards.refresh')"
+          :disabled="listLoading"
           @click="refreshListing"
-        >
-          ⟳
-        </VButton>
+        />
       </div>
 
       <VAlert v-if="listError" variant="error">
@@ -254,7 +253,7 @@ defineExpose({ openWizard });
     <!-- ─── Form mode ─── -->
     <template v-else-if="mode === 'form' && active">
       <div class="flex items-center gap-2 px-1">
-        <VButton variant="ghost" size="sm" @click="backToList">← </VButton>
+        <VIconButton icon="back" size="sm" :label="t('chat.wizards.back')" @click="backToList" />
         <div class="flex-1 min-w-0">
           <div class="text-sm font-semibold truncate">
             {{ active.title?.[$i18n.locale] ?? active.title?.en ?? active.name }}
@@ -278,7 +277,7 @@ defineExpose({ openWizard });
       />
 
       <div class="flex gap-2 justify-end mt-2">
-        <VButton variant="ghost" size="sm" :disabled="submitting" @click="backToList">
+        <VButton variant="plain" size="sm" :disabled="submitting" @click="backToList">
           {{ t('common.cancel') }}
         </VButton>
         <VButton variant="primary" size="sm" :loading="submitting" @click="submit">

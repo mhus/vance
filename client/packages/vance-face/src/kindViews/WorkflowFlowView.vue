@@ -248,7 +248,7 @@ async function start(): Promise<void> {
       </span>
       <VButton
         size="sm"
-        variant="ghost"
+        variant="plain"
         :title="t('documents.workflowView.directionHint')"
         @click="toggleDirection"
       >

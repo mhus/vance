@@ -17,7 +17,7 @@ import type {
   SkillCategoryDto,
   SkillSummaryDto,
 } from '@vance/generated';
-import { VAlert, VBadge, VButton, VEmptyState, VInput, VModal, VToggle } from '@components/index';
+import { VAlert, VBadge, VButton, VEmptyState, VInput, VModal, VToggle, VIconButton } from '@components/index';
 import { groupCategorized } from '@/util/categoryGroups';
 
 interface Props {
@@ -345,16 +345,11 @@ watch(() => props.sessionKey, refresh);
             :placeholder="t('chat.skills.searchPlaceholder')"
           />
         </div>
-        <VButton
-          variant="ghost"
-          size="sm"
+        <VIconButton icon="refresh" :label="t('chat.skills.refresh')" size="sm"
           :loading="loading"
           :disabled="!sessionKey"
-          :title="t('chat.skills.refresh')"
           @click="refresh"
-        >
-          ⟳
-        </VButton>
+         />
       </div>
     </div>
 
@@ -424,28 +419,18 @@ watch(() => props.sessionKey, refresh);
               {{ row.summary.description }}
             </div>
           </div>
-          <VButton
+          <VIconButton icon="play" :label="t('chat.skills.play')" size="sm"
             v-if="row.summary.enabled && !row.ref"
-            variant="ghost"
-            size="sm"
-            :title="t('chat.skills.play')"
             @click="play(row.summary.name)"
-          >
-            ▶
-          </VButton>
-          <VButton
+           />
+          <VIconButton icon="close" :label="row.ref.fromRecipe ? t('chat.skills.recipeBoundTitle') : t('chat.skills.clear')" size="sm"
             v-if="row.ref"
-            variant="ghost"
-            size="sm"
             :loading="clearing === row.summary.name"
             :disabled="row.ref.fromRecipe"
-            :title="row.ref.fromRecipe ? t('chat.skills.recipeBoundTitle') : t('chat.skills.clear')"
             @click="clear(row.summary.name)"
-          >
-            ✕
-          </VButton>
+           />
           <VButton
-            variant="ghost"
+            variant="plain"
             size="sm"
             :title="t('chat.skills.info')"
             @click="detail = row.summary"

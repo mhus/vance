@@ -278,7 +278,7 @@ function message(e: unknown): string {
           <VButton
             v-if="integrationTokenIsLive(row)"
             size="xs"
-            variant="ghost"
+            variant="secondary"
             :disabled="busy"
             @click="onRevoke(row)"
           >
@@ -337,7 +337,7 @@ function message(e: unknown): string {
           <span class="text-xs font-semibold uppercase tracking-wide opacity-50">
             {{ t('links.capture.connectionString') }}
           </span>
-          <VButton size="xs" :variant="copied ? 'primary' : 'ghost'" @click="onCopy()">
+          <VButton size="xs" :variant="copied ? 'primary' : 'secondary'" @click="onCopy()">
             {{ copied ? t('links.capture.copiedButton') : t('links.capture.copyButton') }}
           </VButton>
         </div>
@@ -363,7 +363,7 @@ function message(e: unknown): string {
     </div>
 
     <template #actions>
-      <VButton variant="ghost" @click="onClose()">{{ t('links.common.close') }}</VButton>
+      <VButton variant="secondary" @click="onClose()">{{ t('links.common.close') }}</VButton>
     </template>
   </VModal>
 </template>

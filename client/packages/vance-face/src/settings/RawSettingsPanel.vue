@@ -191,7 +191,7 @@ async function addSetting(): Promise<void> {
             :rows="2"
           />
           <div class="flex justify-end gap-2">
-            <VButton variant="ghost" size="sm" @click="cancelEditSetting">
+            <VButton variant="plain" size="sm" @click="cancelEditSetting">
               {{ t('settings.raw.cancel') }}
             </VButton>
             <VButton
@@ -206,10 +206,10 @@ async function addSetting(): Promise<void> {
           <div class="text-sm break-words opacity-80">{{ settingValueLabel(s) }}</div>
           <div v-if="s.description" class="text-xs opacity-60">{{ s.description }}</div>
           <div class="flex justify-end gap-2">
-            <VButton variant="ghost" size="sm" @click="startEditSetting(s)">
+            <VButton variant="plain" size="sm" @click="startEditSetting(s)">
               {{ t('settings.raw.edit') }}
             </VButton>
-            <VButton variant="ghost" size="sm" @click="deleteSetting(s)">
+            <VButton variant="danger" size="sm" @click="deleteSetting(s)">
               {{ t('settings.raw.deleteLabel') }}
             </VButton>
           </div>

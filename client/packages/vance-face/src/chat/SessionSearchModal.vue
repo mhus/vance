@@ -295,7 +295,7 @@ onBeforeUnmount(() => {
                 </div>
               </div>
               <div class="shrink-0 flex flex-col gap-1">
-                <VButton size="sm" variant="ghost" @click="showPreview(hit)">
+                <VButton size="sm" variant="secondary" @click="showPreview(hit)">
                   {{ t('chat.search.preview') }}
                 </VButton>
                 <VButton size="sm" variant="primary" @click="pick(hit)">
@@ -309,7 +309,7 @@ onBeforeUnmount(() => {
     </div>
 
     <template #actions>
-      <VButton variant="ghost" @click="close">
+      <VButton variant="secondary" @click="close">
         {{ t('chat.search.previewClose') }}
       </VButton>
     </template>
@@ -349,7 +349,7 @@ onBeforeUnmount(() => {
       >
         {{ t('chat.search.open') }}
       </VButton>
-      <VButton variant="ghost" @click="closePreview">
+      <VButton variant="secondary" @click="closePreview">
         {{ t('chat.search.previewClose') }}
       </VButton>
     </template>

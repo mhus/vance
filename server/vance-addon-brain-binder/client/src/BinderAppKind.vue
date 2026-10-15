@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, inject, onMounted, ref, watch, type Component } from 'vue';
-import { cortexDeepLink, VAlert, VButton, VInput } from '@vance/components';
+import { cortexDeepLink, VAlert, VButton, VInput, VIconButton } from '@vance/components';
 import DocPicker from './DocPicker.vue';
 import {
   addEntry,
@@ -258,15 +258,12 @@ function kindIcon(kind?: string | null): string {
           {{ view?.title || t('binder.app.fallbackTitle') }}
         </div>
         <div class="flex gap-1">
-          <VButton
-            size="sm"
-            variant="ghost"
+          <VIconButton icon="refresh" :label="t('binder.app.rebuildIndex')" size="sm"
             :disabled="busy"
-            :title="t('binder.app.rebuildIndex')"
             @click="onRebuild"
-          >↻</VButton>
-          <VButton size="sm" variant="primary" :disabled="busy" @click="onAdd">
-            + {{ t('binder.app.pin') }}
+           />
+          <VButton icon="add" size="sm" variant="primary" :disabled="busy" @click="onAdd">
+            {{ t('binder.app.pin') }}
           </VButton>
         </div>
       </div>
@@ -352,7 +349,7 @@ function kindIcon(kind?: string | null): string {
           <span class="truncate text-sm font-medium" :title="activeEntry.path">{{ activeEntry.title }}</span>
           <span class="truncate text-xs opacity-50">{{ activeEntry.path }}</span>
           <div class="ml-auto flex gap-1">
-            <VButton size="sm" variant="ghost" :title="t('binder.app.reload')" @click="load">↻</VButton>
+            <VIconButton icon="refresh" :label="t('binder.app.reload')" size="sm" @click="load" />
             <VButton
               size="sm"
               variant="primary"

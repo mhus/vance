@@ -187,7 +187,7 @@ function logRow(op: MegadodoOperation): MegadodoEventDto | null {
     <header class="flex flex-wrap items-center gap-2">
       <VButton
         size="sm"
-        :variant="state.filters.value.onlyErrors ? 'danger' : 'ghost'"
+        :variant="state.filters.value.onlyErrors ? 'danger' : 'secondary'"
         @click="toggleErrors"
       >
         {{ state.filters.value.onlyErrors ? 'Showing failures only' : 'Only failures' }}
@@ -210,7 +210,7 @@ function logRow(op: MegadodoOperation): MegadodoEventDto | null {
         />
       </div>
 
-      <VButton size="sm" variant="ghost" @click="reload">{{ $t('insights.megadodo.refresh') }}</VButton>
+      <VButton size="sm" variant="plain" @click="reload">{{ $t('insights.megadodo.refresh') }}</VButton>
 
       <span class="text-xs opacity-60 ml-auto">
         <template v-if="failureCount > 0">
@@ -337,7 +337,7 @@ function logRow(op: MegadodoOperation): MegadodoEventDto | null {
       <div v-if="state.hasMore.value" class="flex justify-center pt-1">
         <VButton
           size="sm"
-          variant="ghost"
+          variant="plain"
           :disabled="state.loadingMore.value"
           @click="state.loadMore(props.projectId)"
         >

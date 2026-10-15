@@ -236,7 +236,7 @@ async function confirmDecrypt(): Promise<void> {
             :placeholder="'AGE-SECRET-KEY-1…'"
           />
           <div class="flex flex-wrap items-center gap-2">
-            <VButton size="sm" variant="ghost" :disabled="!identityText.trim()" @click="addPastedIdentity">
+            <VButton size="sm" variant="secondary" :disabled="!identityText.trim()" @click="addPastedIdentity">
               {{ $t('cortex.age.transform.addIdentity') }}
             </VButton>
             <VFileInput
@@ -304,7 +304,7 @@ async function confirmDecrypt(): Promise<void> {
     </div>
 
     <template #actions>
-      <VButton variant="ghost" :disabled="busy" @click="emit('update:modelValue', false)">
+      <VButton variant="secondary" :disabled="busy" @click="emit('update:modelValue', false)">
         {{ $t('common.cancel') }}
       </VButton>
       <VButton :loading="busy" :disabled="!canConfirm" @click="onConfirm">

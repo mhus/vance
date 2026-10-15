@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
-import { VAlert, VButton, VModal } from '@vance/components';
+import { VAlert, VButton, VModal, VIconButton } from '@vance/components';
 import FinanceTreeNode from './FinanceTreeNode.vue';
 import * as ops from './treeOps';
 import { calc, generateReport, getSnapshot, getTree, listProcessors, putTree } from './api';
@@ -242,7 +242,7 @@ async function runReport(): Promise<void> {
     <!-- Toolbar -->
     <div class="flex items-center gap-2 border-b border-black/10 dark:border-white/10 px-3 py-2">
       <span class="font-semibold">{{ tree?.title || t('finance.fallbackTitle') }}</span>
-      <VButton variant="ghost" @click="reload">↻ {{ t('finance.reload') }}</VButton>
+      <VButton icon="refresh" variant="plain" @click="reload">{{ t('finance.reload') }}</VButton>
       <label class="flex items-center gap-1">
         <span class="opacity-70">{{ t('finance.unit') }}</span>
         <select v-model="displayUnit" class="border border-black/20 dark:border-white/20 rounded px-1 py-0.5 bg-transparent">
@@ -252,7 +252,7 @@ async function runReport(): Promise<void> {
           <option value="day">{{ t('finance.perUnit.day') }}</option>
         </select>
       </label>
-      <VButton variant="secondary" @click="openReport">▶ {{ t('finance.report') }}</VButton>
+      <VButton icon="play" variant="secondary" @click="openReport">{{ t('finance.report') }}</VButton>
       <span class="ml-auto text-xs opacity-60">{{ t(`finance.save.${saveState}`) }}</span>
     </div>
 
@@ -319,7 +319,7 @@ async function runReport(): Promise<void> {
           <section class="flex flex-col gap-2">
             <div class="flex items-center gap-2">
               <span class="font-semibold opacity-70">{{ t('finance.values.heading') }}</span>
-              <VButton variant="ghost" @click="addValue(selected)">{{ t('finance.values.add') }}</VButton>
+              <VButton variant="plain" icon="add" @click="addValue(selected)">{{ t('finance.values.add') }}</VButton>
             </div>
             <div v-for="(v, i) in selected.values" :key="i"
                  class="border border-black/10 dark:border-white/10 rounded p-2 flex flex-col gap-2">
@@ -337,7 +337,7 @@ async function runReport(): Promise<void> {
                     <option value="one_time">{{ t('finance.values.modeOneTime') }}</option>
                   </select>
                 </label>
-                <VButton variant="ghost" @click="removeValue(selected, i)">🗑</VButton>
+                <VIconButton icon="delete" danger :label="t('finance.values.remove')" @click="removeValue(selected, i)" />
               </div>
 
               <div v-if="v.mode === 'recurring' && v.period" class="flex gap-2 items-end">

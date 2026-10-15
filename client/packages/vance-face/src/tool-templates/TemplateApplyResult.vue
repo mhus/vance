@@ -71,7 +71,7 @@ function onConnect(): void {
     </section>
 
     <div class="flex justify-end gap-2 pt-2">
-      <VButton variant="ghost" @click="$emit('close')">
+      <VButton variant="plain" @click="$emit('close')">
         {{ $t('common.cancel') }}
       </VButton>
     </div>

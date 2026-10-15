@@ -14,6 +14,7 @@ import {
   VModal,
   VSelect,
   VTextarea,
+  VIconButton,
 } from '@/components';
 import { useInbox, type AssignedToFilter, type InboxFilter } from '@/composables/useInbox';
 import { useTeams } from '@/composables/useTeams';
@@ -1004,12 +1005,9 @@ const breadcrumbs = computed<string[]>(() => {
         class="px-6 pt-4 pb-3 border-b border-base-300 bg-base-100 flex items-center gap-x-3 gap-y-1 flex-wrap"
       >
         <div class="flex items-center gap-3 min-w-0 flex-1 basis-[16rem]">
-          <VButton
-            variant="ghost"
-            size="sm"
-            :title="$t('inbox.detail.backToList')"
+          <VIconButton icon="back" :label="$t('inbox.detail.backToList')" size="sm"
             @click="closeItem"
-          >←</VButton>
+           />
           <span class="font-semibold truncate">
             {{ inbox.selected.value.title || $t('inbox.detail.noTitle') }}
           </span>
@@ -1247,7 +1245,7 @@ const breadcrumbs = computed<string[]>(() => {
                 <VButton variant="primary" :loading="submitting" @click="submitApproval(true)">
                   {{ $t('inbox.actions.yes') }}
                 </VButton>
-                <VButton variant="ghost" :loading="submitting" @click="submitApproval(false)">
+                <VButton variant="plain" :loading="submitting" @click="submitApproval(false)">
                   {{ $t('inbox.actions.no') }}
                 </VButton>
               </div>
@@ -1307,10 +1305,10 @@ const breadcrumbs = computed<string[]>(() => {
                   :disabled="submitting"
                   class="flex-1 min-w-[14rem]"
                 />
-                <VButton variant="ghost" :loading="submitting" @click="submitInsufficientInfo">
+                <VButton variant="plain" :loading="submitting" @click="submitInsufficientInfo">
                   {{ $t('inbox.actions.insufficientInfo') }}
                 </VButton>
-                <VButton variant="ghost" :loading="submitting" @click="submitUndecidable">
+                <VButton variant="plain" :loading="submitting" @click="submitUndecidable">
                   {{ $t('inbox.actions.undecidable') }}
                 </VButton>
               </div>
@@ -1323,18 +1321,18 @@ const breadcrumbs = computed<string[]>(() => {
                 :class="isAsk(inbox.selected.value) ? 'pt-3 border-t border-base-300' : ''"
               >
                 <VButton
-                  variant="ghost"
+                  variant="plain"
                   :disabled="submitting"
                   @click="toDocument"
                 >{{ $t('inbox.actions.toDocument') }}</VButton>
                 <VButton
-                  variant="ghost"
+                  variant="plain"
                   :disabled="submitting"
                   @click="openDelegateModal"
                 >{{ $t('inbox.actions.delegate') }}</VButton>
                 <VButton
                   v-if="inbox.selected.value.status !== MaximegalonStatus.DISMISSED"
-                  variant="ghost"
+                  variant="plain"
                   :disabled="submitting"
                   @click="dismissItem"
                 >{{ $t('inbox.actions.dismiss') }}</VButton>
@@ -1407,7 +1405,7 @@ const breadcrumbs = computed<string[]>(() => {
       </div>
       <template #actions>
         <VButton
-          variant="ghost"
+          variant="secondary"
           :disabled="bulkArchiveBusy"
           @click="showBulkArchive = false"
         >{{ $t('inbox.bulkArchive.cancel') }}</VButton>
@@ -1443,7 +1441,7 @@ const breadcrumbs = computed<string[]>(() => {
         />
       </div>
       <template #actions>
-        <VButton variant="ghost" :disabled="delegating" @click="delegateOpen = false">
+        <VButton variant="secondary" :disabled="delegating" @click="delegateOpen = false">
           {{ $t('inbox.delegate.cancel') }}
         </VButton>
         <VButton
@@ -1482,7 +1480,7 @@ const breadcrumbs = computed<string[]>(() => {
             soft
           >{{ $t('inbox.compose.selfLabel') }}</VBadge>
           <VButton
-            variant="ghost"
+            variant="secondary"
             size="sm"
             :disabled="composing"
             @click="clearComposeTarget"
@@ -1541,7 +1539,7 @@ const breadcrumbs = computed<string[]>(() => {
         <span>{{ composeErrorText }}</span>
       </VAlert>
       <template #actions>
-        <VButton variant="ghost" :disabled="composing" @click="composeOpen = false">
+        <VButton variant="secondary" :disabled="composing" @click="composeOpen = false">
           {{ $t('inbox.compose.cancel') }}
         </VButton>
         <VButton

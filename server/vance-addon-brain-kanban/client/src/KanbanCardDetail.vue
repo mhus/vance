@@ -385,8 +385,8 @@ onBeforeUnmount(() => {
       />
 
       <div class="flex flex-col gap-1">
-        <VButton variant="ghost" class="justify-start" @click="onContentModal(true)">
-          ✎ {{ t('kanban.detail.editContent') }}
+        <VButton icon="edit" variant="plain" class="justify-start" @click="onContentModal(true)">
+          {{ t('kanban.detail.editContent') }}
         </VButton>
       </div>
     </div>
@@ -436,7 +436,7 @@ onBeforeUnmount(() => {
     </VModal>
 
     <div class="flex items-center justify-end p-4 border-t border-base-300">
-      <VButton variant="ghost" class="text-error" @click="confirmDelete">{{ t('kanban.common.delete') }}</VButton>
+      <VButton variant="danger" class="text-error" @click="confirmDelete">{{ t('kanban.common.delete') }}</VButton>
     </div>
   </div>
 </template>

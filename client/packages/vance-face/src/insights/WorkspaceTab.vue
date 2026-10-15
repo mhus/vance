@@ -85,7 +85,7 @@ async function onSelectFile(node: WorkspaceTreeNodeDto): Promise<void> {
       >
         <span>{{ $t('workspace.footer.podHint') }}</span>
         <VButton
-          variant="ghost"
+          variant="plain"
           size="sm"
           @click="projectId && tree.loadRoot(projectId)"
         >

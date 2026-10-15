@@ -421,7 +421,7 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
             v-if="claimingDomain !== vendor.name"
             size="sm"
             variant="secondary"
-            outline
+           
             @click="openDomain(vendor)"
           >{{ vendor.domainVerifiedAt
             ? t('store.developer.changeDomain')
@@ -440,11 +440,11 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
               <VButton
                 v-if="vendor.domain"
                 variant="secondary"
-                outline
+               
                 :disabled="loading"
                 @click="verify(vendor)"
               >{{ t('store.developer.checkNow') }}</VButton>
-              <VButton variant="secondary" outline @click="claimingDomain = ''">
+              <VButton variant="secondary" @click="claimingDomain = ''">
                 {{ t('store.common.cancel') }}
               </VButton>
             </div>
@@ -506,7 +506,7 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
           <VButton :disabled="loading || !termsAccepted" @click="submitApplication">
             {{ t('store.developer.applyButton') }}
           </VButton>
-          <VButton variant="secondary" outline @click="applying = false">{{ t('store.common.cancel') }}</VButton>
+          <VButton variant="secondary" @click="applying = false">{{ t('store.common.cancel') }}</VButton>
         </div>
       </div>
     </VCard>
@@ -572,7 +572,7 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
             <VButton :disabled="loading" @click="submitRenewal(right.vendorName)">
               {{ t('store.common.confirm') }}
             </VButton>
-            <VButton variant="secondary" outline @click="renewing = ''">{{ t('store.common.cancel') }}</VButton>
+            <VButton variant="secondary" @click="renewing = ''">{{ t('store.common.cancel') }}</VButton>
           </div>
         </div>
       </div>
@@ -622,7 +622,7 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
             v-if="!editingAccount"
             size="sm"
             variant="secondary"
-            outline
+           
             @click="editingAccount = true"
           >{{ t('store.developer.change') }}</VButton>
         </div>
@@ -643,7 +643,7 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
             <VButton :disabled="loading || !payoutHandle" @click="saveAccount">
               {{ t('store.common.save') }}
             </VButton>
-            <VButton variant="secondary" outline @click="editingAccount = false">{{ t('store.common.cancel') }}</VButton>
+            <VButton variant="secondary" @click="editingAccount = false">{{ t('store.common.cancel') }}</VButton>
           </div>
         </div>
       </div>
@@ -740,7 +740,7 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
             >
               {{ loading ? '…' : t('store.developer.exportSubmit') }}
             </VButton>
-            <VButton size="sm" variant="secondary" outline @click="publishing = ''">
+            <VButton size="sm" variant="secondary" @click="publishing = ''">
               {{ t('store.common.cancel') }}
             </VButton>
           </div>
@@ -777,7 +777,7 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
         />
         <div class="flex gap-2">
           <VButton :disabled="loading" @click="submitKit">{{ t('store.common.create') }}</VButton>
-          <VButton variant="secondary" outline @click="creatingKit = false">{{ t('store.common.cancel') }}</VButton>
+          <VButton variant="secondary" @click="creatingKit = false">{{ t('store.common.cancel') }}</VButton>
         </div>
       </div>
     </VCard>

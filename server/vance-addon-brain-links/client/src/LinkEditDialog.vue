@@ -124,7 +124,7 @@ function close(): void {
     </div>
 
     <template #actions>
-      <VButton variant="ghost" :disabled="busy" @click="close">{{ t('links.common.cancel') }}</VButton>
+      <VButton variant="secondary" :disabled="busy" @click="close">{{ t('links.common.cancel') }}</VButton>
       <VButton variant="primary" :disabled="busy" @click="save">{{ t('links.common.save') }}</VButton>
     </template>
   </VModal>

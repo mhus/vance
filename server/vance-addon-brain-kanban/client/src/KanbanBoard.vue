@@ -297,8 +297,8 @@ defineExpose({ reload });
           {{ t('kanban.board.cardCount', { n: board.cards.length }, board.cards.length) }}
           · {{ t('kanban.board.columnCount', { n: board.columns.length }, board.columns.length) }}
         </span>
-        <VButton size="sm" variant="ghost" @click="reload()">{{ t('kanban.board.reload') }}</VButton>
-        <VButton size="sm" variant="ghost" @click="refresh">{{ t('kanban.board.rebuild') }}</VButton>
+        <VButton size="sm" variant="plain" @click="reload()">{{ t('kanban.board.reload') }}</VButton>
+        <VButton size="sm" variant="plain" @click="refresh">{{ t('kanban.board.rebuild') }}</VButton>
       </div>
     </div>
 
@@ -451,7 +451,7 @@ defineExpose({ reload });
           @update:model-value="(v) => newCardForm.dueDate = v"
         />
         <div class="flex justify-end gap-2 pt-2">
-          <VButton variant="ghost" @click="showCreateModal = false">{{ t('kanban.common.cancel') }}</VButton>
+          <VButton variant="secondary" @click="showCreateModal = false">{{ t('kanban.common.cancel') }}</VButton>
           <VButton variant="primary" :disabled="!newCardForm.title.trim()" @click="submitCreate">
             {{ t('kanban.common.create') }}
           </VButton>

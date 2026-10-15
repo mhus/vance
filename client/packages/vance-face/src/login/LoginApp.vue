@@ -358,25 +358,6 @@ function readNextParam(): string | null {
         <VAlert v-if="error" variant="error" class="mb-3">
           <span>{{ error }}</span>
         </VAlert>
-        <form v-if="showSso" class="mb-3 flex flex-col gap-3" @submit.prevent="onSso">
-          <VInput
-            v-if="ssoDomains"
-            v-model="ssoEmail"
-            type="email"
-            :label="$t('login.sso.email')"
-            autocomplete="email"
-            autocapitalize="none"
-            :disabled="ssoBusy"
-          />
-          <VButton type="submit" variant="secondary" :loading="ssoBusy" block>
-            {{ $t('login.sso.continueWithGoogle') }}
-          </VButton>
-          <div class="flex items-center gap-3 text-xs opacity-60">
-            <span class="h-px flex-1 bg-base-300"></span>
-            <span>{{ $t('login.sso.or') }}</span>
-            <span class="h-px flex-1 bg-base-300"></span>
-          </div>
-        </form>
         <form class="flex flex-col gap-3" @submit.prevent="onSubmit">
           <!-- autocapitalize="none" on both: the server compares tenant and
                username byte-for-byte, and iOS capitalises the first letter of
@@ -421,6 +402,25 @@ function readNextParam(): string | null {
             block
           >
             {{ $t('common.signIn') }}
+          </VButton>
+        </form>
+        <form v-if="showSso" class="mt-3 flex flex-col gap-3" @submit.prevent="onSso">
+          <div class="flex items-center gap-3 text-xs opacity-60">
+            <span class="h-px flex-1 bg-base-300"></span>
+            <span>{{ $t('login.sso.or') }}</span>
+            <span class="h-px flex-1 bg-base-300"></span>
+          </div>
+          <VInput
+            v-if="ssoDomains"
+            v-model="ssoEmail"
+            type="email"
+            :label="$t('login.sso.email')"
+            autocomplete="email"
+            autocapitalize="none"
+            :disabled="ssoBusy"
+          />
+          <VButton type="submit" variant="secondary" :loading="ssoBusy" block>
+            {{ $t('login.sso.continueWithGoogle') }}
           </VButton>
         </form>
       </VCard>

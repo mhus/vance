@@ -63,8 +63,8 @@ public class OAuthProviderLoader {
     public Optional<OAuthProviderConfig> load(String tenantId, String providerId) {
         if (providerId == null || providerId.isBlank()) return Optional.empty();
         String norm = normalizedName(providerId);
-        Optional<LookupResult> hit = documentService.lookupCascade(
-                tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, pathFor(norm));
+        Optional<LookupResult> hit =
+                documentService.lookupCascade(tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, pathFor(norm));
         if (hit.isEmpty()) return Optional.empty();
         try {
             OAuthProviderConfig cfg = parse(norm, hit.get().content());
@@ -73,7 +73,8 @@ public class OAuthProviderLoader {
             throw new OAuthProviderParseException(
                     "Failed to parse OAuth provider '" + norm + "' from "
                             + hit.get().source() + " at path '" + hit.get().path()
-                            + "': " + e.getMessage(), e);
+                            + "': " + e.getMessage(),
+                    e);
         }
     }
 
@@ -95,8 +96,11 @@ public class OAuthProviderLoader {
                 OAuthProviderConfig cfg = parse(name, e.getValue().content());
                 out.add(withResolvedSecret(tenantId, cfg));
             } catch (RuntimeException ex) {
-                log.warn("OAuthProviderLoader: skipping malformed provider path='{}' source={}: {}",
-                        path, e.getValue().source(), ex.getMessage());
+                log.warn(
+                        "OAuthProviderLoader: skipping malformed provider path='{}' source={}: {}",
+                        path,
+                        e.getValue().source(),
+                        ex.getMessage());
             }
         }
         return out;
@@ -115,8 +119,7 @@ public class OAuthProviderLoader {
         try {
             return parse(norm, yaml);
         } catch (RuntimeException ex) {
-            throw new OAuthProviderParseException(
-                    "OAuth provider YAML invalid: " + ex.getMessage(), ex);
+            throw new OAuthProviderParseException("OAuth provider YAML invalid: " + ex.getMessage(), ex);
         }
     }
 
@@ -138,9 +141,7 @@ public class OAuthProviderLoader {
     private static @Nullable String nameFromPath(String path) {
         if (!path.startsWith(OAUTH_PATH_PREFIX)) return null;
         if (!path.endsWith(OAUTH_PATH_SUFFIX)) return null;
-        String stem = path.substring(
-                OAUTH_PATH_PREFIX.length(),
-                path.length() - OAUTH_PATH_SUFFIX.length());
+        String stem = path.substring(OAUTH_PATH_PREFIX.length(), path.length() - OAUTH_PATH_SUFFIX.length());
         return stem.isBlank() ? null : stem;
     }
 
@@ -186,23 +187,32 @@ public class OAuthProviderLoader {
         // settings, never in the YAML body. Surfacing a clear error early
         // prevents the "I wrote it in the file and it doesn't work" trap.
         if (spec.containsKey("clientSecret") || spec.containsKey("client_secret")) {
-            throw new IllegalStateException(
-                    "'clientSecret' must not appear in the YAML — store it as the tenant "
-                            + "PASSWORD setting '" + clientSecretKey(providerId) + "' instead");
+            throw new IllegalStateException("'clientSecret' must not appear in the YAML — store it as the tenant "
+                    + "PASSWORD setting '" + clientSecretKey(providerId) + "' instead");
         }
 
         // Type-specific required fields.
         switch (type) {
             case "oidc" -> {
                 if (discoveryUrl == null) {
-                    throw new IllegalStateException(
-                            "'discoveryUrl' is required for type 'oidc'");
+                    throw new IllegalStateException("'discoveryUrl' is required for type 'oidc'");
                 }
             }
             case "generic-oauth2", "slack", "atlassian", "github" -> {
                 if (authorizeUrl == null || tokenUrl == null) {
                     throw new IllegalStateException(
                             "'authorizeUrl' and 'tokenUrl' are required for type '" + type + "'");
+                }
+            }
+            case McpOAuthProvider.TYPE_ID -> {
+                if (authorizeUrl == null || tokenUrl == null) {
+                    throw new IllegalStateException("'authorizeUrl' and 'tokenUrl' are required for type 'mcp'");
+                }
+                if (!(extra.get(McpOAuthProvider.EXTRA_MCP_URL) instanceof String mcpUrl) || mcpUrl.isBlank()) {
+                    throw new IllegalStateException("'extra.mcpUrl' is required for type 'mcp'");
+                }
+                if (!Boolean.TRUE.equals(extra.get(GenericOAuth2Provider.EXTRA_USE_PKCE))) {
+                    throw new IllegalStateException("'extra.usePkce' must be true for type 'mcp'");
                 }
             }
             case "google" -> {
@@ -220,21 +230,12 @@ public class OAuthProviderLoader {
         }
 
         return new OAuthProviderConfig(
-                providerId,
-                type,
-                discoveryUrl,
-                authorizeUrl,
-                tokenUrl,
-                clientId,
-                /*clientSecret*/ "",
-                scopes,
-                extra);
+                providerId, type, discoveryUrl, authorizeUrl, tokenUrl, clientId, /*clientSecret*/ "", scopes, extra);
     }
 
     private static String stringOrThrow(@Nullable Object raw, String fieldName) {
         if (!(raw instanceof String s) || s.isBlank()) {
-            throw new IllegalStateException(
-                    "missing required field '" + fieldName + "' (must be a non-empty string)");
+            throw new IllegalStateException("missing required field '" + fieldName + "' (must be a non-empty string)");
         }
         return s;
     }
@@ -251,8 +252,7 @@ public class OAuthProviderLoader {
         List<String> out = new ArrayList<>(list.size());
         for (Object item : list) {
             if (!(item instanceof String s) || s.isBlank()) {
-                throw new IllegalStateException(
-                        "'" + fieldName + "' contains a non-string or blank entry");
+                throw new IllegalStateException("'" + fieldName + "' contains a non-string or blank entry");
             }
             out.add(s);
         }

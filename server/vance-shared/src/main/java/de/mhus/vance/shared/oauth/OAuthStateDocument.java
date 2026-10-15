@@ -49,6 +49,14 @@ public class OAuthStateDocument {
     /** Provider id from {@code _tenant/oauth/<providerId>.yaml}. */
     private String providerId = "";
 
+    /**
+     * Project whose settings receive the tokens — the user's hub
+     * ({@code _user_<login>}) for a personal login, a project or
+     * {@code _tenant} for a shared MCP-server login. {@code null} on
+     * states written before the field existed: the initiating user's hub.
+     */
+    private @Nullable String tokenProjectId;
+
     /** Optional Web-UI path the callback should redirect to. */
     private @Nullable String returnTo;
 

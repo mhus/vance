@@ -3,6 +3,8 @@
  Source: de.mhus.vance.api.servertools.ServerToolDto
 */
 
+import { ServerToolOAuthDto } from './ServerToolOAuthDto';
+
 export interface ServerToolDto {
   name: string;
   type: string;
@@ -18,4 +20,5 @@ export interface ServerToolDto {
   source?: string;
   updatedAtTimestamp?: number;
   createdBy?: string;
+  oauth?: ServerToolOAuthDto;
 }

@@ -216,8 +216,11 @@ public class ClientMetadataDocumentResolver {
      * IPv4-compatible {@code ::/96}, IPv4-mapped, NAT64 {@code 64:ff9b::/96}
      * and {@code 64:ff9b:1::/48}, unique-local, link-local, multicast — lies
      * outside {@code 2000::/3} and is refused by construction.
+     *
+     * <p>Also the address fence of the MCP-client discovery
+     * ({@code McpAuthDiscoveryClient}).
      */
-    static boolean isPublic(InetAddress address) {
+    public static boolean isPublic(InetAddress address) {
         if (address.isLoopbackAddress()
                 || address.isAnyLocalAddress()
                 || address.isLinkLocalAddress()
@@ -319,14 +322,14 @@ public class ClientMetadataDocumentResolver {
      * With {@code maxBytes == 0} the subscription is cancelled right away —
      * used for responses whose body is never looked at.
      */
-    static final class LimitedBodySubscriber implements HttpResponse.BodySubscriber<byte[]> {
+    public static final class LimitedBodySubscriber implements HttpResponse.BodySubscriber<byte[]> {
 
         private final int maxBytes;
         private final ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         private final CompletableFuture<byte[]> result = new CompletableFuture<>();
         private volatile Flow.@Nullable Subscription subscription;
 
-        LimitedBodySubscriber(int maxBytes) {
+        public LimitedBodySubscriber(int maxBytes) {
             this.maxBytes = maxBytes;
         }
 

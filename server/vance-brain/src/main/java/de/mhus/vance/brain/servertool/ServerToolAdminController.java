@@ -1,9 +1,14 @@
 package de.mhus.vance.brain.servertool;
 
 import de.mhus.vance.api.servertools.ServerToolDto;
+import de.mhus.vance.api.servertools.ServerToolTestResultDto;
 import de.mhus.vance.api.servertools.ServerToolWriteRequest;
 import de.mhus.vance.api.servertools.ToolTypeDto;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.tools.mcp.McpToolPackFactory;
+import de.mhus.vance.brain.tools.mcp.oauth.McpOAuthService;
+import de.mhus.vance.brain.tools.mcp.oauth.McpOAuthSettings;
+import de.mhus.vance.brain.tools.mcp.oauth.McpServerTestService;
 import de.mhus.vance.brain.tools.types.ToolFactory;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
@@ -25,6 +30,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -53,6 +59,7 @@ public class ServerToolAdminController {
 
     private final ServerToolService serverToolService;
     private final RequestAuthority authority;
+    private final McpServerTestService mcpServerTestService;
 
     // ─── Tool-type discovery ───────────────────────────────────────────────
 
@@ -85,7 +92,7 @@ public class ServerToolAdminController {
         // project's id as {@code projectId} regardless of where the
         // config actually came from.
         return serverToolService.listConfigs(tenant, project).stream()
-                .map(cfg -> toDtoFromConfig(cfg, project))
+                .map(cfg -> withOAuthState(toDtoFromConfig(cfg, project), tenant, project, cfg, httpRequest))
                 .sorted(Comparator.comparing(ServerToolDto::getName))
                 .toList();
     }
@@ -101,7 +108,50 @@ public class ServerToolAdminController {
                 .findConfig(tenant, project, name)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "No server tool '" + name + "' in project '" + project + "'"));
-        return toDtoFromConfig(cfg, project);
+        return withOAuthState(toDtoFromConfig(cfg, project), tenant, project, cfg, httpRequest);
+    }
+
+    /**
+     * Connection test of an MCP server tool as the caller: lists the
+     * server's tools, or — without login — what the OAuth discovery finds.
+     */
+    @PostMapping("/projects/{project}/server-tools/{name}/test")
+    public ServerToolTestResultDto testProjectTool(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("project") String project,
+            @PathVariable("name") String name,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.ADMIN);
+        ServerToolConfig cfg = serverToolService
+                .findConfig(tenant, project, name)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "No server tool '" + name + "' in project '" + project + "'"));
+        return mcpServerTestService.runConnectionTest(
+                tenant, project, authority.contextOf(httpRequest).subjectId(), cfg);
+    }
+
+    /** Adds the caller's login state for an MCP server with {@code auth.type: oauth}. */
+    private ServerToolDto withOAuthState(
+            ServerToolDto dto, String tenant, String project, ServerToolConfig cfg, HttpServletRequest httpRequest) {
+        if (!McpToolPackFactory.TYPE_ID.equals(cfg.type())) {
+            return dto;
+        }
+        Optional<McpOAuthSettings> settings;
+        try {
+            settings = McpOAuthSettings.of(cfg.parameters());
+        } catch (IllegalArgumentException e) {
+            return dto; // malformed block — the test endpoint reports it
+        }
+        if (settings.isEmpty()) {
+            return dto;
+        }
+        boolean canConnect = authority.check(
+                httpRequest,
+                McpOAuthService.loginResource(settings.get(), tenant, project),
+                McpOAuthService.loginAction(settings.get()));
+        dto.setOauth(mcpServerTestService.oauthState(
+                tenant, project, authority.contextOf(httpRequest).subjectId(), cfg, canConnect));
+        return dto;
     }
 
     @PutMapping("/projects/{project}/server-tools/{name}")

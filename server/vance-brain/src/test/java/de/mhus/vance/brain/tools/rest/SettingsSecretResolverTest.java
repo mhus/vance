@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.brain.oauth.OAuthExpiredException;
+import de.mhus.vance.brain.oauth.OAuthTokenOwner;
 import de.mhus.vance.brain.oauth.OAuthTokenRefresher;
 import de.mhus.vance.shared.settings.SecretAccessDeniedException;
 import de.mhus.vance.shared.settings.SecretReferenceKeyPolicy;
@@ -44,8 +45,8 @@ class SettingsSecretResolverTest {
         settings = mock(SettingService.class);
         refresher = mock(OAuthTokenRefresher.class);
         vault = mock(VaultService.class);
-        resolver = new SettingsSecretResolver(settings, refresher, vault,
-                new SecretReferenceKeyPolicy("ai.provider.*,vault.*"));
+        resolver = new SettingsSecretResolver(
+                settings, refresher, vault, new SecretReferenceKeyPolicy("ai.provider.*,vault.*"));
     }
 
     // ─────── No-op paths ───────
@@ -91,8 +92,7 @@ class SettingsSecretResolverTest {
 
     @Test
     void tenant_scope_routes_to_tenant_project() {
-        when(settings.getReferenceSecret(TENANT, SettingService.SCOPE_PROJECT,
-                "_tenant", "vance.api.key"))
+        when(settings.getReferenceSecret(TENANT, SettingService.SCOPE_PROJECT, "_tenant", "vance.api.key"))
                 .thenReturn("tenant-secret");
 
         String out = resolver.resolve("Bearer {{secret:tenant:vance.api.key}}", ctx());
@@ -103,8 +103,7 @@ class SettingsSecretResolverTest {
 
     @Test
     void project_scope_routes_to_current_project() {
-        when(settings.getReferenceSecret(TENANT, SettingService.SCOPE_PROJECT,
-                PROJECT, "db.password"))
+        when(settings.getReferenceSecret(TENANT, SettingService.SCOPE_PROJECT, PROJECT, "db.password"))
                 .thenReturn("project-secret");
 
         String out = resolver.resolve("Pass={{secret:project:db.password}}", ctx());
@@ -114,8 +113,7 @@ class SettingsSecretResolverTest {
 
     @Test
     void user_scope_routes_to_user_settings() {
-        when(settings.getReferenceUserSecret(TENANT, USER, "github.pat"))
-                .thenReturn("user-pat");
+        when(settings.getReferenceUserSecret(TENANT, USER, "github.pat")).thenReturn("user-pat");
 
         String out = resolver.resolve("Auth: {{secret:user:github.pat}}", ctx());
 
@@ -125,8 +123,7 @@ class SettingsSecretResolverTest {
 
     @Test
     void user_scope_without_user_id_yields_empty_with_warn() {
-        ToolInvocationContext ctxNoUser = new ToolInvocationContext(
-                TENANT, PROJECT, "s-1", PROCESS, /*userId*/ null);
+        ToolInvocationContext ctxNoUser = new ToolInvocationContext(TENANT, PROJECT, "s-1", PROCESS, /*userId*/ null);
 
         String out = resolver.resolve("Auth: {{secret:user:github.pat}}", ctxNoUser);
 
@@ -136,8 +133,8 @@ class SettingsSecretResolverTest {
 
     @Test
     void project_scope_without_project_id_yields_empty() {
-        ToolInvocationContext ctxNoProject = new ToolInvocationContext(
-                TENANT, /*projectId*/ null, "s-1", PROCESS, USER);
+        ToolInvocationContext ctxNoProject =
+                new ToolInvocationContext(TENANT, /*projectId*/ null, "s-1", PROCESS, USER);
 
         String out = resolver.resolve("X: {{secret:project:db.password}}", ctxNoProject);
 
@@ -148,11 +145,9 @@ class SettingsSecretResolverTest {
 
     @Test
     void user_scope_oauth_access_token_routes_through_refresher() {
-        when(refresher.resolveAccessToken(TENANT, USER, "slack"))
-                .thenReturn("fresh-slack-token");
+        when(refresher.resolveAccessToken(TENANT, USER, "slack")).thenReturn("fresh-slack-token");
 
-        String out = resolver.resolve(
-                "Authorization: Bearer {{secret:user:oauth.slack.access_token}}", ctx());
+        String out = resolver.resolve("Authorization: Bearer {{secret:user:oauth.slack.access_token}}", ctx());
 
         assertThat(out).isEqualTo("Authorization: Bearer fresh-slack-token");
         verify(settings, never()).getReferenceUserSecret(any(), any(), any());
@@ -176,22 +171,53 @@ class SettingsSecretResolverTest {
         when(refresher.resolveAccessToken(TENANT, USER, "slack"))
                 .thenThrow(new OAuthExpiredException("slack", "user must reconnect"));
 
-        assertThatThrownBy(() -> resolver.resolve(
-                "Bearer {{secret:user:oauth.slack.access_token}}", ctx()))
+        assertThatThrownBy(() -> resolver.resolve("Bearer {{secret:user:oauth.slack.access_token}}", ctx()))
                 .isInstanceOf(OAuthExpiredException.class)
-                .extracting("providerId").isEqualTo("slack");
+                .extracting("providerId")
+                .isEqualTo("slack");
     }
 
     @Test
     void oauth_access_token_without_user_id_yields_empty_without_calling_refresher() {
-        ToolInvocationContext ctxNoUser = new ToolInvocationContext(
-                TENANT, PROJECT, "s-1", PROCESS, null);
+        ToolInvocationContext ctxNoUser = new ToolInvocationContext(TENANT, PROJECT, "s-1", PROCESS, null);
 
-        String out = resolver.resolve(
-                "Bearer {{secret:user:oauth.slack.access_token}}", ctxNoUser);
+        String out = resolver.resolve("Bearer {{secret:user:oauth.slack.access_token}}", ctxNoUser);
 
         assertThat(out).isEqualTo("Bearer ");
         verify(refresher, never()).resolveAccessToken(any(), any(), any());
+    }
+
+    @Test
+    void project_scope_oauth_access_token_routes_through_refresher_on_connector_path() {
+        when(refresher.resolveAccessTokenFor(TENANT, OAuthTokenOwner.project(PROJECT), "mcp-x"))
+                .thenReturn("project-token");
+
+        String out = resolver.resolveForConnector("{{secret:project:oauth.mcp-x.access_token}}", ctx());
+
+        assertThat(out).isEqualTo("project-token");
+    }
+
+    @Test
+    void tenant_scope_oauth_access_token_routes_through_refresher_on_connector_path() {
+        when(refresher.resolveAccessTokenFor(TENANT, OAuthTokenOwner.tenant(), "mcp-x"))
+                .thenReturn("tenant-token");
+
+        String out = resolver.resolveForConnector("{{secret:tenant:oauth.mcp-x.access_token}}", ctx());
+
+        assertThat(out).isEqualTo("tenant-token");
+    }
+
+    @Test
+    void shared_oauth_access_token_is_not_handed_to_agent_references() {
+        // Agent-writable references (resolve, not resolveForConnector) never
+        // reach a shared account's token through the refresher.
+        when(settings.getReferenceSecret(TENANT, SettingService.SCOPE_PROJECT, PROJECT, "oauth.mcp-x.access_token"))
+                .thenReturn(null);
+
+        String out = resolver.resolve("{{secret:project:oauth.mcp-x.access_token}}", ctx());
+
+        assertThat(out).isEmpty();
+        verify(refresher, never()).resolveAccessTokenFor(any(), any(), any());
     }
 
     // ─────── Vault scope ───────
@@ -220,8 +246,7 @@ class SettingsSecretResolverTest {
     void vault_exception_fails_closed_to_empty() {
         // A misconfigured / unreachable vault must not propagate — it fails
         // closed like any unresolved secret so the tool call escalates to 401.
-        when(vault.readSecret(any(), eq("db.pw")))
-                .thenThrow(new VaultException("No vault bound at scope"));
+        when(vault.readSecret(any(), eq("db.pw"))).thenThrow(new VaultException("No vault bound at scope"));
 
         String out = resolver.resolve("Pass={{secret:vault:db.pw}}", ctx());
 
@@ -232,15 +257,13 @@ class SettingsSecretResolverTest {
 
     @Test
     void multiple_placeholders_in_one_string_all_resolve() {
-        when(settings.getReferenceSecretCascade(TENANT, PROJECT, PROCESS, "a"))
-                .thenReturn("A-VAL");
-        when(settings.getReferenceSecret(TENANT, SettingService.SCOPE_PROJECT,
-                "_tenant", "b")).thenReturn("B-VAL");
+        when(settings.getReferenceSecretCascade(TENANT, PROJECT, PROCESS, "a")).thenReturn("A-VAL");
+        when(settings.getReferenceSecret(TENANT, SettingService.SCOPE_PROJECT, "_tenant", "b"))
+                .thenReturn("B-VAL");
         when(refresher.resolveAccessToken(TENANT, USER, "slack")).thenReturn("SLACK-VAL");
 
         String out = resolver.resolve(
-                "X={{secret:a}}&Y={{secret:tenant:b}}&Z={{secret:user:oauth.slack.access_token}}",
-                ctx());
+                "X={{secret:a}}&Y={{secret:tenant:b}}&Z={{secret:user:oauth.slack.access_token}}", ctx());
 
         assertThat(out).isEqualTo("X=A-VAL&Y=B-VAL&Z=SLACK-VAL");
     }
@@ -262,8 +285,7 @@ class SettingsSecretResolverTest {
 
     @Test
     void no_tenant_id_yields_empty_substitution() {
-        ToolInvocationContext ctxNoTenant = new ToolInvocationContext(
-                /*tenantId*/ "", PROJECT, "s-1", PROCESS, USER);
+        ToolInvocationContext ctxNoTenant = new ToolInvocationContext(/*tenantId*/ "", PROJECT, "s-1", PROCESS, USER);
 
         String out = resolver.resolve("X={{secret:api.key}}", ctxNoTenant);
 
@@ -287,11 +309,9 @@ class SettingsSecretResolverTest {
     @Test
     void cascade_scope_denial_propagates_instead_of_substituting_empty() {
         when(settings.getReferenceSecretCascade(TENANT, PROJECT, PROCESS, "smtp.password"))
-                .thenThrow(new SecretAccessDeniedException(
-                        "smtp.password", SettingType.PASSWORD));
+                .thenThrow(new SecretAccessDeniedException("smtp.password", SettingType.PASSWORD));
 
-        assertThatThrownBy(() -> resolver.resolve(
-                "Bearer {{secret:smtp.password}}", ctx()))
+        assertThatThrownBy(() -> resolver.resolve("Bearer {{secret:smtp.password}}", ctx()))
                 .isInstanceOf(SecretAccessDeniedException.class)
                 .hasMessageContaining("HIDDEN");
     }
@@ -307,15 +327,13 @@ class SettingsSecretResolverTest {
 
     @Test
     void tenant_scope_denial_propagates() {
-        when(settings.getReferenceSecret(TENANT, SettingService.SCOPE_PROJECT,
-                "_tenant", "credentials.jira.api_token"))
-                .thenThrow(new SecretAccessDeniedException(
-                        "credentials.jira.api_token", SettingType.PASSWORD));
+        when(settings.getReferenceSecret(TENANT, SettingService.SCOPE_PROJECT, "_tenant", "credentials.jira.api_token"))
+                .thenThrow(new SecretAccessDeniedException("credentials.jira.api_token", SettingType.PASSWORD));
 
-        assertThatThrownBy(() ->
-                resolver.resolve("{{secret:tenant:credentials.jira.api_token}}", ctx()))
+        assertThatThrownBy(() -> resolver.resolve("{{secret:tenant:credentials.jira.api_token}}", ctx()))
                 .isInstanceOf(SecretAccessDeniedException.class)
-                .extracting("key").isEqualTo("credentials.jira.api_token");
+                .extracting("key")
+                .isEqualTo("credentials.jira.api_token");
     }
 
     @Test
@@ -336,8 +354,7 @@ class SettingsSecretResolverTest {
         when(settings.getReferenceSecretCascade(TENANT, PROJECT, PROCESS, "denied.key"))
                 .thenThrow(new SecretAccessDeniedException("denied.key", SettingType.PASSWORD));
 
-        assertThatThrownBy(() -> resolver.resolve(
-                "a={{secret:ok.key}}&b={{secret:denied.key}}", ctx()))
+        assertThatThrownBy(() -> resolver.resolve("a={{secret:ok.key}}&b={{secret:denied.key}}", ctx()))
                 .isInstanceOf(SecretAccessDeniedException.class);
     }
 
@@ -366,8 +383,8 @@ class SettingsSecretResolverTest {
         // longer what keeps a reference away from the provider key. A REST
         // tool document declares its target URL next to its headers — this
         // reference would ship the key wherever that document points.
-        assertThatThrownBy(() -> resolver.resolveForConnector(
-                "Bearer {{secret:project:ai.provider.openai.apiKey}}", ctx()))
+        assertThatThrownBy(() ->
+                        resolver.resolveForConnector("Bearer {{secret:project:ai.provider.openai.apiKey}}", ctx()))
                 .isInstanceOf(SecretAccessDeniedException.class)
                 .hasMessageContaining("ai.provider.openai.apiKey");
 
@@ -388,10 +405,11 @@ class SettingsSecretResolverTest {
     @Test
     void reservedKey_isRefusedInEveryScope() {
         for (String ref : new String[] {
-                "{{secret:ai.provider.openai.apiKey}}",
-                "{{secret:tenant:ai.provider.openai.apiKey}}",
-                "{{secret:user:ai.provider.openai.apiKey}}",
-                "{{secret:project:vault.clientId}}"}) {
+            "{{secret:ai.provider.openai.apiKey}}",
+            "{{secret:tenant:ai.provider.openai.apiKey}}",
+            "{{secret:user:ai.provider.openai.apiKey}}",
+            "{{secret:project:vault.clientId}}"
+        }) {
             assertThatThrownBy(() -> resolver.resolveForConnector(ref, ctx()))
                     .as(ref)
                     .isInstanceOf(SecretAccessDeniedException.class);
@@ -407,8 +425,7 @@ class SettingsSecretResolverTest {
         // the settings-backed one applies the very same policy itself
         // (SettingsVaultProviderTest), so the barrier is not lost — it just
         // sits where the answer is knowable.
-        when(vault.readSecret(any(VaultScope.class), eq("vault.clientId")))
-                .thenReturn("from-vault");
+        when(vault.readSecret(any(VaultScope.class), eq("vault.clientId"))).thenReturn("from-vault");
 
         assertThat(resolver.resolveForConnector("{{secret:vault:vault.clientId}}", ctx()))
                 .isEqualTo("from-vault");
@@ -421,7 +438,8 @@ class SettingsSecretResolverTest {
         // under it, so an agent cannot probe for one either.
         assertThatThrownBy(() -> resolver.resolve("{{secret:ai.provider.openai.apiKey}}", ctx()))
                 .isInstanceOf(SecretAccessDeniedException.class)
-                .extracting("key").isEqualTo("ai.provider.openai.apiKey");
+                .extracting("key")
+                .isEqualTo("ai.provider.openai.apiKey");
 
         verify(settings, never()).getReferenceSecretCascade(any(), any(), any(), any());
         verify(settings, never()).getDecryptedPasswordCascade(any(), any(), any(), any());

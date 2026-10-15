@@ -6,5 +6,6 @@
 export interface OAuthProviderListEntry {
   providerId: string;
   typeId: string;
+  title?: string;
   connected: boolean;
 }

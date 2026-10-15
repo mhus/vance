@@ -300,6 +300,9 @@ public final class McpHttpTransport implements McpTransport {
                 // queryParamName variant — MCP-HTTP doesn't use query-string
                 // auth, so we ignore it (config validation could warn).
             }
+            case OAUTH ->
+                throw new IllegalStateException("MCP auth.type 'oauth' is not supported by this host — "
+                        + "it needs an OAuth login managed by the brain (server tools)");
         }
     }
 

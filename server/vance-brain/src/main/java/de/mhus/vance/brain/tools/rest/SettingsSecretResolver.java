@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.tools.rest;
 
 import de.mhus.vance.brain.oauth.OAuthExpiredException;
+import de.mhus.vance.brain.oauth.OAuthTokenOwner;
 import de.mhus.vance.brain.oauth.OAuthTokenRefresher;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.settings.SecretReferenceKeyPolicy;
@@ -29,6 +30,8 @@ import org.springframework.stereotype.Service;
  *   {{secret:tenant:&lt;key&gt;}}               explicit tenant scope ({@code _tenant} project)
  *   {{secret:user:&lt;key&gt;}}                 explicit user scope
  *   {{secret:user:oauth.&lt;providerId&gt;.access_token}}   OAuth access token (auto-refresh)
+ *   {{secret:project:oauth.&lt;providerId&gt;.access_token}} shared project login (connector only)
+ *   {{secret:tenant:oauth.&lt;providerId&gt;.access_token}}  shared tenant login (connector only)
  *   {{secret:vault:&lt;key&gt;}}                external secret manager (Infisical, …)
  * </pre>
  *
@@ -46,7 +49,10 @@ import org.springframework.stereotype.Service;
  * detects the OAuth access-token convention
  * ({@code oauth.<providerId>.access_token}) and goes through
  * {@link OAuthTokenRefresher}, which transparently refreshes the
- * token when it's about to expire.
+ * token when it's about to expire. On the connector path the same holds
+ * for {@code project:} and {@code tenant:} — the shared login of an MCP
+ * server tool with {@code auth.loginScope: project|tenant}. An agent-
+ * writable reference never reaches a shared account's token.
  *
  * <h2>This class is the reference-readability chokepoint</h2>
  * Two guards sit here, and they answer different questions.
@@ -91,18 +97,17 @@ import org.springframework.stereotype.Service;
 public class SettingsSecretResolver implements SecretResolver {
 
     /** Matches {@code {{secret:any.dotted.key}}}. Group 1 = scope-prefixed key body. */
-    private static final Pattern REF = Pattern.compile(
-            "\\{\\{\\s*secret\\s*:\\s*([^}\\s]+)\\s*\\}\\}");
+    private static final Pattern REF = Pattern.compile("\\{\\{\\s*secret\\s*:\\s*([^}\\s]+)\\s*\\}\\}");
 
     /** Recognised scope prefixes (mutually exclusive). */
     private static final String SCOPE_USER = "user";
+
     private static final String SCOPE_TENANT = "tenant";
     private static final String SCOPE_PROJECT = "project";
     private static final String SCOPE_VAULT = "vault";
 
-    /** Pattern that identifies a user-scope OAuth access-token key. */
-    private static final Pattern OAUTH_ACCESS_TOKEN_KEY =
-            Pattern.compile("^oauth\\.([^.]+)\\.access_token$");
+    /** Pattern that identifies an OAuth access-token key. */
+    private static final Pattern OAUTH_ACCESS_TOKEN_KEY = Pattern.compile("^oauth\\.([^.]+)\\.access_token$");
 
     private final SettingService settings;
     private final OAuthTokenRefresher oauthTokenRefresher;
@@ -115,13 +120,11 @@ public class SettingsSecretResolver implements SecretResolver {
     }
 
     @Override
-    public @Nullable String substituteForConnector(
-            @Nullable String input, ToolInvocationContext ctx) {
+    public @Nullable String substituteForConnector(@Nullable String input, ToolInvocationContext ctx) {
         return substitute(input, ctx, /*connector*/ true);
     }
 
-    private @Nullable String substitute(
-            @Nullable String input, ToolInvocationContext ctx, boolean connector) {
+    private @Nullable String substitute(@Nullable String input, ToolInvocationContext ctx, boolean connector) {
         if (input == null || input.isEmpty()) return input;
         Matcher m = REF.matcher(input);
         if (!m.find()) return input;
@@ -133,7 +136,8 @@ public class SettingsSecretResolver implements SecretResolver {
             String body = m.group(1);
             String resolved = resolveOne(body, ctx, connector);
             if (resolved == null) {
-                log.warn("SettingsSecretResolver: no value found for '{}' "
+                log.warn(
+                        "SettingsSecretResolver: no value found for '{}' "
                                 + "(tenant='{}', project='{}', process='{}', user='{}') "
                                 + "— substituting empty string",
                         body,
@@ -150,8 +154,7 @@ public class SettingsSecretResolver implements SecretResolver {
         return out.toString();
     }
 
-    private @Nullable String resolveOne(
-            String body, @Nullable ToolInvocationContext ctx, boolean connector) {
+    private @Nullable String resolveOne(String body, @Nullable ToolInvocationContext ctx, boolean connector) {
         if (ctx == null || ctx.tenantId() == null || ctx.tenantId().isBlank()) {
             return null;
         }
@@ -185,12 +188,14 @@ public class SettingsSecretResolver implements SecretResolver {
         };
     }
 
-    private @Nullable String resolveUser(
-            String key, ToolInvocationContext ctx, boolean connector) {
+    private @Nullable String resolveUser(String key, ToolInvocationContext ctx, boolean connector) {
         if (ctx.userId() == null || ctx.userId().isBlank()) {
-            log.warn("SettingsSecretResolver: user-scope lookup '{}' requested without a userId "
+            log.warn(
+                    "SettingsSecretResolver: user-scope lookup '{}' requested without a userId "
                             + "in ToolInvocationContext (tenant='{}', project='{}')",
-                    key, ctx.tenantId(), ctx.projectId());
+                    key,
+                    ctx.tenantId(),
+                    ctx.projectId());
             return null;
         }
         Matcher oauth = OAUTH_ACCESS_TOKEN_KEY.matcher(key);
@@ -199,8 +204,7 @@ public class SettingsSecretResolver implements SecretResolver {
             // OAuthExpiredException intentionally NOT caught here — it
             // carries the "user must reconnect" signal up to the tool
             // dispatch / web-UI layer.
-            return oauthTokenRefresher.resolveAccessToken(
-                    ctx.tenantId(), ctx.userId(), providerId);
+            return oauthTokenRefresher.resolveAccessToken(ctx.tenantId(), ctx.userId(), providerId);
         }
         String pw = connector
                 ? settings.getDecryptedUserPassword(ctx.tenantId(), ctx.userId(), key)
@@ -214,34 +218,36 @@ public class SettingsSecretResolver implements SecretResolver {
         return settings.getUserStringValue(ctx.tenantId(), ctx.userId(), key);
     }
 
-    private @Nullable String resolveTenant(
-            String key, ToolInvocationContext ctx, boolean connector) {
+    private @Nullable String resolveTenant(String key, ToolInvocationContext ctx, boolean connector) {
+        Matcher oauth = OAUTH_ACCESS_TOKEN_KEY.matcher(key);
+        if (connector && oauth.matches()) {
+            return oauthTokenRefresher.resolveAccessTokenFor(ctx.tenantId(), OAuthTokenOwner.tenant(), oauth.group(1));
+        }
         return connector
-                ? settings.getDecryptedPassword(ctx.tenantId(), SettingService.SCOPE_PROJECT,
-                        HomeBootstrapService.TENANT_PROJECT_NAME, key)
-                : settings.getReferenceSecret(ctx.tenantId(), SettingService.SCOPE_PROJECT,
-                        HomeBootstrapService.TENANT_PROJECT_NAME, key);
+                ? settings.getDecryptedPassword(
+                        ctx.tenantId(), SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME, key)
+                : settings.getReferenceSecret(
+                        ctx.tenantId(), SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME, key);
     }
 
-    private @Nullable String resolveProject(
-            String key, ToolInvocationContext ctx, boolean connector) {
+    private @Nullable String resolveProject(String key, ToolInvocationContext ctx, boolean connector) {
         if (ctx.projectId() == null || ctx.projectId().isBlank()) {
             return null;
         }
+        Matcher oauth = OAUTH_ACCESS_TOKEN_KEY.matcher(key);
+        if (connector && oauth.matches()) {
+            return oauthTokenRefresher.resolveAccessTokenFor(
+                    ctx.tenantId(), OAuthTokenOwner.project(ctx.projectId()), oauth.group(1));
+        }
         return connector
-                ? settings.getDecryptedPassword(ctx.tenantId(),
-                        SettingService.SCOPE_PROJECT, ctx.projectId(), key)
-                : settings.getReferenceSecret(ctx.tenantId(),
-                        SettingService.SCOPE_PROJECT, ctx.projectId(), key);
+                ? settings.getDecryptedPassword(ctx.tenantId(), SettingService.SCOPE_PROJECT, ctx.projectId(), key)
+                : settings.getReferenceSecret(ctx.tenantId(), SettingService.SCOPE_PROJECT, ctx.projectId(), key);
     }
 
-    private @Nullable String resolveCascade(
-            String key, ToolInvocationContext ctx, boolean connector) {
+    private @Nullable String resolveCascade(String key, ToolInvocationContext ctx, boolean connector) {
         return connector
-                ? settings.getDecryptedPasswordCascade(
-                        ctx.tenantId(), ctx.projectId(), ctx.processId(), key)
-                : settings.getReferenceSecretCascade(
-                        ctx.tenantId(), ctx.projectId(), ctx.processId(), key);
+                ? settings.getDecryptedPasswordCascade(ctx.tenantId(), ctx.projectId(), ctx.processId(), key)
+                : settings.getReferenceSecretCascade(ctx.tenantId(), ctx.projectId(), ctx.processId(), key);
     }
 
     /**
@@ -254,16 +260,19 @@ public class SettingsSecretResolver implements SecretResolver {
      */
     private @Nullable String resolveVault(String key, ToolInvocationContext ctx) {
         try {
-            return vaultService.readSecret(
-                    new VaultScope(ctx.tenantId(), ctx.userId(), ctx.projectId()), key);
+            return vaultService.readSecret(new VaultScope(ctx.tenantId(), ctx.userId(), ctx.projectId()), key);
         } catch (VaultException e) {
             // Fail closed like any other unresolved secret: returning null makes
             // the outer loop substitute empty (+ WARN) and the dependent call
             // escalates to a 401. The cause detail goes to trace so we don't
             // double-warn — the outer loop already logs the unresolved reference.
-            log.trace("SettingsSecretResolver: vault lookup '{}' failed "
-                            + "(tenant='{}', project='{}', user='{}'): {}",
-                    key, ctx.tenantId(), ctx.projectId(), ctx.userId(), e.getMessage());
+            log.trace(
+                    "SettingsSecretResolver: vault lookup '{}' failed " + "(tenant='{}', project='{}', user='{}'): {}",
+                    key,
+                    ctx.tenantId(),
+                    ctx.projectId(),
+                    ctx.userId(),
+                    e.getMessage());
             return null;
         }
     }
@@ -285,10 +294,8 @@ public class SettingsSecretResolver implements SecretResolver {
     }
 
     private static boolean isScopePrefix(String s) {
-        return SCOPE_USER.equals(s) || SCOPE_TENANT.equals(s)
-                || SCOPE_PROJECT.equals(s) || SCOPE_VAULT.equals(s);
+        return SCOPE_USER.equals(s) || SCOPE_TENANT.equals(s) || SCOPE_PROJECT.equals(s) || SCOPE_VAULT.equals(s);
     }
 
-    private record Scoped(String scope, String key) {
-    }
+    private record Scoped(String scope, String key) {}
 }

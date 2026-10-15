@@ -37,6 +37,7 @@ class GenericOAuth2ProviderTest {
     private AtomicReference<RecordedRequest> lastRequest;
     /** Switchable token-endpoint response per test. */
     private AtomicReference<TokenResponse> nextResponse;
+
     private final AtomicInteger callCount = new AtomicInteger();
 
     @BeforeEach
@@ -44,8 +45,7 @@ class GenericOAuth2ProviderTest {
         lastRequest = new AtomicReference<>();
         nextResponse = new AtomicReference<>();
         callCount.set(0);
-        server = HttpServer.create(
-                new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
         port = server.getAddress().getPort();
         server.createContext("/token", this::handleToken);
         server.setExecutor(null);
@@ -62,10 +62,9 @@ class GenericOAuth2ProviderTest {
     @Test
     void authorize_uri_carries_required_params() {
         GenericOAuth2Provider provider = newProvider();
-        OAuthProviderConfig cfg = cfg("https://provider.example/authorize",
-                "http://localhost/token", List.of("openid", "email"));
-        OAuthInitContext ctx = ctx("STATE-XYZ",
-                "https://vance.example.com/brain/acme/oauth-client/keycloak/callback");
+        OAuthProviderConfig cfg =
+                cfg("https://provider.example/authorize", "http://localhost/token", List.of("openid", "email"));
+        OAuthInitContext ctx = ctx("STATE-XYZ", "https://vance.example.com/brain/acme/oauth-client/keycloak/callback");
 
         URI uri = provider.buildAuthorizeUri(cfg, ctx);
 
@@ -75,14 +74,15 @@ class GenericOAuth2ProviderTest {
                 .contains("client_id=my-app")
                 .contains("state=STATE-XYZ")
                 .contains("scope=openid+email")
-                .contains("redirect_uri=https%3A%2F%2Fvance.example.com%2Fbrain%2Facme%2Foauth-client%2Fkeycloak%2Fcallback");
+                .contains(
+                        "redirect_uri=https%3A%2F%2Fvance.example.com%2Fbrain%2Facme%2Foauth-client%2Fkeycloak%2Fcallback");
     }
 
     @Test
     void authorize_uri_appends_query_when_base_already_has_one() {
         GenericOAuth2Provider provider = newProvider();
-        OAuthProviderConfig cfg = cfg("https://provider.example/authorize?audience=api",
-                "http://localhost/token", List.of("read"));
+        OAuthProviderConfig cfg =
+                cfg("https://provider.example/authorize?audience=api", "http://localhost/token", List.of("read"));
         OAuthInitContext ctx = ctx("S", "https://vance/callback");
 
         URI uri = provider.buildAuthorizeUri(cfg, ctx);
@@ -95,8 +95,7 @@ class GenericOAuth2ProviderTest {
     @Test
     void authorize_uri_omits_scope_when_empty() {
         GenericOAuth2Provider provider = newProvider();
-        OAuthProviderConfig cfg = cfg("https://provider.example/authorize",
-                "http://localhost/token", List.of());
+        OAuthProviderConfig cfg = cfg("https://provider.example/authorize", "http://localhost/token", List.of());
         OAuthInitContext ctx = ctx("S", "https://vance/callback");
 
         URI uri = provider.buildAuthorizeUri(cfg, ctx);
@@ -107,8 +106,7 @@ class GenericOAuth2ProviderTest {
     @Test
     void authorize_uri_fails_when_endpoint_missing() {
         GenericOAuth2Provider provider = newProvider();
-        OAuthProviderConfig cfg = cfg(/*authorizeUrl*/ null,
-                "http://localhost/token", List.of());
+        OAuthProviderConfig cfg = cfg(/*authorizeUrl*/ null, "http://localhost/token", List.of());
         OAuthInitContext ctx = ctx("S", "https://vance/callback");
 
         assertThatThrownBy(() -> provider.buildAuthorizeUri(cfg, ctx))
@@ -143,15 +141,13 @@ class GenericOAuth2ProviderTest {
         // the context for a non-PKCE provider, we must NOT emit a
         // challenge (would 4xx the authorize endpoint).
         GenericOAuth2Provider provider = newProvider();
-        OAuthProviderConfig cfg = cfg("https://provider.example/authorize",
-                "http://localhost/token", List.of("openid"));
+        OAuthProviderConfig cfg =
+                cfg("https://provider.example/authorize", "http://localhost/token", List.of("openid"));
         OAuthInitContext ctx = ctxWithPkce("S", "https://v/cb", "stray-verifier");
 
         URI uri = provider.buildAuthorizeUri(cfg, ctx);
 
-        assertThat(uri.toString())
-                .doesNotContain("code_challenge")
-                .doesNotContain("code_challenge_method");
+        assertThat(uri.toString()).doesNotContain("code_challenge").doesNotContain("code_challenge_method");
     }
 
     @Test
@@ -178,8 +174,7 @@ class GenericOAuth2ProviderTest {
     void pkce_challenge_matches_rfc7636_test_vector() {
         // RFC 7636 Appendix B — verifier "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
         // yields challenge "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM".
-        assertThat(GenericOAuth2Provider.pkceChallenge(
-                "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"))
+        assertThat(GenericOAuth2Provider.pkceChallenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"))
                 .isEqualTo("E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM");
     }
 
@@ -191,8 +186,10 @@ class GenericOAuth2ProviderTest {
                 {"access_token":"AT","refresh_token":"RT","expires_in":3600,"scope":"openid email","token_type":"Bearer"}
                 """));
         GenericOAuth2Provider provider = newProvider();
-        OAuthProviderConfig cfg = cfg("http://127.0.0.1:" + port + "/authorize",
-                "http://127.0.0.1:" + port + "/token", List.of("openid", "email"));
+        OAuthProviderConfig cfg = cfg(
+                "http://127.0.0.1:" + port + "/authorize",
+                "http://127.0.0.1:" + port + "/token",
+                List.of("openid", "email"));
         OAuthInitContext ctx = ctx("STATE", "https://vance/callback");
 
         Instant before = Instant.now();
@@ -201,11 +198,8 @@ class GenericOAuth2ProviderTest {
 
         assertThat(tokens.accessToken()).isEqualTo("AT");
         assertThat(tokens.refreshToken()).isEqualTo("RT");
-        assertThat(tokens.expiresAt()).isBetween(
-                before.plusSeconds(3599), after.plusSeconds(3601));
-        assertThat(tokens.extraClaims())
-                .containsEntry("scope", "openid email")
-                .containsEntry("token_type", "Bearer");
+        assertThat(tokens.expiresAt()).isBetween(before.plusSeconds(3599), after.plusSeconds(3601));
+        assertThat(tokens.extraClaims()).containsEntry("scope", "openid email").containsEntry("token_type", "Bearer");
 
         RecordedRequest req = lastRequest.get();
         assertThat(req.method).isEqualTo("POST");
@@ -224,8 +218,8 @@ class GenericOAuth2ProviderTest {
                 {"access_token":"AT"}
                 """));
         GenericOAuth2Provider provider = newProvider();
-        OAuthProviderConfig cfg = cfg("http://127.0.0.1:" + port + "/authorize",
-                "http://127.0.0.1:" + port + "/token", List.of());
+        OAuthProviderConfig cfg =
+                cfg("http://127.0.0.1:" + port + "/authorize", "http://127.0.0.1:" + port + "/token", List.of());
 
         OAuthTokenSet tokens = provider.exchangeCode(cfg, "C", ctx("S", "https://v/cb"));
 
@@ -240,11 +234,9 @@ class GenericOAuth2ProviderTest {
                 {"refresh_token":"RT"}
                 """));
         GenericOAuth2Provider provider = newProvider();
-        OAuthProviderConfig cfg = cfg("http://x/authorize",
-                "http://127.0.0.1:" + port + "/token", List.of());
+        OAuthProviderConfig cfg = cfg("http://x/authorize", "http://127.0.0.1:" + port + "/token", List.of());
 
-        assertThatThrownBy(() ->
-                provider.exchangeCode(cfg, "C", ctx("S", "https://v/cb")))
+        assertThatThrownBy(() -> provider.exchangeCode(cfg, "C", ctx("S", "https://v/cb")))
                 .isInstanceOf(OAuthFlowException.class)
                 .hasMessageContaining("missing 'access_token'");
     }
@@ -253,11 +245,9 @@ class GenericOAuth2ProviderTest {
     void exchange_code_throws_on_http_error() {
         nextResponse.set(new TokenResponse(400, "{\"error\":\"invalid_grant\"}"));
         GenericOAuth2Provider provider = newProvider();
-        OAuthProviderConfig cfg = cfg("http://x/authorize",
-                "http://127.0.0.1:" + port + "/token", List.of());
+        OAuthProviderConfig cfg = cfg("http://x/authorize", "http://127.0.0.1:" + port + "/token", List.of());
 
-        assertThatThrownBy(() ->
-                provider.exchangeCode(cfg, "bad", ctx("S", "https://v/cb")))
+        assertThatThrownBy(() -> provider.exchangeCode(cfg, "bad", ctx("S", "https://v/cb")))
                 .isInstanceOf(OAuthFlowException.class)
                 .hasMessageContaining("HTTP 400")
                 .hasMessageContaining("invalid_grant");
@@ -271,11 +261,9 @@ class GenericOAuth2ProviderTest {
                 {"error":"invalid_client","error_description":"bad creds"}
                 """));
         GenericOAuth2Provider provider = newProvider();
-        OAuthProviderConfig cfg = cfg("http://x/authorize",
-                "http://127.0.0.1:" + port + "/token", List.of());
+        OAuthProviderConfig cfg = cfg("http://x/authorize", "http://127.0.0.1:" + port + "/token", List.of());
 
-        assertThatThrownBy(() ->
-                provider.exchangeCode(cfg, "c", ctx("S", "https://v/cb")))
+        assertThatThrownBy(() -> provider.exchangeCode(cfg, "c", ctx("S", "https://v/cb")))
                 .isInstanceOf(OAuthFlowException.class)
                 .hasMessageContaining("invalid_client")
                 .hasMessageContaining("bad creds");
@@ -285,11 +273,9 @@ class GenericOAuth2ProviderTest {
     void exchange_code_throws_on_unparseable_body() {
         nextResponse.set(TokenResponse.ok("<html>not json</html>"));
         GenericOAuth2Provider provider = newProvider();
-        OAuthProviderConfig cfg = cfg("http://x/authorize",
-                "http://127.0.0.1:" + port + "/token", List.of());
+        OAuthProviderConfig cfg = cfg("http://x/authorize", "http://127.0.0.1:" + port + "/token", List.of());
 
-        assertThatThrownBy(() ->
-                provider.exchangeCode(cfg, "c", ctx("S", "https://v/cb")))
+        assertThatThrownBy(() -> provider.exchangeCode(cfg, "c", ctx("S", "https://v/cb")))
                 .isInstanceOf(OAuthFlowException.class)
                 .hasMessageContaining("not valid JSON");
     }
@@ -302,8 +288,7 @@ class GenericOAuth2ProviderTest {
                 {"access_token":"NEW-AT","refresh_token":"NEW-RT","expires_in":7200}
                 """));
         GenericOAuth2Provider provider = newProvider();
-        OAuthProviderConfig cfg = cfg("http://x/authorize",
-                "http://127.0.0.1:" + port + "/token", List.of("openid"));
+        OAuthProviderConfig cfg = cfg("http://x/authorize", "http://127.0.0.1:" + port + "/token", List.of("openid"));
 
         OAuthTokenSet tokens = provider.refresh(cfg, "OLD-RT");
 
@@ -319,6 +304,81 @@ class GenericOAuth2ProviderTest {
                 .containsEntry("client_secret", "shh-secret");
     }
 
+    // ─────── public client ───────
+
+    @Test
+    void public_client_sends_no_client_secret() {
+        nextResponse.set(TokenResponse.ok("""
+                {"access_token":"AT","refresh_token":"RT"}
+                """));
+        GenericOAuth2Provider provider = newProvider();
+        OAuthProviderConfig cfg = new OAuthProviderConfig(
+                "test-provider",
+                "generic-oauth2",
+                null,
+                "http://x/authorize",
+                "http://127.0.0.1:" + port + "/token",
+                "public-app",
+                "",
+                new ArrayList<>(),
+                new LinkedHashMap<>(Map.of("usePkce", true)));
+
+        provider.exchangeCode(cfg, "CODE", ctxWithPkce("S", "https://v/cb", "verifier"));
+        assertThat(lastRequest.get().form)
+                .containsEntry("client_id", "public-app")
+                .doesNotContainKey("client_secret");
+
+        provider.refresh(cfg, "RT");
+        assertThat(lastRequest.get().form).doesNotContainKey("client_secret");
+    }
+
+    @Test
+    void misses_client_secret_only_without_pkce() {
+        OAuthProviderConfig noSecretNoPkce =
+                new OAuthProviderConfig("p", "generic-oauth2", null, "a", "t", "id", "", List.of(), Map.of());
+        OAuthProviderConfig noSecretPkce = new OAuthProviderConfig(
+                "p", "generic-oauth2", null, "a", "t", "id", "", List.of(), Map.of("usePkce", true));
+        OAuthProviderConfig secret =
+                new OAuthProviderConfig("p", "generic-oauth2", null, "a", "t", "id", "s", List.of(), Map.of());
+
+        assertThat(GenericOAuth2Provider.missesClientSecret(noSecretNoPkce)).isTrue();
+        assertThat(GenericOAuth2Provider.missesClientSecret(noSecretPkce)).isFalse();
+        assertThat(GenericOAuth2Provider.missesClientSecret(secret)).isFalse();
+    }
+
+    // ─────── mcp: resource parameter ───────
+
+    @Test
+    void mcp_provider_sends_resource_on_authorize_exchange_and_refresh() {
+        nextResponse.set(TokenResponse.ok("""
+                {"access_token":"AT","refresh_token":"RT"}
+                """));
+        McpOAuthProvider provider = new McpOAuthProvider(new PackHttpClient());
+        OAuthProviderConfig cfg = new OAuthProviderConfig(
+                "mcp-x",
+                McpOAuthProvider.TYPE_ID,
+                null,
+                "https://as.example/authorize",
+                "http://127.0.0.1:" + port + "/token",
+                "client-1",
+                "",
+                new ArrayList<>(List.of("read")),
+                new LinkedHashMap<>(Map.of("usePkce", true, "mcpUrl", "https://mcp.example/mcp")));
+
+        URI authorize = provider.buildAuthorizeUri(cfg, ctxWithPkce("S", "https://v/cb", "verifier"));
+        assertThat(authorize.toString())
+                .contains("resource=https%3A%2F%2Fmcp.example%2Fmcp")
+                .contains("code_challenge_method=S256");
+
+        provider.exchangeCode(cfg, "CODE", ctxWithPkce("S", "https://v/cb", "verifier"));
+        assertThat(lastRequest.get().form).containsEntry("resource", "https://mcp.example/mcp");
+
+        provider.refresh(cfg, "RT");
+        assertThat(lastRequest.get().form)
+                .containsEntry("resource", "https://mcp.example/mcp")
+                .containsEntry("grant_type", "refresh_token");
+    }
+
     // ─────── Helpers ───────
 
     private GenericOAuth2Provider newProvider() {
@@ -327,11 +387,15 @@ class GenericOAuth2ProviderTest {
 
     private OAuthProviderConfig cfg(String authorizeUrl, String tokenUrl, List<String> scopes) {
         return new OAuthProviderConfig(
-                "test-provider", "generic-oauth2",
+                "test-provider",
+                "generic-oauth2",
                 /*discoveryUrl*/ null,
-                authorizeUrl, tokenUrl,
-                "my-app", "shh-secret",
-                new ArrayList<>(scopes), new LinkedHashMap<>());
+                authorizeUrl,
+                tokenUrl,
+                "my-app",
+                "shh-secret",
+                new ArrayList<>(scopes),
+                new LinkedHashMap<>());
     }
 
     private OAuthInitContext ctx(String state, String redirectUri) {
@@ -343,13 +407,15 @@ class GenericOAuth2ProviderTest {
     }
 
     private OAuthProviderConfig cfgWithExtra(
-            String authorizeUrl, String tokenUrl,
-            List<String> scopes, Map<String, Object> extra) {
+            String authorizeUrl, String tokenUrl, List<String> scopes, Map<String, Object> extra) {
         return new OAuthProviderConfig(
-                "test-provider", "generic-oauth2",
+                "test-provider",
+                "generic-oauth2",
                 /*discoveryUrl*/ null,
-                authorizeUrl, tokenUrl,
-                "my-app", "shh-secret",
+                authorizeUrl,
+                tokenUrl,
+                "my-app",
+                "shh-secret",
                 new ArrayList<>(scopes),
                 new LinkedHashMap<>(extra));
     }
@@ -358,8 +424,7 @@ class GenericOAuth2ProviderTest {
 
     private void handleToken(HttpExchange exchange) throws IOException {
         callCount.incrementAndGet();
-        String body = new String(
-                exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+        String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
         RecordedRequest req = new RecordedRequest();
         req.method = exchange.getRequestMethod();
         req.contentType = exchange.getRequestHeaders().getFirst("Content-Type");
@@ -385,7 +450,8 @@ class GenericOAuth2ProviderTest {
             if (eq < 0) {
                 out.put(URLDecoder.decode(pair, StandardCharsets.UTF_8), "");
             } else {
-                out.put(URLDecoder.decode(pair.substring(0, eq), StandardCharsets.UTF_8),
+                out.put(
+                        URLDecoder.decode(pair.substring(0, eq), StandardCharsets.UTF_8),
                         URLDecoder.decode(pair.substring(eq + 1), StandardCharsets.UTF_8));
             }
         }

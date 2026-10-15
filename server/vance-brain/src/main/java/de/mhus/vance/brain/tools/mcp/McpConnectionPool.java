@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.mcp;
 
+import de.mhus.vance.brain.tools.mcp.oauth.McpOAuthSettings;
 import de.mhus.vance.shared.servertool.ServerToolDocument;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.core.McpJsonRpc;
@@ -72,7 +73,7 @@ public final class McpConnectionPool implements AutoCloseable {
         if (doc.getId() == null) {
             return build(doc, ctx);
         }
-        String key = entryKey(doc.getId(), ctx);
+        String key = entryKey(doc, ctx);
         McpConnection hit = entries.get(key);
         if (hit != null) {
             return hit;
@@ -146,8 +147,24 @@ public final class McpConnectionPool implements AutoCloseable {
         }
     }
 
+    /**
+     * Drops every cached connection of {@code tenantId} — a shared
+     * (project / tenant) OAuth login changed, and any of them may have
+     * authenticated with it.
+     */
+    public synchronized void invalidateForTenant(String tenantId) {
+        String marker = "|" + nullSafe(tenantId) + "|";
+        List<String> matching = new ArrayList<>();
+        for (String k : entries.keySet()) {
+            if (k.contains(marker)) matching.add(k);
+        }
+        for (String key : matching) {
+            closeAndForget(key);
+        }
+    }
+
     private McpConnection build(ServerToolDocument doc, ToolInvocationContext ctx) {
-        McpConfig cfg = McpConfig.fromParameters(doc.getParameters());
+        McpConfig cfg = McpOAuthSettings.effectiveConfig(doc.getParameters());
         McpJsonRpc rpc = new McpJsonRpc();
         McpTransport transport =
                 switch (cfg.transport()) {
@@ -156,7 +173,7 @@ public final class McpConnectionPool implements AutoCloseable {
                 };
         SessionGuard guard = leaseSupport == null || doc.getId() == null
                 ? null
-                : leaseSupport.createGuard(doc, cfg, ctx, entryKey(doc.getId(), ctx));
+                : leaseSupport.createGuard(doc, cfg, ctx, entryKey(doc, ctx));
         return new McpConnection(cfg, transport, ctx, secretResolver, guard);
     }
 
@@ -191,10 +208,22 @@ public final class McpConnectionPool implements AutoCloseable {
         new McpHttpTransport(cfg, new McpJsonRpc(), httpClient, secretResolver).terminateSession(sessionId, ctx);
     }
 
-    private static String entryKey(String docId, @Nullable ToolInvocationContext ctx) {
+    /**
+     * {@code docId|tenant|user}. A server with a project-wide OAuth login
+     * authenticates with the account of the project the call runs in, so its
+     * connections are additionally keyed by project ({@code user@project}) —
+     * a session opened with one project's token must not serve another.
+     */
+    private static String entryKey(ServerToolDocument doc, @Nullable ToolInvocationContext ctx) {
         String tenant = ctx == null ? "" : nullSafe(ctx.tenantId());
         String user = ctx == null ? "" : nullSafe(ctx.userId());
-        return docId + "|" + tenant + "|" + user;
+        boolean projectLogin = McpOAuthSettings.of(doc.getParameters())
+                .map(s -> s.loginScope() == McpOAuthSettings.LoginScope.PROJECT)
+                .orElse(false);
+        if (projectLogin && ctx != null) {
+            user = user + "@" + nullSafe(ctx.projectId());
+        }
+        return doc.getId() + "|" + tenant + "|" + user;
     }
 
     private static String nullSafe(@Nullable String s) {

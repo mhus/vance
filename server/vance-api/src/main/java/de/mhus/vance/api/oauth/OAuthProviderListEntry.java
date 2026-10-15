@@ -6,6 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.jspecify.annotations.Nullable;
 
 /**
  * One entry in the response of {@code GET /brain/{tenant}/oauth-client/providers}.
@@ -25,6 +26,13 @@ public class OAuthProviderListEntry {
 
     /** Bean-type id (oidc, generic-oauth2, slack, atlassian, google, github, …). */
     private String typeId;
+
+    /**
+     * Display name when the provider carries one — the MCP server a
+     * {@code mcp} provider was created for. {@code null} otherwise; the UI
+     * then shows the {@link #providerId}.
+     */
+    private @Nullable String title;
 
     /** {@code true} when the caller has stored OAuth tokens for this provider. */
     private boolean connected;

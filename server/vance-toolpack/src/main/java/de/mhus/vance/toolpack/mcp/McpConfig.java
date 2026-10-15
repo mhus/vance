@@ -59,7 +59,27 @@ public record McpConfig(
         int initTimeoutSeconds,
         Map<String, String> defaultArgs) {
 
-    public enum Transport { STDIO, HTTP }
+    public enum Transport {
+        STDIO,
+        HTTP
+    }
+
+    /** Same config with a different {@link AuthSpec} — used to translate {@code type: oauth}. */
+    public McpConfig withAuth(AuthSpec newAuth) {
+        return new McpConfig(
+                transport,
+                command,
+                cwd,
+                env,
+                url,
+                postUrl,
+                sseUrl,
+                newAuth,
+                tls,
+                timeoutSeconds,
+                initTimeoutSeconds,
+                defaultArgs);
+    }
 
     public static final int DEFAULT_TIMEOUT_SECONDS = 60;
     public static final int DEFAULT_INIT_TIMEOUT_SECONDS = 5;
@@ -104,30 +124,38 @@ public record McpConfig(
         validate(t, command, url, postUrl, sseUrl);
 
         return new McpConfig(
-                t, command, cwd, Map.copyOf(env),
-                url, postUrl, sseUrl,
-                auth, tls,
-                timeout, initTimeout,
+                t,
+                command,
+                cwd,
+                Map.copyOf(env),
+                url,
+                postUrl,
+                sseUrl,
+                auth,
+                tls,
+                timeout,
+                initTimeout,
                 Map.copyOf(defaultArgs));
     }
 
     private static void validate(
-            Transport t, List<String> command,
-            @Nullable String url, @Nullable String postUrl, @Nullable String sseUrl) {
+            Transport t,
+            List<String> command,
+            @Nullable String url,
+            @Nullable String postUrl,
+            @Nullable String sseUrl) {
         switch (t) {
             case STDIO -> {
                 if (command == null || command.isEmpty()) {
-                    throw new IllegalArgumentException(
-                            "mcp_server: 'command' is required for transport=stdio");
+                    throw new IllegalArgumentException("mcp_server: 'command' is required for transport=stdio");
                 }
             }
             case HTTP -> {
                 boolean hasSingle = url != null && !url.isBlank();
                 boolean hasSplit = postUrl != null && sseUrl != null;
                 if (!hasSingle && !hasSplit) {
-                    throw new IllegalArgumentException(
-                            "mcp_server: either 'url' (Streamable HTTP) or both "
-                                    + "'postUrl' and 'sseUrl' (legacy HTTP+SSE) is required");
+                    throw new IllegalArgumentException("mcp_server: either 'url' (Streamable HTTP) or both "
+                            + "'postUrl' and 'sseUrl' (legacy HTTP+SSE) is required");
                 }
                 if (hasSingle && hasSplit) {
                     throw new IllegalArgumentException(
@@ -139,14 +167,13 @@ public record McpConfig(
 
     private static Transport parseTransport(@Nullable Object raw) {
         if (!(raw instanceof String s) || s.isBlank()) {
-            throw new IllegalArgumentException(
-                    "mcp_server: 'transport' is required (stdio | http)");
+            throw new IllegalArgumentException("mcp_server: 'transport' is required (stdio | http)");
         }
         return switch (s.trim().toLowerCase()) {
             case "stdio" -> Transport.STDIO;
             case "http", "streamable-http", "http+sse" -> Transport.HTTP;
-            default -> throw new IllegalArgumentException(
-                    "mcp_server: unknown transport '" + s + "' (expected stdio | http)");
+            default ->
+                throw new IllegalArgumentException("mcp_server: unknown transport '" + s + "' (expected stdio | http)");
         };
     }
 
@@ -173,8 +200,11 @@ public record McpConfig(
     private static int intOrDefault(@Nullable Object raw, int def) {
         if (raw instanceof Number n) return n.intValue();
         if (raw instanceof String s && !s.isBlank()) {
-            try { return Integer.parseInt(s.trim()); }
-            catch (NumberFormatException ignored) { return def; }
+            try {
+                return Integer.parseInt(s.trim());
+            } catch (NumberFormatException ignored) {
+                return def;
+            }
         }
         return def;
     }

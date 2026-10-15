@@ -246,6 +246,12 @@ public class ServerToolRegistry {
         if (!entry.config.enabled()) return Optional.empty();
         try {
             return entry.pickSubTool(name, factoryRegistry, ctx);
+        } catch (de.mhus.vance.brain.tools.types.ToolPackUnavailableException ex) {
+            log.trace(
+                    "ServerToolRegistry: tool '{}' unavailable for this caller: {}",
+                    entry.config.name(),
+                    ex.getMessage());
+            return Optional.empty();
         } catch (RuntimeException ex) {
             // Same isolation rule as listAll: a broken pack must return
             // "not found" rather than propagating up into the engine and
@@ -281,6 +287,11 @@ public class ServerToolRegistry {
             if (!entry.config.enabled()) continue;
             try {
                 out.addAll(entry.materializeFiltered(factoryRegistry, ctx));
+            } catch (de.mhus.vance.brain.tools.types.ToolPackUnavailableException ex) {
+                log.trace(
+                        "ServerToolRegistry: tool '{}' unavailable for this caller: {}",
+                        entry.config.name(),
+                        ex.getMessage());
             } catch (RuntimeException ex) {
                 // Per-tool isolation: a broken pack (e.g. unreachable
                 // OpenAPI spec, missing MCP binary, malformed parameters)
@@ -345,6 +356,23 @@ public class ServerToolRegistry {
         return cached.at().isAfter(now.minus(MATERIALIZE_TTL));
     }
 
+    /**
+     * An OAuth login was removed or a shared login replaced: the cached tool
+     * lists of the tenant may contain packs built with it. Dropping them makes
+     * the next listing ask the factories again — an MCP server without login
+     * then disappears at once instead of after {@link #MATERIALIZE_TTL}.
+     */
+    @org.springframework.context.event.EventListener
+    void onOAuthDisconnected(de.mhus.vance.brain.oauth.OAuthDisconnectedEvent event) {
+        String prefix = scopeKey(event.tenantId(), "");
+        for (Map.Entry<String, ProjectScope> e : scopes.entrySet()) {
+            if (!e.getKey().startsWith(prefix)) continue;
+            for (ResolvedTool tool : e.getValue().entries.values()) {
+                tool.dropMaterialized();
+            }
+        }
+    }
+
     private static String scopeKey(String tenantId, String projectId) {
         return tenantId + "|" + projectId;
     }
@@ -402,6 +430,10 @@ public class ServerToolRegistry {
          */
         private final Map<String, CachedMaterialization> materialized = new ConcurrentHashMap<>();
 
+        void dropMaterialized() {
+            materialized.clear();
+        }
+
         ResolvedTool(ServerToolConfig config, String tenantId, String projectId, java.time.Clock clock) {
             this.config = config;
             this.tenantId = tenantId;
@@ -427,6 +459,11 @@ public class ServerToolRegistry {
                 List<de.mhus.vance.toolpack.Tool> fresh = materializeUncached(registry, ctx);
                 materialized.put(scopeKey, new CachedMaterialization(fresh, now));
                 return fresh;
+            } catch (de.mhus.vance.brain.tools.types.ToolPackUnavailableException e) {
+                // Not a transient failure — the login is gone. Serving the
+                // cached list would offer tools that can only fail.
+                materialized.remove(scopeKey);
+                throw e;
             } catch (RuntimeException e) {
                 if (cached != null) {
                     log.warn(

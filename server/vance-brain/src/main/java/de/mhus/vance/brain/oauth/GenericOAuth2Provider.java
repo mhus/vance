@@ -32,7 +32,9 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * <p>Client credentials are sent in the form body — most providers
  * accept either Basic auth or body; body is the lower-common-denominator
- * (RFC 6749 §2.3.1 also calls it out as supported). Quirk-subclasses
+ * (RFC 6749 §2.3.1 also calls it out as supported). A public client
+ * (no secret configured, PKCE on — typical for dynamically registered
+ * clients) sends its {@code client_id} only; PKCE is the binding then. Quirk-subclasses
  * (Slack v2, Atlassian) may override the token-response parsing.
  */
 @Component
@@ -75,8 +77,8 @@ public class GenericOAuth2Provider implements OAuthProvider {
     public URI buildAuthorizeUri(OAuthProviderConfig cfg, OAuthInitContext ctx) {
         String base = resolveAuthorizeUrl(cfg);
         if (base == null || base.isBlank()) {
-            throw new OAuthFlowException(cfg.providerId(),
-                    "no authorize URL configured for '" + cfg.providerId() + "'");
+            throw new OAuthFlowException(
+                    cfg.providerId(), "no authorize URL configured for '" + cfg.providerId() + "'");
         }
         Map<String, String> params = new LinkedHashMap<>();
         params.put("response_type", "code");
@@ -95,17 +97,16 @@ public class GenericOAuth2Provider implements OAuthProvider {
     }
 
     @Override
-    public OAuthTokenSet exchangeCode(
-            OAuthProviderConfig cfg, String code, OAuthInitContext ctx) {
+    public OAuthTokenSet exchangeCode(OAuthProviderConfig cfg, String code, OAuthInitContext ctx) {
         Map<String, String> form = new LinkedHashMap<>();
         form.put("grant_type", "authorization_code");
         form.put("code", code);
         form.put("redirect_uri", ctx.redirectUri());
-        form.put("client_id", cfg.clientId());
-        form.put("client_secret", cfg.clientSecret());
+        putClientCredentials(cfg, form);
         if (isPkceEnabled(cfg) && ctx.codeVerifier() != null) {
             form.put("code_verifier", ctx.codeVerifier());
         }
+        decorateTokenParams(cfg, form);
         return postForm(cfg, form);
     }
 
@@ -114,8 +115,8 @@ public class GenericOAuth2Provider implements OAuthProvider {
         Map<String, String> form = new LinkedHashMap<>();
         form.put("grant_type", "refresh_token");
         form.put("refresh_token", refreshToken);
-        form.put("client_id", cfg.clientId());
-        form.put("client_secret", cfg.clientSecret());
+        putClientCredentials(cfg, form);
+        decorateTokenParams(cfg, form);
         return postForm(cfg, form);
     }
 
@@ -140,8 +141,16 @@ public class GenericOAuth2Provider implements OAuthProvider {
      * {@code access_type=offline}, Slack's user-vs-bot toggle, …).
      * Default is no-op.
      */
-    protected void decorateAuthorizeParams(
-            OAuthProviderConfig cfg, OAuthInitContext ctx, Map<String, String> params) {
+    protected void decorateAuthorizeParams(OAuthProviderConfig cfg, OAuthInitContext ctx, Map<String, String> params) {
+        // No-op for the generic flavour.
+    }
+
+    /**
+     * Adds provider-specific parameters to the token request — both the
+     * code exchange and the refresh (e.g. the RFC 8707 {@code resource}
+     * an MCP server binds its tokens to). Default is no-op.
+     */
+    protected void decorateTokenParams(OAuthProviderConfig cfg, Map<String, String> form) {
         // No-op for the generic flavour.
     }
 
@@ -153,8 +162,7 @@ public class GenericOAuth2Provider implements OAuthProvider {
     protected OAuthTokenSet parseTokenResponse(JsonNode root, String providerId) {
         String accessToken = stringOrNull(root, "access_token");
         if (accessToken == null) {
-            throw new OAuthFlowException(providerId,
-                    "token response missing 'access_token'");
+            throw new OAuthFlowException(providerId, "token response missing 'access_token'");
         }
         String refreshToken = stringOrNull(root, "refresh_token");
         Instant expiresAt = null;
@@ -165,8 +173,7 @@ public class GenericOAuth2Provider implements OAuthProvider {
         Map<String, String> extra = new LinkedHashMap<>();
         for (java.util.Iterator<String> it = root.propertyNames().iterator(); it.hasNext(); ) {
             String name = it.next();
-            if ("access_token".equals(name) || "refresh_token".equals(name)
-                    || "expires_in".equals(name)) {
+            if ("access_token".equals(name) || "refresh_token".equals(name) || "expires_in".equals(name)) {
                 continue;
             }
             JsonNode value = root.get(name);
@@ -181,8 +188,7 @@ public class GenericOAuth2Provider implements OAuthProvider {
     private OAuthTokenSet postForm(OAuthProviderConfig cfg, Map<String, String> form) {
         String url = resolveTokenUrl(cfg);
         if (url == null || url.isBlank()) {
-            throw new OAuthFlowException(cfg.providerId(),
-                    "no token URL configured for '" + cfg.providerId() + "'");
+            throw new OAuthFlowException(cfg.providerId(), "no token URL configured for '" + cfg.providerId() + "'");
         }
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -193,21 +199,20 @@ public class GenericOAuth2Provider implements OAuthProvider {
                 .build();
         HttpResponse<String> response;
         try {
-            response = httpClient.client(PackHttpClient.TlsConfig.DEFAULT)
+            response = httpClient
+                    .client(PackHttpClient.TlsConfig.DEFAULT)
                     .send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new OAuthFlowException(cfg.providerId(),
-                    "token request interrupted", e);
+            throw new OAuthFlowException(cfg.providerId(), "token request interrupted", e);
         } catch (java.io.IOException e) {
-            throw new OAuthFlowException(cfg.providerId(),
-                    "token request failed: " + e.getMessage(), e);
+            throw new OAuthFlowException(cfg.providerId(), "token request failed: " + e.getMessage(), e);
         }
 
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new OAuthFlowException(cfg.providerId(),
-                    "token endpoint returned HTTP " + response.statusCode()
-                            + " — " + snippet(response.body()));
+            throw new OAuthFlowException(
+                    cfg.providerId(),
+                    "token endpoint returned HTTP " + response.statusCode() + " — " + snippet(response.body()));
         }
 
         JsonNode root;
@@ -219,20 +224,39 @@ public class GenericOAuth2Provider implements OAuthProvider {
             // just "unexpected character ('<')" and says nothing about who
             // actually answered — a gateway HTML error page served with
             // 200, a captive portal, or the wrong endpoint all look alike.
-            throw new OAuthFlowException(cfg.providerId(),
-                    "token response is not valid JSON: " + e.getMessage()
-                            + " — body was: " + snippet(response.body()), e);
+            throw new OAuthFlowException(
+                    cfg.providerId(),
+                    "token response is not valid JSON: " + e.getMessage() + " — body was: " + snippet(response.body()),
+                    e);
         }
         // Some providers tunnel errors in a 200-OK body — RFC 6749 §5.2.
         if (root.has("error")) {
             String error = stringOrNull(root, "error");
             String description = stringOrNull(root, "error_description");
-            throw new OAuthFlowException(cfg.providerId(),
+            throw new OAuthFlowException(
+                    cfg.providerId(),
                     "token response carries OAuth error '"
                             + error + "': "
                             + (description == null ? "(no description)" : description));
         }
         return parseTokenResponse(root, cfg.providerId());
+    }
+
+    private static void putClientCredentials(OAuthProviderConfig cfg, Map<String, String> form) {
+        form.put("client_id", cfg.clientId());
+        if (!cfg.clientSecret().isBlank()) {
+            form.put("client_secret", cfg.clientSecret());
+        }
+    }
+
+    /**
+     * Whether a flow with this config cannot run because the client secret
+     * is missing. A client without a secret is acceptable only as a public
+     * client, and a public client must use PKCE — otherwise nothing binds
+     * the code to the caller.
+     */
+    public static boolean missesClientSecret(OAuthProviderConfig cfg) {
+        return cfg.clientSecret().isBlank() && !isPkceEnabled(cfg);
     }
 
     // ──────────────────── PKCE helpers ────────────────────
@@ -257,8 +281,7 @@ public class GenericOAuth2Provider implements OAuthProvider {
      */
     public static String pkceChallenge(String codeVerifier) {
         try {
-            byte[] hash = MessageDigest.getInstance("SHA-256")
-                    .digest(codeVerifier.getBytes(StandardCharsets.US_ASCII));
+            byte[] hash = MessageDigest.getInstance("SHA-256").digest(codeVerifier.getBytes(StandardCharsets.US_ASCII));
             return Base64.getUrlEncoder().withoutPadding().encodeToString(hash);
         } catch (NoSuchAlgorithmException e) {
             // SHA-256 is part of the JRE; failure here means a broken

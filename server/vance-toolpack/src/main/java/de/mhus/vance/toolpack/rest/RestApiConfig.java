@@ -75,12 +75,14 @@ public record RestApiConfig(
         String specUrl = stringOrNull(params.get("specUrl"));
         String specInline = stringOrNull(params.get("specInline"));
         if (specUrl == null && specInline == null) {
-            throw new IllegalArgumentException(
-                    "rest_api: 'specUrl' or 'specInline' is required");
+            throw new IllegalArgumentException("rest_api: 'specUrl' or 'specInline' is required");
         }
         String baseUrl = stringOrNull(params.get("baseUrl"));
 
         AuthSpec auth = AuthSpec.fromMap(asMap(params.get("auth")));
+        if (auth.type() == AuthSpec.Type.OAUTH) {
+            throw new IllegalArgumentException("auth.type 'oauth' is only supported for MCP server tools");
+        }
         PackHttpClient.TlsConfig tls = PackHttpClient.TlsConfig.fromMap(asMap(params.get("tls")));
 
         List<String> include = stringList(params.get("include"));
@@ -114,14 +116,21 @@ public record RestApiConfig(
         Object tsRaw = params.get("timeoutSeconds");
         if (tsRaw instanceof Number n) timeout = n.intValue();
         else if (tsRaw instanceof String s && !s.isBlank()) {
-            try { timeout = Integer.parseInt(s.trim()); }
-            catch (NumberFormatException ignored) { /* keep default */ }
+            try {
+                timeout = Integer.parseInt(s.trim());
+            } catch (NumberFormatException ignored) {
+                /* keep default */
+            }
         }
 
         return new RestApiConfig(
-                specUrl, specInline, baseUrl,
-                auth, tls,
-                include, exclude,
+                specUrl,
+                specInline,
+                baseUrl,
+                auth,
+                tls,
+                include,
+                exclude,
                 Map.copyOf(methodLabels),
                 Map.copyOf(labelOverrides),
                 Map.copyOf(deferredOverrides),

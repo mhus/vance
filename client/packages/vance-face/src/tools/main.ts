@@ -1,5 +1,6 @@
 import '@/platform/bootWeb';
 import { createApp } from 'vue';
+import { createPinia } from 'pinia';
 import { ensureAuthenticated } from '@/platform/ensureAuthenticatedWeb';
 import ToolsApp from './ToolsApp.vue';
 import { i18n, i18nReady } from '@/i18n';
@@ -11,4 +12,6 @@ import '@vance/components/fonts.css';
 await ensureAuthenticated();
 // First paint in the user's language: the locale's messages load before mount.
 await i18nReady;
-createApp(ToolsApp).use(i18n).mount('#app');
+// MarkdownView (the help drawer's renderer) resolves relative document
+// references through a pinia store; without a pinia root its setup throws.
+createApp(ToolsApp).use(i18n).use(createPinia()).mount('#app');

@@ -185,6 +185,9 @@ public final class RestHttpInvoker {
                 }
                 // queryParamName variant is handled in buildUrl()
             }
+            case OAUTH ->
+                // Rejected by RestApiConfig.fromParameters — unreachable for a parsed config.
+                throw new IllegalStateException("auth.type 'oauth' is only supported for MCP server tools");
         }
     }
 

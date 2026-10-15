@@ -13,7 +13,7 @@ import {
   ArrowUpDown, Bell, Bot, Bug, Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
   CircleCheck, CircleHelp, CircleX, Code, Copy, Crop, Download, Ellipsis, ExternalLink, Eye, EyeOff,
   File, FileText, Folder, FolderOpen, FolderPlus, Globe, GripVertical, History, House, Image, Inbox,
-  Info, KeyRound, LayoutGrid, Link, List, ListFilter, Loader, Lock, LockOpen, LogOut, MapPin,
+  Info, KeyRound, LayoutGrid, Link, List, ListFilter, Loader, Lock, LockOpen, LogIn, LogOut, MapPin,
   Maximize2, Menu, MessageSquare, Mic, Minimize2, Minus, Moon, Package, PanelLeft, PanelRight,
   Paperclip, Palette, Pause, Pencil, Pin, Play, Plus, Redo2, RotateCw, Save, Search, Send, Settings,
   Share, Sparkles, Square, SquareKanban, Star, Sun, Table, Tag, Terminal, TriangleAlert, Trash2,
@@ -73,6 +73,7 @@ export const ICONS = {
   'open-in-app': AppWindow,
   'maximize': Maximize2,
   'minimize': Minimize2,
+  'sign-in': LogIn,
   'sign-out': LogOut,
   'report-bug': Bug,
 

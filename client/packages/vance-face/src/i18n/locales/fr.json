@@ -2216,7 +2216,7 @@
       "disabledSubTools": "Sous-outils désactivés",
       "disabledSubToolsHelp": "Un nom de sous-outil par ligne. Noms locaux uniquement (sans le préfixe <pack>__). Vide signifie que tous les sous-outils sont actifs.",
       "labels": "Étiquettes",
-      "labelsHelp": "Une par ligne (ou séparées par des virgules). Les Recipes peuvent cibler des étiquettes via @<label>."
+      "labelsHelp": "Une par ligne (ou séparées par des virgules). Les Recipes peuvent cibler des étiquettes via {'@'}<label>."
     },
     "rightPanel": {
       "typeSchemaTitle": "Schéma de type",

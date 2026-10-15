@@ -1,6 +1,6 @@
 ---
-triggers: OAuth, Slack, Jira, Atlassian, Google, Gmail, GitHub, Microsoft, connect, verbinde, Authentifizierung, Token, Workspace integration, third-party API
-summary: How to wire a tool against an OAuth-protected API (Slack, Jira, Google, GitHub, …) using the connecting user's token.
+triggers: OAuth, MCP server, MCP login, Notion, Linear, Slack, Jira, Atlassian, Google, Gmail, GitHub, Microsoft, connect, verbinde, anmelden, Authentifizierung, Token, Workspace integration, third-party API
+summary: How to wire a tool against an OAuth-protected API or MCP server (Notion, Linear, Slack, Jira, Google, GitHub, …) — auth.type oauth for any MCP server, provider tokens for REST.
 ---
 # OAuth-backed tools
 
@@ -26,6 +26,38 @@ you. If the user hasn't connected the provider yet, your tool calls
 will fail with a clear "user must connect provider X" message; tell
 them to open Web-UI → Connected Accounts.
 
+## Recipe 0: any remote MCP server that asks for a login (preferred)
+
+Hosted MCP servers (Notion, Linear, Atlassian Remote MCP, …) implement the
+MCP authorization spec. For them you need **no** OAuth provider, no app
+registration and no token template — only the URL and `auth.type: oauth`:
+
+```yaml
+# server-tools/notion.yaml
+type: mcp_server
+description: "Notion workspace — search, read and edit pages."
+labels: [notion, external]
+parameters:
+  transport: http
+  url: "https://mcp.notion.com/mcp"
+  auth:
+    type: oauth
+    loginScope: user      # user (default) | project | tenant — whose account
+```
+
+The brain discovers the login server and registers itself on the first
+login. Logging in needs a browser, so **you cannot do it**: tell the user
+to open Web-UI → **Server Tools**, select the tool and click **Log in**
+(personal servers also appear under „Connected Accounts" after the first
+login). Until the account is logged in the server's tools are simply not
+in your tool list — that is expected, not an error. `loginScope: project`
+or `tenant` means one shared account that a project or tenant admin logs
+in once.
+
+Optional keys under `auth`: `scopes` (space-separated), and `clientId` +
+`clientSecret` (as a `{{secret:…}}` reference) only for servers that do not
+allow self-registration.
+
 ## The resolver syntax
 
 | Form | Where the value comes from |
@@ -48,11 +80,11 @@ path. Other user-scope secrets (`oauth.<id>.refresh_token`,
 `oauth.<id>.scopes`) fall through to a plain user-setting read; you
 almost never want those.
 
-## Recipe 1: MCP server behind a user-token
+## Recipe 1: MCP server behind a provider token
 
-The cleanest case — a remote MCP server speaks Slack/Jira/etc., you
-just hand it the Bearer token. Write a `server-tools/<name>.yaml`
-like this:
+For an MCP server that does **not** do its own login but expects the
+token of a provider the tenant already configured (Slack, Jira, …), hand
+it the bearer token. Write a `server-tools/<name>.yaml` like this:
 
 ```yaml
 type: mcp_server
@@ -145,8 +177,10 @@ list available providers via the user's „Connected Accounts" page.
 
 ## Things to remember
 
-- **Always `user:` scope** for OAuth tokens — they're personal.
-  `tenant:` or `project:` would be wrong (and won't trigger refresh).
+- **Always `user:` scope** when you write a provider-token template
+  yourself — those tokens are personal. Shared project / tenant accounts
+  exist only through `auth.type: oauth` with `loginScope` (Recipe 0); the
+  brain builds that reference itself.
 - **Don't put credentials in the YAML body.** `clientId` / `clientSecret`
   of the OAuth app live at the provider-config level; the user's
   tokens live in user settings. You never write or read either of

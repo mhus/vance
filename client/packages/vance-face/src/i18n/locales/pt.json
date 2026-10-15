@@ -2216,7 +2216,7 @@
       "disabledSubTools": "Sub-ferramentas desabilitadas",
       "disabledSubToolsHelp": "Um nome de sub-ferramenta por linha. Apenas nomes locais (sem o prefixo <pack>__). Vazio significa todas as sub-ferramentas ativas.",
       "labels": "Rótulos",
-      "labelsHelp": "Um por linha (ou separados por vírgula). Recipes podem direcionar rótulos via @<label>."
+      "labelsHelp": "Um por linha (ou separados por vírgula). Recipes podem direcionar rótulos via {'@'}<label>."
     },
     "rightPanel": {
       "typeSchemaTitle": "Esquema de tipo",

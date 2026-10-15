@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.oauth;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * Published right after the OAuth disconnect endpoint has wiped the
  * user's tokens. Subscribers ({@code McpToolPackFactory},
@@ -14,6 +16,16 @@ package de.mhus.vance.brain.oauth;
  * post-state. Listeners must <b>not</b> block — failure to clean up a
  * cached connection should be logged, not thrown, because the user's
  * disconnect is already persisted.
+ *
+ * <p>{@code userId} is {@code null} when a shared login — the project- or
+ * tenant-wide account of an MCP server — was replaced or removed; every
+ * connection of the tenant that may have used it has to go.
  */
-public record OAuthDisconnectedEvent(String tenantId, String userId, String providerId) {
+public record OAuthDisconnectedEvent(
+        String tenantId, @Nullable String userId, String providerId) {
+
+    /** Whether a shared (project / tenant) login changed — {@code userId} is then {@code null}. */
+    public boolean shared() {
+        return userId == null;
+    }
 }

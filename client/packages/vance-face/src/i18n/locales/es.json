@@ -2216,7 +2216,7 @@
       "disabledSubTools": "Sub-herramientas deshabilitadas",
       "disabledSubToolsHelp": "Un nombre de sub-herramienta por línea. Solo nombres locales (sin el prefijo <pack>__). Vacío significa que todas las sub-herramientas están activas.",
       "labels": "Etiquetas",
-      "labelsHelp": "Una por línea (o separadas por comas). Las Recipes pueden apuntar a etiquetas a través de @<label>."
+      "labelsHelp": "Una por línea (o separadas por comas). Las Recipes pueden apuntar a etiquetas a través de {'@'}<label>."
     },
     "rightPanel": {
       "typeSchemaTitle": "Esquema de tipo",

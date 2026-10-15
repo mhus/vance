@@ -2216,7 +2216,7 @@
       "disabledSubTools": "無効なサブツール",
       "disabledSubToolsHelp": "1行に1つのサブツール名。ローカル名のみ（<pack>__ 接頭辞なし）。空の場合はすべてのサブツールがアクティブ。",
       "labels": "ラベル",
-      "labelsHelp": "1行に1つ（またはカンマ区切り）。レシピは@<label>を介してラベルをターゲットにできます。"
+      "labelsHelp": "1行に1つ（またはカンマ区切り）。レシピは{'@'}<label>を介してラベルをターゲットにできます。"
     },
     "rightPanel": {
       "typeSchemaTitle": "タイプスキーマ",

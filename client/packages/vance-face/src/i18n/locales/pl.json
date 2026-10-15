@@ -2216,7 +2216,7 @@
       "disabledSubTools": "Wyłączone podnarzędzia",
       "disabledSubToolsHelp": "Jedna nazwa podnarzędzia na linię. Tylko nazwy lokalne (bez prefiksu <pack>__). Puste oznacza, że wszystkie podnarzędzia są aktywne.",
       "labels": "Etykiety",
-      "labelsHelp": "Jedna na linię (lub oddzielone przecinkami). Recipes mogą celować w etykiety za pomocą @<label>."
+      "labelsHelp": "Jedna na linię (lub oddzielone przecinkami). Recipes mogą celować w etykiety za pomocą {'@'}<label>."
     },
     "rightPanel": {
       "typeSchemaTitle": "Schemat typu",

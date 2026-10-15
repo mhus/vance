@@ -1,8 +1,12 @@
 package de.mhus.vance.brain.tools.mcp;
 
 import de.mhus.vance.brain.oauth.OAuthDisconnectedEvent;
+import de.mhus.vance.brain.oauth.OAuthTokenOwner;
+import de.mhus.vance.brain.oauth.OAuthTokenStore;
+import de.mhus.vance.brain.tools.mcp.oauth.McpOAuthSettings;
 import de.mhus.vance.brain.tools.rest.SettingsSecretResolver;
 import de.mhus.vance.brain.tools.types.ToolFactory;
+import de.mhus.vance.brain.tools.types.ToolPackUnavailableException;
 import de.mhus.vance.shared.lease.LeaseHolderInfo;
 import de.mhus.vance.shared.servertool.ServerToolConfig;
 import de.mhus.vance.shared.servertool.ServerToolDocument;
@@ -68,7 +72,9 @@ public class McpToolPackFactory implements ToolFactory {
                                     "type",
                                     "object",
                                     "description",
-                                    "Optional auth — bearer/basic/apiKey for the HTTP transport."),
+                                    "Optional auth — bearer/basic/apiKey for the HTTP transport, or "
+                                            + "{ type: oauth, loginScope: user|project|tenant, scopes, clientId, "
+                                            + "clientSecret } for a server that requires an OAuth login."),
                     "tls", Map.of("type", "object", "description", "TLS settings for the HTTP transport."),
                     "lease",
                             Map.of(
@@ -83,11 +89,16 @@ public class McpToolPackFactory implements ToolFactory {
 
     private final McpConnectionPool pool;
     private final ServerToolLoader serverToolLoader;
+    private final OAuthTokenStore tokenStore;
 
     public McpToolPackFactory(
-            SettingsSecretResolver secretResolver, McpLeaseSupport leaseSupport, ServerToolLoader serverToolLoader) {
+            SettingsSecretResolver secretResolver,
+            McpLeaseSupport leaseSupport,
+            ServerToolLoader serverToolLoader,
+            OAuthTokenStore tokenStore) {
         this.pool = new McpConnectionPool(new PackHttpClient(), secretResolver, leaseSupport);
         this.serverToolLoader = serverToolLoader;
+        this.tokenStore = tokenStore;
     }
 
     /**
@@ -126,7 +137,7 @@ public class McpToolPackFactory implements ToolFactory {
                     sessionId);
             return;
         }
-        McpConfig cfg = McpConfig.fromParameters(config.get().parameters());
+        McpConfig cfg = McpOAuthSettings.effectiveConfig(config.get().parameters());
         Object endpoint = info.payload().get("endpoint");
         if (!Objects.equals(cfg.url(), endpoint == null ? null : String.valueOf(endpoint))) {
             log.warn(
@@ -172,6 +183,10 @@ public class McpToolPackFactory implements ToolFactory {
                 ctx == null ? null : ctx.sessionId(),
                 ctx == null ? null : ctx.processId(),
                 ctx == null ? null : ctx.userId());
+        Optional<McpOAuthSettings> oauth = McpOAuthSettings.of(document.getParameters());
+        if (oauth.isPresent()) {
+            requireLogin(document, oauth.get(), bootstrap);
+        }
         McpConnection connection = pool.acquire(document, bootstrap);
         Set<String> labels = document.getLabels() == null ? Set.of() : new LinkedHashSet<>(document.getLabels());
         McpPackBuilder.PackInput input = new McpPackBuilder.PackInput(
@@ -191,6 +206,30 @@ public class McpToolPackFactory implements ToolFactory {
                 tools.size(),
                 guessTransportFor(document));
         return List.copyOf(tools);
+    }
+
+    /**
+     * An OAuth-protected server is offered only once its login exists — for
+     * the calling user, or the project / tenant account. Without it the
+     * pack is skipped quietly ({@link ToolPackUnavailableException}) instead
+     * of failing the {@code initialize} with a 401 on every turn.
+     */
+    private void requireLogin(ServerToolDocument document, McpOAuthSettings oauth, ToolInvocationContext ctx) {
+        String userId = ctx.userId();
+        String projectId = ctx.projectId();
+        if (oauth.loginScope() == McpOAuthSettings.LoginScope.USER && (userId == null || userId.isBlank())) {
+            throw new ToolPackUnavailableException(
+                    "MCP server '" + document.getName() + "' needs a user login, but the call has no user");
+        }
+        if (oauth.loginScope() == McpOAuthSettings.LoginScope.PROJECT && (projectId == null || projectId.isBlank())) {
+            throw new ToolPackUnavailableException(
+                    "MCP server '" + document.getName() + "' needs a project login, but the call has no project");
+        }
+        OAuthTokenOwner owner = oauth.owner(projectId == null ? "" : projectId, userId == null ? "" : userId);
+        if (!tokenStore.isConnected(ctx.tenantId(), owner, oauth.providerId())) {
+            throw new ToolPackUnavailableException("MCP server '" + document.getName() + "' is not logged in ("
+                    + oauth.loginScope().wireName() + " account)");
+        }
     }
 
     private static String resolveTenantId(
@@ -229,7 +268,11 @@ public class McpToolPackFactory implements ToolFactory {
 
     @EventListener
     void onOAuthDisconnect(OAuthDisconnectedEvent ev) {
-        invalidateForUser(ev.tenantId(), ev.userId());
+        if (ev.userId() == null) {
+            pool.invalidateForTenant(ev.tenantId());
+        } else {
+            invalidateForUser(ev.tenantId(), ev.userId());
+        }
     }
 
     @PreDestroy

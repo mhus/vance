@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   CodeEditor,
@@ -7,22 +7,30 @@ import {
   type FocusZone,
   ProjectListSidebar,
   VAlert,
+  VBadge,
   VButton,
   VCard,
   VCheckbox,
   VEmptyState,
+  VGroup,
+  VGroupRow,
   VInput,
   VModal,
+  VSegment,
   VSelect,
   VTextarea,
+  VToggle,
   VIconButton,
   useConfirm,
 } from '@/components';
+import McpServerForm from './McpServerForm.vue';
 import { useTenantProjects } from '@/composables/useTenantProjects';
 import { useAdminServerTools } from '@/composables/useAdminServerTools';
 import { rememberProject } from '@/platform/lastProject';
 import type {
   ServerToolDto,
+  ServerToolOAuthDto,
+  ServerToolTestResultDto,
   ServerToolWriteRequest,
   ToolTypeDto,
 } from '@vance/generated';
@@ -33,6 +41,8 @@ import type {
 // classpath defaults.
 const TENANT_PROJECT = '_tenant';
 const NAME_PATTERN = /^[a-z0-9][a-z0-9_]*$/;
+/** Tool type of an MCP server — gets the structured form and the login. */
+const MCP_TYPE = 'mcp_server';
 
 const { t } = useI18n();
 const confirmAction = useConfirm();
@@ -80,12 +90,45 @@ const form = reactive({
 const banner = ref<string | null>(null);
 const formError = ref<string | null>(null);
 
+// MCP servers are edited in a structured form; the JSON view stays
+// available for everything the form does not know.
+type ParamsMode = 'form' | 'json';
+const paramsMode = ref<ParamsMode>('form');
+const mcpParams = ref<Record<string, unknown>>({});
+/** Re-mounts the MCP form whenever its parameters are replaced from outside. */
+const mcpFormKey = ref(0);
+const testResult = ref<ServerToolTestResultDto | null>(null);
+
+const isMcp = computed<boolean>(() => form.type === MCP_TYPE);
+
+const paramsModeOptions = computed(() => [
+  { value: 'form' as ParamsMode, label: t('tools.mcp.modeForm') },
+  { value: 'json' as ParamsMode, label: t('tools.mcp.modeJson') },
+]);
+
 // ─── New-tool modal ─────────────────────────────────────────────────────
 
+type NewKind = 'mcp' | 'other';
+type NewAuth = 'oauth' | 'none' | 'bearer';
+
 const showNewModal = ref(false);
+const newKind = ref<NewKind>('mcp');
 const newName = ref('');
 const newType = ref('');
+const newUrl = ref('');
+const newAuth = ref<NewAuth>('oauth');
 const newError = ref<string | null>(null);
+
+const newKindOptions = computed(() => [
+  { value: 'mcp' as NewKind, label: t('tools.newModal.kindMcp') },
+  { value: 'other' as NewKind, label: t('tools.newModal.kindOther') },
+]);
+
+const newAuthOptions = computed(() => [
+  { value: 'oauth' as NewAuth, label: t('tools.mcp.authOauth') },
+  { value: 'none' as NewAuth, label: t('tools.mcp.authNone') },
+  { value: 'bearer' as NewAuth, label: t('tools.mcp.authBearer') },
+]);
 
 // ─── Derived ────────────────────────────────────────────────────────────
 
@@ -119,6 +162,16 @@ const combinedError = computed<string | null>(() =>
 // ─── Lifecycle ──────────────────────────────────────────────────────────
 
 onMounted(async () => {
+  // Coming back from an MCP login: the init call carried a returnTo
+  // with project + tool, so the user lands where they clicked.
+  const params = new URLSearchParams(window.location.search);
+  const returnProject = params.get('project');
+  const returnTool = params.get('tool');
+  const loggedIn = params.get('mcpLogin') === '1';
+  if (returnProject) {
+    selectedProject.value = returnProject;
+    window.history.replaceState(null, '', window.location.pathname);
+  }
   await Promise.all([
     tenantProjects.reload(),
     toolsState.loadTypes(),
@@ -126,6 +179,12 @@ onMounted(async () => {
       ? toolsState.loadProject(selectedProject.value)
       : Promise.resolve(),
   ]);
+  if (returnTool && toolsState.tools.value.some(tool => tool.name === returnTool)) {
+    selectedName.value = returnTool;
+  }
+  // After the selection watcher, which clears the banner.
+  await nextTick();
+  if (loggedIn) banner.value = t('tools.mcp.loggedIn');
 });
 
 watch(selectedProject, async (pid) => {
@@ -143,11 +202,25 @@ watch(selectedProject, async (pid) => {
 watch(selectedName, () => {
   banner.value = null;
   formError.value = null;
+  testResult.value = null;
   if (!selectedTool.value) {
     resetForm();
     return;
   }
   populateForm(selectedTool.value);
+});
+
+// Changing the type of an open tool to / from MCP carries the parameters
+// across the two editors.
+watch(() => form.type, (type, previous) => {
+  if (!selectedTool.value || previous === undefined || type === previous) return;
+  if (type === MCP_TYPE && paramsMode.value === 'form') {
+    const parsed = parseParameters();
+    mcpParams.value = parsed ?? {};
+    mcpFormKey.value++;
+  } else if (previous === MCP_TYPE && paramsMode.value === 'form') {
+    form.parametersJson = formatJson(mcpParams.value);
+  }
 });
 
 // ─── Form helpers ───────────────────────────────────────────────────────
@@ -161,6 +234,9 @@ function resetForm(): void {
   form.primary = false;
   form.defaultDeferred = false;
   form.disabledSubToolsText = '';
+  mcpParams.value = {};
+  paramsMode.value = 'form';
+  mcpFormKey.value++;
 }
 
 function populateForm(t: ServerToolDto): void {
@@ -172,6 +248,40 @@ function populateForm(t: ServerToolDto): void {
   form.primary = t.primary;
   form.defaultDeferred = t.defaultDeferred;
   form.disabledSubToolsText = (t.disabledSubTools ?? []).join('\n');
+  mcpParams.value = { ...(t.parameters ?? {}) };
+  paramsMode.value = 'form';
+  mcpFormKey.value++;
+}
+
+/** Switches the MCP parameter editor between form and raw JSON. */
+function switchParamsMode(mode: ParamsMode): void {
+  if (mode === paramsMode.value) return;
+  if (mode === 'json') {
+    form.parametersJson = formatJson(mcpParams.value);
+    paramsMode.value = 'json';
+    return;
+  }
+  const parsed = parseParameters();
+  if (!parsed) return;
+  mcpParams.value = parsed;
+  mcpFormKey.value++;
+  paramsMode.value = 'form';
+}
+
+function parseParameters(): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(form.parametersJson || '{}');
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      formError.value = t('tools.errors.parametersMustBeObject');
+      return null;
+    }
+    return parsed as Record<string, unknown>;
+  } catch (e) {
+    formError.value = t('tools.errors.parametersInvalidJson', {
+      message: e instanceof Error ? e.message : 'parse error',
+    });
+    return null;
+  }
 }
 
 function formatJson(obj: unknown): string {
@@ -189,18 +299,12 @@ function buildWriteRequest(): ServerToolWriteRequest | null {
   if (!description) { formError.value = t('tools.errors.descriptionRequired'); return null; }
 
   let parameters: Record<string, unknown>;
-  try {
-    const parsed = JSON.parse(form.parametersJson || '{}');
-    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      formError.value = t('tools.errors.parametersMustBeObject');
-      return null;
-    }
-    parameters = parsed as Record<string, unknown>;
-  } catch (e) {
-    formError.value = t('tools.errors.parametersInvalidJson', {
-      message: e instanceof Error ? e.message : 'parse error',
-    });
-    return null;
+  if (isMcp.value && paramsMode.value === 'form') {
+    parameters = mcpParams.value;
+  } else {
+    const parsed = parseParameters();
+    if (!parsed) return null;
+    parameters = parsed;
   }
 
   const labels = splitLines(form.labelsText);
@@ -260,10 +364,21 @@ async function deleteTool(): Promise<void> {
 // ─── New-tool modal ─────────────────────────────────────────────────────
 
 function openNewTool(): void {
+  newKind.value = 'mcp';
   newName.value = '';
   newType.value = toolsState.types.value[0]?.typeId ?? '';
+  newUrl.value = '';
+  newAuth.value = 'oauth';
   newError.value = null;
   showNewModal.value = true;
+}
+
+/** Starting parameters of a new tool — an MCP server gets URL and auth right away. */
+function newToolParameters(): Record<string, unknown> {
+  if (newKind.value !== 'mcp') return {};
+  const params: Record<string, unknown> = { transport: 'http', url: newUrl.value.trim() };
+  if (newAuth.value !== 'none') params.auth = { type: newAuth.value };
+  return params;
 }
 
 async function submitNewTool(): Promise<void> {
@@ -271,7 +386,7 @@ async function submitNewTool(): Promise<void> {
   if (!selectedProject.value) return;
   const project = selectedProject.value;
   const name = newName.value.trim();
-  const type = newType.value.trim();
+  const type = newKind.value === 'mcp' ? MCP_TYPE : newType.value.trim();
   if (!name) { newError.value = t('tools.errors.nameRequired'); return; }
   if (!NAME_PATTERN.test(name)) {
     newError.value = t('tools.errors.namePattern');
@@ -282,11 +397,15 @@ async function submitNewTool(): Promise<void> {
     return;
   }
   if (!type) { newError.value = t('tools.errors.typeRequired'); return; }
+  if (newKind.value === 'mcp' && !/^https?:\/\/\S+$/.test(newUrl.value.trim())) {
+    newError.value = t('tools.errors.urlRequired');
+    return;
+  }
 
   const stub: ServerToolWriteRequest = {
     type,
     description: t('tools.stubDescription', { name }),
-    parameters: {},
+    parameters: newToolParameters(),
     labels: [],
     enabled: true,
     primary: false,
@@ -302,6 +421,61 @@ async function submitNewTool(): Promise<void> {
   } catch (e) {
     newError.value = e instanceof Error ? e.message : t('tools.errors.createFailed');
   }
+}
+
+// ─── MCP login + connection test ────────────────────────────────────────
+
+function loginStatusVariant(oauth: ServerToolOAuthDto): 'success' | 'warning' | 'neutral' {
+  if (oauth.status === 'CONNECTED') return 'success';
+  if (oauth.status === 'EXPIRED') return 'warning';
+  return 'neutral';
+}
+
+async function loginTool(tool: ServerToolDto): Promise<void> {
+  if (!selectedProject.value) return;
+  const project = selectedProject.value;
+  const returnTo = `${window.location.pathname}?project=${encodeURIComponent(project)}`
+    + `&tool=${encodeURIComponent(tool.name)}&mcpLogin=1`;
+  try {
+    await toolsState.login(project, tool.name, returnTo);
+  } catch {
+    /* error in toolsState.error */
+  }
+}
+
+async function logoutTool(tool: ServerToolDto): Promise<void> {
+  if (!selectedProject.value) return;
+  if (!await confirmAction({
+    message: t('tools.mcp.confirmLogout', { name: tool.name }),
+    confirmLabel: t('tools.mcp.logout'),
+  })) return;
+  try {
+    await toolsState.logout(selectedProject.value, tool.name);
+    banner.value = t('tools.mcp.loggedOut');
+  } catch {
+    /* error in toolsState.error */
+  }
+}
+
+async function runTest(): Promise<void> {
+  if (!selectedProject.value || !selectedName.value) return;
+  testResult.value = null;
+  try {
+    testResult.value = await toolsState.test(selectedProject.value, selectedName.value);
+  } catch {
+    /* error in toolsState.error */
+  }
+}
+
+/** Sub-tools the server lists that are not switched off. */
+function isSubToolEnabled(name: string): boolean {
+  return !splitLines(form.disabledSubToolsText).includes(name);
+}
+
+function setSubToolEnabled(name: string, enabled: boolean): void {
+  const disabled = splitLines(form.disabledSubToolsText).filter(x => x !== name);
+  if (!enabled) disabled.push(name);
+  form.disabledSubToolsText = disabled.join('\n');
 }
 
 // ─── Tool selection ─────────────────────────────────────────────────────
@@ -333,6 +507,7 @@ function sourceBadgeClass(source: string | undefined): string {
   <EditorShell
     v-model:focus-zone="focusZone"
     :title="$t('tools.pageTitle')"
+    help-path="tools.md"
     :breadcrumbs="breadcrumbs"
     :full-height="true"
     :show-sidebar="true"
@@ -456,6 +631,36 @@ function sourceBadgeClass(source: string | undefined): string {
                   <span v-if="tool.defaultDeferred" class="badge-deferred">{{ $t('tools.sidebar.deferred') }}</span>
                   <span class="truncate">{{ tool.description }}</span>
                 </div>
+                <div
+                  v-if="tool.oauth"
+                  class="flex items-center gap-2 mt-1.5"
+                  @click.stop
+                >
+                  <VBadge :variant="loginStatusVariant(tool.oauth)" size="sm">
+                    {{ $t('tools.mcp.status.' + tool.oauth.status) }}
+                  </VBadge>
+                  <span class="text-xs text-(--v-label-tertiary)">
+                    {{ $t('tools.mcp.loginScopeShort.' + tool.oauth.loginScope) }}
+                  </span>
+                  <span class="flex-1"></span>
+                  <template v-if="tool.oauth.canConnect">
+                    <VButton
+                      v-if="tool.oauth.status !== 'CONNECTED'"
+                      variant="secondary"
+                      size="xs"
+                      icon="sign-in"
+                      :loading="toolsState.busy.value"
+                      @click="loginTool(tool)"
+                    >{{ tool.oauth.status === 'EXPIRED' ? $t('tools.mcp.relogin') : $t('tools.mcp.login') }}</VButton>
+                    <VIconButton
+                      v-else
+                      icon="sign-out"
+                      size="sm"
+                      :label="$t('tools.mcp.logout')"
+                      @click="logoutTool(tool)"
+                    />
+                  </template>
+                </div>
               </li>
             </ul>
           </template>
@@ -520,7 +725,116 @@ function sourceBadgeClass(source: string | undefined): string {
               </div>
             </VCard>
 
-            <VCard :title="$t('tools.cards.parametersTitle')">
+            <template v-if="isMcp">
+              <VGroup
+                v-if="selectedTool.oauth"
+                :label="$t('tools.mcp.loginTitle')"
+                :note="$t('tools.mcp.loginNote.' + selectedTool.oauth.loginScope)"
+              >
+                <VGroupRow
+                  :label="$t('tools.mcp.status.' + selectedTool.oauth.status)"
+                  :meta="selectedTool.oauth.providerId"
+                  :description="$t('tools.mcp.loginScopeShort.' + selectedTool.oauth.loginScope)"
+                >
+                  <template v-if="selectedTool.oauth.canConnect">
+                    <VButton
+                      v-if="selectedTool.oauth.status !== 'CONNECTED'"
+                      variant="secondary"
+                      size="sm"
+                      icon="sign-in"
+                      :loading="toolsState.busy.value"
+                      @click="loginTool(selectedTool)"
+                    >{{ selectedTool.oauth.status === 'EXPIRED' ? $t('tools.mcp.relogin') : $t('tools.mcp.login') }}</VButton>
+                    <VButton
+                      v-else
+                      variant="plain"
+                      size="sm"
+                      icon="sign-out"
+                      @click="logoutTool(selectedTool)"
+                    >{{ $t('tools.mcp.logout') }}</VButton>
+                  </template>
+                </VGroupRow>
+              </VGroup>
+
+              <VCard :title="$t('tools.mcp.serverTitle')">
+                <div class="flex flex-col gap-3">
+                  <div class="flex items-center gap-3">
+                    <p class="flex-1 text-xs text-(--v-label-secondary)">{{ $t('tools.mcp.serverHelp') }}</p>
+                    <VSegment
+                      :model-value="paramsMode"
+                      :options="paramsModeOptions"
+                      :aria-label="$t('tools.mcp.modeLabel')"
+                      @update:model-value="switchParamsMode"
+                    />
+                  </div>
+                  <McpServerForm
+                    v-if="paramsMode === 'form'"
+                    :key="mcpFormKey"
+                    v-model="mcpParams"
+                  />
+                  <CodeEditor
+                    v-else
+                    v-model="form.parametersJson"
+                    mime-type="application/json"
+                    :rows="14"
+                  />
+                </div>
+              </VCard>
+
+              <VCard :title="$t('tools.mcp.testTitle')">
+                <div class="flex flex-col gap-3">
+                  <div class="flex items-center gap-3">
+                    <p class="flex-1 text-xs text-(--v-label-secondary)">{{ $t('tools.mcp.testHelp') }}</p>
+                    <VButton
+                      variant="secondary"
+                      size="sm"
+                      icon="play"
+                      :loading="toolsState.busy.value"
+                      @click="runTest"
+                    >{{ $t('tools.mcp.testRun') }}</VButton>
+                  </div>
+                  <template v-if="testResult">
+                    <template v-if="testResult.ok">
+                      <VAlert variant="success">
+                        <span>{{ $t('tools.mcp.testOk', { n: testResult.tools.length }) }}</span>
+                      </VAlert>
+                      <VGroup :note="$t('tools.mcp.testToolsNote')">
+                        <VGroupRow
+                          v-for="name in testResult.tools"
+                          :key="name"
+                          :label="name"
+                        >
+                          <VToggle
+                            :model-value="isSubToolEnabled(name)"
+                            :title="$t('tools.mcp.subToolToggle', { name })"
+                            @update:model-value="(v: boolean) => setSubToolEnabled(name, v)"
+                          />
+                        </VGroupRow>
+                      </VGroup>
+                    </template>
+                    <template v-else>
+                      <VAlert :variant="testResult.authRequired && testResult.issuer ? 'info' : 'error'">
+                        <span>{{ testResult.error }}</span>
+                      </VAlert>
+                      <VGroup v-if="testResult.issuer" :label="$t('tools.mcp.discoveryTitle')">
+                        <VGroupRow :label="$t('tools.mcp.discoveryIssuer')" :value="testResult.issuer" />
+                        <VGroupRow
+                          :label="$t('tools.mcp.discoveryRegistration')"
+                          :value="$t('tools.mcp.registration.' + (testResult.registration ?? 'none'))"
+                        />
+                        <VGroupRow
+                          v-if="testResult.scopes.length"
+                          :label="$t('tools.mcp.scopes')"
+                          :value="testResult.scopes.join(' ')"
+                        />
+                      </VGroup>
+                    </template>
+                  </template>
+                </div>
+              </VCard>
+            </template>
+
+            <VCard v-else :title="$t('tools.cards.parametersTitle')">
               <p class="text-xs text-(--v-label-secondary) mb-2">{{ $t('tools.cards.parametersHelp') }}</p>
               <CodeEditor
                 v-model="form.parametersJson"
@@ -600,13 +914,30 @@ function sourceBadgeClass(source: string | undefined): string {
         <VAlert v-if="newError" variant="error">
           <span>{{ newError }}</span>
         </VAlert>
+        <VSegment v-model="newKind" :options="newKindOptions" :aria-label="$t('tools.newModal.kindLabel')" />
         <VInput
           v-model="newName"
           :label="$t('tools.newModal.nameLabel')"
           required
           :help="$t('tools.newModal.nameHelp')"
         />
+        <template v-if="newKind === 'mcp'">
+          <VInput
+            v-model="newUrl"
+            type="url"
+            :label="$t('tools.mcp.url')"
+            :help="$t('tools.newModal.urlHelp')"
+            placeholder="https://mcp.example.com/mcp"
+            required
+          />
+          <VSelect
+            v-model="newAuth"
+            :options="newAuthOptions"
+            :label="$t('tools.mcp.authType')"
+          />
+        </template>
         <VSelect
+          v-else
           v-model="newType"
           :options="typeOptions"
           :label="$t('tools.fields.type')"

@@ -64,7 +64,12 @@ class OAuthControllerTest {
         when(authority.contextOf(any(HttpServletRequest.class)))
                 .thenReturn(new SecurityContext(SubjectType.USER, USERNAME, TENANT, List.of(), null));
         controller = new OAuthController(
-                configRegistry, stateService, settingService, authority, events, PUBLIC_BASE);
+                configRegistry,
+                stateService,
+                new OAuthFlowService(stateService, PUBLIC_BASE),
+                new OAuthTokenStore(settingService),
+                authority,
+                events);
         request = mock(HttpServletRequest.class);
     }
 
@@ -72,22 +77,21 @@ class OAuthControllerTest {
 
     @Test
     void providers_returns_entries_with_connected_flag() {
-        when(configRegistry.list(TENANT)).thenReturn(List.of(
-                resolved("slack", "slack"),
-                resolved("keycloak", "oidc")));
-        when(settingService.getDecryptedUserPassword(eq(TENANT), eq(USERNAME),
-                eq("oauth.slack.access_token"))).thenReturn("token-slack");
-        when(settingService.getDecryptedUserPassword(eq(TENANT), eq(USERNAME),
-                eq("oauth.keycloak.access_token"))).thenReturn(null);
+        when(configRegistry.list(TENANT)).thenReturn(List.of(resolved("slack", "slack"), resolved("keycloak", "oidc")));
+        when(settingService.getDecryptedUserPassword(eq(TENANT), eq(USERNAME), eq("oauth.slack.access_token")))
+                .thenReturn("token-slack");
+        when(settingService.getDecryptedUserPassword(eq(TENANT), eq(USERNAME), eq("oauth.keycloak.access_token")))
+                .thenReturn(null);
 
         List<OAuthProviderListEntry> out = controller.listProviders(TENANT, request);
 
-        assertThat(out).extracting(OAuthProviderListEntry::getProviderId)
-                .containsExactly("keycloak", "slack");
-        assertThat(out).filteredOn(e -> "slack".equals(e.getProviderId()))
+        assertThat(out).extracting(OAuthProviderListEntry::getProviderId).containsExactly("keycloak", "slack");
+        assertThat(out)
+                .filteredOn(e -> "slack".equals(e.getProviderId()))
                 .extracting(OAuthProviderListEntry::isConnected)
                 .containsExactly(true);
-        assertThat(out).filteredOn(e -> "keycloak".equals(e.getProviderId()))
+        assertThat(out)
+                .filteredOn(e -> "keycloak".equals(e.getProviderId()))
                 .extracting(OAuthProviderListEntry::isConnected)
                 .containsExactly(false);
     }
@@ -99,10 +103,8 @@ class OAuthControllerTest {
         URI authorizeUri = URI.create("https://slack.com/oauth/v2/authorize?state=S123");
         RecordingProvider provider = new RecordingProvider(authorizeUri);
         when(configRegistry.resolve(TENANT, PROVIDER_ID))
-                .thenReturn(Optional.of(new ResolvedOAuthProvider(
-                        configWithSecret(PROVIDER_ID, "slack"), provider)));
-        when(stateService.start(
-                eq(TENANT), eq(USERNAME), eq(PROVIDER_ID), eq("/settings"), isNull()))
+                .thenReturn(Optional.of(new ResolvedOAuthProvider(configWithSecret(PROVIDER_ID, "slack"), provider)));
+        when(stateService.start(eq(TENANT), eq(USERNAME), eq(PROVIDER_ID), eq("/settings"), isNull()))
                 .thenReturn("S123");
 
         ResponseEntity<Void> resp = controller.init(TENANT, PROVIDER_ID, "/settings", request);
@@ -125,16 +127,18 @@ class OAuthControllerTest {
         URI authorizeUri = URI.create("https://provider.example/authorize");
         RecordingProvider provider = new RecordingProvider(authorizeUri);
         OAuthProviderConfig pkceConfig = new OAuthProviderConfig(
-                PROVIDER_ID, "atlassian", null,
+                PROVIDER_ID,
+                "atlassian",
+                null,
                 "https://provider.example/authorize",
                 "https://provider.example/token",
-                "client-id", "shh",
+                "client-id",
+                "shh",
                 new ArrayList<>(),
                 new LinkedHashMap<>(Map.of("usePkce", true)));
         when(configRegistry.resolve(TENANT, PROVIDER_ID))
                 .thenReturn(Optional.of(new ResolvedOAuthProvider(pkceConfig, provider)));
-        when(stateService.start(
-                eq(TENANT), eq(USERNAME), eq(PROVIDER_ID), eq("/x"), anyString()))
+        when(stateService.start(eq(TENANT), eq(USERNAME), eq(PROVIDER_ID), eq("/x"), anyString()))
                 .thenReturn("S999");
 
         controller.init(TENANT, PROVIDER_ID, "/x", request);
@@ -143,13 +147,10 @@ class OAuthControllerTest {
         String verifier = provider.captured.get(0).codeVerifier();
         // 32 random bytes → Base64URL no padding ≈ 43 characters, in the
         // RFC 7636 §4.1 alphabet [A-Za-z0-9-_].
-        assertThat(verifier).isNotNull()
-                .hasSize(43)
-                .matches("[A-Za-z0-9_-]+");
+        assertThat(verifier).isNotNull().hasSize(43).matches("[A-Za-z0-9_-]+");
         // The mint result must round-trip into stateService.start() — that's
         // what the callback later replays as code_verifier on the token call.
-        verify(stateService).start(
-                eq(TENANT), eq(USERNAME), eq(PROVIDER_ID), eq("/x"), eq(verifier));
+        verify(stateService).start(eq(TENANT), eq(USERNAME), eq(PROVIDER_ID), eq("/x"), eq(verifier));
     }
 
     @Test
@@ -165,12 +166,15 @@ class OAuthControllerTest {
     @Test
     void init_rejects_when_client_secret_missing() {
         OAuthProviderConfig noSecret = new OAuthProviderConfig(
-                PROVIDER_ID, "slack", null,
+                PROVIDER_ID,
+                "slack",
+                null,
                 "https://slack.com/oauth/v2/authorize",
                 "https://slack.com/api/oauth.v2.access",
                 "client-id",
                 /*clientSecret*/ "",
-                new ArrayList<>(), new LinkedHashMap<>());
+                new ArrayList<>(),
+                new LinkedHashMap<>());
         when(configRegistry.resolve(TENANT, PROVIDER_ID))
                 .thenReturn(Optional.of(new ResolvedOAuthProvider(noSecret, new RecordingProvider(null))));
 
@@ -191,37 +195,56 @@ class OAuthControllerTest {
                 Map.of("scope", "channels:read chat:write", "team_id", "T123"));
         RecordingProvider provider = new RecordingProvider(authorizeUri, tokens);
         when(configRegistry.resolve(TENANT, PROVIDER_ID))
-                .thenReturn(Optional.of(new ResolvedOAuthProvider(
-                        configWithSecret(PROVIDER_ID, "slack"), provider)));
+                .thenReturn(Optional.of(new ResolvedOAuthProvider(configWithSecret(PROVIDER_ID, "slack"), provider)));
         when(stateService.consume(eq("S123"), eq(TENANT), eq(USERNAME)))
                 .thenReturn(Optional.of(new OAuthStateService.Consumed(PROVIDER_ID, "/settings", null)));
 
-        ResponseEntity<Void> resp = controller.callback(
-                TENANT, PROVIDER_ID, "auth-code", "S123", request);
+        ResponseEntity<Void> resp = controller.callback(TENANT, PROVIDER_ID, "auth-code", "S123", request);
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.FOUND);
         assertThat(resp.getHeaders().getLocation()).isEqualTo(URI.create("/settings"));
 
-        verify(settingService).setEncryptedPassword(eq(TENANT),
-                eq(SettingService.SCOPE_PROJECT), eq("_user_" + USERNAME),
-                eq("oauth.slack.access_token"), eq("access-1"));
-        verify(settingService).setEncryptedPassword(eq(TENANT),
-                eq(SettingService.SCOPE_PROJECT), eq("_user_" + USERNAME),
-                eq("oauth.slack.refresh_token"), eq("refresh-1"));
-        verify(settingService).set(eq(TENANT),
-                eq(SettingService.SCOPE_PROJECT), eq("_user_" + USERNAME),
-                eq("oauth.slack.expires_at"),
-                eq("2026-05-19T13:00:00Z"),
-                eq(SettingType.STRING), any());
-        verify(settingService).set(eq(TENANT),
-                eq(SettingService.SCOPE_PROJECT), eq("_user_" + USERNAME),
-                eq("oauth.slack.scopes"),
-                eq("channels:read chat:write"),
-                eq(SettingType.STRING), any());
-        verify(settingService).set(eq(TENANT),
-                eq(SettingService.SCOPE_PROJECT), eq("_user_" + USERNAME),
-                eq("oauth.slack.extra"),
-                anyString(), eq(SettingType.STRING), any());
+        verify(settingService)
+                .setEncryptedPassword(
+                        eq(TENANT),
+                        eq(SettingService.SCOPE_PROJECT),
+                        eq("_user_" + USERNAME),
+                        eq("oauth.slack.access_token"),
+                        eq("access-1"));
+        verify(settingService)
+                .setEncryptedPassword(
+                        eq(TENANT),
+                        eq(SettingService.SCOPE_PROJECT),
+                        eq("_user_" + USERNAME),
+                        eq("oauth.slack.refresh_token"),
+                        eq("refresh-1"));
+        verify(settingService)
+                .set(
+                        eq(TENANT),
+                        eq(SettingService.SCOPE_PROJECT),
+                        eq("_user_" + USERNAME),
+                        eq("oauth.slack.expires_at"),
+                        eq("2026-05-19T13:00:00Z"),
+                        eq(SettingType.STRING),
+                        any());
+        verify(settingService)
+                .set(
+                        eq(TENANT),
+                        eq(SettingService.SCOPE_PROJECT),
+                        eq("_user_" + USERNAME),
+                        eq("oauth.slack.scopes"),
+                        eq("channels:read chat:write"),
+                        eq(SettingType.STRING),
+                        any());
+        verify(settingService)
+                .set(
+                        eq(TENANT),
+                        eq(SettingService.SCOPE_PROJECT),
+                        eq("_user_" + USERNAME),
+                        eq("oauth.slack.extra"),
+                        anyString(),
+                        eq(SettingType.STRING),
+                        any());
     }
 
     @Test
@@ -233,17 +256,15 @@ class OAuthControllerTest {
         OAuthTokenSet tokens = new OAuthTokenSet("at", null, null, Map.of());
         RecordingProvider provider = new RecordingProvider(authorizeUri, tokens);
         when(configRegistry.resolve(TENANT, PROVIDER_ID))
-                .thenReturn(Optional.of(new ResolvedOAuthProvider(
-                        configWithSecret(PROVIDER_ID, "atlassian"), provider)));
+                .thenReturn(
+                        Optional.of(new ResolvedOAuthProvider(configWithSecret(PROVIDER_ID, "atlassian"), provider)));
         when(stateService.consume(eq("S-PK"), eq(TENANT), eq(USERNAME)))
-                .thenReturn(Optional.of(new OAuthStateService.Consumed(
-                        PROVIDER_ID, null, "verifier-from-init")));
+                .thenReturn(Optional.of(new OAuthStateService.Consumed(PROVIDER_ID, null, "verifier-from-init")));
 
         controller.callback(TENANT, PROVIDER_ID, "auth-code", "S-PK", request);
 
         assertThat(provider.exchangeContexts).hasSize(1);
-        assertThat(provider.exchangeContexts.get(0).codeVerifier())
-                .isEqualTo("verifier-from-init");
+        assertThat(provider.exchangeContexts.get(0).codeVerifier()).isEqualTo("verifier-from-init");
     }
 
     @Test
@@ -251,13 +272,11 @@ class OAuthControllerTest {
         when(configRegistry.resolve(TENANT, PROVIDER_ID))
                 .thenReturn(Optional.of(new ResolvedOAuthProvider(
                         configWithSecret(PROVIDER_ID, "slack"),
-                        new RecordingProvider(null,
-                                new OAuthTokenSet("a", null, null, Map.of())))));
+                        new RecordingProvider(null, new OAuthTokenSet("a", null, null, Map.of())))));
         when(stateService.consume(eq("S123"), eq(TENANT), eq(USERNAME)))
                 .thenReturn(Optional.of(new OAuthStateService.Consumed(PROVIDER_ID, null, null)));
 
-        ResponseEntity<Void> resp = controller.callback(
-                TENANT, PROVIDER_ID, "code", "S123", request);
+        ResponseEntity<Void> resp = controller.callback(TENANT, PROVIDER_ID, "code", "S123", request);
 
         assertThat(resp.getHeaders().getLocation()).isEqualTo(URI.create("/"));
     }
@@ -267,14 +286,11 @@ class OAuthControllerTest {
         when(configRegistry.resolve(TENANT, PROVIDER_ID))
                 .thenReturn(Optional.of(new ResolvedOAuthProvider(
                         configWithSecret(PROVIDER_ID, "slack"),
-                        new RecordingProvider(null,
-                                new OAuthTokenSet("a", null, null, Map.of())))));
+                        new RecordingProvider(null, new OAuthTokenSet("a", null, null, Map.of())))));
         when(stateService.consume(eq("S123"), eq(TENANT), eq(USERNAME)))
-                .thenReturn(Optional.of(new OAuthStateService.Consumed(
-                        PROVIDER_ID, "https://evil.com/steal", null)));
+                .thenReturn(Optional.of(new OAuthStateService.Consumed(PROVIDER_ID, "https://evil.com/steal", null)));
 
-        ResponseEntity<Void> resp = controller.callback(
-                TENANT, PROVIDER_ID, "code", "S123", request);
+        ResponseEntity<Void> resp = controller.callback(TENANT, PROVIDER_ID, "code", "S123", request);
 
         // Open-redirect protection — non-same-origin returnTo gets dropped.
         assertThat(resp.getHeaders().getLocation()).isEqualTo(URI.create("/"));
@@ -282,8 +298,7 @@ class OAuthControllerTest {
 
     @Test
     void callback_400_on_invalid_state() {
-        when(stateService.consume(eq("bad"), eq(TENANT), eq(USERNAME)))
-                .thenReturn(Optional.empty());
+        when(stateService.consume(eq("bad"), eq(TENANT), eq(USERNAME))).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> controller.callback(TENANT, PROVIDER_ID, "code", "bad", request))
                 .isInstanceOf(ResponseStatusException.class)
@@ -307,16 +322,18 @@ class OAuthControllerTest {
         when(configRegistry.resolve(TENANT, PROVIDER_ID))
                 .thenReturn(Optional.of(new ResolvedOAuthProvider(
                         configWithSecret(PROVIDER_ID, "slack"),
-                        new RecordingProvider(null,
-                                new OAuthTokenSet("a", /*refresh*/ null, null, Map.of())))));
+                        new RecordingProvider(null, new OAuthTokenSet("a", /*refresh*/ null, null, Map.of())))));
         when(stateService.consume(eq("S123"), eq(TENANT), eq(USERNAME)))
                 .thenReturn(Optional.of(new OAuthStateService.Consumed(PROVIDER_ID, null, null)));
 
         controller.callback(TENANT, PROVIDER_ID, "code", "S123", request);
 
-        verify(settingService).delete(eq(TENANT),
-                eq(SettingService.SCOPE_PROJECT), eq("_user_" + USERNAME),
-                eq("oauth.slack.refresh_token"));
+        verify(settingService)
+                .delete(
+                        eq(TENANT),
+                        eq(SettingService.SCOPE_PROJECT),
+                        eq("_user_" + USERNAME),
+                        eq("oauth.slack.refresh_token"));
     }
 
     @Test
@@ -328,8 +345,7 @@ class OAuthControllerTest {
             }
         };
         when(configRegistry.resolve(TENANT, PROVIDER_ID))
-                .thenReturn(Optional.of(new ResolvedOAuthProvider(
-                        configWithSecret(PROVIDER_ID, "slack"), failing)));
+                .thenReturn(Optional.of(new ResolvedOAuthProvider(configWithSecret(PROVIDER_ID, "slack"), failing)));
         when(stateService.consume(eq("S123"), eq(TENANT), eq(USERNAME)))
                 .thenReturn(Optional.of(new OAuthStateService.Consumed(PROVIDER_ID, null, null)));
 
@@ -350,24 +366,94 @@ class OAuthControllerTest {
         ResponseEntity<Void> resp = controller.disconnect(TENANT, PROVIDER_ID, request);
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
-        verify(settingService, times(1)).deleteByPrefix(
-                TENANT, SettingService.SCOPE_PROJECT,
-                "_user_" + USERNAME, "oauth.slack.");
-        verify(events, times(1)).publishEvent(
-                new OAuthDisconnectedEvent(TENANT, USERNAME, PROVIDER_ID));
+        verify(settingService, times(1))
+                .deleteByPrefix(TENANT, SettingService.SCOPE_PROJECT, "_user_" + USERNAME, "oauth.slack.");
+        verify(events, times(1)).publishEvent(new OAuthDisconnectedEvent(TENANT, USERNAME, PROVIDER_ID));
+    }
+
+    // ─────── mcp: shared callback + token owner ───────
+
+    @Test
+    void mcp_callback_takes_provider_from_state_and_persists_for_owner() {
+        RecordingProvider provider = new RecordingProvider(
+                URI.create("https://as/auth"), new OAuthTokenSet("mcp-at", "mcp-rt", null, Map.of()));
+        when(configRegistry.resolve(TENANT, "mcp-x"))
+                .thenReturn(Optional.of(new ResolvedOAuthProvider(configWithSecret("mcp-x", "mcp"), provider)));
+        when(stateService.consume(eq("S-MCP"), eq(TENANT), eq(USERNAME)))
+                .thenReturn(Optional.of(new OAuthStateService.Consumed(
+                        "mcp-x", "/tools.html", "verifier", OAuthTokenOwner.project("team"))));
+
+        ResponseEntity<Void> resp = controller.callback(TENANT, "_mcp", "code", "S-MCP", request);
+
+        assertThat(resp.getHeaders().getLocation()).isEqualTo(URI.create("/tools.html"));
+        assertThat(provider.exchangeContexts.get(0).redirectUri())
+                .isEqualTo("https://vance.example.com/brain/acme/oauth-client/_mcp/callback");
+        verify(settingService)
+                .setEncryptedPassword(
+                        eq(TENANT),
+                        eq(SettingService.SCOPE_PROJECT),
+                        eq("team"),
+                        eq("oauth.mcp-x.access_token"),
+                        eq("mcp-at"));
+        verify(events).publishEvent(new OAuthDisconnectedEvent(TENANT, null, "mcp-x"));
+    }
+
+    @Test
+    void mcp_provider_is_rejected_on_per_provider_callback_path() {
+        when(configRegistry.resolve(TENANT, "mcp-x")).thenReturn(Optional.of(resolved("mcp-x", "mcp")));
+        when(stateService.consume(eq("S"), eq(TENANT), eq(USERNAME)))
+                .thenReturn(Optional.of(new OAuthStateService.Consumed("mcp-x", null, null)));
+
+        assertThatThrownBy(() -> controller.callback(TENANT, "mcp-x", "code", "S", request))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("callback path");
+    }
+
+    @Test
+    void shared_mcp_callback_rejects_non_mcp_provider() {
+        when(configRegistry.resolve(TENANT, PROVIDER_ID)).thenReturn(Optional.of(resolved(PROVIDER_ID, "slack")));
+        when(stateService.consume(eq("S"), eq(TENANT), eq(USERNAME)))
+                .thenReturn(Optional.of(new OAuthStateService.Consumed(PROVIDER_ID, null, null)));
+
+        assertThatThrownBy(() -> controller.callback(TENANT, "_mcp", "code", "S", request))
+                .isInstanceOf(ResponseStatusException.class);
+    }
+
+    @Test
+    void init_allows_public_pkce_client_without_secret() {
+        RecordingProvider provider = new RecordingProvider(URI.create("https://as/auth"));
+        OAuthProviderConfig publicCfg = new OAuthProviderConfig(
+                "pub",
+                "generic-oauth2",
+                null,
+                "https://as/authorize",
+                "https://as/token",
+                "client",
+                "",
+                new ArrayList<>(),
+                new LinkedHashMap<>(Map.of("usePkce", true)));
+        when(configRegistry.resolve(TENANT, "pub"))
+                .thenReturn(Optional.of(new ResolvedOAuthProvider(publicCfg, provider)));
+        when(stateService.start(eq(TENANT), eq(USERNAME), eq("pub"), isNull(), any()))
+                .thenReturn("S");
+
+        ResponseEntity<Void> resp = controller.init(TENANT, "pub", null, request);
+
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.FOUND);
+        assertThat(provider.captured.get(0).codeVerifier()).isNotBlank();
     }
 
     // ─────── Helpers ───────
 
     private static ResolvedOAuthProvider resolved(String providerId, String typeId) {
         return new ResolvedOAuthProvider(
-                configWithSecret(providerId, typeId),
-                new RecordingProvider(URI.create("https://stub/auth")));
+                configWithSecret(providerId, typeId), new RecordingProvider(URI.create("https://stub/auth")));
     }
 
     private static OAuthProviderConfig configWithSecret(String providerId, String typeId) {
         return new OAuthProviderConfig(
-                providerId, typeId,
+                providerId,
+                typeId,
                 /*discoveryUrl*/ null,
                 /*authorizeUrl*/ "https://provider.example/authorize",
                 /*tokenUrl*/ "https://provider.example/token",
@@ -392,19 +478,25 @@ class OAuthControllerTest {
             this.tokens = tokens;
         }
 
-        @Override public String typeId() { return "stub"; }
+        @Override
+        public String typeId() {
+            return "stub";
+        }
 
-        @Override public URI buildAuthorizeUri(OAuthProviderConfig c, OAuthInitContext ctx) {
+        @Override
+        public URI buildAuthorizeUri(OAuthProviderConfig c, OAuthInitContext ctx) {
             captured.add(ctx);
             return authorizeUri;
         }
 
-        @Override public OAuthTokenSet exchangeCode(OAuthProviderConfig c, String code, OAuthInitContext ctx) {
+        @Override
+        public OAuthTokenSet exchangeCode(OAuthProviderConfig c, String code, OAuthInitContext ctx) {
             exchangeContexts.add(ctx);
             return tokens;
         }
 
-        @Override public OAuthTokenSet refresh(OAuthProviderConfig c, String refreshToken) {
+        @Override
+        public OAuthTokenSet refresh(OAuthProviderConfig c, String refreshToken) {
             return tokens;
         }
     }

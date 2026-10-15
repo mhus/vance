@@ -2216,7 +2216,7 @@
       "disabledSubTools": "Deaktivierte Sub-Tools",
       "disabledSubToolsHelp": "Ein Sub-Tool-Name pro Zeile. Nur lokale Namen (ohne <pack>__-Präfix). Leer bedeutet: alle Sub-Tools aktiv.",
       "labels": "Labels",
-      "labelsHelp": "Eines pro Zeile (oder Komma-getrennt). Recipes können Labels über @<label> ansprechen."
+      "labelsHelp": "Eines pro Zeile (oder Komma-getrennt). Recipes können Labels über {'@'}<label> ansprechen."
     },
     "rightPanel": {
       "typeSchemaTitle": "Typ-Schema",

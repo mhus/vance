@@ -68,11 +68,7 @@ public class OAuthStateService {
      * generated {@code state} string — the caller embeds it in the
      * provider's authorize URL.
      */
-    public String start(
-            String tenantId,
-            String userId,
-            String providerId,
-            @Nullable String returnTo) {
+    public String start(String tenantId, String userId, String providerId, @Nullable String returnTo) {
         return start(tenantId, userId, providerId, returnTo, null, DEFAULT_TTL);
     }
 
@@ -92,12 +88,38 @@ public class OAuthStateService {
             @Nullable String returnTo,
             @Nullable String codeVerifier,
             Duration ttl) {
+        return start(tenantId, userId, providerId, OAuthTokenOwner.user(userId), returnTo, codeVerifier, ttl);
+    }
+
+    /**
+     * Mint a state for a flow whose tokens go to {@code owner} — a shared
+     * project or tenant login started by {@code userId}.
+     */
+    public String start(
+            String tenantId,
+            String userId,
+            String providerId,
+            OAuthTokenOwner owner,
+            @Nullable String returnTo,
+            @Nullable String codeVerifier) {
+        return start(tenantId, userId, providerId, owner, returnTo, codeVerifier, DEFAULT_TTL);
+    }
+
+    private String start(
+            String tenantId,
+            String userId,
+            String providerId,
+            OAuthTokenOwner owner,
+            @Nullable String returnTo,
+            @Nullable String codeVerifier,
+            Duration ttl) {
         Instant now = clock.instant();
         OAuthStateDocument doc = OAuthStateDocument.builder()
                 .state(mintState())
                 .tenantId(tenantId)
                 .userId(userId)
                 .providerId(providerId)
+                .tokenProjectId(owner.storageProjectId())
                 .returnTo(returnTo)
                 .codeVerifier(codeVerifier)
                 .createdAt(now)
@@ -116,8 +138,7 @@ public class OAuthStateService {
      * @param expectedTenant  the tenant of the calling endpoint
      * @param expectedUserId  the authenticated user of the callback
      */
-    public Optional<Consumed> consume(
-            String state, String expectedTenant, String expectedUserId) {
+    public Optional<Consumed> consume(String state, String expectedTenant, String expectedUserId) {
         if (state == null || state.isBlank()) return Optional.empty();
         // Atomic single-use: find-and-remove in one op so two concurrent
         // callbacks carrying the same state can never both consume it — exactly
@@ -125,8 +146,8 @@ public class OAuthStateService {
         // plain findByState-then-delete left a window where both reads saw the
         // doc before either delete, breaking the single-use guarantee.) All
         // reject paths below act on the already-removed doc; no extra delete.
-        OAuthStateDocument doc = mongoTemplate.findAndRemove(
-                new Query(Criteria.where("state").is(state)), OAuthStateDocument.class);
+        OAuthStateDocument doc =
+                mongoTemplate.findAndRemove(new Query(Criteria.where("state").is(state)), OAuthStateDocument.class);
         if (doc == null) {
             log.warn("OAuthState.consume: unknown state (no matching document)");
             return Optional.empty();
@@ -134,25 +155,27 @@ public class OAuthStateService {
 
         Instant now = clock.instant();
         if (doc.getExpiresAt() == null || now.isAfter(doc.getExpiresAt())) {
-            log.warn("OAuthState.consume: state expired for tenant='{}' user='{}'",
-                    doc.getTenantId(), doc.getUserId());
+            log.warn("OAuthState.consume: state expired for tenant='{}' user='{}'", doc.getTenantId(), doc.getUserId());
             return Optional.empty();
         }
 
-        if (!expectedTenant.equals(doc.getTenantId())
-                || !expectedUserId.equals(doc.getUserId())) {
+        if (!expectedTenant.equals(doc.getTenantId()) || !expectedUserId.equals(doc.getUserId())) {
             // CSRF / confused-deputy attempt — the caller's auth context
             // disagrees with the initiator's. Hard-reject; the doc is already
             // removed by the atomic find-and-remove above.
-            log.warn("OAuthState.consume: tenant/user mismatch — "
-                    + "stored=({}/{}) called-by=({}/{}) — dropping state",
-                    doc.getTenantId(), doc.getUserId(),
-                    expectedTenant, expectedUserId);
+            log.warn(
+                    "OAuthState.consume: tenant/user mismatch — " + "stored=({}/{}) called-by=({}/{}) — dropping state",
+                    doc.getTenantId(),
+                    doc.getUserId(),
+                    expectedTenant,
+                    expectedUserId);
             return Optional.empty();
         }
 
-        return Optional.of(new Consumed(
-                doc.getProviderId(), doc.getReturnTo(), doc.getCodeVerifier()));
+        OAuthTokenOwner owner = doc.getTokenProjectId() == null
+                ? OAuthTokenOwner.user(doc.getUserId())
+                : OAuthTokenOwner.ofStorageProject(doc.getTokenProjectId());
+        return Optional.of(new Consumed(doc.getProviderId(), doc.getReturnTo(), doc.getCodeVerifier(), owner));
     }
 
     private String mintState() {
@@ -166,10 +189,17 @@ public class OAuthStateService {
      * the callback handler needs to continue the flow. {@code codeVerifier}
      * is the PKCE verifier paired with the state, replayed at token
      * exchange; {@code null} when the flow wasn't PKCE-enabled.
+     * {@code owner} receives the tokens.
      */
     public record Consumed(
             String providerId,
             @Nullable String returnTo,
-            @Nullable String codeVerifier) {
+            @Nullable String codeVerifier,
+            @Nullable OAuthTokenOwner owner) {
+
+        /** A personal login — the tokens belong to the user completing the callback. */
+        public Consumed(String providerId, @Nullable String returnTo, @Nullable String codeVerifier) {
+            this(providerId, returnTo, codeVerifier, null);
+        }
     }
 }

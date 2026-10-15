@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -58,10 +57,10 @@ class OAuthTokenRefresherTest {
         settingService = mock(SettingService.class);
         provider = new RecordingProvider();
         Clock clock = Clock.fixed(FIXED_NOW, ZoneOffset.UTC);
-        refresher = new OAuthTokenRefresher(configRegistry, settingService, clock);
+        refresher = new OAuthTokenRefresher(configRegistry, new OAuthTokenStore(settingService), clock);
 
-        when(configRegistry.resolve(TENANT, PROVIDER)).thenReturn(Optional.of(
-                new ResolvedOAuthProvider(providerConfig("real-secret"), provider)));
+        when(configRegistry.resolve(TENANT, PROVIDER))
+                .thenReturn(Optional.of(new ResolvedOAuthProvider(providerConfig("real-secret"), provider)));
     }
 
     // ─────── Cached path (no refresh) ───────
@@ -70,8 +69,7 @@ class OAuthTokenRefresherTest {
     void returns_cached_token_when_not_near_expiry() {
         when(settingService.getUserStringValue(TENANT, USER, EXPIRES_KEY))
                 .thenReturn(FIXED_NOW.plusSeconds(600).toString()); // 10 min future
-        when(settingService.getDecryptedUserPassword(TENANT, USER, ACCESS_KEY))
-                .thenReturn("cached-access-token");
+        when(settingService.getDecryptedUserPassword(TENANT, USER, ACCESS_KEY)).thenReturn("cached-access-token");
 
         String token = refresher.resolveAccessToken(TENANT, USER, PROVIDER);
 
@@ -82,8 +80,7 @@ class OAuthTokenRefresherTest {
     @Test
     void returns_cached_token_when_expires_at_missing() {
         when(settingService.getUserStringValue(TENANT, USER, EXPIRES_KEY)).thenReturn(null);
-        when(settingService.getDecryptedUserPassword(TENANT, USER, ACCESS_KEY))
-                .thenReturn("never-expiring-token");
+        when(settingService.getDecryptedUserPassword(TENANT, USER, ACCESS_KEY)).thenReturn("never-expiring-token");
 
         String token = refresher.resolveAccessToken(TENANT, USER, PROVIDER);
 
@@ -95,8 +92,7 @@ class OAuthTokenRefresherTest {
     void normalises_provider_id_for_setting_keys() {
         when(settingService.getUserStringValue(TENANT, USER, EXPIRES_KEY))
                 .thenReturn(FIXED_NOW.plusSeconds(600).toString());
-        when(settingService.getDecryptedUserPassword(TENANT, USER, ACCESS_KEY))
-                .thenReturn("cached-token");
+        when(settingService.getDecryptedUserPassword(TENANT, USER, ACCESS_KEY)).thenReturn("cached-token");
 
         String token = refresher.resolveAccessToken(TENANT, USER, "Slack");
 
@@ -110,10 +106,9 @@ class OAuthTokenRefresherTest {
         // 30 seconds in the future — inside the 60s refresh buffer.
         when(settingService.getUserStringValue(TENANT, USER, EXPIRES_KEY))
                 .thenReturn(FIXED_NOW.plusSeconds(30).toString());
-        when(settingService.getDecryptedUserPassword(TENANT, USER, REFRESH_KEY))
-                .thenReturn("stored-refresh-token");
-        provider.next = new OAuthTokenSet("fresh-access", "fresh-refresh",
-                FIXED_NOW.plusSeconds(3600), Map.of("scope", "channels:read"));
+        when(settingService.getDecryptedUserPassword(TENANT, USER, REFRESH_KEY)).thenReturn("stored-refresh-token");
+        provider.next = new OAuthTokenSet(
+                "fresh-access", "fresh-refresh", FIXED_NOW.plusSeconds(3600), Map.of("scope", "channels:read"));
 
         String token = refresher.resolveAccessToken(TENANT, USER, PROVIDER);
 
@@ -121,26 +116,33 @@ class OAuthTokenRefresherTest {
         assertThat(provider.refreshCount.get()).isEqualTo(1);
         assertThat(provider.lastRefreshToken).isEqualTo("stored-refresh-token");
 
-        verify(settingService).setEncryptedPassword(eq(TENANT),
-                eq(SettingService.SCOPE_PROJECT), eq(USER_REF),
-                eq(ACCESS_KEY), eq("fresh-access"));
-        verify(settingService).setEncryptedPassword(eq(TENANT),
-                eq(SettingService.SCOPE_PROJECT), eq(USER_REF),
-                eq(REFRESH_KEY), eq("fresh-refresh"));
-        verify(settingService).set(eq(TENANT),
-                eq(SettingService.SCOPE_PROJECT), eq(USER_REF),
-                eq(EXPIRES_KEY), eq(FIXED_NOW.plusSeconds(3600).toString()),
-                eq(SettingType.STRING), any());
+        verify(settingService)
+                .setEncryptedPassword(
+                        eq(TENANT), eq(SettingService.SCOPE_PROJECT), eq(USER_REF), eq(ACCESS_KEY), eq("fresh-access"));
+        verify(settingService)
+                .setEncryptedPassword(
+                        eq(TENANT),
+                        eq(SettingService.SCOPE_PROJECT),
+                        eq(USER_REF),
+                        eq(REFRESH_KEY),
+                        eq("fresh-refresh"));
+        verify(settingService)
+                .set(
+                        eq(TENANT),
+                        eq(SettingService.SCOPE_PROJECT),
+                        eq(USER_REF),
+                        eq(EXPIRES_KEY),
+                        eq(FIXED_NOW.plusSeconds(3600).toString()),
+                        eq(SettingType.STRING),
+                        any());
     }
 
     @Test
     void refreshes_when_token_already_expired() {
         when(settingService.getUserStringValue(TENANT, USER, EXPIRES_KEY))
                 .thenReturn(FIXED_NOW.minusSeconds(60).toString());
-        when(settingService.getDecryptedUserPassword(TENANT, USER, REFRESH_KEY))
-                .thenReturn("stored-refresh-token");
-        provider.next = new OAuthTokenSet("fresh-access", "fresh-refresh",
-                FIXED_NOW.plusSeconds(3600), Map.of());
+        when(settingService.getDecryptedUserPassword(TENANT, USER, REFRESH_KEY)).thenReturn("stored-refresh-token");
+        provider.next = new OAuthTokenSet("fresh-access", "fresh-refresh", FIXED_NOW.plusSeconds(3600), Map.of());
 
         String token = refresher.resolveAccessToken(TENANT, USER, PROVIDER);
 
@@ -152,39 +154,44 @@ class OAuthTokenRefresherTest {
     void keeps_existing_refresh_token_when_provider_omits_one() {
         when(settingService.getUserStringValue(TENANT, USER, EXPIRES_KEY))
                 .thenReturn(FIXED_NOW.minusSeconds(60).toString());
-        when(settingService.getDecryptedUserPassword(TENANT, USER, REFRESH_KEY))
-                .thenReturn("stored-refresh-token");
-        provider.next = new OAuthTokenSet("fresh-access",
-                /*refreshToken*/ null,
-                FIXED_NOW.plusSeconds(3600), Map.of());
+        when(settingService.getDecryptedUserPassword(TENANT, USER, REFRESH_KEY)).thenReturn("stored-refresh-token");
+        provider.next = new OAuthTokenSet("fresh-access", /*refreshToken*/ null, FIXED_NOW.plusSeconds(3600), Map.of());
 
         refresher.resolveAccessToken(TENANT, USER, PROVIDER);
 
-        verify(settingService, never()).setEncryptedPassword(eq(TENANT),
-                eq(SettingService.SCOPE_PROJECT), eq(USER_REF),
-                eq(REFRESH_KEY), any());
+        verify(settingService, never())
+                .setEncryptedPassword(
+                        eq(TENANT), eq(SettingService.SCOPE_PROJECT), eq(USER_REF), eq(REFRESH_KEY), any());
     }
 
     @Test
     void persists_extra_claims_as_scopes_and_extra_blob() {
         when(settingService.getUserStringValue(TENANT, USER, EXPIRES_KEY))
                 .thenReturn(FIXED_NOW.minusSeconds(60).toString());
-        when(settingService.getDecryptedUserPassword(TENANT, USER, REFRESH_KEY))
-                .thenReturn("rt");
-        provider.next = new OAuthTokenSet("a", "b", FIXED_NOW.plusSeconds(3600),
-                Map.of("scope", "openid email", "team_id", "T123"));
+        when(settingService.getDecryptedUserPassword(TENANT, USER, REFRESH_KEY)).thenReturn("rt");
+        provider.next = new OAuthTokenSet(
+                "a", "b", FIXED_NOW.plusSeconds(3600), Map.of("scope", "openid email", "team_id", "T123"));
 
         refresher.resolveAccessToken(TENANT, USER, PROVIDER);
 
-        verify(settingService).set(eq(TENANT),
-                eq(SettingService.SCOPE_PROJECT), eq(USER_REF),
-                eq("oauth.slack.scopes"), eq("openid email"),
-                eq(SettingType.STRING), any());
-        verify(settingService).set(eq(TENANT),
-                eq(SettingService.SCOPE_PROJECT), eq(USER_REF),
-                eq("oauth.slack.extra"),
-                org.mockito.ArgumentMatchers.contains("team_id"),
-                eq(SettingType.STRING), any());
+        verify(settingService)
+                .set(
+                        eq(TENANT),
+                        eq(SettingService.SCOPE_PROJECT),
+                        eq(USER_REF),
+                        eq("oauth.slack.scopes"),
+                        eq("openid email"),
+                        eq(SettingType.STRING),
+                        any());
+        verify(settingService)
+                .set(
+                        eq(TENANT),
+                        eq(SettingService.SCOPE_PROJECT),
+                        eq(USER_REF),
+                        eq("oauth.slack.extra"),
+                        org.mockito.ArgumentMatchers.contains("team_id"),
+                        eq(SettingType.STRING),
+                        any());
     }
 
     // ─────── Expired exceptions ───────
@@ -193,13 +200,13 @@ class OAuthTokenRefresherTest {
     void throws_expired_when_no_refresh_token() {
         when(settingService.getUserStringValue(TENANT, USER, EXPIRES_KEY))
                 .thenReturn(FIXED_NOW.minusSeconds(60).toString());
-        when(settingService.getDecryptedUserPassword(TENANT, USER, REFRESH_KEY))
-                .thenReturn(null);
+        when(settingService.getDecryptedUserPassword(TENANT, USER, REFRESH_KEY)).thenReturn(null);
 
         assertThatThrownBy(() -> refresher.resolveAccessToken(TENANT, USER, PROVIDER))
                 .isInstanceOf(OAuthExpiredException.class)
                 .hasMessageContaining("no refresh token")
-                .extracting("providerId").isEqualTo(PROVIDER);
+                .extracting("providerId")
+                .isEqualTo(PROVIDER);
         assertThat(provider.refreshCount.get()).isZero();
     }
 
@@ -207,8 +214,7 @@ class OAuthTokenRefresherTest {
     void throws_expired_when_provider_config_missing() {
         when(settingService.getUserStringValue(TENANT, USER, EXPIRES_KEY))
                 .thenReturn(FIXED_NOW.minusSeconds(60).toString());
-        when(settingService.getDecryptedUserPassword(TENANT, USER, REFRESH_KEY))
-                .thenReturn("rt");
+        when(settingService.getDecryptedUserPassword(TENANT, USER, REFRESH_KEY)).thenReturn("rt");
         when(configRegistry.resolve(TENANT, PROVIDER)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> refresher.resolveAccessToken(TENANT, USER, PROVIDER))
@@ -220,10 +226,9 @@ class OAuthTokenRefresherTest {
     void throws_expired_when_client_secret_empty() {
         when(settingService.getUserStringValue(TENANT, USER, EXPIRES_KEY))
                 .thenReturn(FIXED_NOW.minusSeconds(60).toString());
-        when(settingService.getDecryptedUserPassword(TENANT, USER, REFRESH_KEY))
-                .thenReturn("rt");
-        when(configRegistry.resolve(TENANT, PROVIDER)).thenReturn(Optional.of(
-                new ResolvedOAuthProvider(providerConfig(""), provider)));
+        when(settingService.getDecryptedUserPassword(TENANT, USER, REFRESH_KEY)).thenReturn("rt");
+        when(configRegistry.resolve(TENANT, PROVIDER))
+                .thenReturn(Optional.of(new ResolvedOAuthProvider(providerConfig(""), provider)));
 
         assertThatThrownBy(() -> refresher.resolveAccessToken(TENANT, USER, PROVIDER))
                 .isInstanceOf(OAuthExpiredException.class)
@@ -234,8 +239,7 @@ class OAuthTokenRefresherTest {
     void throws_expired_when_provider_rejects_refresh() {
         when(settingService.getUserStringValue(TENANT, USER, EXPIRES_KEY))
                 .thenReturn(FIXED_NOW.minusSeconds(60).toString());
-        when(settingService.getDecryptedUserPassword(TENANT, USER, REFRESH_KEY))
-                .thenReturn("rt");
+        when(settingService.getDecryptedUserPassword(TENANT, USER, REFRESH_KEY)).thenReturn("rt");
         provider.throwOnRefresh = new OAuthFlowException(PROVIDER, "invalid_grant");
 
         assertThatThrownBy(() -> refresher.resolveAccessToken(TENANT, USER, PROVIDER))
@@ -248,8 +252,7 @@ class OAuthTokenRefresherTest {
     void throws_expired_when_provider_throws_runtime() {
         when(settingService.getUserStringValue(TENANT, USER, EXPIRES_KEY))
                 .thenReturn(FIXED_NOW.minusSeconds(60).toString());
-        when(settingService.getDecryptedUserPassword(TENANT, USER, REFRESH_KEY))
-                .thenReturn("rt");
+        when(settingService.getDecryptedUserPassword(TENANT, USER, REFRESH_KEY)).thenReturn("rt");
         provider.throwOnRefreshRuntime = new IllegalStateException("connection reset");
 
         assertThatThrownBy(() -> refresher.resolveAccessToken(TENANT, USER, PROVIDER))
@@ -273,21 +276,23 @@ class OAuthTokenRefresherTest {
         java.util.concurrent.atomic.AtomicReference<String> accessTokenRef =
                 new java.util.concurrent.atomic.AtomicReference<>(null);
 
-        when(settingService.getUserStringValue(TENANT, USER, EXPIRES_KEY))
-                .thenAnswer(inv -> expiresAtRef.get());
-        when(settingService.getDecryptedUserPassword(TENANT, USER, ACCESS_KEY))
-                .thenAnswer(inv -> accessTokenRef.get());
-        when(settingService.getDecryptedUserPassword(TENANT, USER, REFRESH_KEY))
-                .thenReturn("rt");
+        when(settingService.getUserStringValue(TENANT, USER, EXPIRES_KEY)).thenAnswer(inv -> expiresAtRef.get());
+        when(settingService.getDecryptedUserPassword(TENANT, USER, ACCESS_KEY)).thenAnswer(inv -> accessTokenRef.get());
+        when(settingService.getDecryptedUserPassword(TENANT, USER, REFRESH_KEY)).thenReturn("rt");
 
-        provider.next = new OAuthTokenSet("fresh-access", "fresh-refresh",
-                freshExpiry, Map.of());
+        provider.next = new OAuthTokenSet("fresh-access", "fresh-refresh", freshExpiry, Map.of());
 
         // Atomic publish: the moment persistTokens writes expires_at to
         // the future, sibling readers see the new value AND the new
         // access token together — no torn read possible.
-        when(settingService.set(eq(TENANT), eq(SettingService.SCOPE_PROJECT),
-                eq(USER_REF), eq(EXPIRES_KEY), any(), eq(SettingType.STRING), any()))
+        when(settingService.set(
+                        eq(TENANT),
+                        eq(SettingService.SCOPE_PROJECT),
+                        eq(USER_REF),
+                        eq(EXPIRES_KEY),
+                        any(),
+                        eq(SettingType.STRING),
+                        any()))
                 .thenAnswer(inv -> {
                     expiresAtRef.set(freshExpiry.toString());
                     accessTokenRef.set("fresh-access");
@@ -321,9 +326,9 @@ class OAuthTokenRefresherTest {
         assertThat(provider.refreshCount.get())
                 .as("with the (tenant,user,provider) lock + double-check, only one thread refreshes")
                 .isEqualTo(1);
-        verify(settingService, times(1)).setEncryptedPassword(eq(TENANT),
-                eq(SettingService.SCOPE_PROJECT), eq(USER_REF),
-                eq(ACCESS_KEY), eq("fresh-access"));
+        verify(settingService, times(1))
+                .setEncryptedPassword(
+                        eq(TENANT), eq(SettingService.SCOPE_PROJECT), eq(USER_REF), eq(ACCESS_KEY), eq("fresh-access"));
     }
 
     @Test
@@ -334,8 +339,9 @@ class OAuthTokenRefresherTest {
                 .thenReturn(FIXED_NOW.plusSeconds(3600).toString());
         when(settingService.getDecryptedUserPassword(TENANT, USER, "oauth.github.access_token"))
                 .thenReturn("github-cached");
-        when(configRegistry.resolve(TENANT, "github")).thenReturn(Optional.of(
-                new ResolvedOAuthProvider(providerConfig("real-secret"), new RecordingProvider())));
+        when(configRegistry.resolve(TENANT, "github"))
+                .thenReturn(
+                        Optional.of(new ResolvedOAuthProvider(providerConfig("real-secret"), new RecordingProvider())));
 
         String github = refresher.resolveAccessToken(TENANT, USER, "github");
 
@@ -348,7 +354,8 @@ class OAuthTokenRefresherTest {
 
     private static OAuthProviderConfig providerConfig(String clientSecret) {
         return new OAuthProviderConfig(
-                PROVIDER, "slack",
+                PROVIDER,
+                "slack",
                 /*discoveryUrl*/ null,
                 "https://slack.com/oauth/v2/authorize",
                 "https://slack.com/api/oauth.v2.access",
@@ -360,22 +367,36 @@ class OAuthTokenRefresherTest {
 
     private static class RecordingProvider implements OAuthProvider {
         final AtomicInteger refreshCount = new AtomicInteger();
-        @org.jspecify.annotations.Nullable String lastRefreshToken;
-        @org.jspecify.annotations.Nullable OAuthTokenSet next;
-        @org.jspecify.annotations.Nullable OAuthFlowException throwOnRefresh;
-        @org.jspecify.annotations.Nullable RuntimeException throwOnRefreshRuntime;
 
-        @Override public String typeId() { return "slack"; }
+        @org.jspecify.annotations.Nullable
+        String lastRefreshToken;
 
-        @Override public URI buildAuthorizeUri(OAuthProviderConfig c, OAuthInitContext ctx) {
+        @org.jspecify.annotations.Nullable
+        OAuthTokenSet next;
+
+        @org.jspecify.annotations.Nullable
+        OAuthFlowException throwOnRefresh;
+
+        @org.jspecify.annotations.Nullable
+        RuntimeException throwOnRefreshRuntime;
+
+        @Override
+        public String typeId() {
+            return "slack";
+        }
+
+        @Override
+        public URI buildAuthorizeUri(OAuthProviderConfig c, OAuthInitContext ctx) {
             throw new UnsupportedOperationException();
         }
 
-        @Override public OAuthTokenSet exchangeCode(OAuthProviderConfig c, String code, OAuthInitContext ctx) {
+        @Override
+        public OAuthTokenSet exchangeCode(OAuthProviderConfig c, String code, OAuthInitContext ctx) {
             throw new UnsupportedOperationException();
         }
 
-        @Override public OAuthTokenSet refresh(OAuthProviderConfig c, String refreshToken) {
+        @Override
+        public OAuthTokenSet refresh(OAuthProviderConfig c, String refreshToken) {
             lastRefreshToken = refreshToken;
             refreshCount.incrementAndGet();
             if (throwOnRefresh != null) throw throwOnRefresh;

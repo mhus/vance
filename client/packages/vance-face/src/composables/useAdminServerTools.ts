@@ -1,10 +1,12 @@
 import { ref, type Ref } from 'vue';
 import type {
   ServerToolDto,
+  ServerToolOAuthDto,
+  ServerToolTestResultDto,
   ServerToolWriteRequest,
   ToolTypeDto,
 } from '@vance/generated';
-import { brainFetch } from '@vance/shared';
+import { brainBaseUrl, brainFetch, getTenantId } from '@vance/shared';
 
 /**
  * Read + write configured server tools at one project. The
@@ -30,6 +32,9 @@ export function useAdminServerTools(): {
     body: ServerToolWriteRequest,
   ) => Promise<ServerToolDto>;
   remove: (projectId: string, name: string) => Promise<void>;
+  test: (projectId: string, name: string) => Promise<ServerToolTestResultDto>;
+  login: (projectId: string, name: string, returnTo: string) => Promise<void>;
+  logout: (projectId: string, name: string) => Promise<void>;
 } {
   const tools = ref<ServerToolDto[]>([]);
   const types = ref<ToolTypeDto[]>([]);
@@ -102,5 +107,65 @@ export function useAdminServerTools(): {
     }
   }
 
-  return { tools, types, loading, busy, error, loadProject, loadTypes, upsert, remove };
+  /** Connection test of an MCP server tool as the calling user. */
+  async function test(projectId: string, name: string): Promise<ServerToolTestResultDto> {
+    busy.value = true;
+    error.value = null;
+    try {
+      return await brainFetch<ServerToolTestResultDto>(
+        'POST',
+        `admin/projects/${encodeURIComponent(projectId)}/server-tools/${encodeURIComponent(name)}/test`,
+      );
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Connection test failed.';
+      throw e;
+    } finally {
+      busy.value = false;
+    }
+  }
+
+  /**
+   * OAuth login for an MCP server tool. {@code prepare} first, so a failed
+   * discovery / client registration shows as a message here; then the
+   * browser navigates into the code flow (302-driven, not fetchable).
+   */
+  async function login(projectId: string, name: string, returnTo: string): Promise<void> {
+    busy.value = true;
+    error.value = null;
+    const query = `project=${encodeURIComponent(projectId)}&tool=${encodeURIComponent(name)}`;
+    try {
+      await brainFetch<ServerToolOAuthDto>('POST', `oauth-client/mcp/prepare?${query}`);
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Login could not be prepared.';
+      busy.value = false;
+      throw e;
+    }
+    const tenant = getTenantId();
+    if (!tenant) {
+      error.value = 'No tenant configured — user is not logged in.';
+      busy.value = false;
+      return;
+    }
+    window.location.assign(`${brainBaseUrl()}/brain/${encodeURIComponent(tenant)}/oauth-client/mcp/init?${query}`
+      + `&returnTo=${encodeURIComponent(returnTo)}`);
+  }
+
+  async function logout(projectId: string, name: string): Promise<void> {
+    busy.value = true;
+    error.value = null;
+    try {
+      await brainFetch<void>(
+        'DELETE',
+        `oauth-client/mcp/connection?project=${encodeURIComponent(projectId)}&tool=${encodeURIComponent(name)}`,
+      );
+      await loadProject(projectId);
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Logout failed.';
+      throw e;
+    } finally {
+      busy.value = false;
+    }
+  }
+
+  return { tools, types, loading, busy, error, loadProject, loadTypes, upsert, remove, test, login, logout };
 }

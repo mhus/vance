@@ -2216,7 +2216,7 @@
       "disabledSubTools": "已禁用子工具",
       "disabledSubToolsHelp": "每行一个子工具名称。仅限本地名称（不带 <pack>__ 前缀）。空表示所有子工具都处于活动状态。",
       "labels": "标签",
-      "labelsHelp": "每行一个（或逗号分隔）。Recipe 可以通过 @<label> 定位标签。"
+      "labelsHelp": "每行一个（或逗号分隔）。Recipe 可以通过 {'@'}<label> 定位标签。"
     },
     "rightPanel": {
       "typeSchemaTitle": "类型 Schema",

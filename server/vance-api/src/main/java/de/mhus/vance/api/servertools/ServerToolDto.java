@@ -90,4 +90,10 @@ public class ServerToolDto {
 
     /** Creator user login, if recorded. */
     private @Nullable String createdBy;
+
+    /**
+     * Login state for an MCP server with {@code auth.type: oauth};
+     * {@code null} for every other tool.
+     */
+    private @Nullable ServerToolOAuthDto oauth;
 }

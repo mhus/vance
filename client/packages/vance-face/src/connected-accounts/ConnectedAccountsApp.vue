@@ -82,7 +82,8 @@ async function onDisconnect(providerId: string): Promise<void> {
         >
           <div class="flex items-center justify-between gap-3">
             <div class="flex flex-col gap-1">
-              <div class="font-mono text-base">{{ p.providerId }}</div>
+              <div v-if="p.title" class="text-base">{{ p.title }}</div>
+              <div :class="p.title ? 'font-mono text-xs opacity-70' : 'font-mono text-base'">{{ p.providerId }}</div>
               <div class="flex items-center gap-2 text-xs opacity-70">
                 <span class="badge-type">{{ p.typeId }}</span>
                 <span

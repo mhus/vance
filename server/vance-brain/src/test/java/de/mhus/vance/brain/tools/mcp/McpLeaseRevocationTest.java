@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.sun.net.httpserver.HttpServer;
+import de.mhus.vance.brain.oauth.OAuthTokenStore;
 import de.mhus.vance.brain.tools.rest.SettingsSecretResolver;
 import de.mhus.vance.shared.lease.LeaseHolderInfo;
 import de.mhus.vance.shared.servertool.ServerToolConfig;
@@ -111,7 +112,7 @@ class McpLeaseRevocationTest {
             when(cfg.parameters()).thenReturn(toolParams);
             when(loader.load(eq("acme"), eq("proj"), eq("browser"))).thenReturn(Optional.of(cfg));
         }
-        return new McpToolPackFactory(resolver, mock(McpLeaseSupport.class), loader);
+        return new McpToolPackFactory(resolver, mock(McpLeaseSupport.class), loader, mock(OAuthTokenStore.class));
     }
 
     private LeaseHolderInfo deadHolder(String sessionEndpoint) {

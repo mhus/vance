@@ -149,6 +149,14 @@ public class BrainAccessFilter extends AccessFilterBase {
             "^/brain/[^/]+/oauth/(register|token|revoke|authorize|authorize/resume/[^/]+|resource/.+)/?$");
 
     /**
+     * This brain's Client ID Metadata Document as OAuth client of remote MCP
+     * servers ({@code McpOAuthController}) — fetched by their authorization
+     * servers, which hold no Vance credential.
+     */
+    private static final Pattern OAUTH_CLIENT_METADATA_PATH =
+            Pattern.compile("^/brain/[^/]+/oauth-client/client-metadata\\.json$");
+
+    /**
      * The SSO login ({@code SsoController}): discovery, start, callback. Open
      * by nature — the caller is not logged in yet, and the tenant is not known
      * until the e-mail domain names it, so the path carries none. The callback
@@ -233,6 +241,9 @@ public class BrainAccessFilter extends AccessFilterBase {
             return false;
         }
         if (SSO_PATH.matcher(requestUri).matches()) {
+            return false;
+        }
+        if (OAUTH_CLIENT_METADATA_PATH.matcher(requestUri).matches()) {
             return false;
         }
         if (WELL_KNOWN_OAUTH_PATH.matcher(requestUri).matches()

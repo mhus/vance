@@ -131,6 +131,9 @@ public class UserAdminController {
             return ResponseEntity.noContent().build();
         } catch (UserService.UserNotFoundException e) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
+        } catch (UserService.ExternalIdentityException e) {
+            // An SSO account has no password — and must not get one.
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage(), e);
         }
     }
 

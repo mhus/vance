@@ -23,12 +23,12 @@ import org.jspecify.annotations.Nullable;
  * <p>Only IP literals are considered; a header entry that is not one stops
  * the walk at the last trusted hop. No entry is ever resolved through DNS.
  */
-final class ClientAddresses {
+public final class ClientAddresses {
 
     private ClientAddresses() {}
 
     /** The client address of {@code request}, see the class comment. */
-    static String of(HttpServletRequest request) {
+    public static String of(HttpServletRequest request) {
         String current = request.getRemoteAddr();
         InetAddress hop = literal(current);
         if (hop == null || ClientMetadataDocumentResolver.isPublic(hop)) {

@@ -9,6 +9,7 @@ import de.mhus.vance.shared.tenant.TenantService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.net.URI;
+import java.time.Instant;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.CacheControl;
@@ -69,7 +70,7 @@ public class OAuthAuthorizeController {
         }
         OAuthAuthorizationFlow.AuthorizeParams params = new OAuthAuthorizationFlow.AuthorizeParams(
                 responseType, clientId, redirectUri, state, codeChallenge, codeChallengeMethod, scope, resource);
-        return render(flow.begin(tenant, params, loggedInUser(request)));
+        return render(flow.begin(tenant, params, loggedInUser(request), sessionEnd(request)));
     }
 
     @GetMapping("/brain/{tenant}/oauth/authorize/resume/{requestId}")
@@ -77,7 +78,7 @@ public class OAuthAuthorizeController {
             @PathVariable("tenant") String tenant,
             @PathVariable("requestId") String requestId,
             HttpServletRequest request) {
-        return render(flow.resume(tenant, requestId, loggedInUser(request)));
+        return render(flow.resume(tenant, requestId, loggedInUser(request), sessionEnd(request)));
     }
 
     @GetMapping(
@@ -102,7 +103,12 @@ public class OAuthAuthorizeController {
             HttpServletRequest request) {
         String user = requireLoggedInUser(request);
         String url = flow.decide(
-                        tenant, decision.getRequestId(), decision.getConsentTicket(), decision.isApprove(), user)
+                        tenant,
+                        decision.getRequestId(),
+                        decision.getConsentTicket(),
+                        decision.isApprove(),
+                        user,
+                        sessionEnd(request))
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "This sign-in request has expired or belongs to another user."));
         return OAuthConsentDecisionResponse.builder().redirectUrl(url).build();
@@ -117,6 +123,18 @@ public class OAuthAuthorizeController {
         if (request.getAttribute(AccessFilterBase.ATTR_CLAIMS) instanceof VanceJwtClaims claims
                 && claims.isFullAccountCredential()) {
             return claims.username();
+        }
+        return null;
+    }
+
+    /**
+     * Hard end of the login session on this request ({@code sxp} — SSO
+     * logins), or {@code null}. A grant created from the session inherits it.
+     */
+    static @Nullable Instant sessionEnd(HttpServletRequest request) {
+        if (request.getAttribute(AccessFilterBase.ATTR_CLAIMS) instanceof VanceJwtClaims claims
+                && claims.isFullAccountCredential()) {
+            return claims.sessionExpiresAt();
         }
         return null;
     }

@@ -199,6 +199,52 @@ public class AuditService {
                 .build());
     }
 
+    /** Successful login through an external identity provider (SSO). */
+    public void authSsoLoginSuccess(String tenantId, String username, String provider, String issuer, String kind) {
+        record(AuditEventDto.builder()
+                .action("auth.login")
+                .severity(AuditSeverity.INFO)
+                .outcome("success")
+                .tenantId(tenantId)
+                .actor(username)
+                .target("user:" + username)
+                .details(Map.of("method", "sso", "provider", provider, "issuer", issuer, "kind", kind))
+                .build());
+    }
+
+    /**
+     * An SSO sign-in was refused after the identity provider vouched for
+     * somebody. {@code tenantId}/{@code username} are {@code null} when the
+     * refusal came before either was known.
+     */
+    public void authSsoRejected(@Nullable String tenantId, @Nullable String username, String provider, String reason) {
+        record(AuditEventDto.builder()
+                .action("auth.sso.rejected")
+                .severity(AuditSeverity.WARN)
+                .outcome("failure")
+                .tenantId(tenantId)
+                .actor(username)
+                .target(username == null ? null : "user:" + username)
+                .message(reason)
+                .details(Map.of("provider", provider))
+                .build());
+    }
+
+    /**
+     * An account's external identity changed: {@code prepared},
+     * {@code linked}, {@code user-created} or {@code unlinked}.
+     */
+    public void authSsoIdentity(String tenantId, String username, String event, @Nullable String actor) {
+        record(AuditEventDto.builder()
+                .action("auth.sso." + event)
+                .severity(AuditSeverity.WARN)
+                .outcome("success")
+                .tenantId(tenantId)
+                .actor(actor == null ? username : actor)
+                .target("user:" + username)
+                .build());
+    }
+
     public void authTokenRefresh(String tenantId, String username) {
         record(AuditEventDto.builder()
                 .action("auth.token.refresh")

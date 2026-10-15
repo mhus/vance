@@ -58,4 +58,14 @@ public class ProfileDto {
 
     /** Brain build timestamp (ISO-8601 UTC), if known. */
     private @Nullable String brainBuildTime;
+
+    /**
+     * Provider the account signs in with (SSO, e.g. {@code google}), or
+     * {@code null} for a password account. An SSO account has no password —
+     * the page shows this instead of the password form.
+     */
+    private @Nullable String ssoProvider;
+
+    /** Address of the last SSO sign-in (or the prepared one), for display. */
+    private @Nullable String ssoEmail;
 }

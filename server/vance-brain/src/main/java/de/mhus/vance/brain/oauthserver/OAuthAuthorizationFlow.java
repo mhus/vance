@@ -9,6 +9,8 @@ import de.mhus.vance.shared.oauthserver.OAuthServerGrantDocument;
 import de.mhus.vance.shared.oauthserver.OAuthServerGrantService;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -100,6 +102,18 @@ public class OAuthAuthorizationFlow {
      * @param loggedInUser the user of a valid full-account session on the request, or {@code null}
      */
     public Step begin(String tenant, AuthorizeParams params, @Nullable String loggedInUser) {
+        return begin(tenant, params, loggedInUser, null);
+    }
+
+    /**
+     * {@link #begin(String, AuthorizeParams, String)} for a login session with a
+     * hard end ({@code sxp}, an SSO login): a grant created from it ends no
+     * later than the session — the identity provider is only asked again when
+     * the session is renewed, and a grant must not keep a person in who was
+     * offboarded there.
+     */
+    public Step begin(
+            String tenant, AuthorizeParams params, @Nullable String loggedInUser, @Nullable Instant sessionEnd) {
         if (!settings.enabled()) {
             return new Step.ShowError(SERVER_DISABLED);
         }
@@ -190,20 +204,29 @@ public class OAuthAuthorizationFlow {
                 .scopeProfiles(door == null ? List.of() : door.scopeProfiles())
                 .projectId(door == null ? null : door.project())
                 .build());
-        return proceed(tenant, request, loggedInUser);
+        return proceed(tenant, request, loggedInUser, sessionEnd);
     }
 
     /** Continue a parked request — after login, or on a fresh visit. */
     public Step resume(String tenant, String requestId, @Nullable String loggedInUser) {
+        return resume(tenant, requestId, loggedInUser, null);
+    }
+
+    /** {@link #resume(String, String, String)} for a session with a hard end — see {@link #begin(String, AuthorizeParams, String, Instant)}. */
+    public Step resume(String tenant, String requestId, @Nullable String loggedInUser, @Nullable Instant sessionEnd) {
         OAuthServerAuthRequestDocument request =
                 authorizations.findRequest(tenant, requestId).orElse(null);
         if (request == null) {
             return new Step.ShowError(REQUEST_GONE);
         }
-        return proceed(tenant, request, loggedInUser);
+        return proceed(tenant, request, loggedInUser, sessionEnd);
     }
 
-    private Step proceed(String tenant, OAuthServerAuthRequestDocument request, @Nullable String loggedInUser) {
+    private Step proceed(
+            String tenant,
+            OAuthServerAuthRequestDocument request,
+            @Nullable String loggedInUser,
+            @Nullable Instant sessionEnd) {
         if (loggedInUser == null) {
             String returnPath = "/brain/" + tenant + "/oauth/authorize/resume/" + request.getRequestId();
             return new Step.Redirect(
@@ -229,7 +252,7 @@ public class OAuthAuthorizationFlow {
                 if (taken == null) {
                     return new Step.ShowError(REQUEST_GONE);
                 }
-                return approve(tenant, taken, loggedInUser, doorOf(tenant, taken));
+                return approve(tenant, taken, loggedInUser, doorOf(tenant, taken), sessionEnd);
             }
         }
         return new Step.Redirect(settings.baseUrl() + "/oauth-consent.html?tenant=" + enc(tenant) + "&request="
@@ -273,6 +296,17 @@ public class OAuthAuthorizationFlow {
      */
     public Optional<String> decide(
             String tenant, String requestId, String consentTicket, boolean approve, String user) {
+        return decide(tenant, requestId, consentTicket, approve, user, null);
+    }
+
+    /** {@link #decide(String, String, String, boolean, String)} for a session with a hard end. */
+    public Optional<String> decide(
+            String tenant,
+            String requestId,
+            String consentTicket,
+            boolean approve,
+            String user,
+            @Nullable Instant sessionEnd) {
         OAuthServerAuthRequestDocument request = authorizations
                 .takeForDecision(tenant, requestId, user, consentTicket)
                 .orElse(null);
@@ -284,7 +318,7 @@ public class OAuthAuthorizationFlow {
             return Optional.of(errorUrl(
                     tenant, request.getRedirectUri(), request.getState(), "access_denied", "the user declined"));
         }
-        Step step = approve(tenant, request, user, doorOf(tenant, request));
+        Step step = approve(tenant, request, user, doorOf(tenant, request), sessionEnd);
         return step instanceof Step.Redirect redirect ? Optional.of(redirect.url()) : Optional.empty();
     }
 
@@ -292,7 +326,12 @@ public class OAuthAuthorizationFlow {
      * Create or reuse the grant, issue a code, send the browser back to the
      * client. {@code request} has already been taken out of the store.
      */
-    private Step approve(String tenant, OAuthServerAuthRequestDocument request, String user, @Nullable OAuthDoor door) {
+    private Step approve(
+            String tenant,
+            OAuthServerAuthRequestDocument request,
+            String user,
+            @Nullable OAuthDoor door,
+            @Nullable Instant sessionEnd) {
         String denial = gate.denial(tenant, user, door);
         if (denial != null) {
             log.info(
@@ -309,7 +348,7 @@ public class OAuthAuthorizationFlow {
         OAuthServerGrantDocument grant = (firstParty
                         ? Optional.<OAuthServerGrantDocument>empty()
                         : grants.findReusable(tenant, user, request.getClientId(), request.getResource()))
-                .orElseGet(() -> createGrant(tenant, request, user));
+                .orElseGet(() -> createGrant(tenant, request, user, sessionEnd));
         String code = authorizations.issueCode(
                 tenant,
                 user,
@@ -328,7 +367,15 @@ public class OAuthAuthorizationFlow {
         return new Step.Redirect(appendQuery(request.getRedirectUri(), params));
     }
 
-    private OAuthServerGrantDocument createGrant(String tenant, OAuthServerAuthRequestDocument request, String user) {
+    private OAuthServerGrantDocument createGrant(
+            String tenant, OAuthServerAuthRequestDocument request, String user, @Nullable Instant sessionEnd) {
+        Duration lifetime = settings.grantMaxLifetime();
+        if (sessionEnd != null) {
+            Duration untilSessionEnd = Duration.between(Instant.now(), sessionEnd);
+            if (untilSessionEnd.compareTo(lifetime) < 0) {
+                lifetime = untilSessionEnd.isNegative() ? Duration.ZERO : untilSessionEnd;
+            }
+        }
         OAuthServerGrantDocument created = grants.create(
                 tenant,
                 user,
@@ -338,7 +385,7 @@ public class OAuthAuthorizationFlow {
                 request.getScope(),
                 request.getScopeProfiles(),
                 request.getProjectId(),
-                settings.grantMaxLifetime());
+                lifetime);
         auditService.authOAuthGrantIssued(
                 tenant, user, request.getClientId(), request.getScope(), request.getProjectId(), created.getGrantId());
         return created;

@@ -280,6 +280,16 @@ public class ProfileController {
                 .webUiSettings(settings)
                 .brainVersion(buildVersion)
                 .brainBuildTime(buildTime == null || buildTime.isBlank() ? null : buildTime)
+                .ssoProvider(
+                        user.getExternalIdentity() == null
+                                ? null
+                                : user.getExternalIdentity().getProvider())
+                .ssoEmail(
+                        user.getExternalIdentity() == null
+                                ? null
+                                : user.getExternalIdentity().getEmail() != null
+                                        ? user.getExternalIdentity().getEmail()
+                                        : user.getExternalIdentity().getExpectedEmail())
                 .build();
     }
 }

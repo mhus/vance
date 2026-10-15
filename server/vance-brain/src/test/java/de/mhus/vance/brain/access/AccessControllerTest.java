@@ -8,12 +8,12 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.access.AccessTokenRequest;
 import de.mhus.vance.api.access.AccessTokenResponse;
+import de.mhus.vance.api.access.RefreshTokenResponse;
+import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.access.WebUiCookies;
 import de.mhus.vance.shared.audit.AuditService;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.jwt.JwtService;
-import de.mhus.vance.api.access.RefreshTokenResponse;
-import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.jwt.TokenType;
 import de.mhus.vance.shared.jwt.VanceJwtClaims;
 import de.mhus.vance.shared.password.PasswordService;
@@ -72,21 +72,28 @@ class AccessControllerTest {
                 jwtService,
                 userService,
                 passwordService,
-                homeBootstrapService,
+                new LoginTokenIssuer(jwtService, homeBootstrapService),
                 auditService,
                 new WebUiCookieService(jwtService, settingService, /* cookieSecure */ true));
 
         // Default wiring — an active user exists in the tenant with a
         // password hash. Individual tests override what they need.
         UserDocument user = activeUser();
-        when(userService.findByTenantAndName(TENANT, USERNAME))
-                .thenReturn(Optional.of(user));
+        when(userService.findByTenantAndName(TENANT, USERNAME)).thenReturn(Optional.of(user));
         when(passwordService.verify("right-password", "hash")).thenReturn(true);
         when(jwtService.createToken(
-                eqTenant(), eqUsername(), anyInstant(), eqType(TokenType.ACCESS)))
+                        eqTenant(),
+                        eqUsername(),
+                        anyInstant(),
+                        eqType(TokenType.ACCESS),
+                        org.mockito.ArgumentMatchers.any()))
                 .thenReturn("access-jwt");
         when(jwtService.createToken(
-                eqTenant(), eqUsername(), anyInstant(), eqType(TokenType.REFRESH)))
+                        eqTenant(),
+                        eqUsername(),
+                        anyInstant(),
+                        eqType(TokenType.REFRESH),
+                        org.mockito.ArgumentMatchers.any()))
                 .thenReturn("refresh-jwt");
     }
 
@@ -99,11 +106,13 @@ class AccessControllerTest {
         ResponseEntity<AccessTokenResponse> resp = controller.createToken(TENANT, USERNAME, req, emptyRequest());
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-        verify(jwtService, never()).createToken(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any());
+        verify(jwtService, never())
+                .createToken(
+                        org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -122,9 +131,8 @@ class AccessControllerTest {
 
     @Test
     void passwordLogin_withRequestRefreshTokenFalse_omitsRefreshFromResponse() {
-        AccessTokenRequest req = AccessTokenRequest.builder()
-                .password("right-password")
-                .build();
+        AccessTokenRequest req =
+                AccessTokenRequest.builder().password("right-password").build();
 
         ResponseEntity<AccessTokenResponse> resp = controller.createToken(TENANT, USERNAME, req, emptyRequest());
 
@@ -162,9 +170,8 @@ class AccessControllerTest {
 
     @Test
     void passwordLogin_withWrongPassword_returns401() {
-        AccessTokenRequest req = AccessTokenRequest.builder()
-                .password("wrong-password")
-                .build();
+        AccessTokenRequest req =
+                AccessTokenRequest.builder().password("wrong-password").build();
 
         ResponseEntity<AccessTokenResponse> resp = controller.createToken(TENANT, USERNAME, req, emptyRequest());
 
@@ -175,9 +182,8 @@ class AccessControllerTest {
 
     @Test
     void passwordLogin_wrongPassword_recordsFailedLogin() {
-        AccessTokenRequest req = AccessTokenRequest.builder()
-                .password("wrong-password")
-                .build();
+        AccessTokenRequest req =
+                AccessTokenRequest.builder().password("wrong-password").build();
 
         controller.createToken(TENANT, USERNAME, req, emptyRequest());
 
@@ -190,9 +196,8 @@ class AccessControllerTest {
         locked.setLockedUntil(Instant.now().plusSeconds(600));
         when(userService.findByTenantAndName(TENANT, USERNAME)).thenReturn(Optional.of(locked));
         when(userService.isLocked(locked)).thenReturn(true);
-        AccessTokenRequest req = AccessTokenRequest.builder()
-                .password("right-password")
-                .build();
+        AccessTokenRequest req =
+                AccessTokenRequest.builder().password("right-password").build();
 
         ResponseEntity<AccessTokenResponse> resp = controller.createToken(TENANT, USERNAME, req, emptyRequest());
 
@@ -207,9 +212,8 @@ class AccessControllerTest {
         UserDocument user = activeUser();
         user.setFailedLoginAttempts(3);
         when(userService.findByTenantAndName(TENANT, USERNAME)).thenReturn(Optional.of(user));
-        AccessTokenRequest req = AccessTokenRequest.builder()
-                .password("right-password")
-                .build();
+        AccessTokenRequest req =
+                AccessTokenRequest.builder().password("right-password").build();
 
         controller.createToken(TENANT, USERNAME, req, emptyRequest());
 
@@ -219,15 +223,13 @@ class AccessControllerTest {
     @Test
     void passwordLogin_success_noResetWhenCounterZero() {
         // Happy path stays read-only: nothing to reset, no write.
-        AccessTokenRequest req = AccessTokenRequest.builder()
-                .password("right-password")
-                .build();
+        AccessTokenRequest req =
+                AccessTokenRequest.builder().password("right-password").build();
 
         controller.createToken(TENANT, USERNAME, req, emptyRequest());
 
-        verify(userService, never()).resetLoginFailures(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString());
+        verify(userService, never())
+                .resetLoginFailures(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString());
     }
 
     @Test
@@ -242,22 +244,22 @@ class AccessControllerTest {
                 .status(UserStatus.ACTIVE)
                 .loginEnabled(false)
                 .build();
-        when(userService.findByTenantAndName(TENANT, USERNAME))
-                .thenReturn(Optional.of(blocked));
+        when(userService.findByTenantAndName(TENANT, USERNAME)).thenReturn(Optional.of(blocked));
         when(passwordService.verify("right-password", "hash")).thenReturn(true);
 
-        AccessTokenRequest req = AccessTokenRequest.builder()
-                .password("right-password")
-                .build();
+        AccessTokenRequest req =
+                AccessTokenRequest.builder().password("right-password").build();
 
         ResponseEntity<AccessTokenResponse> resp = controller.createToken(TENANT, USERNAME, req, emptyRequest());
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-        verify(jwtService, never()).createToken(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any());
+        verify(jwtService, never())
+                .createToken(
+                        org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -268,12 +270,10 @@ class AccessControllerTest {
                 .passwordHash("hash")
                 .status(UserStatus.DISABLED)
                 .build();
-        when(userService.findByTenantAndName(TENANT, USERNAME))
-                .thenReturn(Optional.of(inactive));
+        when(userService.findByTenantAndName(TENANT, USERNAME)).thenReturn(Optional.of(inactive));
 
-        AccessTokenRequest req = AccessTokenRequest.builder()
-                .password("right-password")
-                .build();
+        AccessTokenRequest req =
+                AccessTokenRequest.builder().password("right-password").build();
 
         ResponseEntity<AccessTokenResponse> resp = controller.createToken(TENANT, USERNAME, req, emptyRequest());
 
@@ -282,12 +282,10 @@ class AccessControllerTest {
 
     @Test
     void passwordLogin_withUnknownUser_returns401() {
-        when(userService.findByTenantAndName(TENANT, USERNAME))
-                .thenReturn(Optional.empty());
+        when(userService.findByTenantAndName(TENANT, USERNAME)).thenReturn(Optional.empty());
 
-        AccessTokenRequest req = AccessTokenRequest.builder()
-                .password("right-password")
-                .build();
+        AccessTokenRequest req =
+                AccessTokenRequest.builder().password("right-password").build();
 
         ResponseEntity<AccessTokenResponse> resp = controller.createToken(TENANT, USERNAME, req, emptyRequest());
 
@@ -298,12 +296,10 @@ class AccessControllerTest {
 
     @Test
     void refreshLogin_withValidRefreshToken_returns200() {
-        when(jwtService.validateToken("good-refresh"))
-                .thenReturn(Optional.of(refreshClaims(TENANT, USERNAME)));
+        when(jwtService.validateToken("good-refresh")).thenReturn(Optional.of(refreshClaims(TENANT, USERNAME)));
 
-        AccessTokenRequest req = AccessTokenRequest.builder()
-                .refreshToken("good-refresh")
-                .build();
+        AccessTokenRequest req =
+                AccessTokenRequest.builder().refreshToken("good-refresh").build();
 
         ResponseEntity<AccessTokenResponse> resp = controller.createToken(TENANT, USERNAME, req, emptyRequest());
 
@@ -314,15 +310,74 @@ class AccessControllerTest {
         assertThat(resp.getBody().getRefreshToken()).isNull();
 
         // Password verification must be skipped on the refresh path.
-        verify(passwordService, never()).verify(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString());
+        verify(passwordService, never())
+                .verify(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void refreshLogin_ssoSessionEnded_isRejected() {
+        when(jwtService.validateToken("sso-refresh"))
+                .thenReturn(Optional.of(ssoRefreshClaims(Instant.now().minusSeconds(5))));
+
+        AccessTokenRequest req =
+                AccessTokenRequest.builder().refreshToken("sso-refresh").build();
+
+        ResponseEntity<AccessTokenResponse> resp = controller.createToken(TENANT, USERNAME, req, emptyRequest());
+
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        verify(auditService).authLoginFailure(TENANT, USERNAME, "session-ended");
+    }
+
+    @Test
+    void refreshLogin_ssoSession_carriesItsEndForward_neverExtends() {
+        Instant sessionEnd = Instant.now().plusSeconds(3600);
+        when(jwtService.validateToken("sso-refresh")).thenReturn(Optional.of(ssoRefreshClaims(sessionEnd)));
+
+        AccessTokenRequest req = AccessTokenRequest.builder()
+                .refreshToken("sso-refresh")
+                .requestRefreshToken(true)
+                .build();
+
+        ResponseEntity<AccessTokenResponse> resp = controller.createToken(TENANT, USERNAME, req, emptyRequest());
+
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        verify(jwtService)
+                .createToken(
+                        eqTenant(),
+                        eqUsername(),
+                        org.mockito.ArgumentMatchers.eq(sessionEnd),
+                        eqType(TokenType.REFRESH),
+                        org.mockito.ArgumentMatchers.eq(sessionEnd));
+        verify(jwtService)
+                .createToken(
+                        eqTenant(),
+                        eqUsername(),
+                        org.mockito.ArgumentMatchers.eq(sessionEnd),
+                        eqType(TokenType.ACCESS),
+                        org.mockito.ArgumentMatchers.eq(sessionEnd));
+    }
+
+    private static VanceJwtClaims ssoRefreshClaims(Instant sessionEnd) {
+        return new VanceJwtClaims(
+                USERNAME,
+                TENANT,
+                Instant.now(),
+                sessionEnd,
+                TokenType.REFRESH,
+                null,
+                null,
+                null,
+                List.of(),
+                null,
+                null,
+                null,
+                null,
+                sessionEnd);
     }
 
     @Test
     void refreshLogin_canRollOverWhenRequested() {
-        when(jwtService.validateToken("good-refresh"))
-                .thenReturn(Optional.of(refreshClaims(TENANT, USERNAME)));
+        when(jwtService.validateToken("good-refresh")).thenReturn(Optional.of(refreshClaims(TENANT, USERNAME)));
 
         AccessTokenRequest req = AccessTokenRequest.builder()
                 .refreshToken("good-refresh")
@@ -340,12 +395,10 @@ class AccessControllerTest {
     void refreshLogin_rejectsAccessTokenInRefreshSlot() {
         // Caller mistakenly forwarded their access token. Must not be
         // accepted as a refresh credential.
-        when(jwtService.validateToken("an-access-token"))
-                .thenReturn(Optional.of(accessClaims(TENANT, USERNAME)));
+        when(jwtService.validateToken("an-access-token")).thenReturn(Optional.of(accessClaims(TENANT, USERNAME)));
 
-        AccessTokenRequest req = AccessTokenRequest.builder()
-                .refreshToken("an-access-token")
-                .build();
+        AccessTokenRequest req =
+                AccessTokenRequest.builder().refreshToken("an-access-token").build();
 
         ResponseEntity<AccessTokenResponse> resp = controller.createToken(TENANT, USERNAME, req, emptyRequest());
 
@@ -385,12 +438,10 @@ class AccessControllerTest {
 
     @Test
     void refreshLogin_rejectsInvalidToken() {
-        when(jwtService.validateToken("garbage"))
-                .thenReturn(Optional.empty());
+        when(jwtService.validateToken("garbage")).thenReturn(Optional.empty());
 
-        AccessTokenRequest req = AccessTokenRequest.builder()
-                .refreshToken("garbage")
-                .build();
+        AccessTokenRequest req =
+                AccessTokenRequest.builder().refreshToken("garbage").build();
 
         ResponseEntity<AccessTokenResponse> resp = controller.createToken(TENANT, USERNAME, req, emptyRequest());
 
@@ -401,20 +452,17 @@ class AccessControllerTest {
     void refreshLogin_rejectsInactiveUser() {
         // Token is valid and identity matches, but the user has been
         // deactivated since the refresh token was issued.
-        when(jwtService.validateToken("good-refresh"))
-                .thenReturn(Optional.of(refreshClaims(TENANT, USERNAME)));
+        when(jwtService.validateToken("good-refresh")).thenReturn(Optional.of(refreshClaims(TENANT, USERNAME)));
         UserDocument inactive = UserDocument.builder()
                 .tenantId(TENANT)
                 .name(USERNAME)
                 .passwordHash("hash")
                 .status(UserStatus.DISABLED)
                 .build();
-        when(userService.findByTenantAndName(TENANT, USERNAME))
-                .thenReturn(Optional.of(inactive));
+        when(userService.findByTenantAndName(TENANT, USERNAME)).thenReturn(Optional.of(inactive));
 
-        AccessTokenRequest req = AccessTokenRequest.builder()
-                .refreshToken("good-refresh")
-                .build();
+        AccessTokenRequest req =
+                AccessTokenRequest.builder().refreshToken("good-refresh").build();
 
         ResponseEntity<AccessTokenResponse> resp = controller.createToken(TENANT, USERNAME, req, emptyRequest());
 
@@ -427,9 +475,8 @@ class AccessControllerTest {
     void noCookies_byDefault() {
         // Without requestCookies the response carries the JSON body
         // only — the CLI shape stays untouched.
-        AccessTokenRequest req = AccessTokenRequest.builder()
-                .password("right-password")
-                .build();
+        AccessTokenRequest req =
+                AccessTokenRequest.builder().password("right-password").build();
 
         ResponseEntity<AccessTokenResponse> resp = controller.createToken(TENANT, USERNAME, req, emptyRequest());
 
@@ -544,10 +591,11 @@ class AccessControllerTest {
 
         assertThat(decoded).doesNotContain("webui.theme");
         // findUserSettingsByPrefix must not be queried unnecessarily.
-        verify(settingService, never()).findUserSettingsByPrefix(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString());
+        verify(settingService, never())
+                .findUserSettingsByPrefix(
+                        org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyString());
     }
 
     @Test
@@ -555,8 +603,11 @@ class AccessControllerTest {
         // Override the cookie-secure flag — this is the dev-mode HTTP
         // path. Production must keep it true.
         AccessController insecure = new AccessController(
-                jwtService, userService, passwordService,
-                homeBootstrapService, auditService,
+                jwtService,
+                userService,
+                passwordService,
+                new LoginTokenIssuer(jwtService, homeBootstrapService),
+                auditService,
                 new WebUiCookieService(jwtService, settingService, /* cookieSecure */ false));
 
         AccessTokenRequest req = AccessTokenRequest.builder()
@@ -564,8 +615,7 @@ class AccessControllerTest {
                 .requestCookies(true)
                 .build();
 
-        ResponseEntity<AccessTokenResponse> resp = insecure.createToken(
-                TENANT, USERNAME, req, emptyRequest());
+        ResponseEntity<AccessTokenResponse> resp = insecure.createToken(TENANT, USERNAME, req, emptyRequest());
 
         String access = findCookie(resp.getHeaders().get(HttpHeaders.SET_COOKIE), WebUiCookies.ACCESS);
         assertThat(access).doesNotContain("Secure");
@@ -582,20 +632,17 @@ class AccessControllerTest {
         // with no body credential; the browser ships the
         // {@code vance_refresh} cookie automatically. Server must
         // accept the cookie as the credential and re-issue tokens.
-        when(jwtService.validateToken("cookie-refresh-jwt"))
-                .thenReturn(Optional.of(refreshClaims(TENANT, USERNAME)));
+        when(jwtService.validateToken("cookie-refresh-jwt")).thenReturn(Optional.of(refreshClaims(TENANT, USERNAME)));
 
-        AccessTokenRequest req = AccessTokenRequest.builder()
-                .requestCookies(true)
-                .build();
+        AccessTokenRequest req =
+                AccessTokenRequest.builder().requestCookies(true).build();
 
         HttpServletRequest httpRequest = mock(HttpServletRequest.class);
-        when(httpRequest.getCookies()).thenReturn(new Cookie[]{
-                new Cookie(WebUiCookies.REFRESH, "cookie-refresh-jwt"),
+        when(httpRequest.getCookies()).thenReturn(new Cookie[] {
+            new Cookie(WebUiCookies.REFRESH, "cookie-refresh-jwt"),
         });
 
-        ResponseEntity<AccessTokenResponse> resp = controller.createToken(
-                TENANT, USERNAME, req, httpRequest);
+        ResponseEntity<AccessTokenResponse> resp = controller.createToken(TENANT, USERNAME, req, httpRequest);
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(resp.getBody()).isNotNull();
@@ -608,8 +655,7 @@ class AccessControllerTest {
     void silentLogin_rejects_whenNoBodyAndNoRefreshCookie() {
         AccessTokenRequest req = AccessTokenRequest.builder().build();
 
-        ResponseEntity<AccessTokenResponse> resp = controller.createToken(
-                TENANT, USERNAME, req, emptyRequest());
+        ResponseEntity<AccessTokenResponse> resp = controller.createToken(TENANT, USERNAME, req, emptyRequest());
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
     }
@@ -619,18 +665,16 @@ class AccessControllerTest {
         // Cookie present but type=ACCESS — caller's credentials cookie
         // (vance_access) ended up in the wrong slot or somehow leaked.
         // Same gate as the body-path: only REFRESH is acceptable.
-        when(jwtService.validateToken("an-access-jwt"))
-                .thenReturn(Optional.of(accessClaims(TENANT, USERNAME)));
+        when(jwtService.validateToken("an-access-jwt")).thenReturn(Optional.of(accessClaims(TENANT, USERNAME)));
 
         AccessTokenRequest req = AccessTokenRequest.builder().build();
 
         HttpServletRequest httpRequest = mock(HttpServletRequest.class);
-        when(httpRequest.getCookies()).thenReturn(new Cookie[]{
-                new Cookie(WebUiCookies.REFRESH, "an-access-jwt"),
+        when(httpRequest.getCookies()).thenReturn(new Cookie[] {
+            new Cookie(WebUiCookies.REFRESH, "an-access-jwt"),
         });
 
-        ResponseEntity<AccessTokenResponse> resp = controller.createToken(
-                TENANT, USERNAME, req, httpRequest);
+        ResponseEntity<AccessTokenResponse> resp = controller.createToken(TENANT, USERNAME, req, httpRequest);
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
     }
@@ -659,26 +703,34 @@ class AccessControllerTest {
     void refreshToken_withScriptRunToken_returns401_andNeverReMints() {
         HttpServletRequest req = mock(HttpServletRequest.class);
         when(req.getAttribute(AccessFilterBase.ATTR_USERNAME)).thenReturn(USERNAME);
-        when(req.getAttribute(AccessFilterBase.ATTR_CLAIMS)).thenReturn(
-                VanceJwtClaims.scriptRun(USERNAME, TENANT, null, null, "run-1", "proj", "sess"));
+        when(req.getAttribute(AccessFilterBase.ATTR_CLAIMS))
+                .thenReturn(VanceJwtClaims.scriptRun(USERNAME, TENANT, null, null, "run-1", "proj", "sess"));
 
         ResponseEntity<RefreshTokenResponse> resp = controller.refreshToken(TENANT, req);
 
         assertThat(resp.getStatusCode().value()).isEqualTo(401);
         // A confined SCRIPT_RUN token must never be exchanged for a fresh ACCESS token.
-        verify(jwtService, never()).createToken(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.any(Instant.class));
+        verify(jwtService, never())
+                .createToken(
+                        org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.any(Instant.class),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any());
     }
 
     @Test
     void refreshToken_withAccessToken_returns200() {
         HttpServletRequest req = mock(HttpServletRequest.class);
         when(req.getAttribute(AccessFilterBase.ATTR_USERNAME)).thenReturn(USERNAME);
-        when(req.getAttribute(AccessFilterBase.ATTR_CLAIMS)).thenReturn(
-                VanceJwtClaims.user(USERNAME, TENANT, null, null, TokenType.ACCESS));
-        when(jwtService.createToken(eqTenant(), eqUsername(), anyInstant()))
+        when(req.getAttribute(AccessFilterBase.ATTR_CLAIMS))
+                .thenReturn(VanceJwtClaims.user(USERNAME, TENANT, null, null, TokenType.ACCESS));
+        when(jwtService.createToken(
+                        eqTenant(),
+                        eqUsername(),
+                        anyInstant(),
+                        eqType(TokenType.ACCESS),
+                        org.mockito.ArgumentMatchers.any()))
                 .thenReturn("fresh-access");
 
         ResponseEntity<RefreshTokenResponse> resp = controller.refreshToken(TENANT, req);
@@ -732,14 +784,18 @@ class AccessControllerTest {
     }
 
     private static VanceJwtClaims refreshClaims(String tenantId, String username) {
-        return VanceJwtClaims.user(username, tenantId,
+        return VanceJwtClaims.user(
+                username,
+                tenantId,
                 Instant.now().minusSeconds(60),
                 Instant.now().plusSeconds(86_400),
                 TokenType.REFRESH);
     }
 
     private static VanceJwtClaims accessClaims(String tenantId, String username) {
-        return VanceJwtClaims.user(username, tenantId,
+        return VanceJwtClaims.user(
+                username,
+                tenantId,
                 Instant.now().minusSeconds(60),
                 Instant.now().plusSeconds(86_400),
                 TokenType.ACCESS);
@@ -747,8 +803,19 @@ class AccessControllerTest {
 
     // Mockito argument-matcher shorthands — keep the @BeforeEach stubs
     // readable. Each one is just an alias for the corresponding any*().
-    private static String eqTenant() { return org.mockito.ArgumentMatchers.eq(TENANT); }
-    private static String eqUsername() { return org.mockito.ArgumentMatchers.eq(USERNAME); }
-    private static Instant anyInstant() { return org.mockito.ArgumentMatchers.any(Instant.class); }
-    private static TokenType eqType(TokenType t) { return org.mockito.ArgumentMatchers.eq(t); }
+    private static String eqTenant() {
+        return org.mockito.ArgumentMatchers.eq(TENANT);
+    }
+
+    private static String eqUsername() {
+        return org.mockito.ArgumentMatchers.eq(USERNAME);
+    }
+
+    private static Instant anyInstant() {
+        return org.mockito.ArgumentMatchers.any(Instant.class);
+    }
+
+    private static TokenType eqType(TokenType t) {
+        return org.mockito.ArgumentMatchers.eq(t);
+    }
 }

@@ -70,6 +70,11 @@ const tabs = computed<SideTab[]>(() => [
   ...addonTabs.value.map((tab) => ({ id: tab.id, label: tab.label })),
 ]);
 
+/** Display name of an SSO provider key; unknown keys show as they are. */
+function ssoProviderLabel(provider: string): string {
+  return provider === 'google' ? 'Google' : provider;
+}
+
 // ─── Password change (self-service) ───────────────────────────────
 // Minimum length mirrors the server policy (PasswordPolicyService.MIN_LENGTH).
 // The server is authoritative — this constant only drives the inline hint and
@@ -608,10 +613,13 @@ async function onResetTalkCommands(): Promise<void> {
         <template #security>
         <!-- Security ─────────────────────────────────────────────────────── -->
         <VCard :title="$t('profile.security.title')">
-          <p class="text-sm text-(--v-label-secondary) mb-3">
+          <p v-if="profile?.ssoProvider" class="text-sm text-(--v-label-secondary)">
+            {{ $t('profile.security.ssoAccount', { provider: ssoProviderLabel(profile.ssoProvider), email: profile.ssoEmail ?? '' }) }}
+          </p>
+          <p v-if="!profile?.ssoProvider" class="text-sm text-(--v-label-secondary) mb-3">
             {{ $t('profile.security.description') }}
           </p>
-          <div class="flex flex-col gap-3 max-w-md">
+          <div v-if="!profile?.ssoProvider" class="flex flex-col gap-3 max-w-md">
             <VInput
               v-model="currentPasswordDraft"
               :label="$t('profile.security.currentPassword')"

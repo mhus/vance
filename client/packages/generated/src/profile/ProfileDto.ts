@@ -14,4 +14,6 @@ export interface ProfileDto {
   webUiSettings: Record<string, string>;
   brainVersion?: string;
   brainBuildTime?: string;
+  ssoProvider?: string;
+  ssoEmail?: string;
 }

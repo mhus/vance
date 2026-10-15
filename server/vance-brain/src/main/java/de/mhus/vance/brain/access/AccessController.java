@@ -6,7 +6,6 @@ import de.mhus.vance.api.access.RefreshTokenResponse;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.access.WebUiCookies;
 import de.mhus.vance.shared.audit.AuditService;
-import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.jwt.JwtService;
 import de.mhus.vance.shared.jwt.TokenType;
 import de.mhus.vance.shared.jwt.VanceJwtClaims;
@@ -16,7 +15,6 @@ import de.mhus.vance.shared.user.UserService;
 import de.mhus.vance.shared.user.UserStatus;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
@@ -53,20 +51,10 @@ import org.springframework.web.bind.annotation.RestController;
 @Slf4j
 public class AccessController {
 
-    private static final Duration TOKEN_LIFETIME = Duration.ofHours(24);
-
-    /**
-     * Refresh-token lifetime. Long enough that a daily-active user
-     * never re-types their password under normal circumstances, short
-     * enough that a leaked refresh token decays on its own without
-     * server-side revocation infrastructure.
-     */
-    private static final Duration REFRESH_TOKEN_LIFETIME = Duration.ofDays(30);
-
     private final JwtService jwtService;
     private final UserService userService;
     private final PasswordService passwordService;
-    private final HomeBootstrapService homeBootstrapService;
+    private final LoginTokenIssuer loginTokenIssuer;
     private final AuditService auditService;
     private final WebUiCookieService webUiCookieService;
 
@@ -74,13 +62,13 @@ public class AccessController {
             JwtService jwtService,
             UserService userService,
             PasswordService passwordService,
-            HomeBootstrapService homeBootstrapService,
+            LoginTokenIssuer loginTokenIssuer,
             AuditService auditService,
             WebUiCookieService webUiCookieService) {
         this.jwtService = jwtService;
         this.userService = userService;
         this.passwordService = passwordService;
-        this.homeBootstrapService = homeBootstrapService;
+        this.loginTokenIssuer = loginTokenIssuer;
         this.auditService = auditService;
         this.webUiCookieService = webUiCookieService;
     }
@@ -164,6 +152,9 @@ public class AccessController {
             return rejectLogin(tenant, username, "locked");
         }
 
+        // Hard end of an SSO session — carried forward by every refresh, never
+        // extended. A password login starts a session without one.
+        Instant sessionExpiresAt = null;
         if (hasPassword) {
             String hash = user.getPasswordHash();
             if (hash == null) {
@@ -206,6 +197,15 @@ public class AccessController {
                         claims.username());
                 return rejectLogin(tenant, username, "refresh-token-identity-mismatch");
             }
+            sessionExpiresAt = claims.sessionExpiresAt();
+            if (LoginTokenIssuer.sessionEnded(sessionExpiresAt)) {
+                log.debug(
+                        "Login rejected: SSO session ended at {} (tenant='{}' name='{}')",
+                        sessionExpiresAt,
+                        tenant,
+                        username);
+                return rejectLogin(tenant, username, "session-ended");
+            }
         }
 
         // Successful auth — clear any accumulated failure counter / lock.
@@ -215,41 +215,16 @@ public class AccessController {
             userService.resetLoginFailures(tenant, username);
         }
 
-        // First-login Hub bootstrap: ensures the per-user vance-<login>
-        // SYSTEM project (and the tenant-level Home group) exist before
-        // the client opens a hub session. Idempotent — a no-op on
-        // every subsequent login. Failure logs and re-throws; we'd
-        // rather block the login than mint a token for a user whose
-        // hub can't be opened.
-        homeBootstrapService.ensureHome(tenant, username);
-        // Tenant-wide _tenant system project — holds the override layer
-        // for tenant-level documents/prompts/memory (resource lookup
-        // logic lands in a follow-up). Idempotent and cheap.
-        homeBootstrapService.ensureTenantProject(tenant);
-        // Bundled server-tool defaults are served by DocumentService's
-        // classpath resource layer (vance-defaults/server-tools/*.yaml);
-        // no explicit seeding step is needed.
+        LoginTokenIssuer.Issued issued =
+                loginTokenIssuer.issue(tenant, username, request.isRequestRefreshToken(), sessionExpiresAt);
 
-        Instant expiresAt = Instant.now().plus(TOKEN_LIFETIME);
-        String token = jwtService.createToken(tenant, username, expiresAt, TokenType.ACCESS);
-
-        AccessTokenResponse.AccessTokenResponseBuilder responseBuilder =
-                AccessTokenResponse.builder().token(token).expiresAtTimestamp(expiresAt.toEpochMilli());
-
-        String refreshToken = null;
-        Instant refreshExpiresAt = null;
-        if (request.isRequestRefreshToken()) {
-            refreshExpiresAt = Instant.now().plus(REFRESH_TOKEN_LIFETIME);
-            refreshToken = jwtService.createToken(tenant, username, refreshExpiresAt, TokenType.REFRESH);
-            responseBuilder.refreshToken(refreshToken).refreshTokenExpiresAtTimestamp(refreshExpiresAt.toEpochMilli());
-            log.info(
-                    "Issued JWT + refresh tenant='{}' user='{}' expiresAt={} refreshExpiresAt={}",
-                    tenant,
-                    username,
-                    expiresAt,
-                    refreshExpiresAt);
-        } else {
-            log.info("Issued JWT tenant='{}' user='{}' expiresAt={}", tenant, username, expiresAt);
+        AccessTokenResponse.AccessTokenResponseBuilder responseBuilder = AccessTokenResponse.builder()
+                .token(issued.accessToken())
+                .expiresAtTimestamp(issued.accessExpiresAt().toEpochMilli());
+        if (issued.refreshToken() != null && issued.refreshExpiresAt() != null) {
+            responseBuilder
+                    .refreshToken(issued.refreshToken())
+                    .refreshTokenExpiresAtTimestamp(issued.refreshExpiresAt().toEpochMilli());
         }
         auditService.authLoginSuccess(tenant, username);
 
@@ -258,10 +233,10 @@ public class AccessController {
             webUiCookieService.attachLoginCookies(
                     responseEntityBuilder,
                     user,
-                    token,
-                    expiresAt,
-                    refreshToken,
-                    refreshExpiresAt,
+                    issued.accessToken(),
+                    issued.accessExpiresAt(),
+                    issued.refreshToken(),
+                    issued.refreshExpiresAt(),
                     request.isIncludeWebUiSettings());
         }
         return responseEntityBuilder.body(responseBuilder.build());
@@ -272,8 +247,8 @@ public class AccessController {
      *
      * <p>{@code POST /brain/{tenant}/refresh} — caller authenticates with their
      * current bearer token (validated by {@link BrainAccessFilter}). On success
-     * a fresh token with a new {@link #TOKEN_LIFETIME} is issued for the same
-     * user/tenant.
+     * a fresh token with a new {@link LoginTokenIssuer#TOKEN_LIFETIME} is issued
+     * for the same user/tenant — never past the end of an SSO session.
      *
      * <p>Re-checks that the user is still {@link UserStatus#ACTIVE} — a token
      * issued before the user was deactivated must not be refreshable.
@@ -315,14 +290,18 @@ public class AccessController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        Instant expiresAt = Instant.now().plus(TOKEN_LIFETIME);
-        String token = jwtService.createToken(tenant, username, expiresAt);
+        if (LoginTokenIssuer.sessionEnded(claims.sessionExpiresAt())) {
+            log.debug("Refresh rejected: SSO session ended tenant='{}' name='{}'", tenant, username);
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
 
-        log.info("Refreshed JWT tenant='{}' user='{}' expiresAt={}", tenant, username, expiresAt);
+        LoginTokenIssuer.Issued issued = loginTokenIssuer.reissueAccess(tenant, username, claims.sessionExpiresAt());
+
+        log.info("Refreshed JWT tenant='{}' user='{}' expiresAt={}", tenant, username, issued.accessExpiresAt());
         auditService.authTokenRefresh(tenant, username);
         return ResponseEntity.ok(RefreshTokenResponse.builder()
-                .token(token)
-                .expiresAtTimestamp(expiresAt.toEpochMilli())
+                .token(issued.accessToken())
+                .expiresAtTimestamp(issued.accessExpiresAt().toEpochMilli())
                 .build());
     }
 

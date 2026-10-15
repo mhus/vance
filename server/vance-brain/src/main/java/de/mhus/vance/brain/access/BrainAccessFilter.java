@@ -148,6 +148,16 @@ public class BrainAccessFilter extends AccessFilterBase {
     private static final Pattern OAUTH_SERVER_PUBLIC_PATH = Pattern.compile(
             "^/brain/[^/]+/oauth/(register|token|revoke|authorize|authorize/resume/[^/]+|resource/.+)/?$");
 
+    /**
+     * The SSO login ({@code SsoController}): discovery, start, callback. Open
+     * by nature — the caller is not logged in yet, and the tenant is not known
+     * until the e-mail domain names it, so the path carries none. The callback
+     * authenticates through the pending request, the state cookie and the ID
+     * token; the endpoints budget themselves per client address.
+     */
+    private static final Pattern SSO_PATH =
+            Pattern.compile("^/brain/_sso/(discover|options|start|[a-z0-9-]+/callback)/?$");
+
     private final ScriptRunAuthService scriptRunAuthService;
     private final IntegrationTokenAuthService integrationTokenAuthService;
     private final OAuthAccessTokenAuthService oauthAccessTokenAuthService;
@@ -220,6 +230,9 @@ public class BrainAccessFilter extends AccessFilterBase {
             // Designer skill style previews — the controller authenticates
             // the path-segment DESIGN_PREVIEW token itself (see the
             // pattern's comment above).
+            return false;
+        }
+        if (SSO_PATH.matcher(requestUri).matches()) {
             return false;
         }
         if (WELL_KNOWN_OAUTH_PATH.matcher(requestUri).matches()

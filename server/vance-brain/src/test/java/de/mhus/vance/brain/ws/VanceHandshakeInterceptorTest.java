@@ -170,7 +170,8 @@ class VanceHandshakeInterceptorTest {
                 null,
                 null,
                 null,
-                "client-1"));
+                "client-1",
+                null));
     }
 
     @Test
@@ -203,6 +204,6 @@ class VanceHandshakeInterceptorTest {
 
     private static VanceJwtClaims claims() {
         return new VanceJwtClaims(
-                "alice", "tnt-1", null, null, TokenType.ACCESS, null, null, null, null, null, null, null, null);
+                "alice", "tnt-1", null, null, TokenType.ACCESS, null, null, null, null, null, null, null, null, null);
     }
 }

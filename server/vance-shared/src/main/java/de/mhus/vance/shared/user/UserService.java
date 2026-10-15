@@ -72,6 +72,12 @@ public class UserService {
     private static final String F_FAILED_ATTEMPTS = "failedLoginAttempts";
     private static final String F_LOCKED_UNTIL = "lockedUntil";
     private static final String F_LAST_FAILED = "lastFailedLoginAt";
+    private static final String F_EXT_ISSUER = "externalIdentity.issuer";
+    private static final String F_EXT_SUBJECT = "externalIdentity.subject";
+    private static final String F_EXT_EXPECTED_EMAIL = "externalIdentity.expectedEmail";
+    private static final String F_EXT_EMAIL = "externalIdentity.email";
+    private static final String F_EXT_LINKED_AT = "externalIdentity.linkedAt";
+    private static final String F_EXT_LAST_LOGIN_AT = "externalIdentity.lastLoginAt";
 
     private final UserRepository repository;
     private final MongoTemplate mongoTemplate;
@@ -324,6 +330,13 @@ public class UserService {
                 .findByTenantIdAndName(tenantId, name)
                 .orElseThrow(
                         () -> new UserNotFoundException("User '" + name + "' not found in tenant '" + tenantId + "'"));
+        if (user.getExternalIdentity() != null) {
+            // An SSO account has exactly one way in. A password next to it would
+            // survive offboarding at the identity provider.
+            throw new ExternalIdentityException("User '" + name + "' in tenant '" + tenantId
+                    + "' signs in via " + user.getExternalIdentity().getProvider()
+                    + " and cannot have a password — unlink the external identity first");
+        }
         user.setPasswordHash(passwordHash);
         user.setPasswordChangedAt(Instant.now());
         user.setFailedLoginAttempts(0);
@@ -333,6 +346,194 @@ public class UserService {
         log.info("Reset password tenantId='{}' name='{}'", saved.getTenantId(), saved.getName());
         events.publishEvent(new UserPasswordChangedEvent(saved.getTenantId(), saved.getName()));
         return saved;
+    }
+
+    // ──────────────────── External sign-in (SSO) ────────────────────
+
+    /** The account bound to {@code (issuer, subject)}, in any tenant. */
+    public Optional<UserDocument> findByExternalSubject(String issuer, String subject) {
+        Query query = new Query(
+                Criteria.where(F_EXT_ISSUER).is(issuer).and(F_EXT_SUBJECT).is(subject));
+        return Optional.ofNullable(mongoTemplate.findOne(query, UserDocument.class));
+    }
+
+    /**
+     * The account in {@code tenantId} prepared — not yet linked — for
+     * {@code normalizedEmail} (see {@link ExternalEmails#normalize}).
+     */
+    public Optional<UserDocument> findPreparedByEmail(String tenantId, String normalizedEmail) {
+        Query query = new Query(Criteria.where(F_TENANT_ID)
+                .is(tenantId)
+                .and(F_EXT_EXPECTED_EMAIL)
+                .is(normalizedEmail)
+                .and(F_EXT_SUBJECT)
+                .isNull());
+        return Optional.ofNullable(mongoTemplate.findOne(query, UserDocument.class));
+    }
+
+    /**
+     * Prepares an account for an external sign-in: the first sign-in from
+     * {@code email} at {@code issuer} will be bound to it.
+     *
+     * <p>A missing account is created without a password. An existing one
+     * loses its password, and {@link UserPasswordChangedEvent} ends what was
+     * issued under it (OAuth grants) — afterwards the external sign-in is the
+     * only way in. Service accounts are refused, as are accounts already bound
+     * to an external subject (unlink first).
+     *
+     * @throws ExternalIdentityException if the address is malformed, uses plus
+     *     addressing, or the account cannot be prepared
+     * @throws ReservedNameException on a service-account name for a new account
+     */
+    public UserDocument prepareExternalIdentity(
+            String tenantId, String name, String provider, String issuer, String email) {
+        String normalized = ExternalEmails.normalize(email);
+        if (normalized == null || ExternalEmails.hasPlusTag(normalized)) {
+            throw new ExternalIdentityException("'" + email + "' is not a usable address for an external sign-in");
+        }
+        Optional<UserDocument> holder = findPreparedByEmail(tenantId, normalized);
+        if (holder.isPresent() && !holder.get().getName().equals(name)) {
+            throw new ExternalIdentityException("'" + normalized + "' is already prepared for user '"
+                    + holder.get().getName() + "' in tenant '" + tenantId + "'");
+        }
+        ExternalIdentity identity = ExternalIdentity.builder()
+                .provider(provider)
+                .issuer(issuer)
+                .expectedEmail(normalized)
+                .preparedAt(Instant.now())
+                .build();
+        Optional<UserDocument> existing = repository.findByTenantIdAndName(tenantId, name);
+        if (existing.isEmpty()) {
+            UserDocument created = create(tenantId, name, null, null, normalized);
+            created.setExternalIdentity(identity);
+            UserDocument saved = repository.save(created);
+            log.info(
+                    "Prepared new user for external sign-in tenantId='{}' name='{}' provider='{}'",
+                    tenantId,
+                    name,
+                    provider);
+            return saved;
+        }
+        UserDocument user = existing.get();
+        if (user.isServiceAccount() || name.startsWith(SERVICE_ACCOUNT_PREFIX)) {
+            throw new ExternalIdentityException(
+                    "User '" + name + "' is a service account and cannot sign in externally");
+        }
+        if (user.getExternalIdentity() != null && user.getExternalIdentity().isLinked()) {
+            throw new ExternalIdentityException(
+                    "User '" + name + "' is already linked to an external identity" + " — unlink it first");
+        }
+        user.setPasswordHash(null);
+        user.setPasswordChangedAt(Instant.now());
+        user.setFailedLoginAttempts(0);
+        user.setLockedUntil(null);
+        user.setLastFailedLoginAt(null);
+        user.setExternalIdentity(identity);
+        if (user.getEmail() == null) {
+            user.setEmail(normalized);
+        }
+        UserDocument saved = repository.save(user);
+        log.info(
+                "Prepared user for external sign-in tenantId='{}' name='{}' provider='{}' (password removed)",
+                tenantId,
+                name,
+                provider);
+        events.publishEvent(new UserPasswordChangedEvent(tenantId, name));
+        return saved;
+    }
+
+    /**
+     * Binds a prepared account to {@code subject} — atomically, so two
+     * concurrent first sign-ins cannot both win. Matches only an account still
+     * unbound and prepared for exactly {@code normalizedEmail} at
+     * {@code issuer}.
+     *
+     * @return the linked account, or empty when no such prepared account is
+     *     (still) there
+     */
+    public Optional<UserDocument> linkExternalIdentity(
+            String tenantId, String name, String issuer, String normalizedEmail, String subject, String email) {
+        Instant now = Instant.now();
+        Query query = new Query(Criteria.where(F_TENANT_ID)
+                .is(tenantId)
+                .and(F_NAME)
+                .is(name)
+                .and(F_EXT_ISSUER)
+                .is(issuer)
+                .and(F_EXT_EXPECTED_EMAIL)
+                .is(normalizedEmail)
+                .and(F_EXT_SUBJECT)
+                .isNull());
+        Update update = new Update()
+                .set(F_EXT_SUBJECT, subject)
+                .set(F_EXT_EMAIL, email)
+                .set(F_EXT_LINKED_AT, now)
+                .set(F_EXT_LAST_LOGIN_AT, now);
+        UserDocument linked = mongoTemplate.findAndModify(
+                query, update, FindAndModifyOptions.options().returnNew(true), UserDocument.class);
+        if (linked != null) {
+            log.info("Linked external identity tenantId='{}' name='{}' issuer='{}'", tenantId, name, issuer);
+        }
+        return Optional.ofNullable(linked);
+    }
+
+    /**
+     * Creates a new account already bound to an external subject — the
+     * {@code autoCreate} path. No password, ever.
+     *
+     * @throws UserAlreadyExistsException if the name is taken
+     * @throws ReservedNameException on a reserved or service-account name
+     */
+    public UserDocument createExternal(
+            String tenantId,
+            String name,
+            @Nullable String title,
+            String provider,
+            String issuer,
+            String subject,
+            String email) {
+        UserDocument created = create(tenantId, name, null, title, email);
+        Instant now = Instant.now();
+        created.setExternalIdentity(ExternalIdentity.builder()
+                .provider(provider)
+                .issuer(issuer)
+                .subject(subject)
+                .email(email)
+                .linkedAt(now)
+                .lastLoginAt(now)
+                .build());
+        UserDocument saved = repository.save(created);
+        log.info("Created user via external sign-in tenantId='{}' name='{}' provider='{}'", tenantId, name, provider);
+        return saved;
+    }
+
+    /** Stamps the last external sign-in and the address it carried. Best-effort. */
+    public void recordExternalLogin(String tenantId, String name, String email) {
+        Query query =
+                new Query(Criteria.where(F_TENANT_ID).is(tenantId).and(F_NAME).is(name));
+        Update update = new Update().set(F_EXT_LAST_LOGIN_AT, Instant.now()).set(F_EXT_EMAIL, email);
+        mongoTemplate.updateFirst(query, update, UserDocument.class);
+    }
+
+    /**
+     * Removes the external identity (prepared or linked). The account is left
+     * without any way in until an admin sets a password or prepares it again.
+     *
+     * @return whether there was an identity to remove
+     * @throws UserNotFoundException if the account does not exist
+     */
+    public boolean unlinkExternalIdentity(String tenantId, String name) {
+        UserDocument user = repository
+                .findByTenantIdAndName(tenantId, name)
+                .orElseThrow(
+                        () -> new UserNotFoundException("User '" + name + "' not found in tenant '" + tenantId + "'"));
+        if (user.getExternalIdentity() == null) {
+            return false;
+        }
+        user.setExternalIdentity(null);
+        repository.save(user);
+        log.info("Unlinked external identity tenantId='{}' name='{}'", tenantId, name);
+        return true;
     }
 
     // ──────────────────── Brute-force lockout ────────────────────
@@ -479,6 +680,17 @@ public class UserService {
 
     public static class UserNotFoundException extends RuntimeException {
         public UserNotFoundException(String message) {
+            super(message);
+        }
+    }
+
+    /**
+     * Thrown when an operation conflicts with an account's external sign-in —
+     * a password for an SSO account, preparing a service account, an address
+     * already prepared elsewhere.
+     */
+    public static class ExternalIdentityException extends RuntimeException {
+        public ExternalIdentityException(String message) {
             super(message);
         }
     }

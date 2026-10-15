@@ -32,9 +32,12 @@ import {
   hydrateIdentity,
   isAccessAlive,
   isRefreshAlive,
+  discoverSso,
+  fetchSsoOptions,
   login,
   LoginError,
   refreshAccessCookie,
+  ssoStartUrl,
 } from '@/platform';
 import { loadRuntimeConfig, type RuntimeConfig } from '@/platform/runtimeConfig';
 import { setUiLocale } from '@/i18n';
@@ -91,6 +94,17 @@ const autoLoginNotice = ref<string | null>(null);
 // localStorage on principle.
 const rememberUser = ref(false);
 
+// SSO (planning/sso-login.md §5.1). `ssoDomains`: some e-mail domain signs in
+// via SSO on this installation — ask for the work address. `ssoConsumer`: the
+// tenant this page is bound to accepts a private Google account — the button
+// works without an address. Both stay false when the server offers neither,
+// and the page looks as it always did.
+const ssoDomains = ref(false);
+const ssoConsumer = ref(false);
+const ssoEmail = ref('');
+const ssoBusy = ref(false);
+const showSso = computed<boolean>(() => ssoDomains.value || ssoConsumer.value);
+
 onMounted(async () => {
   void loadRuntimeConfig().then((cfg) => {
     runtimeCfg.value = cfg;
@@ -110,6 +124,16 @@ onMounted(async () => {
     rememberUser.value = true;
   }
   const requestedTenant = readTenantParam();
+  void fetchSsoOptions(requestedTenant).then((options) => {
+    ssoDomains.value = options?.domains === true;
+    ssoConsumer.value = options?.sso === true;
+  });
+  const ssoError = new URLSearchParams(window.location.search).get('sso_error');
+  if (ssoError) {
+    // The server redirects back here with a coarse code only; the reason is
+    // in its audit log, never in the URL.
+    error.value = ssoError === 'rejected' ? t('login.sso.rejected') : t('login.sso.failed');
+  }
   if (requestedTenant && requestedTenant !== tenant.value) {
     tenant.value = requestedTenant;
     username.value = '';
@@ -195,6 +219,39 @@ async function onSubmit(): Promise<void> {
     }
   } finally {
     submitting.value = false;
+  }
+}
+
+/**
+ * "Continue with Google". A typed address goes by its domain; without one —
+ * or with a Gmail address — only a tenant-bound page whose tenant accepts
+ * private accounts can start. The decision is the server's: discover only
+ * says whether the domain signs in via SSO, never where to.
+ */
+async function onSso(): Promise<void> {
+  error.value = null;
+  const email = ssoEmail.value.trim();
+  const boundTenant = readTenantParam();
+  ssoBusy.value = true;
+  try {
+    if (email) {
+      const found = await discoverSso(email);
+      if (found?.sso) {
+        window.location.assign(ssoStartUrl({ email, tenant: boundTenant, next: readNextParam() }));
+        return;
+      }
+      const isGmail = /@(gmail|googlemail)\.com$/i.test(email);
+      if (!(ssoConsumer.value && isGmail)) {
+        error.value = t('login.sso.notAvailable');
+        return;
+      }
+    } else if (!ssoConsumer.value) {
+      error.value = t('login.sso.emailRequired');
+      return;
+    }
+    window.location.assign(ssoStartUrl({ email: email || null, tenant: boundTenant, next: readNextParam() }));
+  } finally {
+    ssoBusy.value = false;
   }
 }
 
@@ -298,10 +355,29 @@ function readNextParam(): string | null {
       >{{ serverBacklink }}</a>
       <div v-else class="mb-4"></div>
       <VCard class="w-full">
+        <VAlert v-if="error" variant="error" class="mb-3">
+          <span>{{ error }}</span>
+        </VAlert>
+        <form v-if="showSso" class="mb-3 flex flex-col gap-3" @submit.prevent="onSso">
+          <VInput
+            v-if="ssoDomains"
+            v-model="ssoEmail"
+            type="email"
+            :label="$t('login.sso.email')"
+            autocomplete="email"
+            autocapitalize="none"
+            :disabled="ssoBusy"
+          />
+          <VButton type="submit" variant="secondary" :loading="ssoBusy" block>
+            {{ $t('login.sso.continueWithGoogle') }}
+          </VButton>
+          <div class="flex items-center gap-3 text-xs opacity-60">
+            <span class="h-px flex-1 bg-base-300"></span>
+            <span>{{ $t('login.sso.or') }}</span>
+            <span class="h-px flex-1 bg-base-300"></span>
+          </div>
+        </form>
         <form class="flex flex-col gap-3" @submit.prevent="onSubmit">
-          <VAlert v-if="error" variant="error">
-            <span>{{ error }}</span>
-          </VAlert>
           <!-- autocapitalize="none" on both: the server compares tenant and
                username byte-for-byte, and iOS capitalises the first letter of
                a text field unless told otherwise. Without this the keyboard

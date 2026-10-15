@@ -404,4 +404,92 @@ class UserServiceTest {
 
         verify(events).publishEvent(new UserPasswordChangedEvent(TENANT, "alice"));
     }
+
+    // ─── external sign-in (SSO) ───────────────────────────────────────
+
+    @Test
+    void setPasswordHash_refusesAccountWithExternalIdentity() {
+        UserDocument sso = UserDocument.builder()
+                .tenantId(TENANT)
+                .name("wile")
+                .externalIdentity(ExternalIdentity.builder()
+                        .provider("google")
+                        .issuer("iss")
+                        .subject("s1")
+                        .build())
+                .build();
+        when(repo.findByTenantIdAndName(TENANT, "wile")).thenReturn(Optional.of(sso));
+
+        assertThatThrownBy(() -> service.setPasswordHash(TENANT, "wile", "hash"))
+                .isInstanceOf(UserService.ExternalIdentityException.class);
+        verify(repo, never()).save(any());
+    }
+
+    @Test
+    void prepare_existingPasswordUser_removesPassword_andEndsGrants() {
+        UserDocument user = UserDocument.builder()
+                .tenantId(TENANT)
+                .name("wile")
+                .passwordHash("hash")
+                .build();
+        when(repo.findByTenantIdAndName(TENANT, "wile")).thenReturn(Optional.of(user));
+
+        UserDocument prepared = service.prepareExternalIdentity(TENANT, "wile", "google", "iss", "Wile@Acme.com");
+
+        assertThat(prepared.getPasswordHash()).isNull();
+        assertThat(prepared.getExternalIdentity()).isNotNull();
+        assertThat(prepared.getExternalIdentity().getExpectedEmail()).isEqualTo("wile@acme.com");
+        assertThat(prepared.getExternalIdentity().isLinked()).isFalse();
+        verify(events).publishEvent(new UserPasswordChangedEvent(TENANT, "wile"));
+    }
+
+    @Test
+    void prepare_missingUser_createsPasswordlessAccount() {
+        when(repo.findByTenantIdAndName(TENANT, "mike")).thenReturn(Optional.empty());
+        when(repo.existsByTenantIdAndName(TENANT, "mike")).thenReturn(false);
+
+        UserDocument prepared = service.prepareExternalIdentity(TENANT, "mike", "google", "iss", "Mike.X@gmail.com");
+
+        assertThat(prepared.getPasswordHash()).isNull();
+        assertThat(prepared.getExternalIdentity().getExpectedEmail()).isEqualTo("mikex@gmail.com");
+    }
+
+    @Test
+    void prepare_refusesServiceAccount_linkedAccount_andPlusAddress() {
+        UserDocument bot = UserDocument.builder()
+                .tenantId(TENANT)
+                .name("bot")
+                .serviceAccount(true)
+                .build();
+        when(repo.findByTenantIdAndName(TENANT, "bot")).thenReturn(Optional.of(bot));
+        assertThatThrownBy(() -> service.prepareExternalIdentity(TENANT, "bot", "google", "iss", "bot@acme.com"))
+                .isInstanceOf(UserService.ExternalIdentityException.class);
+
+        UserDocument linked = UserDocument.builder()
+                .tenantId(TENANT)
+                .name("wile")
+                .externalIdentity(ExternalIdentity.builder()
+                        .provider("google")
+                        .issuer("iss")
+                        .subject("s1")
+                        .build())
+                .build();
+        when(repo.findByTenantIdAndName(TENANT, "wile")).thenReturn(Optional.of(linked));
+        assertThatThrownBy(() -> service.prepareExternalIdentity(TENANT, "wile", "google", "iss", "wile@acme.com"))
+                .isInstanceOf(UserService.ExternalIdentityException.class);
+
+        assertThatThrownBy(() -> service.prepareExternalIdentity(TENANT, "wile", "google", "iss", "wile+x@acme.com"))
+                .isInstanceOf(UserService.ExternalIdentityException.class);
+    }
+
+    @Test
+    void prepare_refusesAddressAlreadyPreparedForAnotherAccount() {
+        UserDocument other =
+                UserDocument.builder().tenantId(TENANT).name("other").build();
+        when(mongoTemplate.findOne(any(Query.class), eq(UserDocument.class))).thenReturn(other);
+
+        assertThatThrownBy(() -> service.prepareExternalIdentity(TENANT, "wile", "google", "iss", "wile@acme.com"))
+                .isInstanceOf(UserService.ExternalIdentityException.class)
+                .hasMessageContaining("other");
+    }
 }

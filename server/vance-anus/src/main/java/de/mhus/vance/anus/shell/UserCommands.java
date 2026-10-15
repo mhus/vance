@@ -1,14 +1,19 @@
 package de.mhus.vance.anus.shell;
 
 import de.mhus.vance.anus.access.RequiresAuth;
+import de.mhus.vance.anus.maintenance.UserMaintenanceService;
+import de.mhus.vance.shared.audit.AuditService;
 import de.mhus.vance.shared.password.PasswordPolicyException;
 import de.mhus.vance.shared.password.PasswordPolicyService;
 import de.mhus.vance.shared.password.PasswordService;
+import de.mhus.vance.shared.sso.SsoConfig;
+import de.mhus.vance.shared.sso.SsoConfigService;
+import de.mhus.vance.shared.user.ExternalEmails;
+import de.mhus.vance.shared.user.ExternalIdentity;
 import de.mhus.vance.shared.user.UserDocument;
-import de.mhus.vance.shared.user.maintenance.UserDataHandler;
-import de.mhus.vance.anus.maintenance.UserMaintenanceService;
 import de.mhus.vance.shared.user.UserService;
 import de.mhus.vance.shared.user.UserStatus;
+import de.mhus.vance.shared.user.maintenance.UserDataHandler;
 import java.util.List;
 import java.util.function.Function;
 import org.apache.commons.lang3.StringUtils;
@@ -37,6 +42,8 @@ public class UserCommands {
     private final PasswordService passwordService;
     private final PasswordPolicyService passwordPolicyService;
     private final UserMaintenanceService maintenanceService;
+    private final SsoConfigService ssoConfigService;
+    private final AuditService auditService;
     // Lazy LineReader to avoid the Spring-Shell bean cycle — see AccessCommands.
     private final ObjectProvider<LineReader> lineReader;
 
@@ -45,15 +52,21 @@ public class UserCommands {
             PasswordService passwordService,
             PasswordPolicyService passwordPolicyService,
             UserMaintenanceService maintenanceService,
+            SsoConfigService ssoConfigService,
+            AuditService auditService,
             ObjectProvider<LineReader> lineReader) {
         this.userService = userService;
         this.passwordService = passwordService;
         this.passwordPolicyService = passwordPolicyService;
         this.maintenanceService = maintenanceService;
+        this.ssoConfigService = ssoConfigService;
+        this.auditService = auditService;
         this.lineReader = lineReader;
     }
 
-    @Command(name = {"user", "list"}, description = "List users in a tenant.")
+    @Command(
+            name = {"user", "list"},
+            description = "List users in a tenant.")
     public String list(@Option(longName = "tenant", shortName = 'T', required = true) String tenant) {
         List<UserDocument> all = userService.all(tenant);
         if (all.isEmpty()) {
@@ -71,33 +84,43 @@ public class UserCommands {
                 all);
     }
 
-    @Command(name = {"user", "show"}, description = "Show a user.")
+    @Command(
+            name = {"user", "show"},
+            description = "Show a user.")
     public String show(
             @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
             @Option(longName = "name", shortName = 'n', required = true) String name) {
-        return userService.findByTenantAndName(tenant, name)
+        return userService
+                .findByTenantAndName(tenant, name)
                 .map(UserCommands::renderOne)
                 .orElse("User '" + name + "' not found in tenant '" + tenant + "'.");
     }
 
-    @Command(name = {"user", "create"}, description = "Create a user. Password is prompted (masked) when --password is omitted.")
+    @Command(
+            name = {"user", "create"},
+            description = "Create a user. Password is prompted (masked) when --password is omitted.")
     public String create(
             @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
             @Option(longName = "name", shortName = 'n', required = true) String name,
             @Option(longName = "title", shortName = 't') @Nullable String title,
             @Option(longName = "email", shortName = 'e') @Nullable String email,
-            @Option(longName = "password", shortName = 'p',
-                    description = "Plaintext. Stored as BCrypt hash. Omit to be prompted with masked input.")
-            @Nullable String password,
-            @Option(longName = "no-password",
-                    description = "Create the user without setting a password (e.g. for SSO-only accounts).",
-                    defaultValue = "false")
-            boolean noPassword,
-            @Option(longName = "service-account",
-                    description = "Mark as service account. Name must start with '_' and not with '_vance-'. "
-                            + "Login is disabled by default; tokens must be minted out-of-band.",
-                    defaultValue = "false")
-            boolean serviceAccount) {
+            @Option(
+                            longName = "password",
+                            shortName = 'p',
+                            description = "Plaintext. Stored as BCrypt hash. Omit to be prompted with masked input.")
+                    @Nullable
+                    String password,
+            @Option(
+                            longName = "no-password",
+                            description = "Create the user without setting a password (e.g. for SSO-only accounts).",
+                            defaultValue = "false")
+                    boolean noPassword,
+            @Option(
+                            longName = "service-account",
+                            description = "Mark as service account. Name must start with '_' and not with '_vance-'. "
+                                    + "Login is disabled by default; tokens must be minted out-of-band.",
+                            defaultValue = "false")
+                    boolean serviceAccount) {
         @Nullable String hash = null;
         if (!noPassword) {
             String plain = StringUtils.isBlank(password)
@@ -119,23 +142,27 @@ public class UserCommands {
         return "Created:\n" + renderOne(user);
     }
 
-    @Command(name = {"user", "update"}, description = "Update mutable fields of a user.")
+    @Command(
+            name = {"user", "update"},
+            description = "Update mutable fields of a user.")
     public String update(
             @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
             @Option(longName = "name", shortName = 'n', required = true) String name,
             @Option(longName = "title", shortName = 't') @Nullable String title,
             @Option(longName = "email", shortName = 'e') @Nullable String email,
-            @Option(longName = "status", shortName = 's',
-                    description = "ACTIVE | DISABLED")
-            @Nullable UserStatus status,
-            @Option(longName = "login-enabled",
-                    description = "Toggle the password-login gate. Cannot be set to true on service accounts.")
-            @Nullable Boolean loginEnabled) {
+            @Option(longName = "status", shortName = 's', description = "ACTIVE | DISABLED") @Nullable
+                    UserStatus status,
+            @Option(
+                            longName = "login-enabled",
+                            description = "Toggle the password-login gate. Cannot be set to true on service accounts.")
+                    @Nullable
+                    Boolean loginEnabled) {
         UserDocument user = userService.update(tenant, name, title, email, status, loginEnabled);
         return "Updated:\n" + renderOne(user);
     }
 
-    @Command(name = {"user", "set-password"},
+    @Command(
+            name = {"user", "set-password"},
             description = "Reset a user's password. Plaintext prompted (masked) when --password is omitted.")
     public String setPassword(
             @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
@@ -153,8 +180,71 @@ public class UserCommands {
             return "Password rejected: " + e.getMessage();
         }
         String hash = passwordService.hash(plain);
-        userService.setPasswordHash(tenant, name, hash);
+        try {
+            userService.setPasswordHash(tenant, name, hash);
+        } catch (UserService.ExternalIdentityException e) {
+            return "Refused: " + e.getMessage();
+        }
         return "Password reset for user '" + name + "' in tenant '" + tenant + "'.";
+    }
+
+    // ─── External sign-in (SSO) ────────────────────────────────────────────
+    //
+    // planning/sso-login.md §6.3. Preparing is the only way an existing account
+    // gets bound to an external identity — a sign-in never takes over an
+    // account on its own, not even a passwordless one.
+
+    @Command(
+            name = {"user", "sso-prepare"},
+            description = "Prepare an account for SSO: the first sign-in from --email is bound to it."
+                    + " Creates the account if missing. On an existing account the password is"
+                    + " removed and its OAuth grants are revoked.")
+    public String ssoPrepare(
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "name", shortName = 'n', required = true) String name,
+            @Option(
+                            longName = "email",
+                            shortName = 'e',
+                            required = true,
+                            description = "Full address the person signs in with. Its domain must be mapped to"
+                                    + " this tenant in _vance/config/sso.yaml, or it is a Gmail address and the"
+                                    + " tenant is open for private accounts.")
+                    String email) {
+        String normalized = ExternalEmails.normalize(email);
+        if (normalized == null || ExternalEmails.hasPlusTag(normalized)) {
+            return "Refused: '" + email + "' is not a usable address (plus addressing is not allowed).";
+        }
+        SsoConfig.Provider provider = ssoConfigService
+                .config()
+                .preparationProvider(tenant, normalized)
+                .orElse(null);
+        if (provider == null) {
+            return "Refused: '" + normalized + "' cannot sign in to tenant '" + tenant + "' — its domain is"
+                    + " not mapped to this tenant in " + SsoConfigService.CONFIG_PATH
+                    + " (or, for Gmail, the tenant is not listed under consumerAccounts).";
+        }
+        UserDocument user;
+        try {
+            user = userService.prepareExternalIdentity(tenant, name, provider.key(), provider.issuer(), normalized);
+        } catch (UserService.ExternalIdentityException | UserService.ReservedNameException e) {
+            return "Refused: " + e.getMessage();
+        }
+        auditService.authSsoIdentity(tenant, name, "prepared", "anus");
+        return "Prepared for sign-in as " + normalized + " via " + provider.key() + ":\n" + renderOne(user);
+    }
+
+    @Command(
+            name = {"user", "sso-unlink"},
+            description = "Remove an account's SSO binding (prepared or linked). The account has no way in"
+                    + " afterwards until a password is set or it is prepared again.")
+    public String ssoUnlink(
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "name", shortName = 'n', required = true) String name) {
+        if (!userService.unlinkExternalIdentity(tenant, name)) {
+            return "User '" + name + "' in tenant '" + tenant + "' has no SSO binding.";
+        }
+        auditService.authSsoIdentity(tenant, name, "unlinked", "anus");
+        return "SSO binding removed from user '" + name + "' in tenant '" + tenant + "'.";
     }
 
     // ─── Service tasks across every entity ─────────────────────────────────
@@ -165,7 +255,8 @@ public class UserCommands {
     // did is tombstoned to `_deleted_<name>` so a future account under the same
     // login does not inherit somebody else's history.
 
-    @Command(name = {"user", "inspect"},
+    @Command(
+            name = {"user", "inspect"},
             description = "Count everything an account touched, per entity. Writes nothing.")
     public String inspect(
             @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
@@ -177,38 +268,40 @@ public class UserCommands {
         }
     }
 
-    @Command(name = {"user", "handlers"},
+    @Command(
+            name = {"user", "handlers"},
             description = "List the entities this process can delete or rename for a user.")
     public String handlers() {
         return Tables.render(
                 List.of("ORDER", "ENTITY", "COLLECTIONS"),
                 List.<Function<UserDataHandler, @Nullable Object>>of(
-                        UserDataHandler::order,
-                        UserDataHandler::id,
-                        h -> String.join(",", h.collections())),
+                        UserDataHandler::order, UserDataHandler::id, h -> String.join(",", h.collections())),
                 maintenanceService.handlers());
     }
 
-    @Command(name = {"user", "delete"},
+    @Command(
+            name = {"user", "delete"},
             description = "Hard-delete an account and everything it owns. Irreversible.")
     public String delete(
             @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
             @Option(longName = "name", shortName = 'n', required = true) String name,
-            @Option(longName = "confirm",
-                    description = "Type the user name here to confirm. Required when there is"
-                            + " no terminal to ask on (--sudo).")
-            @Nullable String confirm,
-            @Option(longName = "force",
-                    description = "Proceed even though something still runs as this account.",
-                    defaultValue = "false")
-            boolean force) {
+            @Option(
+                            longName = "confirm",
+                            description = "Type the user name here to confirm. Required when there is"
+                                    + " no terminal to ask on (--sudo).")
+                    @Nullable
+                    String confirm,
+            @Option(
+                            longName = "force",
+                            description = "Proceed even though something still runs as this account.",
+                            defaultValue = "false")
+                    boolean force) {
         String problem = confirmed(name, confirm, "delete");
         if (problem != null) {
             return problem;
         }
         try {
-            return MaintenanceOutput.render(
-                    maintenanceService.delete(tenant, name, force), "user");
+            return MaintenanceOutput.render(maintenanceService.delete(tenant, name, force), "user");
         } catch (UserMaintenanceService.UserInUseException e) {
             return "Refusing to delete — the account is in use:\n  "
                     + String.join("\n  ", e.blockers())
@@ -218,16 +311,15 @@ public class UserCommands {
         }
     }
 
-    @Command(name = {"user", "rename"},
+    @Command(
+            name = {"user", "rename"},
             description = "Rename an account, carrying everything it owns and did with it.")
     public String rename(
             @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
             @Option(longName = "name", shortName = 'n', required = true) String name,
-            @Option(longName = "to", required = true,
-                    description = "The new login.") String to,
-            @Option(longName = "confirm",
-                    description = "Type the current user name here to confirm.")
-            @Nullable String confirm) {
+            @Option(longName = "to", required = true, description = "The new login.") String to,
+            @Option(longName = "confirm", description = "Type the current user name here to confirm.") @Nullable
+                    String confirm) {
         String problem = confirmed(name, confirm, "rename");
         if (problem != null) {
             return problem;
@@ -238,8 +330,7 @@ public class UserCommands {
                     + "\nrunAs, a prompt, a recipe) are NOT rewritten — search for '" + name
                     + "'.";
         } catch (UserMaintenanceService.RenameBlockedException e) {
-            return "Rename FAILED — nothing was written:\n  "
-                    + String.join("\n  ", e.blockers());
+            return "Rename FAILED — nothing was written:\n  " + String.join("\n  ", e.blockers());
         } catch (RuntimeException e) {
             return "Rename FAILED — " + e.getMessage();
         }
@@ -258,8 +349,7 @@ public class UserCommands {
                 return refuseWithoutConfirmation(operation, name);
             }
             try {
-                answer = reader.readLine(
-                        "Type the user name '" + name + "' to confirm the " + operation + ": ");
+                answer = reader.readLine("Type the user name '" + name + "' to confirm the " + operation + ": ");
             } catch (EndOfFileException | UserInterruptException e) {
                 // The null check above does not cover --sudo: the LineReader
                 // bean exists there, it just has no stdin behind it, so readLine
@@ -283,6 +373,17 @@ public class UserCommands {
         return "Refusing to " + operation + " without confirmation — pass --confirm " + name;
     }
 
+    private static String renderSso(@Nullable ExternalIdentity identity) {
+        if (identity == null) {
+            return "-";
+        }
+        if (!identity.isLinked()) {
+            return identity.getProvider() + " — prepared for " + identity.getExpectedEmail() + " (not signed in yet)";
+        }
+        return identity.getProvider() + " — linked" + (identity.getEmail() == null ? "" : " as " + identity.getEmail())
+                + (identity.getLastLoginAt() == null ? "" : ", last sign-in " + identity.getLastLoginAt());
+    }
+
     private static String renderOne(UserDocument u) {
         return "  tenantId    : " + u.getTenantId() + "\n"
                 + "  name        : " + u.getName() + "\n"
@@ -292,6 +393,7 @@ public class UserCommands {
                 + "  loginEnabled: " + u.isLoginEnabled() + "\n"
                 + "  serviceAcct : " + u.isServiceAccount() + "\n"
                 + "  hasHash     : " + (u.getPasswordHash() != null) + "\n"
+                + "  sso         : " + renderSso(u.getExternalIdentity()) + "\n"
                 + "  created     : " + (u.getCreatedAt() == null ? "" : u.getCreatedAt()) + "\n"
                 + "  id          : " + (u.getId() == null ? "" : u.getId());
     }

@@ -103,6 +103,8 @@ export * from './oauthserver/OAuthConsentDecisionResponse';
 export * from './oauthserver/OAuthConsentRequestDto';
 export * from './oauthserver/OAuthGrantDto';
 
+export * from './sso/SsoOptionsDto';
+
 export * from './chat/ChatMessageAppendedData';
 export * from './chat/ChatMessageChunkData';
 export * from './chat/ChatMessageDto';

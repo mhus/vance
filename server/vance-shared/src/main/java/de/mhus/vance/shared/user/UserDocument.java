@@ -23,7 +23,21 @@ import org.springframework.data.mongodb.core.mapping.Document;
  */
 @Document(collection = UserDocument.COLLECTION)
 @CompoundIndexes({
-        @CompoundIndex(name = "tenant_name_idx", def = "{ 'tenantId': 1, 'name': 1 }", unique = true)
+    @CompoundIndex(name = "tenant_name_idx", def = "{ 'tenantId': 1, 'name': 1 }", unique = true),
+    // One account per external subject, installation-wide. Partial, not
+    // sparse: prepared accounts carry the issuer without a subject, and a
+    // sparse compound index would still index them — as duplicates.
+    @CompoundIndex(
+            name = "external_subject_idx",
+            def = "{ 'externalIdentity.issuer': 1, 'externalIdentity.subject': 1 }",
+            unique = true,
+            partialFilter = "{ 'externalIdentity.subject': { $type: 'string' } }"),
+    // An address is prepared for at most one account per tenant.
+    @CompoundIndex(
+            name = "external_expected_email_idx",
+            def = "{ 'tenantId': 1, 'externalIdentity.expectedEmail': 1 }",
+            unique = true,
+            partialFilter = "{ 'externalIdentity.expectedEmail': { $type: 'string' } }")
 })
 @Data
 @Builder
@@ -110,6 +124,12 @@ public class UserDocument {
      * (password age display, optional expiry); not enforced today.
      */
     private @Nullable Instant passwordChangedAt;
+
+    /**
+     * The external sign-in (SSO) this account is prepared for or bound to;
+     * {@code null} for a password account. See {@link ExternalIdentity}.
+     */
+    private @Nullable ExternalIdentity externalIdentity;
 
     @CreatedDate
     private @Nullable Instant createdAt;

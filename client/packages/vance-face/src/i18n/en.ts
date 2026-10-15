@@ -613,6 +613,15 @@ export default {
     username: 'Username',
     password: 'Password',
     rememberUser: 'Remember user',
+    sso: {
+      email: 'Work e-mail address',
+      continueWithGoogle: 'Continue with Google',
+      or: 'or',
+      emailRequired: 'Enter your work e-mail address to continue with Google.',
+      notAvailable: 'This address cannot sign in with Google here. Use tenant, username and password instead.',
+      rejected: 'Your account is not enabled for sign-in with Google. Ask your administrator.',
+      failed: 'Sign-in with Google did not complete. Please try again.',
+    },
   },
 
   index: {
@@ -3386,6 +3395,7 @@ export default {
       tooShort: 'Password must be at least {min} characters long.',
       changed: 'Password changed.',
       failed: 'Could not change password.',
+      ssoAccount: 'You sign in with {provider} ({email}). This account has no password of its own.',
     },
     preferences: {
       title: 'Preferences',

@@ -231,6 +231,26 @@ class JwtServiceTest {
         return gen.generateKeyPair();
     }
 
+    @Test
+    void sessionExpiry_roundTrips_andCapsTokenExpiry() {
+        Instant sessionEnd = Instant.now().plus(2, ChronoUnit.HOURS);
+        String token = jwt.createToken(
+                "acme", "alice", Instant.now().plus(30, ChronoUnit.DAYS), TokenType.REFRESH, sessionEnd);
+
+        VanceJwtClaims claims = jwt.validateToken(token).orElseThrow();
+
+        assertThat(claims.sessionExpiresAt()).isCloseTo(sessionEnd, within1Sec());
+        assertThat(claims.expiresAt()).isCloseTo(sessionEnd, within1Sec());
+        assertThat(claims.tokenType()).isEqualTo(TokenType.REFRESH);
+    }
+
+    @Test
+    void sessionExpiry_absentForPasswordTokens() {
+        String token = jwt.createToken("acme", "alice", Instant.now().plus(1, ChronoUnit.HOURS), TokenType.ACCESS);
+
+        assertThat(jwt.validateToken(token).orElseThrow().sessionExpiresAt()).isNull();
+    }
+
     private static org.assertj.core.data.TemporalUnitOffset within1Sec() {
         return new org.assertj.core.data.TemporalUnitWithinOffset(1, ChronoUnit.SECONDS);
     }

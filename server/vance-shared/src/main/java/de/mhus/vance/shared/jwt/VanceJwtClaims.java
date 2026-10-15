@@ -54,7 +54,15 @@ public record VanceJwtClaims(
         /** Resource the token is bound to ({@code aud}) — {@link TokenType#OAUTH} only. */
         @Nullable String audience,
         /** OAuth client the token was issued to ({@code cid}) — {@link TokenType#OAUTH} only. */
-        @Nullable String clientId) {
+        @Nullable String clientId,
+        /**
+         * Hard end of the login session this token belongs to ({@code sxp}) —
+         * set only for sessions that started with an external sign-in (SSO).
+         * Every re-mint (refresh token, {@code /refresh}) carries it forward
+         * unchanged and refuses once it has passed; {@code null} means the
+         * session has no such cap.
+         */
+        @Nullable Instant sessionExpiresAt) {
 
     public VanceJwtClaims {
         scopeProfiles = scopeProfiles == null ? List.of() : List.copyOf(scopeProfiles);
@@ -99,6 +107,12 @@ public record VanceJwtClaims(
     public static final String CLAIM_CLIENT_ID = "cid";
 
     /**
+     * JWT claim name for the session cap of an SSO login (epoch seconds) —
+     * see {@link #sessionExpiresAt}.
+     */
+    public static final String CLAIM_SESSION_EXPIRES_AT = "sxp";
+
+    /**
      * Whether this credential carries the account's full rights — an
      * {@link TokenType#ACCESS} token, or an {@link TokenType#OAUTH} token of
      * the unrestricted {@code account} scope (no {@code scp}).
@@ -122,7 +136,7 @@ public record VanceJwtClaims(
             @Nullable Instant expiresAt,
             TokenType tokenType) {
         return new VanceJwtClaims(
-                username, tenantId, issuedAt, expiresAt, tokenType, null, null, null, List.of(), null, null, null,
+                username, tenantId, issuedAt, expiresAt, tokenType, null, null, null, List.of(), null, null, null, null,
                 null);
     }
 
@@ -148,6 +162,7 @@ public record VanceJwtClaims(
                 projectId,
                 sessionId,
                 List.of(),
+                null,
                 null,
                 null,
                 null,
@@ -184,6 +199,7 @@ public record VanceJwtClaims(
                 tokenId,
                 null,
                 null,
+                null,
                 null);
     }
 
@@ -210,6 +226,7 @@ public record VanceJwtClaims(
                 List.of(),
                 null,
                 appFolder,
+                null,
                 null,
                 null);
     }
@@ -241,6 +258,7 @@ public record VanceJwtClaims(
                 grantId,
                 null,
                 audience,
-                clientId);
+                clientId,
+                null);
     }
 }

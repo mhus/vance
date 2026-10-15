@@ -192,6 +192,7 @@ class BrainAccessFilterTest {
                 "jti-1",
                 null,
                 null,
+                null,
                 null);
         assertThat(filter.isClaimsAcceptable(claims, get("/actuator/health"))).isFalse();
         assertThat(filter.isClaimsAcceptable(claims, get("/face/addons"))).isFalse();

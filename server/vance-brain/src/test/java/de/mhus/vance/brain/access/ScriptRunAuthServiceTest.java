@@ -111,6 +111,7 @@ class ScriptRunAuthServiceTest {
                         null,
                         null,
                         null,
+                        null,
                         null),
                 request("127.0.0.1"));
 

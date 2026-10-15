@@ -65,6 +65,17 @@ public class JwtService {
      * them on regular API requests.
      */
     public String createToken(String tenantId, String username, Instant expiresAt, TokenType type) {
+        return createToken(tenantId, username, expiresAt, type, null);
+    }
+
+    /**
+     * Same as {@link #createToken(String, String, Instant, TokenType)}, for a
+     * login session with a hard end — an SSO login. {@code sessionExpiresAt}
+     * goes into the token as {@code sxp} and caps the token's own expiry, so
+     * no credential of the session outlives it.
+     */
+    public String createToken(
+            String tenantId, String username, Instant expiresAt, TokenType type, @Nullable Instant sessionExpiresAt) {
         PrivateKey privateKey = signingKey(tenantId);
 
         Instant now = Instant.now();
@@ -73,8 +84,15 @@ public class JwtService {
                 .claim(VanceJwtClaims.CLAIM_TENANT_ID, tenantId)
                 .claim(VanceJwtClaims.CLAIM_TOKEN_TYPE, type.wireValue())
                 .issuedAt(Date.from(now));
-        if (expiresAt != null) {
-            builder.expiration(Date.from(expiresAt));
+        Instant effectiveExpiry = expiresAt;
+        if (sessionExpiresAt != null) {
+            builder.claim(VanceJwtClaims.CLAIM_SESSION_EXPIRES_AT, sessionExpiresAt.getEpochSecond());
+            if (effectiveExpiry == null || sessionExpiresAt.isBefore(effectiveExpiry)) {
+                effectiveExpiry = sessionExpiresAt;
+            }
+        }
+        if (effectiveExpiry != null) {
+            builder.expiration(Date.from(effectiveExpiry));
         }
         return builder.signWith(privateKey).compact();
     }
@@ -308,6 +326,8 @@ public class JwtService {
         java.util.Set<String> aud = claims.getAudience();
         String audience = aud == null || aud.isEmpty() ? null : aud.iterator().next();
         String clientId = claims.get(VanceJwtClaims.CLAIM_CLIENT_ID, String.class);
+        Object sxp = claims.get(VanceJwtClaims.CLAIM_SESSION_EXPIRES_AT);
+        Instant sessionExpiresAt = sxp instanceof Number n ? Instant.ofEpochSecond(n.longValue()) : null;
         return new VanceJwtClaims(
                 username,
                 tenantId,
@@ -321,6 +341,7 @@ public class JwtService {
                 tokenId,
                 appFolder,
                 audience,
-                clientId);
+                clientId,
+                sessionExpiresAt);
     }
 }

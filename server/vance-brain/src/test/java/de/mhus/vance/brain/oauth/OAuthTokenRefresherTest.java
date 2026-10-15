@@ -14,6 +14,7 @@ import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.shared.settings.SettingService;
 import java.net.URI;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -50,6 +51,7 @@ class OAuthTokenRefresherTest {
     private SettingService settingService;
     private OAuthTokenRefresher refresher;
     private RecordingProvider provider;
+    private OAuthRefreshClaimService claims;
 
     @BeforeEach
     void setUp() {
@@ -57,7 +59,10 @@ class OAuthTokenRefresherTest {
         settingService = mock(SettingService.class);
         provider = new RecordingProvider();
         Clock clock = Clock.fixed(FIXED_NOW, ZoneOffset.UTC);
-        refresher = new OAuthTokenRefresher(configRegistry, new OAuthTokenStore(settingService), clock);
+        claims = mock(OAuthRefreshClaimService.class);
+        when(claims.tryClaim(any(), any())).thenReturn("holder-1");
+        refresher = new OAuthTokenRefresher(
+                configRegistry, new OAuthTokenStore(settingService), claims, clock, Duration.ofMillis(1));
 
         when(configRegistry.resolve(TENANT, PROVIDER))
                 .thenReturn(Optional.of(new ResolvedOAuthProvider(providerConfig("real-secret"), provider)));
@@ -192,6 +197,62 @@ class OAuthTokenRefresherTest {
                         org.mockito.ArgumentMatchers.contains("team_id"),
                         eq(SettingType.STRING),
                         any());
+    }
+
+    // ─────── Cluster-wide claim ───────
+
+    @Test
+    void refresh_runs_under_the_cluster_claim_and_releases_it() {
+        when(settingService.getUserStringValue(TENANT, USER, EXPIRES_KEY))
+                .thenReturn(FIXED_NOW.minusSeconds(60).toString());
+        when(settingService.getDecryptedUserPassword(TENANT, USER, REFRESH_KEY)).thenReturn("rt");
+        provider.next = new OAuthTokenSet("fresh-access", "fresh-refresh", FIXED_NOW.plusSeconds(3600), Map.of());
+
+        refresher.resolveAccessToken(TENANT, USER, PROVIDER);
+
+        String key = OAuthRefreshClaimService.key(TENANT, OAuthTokenOwner.user(USER), PROVIDER);
+        verify(claims).tryClaim(eq(key), any());
+        verify(claims).release(key, "holder-1");
+    }
+
+    @Test
+    void claim_held_by_another_pod_uses_its_fresh_token_instead_of_refreshing() {
+        // Another pod holds the claim and is refreshing a shared tenant login;
+        // a second refresh would replay the rotated refresh token.
+        OAuthTokenOwner tenant = OAuthTokenOwner.tenant();
+        String expiresKey = "oauth.slack.expires_at";
+        when(claims.tryClaim(any(), any())).thenReturn(null);
+        when(settingService.getStringValue(TENANT, SettingService.SCOPE_PROJECT, "_tenant", expiresKey))
+                .thenReturn(
+                        FIXED_NOW.minusSeconds(60).toString(),
+                        FIXED_NOW.minusSeconds(60).toString())
+                .thenReturn(FIXED_NOW.plusSeconds(3600).toString());
+        when(settingService.getDecryptedPassword(TENANT, SettingService.SCOPE_PROJECT, "_tenant", ACCESS_KEY))
+                .thenReturn("winner-token");
+
+        String token = refresher.resolveAccessTokenFor(TENANT, tenant, PROVIDER);
+
+        assertThat(token).isEqualTo("winner-token");
+        assertThat(provider.refreshCount.get()).isZero();
+        verify(claims, never()).release(any(), any());
+    }
+
+    @Test
+    void token_refreshed_elsewhere_before_the_claim_is_not_refreshed_again() {
+        // Expired at the first look, fresh once the claim is held — the other
+        // pod finished in between.
+        when(settingService.getUserStringValue(TENANT, USER, EXPIRES_KEY))
+                .thenReturn(
+                        FIXED_NOW.minusSeconds(60).toString(),
+                        FIXED_NOW.minusSeconds(60).toString())
+                .thenReturn(FIXED_NOW.plusSeconds(3600).toString());
+        when(settingService.getDecryptedUserPassword(TENANT, USER, ACCESS_KEY)).thenReturn("other-pod-token");
+
+        String token = refresher.resolveAccessToken(TENANT, USER, PROVIDER);
+
+        assertThat(token).isEqualTo("other-pod-token");
+        assertThat(provider.refreshCount.get()).isZero();
+        verify(claims).release(any(), eq("holder-1"));
     }
 
     // ─────── Expired exceptions ───────

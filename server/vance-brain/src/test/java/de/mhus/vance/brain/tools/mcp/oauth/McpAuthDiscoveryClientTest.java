@@ -61,6 +61,21 @@ class McpAuthDiscoveryClientTest {
                                 + base
                                 + "/token\",\"registration_endpoint\":\"" + base + "/register\","
                                 + "\"code_challenge_methods_supported\":[\"S256\"]}"));
+        // Metadata for a different resource — must not be used for /mcp.
+        server.createContext(
+                "/.well-known/oauth-protected-resource/elsewhere",
+                ex -> send(
+                        ex,
+                        200,
+                        "{\"resource\":\"https://other.example/mcp\",\"authorization_servers\":[\"" + base + "\"]}"));
+        // An authorization server that speaks for another issuer.
+        server.createContext(
+                "/.well-known/oauth-authorization-server/tenant-b",
+                ex -> send(
+                        ex,
+                        200,
+                        "{\"issuer\":\"" + base + "/tenant-a\",\"authorization_endpoint\":\"" + base
+                                + "/authorize\",\"token_endpoint\":\"" + base + "/token\"}"));
         server.createContext("/register", ex -> {
             registrationBody.set(new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             send(ex, 201, "{\"client_id\":\"dyn-client-1\"}");
@@ -123,6 +138,59 @@ class McpAuthDiscoveryClientTest {
                 client.resourceMetadata(base + "/mcp", null, PackHttpClient.TlsConfig.DEFAULT);
 
         assertThat(rm.authorizationServers()).containsExactly(base);
+    }
+
+    @Test
+    void resourceMetadata_forAnotherResource_isRejected() {
+        String mcp = base + "/mcp";
+        assertThatThrownBy(() -> client.resourceMetadata(
+                        mcp,
+                        base + "/.well-known/oauth-protected-resource/elsewhere",
+                        PackHttpClient.TlsConfig.DEFAULT))
+                .isInstanceOf(McpOAuthException.class)
+                .hasMessageContaining("not for the MCP server");
+    }
+
+    @Test
+    void authServerMetadata_ofAnotherIssuer_isRejected() {
+        assertThatThrownBy(() ->
+                        client.authServerMetadata(base + "/mcp", base + "/tenant-b", PackHttpClient.TlsConfig.DEFAULT))
+                .isInstanceOf(McpOAuthException.class)
+                .hasMessageContaining("declares issuer");
+    }
+
+    @Test
+    void authServerMetadata_carriesIssuerAndIssSupportFlag() {
+        McpAuthDiscoveryClient.AuthServerMetadata as =
+                client.authServerMetadata(base + "/mcp", base + "/", PackHttpClient.TlsConfig.DEFAULT);
+
+        // trailing slash on the looked-up identifier is tolerated; the
+        // declared value is what the callback compares iss against
+        assertThat(as.issuer()).isEqualTo(base);
+        assertThat(as.issParameterSupported()).isFalse();
+    }
+
+    @Test
+    void resourceCovers_acceptsSameUrlOrParentOnSameOriginOnly() {
+        String mcp = "https://mcp.example.com/v1/mcp";
+        assertThat(McpAuthDiscoveryClient.resourceCovers("https://mcp.example.com/v1/mcp", mcp))
+                .isTrue();
+        assertThat(McpAuthDiscoveryClient.resourceCovers("https://MCP.example.com:443/v1/mcp/", mcp))
+                .isTrue();
+        assertThat(McpAuthDiscoveryClient.resourceCovers("https://mcp.example.com", mcp))
+                .isTrue();
+        assertThat(McpAuthDiscoveryClient.resourceCovers("https://mcp.example.com/v1", mcp))
+                .isTrue();
+        assertThat(McpAuthDiscoveryClient.resourceCovers("https://mcp.example.com/v", mcp))
+                .isFalse();
+        assertThat(McpAuthDiscoveryClient.resourceCovers("https://mcp.example.com/v1/mcp/sub", mcp))
+                .isFalse();
+        assertThat(McpAuthDiscoveryClient.resourceCovers("https://evil.example/v1/mcp", mcp))
+                .isFalse();
+        assertThat(McpAuthDiscoveryClient.resourceCovers("http://mcp.example.com/v1/mcp", mcp))
+                .isFalse();
+        assertThat(McpAuthDiscoveryClient.resourceCovers("https://mcp.example.com/v1/mcp#x", mcp))
+                .isFalse();
     }
 
     @Test

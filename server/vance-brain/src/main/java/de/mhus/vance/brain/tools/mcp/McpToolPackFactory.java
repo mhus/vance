@@ -2,6 +2,7 @@ package de.mhus.vance.brain.tools.mcp;
 
 import de.mhus.vance.brain.oauth.OAuthDisconnectedEvent;
 import de.mhus.vance.brain.oauth.OAuthTokenOwner;
+import de.mhus.vance.brain.oauth.OAuthTokenRefresher;
 import de.mhus.vance.brain.oauth.OAuthTokenStore;
 import de.mhus.vance.brain.tools.mcp.oauth.McpOAuthSettings;
 import de.mhus.vance.brain.tools.rest.SettingsSecretResolver;
@@ -95,8 +96,9 @@ public class McpToolPackFactory implements ToolFactory {
             SettingsSecretResolver secretResolver,
             McpLeaseSupport leaseSupport,
             ServerToolLoader serverToolLoader,
-            OAuthTokenStore tokenStore) {
-        this.pool = new McpConnectionPool(new PackHttpClient(), secretResolver, leaseSupport);
+            OAuthTokenStore tokenStore,
+            OAuthTokenRefresher tokenRefresher) {
+        this.pool = new McpConnectionPool(new PackHttpClient(), secretResolver, leaseSupport, tokenRefresher);
         this.serverToolLoader = serverToolLoader;
         this.tokenStore = tokenStore;
     }
@@ -149,6 +151,7 @@ public class McpToolPackFactory implements ToolFactory {
         }
         pool.terminateRemoteSession(
                 cfg,
+                config.get().parameters(),
                 String.valueOf(sessionId),
                 new ToolInvocationContext(info.tenantId(), info.projectId(), null, null, info.userId()));
     }

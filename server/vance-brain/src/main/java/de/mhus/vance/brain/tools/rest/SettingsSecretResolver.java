@@ -1,9 +1,9 @@
 package de.mhus.vance.brain.tools.rest;
 
 import de.mhus.vance.brain.oauth.OAuthExpiredException;
-import de.mhus.vance.brain.oauth.OAuthTokenOwner;
 import de.mhus.vance.brain.oauth.OAuthTokenRefresher;
 import de.mhus.vance.shared.home.HomeBootstrapService;
+import de.mhus.vance.shared.settings.SecretAccessDeniedException;
 import de.mhus.vance.shared.settings.SecretReferenceKeyPolicy;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.vault.VaultException;
@@ -30,8 +30,6 @@ import org.springframework.stereotype.Service;
  *   {{secret:tenant:&lt;key&gt;}}               explicit tenant scope ({@code _tenant} project)
  *   {{secret:user:&lt;key&gt;}}                 explicit user scope
  *   {{secret:user:oauth.&lt;providerId&gt;.access_token}}   OAuth access token (auto-refresh)
- *   {{secret:project:oauth.&lt;providerId&gt;.access_token}} shared project login (connector only)
- *   {{secret:tenant:oauth.&lt;providerId&gt;.access_token}}  shared tenant login (connector only)
  *   {{secret:vault:&lt;key&gt;}}                external secret manager (Infisical, …)
  * </pre>
  *
@@ -49,10 +47,11 @@ import org.springframework.stereotype.Service;
  * detects the OAuth access-token convention
  * ({@code oauth.<providerId>.access_token}) and goes through
  * {@link OAuthTokenRefresher}, which transparently refreshes the
- * token when it's about to expire. On the connector path the same holds
- * for {@code project:} and {@code tenant:} — the shared login of an MCP
- * server tool with {@code auth.loginScope: project|tenant}. An agent-
- * writable reference never reaches a shared account's token.
+ * token when it's about to expire. A shared login (an MCP server tool with
+ * {@code auth.loginScope: project|tenant}) is never reachable through a
+ * reference: its token goes to the server's transport directly
+ * ({@code McpOAuthBearerResolver}), so no tool document can send it to
+ * another URL.
  *
  * <h2>This class is the reference-readability chokepoint</h2>
  * Two guards sit here, and they answer different questions.
@@ -79,6 +78,14 @@ import org.springframework.stereotype.Service;
  * vault's namespace rather than ours; the settings-backed vault
  * ({@code SettingsVaultProvider}), whose keys <em>are</em> setting keys, runs the
  * same policy itself.
+ *
+ * <p><b>OAuth keys.</b> {@code oauth.<providerId>.*} holds login material, so
+ * references to it are narrowed further ({@link #requireOAuthReferenceAllowed}):
+ * {@code refresh_token} and {@code client_secret} are never resolvable — they
+ * are consumed by the OAuth client stack only; the shared scopes
+ * ({@code project:}, {@code tenant:}) and the cascade form resolve no
+ * {@code oauth.*} key at all — they hold, or end in, a shared account's
+ * login. Only {@code user:} reaches the caller's own login.
  *
  * <p>Unresolved references substitute to the empty string with a
  * {@code WARN} log line — REST calls that depend on the auth header
@@ -108,6 +115,9 @@ public class SettingsSecretResolver implements SecretResolver {
 
     /** Pattern that identifies an OAuth access-token key. */
     private static final Pattern OAUTH_ACCESS_TOKEN_KEY = Pattern.compile("^oauth\\.([^.]+)\\.access_token$");
+
+    /** Pattern of any key in the OAuth namespace; group 2 = the suffix after the provider id. */
+    private static final Pattern OAUTH_KEY = Pattern.compile("^oauth\\.([^.]+)\\.(.+)$");
 
     private final SettingService settings;
     private final OAuthTokenRefresher oauthTokenRefresher;
@@ -178,6 +188,7 @@ public class SettingsSecretResolver implements SecretResolver {
             // where they *are* setting keys. The barrier holds on both paths;
             // it just sits at the place that knows whose namespace it is.
             referenceKeyPolicy.requireReferenceReadable(scoped.key());
+            requireOAuthReferenceAllowed(scoped.scope(), scoped.key());
         }
         return switch (scoped.scope()) {
             case SCOPE_USER -> resolveUser(scoped.key(), ctx, connector);
@@ -186,6 +197,32 @@ public class SettingsSecretResolver implements SecretResolver {
             case SCOPE_VAULT -> resolveVault(scoped.key(), ctx);
             default -> resolveCascade(scoped.key(), ctx, connector);
         };
+    }
+
+    /**
+     * Narrows references into the {@code oauth.<providerId>.*} namespace —
+     * see the class comment. Refusal is a named error, like the reserved-key
+     * policy: an empty substitution would hide why a connector gets a 401.
+     */
+    private static void requireOAuthReferenceAllowed(String scope, String key) {
+        Matcher m = OAUTH_KEY.matcher(key);
+        if (!m.matches()) {
+            return;
+        }
+        String suffix = m.group(2);
+        if ("refresh_token".equals(suffix) || "client_secret".equals(suffix)) {
+            throw new SecretAccessDeniedException(
+                    key,
+                    "setting '" + key + "' is OAuth client material and cannot be read through a "
+                            + "{{secret:…}} reference — it is used by the OAuth login and refresh only");
+        }
+        if (!SCOPE_USER.equals(scope)) {
+            throw new SecretAccessDeniedException(
+                    key,
+                    "setting '" + key + "' belongs to an OAuth login and cannot be read through this "
+                            + "reference — use {{secret:user:" + key + "}} for the caller's own login; a shared "
+                            + "project or tenant login is used by an MCP server tool with auth.type 'oauth'");
+        }
     }
 
     private @Nullable String resolveUser(String key, ToolInvocationContext ctx, boolean connector) {
@@ -219,10 +256,6 @@ public class SettingsSecretResolver implements SecretResolver {
     }
 
     private @Nullable String resolveTenant(String key, ToolInvocationContext ctx, boolean connector) {
-        Matcher oauth = OAUTH_ACCESS_TOKEN_KEY.matcher(key);
-        if (connector && oauth.matches()) {
-            return oauthTokenRefresher.resolveAccessTokenFor(ctx.tenantId(), OAuthTokenOwner.tenant(), oauth.group(1));
-        }
         return connector
                 ? settings.getDecryptedPassword(
                         ctx.tenantId(), SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME, key)
@@ -233,11 +266,6 @@ public class SettingsSecretResolver implements SecretResolver {
     private @Nullable String resolveProject(String key, ToolInvocationContext ctx, boolean connector) {
         if (ctx.projectId() == null || ctx.projectId().isBlank()) {
             return null;
-        }
-        Matcher oauth = OAUTH_ACCESS_TOKEN_KEY.matcher(key);
-        if (connector && oauth.matches()) {
-            return oauthTokenRefresher.resolveAccessTokenFor(
-                    ctx.tenantId(), OAuthTokenOwner.project(ctx.projectId()), oauth.group(1));
         }
         return connector
                 ? settings.getDecryptedPassword(ctx.tenantId(), SettingService.SCOPE_PROJECT, ctx.projectId(), key)

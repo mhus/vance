@@ -11,7 +11,6 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.brain.oauth.OAuthExpiredException;
-import de.mhus.vance.brain.oauth.OAuthTokenOwner;
 import de.mhus.vance.brain.oauth.OAuthTokenRefresher;
 import de.mhus.vance.shared.settings.SecretAccessDeniedException;
 import de.mhus.vance.shared.settings.SecretReferenceKeyPolicy;
@@ -154,16 +153,48 @@ class SettingsSecretResolverTest {
     }
 
     @Test
-    void oauth_refresh_token_does_not_route_through_refresher() {
-        // Only the access_token form triggers refresh — refresh_token /
-        // expires_at / scopes / extra fall through to direct user-setting reads.
-        when(settings.getReferenceUserSecret(TENANT, USER, "oauth.slack.refresh_token"))
-                .thenReturn("stored-refresh");
+    void oauth_refresh_token_and_client_secret_are_never_resolvable() {
+        // Login material for the OAuth client stack only — not even a
+        // connector may put it into a header it sends anywhere.
+        for (String ref : java.util.List.of(
+                "{{secret:user:oauth.slack.refresh_token}}",
+                "{{secret:tenant:oauth.mcp-x.refresh_token}}",
+                "{{secret:tenant:oauth.mcp-x.client_secret}}",
+                "{{secret:project:oauth.mcp-x.client_secret}}")) {
+            assertThatThrownBy(() -> resolver.resolveForConnector(ref, ctx()))
+                    .as(ref)
+                    .isInstanceOf(SecretAccessDeniedException.class);
+        }
+        verify(settings, never()).getDecryptedPassword(any(), any(), any(), any());
+        verify(settings, never()).getDecryptedUserPassword(any(), any(), any());
+    }
 
-        String out = resolver.resolve("{{secret:user:oauth.slack.refresh_token}}", ctx());
+    @Test
+    void shared_oauth_metadata_keys_are_refused() {
+        assertThatThrownBy(() -> resolver.resolveForConnector("{{secret:tenant:oauth.mcp-x.id_token}}", ctx()))
+                .isInstanceOf(SecretAccessDeniedException.class);
+        assertThatThrownBy(() -> resolver.resolveForConnector("{{secret:project:oauth.mcp-x.expires_at}}", ctx()))
+                .isInstanceOf(SecretAccessDeniedException.class);
+    }
 
-        assertThat(out).isEqualTo("stored-refresh");
-        verify(refresher, never()).resolveAccessToken(any(), any(), any());
+    @Test
+    void cascade_reference_never_reaches_the_oauth_namespace() {
+        // The cascade ends in _tenant, where a tenant login's raw token sits.
+        assertThatThrownBy(() -> resolver.resolveForConnector("{{secret:oauth.mcp-x.access_token}}", ctx()))
+                .isInstanceOf(SecretAccessDeniedException.class);
+        verify(settings, never()).getDecryptedPasswordCascade(any(), any(), any(), any());
+    }
+
+    @Test
+    void user_scope_oauth_metadata_stays_resolvable() {
+        when(settings.getDecryptedUserPassword(TENANT, USER, "oauth.atlassian.cloud_id"))
+                .thenReturn(null);
+        when(settings.getUserStringValue(TENANT, USER, "oauth.atlassian.cloud_id"))
+                .thenReturn("cloud-1");
+
+        String out = resolver.resolveForConnector("{{secret:user:oauth.atlassian.cloud_id}}", ctx());
+
+        assertThat(out).isEqualTo("cloud-1");
     }
 
     @Test
@@ -188,36 +219,21 @@ class SettingsSecretResolverTest {
     }
 
     @Test
-    void project_scope_oauth_access_token_routes_through_refresher_on_connector_path() {
-        when(refresher.resolveAccessTokenFor(TENANT, OAuthTokenOwner.project(PROJECT), "mcp-x"))
-                .thenReturn("project-token");
-
-        String out = resolver.resolveForConnector("{{secret:project:oauth.mcp-x.access_token}}", ctx());
-
-        assertThat(out).isEqualTo("project-token");
-    }
-
-    @Test
-    void tenant_scope_oauth_access_token_routes_through_refresher_on_connector_path() {
-        when(refresher.resolveAccessTokenFor(TENANT, OAuthTokenOwner.tenant(), "mcp-x"))
-                .thenReturn("tenant-token");
-
-        String out = resolver.resolveForConnector("{{secret:tenant:oauth.mcp-x.access_token}}", ctx());
-
-        assertThat(out).isEqualTo("tenant-token");
-    }
-
-    @Test
-    void shared_oauth_access_token_is_not_handed_to_agent_references() {
-        // Agent-writable references (resolve, not resolveForConnector) never
-        // reach a shared account's token through the refresher.
-        when(settings.getReferenceSecret(TENANT, SettingService.SCOPE_PROJECT, PROJECT, "oauth.mcp-x.access_token"))
-                .thenReturn(null);
-
-        String out = resolver.resolve("{{secret:project:oauth.mcp-x.access_token}}", ctx());
-
-        assertThat(out).isEmpty();
+    void shared_oauth_access_token_is_never_reachable_through_a_reference() {
+        // A shared project/tenant login's token goes straight to its MCP
+        // server's transport (McpOAuthBearerResolver) — never through a
+        // reference a tool document could aim at another URL.
+        for (String ref : java.util.List.of(
+                "{{secret:project:oauth.mcp-x.access_token}}", "{{secret:tenant:oauth.mcp-x.access_token}}")) {
+            assertThatThrownBy(() -> resolver.resolveForConnector(ref, ctx()))
+                    .as(ref)
+                    .isInstanceOf(SecretAccessDeniedException.class);
+            assertThatThrownBy(() -> resolver.resolve(ref, ctx()))
+                    .as(ref)
+                    .isInstanceOf(SecretAccessDeniedException.class);
+        }
         verify(refresher, never()).resolveAccessTokenFor(any(), any(), any());
+        verify(settings, never()).getDecryptedPassword(any(), any(), any(), any());
     }
 
     // ─────── Vault scope ───────

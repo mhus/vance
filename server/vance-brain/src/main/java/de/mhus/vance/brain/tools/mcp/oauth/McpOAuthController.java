@@ -1,10 +1,12 @@
 package de.mhus.vance.brain.tools.mcp.oauth;
 
 import de.mhus.vance.api.servertools.ServerToolOAuthDto;
+import de.mhus.vance.api.servertools.ServerToolOAuthStartDto;
 import de.mhus.vance.brain.oauth.OAuthFlowService;
 import de.mhus.vance.brain.oauth.OAuthTokenOwner;
 import de.mhus.vance.brain.oauth.ResolvedOAuthProvider;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.tools.types.ToolPackUnavailableException;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.permission.SecurityContext;
@@ -35,10 +37,14 @@ import org.springframework.web.server.ResponseStatusException;
  *       OAuth provider exists (discovery + client registration on first
  *       use) and returns the login state. The UI calls it before navigating,
  *       so a discovery failure shows as a message, not as an error page.</li>
- *   <li>{@code GET mcp/init?project&tool&returnTo} — starts the code flow
- *       for the account the tool's login scope selects; 302 to the
- *       authorization server. The callback is the shared
- *       {@code _mcp/callback} of {@code OAuthController}.</li>
+ *   <li>{@code POST mcp/init?project&tool&returnTo} — starts the code flow
+ *       for the account the tool's login scope selects and returns
+ *       a {@code ServerToolOAuthStartDto}; the UI navigates there. A POST, not
+ *       a navigable GET: starting a login has side effects (discovery,
+ *       client registration, a provider document in {@code _tenant}) and
+ *       must not be triggerable cross-site through the SameSite=Lax session
+ *       cookie, which a top-level GET navigation would carry. The callback
+ *       is the shared {@code _mcp/callback} of {@code OAuthController}.</li>
  *   <li>{@code DELETE mcp/connection?project&tool} — removes that login.</li>
  *   <li>{@code GET client-metadata.json} — this brain's Client ID Metadata
  *       Document; public, fetched by authorization servers.</li>
@@ -70,9 +76,9 @@ public class McpOAuthController {
             HttpServletRequest request) {
         McpOAuthService.McpServerTool server = authorizedTool(tenant, project, tool, request);
         SecurityContext ctx = authority.contextOf(request);
+        OAuthTokenOwner owner = ownerOf(server, project, ctx.subjectId());
         try {
-            service.ensureProvider(
-                    tenant, server.settings(), server.title(), server.config().parameters(), WriteActor.system(ctx));
+            service.ensureProvider(tenant, project, server, WriteActor.system(ctx));
         } catch (McpOAuthException e) {
             log.info(
                     "MCP OAuth prepare failed: tenant='{}' project='{}' tool='{}': {}",
@@ -82,7 +88,6 @@ public class McpOAuthController {
                     e.getMessage());
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, e.getMessage(), e);
         }
-        OAuthTokenOwner owner = server.settings().owner(project, ctx.subjectId());
         return ServerToolOAuthDto.builder()
                 .providerId(server.settings().providerId())
                 .loginScope(server.settings().loginScope().wireName())
@@ -91,8 +96,8 @@ public class McpOAuthController {
                 .build();
     }
 
-    @GetMapping("/mcp/init")
-    public ResponseEntity<Void> init(
+    @PostMapping(value = "/mcp/init", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ServerToolOAuthStartDto init(
             @PathVariable("tenant") String tenant,
             @RequestParam("project") String project,
             @RequestParam("tool") String tool,
@@ -100,11 +105,10 @@ public class McpOAuthController {
             HttpServletRequest request) {
         McpOAuthService.McpServerTool server = authorizedTool(tenant, project, tool, request);
         SecurityContext ctx = authority.contextOf(request);
+        OAuthTokenOwner owner = ownerOf(server, project, ctx.subjectId());
         URI target;
         try {
-            ResolvedOAuthProvider provider = service.ensureProvider(
-                    tenant, server.settings(), server.title(), server.config().parameters(), WriteActor.system(ctx));
-            OAuthTokenOwner owner = server.settings().owner(project, ctx.subjectId());
+            ResolvedOAuthProvider provider = service.ensureProvider(tenant, project, server, WriteActor.system(ctx));
             target = flowService.start(tenant, ctx.subjectId(), provider, owner, returnTo);
         } catch (McpOAuthException e) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, e.getMessage(), e);
@@ -117,7 +121,9 @@ public class McpOAuthController {
                     e.toString());
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "could not start the MCP login", e);
         }
-        return ResponseEntity.status(HttpStatus.FOUND).location(target).build();
+        return ServerToolOAuthStartDto.builder()
+                .authorizationUrl(target.toString())
+                .build();
     }
 
     @DeleteMapping("/mcp/connection")
@@ -128,7 +134,7 @@ public class McpOAuthController {
             HttpServletRequest request) {
         McpOAuthService.McpServerTool server = authorizedTool(tenant, project, tool, request);
         OAuthTokenOwner owner =
-                server.settings().owner(project, authority.contextOf(request).subjectId());
+                ownerOf(server, project, authority.contextOf(request).subjectId());
         service.disconnect(tenant, server.settings(), owner);
         log.info(
                 "MCP OAuth disconnected: tenant='{}' project='{}' tool='{}' owner='{}'",
@@ -137,6 +143,15 @@ public class McpOAuthController {
                 tool,
                 owner.storageProjectId());
         return ResponseEntity.noContent().build();
+    }
+
+    /** The account the login scope selects; 400 for a project login in {@code _tenant}. */
+    private static OAuthTokenOwner ownerOf(McpOAuthService.McpServerTool server, String project, String userId) {
+        try {
+            return server.settings().owner(project, userId);
+        } catch (ToolPackUnavailableException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
+        }
     }
 
     private McpOAuthService.McpServerTool authorizedTool(

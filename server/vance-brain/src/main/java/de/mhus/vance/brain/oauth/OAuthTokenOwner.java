@@ -26,7 +26,18 @@ public record OAuthTokenOwner(Kind kind, String storageProjectId) {
         return new OAuthTokenOwner(Kind.USER, HomeBootstrapService.hubProjectName(userId));
     }
 
+    /**
+     * The account of project {@code projectId}.
+     *
+     * @throws IllegalArgumentException for {@code _tenant} — its storage is
+     *         the tenant account's, so a "project login" there would silently
+     *         be the tenant login (no fallback, see {@link #tenant()})
+     */
     public static OAuthTokenOwner project(String projectId) {
+        if (HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
+            throw new IllegalArgumentException("'" + projectId + "' has no project account — "
+                    + "a project login needs a real project; use the tenant login for a tenant-wide account");
+        }
         return new OAuthTokenOwner(Kind.PROJECT, projectId);
     }
 

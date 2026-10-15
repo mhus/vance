@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.tools.mcp;
 
+import de.mhus.vance.brain.oauth.OAuthTokenRefresher;
+import de.mhus.vance.brain.tools.mcp.oauth.McpOAuthBearerResolver;
 import de.mhus.vance.brain.tools.mcp.oauth.McpOAuthSettings;
 import de.mhus.vance.shared.servertool.ServerToolDocument;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -38,6 +40,10 @@ import org.jspecify.annotations.Nullable;
  *   <li>{@link #close} on shutdown — closes everything.</li>
  * </ul>
  *
+ * <p>The HTTP transport of a server with {@code auth.type: oauth} gets a
+ * {@link McpOAuthBearerResolver} for this one tool: the bearer token comes
+ * from {@link OAuthTokenRefresher}, not from a setting reference.
+ *
  * <p>In-memory only; no persistent state. JVM restart drops every
  * subprocess and live HTTP session — {@link McpConnection#ensureInitialized}
  * re-spawns lazily on the next call.
@@ -48,19 +54,29 @@ public final class McpConnectionPool implements AutoCloseable {
     private final PackHttpClient httpClient;
     private final SecretResolver secretResolver;
     private final @Nullable McpLeaseSupport leaseSupport;
+    private final @Nullable OAuthTokenRefresher oauthTokenRefresher;
 
     /** Keyed by {@code docId|tenantId|userId}. Anonymous / bootstrap calls keyed with empty user. */
     private final ConcurrentHashMap<String, McpConnection> entries = new ConcurrentHashMap<>();
 
     public McpConnectionPool(PackHttpClient httpClient, SecretResolver secretResolver) {
-        this(httpClient, secretResolver, null);
+        this(httpClient, secretResolver, null, null);
     }
 
+    /**
+     * @param oauthTokenRefresher source of the bearer token of servers with
+     *                            {@code auth.type: oauth}; {@code null} where
+     *                            no such server is used — building one then fails
+     */
     public McpConnectionPool(
-            PackHttpClient httpClient, SecretResolver secretResolver, @Nullable McpLeaseSupport leaseSupport) {
+            PackHttpClient httpClient,
+            SecretResolver secretResolver,
+            @Nullable McpLeaseSupport leaseSupport,
+            @Nullable OAuthTokenRefresher oauthTokenRefresher) {
         this.httpClient = httpClient;
         this.secretResolver = secretResolver == null ? SecretResolver.PASSTHROUGH : secretResolver;
         this.leaseSupport = leaseSupport;
+        this.oauthTokenRefresher = oauthTokenRefresher;
     }
 
     /**
@@ -169,7 +185,7 @@ public final class McpConnectionPool implements AutoCloseable {
         McpTransport transport =
                 switch (cfg.transport()) {
                     case STDIO -> new McpStdioTransport(cfg, rpc);
-                    case HTTP -> new McpHttpTransport(cfg, rpc, httpClient, secretResolver);
+                    case HTTP -> new McpHttpTransport(cfg, rpc, httpClient, transportResolver(doc.getParameters()));
                 };
         SessionGuard guard = leaseSupport == null || doc.getId() == null
                 ? null
@@ -202,10 +218,19 @@ public final class McpConnectionPool implements AutoCloseable {
      * reaper's cleanup after a dead holder pod. Builds an unopened
      * transport for the tool's config so the DELETE carries the
      * configured auth resolved under {@code ctx}.
+     *
+     * @param parameters the tool's {@code parameters} {@code cfg} was built from
      */
-    public void terminateRemoteSession(McpConfig cfg, String sessionId, ToolInvocationContext ctx) {
+    public void terminateRemoteSession(
+            McpConfig cfg, @Nullable Map<String, Object> parameters, String sessionId, ToolInvocationContext ctx) {
         if (cfg.transport() != McpConfig.Transport.HTTP) return;
-        new McpHttpTransport(cfg, new McpJsonRpc(), httpClient, secretResolver).terminateSession(sessionId, ctx);
+        new McpHttpTransport(cfg, new McpJsonRpc(), httpClient, transportResolver(parameters))
+                .terminateSession(sessionId, ctx);
+    }
+
+    /** The secret resolver of a tool's HTTP transport — see {@link McpOAuthBearerResolver#forTool}. */
+    private SecretResolver transportResolver(@Nullable Map<String, Object> parameters) {
+        return McpOAuthBearerResolver.forTool(secretResolver, oauthTokenRefresher, parameters);
     }
 
     /**

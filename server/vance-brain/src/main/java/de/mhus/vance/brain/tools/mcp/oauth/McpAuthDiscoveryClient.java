@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.mcp.oauth;
 
+import de.mhus.vance.brain.oauth.McpOAuthProvider;
 import de.mhus.vance.brain.oauthserver.ClientMetadataDocumentResolver;
 import de.mhus.vance.toolpack.core.PackHttpClient;
 import java.net.InetAddress;
@@ -41,7 +42,14 @@ import tools.jackson.databind.json.JsonMapper;
  * origin of the MCP server, or is HTTPS and resolves to public addresses
  * only ({@link ClientMetadataDocumentResolver#isPublic}). Every exchange has
  * one deadline for headers and body, a size cap while streaming, and follows
- * no redirect.
+ * no redirect. The tool's TLS settings apply in full only to the MCP
+ * server's origin; elsewhere only its trusted CA
+ * ({@link McpOAuthProvider#endpointTls}).
+ *
+ * <p><b>Identity checks.</b> The protected-resource metadata must name a
+ * {@code resource} that covers the MCP URL (RFC 9728 §3.3), and the
+ * authorization-server metadata must carry the very {@code issuer} it was
+ * looked up for (RFC 8414 §3.3) — metadata failing either is not used.
  */
 @Component
 @Slf4j
@@ -76,10 +84,20 @@ public class McpAuthDiscoveryClient {
      */
     public record Challenge(boolean authRequired, @Nullable String resourceMetadataUrl, List<String> scopes) {}
 
-    /** RFC 9728 protected-resource metadata, the fields used here. */
+    /**
+     * RFC 9728 protected-resource metadata, the fields used here.
+     *
+     * @param resource the canonical resource identifier — validated to cover
+     *                 the MCP URL; sent as the RFC 8707 {@code resource}
+     */
     public record ResourceMetadata(String resource, List<String> authorizationServers, List<String> scopesSupported) {}
 
-    /** RFC 8414 authorization-server metadata, the fields used here. */
+    /**
+     * RFC 8414 authorization-server metadata, the fields used here.
+     *
+     * @param issuer                the issuer identifier — validated to be the one looked up
+     * @param issParameterSupported {@code authorization_response_iss_parameter_supported} (RFC 9207)
+     */
     public record AuthServerMetadata(
             String issuer,
             String authorizationEndpoint,
@@ -87,7 +105,8 @@ public class McpAuthDiscoveryClient {
             @Nullable String registrationEndpoint,
             boolean clientIdMetadataDocumentSupported,
             List<String> codeChallengeMethods,
-            List<String> scopesSupported) {}
+            List<String> scopesSupported,
+            boolean issParameterSupported) {}
 
     /** RFC 7591 registration response, the fields used here. */
     public record ClientRegistration(
@@ -112,7 +131,7 @@ public class McpAuthDiscoveryClient {
                 .header("MCP-Protocol-Version", MCP_PROTOCOL_VERSION)
                 .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
                 .build();
-        HttpResponse<byte[]> response = exchange(request, tls, 0, mcpUrl);
+        HttpResponse<byte[]> response = exchange(request, tls, 0, mcpUrl, mcpUrl);
         int status = response.statusCode();
         if (status >= 200 && status < 300) {
             return new Challenge(false, null, List.of());
@@ -149,6 +168,9 @@ public class McpAuthDiscoveryClient {
      * The protected-resource metadata of the MCP server — from the URL the
      * challenge named, else from the well-known locations (path-inserted
      * first, then the origin root).
+     *
+     * @throws McpOAuthException when the metadata names no {@code resource},
+     *         or one that does not cover {@code mcpUrl} ({@link #resourceCovers})
      */
     public ResourceMetadata resourceMetadata(
             String mcpUrl, @Nullable String advertisedUrl, PackHttpClient.TlsConfig tls) {
@@ -165,14 +187,58 @@ public class McpAuthDiscoveryClient {
         }
         JsonNode doc = firstDocument(mcpUrl, candidates, tls, "protected-resource metadata");
         String resource = text(doc, "resource");
+        if (resource == null) {
+            throw new McpOAuthException("protected-resource metadata names no 'resource'");
+        }
+        if (!resourceCovers(resource, mcpUrl)) {
+            throw new McpOAuthException(
+                    "protected-resource metadata is for '" + resource + "', not for the MCP server '" + mcpUrl + "'");
+        }
         List<String> servers = strings(doc, "authorization_servers");
         if (servers.isEmpty()) {
             throw new McpOAuthException("protected-resource metadata names no authorization server");
         }
-        return new ResourceMetadata(resource == null ? mcpUrl : resource, servers, strings(doc, "scopes_supported"));
+        return new ResourceMetadata(resource.trim(), servers, strings(doc, "scopes_supported"));
     }
 
-    /** The metadata of the authorization server {@code issuer}. */
+    /**
+     * Whether the RFC 9728 {@code resource} identifies the MCP server at
+     * {@code mcpUrl}: the same URL, or a URL on the same origin whose path
+     * is a whole-segment prefix of the MCP path (the MCP specification
+     * allows the server's canonical URI to be its origin or a parent path).
+     * Compared after normalising scheme and host case, the default port and
+     * a trailing slash; a resource with query or fragment never matches.
+     */
+    static boolean resourceCovers(String resource, String mcpUrl) {
+        URI res;
+        URI mcp;
+        try {
+            res = new URI(resource.trim());
+            mcp = new URI(mcpUrl.trim());
+        } catch (URISyntaxException e) {
+            return false;
+        }
+        if (res.getScheme() == null || res.getHost() == null || mcp.getScheme() == null || mcp.getHost() == null) {
+            return false;
+        }
+        if (res.getRawQuery() != null || res.getRawFragment() != null) {
+            return false;
+        }
+        if (!origin(res).equals(origin(mcp))) {
+            return false;
+        }
+        String resPath = trimTrailingSlash(res.getRawPath());
+        String mcpPath = trimTrailingSlash(mcp.getRawPath());
+        return resPath.isEmpty() || mcpPath.equals(resPath) || mcpPath.startsWith(resPath + "/");
+    }
+
+    /**
+     * The metadata of the authorization server {@code issuer}.
+     *
+     * @throws McpOAuthException when the metadata carries no {@code issuer}
+     *         or another one than it was looked up for (RFC 8414 §3.3 — a
+     *         server may not speak for another issuer)
+     */
     public AuthServerMetadata authServerMetadata(String mcpUrl, String issuer, PackHttpClient.TlsConfig tls) {
         URI uri = parse(issuer);
         String path = trimTrailingSlash(uri.getRawPath());
@@ -186,6 +252,14 @@ public class McpAuthDiscoveryClient {
             candidates.add(origin(uri) + path + "/.well-known/openid-configuration");
         }
         JsonNode doc = firstDocument(mcpUrl, candidates, tls, "authorization-server metadata");
+        String declaredIssuer = text(doc, "issuer");
+        if (declaredIssuer == null) {
+            throw new McpOAuthException("authorization-server metadata of '" + issuer + "' carries no 'issuer'");
+        }
+        if (!sameIssuer(declaredIssuer, issuer)) {
+            throw new McpOAuthException("authorization-server metadata fetched for '" + issuer + "' declares issuer '"
+                    + declaredIssuer + "'");
+        }
         String authorize = text(doc, "authorization_endpoint");
         String token = text(doc, "token_endpoint");
         if (authorize == null || token == null) {
@@ -194,15 +268,25 @@ public class McpAuthDiscoveryClient {
         checkFetchable(mcpUrl, authorize);
         checkFetchable(mcpUrl, token);
         String registration = text(doc, "registration_endpoint");
-        JsonNode cimd = doc.get("client_id_metadata_document_supported");
         return new AuthServerMetadata(
-                text(doc, "issuer") == null ? issuer : text(doc, "issuer"),
+                declaredIssuer,
                 authorize,
                 token,
                 registration,
-                cimd != null && cimd.isBoolean() && cimd.asBoolean(),
+                flag(doc, "client_id_metadata_document_supported"),
                 strings(doc, "code_challenge_methods_supported"),
-                strings(doc, "scopes_supported"));
+                strings(doc, "scopes_supported"),
+                flag(doc, "authorization_response_iss_parameter_supported"));
+    }
+
+    /**
+     * Issuer identity of RFC 8414 §3.3: the declared issuer must be the one
+     * the metadata was looked up for. Simple string comparison, tolerating
+     * only a trailing slash that one side carries and the other does not —
+     * {@code authorization_servers} entries are written either way in practice.
+     */
+    static boolean sameIssuer(String declared, String lookedUp) {
+        return trimTrailingSlash(declared.trim()).equals(trimTrailingSlash(lookedUp.trim()));
     }
 
     // ──────────────────── Registration ────────────────────
@@ -231,7 +315,7 @@ public class McpAuthDiscoveryClient {
                 .header("Accept", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body), StandardCharsets.UTF_8))
                 .build();
-        HttpResponse<byte[]> response = exchange(request, tls, MAX_BYTES, registrationEndpoint);
+        HttpResponse<byte[]> response = exchange(request, tls, MAX_BYTES, registrationEndpoint, mcpUrl);
         if (response.statusCode() != 201 && response.statusCode() != 200) {
             throw new McpOAuthException(
                     "client registration at the authorization server failed with HTTP " + response.statusCode());
@@ -254,7 +338,7 @@ public class McpAuthDiscoveryClient {
                     .header("Accept", "application/json")
                     .GET()
                     .build();
-            HttpResponse<byte[]> response = exchange(request, tls, MAX_BYTES, candidate);
+            HttpResponse<byte[]> response = exchange(request, tls, MAX_BYTES, candidate, mcpUrl);
             if (response.statusCode() == 200) {
                 return readJson(response, what);
             }
@@ -297,12 +381,13 @@ public class McpAuthDiscoveryClient {
 
     /**
      * One request under one deadline for headers and body; the body is
-     * collected up to {@code maxBytes} (0 = not read).
+     * collected up to {@code maxBytes} (0 = not read). The tool's TLS
+     * settings are narrowed to what may apply to {@code target}.
      */
     private HttpResponse<byte[]> exchange(
-            HttpRequest request, PackHttpClient.TlsConfig tls, int maxBytes, String target) {
+            HttpRequest request, PackHttpClient.TlsConfig tls, int maxBytes, String target, String mcpUrl) {
         CompletableFuture<HttpResponse<byte[]>> pending = httpClient
-                .client(tls)
+                .client(McpOAuthProvider.endpointTls(tls, mcpUrl, target))
                 .sendAsync(request, info -> new ClientMetadataDocumentResolver.LimitedBodySubscriber(maxBytes));
         try {
             return pending.get(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
@@ -337,6 +422,11 @@ public class McpAuthDiscoveryClient {
         if (v == null || !v.isString()) return null;
         String s = v.asString();
         return s.isBlank() ? null : s;
+    }
+
+    private static boolean flag(JsonNode doc, String field) {
+        JsonNode v = doc.get(field);
+        return v != null && v.isBoolean() && v.asBoolean();
     }
 
     private static List<String> strings(JsonNode doc, String field) {

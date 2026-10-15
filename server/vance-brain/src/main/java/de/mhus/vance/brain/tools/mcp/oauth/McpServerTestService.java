@@ -40,7 +40,19 @@ public class McpServerTestService {
             String tenant, String project, String userId, ServerToolConfig config, boolean canConnect) {
         Optional<McpOAuthSettings> settings = oauthSettings(config);
         if (settings.isEmpty()) return null;
-        OAuthTokenOwner owner = settings.get().owner(project, userId);
+        OAuthTokenOwner owner;
+        try {
+            owner = settings.get().owner(project, userId);
+        } catch (ToolPackUnavailableException e) {
+            // A project login viewed in _tenant: there is no account to show
+            // or to log in to here.
+            return ServerToolOAuthDto.builder()
+                    .providerId(settings.get().providerId())
+                    .loginScope(settings.get().loginScope().wireName())
+                    .status(McpOAuthService.STATUS_NOT_CONNECTED)
+                    .canConnect(false)
+                    .build();
+        }
         return ServerToolOAuthDto.builder()
                 .providerId(settings.get().providerId())
                 .loginScope(settings.get().loginScope().wireName())

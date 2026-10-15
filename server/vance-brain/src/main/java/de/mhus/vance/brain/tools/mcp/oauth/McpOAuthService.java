@@ -5,6 +5,7 @@ import de.mhus.vance.brain.oauth.McpOAuthProvider;
 import de.mhus.vance.brain.oauth.OAuthConfigRegistry;
 import de.mhus.vance.brain.oauth.OAuthDisconnectedEvent;
 import de.mhus.vance.brain.oauth.OAuthFlowService;
+import de.mhus.vance.brain.oauth.OAuthProviderConfig;
 import de.mhus.vance.brain.oauth.OAuthProviderLoader;
 import de.mhus.vance.brain.oauth.OAuthTokenOwner;
 import de.mhus.vance.brain.oauth.OAuthTokenStore;
@@ -33,6 +34,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -54,6 +56,11 @@ import org.yaml.snakeyaml.Yaml;
  * {@code clientId} configured on the tool. After that the generic OAuth
  * client stack takes over (init, callback, refresh).
  *
+ * <p>An existing managed provider is reused only while it still matches the
+ * tool: same server URL, same hand-registered client (id and secret), same
+ * explicit scopes, same TLS settings, and recorded issuer and resource.
+ * Anything else re-runs the discovery and rewrites the document.
+ *
  * <p>Managed provider documents are kept when a tool is deleted — another
  * project may use the same server, and a stale document is harmless.
  */
@@ -66,6 +73,9 @@ public class McpOAuthService {
 
     public static final String STATUS_NOT_CONNECTED = "NOT_CONNECTED";
     public static final String STATUS_EXPIRED = "EXPIRED";
+
+    /** {@code extra.registration} of a client registered by hand ({@code auth.clientId}). */
+    static final String REGISTRATION_MANUAL = "manual";
 
     private final OAuthConfigRegistry configRegistry;
     private final OAuthFlowService flowService;
@@ -159,31 +169,31 @@ public class McpOAuthService {
     // ──────────────────── Provider ────────────────────
 
     /**
-     * The {@code mcp} provider for the server of {@code settings}; created on
-     * first use.
+     * The {@code mcp} provider for the server of {@code server}; created on
+     * first use, re-created when it no longer matches the tool
+     * ({@link #matches}).
      *
-     * @param title          display name for Connected Accounts (tool description or name)
-     * @param toolParameters the tool's {@code parameters} — TLS settings for the discovery
+     * @param project the project the login is started in — a tool defined
+     *                there resolves its {@code auth.clientSecret} reference in
+     *                that project; a tenant-wide or bundled tool in {@code _tenant}
      * @throws McpOAuthException when discovery or registration fails
      */
-    public ResolvedOAuthProvider ensureProvider(
-            String tenant,
-            McpOAuthSettings settings,
-            String title,
-            Map<String, Object> toolParameters,
-            WriteActor actor) {
+    public ResolvedOAuthProvider ensureProvider(String tenant, String project, McpServerTool server, WriteActor actor) {
+        McpOAuthSettings settings = server.settings();
         String providerId = settings.providerId();
+        PackHttpClient.TlsConfig tls = tlsOf(server.config().parameters());
+        String clientSecret = resolveClientSecret(tenant, project, server);
         Optional<ResolvedOAuthProvider> existing = configRegistry.resolve(tenant, providerId);
-        if (existing.isPresent()) {
+        if (existing.isPresent() && matches(existing.get(), settings, tls, clientSecret)) {
             return existing.get();
         }
         synchronized (lockFor(tenant, providerId)) {
             existing = configRegistry.resolve(tenant, providerId);
-            if (existing.isPresent()) {
+            if (existing.isPresent() && matches(existing.get(), settings, tls, clientSecret)) {
                 return existing.get();
             }
-            ProviderDraft draft = discover(tenant, settings, tlsOf(toolParameters), /*register*/ true);
-            writeProvider(tenant, providerId, settings, draft, title, actor);
+            ProviderDraft draft = discover(tenant, settings, tls, clientSecret, /*register*/ true);
+            writeProvider(tenant, providerId, settings, tls, draft, server.title(), actor);
             return configRegistry
                     .resolve(tenant, providerId)
                     .orElseThrow(() -> new McpOAuthException(
@@ -192,11 +202,49 @@ public class McpOAuthService {
     }
 
     /**
+     * Whether an existing provider can serve the tool as configured now. A
+     * provider the brain did not write ({@code extra.managed} absent) is the
+     * operator's and is always used as it is.
+     */
+    static boolean matches(
+            ResolvedOAuthProvider existing,
+            McpOAuthSettings settings,
+            PackHttpClient.TlsConfig tls,
+            @Nullable String clientSecret) {
+        OAuthProviderConfig cfg = existing.config();
+        Map<String, Object> extra = cfg.extra();
+        if (!McpOAuthProvider.TYPE_ID.equals(cfg.typeId())
+                || !Boolean.TRUE.equals(extra.get(McpOAuthProvider.EXTRA_MANAGED))) {
+            return true;
+        }
+        if (!settings.url().equals(extra.get(McpOAuthProvider.EXTRA_MCP_URL))
+                || !(extra.get(GenericOAuth2Provider.EXTRA_ISSUER) instanceof String)
+                || !(extra.get(McpOAuthProvider.EXTRA_RESOURCE) instanceof String)) {
+            return false;
+        }
+        if (!tls.equals(storedTls(extra))) {
+            return false;
+        }
+        boolean manual = REGISTRATION_MANUAL.equals(extra.get(McpOAuthProvider.EXTRA_REGISTRATION));
+        if (settings.clientId() != null) {
+            if (!manual || !settings.clientId().equals(cfg.clientId())) {
+                return false;
+            }
+            if (!Objects.equals(blankToEmpty(clientSecret), blankToEmpty(cfg.clientSecret()))) {
+                return false;
+            }
+        } else if (manual) {
+            return false;
+        }
+        return settings.scopes().isEmpty() || settings.scopes().equals(cfg.scopes());
+    }
+
+    /**
      * What the discovery finds for the server — without registering or
      * writing anything. For the connection test in the admin UI.
      */
     public Discovery inspect(String tenant, McpOAuthSettings settings, Map<String, Object> toolParameters) {
-        ProviderDraft draft = discover(tenant, settings, tlsOf(toolParameters), /*register*/ false);
+        ProviderDraft draft = discover(tenant, settings, tlsOf(toolParameters), null, /*register*/ false);
         return new Discovery(draft.authServer().issuer(), draft.registration(), draft.scopes());
     }
 
@@ -205,13 +253,18 @@ public class McpOAuthService {
 
     private record ProviderDraft(
             McpAuthDiscoveryClient.AuthServerMetadata authServer,
+            String resource,
             String registration,
             @Nullable String clientId,
             @Nullable String clientSecret,
             List<String> scopes) {}
 
     private ProviderDraft discover(
-            String tenant, McpOAuthSettings settings, PackHttpClient.TlsConfig tls, boolean register) {
+            String tenant,
+            McpOAuthSettings settings,
+            PackHttpClient.TlsConfig tls,
+            @Nullable String manualClientSecret,
+            boolean register) {
         String url = settings.url();
         McpAuthDiscoveryClient.Challenge challenge = discovery.probe(url, tls);
         if (!challenge.authRequired()) {
@@ -222,29 +275,29 @@ public class McpOAuthService {
                 discovery.resourceMetadata(url, challenge.resourceMetadataUrl(), tls);
         McpAuthDiscoveryClient.AuthServerMetadata authServer = discovery.authServerMetadata(
                 url, resource.authorizationServers().get(0), tls);
-        if (!authServer.codeChallengeMethods().isEmpty()
-                && !authServer.codeChallengeMethods().contains("S256")) {
-            throw new McpOAuthException("the authorization server does not support PKCE with S256");
+        // MCP authorization: a client MUST refuse to proceed when the server
+        // does not announce S256 — an absent list is not an implicit yes.
+        if (!authServer.codeChallengeMethods().contains("S256")) {
+            throw new McpOAuthException(
+                    authServer.codeChallengeMethods().isEmpty()
+                            ? "the authorization server does not announce PKCE support (code_challenge_methods_supported)"
+                            : "the authorization server does not support PKCE with S256");
         }
         List<String> scopes = !settings.scopes().isEmpty()
                 ? settings.scopes()
                 : !challenge.scopes().isEmpty() ? challenge.scopes() : resource.scopesSupported();
+        String res = resource.resource();
 
         if (settings.clientId() != null) {
-            String secret = settings.clientSecret() == null
-                    ? null
-                    : secretResolver.substituteForConnector(
-                            settings.clientSecret(),
-                            new ToolInvocationContext(
-                                    tenant, HomeBootstrapService.TENANT_PROJECT_NAME, null, null, null));
-            return new ProviderDraft(authServer, "manual", settings.clientId(), secret, scopes);
+            return new ProviderDraft(
+                    authServer, res, REGISTRATION_MANUAL, settings.clientId(), manualClientSecret, scopes);
         }
         if (authServer.clientIdMetadataDocumentSupported() && clientMetadataDocumentReachable()) {
-            return new ProviderDraft(authServer, "cimd", clientMetadataDocumentUrl(tenant), null, scopes);
+            return new ProviderDraft(authServer, res, "cimd", clientMetadataDocumentUrl(tenant), null, scopes);
         }
         if (authServer.registrationEndpoint() != null) {
             if (!register) {
-                return new ProviderDraft(authServer, "dcr", null, null, scopes);
+                return new ProviderDraft(authServer, res, "dcr", null, null, scopes);
             }
             McpAuthDiscoveryClient.ClientRegistration registration = discovery.register(
                     url,
@@ -253,28 +306,62 @@ public class McpOAuthService {
                     List.of(mcpRedirectUri(tenant)),
                     scopes,
                     tls);
-            return new ProviderDraft(authServer, "dcr", registration.clientId(), registration.clientSecret(), scopes);
+            return new ProviderDraft(
+                    authServer, res, "dcr", registration.clientId(), registration.clientSecret(), scopes);
         }
         if (!register) {
-            return new ProviderDraft(authServer, "none", null, null, scopes);
+            return new ProviderDraft(authServer, res, "none", null, null, scopes);
         }
         throw new McpOAuthException("the authorization server offers no client registration — "
                 + "register a client there and set auth.clientId (and auth.clientSecret) on the tool");
+    }
+
+    /**
+     * The tool's {@code auth.clientSecret}, resolved like a connector
+     * credential in the project that defines the tool — {@code project} for a
+     * project tool, {@code _tenant} for a tenant-wide or bundled one. No
+     * user: the secret belongs to the shared client registration, not to
+     * whoever happens to log in first.
+     */
+    private @Nullable String resolveClientSecret(String tenant, String project, McpServerTool server) {
+        String reference = server.settings().clientSecret();
+        if (reference == null) {
+            return null;
+        }
+        String scope = server.config().source() == ServerToolConfig.Source.PROJECT
+                ? project
+                : HomeBootstrapService.TENANT_PROJECT_NAME;
+        return secretResolver.substituteForConnector(
+                reference, new ToolInvocationContext(tenant, scope, null, null, null));
     }
 
     private void writeProvider(
             String tenant,
             String providerId,
             McpOAuthSettings settings,
+            PackHttpClient.TlsConfig tls,
             ProviderDraft draft,
             String title,
             WriteActor actor) {
         Map<String, Object> extra = new LinkedHashMap<>();
         extra.put(McpOAuthProvider.EXTRA_MCP_URL, settings.url());
+        extra.put(McpOAuthProvider.EXTRA_RESOURCE, draft.resource());
+        extra.put(GenericOAuth2Provider.EXTRA_ISSUER, draft.authServer().issuer());
+        extra.put(
+                GenericOAuth2Provider.EXTRA_ISS_PARAMETER_SUPPORTED,
+                draft.authServer().issParameterSupported());
         extra.put(GenericOAuth2Provider.EXTRA_USE_PKCE, true);
         extra.put(McpOAuthProvider.EXTRA_REGISTRATION, draft.registration());
         extra.put(McpOAuthProvider.EXTRA_TITLE, title);
         extra.put(McpOAuthProvider.EXTRA_MANAGED, true);
+        if (!PackHttpClient.TlsConfig.DEFAULT.equals(tls)) {
+            Map<String, Object> tlsBlock = new LinkedHashMap<>();
+            tlsBlock.put("skipVerification", tls.skipVerification());
+            if (tls.trustedCaPem() != null) {
+                tlsBlock.put("trustedCaPemPath", tls.trustedCaPem());
+            }
+            extra.put(McpOAuthProvider.EXTRA_TLS, tlsBlock);
+        }
 
         Map<String, Object> yaml = new LinkedHashMap<>();
         yaml.put("type", McpOAuthProvider.TYPE_ID);
@@ -415,6 +502,18 @@ public class McpOAuthService {
         return tls instanceof Map<?, ?> m
                 ? PackHttpClient.TlsConfig.fromMap((Map<String, Object>) m)
                 : PackHttpClient.TlsConfig.DEFAULT;
+    }
+
+    /** The TLS block the provider was written with ({@code extra.tls}). */
+    @SuppressWarnings("unchecked")
+    private static PackHttpClient.TlsConfig storedTls(Map<String, Object> extra) {
+        return extra.get(McpOAuthProvider.EXTRA_TLS) instanceof Map<?, ?> m
+                ? PackHttpClient.TlsConfig.fromMap((Map<String, Object>) m)
+                : PackHttpClient.TlsConfig.DEFAULT;
+    }
+
+    private static String blankToEmpty(@Nullable String s) {
+        return s == null || s.isBlank() ? "" : s;
     }
 
     private static String dumpYaml(Map<String, Object> yaml) {

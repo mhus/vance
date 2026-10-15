@@ -56,6 +56,22 @@ public class GenericOAuth2Provider implements OAuthProvider {
      */
     public static final String EXTRA_USE_PKCE = "usePkce";
 
+    /**
+     * Extra-config key: the issuer identifier of the authorization server
+     * (RFC 8414 {@code issuer}, validated at discovery). When present, an
+     * {@code iss} parameter on the authorization response must equal it —
+     * RFC 9207, the defence against mix-up on a callback shared by several
+     * authorization servers.
+     */
+    public static final String EXTRA_ISSUER = "issuer";
+
+    /**
+     * Extra-config key: {@code true} when the authorization server announced
+     * {@code authorization_response_iss_parameter_supported}; the callback
+     * then <em>requires</em> {@code iss} (RFC 9207 §2.4).
+     */
+    public static final String EXTRA_ISS_PARAMETER_SUPPORTED = "issParameterSupported";
+
     protected final PackHttpClient httpClient;
     protected final ObjectMapper json;
 
@@ -155,6 +171,45 @@ public class GenericOAuth2Provider implements OAuthProvider {
     }
 
     /**
+     * TLS settings for a request to {@code url} (the token endpoint). The
+     * default is the JDK trust store; the {@code mcp} type carries the MCP
+     * server tool's {@code tls} block.
+     */
+    protected PackHttpClient.TlsConfig tlsFor(OAuthProviderConfig cfg, String url) {
+        return PackHttpClient.TlsConfig.DEFAULT;
+    }
+
+    /**
+     * Checks the {@code iss} parameter of an authorization response against
+     * the issuer recorded on the provider ({@link #EXTRA_ISSUER}) — RFC 9207.
+     * A present {@code iss} must match; a missing one is accepted only when
+     * the server did not announce that it sends it. Providers without a
+     * recorded issuer are not checked (hand-configured providers, which
+     * each have a callback path of their own).
+     *
+     * @throws OAuthFlowException on a mismatch or a missing required {@code iss}
+     */
+    public static void checkAuthorizationResponseIssuer(OAuthProviderConfig cfg, @Nullable String iss) {
+        Object raw = cfg.extra().get(EXTRA_ISSUER);
+        String expected = raw instanceof String s && !s.isBlank() ? s : null;
+        if (expected == null) {
+            return;
+        }
+        if (iss == null || iss.isEmpty()) {
+            if (Boolean.TRUE.equals(cfg.extra().get(EXTRA_ISS_PARAMETER_SUPPORTED))) {
+                throw new OAuthFlowException(
+                        cfg.providerId(), "authorization response lacks 'iss' although the server announces it");
+            }
+            return;
+        }
+        if (!expected.equals(iss)) {
+            throw new OAuthFlowException(
+                    cfg.providerId(),
+                    "authorization response comes from issuer '" + iss + "', expected '" + expected + "'");
+        }
+    }
+
+    /**
      * Parse a successful token-response JSON body into an
      * {@link OAuthTokenSet}. Quirk subclasses (Slack v2 returns
      * {@code authed_user.access_token}) override this.
@@ -200,7 +255,7 @@ public class GenericOAuth2Provider implements OAuthProvider {
         HttpResponse<String> response;
         try {
             response = httpClient
-                    .client(PackHttpClient.TlsConfig.DEFAULT)
+                    .client(tlsFor(cfg, url))
                     .send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

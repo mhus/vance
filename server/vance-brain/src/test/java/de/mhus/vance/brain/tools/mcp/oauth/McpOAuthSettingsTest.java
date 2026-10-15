@@ -101,15 +101,24 @@ class McpOAuthSettingsTest {
     }
 
     @Test
-    void effectiveConfig_translatesOAuthIntoScopedBearerTemplate() {
+    void projectLogin_inTenantProject_isRefused_notTurnedIntoTheTenantLogin() {
+        McpOAuthSettings project = McpOAuthSettings.of(params(Map.of("type", "oauth", "loginScope", "project")))
+                .orElseThrow();
+
+        assertThatThrownBy(() -> project.owner("_tenant", "alice"))
+                .isInstanceOf(de.mhus.vance.brain.tools.types.ToolPackUnavailableException.class)
+                .hasMessageContaining("loginScope 'tenant'");
+    }
+
+    @Test
+    void effectiveConfig_translatesOAuthIntoTheTransportBearer() {
         Map<String, Object> p = params(Map.of("type", "oauth", "loginScope", "tenant"));
 
         McpConfig cfg = McpOAuthSettings.effectiveConfig(p);
 
+        // Not a setting reference — only the tool's McpOAuthBearerResolver answers it.
         assertThat(cfg.auth().type()).isEqualTo(AuthSpec.Type.BEARER);
-        assertThat(cfg.auth().token())
-                .isEqualTo("{{secret:tenant:oauth." + McpOAuthSettings.providerIdFor("https://mcp.example.com/mcp")
-                        + ".access_token}}");
+        assertThat(cfg.auth().token()).isEqualTo(McpOAuthSettings.BEARER_REFERENCE);
     }
 
     @Test

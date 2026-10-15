@@ -1,12 +1,12 @@
 import { ref, type Ref } from 'vue';
 import type {
   ServerToolDto,
-  ServerToolOAuthDto,
+  ServerToolOAuthStartDto,
   ServerToolTestResultDto,
   ServerToolWriteRequest,
   ToolTypeDto,
 } from '@vance/generated';
-import { brainBaseUrl, brainFetch, getTenantId } from '@vance/shared';
+import { brainFetch } from '@vance/shared';
 
 /**
  * Read + write configured server tools at one project. The
@@ -125,29 +125,31 @@ export function useAdminServerTools(): {
   }
 
   /**
-   * OAuth login for an MCP server tool. {@code prepare} first, so a failed
-   * discovery / client registration shows as a message here; then the
-   * browser navigates into the code flow (302-driven, not fetchable).
+   * OAuth login for an MCP server tool. {@code mcp/init} is a POST: it makes
+   * sure the server's OAuth provider exists (discovery / client registration
+   * on first use — a failure comes back as a message here) and returns the
+   * authorization URL; only then does the browser navigate into the code flow.
    */
   async function login(projectId: string, name: string, returnTo: string): Promise<void> {
     busy.value = true;
     error.value = null;
-    const query = `project=${encodeURIComponent(projectId)}&tool=${encodeURIComponent(name)}`;
+    const query = `project=${encodeURIComponent(projectId)}&tool=${encodeURIComponent(name)}`
+      + `&returnTo=${encodeURIComponent(returnTo)}`;
+    let authorizationUrl: string | undefined;
     try {
-      await brainFetch<ServerToolOAuthDto>('POST', `oauth-client/mcp/prepare?${query}`);
+      const started = await brainFetch<ServerToolOAuthStartDto>('POST', `oauth-client/mcp/init?${query}`);
+      authorizationUrl = started.authorizationUrl;
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Login could not be prepared.';
+      error.value = e instanceof Error ? e.message : 'Login could not be started.';
       busy.value = false;
       throw e;
     }
-    const tenant = getTenantId();
-    if (!tenant) {
-      error.value = 'No tenant configured — user is not logged in.';
+    if (!authorizationUrl) {
+      error.value = 'Login could not be started.';
       busy.value = false;
       return;
     }
-    window.location.assign(`${brainBaseUrl()}/brain/${encodeURIComponent(tenant)}/oauth-client/mcp/init?${query}`
-      + `&returnTo=${encodeURIComponent(returnTo)}`);
+    window.location.assign(authorizationUrl);
   }
 
   async function logout(projectId: string, name: string): Promise<void> {

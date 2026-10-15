@@ -199,7 +199,7 @@ class OAuthControllerTest {
         when(stateService.consume(eq("S123"), eq(TENANT), eq(USERNAME)))
                 .thenReturn(Optional.of(new OAuthStateService.Consumed(PROVIDER_ID, "/settings", null)));
 
-        ResponseEntity<Void> resp = controller.callback(TENANT, PROVIDER_ID, "auth-code", "S123", request);
+        ResponseEntity<Void> resp = controller.callback(TENANT, PROVIDER_ID, "auth-code", "S123", null, request);
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.FOUND);
         assertThat(resp.getHeaders().getLocation()).isEqualTo(URI.create("/settings"));
@@ -261,7 +261,7 @@ class OAuthControllerTest {
         when(stateService.consume(eq("S-PK"), eq(TENANT), eq(USERNAME)))
                 .thenReturn(Optional.of(new OAuthStateService.Consumed(PROVIDER_ID, null, "verifier-from-init")));
 
-        controller.callback(TENANT, PROVIDER_ID, "auth-code", "S-PK", request);
+        controller.callback(TENANT, PROVIDER_ID, "auth-code", "S-PK", null, request);
 
         assertThat(provider.exchangeContexts).hasSize(1);
         assertThat(provider.exchangeContexts.get(0).codeVerifier()).isEqualTo("verifier-from-init");
@@ -276,7 +276,7 @@ class OAuthControllerTest {
         when(stateService.consume(eq("S123"), eq(TENANT), eq(USERNAME)))
                 .thenReturn(Optional.of(new OAuthStateService.Consumed(PROVIDER_ID, null, null)));
 
-        ResponseEntity<Void> resp = controller.callback(TENANT, PROVIDER_ID, "code", "S123", request);
+        ResponseEntity<Void> resp = controller.callback(TENANT, PROVIDER_ID, "code", "S123", null, request);
 
         assertThat(resp.getHeaders().getLocation()).isEqualTo(URI.create("/"));
     }
@@ -290,7 +290,7 @@ class OAuthControllerTest {
         when(stateService.consume(eq("S123"), eq(TENANT), eq(USERNAME)))
                 .thenReturn(Optional.of(new OAuthStateService.Consumed(PROVIDER_ID, "https://evil.com/steal", null)));
 
-        ResponseEntity<Void> resp = controller.callback(TENANT, PROVIDER_ID, "code", "S123", request);
+        ResponseEntity<Void> resp = controller.callback(TENANT, PROVIDER_ID, "code", "S123", null, request);
 
         // Open-redirect protection — non-same-origin returnTo gets dropped.
         assertThat(resp.getHeaders().getLocation()).isEqualTo(URI.create("/"));
@@ -300,7 +300,7 @@ class OAuthControllerTest {
     void callback_400_on_invalid_state() {
         when(stateService.consume(eq("bad"), eq(TENANT), eq(USERNAME))).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> controller.callback(TENANT, PROVIDER_ID, "code", "bad", request))
+        assertThatThrownBy(() -> controller.callback(TENANT, PROVIDER_ID, "code", "bad", null, request))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("Invalid or expired");
         verify(settingService, never()).setEncryptedPassword(any(), any(), any(), any(), any());
@@ -311,7 +311,7 @@ class OAuthControllerTest {
         when(stateService.consume(eq("S123"), eq(TENANT), eq(USERNAME)))
                 .thenReturn(Optional.of(new OAuthStateService.Consumed("github", null, null)));
 
-        assertThatThrownBy(() -> controller.callback(TENANT, "slack", "code", "S123", request))
+        assertThatThrownBy(() -> controller.callback(TENANT, "slack", "code", "S123", null, request))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("does not match");
         verify(settingService, never()).setEncryptedPassword(any(), any(), any(), any(), any());
@@ -326,7 +326,7 @@ class OAuthControllerTest {
         when(stateService.consume(eq("S123"), eq(TENANT), eq(USERNAME)))
                 .thenReturn(Optional.of(new OAuthStateService.Consumed(PROVIDER_ID, null, null)));
 
-        controller.callback(TENANT, PROVIDER_ID, "code", "S123", request);
+        controller.callback(TENANT, PROVIDER_ID, "code", "S123", null, request);
 
         verify(settingService)
                 .delete(
@@ -349,7 +349,7 @@ class OAuthControllerTest {
         when(stateService.consume(eq("S123"), eq(TENANT), eq(USERNAME)))
                 .thenReturn(Optional.of(new OAuthStateService.Consumed(PROVIDER_ID, null, null)));
 
-        assertThatThrownBy(() -> controller.callback(TENANT, PROVIDER_ID, "code", "S123", request))
+        assertThatThrownBy(() -> controller.callback(TENANT, PROVIDER_ID, "code", "S123", null, request))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("rejected token exchange");
     }
@@ -358,17 +358,100 @@ class OAuthControllerTest {
 
     @Test
     void disconnect_wipes_all_user_settings_and_publishes_event() {
-        // Disconnect uses prefix-delete to clear oauth.<provider>.* — that
-        // covers well-known keys (access/refresh/expires/scopes/extra)
-        // AND any flat-extra projections (cloud_id, site_url, …) the
-        // connect flow may have written, without the test needing to
-        // enumerate them.
+        // Disconnect clears every oauth.<provider>.* key of the user — the
+        // well-known keys (access/refresh/expires/scopes/extra) AND any
+        // flat-extra projections (cloud_id, site_url, …) the connect flow
+        // may have written — and nothing of another provider.
+        when(settingService.findAll(TENANT, SettingService.SCOPE_PROJECT, "_user_" + USERNAME))
+                .thenReturn(List.of(
+                        setting("oauth.slack.access_token"),
+                        setting("oauth.slack.cloud_id"),
+                        setting("oauth.github.access_token")));
+
         ResponseEntity<Void> resp = controller.disconnect(TENANT, PROVIDER_ID, request);
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
-        verify(settingService, times(1))
-                .deleteByPrefix(TENANT, SettingService.SCOPE_PROJECT, "_user_" + USERNAME, "oauth.slack.");
+        verify(settingService)
+                .delete(TENANT, SettingService.SCOPE_PROJECT, "_user_" + USERNAME, "oauth.slack.access_token");
+        verify(settingService)
+                .delete(TENANT, SettingService.SCOPE_PROJECT, "_user_" + USERNAME, "oauth.slack.cloud_id");
+        verify(settingService, never())
+                .delete(TENANT, SettingService.SCOPE_PROJECT, "_user_" + USERNAME, "oauth.github.access_token");
         verify(events, times(1)).publishEvent(new OAuthDisconnectedEvent(TENANT, USERNAME, PROVIDER_ID));
+    }
+
+    // ─────── RFC 9207 iss + returnTo ───────
+
+    @Test
+    void mcp_callback_rejects_foreign_issuer_before_exchange() {
+        RecordingProvider provider = new RecordingProvider(URI.create("https://as/auth"));
+        when(configRegistry.resolve(TENANT, "mcp-x"))
+                .thenReturn(Optional.of(new ResolvedOAuthProvider(
+                        configWithExtra("mcp-x", "mcp", Map.of("issuer", "https://as.example")), provider)));
+        when(stateService.consume(eq("S"), eq(TENANT), eq(USERNAME)))
+                .thenReturn(Optional.of(new OAuthStateService.Consumed("mcp-x", null, "v")));
+
+        assertThatThrownBy(() -> controller.callback(TENANT, "_mcp", "code", "S", "https://evil.example", request))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("issuer");
+        assertThat(provider.exchangeContexts).isEmpty();
+    }
+
+    @Test
+    void mcp_callback_requires_iss_when_server_announces_it() {
+        RecordingProvider provider = new RecordingProvider(URI.create("https://as/auth"));
+        when(configRegistry.resolve(TENANT, "mcp-x"))
+                .thenReturn(Optional.of(new ResolvedOAuthProvider(
+                        configWithExtra(
+                                "mcp-x", "mcp", Map.of("issuer", "https://as.example", "issParameterSupported", true)),
+                        provider)));
+        when(stateService.consume(eq("S"), eq(TENANT), eq(USERNAME)))
+                .thenReturn(Optional.of(new OAuthStateService.Consumed("mcp-x", null, "v")));
+
+        assertThatThrownBy(() -> controller.callback(TENANT, "_mcp", "code", "S", null, request))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("iss");
+        assertThat(provider.exchangeContexts).isEmpty();
+    }
+
+    @Test
+    void mcp_callback_accepts_matching_issuer() {
+        RecordingProvider provider = new RecordingProvider(URI.create("https://as/auth"));
+        when(configRegistry.resolve(TENANT, "mcp-x"))
+                .thenReturn(Optional.of(new ResolvedOAuthProvider(
+                        configWithExtra(
+                                "mcp-x", "mcp", Map.of("issuer", "https://as.example", "issParameterSupported", true)),
+                        provider)));
+        when(stateService.consume(eq("S"), eq(TENANT), eq(USERNAME)))
+                .thenReturn(Optional.of(new OAuthStateService.Consumed("mcp-x", null, "v")));
+
+        ResponseEntity<Void> resp = controller.callback(TENANT, "_mcp", "code", "S", "https://as.example", request);
+
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.FOUND);
+        assertThat(provider.exchangeContexts).hasSize(1);
+    }
+
+    @Test
+    void callback_rejects_backslash_and_control_char_returnTo() {
+        when(configRegistry.resolve(TENANT, PROVIDER_ID))
+                .thenReturn(Optional.of(new ResolvedOAuthProvider(
+                        configWithSecret(PROVIDER_ID, "slack"),
+                        new RecordingProvider(null, new OAuthTokenSet("a", null, null, Map.of())))));
+        for (String evil : List.of("/\\evil.com", "/\tevil", "/ok\r\nLocation: x", "//evil.com", "/a b")) {
+            when(stateService.consume(eq("S123"), eq(TENANT), eq(USERNAME)))
+                    .thenReturn(Optional.of(new OAuthStateService.Consumed(PROVIDER_ID, evil, null)));
+
+            ResponseEntity<Void> resp = controller.callback(TENANT, PROVIDER_ID, "code", "S123", null, request);
+
+            assertThat(resp.getHeaders().getLocation()).as(evil).isEqualTo(URI.create("/"));
+        }
+    }
+
+    @Test
+    void safeReturnPath_keepsPlainPathsWithQueryAndFragment() {
+        assertThat(OAuthFlowService.safeReturnPath("/tools.html?project=p#x")).isEqualTo("/tools.html?project=p#x");
+        assertThat(OAuthFlowService.safeReturnPath("tools.html")).isNull();
+        assertThat(OAuthFlowService.safeReturnPath(null)).isNull();
     }
 
     // ─────── mcp: shared callback + token owner ───────
@@ -383,7 +466,7 @@ class OAuthControllerTest {
                 .thenReturn(Optional.of(new OAuthStateService.Consumed(
                         "mcp-x", "/tools.html", "verifier", OAuthTokenOwner.project("team"))));
 
-        ResponseEntity<Void> resp = controller.callback(TENANT, "_mcp", "code", "S-MCP", request);
+        ResponseEntity<Void> resp = controller.callback(TENANT, "_mcp", "code", "S-MCP", null, request);
 
         assertThat(resp.getHeaders().getLocation()).isEqualTo(URI.create("/tools.html"));
         assertThat(provider.exchangeContexts.get(0).redirectUri())
@@ -404,7 +487,7 @@ class OAuthControllerTest {
         when(stateService.consume(eq("S"), eq(TENANT), eq(USERNAME)))
                 .thenReturn(Optional.of(new OAuthStateService.Consumed("mcp-x", null, null)));
 
-        assertThatThrownBy(() -> controller.callback(TENANT, "mcp-x", "code", "S", request))
+        assertThatThrownBy(() -> controller.callback(TENANT, "mcp-x", "code", "S", null, request))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("callback path");
     }
@@ -415,7 +498,7 @@ class OAuthControllerTest {
         when(stateService.consume(eq("S"), eq(TENANT), eq(USERNAME)))
                 .thenReturn(Optional.of(new OAuthStateService.Consumed(PROVIDER_ID, null, null)));
 
-        assertThatThrownBy(() -> controller.callback(TENANT, "_mcp", "code", "S", request))
+        assertThatThrownBy(() -> controller.callback(TENANT, "_mcp", "code", "S", null, request))
                 .isInstanceOf(ResponseStatusException.class);
     }
 
@@ -448,6 +531,25 @@ class OAuthControllerTest {
     private static ResolvedOAuthProvider resolved(String providerId, String typeId) {
         return new ResolvedOAuthProvider(
                 configWithSecret(providerId, typeId), new RecordingProvider(URI.create("https://stub/auth")));
+    }
+
+    private static de.mhus.vance.shared.settings.SettingDocument setting(String key) {
+        de.mhus.vance.shared.settings.SettingDocument doc = new de.mhus.vance.shared.settings.SettingDocument();
+        doc.setKey(key);
+        return doc;
+    }
+
+    private static OAuthProviderConfig configWithExtra(String providerId, String typeId, Map<String, Object> extra) {
+        return new OAuthProviderConfig(
+                providerId,
+                typeId,
+                null,
+                "https://provider.example/authorize",
+                "https://provider.example/token",
+                "client-id-" + providerId,
+                "",
+                new ArrayList<>(),
+                new LinkedHashMap<>(extra));
     }
 
     private static OAuthProviderConfig configWithSecret(String providerId, String typeId) {

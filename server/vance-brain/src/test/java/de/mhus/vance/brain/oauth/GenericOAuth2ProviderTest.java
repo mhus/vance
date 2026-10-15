@@ -379,6 +379,82 @@ class GenericOAuth2ProviderTest {
                 .containsEntry("grant_type", "refresh_token");
     }
 
+    @Test
+    void mcp_provider_prefers_the_canonical_resource_from_metadata() {
+        McpOAuthProvider provider = new McpOAuthProvider(new PackHttpClient());
+        OAuthProviderConfig cfg = new OAuthProviderConfig(
+                "mcp-x",
+                McpOAuthProvider.TYPE_ID,
+                null,
+                "https://as.example/authorize",
+                "https://as.example/token",
+                "client-1",
+                "",
+                new ArrayList<>(),
+                new LinkedHashMap<>(Map.of(
+                        "usePkce", true, "mcpUrl", "https://mcp.example/v1/mcp", "resource", "https://mcp.example")));
+
+        URI authorize = provider.buildAuthorizeUri(cfg, ctxWithPkce("S", "https://v/cb", "verifier"));
+
+        assertThat(authorize.getRawQuery()).endsWith("resource=https%3A%2F%2Fmcp.example");
+    }
+
+    @Test
+    void mcp_tls_skipVerification_applies_only_to_the_mcp_origin() {
+        McpOAuthProvider provider = new McpOAuthProvider(new PackHttpClient());
+        OAuthProviderConfig cfg = new OAuthProviderConfig(
+                "mcp-x",
+                McpOAuthProvider.TYPE_ID,
+                null,
+                "https://as.example/authorize",
+                "https://as.example/token",
+                "client-1",
+                "",
+                new ArrayList<>(),
+                new LinkedHashMap<>(Map.of(
+                        "usePkce",
+                        true,
+                        "mcpUrl",
+                        "https://mcp.internal:8443/mcp",
+                        "tls",
+                        Map.of("skipVerification", true, "trustedCaPemPath", "/ca.pem"))));
+
+        // Same origin as the MCP server: the tool's TLS block as written.
+        assertThat(provider.tlsFor(cfg, "https://mcp.internal:8443/token"))
+                .isEqualTo(new PackHttpClient.TlsConfig(true, "/ca.pem"));
+        // A foreign authorization server: the CA carries over, never trust-all.
+        assertThat(provider.tlsFor(cfg, "https://as.example/token"))
+                .isEqualTo(new PackHttpClient.TlsConfig(false, "/ca.pem"));
+        // Generic providers keep the JDK trust store.
+        assertThat(newProvider().tlsFor(cfg, "https://as.example/token")).isEqualTo(PackHttpClient.TlsConfig.DEFAULT);
+    }
+
+    @Test
+    void issuer_check_follows_rfc9207() {
+        OAuthProviderConfig noIssuer =
+                new OAuthProviderConfig("p", "generic-oauth2", null, "a", "t", "id", "s", List.of(), Map.of());
+        OAuthProviderConfig optional = new OAuthProviderConfig(
+                "p", "mcp", null, "a", "t", "id", "", List.of(), Map.of("issuer", "https://as.example"));
+        OAuthProviderConfig required = new OAuthProviderConfig(
+                "p",
+                "mcp",
+                null,
+                "a",
+                "t",
+                "id",
+                "",
+                List.of(),
+                Map.of("issuer", "https://as.example", "issParameterSupported", true));
+
+        GenericOAuth2Provider.checkAuthorizationResponseIssuer(noIssuer, "https://anything");
+        GenericOAuth2Provider.checkAuthorizationResponseIssuer(optional, null);
+        GenericOAuth2Provider.checkAuthorizationResponseIssuer(required, "https://as.example");
+        assertThatThrownBy(() -> GenericOAuth2Provider.checkAuthorizationResponseIssuer(optional, "https://evil"))
+                .isInstanceOf(OAuthFlowException.class);
+        assertThatThrownBy(() -> GenericOAuth2Provider.checkAuthorizationResponseIssuer(required, null))
+                .isInstanceOf(OAuthFlowException.class);
+    }
+
     // ─────── Helpers ───────
 
     private GenericOAuth2Provider newProvider() {

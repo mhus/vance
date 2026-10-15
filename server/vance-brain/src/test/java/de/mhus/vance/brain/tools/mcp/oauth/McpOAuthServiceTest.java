@@ -28,7 +28,13 @@ import de.mhus.vance.brain.tools.rest.SettingsSecretResolver;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.permission.WriteActor;
+import de.mhus.vance.shared.servertool.ServerToolConfig;
 import de.mhus.vance.shared.settings.SettingService;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.toolpack.core.PackHttpClient;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -41,6 +47,7 @@ class McpOAuthServiceTest {
 
     private static final String TENANT = "acme";
     private static final String URL = "https://mcp.example.com/mcp";
+    private static final String PROJECT = "team";
 
     private OAuthConfigRegistry configRegistry;
     private OAuthTokenStore tokenStore;
@@ -78,7 +85,38 @@ class McpOAuthServiceTest {
                 .orElseThrow();
     }
 
+    private static McpOAuthService.McpServerTool tool(
+            Map<String, Object> auth, ServerToolConfig.Source source, Map<String, Object> extraParams) {
+        Map<String, Object> params = new LinkedHashMap<>(Map.of("transport", "http", "url", URL, "auth", auth));
+        params.putAll(extraParams);
+        ServerToolConfig config = new ServerToolConfig(
+                "notion",
+                "mcp_server",
+                "Notion",
+                params,
+                new ArrayList<>(),
+                true,
+                false,
+                new LinkedHashSet<>(),
+                false,
+                "",
+                source,
+                null,
+                null,
+                "");
+        return new McpOAuthService.McpServerTool(
+                config, McpOAuthSettings.of(params).orElseThrow());
+    }
+
+    private static McpOAuthService.McpServerTool tool(Map<String, Object> auth) {
+        return tool(auth, ServerToolConfig.Source.VANCE, Map.of());
+    }
+
     private void discoveryAnswers(boolean cimd, String registrationEndpoint) {
+        discoveryAnswers(cimd, registrationEndpoint, List.of("S256"));
+    }
+
+    private void discoveryAnswers(boolean cimd, String registrationEndpoint, List<String> pkceMethods) {
         when(discovery.probe(eq(URL), any()))
                 .thenReturn(new McpAuthDiscoveryClient.Challenge(true, "https://mcp.example.com/prm", List.of("read")));
         when(discovery.resourceMetadata(eq(URL), eq("https://mcp.example.com/prm"), any()))
@@ -91,14 +129,39 @@ class McpOAuthServiceTest {
                         "https://auth.example.com/token",
                         registrationEndpoint,
                         cimd,
-                        List.of("S256"),
-                        List.of()));
+                        pkceMethods,
+                        List.of(),
+                        true));
     }
 
     private ResolvedOAuthProvider resolvedProvider(String providerId) {
         return new ResolvedOAuthProvider(
                 new OAuthProviderConfig(
                         providerId, McpOAuthProvider.TYPE_ID, null, "a", "t", "c", "", List.of(), Map.of()),
+                new McpOAuthProvider());
+    }
+
+    /** A brain-written provider as the current code writes it, for {@link McpOAuthService#matches}. */
+    private static ResolvedOAuthProvider managed(
+            String clientId, String clientSecret, String registration, List<String> scopes, Map<String, Object> more) {
+        Map<String, Object> extra = new LinkedHashMap<>();
+        extra.put(McpOAuthProvider.EXTRA_MCP_URL, URL);
+        extra.put(McpOAuthProvider.EXTRA_RESOURCE, URL);
+        extra.put("issuer", "https://auth.example.com");
+        extra.put(McpOAuthProvider.EXTRA_REGISTRATION, registration);
+        extra.put(McpOAuthProvider.EXTRA_MANAGED, true);
+        extra.putAll(more);
+        return new ResolvedOAuthProvider(
+                new OAuthProviderConfig(
+                        McpOAuthSettings.providerIdFor(URL),
+                        McpOAuthProvider.TYPE_ID,
+                        null,
+                        "https://auth.example.com/authorize",
+                        "https://auth.example.com/token",
+                        clientId,
+                        clientSecret,
+                        scopes,
+                        extra),
                 new McpOAuthProvider());
     }
 
@@ -113,7 +176,7 @@ class McpOAuthServiceTest {
                 .thenReturn(Optional.empty(), Optional.empty(), Optional.of(resolvedProvider(s.providerId())));
         when(documentService.findByPath(eq(TENANT), eq("_tenant"), anyString())).thenReturn(Optional.empty());
 
-        service.ensureProvider(TENANT, s, "Notion", Map.of(), WriteActor.SYSTEM);
+        service.ensureProvider(TENANT, PROJECT, tool(Map.of("type", "oauth")), WriteActor.SYSTEM);
 
         ArgumentCaptor<String> yaml = ArgumentCaptor.forClass(String.class);
         verify(documentService)
@@ -133,6 +196,9 @@ class McpOAuthServiceTest {
                 .contains("mcpUrl: " + URL)
                 .contains("usePkce: true")
                 .contains("registration: dcr")
+                .contains("resource: " + URL)
+                .contains("issuer: https://auth.example.com")
+                .contains("issParameterSupported: true")
                 .contains("- read");
         OAuthProviderConfig parsed =
                 new OAuthProviderLoader(documentService, settingService).validateYaml(s.providerId(), yaml.getValue());
@@ -143,16 +209,20 @@ class McpOAuthServiceTest {
 
     @Test
     void ensureProvider_usesManualClientAndStoresSecret() {
-        McpOAuthSettings s =
-                settings(Map.of("type", "oauth", "clientId", "manual-1", "clientSecret", "{{secret:tenant:k}}"));
+        Map<String, Object> auth =
+                Map.of("type", "oauth", "clientId", "manual-1", "clientSecret", "{{secret:project:k}}");
+        McpOAuthSettings s = settings(auth);
         discoveryAnswers(false, null);
-        when(secretResolver.substituteForConnector(eq("{{secret:tenant:k}}"), any()))
+        // A project tool resolves its secret reference in its own project.
+        when(secretResolver.substituteForConnector(
+                        "{{secret:project:k}}", new ToolInvocationContext(TENANT, PROJECT, null, null, null)))
                 .thenReturn("s3cret");
         when(configRegistry.resolve(TENANT, s.providerId()))
                 .thenReturn(Optional.empty(), Optional.empty(), Optional.of(resolvedProvider(s.providerId())));
         when(documentService.findByPath(eq(TENANT), eq("_tenant"), anyString())).thenReturn(Optional.empty());
 
-        service.ensureProvider(TENANT, s, "Manual", Map.of(), WriteActor.SYSTEM);
+        service.ensureProvider(
+                TENANT, PROJECT, tool(auth, ServerToolConfig.Source.PROJECT, Map.of()), WriteActor.SYSTEM);
 
         verify(settingService)
                 .setEncryptedPassword(
@@ -176,7 +246,7 @@ class McpOAuthServiceTest {
         existing.setId("doc-1");
         when(documentService.findByPath(eq(TENANT), eq("_tenant"), anyString())).thenReturn(Optional.of(existing));
 
-        service.ensureProvider(TENANT, s, "X", Map.of(), WriteActor.SYSTEM);
+        service.ensureProvider(TENANT, PROJECT, tool(Map.of("type", "oauth")), WriteActor.SYSTEM);
 
         verify(documentService).update(eq("doc-1"), isNull(), isNull(), anyString(), isNull(), eq(WriteActor.SYSTEM));
         verify(settingService)
@@ -187,10 +257,10 @@ class McpOAuthServiceTest {
     @Test
     void ensureProvider_returnsExistingWithoutDiscovery() {
         McpOAuthSettings s = settings(Map.of("type", "oauth"));
-        ResolvedOAuthProvider existing = resolvedProvider(s.providerId());
+        ResolvedOAuthProvider existing = managed("dyn-1", "", "dcr", List.of("read"), Map.of());
         when(configRegistry.resolve(TENANT, s.providerId())).thenReturn(Optional.of(existing));
 
-        assertThat(service.ensureProvider(TENANT, s, "X", Map.of(), WriteActor.SYSTEM))
+        assertThat(service.ensureProvider(TENANT, PROJECT, tool(Map.of("type", "oauth")), WriteActor.SYSTEM))
                 .isSameAs(existing);
         verifyNoInteractions(discovery, documentService);
     }
@@ -201,7 +271,8 @@ class McpOAuthServiceTest {
         when(configRegistry.resolve(TENANT, s.providerId())).thenReturn(Optional.empty());
         when(discovery.probe(eq(URL), any())).thenReturn(new McpAuthDiscoveryClient.Challenge(false, null, List.of()));
 
-        assertThatThrownBy(() -> service.ensureProvider(TENANT, s, "X", Map.of(), WriteActor.SYSTEM))
+        assertThatThrownBy(
+                        () -> service.ensureProvider(TENANT, PROJECT, tool(Map.of("type", "oauth")), WriteActor.SYSTEM))
                 .isInstanceOf(McpOAuthException.class)
                 .hasMessageContaining("without login");
     }
@@ -212,9 +283,97 @@ class McpOAuthServiceTest {
         when(configRegistry.resolve(TENANT, s.providerId())).thenReturn(Optional.empty());
         discoveryAnswers(false, null);
 
-        assertThatThrownBy(() -> service.ensureProvider(TENANT, s, "X", Map.of(), WriteActor.SYSTEM))
+        assertThatThrownBy(
+                        () -> service.ensureProvider(TENANT, PROJECT, tool(Map.of("type", "oauth")), WriteActor.SYSTEM))
                 .isInstanceOf(McpOAuthException.class)
                 .hasMessageContaining("auth.clientId");
+    }
+
+    @Test
+    void ensureProvider_refusesServerWithoutAnnouncedPkce() {
+        McpOAuthSettings s = settings(Map.of("type", "oauth"));
+        when(configRegistry.resolve(TENANT, s.providerId())).thenReturn(Optional.empty());
+        discoveryAnswers(false, "https://auth.example.com/register", List.of());
+
+        assertThatThrownBy(
+                        () -> service.ensureProvider(TENANT, PROJECT, tool(Map.of("type", "oauth")), WriteActor.SYSTEM))
+                .isInstanceOf(McpOAuthException.class)
+                .hasMessageContaining("code_challenge_methods_supported");
+        verify(discovery, never()).register(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void ensureProvider_rediscoversWhenTheManualClientChanged() {
+        Map<String, Object> auth = Map.of("type", "oauth", "clientId", "manual-2");
+        McpOAuthSettings s = settings(auth);
+        ResolvedOAuthProvider stale = managed("manual-1", "", "manual", List.of(), Map.of());
+        discoveryAnswers(false, null);
+        when(configRegistry.resolve(TENANT, s.providerId()))
+                .thenReturn(Optional.of(stale), Optional.of(stale), Optional.of(resolvedProvider(s.providerId())));
+        when(documentService.findByPath(eq(TENANT), eq("_tenant"), anyString())).thenReturn(Optional.empty());
+
+        service.ensureProvider(TENANT, PROJECT, tool(auth), WriteActor.SYSTEM);
+
+        ArgumentCaptor<String> yaml = ArgumentCaptor.forClass(String.class);
+        verify(documentService)
+                .createText(
+                        eq(TENANT), eq("_tenant"), anyString(), anyString(), isNull(), yaml.capture(), any(), any());
+        assertThat(yaml.getValue()).contains("clientId: manual-2");
+    }
+
+    @Test
+    void matches_detectsEveryDrift() {
+        McpOAuthSettings dcr = settings(Map.of("type", "oauth"));
+        PackHttpClient.TlsConfig none = PackHttpClient.TlsConfig.DEFAULT;
+        ResolvedOAuthProvider current = managed("dyn-1", "", "dcr", List.of("read"), Map.of());
+
+        assertThat(McpOAuthService.matches(current, dcr, none, null)).isTrue();
+        // legacy document without recorded issuer
+        ResolvedOAuthProvider legacy = managed("dyn-1", "", "dcr", List.of(), Map.of("issuer", 1));
+        assertThat(McpOAuthService.matches(legacy, dcr, none, null)).isFalse();
+        // explicit scopes changed
+        assertThat(McpOAuthService.matches(current, settings(Map.of("type", "oauth", "scopes", "write")), none, null))
+                .isFalse();
+        // a hand-registered client appeared on the tool
+        assertThat(McpOAuthService.matches(current, settings(Map.of("type", "oauth", "clientId", "m")), none, null))
+                .isFalse();
+        // TLS block changed
+        assertThat(McpOAuthService.matches(current, dcr, new PackHttpClient.TlsConfig(false, "/ca.pem"), null))
+                .isFalse();
+        // manual client: secret changed
+        McpOAuthSettings manual = settings(Map.of("type", "oauth", "clientId", "m", "clientSecret", "{{secret:k}}"));
+        ResolvedOAuthProvider manualProvider = managed("m", "old", "manual", List.of(), Map.of());
+        assertThat(McpOAuthService.matches(manualProvider, manual, none, "old")).isTrue();
+        assertThat(McpOAuthService.matches(manualProvider, manual, none, "new")).isFalse();
+        // a provider the operator wrote by hand is never replaced
+        assertThat(McpOAuthService.matches(resolvedProvider(dcr.providerId()), manual, none, "x"))
+                .isTrue();
+    }
+
+    @Test
+    void ensureProvider_recordsTheToolsTlsBlock() {
+        McpOAuthSettings s = settings(Map.of("type", "oauth"));
+        discoveryAnswers(false, "https://auth.example.com/register");
+        when(discovery.register(any(), any(), any(), any(), any(), any()))
+                .thenReturn(new McpAuthDiscoveryClient.ClientRegistration("dyn-3", null));
+        when(configRegistry.resolve(TENANT, s.providerId()))
+                .thenReturn(Optional.empty(), Optional.empty(), Optional.of(resolvedProvider(s.providerId())));
+        when(documentService.findByPath(eq(TENANT), eq("_tenant"), anyString())).thenReturn(Optional.empty());
+
+        service.ensureProvider(
+                TENANT,
+                PROJECT,
+                tool(
+                        Map.of("type", "oauth"),
+                        ServerToolConfig.Source.VANCE,
+                        Map.of("tls", Map.of("skipVerification", true, "trustedCaPemPath", "/ca.pem"))),
+                WriteActor.SYSTEM);
+
+        ArgumentCaptor<String> yaml = ArgumentCaptor.forClass(String.class);
+        verify(documentService)
+                .createText(
+                        eq(TENANT), eq("_tenant"), anyString(), anyString(), isNull(), yaml.capture(), any(), any());
+        assertThat(yaml.getValue()).contains("skipVerification: true").contains("trustedCaPemPath: /ca.pem");
     }
 
     @Test

@@ -145,10 +145,11 @@ public class OAuthController {
     // ──────────────────── Callback: consume code, persist tokens ─────────
 
     /**
-     * Provider-redirected entrypoint. Validates the state, exchanges
-     * the {@code code} for tokens, persists them for the flow's owner,
-     * and 302-redirects the browser to the original {@code returnTo}
-     * (or to {@code /} if absent).
+     * Provider-redirected entrypoint. Validates the state, checks the
+     * authorization server's {@code iss} (RFC 9207) where the provider
+     * records its issuer, exchanges the {@code code} for tokens, persists
+     * them for the flow's owner, and 302-redirects the browser to the
+     * original {@code returnTo} (or to {@code /} if absent).
      */
     @GetMapping("/{providerId}/callback")
     public ResponseEntity<Void> callback(
@@ -156,6 +157,7 @@ public class OAuthController {
             @PathVariable("providerId") String providerId,
             @RequestParam("code") String code,
             @RequestParam("state") String state,
+            @RequestParam(value = "iss", required = false) @Nullable String iss,
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Tenant(tenant), Action.READ);
         String userId = authority.contextOf(request).subjectId();
@@ -187,6 +189,16 @@ public class OAuthController {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "OAuth callback path does not match provider '" + effectiveProviderId + "'");
+        }
+
+        // Mix-up defence (RFC 9207): on the shared MCP callback several
+        // authorization servers answer on one path; the response must come
+        // from the issuer this flow's provider was discovered at.
+        try {
+            GenericOAuth2Provider.checkAuthorizationResponseIssuer(provider.config(), iss);
+        } catch (OAuthFlowException ex) {
+            log.warn("OAuth callback: provider '{}': {}", effectiveProviderId, ex.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
         }
 
         String redirectUri = flowService.redirectUriFor(tenant, provider.config());
@@ -273,16 +285,14 @@ public class OAuthController {
         return ResponseEntity.status(HttpStatus.FOUND).location(target).build();
     }
 
+    /**
+     * Only plain same-origin paths are accepted — never let a caller send
+     * the browser to a foreign origin ({@link OAuthFlowService#safeReturnPath}).
+     * Checked again here although the flow start already dropped unsafe
+     * values: the state document is the only thing between them.
+     */
     private static URI resolveReturnUri(@Nullable String returnTo) {
-        if (returnTo == null || returnTo.isBlank()) {
-            return URI.create("/");
-        }
-        // Only relative paths are accepted — never let a caller send the
-        // browser to a foreign origin. A leading slash forces same-origin
-        // navigation in the browser.
-        if (returnTo.startsWith("/") && !returnTo.startsWith("//")) {
-            return URI.create(returnTo);
-        }
-        return URI.create("/");
+        String safe = OAuthFlowService.safeReturnPath(returnTo);
+        return URI.create(safe == null ? "/" : safe);
     }
 }

@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.oauth;
 
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.security.SecureRandom;
 import java.util.Base64;
 import lombok.extern.slf4j.Slf4j;
@@ -53,12 +54,13 @@ public class OAuthFlowService {
             OAuthTokenOwner owner,
             @Nullable String returnTo) {
         String providerId = provider.providerId();
+        String safeReturnTo = safeReturnPath(returnTo);
         String codeVerifier = GenericOAuth2Provider.isPkceEnabled(provider.config()) ? mintPkceVerifier() : null;
         String state = owner.kind() == OAuthTokenOwner.Kind.USER
-                ? stateService.start(tenant, userId, providerId, returnTo, codeVerifier)
-                : stateService.start(tenant, userId, providerId, owner, returnTo, codeVerifier);
+                ? stateService.start(tenant, userId, providerId, safeReturnTo, codeVerifier)
+                : stateService.start(tenant, userId, providerId, owner, safeReturnTo, codeVerifier);
         OAuthInitContext ctx = new OAuthInitContext(
-                tenant, userId, state, redirectUriFor(tenant, provider.config()), returnTo, codeVerifier);
+                tenant, userId, state, redirectUriFor(tenant, provider.config()), safeReturnTo, codeVerifier);
         return provider.provider().buildAuthorizeUri(provider.config(), ctx);
     }
 
@@ -69,6 +71,37 @@ public class OAuthFlowService {
                 .pathSegment("brain", tenant, "oauth-client", segment, "callback")
                 .build()
                 .toUriString();
+    }
+
+    /**
+     * {@code returnTo} when it is a plain same-origin path, else {@code null}.
+     * Accepted: starts with a single {@code /}, no backslash (browsers read
+     * a leading slash-backslash like {@code //}), no control or whitespace
+     * characters, and parses as a URI without scheme or authority. Anything
+     * else could send the browser to a foreign origin after the callback.
+     */
+    public static @Nullable String safeReturnPath(@Nullable String returnTo) {
+        if (returnTo == null || returnTo.isEmpty()) {
+            return null;
+        }
+        if (returnTo.charAt(0) != '/' || returnTo.startsWith("//")) {
+            return null;
+        }
+        for (int i = 0; i < returnTo.length(); i++) {
+            char c = returnTo.charAt(i);
+            if (c == '\\' || Character.isISOControl(c) || Character.isWhitespace(c)) {
+                return null;
+            }
+        }
+        try {
+            URI uri = new URI(returnTo);
+            if (uri.getScheme() != null || uri.getRawAuthority() != null) {
+                return null;
+            }
+        } catch (URISyntaxException e) {
+            return null;
+        }
+        return returnTo;
     }
 
     /** The deployment's public base URL, without trailing slash. */

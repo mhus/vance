@@ -1,6 +1,8 @@
 package de.mhus.vance.brain.tools.mcp.oauth;
 
 import de.mhus.vance.brain.oauth.OAuthTokenOwner;
+import de.mhus.vance.brain.tools.types.ToolPackUnavailableException;
+import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.toolpack.mcp.McpConfig;
 import de.mhus.vance.toolpack.rest.AuthSpec;
 import java.net.URI;
@@ -73,6 +75,16 @@ public record McpOAuthSettings(
     public static final String PROVIDER_ID_PREFIX = "mcp-";
 
     /**
+     * Bearer token of the translated transport config. Not a setting
+     * reference: only {@link McpOAuthBearerResolver}, which the connection
+     * pool attaches to the transport of exactly this tool, answers it — with
+     * the login scope's access token from the refresher. Any other resolver
+     * finds no setting under this name and substitutes nothing, so the token
+     * of a login only ever travels to the URL its provider was derived from.
+     */
+    public static final String BEARER_REFERENCE = "{{secret:mcp-oauth:access_token}}";
+
+    /**
      * The settings of {@code parameters} when its {@code auth.type} is
      * {@code oauth}; empty for any other auth.
      *
@@ -124,33 +136,42 @@ public record McpOAuthSettings(
         return PROVIDER_ID_PREFIX + (slug.isEmpty() ? "server" : slug) + "-" + hash8(url.trim());
     }
 
-    /** Whose tokens a call in {@code projectId} by {@code userId} uses. */
+    /**
+     * Whose tokens a call in {@code projectId} by {@code userId} uses.
+     *
+     * @throws ToolPackUnavailableException for a project login in
+     *         {@code _tenant}: there is no project account there, and the
+     *         storage of {@code _tenant} is the tenant account's — a project
+     *         login must never turn into the tenant login
+     */
     public OAuthTokenOwner owner(String projectId, String userId) {
         return switch (loginScope) {
             case USER -> OAuthTokenOwner.user(userId);
-            case PROJECT -> OAuthTokenOwner.project(projectId);
+            case PROJECT -> {
+                if (HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
+                    throw new ToolPackUnavailableException("auth.loginScope 'project' has no account in '" + projectId
+                            + "' — log in inside a project, or use loginScope 'tenant'");
+                }
+                yield OAuthTokenOwner.project(projectId);
+            }
             case TENANT -> OAuthTokenOwner.tenant();
         };
     }
 
     /**
      * The transport config of an {@code mcp_server} tool, with
-     * {@code auth.type: oauth} translated into the bearer token of the
-     * login scope's account.
+     * {@code auth.type: oauth} translated into a bearer auth carrying
+     * {@link #BEARER_REFERENCE} — resolved per request by
+     * {@link McpOAuthBearerResolver} into the login scope's access token.
      */
     public static McpConfig effectiveConfig(@Nullable Map<String, Object> parameters) {
         McpConfig cfg = McpConfig.fromParameters(parameters);
         if (cfg.auth().type() != AuthSpec.Type.OAUTH) {
             return cfg;
         }
-        McpOAuthSettings settings =
-                of(parameters).orElseThrow(() -> new IllegalArgumentException("auth.type 'oauth' block is incomplete"));
-        return cfg.withAuth(AuthSpec.bearer(settings.tokenTemplate()));
-    }
-
-    /** The secret template the MCP transport sends as bearer token. */
-    public String tokenTemplate() {
-        return "{{secret:" + loginScope.wireName() + ":oauth." + providerId() + ".access_token}}";
+        // Validates the oauth block — a malformed one is a load error of the tool.
+        of(parameters).orElseThrow(() -> new IllegalArgumentException("auth.type 'oauth' block is incomplete"));
+        return cfg.withAuth(AuthSpec.bearer(BEARER_REFERENCE));
     }
 
     private static String hash8(String value) {

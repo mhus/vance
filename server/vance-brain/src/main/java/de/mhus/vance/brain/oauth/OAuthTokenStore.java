@@ -2,9 +2,11 @@ package de.mhus.vance.brain.oauth;
 
 import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.shared.home.HomeBootstrapService;
+import de.mhus.vance.shared.settings.SettingDocument;
 import de.mhus.vance.shared.settings.SettingService;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -28,6 +30,13 @@ import tools.jackson.databind.json.JsonMapper;
  *       extra claim (PASSWORD for secret-bearing claims) so tool templates
  *       can reference it directly</li>
  * </ul>
+ *
+ * <p>The same namespace also carries the provider's <em>client</em>
+ * configuration on the {@code _tenant} project —
+ * {@code oauth.<providerId>.client_secret}
+ * ({@link OAuthProviderLoader#clientSecretKey}). For a tenant-wide login
+ * the tokens sit right next to it, so neither {@link #wipe} nor the
+ * flat-extra projection of {@link #persist} ever touches that key.
  */
 @Service
 @RequiredArgsConstructor
@@ -39,6 +48,21 @@ public class OAuthTokenStore {
     static final String KEY_EXPIRES_AT = "expires_at";
     static final String KEY_SCOPES = "scopes";
     static final String KEY_EXTRA = "extra";
+
+    /**
+     * Key suffixes the flat-extra projection never writes: the token keys
+     * above and the client secret. A token response is foreign input — a
+     * claim named {@code client_secret} must not overwrite the client
+     * registration of a tenant login, nor one named {@code refresh_token}
+     * a stored token.
+     */
+    private static final Set<String> RESERVED_SUFFIXES = Set.of(
+            KEY_ACCESS_TOKEN,
+            KEY_REFRESH_TOKEN,
+            KEY_EXPIRES_AT,
+            KEY_SCOPES,
+            KEY_EXTRA,
+            OAuthProviderLoader.CLIENT_SECRET_KEY_SUFFIX.substring(1));
 
     private final SettingService settingService;
     private final ObjectMapper json = JsonMapper.builder().build();
@@ -68,10 +92,29 @@ public class OAuthTokenStore {
         return accessToken(tenantId, owner, providerId) != null;
     }
 
-    /** Removes every {@code oauth.<providerId>.*} setting of the owner. */
+    /**
+     * Removes the login of the owner: every {@code oauth.<providerId>.*}
+     * setting on its storage project — tokens, expiry, scopes and the
+     * flat-extra projections — <b>except</b> the client secret. On
+     * {@code _tenant} that key belongs to the provider's client
+     * registration, not to the login; deleting it would make every later
+     * login of a confidential client fail with {@code invalid_client}.
+     *
+     * @return the number of removed settings
+     */
     public long wipe(String tenantId, OAuthTokenOwner owner, String providerId) {
-        return settingService.deleteByPrefix(
-                tenantId, SettingService.SCOPE_PROJECT, owner.storageProjectId(), "oauth." + providerId + ".");
+        String prefix = "oauth." + providerId + ".";
+        String clientSecretKey = OAuthProviderLoader.clientSecretKey(providerId);
+        long removed = 0;
+        for (SettingDocument setting :
+                settingService.findAll(tenantId, SettingService.SCOPE_PROJECT, owner.storageProjectId())) {
+            String k = setting.getKey();
+            if (k.startsWith(prefix) && !k.equals(clientSecretKey)) {
+                settingService.delete(tenantId, SettingService.SCOPE_PROJECT, owner.storageProjectId(), k);
+                removed++;
+            }
+        }
+        return removed;
     }
 
     /**
@@ -163,6 +206,13 @@ public class OAuthTokenStore {
         for (Map.Entry<String, String> e : nonScope.entrySet()) {
             String v = e.getValue();
             if (v == null || v.isEmpty()) continue;
+            if (RESERVED_SUFFIXES.contains(e.getKey())) {
+                log.warn(
+                        "OAuth: token response of '{}' carries reserved claim '{}' — not projected",
+                        providerId,
+                        e.getKey());
+                continue;
+            }
             if (OAuthTokenSet.isSecretClaimKey(e.getKey())) {
                 settingService.setEncryptedPassword(
                         tenantId, SettingService.SCOPE_PROJECT, ref, key(providerId, e.getKey()), v);

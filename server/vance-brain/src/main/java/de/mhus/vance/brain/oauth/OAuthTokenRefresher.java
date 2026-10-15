@@ -18,6 +18,14 @@ import org.springframework.stereotype.Service;
  * don't fire ten parallel refresh requests (some providers invalidate
  * the refresh token on use, which would 401 all the racing call sites).
  *
+ * <p>Two locks, because there are two kinds of concurrency: a striped
+ * monitor serialises the threads of this pod, and a cluster-wide claim
+ * ({@link OAuthRefreshClaimService}) the pods. The second matters for shared
+ * project/tenant logins, which every pod uses: with a rotating refresh
+ * token, a second pod replaying the old one makes the authorization server
+ * revoke the whole grant. A pod that finds the claim held waits and re-reads
+ * the stored token — the holder's fresh one — instead of refreshing itself.
+ *
  * <p>Strategy: read {@code oauth.<provider>.expires_at} from the user-
  * setting cache (it's a non-secret STRING — no Vault roundtrip), bail
  * if still inside {@link #REFRESH_BUFFER}, otherwise take the lock,
@@ -44,9 +52,20 @@ public class OAuthTokenRefresher {
     /** Refresh when the token is within this window of expiring. */
     public static final Duration REFRESH_BUFFER = Duration.ofSeconds(60);
 
+    /**
+     * Age after which another pod may take over a refresh claim — well above
+     * the token request timeout, so a live holder is never overtaken.
+     */
+    static final Duration CLAIM_TTL = Duration.ofSeconds(30);
+
+    /** Pause between two looks at a claim another pod holds. */
+    static final Duration CLAIM_POLL = Duration.ofMillis(250);
+
     private final OAuthConfigRegistry configRegistry;
     private final OAuthTokenStore tokenStore;
+    private final OAuthRefreshClaimService claims;
     private final Clock clock;
+    private final Duration claimPoll;
 
     /**
      * Striped lock pool keyed by {@code (tenantId|owner|providerId)}. Fixed
@@ -67,14 +86,22 @@ public class OAuthTokenRefresher {
     }
 
     @org.springframework.beans.factory.annotation.Autowired
-    public OAuthTokenRefresher(OAuthConfigRegistry configRegistry, OAuthTokenStore tokenStore) {
-        this(configRegistry, tokenStore, Clock.systemUTC());
+    public OAuthTokenRefresher(
+            OAuthConfigRegistry configRegistry, OAuthTokenStore tokenStore, OAuthRefreshClaimService claims) {
+        this(configRegistry, tokenStore, claims, Clock.systemUTC(), CLAIM_POLL);
     }
 
-    OAuthTokenRefresher(OAuthConfigRegistry configRegistry, OAuthTokenStore tokenStore, Clock clock) {
+    OAuthTokenRefresher(
+            OAuthConfigRegistry configRegistry,
+            OAuthTokenStore tokenStore,
+            OAuthRefreshClaimService claims,
+            Clock clock,
+            Duration claimPoll) {
         this.configRegistry = configRegistry;
         this.tokenStore = tokenStore;
+        this.claims = claims;
         this.clock = clock;
+        this.claimPoll = claimPoll;
     }
 
     /**
@@ -108,12 +135,63 @@ public class OAuthTokenRefresher {
         synchronized (lockFor(tenantId, owner, norm)) {
             // Double-check inside the lock — a sibling thread may have
             // refreshed while we were queued at the monitor.
-            expiresAt = readExpiresAt(tenantId, owner, norm);
-            if (!needsRefresh(expiresAt)) {
-                String token = tokenStore.accessToken(tenantId, owner, norm);
-                if (token != null) return token;
+            String current = currentValidToken(tenantId, owner, norm);
+            if (current != null) return current;
+            return refreshClaimed(tenantId, owner, norm);
+        }
+    }
+
+    /**
+     * Refreshes under the cluster-wide claim. While another pod holds it,
+     * waits and re-reads: once that pod has persisted its fresh token, the
+     * token is returned without a refresh of our own. A holder that died is
+     * overtaken after {@link #CLAIM_TTL}.
+     */
+    private String refreshClaimed(String tenantId, OAuthTokenOwner owner, String providerId) {
+        String key = OAuthRefreshClaimService.key(tenantId, owner, providerId);
+        // Twice the TTL: the stale-claim takeover happens after one TTL, so
+        // giving up means the store keeps refusing us — not a slow holder.
+        long maxPolls = CLAIM_TTL.multipliedBy(2).toMillis() / Math.max(1, claimPoll.toMillis());
+        String holder = claims.tryClaim(key, CLAIM_TTL);
+        for (long polls = 0; holder == null; polls++) {
+            if (polls >= maxPolls) {
+                throw new IllegalStateException("OAuth token refresh for provider '" + providerId
+                        + "' is held by another pod beyond " + CLAIM_TTL.toSeconds() + "s");
             }
-            return refreshAndPersist(tenantId, owner, norm);
+            pause();
+            String fresh = currentValidToken(tenantId, owner, providerId);
+            if (fresh != null) {
+                return fresh;
+            }
+            holder = claims.tryClaim(key, CLAIM_TTL);
+        }
+        try {
+            // Re-read under the claim: another pod may have refreshed
+            // between our expiry check and the claim.
+            String fresh = currentValidToken(tenantId, owner, providerId);
+            if (fresh != null) {
+                return fresh;
+            }
+            return refreshAndPersist(tenantId, owner, providerId);
+        } finally {
+            claims.release(key, holder);
+        }
+    }
+
+    /** The stored access token when it is outside the refresh window, else {@code null}. */
+    private @Nullable String currentValidToken(String tenantId, OAuthTokenOwner owner, String providerId) {
+        if (needsRefresh(readExpiresAt(tenantId, owner, providerId))) {
+            return null;
+        }
+        return tokenStore.accessToken(tenantId, owner, providerId);
+    }
+
+    private void pause() {
+        try {
+            Thread.sleep(claimPoll.toMillis());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("interrupted while waiting for another pod's OAuth token refresh", e);
         }
     }
 

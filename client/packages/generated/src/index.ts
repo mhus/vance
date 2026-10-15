@@ -373,6 +373,7 @@ export * from './ursahooks/UrsaHookSummary';
 
 export * from './server-tools/ServerToolDto';
 export * from './server-tools/ServerToolOAuthDto';
+export * from './server-tools/ServerToolOAuthStartDto';
 export * from './server-tools/ServerToolTestResultDto';
 export * from './server-tools/ServerToolWriteRequest';
 export * from './server-tools/ToolTypeDto';

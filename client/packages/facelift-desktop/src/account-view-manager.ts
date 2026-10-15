@@ -331,8 +331,9 @@ export class AccountViewManager {
     }
 
     // External-link guard: a different host is opened in the system browser
-    // rather than turning the wrapper into a general browser. OAuth bounces
-    // to external IdPs leave the app — an accepted v1 trade-off.
+    // rather than turning the wrapper into a general browser. The SSO login
+    // does not come through here — the page calls browserSignIn
+    // (browserSignIn.ts) instead of navigating to the identity provider.
     const homeHost = this.homeHosts.get(accountId);
     const nextHost = parsed.host.toLowerCase();
     if (homeHost && nextHost && nextHost !== homeHost) {

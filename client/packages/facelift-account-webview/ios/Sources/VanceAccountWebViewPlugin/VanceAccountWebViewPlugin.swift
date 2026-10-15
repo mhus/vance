@@ -1,3 +1,4 @@
+import AuthenticationServices
 import Capacitor
 import LocalAuthentication
 import UIKit
@@ -22,7 +23,7 @@ import WebKit
 ///     its persistent data store — the next `present` for the same
 ///     id starts fresh.
 @objc(VanceAccountWebViewPlugin)
-public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, UIDocumentPickerDelegate {
+public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, UIDocumentPickerDelegate, ASWebAuthenticationPresentationContextProviding {
     public let identifier = "VanceAccountWebViewPlugin"
     public let jsName = "VanceAccountWebView"
     public let pluginMethods: [CAPPluginMethod] = [
@@ -76,6 +77,8 @@ public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
     (function () {
       if (window.vanceFacelift) return;
       var ACCOUNT_ID = __ACCOUNT_ID__;
+      var pendingSignIns = {};
+      var nextSignIn = 1;
       function post(payload) {
         try {
           window.webkit.messageHandlers.vanceFacelift.postMessage(payload);
@@ -107,6 +110,19 @@ public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
             accountId: ACCOUNT_ID,
             projectsJson: JSON.stringify(projects || [])
           });
+        },
+        browserSignIn: function (startUrl) {
+          return new Promise(function (resolve, reject) {
+            var id = String(nextSignIn++);
+            pendingSignIns[id] = { resolve: resolve, reject: reject };
+            post({ action: 'browserSignIn', requestId: id, startUrl: String(startUrl || '') });
+          });
+        },
+        __signInDone: function (id, url, error) {
+          var pending = pendingSignIns[id];
+          if (!pending) return;
+          delete pendingSignIns[id];
+          if (url) { pending.resolve(url); } else { pending.reject(new Error(error || 'cancelled')); }
         }
       };
     })();
@@ -304,9 +320,80 @@ public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
             self.handleBridgeSetShareCredentials(body)
         case "setProjectSnapshot":
             self.handleBridgeSetProjectSnapshot(body)
+        case "browserSignIn":
+            self.handleBrowserSignIn(body, webView: message.webView)
         default:
             NSLog("[VanceFacelift] bridge: unknown action '\(action)'")
         }
+    }
+
+    // MARK: - SSO sign-in through the system browser
+
+    /// Running auth sessions, keyed by the page's request id — the session
+    /// must be retained until it completes.
+    private var authSessions: [String: ASWebAuthenticationSession] = [:]
+
+    /// Runs an SSO sign-in in an `ASWebAuthenticationSession` (Google refuses
+    /// embedded WebViews; the sheet shares Safari's session, so passkeys and
+    /// an existing Google login work). Only the account's own
+    /// `/brain/_sso/start` is accepted — the page cannot turn this into a
+    /// general "open any URL" call. The server sends the result to
+    /// `vance-facelift://sso-done`; the session delivers that URL to this app
+    /// only, and the page redeems the code with its PKCE verifier.
+    private func handleBrowserSignIn(_ body: [String: Any], webView: WKWebView?) {
+        guard let requestId = body["requestId"] as? String else { return }
+        guard let webView = webView,
+              let startUrl = body["startUrl"] as? String,
+              var components = URLComponents(string: startUrl),
+              let host = components.host?.lowercased(),
+              let homeHost = self.homeHost(for: webView),
+              host == homeHost,
+              components.path == "/brain/_sso/start" else {
+            NSLog("[VanceFacelift] browserSignIn: refused start URL")
+            self.completeBrowserSignIn(webView, requestId: requestId, url: nil, error: "invalid-start-url")
+            return
+        }
+        var items = (components.queryItems ?? []).filter { $0.name != "app_redirect" }
+        items.append(URLQueryItem(name: "app_redirect", value: "\(self.urlScheme)://sso-done"))
+        components.queryItems = items
+        guard let url = components.url else {
+            self.completeBrowserSignIn(webView, requestId: requestId, url: nil, error: "invalid-start-url")
+            return
+        }
+        let session = ASWebAuthenticationSession(url: url, callbackURLScheme: self.urlScheme) {
+            [weak self, weak webView] callbackURL, error in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.authSessions[requestId] = nil
+                self.completeBrowserSignIn(
+                    webView,
+                    requestId: requestId,
+                    url: callbackURL?.absoluteString,
+                    error: error == nil ? nil : "cancelled")
+            }
+        }
+        session.presentationContextProvider = self
+        session.prefersEphemeralWebBrowserSession = false
+        self.authSessions[requestId] = session
+        if !session.start() {
+            self.authSessions[requestId] = nil
+            self.completeBrowserSignIn(webView, requestId: requestId, url: nil, error: "not-started")
+        }
+    }
+
+    private func completeBrowserSignIn(_ webView: WKWebView?, requestId: String, url: String?, error: String?) {
+        guard let webView = webView else { return }
+        let args: [Any] = [requestId, url ?? NSNull(), error ?? NSNull()]
+        guard let data = try? JSONSerialization.data(withJSONObject: args),
+              let json = String(data: data, encoding: .utf8) else { return }
+        // json is `[id, url, error]` — spread into the page's resolver.
+        let script = "(function(a){ if (window.vanceFacelift && window.vanceFacelift.__signInDone) "
+            + "window.vanceFacelift.__signInDone(a[0], a[1], a[2]); })(\(json));"
+        webView.evaluateJavaScript(script, completionHandler: nil)
+    }
+
+    public func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        return self.bridge?.viewController?.view.window ?? ASPresentationAnchor()
     }
 
     private func handleBridgeSetShareCredentials(_ body: [String: Any]) {
@@ -434,9 +521,9 @@ public class VanceAccountWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
         // the account's home host gets cancelled + opened in Safari
         // instead. Keeps the wrapper focused on the user's Vance
         // deployment rather than turning into a general browser. No
-        // whitelist (would break self-hosted users); OAuth flows
-        // that bounce through external IdPs leave the app — that's
-        // an accepted v1 trade-off.
+        // whitelist (would break self-hosted users). The SSO login does
+        // not come through here: the page asks for `browserSignIn`
+        // (ASWebAuthenticationSession) instead of navigating.
         if let homeHost = self.homeHost(for: webView),
            let nextHost = url.host?.lowercased(),
            nextHost != homeHost {

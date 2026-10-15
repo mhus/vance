@@ -16,9 +16,13 @@ import de.mhus.vance.shared.oauthserver.OAuthSecrets;
 import de.mhus.vance.shared.sso.SsoConfig;
 import de.mhus.vance.shared.sso.SsoConfigParser;
 import de.mhus.vance.shared.sso.SsoConfigService;
+import de.mhus.vance.shared.sso.SsoHandoffDocument;
+import de.mhus.vance.shared.sso.SsoHandoffService;
 import de.mhus.vance.shared.sso.SsoLoginRequestDocument;
 import de.mhus.vance.shared.sso.SsoLoginRequestService;
 import de.mhus.vance.shared.user.UserDocument;
+import de.mhus.vance.shared.user.UserService;
+import de.mhus.vance.shared.user.UserStatus;
 import de.mhus.vance.toolpack.core.SecretResolver;
 import io.jsonwebtoken.JwtBuilder;
 import java.time.Clock;
@@ -55,6 +59,8 @@ class SsoLoginServiceTest {
     private SsoLoginRequestService requests;
     private SsoAccountResolver accounts;
     private LoginTokenIssuer issuer;
+    private SsoHandoffService handoffs;
+    private UserService users;
     private SsoLoginService service;
     private final AtomicReference<SsoLoginRequestDocument> stored = new AtomicReference<>();
     private final UserDocument wile =
@@ -92,11 +98,15 @@ class SsoLoginServiceTest {
         when(issuer.issue(anyString(), anyString(), anyBoolean(), any()))
                 .thenReturn(new LoginTokenIssuer.Issued("access", Instant.now(), "refresh", Instant.now()));
 
+        handoffs = mock(SsoHandoffService.class);
+        users = mock(UserService.class);
         service = new SsoLoginService(
                 configService,
                 secrets,
                 oidc,
                 requests,
+                handoffs,
+                users,
                 accounts,
                 issuer,
                 mock(AuditService.class),
@@ -298,6 +308,94 @@ class SsoLoginServiceTest {
                 .isEqualTo("acme");
         assertThat(SsoLoginService.tenantOf("/brain/_sso/start")).isNull();
         assertThat(SsoLoginService.tenantOf("/projects.html")).isNull();
+    }
+
+    // ─── native app handoff ────────────────────────────────────────────
+
+    private static final String CHALLENGE = SsoHandoffService.s256("verifier-of-the-webview-0123456789-abcdef");
+
+    @Test
+    void appRedirect_onlyTheTwoKnownShapes() {
+        assertThat(SsoLoginService.validAppRedirect("vance-facelift://sso-done"))
+                .isTrue();
+        assertThat(SsoLoginService.validAppRedirect("http://127.0.0.1:53123/sso-done"))
+                .isTrue();
+        assertThat(SsoLoginService.validAppRedirect("http://[::1]:53123/sso-done"))
+                .isTrue();
+        assertThat(SsoLoginService.validAppRedirect("http://localhost:53123/sso-done"))
+                .isFalse();
+        assertThat(SsoLoginService.validAppRedirect("https://evil.example/sso-done"))
+                .isFalse();
+        assertThat(SsoLoginService.validAppRedirect("http://127.0.0.1:99999/sso-done"))
+                .isFalse();
+        assertThat(SsoLoginService.validAppRedirect("vance-facelift://elsewhere"))
+                .isFalse();
+    }
+
+    @Test
+    void appStart_needsRedirectAndChallengeTogether() {
+        assertThat(service.start("wile@acme.com", null, null, "vance-facelift://sso-done", null))
+                .isInstanceOf(SsoLoginService.Start.Failure.class);
+        assertThat(service.start("wile@acme.com", null, null, null, CHALLENGE))
+                .isInstanceOf(SsoLoginService.Start.Failure.class);
+        assertThat(service.start("wile@acme.com", null, null, "https://evil.example/x", CHALLENGE))
+                .isInstanceOf(SsoLoginService.Start.Failure.class);
+        assertThat(service.start("wile@acme.com", null, null, "vance-facelift://sso-done", "short"))
+                .isInstanceOf(SsoLoginService.Start.Failure.class);
+    }
+
+    @Test
+    void appSignIn_handsOverACode_insteadOfIssuingCookies() throws Exception {
+        when(handoffs.create(eq("acme"), eq("wile"), any(), eq(CHALLENGE))).thenReturn("handoff-1");
+        SsoLoginService.Start.Redirect start = (SsoLoginService.Start.Redirect)
+                service.start("wile@acme.com", null, null, "http://127.0.0.1:53123/sso-done", CHALLENGE);
+        when(oidc.exchangeCode(any(), anyString(), anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(tokens.token(
+                        "sub-1", "wile@acme.com", stored.get().getNonce(), b -> b.claim("hd", "acme.com")));
+
+        SsoLoginService.Callback result = service.callback("google", "code-1", start.state(), null, start.state());
+
+        assertThat(result).isInstanceOf(SsoLoginService.Callback.AppHandoff.class);
+        assertThat(((SsoLoginService.Callback.AppHandoff) result).redirectUrl())
+                .isEqualTo("http://127.0.0.1:53123/sso-done?code=handoff-1");
+        verify(issuer, never()).issue(anyString(), anyString(), anyBoolean(), any());
+    }
+
+    @Test
+    void appSignIn_refusal_goesBackToTheApp() throws Exception {
+        SsoLoginService.Start.Redirect start = (SsoLoginService.Start.Redirect)
+                service.start("wile@acme.com", null, null, "vance-facelift://sso-done", CHALLENGE);
+        when(oidc.exchangeCode(any(), anyString(), anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(tokens.token("sub-1", "wile@acme.com", stored.get().getNonce(), b -> b));
+
+        SsoLoginService.Callback result = service.callback("google", "code-1", start.state(), null, start.state());
+
+        assertThat(result).isInstanceOf(SsoLoginService.Callback.Failure.class);
+        assertThat(((SsoLoginService.Callback.Failure) result).appRedirect()).isEqualTo("vance-facelift://sso-done");
+    }
+
+    @Test
+    void redeem_issuesTheSession_withItsEnd_onlyForAnActiveAccount() {
+        Instant end = Instant.now().plusSeconds(3600);
+        SsoHandoffDocument handoff = SsoHandoffDocument.builder()
+                .tenantId("acme")
+                .username("wile")
+                .sessionExpiresAt(end)
+                .build();
+        when(handoffs.redeem("handoff-1", "v")).thenReturn(Optional.of(handoff));
+        UserDocument active = UserDocument.builder()
+                .tenantId("acme")
+                .name("wile")
+                .status(UserStatus.ACTIVE)
+                .build();
+        when(users.findByTenantAndName("acme", "wile")).thenReturn(Optional.of(active));
+
+        assertThat(service.redeem("handoff-1", "v")).isPresent();
+        verify(issuer).issue("acme", "wile", true, end);
+
+        active.setStatus(UserStatus.DISABLED);
+        assertThat(service.redeem("handoff-1", "v")).isEmpty();
+        assertThat(service.redeem("unknown", "v")).isEmpty();
     }
 
     private void assertRejected(SsoLoginService.Callback result) {

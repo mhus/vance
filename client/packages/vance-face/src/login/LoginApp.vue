@@ -37,8 +37,11 @@ import {
   login,
   LoginError,
   refreshAccessCookie,
+  canSignInViaApp,
+  signInViaApp,
   ssoStartUrl,
 } from '@/platform';
+import { pushShareCredentials } from '@/platform/faceliftShareSetup';
 import { loadRuntimeConfig, type RuntimeConfig } from '@/platform/runtimeConfig';
 import { setUiLocale } from '@/i18n';
 // Primitives straight from the package, and VanceLogo from its file. Going
@@ -237,7 +240,7 @@ async function onSso(): Promise<void> {
     if (email) {
       const found = await discoverSso(email);
       if (found?.sso) {
-        window.location.assign(ssoStartUrl({ email, tenant: boundTenant, next: readNextParam() }));
+        await startSso(email, boundTenant);
         return;
       }
       const isGmail = /@(gmail|googlemail)\.com$/i.test(email);
@@ -249,10 +252,40 @@ async function onSso(): Promise<void> {
       error.value = t('login.sso.emailRequired');
       return;
     }
-    window.location.assign(ssoStartUrl({ email: email || null, tenant: boundTenant, next: readNextParam() }));
+    await startSso(email || null, boundTenant);
   } finally {
     ssoBusy.value = false;
   }
+}
+
+/**
+ * In a plain browser: navigate to the start endpoint. Inside the app: the
+ * wrapper runs the sign-in in the system browser and this page redeems the
+ * handoff — Google refuses embedded WebViews, and the system browser's
+ * cookies would not reach this one.
+ */
+async function startSso(email: string | null, boundTenant: string | null): Promise<void> {
+  if (!canSignInViaApp()) {
+    window.location.assign(ssoStartUrl({ email, tenant: boundTenant, next: readNextParam() }));
+    return;
+  }
+  const outcome = await signInViaApp({ email, tenant: boundTenant, next: readNextParam() });
+  if (outcome.kind === 'ok') {
+    hydrateIdentity();
+    syncUiLocaleFromSession();
+    const session = getSessionData();
+    if (session && typeof outcome.response.token === 'string') {
+      pushShareCredentials({
+        tenant: session.tenantId,
+        username: session.username,
+        token: outcome.response.token,
+        refreshToken: outcome.response.refreshToken,
+      });
+    }
+    goOn();
+    return;
+  }
+  error.value = outcome.kind === 'rejected' ? t('login.sso.rejected') : t('login.sso.failed');
 }
 
 /** Leave for `next`, or for the launcher when there is none. */

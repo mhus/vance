@@ -5,6 +5,7 @@ import path from 'node:path';
 
 import { AccountViewManager } from './account-view-manager';
 import { DesktopToolsService } from './tools/desktopTools';
+import { registerBrowserSignIn } from './browserSignIn';
 import { registerIpc } from './ipc';
 
 let manager: AccountViewManager | null = null;
@@ -192,6 +193,7 @@ if (!gotLock) {
     // IPC handlers are global; register once. They resolve the current
     // window's manager lazily via the getter.
     registerIpc(() => manager);
+    registerBrowserSignIn();
     tools = new DesktopToolsService(() => BrowserWindow.getAllWindows()[0] ?? null);
     tools.registerIpc();
 // Minimal application menu (planning/desktop-profile-tabs.md shortcuts):

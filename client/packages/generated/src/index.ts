@@ -104,6 +104,7 @@ export * from './oauthserver/OAuthConsentRequestDto';
 export * from './oauthserver/OAuthGrantDto';
 
 export * from './sso/SsoOptionsDto';
+export * from './sso/SsoRedeemRequest';
 
 export * from './chat/ChatMessageAppendedData';
 export * from './chat/ChatMessageChunkData';

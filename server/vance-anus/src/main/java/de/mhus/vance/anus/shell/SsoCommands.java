@@ -34,7 +34,9 @@ public class SsoCommands {
         this.configService = configService;
     }
 
-    @Command(name = {"sso", "config", "show"}, description = "Show the SSO config as stored and as the Brain reads it.")
+    @Command(
+            name = {"sso", "config", "show"},
+            description = "Show the SSO config as stored and as the Brain reads it.")
     public String show() {
         String raw = configService.readRaw().orElse(null);
         if (raw == null) {
@@ -83,29 +85,39 @@ public class SsoCommands {
         if (config.providers().isEmpty()) {
             out.append("providers : (none)\n");
         }
-        config.providers().values().forEach(p -> out.append("provider  : ")
-                .append(p.key())
-                .append(" (")
-                .append(p.type())
-                .append(", issuer ")
-                .append(p.issuer())
-                .append(", client ")
-                .append(p.clientId())
-                .append(")\n"));
-        config.domains().values().forEach(d -> out.append("domain    : ")
-                .append(d.domain())
-                .append(" → tenant ")
-                .append(d.tenant())
-                .append(" via ")
-                .append(d.provider())
-                .append(d.autoCreate() ? ", autoCreate" : "")
-                .append(d.allow() == null ? "" : ", allow " + d.allow().stream().sorted().collect(Collectors.joining(",")))
-                .append(", max session ")
-                .append(d.maxSession().toDays())
-                .append("d\n"));
+        config.providers()
+                .values()
+                .forEach(p -> out.append("provider  : ")
+                        .append(p.key())
+                        .append(" (")
+                        .append(p.type())
+                        .append(", issuer ")
+                        .append(p.issuer())
+                        .append(", client ")
+                        .append(p.clientId())
+                        .append(")\n"));
+        config.domains()
+                .values()
+                .forEach(d -> out.append("domain    : ")
+                        .append(d.domain())
+                        .append(" → tenant ")
+                        .append(d.tenant())
+                        .append(" via ")
+                        .append(d.provider())
+                        .append(d.autoCreate() ? ", autoCreate" : "")
+                        .append(
+                                d.allow() == null
+                                        ? ""
+                                        : ", allow "
+                                                + d.allow().stream().sorted().collect(Collectors.joining(",")))
+                        .append(", max session ")
+                        .append(d.maxSession().toDays())
+                        .append("d\n"));
         if (config.consumerAccounts() != null) {
             out.append("gmail     : tenants ")
-                    .append(config.consumerAccounts().tenants().stream().sorted().collect(Collectors.joining(",")))
+                    .append(config.consumerAccounts().tenants().stream()
+                            .sorted()
+                            .collect(Collectors.joining(",")))
                     .append(" via ")
                     .append(config.consumerAccounts().provider())
                     .append(", max session ")

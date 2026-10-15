@@ -55,6 +55,16 @@ public class SsoLoginRequestDocument {
     /** Same-origin path to go to afterwards. */
     private @Nullable String next;
 
+    /**
+     * Where a native app waits for the result ({@code vance-facelift://sso-done}
+     * or a loopback URL); {@code null} for a browser sign-in. When set, the
+     * callback sets no cookies but hands over a one-time code.
+     */
+    private @Nullable String appRedirect;
+
+    /** S256 challenge of the app WebView's verifier; set together with {@link #appRedirect}. */
+    private @Nullable String appChallenge;
+
     private @Nullable Instant createdAt;
 
     @Indexed(expireAfter = "0s")

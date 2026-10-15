@@ -2,16 +2,21 @@ package de.mhus.vance.brain.sso;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import de.mhus.vance.api.access.AccessTokenResponse;
 import de.mhus.vance.api.sso.SsoOptionsDto;
+import de.mhus.vance.api.sso.SsoRedeemRequest;
+import de.mhus.vance.brain.access.LoginTokenIssuer;
 import de.mhus.vance.brain.access.WebUiCookieService;
 import de.mhus.vance.brain.oauthserver.ClientAddresses;
 import de.mhus.vance.shared.sso.SsoLoginRequestService;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.Nullable;
@@ -23,6 +28,8 @@ import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -37,7 +44,10 @@ import org.springframework.web.bind.annotation.RestController;
  *       private Google account?</li>
  *   <li>{@code GET start?email=&tenant=&next=} — off to the identity provider.</li>
  *   <li>{@code GET {provider}/callback} — back from it; on success the same
- *       cookies as the password login, then on to {@code next}.</li>
+ *       cookies as the password login, then on to {@code next}. For a native
+ *       app ({@code app_redirect} at start) a one-time code to the app instead.</li>
+ *   <li>{@code POST redeem} — the app's WebView turns that code (plus its
+ *       PKCE verifier) into its own session.</li>
  * </ul>
  *
  * <p>Failures redirect to the login page with a coarse {@code sso_error} —
@@ -98,11 +108,13 @@ public class SsoController {
             @RequestParam(value = "email", required = false) @Nullable String email,
             @RequestParam(value = "tenant", required = false) @Nullable String tenant,
             @RequestParam(value = "next", required = false) @Nullable String next,
+            @RequestParam(value = "app_redirect", required = false) @Nullable String appRedirect,
+            @RequestParam(value = "app_challenge", required = false) @Nullable String appChallenge,
             HttpServletRequest request) {
         if (!withinBudget(request)) {
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build();
         }
-        SsoLoginService.Start started = ssoLoginService.start(email, tenant, next);
+        SsoLoginService.Start started = ssoLoginService.start(email, tenant, next, appRedirect, appChallenge);
         if (started instanceof SsoLoginService.Start.Failure failure) {
             return toLogin(failure.code(), failure.tenant(), SsoLoginService.safeNext(next));
         }
@@ -131,6 +143,14 @@ public class SsoController {
         }
         SsoLoginService.Callback result =
                 ssoLoginService.callback(provider, code, state, error, readStateCookie(request));
+        if (result instanceof SsoLoginService.Callback.AppHandoff handoff) {
+            // Native app: no cookies in this (system) browser — the app's WebView
+            // redeems the code and gets them in its own partition.
+            return redirect(handoff.redirectUrl());
+        }
+        if (result instanceof SsoLoginService.Callback.Failure failure && failure.appRedirect() != null) {
+            return redirect(SsoLoginService.withQuery(failure.appRedirect(), Map.of("error", failure.code())));
+        }
         if (result instanceof SsoLoginService.Callback.Failure failure) {
             ResponseEntity<Void> toLogin = toLogin(failure.code(), failure.tenant(), null);
             return ResponseEntity.status(toLogin.getStatusCode())
@@ -152,6 +172,50 @@ public class SsoController {
                 success.issued().refreshExpiresAt(),
                 true);
         return builder.build();
+    }
+
+    /**
+     * The app's WebView redeems the handoff code with its verifier and gets the
+     * same cookies (and body) as a password login.
+     */
+    @PostMapping("/brain/_sso/redeem")
+    public ResponseEntity<AccessTokenResponse> redeem(
+            @Valid @RequestBody SsoRedeemRequest body, HttpServletRequest request) {
+        if (!withinBudget(request)) {
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build();
+        }
+        SsoLoginService.Redeemed redeemed =
+                ssoLoginService.redeem(body.getCode(), body.getVerifier()).orElse(null);
+        if (redeemed == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        LoginTokenIssuer.Issued issued = redeemed.issued();
+        ResponseEntity.BodyBuilder builder = ResponseEntity.ok().cacheControl(CacheControl.noStore());
+        webUiCookieService.attachLoginCookies(
+                builder,
+                redeemed.user(),
+                issued.accessToken(),
+                issued.accessExpiresAt(),
+                issued.refreshToken(),
+                issued.refreshExpiresAt(),
+                true);
+        AccessTokenResponse.AccessTokenResponseBuilder response = AccessTokenResponse.builder()
+                .token(issued.accessToken())
+                .expiresAtTimestamp(issued.accessExpiresAt().toEpochMilli());
+        if (issued.refreshToken() != null && issued.refreshExpiresAt() != null) {
+            response.refreshToken(issued.refreshToken())
+                    .refreshTokenExpiresAtTimestamp(issued.refreshExpiresAt().toEpochMilli());
+        }
+        return builder.body(response.build());
+    }
+
+    /** Redirect that also clears the state cookie — the sign-in is over either way. */
+    private ResponseEntity<Void> redirect(String url) {
+        return ResponseEntity.status(HttpStatus.FOUND)
+                .cacheControl(CacheControl.noStore())
+                .location(URI.create(url))
+                .header(HttpHeaders.SET_COOKIE, stateCookie("", 0))
+                .build();
     }
 
     private static ResponseEntity<SsoOptionsDto> options(Optional<String> provider, boolean domains) {

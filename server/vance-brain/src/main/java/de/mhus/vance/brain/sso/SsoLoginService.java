@@ -7,22 +7,23 @@ import de.mhus.vance.shared.oauthserver.OAuthSecrets;
 import de.mhus.vance.shared.sso.SsoConfig;
 import de.mhus.vance.shared.sso.SsoConfigParser;
 import de.mhus.vance.shared.sso.SsoConfigService;
+import de.mhus.vance.shared.sso.SsoHandoffDocument;
+import de.mhus.vance.shared.sso.SsoHandoffService;
 import de.mhus.vance.shared.sso.SsoLoginRequestDocument;
 import de.mhus.vance.shared.sso.SsoLoginRequestService;
 import de.mhus.vance.shared.tenant.TenantService;
 import de.mhus.vance.shared.user.ExternalEmails;
 import de.mhus.vance.shared.user.UserDocument;
+import de.mhus.vance.shared.user.UserService;
+import de.mhus.vance.shared.user.UserStatus;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.core.SecretResolver;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.Key;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -79,6 +80,8 @@ public class SsoLoginService {
     private final SecretResolver secretResolver;
     private final SsoOidcClient oidc;
     private final SsoLoginRequestService requests;
+    private final SsoHandoffService handoffs;
+    private final UserService users;
     private final SsoAccountResolver accounts;
     private final LoginTokenIssuer tokenIssuer;
     private final AuditService audit;
@@ -91,6 +94,8 @@ public class SsoLoginService {
             SecretResolver secretResolver,
             SsoOidcClient oidc,
             SsoLoginRequestService requests,
+            SsoHandoffService handoffs,
+            UserService users,
             SsoAccountResolver accounts,
             LoginTokenIssuer tokenIssuer,
             AuditService audit,
@@ -100,6 +105,8 @@ public class SsoLoginService {
                 secretResolver,
                 oidc,
                 requests,
+                handoffs,
+                users,
                 accounts,
                 tokenIssuer,
                 audit,
@@ -112,6 +119,8 @@ public class SsoLoginService {
             SecretResolver secretResolver,
             SsoOidcClient oidc,
             SsoLoginRequestService requests,
+            SsoHandoffService handoffs,
+            UserService users,
             SsoAccountResolver accounts,
             LoginTokenIssuer tokenIssuer,
             AuditService audit,
@@ -121,6 +130,8 @@ public class SsoLoginService {
         this.secretResolver = secretResolver;
         this.oidc = oidc;
         this.requests = requests;
+        this.handoffs = handoffs;
+        this.users = users;
         this.accounts = accounts;
         this.tokenIssuer = tokenIssuer;
         this.audit = audit;
@@ -172,6 +183,29 @@ public class SsoLoginService {
         record Failure(String code, @Nullable String tenant) implements Start {}
     }
 
+    /** Loopback redirect of the desktop app: {@code http://127.0.0.1:<port>/sso-done} (or {@code [::1]}). */
+    private static final Pattern LOOPBACK_APP_REDIRECT =
+            Pattern.compile("^http://(127\\.0\\.0\\.1|\\[::1\\]):([1-9][0-9]{0,4})/sso-done$");
+
+    /** Custom-scheme redirect of the mobile app, delivered by the system's auth session. */
+    public static final String SCHEME_APP_REDIRECT = "vance-facelift://sso-done";
+
+    /** A PKCE S256 challenge: 43 Base64URL characters. */
+    private static final Pattern S256_CHALLENGE = Pattern.compile("^[A-Za-z0-9_-]{43}$");
+
+    /**
+     * Whether {@code appRedirect} is one of the two places a native app may
+     * receive the handoff code. Nothing else — the code must not be sent to an
+     * address the page chose freely.
+     */
+    static boolean validAppRedirect(String appRedirect) {
+        if (SCHEME_APP_REDIRECT.equals(appRedirect)) {
+            return true;
+        }
+        Matcher m = LOOPBACK_APP_REDIRECT.matcher(appRedirect);
+        return m.matches() && Integer.parseInt(m.group(2)) <= 65535;
+    }
+
     /**
      * Opens a sign-in and returns where to send the browser.
      *
@@ -180,6 +214,29 @@ public class SsoLoginService {
      * @param next   same-origin path to continue at afterwards, or {@code null}
      */
     public Start start(@Nullable String email, @Nullable String tenant, @Nullable String next) {
+        return start(email, tenant, next, null, null);
+    }
+
+    /**
+     * {@link #start(String, String, String)} for a native app: the sign-in runs
+     * in the system browser, and instead of setting cookies there the callback
+     * hands a one-time code to {@code appRedirect}. The app's WebView redeems it
+     * with the verifier behind {@code appChallenge} ({@link #redeem}). Both or
+     * neither must be given.
+     */
+    public Start start(
+            @Nullable String email,
+            @Nullable String tenant,
+            @Nullable String next,
+            @Nullable String appRedirect,
+            @Nullable String appChallenge) {
+        if ((appRedirect == null) != (appChallenge == null)
+                || (appRedirect != null && !validAppRedirect(appRedirect))
+                || (appChallenge != null
+                        && !S256_CHALLENGE.matcher(appChallenge).matches())) {
+            log.debug("SSO start refused: app redirect '{}' or challenge not acceptable", appRedirect);
+            return new Start.Failure(FAIL_ERROR, validTenant(tenant));
+        }
         String safeNext = safeNext(next);
         String expectedTenant = validTenant(tenant);
         if (expectedTenant == null && safeNext != null) {
@@ -242,6 +299,8 @@ public class SsoLoginService {
                 .domain(domain)
                 .expectedTenant(expectedTenant)
                 .next(safeNext)
+                .appRedirect(appRedirect)
+                .appChallenge(appChallenge)
                 .build());
 
         Map<String, String> params = new LinkedHashMap<>();
@@ -251,7 +310,7 @@ public class SsoLoginService {
         params.put("scope", "openid email profile");
         params.put("state", state);
         params.put("nonce", nonce);
-        params.put("code_challenge", s256(verifier));
+        params.put("code_challenge", SsoHandoffService.s256(verifier));
         params.put("code_challenge_method", "S256");
         params.put("prompt", "select_account");
         if (domain != null) {
@@ -271,7 +330,21 @@ public class SsoLoginService {
     public sealed interface Callback {
         record Success(UserDocument user, LoginTokenIssuer.Issued issued, String next) implements Callback {}
 
-        record Failure(String code, @Nullable String tenant) implements Callback {}
+        /** Native app: send the browser to {@code redirectUrl} — the app's address plus the one-time code. */
+        record AppHandoff(String redirectUrl) implements Callback {}
+
+        /**
+         * @param appRedirect where a native app waits — failures go there too, so
+         *     the app closes its browser sheet instead of showing the login page in it
+         */
+        record Failure(
+                String code,
+                @Nullable String tenant,
+                @Nullable String appRedirect) implements Callback {
+            public Failure(String code, @Nullable String tenant) {
+                this(code, tenant, null);
+            }
+        }
     }
 
     /**
@@ -301,11 +374,11 @@ public class SsoLoginService {
         }
         String tenantHint = request.getExpectedTenant();
         if (!providerKey.equals(request.getProvider())) {
-            return new Callback.Failure(FAIL_ERROR, tenantHint);
+            return new Callback.Failure(FAIL_ERROR, tenantHint, request.getAppRedirect());
         }
         if (error != null || code == null || code.isBlank()) {
             log.debug("SSO callback: provider returned error='{}'", error);
-            return new Callback.Failure(FAIL_ERROR, tenantHint);
+            return new Callback.Failure(FAIL_ERROR, tenantHint, request.getAppRedirect());
         }
 
         SsoConfig config = configService.config();
@@ -313,7 +386,7 @@ public class SsoLoginService {
         String clientSecret = provider == null ? null : clientSecret(provider);
         if (provider == null || clientSecret == null) {
             log.error("SSO callback: provider '{}' missing or its client secret does not resolve", providerKey);
-            return new Callback.Failure(FAIL_ERROR, tenantHint);
+            return new Callback.Failure(FAIL_ERROR, tenantHint, request.getAppRedirect());
         }
 
         IdTokenVerifier.IdToken token;
@@ -335,11 +408,11 @@ public class SsoLoginService {
                     clock);
         } catch (SsoOidcClient.IdentityProviderException e) {
             log.warn("SSO callback: identity provider '{}' failed: {}", providerKey, e.getMessage());
-            return new Callback.Failure(FAIL_ERROR, tenantHint);
+            return new Callback.Failure(FAIL_ERROR, tenantHint, request.getAppRedirect());
         } catch (IdTokenVerifier.InvalidIdTokenException e) {
             log.warn("SSO callback: ID token from '{}' rejected: {}", providerKey, e.getMessage());
             audit.authSsoRejected(tenantHint, null, providerKey, "id-token-invalid");
-            return new Callback.Failure(FAIL_REJECTED, tenantHint);
+            return new Callback.Failure(FAIL_REJECTED, tenantHint, request.getAppRedirect());
         }
 
         Policy policy = policy(request, config, token);
@@ -350,12 +423,12 @@ public class SsoLoginService {
                     policy.tenant(),
                     policy.rejection());
             audit.authSsoRejected(policy.tenant(), null, providerKey, policy.rejection());
-            return new Callback.Failure(FAIL_REJECTED, tenantHint);
+            return new Callback.Failure(FAIL_REJECTED, tenantHint, request.getAppRedirect());
         }
         String tenant = policy.tenant();
         String normalized = policy.normalizedEmail();
         if (tenant == null || normalized == null || token.email() == null) {
-            return new Callback.Failure(FAIL_REJECTED, tenantHint);
+            return new Callback.Failure(FAIL_REJECTED, tenantHint, request.getAppRedirect());
         }
 
         SsoAccountResolver.Outcome outcome = accounts.resolve(new SsoAccountResolver.SignIn(
@@ -370,15 +443,53 @@ public class SsoLoginService {
         if (outcome.user() == null) {
             log.info("SSO sign-in refused provider='{}' tenant='{}': {}", providerKey, tenant, outcome.rejection());
             audit.authSsoRejected(tenant, null, providerKey, String.valueOf(outcome.rejection()));
-            return new Callback.Failure(FAIL_REJECTED, tenantHint);
+            return new Callback.Failure(FAIL_REJECTED, tenantHint, request.getAppRedirect());
         }
         UserDocument user = outcome.user();
 
         Instant sessionEnd = clock.instant().plus(policy.maxSession());
-        LoginTokenIssuer.Issued issued = tokenIssuer.issue(tenant, user.getName(), true, sessionEnd);
         audit.authSsoLoginSuccess(tenant, user.getName(), providerKey, token.issuer(), request.getMode());
+        if (request.getAppRedirect() != null && request.getAppChallenge() != null) {
+            String handoff = handoffs.create(tenant, user.getName(), sessionEnd, request.getAppChallenge());
+            return new Callback.AppHandoff(withQuery(request.getAppRedirect(), Map.of("code", handoff)));
+        }
+        LoginTokenIssuer.Issued issued = tokenIssuer.issue(tenant, user.getName(), true, sessionEnd);
         String next = request.getNext() == null ? "/" : request.getNext();
         return new Callback.Success(user, issued, next);
+    }
+
+    // ─── app handoff ───────────────────────────────────────────────────
+
+    /** A redeemed handoff: the account and its fresh credentials. */
+    public record Redeemed(UserDocument user, LoginTokenIssuer.Issued issued) {}
+
+    /**
+     * Turns a handoff code into a session — called from the app's WebView, so
+     * the cookies land in its partition. The verifier must answer the challenge
+     * the WebView sent at start; a code alone is worth nothing. The account is
+     * checked again: a minute is enough to be disabled in.
+     */
+    public Optional<Redeemed> redeem(String code, String verifier) {
+        SsoHandoffDocument handoff = handoffs.redeem(code, verifier).orElse(null);
+        if (handoff == null) {
+            return Optional.empty();
+        }
+        UserDocument user = users.findByTenantAndName(handoff.getTenantId(), handoff.getUsername())
+                .orElse(null);
+        if (user == null
+                || user.getStatus() != UserStatus.ACTIVE
+                || !user.isLoginEnabled()
+                || LoginTokenIssuer.sessionEnded(handoff.getSessionExpiresAt())) {
+            return Optional.empty();
+        }
+        LoginTokenIssuer.Issued issued =
+                tokenIssuer.issue(user.getTenantId(), user.getName(), true, handoff.getSessionExpiresAt());
+        return Optional.of(new Redeemed(user, issued));
+    }
+
+    /** {@code url} with {@code params} appended as query parameters. */
+    public static String withQuery(String url, Map<String, String> params) {
+        return url + (url.contains("?") ? "&" : "?") + query(new LinkedHashMap<>(params));
     }
 
     /** The rule-level verdict on a verified token, before any account is looked at. */
@@ -514,15 +625,6 @@ public class SsoLoginService {
 
     private static @Nullable String validTenant(@Nullable String tenant) {
         return tenant != null && TENANT_NAME.matcher(tenant).matches() ? tenant : null;
-    }
-
-    private static String s256(String verifier) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII));
-            return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
     }
 
     private static String query(Map<String, String> params) {

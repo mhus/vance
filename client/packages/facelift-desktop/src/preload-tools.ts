@@ -21,6 +21,7 @@ const IPC_GET_CONTEXT = 'desktop-tools:get-context';
 const IPC_TOOLS_ENABLED_GET = 'desktop-tools:tools-enabled:get';
 const IPC_PACKS_LIST = 'desktop-tools:packs:list';
 const IPC_PACKS_SET_PROJECT = 'desktop-tools:packs:set-project';
+const IPC_BROWSER_SIGN_IN = 'facelift-auth:browser-sign-in';
 
 contextBridge.exposeInMainWorld('vanceDesktopTools', {
   version: '1',
@@ -39,4 +40,10 @@ contextBridge.exposeInMainWorld('vanceDesktopTools', {
     op: string,
     params: Record<string, unknown>,
   ): Promise<Record<string, unknown>> => ipcRenderer.invoke(IPC_INVOKE, op, params),
+});
+
+// SSO sign-in through the system browser (see browserSignIn.ts). Same name
+// as the iOS bridge, so the page has one call for both wrappers.
+contextBridge.exposeInMainWorld('vanceFacelift', {
+  browserSignIn: (startUrl: string): Promise<string> => ipcRenderer.invoke(IPC_BROWSER_SIGN_IN, startUrl),
 });

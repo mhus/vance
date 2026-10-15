@@ -156,7 +156,7 @@ public class BrainAccessFilter extends AccessFilterBase {
      * token; the endpoints budget themselves per client address.
      */
     private static final Pattern SSO_PATH =
-            Pattern.compile("^/brain/_sso/(discover|options|start|[a-z0-9-]+/callback)/?$");
+            Pattern.compile("^/brain/_sso/(discover|options|start|redeem|[a-z0-9-]+/callback)/?$");
 
     private final ScriptRunAuthService scriptRunAuthService;
     private final IntegrationTokenAuthService integrationTokenAuthService;

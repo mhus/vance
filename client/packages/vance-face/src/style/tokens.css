@@ -1,0 +1,103 @@
+/* Vancetope Corporate Design — tokens (specification/public/corporate-design.md
+   §3–§7, workbench repo). Prefixed --v- because DaisyUI owns --border,
+   --depth …; the DaisyUI themes in app.css map onto these.
+   Identical copy of specification/public/corporate-design/tokens.css, the one
+   the sample pages use — change both together. themeWeb.ts sets
+   data-theme="dark" on <html>, which switches the dark set below. */
+
+:root, .light {
+  /* brand — navy */
+  --v-navy-50: #EEF2FB;  --v-navy-100: #D9E2F6; --v-navy-200: #B3C4EC; --v-navy-300: #8AA3DF;
+  --v-navy-400: #5F7FCF; --v-navy-500: #3D5FBE; --v-navy-600: #2C4BA6; --v-navy-700: #233F94;
+  --v-navy-800: #1E3A8A; --v-navy-900: #172C69; --v-navy-950: #0F1D47;
+
+  /* neutral roles */
+  --v-bg: #F5F5F7;
+  --v-surface: #FFFFFF;
+  --v-surface-raised: #FFFFFF;
+  --v-fill: #E8E8ED;
+  --v-separator: #E3E3E8;
+  --v-border: #D2D2D7;
+  --v-label: #1D1D1F;
+  --v-label-secondary: #6E6E73;
+  --v-label-tertiary: #8E8E93;
+
+  /* accent, derived per mode */
+  --v-accent: var(--v-navy-800);          /* primary button, brand mark */
+  --v-accent-hover: var(--v-navy-700);
+  --v-accent-pressed: var(--v-navy-900);
+  --v-accent-text: var(--v-navy-600);     /* links, accent text, active icons */
+  --v-accent-on: #FFFFFF;               /* text on a filled accent */
+  --v-selection: var(--v-navy-50);
+  --v-focus-ring: rgba(179, 196, 236, 0.6);
+
+  /* meaning */
+  --v-danger: #D70015;
+  --v-warning: #B25E00;
+  --v-success: #1F7A3E;
+
+  /* content colours (what users colour) */
+  --v-content-grey-bg: #ECECEE;   --v-content-grey-fg: #48484A;
+  --v-content-brown-bg: #F1E6DC;  --v-content-brown-fg: #7A4E2D;
+  --v-content-orange-bg: #FCE8D6; --v-content-orange-fg: #A0480F;
+  --v-content-yellow-bg: #FBF1C7; --v-content-yellow-fg: #806300;
+  --v-content-green-bg: #DDF1E2;  --v-content-green-fg: #1F6B3A;
+  --v-content-teal-bg: #D8F0F0;   --v-content-teal-fg: #156B6B;
+  --v-content-purple-bg: #ECE3F8; --v-content-purple-fg: #5E3A9E;
+  --v-content-pink-bg: #F8E1EC;   --v-content-pink-fg: #9C2B60;
+
+  /* stage — website & marketing only, never in the tool */
+  --v-stage-signal: #FF4F1F;
+  --v-stage-lime: #D9F74A;
+  --v-stage-slab: #141416;
+
+  /* type */
+  --v-font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --v-font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* radius, elevation, motion */
+  --v-radius-control: 6px;
+  --v-radius-group: 10px;
+  --v-radius-modal: 14px;
+  --v-shadow-float: 0 8px 24px rgba(0, 0, 0, 0.14), 0 0 0 1px rgba(0, 0, 0, 0.06);
+  --v-duration: 150ms;
+
+  color-scheme: light;
+}
+
+.dark, [data-theme="dark"] {
+  --v-bg: #161618;
+  --v-surface: #1F1F22;
+  --v-surface-raised: #2A2A2E;
+  --v-fill: #2E2E33;
+  --v-separator: #333338;
+  --v-border: #45454B;
+  --v-label: #F5F5F7;
+  --v-label-secondary: #A1A1A6;
+  --v-label-tertiary: #7C7C82;
+
+  --v-accent: var(--v-navy-500);
+  --v-accent-hover: var(--v-navy-400);
+  --v-accent-pressed: var(--v-navy-600);
+  --v-accent-text: var(--v-navy-300);
+  --v-accent-on: #FFFFFF;
+  --v-selection: var(--v-navy-950);
+  --v-focus-ring: rgba(95, 127, 207, 0.5);
+
+  --v-danger: #FF5A5F;
+  --v-warning: #FFB340;
+  --v-success: #4CD07D;
+
+  --v-content-grey-bg: #3A3A3E;   --v-content-grey-fg: #D1D1D6;
+  --v-content-brown-bg: #44362B;  --v-content-brown-fg: #E3C9B0;
+  --v-content-orange-bg: #4A3020; --v-content-orange-fg: #F6B98A;
+  --v-content-yellow-bg: #463C17; --v-content-yellow-fg: #EBD27A;
+  --v-content-green-bg: #1E3D28;  --v-content-green-fg: #92D9A6;
+  --v-content-teal-bg: #183C3C;   --v-content-teal-fg: #8ED6D6;
+  --v-content-purple-bg: #362A4D; --v-content-purple-fg: #C9B2F0;
+  --v-content-pink-bg: #47263A;   --v-content-pink-fg: #F0A9C9;
+
+  --v-shadow-float: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08);
+
+  color-scheme: dark;
+}

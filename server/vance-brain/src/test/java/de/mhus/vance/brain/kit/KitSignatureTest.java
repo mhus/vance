@@ -14,6 +14,7 @@ import java.security.KeyPairGenerator;
 import java.security.Signature;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -28,6 +29,8 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class KitSignatureTest {
 
+    private static final String KEY_ID = "test-key-2026";
+
     @TempDir
     Path tmp;
 
@@ -39,8 +42,7 @@ class KitSignatureTest {
         keys = KeyPairGenerator.getInstance(KitSignature.ALGORITHM).generateKeyPair();
         kit = tmp.resolve("kit");
         Files.createDirectories(kit.resolve("documents"));
-        Files.writeString(kit.resolve("kit.yaml"),
-                "name: signed-kit\ndescription: a signed kit\n");
+        Files.writeString(kit.resolve("kit.yaml"), "name: signed-kit\ndescription: a signed kit\n");
         Files.writeString(kit.resolve("documents/intro.md"), "hello\n");
     }
 
@@ -81,13 +83,12 @@ class KitSignatureTest {
         KitDescriptorDto descriptor = descriptor().build();
         sign(descriptor);
 
-        assertThat(KitSignature.verify(kit, descriptor, publicKeyPem()))
-                .isEqualTo(KitSignature.Result.VALID);
+        assertThat(KitSignature.verify(kit, descriptor, trustedKeys())).isEqualTo(KitSignature.Result.VALID);
     }
 
     @Test
     void verify_withoutSignatureFile_reportsMissing() {
-        assertThat(KitSignature.verify(kit, descriptor().build(), publicKeyPem()))
+        assertThat(KitSignature.verify(kit, descriptor().build(), trustedKeys()))
                 .isEqualTo(KitSignature.Result.MISSING);
     }
 
@@ -98,8 +99,7 @@ class KitSignatureTest {
 
         // A signed kit and nothing to check it against is its own problem,
         // distinct from an unsigned one — the fix is to configure a key.
-        assertThat(KitSignature.verify(kit, descriptor, null))
-                .isEqualTo(KitSignature.Result.NO_KEY);
+        assertThat(KitSignature.verify(kit, descriptor, Map.of())).isEqualTo(KitSignature.Result.NO_KEY);
     }
 
     @Test
@@ -108,8 +108,7 @@ class KitSignatureTest {
         sign(descriptor);
         Files.writeString(kit.resolve("documents/intro.md"), "tampered\n");
 
-        assertThat(KitSignature.verify(kit, descriptor, publicKeyPem()))
-                .isEqualTo(KitSignature.Result.TREE_MISMATCH);
+        assertThat(KitSignature.verify(kit, descriptor, trustedKeys())).isEqualTo(KitSignature.Result.TREE_MISMATCH);
     }
 
     @Test
@@ -118,8 +117,46 @@ class KitSignatureTest {
         sign(descriptor);
         KeyPair stranger = KeyPairGenerator.getInstance(KitSignature.ALGORITHM).generateKeyPair();
 
-        assertThat(KitSignature.verify(kit, descriptor, pem(stranger)))
+        assertThat(KitSignature.verify(kit, descriptor, Map.of(KEY_ID, pem(stranger))))
                 .isEqualTo(KitSignature.Result.INVALID);
+    }
+
+    // ── key ring ─────────────────────────────────────────────────────
+
+    @Test
+    void verify_duringRotation_bothKeysOfTheRingVerifyTheirOwnKits() throws Exception {
+        // The point of a ring: a brain trusting the current and the next
+        // key keeps installing whichever one the delivery side signs with.
+        KitDescriptorDto descriptor = descriptor().build();
+        sign(descriptor);
+        KeyPair next = KeyPairGenerator.getInstance(KitSignature.ALGORITHM).generateKeyPair();
+
+        assertThat(KitSignature.verify(kit, descriptor, Map.of(KEY_ID, pem(keys), "test-key-2027", pem(next))))
+                .isEqualTo(KitSignature.Result.VALID);
+    }
+
+    @Test
+    void verify_keyIdNotInTheRing_reportsUnknownKey() throws Exception {
+        // A rotation this brain predates. Distinct from NO_KEY: keys are
+        // configured, just not this one — the fix is an update, not setup.
+        KitDescriptorDto descriptor = descriptor().build();
+        sign(descriptor);
+        KeyPair other = KeyPairGenerator.getInstance(KitSignature.ALGORITHM).generateKeyPair();
+
+        assertThat(KitSignature.verify(kit, descriptor, Map.of("test-key-2027", pem(other))))
+                .isEqualTo(KitSignature.Result.UNKNOWN_KEY);
+    }
+
+    @Test
+    void verify_onlyTheNamedKeyIsTried_evenWhenAnotherWouldFit() throws Exception {
+        // The right key under the wrong id does not verify. Otherwise a
+        // retired key would keep verifying under any id a kit claims, and
+        // dropping it from the ring would be the only way to retire it.
+        KitDescriptorDto descriptor = descriptor().build();
+        sign(descriptor);
+
+        assertThat(KitSignature.verify(kit, descriptor, Map.of("retired-key", pem(keys))))
+                .isEqualTo(KitSignature.Result.UNKNOWN_KEY);
     }
 
     @Test
@@ -130,8 +167,7 @@ class KitSignatureTest {
         sign(signed);
 
         KitDescriptorDto altered = descriptor().licensedTo("someone-else").build();
-        assertThat(KitSignature.verify(kit, altered, publicKeyPem()))
-                .isEqualTo(KitSignature.Result.INVALID);
+        assertThat(KitSignature.verify(kit, altered, trustedKeys())).isEqualTo(KitSignature.Result.INVALID);
     }
 
     @Test
@@ -141,7 +177,7 @@ class KitSignatureTest {
         KitDescriptorDto signed = descriptor().purchaseId("pur_7f3a").build();
         sign(signed);
 
-        assertThat(KitSignature.verify(kit, descriptor().build(), publicKeyPem()))
+        assertThat(KitSignature.verify(kit, descriptor().build(), trustedKeys()))
                 .isEqualTo(KitSignature.Result.INVALID);
     }
 
@@ -159,16 +195,18 @@ class KitSignatureTest {
                 descriptor.getLicensedTo() == null ? "" : descriptor.getLicensedTo(),
                 descriptor.getPurchaseId() == null ? "" : descriptor.getPurchaseId(),
                 descriptor.getLicenseExpiresAt() == null
-                        ? "" : descriptor.getLicenseExpiresAt().toString());
+                        ? ""
+                        : descriptor.getLicenseExpiresAt().toString());
 
         Signature signer = Signature.getInstance(KitSignature.ALGORITHM);
         signer.initSign(keys.getPrivate());
         signer.update(payload);
 
-        Files.writeString(kit.resolve(KitSignature.SIGNATURE_FILENAME),
+        Files.writeString(
+                kit.resolve(KitSignature.SIGNATURE_FILENAME),
                 KitYamlMapper.writeSignature(KitSignatureDto.builder()
                         .algorithm(KitSignature.ALGORITHM)
-                        .keyId("test-key")
+                        .keyId(KEY_ID)
                         .treeHash(treeHash)
                         .signedAt(Instant.parse("2026-08-17T10:00:00Z"))
                         .signature(Base64.getEncoder().encodeToString(signer.sign()))
@@ -176,8 +214,8 @@ class KitSignatureTest {
                 StandardCharsets.UTF_8);
     }
 
-    private String publicKeyPem() {
-        return pem(keys);
+    private Map<String, String> trustedKeys() {
+        return Map.of(KEY_ID, pem(keys));
     }
 
     private static String pem(KeyPair pair) {

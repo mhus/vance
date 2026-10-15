@@ -9,6 +9,7 @@ import de.mhus.vance.api.kit.KitSourceType;
 import de.mhus.vance.api.kit.KitSourcesDto;
 import de.mhus.vance.shared.kit.KitException;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -25,10 +26,11 @@ class KitSourcesYamlTest {
                     type: library
                     url: https://library.vancetope.com
                     signature: required
-                    publicKey: |
-                      -----BEGIN PUBLIC KEY-----
-                      abc
-                      -----END PUBLIC KEY-----
+                    publicKeys:
+                      vancetope-library-2026: |
+                        -----BEGIN PUBLIC KEY-----
+                        abc
+                        -----END PUBLIC KEY-----
                   - id: house-kits
                     type: git
                     url: https://git.intern.example/kits.git
@@ -39,7 +41,8 @@ class KitSourcesYamlTest {
         KitSourceDto library = parsed.getSources().get(0);
         assertThat(library.getType()).isEqualTo(KitSourceType.LIBRARY);
         assertThat(library.getSignature()).isEqualTo(KitSignaturePolicy.REQUIRED);
-        assertThat(library.getPublicKey()).contains("BEGIN PUBLIC KEY");
+        assertThat(library.getPublicKeys()).containsOnlyKeys("vancetope-library-2026");
+        assertThat(library.getPublicKeys().get("vancetope-library-2026")).contains("BEGIN PUBLIC KEY");
         assertThat(parsed.getSources().get(1).getSignature()).isEqualTo(KitSignaturePolicy.OFF);
     }
 
@@ -57,10 +60,8 @@ class KitSourcesYamlTest {
                     type: git
                     url: https://git.example/kits.git
                 """);
-        assertThat(parsed.getSources().get(0).getSignature())
-                .isEqualTo(KitSignaturePolicy.REQUIRED);
-        assertThat(parsed.getSources().get(1).getSignature())
-                .isEqualTo(KitSignaturePolicy.OFF);
+        assertThat(parsed.getSources().get(0).getSignature()).isEqualTo(KitSignaturePolicy.REQUIRED);
+        assertThat(parsed.getSources().get(1).getSignature()).isEqualTo(KitSignaturePolicy.OFF);
     }
 
     @Test
@@ -153,17 +154,57 @@ class KitSourcesYamlTest {
     }
 
     @Test
+    void sources_legacySinglePublicKey_isRefusedWithTheReplacement() {
+        // The single key had no id, and a ring cannot pick a key without
+        // one. Reading it as "trust under any id" would be a guess, and
+        // dropping it silently would turn a required signature into a
+        // NO_KEY failure nobody can explain.
+        assertThatThrownBy(() -> KitYamlMapper.parseSources("""
+                sources:
+                  - id: lib
+                    type: library
+                    url: https://library.example
+                    publicKey: |
+                      -----BEGIN PUBLIC KEY-----
+                      abc
+                      -----END PUBLIC KEY-----
+                """))
+                .isInstanceOf(KitException.class)
+                .hasMessageContaining("publicKeys");
+    }
+
+    @Test
+    void sources_emptyKeyRing_isRefused() {
+        // Empty would read as "no keys" and fall back to the bundled ones
+        // for the default library — not what someone writing an empty
+        // ring meant, whatever they meant.
+        assertThatThrownBy(() -> KitYamlMapper.parseSources("""
+                sources:
+                  - id: lib
+                    type: library
+                    url: https://library.example
+                    publicKeys: {}
+                """))
+                .isInstanceOf(KitException.class)
+                .hasMessageContaining("publicKeys");
+    }
+
+    @Test
     void sources_roundTrip() {
         KitSourcesDto original = KitSourcesDto.builder()
                 .sources(List.of(KitSourceDto.builder()
-                        .id("lib").type(KitSourceType.LIBRARY)
+                        .id("lib")
+                        .type(KitSourceType.LIBRARY)
                         .url("https://library.example")
                         .signature(KitSignaturePolicy.WARN)
+                        .publicKeys(Map.of("lib-2026", "-----BEGIN PUBLIC KEY-----\nabc\n-----END PUBLIC KEY-----\n"))
                         .build()))
                 .build();
         KitSourcesDto parsed = KitYamlMapper.parseSources(KitYamlMapper.writeSources(original));
         assertThat(parsed.getSources()).hasSize(1);
         assertThat(parsed.getSources().get(0).getSignature()).isEqualTo(KitSignaturePolicy.WARN);
         assertThat(parsed.getSources().get(0).getType()).isEqualTo(KitSourceType.LIBRARY);
+        assertThat(parsed.getSources().get(0).getPublicKeys())
+                .isEqualTo(original.getSources().get(0).getPublicKeys());
     }
 }

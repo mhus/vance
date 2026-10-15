@@ -1,11 +1,14 @@
 package de.mhus.vance.brain.kit;
 
 import de.mhus.vance.api.kit.KitDescriptorDto;
+import de.mhus.vance.api.kit.KitSignatureDto;
 import de.mhus.vance.api.kit.KitSignaturePolicy;
 import de.mhus.vance.api.kit.KitSignatureStatus;
 import de.mhus.vance.api.kit.KitSourceDto;
 import de.mhus.vance.shared.kit.KitException;
 import java.nio.file.Path;
+import java.util.Map;
+import java.util.TreeSet;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -36,11 +39,8 @@ public class KitSignatureGate {
      * @throws KitException when the policy is {@code required} and the
      *         kit does not satisfy it
      */
-    public KitSignatureStatus enforce(
-            Path kitRoot, KitDescriptorDto descriptor, KitSourceDto config) {
-        KitSignaturePolicy policy = config.getSignature() == null
-                ? KitSignaturePolicy.OFF
-                : config.getSignature();
+    public KitSignatureStatus enforce(Path kitRoot, KitDescriptorDto descriptor, KitSourceDto config) {
+        KitSignaturePolicy policy = config.getSignature() == null ? KitSignaturePolicy.OFF : config.getSignature();
         if (policy == KitSignaturePolicy.OFF) {
             // Not checked, so nothing to claim either way. A kit that
             // happens to carry a valid signature is still recorded as
@@ -49,15 +49,14 @@ public class KitSignatureGate {
             return KitSignatureStatus.UNSIGNED;
         }
 
-        KitSignature.Result result =
-                KitSignature.verify(kitRoot, descriptor, config.getPublicKey());
+        KitSignature.Result result = KitSignature.verify(
+                kitRoot, descriptor, config.getPublicKeys() == null ? Map.of() : config.getPublicKeys());
         if (result == KitSignature.Result.VALID) {
-            log.debug("KitSignatureGate: '{}' from source '{}' verified",
-                    descriptor.getName(), config.getId());
+            log.debug("KitSignatureGate: '{}' from source '{}' verified", descriptor.getName(), config.getId());
             return KitSignatureStatus.VERIFIED;
         }
 
-        String explanation = explain(result, descriptor.getName(), config);
+        String explanation = explain(result, kitRoot, descriptor.getName(), config);
         if (policy == KitSignaturePolicy.REQUIRED) {
             throw new KitException(explanation);
         }
@@ -72,19 +71,39 @@ public class KitSignatureGate {
      * user guessing between four unrelated causes with four different
      * fixes.
      */
-    private static String explain(
-            KitSignature.Result result, String kitName, KitSourceDto config) {
+    private static String explain(KitSignature.Result result, Path kitRoot, String kitName, KitSourceDto config) {
         return switch (result) {
-            case MISSING -> "kit '" + kitName + "' from source '" + config.getId()
-                    + "' carries no signature, but that source requires one";
-            case NO_KEY -> "kit '" + kitName + "' is signed, but source '" + config.getId()
-                    + "' has no publicKey configured to verify it against —"
-                    + " add one to " + KitSourceRegistry.SOURCES_PATH;
-            case TREE_MISMATCH -> "kit '" + kitName + "' from source '" + config.getId()
-                    + "' does not match its signature: the content changed after signing";
-            case INVALID -> "kit '" + kitName + "' from source '" + config.getId()
-                    + "' has an invalid signature — wrong key, or the signature was altered";
+            case MISSING ->
+                "kit '" + kitName + "' from source '" + config.getId()
+                        + "' carries no signature, but that source requires one";
+            case NO_KEY ->
+                "kit '" + kitName + "' is signed, but source '" + config.getId()
+                        + "' has no publicKeys configured to verify it against —"
+                        + " add one to " + KitSourceRegistry.SOURCES_PATH;
+            case UNKNOWN_KEY ->
+                "kit '" + kitName + "' from source '" + config.getId()
+                        + "' is signed with key '" + keyIdOf(kitRoot) + "', which this brain does not"
+                        + " trust for that source (known: " + knownKeys(config) + ") — either a key"
+                        + " rotation this Vancetope release predates (update it, or add the key to "
+                        + KitSourceRegistry.SOURCES_PATH + "), or a key that was never this source's";
+            case TREE_MISMATCH ->
+                "kit '" + kitName + "' from source '" + config.getId()
+                        + "' does not match its signature: the content changed after signing";
+            case INVALID ->
+                "kit '" + kitName + "' from source '" + config.getId()
+                        + "' has an invalid signature — wrong key, or the signature was altered";
             case VALID -> "";
         };
+    }
+
+    private static String keyIdOf(Path kitRoot) {
+        KitSignatureDto signature = KitSignature.read(kitRoot);
+        return signature == null ? "?" : signature.getKeyId();
+    }
+
+    private static String knownKeys(KitSourceDto config) {
+        return config.getPublicKeys() == null
+                ? "none"
+                : String.join(", ", new TreeSet<>(config.getPublicKeys().keySet()));
     }
 }

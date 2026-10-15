@@ -49,6 +49,7 @@ public class KitSourceRegistry {
 
     /** Where a tenant's kit library lives unless the tenant says otherwise. */
     public static final String DEFAULT_LIBRARY_ID = "vancetope-library";
+
     public static final String DEFAULT_LIBRARY_URL = "https://library.vancetope.com";
 
     private final DocumentService documentService;
@@ -90,11 +91,20 @@ public class KitSourceRegistry {
      * Everything this tenant may draw from: the configured sources plus
      * the default library, unless the tenant replaced it by configuring
      * the same url itself.
+     *
+     * <p>A replacement that brings no keys of its own keeps the bundled
+     * ones — overriding the default library to change its policy or title
+     * must not quietly leave it with nothing to verify against.
      */
     public List<KitSourceDto> configuredSources(String tenantId) {
         List<KitSourceDto> sources = new ArrayList<>(readDocument(tenantId));
-        boolean libraryOverridden = sources.stream()
-                .anyMatch(s -> normalize(s.getUrl()).equals(normalize(DEFAULT_LIBRARY_URL)));
+        for (KitSourceDto source : sources) {
+            if (isDefaultLibrary(source)
+                    && (source.getPublicKeys() == null || source.getPublicKeys().isEmpty())) {
+                source.setPublicKeys(KitLibraryKeys.bundled());
+            }
+        }
+        boolean libraryOverridden = sources.stream().anyMatch(KitSourceRegistry::isDefaultLibrary);
         if (!libraryOverridden) {
             sources.add(defaultLibrary());
         }
@@ -114,12 +124,17 @@ public class KitSourceRegistry {
                 .type(KitSourceType.LIBRARY)
                 .url(DEFAULT_LIBRARY_URL)
                 .signature(KitSignaturePolicy.REQUIRED)
+                .publicKeys(KitLibraryKeys.bundled())
                 .build();
     }
 
+    private static boolean isDefaultLibrary(KitSourceDto source) {
+        return normalize(source.getUrl()).equals(normalize(DEFAULT_LIBRARY_URL));
+    }
+
     private List<KitSourceDto> readDocument(String tenantId) {
-        Optional<DocumentDocument> doc = documentService.findByPath(
-                tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, SOURCES_PATH);
+        Optional<DocumentDocument> doc =
+                documentService.findByPath(tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, SOURCES_PATH);
         if (doc.isEmpty()) return List.of();
         String content = readText(doc.get());
         if (content == null || content.isBlank()) return List.of();
@@ -135,13 +150,18 @@ public class KitSourceRegistry {
             // in the file, visible as a single WARN. That is exactly what
             // KitYamlMapper.parseSources is strict about, and swallowing the
             // exception here undid its strictness one frame later.
-            log.warn("KitSourceRegistry: {} in tenant '{}' is malformed: {} — "
-                    + "refusing every kit source resolution until it is fixed",
-                    SOURCES_PATH, tenantId, e.getMessage());
-            throw new KitException(SOURCES_PATH + " in tenant '" + tenantId
-                    + "' is malformed and cannot be trusted to say which sources are"
-                    + " allowed and which need a signature — fix it before installing"
-                    + " or updating kits (" + e.getMessage() + ")", e);
+            log.warn(
+                    "KitSourceRegistry: {} in tenant '{}' is malformed: {} — "
+                            + "refusing every kit source resolution until it is fixed",
+                    SOURCES_PATH,
+                    tenantId,
+                    e.getMessage());
+            throw new KitException(
+                    SOURCES_PATH + " in tenant '" + tenantId
+                            + "' is malformed and cannot be trusted to say which sources are"
+                            + " allowed and which need a signature — fix it before installing"
+                            + " or updating kits (" + e.getMessage() + ")",
+                    e);
         }
     }
 

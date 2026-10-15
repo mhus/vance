@@ -12,6 +12,7 @@ import java.security.PublicKey;
 import java.security.Signature;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
+import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 
@@ -44,6 +45,12 @@ public final class KitSignature {
         MISSING,
         /** Signature present but no key configured to check it against. */
         NO_KEY,
+        /**
+         * Keys are configured, but none under the id the kit was signed
+         * with — a rotation this brain has not caught up with, or a key
+         * it was never meant to trust.
+         */
+        UNKNOWN_KEY,
         /** The kit's content is not what was signed. */
         TREE_MISMATCH,
         /** Cryptographic check failed — wrong key, tampered signature. */
@@ -67,22 +74,26 @@ public final class KitSignature {
      * @param kitRoot directory holding {@code kit.yaml}
      * @param descriptor the parsed descriptor — its purchase claims are
      *        part of what was signed
-     * @param publicKeyPem the key this source signs with, or null when
-     *        none is configured
+     * @param trustedKeys the keys this source signs with, by key id —
+     *        empty when none is configured
      */
-    public static Result verify(
-            Path kitRoot, KitDescriptorDto descriptor, @Nullable String publicKeyPem) {
+    public static Result verify(Path kitRoot, KitDescriptorDto descriptor, Map<String, String> trustedKeys) {
         KitSignatureDto signature = read(kitRoot);
         if (signature == null) return Result.MISSING;
-        if (publicKeyPem == null || publicKeyPem.isBlank()) return Result.NO_KEY;
+        if (trustedKeys.isEmpty()) return Result.NO_KEY;
+        // Only the key the kit names. Trying every trusted key until one
+        // fits would work too, but it would let a retired key keep
+        // verifying under a new name — the id is what makes rotation
+        // something that can be finished.
+        String publicKeyPem = trustedKeys.get(signature.getKeyId());
+        if (publicKeyPem == null || publicKeyPem.isBlank()) return Result.UNKNOWN_KEY;
 
         // Cheap check first, and the one whose failure is explainable:
         // content that does not match the signed tree is a different kit,
         // not a broken signature.
         String actual = KitTreeHash.of(kitRoot);
         if (!actual.equals(signature.getTreeHash())) {
-            log.warn("KitSignature: tree hash mismatch — signed {}, found {}",
-                    signature.getTreeHash(), actual);
+            log.warn("KitSignature: tree hash mismatch — signed {}, found {}", signature.getTreeHash(), actual);
             return Result.TREE_MISMATCH;
         }
 
@@ -91,7 +102,8 @@ public final class KitSignature {
                 nullToEmpty(descriptor.getLicensedTo()),
                 nullToEmpty(descriptor.getPurchaseId()),
                 descriptor.getLicenseExpiresAt() == null
-                        ? "" : descriptor.getLicenseExpiresAt().toString());
+                        ? ""
+                        : descriptor.getLicenseExpiresAt().toString());
         try {
             Signature verifier = Signature.getInstance(ALGORITHM);
             verifier.initVerify(parsePublicKey(publicKeyPem));
@@ -106,11 +118,9 @@ public final class KitSignature {
 
     /** Parse a PEM-encoded X.509 public key. */
     static PublicKey parsePublicKey(String pem) throws GeneralSecurityException {
-        String base64 = pem.replaceAll("-----(BEGIN|END) PUBLIC KEY-----", "")
-                .replaceAll("\\s", "");
+        String base64 = pem.replaceAll("-----(BEGIN|END) PUBLIC KEY-----", "").replaceAll("\\s", "");
         byte[] der = Base64.getDecoder().decode(base64);
-        return KeyFactory.getInstance(ALGORITHM)
-                .generatePublic(new X509EncodedKeySpec(der));
+        return KeyFactory.getInstance(ALGORITHM).generatePublic(new X509EncodedKeySpec(der));
     }
 
     /**

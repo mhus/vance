@@ -2,6 +2,7 @@ package de.mhus.vance.api.kit;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -42,12 +43,19 @@ public class KitSourceDto {
     private KitSignaturePolicy signature = KitSignaturePolicy.OFF;
 
     /**
-     * PEM-encoded public key that verifies this source's signatures.
-     * Null falls back to the key bundled for the default library — which
-     * is only meaningful for that one, so any other source enforcing
-     * signatures has to bring its own.
+     * Keys this source signs with, by {@code keyId} — the id a kit's
+     * {@code kit.sig.yaml} names — mapped to the PEM-encoded public key.
+     *
+     * <p>A ring rather than one key, so a source can rotate: during the
+     * switch the old and the next key are both trusted, and a kit signed
+     * with either verifies. A kit names its key, and only that key is
+     * tried.
+     *
+     * <p>Null or empty falls back to the keys bundled for the default
+     * library — which is only meaningful for that one, so any other
+     * source enforcing signatures has to bring its own.
      */
-    private @Nullable String publicKey;
+    private @Nullable Map<String, String> publicKeys;
 
     /**
      * Where this library's <b>store front</b> answers, when it differs

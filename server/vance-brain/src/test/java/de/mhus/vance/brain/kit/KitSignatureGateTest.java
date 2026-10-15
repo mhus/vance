@@ -10,6 +10,7 @@ import de.mhus.vance.api.kit.KitSourceType;
 import de.mhus.vance.shared.kit.KitException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -54,8 +55,7 @@ class KitSignatureGateTest {
 
     @Test
     void required_unsignedKit_isRefused() {
-        assertThatThrownBy(() ->
-                gate.enforce(kit, descriptor(), source(KitSignaturePolicy.REQUIRED)))
+        assertThatThrownBy(() -> gate.enforce(kit, descriptor(), source(KitSignaturePolicy.REQUIRED)))
                 .isInstanceOf(KitException.class)
                 .hasMessageContaining("plain")
                 .hasMessageContaining("no signature");
@@ -72,11 +72,30 @@ class KitSignatureGateTest {
                 signature: AA==
                 """);
 
-        assertThatThrownBy(() ->
-                gate.enforce(kit, descriptor(), source(KitSignaturePolicy.REQUIRED)))
+        assertThatThrownBy(() -> gate.enforce(kit, descriptor(), source(KitSignaturePolicy.REQUIRED)))
                 .isInstanceOf(KitException.class)
-                .hasMessageContaining("publicKey")
+                .hasMessageContaining("publicKeys")
                 .hasMessageContaining(KitSourceRegistry.SOURCES_PATH);
+    }
+
+    @Test
+    void required_signedWithAKeyTheRingLacks_namesBothSides() throws Exception {
+        // The rotation case: the message has to say which key the kit
+        // wants and which ones this brain knows, or "update Vancetope"
+        // is a guess.
+        Files.writeString(kit.resolve(KitSignature.SIGNATURE_FILENAME), """
+                algorithm: Ed25519
+                keyId: library-2027
+                treeHash: sha256:0
+                signature: AA==
+                """);
+        KitSourceDto source = source(KitSignaturePolicy.REQUIRED);
+        source.setPublicKeys(Map.of("library-2026", "-----BEGIN PUBLIC KEY-----\nAA==\n-----END PUBLIC KEY-----\n"));
+
+        assertThatThrownBy(() -> gate.enforce(kit, descriptor(), source))
+                .isInstanceOf(KitException.class)
+                .hasMessageContaining("library-2027")
+                .hasMessageContaining("library-2026");
     }
 
     @Test
@@ -84,10 +103,12 @@ class KitSignatureGateTest {
         // A source built without an explicit policy must not accidentally
         // become the strictest one.
         KitSourceDto noPolicy = KitSourceDto.builder()
-                .id("s").type(KitSourceType.GIT).url("https://git.example").signature(null)
+                .id("s")
+                .type(KitSourceType.GIT)
+                .url("https://git.example")
+                .signature(null)
                 .build();
-        assertThatCode(() -> gate.enforce(kit, descriptor(), noPolicy))
-                .doesNotThrowAnyException();
+        assertThatCode(() -> gate.enforce(kit, descriptor(), noPolicy)).doesNotThrowAnyException();
     }
 
     private static KitDescriptorDto descriptor() {

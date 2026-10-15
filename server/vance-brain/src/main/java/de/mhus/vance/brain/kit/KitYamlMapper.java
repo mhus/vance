@@ -601,6 +601,15 @@ public final class KitYamlMapper {
                 throw new KitException(entryLabel + ": duplicate source id '" + id + "'");
             }
             KitSourceType type = parseSourceType(requireString(e, "type", entryLabel), entryLabel);
+            if (e.containsKey("publicKey")) {
+                // Refused rather than read as a one-key ring: the single key
+                // had no id, and a ring without ids cannot pick a key — so
+                // there is no faithful translation, only a guess that would
+                // quietly trust the key under whatever id a kit claims.
+                throw new KitException(entryLabel + ": 'publicKey' was replaced by 'publicKeys', a map"
+                        + " from the key id a kit's signature names to its PEM key"
+                        + " (publicKeys: {<keyId>: |-----BEGIN PUBLIC KEY-----…})");
+            }
             sources.add(KitSourceDto.builder()
                     .id(id)
                     .type(type)
@@ -609,7 +618,7 @@ public final class KitYamlMapper {
                             e.get("signature") == null
                                     ? KitSignaturePolicy.defaultFor(type)
                                     : parseSignaturePolicy(e.get("signature"), entryLabel))
-                    .publicKey(stringOrNull(e.get("publicKey")))
+                    .publicKeys(parsePublicKeys(e.get("publicKeys"), entryLabel))
                     .storeUrl(stringOrNull(e.get("storeUrl")))
                     .title(stringOrNull(e.get("title")))
                     .build());
@@ -637,6 +646,30 @@ public final class KitYamlMapper {
         // Copied rather than passed through: what SnakeYAML returns is mutable
         // and shared with the parsed tree.
         return new LinkedHashMap<>((Map<String, Object>) map);
+    }
+
+    /**
+     * The key ring of a source: key id → PEM public key. Null when absent,
+     * so the default library's fallback to its bundled keys can tell "said
+     * nothing" from a ring — an empty map is refused for the same reason.
+     */
+    private static @Nullable Map<String, String> parsePublicKeys(@Nullable Object raw, String label) {
+        if (raw == null) return null;
+        if (!(raw instanceof Map<?, ?> map) || map.isEmpty()) {
+            throw new KitException(label + ": 'publicKeys' must be a non-empty map of key id to PEM public key");
+        }
+        Map<String, String> keys = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            if (!(entry.getKey() instanceof String keyId)
+                    || keyId.isBlank()
+                    || !(entry.getValue() instanceof String pem)
+                    || pem.isBlank()) {
+                throw new KitException(
+                        label + ": 'publicKeys' entry '" + entry.getKey() + "' must map a key id to a PEM public key");
+            }
+            keys.put(keyId.trim(), pem);
+        }
+        return keys;
     }
 
     private static KitSourceType parseSourceType(String raw, String label) {
@@ -683,7 +716,9 @@ public final class KitYamlMapper {
             e.put("type", s.getType().name().toLowerCase(Locale.ROOT));
             e.put("url", s.getUrl());
             e.put("signature", s.getSignature().name().toLowerCase(Locale.ROOT));
-            if (s.getPublicKey() != null) e.put("publicKey", s.getPublicKey());
+            if (s.getPublicKeys() != null && !s.getPublicKeys().isEmpty()) {
+                e.put("publicKeys", new LinkedHashMap<>(s.getPublicKeys()));
+            }
             // Parse and write have to agree on the field set, or a re-export
             // quietly drops it — the same rule descriptorMap states above.
             if (s.getStoreUrl() != null) e.put("storeUrl", s.getStoreUrl());

@@ -66,7 +66,7 @@ defineExpose({ input });
        DaisyUI 5 dropped `form-control` and `label-text`, so the layout is
        expressed with utilities instead. -->
   <label class="v-field flex flex-col gap-1 w-full">
-    <span v-if="label" class="v-field-label text-sm">{{ label }}</span>
+    <span v-if="label" class="v-field-label text-xs font-semibold text-(--v-label-secondary)">{{ label }}</span>
     <input
       ref="input"
       :type="type"
@@ -88,3 +88,11 @@ defineExpose({ input });
     </span>
   </label>
 </template>
+
+<style scoped>
+/* Field heights per corporate-design §6.3: 32 / 28 / 24 px, set here rather
+   than through DaisyUI's global --size-field so raw controls keep theirs. */
+.input { --size: 2rem; }
+.input.input-sm { --size: 1.75rem; }
+.input.input-xs { --size: 1.5rem; }
+</style>

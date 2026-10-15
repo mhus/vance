@@ -298,7 +298,7 @@ async function copyToNewFile(): Promise<void> {
         <VButton variant="ghost" :disabled="acting" @click="confirmDelete = null">
           {{ $t('documents.archives.cancel') }}
         </VButton>
-        <VButton variant="danger" :loading="acting" @click="deleteArchive">
+        <VButton variant="danger" filled :loading="acting" @click="deleteArchive">
           {{ $t('documents.archives.delete') }}
         </VButton>
       </template>

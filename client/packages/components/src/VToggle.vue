@@ -42,7 +42,7 @@ function onChange(event: Event): void {
       <input
         type="checkbox"
         role="switch"
-        class="toggle toggle-sm"
+        class="toggle toggle-sm toggle-primary"
         :checked="modelValue"
         :disabled="disabled"
         :aria-label="props.title ?? props.label"

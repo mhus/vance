@@ -96,7 +96,7 @@ defineExpose({
 <template>
   <!-- See VInput for the `v-field*` hook-class convention. -->
   <label class="v-field flex flex-col gap-1 w-full">
-    <span v-if="label" class="v-field-label text-sm">{{ label }}</span>
+    <span v-if="label" class="v-field-label text-xs font-semibold text-(--v-label-secondary)">{{ label }}</span>
     <textarea
       ref="fieldRef"
       :value="modelValue"

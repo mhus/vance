@@ -38,6 +38,9 @@ const editorEntries = {
   // Generic host for federated addon "areas": addon.html?addon=<id> loads the
   // addon's ./area expose (e.g. the Simple-Auth permission-grant UI).
   addon: resolve(pkgDir, 'addon.html'),
+  // Reference page of every @vance/components building block in every state,
+  // light and dark (corporate-design.md §10.2, web-ui.md §7.4). No login.
+  preview: resolve(pkgDir, 'preview.html'),
 };
 
 // No history-fallback plumbing for the shell's routes (`/cortex`, `/chat`, …),

@@ -1404,7 +1404,7 @@ function confirmNewFolder(): void {
         <VButton v-else variant="ghost" @click="showTrashModal = false">
           {{ $t('common.cancel') }}
         </VButton>
-        <VButton variant="danger" :loading="bulkBusy" @click="confirmTrash">
+        <VButton variant="danger" filled :loading="bulkBusy" @click="confirmTrash">
           {{ $t('documents.selection.trash') }}
         </VButton>
       </template>
@@ -1461,7 +1461,7 @@ function confirmNewFolder(): void {
         <VButton variant="ghost" :disabled="deleteBusy" @click="pendingDelete = null">
           {{ $t('common.cancel') }}
         </VButton>
-        <VButton variant="danger" :loading="deleteBusy" @click="confirmRowDelete">
+        <VButton variant="danger" filled :loading="deleteBusy" @click="confirmRowDelete">
           {{ $t('documents.selection.trash') }}
         </VButton>
       </template>

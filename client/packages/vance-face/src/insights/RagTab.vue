@@ -180,7 +180,7 @@ function fmtScore(score: number): string {
             {{ $t('insights.rag.confirmHint') }}
           </p>
           <div class="flex gap-2">
-            <VButton variant="danger" @click="rebuild">{{ $t('insights.rag.confirmYes') }}</VButton>
+            <VButton variant="danger" filled @click="rebuild">{{ $t('insights.rag.confirmYes') }}</VButton>
             <VButton variant="ghost" @click="rebuildConfirmOpen = false">{{ $t('insights.rag.cancel') }}</VButton>
           </div>
         </div>

@@ -38,7 +38,7 @@ function onChange(event: Event): void {
       <input
         ref="inputEl"
         type="checkbox"
-        class="checkbox checkbox-sm"
+        class="checkbox checkbox-sm checkbox-primary"
         :checked="modelValue"
         :disabled="disabled"
         @change="onChange"

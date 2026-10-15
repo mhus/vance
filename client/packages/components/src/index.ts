@@ -1,7 +1,8 @@
 // Vance UI primitives — the V* family. The only workspace package
 // allowed to use DaisyUI utility classes (btn, input, alert, card,
 // dialog, ...) directly. Editors and addons compose their views from
-// these components. See specification/web-ui.md §7.3.
+// these components. See specification/web-ui.md §7.3; how they look:
+// specification/public/corporate-design.md.
 
 import { defineAsyncComponent } from 'vue';
 
@@ -51,6 +52,15 @@ export { default as VAlert } from './VAlert.vue';
 export { default as VBackButton } from './VBackButton.vue';
 export { default as VBadge } from './VBadge.vue';
 export { default as VButton } from './VButton.vue';
+// Corporate-design building blocks (specification/public/corporate-design.md):
+// the icon vocabulary, icon-only buttons, the toolbar, inset-grouped lists.
+export { ICONS, isIconName } from './icons';
+export type { IconName } from './icons';
+export { default as VIcon } from './VIcon.vue';
+export { default as VIconButton } from './VIconButton.vue';
+export { default as VToolbar } from './VToolbar.vue';
+export { default as VGroup } from './VGroup.vue';
+export { default as VGroupRow } from './VGroupRow.vue';
 export { default as VCard } from './VCard.vue';
 export { default as VDropdown } from './VDropdown.vue';
 export { default as VRange } from './VRange.vue';

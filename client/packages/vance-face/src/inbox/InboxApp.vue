@@ -1413,6 +1413,7 @@ const breadcrumbs = computed<string[]>(() => {
         >{{ $t('inbox.bulkArchive.cancel') }}</VButton>
         <VButton
           variant="danger"
+          filled
           :loading="bulkArchiveBusy"
           :disabled="bulkArchiveCandidates.length === 0"
           @click="submitBulkArchive"

@@ -52,7 +52,7 @@ function groupedOptions(options: Option<T>[]): Section[] {
 <template>
   <!-- See VInput for the `v-field*` hook-class convention. -->
   <label class="v-field flex flex-col gap-1 w-full">
-    <span v-if="label" class="v-field-label text-sm">{{ label }}</span>
+    <span v-if="label" class="v-field-label text-xs font-semibold text-(--v-label-secondary)">{{ label }}</span>
     <select
       :value="modelValue ?? ''"
       :disabled="disabled"
@@ -86,3 +86,8 @@ function groupedOptions(options: Option<T>[]): Section[] {
     </span>
   </label>
 </template>
+
+<style scoped>
+/* Field height per corporate-design §6.3 (32 px), like VInput. */
+.select { --size: 2rem; }
+</style>

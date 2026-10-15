@@ -311,7 +311,7 @@ function formatTimestamp(value?: Date | string | null): string {
         <VButton variant="ghost" @click="showDeleteModal = false">
           {{ t('common.cancel') }}
         </VButton>
-        <VButton variant="danger" :loading="state.busy.value" @click="confirmDelete">
+        <VButton variant="danger" filled :loading="state.busy.value" @click="confirmDelete">
           {{ t('common.delete') }}
         </VButton>
       </template>

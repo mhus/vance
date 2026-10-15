@@ -707,7 +707,7 @@ defineExpose({ reload });
       <template #actions>
         <div class="flex justify-end gap-2">
           <VButton variant="ghost" @click="deleteModal = false">{{ t('designer.cancel') }}</VButton>
-          <VButton variant="danger" @click="submitDelete">{{ t('designer.deleteDesign') }}</VButton>
+          <VButton variant="danger" filled @click="submitDelete">{{ t('designer.deleteDesign') }}</VButton>
         </div>
       </template>
     </VModal>

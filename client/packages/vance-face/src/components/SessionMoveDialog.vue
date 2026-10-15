@@ -93,6 +93,7 @@ function confirm(): void {
       </VButton>
       <VButton
         variant="danger"
+          filled
         :loading="saving"
         :disabled="saving || !selected"
         @click="confirm"

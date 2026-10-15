@@ -42,7 +42,7 @@ not an expression — a name the program wrote with
 | `row` | `children` | children side by side, sharing the width evenly |
 | `column` | `children` | children stacked — a pane of a `tabs`, a cell of a `row` |
 | `card` | `title?`, `children` | a titled box around them |
-| `button` | `label`, `on.click` | |
+| `button` | `label`, `on.click`, `variant?` | `variant`: `primary` (the one action the view is about — at most one), `secondary` (default), `plain`, `danger` |
 | `text` | `text` **or** `from` | literal, or a state value |
 | `markdown` | `text` **or** `from` | rendered **the Vance way** — see below |
 | `html` | `text` **or** `from` | sanitised HTML, passed through unchanged |

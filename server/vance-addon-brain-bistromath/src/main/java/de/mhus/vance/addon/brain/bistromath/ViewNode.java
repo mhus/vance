@@ -43,7 +43,8 @@ import org.jspecify.annotations.Nullable;
  *                somewhere the author did not write it.
  * @param options choices of a {@code select}.
  * @param variant severity of an {@code alert} or colour of a {@code badge} —
- *                one of {@link ViewParser#VARIANTS}. A literal, not a state
+ *                one of {@link ViewParser#VARIANTS} — or the role of a
+ *                {@code button}, one of {@link ViewParser#BUTTON_VARIANTS}. A literal, not a state
  *                key: a condition on the whole widget is what {@code show:} is
  *                for, and two badges with a {@code show:} each need no new
  *                binding concept.

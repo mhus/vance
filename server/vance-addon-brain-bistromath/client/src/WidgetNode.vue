@@ -154,6 +154,12 @@ const tabsAsSegment = computed<boolean>(
 );
 
 /** Elements of a `repeat`. Anything not a list repeats zero times. */
+/** A button's role from the view (ViewParser checks the closed set), secondary by default. */
+const buttonVariant = computed<'primary' | 'secondary' | 'plain' | 'danger'>(() => {
+  const v = node.value.variant;
+  return v === 'primary' || v === 'plain' || v === 'danger' ? v : 'secondary';
+});
+
 const items = computed<unknown[]>(() => (Array.isArray(bound.value) ? bound.value : []));
 
 /**
@@ -636,13 +642,13 @@ const headingClass = computed(() =>
     />
   </div>
 
-  <!-- Secondary, always (corporate-design.md §6.1): a view lists many buttons,
-       and "has a handler" is true of nearly all of them — making that primary
-       filled a view with navy. The view schema has no button role yet. -->
+  <!-- The role the author gave (corporate-design.md §6.1), secondary without
+       one: a view lists many buttons, and "has a handler" is true of nearly
+       all of them — so primary is a choice, not a default. -->
   <VButton
     v-else-if="node.type === 'button'"
     size="sm"
-    variant="secondary"
+    :variant="buttonVariant"
     @click="fire('click')"
   >
     {{ node.label }}

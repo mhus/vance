@@ -76,6 +76,14 @@ public final class ViewParser {
     static final List<String> VARIANTS = List.of("neutral", "info", "success", "warning", "error");
 
     /**
+     * Roles a {@code button} may carry — the four button roles of the
+     * corporate design. Closed for the same reason as {@link #VARIANTS}: a
+     * role says what the action is (the one the view is about, a destructive
+     * one), not how it looks. Without a role a button is {@code secondary}.
+     */
+    static final List<String> BUTTON_VARIANTS = List.of("primary", "secondary", "plain", "danger");
+
+    /**
      * Author's word → mime type, for a {@code code} widget.
      *
      * <p>Resolved here rather than in the client so the list exists once and a
@@ -539,14 +547,19 @@ public final class ViewParser {
     private static @Nullable String variant(@Nullable Object raw, WidgetType type, String docPath, String at) {
         String value = str(raw);
         if (value == null) return null;
-        if (type != WidgetType.ALERT && type != WidgetType.BADGE) {
-            throw new ToolException(where(docPath, at) + ": `variant` belongs to an `alert`"
-                    + " or a `badge`, not to a `" + type.wire() + "`.");
+        List<String> allowed;
+        if (type == WidgetType.ALERT || type == WidgetType.BADGE) {
+            allowed = VARIANTS;
+        } else if (type == WidgetType.BUTTON) {
+            allowed = BUTTON_VARIANTS;
+        } else {
+            throw new ToolException(where(docPath, at) + ": `variant` belongs to an `alert`,"
+                    + " a `badge` or a `button`, not to a `" + type.wire() + "`.");
         }
         String norm = value.trim().toLowerCase(java.util.Locale.ROOT);
-        if (!VARIANTS.contains(norm)) {
-            throw new ToolException(where(docPath, at) + ": unknown `variant` `" + value + "`. One of: "
-                    + String.join(", ", VARIANTS) + ".");
+        if (!allowed.contains(norm)) {
+            throw new ToolException(where(docPath, at) + ": unknown `variant` `" + value + "` for a `" + type.wire()
+                    + "`. One of: " + String.join(", ", allowed) + ".");
         }
         return norm;
     }

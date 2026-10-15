@@ -217,22 +217,31 @@ class ViewParserTest {
      */
     @Test
     void parse_variant_isCheckedAgainstTheClosedSet() {
-        ViewNode ok = ViewParser.parse(
-                "type: alert\ntext: passt auf\nvariant: Warning\n", "v.yaml");
+        ViewNode ok = ViewParser.parse("type: alert\ntext: passt auf\nvariant: Warning\n", "v.yaml");
         assertThat(ok.variant()).isEqualTo("warning");
 
-        assertThatThrownBy(() -> ViewParser.parse(
-                "type: alert\ntext: x\nvariant: chartreuse\n", "v.yaml"))
+        assertThatThrownBy(() -> ViewParser.parse("type: alert\ntext: x\nvariant: chartreuse\n", "v.yaml"))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("unknown `variant`");
     }
 
     @Test
     void parse_variantOnAnotherWidget_isRejected() {
-        assertThatThrownBy(() -> ViewParser.parse(
-                "type: text\ntext: x\nvariant: info\n", "v.yaml"))
+        assertThatThrownBy(() -> ViewParser.parse("type: text\ntext: x\nvariant: info\n", "v.yaml"))
                 .isInstanceOf(ToolException.class)
-                .hasMessageContaining("`variant` belongs to an `alert` or a `badge`");
+                .hasMessageContaining("`variant` belongs to an `alert`, a `badge` or a `button`");
+    }
+
+    /** A button carries a role, not a severity — each widget has its own closed set. */
+    @Test
+    void parse_buttonVariant_isARoleFromItsOwnSet() {
+        ViewNode ok = ViewParser.parse("type: button\nlabel: Save\nvariant: Primary\non:\n  click: reload\n", "v.yaml");
+        assertThat(ok.variant()).isEqualTo("primary");
+
+        assertThatThrownBy(() -> ViewParser.parse(
+                        "type: button\nlabel: Save\nvariant: warning\non:\n  click: reload\n", "v.yaml"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("One of: primary, secondary, plain, danger");
     }
 
     /**
@@ -242,16 +251,14 @@ class ViewParserTest {
      */
     @Test
     void parse_codeLanguage_becomesAMimeType() {
-        ViewNode node = ViewParser.parse(
-                "type: code\nfrom: src\nlanguage: YAML\n", "v.yaml");
+        ViewNode node = ViewParser.parse("type: code\nfrom: src\nlanguage: YAML\n", "v.yaml");
 
         assertThat(node.mimeType()).isEqualTo("application/yaml");
     }
 
     @Test
     void parse_unknownCodeLanguage_isRejected() {
-        assertThatThrownBy(() -> ViewParser.parse(
-                "type: code\nfrom: src\nlanguage: cobol\n", "v.yaml"))
+        assertThatThrownBy(() -> ViewParser.parse("type: code\nfrom: src\nlanguage: cobol\n", "v.yaml"))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("unknown `language`");
     }
@@ -267,8 +274,7 @@ class ViewParserTest {
 
     @Test
     void parse_acceptOnAnotherWidget_isRejected() {
-        assertThatThrownBy(() -> ViewParser.parse(
-                "type: input\nfrom: q\naccept: .csv\n", "v.yaml"))
+        assertThatThrownBy(() -> ViewParser.parse("type: input\nfrom: q\naccept: .csv\n", "v.yaml"))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("`accept` belongs to a `file`");
     }
@@ -314,8 +320,7 @@ class ViewParserTest {
     @Test
     void parse_regionWithANonsenseHeight_isRejected() {
         for (String bad : new String[] {"0", "-5", "9999", "gross"}) {
-            assertThatThrownBy(() -> ViewParser.parse("type: page\nregion: " + bad + "\n",
-                    "v.yaml"))
+            assertThatThrownBy(() -> ViewParser.parse("type: page\nregion: " + bad + "\n", "v.yaml"))
                     .as(bad)
                     .isInstanceOf(ToolException.class)
                     .hasMessageContaining("height in pixels");

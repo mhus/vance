@@ -9,6 +9,98 @@ breaking changes; a patch bump (`0.1.0` → `0.1.1`) is fixes only.
 
 ## [Unreleased]
 
+### Added
+
+- **Wowbagger** — bulk record engine: a Ford agent steers a mechanical worker
+  pool over canonical JSONL input; chunk publishing as commit, wakeups for
+  progress/failure/heartbeat, `wowbagger_check` preflight, force re-run, per-run
+  token cost report, opt-in source backup for pod switches. Worker SPI with
+  LightLlm, Zem (decision per record) and script workers behind a per-call
+  model gate.
+- **Zem** — System-One decision models (`kind: decision`): `ZemService`
+  (prepare/decide), the spawnable `zem` engine, recipes `zem` and
+  `command-safety`, the `zem_decide` tool and the `vance.zem` script API.
+- **Wonko** — review loop engine with question sets, a review register and a
+  check queue against reference documents; free messages are routed (answer
+  questions instead of re-reviewing), work goes to a worker, follow-ups
+  re-enter the intake.
+- **Questions document kind** — questionnaires with a chat wizard (web) and a
+  line wizard (foot); `ASK_USER` goes out as a questions fence.
+- **Nutrimat** — loop lab: `AbstractNutrimat` turn shell, loop natures
+  (janx, redbull, clubmate, salitos, absint and the coffee family), loop judge,
+  `//nutrimat` control plane, loop narration and an interim working log.
+- **Trillian Next-Gen** — home, identity, model gate, schedules and own
+  sessions; conversation heads (multi-head natures) and the exposure door: an
+  agents MCP at `POST /brain/{tenant}/agents` with gate, long-poll and idle
+  close.
+- **OAuth 2.1 authorization server** for the MCP doors (issuer per tenant,
+  consent, rotating refresh tokens with replay revocation, DCR + CIMD) and a
+  browser login for foot (`/login --browser`).
+- **Project MCP door** — `POST /brain/{tenant}/mcp/{project}` with a fixed
+  `doc_*` allow-list regulated by `_vance/config/mcp-access.yaml`.
+- **Resource leases** — quota funnel global/tenant/project/user, lease
+  definitions as config documents, check-at-use TTL and revoke handlers.
+- **Settings panel** — guided settings surface per scope (setting forms,
+  settings-doc kinds, raw editor) with management areas for mounts, feed
+  sources, AI models, recipes, chat/report themes, engine prompts, scheduler,
+  workflows, hooks, guards and wizards; context help per area and an actions
+  tab (AdminAction SPI). Replaces the scopes page.
+- **Desktop app (facelift)** — agent tools `client_file_*`/`client_exec_*` with
+  sandbox policy, workdir confinement and a per-account master switch; MCP tool
+  packs (stdio passthrough, per-project pack home, per-account credentials);
+  live tabs per profile with keyboard shortcuts and swipe navigation.
+- **Skills** — activation levels, available-skills list, recipe
+  `advertisedSkills`, categories, `skill_clear`/`skill_fire`, lifecycle `turn`
+  as default, skills handed to delegated workers, bundled coding skills; `/skill`
+  and `/ui-skill` in foot.
+- **Scribble** — handwriting sheets (`kind: scribble`) and the scribblebook
+  app: print, OCR + PDF export, sheet image for vision models and agent drawing
+  tools.
+- **Designer app** — design collections with a sandboxed live preview and a
+  design-skill catalogue.
+- **Hotblack** — audio service: TTS, STT, music, audio analysis
+  (`audio_analyze`) and local ffmpeg edit tools (trim/mix/concat/convert/info).
+- **Fenchurch** — dedicated OpenRouter image provider and `image_edit`
+  (image-to-image).
+- **Shooty** — guard handlers as Java defaults and a TOOL point (danger gate
+  for `exec_run`).
+- **Chat** — recipe-driven chat themes (`webTheme`), ArrowUp input history,
+  an active message queue (send while the engine works), tool teasers in
+  progress events.
+- **Prompt caching** — provider-agnostic cache measurement, history breakpoint
+  (`SYSTEM_AND_TOOLS_AND_TAIL`), prompt-cache tokens in the usage statistics.
+- **Per-scope `HOME`** for agent subprocesses and a sealed subprocess
+  environment on both exec surfaces.
+- **Session-mode chat identities** for Hactar, Vogon and Marvin over a shared
+  session-loop control kernel.
+- **Zarniwoop** — exa/firecrawl/searxng search sources, research-source
+  document kind and research-routing setting form.
+- **Scheduler document kind** with form view and template; path-based kind
+  defaults on `doc_write`.
+- **Cortex** — quick-open (⌘O/⌘P), audio/video player in the preview.
+- **Doc tools** — doc/file parity: If-Match chain, `doc_count`,
+  `doc_head_tail`, `doc_find` filters.
+- **Light-LLM** vision support; `glm-5.3` family and new cortecs models in the
+  model catalog.
+
+### Changed
+
+- **User hubs get a home pod** — only `_tenant` stays homeless. Existing
+  databases: switch hub projects from `HOMELESS` to `AUTO` by hand.
+- The OAuth client moved from `/oauth` to `/oauth-client`.
+- Dependency updates: langchain4j 1.20, langgraph4j 1.8.27, jline 4.4.3
+  (security), tiptap 3.31.3 (prosemirror-view XSS fix), mermaid 12 (pinned to
+  the dagre layout), vitest 5.
+
+### Fixed
+
+- Marvin renders `CALL_RECIPE` results into the phase message (#61).
+- Zaphod synthesis turn gets a timeout and a voice (#60).
+- Inbox shows the read state per message (#64).
+- Resolved API keys are masked in config record `toString()`.
+- Session bootstrap answers 409 when another pod holds the project.
+- Byte-exact `work_file_from_doc` export for binary documents.
+
 ## [0.4.1] - 2026-09-15
 
 ### Changed

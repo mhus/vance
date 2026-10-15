@@ -19,7 +19,7 @@ import {
 import { useInbox, type AssignedToFilter, type InboxFilter } from '@/composables/useInbox';
 import { useTeams } from '@/composables/useTeams';
 import { getUsername, hubProjectName, safeUrl } from '@vance/shared';
-import { VBadge } from '@/components';
+import { VBadge, VIcon } from '@/components';
 import SessionPickerPanel from '@/components/SessionPickerPanel.vue';
 import ChatSidePanel from '@/chat/ChatSidePanel.vue';
 import { InboxClientToolService } from '@/inbox/inboxClientToolService';
@@ -1066,8 +1066,8 @@ const breadcrumbs = computed<string[]>(() => {
             </VBadge>
             <span>{{ item.type }}</span>
             <VBadge v-if="item.criticality !== Criticality.NORMAL" variant="warning" size="sm">{{ item.criticality }}</VBadge>
-            <span v-if="item.assignedToUserId !== currentUser" class="opacity-60">
-              → {{ item.assignedToUserId }}
+            <span v-if="item.assignedToUserId !== currentUser" class="opacity-60 inline-flex items-center gap-1">
+              <VIcon name="arrow-right" />{{ item.assignedToUserId }}
             </span>
             <span v-if="item.status !== MaximegalonStatus.PENDING" class="opacity-60">{{ item.status }}</span>
             <!-- That a thread has a discussion is worth seeing before opening

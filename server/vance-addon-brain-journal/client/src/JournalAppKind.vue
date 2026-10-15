@@ -16,7 +16,7 @@ import {
   pollComposeRun,
   cancelComposeRun,
 } from '@vance/shared';
-import { useDocumentPrefixReaction, useLinkPickerHost, useLocale, VLinkPicker } from '@vance/components';
+import { useDocumentPrefixReaction, useLinkPickerHost, useLocale, VIconButton, VLinkPicker } from '@vance/components';
 import { WorkPageEditor, type ComposeRunResult } from '@vance/block-editor';
 import {
   scanJournal,
@@ -484,7 +484,7 @@ function humanDate(iso: string): string {
           @keydown.enter.prevent="runSearch"
           @keydown.escape="searchOpen = false"
         />
-        <button class="jr__btn" :disabled="searching" @click="runSearch">🔍</button>
+        <VIconButton icon="search" :label="t('journal.search')" :disabled="searching" @click="runSearch" />
         <div v-if="searchOpen" class="jr__search-results">
           <ul v-if="searchResults.length" class="jr__search-list">
             <li
@@ -505,12 +505,12 @@ function humanDate(iso: string): string {
       <span v-if="saveStatusLabel" class="jr__save" :class="`jr__save--${saveStatus}`">
         {{ saveStatusLabel }}
       </span>
-      <button
-        class="jr__btn"
+      <VIconButton
+        :icon="rebuilding ? 'loading' : 'refresh'"
         :disabled="rebuilding"
-        :title="rebuilding ? t('journal.rebuilding') : t('journal.rebuildTip')"
+        :label="rebuilding ? t('journal.rebuilding') : t('journal.rebuildTip')"
         @click="rebuild"
-      >{{ rebuilding ? '…' : '↻' }}</button>
+      />
     </header>
 
     <div v-if="error" class="jr__error">{{ error }}</div>
@@ -519,9 +519,9 @@ function humanDate(iso: string): string {
       <!-- Left: calendar + stats -->
       <aside class="jr__cal">
         <div class="jr__cal-head">
-          <button class="jr__btn jr__btn--sm" @click="prevMonth">‹</button>
+          <VIconButton icon="back" size="sm" :label="t('journal.previousMonth')" @click="prevMonth" />
           <span class="jr__cal-label">{{ calLabel }}</span>
-          <button class="jr__btn jr__btn--sm" @click="nextMonth">›</button>
+          <VIconButton icon="forward" size="sm" :label="t('journal.nextMonth')" @click="nextMonth" />
         </div>
         <div class="jr__cal-grid">
           <div v-for="w in WEEKDAYS" :key="w" class="jr__cal-dow">{{ w }}</div>
@@ -564,12 +564,13 @@ function humanDate(iso: string): string {
                 <option v-for="m in moodPresets" :key="m" :value="m">{{ m }}</option>
               </select>
             </label>
-            <button
+            <VIconButton
               v-if="entryExists"
-              class="jr__btn jr__btn--danger"
-              :title="t('journal.deleteEntry')"
+              icon="delete"
+              danger
+              :label="t('journal.deleteEntry')"
               @click="deleteEntry"
-            >🗑</button>
+            />
           </div>
           <div class="jr__tags">
             <input

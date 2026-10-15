@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { FinanceNodeDto } from './generated/finance/FinanceNodeDto';
 import type { NodeAction, NodeSnapshot } from './types';
+import { VIconButton } from '@vance/components';
 import { useT } from './i18n';
 
 const t = useT();
@@ -28,29 +29,29 @@ function figure(): string | null {
 <template>
   <div>
     <div
-      class="flex items-center gap-1 rounded px-1 py-0.5 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5"
-      :class="{ 'bg-black/10 dark:bg-white/10': selectedName === node.name }"
+      class="flex items-center gap-1 rounded px-1 py-0.5 cursor-pointer hover:bg-(--v-fill)/50"
+      :class="{ 'bg-(--v-selection) text-(--v-accent-text)': selectedName === node.name }"
       :style="{ paddingLeft: depth * 16 + 4 + 'px' }"
       @click="onAction('select', node.name)"
     >
       <span v-if="node.icon" class="shrink-0">{{ node.icon }}</span>
-      <span v-if="node.sign < 0" class="shrink-0 text-red-500 font-mono">−</span>
+      <span v-if="node.sign < 0" class="shrink-0 text-(--v-danger) font-mono">−</span>
       <span class="truncate flex-1">{{ node.title || node.name }}</span>
       <span
         v-if="figure() !== null"
         class="shrink-0 tabular-nums text-xs font-medium"
-        :class="(figureValue() ?? 0) < 0 ? 'text-red-500' : 'text-green-600'"
+        :class="(figureValue() ?? 0) < 0 ? 'text-(--v-danger)' : 'text-(--v-success)'"
         :title="t('finance.tree.perUnit', { unit: unitKey.replace('per', '').toLowerCase() })"
       >
         {{ figure() }}
       </span>
       <span class="shrink-0 flex items-center gap-0.5">
-        <button class="fx-btn" :title="t('finance.tree.addChild')" @click.stop="onAction('add-child', node.name)">＋</button>
-        <button class="fx-btn" :title="t('finance.tree.up')" @click.stop="onAction('move-up', node.name)">↑</button>
-        <button class="fx-btn" :title="t('finance.tree.down')" @click.stop="onAction('move-down', node.name)">↓</button>
-        <button class="fx-btn" :title="t('finance.tree.indent')" @click.stop="onAction('indent', node.name)">→</button>
-        <button class="fx-btn" :title="t('finance.tree.outdent')" @click.stop="onAction('outdent', node.name)">←</button>
-        <button class="fx-btn" :title="t('finance.tree.delete')" @click.stop="onAction('remove', node.name)">🗑</button>
+        <VIconButton icon="add" size="sm" :label="t('finance.tree.addChild')" @click.stop="onAction('add-child', node.name)" />
+        <VIconButton icon="arrow-up" size="sm" :label="t('finance.tree.up')" @click.stop="onAction('move-up', node.name)" />
+        <VIconButton icon="arrow-down" size="sm" :label="t('finance.tree.down')" @click.stop="onAction('move-down', node.name)" />
+        <VIconButton icon="arrow-right" size="sm" :label="t('finance.tree.indent')" @click.stop="onAction('indent', node.name)" />
+        <VIconButton icon="arrow-left" size="sm" :label="t('finance.tree.outdent')" @click.stop="onAction('outdent', node.name)" />
+        <VIconButton icon="delete" size="sm" danger :label="t('finance.tree.delete')" @click.stop="onAction('remove', node.name)" />
       </span>
     </div>
     <FinanceTreeNode
@@ -66,17 +67,3 @@ function figure(): string | null {
   </div>
 </template>
 
-<style scoped>
-.fx-btn {
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  font-size: 0.7rem;
-  padding: 0 0.2rem;
-  border-radius: 0.2rem;
-  opacity: 0.6;
-}
-.fx-btn:hover {
-  opacity: 1;
-}
-</style>

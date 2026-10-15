@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * Compact lock-state indicator. Renders nothing when {@code lockedFor}
- * is empty / null. Otherwise shows a 🔒 plus the locked writer-role
+ * is empty / null. Otherwise shows a lock icon plus the locked writer-role
  * initials (e.g. {@code A·K} for {@code [AI, KIT]}, {@code A·U·K} for
  * full lock).
  *
@@ -11,6 +11,7 @@
  */
 import { computed } from 'vue';
 import type { WriterRole } from '@vance/generated';
+import { VIcon } from '@vance/components';
 
 const props = defineProps<{
   lockedFor?: WriterRole[] | null;
@@ -38,7 +39,7 @@ const tooltip = computed<string>(() =>
     :title="tooltip"
     class="inline-flex items-center gap-1 rounded bg-base-300 px-1.5 py-0.5 text-xs font-mono opacity-80"
   >
-    <span aria-hidden="true">🔒</span>
+    <VIcon name="lock" />
     <span>{{ initials }}</span>
   </span>
 </template>

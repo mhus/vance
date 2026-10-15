@@ -28,7 +28,7 @@ export default {
     view: {
       fallbackTitle: 'View',
       recheck: 'Re-check',
-      openApp: 'Open the app ↗',
+      openApp: 'Open the app',
       openAppTip: 'Open the app this view belongs to',
       previewPre: 'Preview — no program is running, so anything bound to',
       previewMid: 'is empty and',

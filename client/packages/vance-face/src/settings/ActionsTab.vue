@@ -13,7 +13,7 @@
  */
 import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { VAlert, VButton } from '@/components';
+import { VAlert, VButton, VIcon } from '@/components';
 import { brainFetch, RestError } from '@vance/shared';
 import type {
   AdminActionDto,
@@ -108,8 +108,12 @@ void useProfile(); // tab renders inside an authenticated page; nothing more nee
         class="border rounded p-3 text-sm"
         :class="result.ok ? 'border-base-300' : 'border-warning'"
       >
-        <div class="font-semibold">
-          {{ result.ok ? '✓' : '⚠' }} {{ result.summary }}
+        <div class="font-semibold flex items-center gap-1.5">
+          <VIcon
+            :name="result.ok ? 'success' : 'warning'"
+            :class="result.ok ? 'text-(--v-success)' : 'text-(--v-warning)'"
+          />
+          {{ result.summary }}
           <span class="opacity-50 font-normal">({{ Math.round(result.durationMs) }} ms)</span>
         </div>
         <table v-if="result.items?.length" class="mt-2 w-full text-xs">
@@ -120,7 +124,12 @@ void useProfile(); // tab renders inside an authenticated page; nothing more nee
               class="border-t border-base-300 align-top"
             >
               <td class="py-1 pr-2 font-mono whitespace-nowrap">{{ item.key }}</td>
-              <td class="py-1 pr-2 w-6 text-center">{{ item.ok ? '✓' : '✗' }}</td>
+              <td class="py-1 pr-2 w-6">
+                <VIcon
+                  :name="item.ok ? 'success' : 'error'"
+                  :class="item.ok ? 'text-(--v-success)' : 'text-(--v-danger)'"
+                />
+              </td>
               <td class="py-1 opacity-80">{{ item.detail }}</td>
               <td v-if="item.durationMs" class="py-1 pl-2 text-right opacity-50 whitespace-nowrap">
                 {{ item.durationMs }} ms
@@ -142,7 +151,7 @@ void useProfile(); // tab renders inside an authenticated page; nothing more nee
             <div class="text-sm opacity-70">{{ localized(action.description) }}</div>
           </div>
           <VButton
-            variant="primary"
+            variant="secondary"
             size="sm"
             :loading="busyId === action.id"
             :disabled="busyId !== null"

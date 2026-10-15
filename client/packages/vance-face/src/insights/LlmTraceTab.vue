@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { VAlert, VEmptyState, VPagination } from '@/components';
+import { VAlert, VEmptyState, VIcon, VPagination } from '@/components';
 import { useLlmTraces, type LlmTraceTurn } from '@/composables/useLlmTraces';
 import type { LlmTraceDto } from '@vance/generated';
 
@@ -131,9 +131,7 @@ function legBadge(leg: LlmTraceDto): { label: string; cls: string } {
           :aria-expanded="expanded.has(turn.turnId)"
           @click="toggle(turn.turnId)"
         >
-          <span class="turn-disclosure">
-            {{ expanded.has(turn.turnId) ? '▾' : '▸' }}
-          </span>
+          <VIcon :name="expanded.has(turn.turnId) ? 'expand' : 'forward'" class="turn-disclosure" />
           <span class="turn-id">#{{ turnLabel(turn) }}</span>
           <span class="turn-time">{{ fmtTime(turn.startedAt) }}</span>
           <span class="turn-meta">

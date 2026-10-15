@@ -7,6 +7,7 @@ import TreeViewReadNode from './TreeViewReadNode.vue';
 import type { DocumentDto } from '@vance/generated';
 import type { EmbedRef } from '@/kindRenderers/parseVanceUri';
 import type { FenceMeta } from '@/kindRenderers/parseFenceLang';
+import { VButton, VIcon, VIconButton } from '@/components';
 
 /**
  * Recursive editor for `kind: tree` documents. The component runs in
@@ -515,16 +516,16 @@ function pathsEqual(a: number[], b: number[]): boolean {
             class="drag-handle"
             :title="t('documents.treeEditor.dragHandle')"
             aria-hidden="true"
-          >⠿</span>
-          <button
+          ><VIcon name="drag" /></span>
+          <VIconButton
             v-if="item.children.length > 0"
-            type="button"
-            class="disclosure"
-            :title="editor.isCollapsed(pathFor(idx))
+            :icon="editor.isCollapsed(pathFor(idx)) ? 'forward' : 'expand'"
+            size="sm"
+            :label="editor.isCollapsed(pathFor(idx))
               ? t('documents.treeEditor.expand')
               : t('documents.treeEditor.collapse')"
             @click="editor.toggleCollapsed(pathFor(idx))"
-          >{{ editor.isCollapsed(pathFor(idx)) ? '▸' : '▾' }}</button>
+          />
           <span v-else class="disclosure-spacer" aria-hidden="true" />
 
           <textarea
@@ -548,18 +549,19 @@ function pathsEqual(a: number[], b: number[]): boolean {
             <span v-else class="text-empty">{{ t('documents.treeEditor.emptyItem') }}</span>
           </button>
 
-          <button
-            type="button"
-            class="row-action"
-            :title="t('documents.treeEditor.addChild')"
+          <VIconButton
+            icon="add"
+            size="sm"
+            :label="t('documents.treeEditor.addChild')"
             @click="editor.addChild(pathFor(idx))"
-          >＋</button>
-          <button
-            type="button"
-            class="row-action row-delete"
-            :title="t('documents.treeEditor.deleteItem')"
+          />
+          <VIconButton
+            icon="delete"
+            size="sm"
+            danger
+            :label="t('documents.treeEditor.deleteItem')"
             @click="editor.deleteAt(pathFor(idx))"
-          >✕</button>
+          />
         </div>
 
         <TreeView
@@ -571,13 +573,11 @@ function pathsEqual(a: number[], b: number[]): boolean {
     </VueDraggable>
 
     <!-- Add-root only on the top-level instance. Nested instances
-         use the per-item ＋ button instead. -->
+         use the per-item add button instead. -->
     <div v-if="isTopLevel" class="add-row">
-      <button
-        type="button"
-        class="add-root"
-        @click="editor.addRoot()"
-      >+ {{ t('documents.treeEditor.addItem') }}</button>
+      <VButton icon="add" variant="plain" size="sm" @click="editor.addRoot()">
+        {{ t('documents.treeEditor.addItem') }}
+      </VButton>
     </div>
   </div>
 </template>
@@ -620,7 +620,7 @@ function pathsEqual(a: number[], b: number[]): boolean {
 }
 .row-head {
   display: grid;
-  grid-template-columns: 1rem 1.25rem 1fr auto auto;
+  grid-template-columns: 1rem 1.5rem 1fr auto auto;
   gap: 0.4rem;
   align-items: start;
   padding: 0.3rem 0.25rem;
@@ -637,21 +637,9 @@ function pathsEqual(a: number[], b: number[]): boolean {
 }
 .drag-handle:hover { opacity: 0.7; }
 .drag-handle:active { cursor: grabbing; }
-.disclosure {
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  font-size: 0.85rem;
-  line-height: 1;
-  opacity: 0.55;
-  padding: 0.15rem 0;
-  text-align: center;
-  user-select: none;
-}
-.disclosure:hover { opacity: 1; }
 .disclosure-spacer {
   display: inline-block;
-  width: 1.25rem;
+  width: 1.5rem;
 }
 .text {
   text-align: left;
@@ -692,37 +680,9 @@ function pathsEqual(a: number[], b: number[]): boolean {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-primary) 20%, transparent);
 }
-.row-action {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 0.25rem 0.4rem;
-  border-radius: 0.25rem;
-  opacity: 0.4;
-  font-size: 0.85rem;
-  line-height: 1;
-}
-.row-action:hover { opacity: 1; background: color-mix(in oklab, var(--color-base-content) 6%, transparent); }
-.row-delete:hover {
-  background: color-mix(in oklab, var(--color-error) 15%, transparent);
-  color: var(--color-error);
-}
 .add-row {
   margin-top: 0.5rem;
   padding-top: 0.25rem;
-}
-.add-root {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 0.4rem 0.6rem;
-  font-size: 0.85rem;
-  opacity: 0.7;
-  border-radius: 0.25rem;
-}
-.add-root:hover {
-  opacity: 1;
-  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
 }
 .row--ghost { opacity: 0.35; background: color-mix(in oklab, var(--color-primary) 8%, transparent); }
 .row--chosen { background: color-mix(in oklab, var(--color-base-content) 4%, transparent); }

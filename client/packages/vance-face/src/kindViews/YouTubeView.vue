@@ -25,6 +25,7 @@
  */
 import { computed } from 'vue';
 import type { FenceMeta } from '@/kindRenderers/parseFenceLang';
+import { VIcon } from '@/components';
 
 interface Props {
   /** Mode is structurally always inline for this kind. */
@@ -156,8 +157,8 @@ function extractVideoId(raw: string): string | null {
           :href="watchUrl"
           target="_blank"
           rel="noopener noreferrer"
-          class="yt-view__source"
-        >▶ youtube.com</a>
+          class="yt-view__source inline-flex items-center gap-1"
+        >youtube.com<VIcon name="external" /></a>
       </p>
     </template>
   </div>

@@ -8,6 +8,8 @@ import {
   VAlert,
   VButton,
   VEmptyState,
+  VIcon,
+  VIconButton,
   VInput,
   VModal,
   type FocusZone,
@@ -589,20 +591,20 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
         <nav class="flex flex-col gap-1 p-2">
           <button
             type="button"
-            class="sidebar-item"
+            class="sidebar-item flex items-center gap-2"
             :class="{ 'sidebar-item--active': scopeKeyword(view.scope) === 'user' }"
             :disabled="!login"
             @click="selectScope(USER_SCOPE)"
           >
-            <span class="opacity-50 mr-1">☺</span>{{ t('settings.sidebar.user') }}
+            <VIcon name="user" class="opacity-50" />{{ t('settings.sidebar.user') }}
           </button>
           <button
             type="button"
-            class="sidebar-item"
+            class="sidebar-item flex items-center gap-2"
             :class="{ 'sidebar-item--active': scopeKeyword(view.scope) === 'tenant' }"
             @click="selectScope(TENANT_SCOPE)"
           >
-            <span class="opacity-50 mr-1">⌂</span>{{ t('settings.sidebar.tenant') }}
+            <VIcon name="tenant" class="opacity-50" />{{ t('settings.sidebar.tenant') }}
           </button>
         </nav>
 
@@ -636,9 +638,9 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
                  project is not waiting for anything, so that label wins. -->
             <span
               v-else-if="kind === 'project' && (item as ProjectDto).placementPendingSince"
-              class="text-xs text-warning"
+              class="inline-flex items-center gap-1 text-xs text-(--v-warning)"
               :title="t('scopes.project.placementPendingNote')"
-            >⏳ {{ t('scopes.project.placementPendingBadge') }}</span>
+            ><VIcon name="waiting" />{{ t('scopes.project.placementPendingBadge') }}</span>
           </template>
         </ProjectListSidebar>
       </div>
@@ -680,7 +682,7 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
         <!-- Level 3: open entry, inline view -->
         <template v-if="activeArea && activeEntry">
           <div class="flex items-center gap-2">
-            <VButton variant="plain" size="sm" @click="backToEntryList">
+            <VButton variant="plain" size="sm" icon="back" @click="backToEntryList">
               {{ t('settings.areas.backToEntries') }}
             </VButton>
           </div>
@@ -694,13 +696,14 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
         <!-- Level 2: entry list of the open area -->
         <template v-else-if="activeArea">
           <div class="flex items-center justify-between gap-2">
-            <VButton variant="plain" size="sm" @click="backToAreas">
+            <VButton variant="plain" size="sm" icon="back" @click="backToAreas">
               {{ t('settings.areas.backToAreas') }}
             </VButton>
             <VButton
               v-if="activeArea.settingsProvider?.create"
               variant="primary"
               size="sm"
+              icon="add"
               @click="openAddDialog"
             >{{ t('settings.areas.addEntry') }}</VButton>
           </div>
@@ -731,9 +734,13 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
                 <div class="font-semibold truncate">{{ row.title }}</div>
                 <div v-if="row.path" class="text-xs opacity-60 font-mono truncate">{{ row.path }}</div>
               </button>
-              <VButton variant="danger" size="sm" @click="deleteEntry(row)">
-                {{ t('settings.areas.deleteEntry') }}
-              </VButton>
+              <VIconButton
+                icon="delete"
+                :label="t('settings.areas.deleteEntry')"
+                size="sm"
+                danger
+                @click="deleteEntry(row)"
+              />
             </li>
           </ul>
         </template>
@@ -766,7 +773,7 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
       <template v-else-if="effectiveTab === 'forms'">
         <template v-if="activeForm">
           <div class="flex items-center gap-2">
-            <VButton variant="plain" size="sm" @click="backToFormsListing">
+            <VButton variant="plain" size="sm" icon="back" @click="backToFormsListing">
               {{ t('settings.backToListing') }}
             </VButton>
           </div>

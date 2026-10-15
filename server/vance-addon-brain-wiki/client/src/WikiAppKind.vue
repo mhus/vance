@@ -14,6 +14,9 @@ import {
   useAppEntry,
   useDocumentPrefixReaction,
   useLinkPickerHost,
+  VButton,
+  VIcon,
+  VIconButton,
   VLinkPicker,
 } from '@vance/components';
 import {
@@ -765,7 +768,7 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
       <div class="wiki-app__brand" :title="folder">{{ title }}</div>
 
       <label class="wiki-app__space">
-        <span class="wiki-app__space-caret">▾</span>
+        <span class="wiki-app__space-caret"><VIcon name="expand" /></span>
         <select
           class="wiki-app__space-select"
           :value="currentSpace"
@@ -788,7 +791,7 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
           @keydown.enter.prevent="runSearch"
           @keydown.escape="searchOpen = false"
         />
-        <button class="wiki-app__btn" :disabled="searching" @click="runSearch">🔍</button>
+        <VIconButton icon="search" :label="t('wiki.app.search')" :disabled="searching" @click="runSearch" />
         <div v-if="searchOpen" class="wiki-app__search-results">
           <ul v-if="searchResults.length" class="wiki-app__search-list">
             <li
@@ -805,11 +808,11 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
           <button
             v-if="searchCanCreate"
             type="button"
-            class="wiki-app__search-create"
+            class="wiki-app__search-create inline-flex items-center gap-1"
             :disabled="creating"
             @click="createFromSearch"
           >
-            ＋ {{ currentSpace
+            <VIcon name="add" />{{ currentSpace
               ? t('wiki.app.createNamedInSpace', { name: searchCreateName, space: currentSpace })
               : t('wiki.app.createNamed', { name: searchCreateName }) }}
           </button>
@@ -822,38 +825,40 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
         {{ saveStatusLabel }}
       </span>
 
-      <button
-        class="wiki-app__btn"
+      <VButton
+        size="sm"
+        variant="secondary"
+        icon="add"
         :title="t('wiki.app.newPage')"
         :disabled="creating"
         @click="openNewPage"
-      >＋ {{ t('wiki.app.newShort') }}</button>
-      <button class="wiki-app__btn" :title="t('wiki.app.home')" @click="openHome">🏠</button>
-      <button class="wiki-app__btn" :title="t('wiki.app.indexTip')" @click="openCurrentIndex">📄</button>
-      <button
-        class="wiki-app__btn"
+      >{{ t('wiki.app.newShort') }}</VButton>
+      <VIconButton icon="home" :label="t('wiki.app.home')" @click="openHome" />
+      <VIconButton icon="list" :label="t('wiki.app.indexTip')" @click="openCurrentIndex" />
+      <VIconButton
+        :icon="rebuilding ? 'loading' : 'refresh'"
         :disabled="rebuilding"
-        :title="rebuilding ? t('wiki.app.rebuilding') : t('wiki.app.rebuild')"
+        :label="rebuilding ? t('wiki.app.rebuilding') : t('wiki.app.rebuild')"
         @click="rebuild"
-      >{{ rebuilding ? '…' : '↻' }}</button>
-      <button
-        class="wiki-app__btn"
-        :class="{ 'wiki-app__btn--active': rightOpen && rightTab === 'backlinks' }"
-        :title="t('wiki.backlinks.title')"
+      />
+      <VIconButton
+        icon="link"
+        :active="rightOpen && rightTab === 'backlinks'"
+        :label="t('wiki.backlinks.title')"
         @click="toggleRight('backlinks')"
-      >🔗</button>
-      <button
-        class="wiki-app__btn"
-        :class="{ 'wiki-app__btn--active': rightOpen && rightTab === 'notes' }"
-        :title="t('wiki.notes.title')"
+      />
+      <VIconButton
+        icon="note"
+        :active="rightOpen && rightTab === 'notes'"
+        :label="t('wiki.notes.title')"
         @click="toggleRight('notes')"
-      >📝</button>
-      <button
-        class="wiki-app__btn"
-        :class="{ 'wiki-app__btn--active': rightOpen && rightTab === 'versions' }"
-        :title="t('wiki.versions.title')"
+      />
+      <VIconButton
+        icon="history"
+        :active="rightOpen && rightTab === 'versions'"
+        :label="t('wiki.versions.title')"
         @click="toggleRight('versions')"
-      >🕐</button>
+      />
     </header>
 
     <!-- New-page inline form -->
@@ -888,12 +893,12 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
             {{ t('wiki.app.missingPre') }} <code>main</code> {{ t('wiki.app.missingMid') }}
             <button type="button" class="wiki-app__linkbtn" @click="openCurrentIndex">{{ t('wiki.app.indexLink') }}</button>.
           </p>
-          <button
-            type="button"
-            class="wiki-app__btn wiki-app__btn--primary"
+          <VButton
+            variant="primary"
+            icon="add"
             :disabled="creating"
             @click="createMain"
-          >{{ creating ? t('wiki.common.creating') : t('wiki.app.createMain') }}</button>
+          >{{ creating ? t('wiki.common.creating') : t('wiki.app.createMain') }}</VButton>
         </div>
         <div v-else-if="!activePageId" class="wiki-app__hint">
           {{ t('wiki.app.noPageSelected') }}
@@ -903,12 +908,13 @@ const editorKey = computed(() => activePageId.value ?? 'empty');
             <span class="wiki-app__pagetitle">{{ pageDisplayTitle }}</span>
             <span v-if="activeIsIndex" class="wiki-app__badge">{{ t('wiki.app.generatedBadge') }}</span>
             <span class="wiki-app__spacer" />
-            <button
+            <VIconButton
               v-if="!activeIsIndex && !(activePageView && activePageView.main)"
-              class="wiki-app__btn wiki-app__btn--danger"
-              :title="t('wiki.app.deletePage')"
+              icon="delete"
+              danger
+              :label="t('wiki.app.deletePage')"
               @click="deleteActivePage"
-            >🗑</button>
+            />
           </div>
           <div v-if="pageError" class="wiki-app__error">{{ pageError }}</div>
           <div v-else-if="pageLoading" class="wiki-app__hint">{{ t('wiki.app.loadingPage') }}</div>

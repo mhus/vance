@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import type { EffectiveRecipeDto } from '@vance/generated';
-import { VAlert, VCheckbox, VEmptyState, VInput } from '@/components';
+import { VAlert, VCheckbox, VEmptyState, VIcon, VInput } from '@/components';
 import { useI18n } from 'vue-i18n';
 import { useEffectiveRecipes } from '@/composables/useProjectInsights';
 
@@ -64,9 +64,10 @@ function toggleSort(key: SortKey): void {
   }
 }
 
-function arrow(key: SortKey): string {
-  if (sortKey.value !== key) return '';
-  return sortAsc.value ? ' ▲' : ' ▼';
+/** Sort-direction icon for the active column header; null on the others. */
+function arrow(key: SortKey): 'arrow-up' | 'arrow-down' | null {
+  if (sortKey.value !== key) return null;
+  return sortAsc.value ? 'arrow-up' : 'arrow-down';
 }
 
 const filteredRecipes = computed<EffectiveRecipeDto[]>(() => {
@@ -150,13 +151,13 @@ const filteredRecipes = computed<EffectiveRecipeDto[]>(() => {
         <thead>
           <tr>
             <th class="w-40 cursor-pointer select-none" @click="toggleSort('name')">
-              {{ $t('insights.recipes.colName') }}{{ arrow('name') }}
+              <span class="inline-flex items-center gap-1">{{ $t('insights.recipes.colName') }}<VIcon v-if="arrow('name')" :name="arrow('name')!" /></span>
             </th>
             <th class="w-24 cursor-pointer select-none" @click="toggleSort('source')">
-              {{ $t('insights.recipes.colSource') }}{{ arrow('source') }}
+              <span class="inline-flex items-center gap-1">{{ $t('insights.recipes.colSource') }}<VIcon v-if="arrow('source')" :name="arrow('source')!" /></span>
             </th>
             <th class="w-24 cursor-pointer select-none" @click="toggleSort('engine')">
-              {{ $t('insights.recipes.colEngine') }}{{ arrow('engine') }}
+              <span class="inline-flex items-center gap-1">{{ $t('insights.recipes.colEngine') }}<VIcon v-if="arrow('engine')" :name="arrow('engine')!" /></span>
             </th>
             <th>{{ $t('insights.recipes.colDescription') }}</th>
             <th class="w-16 text-right">{{ $t('insights.recipes.colParams') }}</th>
@@ -174,7 +175,7 @@ const filteredRecipes = computed<EffectiveRecipeDto[]>(() => {
           <tr v-for="r in filteredRecipes" :key="r.name">
             <td class="font-mono">
               {{ r.name }}
-              <span v-if="r.locked" class="opacity-60 text-xs">🔒</span>
+              <VIcon v-if="r.locked" name="lock" class="inline-block align-text-bottom opacity-60" />
             </td>
             <td>
               <span :class="sourceClass(r.source)">{{ sourceLabel(r.source) }}</span>

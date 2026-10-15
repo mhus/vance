@@ -18,6 +18,7 @@ import { computed, ref } from 'vue';
 import { brainFetch } from '@vance/shared';
 import type { DocumentCreateRequest, DocumentDto } from '@vance/generated';
 import KindBox from './KindBox.vue';
+import { VIconButton } from '@vance/components';
 import { useI18n } from 'vue-i18n';
 import { kindIcon, kindLabel, resolveRenderer } from '@/kindRenderers/registry';
 import type { FenceMeta } from '@/kindRenderers/parseFenceLang';
@@ -199,15 +200,16 @@ function mimeForKind(kind: string): string {
 <template>
   <KindBox :kind="kind" :label="label" :icon="icon">
     <template #actions>
-      <button class="kbx-act" :title="$t?.('chat.kindBox.download') ?? 'Download'" @click="onDownload">↓</button>
-      <button class="kbx-act" :title="$t?.('chat.kindBox.raw') ?? 'Raw'" @click="toggleRaw">{{ showRaw ? '⟲' : '&lt;/&gt;' }}</button>
-      <button class="kbx-act" :title="$t?.('chat.kindBox.copy') ?? 'Copy'" @click="onCopy">⧉</button>
-      <button
-        class="kbx-act"
+      <VIconButton icon="download" size="sm" :label="$t?.('chat.kindBox.download') ?? 'Download'" @click="onDownload" />
+      <VIconButton icon="code" size="sm" :active="showRaw" :label="$t?.('chat.kindBox.raw') ?? 'Raw'" @click="toggleRaw" />
+      <VIconButton icon="copy" size="sm" :label="$t?.('chat.kindBox.copy') ?? 'Copy'" @click="onCopy" />
+      <VIconButton
+        :icon="saving ? 'loading' : 'save'"
+        size="sm"
         :disabled="saving"
-        :title="$t?.('chat.kindBox.saveAsDocument') ?? 'Save as Document'"
+        :label="$t?.('chat.kindBox.saveAsDocument') ?? 'Save as Document'"
         @click="onSaveAsDocument"
-      >{{ saving ? '⌛' : '💾' }}</button>
+      />
     </template>
     <div
       v-if="status"

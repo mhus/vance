@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { brainFetch, brainFetchBlob } from '@vance/shared';
-import { VButton } from '@/components';
+import { VButton, VIconButton } from '@/components';
 import type {
   SheetCell,
   SheetColumn,
@@ -1221,87 +1221,81 @@ function applyNumberFormat(raw: string, code: string): string {
 <template>
   <div class="sheet-view">
     <div class="toolbar">
-      <VButton
-        size="sm"
-        variant="plain"
-        :title="t('documents.sheetView.insertRowAbove')"
+      <VIconButton
+        icon="row-insert-above"
+        :label="t('documents.sheetView.insertRowAbove')"
         @click="insertRowAbove"
-      ><span class="ico">▭↑</span></VButton>
-      <VButton
-        size="sm"
-        variant="plain"
-        :title="t('documents.sheetView.insertRow')"
+      />
+      <VIconButton
+        icon="row-insert-below"
+        :label="t('documents.sheetView.insertRow')"
         @click="insertRowBelow"
-      ><span class="ico">▭↓</span></VButton>
-      <VButton
-        size="sm"
-        variant="plain"
-        :title="t('documents.sheetView.insertColumnLeft')"
+      />
+      <VIconButton
+        icon="column-insert-left"
+        :label="t('documents.sheetView.insertColumnLeft')"
         @click="insertColumnLeft"
-      ><span class="ico">←▯</span></VButton>
-      <VButton
-        size="sm"
-        variant="plain"
-        :title="t('documents.sheetView.insertColumn')"
+      />
+      <VIconButton
+        icon="column-insert-right"
+        :label="t('documents.sheetView.insertColumn')"
         @click="insertColumnRight"
-      ><span class="ico">▯→</span></VButton>
+      />
       <VButton
         size="sm"
-        variant="plain"
+        variant="danger"
         :disabled="activeRow == null"
-        :title="t('documents.sheetView.deleteRow')"
         @click="deleteSelectedRow"
-      ><span class="ico ico--danger">▭✕</span></VButton>
+      >{{ t('documents.sheetView.deleteRow') }}</VButton>
       <VButton
         size="sm"
-        variant="plain"
+        variant="danger"
         :disabled="!activeColumn || localSchema.length <= 1"
-        :title="t('documents.sheetView.deleteColumn')"
         @click="deleteSelectedColumn"
-      ><span class="ico ico--danger">▯✕</span></VButton>
+      >{{ t('documents.sheetView.deleteColumn') }}</VButton>
       <VButton
         v-if="activeColumn"
         size="sm"
         variant="plain"
         :title="t('documents.sheetView.columnBorderHint')"
         @click="cycleColumnBorder"
-      ><span class="ico">▯</span> {{ columnBorderLabel }}</VButton>
+      >{{ t('documents.sheetView.columnBorder') }}: {{ columnBorderLabel }}</VButton>
       <VButton
         v-if="activeRow != null"
         size="sm"
         variant="plain"
         :title="t('documents.sheetView.rowBorderHint')"
         @click="cycleRowBorder"
-      ><span class="ico">▭</span> {{ rowBorderLabel }}</VButton>
-      <VButton
+      >{{ t('documents.sheetView.rowBorder') }}: {{ rowBorderLabel }}</VButton>
+      <VIconButton
         v-if="canRecalc"
-        size="sm"
-        variant="plain"
+        :icon="recalcing ? 'loading' : 'refresh'"
         :disabled="recalcing"
-        :title="t('documents.sheetView.recalcHint')"
+        :label="t('documents.sheetView.recalc')"
         @click="recalc"
-      ><span class="ico">{{ recalcing ? '…' : '↻' }}</span></VButton>
-      <VButton
+      />
+      <VIconButton
         v-if="canRecalc"
-        size="sm"
-        variant="plain"
-        :title="t('documents.sheetView.importFile')"
+        icon="upload"
+        :label="t('documents.sheetView.importFile')"
         @click="triggerImport"
-      ><span class="ico">⬆</span></VButton>
+      />
       <VButton
         v-if="canRecalc"
         size="sm"
         variant="plain"
+        icon="download"
         :title="t('documents.sheetView.exportXlsx')"
         @click="exportFile('xlsx')"
-      ><span class="ico">⬇</span> xlsx</VButton>
+      >xlsx</VButton>
       <VButton
         v-if="canRecalc"
         size="sm"
         variant="plain"
+        icon="download"
         :title="t('documents.sheetView.exportCsv')"
         @click="exportFile('csv')"
-      ><span class="ico">⬇</span> csv</VButton>
+      >csv</VButton>
       <input
         ref="importInput"
         type="file"
@@ -1434,44 +1428,42 @@ function applyNumberFormat(raw: string, code: string): string {
         <label>
           {{ t('documents.sheetView.style') }}
           <div class="fmt-row">
-            <button
-              type="button"
-              class="fmt-btn"
-              :class="{ 'fmt-btn--on': selectionBold }"
-              style="font-weight: 700"
-              :title="t('documents.sheetView.bold')"
+            <VIconButton
+              icon="bold"
+              size="sm"
+              :active="selectionBold"
+              :label="t('documents.sheetView.bold')"
               @click="toggleBold"
-            >B</button>
-            <button
-              type="button"
-              class="fmt-btn"
-              :class="{ 'fmt-btn--on': selectionItalic }"
-              style="font-style: italic"
-              :title="t('documents.sheetView.italic')"
+            />
+            <VIconButton
+              icon="italic"
+              size="sm"
+              :active="selectionItalic"
+              :label="t('documents.sheetView.italic')"
               @click="toggleItalic"
-            >I</button>
+            />
             <span class="fmt-sep" aria-hidden="true" />
-            <button
-              type="button"
-              class="fmt-btn"
-              :class="{ 'fmt-btn--on': selectionAlign === 'left' }"
-              :title="t('documents.sheetView.alignLeft')"
+            <VIconButton
+              icon="align-left"
+              size="sm"
+              :active="selectionAlign === 'left'"
+              :label="t('documents.sheetView.alignLeft')"
               @click="setAlign('left')"
-            >⇤</button>
-            <button
-              type="button"
-              class="fmt-btn"
-              :class="{ 'fmt-btn--on': selectionAlign === 'center' }"
-              :title="t('documents.sheetView.alignCenter')"
+            />
+            <VIconButton
+              icon="align-center"
+              size="sm"
+              :active="selectionAlign === 'center'"
+              :label="t('documents.sheetView.alignCenter')"
               @click="setAlign('center')"
-            >↔</button>
-            <button
-              type="button"
-              class="fmt-btn"
-              :class="{ 'fmt-btn--on': selectionAlign === 'right' }"
-              :title="t('documents.sheetView.alignRight')"
+            />
+            <VIconButton
+              icon="align-right"
+              size="sm"
+              :active="selectionAlign === 'right'"
+              :label="t('documents.sheetView.alignRight')"
               @click="setAlign('right')"
-            >⇥</button>
+            />
           </div>
         </label>
         <label>
@@ -1489,48 +1481,48 @@ function applyNumberFormat(raw: string, code: string): string {
         <label>
           {{ t('documents.sheetView.borders') }}
           <div class="fmt-row">
-            <button
-              type="button"
-              class="fmt-btn"
-              :class="{ 'fmt-btn--on': selectionBorderSide('t') }"
-              :title="t('documents.sheetView.borderTop')"
+            <VIconButton
+              icon="border-top"
+              size="sm"
+              :active="selectionBorderSide('t')"
+              :label="t('documents.sheetView.borderTop')"
               @click="toggleBorderSide('t')"
-            >▔</button>
-            <button
-              type="button"
-              class="fmt-btn"
-              :class="{ 'fmt-btn--on': selectionBorderSide('l') }"
-              :title="t('documents.sheetView.borderLeft')"
+            />
+            <VIconButton
+              icon="border-left"
+              size="sm"
+              :active="selectionBorderSide('l')"
+              :label="t('documents.sheetView.borderLeft')"
               @click="toggleBorderSide('l')"
-            >▏</button>
-            <button
-              type="button"
-              class="fmt-btn"
-              :class="{ 'fmt-btn--on': selectionBorderSide('r') }"
-              :title="t('documents.sheetView.borderRight')"
+            />
+            <VIconButton
+              icon="border-right"
+              size="sm"
+              :active="selectionBorderSide('r')"
+              :label="t('documents.sheetView.borderRight')"
               @click="toggleBorderSide('r')"
-            >▕</button>
-            <button
-              type="button"
-              class="fmt-btn"
-              :class="{ 'fmt-btn--on': selectionBorderSide('b') }"
-              :title="t('documents.sheetView.borderBottom')"
+            />
+            <VIconButton
+              icon="border-bottom"
+              size="sm"
+              :active="selectionBorderSide('b')"
+              :label="t('documents.sheetView.borderBottom')"
               @click="toggleBorderSide('b')"
-            >▁</button>
+            />
             <span class="fmt-sep" aria-hidden="true" />
-            <button
-              type="button"
-              class="fmt-btn"
-              :title="t('documents.sheetView.borderOuter')"
+            <VIconButton
+              icon="border-outer"
+              size="sm"
+              :label="t('documents.sheetView.borderOuter')"
               @click="applyOuterFrame"
-            >▢</button>
-            <button
-              type="button"
-              class="fmt-btn"
+            />
+            <VIconButton
+              icon="border-clear"
+              size="sm"
               :disabled="!selectionHasBorders"
-              :title="t('documents.sheetView.borderClear')"
+              :label="t('documents.sheetView.borderClear')"
               @click="clearBorders"
-            >⌫</button>
+            />
           </div>
         </label>
         <VButton
@@ -1570,14 +1562,6 @@ function applyNumberFormat(raw: string, code: string): string {
   font-size: 0.7rem;
   opacity: 0.55;
   margin-left: auto;
-}
-.ico {
-  font-family: ui-monospace, monospace;
-  font-size: 0.95rem;
-  letter-spacing: -0.02em;
-}
-.ico--danger {
-  color: var(--color-error);
 }
 .hidden-file {
   display: none;
@@ -1832,24 +1816,6 @@ function applyNumberFormat(raw: string, code: string): string {
   align-items: center;
   gap: 0.25rem;
   margin-top: 0.2rem;
-}
-.fmt-btn {
-  min-width: 1.75rem;
-  height: 1.75rem;
-  padding: 0 0.35rem;
-  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
-  border-radius: 0.3rem;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  line-height: 1;
-}
-.fmt-btn:hover {
-  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
-}
-.fmt-btn--on {
-  background: color-mix(in oklab, var(--color-primary) 18%, transparent);
-  border-color: color-mix(in oklab, var(--color-primary) 60%, transparent);
 }
 .fmt-sep {
   width: 1px;

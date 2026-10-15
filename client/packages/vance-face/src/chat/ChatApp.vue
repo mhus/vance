@@ -896,10 +896,11 @@ function openInCortex(): void {
       <VButton
         size="sm"
         variant="plain"
+        icon="open-in-app"
         class="hidden md:inline-flex"
         @click="openInCortex"
       >
-        Open Cortex →
+        {{ $t('chat.openCortex') }}
       </VButton>
     </template>
 

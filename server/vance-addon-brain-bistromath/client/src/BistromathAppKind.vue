@@ -15,6 +15,7 @@ import {
   VAlert,
   VButton,
   VEmptyState,
+  VIcon,
   useAppEntry,
   useDocumentPrefixReaction,
 } from '@vance/components';
@@ -846,7 +847,8 @@ function message(e: unknown): string {
           <span v-if="script.name" class="opacity-70">
             — {{ script.name }}@{{ script.version }} ({{ script.origin }})</span>
           <span v-else class="opacity-70"> — {{ script.kind }}</span>
-          <span v-if="script.askedBy" class="opacity-50"> ← {{ script.askedBy }}</span>
+          <span v-if="script.askedBy" class="inline-flex items-center gap-1 opacity-50">
+            <VIcon name="arrow-left" />{{ script.askedBy }}</span>
         </li>
       </ol>
       <p v-else class="opacity-70">{{ t('bistromath.app.noProgram') }}</p>

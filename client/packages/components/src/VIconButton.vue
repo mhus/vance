@@ -17,6 +17,8 @@ interface Props {
   /** Destructive action: icon turns red on hover. */
   danger?: boolean;
   tooltip?: 'bottom' | 'top' | 'left' | 'right';
+  /** Busy: shows a spinner instead of the icon and blocks clicks. */
+  loading?: boolean;
   /** A small count next to the icon ("3 notes"); hidden when empty or 0. */
   badge?: number | string;
 }
@@ -26,6 +28,7 @@ withDefaults(defineProps<Props>(), {
   active: false,
   disabled: false,
   danger: false,
+  loading: false,
   tooltip: 'bottom',
 });
 
@@ -38,7 +41,7 @@ defineEmits<{ (e: 'click', event: MouseEvent): void }>();
     :aria-label="label"
     :aria-pressed="active ? 'true' : undefined"
     :data-tip="label"
-    :disabled="disabled"
+    :disabled="disabled || loading"
     :class="[
       'v-icon-btn tooltip',
       `tooltip-${tooltip}`,
@@ -47,7 +50,7 @@ defineEmits<{ (e: 'click', event: MouseEvent): void }>();
     ]"
     @click="(e) => $emit('click', e)"
   >
-    <VIcon :name="icon" :size="16" />
+    <VIcon :name="loading ? 'loading' : icon" :size="16" :class="{ 'animate-spin': loading }" />
     <span v-if="badge !== undefined && badge !== 0 && badge !== ''" class="v-icon-btn-badge">{{ badge }}</span>
   </button>
 </template>

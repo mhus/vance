@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { VAlert, VButton, CodeEditor } from '@/components';
+import { VAlert, VButton, VIcon, CodeEditor } from '@/components';
 import { brainFetch, brainFetchText, RestError } from '@vance/shared';
 import { resolveKind } from '@vance/kind-registry';
 import type { DocumentDto, DocumentUpdateRequest } from '@vance/generated';
@@ -171,10 +171,11 @@ watch(
           <!-- Jump link: same document, full editor. Settings configures,
                Cortex works — a handoff, not a second editor instance. -->
           <a
-            class="text-xs underline-offset-2 hover:underline opacity-60 hover:opacity-100"
+            class="inline-flex size-7 items-center justify-center rounded-(--v-radius-control) text-(--v-label-secondary) hover:bg-(--v-fill) hover:text-(--v-label)"
             :href="cortexHref"
             :title="t('settings.areas.openInCortex')"
-          >↗</a>
+            :aria-label="t('settings.areas.openInCortex')"
+          ><VIcon name="open-in-app" /></a>
           <VButton
             variant="secondary"
            

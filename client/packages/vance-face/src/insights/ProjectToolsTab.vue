@@ -5,7 +5,7 @@ import type {
   ToolHealthCooldownDto,
   ToolHealthEntryDto,
 } from '@vance/generated';
-import { VAlert, VButton, VCheckbox, VEmptyState, VInput } from '@/components';
+import { VAlert, VButton, VCheckbox, VEmptyState, VIcon, VInput } from '@/components';
 import { getDesktopTools } from '@vance/shared';
 import { DesktopAgentToolService, type DesktopToolSpec } from '@/platform/desktopAgentTools';
 import { useEffectiveTools, useToolHealth } from '@/composables/useProjectInsights';
@@ -186,9 +186,10 @@ function toggleSort(key: SortKey): void {
   }
 }
 
-function arrow(key: SortKey): string {
-  if (sortKey.value !== key) return '';
-  return sortAsc.value ? ' ▲' : ' ▼';
+/** Sort-direction icon for the active column header; null on the others. */
+function arrow(key: SortKey): 'arrow-up' | 'arrow-down' | null {
+  if (sortKey.value !== key) return null;
+  return sortAsc.value ? 'arrow-up' : 'arrow-down';
 }
 
 const filteredTools = computed<EffectiveToolDto[]>(() => {
@@ -281,7 +282,7 @@ const filteredTools = computed<EffectiveToolDto[]>(() => {
         <li
           v-for="e in localPackErrors"
           :key="e.pack"
-          class="text-xs text-red-500"
+          class="text-xs text-(--v-danger)"
         >
           {{ $t('insights.clientTools.packFailed', { pack: e.pack }) }} {{ e.error }}
         </li>
@@ -343,13 +344,13 @@ const filteredTools = computed<EffectiveToolDto[]>(() => {
         <thead>
           <tr>
             <th class="w-40 cursor-pointer select-none" @click="toggleSort('name')">
-              {{ $t('insights.projectTools.colName') }}{{ arrow('name') }}
+              <span class="inline-flex items-center gap-1">{{ $t('insights.projectTools.colName') }}<VIcon v-if="arrow('name')" :name="arrow('name')!" /></span>
             </th>
             <th class="w-24 cursor-pointer select-none" @click="toggleSort('source')">
-              {{ $t('insights.projectTools.colSource') }}{{ arrow('source') }}
+              <span class="inline-flex items-center gap-1">{{ $t('insights.projectTools.colSource') }}<VIcon v-if="arrow('source')" :name="arrow('source')!" /></span>
             </th>
             <th class="w-20 cursor-pointer select-none" @click="toggleSort('type')">
-              {{ $t('insights.projectTools.colType') }}{{ arrow('type') }}
+              <span class="inline-flex items-center gap-1">{{ $t('insights.projectTools.colType') }}<VIcon v-if="arrow('type')" :name="arrow('type')!" /></span>
             </th>
             <th>{{ $t('insights.projectTools.colDescription') }}</th>
             <th class="w-24">{{ $t('insights.projectTools.colVisibility') }}</th>
@@ -403,12 +404,12 @@ const filteredTools = computed<EffectiveToolDto[]>(() => {
                     </span>
                     <span
                       v-if="(healthByTool.get(tool.name)?.activeCooldowns?.length ?? 0) > 0"
-                      class="text-warning text-[0.65rem]"
+                      class="text-warning text-[0.65rem] inline-flex items-center gap-0.5"
                       :title="$t('insights.projectTools.activeCooldowns', {
                         count: healthByTool.get(tool.name)?.activeCooldowns?.length,
                       })"
                     >
-                      ⏳ {{ healthByTool.get(tool.name)?.activeCooldowns?.length }}
+                      <VIcon name="waiting" />{{ healthByTool.get(tool.name)?.activeCooldowns?.length }}
                     </span>
                   </button>
                 </template>
@@ -423,10 +424,11 @@ const filteredTools = computed<EffectiveToolDto[]>(() => {
               <td>
                 <span
                   v-if="tool.disabledByInnerLayer"
-                  class="text-xs text-error"
+                  class="inline-flex text-error"
                   :title="$t('insights.projectTools.disabledByInner')"
+                  :aria-label="$t('insights.projectTools.disabledByInner')"
                 >
-                  ✕
+                  <VIcon name="error" />
                 </span>
               </td>
             </tr>
@@ -483,7 +485,6 @@ const filteredTools = computed<EffectiveToolDto[]>(() => {
                           <VButton
                             variant="secondary"
                             size="xs"
-                            :outline="true"
                             @click="onClearCooldown(tool.name, cd)"
                             :title="$t('insights.projectTools.clearTitle')"
                           >

@@ -24,7 +24,7 @@ import '@vue-flow/core/dist/style.css';
 import '@vue-flow/core/dist/theme-default.css';
 import { Graph as DagreGraph, layout as dagreLayout } from '@dagrejs/dagre';
 import { brainFetch } from '@vance/shared';
-import { VAlert, VButton, VInput } from '@/components';
+import { VAlert, VButton, VIcon, VInput } from '@/components';
 import {
   parseWorkflowGraph,
   type WorkflowEdgeKind,
@@ -300,11 +300,12 @@ async function start(): Promise<void> {
              is where the started run can actually be watched. -->
         <a
           v-else-if="lastRunId"
-          class="start-note start-note--ok start-link"
+          class="start-note start-note--ok start-link inline-flex items-center gap-1"
           :href="runHref(lastRunId)"
         >
           {{ t('documents.workflowView.started') }}
-          <code>{{ lastRunId }}</code> ↗
+          <code>{{ lastRunId }}</code>
+          <VIcon name="forward" />
         </a>
       </div>
       <VAlert v-if="startError" variant="error" class="start-error">
@@ -336,9 +337,11 @@ async function start(): Promise<void> {
               <span v-if="data.state.isStart" class="wf-badge wf-badge--start">
                 {{ t('documents.workflowView.startBadge') }}
               </span>
-              <span v-if="data.state.hasRetry" class="wf-badge" :title="t('documents.workflowView.retryHint')">
-                ↻
-              </span>
+              <span
+                v-if="data.state.hasRetry"
+                class="inline-flex shrink-0 opacity-70"
+                :title="t('documents.workflowView.retryHint')"
+              ><VIcon name="refresh" /></span>
             </div>
             <div class="wf-node-type" :style="{ color: typeColor(data.state) }">
               {{ typeLabel(data.state) }}
@@ -347,7 +350,7 @@ async function start(): Promise<void> {
               {{ data.state.detail }}
             </div>
             <div v-else-if="data.state.storeAs" class="wf-node-detail">
-              → {{ data.state.storeAs }}
+              <VIcon name="arrow-right" class="inline align-middle" /> {{ data.state.storeAs }}
             </div>
             <Handle
               v-if="!data.state.isTerminal"

@@ -21,7 +21,7 @@
  */
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { VAlert, VButton, VInput, VModal } from '@vance/components';
+import { VAlert, VButton, VIcon, VInput, VModal } from '@vance/components';
 import {
   RestError,
   fetchShareForm,
@@ -228,7 +228,7 @@ function close(): void {
           target="_blank"
           rel="noopener noreferrer nofollow"
           class="text-xs underline opacity-70 hover:opacity-100 break-all"
-        >🔗 {{ props.subject.link }}</a>
+        ><VIcon name="link" class="inline-block align-text-bottom mr-1" />{{ props.subject.link }}</a>
         <!-- Foreign text: a quote, never Markdown. Whatever a search hit
              contains stays inert here. -->
         <blockquote
@@ -237,7 +237,7 @@ function close(): void {
                  max-h-24 overflow-y-auto"
         >{{ props.subject.snippet }}</blockquote>
         <span v-if="fileName" class="text-xs opacity-60 font-mono">
-          📄 {{ props.subject.documentPath }}
+          <VIcon name="document" class="inline-block align-text-bottom mr-1" />{{ props.subject.documentPath }}
         </span>
       </section>
 

@@ -17,7 +17,7 @@ import {
   pollComposeRun,
   cancelComposeRun,
 } from '@vance/shared';
-import { useDocumentPrefixReaction, useLinkPickerHost, VLinkPicker } from '@vance/components';
+import { useDocumentPrefixReaction, useLinkPickerHost, VButton, VIcon, VIconButton, VLinkPicker } from '@vance/components';
 import { WorkPageEditor, type ComposeRunResult } from '@vance/block-editor';
 import {
   scanGtd,
@@ -752,7 +752,7 @@ function isCurrentBucket(b: BucketId): boolean {
           @keydown.enter.prevent="runSearch"
           @keydown.escape="searchOpen = false"
         />
-        <button class="gtd__btn" :disabled="searching" @click="runSearch">🔍</button>
+        <VIconButton icon="search" :label="t('gtd.app.search')" :disabled="searching" @click="runSearch" />
         <div v-if="searchOpen" class="gtd__search-results">
           <ul v-if="searchResults.length" class="gtd__search-list">
             <li v-for="r in searchResults" :key="r.id" class="gtd__search-row" @click="pickSearchResult(r)">
@@ -765,14 +765,12 @@ function isCurrentBucket(b: BucketId): boolean {
       </div>
       <span class="gtd__spacer" />
       <span v-if="saveStatusLabel" class="gtd__save" :class="`gtd__save--${saveStatus}`">{{ saveStatusLabel }}</span>
-      <button
-        class="gtd__btn"
+      <VIconButton
+        :icon="rebuilding ? 'loading' : 'refresh'"
         :disabled="rebuilding"
-        :title="t('gtd.app.rebuildTip')"
+        :label="t('gtd.app.rebuildTip')"
         @click="rebuild"
-      >
-        {{ rebuilding ? '…' : '↻' }}
-      </button>
+      />
     </header>
 
     <div v-if="error" class="gtd__error">{{ error }}</div>
@@ -884,7 +882,7 @@ function isCurrentBucket(b: BucketId): boolean {
             />
             <span class="gtd__action-title">{{ a.title }}</span>
             <span v-if="a.when && a.when !== 'today' && a.when !== 'someday'" class="gtd__when">{{ a.when }}</span>
-            <span v-if="a.deadline" class="gtd__deadline">⏱ {{ a.deadline }}</span>
+            <span v-if="a.deadline" class="gtd__deadline inline-flex items-center gap-1"><VIcon name="calendar" />{{ a.deadline }}</span>
             <span v-for="c in a.contexts" :key="c" class="gtd__ctx">{{ c }}</span>
           </li>
         </ul>
@@ -938,9 +936,9 @@ function isCurrentBucket(b: BucketId): boolean {
               <input type="checkbox" :checked="detail.done" @change="patchField({ done: !detail.done })" />
               {{ t('gtd.app.done') }}
             </label>
-            <button class="gtd__btn gtd__btn--danger" @click="removeAction">
-              🗑 {{ selectedIsInTrash ? t('gtd.app.deleteForGood') : t('gtd.app.moveToTrash') }}
-            </button>
+            <VButton variant="danger" size="sm" icon="delete" @click="removeAction">
+              {{ selectedIsInTrash ? t('gtd.app.deleteForGood') : t('gtd.app.moveToTrash') }}
+            </VButton>
           </div>
 
           <div class="gtd__field gtd__field--grow">

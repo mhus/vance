@@ -115,12 +115,12 @@ const brokenCount = computed(() =>
   <div class="flex flex-col gap-3 p-4">
     <!-- ─── Toolbar ─── -->
     <div class="flex flex-wrap items-end gap-3 text-sm">
-      <VButton variant="plain" size="sm" @click="refresh">{{ $t('insights.addons.refresh') }}</VButton>
+      <VButton variant="plain" size="sm" icon="refresh" @click="refresh">{{ $t('insights.addons.refresh') }}</VButton>
       <div class="text-xs opacity-60 ml-auto">
         {{ $t('insights.addons.count', { n: state.addons.value.length }, state.addons.value.length) }}
         · {{ $t('insights.addons.loaded', { n: loadedCount }) }}
         <span v-if="disabledCount > 0">· {{ $t('insights.addons.disabled', { n: disabledCount }) }}</span>
-        <span v-if="brokenCount > 0" class="text-red-600">
+        <span v-if="brokenCount > 0" class="text-(--v-danger)">
           · {{ $t('insights.addons.broken', { n: brokenCount }) }}
         </span>
       </div>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import {
-  VAlert, VButton, VCard, VEmptyState, VInput, VSelect, VTextarea,
+  VAlert, VButton, VCard, VEmptyState, VIcon, VInput, VSelect, VTextarea,
 } from '@vance/components';
 import { safeUrl } from '@vance/shared';
 import {
@@ -437,10 +437,9 @@ function priceOf(entry: StoreEntry): string {
   return `${(entry.priceCents / 100).toFixed(2)} ${entry.currency ?? ''}`.trim();
 }
 
-/** `★★★★☆` — plain text, so it needs no icon set and copies as what it is. */
-function starsOf(count: number): string {
-  const filled = Math.round(count);
-  return '★'.repeat(filled) + '☆'.repeat(Math.max(0, 5 - filled));
+/** How many of the five rating stars are drawn filled. */
+function filledStars(count: number): number {
+  return Math.round(count);
 }
 
 /** What the button on a row does, if anything. */
@@ -490,7 +489,6 @@ onUnmounted(() => {
         :key="view.sourceId"
         size="sm"
         :variant="activeSource === view.sourceId ? 'primary' : 'secondary'"
-        :outline="activeSource !== view.sourceId"
         @click="selectSource(view.sourceId)"
       >
         {{ view.title }}
@@ -507,7 +505,6 @@ onUnmounted(() => {
         :key="entry.key"
         size="sm"
         :variant="mode === entry.key ? 'primary' : 'secondary'"
-        :outline="mode !== entry.key"
         @click="mode = entry.key"
       >
         {{ entry.label }}
@@ -578,7 +575,6 @@ onUnmounted(() => {
             :key="tab.key"
             size="sm"
             :variant="activeTab === tab.key ? 'primary' : 'secondary'"
-            :outline="activeTab !== tab.key"
             @click="activeTab = tab.key"
           >
             {{ tab.label }}
@@ -619,9 +615,9 @@ onUnmounted(() => {
               -->
               <span
                 v-if="entry.vendorDomain"
-                class="text-success"
+                class="text-(--v-success)"
                 :title="t('store.area.vendorProved', { domain: entry.vendorDomain })"
-              >· ✓ {{ entry.vendorDomain }}</span>
+              >· <VIcon name="check" class="inline-block align-[-3px]" /> {{ entry.vendorDomain }}</span>
               <span v-if="entry.availableVersion"> · {{ entry.availableVersion }}</span>
               <span v-if="entry.installedVersion && entry.state === 'UPDATABLE'">
                 {{ t('store.area.installedVersion', { version: entry.installedVersion }) }}
@@ -662,8 +658,15 @@ onUnmounted(() => {
               {{ expiryOf(entry) }}
             </div>
             <div class="text-xs mt-1 opacity-70">
-              <span v-if="entry.ratingCount > 0">
-                {{ starsOf(entry.averageStars) }}
+              <span v-if="entry.ratingCount > 0" class="inline-flex items-center gap-1">
+                <span class="inline-flex">
+                  <VIcon
+                    v-for="n in 5"
+                    :key="n"
+                    name="star"
+                    :fill="n <= filledStars(entry.averageStars) ? 'currentColor' : 'none'"
+                  />
+                </span>
                 {{ entry.averageStars.toFixed(1) }} ({{ entry.ratingCount }})
               </span>
               <span v-else>{{ t('store.area.notRated') }}</span>
@@ -718,12 +721,11 @@ onUnmounted(() => {
               <div class="flex gap-2">
                 <VButton
                   size="sm"
+                  :loading="busyPath === entry.path"
                   :disabled="busyPath === entry.path || !buyReady(entry)"
                   @click="confirmBuy(entry)"
                 >
-                  {{ busyPath === entry.path
-                    ? '…'
-                    : t('store.area.confirmPrice', { price: priceOf(entry) }) }}
+                  {{ t('store.area.confirmPrice', { price: priceOf(entry) }) }}
                 </VButton>
                 <VButton size="sm" variant="secondary" @click="buyingPath = ''">
                   {{ t('store.common.cancel') }}
@@ -749,8 +751,15 @@ onUnmounted(() => {
               </div>
 
               <div v-for="review in shownReviews" :key="review.reviewId" class="mb-2">
-                <div class="text-xs opacity-70">
-                  {{ starsOf(review.stars) }}
+                <div class="flex items-center gap-1 text-xs opacity-70">
+                  <span class="inline-flex">
+                    <VIcon
+                      v-for="n in 5"
+                      :key="n"
+                      name="star"
+                      :fill="n <= filledStars(review.stars) ? 'currentColor' : 'none'"
+                    />
+                  </span>
                   <span v-if="review.version"> · {{ review.version }}</span>
                   <span v-if="review.displayName">· {{ review.displayName }}</span>
                 </div>
@@ -773,10 +782,10 @@ onUnmounted(() => {
                   <button
                     v-for="star in 5"
                     :key="star"
-                    class="text-lg"
+                    class="text-(--v-accent-text)"
                     :aria-label="t('store.area.starsAria', { count: star })"
                     @click="reviewStars = star"
-                  >{{ star <= reviewStars ? '★' : '☆' }}</button>
+                  ><VIcon name="star" :size="20" :fill="star <= reviewStars ? 'currentColor' : 'none'" /></button>
                 </div>
                 <VTextarea v-model="reviewText" :placeholder="t('store.area.reviewPlaceholder')" />
                 <div>
@@ -804,10 +813,11 @@ onUnmounted(() => {
             <VButton
               v-else-if="actionOf(entry)"
               size="sm"
+              :loading="busyPath === entry.path"
               :disabled="busyPath === entry.path || !entry.downloadable"
               @click="installEntry(entry)"
             >
-              {{ busyPath === entry.path ? '…' : actionOf(entry) }}
+              {{ actionOf(entry) }}
             </VButton>
           </div>
         </div>

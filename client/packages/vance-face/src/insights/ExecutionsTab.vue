@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { VAlert, VButton, VCheckbox, VEmptyState, VInput } from '@/components';
+import { VAlert, VButton, VCheckbox, VEmptyState, VIcon, VInput } from '@/components';
 import { useExecutions, useExecutionTail } from '@/composables/useExecutions';
 import type { ExecutionInsightsDto } from '@vance/generated';
 
@@ -114,7 +114,7 @@ function shortId(id: string): string {
           </div>
         </div>
 
-        <VButton variant="plain" size="sm" @click="refresh">
+        <VButton variant="plain" size="sm" icon="refresh" @click="refresh">
           {{ $t('insights.executions.refresh') }}
         </VButton>
 
@@ -171,7 +171,7 @@ function shortId(id: string): string {
               <td class="text-xs opacity-70">{{ fmtTime(row.startedAt) }}</td>
               <td class="text-xs opacity-70">{{ fmtTime(row.lastOutputAt) }}</td>
               <td class="text-xs opacity-80">{{ row.exitCode ?? '—' }}</td>
-              <td class="text-xs">{{ expandedId === row.id ? '▾' : '▸' }}</td>
+              <td class="text-xs"><VIcon :name="expandedId === row.id ? 'expand' : 'forward'" class="opacity-60" /></td>
             </tr>
 
             <tr v-if="expandedId === row.id">
@@ -224,7 +224,7 @@ function shortId(id: string): string {
                       />
                       <span class="opacity-70">{{ $t('insights.executions.lines') }}</span>
                     </label>
-                    <VButton variant="plain" size="sm" @click="loadTail(row.id)">
+                    <VButton variant="plain" size="sm" icon="refresh" @click="loadTail(row.id)">
                       {{ $t('insights.executions.refreshTail') }}
                     </VButton>
                   </div>

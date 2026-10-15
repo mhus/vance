@@ -6,7 +6,7 @@ import type { Connection, Edge, EdgeChange, Node, NodeChange } from '@vue-flow/c
 import '@vue-flow/core/dist/style.css';
 import '@vue-flow/core/dist/theme-default.css';
 import { Graph as DagreGraph, layout as dagreLayout } from '@dagrejs/dagre';
-import { VButton } from '@/components';
+import { VButton, VIcon } from '@/components';
 import type { GraphDocument, GraphEdge, GraphNode, GraphPosition } from './graphCodec';
 import { edgeKey, emptyNode, parseGraph } from './graphCodec';
 import type { DocumentDto } from '@vance/generated';
@@ -496,7 +496,7 @@ function contrastText(bgColor: string): string {
         :title="t('documents.graphView.autoLayoutHint')"
         @click="runAutoLayout"
       >
-        ⤧ {{ t('documents.graphView.autoLayout') }}
+        {{ t('documents.graphView.autoLayout') }}
       </VButton>
       <label class="directed-toggle">
         <input
@@ -576,7 +576,7 @@ function contrastText(bgColor: string): string {
         <h4>{{ t('documents.graphView.edgeProps') }}</h4>
         <p class="edge-route">
           <span class="edge-endpoint">{{ selectedEdge.source }}</span>
-          <span class="edge-arrow">→</span>
+          <VIcon name="arrow-right" class="edge-arrow" />
           <span class="edge-endpoint">{{ selectedEdge.target }}</span>
         </p>
         <label>

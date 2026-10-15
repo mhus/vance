@@ -8,6 +8,7 @@ import {
   type TimelineDocument,
   type TimelineEntry,
 } from './timelineCodec';
+import { VIconButton } from '@vance/components';
 import { useT } from './i18n';
 
 // `meta` and `embedRef` come from the host's chat-fence rendering
@@ -603,8 +604,8 @@ const rootClass = computed(() => ['tl', `tl--${props.mode}`]);
         </span>
       </div>
       <div class="tl-controls">
-        <button type="button" class="tl-btn" :title="t('calendar.timeline.zoomOut')" @click="zoomBy(1.5)">−</button>
-        <button type="button" class="tl-btn" :title="t('calendar.timeline.zoomIn')" @click="zoomBy(1 / 1.5)">+</button>
+        <VIconButton icon="zoom-out" size="sm" :label="t('calendar.timeline.zoomOut')" @click="zoomBy(1.5)" />
+        <VIconButton icon="zoom-in" size="sm" :label="t('calendar.timeline.zoomIn')" @click="zoomBy(1 / 1.5)" />
         <button
           type="button"
           class="tl-btn tl-btn--wide"
@@ -732,7 +733,7 @@ const rootClass = computed(() => ['tl', `tl--${props.mode}`]);
         <div class="tl-detail-head">
           <span class="tl-detail-swatch" :style="{ background: selected.color }"></span>
           <span class="tl-detail-title">{{ selected.entry.title }}</span>
-          <button type="button" class="tl-btn" @click="selectedId = null">✕</button>
+          <VIconButton icon="close" size="sm" :label="t('calendar.timeline.closeDetail')" @click="selectedId = null" />
         </div>
         <div class="tl-detail-range">{{ rangeLabel(selected) }}</div>
         <div v-if="uncertaintyLabel(selected.entry)" class="tl-detail-fuzzy">

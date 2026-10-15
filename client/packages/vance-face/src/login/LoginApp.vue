@@ -43,7 +43,7 @@ import { setUiLocale } from '@/i18n';
 // (70 KB) into the door, which renders no markdown — the barrel re-exports it,
 // and vance-face cannot declare itself side-effect-free (`@/platform/bootWeb`
 // is imported precisely FOR its side effect), so the import dodges it here.
-import { VAlert, VButton, VCard, VCheckbox, VInput } from '@vance/components';
+import { VAlert, VButton, VCard, VCheckbox, VIcon, VInput } from '@vance/components';
 import VanceLogo from '@/components/VanceLogo.vue';
 import { SOURCE_CODE_URL } from '@/platform/sourceCode';
 import PanicEasterEgg from './PanicEasterEgg.vue';
@@ -258,8 +258,8 @@ function readNextParam(): string | null {
     class="block w-full bg-primary text-primary-content no-underline"
   >
     <div class="mx-auto flex max-w-md items-center justify-between px-4 py-2 text-sm">
-      <span>📱 {{ $t('login.openInApp.message') }}</span>
-      <span class="font-semibold underline-offset-2">{{ $t('login.openInApp.action') }} ›</span>
+      <span class="inline-flex items-center gap-2"><VIcon name="open-in-app" />{{ $t('login.openInApp.message') }}</span>
+      <span class="inline-flex items-center gap-1 font-semibold underline-offset-2">{{ $t('login.openInApp.action') }}<VIcon name="forward" /></span>
     </div>
   </a>
 
@@ -279,7 +279,7 @@ function readNextParam(): string | null {
       <div v-else class="mb-4"></div>
       <VCard class="w-full max-w-md">
         <div class="flex items-center gap-3 py-2">
-          <span class="loading loading-spinner loading-md" />
+          <VIcon name="loading" :size="20" class="animate-spin" />
           <span>{{ autoLoginNotice }}</span>
         </div>
       </VCard>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { VAlert, VButton, useAppEntry, useDocumentPrefixReaction } from '@vance/components';
+import { VAlert, VButton, VIcon, useAppEntry, useDocumentPrefixReaction } from '@vance/components';
 import CanvasEditor from './CanvasEditor.vue';
 import InputDialog from './InputDialog.vue';
 import { useT } from './i18n';
@@ -262,8 +262,9 @@ onBeforeUnmount(() => {
   <div class="flex h-full w-full flex-col">
     <div class="flex items-center gap-2 border-b border-base-300 p-2">
       <div class="relative">
-        <VButton icon="menu" size="sm" @click="menuOpen = !menuOpen">
-          {{ activeTitle }} ▾
+        <VButton icon="menu" size="sm" variant="secondary" @click="menuOpen = !menuOpen">
+          {{ activeTitle }}
+          <VIcon name="expand" />
         </VButton>
         <div
           v-if="menuOpen"
@@ -287,11 +288,11 @@ onBeforeUnmount(() => {
       <VButton icon="refresh" size="sm" variant="plain" @click="rebuild">{{ t('canvas.book.rebuildIndex') }}</VButton>
       <span class="ml-auto flex items-center gap-1.5 text-xs">
         <span
-          class="inline-block h-2 w-2 rounded-full"
+          class="inline-block size-2 rounded-full"
           :class="{
-            'bg-green-500': saveState === 'saved',
-            'bg-amber-500': saveState === 'dirty',
-            'bg-blue-500 animate-pulse': saveState === 'saving',
+            'bg-(--v-success)': saveState === 'saved',
+            'bg-(--v-warning)': saveState === 'dirty',
+            'bg-(--v-accent) animate-pulse': saveState === 'saving',
           }"
         ></span>
         <span class="opacity-60">

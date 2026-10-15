@@ -32,6 +32,7 @@ import {
   VEmptyState,
   VInput,
   VModal,
+  VIcon,
   VIconButton,
 } from '@components/index';
 import ProcessPanel from '@components/ProcessPanel.vue';
@@ -611,19 +612,21 @@ function sessionTitle(session: SessionSummaryRichDto): string {
   return t('chat.sessionHeader.untitled');
 }
 
+// User-chosen session colour → the content palette (corporate-design.md
+// §3.4). Twelve stored accents fold onto the eight content tones.
 const COLOR_BORDER: Record<AccentColor, string> = {
-  [AccentColor.SLATE]: 'border-l-slate-500',
-  [AccentColor.RED]: 'border-l-red-500',
-  [AccentColor.ORANGE]: 'border-l-orange-500',
-  [AccentColor.AMBER]: 'border-l-amber-500',
-  [AccentColor.GREEN]: 'border-l-green-500',
-  [AccentColor.TEAL]: 'border-l-teal-500',
-  [AccentColor.CYAN]: 'border-l-cyan-500',
-  [AccentColor.BLUE]: 'border-l-blue-500',
-  [AccentColor.INDIGO]: 'border-l-indigo-500',
-  [AccentColor.PURPLE]: 'border-l-purple-500',
-  [AccentColor.PINK]: 'border-l-pink-500',
-  [AccentColor.ROSE]: 'border-l-rose-500',
+  [AccentColor.SLATE]: 'border-l-(--v-content-grey-fg)',
+  [AccentColor.RED]: 'border-l-(--v-content-pink-fg)',
+  [AccentColor.ORANGE]: 'border-l-(--v-content-orange-fg)',
+  [AccentColor.AMBER]: 'border-l-(--v-content-yellow-fg)',
+  [AccentColor.GREEN]: 'border-l-(--v-content-green-fg)',
+  [AccentColor.TEAL]: 'border-l-(--v-content-teal-fg)',
+  [AccentColor.CYAN]: 'border-l-(--v-content-teal-fg)',
+  [AccentColor.BLUE]: 'border-l-(--v-content-purple-fg)',
+  [AccentColor.INDIGO]: 'border-l-(--v-content-purple-fg)',
+  [AccentColor.PURPLE]: 'border-l-(--v-content-purple-fg)',
+  [AccentColor.PINK]: 'border-l-(--v-content-pink-fg)',
+  [AccentColor.ROSE]: 'border-l-(--v-content-pink-fg)',
 };
 
 function colorBorderClass(session: SessionSummaryRichDto): string {
@@ -772,16 +775,15 @@ onBeforeUnmount(stopAutoScroll);
 
         <!-- Phone-only menu toggle. CSS in scoped block hides it on
              wider screens and turns .picker-tools into a popup. -->
-        <VButton
-          v-if="mainTab === 'sessions'"
-          variant="plain"
-          size="sm"
-          class="picker-tools-toggle"
-          :title="pickerToolsOpen ? 'Hide tools' : 'Show tools'"
-          @click="pickerToolsOpen = !pickerToolsOpen"
-        >
-          ⋯
-        </VButton>
+        <span v-if="mainTab === 'sessions'" class="picker-tools-toggle">
+          <VIconButton
+            icon="more"
+            size="sm"
+            :active="pickerToolsOpen"
+            :label="pickerToolsOpen ? $t('chat.composer.hideTools') : $t('chat.composer.showTools')"
+            @click="pickerToolsOpen = !pickerToolsOpen"
+          />
+        </span>
 
         <div
           v-if="mainTab === 'sessions'"
@@ -865,11 +867,14 @@ onBeforeUnmount(stopAutoScroll);
           >
             <!-- Group header — only when the project actually has groups. -->
             <div v-if="hasGroups" class="flex items-center gap-2 px-1 py-1.5">
-              <button
-                type="button"
-                class="opacity-60 hover:opacity-100 w-4 text-center text-xs"
+              <VIconButton
+                size="sm"
+                :icon="isCollapsed(block.group) ? 'forward' : 'expand'"
+                :label="isCollapsed(block.group)
+                  ? $t('common.projectPicker.expandGroup')
+                  : $t('common.projectPicker.collapseGroup')"
                 @click="toggleCollapsed(block.group)"
-              >{{ isCollapsed(block.group) ? '▸' : '▾' }}</button>
+              />
               <span class="font-semibold text-sm truncate">
                 {{ block.group
                   ? (block.group.title || block.group.name)
@@ -916,20 +921,20 @@ onBeforeUnmount(stopAutoScroll);
             <div class="card-body p-4 flex flex-row items-start gap-3">
               <div class="text-2xl leading-none shrink-0 mt-0.5 w-8 text-center">
                 <span v-if="session.icon">{{ session.icon }}</span>
-                <span v-else class="opacity-30">💬</span>
+                <VIcon v-else name="chat" :size="20" class="inline-block text-(--v-label-tertiary)" />
               </div>
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 min-w-0">
                   <span
                     v-if="session.pinned"
-                    class="shrink-0 text-xs"
+                    class="shrink-0 inline-flex text-(--v-label-secondary)"
                     :title="$t('chat.sessionHeader.pinTooltip')"
-                  >📌</span>
+                  ><VIcon name="pin" /></span>
                   <span
                     v-if="session.allowMultipleClients"
-                    class="shrink-0 text-xs"
+                    class="shrink-0 inline-flex text-(--v-label-secondary)"
                     :title="$t('chat.picker.sharedTooltip')"
-                  >👥</span>
+                  ><VIcon name="team" /></span>
                   <span
                     class="font-medium truncate"
                     :title="sessionTitle(session)"
@@ -943,7 +948,7 @@ onBeforeUnmount(stopAutoScroll);
                   >{{ $t('chat.sessionHeader.autoTitleBadge') }}</span>
                   <span
                     v-if="session.status === SessionStatus.ARCHIVED"
-                    class="text-xs uppercase tracking-wide px-1.5 py-0.5 rounded bg-warning/15 text-warning border border-warning/30 shrink-0"
+                    class="text-xs uppercase tracking-wide shrink-0 text-(--v-warning)"
                   >
                     {{ $t('chat.sessionHeader.archived') }}
                   </span>
@@ -962,7 +967,8 @@ onBeforeUnmount(stopAutoScroll);
                     class="font-mono opacity-70"
                     :title="$t('chat.picker.recipeBadgeTooltip')"
                   >
-                    🧪 {{ session.chatRecipe }}
+                    <VIcon name="recipe" class="inline-block align-text-bottom" />
+                    {{ session.chatRecipe }}
                   </span>
                 </div>
                 <div
@@ -979,12 +985,12 @@ onBeforeUnmount(stopAutoScroll);
                 </div>
               </div>
               <div class="shrink-0 flex flex-col items-end gap-1">
-                <span v-if="isHardBlocked(session)" class="text-xs text-error">
+                <span v-if="isHardBlocked(session)" class="text-xs text-(--v-danger)">
                   {{ $t('chat.picker.occupied') }}
                 </span>
                 <span
                   v-else-if="session.bound && session.allowMultipleClients"
-                  class="text-xs text-success"
+                  class="text-xs text-(--v-success)"
                   :title="$t('chat.picker.sharedTooltip')"
                 >
                   {{ $t('chat.picker.joinLive') }}

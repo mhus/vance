@@ -6,6 +6,8 @@ import {
   useDocumentPrefixReaction,
   useLinkPickerHost,
   usePointers,
+  VIcon,
+  VIconButton,
   VLinkPicker,
 } from '@vance/components';
 import { getUsername } from '@vance/shared/auth';
@@ -1558,28 +1560,26 @@ onBeforeUnmount(() => narrowMedia?.removeEventListener('change', onNarrowChange)
       <header class="workbook-app__title">
         <div class="workbook-app__title-text">{{ title }}</div>
         <div class="workbook-app__title-actions">
-          <button
-            class="workbook-app__icon-btn"
-            :class="{ 'workbook-app__icon-btn--active': pageMode === 'design' }"
-            :title="pageMode === 'design'
+          <VIconButton
+            :icon="pageMode === 'design' ? 'tool' : 'edit'"
+            :active="pageMode === 'design'"
+            :label="pageMode === 'design'
               ? t('workbook.app.designMode')
               : t('workbook.app.workMode')"
             @click="togglePageMode"
-          >{{ pageMode === 'design' ? '🛠' : '✎' }}</button>
-          <button
-            class="workbook-app__icon-btn"
+          />
+          <VIconButton
+            icon="add"
             :disabled="creating"
-            :title="t('workbook.app.newPage')"
+            :label="t('workbook.app.newPage')"
             @click="openNewPage"
-          >+</button>
-          <button
-            class="workbook-app__icon-btn"
+          />
+          <VIconButton
+            :icon="rebuilding ? 'loading' : 'refresh'"
             :disabled="rebuilding"
-            :title="rebuilding ? t('workbook.app.rebuilding') : t('workbook.app.rebuildIndex')"
+            :label="rebuilding ? t('workbook.app.rebuilding') : t('workbook.app.rebuildIndex')"
             @click="rebuild"
-          >
-            {{ rebuilding ? '…' : '↻' }}
-          </button>
+          />
         </div>
       </header>
 
@@ -1648,7 +1648,7 @@ onBeforeUnmount(() => narrowMedia?.removeEventListener('change', onNarrowChange)
             }"
             @click="selectPage(view.indexPageId!, null)"
           >
-            <span class="workbook-app__page-link-icon">⌂</span>
+            <span class="workbook-app__page-link-icon"><VIcon name="home" /></span>
             {{ t('workbook.app.index') }}
           </button>
         </template>
@@ -1674,12 +1674,14 @@ onBeforeUnmount(() => narrowMedia?.removeEventListener('change', onNarrowChange)
             />
             <template v-else>
               <span class="workbook-app__section-label-text">{{ section || t('workbook.app.sectionDefault') }}</span>
-              <button
+              <VIconButton
                 v-if="section"
+                icon="more"
+                size="sm"
                 class="workbook-app__section-menu"
-                :title="t('workbook.app.moreActions')"
+                :label="t('workbook.app.moreActions')"
                 @click.stop="openSectionCtxMenu(section, $event)"
-              >⋯</button>
+              />
             </template>
           </div>
           <div
@@ -1709,19 +1711,24 @@ onBeforeUnmount(() => narrowMedia?.removeEventListener('change', onNarrowChange)
               @contextmenu="openCtxMenu(p, $event)"
               :title="p.description ?? p.path"
             >
-              <span class="workbook-app__page-link-icon" :class="{ 'workbook-app__page-link-icon--emoji': !!effectiveIcon(p) }">{{ effectiveIcon(p) ?? '·' }}</span>
+              <span class="workbook-app__page-link-icon" :class="{ 'workbook-app__page-link-icon--emoji': !!effectiveIcon(p) }">
+                <template v-if="effectiveIcon(p)">{{ effectiveIcon(p) }}</template>
+                <VIcon v-else name="document" />
+              </span>
               <span class="workbook-app__page-link-title">{{ effectiveTitle(p) }}</span>
               <span
                 v-if="view && view.landingPageId === p.id"
                 class="workbook-app__landing-pin"
                 :title="t('workbook.app.landingPage')"
-              >📌</span>
+              ><VIcon name="pin" /></span>
             </button>
-            <button
+            <VIconButton
+              icon="more"
+              size="sm"
               class="workbook-app__page-row-menu"
-              :title="t('workbook.app.moreActions')"
+              :label="t('workbook.app.moreActions')"
               @click.stop="openCtxMenu(p, $event)"
-            >⋯</button>
+            />
           </div>
         </template>
       </div>
@@ -1751,8 +1758,9 @@ onBeforeUnmount(() => narrowMedia?.removeEventListener('change', onNarrowChange)
         v-if="narrow"
         class="workbook-app__drawer-btn"
         :title="sidebarOpen ? t('workbook.app.hidePages') : t('workbook.app.showPages')"
+        :aria-label="sidebarOpen ? t('workbook.app.hidePages') : t('workbook.app.showPages')"
         @click="sidebarOpen = !sidebarOpen"
-      >{{ sidebarOpen ? '‹' : '›' }}</button>
+      ><VIcon :name="sidebarOpen ? 'back' : 'forward'" /></button>
       <!-- Remote live awareness. Mouse pointer = content-space x/y resolved
            against the local editor layout; active-node highlight = logical
            block position resolved via blockRectAtPos (reflow/width/scroll
@@ -1816,14 +1824,14 @@ onBeforeUnmount(() => narrowMedia?.removeEventListener('change', onNarrowChange)
           >
             <button
               v-if="!pageIcon"
-              class="workbook-app__page-add-btn"
+              class="workbook-app__page-add-btn inline-flex items-center gap-1"
               @click="openIconPicker"
-            >😀 {{ t('workbook.app.addIcon') }}</button>
+            ><VIcon name="emoji" />{{ t('workbook.app.addIcon') }}</button>
             <button
               v-if="!pageCover"
-              class="workbook-app__page-add-btn"
+              class="workbook-app__page-add-btn inline-flex items-center gap-1"
               @click="openCoverPicker"
-            >🖼 {{ t('workbook.app.addCover') }}</button>
+            ><VIcon name="image" />{{ t('workbook.app.addCover') }}</button>
           </div>
           <div class="workbook-app__page-header-row">
             <h1 class="workbook-app__page-title">
@@ -2071,29 +2079,6 @@ onBeforeUnmount(() => narrowMedia?.removeEventListener('change', onNarrowChange)
   display: flex;
   gap: 0.25rem;
 }
-.workbook-app__icon-btn {
-  font-size: 0.95rem;
-  width: 1.75rem;
-  height: 1.75rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent);
-  border-radius: 0.25rem;
-  background: color-mix(in oklab, var(--color-base-content) 6%, transparent);
-  cursor: pointer;
-  flex-shrink: 0;
-  line-height: 1;
-}
-.workbook-app__icon-btn:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--color-base-content) 10%, transparent);
-}
-.workbook-app__icon-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.workbook-app__icon-btn--active {
-  background: color-mix(in oklab, var(--color-primary) 18%, transparent);
-  color: var(--color-primary);
-}
-
 .workbook-app__search {
   padding: 0 0.25rem 0.5rem;
 }
@@ -2182,24 +2167,14 @@ onBeforeUnmount(() => narrowMedia?.removeEventListener('change', onNarrowChange)
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* VIconButton draws the button; these only reveal it on hover. */
 .workbook-app__section-menu {
-  background: none;
-  border: 0;
-  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
-  cursor: pointer;
-  padding: 0 0.35rem;
-  font-size: 1rem;
-  line-height: 1;
-  border-radius: 3px;
   opacity: 0;
   transition: opacity 0.1s ease;
 }
-.workbook-app__section-label:hover .workbook-app__section-menu {
+.workbook-app__section-label:hover .workbook-app__section-menu,
+.workbook-app__section-menu:focus-visible {
   opacity: 1;
-}
-.workbook-app__section-menu:hover {
-  background: color-mix(in oklab, var(--color-base-content) 18%, transparent);
-  color: var(--color-base-content);
 }
 .workbook-app__page-row {
   position: relative;
@@ -2260,23 +2235,14 @@ onBeforeUnmount(() => narrowMedia?.removeEventListener('change', onNarrowChange)
   min-width: 0;
 }
 .workbook-app__page-row-menu {
-  background: none;
-  border: 0;
-  color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
-  cursor: pointer;
-  padding: 0 0.5rem;
-  font-size: 1rem;
+  align-self: center;
   opacity: 0;
   transition: opacity 0.1s ease;
-  border-radius: 0 0.25rem 0.25rem 0;
 }
 .workbook-app__page-row:hover .workbook-app__page-row-menu,
-.workbook-app__page-row--active .workbook-app__page-row-menu {
+.workbook-app__page-row--active .workbook-app__page-row-menu,
+.workbook-app__page-row-menu:focus-visible {
   opacity: 1;
-}
-.workbook-app__page-row-menu:hover {
-  background: color-mix(in oklab, var(--color-base-content) 18%, transparent);
-  color: var(--color-base-content);
 }
 .workbook-app__ctx-backdrop {
   position: fixed;

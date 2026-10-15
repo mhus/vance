@@ -14,7 +14,7 @@
 import { computed, inject, onMounted, ref, watch, type Ref } from 'vue';
 import { brainFetch } from '@vance/shared';
 import type { FormFieldDto, FormChoiceDto } from '@vance/generated';
-import { FormFields, type FormValue } from './index';
+import { FormFields, VIconButton, type FormValue } from './index';
 import {
   parseVanceUri,
   referrerDirOf,
@@ -313,9 +313,9 @@ onMounted(load);
             <input v-model="f.labelText" class="vance-form-view__inp" :placeholder="$t('formView.label')" style="flex: 1" />
             <label class="vance-form-view__req"><input v-model="f.required" type="checkbox" /> {{ $t('formView.required') }}</label>
             <label v-if="f.type === 'select'" class="vance-form-view__req"><input v-model="f.allowCustom" type="checkbox" /> {{ $t('formView.allowCustom') }}</label>
-            <button class="vance-form-view__mini" :title="$t('formView.moveUp')" @click="moveField(i, -1)">↑</button>
-            <button class="vance-form-view__mini" :title="$t('formView.moveDown')" @click="moveField(i, 1)">↓</button>
-            <button class="vance-form-view__mini" :title="$t('formView.remove')" @click="removeField(i)">✕</button>
+            <VIconButton icon="arrow-up" size="sm" :label="$t('formView.moveUp')" @click="moveField(i, -1)" />
+            <VIconButton icon="arrow-down" size="sm" :label="$t('formView.moveDown')" @click="moveField(i, 1)" />
+            <VIconButton icon="delete" size="sm" danger :label="$t('formView.remove')" @click="removeField(i)" />
           </div>
           <textarea
             v-if="f.type === 'select' || f.type === 'multi_select'"
@@ -344,13 +344,14 @@ onMounted(load);
           <div v-for="(rec, i) in records" :key="i" class="vance-form-view__record-card">
             <div class="vance-form-view__record-head">
               <span class="vance-form-view__record-idx">#{{ i + 1 }}</span>
-              <button
-                type="button"
-                class="vance-form-view__mini"
-                :title="$t('formView.removeRecord')"
+              <VIconButton
+                icon="delete"
+                size="sm"
+                danger
+                :label="$t('formView.removeRecord')"
                 :disabled="saving"
                 @click="removeRecord(i)"
-              >✕</button>
+              />
             </div>
             <FormFields
               :model-value="rec"
@@ -453,17 +454,6 @@ onMounted(load);
   gap: 0.2rem;
   white-space: nowrap;
 }
-.vance-form-view__mini {
-  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
-  background: var(--color-base-100);
-  border-radius: 0.25rem;
-  width: 1.6rem;
-  height: 1.6rem;
-  cursor: pointer;
-  font-size: 0.8rem;
-  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
-}
-.vance-form-view__mini:hover { background: color-mix(in oklab, var(--color-base-content) 8%, transparent); }
 .vance-form-view__choices {
   width: 100%;
   margin-top: 0.35rem;

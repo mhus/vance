@@ -34,6 +34,8 @@ export default {
       empty: 'No upcoming events.',
       addToCalendar: 'Add to calendar',
       allDay: 'All day',
+      previousMonth: 'Previous month',
+      nextMonth: 'Next month',
     },
     planner: {
       reload: 'Reload',
@@ -102,6 +104,7 @@ export default {
       zoomIn: 'Zoom in',
       fitTip: 'Fit all entries',
       fit: 'Fit',
+      closeDetail: 'Close',
       unreadable:
         '{n} entry has a position this {axis} axis cannot read and is not drawn: {list}'
         + ' | {n} entries have a position this {axis} axis cannot read and are not drawn: {list}',

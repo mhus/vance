@@ -2,7 +2,7 @@
 import { computed, nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { VueDraggable } from 'vue-draggable-plus';
-import { VButton } from '@/components';
+import { VButton, VIcon, VIconButton } from '@/components';
 import { parseRecords, type RecordsDocument, type RecordsItem } from '@vance/shared';
 import { emptyRecord } from '@vance/shared';
 import type { DocumentDto } from '@vance/generated';
@@ -562,27 +562,28 @@ const hasOverflow = computed(() =>
           class="header-cell schema-edit"
         >
           <div class="schema-controls">
-            <button
-              type="button"
-              class="schema-arrow"
+            <VIconButton
+              icon="arrow-left"
+              size="sm"
               :disabled="idx === 0"
-              :title="t('documents.recordsEditor.moveColumnLeft')"
+              :label="t('documents.recordsEditor.moveColumnLeft')"
               @click="moveColumn(idx, -1)"
-            >←</button>
-            <button
-              type="button"
-              class="schema-arrow"
+            />
+            <VIconButton
+              icon="arrow-right"
+              size="sm"
               :disabled="idx === schema.length - 1"
-              :title="t('documents.recordsEditor.moveColumnRight')"
+              :label="t('documents.recordsEditor.moveColumnRight')"
               @click="moveColumn(idx, 1)"
-            >→</button>
-            <button
-              type="button"
-              class="schema-remove"
+            />
+            <VIconButton
+              icon="delete"
+              size="sm"
+              danger
               :disabled="schema.length <= 1"
-              :title="t('documents.recordsEditor.deleteColumn')"
+              :label="t('documents.recordsEditor.deleteColumn')"
               @click="deleteColumn(idx)"
-            >✕</button>
+            />
           </div>
           <input
             type="text"
@@ -593,12 +594,12 @@ const hasOverflow = computed(() =>
           />
         </div>
         <div class="header-cell action-cell">
-          <button
-            type="button"
-            class="schema-add"
-            :title="t('documents.recordsEditor.addColumn')"
+          <VIconButton
+            icon="add"
+            size="sm"
+            :label="t('documents.recordsEditor.addColumn')"
             @click="addColumn"
-          >+</button>
+          />
         </div>
       </template>
     </div>
@@ -631,7 +632,7 @@ const hasOverflow = computed(() =>
           class="drag-handle"
           :title="t('documents.recordsEditor.dragHandle')"
           @click="onHandleClick($event, row)"
-        >⠿</span>
+        ><VIcon name="drag" /></span>
 
         <template v-for="field in schema" :key="field">
           <input
@@ -655,13 +656,14 @@ const hasOverflow = computed(() =>
           </button>
         </template>
 
-        <button
+        <VIconButton
           v-if="!schemaMode"
-          type="button"
-          class="row-delete"
-          :title="t('documents.recordsEditor.deleteItem')"
+          icon="delete"
+          size="sm"
+          danger
+          :label="t('documents.recordsEditor.deleteItem')"
           @click="deleteRow(row)"
-        >✕</button>
+        />
         <span v-else class="row-delete-spacer" aria-hidden="true" />
       </div>
     </VueDraggable>
@@ -820,21 +822,6 @@ const hasOverflow = computed(() =>
   border-color: var(--color-primary);
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-primary) 20%, transparent);
 }
-.row-delete {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 0.25rem 0.4rem;
-  border-radius: 0.25rem;
-  opacity: 0.4;
-  font-size: 0.85rem;
-  line-height: 1;
-}
-.row-delete:hover {
-  opacity: 1;
-  background: color-mix(in oklab, var(--color-error) 15%, transparent);
-  color: var(--color-error);
-}
 .add-row {
   margin-top: 0.5rem;
   padding-top: 0.25rem;
@@ -897,37 +884,6 @@ const hasOverflow = computed(() =>
   display: flex;
   gap: 0.15rem;
   align-items: center;
-}
-.schema-arrow,
-.schema-remove,
-.schema-add {
-  background: transparent;
-  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
-  border-radius: 0.25rem;
-  cursor: pointer;
-  padding: 0 0.4rem;
-  font-size: 0.75rem;
-  line-height: 1.4;
-  color: inherit;
-}
-.schema-arrow:hover,
-.schema-remove:hover,
-.schema-add:hover {
-  background: color-mix(in oklab, var(--color-base-content) 8%, transparent);
-}
-.schema-arrow:disabled,
-.schema-remove:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-.schema-remove:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--color-error) 15%, transparent);
-  color: var(--color-error);
-  border-color: color-mix(in oklab, var(--color-error) 40%, transparent);
-}
-.schema-add {
-  font-size: 1rem;
-  padding: 0.1rem 0.55rem;
 }
 .schema-name-input {
   background: transparent;

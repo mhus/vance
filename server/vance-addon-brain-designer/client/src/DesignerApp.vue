@@ -574,18 +574,19 @@ defineExpose({ reload });
                   class="text-xs text-base-content/60 mt-1 line-clamp-2"
                 >{{ design.description }}</div>
               </button>
-              <button
-                type="button"
-                class="text-base-content/50 hover:text-base-content leading-none"
-                :title="t('designer.editMeta')"
+              <VIconButton
+                icon="edit"
+                size="sm"
+                :label="t('designer.editMeta')"
                 @click.stop="openEditModal(design)"
-              >✎</button>
-              <button
-                type="button"
-                class="text-base-content/50 hover:text-error leading-none"
-                :title="t('designer.deleteDesign')"
+              />
+              <VIconButton
+                icon="delete"
+                size="sm"
+                danger
+                :label="t('designer.deleteDesign')"
                 @click.stop="openDeleteModal(design)"
-              >✕</button>
+              />
             </div>
           </div>
         </VueDraggable>
@@ -598,36 +599,36 @@ defineExpose({ reload });
           <div class="flex-1" />
           <!-- Color scheme: the iframe's color-scheme style is what the
                design's prefers-color-scheme media query sees. -->
-          <div class="flex items-center rounded-lg border border-base-300 overflow-hidden">
-            <button
+          <div class="flex items-center gap-0.5">
+            <VIconButton
               v-for="mode in (['auto', 'light', 'dark'] as const)"
               :key="mode"
-              type="button"
-              class="px-2 py-0.5"
-              :class="themeMode === mode ? 'bg-primary/15 text-primary' : 'hover:bg-base-200'"
-              :title="t(`designer.theme.${mode}`)"
+              :icon="mode === 'auto' ? 'theme' : mode"
+              size="sm"
+              :active="themeMode === mode"
+              :label="t(`designer.theme.${mode}`)"
               @click="setTheme(mode)"
-            >{{ mode === 'auto' ? '◐' : mode === 'light' ? '☀' : '☾' }}</button>
+            />
           </div>
           <!-- Responsive presets. -->
-          <div class="flex items-center rounded-lg border border-base-300 overflow-hidden">
-            <button
+          <div class="flex items-center gap-0.5">
+            <VIconButton
               v-for="preset in (['desktop', 'tablet', 'phone'] as const)"
               :key="preset"
-              type="button"
-              class="px-2 py-0.5"
-              :class="device === preset ? 'bg-primary/15 text-primary' : 'hover:bg-base-200'"
-              :title="t(`designer.device.${preset}`)"
+              :icon="`device-${preset}`"
+              size="sm"
+              :active="device === preset"
+              :label="t(`designer.device.${preset}`)"
               @click="setDevice(preset)"
-            >{{ preset === 'desktop' ? '🖥' : preset === 'tablet' ? '▭' : '▯' }}</button>
-            <button
+            />
+            <VIconButton
               v-if="device !== 'desktop'"
-              type="button"
-              class="px-2 py-0.5 border-l border-base-300"
-              :class="landscape ? 'bg-primary/15 text-primary' : 'hover:bg-base-200'"
-              :title="t('designer.rotate')"
+              icon="rotate"
+              size="sm"
+              :active="landscape"
+              :label="t('designer.rotate')"
               @click="toggleOrientation"
-            >⟳</button>
+            />
           </div>
         </div>
         <div

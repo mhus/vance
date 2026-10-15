@@ -10,6 +10,7 @@
  */
 import { computed } from 'vue';
 import type { StarredItemDto } from '@vance/generated';
+import { VIconButton } from '@vance/components';
 
 const props = defineProps<{
   item: StarredItemDto;
@@ -63,13 +64,14 @@ const label = computed(() => props.item.title?.trim() || props.item.path);
     </a>
     <!-- A broken tile is not silently dropped: the entry is the user's
          curation, so removing it stays their decision. -->
-    <button
+    <VIconButton
       v-if="broken"
-      type="button"
-      class="absolute right-1 top-1 px-1 text-xs opacity-60 hover:opacity-100"
-      :title="$t('starred.remove')"
+      icon="close"
+      size="sm"
+      class="absolute right-1 top-1"
+      :label="$t('starred.remove')"
       @click="emit('remove')"
-    >✕</button>
+    />
   </div>
 </template>
 

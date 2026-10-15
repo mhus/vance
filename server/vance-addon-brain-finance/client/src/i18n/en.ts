@@ -17,7 +17,7 @@ export default {
     unit: 'Unit',
     report: 'Report',
     loading: 'Loading…',
-    createRoot: '＋ Create root node',
+    createRoot: 'Create root node',
     pickNode: 'Select a node to edit it.',
     // Save indicator, keyed by state id.
     save: {

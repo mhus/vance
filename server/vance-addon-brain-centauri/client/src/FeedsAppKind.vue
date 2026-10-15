@@ -2,7 +2,7 @@
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   VAlert, VButton, VCard, VCheckbox, VEmptyState, VInput, VModal, VSelect, VShareButton,
-  VTextarea, VToggle, useAppEntry, useLocale, vanceRef,
+  VIcon, VIconButton, VTextarea, VToggle, useAppEntry, useLocale, vanceRef,
 } from '@vance/components';
 import { RestError, safeUrl } from '@vance/shared';
 import {
@@ -1252,12 +1252,13 @@ function slug(title: string): string {
                   :href="link(item.controlUrl)!"
                   target="_blank"
                   rel="noopener noreferrer"
-                  class="text-xs hover:underline"
+                  class="inline-flex items-center gap-1 text-xs hover:underline"
                 >
                   {{ t('feeds.openInSource') }}
+                  <VIcon name="external" />
                 </a>
-                <span v-if="clipped[entryKey(item)]" class="text-xs opacity-70">
-                  → {{ clipped[entryKey(item)] }}
+                <span v-if="clipped[entryKey(item)]" class="inline-flex items-center gap-1 text-xs opacity-70">
+                  <VIcon name="arrow-right" />{{ clipped[entryKey(item)] }}
                 </span>
               </div>
             </div>
@@ -1404,7 +1405,7 @@ function slug(title: string): string {
                 <VButton
                   v-if="selectedFacetValues(entry.facet.key).length > 0"
                   size="sm"
-                  variant="ghost"
+                  variant="plain"
                   @click="clearFacet(entry.facet.key)"
                 >
                   {{ t('feeds.clear') }}
@@ -1433,7 +1434,7 @@ function slug(title: string): string {
         <div v-if="picker.facet.hierarchical" class="flex flex-wrap items-center gap-1 text-sm">
           <button class="hover:underline" @click="breadcrumbTo(-1)">{{ t('feeds.all') }}</button>
           <template v-for="(node, i) in picker.path" :key="node.id">
-            <span class="opacity-50">›</span>
+            <VIcon name="forward" class="opacity-50" />
             <button class="hover:underline" @click="breadcrumbTo(i)">{{ node.label }}</button>
           </template>
         </div>
@@ -1444,10 +1445,11 @@ function slug(title: string): string {
           <button
             v-for="id in selectedFacetValues(picker.facet.key)"
             :key="id"
-            class="rounded bg-base-200 px-2 py-0.5 text-xs hover:line-through"
+            class="inline-flex items-center gap-1 rounded bg-base-200 px-2 py-0.5 text-xs hover:line-through"
             @click="toggleFacetValue(picker.facet.key, id)"
           >
-            {{ labelOf(id) }} ✕
+            {{ labelOf(id) }}
+            <VIcon name="close" />
           </button>
         </div>
 
@@ -1472,14 +1474,13 @@ function slug(title: string): string {
             <div class="flex-1"></div>
             <!-- Any node is selectable, so the chevron is a separate target:
                  going deeper and choosing are different intentions. -->
-            <VButton
+            <VIconButton
               v-if="picker.facet.hierarchical"
+              icon="forward"
               size="sm"
-              variant="secondary"
+              :label="t('feeds.drillInto')"
               @click="drillInto(value)"
-            >
-              ›
-            </VButton>
+            />
           </div>
         </div>
       </div>

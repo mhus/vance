@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { VAlert, VButton, useAppEntry, useDocumentPrefixReaction } from '@vance/components';
+import { VAlert, VButton, VIcon, VIconButton, useAppEntry, useDocumentPrefixReaction } from '@vance/components';
 import ScribbleEditor from './ScribbleEditor.vue';
 import InputDialog from './InputDialog.vue';
 import { useT } from './i18n';
@@ -345,23 +345,24 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="flex h-full w-full flex-col">
-    <div class="no-print flex items-center gap-2 border-b border-slate-200 p-2">
+    <div class="no-print flex items-center gap-2 border-b border-(--v-separator) p-2">
       <div class="relative">
-        <VButton icon="menu" size="sm" @click="menuOpen = !menuOpen">
-          {{ activeTitle }} ▾
+        <VButton icon="menu" size="sm" variant="secondary" @click="menuOpen = !menuOpen">
+          {{ activeTitle }}
+          <VIcon name="expand" />
         </VButton>
         <div
           v-if="menuOpen"
-          class="absolute left-0 top-full z-20 mt-1 max-h-80 w-64 overflow-auto rounded border border-slate-200 bg-white shadow-lg"
+          class="absolute left-0 top-full z-20 mt-1 max-h-80 w-64 overflow-auto rounded-(--v-radius-control) bg-(--v-surface-raised) shadow-(--v-shadow-float)"
         >
           <button
             v-for="p in pages"
             :key="p.id"
-            class="block w-full px-3 py-2 text-left text-sm hover:bg-slate-100"
+            class="flex w-full items-center gap-1 px-3 py-2 text-left text-sm hover:bg-(--v-fill)"
             :class="{ 'font-semibold': p.path === activePath, 'opacity-50': !p.enabled }"
             @click="openSheet(p.path)"
           >
-            {{ p.defaultSheet ? '★ ' : '' }}{{ p.title }}
+            <VIcon v-if="p.defaultSheet" name="star" fill="currentColor" class="text-(--v-accent-text)" />{{ p.title }}
           </button>
           <div v-if="pages.length === 0" class="px-3 py-2 text-sm opacity-60">
             {{ t('scribble.book.noSheets') }}
@@ -370,53 +371,36 @@ onBeforeUnmount(() => {
       </div>
       <VButton icon="add" size="sm" variant="plain" @click="addSheet">{{ t('scribble.book.addSheet') }}</VButton>
       <VButton icon="refresh" size="sm" variant="plain" @click="rebuild">{{ t('scribble.book.rebuildIndex') }}</VButton>
-      <VButton
-        size="sm"
-        variant="plain"
-        :class="activeEnabled ? '' : 'opacity-50'"
-        :title="t('scribble.book.toggleEnabled')"
-        :aria-label="t('scribble.book.toggleEnabled')"
+      <VIconButton
+        :icon="activeEnabled ? 'show' : 'hide'"
+        :label="t('scribble.book.toggleEnabled')"
         @click="toggleEnabled"
-      >
-        {{ activeEnabled ? '⏻' : '⏼' }}
-      </VButton>
-      <VButton
-        size="sm"
-        variant="plain"
-        :class="activeDefault ? 'text-amber-500' : 'text-slate-300'"
-        :title="t('scribble.book.toggleDefault')"
-        :aria-label="t('scribble.book.toggleDefault')"
+      />
+      <VIconButton
+        icon="star"
+        :active="activeDefault"
+        :label="t('scribble.book.toggleDefault')"
         @click="toggleDefault"
-      >
-        {{ activeDefault ? '★' : '☆' }}
-      </VButton>
-      <VButton
-        size="sm"
-        variant="plain"
+      />
+      <VIconButton
+        :icon="busy === 'ocr' ? 'loading' : 'ocr'"
         :disabled="busy !== null"
-        :title="t('scribble.book.ocr')"
-        :aria-label="t('scribble.book.ocr')"
+        :label="t('scribble.book.ocr')"
         @click="runOcr"
-      >
-        {{ busy === 'ocr' ? '…' : '📝' }}
-      </VButton>
-      <VButton
-        size="sm"
-        variant="plain"
+      />
+      <VIconButton
+        :icon="busy === 'pdf' ? 'loading' : 'download'"
         :disabled="busy !== null"
-        :title="t('scribble.book.pdf')"
-        :aria-label="t('scribble.book.pdf')"
+        :label="t('scribble.book.pdf')"
         @click="runBookPdf"
-      >
-        {{ busy === 'pdf' ? '…' : '⤓' }}
-      </VButton>
-      <span class="ml-auto flex items-center gap-1.5 text-xs text-slate-500">
+      />
+      <span class="ml-auto flex items-center gap-1.5 text-xs text-(--v-label-secondary)">
         <span
-          class="inline-block h-2 w-2 rounded-full"
+          class="inline-block size-2 rounded-full"
           :class="{
-            'bg-green-500': saveState === 'saved',
-            'bg-amber-500': saveState === 'dirty',
-            'bg-blue-500 animate-pulse': saveState === 'saving',
+            'bg-(--v-success)': saveState === 'saved',
+            'bg-(--v-warning)': saveState === 'dirty',
+            'bg-(--v-accent) animate-pulse': saveState === 'saving',
           }"
         ></span>
         <span>{{ saveLabel }}</span>
@@ -435,7 +419,7 @@ onBeforeUnmount(() => {
         :editable="true"
         @change="onEditorChange"
       />
-      <div v-else class="p-4 text-sm text-slate-500">
+      <div v-else class="p-4 text-sm text-(--v-label-secondary)">
         {{ pages.length === 0 ? t('scribble.book.empty') : t('scribble.book.pick') }}
       </div>
     </div>

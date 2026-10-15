@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import type { WorkspaceTreeNodeDto } from '@vance/generated';
 import { WorkspaceNodeType } from '@vance/generated';
+import { VIcon } from '@/components';
 
 interface Props {
   node: WorkspaceTreeNodeDto;
@@ -61,14 +62,15 @@ function formatSize(bytes: number): string {
     >
       <span class="chevron">
         <template v-if="isDir">
-          <span v-if="isLoading" class="loading loading-spinner loading-xs" />
-          <span v-else-if="isExpanded">▾</span>
-          <span v-else>▸</span>
+          <VIcon v-if="isLoading" name="loading" class="animate-spin" />
+          <VIcon v-else :name="isExpanded ? 'expand' : 'forward'" />
         </template>
       </span>
-      <span class="icon" :class="isDir ? 'opacity-70' : 'opacity-40'">
-        {{ isDir ? '📁' : '📄' }}
-      </span>
+      <VIcon
+        :name="isDir ? (isExpanded ? 'folder-open' : 'folder') : 'document'"
+        class="icon"
+        :class="isDir ? 'opacity-70' : 'opacity-40'"
+      />
       <span class="name truncate">{{ node.name }}</span>
       <span v-if="!isDir" class="size">{{ formatSize(node.size) }}</span>
     </button>

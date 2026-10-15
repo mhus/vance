@@ -5,6 +5,7 @@ import { Marpit } from '@marp-team/marpit';
 import { parseSlides, type SlidesDocument } from './slidesCodec';
 import type { DocumentDto } from '@vance/generated';
 import type { EmbedRef } from '@/kindRenderers/parseVanceUri';
+import { VButton, VIcon, VIconButton } from '@/components';
 
 /**
  * Renderer for `kind: slides` documents. Marpit turns the deck's
@@ -373,37 +374,39 @@ onBeforeUnmount(() => {
       :class="['slides-stage', stream ? 'slides-stage--stream' : 'slides-stage--single']"
     />
     <div v-if="items.length > 0 && mode === 'editor' && !presenting" class="slides-nav">
-      <button
-        type="button"
-        class="slides-nav-btn"
+      <VIconButton
+        icon="arrow-left"
         :disabled="stream || currentIndex === 0"
-        :title="t('documents.slidesView.prev')"
+        :label="t('documents.slidesView.prev')"
+        tooltip="top"
         @click="prev"
-      >←</button>
+      />
       <span class="slides-nav-index">
         {{ stream ? items.length : `${currentIndex + 1} / ${items.length}` }}
       </span>
-      <button
-        type="button"
-        class="slides-nav-btn"
+      <VIconButton
+        icon="arrow-right"
         :disabled="stream || currentIndex >= items.length - 1"
-        :title="t('documents.slidesView.next')"
+        :label="t('documents.slidesView.next')"
+        tooltip="top"
         @click="next"
-      >→</button>
-      <button
-        type="button"
-        class="slides-nav-toggle"
+      />
+      <VButton
+        variant="secondary"
+        size="sm"
         :title="stream
           ? t('documents.slidesView.toggleSingle')
           : t('documents.slidesView.toggleStream')"
         @click="stream = !stream"
-      >{{ stream ? t('documents.slidesView.modeStream') : t('documents.slidesView.modeSingle') }}</button>
-      <button
-        type="button"
-        class="slides-nav-present"
+      >{{ stream ? t('documents.slidesView.modeStream') : t('documents.slidesView.modeSingle') }}</VButton>
+      <VButton
+        variant="primary"
+        size="sm"
+        icon="play"
+        class="ml-2"
         :title="t('documents.slidesView.present')"
         @click="enterPresenting"
-      >▶ {{ t('documents.slidesView.presentLabel') }}</button>
+      >{{ t('documents.slidesView.presentLabel') }}</VButton>
     </div>
     <!-- Exit affordance while presenting — small floating button.
          Esc still works (browser-native fullscreen exit). -->
@@ -412,8 +415,9 @@ onBeforeUnmount(() => {
       type="button"
       class="slides-present-exit"
       :title="t('documents.slidesView.exit')"
+      :aria-label="t('documents.slidesView.exit')"
       @click="exitPresenting"
-    >✕</button>
+    ><VIcon name="close" /></button>
     <div v-if="items.length === 0" class="slides-empty">
       {{ t('documents.slidesView.empty') }}
     </div>
@@ -494,36 +498,6 @@ onBeforeUnmount(() => {
   border-top: 1px solid color-mix(in oklab, var(--color-base-content) 10%, transparent);
   background: color-mix(in oklab, var(--color-base-200) 50%, transparent);
 }
-.slides-nav-btn,
-.slides-nav-toggle,
-.slides-nav-present {
-  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
-  background: var(--color-base-100);
-  border-radius: 0.375rem;
-  padding: 0.25rem 0.75rem;
-  font-size: 0.875rem;
-  cursor: pointer;
-  color: var(--color-base-content);
-}
-.slides-nav-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-.slides-nav-btn:hover:not(:disabled),
-.slides-nav-toggle:hover,
-.slides-nav-present:hover {
-  background: var(--color-base-200);
-}
-.slides-nav-present {
-  margin-left: 0.5rem;
-  background: color-mix(in oklab, var(--color-primary) 15%, transparent);
-  border-color: color-mix(in oklab, var(--color-primary) 40%, transparent);
-  color: var(--color-primary);
-  font-weight: 500;
-}
-.slides-nav-present:hover {
-  background: color-mix(in oklab, var(--color-primary) 25%, transparent);
-}
 .slides-nav-index {
   font-variant-numeric: tabular-nums;
   font-size: 0.875rem;
@@ -575,6 +549,9 @@ onBeforeUnmount(() => {
   right: 1rem;
   width: 2.25rem;
   height: 2.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 9999px;
   border: none;
   background: rgba(255, 255, 255, 0.12);

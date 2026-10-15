@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { VAlert, VButton, useDocumentPrefixReaction } from '@vance/components';
+import { VAlert, VIconButton, useDocumentPrefixReaction } from '@vance/components';
 import ScribbleEditor from './ScribbleEditor.vue';
 import { exportSheetPdf, getSheet, ocrSheet, putSheet } from './api';
 import { useT } from './i18n';
@@ -190,36 +190,30 @@ async function runPdf(): Promise<void> {
       {{ t('scribble.common.loading') }}
     </div>
     <template v-else>
-      <div class="no-print flex items-center justify-end gap-2 px-3 py-1 text-xs text-slate-500">
+      <div class="no-print flex items-center justify-end gap-2 px-3 py-1 text-xs text-(--v-label-secondary)">
         <span
-          class="inline-block h-2 w-2 rounded-full"
+          class="inline-block size-2 rounded-full"
           :class="{
-            'bg-green-500': saveState === 'saved',
-            'bg-amber-500': saveState === 'dirty',
-            'bg-blue-500 animate-pulse': saveState === 'saving',
+            'bg-(--v-success)': saveState === 'saved',
+            'bg-(--v-warning)': saveState === 'dirty',
+            'bg-(--v-accent) animate-pulse': saveState === 'saving',
           }"
         ></span>
         <span>{{ saveLabel }}</span>
-        <VButton
+        <VIconButton
+          :icon="busy === 'ocr' ? 'loading' : 'ocr'"
           size="sm"
-          variant="plain"
           :disabled="busy !== null"
-          :title="t('scribble.book.ocr')"
-          :aria-label="t('scribble.book.ocr')"
+          :label="t('scribble.book.ocr')"
           @click="runOcr"
-        >
-          {{ busy === 'ocr' ? '…' : '📝' }}
-        </VButton>
-        <VButton
+        />
+        <VIconButton
+          :icon="busy === 'pdf' ? 'loading' : 'download'"
           size="sm"
-          variant="plain"
           :disabled="busy !== null"
-          :title="t('scribble.book.pdf')"
-          :aria-label="t('scribble.book.pdf')"
+          :label="t('scribble.book.pdf')"
           @click="runPdf"
-        >
-          {{ busy === 'pdf' ? '…' : '⤓' }}
-        </VButton>
+        />
       </div>
       <div class="min-h-0 flex-1">
         <ScribbleEditor :sheet="view.sheet" :editable="true" @change="onEditorChange" />

@@ -6,6 +6,7 @@ import {
   VButton,
   VCard,
   VCheckbox,
+  VIcon,
   VInput,
   VModal,
   VSelect,
@@ -411,17 +412,17 @@ watch(
           <div class="flex items-center gap-2 shrink-0">
             <span
               v-if="record.signatureStatus === 'VERIFIED'"
-              class="text-xs opacity-70"
+              class="inline-flex items-center gap-1 text-xs opacity-70"
               :title="t('scopes.kit.signature.verifiedHelp')"
-            >✓ {{ t('scopes.kit.signature.verified') }}</span>
+            ><VIcon name="check" />{{ t('scopes.kit.signature.verified') }}</span>
             <!-- Only FAILED is called out. `unsigned` is the normal state
                  for kits from git and flagging it would train people to
                  ignore the badge. -->
             <span
               v-else-if="record.signatureStatus === 'FAILED'"
-              class="text-xs text-warning"
+              class="inline-flex items-center gap-1 text-xs text-(--v-warning)"
               :title="t('scopes.kit.signature.failedHelp')"
-            >⚠ {{ t('scopes.kit.signature.failed') }}</span>
+            ><VIcon name="warning" />{{ t('scopes.kit.signature.failed') }}</span>
             <span v-if="record.kit.version" class="opacity-60 text-xs">
               {{ t('scopes.kit.versionPrefix', { version: record.kit.version }) }}
             </span>
@@ -503,7 +504,7 @@ watch(
             @click="promoteKit(record)"
           >{{ t('scopes.kit.promote') }}</VButton>
           <VButton
-            variant="plain"
+            variant="danger"
             size="sm"
             :loading="kitState.busy.value"
             @click="uninstallKit(record)"
@@ -536,7 +537,7 @@ watch(
       <div class="flex flex-wrap justify-end gap-2 pt-1">
         <VButton
           v-if="kitState.installed.value.length > 1"
-          variant="ghost"
+          variant="secondary"
           size="sm"
           :loading="kitState.busy.value"
           @click="updateAllKits"
@@ -592,8 +593,8 @@ watch(
         <li
           v-for="(w, i) in (kitState.lastResult.value.warnings ?? [])"
           :key="'kw-' + i"
-          class="opacity-90"
-        >⚠ {{ w }}</li>
+          class="flex items-start gap-1 opacity-90"
+        ><VIcon name="warning" class="text-(--v-warning)" />{{ w }}</li>
       </ul>
     </div>
   </VCard>

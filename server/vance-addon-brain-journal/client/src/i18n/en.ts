@@ -13,6 +13,9 @@ export default {
   journal: {
     today: 'Today',
     searchPlaceholder: 'Search entries…',
+    search: 'Search',
+    previousMonth: 'Previous month',
+    nextMonth: 'Next month',
     untitled: '(untitled)',
     noMatch: 'No matching entry.',
     rebuilding: 'Rebuilding…',

@@ -77,7 +77,7 @@ async function onEditClosed(): Promise<void> {
 
       <div class="flex items-baseline gap-2">
         <span class="text-2xl font-semibold tabular-nums"
-              :class="(rootPerYear ?? 0) < 0 ? 'text-red-500' : 'text-green-600'">
+              :class="(rootPerYear ?? 0) < 0 ? 'text-(--v-danger)' : 'text-(--v-success)'">
           {{ money(rootPerYear) }}
         </span>
         <span class="opacity-60">{{ t('finance.summary.perYear') }}</span>

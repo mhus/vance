@@ -7,6 +7,7 @@ import {
   VButton,
   VCard,
   VEmptyState,
+  VIcon,
   VTextarea,
 } from '@/components';
 import { useEvents } from '@/composables/useEvents';
@@ -165,7 +166,7 @@ function sortedEvents(): EventSummary[] {
               </span>
             </div>
             <div class="text-xs opacity-60 truncate mt-0.5">
-              <span class="opacity-80">→</span>
+              <VIcon name="arrow-right" class="inline-block align-text-bottom opacity-80" />
               {{ ev.workflow ?? '—' }}
               <span class="ml-2">{{ methodsLabel(ev.methods) }}</span>
               <span v-if="ev.authConfigured" class="ml-2">{{ $t('insights.events.bearerBadge') }}</span>

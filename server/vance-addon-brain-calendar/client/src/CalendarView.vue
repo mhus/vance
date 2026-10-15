@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { useLocale, useT } from '@vance/components';
+import { useLocale, useT, VIcon, VIconButton } from '@vance/components';
 import { parseCalendar, type CalendarDocument, type CalendarEvent, emptyCalendar } from './calendarCodec';
 
 // `meta` and `embedRef` come from the host's chat-fence rendering
@@ -624,11 +624,11 @@ function colorFor(ev: CalendarEvent): string {
         >{{ t('calendar.view.viewAgenda') }}</button>
       </div>
       <div v-if="view === 'month'" class="cal-nav">
-        <button type="button" class="cal-nav-btn" @click="prevMonth">‹</button>
+        <VIconButton icon="back" size="sm" :label="t('calendar.view.previousMonth')" @click="prevMonth" />
         <button type="button" class="cal-nav-btn cal-today-btn" @click="gotoToday">
           {{ t('calendar.view.today') }}
         </button>
-        <button type="button" class="cal-nav-btn" @click="nextMonth">›</button>
+        <VIconButton icon="forward" size="sm" :label="t('calendar.view.nextMonth')" @click="nextMonth" />
         <span class="cal-month-label">{{ monthHeaderLabel(monthAnchor) }}</span>
       </div>
     </div>
@@ -688,12 +688,12 @@ function colorFor(ev: CalendarEvent): string {
               <div class="cal-agenda-title-row">
                 <div class="cal-agenda-title">{{ occ.event.title }}</div>
                 <div class="cal-add-wrap">
-                  <button
-                    type="button"
-                    class="cal-add-btn"
-                    :title="t('calendar.view.addToCalendar')"
+                  <VIconButton
+                    icon="calendar"
+                    size="sm"
+                    :label="t('calendar.view.addToCalendar')"
                     @click.stop="toggleLinks(occ)"
-                  >📅</button>
+                  />
                   <div
                     v-if="openLinksKey === linkKey(occ)"
                     class="cal-add-menu"
@@ -712,11 +712,11 @@ function colorFor(ev: CalendarEvent): string {
                   </div>
                 </div>
               </div>
-              <div v-if="occ.event.location" class="cal-agenda-meta">
-                📍 {{ occ.event.location }}
+              <div v-if="occ.event.location" class="cal-agenda-meta flex items-center gap-1">
+                <VIcon name="location" />{{ occ.event.location }}
               </div>
-              <div v-if="occ.event.attendees.length > 0" class="cal-agenda-meta">
-                👥 {{ occ.event.attendees.join(', ') }}
+              <div v-if="occ.event.attendees.length > 0" class="cal-agenda-meta flex items-center gap-1">
+                <VIcon name="team" />{{ occ.event.attendees.join(', ') }}
               </div>
               <div v-if="occ.event.notes" class="cal-agenda-notes">{{ occ.event.notes }}</div>
               <div v-if="occ.event.tags.length > 0" class="cal-agenda-tags">

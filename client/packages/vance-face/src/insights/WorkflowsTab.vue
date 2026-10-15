@@ -13,6 +13,7 @@ import {
   VCard,
   VCheckbox,
   VEmptyState,
+  VIcon,
   VInput,
   VTextarea,
 } from '@/components';
@@ -464,6 +465,7 @@ function processSelectHandler(run: MagratheaProcessDto): void {
                   <VButton
                     variant="plain"
                     size="sm"
+                    icon="refresh"
                     @click="refreshRuns"
                   >{{ $t('insights.workflows.runs.refresh') }}</VButton>
                 </div>
@@ -489,9 +491,9 @@ function processSelectHandler(run: MagratheaProcessDto): void {
                              across every source. -->
                         <a
                           :href="runsHref(run)"
-                          class="text-xs underline opacity-70 hover:opacity-100"
+                          class="text-xs underline opacity-70 hover:opacity-100 inline-flex items-center gap-1"
                           @click.stop
-                        >{{ $t('insights.workflows.runs.openInRunView') }} ↗</a>
+                        >{{ $t('insights.workflows.runs.openInRunView') }}<VIcon name="forward" /></a>
                         <span :class="runStatusClass(run.status)" class="text-xs">
                           {{ run.status }}
                         </span>

@@ -8,7 +8,7 @@
  */
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { VAlert, VButton, VCard } from '@/components';
+import { VAlert, VButton, VCard, VIcon } from '@/components';
 import type { RunDetailDto } from '@vance/generated';
 import RunStatusBadge from './RunStatusBadge.vue';
 import RunExtraBlock from './RunExtraBlock.vue';
@@ -69,8 +69,8 @@ function render(value: unknown): string {
 
       <p v-if="detail.links?.length" class="links">
         <a v-for="link in detail.links" :key="link.rel + link.target"
-           :href="href(link.rel, link.target)" class="link">
-          {{ t(`runs.link.${link.rel}`) }} ↗
+           :href="href(link.rel, link.target)" class="link inline-flex items-center gap-1">
+          {{ t(`runs.link.${link.rel}`) }}<VIcon name="forward" />
         </a>
       </p>
     </header>
@@ -81,8 +81,11 @@ function render(value: unknown): string {
          doing anything to the run. -->
     <VAlert v-if="detail.waitingOnInboxItemId" variant="warning" class="waiting">
       {{ t('runs.detail.waitingOnInbox') }}
-      <a :href="`/inbox?item=${encodeURIComponent(detail.waitingOnInboxItemId)}`">
-        {{ t('runs.detail.openInbox') }} ↗
+      <a
+        :href="`/inbox?item=${encodeURIComponent(detail.waitingOnInboxItemId)}`"
+        class="inline-flex items-center gap-1"
+      >
+        {{ t('runs.detail.openInbox') }}<VIcon name="forward" />
       </a>
     </VAlert>
 

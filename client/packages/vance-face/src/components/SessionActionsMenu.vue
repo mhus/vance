@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { VColorPicker } from '@vance/components';
+import { VColorPicker, VIcon, VIconButton } from '@vance/components';
 import {
   AccentColor,
   type SessionSummaryRichDto,
@@ -239,16 +239,15 @@ async function onDelete(): Promise<void> {
        backend rejects non-owners with 403). Non-owners on shared sessions
        see no menu — matching SessionHeader. -->
   <div v-if="isOwner" ref="triggerEl" @click.stop>
-    <button
-      type="button"
-      class="btn btn-ghost btn-sm btn-square"
-      :title="t('chat.sessionHeader.moreActions')"
+    <VIconButton
+      icon="more"
+      size="sm"
+      :label="t('chat.sessionHeader.moreActions')"
+      :active="menuOpen"
       :aria-expanded="menuOpen"
       :disabled="saving"
       @click.stop="toggleMenu"
-    >
-      <span class="text-lg leading-none">⋯</span>
-    </button>
+    />
 
     <Teleport to="body">
     <div
@@ -267,7 +266,7 @@ async function onDelete(): Promise<void> {
         role="menuitem"
         @click.stop="onDuplicate"
       >
-        <span class="w-5 text-center">⧉</span>
+        <span class="w-5 flex justify-center"><VIcon name="copy" /></span>
         <span class="flex-1 text-left">{{ t('chat.sessionHeader.duplicate') }}</span>
       </button>
 
@@ -279,7 +278,7 @@ async function onDelete(): Promise<void> {
         role="menuitem"
         @click.stop="onCrop"
       >
-        <span class="w-5 text-center">✂</span>
+        <span class="w-5 flex justify-center"><VIcon name="crop" /></span>
         <span class="flex-1 text-left">{{ t('chat.sessionHeader.crop') }}</span>
       </button>
 
@@ -291,7 +290,7 @@ async function onDelete(): Promise<void> {
         role="menuitem"
         @click.stop="onCompact"
       >
-        <span class="w-5 text-center">🗜</span>
+        <span class="w-5 flex justify-center"><VIcon name="minimize" /></span>
         <span class="flex-1 text-left">{{ t('chat.sessionHeader.compact') }}</span>
       </button>
 
@@ -304,7 +303,7 @@ async function onDelete(): Promise<void> {
         role="menuitem"
         @click.stop="onMove"
       >
-        <span class="w-5 text-center">📁</span>
+        <span class="w-5 flex justify-center"><VIcon name="folder" /></span>
         <span class="flex-1 text-left">{{ t('chat.sessionHeader.move') }}</span>
       </button>
 
@@ -319,7 +318,7 @@ async function onDelete(): Promise<void> {
         role="menuitem"
         @click.stop="togglePin(); closeMenu()"
       >
-        <span class="w-5 text-center" :class="session.pinned ? '' : 'opacity-40'">📌</span>
+        <span class="w-5 flex justify-center" :class="session.pinned ? '' : 'opacity-40'"><VIcon name="pin" /></span>
         <span class="flex-1 text-left">
           {{ session.pinned ? t('chat.sessionHeader.unpinTooltip') : t('chat.sessionHeader.pinTooltip') }}
         </span>
@@ -335,9 +334,9 @@ async function onDelete(): Promise<void> {
         @click.stop="toggleAllowMultipleClients(); closeMenu()"
       >
         <span
-          class="w-5 text-center"
+          class="w-5 flex justify-center"
           :class="session.allowMultipleClients ? '' : 'opacity-40'"
-        >👥</span>
+        ><VIcon name="team" /></span>
         <span class="flex-1 text-left">
           {{ session.allowMultipleClients
             ? t('chat.sessionHeader.collabDisableLabel')
@@ -354,9 +353,9 @@ async function onDelete(): Promise<void> {
           :aria-expanded="colorExpanded"
           @click.stop="colorExpanded = !colorExpanded"
         >
-          <span class="w-5 text-center">🎨</span>
+          <span class="w-5 flex justify-center"><VIcon name="theme" /></span>
           <span class="flex-1 text-left">{{ t('chat.sessionHeader.colorLabel') }}</span>
-          <span class="opacity-60 text-xs">{{ colorExpanded ? '▾' : '▸' }}</span>
+          <VIcon :name="colorExpanded ? 'expand' : 'forward'" class="opacity-60" />
         </button>
         <div
           v-if="colorExpanded"
@@ -380,7 +379,7 @@ async function onDelete(): Promise<void> {
         role="menuitem"
         @click.stop="onArchive"
       >
-        <span class="w-5 text-center">📦</span>
+        <span class="w-5 flex justify-center"><VIcon name="archive" /></span>
         <span class="flex-1 text-left">{{ t('chat.sessionHeader.archive') }}</span>
       </button>
       <button
@@ -391,19 +390,19 @@ async function onDelete(): Promise<void> {
         role="menuitem"
         @click.stop="onReactivate"
       >
-        <span class="w-5 text-center">♻️</span>
+        <span class="w-5 flex justify-center"><VIcon name="restore" /></span>
         <span class="flex-1 text-left">{{ t('chat.sessionHeader.reactivate') }}</span>
       </button>
 
       <!-- Delete -->
       <button
         type="button"
-        class="flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200 disabled:opacity-50 text-error"
+        class="flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200 disabled:opacity-50 text-(--v-danger)"
         :disabled="saving"
         role="menuitem"
         @click.stop="onDelete"
       >
-        <span class="w-5 text-center">🗑️</span>
+        <span class="w-5 flex justify-center"><VIcon name="delete" /></span>
         <span class="flex-1 text-left">{{ t('chat.sessionHeader.delete') }}</span>
       </button>
     </div>

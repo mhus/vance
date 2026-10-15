@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import {
-  VAlert, VButton, VCard, VEmptyState, VInput, VSelect, VTextarea,
+  VAlert, VButton, VCard, VEmptyState, VIcon, VInput, VSelect, VTextarea,
 } from '@vance/components';
 import { safeUrl } from '@vance/shared';
 import {
@@ -406,8 +406,8 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
           <span class="font-mono">{{ vendor.name }}</span>
           · {{ vendor.displayName }}
           · <span class="opacity-70">{{ statusLabel(vendor) }}</span>
-          <span v-if="vendor.domainVerifiedAt" class="text-success">
-            · ✓ {{ vendor.domain }}
+          <span v-if="vendor.domainVerifiedAt" class="text-(--v-success)">
+            · <VIcon name="check" class="inline-block align-[-3px]" /> {{ vendor.domain }}
           </span>
         </div>
 
@@ -735,10 +735,11 @@ watch(() => [props.projectId, props.sourceId], load, { immediate: true });
           <div class="flex gap-2">
             <VButton
               size="sm"
+              :loading="loading"
               :disabled="loading || !version"
               @click="submitRelease(kit.vendorName, kit.kitId)"
             >
-              {{ loading ? '…' : t('store.developer.exportSubmit') }}
+              {{ t('store.developer.exportSubmit') }}
             </VButton>
             <VButton size="sm" variant="secondary" @click="publishing = ''">
               {{ t('store.common.cancel') }}

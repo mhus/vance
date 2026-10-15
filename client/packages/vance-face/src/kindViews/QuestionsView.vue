@@ -22,7 +22,7 @@
  * Spec: specification/public/doc-kind-questions.md.
  */
 import { computed, inject, ref } from 'vue';
-import { VAlert, VButton, VTextarea, useT } from '@vance/components';
+import { VAlert, VButton, VIcon, VTextarea, useT } from '@vance/components';
 import { MarkdownView } from '@components/index';
 import {
   QuestionKind,
@@ -158,12 +158,12 @@ function send(): void {
         </div>
         <div class="flex flex-col gap-2">
           <div class="flex items-start gap-2">
-            <span v-if="current.weight === QuestionWeight.BLOCKER" class="badge badge-error badge-sm mt-1">
+            <span v-if="current.weight === QuestionWeight.BLOCKER" class="mt-1 shrink-0 text-xs font-semibold text-(--v-danger)">
               {{ t('kindViews.questions.blocker') }}
             </span>
             <MarkdownView class="questions-view__text" :source="current.text" />
           </div>
-          <blockquote v-if="current.context" class="text-xs opacity-70 border-l-2 border-base-300 pl-2">
+          <blockquote v-if="current.context" class="text-xs opacity-70 border-l-2 border-(--v-separator) pl-2">
             {{ current.context }}
           </blockquote>
           <div v-if="current.kind === QuestionKind.CONFIRM && current.proposal" class="flex flex-col gap-2">
@@ -192,7 +192,7 @@ function send(): void {
             <VButton variant="plain" size="sm" @click="answer(QuestionOutcome.SETTLED)">{{ labels.settled }}</VButton>
             <VButton variant="plain" size="sm" @click="answer(QuestionOutcome.LATER)">{{ labels.later }}</VButton>
             <VButton variant="plain" size="sm" @click="answer(QuestionOutcome.UNKNOWN)">{{ labels.unknown }}</VButton>
-            <VButton v-if="page > 0" variant="ghost" size="sm" @click="goTo(page - 1)">{{ t('kindViews.questions.back') }}</VButton>
+            <VButton v-if="page > 0" variant="secondary" size="sm" @click="goTo(page - 1)">{{ t('kindViews.questions.back') }}</VButton>
           </div>
         </div>
       </template>
@@ -206,7 +206,7 @@ function send(): void {
         <template v-if="single">
           <MarkdownView class="questions-view__text" :source="parsed.set.questions[0]?.text ?? ''" />
           <div v-if="sent && parsed.set.questions[0]" class="text-sm">
-            → <strong>{{ answerLabel(parsed.set, answers[parsed.set.questions[0].key], labels) }}</strong>
+            <VIcon name="arrow-right" class="inline align-middle" /> <strong>{{ answerLabel(parsed.set, answers[parsed.set.questions[0].key], labels) }}</strong>
           </div>
         </template>
         <ol v-else class="list-decimal pl-5 flex flex-col gap-1 text-sm">
@@ -217,17 +217,17 @@ function send(): void {
               class="text-left align-top hover:underline"
               @click="goTo(i)"
             >
-              {{ q.text }} → <strong>{{ answerLabel(parsed.set, answers[q.key], labels) }}</strong>
+              {{ q.text }} <VIcon name="arrow-right" class="inline align-middle" /> <strong>{{ answerLabel(parsed.set, answers[q.key], labels) }}</strong>
             </button>
             <span v-else>
               {{ q.text }}
-              <strong v-if="sent"> → {{ answerLabel(parsed.set, answers[q.key], labels) }}</strong>
+              <template v-if="sent"> <VIcon name="arrow-right" class="inline align-middle" /> <strong>{{ answerLabel(parsed.set, answers[q.key], labels) }}</strong></template>
             </span>
           </li>
         </ol>
         <div v-if="interactive" class="flex gap-2">
           <VButton variant="primary" size="sm" @click="send">{{ t('kindViews.questions.send') }}</VButton>
-          <VButton v-if="total > 0" variant="ghost" size="sm" @click="goTo(total - 1)">{{ t('kindViews.questions.back') }}</VButton>
+          <VButton v-if="total > 0" variant="secondary" size="sm" @click="goTo(total - 1)">{{ t('kindViews.questions.back') }}</VButton>
         </div>
         <div v-else-if="mode === 'inline' && (sent || !actionable)" class="text-xs opacity-60">
           {{ t('kindViews.questions.answered') }}

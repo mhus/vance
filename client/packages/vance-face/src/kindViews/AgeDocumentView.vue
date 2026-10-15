@@ -19,7 +19,7 @@
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
-import { VAlert, VButton, VFileInput, VInput, VTextarea } from '@/components';
+import { VAlert, VButton, VFileInput, VIcon, VInput, VTextarea } from '@/components';
 import { useAgeKeyStore } from '@/cortex/stores/ageKeyStore';
 import { useCortexStore } from '@/cortex/stores/cortexStore';
 import type { DocumentDto } from '@vance/generated';
@@ -124,15 +124,15 @@ function onForget(): void {
   <!-- Embedded card: the fact, not the ciphertext (planning §5.5). -->
   <div
     v-if="mode === 'embedded'"
-    class="age-view age-view--card flex items-center gap-2 rounded border border-base-300 px-3 py-2 text-sm opacity-80"
+    class="age-view age-view--card flex items-center gap-2 rounded border border-(--v-separator) px-3 py-2 text-sm opacity-80"
   >
-    <span aria-hidden="true">🔐</span>
+    <VIcon name="lock" />
     <span>{{ $t('cortex.age.embedded') }}</span>
   </div>
 
   <div v-else class="age-view mx-auto max-w-2xl space-y-4 overflow-y-auto p-4">
     <VAlert variant="info">
-      <span class="font-medium">🔐 {{ $t('cortex.age.lockedTitle') }}</span>
+      <span class="inline-flex items-center gap-1.5 font-medium"><VIcon name="lock" />{{ $t('cortex.age.lockedTitle') }}</span>
     </VAlert>
     <p class="text-sm opacity-80">{{ $t('cortex.age.lockedBody') }}</p>
 
@@ -141,7 +141,7 @@ function onForget(): void {
       {{ $t('cortex.age.notArmored') }}
     </VAlert>
 
-    <div class="space-y-3 rounded border border-base-300 p-4">
+    <div class="space-y-3 rounded border border-(--v-separator) p-4">
       <h3 class="font-medium">{{ $t('cortex.age.unlockTitle') }}</h3>
       <VTextarea
         v-model="identityText"
@@ -183,7 +183,7 @@ function onForget(): void {
       <p class="text-xs opacity-60">{{ $t('cortex.age.memoryHint') }}</p>
     </div>
 
-    <details class="rounded border border-base-300">
+    <details class="rounded border border-(--v-separator)">
       <summary class="cursor-pointer px-3 py-2 text-sm">
         {{ $t('cortex.age.cipherPreview') }}
       </summary>

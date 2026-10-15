@@ -20,6 +20,7 @@ import { useI18n } from 'vue-i18n';
 import { documentContentUrl } from '@vance/shared';
 import type { DocumentDto } from '@vance/generated';
 import type { EmbedRef } from '@/kindRenderers/parseVanceUri';
+import { VButton, VIconButton } from '@/components';
 
 interface Props {
   mode?: 'editor' | 'embedded';
@@ -55,14 +56,13 @@ function closeLightbox(): void {
     v-if="mode === 'embedded'"
     class="pdf-view pdf-view--card"
   >
-    <button
-      type="button"
-      class="pdf-view__open-btn"
+    <VButton
+      variant="secondary"
+      size="sm"
+      icon="file-pdf"
+      class="self-start"
       @click="openLightbox"
-    >
-      <span class="pdf-view__open-icon" aria-hidden="true">📄</span>
-      <span>{{ t('documents.pdfView.open') }}</span>
-    </button>
+    >{{ t('documents.pdfView.open') }}</VButton>
     <p v-if="embedRef?.caption" class="pdf-view__caption">
       {{ embedRef.caption }}
     </p>
@@ -95,12 +95,13 @@ function closeLightbox(): void {
       @click.self="closeLightbox"
       @keydown.escape="closeLightbox"
     >
-      <button
-        type="button"
+      <VIconButton
+        icon="close"
         class="pdf-view__lightbox-close"
-        :aria-label="$t('kindViews.pdf.close')"
+        :label="$t('kindViews.pdf.close')"
+        tooltip="left"
         @click="closeLightbox"
-      >×</button>
+      />
       <div class="pdf-view__lightbox-inner" @click.stop>
         <iframe
           v-if="url"
@@ -140,32 +141,6 @@ function closeLightbox(): void {
 .pdf-view--card {
   padding: 0.4rem 0;
 }
-.pdf-view__open-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  align-self: flex-start;
-  padding: 0.4rem 0.85rem;
-  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
-  border-radius: 0.375rem;
-  background: var(--color-base-100);
-  font-size: 0.9rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease;
-}
-.pdf-view__open-btn:hover {
-  background: color-mix(in oklab, var(--color-base-content) 8%, transparent);
-  border-color: color-mix(in oklab, var(--color-base-content) 35%, transparent);
-}
-.pdf-view__open-btn:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
-}
-.pdf-view__open-icon {
-  font-size: 1.05rem;
-  line-height: 1;
-}
 
 /* Lightbox: same backdrop treatment as ImageView so the two
  * overlays feel like one pattern. */
@@ -200,16 +175,6 @@ function closeLightbox(): void {
   position: absolute;
   top: 0.75rem;
   right: 1rem;
-  background: transparent;
-  border: none;
   color: white;
-  font-size: 2rem;
-  line-height: 1;
-  cursor: pointer;
-  padding: 0.25rem 0.5rem;
-  border-radius: 0.25rem;
-}
-.pdf-view__lightbox-close:hover {
-  background: rgba(255, 255, 255, 0.15);
 }
 </style>

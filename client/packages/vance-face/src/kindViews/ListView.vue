@@ -2,7 +2,7 @@
 import { computed, nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { VueDraggable } from 'vue-draggable-plus';
-import { VButton } from '@/components';
+import { VButton, VIcon, VIconButton } from '@/components';
 import { parseList, type ListDocument, type ListItem } from '@vance/shared';
 import type { DocumentDto } from '@vance/generated';
 import type { EmbedRef } from '@/kindRenderers/parseVanceUri';
@@ -373,7 +373,7 @@ function autoGrow(event: Event): void {
           class="drag-handle"
           :title="t('documents.listEditor.dragHandle')"
           aria-hidden="true"
-        >⠿</span>
+        ><VIcon name="drag" /></span>
         <textarea
           v-if="editingIndex === idx"
           :ref="(el) => { if (el) inputRefs[idx] = el as HTMLTextAreaElement; }"
@@ -394,12 +394,13 @@ function autoGrow(event: Event): void {
           <span v-if="item.text" class="text-content">{{ item.text }}</span>
           <span v-else class="text-empty">{{ t('documents.listEditor.emptyItem') }}</span>
         </button>
-        <button
-          type="button"
-          class="row-delete"
-          :title="t('documents.listEditor.deleteItem')"
+        <VIconButton
+          icon="delete"
+          size="sm"
+          danger
+          :label="t('documents.listEditor.deleteItem')"
           @click="deleteItem(idx)"
-        >✕</button>
+        />
       </li>
     </VueDraggable>
 
@@ -511,21 +512,6 @@ function autoGrow(event: Event): void {
 .edit-input:focus {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-primary) 20%, transparent);
-}
-.row-delete {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 0.25rem 0.4rem;
-  border-radius: 0.25rem;
-  opacity: 0.4;
-  font-size: 0.85rem;
-  line-height: 1;
-}
-.row-delete:hover {
-  opacity: 1;
-  background: color-mix(in oklab, var(--color-error) 15%, transparent);
-  color: var(--color-error);
 }
 .add-row {
   margin-top: 0.5rem;

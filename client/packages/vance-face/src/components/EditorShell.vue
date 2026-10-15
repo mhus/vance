@@ -7,7 +7,7 @@ import {
   refreshAccessCookie,
 } from '@/platform';
 import { useHelp } from '@/composables/useHelp';
-import type { IconName } from '@vance/components';
+import { VIcon, VIconButton, type IconName } from '@vance/components';
 import EditorTopbar, { type Crumb } from './EditorTopbar.vue';
 import MarkdownView from './MarkdownView.vue';
 import NotificationToasts from '@/notification/NotificationToasts.vue';
@@ -455,12 +455,12 @@ onBeforeUnmount(() => {
             <h3 class="text-xs uppercase opacity-60">
               {{ $t('header.help.title') }}
             </h3>
-            <button
-              type="button"
-              class="btn btn-ghost btn-xs btn-circle"
-              :title="$t('header.help.close')"
+            <VIconButton
+              icon="close"
+              size="sm"
+              :label="$t('header.help.close')"
               @click="toggleHelp"
-            >✕</button>
+            />
           </div>
           <div v-if="help.loading.value" class="text-xs opacity-60">
             {{ $t('header.help.loading') }}
@@ -499,7 +499,7 @@ onBeforeUnmount(() => {
           :class="{ 'reclaim-handle--hidden': focusZone === 'sidebar' }"
           :aria-label="$t('shell.expandSidebar')"
           @click="focusZone = 'sidebar'"
-        >›</button>
+        ><VIcon name="forward" /></button>
         <button
           v-if="hasRightCell"
           type="button"
@@ -507,7 +507,7 @@ onBeforeUnmount(() => {
           :class="{ 'reclaim-handle--hidden': focusZone === 'right' }"
           :aria-label="$t('shell.expandRightPanel')"
           @click="focusZone = 'right'"
-        >‹</button>
+        ><VIcon name="back" /></button>
       </template>
     </div>
     <!-- Global toast overlay for the user-notification side-channel.

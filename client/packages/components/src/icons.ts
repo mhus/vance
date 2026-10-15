@@ -23,6 +23,15 @@ import {
   FileQuestionMark, FileSpreadsheet, FileType, FileVideo, ListChecks, ListTree, Presentation, QrCode,
   Waypoints,
   SlidersHorizontal, StickyNote,
+  // sheet editing
+  AlignCenter, AlignLeft, AlignRight, BetweenHorizontalEnd, BetweenHorizontalStart,
+  BetweenVerticalEnd, BetweenVerticalStart, Bold, Eraser, Italic, PanelBottom, PanelTop,
+  // chat
+  Brain, CornerDownRight, Ear, Flag, FlaskConical, Hourglass, Phone, Pilcrow, VolumeX,
+  Building2,
+  // addon surfaces
+  ChartLine, Expand, Group, Monitor, Pointer, RotateCwSquare, ScanText, Smartphone, Smile, Tablet,
+  ZoomIn, ZoomOut,
 } from 'lucide-vue-next';
 
 export const ICONS = {
@@ -106,6 +115,7 @@ export const ICONS = {
   'ai': Sparkles,
   'user': User,
   'team': Users,
+  'tenant': Building2,
   'key': KeyRound,
   'lock': Lock,
   'unlock': LockOpen,
@@ -142,6 +152,49 @@ export const ICONS = {
   'file-audio': FileAudio,
   'file-archive': FileArchive,
   'file-code': FileCode,
+
+  // chat (activity strip, composer, message bubbles, picker)
+  'waiting': Hourglass,
+  'milestone': Flag,
+  'listening': Ear,
+  'call': Phone,
+  'mute': VolumeX,
+  'multiline': Pilcrow,
+  'thinking': Brain,
+  'reference': CornerDownRight,
+  'recipe': FlaskConical,
+
+  // sheet editing (SheetView toolbar and format panel)
+  'row-insert-above': BetweenHorizontalStart,
+  'row-insert-below': BetweenHorizontalEnd,
+  'column-insert-left': BetweenVerticalStart,
+  'column-insert-right': BetweenVerticalEnd,
+  'bold': Bold,
+  'italic': Italic,
+  'align-left': AlignLeft,
+  'align-center': AlignCenter,
+  'align-right': AlignRight,
+  'border-top': PanelTop,
+  'border-left': PanelLeft,
+  'border-right': PanelRight,
+  'border-bottom': PanelBottom,
+  'border-outer': Square,
+  'border-clear': Eraser,
+
+  // addon surfaces (calendar, canvas, designer, scribble, workbook, finance)
+  'kind-chart': ChartLine,
+  'zoom-in': ZoomIn,
+  'zoom-out': ZoomOut,
+  'group': Group,
+  'device-desktop': Monitor,
+  'device-tablet': Tablet,
+  'device-phone': Smartphone,
+  'rotate': RotateCwSquare,
+  'eraser': Eraser,
+  'touch': Pointer,
+  'fit': Expand,
+  'ocr': ScanText,
+  'emoji': Smile,
 
   // states
   'check': Check,

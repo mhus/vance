@@ -15,6 +15,7 @@ import {
   VButton,
   VCheckbox,
   VEmptyState,
+  VIcon,
   VModal,
   VSelect,
 } from '../components/index';
@@ -222,14 +223,14 @@ onBeforeUnmount(() => {
           >
             <div class="text-xl shrink-0">
               <span v-if="hit.session.icon">{{ hit.session.icon }}</span>
-              <span v-else class="opacity-30">💬</span>
+              <VIcon v-else name="chat" :size="20" class="inline-block text-(--v-label-tertiary)" />
             </div>
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2 min-w-0">
                 <span class="font-medium truncate">{{ sessionTitle(hit.session) }}</span>
                 <span
                   v-if="isArchived(hit.session)"
-                  class="text-xs uppercase tracking-wide px-1.5 py-0.5 rounded bg-warning/15 text-warning border border-warning/30 shrink-0"
+                  class="text-xs uppercase tracking-wide shrink-0 text-(--v-warning)"
                 >
                   {{ t('chat.sessionHeader.archived') }}
                 </span>
@@ -265,14 +266,14 @@ onBeforeUnmount(() => {
             <div class="flex items-start gap-3">
               <div class="text-xl shrink-0">
                 <span v-if="hit.session.icon">{{ hit.session.icon }}</span>
-                <span v-else class="opacity-30">💬</span>
+                <VIcon v-else name="chat" :size="20" class="inline-block text-(--v-label-tertiary)" />
               </div>
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 min-w-0">
                   <span class="font-medium truncate">{{ sessionTitle(hit.session) }}</span>
                   <span
                     v-if="isArchived(hit.session)"
-                    class="text-xs uppercase tracking-wide px-1.5 py-0.5 rounded bg-warning/15 text-warning border border-warning/30 shrink-0"
+                    class="text-xs uppercase tracking-wide shrink-0 text-(--v-warning)"
                   >
                     {{ t('chat.sessionHeader.archived') }}
                   </span>

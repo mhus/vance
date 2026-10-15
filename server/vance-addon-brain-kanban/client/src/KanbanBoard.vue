@@ -5,6 +5,8 @@ import {
   VAlert,
   VButton,
   VEmptyState,
+  VIcon,
+  VIconButton,
   VInput,
   VModal,
   VSelect,
@@ -224,23 +226,24 @@ async function submitCreate(): Promise<void> {
   }
 }
 
-// Subtle full-tile tint from the card's document accent color. Literal
-// class strings so the host Tailwind (which scans the addon source) emits
-// them; a dynamic `bg-${c}-500/10` would be purged. Falls back to the
-// neutral card surface when no color is set.
+// Full-tile tint from the card's document accent color, mapped onto the
+// eight content tones of the corporate design (§3.4) — the stored enum keeps
+// its finer names. Literal class strings so the host Tailwind (which scans
+// the addon source) emits them; a dynamic class would be purged. Falls back
+// to the neutral card surface when no color is set.
 const CARD_TINT: Record<string, string> = {
-  SLATE: 'bg-slate-500/10',
-  RED: 'bg-red-500/10',
-  ORANGE: 'bg-orange-500/10',
-  AMBER: 'bg-amber-500/10',
-  GREEN: 'bg-green-500/10',
-  TEAL: 'bg-teal-500/10',
-  CYAN: 'bg-cyan-500/10',
-  BLUE: 'bg-blue-500/10',
-  INDIGO: 'bg-indigo-500/10',
-  PURPLE: 'bg-purple-500/10',
-  PINK: 'bg-pink-500/10',
-  ROSE: 'bg-rose-500/10',
+  SLATE: 'bg-(--v-content-grey-bg) text-(--v-content-grey-fg)',
+  RED: 'bg-(--v-content-pink-bg) text-(--v-content-pink-fg)',
+  ORANGE: 'bg-(--v-content-orange-bg) text-(--v-content-orange-fg)',
+  AMBER: 'bg-(--v-content-yellow-bg) text-(--v-content-yellow-fg)',
+  GREEN: 'bg-(--v-content-green-bg) text-(--v-content-green-fg)',
+  TEAL: 'bg-(--v-content-teal-bg) text-(--v-content-teal-fg)',
+  CYAN: 'bg-(--v-content-teal-bg) text-(--v-content-teal-fg)',
+  BLUE: 'bg-(--v-content-teal-bg) text-(--v-content-teal-fg)',
+  INDIGO: 'bg-(--v-content-purple-bg) text-(--v-content-purple-fg)',
+  PURPLE: 'bg-(--v-content-purple-bg) text-(--v-content-purple-fg)',
+  PINK: 'bg-(--v-content-pink-bg) text-(--v-content-pink-fg)',
+  ROSE: 'bg-(--v-content-pink-bg) text-(--v-content-pink-fg)',
 };
 
 function cardTintClass(color?: string | null): string {
@@ -331,17 +334,18 @@ defineExpose({ reload });
               <span class="font-medium">{{ col.title ?? col.name }}</span>
               <span
                 class="text-xs text-base-content/60"
-                :class="{ 'text-error font-semibold': col.wipExceeded }"
+                :class="{ 'text-(--v-danger) font-semibold': col.wipExceeded }"
               >
                 {{ col.cardCount }}<template v-if="col.wipLimit">/{{ col.wipLimit }}</template>
               </span>
-              <span v-if="!col.declared" class="text-xs text-warning">⚠ {{ t('kanban.board.undeclared') }}</span>
+              <span v-if="!col.declared" class="inline-flex items-center gap-1 text-xs text-(--v-warning)"><VIcon name="warning" />{{ t('kanban.board.undeclared') }}</span>
             </div>
-            <button
-              class="text-base-content/60 hover:text-base-content text-lg leading-none"
-              :title="t('kanban.board.addCard')"
+            <VIconButton
+              icon="add"
+              size="sm"
+              :label="t('kanban.board.addCard')"
               @click="openCreateModal(col.name)"
-            >+</button>
+            />
           </div>
 
           <VueDraggable
@@ -370,8 +374,8 @@ defineExpose({ reload });
                 <span v-if="card.priority" class="bg-base-200 rounded px-1.5 py-0.5">
                   {{ card.priority }}
                 </span>
-                <span v-if="card.dueDate" class="bg-base-200 rounded px-1.5 py-0.5">
-                  📅 {{ card.dueDate }}
+                <span v-if="card.dueDate" class="inline-flex items-center gap-1 bg-base-200 rounded px-1.5 py-0.5">
+                  <VIcon name="calendar" />{{ card.dueDate }}
                 </span>
                 <span v-if="card.estimate" class="bg-base-200 rounded px-1.5 py-0.5">
                   {{ card.estimate }}p

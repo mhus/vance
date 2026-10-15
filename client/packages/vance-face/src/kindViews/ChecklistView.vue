@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { VueDraggable } from 'vue-draggable-plus';
-import { VButton } from '@/components';
+import { VButton, VIcon, VIconButton } from '@/components';
 import {
   parseChecklist,
   type ChecklistDocument,
@@ -435,8 +435,8 @@ const ALL_STATUSES: ChecklistStatus[] = [
       </span>
       <span v-if="item.text" class="checklist-read__text">{{ item.text }}</span>
       <span v-else class="checklist-read__empty">—</span>
-      <span v-if="item.priority" :class="['prio-badge', `prio-badge--${item.priority}`]">
-        {{ item.priority === 'high' ? '↑' : '↓' }}
+      <span v-if="item.priority" :class="['prio-badge inline-flex align-middle', `prio-badge--${item.priority}`]">
+        <VIcon :name="item.priority === 'high' ? 'arrow-up' : 'arrow-down'" />
       </span>
     </li>
     <li v-if="localItems.length === 0" class="checklist-read__empty-row">
@@ -467,9 +467,12 @@ const ALL_STATUSES: ChecklistStatus[] = [
       </button>
       <span v-if="statusFilter" class="aggregate-filter-hint">
         · {{ t('documents.checklistEditor.filterActive') }}
-        <button type="button" class="aggregate-clear" @click="statusFilter = null">
-          ✕
-        </button>
+        <VIconButton
+          icon="close"
+          size="sm"
+          :label="t('documents.checklistEditor.clearFilter')"
+          @click="statusFilter = null"
+        />
       </span>
     </div>
 
@@ -515,7 +518,7 @@ const ALL_STATUSES: ChecklistStatus[] = [
           class="drag-handle"
           :title="t('documents.checklistEditor.dragHandle')"
           aria-hidden="true"
-        >⠿</span>
+        ><VIcon name="drag" /></span>
 
         <div class="status-cell">
           <button
@@ -528,12 +531,13 @@ const ALL_STATUSES: ChecklistStatus[] = [
           >
             [<span class="status-glyph">{{ statusGlyph(item.status) }}</span>]
           </button>
-          <button
-            type="button"
-            class="status-dropdown-trigger"
-            :title="t('documents.checklistEditor.openStatusMenu')"
+          <VIconButton
+            icon="expand"
+            size="sm"
+            :active="statusMenuIndex === idx"
+            :label="t('documents.checklistEditor.openStatusMenu')"
             @click.stop="statusMenuIndex === idx ? closeStatusMenu() : openStatusMenu(idx)"
-          >▾</button>
+          />
           <div v-if="statusMenuIndex === idx" class="status-menu" @click.stop>
             <button
               v-for="s in ALL_STATUSES"
@@ -581,17 +585,18 @@ const ALL_STATUSES: ChecklistStatus[] = [
           :title="t('documents.checklistEditor.togglePriority')"
           @click="cyclePriority(idx)"
         >
-          <span v-if="item.priority === 'high'">↑</span>
-          <span v-else-if="item.priority === 'low'">↓</span>
+          <VIcon v-if="item.priority === 'high'" name="arrow-up" />
+          <VIcon v-else-if="item.priority === 'low'" name="arrow-down" />
           <span v-else class="prio-toggle__placeholder">·</span>
         </button>
 
-        <button
-          type="button"
-          class="row-delete"
-          :title="t('documents.checklistEditor.deleteItem')"
+        <VIconButton
+          icon="delete"
+          size="sm"
+          danger
+          :label="t('documents.checklistEditor.deleteItem')"
           @click="deleteItem(idx)"
-        >✕</button>
+        />
       </li>
     </VueDraggable>
 
@@ -699,15 +704,6 @@ const ALL_STATUSES: ChecklistStatus[] = [
   align-items: center;
   gap: 0.25rem;
 }
-.aggregate-clear {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 0 0.2rem;
-  font-size: 0.85rem;
-  opacity: 0.7;
-}
-.aggregate-clear:hover { opacity: 1; }
 
 .rows {
   list-style: none;
@@ -775,19 +771,6 @@ const ALL_STATUSES: ChecklistStatus[] = [
   width: 0.7em;
   text-align: center;
   font-weight: 600;
-}
-.status-dropdown-trigger {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 0.15rem 0.2rem;
-  font-size: 0.75rem;
-  opacity: 0.4;
-  border-radius: 0.2rem;
-}
-.status-dropdown-trigger:hover {
-  opacity: 0.9;
-  background: color-mix(in oklab, var(--color-base-content) 8%, transparent);
 }
 
 /* Status dropdown menu */
@@ -915,22 +898,6 @@ const ALL_STATUSES: ChecklistStatus[] = [
 .prio-badge--high { color: var(--color-error); font-weight: 700; }
 .prio-badge--low { color: color-mix(in oklab, var(--color-base-content) 50%, transparent); }
 
-/* Row delete */
-.row-delete {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 0.25rem 0.4rem;
-  border-radius: 0.25rem;
-  opacity: 0.4;
-  font-size: 0.85rem;
-  line-height: 1;
-}
-.row-delete:hover {
-  opacity: 1;
-  background: color-mix(in oklab, var(--color-error) 15%, transparent);
-  color: var(--color-error);
-}
 
 .add-row {
   margin-top: 0.5rem;

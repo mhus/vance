@@ -6,7 +6,7 @@ import { NodeResizer } from '@vue-flow/node-resizer';
 import '@vue-flow/node-resizer/dist/style.css';
 import { NodeToolbar } from '@vue-flow/node-toolbar';
 import { brainFetchText, documentContentUrl, safeUrl, vanceNavigate } from '@vance/shared';
-import { cortexDeepLink } from '@vance/components';
+import { cortexDeepLink, VIcon, VIconButton } from '@vance/components';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import type { CanvasNodeDto } from './generated/canvas/CanvasNodeDto';
@@ -382,7 +382,7 @@ function copyLink(): void {
           style="background: #ffffff"
           :class="{ 'cv-active': !node.color }"
           @click="patch({ color: undefined })"
-        >×</button>
+        ><VIcon name="close" class="mx-auto" /></button>
         <button
           v-for="c in COLORS"
           :key="c"
@@ -414,23 +414,25 @@ function copyLink(): void {
 
         <template v-if="kind === 'link'">
           <span class="cv-sep"></span>
-          <button class="cv-btn" :title="t('canvas.node.rename')" @click="beginEdit">✎</button>
-          <button
-            class="cv-btn"
-            :title="t('canvas.node.changeTarget')"
+          <VIconButton icon="edit" size="sm" :label="t('canvas.node.rename')" @click="beginEdit" />
+          <VIconButton
+            icon="link"
+            size="sm"
+            :label="t('canvas.node.changeTarget')"
             @click="props.data.onEditLink?.(node.id)"
-          >🔗</button>
-          <button
-            class="cv-btn"
-            :title="copied ? t('canvas.node.copied') : t('canvas.node.copyLink')"
+          />
+          <VIconButton
+            :icon="copied ? 'check' : 'copy'"
+            size="sm"
+            :label="copied ? t('canvas.node.copied') : t('canvas.node.copyLink')"
             @click="copyLink"
-          >{{ copied ? '✓' : '📋' }}</button>
+          />
         </template>
 
         <span class="cv-sep"></span>
-        <button class="cv-btn" :title="t('canvas.node.bringToFront')" @click="props.data.onFront?.(node.id)">⬆</button>
-        <button class="cv-btn" :title="t('canvas.node.sendToBack')" @click="props.data.onBack?.(node.id)">⬇</button>
-        <button class="cv-btn cv-danger" :title="t('canvas.node.delete')" @click="props.data.onDelete?.(node.id)">🗑</button>
+        <VIconButton icon="arrow-up" size="sm" :label="t('canvas.node.bringToFront')" @click="props.data.onFront?.(node.id)" />
+        <VIconButton icon="arrow-down" size="sm" :label="t('canvas.node.sendToBack')" @click="props.data.onBack?.(node.id)" />
+        <VIconButton icon="delete" size="sm" danger :label="t('canvas.node.delete')" @click="props.data.onDelete?.(node.id)" />
       </div>
     </NodeToolbar>
 
@@ -478,18 +480,23 @@ function copyLink(): void {
       <div v-else class="canvas-note-body" :style="textStyle">
         {{ node.text || t('canvas.node.emptyNote') }}
       </div>
-      <div v-if="node.author && !editing" class="canvas-note-author">✎ {{ node.author }}</div>
+      <div v-if="node.author && !editing" class="canvas-note-author flex items-center gap-1"><VIcon name="edit" />{{ node.author }}</div>
     </template>
 
     <template v-else-if="kind === 'doc'">
-      <button
+      <div
         v-if="docMeta && !(embedComponent && docMeta.kind)"
-        class="canvas-embed-open nodrag"
-        :title="t('canvas.node.openInCortex')"
-        @click.stop="openInCortex"
+        class="absolute top-1 right-1 z-[6] rounded-(--v-radius-control) bg-(--v-surface-raised) nodrag"
         @pointerdown.stop
         @dblclick.stop
-      >↗</button>
+      >
+        <VIconButton
+          icon="open-in-app"
+          size="sm"
+          :label="t('canvas.node.openInCortex')"
+          @click.stop="openInCortex"
+        />
+      </div>
       <!-- Structured kinds first: the injected host renderer. -->
       <div v-if="embedComponent && docMeta && docMeta.kind" class="canvas-embed-host nowheel">
         <component :is="embedComponent" :uri="node.ref" />
@@ -499,7 +506,7 @@ function copyLink(): void {
       <!-- eslint-disable-next-line vue/no-v-html -- markdown, sanitised via DOMPurify -->
       <div v-else-if="mdHtml" class="canvas-embed-md" v-html="mdHtml"></div>
       <template v-else>
-        <div class="canvas-card-title">📄 {{ docMeta?.title || basename(node.ref ?? '') }}</div>
+        <div class="canvas-card-title"><VIcon name="document" class="mr-1 inline-block align-[-3px]" />{{ docMeta?.title || basename(node.ref ?? '') }}</div>
         <div class="canvas-card-sub">
           {{ docError ?? ((docMeta?.kind ? docMeta.kind + ' · ' : '') + basename(node.ref ?? '')) }}
         </div>
@@ -526,21 +533,23 @@ function copyLink(): void {
           rel="noopener noreferrer"
           @mousedown.stop
           @click.stop="onExternalClick"
-        >🔗 {{ node.title || linkSubtitle }}</a>
+        ><VIcon name="link" class="mr-1 inline-block align-[-3px]" />{{ node.title || linkSubtitle }}</a>
         <button
           v-else-if="isVanceLink"
           class="canvas-card-title canvas-card-link"
           type="button"
           @mousedown.stop
           @click.stop="openLinkTarget"
-        >🔗 {{ node.title || linkSubtitle }}</button>
-        <div v-else class="canvas-card-title">🔗 {{ node.title || linkSubtitle || '—' }}</div>
-        <button
-          class="canvas-card-copy-btn nodrag"
-          :title="copied ? t('canvas.node.copied') : t('canvas.node.copyLink')"
+        ><VIcon name="link" class="mr-1 inline-block align-[-3px]" />{{ node.title || linkSubtitle }}</button>
+        <div v-else class="canvas-card-title"><VIcon name="link" class="mr-1 inline-block align-[-3px]" />{{ node.title || linkSubtitle || '—' }}</div>
+        <VIconButton
+          :icon="copied ? 'check' : 'copy'"
+          size="sm"
+          class="nodrag"
+          :label="copied ? t('canvas.node.copied') : t('canvas.node.copyLink')"
           @mousedown.stop
           @click.stop="copyLink"
-        >{{ copied ? '✓' : '⧉' }}</button>
+        />
       </div>
       <div v-if="node.title && !editing" class="canvas-card-sub">{{ linkSubtitle }}</div>
       <div v-if="docError" class="canvas-card-sub canvas-card-error">{{ docError }}</div>

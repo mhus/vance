@@ -74,6 +74,8 @@ export default {
     dismiss: 'Later',
   },
   common: {
+    expand: 'Expand',
+    collapse: 'Collapse',
     save: 'Save',
     saving: 'Saving…',
     saved: 'Saved.',
@@ -643,6 +645,12 @@ export default {
   },
 
   chat: {
+    pageTitle: 'Chat',
+    openCortex: 'Open Cortex',
+    composer: {
+      showTools: 'Show tools',
+      hideTools: 'Hide tools',
+    },
     breadcrumb: {
       unnamedSession: 'Session',
     },
@@ -1202,6 +1210,7 @@ export default {
       clearSelection: 'Clear selection',
     },
     checklistEditor: {
+      clearFilter: 'Clear filter',
       addItem: 'Add item',
       deleteItem: 'Delete item',
       clickToEdit: 'Click to edit',
@@ -1830,7 +1839,7 @@ export default {
       emptyAll: 'No activity recorded yet.',
     },
     tabs2: {
-      more: 'More ▾',
+      more: 'More',
       liveTools: 'Live Tools',
     },
     prakMeta: {
@@ -2081,7 +2090,7 @@ export default {
       chatLoading: 'Loading chat…',
       chatEmptyHeadline: 'No messages',
       chatEmptyBody: 'This process has no chat history.',
-      archivedToMemory: '→ memory {id}',
+      archivedToMemory: 'Memory: {id}',
       memoryLoading: 'Loading memory…',
       memoryEmptyHeadline: 'No memory',
       memoryEmptyBody: 'No engine-side memory entries are scoped to this process.',

@@ -15,6 +15,7 @@
  * and as the fallback for an empty pencil battery.
  */
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { VIconButton } from '@vance/components';
 import { useT } from './i18n';
 import {
   commitPoints,
@@ -602,7 +603,7 @@ onBeforeUnmount(() => {
 <template>
   <div
     ref="container"
-    class="relative h-full w-full touch-none select-none overflow-hidden bg-slate-100 focus:outline-none"
+    class="relative h-full w-full touch-none select-none overflow-hidden bg-(--v-bg) focus:outline-none"
     tabindex="0"
     @pointerdown="onPointerDown"
     @pointermove="onPointerMove"
@@ -624,21 +625,21 @@ onBeforeUnmount(() => {
       v-if="editable && strokes.length === 0"
       class="no-print pointer-events-none absolute inset-0 flex items-center justify-center"
     >
-      <p class="max-w-xs text-center text-sm text-slate-400">
+      <p class="max-w-xs text-center text-sm text-(--v-label-tertiary)">
         {{ t('scribble.editor.emptyHint') }}
       </p>
     </div>
 
     <div
       v-if="editable"
-      class="no-print absolute left-1/2 top-3 z-10 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-slate-200 bg-white/95 p-1 shadow-sm"
+      class="no-print absolute left-1/2 top-3 z-10 flex -translate-x-1/2 items-center gap-1 rounded-(--v-radius-group) bg-(--v-surface-raised) p-1 shadow-(--v-shadow-float)"
     >
       <button
         v-for="size in sizeOptions"
         :key="size.key"
         type="button"
         class="flex h-8 w-8 items-center justify-center rounded-md"
-        :class="width === size.key ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'"
+        :class="width === size.key ? 'bg-(--v-selection) text-(--v-accent-text)' : 'text-(--v-label-secondary) hover:bg-(--v-fill)'"
         :title="t(size.labelKey)"
         :aria-label="t(size.labelKey)"
         @click="width = size.key"
@@ -646,84 +647,48 @@ onBeforeUnmount(() => {
         <span class="rounded-full bg-current" :class="size.dot"></span>
       </button>
 
-      <span class="mx-1 h-5 w-px bg-slate-200"></span>
+      <span class="mx-1 h-5 w-px bg-(--v-separator)"></span>
 
       <button
         v-for="sw in swatches"
         :key="sw.index"
         type="button"
         class="h-8 w-8 rounded-md"
-        :class="color === sw.index ? 'ring-2 ring-slate-900 ring-offset-1' : 'hover:bg-slate-100'"
+        :class="color === sw.index ? 'ring-2 ring-(--v-accent) ring-offset-1' : 'hover:bg-(--v-fill)'"
         :title="t(sw.labelKey)"
         :aria-label="t(sw.labelKey)"
         @click="((color = sw.index), (mode = 'pen'))"
       >
         <span
-          class="mx-auto block h-4 w-4 rounded-full border border-black/10"
+          class="mx-auto block h-4 w-4 rounded-full border border-(--v-separator)"
           :style="{ backgroundColor: sw.hex }"
         ></span>
       </button>
 
-      <span class="mx-1 h-5 w-px bg-slate-200"></span>
+      <span class="mx-1 h-5 w-px bg-(--v-separator)"></span>
 
-      <button
-        type="button"
-        class="flex h-8 w-8 items-center justify-center rounded-md text-sm"
-        :class="mode === 'eraser' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'"
-        :title="t('scribble.editor.eraser')"
-        :aria-label="t('scribble.editor.eraser')"
+      <VIconButton
+        icon="eraser"
+        :active="mode === 'eraser'"
+        :label="t('scribble.editor.eraser')"
         @click="mode = mode === 'eraser' ? 'pen' : 'eraser'"
-      >
-        ⌫
-      </button>
+      />
 
-      <span class="mx-1 h-5 w-px bg-slate-200"></span>
+      <span class="mx-1 h-5 w-px bg-(--v-separator)"></span>
 
-      <button
-        type="button"
-        class="flex h-8 w-8 items-center justify-center rounded-md text-sm disabled:opacity-30"
-        :class="canUndo ? 'text-slate-600 hover:bg-slate-100' : ''"
-        :disabled="!canUndo"
-        :title="t('scribble.editor.undo')"
-        :aria-label="t('scribble.editor.undo')"
-        @click="undo"
-      >
-        ↶
-      </button>
-      <button
-        type="button"
-        class="flex h-8 w-8 items-center justify-center rounded-md text-sm disabled:opacity-30"
-        :class="canRedo ? 'text-slate-600 hover:bg-slate-100' : ''"
-        :disabled="!canRedo"
-        :title="t('scribble.editor.redo')"
-        :aria-label="t('scribble.editor.redo')"
-        @click="redo"
-      >
-        ↷
-      </button>
+      <VIconButton icon="undo" :disabled="!canUndo" :label="t('scribble.editor.undo')" @click="undo" />
+      <VIconButton icon="redo" :disabled="!canRedo" :label="t('scribble.editor.redo')" @click="redo" />
 
-      <span class="mx-1 h-5 w-px bg-slate-200"></span>
+      <span class="mx-1 h-5 w-px bg-(--v-separator)"></span>
 
-      <button
-        type="button"
-        class="flex h-8 items-center justify-center rounded-md px-2 text-sm"
-        :class="fingerDraw ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'"
-        :title="t('scribble.editor.fingerDraw')"
-        :aria-label="t('scribble.editor.fingerDraw')"
+      <VIconButton
+        icon="touch"
+        :active="fingerDraw"
+        :label="t('scribble.editor.fingerDraw')"
         @click="fingerDraw = !fingerDraw"
-      >
-        ☝
-      </button>
-      <button
-        type="button"
-        class="flex h-8 w-8 items-center justify-center rounded-md text-sm text-slate-600 hover:bg-slate-100"
-        :title="t('scribble.editor.fit')"
-        :aria-label="t('scribble.editor.fit')"
-        @click="fitToView"
-      >
-        ⤢
-      </button>
-      <span class="w-10 text-center text-xs tabular-nums text-slate-500">{{ zoomPct }}%</span>
+      />
+      <VIconButton icon="fit" :label="t('scribble.editor.fit')" @click="fitToView" />
+      <span class="w-10 text-center text-xs tabular-nums text-(--v-label-secondary)">{{ zoomPct }}%</span>
     </div>
   </div>
 </template>

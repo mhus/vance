@@ -3,7 +3,7 @@ import { computed, onUnmounted, ref, watch } from 'vue';
 import { getTenantId } from '@vance/shared';
 import { ToolHealthScope } from '@vance/generated';
 import type { ToolHealthCooldownDto, ToolHealthEntryDto } from '@vance/generated';
-import { VAlert, VButton, VCheckbox, VEmptyState, VInput, VSelect } from '@/components';
+import { VAlert, VButton, VCheckbox, VEmptyState, VIcon, VInput, VSelect } from '@/components';
 import { useToolHealth } from '@/composables/useProjectInsights';
 import { useI18n } from 'vue-i18n';
 
@@ -152,9 +152,10 @@ function toggleSort(key: SortKey): void {
   }
 }
 
-function arrow(key: SortKey): string {
-  if (sortKey.value !== key) return '';
-  return sortAsc.value ? ' ▲' : ' ▼';
+/** Sort-direction icon for the active column header; null on the others. */
+function arrow(key: SortKey): 'arrow-up' | 'arrow-down' | null {
+  if (sortKey.value !== key) return null;
+  return sortAsc.value ? 'arrow-up' : 'arrow-down';
 }
 
 const filtered = computed<ToolHealthEntryDto[]>(() => {
@@ -256,7 +257,7 @@ async function onClearCooldown(
       <VButton
         variant="secondary"
         size="sm"
-        :outline="true"
+        icon="refresh"
         :disabled="!scopeId || health.loading.value"
         @click="reload"
       >
@@ -303,14 +304,14 @@ async function onClearCooldown(
             class="font-normal px-3 py-1 cursor-pointer select-none"
             @click="toggleSort('toolName')"
           >
-            {{ $t('insights.toolHealth.colSubject') }}{{ arrow('toolName') }}
+            <span class="inline-flex items-center gap-1">{{ $t('insights.toolHealth.colSubject') }}<VIcon v-if="arrow('toolName')" :name="arrow('toolName')!" /></span>
           </th>
           <th class="font-normal px-3 py-1 w-28">{{ $t('insights.toolHealth.colKind') }}</th>
           <th
             class="font-normal px-3 py-1 w-28 cursor-pointer select-none"
             @click="toggleSort('status')"
           >
-            {{ $t('insights.toolHealth.colStatus') }}{{ arrow('status') }}
+            <span class="inline-flex items-center gap-1">{{ $t('insights.toolHealth.colStatus') }}<VIcon v-if="arrow('status')" :name="arrow('status')!" /></span>
           </th>
           <th class="font-normal px-3 py-1 w-40">{{ $t('insights.toolHealth.colClassification') }}</th>
           <th class="font-normal px-3 py-1 w-24">{{ $t('insights.toolHealth.colCooldowns') }}</th>
@@ -329,10 +330,10 @@ async function onClearCooldown(
             <td class="px-3 py-1 font-mono">
               <button
                 type="button"
-                class="cursor-pointer text-left hover:underline"
+                class="cursor-pointer text-left hover:underline inline-flex items-center gap-1"
                 @click="toggleExpand(e)"
               >
-                {{ isExpanded(e) ? '▾' : '▸' }} {{ e.toolName }}
+                <VIcon :name="isExpanded(e) ? 'expand' : 'forward'" class="opacity-60" />{{ e.toolName }}
               </button>
             </td>
             <td class="px-3 py-1 text-xs">
@@ -345,8 +346,8 @@ async function onClearCooldown(
             </td>
             <td class="px-3 py-1 text-xs opacity-80">{{ e.classification ?? '—' }}</td>
             <td class="px-3 py-1 text-xs">
-              <span v-if="cooldownCount(e) > 0" class="text-warning">
-                ⏳ {{ cooldownCount(e) }}
+              <span v-if="cooldownCount(e) > 0" class="text-warning inline-flex items-center gap-0.5">
+                <VIcon name="waiting" />{{ cooldownCount(e) }}
               </span>
               <span v-else class="opacity-40">—</span>
             </td>
@@ -402,7 +403,6 @@ async function onClearCooldown(
                         <VButton
                           variant="secondary"
                           size="xs"
-                          :outline="true"
                           :title="$t('insights.toolHealth.clearTitle')"
                           @click="onClearCooldown(e.toolName, cd)"
                         >

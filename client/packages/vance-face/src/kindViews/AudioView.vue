@@ -9,6 +9,7 @@
 import { computed } from 'vue';
 import { documentContentUrl } from '@vance/shared';
 import type { DocumentDto } from '@vance/generated';
+import { VIcon } from '@/components';
 import type { EmbedRef } from '@/kindRenderers/parseVanceUri';
 
 interface Props {
@@ -38,7 +39,7 @@ const mimeType = computed<string>(() => props.document?.mimeType ?? 'audio/mpeg'
       <span class="opacity-60">{{ title }}</span>
     </div>
     <template v-else>
-      <p class="audio-view__title">🔊 {{ title }}</p>
+      <p class="audio-view__title inline-flex items-center gap-1.5"><VIcon name="file-audio" />{{ title }}</p>
       <audio
         controls
         preload="metadata"

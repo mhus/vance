@@ -9,6 +9,7 @@ import {
   type ActivityOp,
   type ActivityState,
 } from './chatActivity';
+import { VIcon, VIconButton, type IconName } from '@components/index';
 
 /**
  * One live line between the transcript and the composer: what the agent is
@@ -104,12 +105,12 @@ const headline = computed<string>(() => {
   return t('chat.activityStrip.working');
 });
 
-const marker = computed<string>(() => {
-  if (view.value.current) return '⟳';
+const marker = computed<IconName>(() => {
+  if (view.value.current) return 'loading';
   // Waiting is not progress — an hourglass says "blocked", a spinner would
   // claim work is being done.
-  if (view.value.waiting) return '⏳';
-  return view.value.failedCount > 0 ? '⚠' : '✓';
+  if (view.value.waiting) return 'waiting';
+  return view.value.failedCount > 0 ? 'warning' : 'check';
 });
 
 /**
@@ -148,21 +149,21 @@ function opTeaser(op: ActivityOp): string | null {
   const teaser = op.endedAt === undefined ? op.teaser : (op.outcome ?? op.teaser);
   return teaser ?? null;
 }
-function opMarker(op: ActivityOp): string {
-  if (op.endedAt === undefined) return '⟳';
-  if (op.failed) return '⚠';
+function opMarker(op: ActivityOp): IconName {
+  if (op.endedAt === undefined) return 'loading';
+  if (op.failed) return 'warning';
   switch (op.kind) {
-    case 'provider': return '↻';
-    case 'compaction': return '⤵';
-    case 'script': return '›';
-    case 'delegate': return '⑃';
-    case 'search': return '⌕';
-    case 'fetch': return '↓';
-    case 'file': return '▤';
-    case 'milestone': return '◆';
-    case 'info': return '·';
+    case 'provider': return 'refresh';
+    case 'compaction': return 'minimize';
+    case 'script': return 'terminal';
+    case 'delegate': return 'agent';
+    case 'search': return 'search';
+    case 'fetch': return 'download';
+    case 'file': return 'document';
+    case 'milestone': return 'milestone';
+    case 'info': return 'info';
     case 'tool':
-    default: return '✓';
+    default: return 'check';
   }
 }
 
@@ -179,9 +180,9 @@ function opElapsedLabel(op: ActivityOp): string {
       v-if="expanded && ops.length > 0"
       class="max-h-48 overflow-y-auto border-b border-base-300 px-3 py-1.5 flex flex-col gap-0.5"
     >
-      <li v-for="op in ops" :key="op.id" :class="op.failed ? 'text-error' : ''">
-        <div class="flex items-baseline gap-2">
-          <span class="opacity-60 w-3 shrink-0" aria-hidden="true">{{ opMarker(op) }}</span>
+      <li v-for="op in ops" :key="op.id" :class="op.failed ? 'text-(--v-danger)' : ''">
+        <div class="flex items-center gap-2">
+          <VIcon :name="opMarker(op)" class="opacity-60" :class="op.endedAt === undefined ? 'animate-spin' : ''" />
           <span class="font-mono truncate">{{ opLabel(op) }}</span>
           <span class="ml-auto shrink-0 opacity-60 tabular-nums">{{ opElapsedLabel(op) }}</span>
         </div>
@@ -195,11 +196,11 @@ function opElapsedLabel(op: ActivityOp): string {
 
     <div class="px-3 py-1.5">
       <div class="flex items-center gap-2">
-        <span
-          class="shrink-0 opacity-70"
-          :class="view.current ? 'animate-spin inline-block' : ''"
-          aria-hidden="true"
-        >{{ marker }}</span>
+        <VIcon
+          :name="marker"
+          class="opacity-70"
+          :class="view.current ? 'animate-spin' : ''"
+        />
 
         <span class="font-mono truncate" :title="headline">{{ headline }}</span>
 
@@ -209,21 +210,17 @@ function opElapsedLabel(op: ActivityOp): string {
           · {{ $t('chat.activityStrip.toolCount', { count: view.toolCount }) }}
         </span>
 
-        <button
+        <VIconButton
           v-if="ops.length > 0"
-          type="button"
-          class="ml-auto shrink-0 px-1 opacity-60 hover:opacity-100 transition-opacity"
+          class="ml-auto shrink-0"
+          size="sm"
+          :icon="expanded ? 'expand' : 'forward'"
           :aria-expanded="expanded"
-          :title="expanded
-            ? $t('chat.activityStrip.collapse')
-            : $t('chat.activityStrip.expand')"
-          :aria-label="expanded
+          :label="expanded
             ? $t('chat.activityStrip.collapse')
             : $t('chat.activityStrip.expand')"
           @click="expanded = !expanded"
-        >
-          <span aria-hidden="true">{{ expanded ? '▾' : '▸' }}</span>
-        </button>
+        />
       </div>
 
       <!-- Why the running op is slow, when there is one holding the
@@ -235,7 +232,7 @@ function opElapsedLabel(op: ActivityOp): string {
         class="pl-5 opacity-60 truncate"
         :title="waitingSubline"
       >
-        <span aria-hidden="true">⏳</span>
+        <VIcon name="waiting" class="inline-block align-text-bottom" />
         <span class="ml-1">{{ waitingSubline }}</span>
       </div>
     </div>

@@ -16,7 +16,7 @@ import {
   pollComposeRun,
   cancelComposeRun,
 } from '@vance/shared';
-import { useDocumentPrefixReaction, useLinkPickerHost, VLinkPicker } from '@vance/components';
+import { useDocumentPrefixReaction, useLinkPickerHost, VIconButton, VLinkPicker } from '@vance/components';
 import { WorkPageEditor, type ComposeRunResult } from '@vance/block-editor';
 import {
   scanIssues,
@@ -417,7 +417,7 @@ function commentDate(c: { createdAt?: string | null }): string {
           @keydown.enter.prevent="runSearch"
           @keydown.escape="searchOpen = false"
         />
-        <button class="iss__btn" :disabled="searching" @click="runSearch">🔍</button>
+        <VIconButton icon="search" :label="t('issues.search')" :disabled="searching" @click="runSearch" />
         <div v-if="searchOpen" class="iss__search-results">
           <ul v-if="searchResults.length" class="iss__search-list">
             <li v-for="r in searchResults" :key="r.id" class="iss__search-row" @click="pickSearchResult(r)">
@@ -430,9 +430,12 @@ function commentDate(c: { createdAt?: string | null }): string {
       </div>
       <span class="iss__spacer" />
       <span v-if="saveStatusLabel" class="iss__save" :class="`iss__save--${saveStatus}`">{{ saveStatusLabel }}</span>
-      <button class="iss__btn" :disabled="rebuilding" :title="t('issues.rebuildTip')" @click="rebuild">
-        {{ rebuilding ? '…' : '↻' }}
-      </button>
+      <VIconButton
+        :icon="rebuilding ? 'loading' : 'refresh'"
+        :disabled="rebuilding"
+        :label="t('issues.rebuildTip')"
+        @click="rebuild"
+      />
     </header>
 
     <div v-if="error" class="iss__error">{{ error }}</div>
@@ -500,7 +503,7 @@ function commentDate(c: { createdAt?: string | null }): string {
             <button class="iss__btn" @click="toggleArchive">
               {{ detail.archived ? t('issues.unarchive') : t('issues.archive') }}
             </button>
-            <button class="iss__btn iss__btn--danger" @click="removeIssue">🗑</button>
+            <VIconButton icon="delete" danger :label="t('issues.deleteIssue')" @click="removeIssue" />
           </div>
 
           <div class="iss__field">
@@ -557,7 +560,7 @@ function commentDate(c: { createdAt?: string | null }): string {
               <div class="iss__comment-head">
                 <span class="iss__comment-user">{{ c.userId }}</span>
                 <span class="iss__comment-date">{{ commentDate(c) }}</span>
-                <button class="iss__comment-del" :title="t('issues.deleteComment')" @click="removeComment(c.id)">×</button>
+                <VIconButton icon="delete" size="sm" danger :label="t('issues.deleteComment')" @click="removeComment(c.id)" />
               </div>
               <div class="iss__comment-text">{{ c.text }}</div>
             </div>

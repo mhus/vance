@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, provide, ref, toRef } from 'vue';
-import { MarkdownView } from '@components/index';
+import { MarkdownView, VIcon } from '@components/index';
 import { safeUrl } from '@vance/shared';
 import { uiTheme, paletteStyle } from '@composables/useUiTheme';
 import { useI18n } from 'vue-i18n';
@@ -335,17 +335,17 @@ async function onCopyMarkdown(): Promise<void> {
 
 <template>
   <!-- Worker-channel echo: compact one-liner, no markdown render.
-       Default colour is DaisyUI's `text-success`; an env-defined fg
+       Default colour is the `--v-success` token; an env-defined fg
        override (`VITE_VANCE_COLOR_WORKER`) wins via inline style. -->
   <div v-if="worker" class="flex justify-start">
     <div
       class="max-w-[85%] text-xs truncate flex items-center gap-2"
-      :class="workerStyle ? '' : 'text-success/80'"
+      :class="workerStyle ? '' : 'text-(--v-success)'"
       :style="workerStyle ?? undefined"
     >
       <span class="font-mono opacity-70">[{{ processName ?? '?' }} · {{ String(role).toLowerCase() }}]</span>
       <span class="truncate">{{ workerText }}</span>
-      <span v-if="streaming" class="inline-block w-1.5 h-1.5 rounded-full bg-success animate-pulse shrink-0" />
+      <span v-if="streaming" class="inline-block w-1.5 h-1.5 rounded-full bg-(--v-success) animate-pulse shrink-0" />
     </div>
   </div>
 
@@ -366,7 +366,7 @@ async function onCopyMarkdown(): Promise<void> {
       :class="[
         interimNote ? 'opacity-60 text-sm' : '',
         hasRichContent ? 'w-full' : 'max-w-[85%]',
-        bubbleStyle ? '' : (isOtherUser ? 'text-white' : ''),
+        bubbleStyle ? '' : (isOtherUser ? 'text-(--v-accent-on)' : ''),
         bubbleStyle ? '' : (isUser && !isOtherUser ? 'bg-primary text-primary-content' : ''),
         bubbleStyle ? '' : (isAssistant ? 'bg-base-100 border border-base-300' : ''),
         bubbleStyle ? '' : (isSystem ? 'bg-base-200 text-sm italic opacity-80' : ''),
@@ -383,8 +383,11 @@ async function onCopyMarkdown(): Promise<void> {
         :title="copyJustHappened
           ? (_?.('chat.bubble.copyDone') ?? 'Copied')
           : (_?.('chat.bubble.copy') ?? 'Copy as Markdown')"
+        :aria-label="copyJustHappened
+          ? (_?.('chat.bubble.copyDone') ?? 'Copied')
+          : (_?.('chat.bubble.copy') ?? 'Copy as Markdown')"
         @click="onCopyMarkdown"
-      >{{ copyJustHappened ? '✓' : '⧉' }}</button>
+      ><VIcon :name="copyJustHappened ? 'check' : 'copy'" /></button>
       <div
         v-if="isOtherUser"
         class="text-xs font-semibold mb-1 flex items-center gap-2 opacity-95"
@@ -397,7 +400,7 @@ async function onCopyMarkdown(): Promise<void> {
         class="text-xs opacity-60 mb-1 flex items-center gap-2"
       >
         <span>{{ String(role).toLowerCase() }}</span>
-        <span v-if="streaming" class="inline-block w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
+        <span v-if="streaming" class="inline-block w-1.5 h-1.5 rounded-full bg-(--v-success) animate-pulse" />
         <span v-if="formatted" class="opacity-60">· {{ formatted }}</span>
       </div>
       <!-- Reasoning ("thoughts") — collapsed by default. Present only on
@@ -408,14 +411,15 @@ async function onCopyMarkdown(): Promise<void> {
            thoughts exactly, including any <think> markup. -->
       <details v-if="hasThinking" class="mb-thinking" :open="streaming">
         <summary class="mb-thinking-summary">
-          💭 {{ _?.('chat.bubble.thoughts') ?? 'Gedanken' }}
+          <VIcon name="thinking" class="inline-block align-text-bottom" />
+          {{ _?.('chat.bubble.thoughts') ?? 'Gedanken' }}
         </summary>
         <pre class="mb-thinking-body">{{ thinking }}</pre>
       </details>
       <!-- WAIT — async work in flight; show only a thin status line, no
            full bubble payload. -->
       <div v-if="isWait" class="text-xs italic opacity-70">
-        <span class="inline-block w-1.5 h-1.5 rounded-full bg-warning animate-pulse mr-2" />
+        <span class="inline-block w-1.5 h-1.5 rounded-full bg-(--v-warning) animate-pulse mr-2" />
         {{ displayContent }}
       </div>
       <!-- REJECT — out-of-scope refusal; render in muted/warning tone. -->
@@ -431,7 +435,7 @@ async function onCopyMarkdown(): Promise<void> {
         v-if="selectionReferenceMarkdown"
         class="mb-reference mt-1.5 pt-1.5 text-xs flex items-baseline gap-1"
       >
-        <span class="opacity-70 shrink-0" aria-hidden="true">↳</span>
+        <VIcon name="reference" class="opacity-70 self-center" />
         <MarkdownView :source="selectionReferenceMarkdown" class="min-w-0" />
       </div>
     </div>

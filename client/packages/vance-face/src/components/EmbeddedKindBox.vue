@@ -15,6 +15,7 @@
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { navigateTo } from '@/platform/navigate';
 import KindBox from './KindBox.vue';
+import { VIconButton } from '@vance/components';
 import MarkdownView from './MarkdownView.vue';
 import { kindIcon, kindLabel, resolveRenderer } from '@/kindRenderers/registry';
 import { useDocumentRefStore } from '@/kindViews/documentRefStore';
@@ -187,9 +188,9 @@ function onDownload(): void {
     :title="title"
   >
     <template #actions>
-      <button class="kbx-act" :title="$t?.('chat.kindBox.copy') ?? 'Copy'" @click="onCopy">⧉</button>
-      <button class="kbx-act" :title="$t?.('chat.kindBox.open') ?? 'Open'" @click="(e: MouseEvent) => onOpen(e)">↗</button>
-      <button class="kbx-act" :title="$t?.('chat.kindBox.download') ?? 'Download'" @click="onDownload">↓</button>
+      <VIconButton icon="copy" size="sm" :label="$t?.('chat.kindBox.copy') ?? 'Copy'" @click="onCopy" />
+      <VIconButton icon="open-in-app" size="sm" :label="$t?.('chat.kindBox.open') ?? 'Open'" @click="(e: MouseEvent) => onOpen(e)" />
+      <VIconButton icon="download" size="sm" :label="$t?.('chat.kindBox.download') ?? 'Download'" @click="onDownload" />
     </template>
 
     <div v-if="loadError" class="kbx-error">

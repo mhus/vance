@@ -24,7 +24,7 @@ import {
   type SessionGroupDto,
   type SessionSummaryRichDto,
 } from '@vance/generated';
-import { VAlert, VButton, VInput, VModal, VIconButton } from '@/components';
+import { VAlert, VButton, VIcon, VInput, VModal, VIconButton } from '@/components';
 import { useSessionGroups } from '@/composables/useSessionGroups';
 import { useSessionGroupCollapse } from '@/composables/useSessionGroupCollapse';
 import { filterListedRecipes, groupListedRecipes } from '@/recipes/recipePickerGroups';
@@ -166,18 +166,18 @@ function sessionTitle(session: SessionSummaryRichDto): string {
 }
 
 const COLOR_BORDER: Record<AccentColor, string> = {
-  [AccentColor.SLATE]: 'border-l-slate-500',
-  [AccentColor.RED]: 'border-l-red-500',
-  [AccentColor.ORANGE]: 'border-l-orange-500',
-  [AccentColor.AMBER]: 'border-l-amber-500',
-  [AccentColor.GREEN]: 'border-l-green-500',
-  [AccentColor.TEAL]: 'border-l-teal-500',
-  [AccentColor.CYAN]: 'border-l-cyan-500',
-  [AccentColor.BLUE]: 'border-l-blue-500',
-  [AccentColor.INDIGO]: 'border-l-indigo-500',
-  [AccentColor.PURPLE]: 'border-l-purple-500',
-  [AccentColor.PINK]: 'border-l-pink-500',
-  [AccentColor.ROSE]: 'border-l-rose-500',
+  [AccentColor.SLATE]: 'border-l-(--v-content-grey-fg)',
+  [AccentColor.RED]: 'border-l-(--v-content-pink-fg)',
+  [AccentColor.ORANGE]: 'border-l-(--v-content-orange-fg)',
+  [AccentColor.AMBER]: 'border-l-(--v-content-yellow-fg)',
+  [AccentColor.GREEN]: 'border-l-(--v-content-green-fg)',
+  [AccentColor.TEAL]: 'border-l-(--v-content-teal-fg)',
+  [AccentColor.CYAN]: 'border-l-(--v-content-teal-fg)',
+  [AccentColor.BLUE]: 'border-l-(--v-content-purple-fg)',
+  [AccentColor.INDIGO]: 'border-l-(--v-content-purple-fg)',
+  [AccentColor.PURPLE]: 'border-l-(--v-content-purple-fg)',
+  [AccentColor.PINK]: 'border-l-(--v-content-pink-fg)',
+  [AccentColor.ROSE]: 'border-l-(--v-content-pink-fg)',
 };
 
 function colorBorderClass(session: SessionSummaryRichDto): string {
@@ -361,9 +361,7 @@ watch(showArchived, () => {
                    cursor-pointer select-none sticky top-0 z-10"
             @click="toggleCollapsed(block.group)"
           >
-            <span class="opacity-60 w-3 text-center text-xs">
-              {{ isCollapsed(block.group) ? '▸' : '▾' }}
-            </span>
+            <VIcon :name="isCollapsed(block.group) ? 'forward' : 'expand'" class="opacity-60" />
             <span class="font-semibold text-xs truncate flex-1">
               {{ block.group
                 ? (block.group.title || block.group.name)
@@ -386,15 +384,15 @@ watch(showArchived, () => {
             >
           <span class="shrink-0 w-5 text-center leading-none mt-0.5">
             <span v-if="session.icon">{{ session.icon }}</span>
-            <span v-else class="opacity-30">💬</span>
+            <VIcon v-else name="chat" class="inline-block text-(--v-label-tertiary)" />
           </span>
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-1 min-w-0">
               <span
                 v-if="session.pinned"
-                class="shrink-0 opacity-60"
+                class="shrink-0 inline-flex text-(--v-label-secondary)"
                 :title="$t('chat.sessionHeader.pinTooltip')"
-              >📌</span>
+              ><VIcon name="pin" /></span>
               <span class="truncate">{{ sessionTitle(session) }}</span>
             </div>
             <div class="text-xs opacity-50 truncate">

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, inject, onMounted, ref, watch, type Component } from 'vue';
-import { cortexDeepLink, VAlert, VButton, VInput, VIconButton } from '@vance/components';
+import { cortexDeepLink, VAlert, VButton, VInput, VIcon, VIconButton, type IconName } from '@vance/components';
 import DocPicker from './DocPicker.vue';
 import {
   addEntry,
@@ -236,15 +236,15 @@ function openInCortex(e: BinderEntryView): void {
   window.open(url, '_blank', 'noopener');
 }
 
-function kindIcon(kind?: string | null): string {
+function kindIcon(kind?: string | null): IconName {
   switch ((kind ?? '').toLowerCase()) {
-    case 'finance-tree': return '💰';
-    case 'sheet': return '▦';
-    case 'chart': return '📈';
-    case 'markdown': case 'workpage': return '📄';
-    case 'canvas': return '🗺';
-    case 'image': case 'svg': return '🖼';
-    default: return '•';
+    case 'finance-tree': return 'kind-tree';
+    case 'sheet': return 'kind-sheet';
+    case 'chart': return 'kind-chart';
+    case 'markdown': case 'workpage': return 'kind-text';
+    case 'canvas': return 'kind-graph';
+    case 'image': case 'svg': return 'file-image';
+    default: return 'file';
   }
 }
 </script>
@@ -297,19 +297,24 @@ function kindIcon(kind?: string | null): string {
               @dragover.prevent
               @drop="onDropOnEntry(e)"
             >
-              <span class="w-4 shrink-0 text-center">{{ e.exists ? kindIcon(e.kind) : '⚠' }}</span>
+              <VIcon
+                :name="e.exists ? kindIcon(e.kind) : 'warning'"
+                :class="e.exists ? 'text-(--v-label-secondary)' : 'text-(--v-warning)'"
+              />
               <span class="truncate" :title="e.path">{{ e.title }}</span>
               <span
                 v-if="view?.landingRef === e.ref"
-                class="ml-auto shrink-0"
+                class="ml-auto inline-flex shrink-0 text-(--v-accent-text)"
                 :title="t('binder.app.landing')"
-              >📌</span>
-              <button
-                class="ml-auto hidden shrink-0 px-1 opacity-60 hover:opacity-100 group-hover:block"
+              ><VIcon name="pin" /></span>
+              <VIconButton
+                icon="more"
+                size="sm"
+                :label="t('binder.app.actions')"
+                class="ml-auto shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                 :class="{ '!ml-1': view?.landingRef === e.ref }"
-                :title="t('binder.app.actions')"
                 @click.stop="openMenuRef = openMenuRef === e.ref ? null : e.ref"
-              >⋯</button>
+              />
 
               <div
                 v-if="openMenuRef === e.ref"
@@ -330,7 +335,7 @@ function kindIcon(kind?: string | null): string {
                     : t('binder.app.setLanding') }}
                 </button>
                 <button
-                  class="block w-full px-3 py-1.5 text-left text-sm text-error hover:bg-base-200"
+                  class="block w-full px-3 py-1.5 text-left text-sm text-(--v-danger) hover:bg-base-200"
                   @click="onRemove(e)"
                 >{{ t('binder.app.remove') }}</button>
               </div>
@@ -353,9 +358,10 @@ function kindIcon(kind?: string | null): string {
             <VButton
               size="sm"
               variant="primary"
+              icon="external"
               :disabled="!activeEntry.exists || !activeEntry.id"
               @click="openInCortex(activeEntry)"
-            >{{ t('binder.app.editInCortex') }} ↗</VButton>
+            >{{ t('binder.app.editInCortex') }}</VButton>
           </div>
         </div>
         <div class="min-h-0 flex-1 overflow-auto p-3">

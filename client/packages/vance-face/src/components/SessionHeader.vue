@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { VButton, VColorPicker, VEmojiPicker, VTagEditor, VIconButton } from '@vance/components';
+import { VButton, VColorPicker, VEmojiPicker, VTagEditor, VIcon, VIconButton } from '@vance/components';
 import {
   AccentColor,
   type SessionSummaryRichDto,
@@ -133,20 +133,21 @@ const displayTitle = computed(() => {
 });
 
 const colorAccentClass = computed(() => {
-  // Match VColorPicker swatches at /15 opacity for a subtle left-border accent.
+  // User-chosen session colour → the content palette (corporate-design.md
+  // §3.4); the twelve stored accents fold onto the eight content tones.
   switch (session.value?.color) {
-    case AccentColor.SLATE: return 'border-l-4 border-slate-500';
-    case AccentColor.RED: return 'border-l-4 border-red-500';
-    case AccentColor.ORANGE: return 'border-l-4 border-orange-500';
-    case AccentColor.AMBER: return 'border-l-4 border-amber-500';
-    case AccentColor.GREEN: return 'border-l-4 border-green-500';
-    case AccentColor.TEAL: return 'border-l-4 border-teal-500';
-    case AccentColor.CYAN: return 'border-l-4 border-cyan-500';
-    case AccentColor.BLUE: return 'border-l-4 border-blue-500';
-    case AccentColor.INDIGO: return 'border-l-4 border-indigo-500';
-    case AccentColor.PURPLE: return 'border-l-4 border-purple-500';
-    case AccentColor.PINK: return 'border-l-4 border-pink-500';
-    case AccentColor.ROSE: return 'border-l-4 border-rose-500';
+    case AccentColor.SLATE: return 'border-l-4 border-(--v-content-grey-fg)';
+    case AccentColor.RED: return 'border-l-4 border-(--v-content-pink-fg)';
+    case AccentColor.ORANGE: return 'border-l-4 border-(--v-content-orange-fg)';
+    case AccentColor.AMBER: return 'border-l-4 border-(--v-content-yellow-fg)';
+    case AccentColor.GREEN: return 'border-l-4 border-(--v-content-green-fg)';
+    case AccentColor.TEAL: return 'border-l-4 border-(--v-content-teal-fg)';
+    case AccentColor.CYAN: return 'border-l-4 border-(--v-content-teal-fg)';
+    case AccentColor.BLUE: return 'border-l-4 border-(--v-content-purple-fg)';
+    case AccentColor.INDIGO: return 'border-l-4 border-(--v-content-purple-fg)';
+    case AccentColor.PURPLE: return 'border-l-4 border-(--v-content-purple-fg)';
+    case AccentColor.PINK: return 'border-l-4 border-(--v-content-pink-fg)';
+    case AccentColor.ROSE: return 'border-l-4 border-(--v-content-pink-fg)';
     default: return '';
   }
 });
@@ -265,7 +266,7 @@ async function onDelete(): Promise<void> {
 
       <span
         v-if="isArchived"
-        class="text-xs uppercase tracking-wide px-1.5 py-0.5 rounded bg-warning/15 text-warning border border-warning/30"
+        class="text-xs uppercase tracking-wide text-(--v-warning)"
       >
         {{ t('chat.sessionHeader.archived') }}
       </span>
@@ -276,15 +277,14 @@ async function onDelete(): Promise<void> {
       <!-- Save as document — visible to any participant (including
            non-owners on shared sessions) since the export targets the
            chat project, not session metadata. -->
-      <VButton
+      <VIconButton
         v-if="canSave"
-        variant="plain"
+        :icon="exporting ? 'loading' : 'save'"
         size="sm"
         :disabled="exporting"
-        :title="t('chat.export.saveAsDocumentTooltip')"
-        :aria-label="t('chat.export.saveAsDocumentTooltip')"
+        :label="t('chat.export.saveAsDocumentTooltip')"
         @click="emit('save')"
-      >{{ exporting ? '⌛' : '💾' }}</VButton>
+      />
     </template>
 
     <!-- Owner-only: all metadata action buttons (pin/color/tags/archive/
@@ -292,43 +292,38 @@ async function onDelete(): Promise<void> {
          on shared sessions. -->
     <template v-if="!compact && isOwner">
       <!-- Pin toggle -->
-      <button
+      <VIconButton
         v-if="!isArchived"
-        type="button"
-        class="btn btn-ghost btn-sm"
-        :title="session?.pinned ? t('chat.sessionHeader.unpinTooltip') : t('chat.sessionHeader.pinTooltip')"
+        icon="pin"
+        size="sm"
+        :active="!!session?.pinned"
+        :label="session?.pinned ? t('chat.sessionHeader.unpinTooltip') : t('chat.sessionHeader.pinTooltip')"
         :disabled="saving"
         @click="togglePin"
-      >
-        <span v-if="session?.pinned">📌</span>
-        <span v-else class="opacity-40">📌</span>
-      </button>
+      />
 
       <!-- Multi-user toggle — see planning/multi-user-sessions.md §2.1 -->
-      <button
+      <VIconButton
         v-if="!isArchived"
-        type="button"
-        class="btn btn-ghost btn-sm"
-        :title="session?.allowMultipleClients
+        icon="team"
+        size="sm"
+        :active="!!session?.allowMultipleClients"
+        :label="session?.allowMultipleClients
           ? t('chat.sessionHeader.collabDisableLabel')
           : t('chat.sessionHeader.collabEnableLabel')"
         :disabled="saving"
         @click="toggleAllowMultipleClients"
-      >
-        <span v-if="session?.allowMultipleClients">👥</span>
-        <span v-else class="opacity-40">👥</span>
-      </button>
+      />
 
       <!-- Color picker (compact, opens on click) -->
       <div v-if="!isArchived" class="relative">
-        <button
-          type="button"
-          class="btn btn-ghost btn-sm"
-          :title="t('chat.sessionHeader.colorLabel')"
+        <VIconButton
+          icon="theme"
+          size="sm"
+          :active="showColor"
+          :label="t('chat.sessionHeader.colorLabel')"
           @click="showColor = !showColor"
-        >
-          🎨
-        </button>
+        />
         <div
           v-if="showColor"
           class="absolute right-0 top-full mt-1 z-30 p-3 rounded-md border border-base-300 bg-base-100 shadow-lg"
@@ -342,19 +337,14 @@ async function onDelete(): Promise<void> {
 
       <!-- Tag editor (compact, opens on click) -->
       <div v-if="!isArchived" class="relative">
-        <button
-          type="button"
-          class="btn btn-ghost btn-sm"
-          :title="t('chat.sessionHeader.tagsTooltip')"
-          :class="(session?.tags?.length ?? 0) > 0 ? '' : 'opacity-60'"
+        <VIconButton
+          icon="tag"
+          size="sm"
+          :active="showTags"
+          :badge="session?.tags?.length ?? 0"
+          :label="t('chat.sessionHeader.tagsTooltip')"
           @click="showTags = !showTags"
-        >
-          🏷️
-          <span
-            v-if="(session?.tags?.length ?? 0) > 0"
-            class="text-[10px] ml-1 opacity-70"
-          >{{ session?.tags?.length }}</span>
-        </button>
+        />
         <div
           v-if="showTags"
           class="absolute right-0 top-full mt-1 z-30 w-72 p-3 rounded-md border border-base-300 bg-base-100 shadow-lg"
@@ -396,23 +386,23 @@ async function onDelete(): Promise<void> {
          Owner-only items inside the menu stay gated on isOwner — see
          planning/multi-user-sessions.md §2.4. -->
     <div v-if="compact && (canSave || isOwner)" ref="menuEl" class="relative">
-      <button
-        type="button"
-        class="btn btn-ghost btn-sm"
-        :title="t('chat.sessionHeader.moreActions')"
-        :aria-expanded="menuOpen"
-        :disabled="saving"
-        @click="menuOpen = !menuOpen"
-      >
-        <span class="text-lg leading-none">⋯</span>
-        <span
-          v-if="session?.pinned || (session?.tags?.length ?? 0) > 0"
-          class="text-[10px] ml-1 opacity-70"
-        >
-          <span v-if="session?.pinned">📌</span>
-          <span v-if="(session?.tags?.length ?? 0) > 0">{{ session?.tags?.length }}</span>
-        </span>
-      </button>
+      <div class="flex items-center gap-1">
+        <VIcon
+          v-if="session?.pinned"
+          name="pin"
+          class="text-(--v-label-secondary)"
+        />
+        <VIconButton
+          icon="more"
+          size="sm"
+          :active="menuOpen"
+          :badge="session?.tags?.length ?? 0"
+          :label="t('chat.sessionHeader.moreActions')"
+          :aria-expanded="menuOpen"
+          :disabled="saving"
+          @click="menuOpen = !menuOpen"
+        />
+      </div>
 
       <div
         v-if="menuOpen"
@@ -429,7 +419,7 @@ async function onDelete(): Promise<void> {
           role="menuitem"
           @click="closeMenu(); emit('save')"
         >
-          <span class="w-5 text-center">{{ exporting ? '⌛' : '💾' }}</span>
+          <span class="w-5 flex justify-center"><VIcon :name="exporting ? 'loading' : 'save'" /></span>
           <span class="flex-1 text-left">{{ t('chat.export.saveAsDocumentLabel') }}</span>
         </button>
         <div v-if="canSave && isOwner" class="border-t border-base-300"></div>
@@ -446,7 +436,7 @@ async function onDelete(): Promise<void> {
           role="menuitem"
           @click="togglePin(); closeMenu()"
         >
-          <span class="w-5 text-center" :class="session?.pinned ? '' : 'opacity-40'">📌</span>
+          <span class="w-5 flex justify-center" :class="session?.pinned ? '' : 'opacity-40'"><VIcon name="pin" /></span>
           <span class="flex-1 text-left">
             {{ session?.pinned ? t('chat.sessionHeader.unpinTooltip') : t('chat.sessionHeader.pinTooltip') }}
           </span>
@@ -464,9 +454,9 @@ async function onDelete(): Promise<void> {
           @click="toggleAllowMultipleClients(); closeMenu()"
         >
           <span
-            class="w-5 text-center"
+            class="w-5 flex justify-center"
             :class="session?.allowMultipleClients ? '' : 'opacity-40'"
-          >👥</span>
+          ><VIcon name="team" /></span>
           <span class="flex-1 text-left">
             {{ session?.allowMultipleClients
               ? t('chat.sessionHeader.collabDisableLabel')
@@ -483,9 +473,9 @@ async function onDelete(): Promise<void> {
             :aria-expanded="menuExpand === 'color'"
             @click="menuExpand = menuExpand === 'color' ? null : 'color'"
           >
-            <span class="w-5 text-center">🎨</span>
+            <span class="w-5 flex justify-center"><VIcon name="theme" /></span>
             <span class="flex-1 text-left">{{ t('chat.sessionHeader.colorLabel') }}</span>
-            <span class="opacity-60 text-xs">{{ menuExpand === 'color' ? '▾' : '▸' }}</span>
+            <VIcon :name="menuExpand === 'color' ? 'expand' : 'forward'" class="opacity-60" />
           </button>
           <div
             v-if="menuExpand === 'color'"
@@ -505,13 +495,13 @@ async function onDelete(): Promise<void> {
             :aria-expanded="menuExpand === 'tags'"
             @click="menuExpand = menuExpand === 'tags' ? null : 'tags'"
           >
-            <span class="w-5 text-center">🏷️</span>
+            <span class="w-5 flex justify-center"><VIcon name="tag" /></span>
             <span class="flex-1 text-left">{{ t('chat.sessionHeader.tagsLabel') }}</span>
             <span
               v-if="(session?.tags?.length ?? 0) > 0"
               class="text-[10px] opacity-70"
             >{{ session?.tags?.length }}</span>
-            <span class="opacity-60 text-xs">{{ menuExpand === 'tags' ? '▾' : '▸' }}</span>
+            <VIcon :name="menuExpand === 'tags' ? 'expand' : 'forward'" class="opacity-60" />
           </button>
           <div
             v-if="menuExpand === 'tags'"
@@ -537,7 +527,7 @@ async function onDelete(): Promise<void> {
           role="menuitem"
           @click="closeMenu(); onArchive()"
         >
-          <span class="w-5 text-center">📦</span>
+          <span class="w-5 flex justify-center"><VIcon name="archive" /></span>
           <span class="flex-1 text-left">{{ t('chat.sessionHeader.archive') }}</span>
         </button>
         <button
@@ -548,19 +538,19 @@ async function onDelete(): Promise<void> {
           role="menuitem"
           @click="closeMenu(); onReactivate()"
         >
-          <span class="w-5 text-center">♻️</span>
+          <span class="w-5 flex justify-center"><VIcon name="restore" /></span>
           <span class="flex-1 text-left">{{ t('chat.sessionHeader.reactivate') }}</span>
         </button>
 
         <!-- Delete -->
         <button
           type="button"
-          class="flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200 disabled:opacity-50 text-error"
+          class="flex items-center gap-3 w-full px-3 py-2 text-sm hover:bg-base-200 disabled:opacity-50 text-(--v-danger)"
           :disabled="saving"
           role="menuitem"
           @click="closeMenu(); onDelete()"
         >
-          <span class="w-5 text-center">🗑️</span>
+          <span class="w-5 flex justify-center"><VIcon name="delete" /></span>
           <span class="flex-1 text-left">{{ t('chat.sessionHeader.delete') }}</span>
         </button>
         </template>

@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import type { MegadodoEventDto } from '@vance/generated';
 import { MegadodoRefType } from '@vance/generated';
-import { VAlert, VButton, VEmptyState, VInput, VSelect } from '@/components';
+import { VAlert, VButton, VEmptyState, VIcon, VInput, VSelect } from '@/components';
 import { useMegadodo, type MegadodoOperation } from '@/composables/useMegadodo';
 
 /**
@@ -210,7 +210,7 @@ function logRow(op: MegadodoOperation): MegadodoEventDto | null {
         />
       </div>
 
-      <VButton size="sm" variant="plain" @click="reload">{{ $t('insights.megadodo.refresh') }}</VButton>
+      <VButton size="sm" variant="plain" icon="refresh" @click="reload">{{ $t('insights.megadodo.refresh') }}</VButton>
 
       <span class="text-xs opacity-60 ml-auto">
         <template v-if="failureCount > 0">
@@ -281,9 +281,7 @@ function logRow(op: MegadodoOperation): MegadodoEventDto | null {
               <span class="text-xs opacity-50 ml-auto whitespace-nowrap">
                 {{ formatTime(op.rows[0]?.timestamp) }}
               </span>
-              <span class="text-xs opacity-40 w-3 text-right">
-                {{ expanded.has(op.traceId) ? '▾' : '▸' }}
-              </span>
+              <VIcon :name="expanded.has(op.traceId) ? 'expand' : 'forward'" class="self-center opacity-40" />
             </div>
           </header>
 
@@ -295,16 +293,16 @@ function logRow(op: MegadodoOperation): MegadodoEventDto | null {
               <a
                 v-if="linkFor(op.head)"
                 :href="linkFor(op.head)!"
-                class="link link-hover text-primary"
+                class="link link-hover text-primary inline-flex items-center gap-1"
               >
-                {{ op.head.refType?.toLowerCase() }}: {{ op.head.refId }} ↗
+                {{ op.head.refType?.toLowerCase() }}: {{ op.head.refId }} <VIcon name="forward" />
               </a>
               <a
                 v-if="logRow(op) && logLink(logRow(op)!)"
                 :href="logLink(logRow(op)!)!"
-                class="link link-hover text-primary"
+                class="link link-hover text-primary inline-flex items-center gap-1"
               >
-                Open run log ↗
+                Open run log <VIcon name="forward" />
               </a>
               <span v-if="detailDuration(op) !== null" class="opacity-60 tabular-nums">
                 {{ formatDuration(detailDuration(op)) }}

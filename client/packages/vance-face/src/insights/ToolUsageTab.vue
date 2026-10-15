@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import type { ToolUsageEntryInsightsDto, ToolUsageRoleInsightsDto } from '@vance/generated';
-import { VAlert, VButton, VEmptyState, VInput } from '@/components';
+import { VAlert, VButton, VEmptyState, VIcon, VInput } from '@/components';
 import { useToolUsageInsights } from '@/composables/useProjectInsights';
 
 /**
@@ -107,7 +107,7 @@ function barWidth(role: ToolUsageRoleInsightsDto, tool: ToolUsageEntryInsightsDt
       :body="$t('insights.toolUsage.emptyBody')"
     >
       <template #action>
-        <VButton variant="secondary" size="sm" :disabled="state.loading.value" @click="reload">
+        <VButton variant="secondary" size="sm" icon="refresh" :disabled="state.loading.value" @click="reload">
           {{ $t('insights.toolUsage.reload') }}
         </VButton>
       </template>
@@ -133,6 +133,7 @@ function barWidth(role: ToolUsageRoleInsightsDto, tool: ToolUsageEntryInsightsDt
         <VButton
           variant="secondary"
           size="xs"
+          icon="refresh"
           class="ml-auto"
           :disabled="state.loading.value"
           @click="reload"
@@ -173,9 +174,7 @@ function barWidth(role: ToolUsageRoleInsightsDto, tool: ToolUsageEntryInsightsDt
               when: formatTimestamp(role.lastActivityAt),
             }) }}
           </span>
-          <span class="text-xs opacity-50 w-4 text-right">
-            {{ collapsed.has(role.role) ? '▸' : '▾' }}
-          </span>
+          <VIcon :name="collapsed.has(role.role) ? 'forward' : 'expand'" class="opacity-50" />
         </header>
 
         <table v-if="!collapsed.has(role.role)" class="w-full text-sm">

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { NodeViewWrapper } from '@tiptap/vue-3';
+import { VIcon } from '@vance/components';
 import { useT } from './i18n';
 
 /**
@@ -24,7 +25,7 @@ function goToIndex(e: MouseEvent) {
 <template>
   <NodeViewWrapper as="div" class="wb-index-block" contenteditable="false">
     <button type="button" class="wb-index-block__btn" @click="goToIndex">
-      🏠 {{ t('workbook.indexBlock.goto') }}
+      <VIcon name="home" />{{ t('workbook.indexBlock.goto') }}
     </button>
   </NodeViewWrapper>
 </template>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { VAlert, VButton, VEmptyState } from '@vance/components';
+import { VAlert, VButton, VEmptyState, VIcon } from '@vance/components';
 import { documentContentUrl } from '@vance/shared';
 import { getSlideshow, rebuildSlideshow } from './api';
 import type { SlideView } from './generated/slideshow/SlideView';
@@ -192,12 +192,13 @@ defineExpose({ reload: load });
         <VButton
           v-if="show && show.autoplaySeconds > 0"
           size="sm"
-          :variant="autoplaying ? 'primary' : 'ghost'"
+          variant="secondary"
+          :icon="autoplaying ? 'pause' : 'play'"
           @click="toggleAutoplay"
         >
           {{ autoplaying
-            ? `⏸ ${t('slideshow.pause')}`
-            : `▶ ${t('slideshow.play', { seconds: show.autoplaySeconds })}` }}
+            ? t('slideshow.pause')
+            : t('slideshow.play', { seconds: show.autoplaySeconds }) }}
         </VButton>
         <VButton size="sm" variant="plain" @click="toggleFullscreen">
           {{ fullscreen ? t('slideshow.exitFullscreen') : t('slideshow.fullscreen') }}
@@ -247,14 +248,16 @@ defineExpose({ reload: load });
         v-if="show && show.slides.length > 1"
         class="absolute left-4 top-1/2 -translate-y-1/2 bg-base-100/20 hover:bg-base-100/40 text-base-content rounded-full w-12 h-12 flex items-center justify-center text-2xl"
         :title="t('slideshow.prevSlide')"
+        :aria-label="t('slideshow.prevSlide')"
         @click.stop="prev"
-      >‹</button>
+      ><VIcon name="back" :size="20" /></button>
       <button
         v-if="show && show.slides.length > 1"
         class="absolute right-4 top-1/2 -translate-y-1/2 bg-base-100/20 hover:bg-base-100/40 text-base-content rounded-full w-12 h-12 flex items-center justify-center text-2xl"
         :title="t('slideshow.nextSlide')"
+        :aria-label="t('slideshow.nextSlide')"
         @click.stop="next"
-      >›</button>
+      ><VIcon name="forward" :size="20" /></button>
 
       <!-- Slide counter dots — only when reasonable count. -->
       <div

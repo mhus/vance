@@ -9,6 +9,8 @@ import {
   VButton,
   VCard,
   VEmptyState,
+  VIcon,
+  VIconButton,
   VInput,
   VSelect,
   type Crumb,
@@ -780,11 +782,13 @@ function clickProcessByMongoId(id: string | undefined | null): void {
         <nav class="flex flex-col gap-1">
           <template v-for="s in sessionsState.sessions.value" :key="s.id">
             <div class="session-row">
-              <button
-                type="button"
-                class="chev"
+              <VIconButton
+                :icon="expanded.has(s.sessionId) ? 'expand' : 'forward'"
+                :label="expanded.has(s.sessionId) ? $t('common.collapse') : $t('common.expand')"
+                size="sm"
+                class="mt-1"
                 @click.stop="toggleExpand(s.sessionId)"
-              >{{ expanded.has(s.sessionId) ? '▾' : '▸' }}</button>
+              />
               <button
                 type="button"
                 class="session-label"
@@ -891,7 +895,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
             class="tab tab-more__btn"
             :class="{ 'tab--active': overflowTopTabs.some((t) => t.key === topTab) }"
             @click.stop="toggleMoreMenu"
-          >{{ $t('insights.tabs2.more') }}</button>
+          ><span class="inline-flex items-center gap-1">{{ $t('insights.tabs2.more') }}<VIcon name="expand" /></span></button>
         </div>
       </div>
 
@@ -938,7 +942,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
           class="tab tab-more__btn"
           tabindex="-1"
           data-more-phantom
-        >{{ $t('insights.tabs2.more') }}</button>
+        ><span class="inline-flex items-center gap-1">{{ $t('insights.tabs2.more') }}<VIcon name="expand" /></span></button>
       </div>
 
       <div
@@ -1528,7 +1532,10 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                       <dt class="opacity-60">{{ $t('insights.process.prakRunDedup') }}</dt>
                       <dd>{{ r.duplicatesMerged }}</dd>
                       <dt class="opacity-60">{{ $t('insights.process.prakRunHardCap') }}</dt>
-                      <dd>{{ r.hardCapTriggered ? '⚠ yes' : 'no' }}</dd>
+                      <dd>
+                        <span v-if="r.hardCapTriggered" class="inline-flex items-center gap-1 text-(--v-warning)"><VIcon name="warning" />yes</span>
+                        <span v-else>no</span>
+                      </dd>
                       <dt class="opacity-60">{{ $t('insights.process.prakRunCoverage') }}</dt>
                       <dd :class="{ 'text-warning': r.lowCoverage }">
                         {{ Math.round(r.evidenceCoverage * 100) }}%
@@ -1603,15 +1610,9 @@ function clickProcessByMongoId(id: string | undefined | null): void {
 <style scoped>
 .session-row {
   display: grid;
-  grid-template-columns: 1.25rem 1fr;
+  grid-template-columns: 1.5rem 1fr;
   gap: 0.25rem;
   align-items: start;
-}
-.chev {
-  font-size: 0.85rem;
-  background: transparent;
-  cursor: pointer;
-  padding: 0.4rem 0.2rem;
 }
 .session-label {
   display: block;

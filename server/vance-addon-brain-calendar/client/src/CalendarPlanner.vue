@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import mermaid from 'mermaid';
-import { VAlert, VButton, VEmptyState, VInput, VModal, VSelect } from '@vance/components';
+import { VAlert, VButton, VEmptyState, VIcon, VInput, VModal, VSelect } from '@vance/components';
 import CalendarEventDetail from './CalendarEventDetail.vue';
 import {
   createCalendarEvent,
@@ -217,7 +217,7 @@ defineExpose({ reload: load });
         <div class="text-sm text-base-content/60 mt-0.5">
           {{ folder }}
           <template v-if="planner?.windowFrom || planner?.windowUntil">
-            · {{ planner?.windowFrom ?? '?' }} → {{ planner?.windowUntil ?? '?' }}
+            · {{ planner?.windowFrom ?? '?' }} – {{ planner?.windowUntil ?? '?' }}
           </template>
         </div>
       </div>
@@ -226,7 +226,7 @@ defineExpose({ reload: load });
           {{ t('calendar.planner.eventCount', { n: planner.events.length }, planner.events.length) }}
           · {{ t('calendar.planner.laneCount', { n: planner.lanes.length }, planner.lanes.length) }}
           <template v-if="planner.conflicts.length > 0">
-            · <span class="text-error">⚠ {{ t('calendar.planner.conflictCount',
+            · <span class="inline-flex items-center gap-1 align-middle text-(--v-danger)"><VIcon name="warning" />{{ t('calendar.planner.conflictCount',
               { n: planner.conflicts.length }, planner.conflicts.length) }}</span>
           </template>
         </span>
@@ -260,7 +260,7 @@ defineExpose({ reload: load });
           >
             <div>
               <div class="font-medium text-sm">{{ lane.title ?? lane.name }}</div>
-              <div v-if="!lane.declared" class="text-xs text-warning">⚠ {{ t('calendar.planner.undeclared') }}</div>
+              <div v-if="!lane.declared" class="flex items-center gap-1 text-xs text-(--v-warning)"><VIcon name="warning" />{{ t('calendar.planner.undeclared') }}</div>
             </div>
             <span class="text-xs text-base-content/60">{{ lane.eventCount }}</span>
           </button>
@@ -385,8 +385,8 @@ defineExpose({ reload: load });
                     >Outlook</a>
                   </div>
                 </div>
-                <div v-if="ev.location" class="text-xs text-base-content/60 mt-1">
-                  📍 {{ ev.location }}
+                <div v-if="ev.location" class="flex items-center gap-1 text-xs text-base-content/60 mt-1">
+                  <VIcon name="location" />{{ ev.location }}
                 </div>
                 <div v-if="ev.tags.length > 0" class="flex flex-wrap gap-1 mt-1">
                   <span

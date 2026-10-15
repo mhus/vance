@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { MarkdownView } from '@/components';
+import { MarkdownView, VIcon, VIconButton } from '@/components';
 import type { ThinkProcessInsightsDto } from '@vance/generated';
 
 export interface ProcessTreeNode {
@@ -66,11 +66,12 @@ function chatRoleClass(label: string): string {
 <template>
   <div class="tp-block">
     <div class="tp-header">
-      <button
-        class="tp-chev"
-        type="button"
+      <VIconButton
+        :icon="collapsed ? 'forward' : 'expand'"
+        :label="collapsed ? $t('common.expand') : $t('common.collapse')"
+        size="sm"
         @click="emit('toggle-process', node.process.id)"
-      >{{ collapsed ? '▸' : '▾' }}</button>
+      />
       <button
         class="tp-name"
         type="button"
@@ -100,7 +101,7 @@ function chatRoleClass(label: string): string {
           type="button"
           @click="emit('toggle-event', node.process.id, ev.id)"
         >
-          <span class="tp-event-chev">{{ isExpanded(ev.id) ? '▾' : '▸' }}</span>
+          <VIcon :name="isExpanded(ev.id) ? 'expand' : 'forward'" class="tp-event-chev" />
           <span class="tp-event-time">{{ fmtTime(ev.at) }}</span>
           <span
             class="tp-event-kind"
@@ -145,12 +146,6 @@ function chatRoleClass(label: string): string {
   gap: 0.5rem;
   flex-wrap: wrap;
 }
-.tp-chev {
-  background: transparent;
-  cursor: pointer;
-  font-size: 0.875rem;
-  padding: 0 0.25rem;
-}
 .tp-name {
   background: transparent;
   cursor: pointer;
@@ -187,7 +182,7 @@ function chatRoleClass(label: string): string {
   cursor: pointer;
 }
 .tp-event-row:hover { background: color-mix(in oklab, var(--color-base-content) 5%, transparent); }
-.tp-event-chev { font-size: 0.7rem; opacity: 0.6; width: 0.7rem; }
+.tp-event-chev { opacity: 0.6; }
 .tp-event-time {
   font-family: ui-monospace, monospace;
   font-size: 0.7rem;

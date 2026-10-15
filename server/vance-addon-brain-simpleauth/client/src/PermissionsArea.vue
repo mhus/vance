@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { VAlert, VButton, VInput, VSelect } from '@vance/components';
+import { VAlert, VButton, VIcon, VInput, VSelect } from '@vance/components';
 import { listGrants, removeGrant, setGrant } from './api';
 import type { GrantDto, GrantRole, GrantScopeType, GrantSubjectType } from './types';
 import { useT } from './i18n';
@@ -149,9 +149,9 @@ onMounted(() => {
           :key="g.subjectType + ':' + g.subjectId"
           class="flex items-center justify-between gap-3 rounded border border-base-300 px-3 py-2"
         >
-          <span class="text-sm">
+          <span class="flex items-center gap-2 text-sm">
             <span class="font-mono">{{ g.subjectType.toLowerCase() }}:{{ g.subjectId }}</span>
-            <span class="mx-2 opacity-50">→</span>
+            <VIcon name="arrow-right" class="text-(--v-label-tertiary)" />
             <span class="font-semibold">{{ t(`simpleauth.roles.${g.role}`) }}</span>
           </span>
           <VButton variant="danger" size="sm" :disabled="loading" @click="revoke(g)">{{ t('simpleauth.revoke') }}</VButton>

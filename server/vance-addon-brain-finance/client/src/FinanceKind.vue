@@ -240,12 +240,12 @@ async function runReport(): Promise<void> {
 <template>
   <div class="flex flex-col h-full text-sm">
     <!-- Toolbar -->
-    <div class="flex items-center gap-2 border-b border-black/10 dark:border-white/10 px-3 py-2">
+    <div class="flex items-center gap-2 border-b border-(--v-separator) px-3 py-2">
       <span class="font-semibold">{{ tree?.title || t('finance.fallbackTitle') }}</span>
       <VButton icon="refresh" variant="plain" @click="reload">{{ t('finance.reload') }}</VButton>
       <label class="flex items-center gap-1">
         <span class="opacity-70">{{ t('finance.unit') }}</span>
-        <select v-model="displayUnit" class="border border-black/20 dark:border-white/20 rounded px-1 py-0.5 bg-transparent">
+        <select v-model="displayUnit" class="border border-(--v-border) rounded px-1 py-0.5 bg-transparent">
           <option value="year">{{ t('finance.perUnit.year') }}</option>
           <option value="month">{{ t('finance.perUnit.month') }}</option>
           <option value="week">{{ t('finance.perUnit.week') }}</option>
@@ -262,7 +262,7 @@ async function runReport(): Promise<void> {
 
     <div v-else class="flex flex-1 min-h-0">
       <!-- Tree (left) -->
-      <div class="w-1/2 overflow-auto border-r border-black/10 dark:border-white/10 p-2">
+      <div class="w-1/2 overflow-auto border-r border-(--v-separator) p-2">
         <FinanceTreeNode
           v-if="tree?.root"
           :node="tree.root"
@@ -272,7 +272,7 @@ async function runReport(): Promise<void> {
           :unit-key="unitKey"
           :on-action="handleAction"
         />
-        <VButton v-else variant="primary" @click="addRoot">{{ t('finance.createRoot') }}</VButton>
+        <VButton v-else variant="primary" icon="add" @click="addRoot">{{ t('finance.createRoot') }}</VButton>
       </div>
 
       <!-- Detail (right) -->
@@ -322,7 +322,7 @@ async function runReport(): Promise<void> {
               <VButton variant="plain" icon="add" @click="addValue(selected)">{{ t('finance.values.add') }}</VButton>
             </div>
             <div v-for="(v, i) in selected.values" :key="i"
-                 class="border border-black/10 dark:border-white/10 rounded p-2 flex flex-col gap-2">
+                 class="border border-(--v-separator) rounded p-2 flex flex-col gap-2">
               <div class="flex gap-2 items-end">
                 <label class="flex flex-col gap-0.5 w-28">
                   <span class="opacity-70">{{ t('finance.values.amount') }}</span>
@@ -471,10 +471,10 @@ async function runReport(): Promise<void> {
 
         <div v-if="reportRunning" class="mt-2 opacity-60">{{ t('finance.reportModal.running') }}</div>
         <div v-else-if="reportResult" class="mt-2">
-          <div v-if="reportResult.path" class="text-green-600">
+          <div v-if="reportResult.path" class="text-(--v-success)">
             {{ t('finance.reportModal.savedTo', { path: reportResult.path }) }}
           </div>
-          <pre v-else class="max-h-64 overflow-auto text-xs bg-black/5 dark:bg-white/5 p-2 rounded">{{ reportResult.body }}</pre>
+          <pre v-else class="max-h-64 overflow-auto text-xs bg-(--v-fill) p-2 rounded">{{ reportResult.body }}</pre>
         </div>
       </div>
     </VModal>

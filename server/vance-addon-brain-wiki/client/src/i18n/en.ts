@@ -24,6 +24,7 @@ export default {
       fallbackTitle: 'Wiki',
       indexTitle: 'Index',
       searchPlaceholder: 'Search pages…',
+      search: 'Search',
       noMatch: 'No matching page.',
       createNamed: 'Create page “{name}”',
       createNamedInSpace: 'Create page “{name}” in {space}',
@@ -41,8 +42,8 @@ export default {
       missingPre: 'A wiki opens on its',
       missingMid: 'page. Create it now — or open the',
       indexLink: 'index',
-      createMain: '＋ Create “main” page',
-      noPageSelected: 'No page selected. Create one with ＋ New.',
+      createMain: 'Create “main” page',
+      noPageSelected: 'No page selected. Create one with New.',
       generatedBadge: 'generated · read-only',
       deletePage: 'Delete page',
       status: {
@@ -74,7 +75,7 @@ export default {
     notes: {
       title: 'Notes',
       newNote: 'New note',
-      empty: 'No notes yet. Click ＋ to add one.',
+      empty: 'No notes yet. Add one with the plus button.',
       done: 'Done',
       markDone: 'Mark done',
       delete: 'Delete',

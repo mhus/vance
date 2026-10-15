@@ -41,7 +41,7 @@ import {
   uploadChatboxAttachments,
   ChatboxUploadError,
 } from '@composables/useChatboxUpload';
-import { VAlert, VButton, VDropdown, VRange, VTextarea, VIconButton } from '@components/index';
+import { VAlert, VDropdown, VIcon, VRange, VTextarea, VIconButton } from '@components/index';
 import { OPTIMISTIC_PREFIX } from './optimisticEcho';
 import { matchTalkCommand, stripCommandTail } from './talkCommands';
 import { caretInFirstLine, pushHistoryEntry } from './composerHistory';
@@ -1455,9 +1455,9 @@ onBeforeUnmount(() => {
     <VAlert v-if="speechError" variant="warning" class="mb-2 max-w-3xl mx-auto">{{ speechError }}</VAlert>
 
     <!-- Pending-attachment chips. Cleared by send() on success;
-         per-chip ✕ removes a single entry before send. Two flavours:
-         📄 for already-existing docs (no upload step) and 📎 for
-         to-be-uploaded files. -->
+         per-chip close removes a single entry before send. Two flavours:
+         a document icon for already-existing docs (no upload step) and a
+         paperclip for to-be-uploaded files. -->
     <div
       v-if="selectedFiles.length > 0 || selectedDocs.length > 0"
       class="max-w-3xl mx-auto mb-2 flex flex-wrap gap-2"
@@ -1468,7 +1468,7 @@ onBeforeUnmount(() => {
         class="flex items-center gap-2 px-2 py-1
                border border-primary/40 rounded bg-primary/5 text-sm"
       >
-        <span aria-hidden="true">📄</span>
+        <VIcon name="document" />
         <span class="font-mono truncate max-w-xs">{{ doc.label }}</span>
         <VIconButton icon="close" :label="$t('chat.attachments.remove')" size="sm"
           :disabled="sendBlocked"
@@ -1481,7 +1481,7 @@ onBeforeUnmount(() => {
         class="flex items-center gap-2 px-2 py-1
                border border-base-300 rounded bg-base-200 text-sm"
       >
-        <span aria-hidden="true">📎</span>
+        <VIcon name="attach" />
         <span class="font-mono truncate max-w-xs">{{ file.name }}</span>
         <span class="text-xs opacity-60">{{ formatBytes(file.size) }}</span>
         <VIconButton icon="close" :label="$t('chat.attachments.remove')" size="sm"
@@ -1544,50 +1544,47 @@ onBeforeUnmount(() => {
       <div class="flex items-center gap-1 px-2 pb-1.5">
         <!-- Narrow-viewport menu toggle. CSS hides it on wide screens
              and turns .composer-tools into a popup on narrow. -->
-        <VButton
-          variant="plain"
-          size="sm"
-          class="composer-tools-toggle"
-          :title="composerToolsOpen ? 'Hide tools' : 'Show tools'"
-          @click="composerToolsOpen = !composerToolsOpen"
-        >
-          ⋯
-        </VButton>
+        <span class="composer-tools-toggle">
+          <VIconButton
+            icon="more"
+            size="sm"
+            :active="composerToolsOpen"
+            :label="composerToolsOpen ? $t('chat.composer.hideTools') : $t('chat.composer.showTools')"
+            @click="composerToolsOpen = !composerToolsOpen"
+          />
+        </span>
         <div
           class="composer-tools"
           :class="{ 'composer-tools--open': composerToolsOpen }"
         >
           <div v-if="speechSupported || speakerSupported" class="flex gap-1 items-center">
-            <VButton
+            <VIconButton
               v-if="talkModeSupported"
-              variant="plain"
               size="sm"
-              :class="talkStatus === 'ACTIVE' ? 'text-success animate-pulse'
-                : talkStatus === 'LISTENING' ? 'text-info'
-                : talkStatus === 'PAUSED' ? 'text-warning' : ''"
-              :title="talkStatus === 'PAUSED' ? $t('chat.speech.talkModePausedHint')
+              :icon="talkStatus === 'PAUSED' ? 'pause' : talkStatus === 'LISTENING' ? 'listening' : 'call'"
+              :active="talkStatus !== 'OFF'"
+              :class="talkStatus === 'ACTIVE' ? 'animate-pulse' : ''"
+              :label="talkStatus === 'PAUSED' ? $t('chat.speech.talkModePausedHint')
                 : talkStatus === 'LISTENING' ? $t('chat.speech.talkModeListeningHint')
                 : talkStatus === 'ACTIVE' ? $t('chat.speech.talkModeStop')
                 : $t('chat.speech.talkModeStart')"
               @click="toggleTalkMode"
-            >
-              {{ talkStatus === 'PAUSED' ? '⏸️' : talkStatus === 'LISTENING' ? '👂' : '📞' }}
-            </VButton>
+            />
             <VIconButton icon="voice" :label="speechRecording ? $t('chat.speech.stopSpeechToText') : $t('chat.speech.startSpeechToText')" size="sm"
               v-if="speechSupported"
-              :class="speechRecording ? 'text-error animate-pulse' : ''"
+              :active="speechRecording"
+              :class="speechRecording ? 'animate-pulse' : ''"
               @click="toggleSpeech"
              />
-            <VButton
+            <VIconButton
               v-if="speakerSupported"
-              variant="plain"
               size="sm"
-              :class="speakerEnabled ? (speakerSpeaking ? 'text-success animate-pulse' : 'text-success') : ''"
-              :title="speakerEnabled ? $t('chat.speech.muteIncoming') : $t('chat.speech.readAloud')"
+              :icon="speakerEnabled ? 'volume' : 'mute'"
+              :active="speakerEnabled"
+              :class="speakerEnabled && speakerSpeaking ? 'animate-pulse' : ''"
+              :label="speakerEnabled ? $t('chat.speech.muteIncoming') : $t('chat.speech.readAloud')"
               @click="toggleSpeaker"
-            >
-              {{ speakerEnabled ? '🔊' : '🔇' }}
-            </VButton>
+            />
             <!-- Quick-adjust sliders for volume + rate. Session-only
                  overrides; the persistent defaults live on the profile
                  page and are picked up on the next mount. -->
@@ -1625,7 +1622,7 @@ onBeforeUnmount(() => {
             @change="onFilePickerChange"
           />
           <!-- Host (e.g. Cortex) declared a current-file source → render
-               the 📎 button as a DaisyUI dropdown so the user can choose
+               the attach button as a DaisyUI dropdown so the user can choose
                between picking a fresh file and attaching the contextual
                one without a roundtrip. Without that source we keep the
                single-click direct picker — same UX as standalone chat. -->
@@ -1638,16 +1635,16 @@ onBeforeUnmount(() => {
             :trigger-title="$t('chat.attachments.pickerTooltip')"
             menu-class="mb-2 w-72"
           >
-            <template #trigger>📎</template>
+            <template #trigger><VIcon name="attach" /></template>
             <li>
               <a @click="closeAttachmentMenu(); fileInputRef?.click()">
-                <span aria-hidden="true">📎</span>
+                <VIcon name="attach" />
                 <span class="flex-1">{{ $t('chat.attachments.pickFromComputer') }}</span>
               </a>
             </li>
             <li>
               <a @click="closeAttachmentMenu(); attachCurrentFile()">
-                <span aria-hidden="true">📄</span>
+                <VIcon name="document" />
                 <span class="flex-1 min-w-0">
                   <span class="block text-xs opacity-60">
                     {{ $t('chat.attachments.attachCurrentFile') }}
@@ -1657,32 +1654,27 @@ onBeforeUnmount(() => {
               </a>
             </li>
           </VDropdown>
-          <VButton
+          <VIconButton
             v-else
-            variant="plain"
+            icon="attach"
             size="sm"
             :disabled="sendBlocked || !chatProcessName"
-            :title="$t('chat.attachments.pickerTooltip')"
+            :label="$t('chat.attachments.pickerTooltip')"
             @click="() => fileInputRef?.click()"
-          >
-            📎
-          </VButton>
+          />
         </div>
         <div class="flex-1"></div>
         <!-- Multi-line toggle — the pilcrow marks the paragraph mode.
              Stays pinned next to the input in every viewport (it is NOT
              part of the collapsible tools cluster). -->
-        <VButton
-          variant="plain"
+        <VIconButton
+          icon="multiline"
           size="sm"
-          :class="multiline ? 'btn-active text-primary' : ''"
-          :title="multiline ? $t('chat.multilineToggleSingle') : $t('chat.multilineToggleMulti')"
-          :aria-pressed="multiline"
+          :active="multiline"
+          :label="multiline ? $t('chat.multilineToggleSingle') : $t('chat.multilineToggleMulti')"
           @click="multiline = !multiline"
-        >
-          ¶
-        </VButton>
-        <VIconButton icon="play" :label="$t('chat.send')" size="sm"
+        />
+        <VIconButton icon="send" :label="$t('chat.send')" size="sm"
           :disabled="(!composerText.trim() && selectedFiles.length === 0 && selectedDocs.length === 0)
             || sendBlocked || !chatProcessName"
           :loading="sendBlocked"

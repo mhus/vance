@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { VIcon } from '@components/index';
+
 defineProps<{
   /** Suggestion text to render, or {@code null} to hide the bubble. */
   suggestion: string | null;
@@ -25,7 +27,7 @@ function onClick(): void {
       :title="$t('chat.followUp.acceptTooltip')"
       @click="onClick"
     >
-      <span class="opacity-70 mr-2 select-none" aria-hidden="true">↹</span>
+      <VIcon name="ai" class="inline-block align-text-bottom opacity-70 mr-2" />
       <span>{{ suggestion }}</span>
       <span class="ml-2 opacity-50 text-xs select-none" aria-hidden="true">
         {{ $t('chat.followUp.acceptHint') }}

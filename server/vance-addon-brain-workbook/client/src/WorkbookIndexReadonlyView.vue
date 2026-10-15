@@ -4,6 +4,7 @@
  * (BlockView, e.g. a standalone read-only workpage). Static card — the
  * jump-to-index interaction only makes sense inside the workbook host.
  */
+import { VIcon } from '@vance/components';
 import { useT } from './i18n';
 
 defineProps<{ attrs: Record<string, unknown> }>();
@@ -12,12 +13,14 @@ const t = useT();
 </script>
 
 <template>
-  <div class="wb-index-ro">🏠 {{ t('workbook.indexBlock.label') }}</div>
+  <div class="wb-index-ro"><VIcon name="home" />{{ t('workbook.indexBlock.label') }}</div>
 </template>
 
 <style scoped>
 .wb-index-ro {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
   padding: 0.5em 0.9em;
   border-radius: 0.5rem;
   border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);

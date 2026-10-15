@@ -19,7 +19,7 @@ import { useChatHistory } from '@composables/useChatHistory';
 import { useConversationExport } from '@composables/useConversationExport';
 import { useTenantProjects } from '@composables/useTenantProjects';
 import { useDocumentRefStore } from '@/kindViews/documentRefStore';
-import { SessionHeader, VAlert, VButton } from '@components/index';
+import { SessionHeader, VAlert, VButton, VIcon } from '@components/index';
 import { getUsername } from '@vance/shared';
 import {
   useSessionRoster,
@@ -970,7 +970,7 @@ onBeforeUnmount(() => {
       />
       <span
         v-if="modeBadge"
-        class="text-xs uppercase tracking-wide px-1.5 py-0.5 rounded bg-info/15 text-info border border-info/30"
+        class="text-xs uppercase tracking-wide px-1.5 py-0.5 rounded bg-(--v-selection) text-(--v-accent-text)"
         :title="$t('chat.planMode.modeBadgeTooltip')"
       >
         {{ modeBadge }}
@@ -981,9 +981,9 @@ onBeforeUnmount(() => {
          composer below sends straight to that worker's Arthur. -->
     <div
       v-if="mediation"
-      class="px-6 py-2 border-b border-base-300 bg-info/10 flex items-center gap-3 text-sm"
+      class="px-6 py-2 border-b border-base-300 bg-(--v-selection) flex items-center gap-3 text-sm"
     >
-      <span class="text-base">🔗</span>
+      <VIcon name="link" class="text-(--v-accent-text)" />
       <span class="flex-1 min-w-0 truncate">
         {{ $t('chat.mediation.banner', { project: mediation.workerProjectName }) }}
       </span>
@@ -1041,13 +1041,13 @@ onBeforeUnmount(() => {
         >
           <div class="flex-1 border-t border-base-300" />
           <span v-if="evt.kind === 'who'">
-            <span aria-hidden="true">👥</span>
+            <VIcon name="team" class="inline-block align-text-bottom" />
             <span class="ml-1">{{ _('chat.activity.whoHeader') }}</span>
             <span class="font-medium ml-1">{{ evt.displayName }}</span>
           </span>
           <span v-else-if="evt.kind === 'command'" class="font-mono">{{ evt.displayName }}</span>
           <span v-else>
-            <span aria-hidden="true">👥</span>
+            <VIcon name="team" class="inline-block align-text-bottom" />
             <span class="font-medium ml-1">{{ evt.displayName }}</span>
             <span class="ml-1">{{
               evt.kind === 'joined'
@@ -1075,7 +1075,7 @@ onBeforeUnmount(() => {
             v-if="isQueued(msg.messageId)"
             class="flex items-center gap-1 text-xs opacity-60 -mt-1 mb-2 no-print"
           >
-            <span aria-hidden="true">⏳</span>
+            <VIcon name="waiting" />
             <span>{{ _('chat.queuedBadge') }}</span>
           </div>
           <FollowUpGhost
@@ -1091,13 +1091,13 @@ onBeforeUnmount(() => {
           >
             <div class="flex-1 border-t border-base-300" />
             <span v-if="evt.kind === 'who'">
-              <span aria-hidden="true">👥</span>
+              <VIcon name="team" class="inline-block align-text-bottom" />
               <span class="ml-1">{{ _('chat.activity.whoHeader') }}</span>
               <span class="font-medium ml-1">{{ evt.displayName }}</span>
             </span>
             <span v-else-if="evt.kind === 'command'" class="font-mono">{{ evt.displayName }}</span>
             <span v-else>
-              <span aria-hidden="true">👥</span>
+              <VIcon name="team" class="inline-block align-text-bottom" />
               <span class="font-medium ml-1">{{ evt.displayName }}</span>
               <span class="ml-1">{{
                 evt.kind === 'joined'

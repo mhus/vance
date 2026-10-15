@@ -272,6 +272,10 @@ export default defineConfig({
         // Tiptap/prosemirror singletons among themselves (see their
         // vite.config.ts) and dedupe there. See addon-system.md §7d.
       },
+      // Remotes are built with `dts: false` and ship no @mf-types.zip;
+      // without this the host's dts consumer (on by default since
+      // @module-federation/vite 1.23) polls every addon for it in dev.
+      dts: false,
     }),
     vanceAddonDevServe(),
     vanceNoFramingDevHeaders(),

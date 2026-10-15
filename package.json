@@ -29,7 +29,7 @@
     ],
     "overrides": {
       "yallist": "4.0.0",
-      "@module-federation/vite": "1.20.1"
+      "@module-federation/vite": "1.23.5"
     },
     "patchedDependencies": {
       "tiptap-extension-global-drag-handle": "patches/tiptap-extension-global-drag-handle.patch"

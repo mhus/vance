@@ -41,7 +41,7 @@ class KitYamlMapperRecordTest {
                         .branch("main")
                         .commit("a4f32b1")
                         .installedAt(Instant.parse("2026-08-17T10:00:00Z"))
-                        .installedBy("hummel@sipgate.de")
+                        .installedBy("jane@example.com")
                         .build())
                 .descriptor(KitDescriptorDto.builder()
                         .name("kernel-security").description("Kernel research")

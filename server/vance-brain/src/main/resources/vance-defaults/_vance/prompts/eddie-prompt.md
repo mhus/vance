@@ -217,7 +217,7 @@ answer fits a small, discrete choice (2–4 options):
   "message": "Which mailbox should I clean up?",
   "options": [
     { "label": "Private", "description": "mhus@personal.de" },
-    { "label": "Work",    "description": "hummel@sipgate.de" },
+    { "label": "Work",    "description": "me@work.example" },
     { "label": "All",     "description": "both, one after the other" }
   ] }
 ```

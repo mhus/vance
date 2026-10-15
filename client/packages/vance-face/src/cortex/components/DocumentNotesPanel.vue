@@ -14,6 +14,7 @@
 import { computed, nextTick, onUpdated, ref, watch } from 'vue';
 import { VueDraggable } from 'vue-draggable-plus';
 import type { DocumentNoteDto } from '@vance/generated';
+import { VIcon } from '@/components';
 
 /**
  * Max textarea height for sticky notes. Beyond this the textarea
@@ -216,7 +217,7 @@ const isEmpty = computed(() => props.notes.length === 0);
             :title="$t('cortex.notes.jumpToLine', { line: note.line })"
             @click.stop="emit('jump-to-line', note.line!)"
             @mousedown.stop
-          >📍 Z. {{ note.line }}</button>
+          ><VIcon name="location" class="inline-block align-text-bottom" /> {{ $t('cortex.notes.lineShort', { line: note.line }) }}</button>
           <span class="flex-1" />
           <span class="text-[10px] opacity-60" :title="new Date(note.updatedAtMs).toLocaleString()">
             {{ relTime(note.updatedAtMs) }}

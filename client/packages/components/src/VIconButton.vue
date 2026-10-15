@@ -17,6 +17,8 @@ interface Props {
   /** Destructive action: icon turns red on hover. */
   danger?: boolean;
   tooltip?: 'bottom' | 'top' | 'left' | 'right';
+  /** A small count next to the icon ("3 notes"); hidden when empty or 0. */
+  badge?: number | string;
 }
 
 withDefaults(defineProps<Props>(), {
@@ -46,6 +48,7 @@ defineEmits<{ (e: 'click', event: MouseEvent): void }>();
     @click="(e) => $emit('click', e)"
   >
     <VIcon :name="icon" :size="16" />
+    <span v-if="badge !== undefined && badge !== 0 && badge !== ''" class="v-icon-btn-badge">{{ badge }}</span>
   </button>
 </template>
 
@@ -69,4 +72,7 @@ defineEmits<{ (e: 'click', event: MouseEvent): void }>();
 .v-icon-btn-active { background: var(--v-selection); color: var(--v-accent-text); }
 .v-icon-btn-danger:hover:not(:disabled) { color: var(--v-danger); }
 .v-icon-btn:disabled { opacity: 0.4; cursor: default; }
+/* With a badge the button widens to fit the count. */
+.v-icon-btn:has(.v-icon-btn-badge) { width: auto; gap: 4px; padding: 0 6px; }
+.v-icon-btn-badge { font-size: 12px; font-variant-numeric: tabular-nums; }
 </style>

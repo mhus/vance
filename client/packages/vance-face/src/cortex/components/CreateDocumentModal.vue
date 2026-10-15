@@ -716,8 +716,8 @@ async function submit(): Promise<void> {
         <!-- Selected template: folder + name + form -->
         <template v-else>
           <div class="flex items-center gap-2">
-            <VButton type="button" variant="ghost" size="sm" @click="clearSelectedTemplate">
-              ← {{ $t('documents.create.templateBack') }}
+            <VButton type="button" variant="plain" size="sm" icon="back" @click="clearSelectedTemplate">
+              {{ $t('documents.create.templateBack') }}
             </VButton>
             <span class="font-medium">{{ selectedTemplate.title }}</span>
           </div>

@@ -59,6 +59,8 @@ export type { IconName } from './icons';
 export { default as VIcon } from './VIcon.vue';
 export { default as VIconButton } from './VIconButton.vue';
 export { default as VToolbar } from './VToolbar.vue';
+export { default as VSegment } from './VSegment.vue';
+export type { SegmentOption } from './VSegment.vue';
 export { default as VGroup } from './VGroup.vue';
 export { default as VGroupRow } from './VGroupRow.vue';
 export { default as VCard } from './VCard.vue';

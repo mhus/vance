@@ -24,7 +24,15 @@
  */
 import { computed, inject, onBeforeUnmount, provide, ref, shallowRef, toRef, watch } from 'vue';
 import type { Ref } from 'vue';
-import { CodeEditor, VLockBadge, accentColorDotClass, provideDocumentReferrer } from '@/components';
+import {
+  CodeEditor,
+  VButton,
+  VIconButton,
+  VLockBadge,
+  VSegment,
+  accentColorDotClass,
+  provideDocumentReferrer,
+} from '@/components';
 import { brainFetch, brainFetchBlob } from '@vance/shared';
 import type { DocumentDto, FollowUpRequestDto, FollowUpResponseDto } from '@vance/generated';
 import { WriterRole } from '@vance/generated';
@@ -780,47 +788,34 @@ function fmtDuration(ms: number | null): string {
          full toolbar restored. -->
     <div
       v-if="isAppKindBinding && viewEditMode === 'view'"
-      class="flex items-center gap-2 px-3 py-1.5 border-b border-base-300 bg-base-100 text-sm"
+      class="doc-bar"
     >
-      <span class="font-mono opacity-60 truncate flex-1 hidden md:inline">{{ document.path }}</span>
+      <span class="doc-path flex-1 hidden md:inline">{{ document.path }}</span>
       <!-- The Actions menu (and with it the star) is hidden in App view, which
            is exactly the state an app is most likely to be starred from — so
            the star lives here too. As an icon next to the title it reads better
            than a menu entry anyway. -->
-      <button
-        type="button"
-        class="px-1 text-base leading-none opacity-70 hover:opacity-100"
-        :title="isStarred ? $t('starred.unstar') : $t('starred.star')"
-        :aria-pressed="isStarred"
+      <VIconButton
+        icon="star"
+        :label="isStarred ? $t('starred.unstar') : $t('starred.star')"
+        :active="isStarred"
         @click="toggleStar()"
-      >{{ isStarred ? '★' : '☆' }}</button>
-      <button
+      />
+      <VIconButton
         v-if="resetHandler"
-        type="button"
-        class="px-1 text-base leading-none opacity-70 hover:opacity-100"
-        :title="$t('starred.resetApp')"
+        icon="refresh"
+        :label="$t('starred.resetApp')"
         @click="resetHandler()"
-      >⟳</button>
-      <div
-        class="flex border border-base-300 rounded overflow-hidden text-xs"
-        role="group"
+      />
+      <VSegment
+        :model-value="'view'"
         :aria-label="$t('cortex.shell.appEditToggle')"
-      >
-        <button
-          type="button"
-          class="px-2 py-0.5 bg-base-300"
-          :title="$t('cortex.shell.appView')"
-        >{{ $t('cortex.shell.app') }}</button>
-        <button
-          type="button"
-          class="px-2 py-0.5 border-l border-base-300 opacity-60 hover:bg-base-200"
-          :title="$t('cortex.shell.rawManifest')"
-          @click="viewEditMode = 'edit'"
-        >
-          <span class="hidden sm:inline">{{ $t('cortex.shell.edit') }}</span>
-          <span class="sm:hidden">✏️</span>
-        </button>
-      </div>
+        :options="[
+          { value: 'view', label: $t('cortex.shell.app'), icon: 'play', title: $t('cortex.shell.appView') },
+          { value: 'edit', label: $t('cortex.shell.edit'), icon: 'edit', title: $t('cortex.shell.rawManifest') },
+        ]"
+        @update:model-value="(v) => (viewEditMode = v)"
+      />
     </div>
     <!-- Full toolbar: path, View/Edit toggle, reload, download, properties.
          Hidden for application-kind manifests in view-mode (slim header
@@ -830,25 +825,21 @@ function fmtDuration(ms: number | null): string {
          YAML manifest while patching it. -->
     <div
       v-if="!isAppKindBinding || viewEditMode === 'edit'"
-      class="flex items-center gap-2 px-3 py-2 border-b border-base-300 bg-base-100 text-sm"
+      class="doc-bar"
     >
-      <button
-        type="button"
-        class="opacity-60 enabled:hover:opacity-100 enabled:hover:bg-base-200 disabled:cursor-default
-               rounded px-1 leading-none"
+      <VIconButton
+        icon="refresh"
+        :label="document.dirty ? $t('cortex.shell.reloadDirty') : $t('cortex.shell.reload')"
         :disabled="reloading"
-        :title="document.dirty ? 'Reload (discards unsaved changes)' : 'Reload from server'"
         @click="onReload"
-      >
-        <span :class="reloading ? 'animate-spin inline-block' : ''">⟳</span>
-      </button>
+      />
       <span
         v-if="document.color"
         class="size-2.5 rounded-full flex-shrink-0"
         :class="accentColorDotClass(document.color)"
         :aria-label="`color ${document.color}`"
       />
-      <span class="font-mono opacity-80 truncate hidden md:inline">{{ document.path }}</span>
+      <span class="doc-path hidden md:inline">{{ document.path }}</span>
       <!-- The window this tab is showing. Without it on screen, two tabs on
            the same document look identical and the reader has no way to tell
            which parameters produced the numbers in front of them. -->
@@ -858,61 +849,48 @@ function fmtDuration(ms: number | null): string {
         :title="`Parameterised view — read with ?${document.viewQuery}`"
       >?{{ document.viewQuery }}</span>
       <VLockBadge :locked-for="document.lockedFor" />
-      <div
+      <VSegment
         v-if="showToggle"
-        class="flex border border-base-300 rounded overflow-hidden text-xs"
-        role="group"
-        :aria-label="isAppKindBinding ? 'App / edit toggle' : 'View / edit toggle'"
-      >
-        <button
-          type="button"
-          class="px-2 py-0.5"
-          :class="viewEditMode === 'view' ? 'bg-base-300' : 'opacity-60 hover:bg-base-200'"
-          :title="isAppKindBinding ? 'App view' : 'Rendered view'"
-          @click="viewEditMode = 'view'"
-        >
-          <span class="hidden sm:inline">{{ isAppKindBinding
-            ? $t('cortex.shell.app')
-            : $t('cortex.shell.view') }}</span>
-          <span class="sm:hidden">{{ isAppKindBinding ? '▶️' : '👁️' }}</span>
-        </button>
-        <button
-          type="button"
-          class="px-2 py-0.5 border-l border-base-300"
-          :class="viewEditMode === 'edit' ? 'bg-base-300' : 'opacity-60 hover:bg-base-200'"
-          :title="$t('cortex.shell.rawSource')"
-          @click="viewEditMode = 'edit'"
-        >
-          <span class="hidden sm:inline">{{ $t('cortex.shell.edit') }}</span>
-          <span class="sm:hidden">✏️</span>
-        </button>
-      </div>
+        v-model="viewEditMode"
+        :aria-label="isAppKindBinding ? $t('cortex.shell.appEditToggle') : $t('cortex.shell.viewEditToggle')"
+        :options="[
+          {
+            value: 'view',
+            label: isAppKindBinding ? $t('cortex.shell.app') : $t('cortex.shell.view'),
+            icon: isAppKindBinding ? 'play' : 'show',
+            title: isAppKindBinding ? $t('cortex.shell.appView') : $t('cortex.shell.renderedView'),
+          },
+          { value: 'edit', label: $t('cortex.shell.edit'), icon: 'edit', title: $t('cortex.shell.rawSource') },
+        ]"
+      />
       <!-- Run controls — only when an adapter matches this doc. The
            args input stays inline; an empty / '{}' string is the
            implicit default so the user can just hit Run. Age documents
            never run: the backend reads the body server-side and would
            execute ciphertext. -->
       <template v-if="runAdapter && !document.age">
-        <button
+        <VButton
           v-if="!isRunning"
-          type="button"
-          class="text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200"
+          variant="secondary"
+          size="sm"
+          icon="play"
           :title="$t('cortex.shell.runTitle', { label: runAdapter.label })"
           @click="onRun"
-        >▶ {{ runAdapter.label }}</button>
-        <button
+        >{{ runAdapter.label }}</VButton>
+        <VButton
           v-else
-          type="button"
-          class="text-xs px-2 py-0.5 rounded border border-warning/40 bg-warning/10 text-warning hover:bg-warning/20"
+          variant="secondary"
+          size="sm"
+          icon="stop"
           :title="$t('cortex.shell.cancelRun')"
           @click="onCancel"
-        >{{ $t('cortex.shell.cancelRunLabel') }}</button>
+        >{{ $t('cortex.shell.cancelRunLabel') }}</VButton>
         <input
           v-model="argsJson"
           type="text"
           spellcheck="false"
-          class="text-xs font-mono px-2 py-0.5 rounded border w-32"
-          :class="argsError ? 'border-error' : 'border-base-300'"
+          class="doc-args"
+          :class="{ 'doc-args-error': argsError }"
           :title="argsError ?? $t('cortex.shell.argsHint')"
           placeholder="{}"
         />
@@ -925,83 +903,75 @@ function fmtDuration(ms: number | null): string {
            Hidden for age documents: the script pipeline reads the body
            server-side, which for them is ciphertext. -->
       <template v-if="isJsLanguage && !document.age">
-        <button
-          type="button"
-          class="text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200
-                 disabled:opacity-50 disabled:cursor-default"
-          :disabled="validation.quickBusy.value"
+        <VButton
+          variant="secondary"
+          size="sm"
+          icon="check"
+          :loading="validation.quickBusy.value"
           :title="$t('cortex.shell.quickValidate')"
           @click="validation.runQuick()"
-        >{{ validation.quickBusy.value ? '⏳' : '✓' }} {{ $t('cortex.shell.validate') }}</button>
-        <button
-          type="button"
-          class="text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200
-                 disabled:opacity-50 disabled:cursor-default"
-          :disabled="validation.deepBusy.value"
+        >{{ $t('cortex.shell.validate') }}</VButton>
+        <VButton
+          variant="secondary"
+          size="sm"
+          icon="search"
+          :loading="validation.deepBusy.value"
           :title="$t('cortex.shell.deepReview')"
           @click="validation.runDeep()"
-        >{{ validation.deepBusy.value ? '⏳' : '🔍' }} {{ $t('cortex.shell.deepReviewLabel') }}</button>
-        <button
+        >{{ $t('cortex.shell.deepReviewLabel') }}</VButton>
+        <VButton
           v-if="!editorHasContent"
-          type="button"
-          class="text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200"
+          variant="secondary"
+          size="sm"
+          icon="ai"
           :title="$t('cortex.shell.generateScript')"
           @click="openSlart('CREATE')"
-        >{{ $t('cortex.shell.generate') }}</button>
-        <button
+        >{{ $t('cortex.shell.generate') }}</VButton>
+        <VButton
           v-else-if="isServerScript"
-          type="button"
-          class="text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200"
+          variant="secondary"
+          size="sm"
+          icon="ai"
           :title="$t('cortex.shell.updateScript')"
           @click="openSlart('UPDATE')"
-        >{{ $t('cortex.shell.update') }}</button>
+        >{{ $t('cortex.shell.update') }}</VButton>
       </template>
-      <button
-        type="button"
-        class="opacity-60 enabled:hover:opacity-100 enabled:hover:bg-base-200 disabled:cursor-default
-               rounded px-1.5 py-0.5 text-xs"
+      <VIconButton
+        icon="download"
+        :label="$t('cortex.shell.download', { name: document.name })"
         :disabled="downloading"
-        :title="$t('cortex.shell.download', { name: document.name })"
-        :aria-label="$t('cortex.shell.download', { name: document.name })"
         @click="onDownload"
-      >
-        <span :class="downloading ? 'animate-pulse' : ''">⬇</span>
-      </button>
-      <button
-        type="button"
-        class="opacity-60 hover:opacity-100 hover:bg-base-200 rounded px-1.5 py-0.5 text-xs"
-        :class="{ 'bg-base-300 opacity-100': propertiesOpen }"
-        :title="propertiesOpen
-          ? $t('cortex.shell.hideProperties')
-          : $t('cortex.shell.showProperties')"
+      />
+      <VIconButton
+        icon="properties"
+        :label="propertiesOpen ? $t('cortex.shell.hideProperties') : $t('cortex.shell.showProperties')"
+        :active="propertiesOpen"
         @click="propertiesOpen = !propertiesOpen"
-      >
-        <span class="hidden sm:inline">{{ $t('cortex.shell.properties') }}</span>
-        <span class="sm:hidden">⚙️</span>
-      </button>
-      <button
-        type="button"
-        class="opacity-60 hover:opacity-100 hover:bg-base-200 rounded px-1.5 py-0.5 text-xs"
-        :class="{ 'bg-base-300 opacity-100': notesOpen }"
-        :title="notesOpen ? $t('cortex.shell.hideNotes') : $t('cortex.shell.showNotes')"
+      />
+      <VIconButton
+        icon="note"
+        :label="notesOpen ? $t('cortex.shell.hideNotes') : $t('cortex.shell.showNotes')"
+        :active="notesOpen"
+        :badge="docNotes.notes.value.length"
         @click="notesOpen = !notesOpen"
-      >📝 {{ docNotes.notes.value.length }}</button>
+      />
       <!-- Age tabs save manually (planning/age-encryption.md §5.3) — every
            save re-encrypts, so this is the one explicit encrypt-and-save
            button; Ctrl+S / File→Save route to the same store call. -->
-      <button
+      <VButton
         v-if="document.age"
-        type="button"
-        class="text-xs px-2 py-0.5 rounded border border-base-300 hover:bg-base-200
-               disabled:opacity-40 disabled:cursor-default"
+        variant="secondary"
+        size="sm"
+        icon="lock"
         :disabled="!document.dirty"
         :title="$t('cortex.age.saveTitle')"
         @click="onManualSave"
-      >🔐 {{ $t('cortex.age.save') }}</button>
+      >{{ $t('cortex.age.save') }}</VButton>
       <span
         v-if="document.dirty && binding.editLocation === 'client-memory'"
-        class="opacity-60"
-      >●</span>
+        class="doc-dirty"
+        :title="$t('cortex.shell.unsaved')"
+      />
       <span class="flex-1" />
       <span
         class="opacity-50 text-xs font-mono hidden lg:inline"
@@ -1184,12 +1154,12 @@ function fmtDuration(ms: number | null): string {
           {{ fmtDuration(runHandle.durationMs.value) }}
         </span>
         <span class="flex-1" />
-        <button
-          type="button"
-          class="opacity-60 hover:opacity-100 hover:bg-base-300 rounded px-1"
-          :title="$t('cortex.shell.closeLog')"
+        <VIconButton
+          icon="close"
+          size="sm"
+          :label="$t('cortex.shell.closeLog')"
           @click="onCloseLogPanel"
-        >✕</button>
+        />
       </div>
 
       <div
@@ -1267,6 +1237,38 @@ function fmtDuration(ms: number | null): string {
 </template>
 
 <style scoped>
+/* corporate-design §6.2 — the document's own bar under the tabs. */
+.doc-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--v-separator);
+  background: var(--v-surface);
+  font-size: 13px;
+}
+.doc-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--v-font-mono);
+  font-size: 12.5px;
+  color: var(--v-label-secondary);
+}
+.doc-args {
+  width: 8rem;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--v-border);
+  border-radius: var(--v-radius-control);
+  background: var(--v-surface);
+  font-family: var(--v-font-mono);
+  font-size: 12px;
+}
+.doc-args-error { border-color: var(--v-danger); }
+.doc-dirty { display: inline-block; width: 8px; height: 8px; border-radius: 4px; background: var(--v-label-tertiary); }
 /* CodeEditor renders a <label class="v-field"> with an inner
  * .code-editor div that only carries a min-height — by default the
  * label/.code-editor pair is content-sized and grows past the

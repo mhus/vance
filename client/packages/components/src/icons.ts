@@ -22,6 +22,7 @@ import {
   Braces, BrainCircuit, Contact, Database, FileArchive, FileAudio, FileCode, FileImage, FileJson,
   FileQuestionMark, FileSpreadsheet, FileType, FileVideo, ListChecks, ListTree, Presentation, QrCode,
   Waypoints,
+  SlidersHorizontal, StickyNote,
 } from 'lucide-vue-next';
 
 export const ICONS = {
@@ -112,6 +113,8 @@ export const ICONS = {
   'theme': Palette,
   'volume': Volume2,
   'settings': Settings,
+  'properties': SlidersHorizontal,
+  'note': StickyNote,
   'help': CircleHelp,
   'light': Sun,
   'dark': Moon,

@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } f
 import type { FolderNode } from '../types';
 import { useCortexStore } from '../stores/cortexStore';
 import FileTreeNode from './FileTreeNode.vue';
+import { VIconButton } from '@/components';
 
 interface Props {
   root: FolderNode;
@@ -134,19 +135,14 @@ watch(
   <div ref="sidebarEl" class="p-2 text-sm">
     <div class="mb-2 px-1 flex items-center gap-1">
       <span class="font-semibold opacity-80 flex-1">{{ $t('cortex.tree.documents') }}</span>
-      <button
-        type="button"
-        class="text-xs px-1.5 py-0.5 rounded opacity-60 enabled:hover:opacity-100 enabled:hover:bg-base-200 disabled:cursor-default"
+      <VIconButton
+        icon="location"
+        size="sm"
+        :label="$t('cortex.tree.reveal')"
         :disabled="!activeFileId"
-        :title="$t('cortex.tree.reveal')"
         @click="revealActiveFile"
-      >🎯</button>
-      <button
-        type="button"
-        class="text-xs px-1.5 py-0.5 rounded opacity-60 hover:opacity-100 hover:bg-base-200"
-        :title="$t('cortex.tree.reload')"
-        @click="emit('reload')"
-      >🔄</button>
+      />
+      <VIconButton icon="refresh" size="sm" :label="$t('cortex.tree.reload')" @click="emit('reload')" />
     </div>
     <FileTreeNode
       :node="root"

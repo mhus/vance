@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, type Ref } from 'vue';
-import { accentColorDotClass } from '@/components';
+import { VIcon, VIconButton, accentColorDotClass } from '@/components';
+import DocumentIcon from '@/document/DocumentIcon.vue';
 import type { FolderNode } from '../types';
 
 interface Props {
@@ -29,15 +30,6 @@ function onChildUpload(payload: UploadPayload): void { emit('upload-files', payl
 
 function isOpen(path: string): boolean {
   return path === '' || props.expanded.has(path);
-}
-
-function fileIcon(name: string): string {
-  if (name.endsWith('.js') || name.endsWith('.mjs')) return 'JS';
-  if (name.endsWith('.json')) return '{}';
-  if (name.endsWith('.md')) return 'MD';
-  if (name.endsWith('.yaml') || name.endsWith('.yml')) return 'Y';
-  if (name.endsWith('.txt')) return 'T';
-  return '·';
 }
 
 function indentStyle(extra: number): Record<string, string> {
@@ -134,20 +126,20 @@ function onFolderDrop(ev: DragEvent): void {
     <button
       v-if="node.path !== ''"
       type="button"
-      class="w-full text-left px-2 py-1 hover:bg-base-200 rounded flex items-center gap-1"
+      class="tree-row w-full text-left px-2 py-1 rounded flex items-center gap-1.5"
       :style="indentStyle(0)"
       :data-folder-path="node.path"
       @click="emit('toggle', node.path)"
     >
-      <span class="opacity-50 w-3 inline-block text-xs">{{ isOpen(node.path) ? '▾' : '▸' }}</span>
-      <span>📁</span>
+      <VIcon :name="isOpen(node.path) ? 'expand' : 'forward'" class="tree-chevron" />
+      <VIcon name="folder" class="tree-icon" />
       <span class="truncate">{{ node.name }}</span>
-      <span v-if="node.loading" class="opacity-50 text-xs" :title="$t('cortex.tree.loading')">⏳</span>
+      <VIcon v-if="node.loading" name="loading" class="tree-icon animate-spin" :aria-label="$t('cortex.tree.loading')" />
       <span
         v-else-if="node.error"
-        class="opacity-70 text-xs text-error"
+        class="tree-error"
         :title="node.error"
-      >⚠</span>
+      ><VIcon name="warning" /></span>
     </button>
 
     <template v-if="isOpen(node.path)">
@@ -170,8 +162,8 @@ function onFolderDrop(ev: DragEvent): void {
         :data-file-id="file.id"
         draggable="true"
         :class="[
-          'group flex items-center gap-1 px-2 py-1 hover:bg-base-200 rounded cursor-pointer',
-          activeFileId === file.id ? 'bg-base-200 font-semibold' : '',
+          'tree-row group flex items-center gap-1 px-2 py-1 rounded cursor-pointer',
+          activeFileId === file.id ? 'tree-row-active' : '',
         ]"
         :style="{ paddingLeft: `${(depth + 1) * 12 + 4}px` }"
         @dragstart="(ev: DragEvent) => onFileDragStart(ev, file.id)"
@@ -181,7 +173,7 @@ function onFolderDrop(ev: DragEvent): void {
           class="flex-1 text-left flex items-center gap-1 min-w-0"
           @click="emit('open-file', file.id)"
         >
-          <span class="opacity-50 w-6 text-xs font-mono">{{ fileIcon(file.name) }}</span>
+          <DocumentIcon :path="file.name" />
           <span
             v-if="file.color"
             class="size-2 rounded-full flex-shrink-0"
@@ -189,14 +181,16 @@ function onFolderDrop(ev: DragEvent): void {
             :aria-label="`color ${file.color}`"
           />
           <span class="truncate">{{ file.name }}</span>
-          <span v-if="file.dirty" class="opacity-50 text-xs">●</span>
+          <span v-if="file.dirty" class="tree-dirty" :title="$t('cortex.shell.unsaved')" />
         </button>
-        <button
-          type="button"
-          class="opacity-0 group-hover:opacity-60 hover:opacity-100 px-1 text-xs"
-          :title="$t('cortex.tree.delete')"
+        <VIconButton
+          icon="delete"
+          size="sm"
+          danger
+          class="opacity-0 group-hover:opacity-100"
+          :label="$t('cortex.tree.delete')"
           @click.stop="emit('delete-file', file.id)"
-        >✕</button>
+        />
       </div>
 
       <!--
@@ -235,3 +229,12 @@ function onFolderDrop(ev: DragEvent): void {
     </template>
   </div>
 </template>
+
+<style scoped>
+/* corporate-design §7.3 — tree rows on tokens. */
+.tree-row:hover { background: var(--v-fill); }
+.tree-row-active { background: var(--v-selection); color: var(--v-accent-text); font-weight: 500; }
+.tree-chevron, .tree-icon { color: var(--v-label-tertiary); }
+.tree-error { color: var(--v-danger); display: inline-flex; }
+.tree-dirty { display: inline-block; width: 6px; height: 6px; border-radius: 3px; background: var(--v-label-tertiary); }
+</style>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { CortexDocument } from '../types';
+import { VIconButton } from '@/components';
 
 interface Props {
   tabs: CortexDocument[];
@@ -34,16 +35,20 @@ function basename(path: string): string {
       @click="emit('select', tab.id)"
     >
       <span class="truncate max-w-xs">{{ basename(tab.path) }}</span>
-      <span v-if="tab.dirty" class="opacity-60 text-xs">●</span>
-      <button
-        type="button"
-        class="opacity-40 group-hover:opacity-100 hover:text-error px-1"
-        :title="$t('cortex.tabs.close')"
+      <span v-if="tab.dirty" class="tab-dirty" :title="$t('cortex.shell.unsaved')" />
+      <VIconButton
+        icon="close"
+        size="sm"
+        :label="$t('cortex.tabs.close')"
         @click.stop="emit('close', tab.id)"
-      >✕</button>
+      />
     </div>
     <div v-if="tabs.length === 0" class="px-3 py-1.5 text-sm opacity-50">
-      No documents open — pick one from the tree, or create a new file.
+      {{ $t('cortex.tabs.empty') }}
     </div>
   </div>
 </template>
+
+<style scoped>
+.tab-dirty { display: inline-block; width: 6px; height: 6px; border-radius: 3px; background: var(--v-label-tertiary); }
+</style>

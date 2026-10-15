@@ -248,15 +248,15 @@ async function confirmDecrypt(): Promise<void> {
             />
           </div>
           <template v-if="!generated">
-            <VButton size="sm" outline @click="onGenerate">
-              ✨ {{ $t('cortex.age.transform.generate') }}
+            <VButton variant="secondary" size="sm" icon="key" @click="onGenerate">
+              {{ $t('cortex.age.transform.generate') }}
             </VButton>
           </template>
           <template v-else>
             <VAlert variant="warning">{{ $t('cortex.age.transform.generatedWarning') }}</VAlert>
             <pre class="overflow-x-auto rounded border border-base-300 p-2 font-mono text-xs whitespace-pre-wrap">{{ generated.identity }}</pre>
-            <VButton size="sm" @click="downloadKeyFile">
-              ⬇ {{ $t('cortex.age.transform.downloadKey') }}
+            <VButton size="sm" icon="download" @click="downloadKeyFile">
+              {{ $t('cortex.age.transform.downloadKey') }}
             </VButton>
           </template>
         </template>

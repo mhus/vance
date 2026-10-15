@@ -12,6 +12,7 @@
 import { computed } from 'vue';
 import type { ScriptDeepWarning } from '@vance/generated';
 import type { CortexDocument } from '../types';
+import { VIconButton } from '@/components';
 import type { ScriptValidation } from '../composables/useScriptValidation';
 
 interface Props {
@@ -52,12 +53,7 @@ function severityClass(severity: string | null | undefined): string {
       <span v-if="validation.quickBusy.value" class="text-info">{{ $t('cortex.validate.quickRunning') }}</span>
       <span v-if="validation.deepBusy.value" class="text-info">{{ $t('cortex.validate.deepRunning') }}</span>
       <span class="flex-1" />
-      <button
-        type="button"
-        class="opacity-60 hover:opacity-100 hover:bg-base-300 rounded px-1"
-        :title="$t('cortex.validate.close')"
-        @click="validation.close()"
-      >✕</button>
+      <VIconButton icon="close" size="sm" :label="$t('cortex.validate.close')" @click="validation.close()" />
     </div>
 
     <div class="flex-1 min-h-0 overflow-y-auto p-2 text-sm space-y-3">

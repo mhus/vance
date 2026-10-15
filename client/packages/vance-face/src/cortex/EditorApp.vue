@@ -28,6 +28,8 @@ import {
   VButton,
   VDropdown,
   VEmptyState,
+  VIcon,
+  VIconButton,
   ShareModal,
 } from '@/components';
 import { brainFetch } from '@vance/shared';
@@ -1912,7 +1914,7 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
                  text-info font-medium select-none animate-pulse"
           :title="$t('documents.agentEditing.tooltip')"
         >
-          <span aria-hidden="true">✎</span>
+          <VIcon name="edit" />
           {{ $t('documents.agentEditing.label') }}
         </span>
       </transition>
@@ -1924,40 +1926,28 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
                  text-base-content/70 font-medium select-none"
           :title="$t('documents.recentEditor.tooltip', { name: activeRecentEditor.displayName })"
         >
-          <span aria-hidden="true" class="text-success">⏺</span>
+          <span class="cortex-dot cortex-dot-live" aria-hidden="true" />
           {{ activeRecentEditor.displayName }}
         </span>
       </transition>
 
       <div
         v-if="activePendingChange && activeTab?.path"
-        class="mr-3 inline-flex items-center gap-2 rounded-md
-               border border-warning/40 bg-warning/15 px-2 py-1
-               text-xs font-medium text-warning-content"
+        class="cortex-pending mr-3"
         :title="activePendingChange === 'deleted'
                 ? $t('documents.externallyChanged.deletedTooltip')
                 : $t('documents.externallyChanged.upsertedTooltip')"
       >
-        <span aria-hidden="true">●</span>
+        <VIcon name="warning" class="cortex-warning-icon" />
         <span>{{ activePendingChange === 'deleted'
                  ? $t('documents.externallyChanged.deleted')
                  : $t('documents.externallyChanged.upserted') }}</span>
-        <button
-          type="button"
-          class="rounded border border-warning/50 px-1.5 py-0.5
-                 hover:bg-warning/30"
-          @click="keepLocalForActive()"
-        >
+        <VButton variant="secondary" size="xs" @click="keepLocalForActive()">
           {{ $t('documents.externallyChanged.keepLocal') }}
-        </button>
-        <button
-          type="button"
-          class="rounded border border-warning/50 px-1.5 py-0.5
-                 hover:bg-warning/30"
-          @click="acceptRemoteForActive()"
-        >
+        </VButton>
+        <VButton variant="secondary" size="xs" @click="acceptRemoteForActive()">
           {{ $t('documents.externallyChanged.acceptRemote') }}
-        </button>
+        </VButton>
       </div>
       <DocumentPresenceStrip
         v-if="activeTab?.path"
@@ -1967,27 +1957,13 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
       <!-- Two ways out, not one: Documents is always reachable, the chat
            only exists in session mode. Icon-only with the label in the
            tooltip — the topbar spends its width on the breadcrumb. -->
-      <VButton
-        size="xs"
-        variant="ghost"
-        class="px-1.5"
-        :title="$t('cortex.backToDocuments')"
-        :aria-label="$t('cortex.backToDocuments')"
-        @click="backToDocuments"
-      >
-        <span aria-hidden="true">📄</span>
-      </VButton>
-      <VButton
+      <VIconButton icon="folder" :label="$t('cortex.backToDocuments')" @click="backToDocuments" />
+      <VIconButton
         v-if="hasSession"
-        size="xs"
-        variant="ghost"
-        class="px-1.5"
-        :title="$t('cortex.backToChat')"
-        :aria-label="$t('cortex.backToChat')"
+        icon="chat"
+        :label="$t('cortex.backToChat')"
         @click="backToChat"
-      >
-        <span aria-hidden="true">💬</span>
-      </VButton>
+      />
     </template>
 
     <template #sidebar>
@@ -2086,13 +2062,13 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
           <template #trigger>{{ $t('cortex.menu.view') }}</template>
             <li>
               <a @click="closeMenus(); autoTarget = !autoTarget">
-                <span class="w-4 text-center">{{ autoTarget ? '✓' : '' }}</span>
+                <span class="w-4 inline-flex justify-center"><VIcon v-if="autoTarget" name="check" /></span>
                 <span class="flex-1">{{ $t('cortex.menu.autoReveal') }}</span>
               </a>
             </li>
             <li>
               <a @click="closeMenus(); suggestionsEnabled = !suggestionsEnabled">
-                <span class="w-4 text-center">{{ suggestionsEnabled ? '✓' : '' }}</span>
+                <span class="w-4 inline-flex justify-center"><VIcon v-if="suggestionsEnabled" name="check" /></span>
                 <span class="flex-1">{{ $t('cortex.menu.autoComplete') }}</span>
               </a>
             </li>
@@ -2125,13 +2101,13 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
                  tile. A hidden entry keeps a filled star on purpose. -->
             <li :class="{ disabled: !activeTab }">
               <a @click="closeMenus(); toggleStar()">
-                <span class="w-4 text-center">{{ activeIsStarred ? '★' : '☆' }}</span>
+                <span class="w-4 inline-flex justify-center"><VIcon name="star" :fill="activeIsStarred ? 'currentColor' : 'none'" /></span>
                 <span class="flex-1">{{ $t('starred.menuToggle') }}</span>
               </a>
             </li>
             <li :class="{ disabled: !activeTab || !activeIsStarred }">
               <a @click="closeMenus(); toggleOnStartPage()">
-                <span class="w-4 text-center">{{ activeOnStartPage ? '✓' : '' }}</span>
+                <span class="w-4 inline-flex justify-center"><VIcon v-if="activeOnStartPage" name="check" /></span>
                 <span class="flex-1">{{ $t('starred.menuOnStartPage') }}</span>
               </a>
             </li>
@@ -2141,13 +2117,13 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
                  body (planning/age-encryption.md §5.4). -->
             <li :class="{ disabled: !canEncryptActive }">
               <a @click="closeMenus(); openAgeTransform('encrypt')">
-                <span class="w-4 text-center" aria-hidden="true">🔐</span>
+                <span class="w-4 inline-flex justify-center"><VIcon name="lock" /></span>
                 <span class="flex-1">{{ $t('cortex.menu.ageEncrypt') }}</span>
               </a>
             </li>
             <li :class="{ disabled: !canDecryptActive }">
               <a @click="closeMenus(); openAgeTransform('decrypt')">
-                <span class="w-4 text-center" aria-hidden="true">🔓</span>
+                <span class="w-4 inline-flex justify-center"><VIcon name="unlock" /></span>
                 <span class="flex-1">{{ $t('cortex.menu.ageDecrypt') }}</span>
               </a>
             </li>
@@ -2185,19 +2161,19 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
           <template #trigger>{{ $t('cortex.menu.chat') }}</template>
             <li>
               <a @click="closeMenus(); onBindModeAuto()">
-                <span class="w-4 text-center">{{ chatBindMode === 'auto' ? '✓' : '' }}</span>
+                <span class="w-4 inline-flex justify-center"><VIcon v-if="chatBindMode === 'auto'" name="check" /></span>
                 <span class="flex-1">{{ $t('cortex.menu.autoFollow') }}</span>
               </a>
             </li>
             <li :class="{ disabled: !activeTab }">
               <a @click="closeMenus(); onPinActiveTab()">
-                <span class="w-4 text-center">{{ chatBindMode === 'pinned' ? '✓' : '' }}</span>
+                <span class="w-4 inline-flex justify-center"><VIcon v-if="chatBindMode === 'pinned'" name="check" /></span>
                 <span class="flex-1">{{ $t('cortex.menu.pinToTab') }}</span>
               </a>
             </li>
             <li :class="{ disabled: chatBindMode === 'off' }">
               <a @click="closeMenus(); onUnbindChat()">
-                <span class="w-4 text-center">{{ chatBindMode === 'off' ? '✓' : '' }}</span>
+                <span class="w-4 inline-flex justify-center"><VIcon v-if="chatBindMode === 'off'" name="check" /></span>
                 <span class="flex-1">{{ $t('cortex.menu.unbindChat') }}</span>
               </a>
             </li>
@@ -2219,7 +2195,7 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
               : (isActiveTabBound ? 'text-primary bg-primary/10' : 'opacity-70')"
             :title="bindIconTooltip"
           >
-            <span aria-hidden="true">🔗</span>
+            <VIcon name="link" />
             <span>{{ bindStatusLabel }}</span>
           </span>
         </template>
@@ -2341,6 +2317,21 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
 </template>
 
 <style>
+/* corporate-design §3.3 — status as dot or tinted surface, not loud fills. */
+.cortex-dot { display: inline-block; width: 8px; height: 8px; border-radius: 4px; }
+.cortex-dot-live { background: var(--v-success); }
+.cortex-pending {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px 2px 8px;
+  border-radius: var(--v-radius-control);
+  background: color-mix(in srgb, var(--v-warning) 12%, transparent);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--v-label);
+}
+.cortex-warning-icon { color: var(--v-warning); }
 .recent-editor-fade-enter-active,
 .recent-editor-fade-leave-active {
   transition: opacity 0.6s ease-in-out;

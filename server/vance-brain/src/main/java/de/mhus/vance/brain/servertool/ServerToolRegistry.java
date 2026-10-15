@@ -23,7 +23,7 @@ import org.springframework.stereotype.Service;
  * activation, refreshed by the admin controller after write/delete.
  *
  * <p>The registry talks only to {@link ServerToolLoader} (cascade-merged
- * configs across project → _vance → classpath) and to
+ * configs across project → _tenant → classpath) and to
  * {@link ToolFactoryRegistry} (factory lookup). Built-in bean tools are
  * intentionally not handled here — the consuming {@code ServerToolService}
  * decides when to fall back to them.

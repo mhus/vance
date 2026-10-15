@@ -63,7 +63,7 @@ public class ThinkProcessDocument {
      * the session at spawn time so engines don't need a session lookup
      * to drive project-aware settings cascades. Empty string means
      * "unknown project" — the cascade then falls through to
-     * {@code _vance} only.
+     * {@code _tenant} only.
      */
     private String projectId = "";
 

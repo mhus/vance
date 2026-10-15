@@ -19,7 +19,7 @@ import org.springframework.stereotype.Component;
  * List the regular projects in the caller's tenant that the caller may READ —
  * the entry point for cross-project work ("look into project X"). An optional
  * {@code query} filters by name/title substring; without it every readable
- * regular project is returned. SYSTEM projects ({@code _vance}, {@code _user_*})
+ * regular project is returned. SYSTEM projects ({@code _tenant}, {@code _user_*})
  * are never listed.
  */
 @Component

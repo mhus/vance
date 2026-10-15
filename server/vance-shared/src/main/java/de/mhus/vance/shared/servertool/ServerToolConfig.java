@@ -17,7 +17,7 @@ import org.jspecify.annotations.Nullable;
  * implementations don't need to change in this refactor.
  *
  * <p>{@code source} records which cascade tier produced the entry
- * (project, _vance, or classpath resource). {@code documentId} carries
+ * (project, _tenant, or classpath resource). {@code documentId} carries
  * the owning {@code DocumentDocument} id — useful as a stable cache
  * key for pack-materialization and for the admin REST surface to round-
  * trip without re-reading.

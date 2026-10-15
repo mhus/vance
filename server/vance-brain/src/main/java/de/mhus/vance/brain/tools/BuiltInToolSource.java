@@ -1,8 +1,7 @@
 package de.mhus.vance.brain.tools;
 
-import de.mhus.vance.toolpack.Tool;
-
 import de.mhus.vance.brain.servertool.ServerToolService;
+import de.mhus.vance.toolpack.Tool;
 import jakarta.annotation.PostConstruct;
 import java.util.List;
 import java.util.Map;
@@ -18,11 +17,11 @@ import org.springframework.stereotype.Component;
  * server tools.
  *
  * <p>This class is intentionally <b>not</b> a {@link ToolSource} — the
- * configured cascade ({@code project → _vance → built-in}) is owned by
+ * configured cascade ({@code project → _tenant → built-in}) is owned by
  * {@code ServerToolService} and surfaced to the dispatcher through
  * {@code ConfiguredToolSource}. Exposing built-ins as a separate
  * dispatcher source would bypass the cascade's disable semantics
- * ({@code ServerToolDocument#enabled=false} in {@code _vance}/project
+ * ({@code ServerToolDocument#enabled=false} in {@code _tenant}/project
  * has to be able to suppress a built-in tool).
  *
  * <p>Duplicate tool names across beans fail fast at construction.
@@ -36,20 +35,20 @@ public class BuiltInToolSource implements ServerToolService.BuiltInProvider {
     private final ServerToolService serverToolService;
 
     public BuiltInToolSource(List<Tool> beans, ServerToolService serverToolService) {
-        Map<String, List<Tool>> grouped = beans.stream()
-                .collect(Collectors.groupingBy(Tool::name));
+        Map<String, List<Tool>> grouped = beans.stream().collect(Collectors.groupingBy(Tool::name));
         grouped.forEach((name, dupes) -> {
             if (dupes.size() > 1) {
-                throw new IllegalStateException(
-                        "Duplicate server tool name '" + name + "': "
-                                + dupes.stream().map(t -> t.getClass().getName()).toList());
+                throw new IllegalStateException("Duplicate server tool name '" + name + "': "
+                        + dupes.stream().map(t -> t.getClass().getName()).toList());
             }
         });
         this.tools = List.copyOf(beans);
         this.byName = beans.stream().collect(Collectors.toUnmodifiableMap(Tool::name, t -> t));
         this.serverToolService = serverToolService;
-        log.info("BuiltInToolSource registered {} tools: {}",
-                tools.size(), tools.stream().map(Tool::name).toList());
+        log.info(
+                "BuiltInToolSource registered {} tools: {}",
+                tools.size(),
+                tools.stream().map(Tool::name).toList());
     }
 
     @PostConstruct

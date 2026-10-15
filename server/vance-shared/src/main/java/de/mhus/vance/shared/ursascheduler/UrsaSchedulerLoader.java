@@ -69,7 +69,7 @@ public class UrsaSchedulerLoader {
     private final DocumentService documentService;
 
     /**
-     * Resolve a single scheduler by name in the project/_vance cascade.
+     * Resolve a single scheduler by name in the project/_tenant cascade.
      * Returns empty if no tier carries it.
      */
     public Optional<ResolvedUrsaScheduler> load(String tenantId, @Nullable String projectId, String name) {

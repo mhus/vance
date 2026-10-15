@@ -31,7 +31,7 @@ engine: wowbagger
 webTheme: wowbagger
 params:
   model: default:ford,default:analyze
-  # Agent prompt lives in the document cascade: project → _vance →
+  # Agent prompt lives in the document cascade: project → _tenant →
   # classpath (vance-defaults/_vance/prompts/). The engine injects a
   # live status block (structure, run state, threads, failures) into
   # every turn — the agent always knows where the run stands.

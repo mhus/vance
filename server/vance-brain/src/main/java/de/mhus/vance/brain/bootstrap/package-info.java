@@ -3,7 +3,7 @@
  * de.mhus.vance.brain.bootstrap.BootstrapBrainService} is the
  * {@code @PostConstruct}-driven entry point: ensures the demo Acme
  * tenant + its users / project groups / projects / seeded documents
- * exist, then provisions the tenant-wide {@code _vance} system project
+ * exist, then provisions the tenant-wide {@code _tenant} system project
  * and triggers {@link
  * de.mhus.vance.brain.bootstrap.InitSettingsLoader} to import LLM keys
  * and provider defaults from {@code confidential/init-settings.yaml}.

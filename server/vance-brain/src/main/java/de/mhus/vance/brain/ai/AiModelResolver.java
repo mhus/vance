@@ -149,7 +149,7 @@ public class AiModelResolver {
      *
      * <p>{@code projectId}/{@code processId} drive the project cascade
      * for alias and default lookups; pass {@code null} to read from
-     * {@code _vance} only.
+     * {@code _tenant} only.
      */
     public Resolved resolve(String input, String tenantId, @Nullable String projectId, @Nullable String processId) {
         if (input == null || input.isBlank()) {

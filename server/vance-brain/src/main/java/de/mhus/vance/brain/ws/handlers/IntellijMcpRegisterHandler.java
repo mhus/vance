@@ -26,7 +26,7 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Handles {@link MessageType#INTELLIJ_MCP_REGISTER}: foot announces a
  * JetBrains-MCP HTTP endpoint, the brain upserts a {@code mcp_server}
- * {@code ServerToolDocument} in the tenant's {@code _vance} system project
+ * {@code ServerToolDocument} in the tenant's {@code _tenant} system project
  * so the IntelliJ tools become available to every project in the tenant.
  *
  * <p>Idempotent — same URL re-registers as a no-op, different URL updates
@@ -58,16 +58,13 @@ public class IntellijMcpRegisterHandler implements WsHandler {
     }
 
     @Override
-    public void handle(
-            ConnectionContext ctx, WebSocketSession wsSession, WebSocketEnvelope envelope)
+    public void handle(ConnectionContext ctx, WebSocketSession wsSession, WebSocketEnvelope envelope)
             throws IOException {
         IntellijMcpRegisterRequest request;
         try {
-            request = objectMapper.convertValue(
-                    envelope.getData(), IntellijMcpRegisterRequest.class);
+            request = objectMapper.convertValue(envelope.getData(), IntellijMcpRegisterRequest.class);
         } catch (RuntimeException e) {
-            sender.sendError(wsSession, envelope, 400,
-                    "Invalid intellij-mcp-register payload: " + e.getMessage());
+            sender.sendError(wsSession, envelope, 400, "Invalid intellij-mcp-register payload: " + e.getMessage());
             return;
         }
         if (request == null || request.getUrl() == null || request.getUrl().isBlank()) {
@@ -87,14 +84,12 @@ public class IntellijMcpRegisterHandler implements WsHandler {
         parameters.put("transport", "http");
         parameters.put("url", url);
 
-        Optional<ServerToolDocument> existing =
-                serverToolService.findDocument(tenantId, projectId, TOOL_NAME);
+        Optional<ServerToolDocument> existing = serverToolService.findDocument(tenantId, projectId, TOOL_NAME);
         if (existing.isPresent()) {
             ServerToolDocument current = existing.get();
             String currentUrl = currentUrlOf(current);
             if (url.equals(currentUrl)) {
-                log.debug("intellij-mcp-register: tenant='{}' url='{}' — already registered, no-op",
-                        tenantId, url);
+                log.debug("intellij-mcp-register: tenant='{}' url='{}' — already registered, no-op", tenantId, url);
             } else {
                 ServerToolDocument updated = ServerToolDocument.builder()
                         .name(TOOL_NAME)
@@ -106,8 +101,7 @@ public class IntellijMcpRegisterHandler implements WsHandler {
                         .primary(true)
                         .build();
                 serverToolService.update(tenantId, projectId, TOOL_NAME, updated);
-                log.info("intellij-mcp-register: tenant='{}' url updated '{}' → '{}'",
-                        tenantId, currentUrl, url);
+                log.info("intellij-mcp-register: tenant='{}' url updated '{}' → '{}'", tenantId, currentUrl, url);
             }
         } else {
             ServerToolDocument doc = ServerToolDocument.builder()
@@ -120,8 +114,7 @@ public class IntellijMcpRegisterHandler implements WsHandler {
                     .primary(true)
                     .build();
             serverToolService.create(tenantId, projectId, doc);
-            log.info("intellij-mcp-register: tenant='{}' created '{}' → '{}'",
-                    tenantId, TOOL_NAME, url);
+            log.info("intellij-mcp-register: tenant='{}' created '{}' → '{}'", tenantId, TOOL_NAME, url);
         }
 
         sender.sendReply(wsSession, envelope, MessageType.INTELLIJ_MCP_REGISTER, null);

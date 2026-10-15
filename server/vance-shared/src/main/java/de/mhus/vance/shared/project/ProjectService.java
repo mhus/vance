@@ -488,7 +488,7 @@ public class ProjectService {
      * The service that owns the whole move calls this last, after the handlers
      * have carried their references over.
      *
-     * <p>Refuses {@link ProjectKind#SYSTEM} projects: {@code _vance} and the
+     * <p>Refuses {@link ProjectKind#SYSTEM} projects: {@code _tenant} and the
      * per-user hubs are addressed by name from code and from settings, and a
      * renamed hub is a hub nobody finds.
      *
@@ -567,13 +567,13 @@ public class ProjectService {
     // project nobody can address again.
     //
     // Two separate methods rather than an `allowSystem` flag on the ordinary
-    // ones. A flag is a trapdoor that reaches `_vance` as easily as a hub; a
+    // ones. A flag is a trapdoor that reaches `_tenant` as easily as a hub; a
     // method that refuses anything not named `_user_<something>` cannot.
 
     /**
      * Whether {@code name} is a per-user hub — {@code _user_} plus at least one
      * character. The guard on both hub methods, and the reason neither can
-     * touch {@code _vance}.
+     * touch {@code _tenant}.
      */
     public static boolean isUserHub(String name) {
         return name.startsWith(HUB_PROJECT_NAME_PREFIX) && name.length() > HUB_PROJECT_NAME_PREFIX.length();

@@ -23,5 +23,5 @@ Wizard überall auftaucht (Chat-Wizard-Tab, `POST /wizards/<name>/render`).
 - Ein fehlendes `promptTemplate`, leere `fields` oder kaputtes Pebble
   lassen den Wizard **still verschwinden** — der Server meldet es
   beim Speichern.
-- Gleicher Name gewinnt von innen: `_user` vor Projekt vor `_vance`
+- Gleicher Name gewinnt von innen: `_user` vor Projekt vor `_tenant`
   vor Classpath.

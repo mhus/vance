@@ -3,7 +3,7 @@
  * de.mhus.vance.shared.servertool.ServerToolDocument} (persistence) to
  * {@link de.mhus.vance.toolpack.Tool} (runtime). The
  * {@link de.mhus.vance.brain.servertool.ServerToolService} owns the
- * cascade lookup ({@code project → _vance → built-in beans}) and the
+ * cascade lookup ({@code project → _tenant → built-in beans}) and the
  * write path; {@code ConfiguredToolSource} plugs the cascade into
  * {@link de.mhus.vance.brain.tools.ToolDispatcher}.
  *

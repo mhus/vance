@@ -24,7 +24,7 @@ import org.springframework.stereotype.Component;
  * list comes from {@code params.manualPaths} on the process — the
  * recipe author (and per-profile overrides) decides which folders are
  * unioned. Each folder is resolved through the document cascade
- * (project → {@code _vance} → classpath:vance-defaults), and the
+ * (project → {@code _tenant} → classpath:vance-defaults), and the
  * results are merged across folders with first-wins precedence in
  * recipe order.
  *

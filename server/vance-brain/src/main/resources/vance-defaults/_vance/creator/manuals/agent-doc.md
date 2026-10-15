@@ -20,7 +20,7 @@ reserved config namespace and needs ADMIN to write.
 Lookup is the usual document cascade, **first hit wins, no merge**:
 
 1. `agent.md` in the project
-2. `agent.md` in the `_vance` project (tenant-wide)
+2. `agent.md` in the `_tenant` project (tenant-wide)
 
 So a project that writes its own `agent.md` *replaces* the tenant-wide
 one rather than adding to it. If the tenant version carries rules that

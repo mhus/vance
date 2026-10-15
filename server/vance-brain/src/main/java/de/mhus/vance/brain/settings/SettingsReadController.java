@@ -23,7 +23,7 @@ import org.springframework.web.server.ResponseStatusException;
  *
  * <p>{@code GET /brain/{tenant}/settings/{project}?prefix=…} or
  * {@code ?keys=a,b}. Values come through the ordinary cascade
- * (project → {@code _vance} tenant default), so an app sees the same
+ * (project → {@code _tenant} tenant default), so an app sees the same
  * configuration the server does for its project.
  *
  * <p><b>Why this can be general where the other endpoint could not.</b> The
@@ -88,8 +88,8 @@ public class SettingsReadController {
             // Both, or neither. "Neither" would be "give me everything", which
             // is a scan; "both" has no obvious meaning and guessing one would
             // make the answer depend on which the reader believed won.
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Name either 'keys' (comma-separated) or 'prefix' — exactly one.");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Name either 'keys' (comma-separated) or 'prefix' — exactly one.");
         }
 
         if (hasPrefix) {
@@ -99,7 +99,8 @@ public class SettingsReadController {
 
         String[] wanted = keys.split(",");
         if (wanted.length > MAX_KEYS) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
                     "Too many keys (" + wanted.length + "); the maximum is " + MAX_KEYS
                             + ". Use 'prefix' for a family of keys.");
         }

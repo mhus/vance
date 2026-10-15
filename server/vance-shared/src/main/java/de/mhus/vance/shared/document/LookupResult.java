@@ -25,7 +25,7 @@ public record LookupResult(
     public enum Source {
         /** The user's project. Innermost; overrides {@link #VANCE} and {@link #RESOURCE}. */
         PROJECT,
-        /** The tenant-wide {@code _vance} system project. Overrides {@link #RESOURCE}. */
+        /** The tenant-wide {@code _tenant} system project. Overrides {@link #RESOURCE}. */
         VANCE,
         /** A classpath resource under {@code vance-defaults/}. Outermost / fallback. */
         RESOURCE

@@ -6,7 +6,7 @@
  * of folder paths from {@code params.manualPaths} on the running
  * {@code ThinkProcessDocument} and union the documents found at those
  * paths through the regular document cascade
- * (project → {@code _vance} → classpath:vance-defaults). This replaces
+ * (project → {@code _tenant} → classpath:vance-defaults). This replaces
  * the engine-specific {@code docs_*} / {@code eddie_docs_*} tool pairs:
  * one tool name, multiple sources, recipe-configured per engine and
  * per connection profile.

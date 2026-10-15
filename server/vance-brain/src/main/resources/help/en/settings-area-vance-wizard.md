@@ -2,7 +2,7 @@
 
 The wizard definitions under `_vance/wizards/` — **one file per form**
 that generates a prompt. The **only area with a user layer**: the
-cascade is `project → _user_<login> → _vance → classpath`, and the
+cascade is `project → _user_<login> → _tenant → classpath`, and the
 panel's user scope is exactly the `_user_` tier — this is where you
 build **your own** wizards without touching the tenant.
 

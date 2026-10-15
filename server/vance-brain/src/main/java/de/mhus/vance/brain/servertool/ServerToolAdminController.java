@@ -33,7 +33,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Admin REST for {@link ServerToolDocument}. CRUD is project-scoped —
- * pick the {@code _vance} system project for tenant-wide defaults,
+ * pick the {@code _tenant} system project for tenant-wide defaults,
  * any user project for a project-local override or new tool.
  *
  * <p>Built-in bean tools (the {@code Tool}-implementing Spring beans
@@ -57,9 +57,7 @@ public class ServerToolAdminController {
     // ─── Tool-type discovery ───────────────────────────────────────────────
 
     @GetMapping("/server-tool-types")
-    public List<ToolTypeDto> listTypes(
-            @PathVariable("tenant") String tenant,
-            HttpServletRequest httpRequest) {
+    public List<ToolTypeDto> listTypes(@PathVariable("tenant") String tenant, HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         List<ToolTypeDto> out = new ArrayList<>();
         for (ToolFactory factory : serverToolService.listTypes()) {
@@ -99,9 +97,10 @@ public class ServerToolAdminController {
             @PathVariable("name") String name,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.ADMIN);
-        ServerToolConfig cfg = serverToolService.findConfig(tenant, project, name)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "No server tool '" + name + "' in project '" + project + "'"));
+        ServerToolConfig cfg = serverToolService
+                .findConfig(tenant, project, name)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "No server tool '" + name + "' in project '" + project + "'"));
         return toDtoFromConfig(cfg, project);
     }
 
@@ -113,8 +112,7 @@ public class ServerToolAdminController {
             @Valid @RequestBody ServerToolWriteRequest request,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.ADMIN);
-        Optional<ServerToolDocument> existing =
-                serverToolService.findDocument(tenant, project, name);
+        Optional<ServerToolDocument> existing = serverToolService.findDocument(tenant, project, name);
         try {
             Set<String> disabledSubTools = request.getDisabledSubTools() == null
                     ? new LinkedHashSet<>()
@@ -131,12 +129,10 @@ public class ServerToolAdminController {
                         .primary(request.isPrimary())
                         .disabledSubTools(disabledSubTools)
                         .defaultDeferred(request.isDefaultDeferred())
-                        .promptHint(request.getPromptHint() == null
-                                ? "" : request.getPromptHint())
+                        .promptHint(request.getPromptHint() == null ? "" : request.getPromptHint())
                         .build();
                 saved = serverToolService.update(tenant, project, name, incoming);
-                log.info("Updated server tool tenant='{}' project='{}' name='{}'",
-                        tenant, project, name);
+                log.info("Updated server tool tenant='{}' project='{}' name='{}'", tenant, project, name);
             } else {
                 ServerToolDocument fresh = ServerToolDocument.builder()
                         .name(name)
@@ -148,12 +144,10 @@ public class ServerToolAdminController {
                         .primary(request.isPrimary())
                         .disabledSubTools(disabledSubTools)
                         .defaultDeferred(request.isDefaultDeferred())
-                        .promptHint(request.getPromptHint() == null
-                                ? "" : request.getPromptHint())
+                        .promptHint(request.getPromptHint() == null ? "" : request.getPromptHint())
                         .build();
                 saved = serverToolService.create(tenant, project, fresh);
-                log.info("Created server tool tenant='{}' project='{}' name='{}'",
-                        tenant, project, name);
+                log.info("Created server tool tenant='{}' project='{}' name='{}'", tenant, project, name);
             }
             return toDto(saved);
         } catch (IllegalArgumentException e) {
@@ -172,8 +166,7 @@ public class ServerToolAdminController {
             return ResponseEntity.notFound().build();
         }
         serverToolService.delete(tenant, project, name);
-        log.info("Deleted server tool tenant='{}' project='{}' name='{}'",
-                tenant, project, name);
+        log.info("Deleted server tool tenant='{}' project='{}' name='{}'", tenant, project, name);
         return ResponseEntity.noContent().build();
     }
 
@@ -182,9 +175,7 @@ public class ServerToolAdminController {
     private static ServerToolDto toDto(ServerToolDocument doc) {
         // Save-flow path: caller always wrote into the requesting
         // project, so the resulting DTO is project-sourced.
-        return baseBuilder(doc)
-                .source("PROJECT")
-                .build();
+        return baseBuilder(doc).source("PROJECT").build();
     }
 
     private static ServerToolDto.ServerToolDtoBuilder baseBuilder(ServerToolDocument doc) {
@@ -192,17 +183,15 @@ public class ServerToolAdminController {
                 .name(doc.getName())
                 .type(doc.getType())
                 .description(doc.getDescription())
-                .parameters(doc.getParameters() == null
-                        ? new LinkedHashMap<>()
-                        : new LinkedHashMap<>(doc.getParameters()))
-                .labels(doc.getLabels() == null
-                        ? new ArrayList<>()
-                        : new ArrayList<>(doc.getLabels()))
+                .parameters(
+                        doc.getParameters() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(doc.getParameters()))
+                .labels(doc.getLabels() == null ? new ArrayList<>() : new ArrayList<>(doc.getLabels()))
                 .enabled(doc.isEnabled())
                 .primary(doc.isPrimary())
-                .disabledSubTools(doc.getDisabledSubTools() == null
-                        ? new LinkedHashSet<>()
-                        : new LinkedHashSet<>(doc.getDisabledSubTools()))
+                .disabledSubTools(
+                        doc.getDisabledSubTools() == null
+                                ? new LinkedHashSet<>()
+                                : new LinkedHashSet<>(doc.getDisabledSubTools()))
                 .defaultDeferred(doc.isDefaultDeferred())
                 .promptHint(doc.getPromptHint() == null ? "" : doc.getPromptHint())
                 .projectId(doc.getProjectId())
@@ -229,22 +218,21 @@ public class ServerToolAdminController {
      */
     private static ServerToolDto toDtoFromConfig(ServerToolConfig cfg, String requestingProject) {
         ServerToolDocument doc = cfg.toTransientDocument("", requestingProject);
-        String source = switch (cfg.source()) {
-            case PROJECT -> "PROJECT";
-            case VANCE   -> "TENANT";
-            case RESOURCE -> "BUNDLED";
-        };
+        String source =
+                switch (cfg.source()) {
+                    case PROJECT -> "PROJECT";
+                    case VANCE -> "TENANT";
+                    case RESOURCE -> "BUNDLED";
+                };
         // Project-id reflects the actual owner — handy for the UI to
         // know whether saving would touch the current project or
         // create a new override here.
-        String ownerProject = switch (cfg.source()) {
-            case PROJECT -> requestingProject;
-            case VANCE   -> "_tenant";
-            case RESOURCE -> requestingProject;
-        };
-        return baseBuilder(doc)
-                .projectId(ownerProject)
-                .source(source)
-                .build();
+        String ownerProject =
+                switch (cfg.source()) {
+                    case PROJECT -> requestingProject;
+                    case VANCE -> "_tenant";
+                    case RESOURCE -> requestingProject;
+                };
+        return baseBuilder(doc).projectId(ownerProject).source(source).build();
     }
 }

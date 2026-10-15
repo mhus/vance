@@ -28,7 +28,7 @@ import org.yaml.snakeyaml.Yaml;
 
 /**
  * Loads and parses Setting Form YAMLs through the four-tier cascade
- * {@code project → _user_<userId> → _vance → classpath:vance-defaults/setting_forms/}.
+ * {@code project → _user_<userId> → _tenant → classpath:vance-defaults/setting_forms/}.
  *
  * <p>Pebble templates (the {@code value} entries and the
  * {@code showIf}/{@code writeIf} expressions) are compile-checked at

@@ -208,7 +208,7 @@ public final class VanceScriptApi {
 
     /**
      * Settings-cascade surface exposed as {@code vance.settings}.
-     * Cascade {@code think-process → project → _vance} (user-layer
+     * Cascade {@code think-process → project → _tenant} (user-layer
      * deliberately excluded). {@code null} when no
      * {@link SettingService} was wired — accesses via JS throw
      * the usual TypeError on null. See {@link ScriptSettingsApi}.
@@ -1932,7 +1932,7 @@ public final class VanceScriptApi {
 
     /**
      * Settings-cascade surface exposed as {@code vance.settings}.
-     * Walks the cascade {@code think-process → project → _vance}
+     * Walks the cascade {@code think-process → project → _tenant}
      * (user-layer deliberately excluded — see
      * {@link SettingService#getStringValueCascade}). All accessors
      * return the requested setting or fall back to the supplied

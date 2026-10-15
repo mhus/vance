@@ -8,7 +8,7 @@ icon: link
 category: integrations
 defaultScope: project
 # Verfügbar in normalen Projekten und im Tenant-Default-Project
-# (_vance / _tenant), damit Operators die Office-Anbindung
+# (_tenant), damit Operators die Office-Anbindung
 # tenant-weit setzen können. User-Home-Spaces (_user_*) bekommen
 # das Formular nicht — dort macht Office-Edit konzeptionell
 # keinen Sinn (private Single-User-Sandbox).

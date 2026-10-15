@@ -13,7 +13,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * Resolves an engine's "default" system prompt through the document
- * cascade (project → {@code _vance} → {@code classpath:vance-defaults/<path>})
+ * cascade (project → {@code _tenant} → {@code classpath:vance-defaults/<path>})
  * so tenants and users can override hardcoded prompts without touching
  * source. The returned text is a Pebble template — the caller renders
  * it with the per-turn context via
@@ -43,23 +43,24 @@ public class EnginePromptResolver {
     /**
      * @param process       the running think-process — its tenant and
      *                      project drive the cascade
-     * @param promptPath    document path relative to project / _vance /
+     * @param promptPath    document path relative to project / _tenant /
      *                      classpath, e.g. {@code prompts/eddie-prompt.md}.
      *                      {@code null} or blank skips the lookup
      *                      (returns {@code javaFallback} immediately).
      * @param javaFallback  hardcoded prompt to return when neither the
      *                      cascade nor the classpath carry the file
      */
-    public String resolve(
-            ThinkProcessDocument process,
-            @Nullable String promptPath,
-            String javaFallback) {
-        if (promptPath == null || promptPath.isBlank() || process == null
-                || process.getTenantId() == null || process.getTenantId().isBlank()) {
+    public String resolve(ThinkProcessDocument process, @Nullable String promptPath, String javaFallback) {
+        if (promptPath == null
+                || promptPath.isBlank()
+                || process == null
+                || process.getTenantId() == null
+                || process.getTenantId().isBlank()) {
             return javaFallback;
         }
         @Nullable String projectId = resolveProjectId(process);
-        return documentService.lookupCascade(process.getTenantId(), projectId, promptPath)
+        return documentService
+                .lookupCascade(process.getTenantId(), projectId, promptPath)
                 .map(LookupResult::content)
                 .filter(s -> s != null && !s.isBlank())
                 .orElse(javaFallback);
@@ -76,20 +77,19 @@ public class EnginePromptResolver {
      * </ol>
      */
     public String resolveForMode(
-            ThinkProcessDocument process,
-            String basePath,
-            @Nullable ProcessMode mode,
-            String javaFallback) {
-        if (basePath == null || basePath.isBlank() || process == null
-                || process.getTenantId() == null || process.getTenantId().isBlank()) {
+            ThinkProcessDocument process, String basePath, @Nullable ProcessMode mode, String javaFallback) {
+        if (basePath == null
+                || basePath.isBlank()
+                || process == null
+                || process.getTenantId() == null
+                || process.getTenantId().isBlank()) {
             return javaFallback;
         }
         @Nullable String projectId = resolveProjectId(process);
         if (mode != null && mode != ProcessMode.NORMAL) {
             String modePath = modeVariantPath(basePath, mode);
             if (modePath != null && !modePath.equals(basePath)) {
-                @Nullable String hit = lookup(
-                        process.getTenantId(), projectId, modePath);
+                @Nullable String hit = lookup(process.getTenantId(), projectId, modePath);
                 if (hit != null) return hit;
             }
         }
@@ -98,7 +98,8 @@ public class EnginePromptResolver {
     }
 
     private @Nullable String lookup(String tenantId, @Nullable String projectId, String path) {
-        return documentService.lookupCascade(tenantId, projectId, path)
+        return documentService
+                .lookupCascade(tenantId, projectId, path)
                 .map(LookupResult::content)
                 .filter(s -> s != null && !s.isBlank())
                 .orElse(null);
@@ -111,15 +112,12 @@ public class EnginePromptResolver {
      * a fresh process). Skips the project layer of the cascade.
      */
     public String resolveForTenant(
-            String tenantId,
-            @Nullable String projectId,
-            @Nullable String promptPath,
-            String javaFallback) {
-        if (promptPath == null || promptPath.isBlank()
-                || tenantId == null || tenantId.isBlank()) {
+            String tenantId, @Nullable String projectId, @Nullable String promptPath, String javaFallback) {
+        if (promptPath == null || promptPath.isBlank() || tenantId == null || tenantId.isBlank()) {
             return javaFallback;
         }
-        return documentService.lookupCascade(tenantId, projectId, promptPath)
+        return documentService
+                .lookupCascade(tenantId, projectId, promptPath)
                 .map(LookupResult::content)
                 .filter(s -> s != null && !s.isBlank())
                 .orElse(javaFallback);
@@ -134,17 +132,17 @@ public class EnginePromptResolver {
      *
      * <p>See {@code specification/plan-mode.md} §7.
      */
-    public static @Nullable String modeVariantPath(
-            @Nullable String basePath, @Nullable ProcessMode mode) {
+    public static @Nullable String modeVariantPath(@Nullable String basePath, @Nullable ProcessMode mode) {
         if (basePath == null || mode == null || mode == ProcessMode.NORMAL) {
             return basePath;
         }
-        String suffix = switch (mode) {
-            case EXPLORING -> "-exploring";
-            case PLANNING -> "-planning";
-            case EXECUTING -> "-executing";
-            default -> "";
-        };
+        String suffix =
+                switch (mode) {
+                    case EXPLORING -> "-exploring";
+                    case PLANNING -> "-planning";
+                    case EXECUTING -> "-executing";
+                    default -> "";
+                };
         if (suffix.isEmpty()) return basePath;
         int dot = basePath.lastIndexOf('.');
         if (dot < 0) return basePath + suffix;
@@ -154,7 +152,8 @@ public class EnginePromptResolver {
     private @Nullable String resolveProjectId(ThinkProcessDocument process) {
         String sessionId = process.getSessionId();
         if (sessionId == null || sessionId.isBlank()) return null;
-        return sessionService.findBySessionId(sessionId)
+        return sessionService
+                .findBySessionId(sessionId)
                 .map(SessionDocument::getProjectId)
                 .filter(p -> p != null && !p.isBlank())
                 .orElse(null);

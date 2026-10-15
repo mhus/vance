@@ -9,7 +9,7 @@
 #   - fail-open: a malformed document is ignored with a warning.
 #
 # Cascade: <project>/_vance/config/skill_categories.yaml
-#         → _vance tenant document → this bundled default.
+#         → _tenant project document → this bundled default.
 # A tier that overrides replaces the whole document — re-declare the
 # titles you want to keep.
 categories:

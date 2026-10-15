@@ -44,7 +44,7 @@ public class ForeignAccessSupport {
     /**
      * Resolve an explicitly-named project in the caller's tenant and enforce
      * {@code action} on it. Rejects a blank name, an unknown project, and any
-     * SYSTEM project ({@code _vance}, {@code _tenant}, {@code _user_*}) — the
+     * SYSTEM project ({@code _tenant}, {@code _user_*}) — the
      * foreign tools work on regular projects only; system namespaces are
      * reachable through the normal document cascade, not here.
      */
@@ -52,9 +52,10 @@ public class ForeignAccessSupport {
         if (projectId == null || projectId.isBlank()) {
             throw new ToolException("Missing required parameter 'projectId'");
         }
-        ProjectDocument project = projectService.findByTenantAndName(ctx.tenantId(), projectId)
-                .orElseThrow(() -> new ToolException(
-                        "Project '" + projectId + "' not found in tenant '" + ctx.tenantId() + "'"));
+        ProjectDocument project = projectService
+                .findByTenantAndName(ctx.tenantId(), projectId)
+                .orElseThrow(() ->
+                        new ToolException("Project '" + projectId + "' not found in tenant '" + ctx.tenantId() + "'"));
         if (project.getKind() == ProjectKind.SYSTEM) {
             throw new ToolException("Project '" + projectId + "' is a SYSTEM project; "
                     + "foreign_* tools operate on regular projects only");
@@ -77,13 +78,13 @@ public class ForeignAccessSupport {
      * write.
      */
     public ProjectDocument resolveTarget(@Nullable String toProjectId, ToolInvocationContext ctx) {
-        String name = (toProjectId != null && !toProjectId.isBlank())
-                ? toProjectId.trim() : ctx.projectId();
+        String name = (toProjectId != null && !toProjectId.isBlank()) ? toProjectId.trim() : ctx.projectId();
         if (name == null || name.isBlank()) {
-            throw new ToolException("No target project: not running inside a project scope — "
-                    + "pass toProjectId explicitly");
+            throw new ToolException(
+                    "No target project: not running inside a project scope — " + "pass toProjectId explicitly");
         }
-        ProjectDocument target = projectService.findByTenantAndName(ctx.tenantId(), name)
+        ProjectDocument target = projectService
+                .findByTenantAndName(ctx.tenantId(), name)
                 .orElseThrow(() -> new ToolException(
                         "Target project '" + name + "' not found in tenant '" + ctx.tenantId() + "'"));
         if (target.getKind() == ProjectKind.SYSTEM) {

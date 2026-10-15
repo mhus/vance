@@ -43,7 +43,7 @@ innermost wins (same cascade as recipes, manuals, templates):
 | Layer | Path | Use case |
 |---|---|---|
 | **Bundled** (read-only) | `vance-defaults/_vance/chat-themes/<name>.css` (on the classpath) | Ships with Vance. Only `default.css`, kept rule-free. You cannot edit it — override it. |
-| **Tenant-wide** | `_vance/chat-themes/<name>.css` in the `_vance` tenant | Operator-managed theme for the whole tenant. |
+| **Tenant-wide** | `_vance/chat-themes/<name>.css` in the `_tenant` project | Operator-managed theme for the whole tenant. |
 | **Project** | `_vance/chat-themes/<name>.css` in the current project | Per-project theme — beats tenant-wide and bundled. |
 
 The name is the file name without `.css`, lower-case letters, digits
@@ -87,7 +87,7 @@ fallback converges on it. A recipe without `webTheme:`, an invalid
 name, or a name no layer provides — all serve `_vance/chat-themes/default.css`.
 
 The bundled `default.css` has **no rules** (the chat keeps its own
-design). Shipping your own `default.css` in the `_vance` tenant or a
+design). Shipping your own `default.css` in the `_tenant` project or a
 project therefore restyles *every* chat of that scope without touching
 a single recipe — that is a feature, not an accident.
 

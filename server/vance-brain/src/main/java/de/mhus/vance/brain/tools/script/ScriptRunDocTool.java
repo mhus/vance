@@ -21,7 +21,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Runs a JS script stored in the document cascade
- * ({@code project → _vance → resource}). Thin wrapper around
+ * ({@code project → _tenant → resource}). Thin wrapper around
  * {@link ScriptActionExecutor} that exposes one parameter shape
  * to the LLM and translates the result back into a tool-result map.
  *
@@ -50,7 +50,7 @@ public class ScriptRunDocTool implements Tool {
                         "description",
                         "Document path of the .js script, "
                                 + "resolved via the standard cascade "
-                                + "(project → _vance → resource)."));
+                                + "(project → _tenant → resource)."));
         properties.put(
                 "params",
                 Map.of(

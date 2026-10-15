@@ -175,7 +175,7 @@ public class PdfSearchTool implements Tool {
         if (apiKey == null || apiKey.isBlank()) {
             return errorResult("Serper API key not configured (setting '"
                     + WebSearchTool.SETTING_KEY
-                    + "' in _vance / project / think-process).");
+                    + "' in _tenant / project / think-process).");
         }
 
         List<RawResult> raw;

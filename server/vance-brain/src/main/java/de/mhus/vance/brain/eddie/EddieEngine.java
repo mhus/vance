@@ -385,7 +385,7 @@ public class EddieEngine extends StructuredActionEngine {
     // Eddie deliberately does NOT override bundledConfig() — chat
     // spawn falls through to RecipeResolver.applyDefaulting("eddie",
     // …) which loads eddie.yaml from the cascade
-    // (project → _vance → classpath:vance-defaults/recipes/). That
+    // (project → _tenant → classpath:vance-defaults/recipes/). That
     // lets a user override their personal Eddie's params (model,
     // RAG injection, manual paths, …) by dropping their own
     // recipes/eddie.yaml into their user project — same mechanism
@@ -394,7 +394,7 @@ public class EddieEngine extends StructuredActionEngine {
     //
     // The Eddie system prompt is resolved lazily at turn time via
     // engineDefaultPrompt(process) below; same cascade
-    // (project → _vance → classpath:prompts/eddie-prompt.md).
+    // (project → _tenant → classpath:prompts/eddie-prompt.md).
 
     /**
      * Resolves Eddie's system prompt through the document cascade so
@@ -2454,7 +2454,7 @@ public class EddieEngine extends StructuredActionEngine {
                 // tool-specific text on the tool being callable.
                 .withAvailableTools(engineCtx.tools().primary());
         // Fall back to the engine's cascade-resolved default prompt
-        // (project → _vance → classpath) rather than the short
+        // (project → _tenant → classpath) rather than the short
         // GREETING when the recipe didn't pin a promptOverride. The
         // recipe normally has no promptPrefix — the prompt belongs
         // in the .md cascade, not the YAML — so this path is the

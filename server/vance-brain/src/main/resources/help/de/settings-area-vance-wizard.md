@@ -2,7 +2,7 @@
 
 Die Wizard-Definitionen unter `_vance/wizards/` — **eine Datei pro
 Formular**, das einen Prompt generiert. Der **einzige Bereich mit
-User-Layer**: die Cascade ist `project → _user_<login> → _vance →
+User-Layer**: die Cascade ist `project → _user_<login> → _tenant →
 classpath`, und der User-Scope des Panels ist genau die `_user_`-Ebene
 — hier baust du **deine eigenen** Wizards, ohne den Mandanten zu
 berühren.

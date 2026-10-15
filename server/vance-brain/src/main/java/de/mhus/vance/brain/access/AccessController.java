@@ -70,12 +70,13 @@ public class AccessController {
     private final AuditService auditService;
     private final WebUiCookieService webUiCookieService;
 
-    public AccessController(JwtService jwtService,
-                            UserService userService,
-                            PasswordService passwordService,
-                            HomeBootstrapService homeBootstrapService,
-                            AuditService auditService,
-                            WebUiCookieService webUiCookieService) {
+    public AccessController(
+            JwtService jwtService,
+            UserService userService,
+            PasswordService passwordService,
+            HomeBootstrapService homeBootstrapService,
+            AuditService auditService,
+            WebUiCookieService webUiCookieService) {
         this.jwtService = jwtService;
         this.userService = userService;
         this.passwordService = passwordService;
@@ -111,8 +112,10 @@ public class AccessController {
             // 0 or 2 credentials — neither is a valid login attempt.
             // Same generic 401 as a bad password to avoid revealing
             // which field-shape the server expects.
-            log.debug("Login rejected: must supply exactly one of password/refreshToken (tenant='{}' name='{}')",
-                    tenant, username);
+            log.debug(
+                    "Login rejected: must supply exactly one of password/refreshToken (tenant='{}' name='{}')",
+                    tenant,
+                    username);
             return rejectLogin(tenant, username, "missing-credentials");
         }
 
@@ -137,8 +140,11 @@ public class AccessController {
         // expire — the JWT filter does NOT consult loginEnabled, only the
         // mint endpoints do.
         if (!user.isLoginEnabled()) {
-            log.debug("Login rejected: loginEnabled=false tenant='{}' name='{}' serviceAccount={}",
-                    tenant, username, user.isServiceAccount());
+            log.debug(
+                    "Login rejected: loginEnabled=false tenant='{}' name='{}' serviceAccount={}",
+                    tenant,
+                    username,
+                    user.isServiceAccount());
             if (hasPassword) passwordService.verifyDecoy(request.getPassword());
             return rejectLogin(tenant, username, "login-disabled");
         }
@@ -149,8 +155,11 @@ public class AccessController {
         // attack). Same decoy + uniform 401 so a locked account can't be
         // distinguished from a wrong password by timing or response.
         if (hasPassword && userService.isLocked(user)) {
-            log.debug("Login rejected: account locked tenant='{}' name='{}' until={}",
-                    tenant, username, user.getLockedUntil());
+            log.debug(
+                    "Login rejected: account locked tenant='{}' name='{}' until={}",
+                    tenant,
+                    username,
+                    user.getLockedUntil());
             passwordService.verifyDecoy(request.getPassword());
             return rejectLogin(tenant, username, "locked");
         }
@@ -174,19 +183,27 @@ public class AccessController {
             // reuse (tenant-A token presented at tenant-B URL, or
             // user-X token at user-Y URL) is rejected — every login
             // must agree on who is logging in.
-            VanceJwtClaims claims = jwtService.validateToken(request.getRefreshToken()).orElse(null);
+            VanceJwtClaims claims =
+                    jwtService.validateToken(request.getRefreshToken()).orElse(null);
             if (claims == null) {
                 log.debug("Login rejected: refresh token invalid (tenant='{}' name='{}')", tenant, username);
                 return rejectLogin(tenant, username, "refresh-token-invalid");
             }
             if (claims.tokenType() != TokenType.REFRESH) {
-                log.debug("Login rejected: presented {} token in refreshToken slot (tenant='{}' name='{}')",
-                        claims.tokenType(), tenant, username);
+                log.debug(
+                        "Login rejected: presented {} token in refreshToken slot (tenant='{}' name='{}')",
+                        claims.tokenType(),
+                        tenant,
+                        username);
                 return rejectLogin(tenant, username, "refresh-token-wrong-type");
             }
             if (!tenant.equals(claims.tenantId()) || !username.equals(claims.username())) {
-                log.debug("Login rejected: refresh token identity mismatch — path tenant='{}' user='{}', token tenant='{}' user='{}'",
-                        tenant, username, claims.tenantId(), claims.username());
+                log.debug(
+                        "Login rejected: refresh token identity mismatch — path tenant='{}' user='{}', token tenant='{}' user='{}'",
+                        tenant,
+                        username,
+                        claims.tenantId(),
+                        claims.username());
                 return rejectLogin(tenant, username, "refresh-token-identity-mismatch");
             }
         }
@@ -205,7 +222,7 @@ public class AccessController {
         // rather block the login than mint a token for a user whose
         // hub can't be opened.
         homeBootstrapService.ensureHome(tenant, username);
-        // Tenant-wide _vance system project — holds the override layer
+        // Tenant-wide _tenant system project — holds the override layer
         // for tenant-level documents/prompts/memory (resource lookup
         // logic lands in a follow-up). Idempotent and cheap.
         homeBootstrapService.ensureTenantProject(tenant);
@@ -216,20 +233,21 @@ public class AccessController {
         Instant expiresAt = Instant.now().plus(TOKEN_LIFETIME);
         String token = jwtService.createToken(tenant, username, expiresAt, TokenType.ACCESS);
 
-        AccessTokenResponse.AccessTokenResponseBuilder responseBuilder = AccessTokenResponse.builder()
-                .token(token)
-                .expiresAtTimestamp(expiresAt.toEpochMilli());
+        AccessTokenResponse.AccessTokenResponseBuilder responseBuilder =
+                AccessTokenResponse.builder().token(token).expiresAtTimestamp(expiresAt.toEpochMilli());
 
         String refreshToken = null;
         Instant refreshExpiresAt = null;
         if (request.isRequestRefreshToken()) {
             refreshExpiresAt = Instant.now().plus(REFRESH_TOKEN_LIFETIME);
             refreshToken = jwtService.createToken(tenant, username, refreshExpiresAt, TokenType.REFRESH);
-            responseBuilder
-                    .refreshToken(refreshToken)
-                    .refreshTokenExpiresAtTimestamp(refreshExpiresAt.toEpochMilli());
-            log.info("Issued JWT + refresh tenant='{}' user='{}' expiresAt={} refreshExpiresAt={}",
-                    tenant, username, expiresAt, refreshExpiresAt);
+            responseBuilder.refreshToken(refreshToken).refreshTokenExpiresAtTimestamp(refreshExpiresAt.toEpochMilli());
+            log.info(
+                    "Issued JWT + refresh tenant='{}' user='{}' expiresAt={} refreshExpiresAt={}",
+                    tenant,
+                    username,
+                    expiresAt,
+                    refreshExpiresAt);
         } else {
             log.info("Issued JWT tenant='{}' user='{}' expiresAt={}", tenant, username, expiresAt);
         }
@@ -238,9 +256,12 @@ public class AccessController {
         ResponseEntity.BodyBuilder responseEntityBuilder = ResponseEntity.ok();
         if (request.isRequestCookies()) {
             webUiCookieService.attachLoginCookies(
-                    responseEntityBuilder, user,
-                    token, expiresAt,
-                    refreshToken, refreshExpiresAt,
+                    responseEntityBuilder,
+                    user,
+                    token,
+                    expiresAt,
+                    refreshToken,
+                    refreshExpiresAt,
                     request.isIncludeWebUiSettings());
         }
         return responseEntityBuilder.body(responseBuilder.build());
@@ -259,8 +280,7 @@ public class AccessController {
      */
     @PostMapping("/brain/{tenant}/refresh")
     public ResponseEntity<RefreshTokenResponse> refreshToken(
-            @PathVariable("tenant") String tenant,
-            HttpServletRequest request) {
+            @PathVariable("tenant") String tenant, HttpServletRequest request) {
 
         String username = (String) request.getAttribute(AccessFilterBase.ATTR_USERNAME);
         if (username == null) {
@@ -274,10 +294,11 @@ public class AccessController {
         // accepts it for content/ws routes) — refreshing it would exchange it for
         // an unconfined, renewable 24h ACCESS token for the spawning user.
         Object claimsAttr = request.getAttribute(AccessFilterBase.ATTR_CLAIMS);
-        if (!(claimsAttr instanceof VanceJwtClaims claims)
-                || claims.tokenType() != TokenType.ACCESS) {
-            log.debug("Refresh rejected: only ACCESS tokens are refreshable (tenant='{}' type={})",
-                    tenant, claimsAttr instanceof VanceJwtClaims c ? c.tokenType() : "none");
+        if (!(claimsAttr instanceof VanceJwtClaims claims) || claims.tokenType() != TokenType.ACCESS) {
+            log.debug(
+                    "Refresh rejected: only ACCESS tokens are refreshable (tenant='{}' type={})",
+                    tenant,
+                    claimsAttr instanceof VanceJwtClaims c ? c.tokenType() : "none");
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
@@ -314,8 +335,7 @@ public class AccessController {
      * routes through here so the audit trail captures the reason while
      * the HTTP response stays uniform (no user-enumeration leak).
      */
-    private ResponseEntity<AccessTokenResponse> rejectLogin(
-            String tenant, String username, String reason) {
+    private ResponseEntity<AccessTokenResponse> rejectLogin(String tenant, String username, String reason) {
         auditService.authLoginFailure(tenant, username, reason);
         return unauthorized();
     }

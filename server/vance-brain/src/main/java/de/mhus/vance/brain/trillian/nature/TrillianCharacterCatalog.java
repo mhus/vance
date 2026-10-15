@@ -18,7 +18,7 @@ import org.yaml.snakeyaml.Yaml;
  * gender, and traits.
  *
  * <p>Held as a document rather than as a constant, and read through the
- * ordinary cascade — project, then {@code _vance}, then the bundled
+ * ordinary cascade — project, then {@code _tenant}, then the bundled
  * classpath copy. A tenant that wants German names, or a test project
  * that wants deliberately silly ones, replaces a file; nobody touches
  * Java. That is the same reasoning that makes recipes, prompts and
@@ -37,6 +37,7 @@ public class TrillianCharacterCatalog {
 
     /** Attribute keys. Plain words: they are rendered into a prompt. */
     public static final String ATTR_NAME = "name";
+
     public static final String ATTR_GENDER = "gender";
     public static final String ATTR_CHARACTER = "character";
 
@@ -47,9 +48,9 @@ public class TrillianCharacterCatalog {
      * that fails to start.
      */
     private static final String FALLBACK_NAME = "Ada";
+
     private static final String FALLBACK_GENDER = "female";
-    private static final String FALLBACK_TRAIT =
-            "Terse. States the result and stops; no preamble.";
+    private static final String FALLBACK_TRAIT = "Terse. States the result and stops; no preamble.";
 
     private final DocumentService documentService;
 
@@ -71,16 +72,17 @@ public class TrillianCharacterCatalog {
             attributes.put(ATTR_NAME, person.name());
             attributes.put(ATTR_GENDER, person.gender());
         }
-        attributes.put(ATTR_CHARACTER, catalog.traits().isEmpty()
-                ? FALLBACK_TRAIT
-                : catalog.traits().get(random.nextInt(catalog.traits().size())));
+        attributes.put(
+                ATTR_CHARACTER,
+                catalog.traits().isEmpty()
+                        ? FALLBACK_TRAIT
+                        : catalog.traits().get(random.nextInt(catalog.traits().size())));
         return attributes;
     }
 
     private Catalog load(String tenantId, String projectId) {
         try {
-            Optional<LookupResult> hit =
-                    documentService.lookupCascade(tenantId, projectId, PATH);
+            Optional<LookupResult> hit = documentService.lookupCascade(tenantId, projectId, PATH);
             if (hit.isEmpty()) {
                 log.warn("Trillian adam: no character catalog at {} — using fallback", PATH);
                 return Catalog.empty();
@@ -113,8 +115,7 @@ public class TrillianCharacterCatalog {
             if (name instanceof String n && !n.isBlank()) {
                 // A missing gender is left empty rather than guessed —
                 // the whole reason the column exists.
-                out.add(new Person(n.strip(),
-                        gender instanceof String g ? g.strip() : ""));
+                out.add(new Person(n.strip(), gender instanceof String g ? g.strip() : ""));
             }
         }
         return out;
@@ -133,8 +134,7 @@ public class TrillianCharacterCatalog {
         return out;
     }
 
-    private record Person(String name, String gender) {
-    }
+    private record Person(String name, String gender) {}
 
     private record Catalog(List<Person> names, List<String> traits) {
         static Catalog empty() {

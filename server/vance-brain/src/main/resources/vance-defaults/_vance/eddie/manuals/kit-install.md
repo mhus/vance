@@ -18,7 +18,7 @@ the right one via the `path` param.
 ## Prerequisite
 
 I need a **target project** — a normal user project, not a system
-project (`_vance` or `_user_<login>`). Without a `project` param I take
+project (`_tenant` or `_user_<login>`). Without a `project` param I take
 the currently active project (`project_current`).
 
 Only **one** kit may be active per project. `kit_install` fails if one

@@ -35,7 +35,7 @@ import org.springframework.stereotype.Component;
  *
  * <p><b>No second config surface.</b> The SMTP endpoint is the existing
  * {@code smtp_sender} tool pack ({@link ServerToolConfig}, cascade-resolved
- * project → {@code _vance} → classpath). Sending goes through
+ * project → {@code _tenant} → classpath). Sending goes through
  * {@link SmtpSender} rather than around it, so the pack's
  * {@code allowedFrom} / {@code allowedRecipientDomains} guards — configured
  * for the LLM tool — apply here too. An operator who fenced in
@@ -60,14 +60,11 @@ public class SmtpShareHandler implements ShareHandler {
             ServerToolService serverToolService,
             SettingsSecretResolver secretResolver,
             DocumentService documentService,
-            @Value("${vance.milliways.smtp.max-attachment-bytes:10485760}")
-            long maxAttachmentBytes) {
+            @Value("${vance.milliways.smtp.max-attachment-bytes:10485760}") long maxAttachmentBytes) {
         this.serverToolService = serverToolService;
         this.secretResolver = secretResolver;
         this.documentService = documentService;
-        this.maxAttachmentBytes = maxAttachmentBytes > 0
-                ? maxAttachmentBytes
-                : DEFAULT_MAX_ATTACHMENT_BYTES;
+        this.maxAttachmentBytes = maxAttachmentBytes > 0 ? maxAttachmentBytes : DEFAULT_MAX_ATTACHMENT_BYTES;
     }
 
     @Override
@@ -121,14 +118,12 @@ public class SmtpShareHandler implements ShareHandler {
     public ShareResult share(ShareRequest request) {
         ShareScope scope = request.scope();
         ServerToolConfig pack = pickPack(scope, request.string(FIELD_PACK));
-        List<String> recipients =
-                MailShareSupport.parseRecipients(request.string(MailShareSupport.FIELD_TO));
+        List<String> recipients = MailShareSupport.parseRecipients(request.string(MailShareSupport.FIELD_TO));
         if (recipients.isEmpty()) {
             throw new ShareException("Name at least one mail address");
         }
         String subject = request.stringOr(MailShareSupport.FIELD_SUBJECT, scope.displayTitle());
-        String body = MailShareSupport.bodyOf(
-                scope, request.stringOr(MailShareSupport.FIELD_TEXT, ""));
+        String body = MailShareSupport.bodyOf(scope, request.stringOr(MailShareSupport.FIELD_TEXT, ""));
 
         // Attaches only when there is a document. A link-only subject travels
         // in the body — nothing to attach, and nothing lost.
@@ -145,8 +140,7 @@ public class SmtpShareHandler implements ShareHandler {
             // outside meant that refusal escaped as a raw runtime exception:
             // HTTP 500 and outcome=failed, instead of the 422 carrying the one
             // sentence the operator can act on.
-            SmtpSender sender = new SmtpSender(SmtpConfig.fromParameters(
-                    resolveSecrets(pack.parameters(), scope)));
+            SmtpSender sender = new SmtpSender(SmtpConfig.fromParameters(resolveSecrets(pack.parameters(), scope)));
             sendResult = sender.send(new MailMessage(
                     recipients,
                     /*cc*/ null,
@@ -178,8 +172,11 @@ public class SmtpShareHandler implements ShareHandler {
         Object messageId = sendResult.get("messageId");
         if (messageId != null) details.put("messageId", messageId);
 
-        log.info("Milliways smtp share: {} recipient(s) via pack '{}', subject={}",
-                recipients.size(), pack.name(), scope.subject().parts());
+        log.info(
+                "Milliways smtp share: {} recipient(s) via pack '{}', subject={}",
+                recipients.size(),
+                pack.name(),
+                scope.subject().parts());
         String message = recipients.size() == 1
                 ? "Sent to " + recipients.get(0)
                 : "Sent to " + recipients.size() + " recipients";
@@ -191,8 +188,7 @@ public class SmtpShareHandler implements ShareHandler {
     /** Active {@code smtp_sender} packs in this project's cascade view. */
     private List<ServerToolConfig> packs(ShareScope scope) {
         List<ServerToolConfig> out = new ArrayList<>();
-        for (ServerToolConfig config
-                : serverToolService.listConfigs(scope.tenantId(), scope.projectId())) {
+        for (ServerToolConfig config : serverToolService.listConfigs(scope.tenantId(), scope.projectId())) {
             if (!SmtpSenderToolFactory.TYPE_ID.equals(config.type())) continue;
             if (!config.enabled()) continue;
             out.add(config);
@@ -221,14 +217,12 @@ public class SmtpShareHandler implements ShareHandler {
      * read those — see {@code specification/public/settings-system.md}.
      */
     private Map<String, Object> resolveSecrets(Map<String, Object> parameters, ShareScope scope) {
-        ToolInvocationContext ctx = new ToolInvocationContext(
-                scope.tenantId(), scope.projectId(), null, null, scope.sharer());
+        ToolInvocationContext ctx =
+                new ToolInvocationContext(scope.tenantId(), scope.projectId(), null, null, scope.sharer());
         Map<String, Object> resolved = new LinkedHashMap<>(parameters.size());
         for (Map.Entry<String, Object> e : parameters.entrySet()) {
             Object v = e.getValue();
-            resolved.put(e.getKey(), v instanceof String s
-                    ? secretResolver.resolveForConnector(s, ctx)
-                    : v);
+            resolved.put(e.getKey(), v instanceof String s ? secretResolver.resolveForConnector(s, ctx) : v);
         }
         return resolved;
     }

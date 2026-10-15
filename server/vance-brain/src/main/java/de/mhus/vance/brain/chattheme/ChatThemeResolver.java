@@ -25,7 +25,7 @@ import org.springframework.stereotype.Service;
  * <p><b>Storage & cascade.</b> A theme is one file at
  * {@code _vance/chat-themes/<name>.css}, resolved through
  * {@link DocumentService#lookupCascade(String, String, String)}
- * (project → {@code _vance} tenant → classpath), first hit wins — the
+ * (project → {@code _tenant} → classpath), first hit wins — the
  * same mechanics as recipes, manuals and report themes. No subfolders,
  * no merge between layers; overriding means replacing the file.
  *
@@ -158,7 +158,7 @@ public class ChatThemeResolver {
         if (!DEFAULT_THEME_NAME.equals(name)) {
             log.warn(
                     "Chat theme '{}' not found at '{}{}' in any cascade layer "
-                            + "(project → _vance → classpath) — falling back to the default theme.",
+                            + "(project → _tenant → classpath) — falling back to the default theme.",
                     name,
                     THEME_PATH_PREFIX,
                     name + ".css");

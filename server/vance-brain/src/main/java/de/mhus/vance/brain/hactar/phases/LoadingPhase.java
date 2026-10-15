@@ -20,7 +20,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * LOADING — fetches the script body from {@code state.scriptRef}
- * via the document cascade (project → {@code _vance} → bundled),
+ * via the document cascade (project → {@code _tenant} → bundled),
  * then runs {@code HactarService.validate(...)} for the minimal
  * Parse + Header + Tool-Allowlist gate. The latter is the
  * pre-flight check that catches bad headers and missing-tool

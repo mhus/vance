@@ -1,7 +1,7 @@
 # What a fresh Trillian of Nature-A 'adam' is made of.
 #
 # Read through the ordinary document cascade, so a tenant or a single
-# project can override it: put a file at the same path in _vance or in
+# project can override it: put a file at the same path in _tenant or in
 # the project and it wins over this one. That is the point of it being a
 # document — a tenant that wants German names, or a test project that
 # wants deliberately silly ones, changes a file instead of Java.

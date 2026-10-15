@@ -37,7 +37,7 @@ import org.springframework.stereotype.Service;
  *
  * <p>Every operation is project-scoped — the caller passes the target
  * project explicitly. Whether that's a regular project, the
- * tenant-wide {@code _vance} project, or a per-user
+ * tenant-wide {@code _tenant} project, or a per-user
  * {@code _user_<id>} project does not matter to the service.
  */
 @Service

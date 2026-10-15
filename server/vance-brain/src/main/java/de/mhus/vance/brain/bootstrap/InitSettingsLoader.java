@@ -21,7 +21,7 @@ import org.yaml.snakeyaml.Yaml;
  * without re-typing them through the admin REST endpoint.
  *
  * <p>File format (per tenant; entries land in the tenant's
- * {@code _vance} system project):
+ * {@code _tenant} system project):
  *
  * <pre>
  *   acme:
@@ -50,8 +50,8 @@ public class InitSettingsLoader {
     private static final String CONVENTIONAL_PATH = "confidential/init-settings.yaml";
     /**
      * Settings imported by this loader land on the tenant-wide
-     * {@code _vance} system project. Caller (BootstrapBrainService) must
-     * ensure {@code _vance} exists before invoking
+     * {@code _tenant} system project. Caller (BootstrapBrainService) must
+     * ensure {@code _tenant} exists before invoking
      * {@link #loadIfPresent()}.
      */
     private static final String SETTINGS_REF_TYPE = SettingService.SCOPE_PROJECT;

@@ -190,7 +190,7 @@ public class UrsaEventService {
     /**
      * Trigger flow:
      * <ol>
-     *   <li>resolve event via cascade ({@code project → _vance}) → 404</li>
+     *   <li>resolve event via cascade ({@code project → _tenant}) → 404</li>
      *   <li>{@code enabled: false} or method-not-allowed → 404 (don't leak existence)</li>
      *   <li>bearer auth check (when {@code auth:} block configured) → 401</li>
      *   <li>{@link MagratheaWorkflowService#start} (start fails → 502 / 400)</li>
@@ -857,7 +857,7 @@ public class UrsaEventService {
     private @Nullable String resolveExpectedToken(String tenantId, String projectId, ResolvedUrsaEvent event) {
         if (event.tokenLiteral() != null) return event.tokenLiteral();
         if (event.tokenSettingKey() != null) {
-            // Setting cascade: project → _vance. No think-process scope
+            // Setting cascade: project → _tenant. No think-process scope
             // here — events fire ahead of any process and aren't
             // process-scoped.
             return settingService.getStringValueCascade(

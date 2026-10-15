@@ -14,9 +14,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import org.jspecify.annotations.Nullable;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 
 /**
@@ -33,7 +33,7 @@ import org.springframework.stereotype.Service;
  * cascade layer is the documented way to suppress a built-in for a
  * specific tenant or project.
  *
- * <p>{@code _vance} is the tenant-wide system project. The registry
+ * <p>{@code _tenant} is the tenant-wide system project. The registry
  * lazy-bootstraps any scope it hasn't seen yet, so callers don't have
  * to choreograph activation — the lifecycle listener still preloads
  * regular projects on engine start for snappy first lookups.
@@ -68,9 +68,7 @@ public class ServerToolService {
         return lookup(tenantId, projectId, name, /*ctx*/ null);
     }
 
-    public Optional<Tool> lookup(
-            String tenantId, String projectId, String name,
-            @Nullable ToolInvocationContext ctx) {
+    public Optional<Tool> lookup(String tenantId, String projectId, String name, @Nullable ToolInvocationContext ctx) {
         ensureBootstrapped(tenantId, projectId);
         Optional<ServerToolConfig> cfg = registry.findConfig(tenantId, projectId, name);
         if (cfg.isPresent()) {
@@ -92,9 +90,7 @@ public class ServerToolService {
         return listAll(tenantId, projectId, /*ctx*/ null);
     }
 
-    public List<Tool> listAll(
-            String tenantId, String projectId,
-            @Nullable ToolInvocationContext ctx) {
+    public List<Tool> listAll(String tenantId, String projectId, @Nullable ToolInvocationContext ctx) {
         ensureBootstrapped(tenantId, projectId);
         Map<String, Tool> acc = new LinkedHashMap<>();
         for (Tool t : builtInProvider.list()) {
@@ -116,8 +112,7 @@ public class ServerToolService {
     }
 
     public List<Tool> findByLabel(
-            String tenantId, String projectId, String label,
-            @Nullable ToolInvocationContext ctx) {
+            String tenantId, String projectId, String label, @Nullable ToolInvocationContext ctx) {
         return listAll(tenantId, projectId, ctx).stream()
                 .filter(t -> t.labels().contains(label))
                 .toList();
@@ -127,8 +122,7 @@ public class ServerToolService {
         try {
             registry.ensureBootstrapped(tenantId, projectId);
         } catch (RuntimeException ex) {
-            log.warn("ServerToolService: lazy bootstrap failed '{}/{}': {}",
-                    tenantId, projectId, ex.toString());
+            log.warn("ServerToolService: lazy bootstrap failed '{}/{}': {}", tenantId, projectId, ex.toString());
         }
     }
 
@@ -138,34 +132,32 @@ public class ServerToolService {
      * Create a new server tool in {@code projectId}. The new entry must
      * not collide with an existing one (use {@link #update} to modify).
      */
-    public ServerToolConfig create(
-            String tenantId, String projectId, ServerToolConfig incoming) {
+    public ServerToolConfig create(String tenantId, String projectId, ServerToolConfig incoming) {
         String norm = ServerToolLoader.normalizedName(incoming.name());
-        if (documentService.findByPath(tenantId, projectId, ServerToolLoader.pathFor(norm))
+        if (documentService
+                .findByPath(tenantId, projectId, ServerToolLoader.pathFor(norm))
                 .isPresent()) {
             throw new IllegalStateException(
-                    "Server tool already exists: tenant=" + tenantId
-                            + " project=" + projectId + " name=" + norm);
+                    "Server tool already exists: tenant=" + tenantId + " project=" + projectId + " name=" + norm);
         }
         return writeAndRefresh(tenantId, projectId, norm, incoming, /*createdBy*/ incoming.createdBy());
     }
 
     /** Replace an existing server tool by name. */
-    public ServerToolConfig update(
-            String tenantId, String projectId, String name, ServerToolConfig incoming) {
+    public ServerToolConfig update(String tenantId, String projectId, String name, ServerToolConfig incoming) {
         String norm = ServerToolLoader.normalizedName(name);
-        DocumentDocument existing = documentService.findByPath(
-                        tenantId, projectId, ServerToolLoader.pathFor(norm))
+        DocumentDocument existing = documentService
+                .findByPath(tenantId, projectId, ServerToolLoader.pathFor(norm))
                 .orElseThrow(() -> new IllegalStateException(
-                        "Server tool not found: tenant=" + tenantId
-                                + " project=" + projectId + " name=" + norm));
+                        "Server tool not found: tenant=" + tenantId + " project=" + projectId + " name=" + norm));
         return writeAndRefresh(tenantId, projectId, norm, incoming, existing.getCreatedBy());
     }
 
     /** Remove a server tool from {@code projectId}. No-op when absent. */
     public void delete(String tenantId, String projectId, String name) {
         String norm = ServerToolLoader.normalizedName(name);
-        documentService.findByPath(tenantId, projectId, ServerToolLoader.pathFor(norm))
+        documentService
+                .findByPath(tenantId, projectId, ServerToolLoader.pathFor(norm))
                 .ifPresent(doc -> {
                     // Refresh is driven by the DocumentChangedEvent that
                     // documentService.delete publishes — picked up by
@@ -178,8 +170,7 @@ public class ServerToolService {
     }
 
     /** Cascade-resolved config for the admin REST surface (round-trip view). */
-    public Optional<ServerToolConfig> findConfig(
-            String tenantId, String projectId, String name) {
+    public Optional<ServerToolConfig> findConfig(String tenantId, String projectId, String name) {
         ensureBootstrapped(tenantId, projectId);
         return registry.findConfig(tenantId, projectId, name);
     }
@@ -191,12 +182,10 @@ public class ServerToolService {
     }
 
     private ServerToolConfig writeAndRefresh(
-            String tenantId, String projectId, String normName,
-            ServerToolConfig incoming, String createdBy) {
+            String tenantId, String projectId, String normName, ServerToolConfig incoming, String createdBy) {
         if (factoryRegistry.find(incoming.type()).isEmpty()) {
-            throw new IllegalArgumentException(
-                    "Unknown tool type '" + incoming.type() + "' — available: "
-                            + factoryRegistry.list().stream().map(ToolFactory::typeId).toList());
+            throw new IllegalArgumentException("Unknown tool type '" + incoming.type() + "' — available: "
+                    + factoryRegistry.list().stream().map(ToolFactory::typeId).toList());
         }
         String yaml = incoming.yaml();
         if (yaml == null || yaml.isBlank()) {
@@ -213,16 +202,17 @@ public class ServerToolService {
         // that documentService.upsertText kicks off.
         ensureBootstrapped(tenantId, projectId);
         documentService.upsertText(
-                tenantId, projectId,
+                tenantId,
+                projectId,
                 ServerToolLoader.pathFor(normName),
                 /*title*/ "Server tool: " + normName,
                 /*tags*/ null,
                 yaml,
                 createdBy,
                 de.mhus.vance.shared.permission.WriteActor.SYSTEM);
-        return registry.findConfig(tenantId, projectId, normName).orElseThrow(
-                () -> new IllegalStateException(
-                        "Server tool vanished immediately after write: " + normName));
+        return registry.findConfig(tenantId, projectId, normName)
+                .orElseThrow(
+                        () -> new IllegalStateException("Server tool vanished immediately after write: " + normName));
     }
 
     // ──────────────────── Legacy shims (ServerToolDocument carriers) ────────────────────
@@ -235,10 +225,8 @@ public class ServerToolService {
     // once every caller is on {@code ServerToolConfig}.
 
     /** Legacy carrier-shape lookup. Returns a transient (non-persisted) document. */
-    public Optional<ServerToolDocument> findDocument(
-            String tenantId, String projectId, String name) {
-        return findConfig(tenantId, projectId, name)
-                .map(cfg -> cfg.toTransientDocument(tenantId, projectId));
+    public Optional<ServerToolDocument> findDocument(String tenantId, String projectId, String name) {
+        return findConfig(tenantId, projectId, name).map(cfg -> cfg.toTransientDocument(tenantId, projectId));
     }
 
     /** Legacy carrier-shape list. Each element is a transient document. */
@@ -252,15 +240,13 @@ public class ServerToolService {
     }
 
     /** Legacy carrier-shape create — converts and delegates to {@link #create(String, String, ServerToolConfig)}. */
-    public ServerToolDocument create(
-            String tenantId, String projectId, ServerToolDocument doc) {
+    public ServerToolDocument create(String tenantId, String projectId, ServerToolDocument doc) {
         ServerToolConfig stored = create(tenantId, projectId, configOf(doc));
         return stored.toTransientDocument(tenantId, projectId);
     }
 
     /** Legacy carrier-shape update — converts and delegates to {@link #update(String, String, String, ServerToolConfig)}. */
-    public ServerToolDocument update(
-            String tenantId, String projectId, String name, ServerToolDocument incoming) {
+    public ServerToolDocument update(String tenantId, String projectId, String name, ServerToolDocument incoming) {
         ServerToolConfig stored = update(tenantId, projectId, name, configOf(incoming));
         return stored.toTransientDocument(tenantId, projectId);
     }
@@ -273,9 +259,7 @@ public class ServerToolService {
                 doc.getParameters() == null
                         ? new java.util.LinkedHashMap<>()
                         : new java.util.LinkedHashMap<>(doc.getParameters()),
-                doc.getLabels() == null
-                        ? new java.util.ArrayList<>()
-                        : new java.util.ArrayList<>(doc.getLabels()),
+                doc.getLabels() == null ? new java.util.ArrayList<>() : new java.util.ArrayList<>(doc.getLabels()),
                 doc.isEnabled(),
                 doc.isPrimary(),
                 doc.getDisabledSubTools() == null

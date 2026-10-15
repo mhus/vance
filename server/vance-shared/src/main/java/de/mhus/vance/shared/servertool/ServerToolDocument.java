@@ -34,7 +34,7 @@ public class ServerToolDocument {
 
     private String tenantId = "";
 
-    /** Owning project ({@code ProjectDocument.name}); {@code _vance} for system defaults. */
+    /** Owning project ({@code ProjectDocument.name}); {@code _tenant} for system defaults. */
     private String projectId = "";
 
     /** Stable tool name — the identifier the LLM uses to call it. Snake_case. */

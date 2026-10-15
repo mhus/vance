@@ -128,7 +128,7 @@ public abstract class AbstractNutrimat implements ThinkEngine {
      * prompt for every nature on purpose — a loop comparison is only honest
      * when the prompt does not vary with the loop. Nature-specific wording
      * rides in the recipe's {@code promptPrefix}; tenants override this file
-     * in their {@code _vance} project.
+     * in their {@code _tenant} project.
      */
     private static final String DEFAULT_PROMPT_PATH = "_vance/prompts/nutrimat-prompt.md";
 

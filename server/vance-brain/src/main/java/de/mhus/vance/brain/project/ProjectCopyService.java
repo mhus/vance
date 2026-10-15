@@ -101,7 +101,7 @@ public class ProjectCopyService {
      * @throws ProjectService.ProjectNotFoundException if the source is gone
      * @throws ProjectService.ProjectAlreadyExistsException if the target exists
      * @throws ProjectService.SystemProjectProtectedException if the source is
-     *     SYSTEM — a per-user hub or {@code _vance} has no meaningful copy
+     *     SYSTEM — a per-user hub or {@code _tenant} has no meaningful copy
      */
     public ProjectCopyReportDto copy(
             String tenantId,

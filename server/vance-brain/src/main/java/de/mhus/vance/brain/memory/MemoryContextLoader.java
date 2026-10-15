@@ -31,7 +31,7 @@ import org.springframework.stereotype.Service;
  *       heading.</li>
  *   <li>An "agent" Markdown document, looked up via
  *       {@link DocumentService#lookupCascade(String, String, String)}
- *       (project → {@code _vance} → classpath default). Default path
+ *       (project → {@code _tenant} → classpath default). Default path
  *       {@code agent.md}; the recipe param {@code agentDocument}
  *       overrides the path or disables the lookup entirely with
  *       {@code ""}.</li>
@@ -67,6 +67,7 @@ public class MemoryContextLoader {
      *  namespace covers abstract context entries that aren't a single
      *  file or document — agent docs from the cascade live here. */
     static final String AGENT_DOC_KEY_PREFIX = "MEMORY:agent-doc:";
+
     static final String CLIENT_AGENT_DOC_KEY_PREFIX = "MEMORY:client-agent-doc:";
 
     /** Stub line the LLM sees when an auto-attachment was already shown
@@ -75,6 +76,7 @@ public class MemoryContextLoader {
      *  to scroll back for the actual content. */
     static final String DEDUP_AGENT_STUB =
             "(Agent notes unchanged from an earlier turn — full content is in this conversation's history.)";
+
     static final String DEDUP_CLIENT_AGENT_STUB =
             "(Client-supplied agent notes unchanged from an earlier turn — see history.)";
 
@@ -128,9 +130,9 @@ public class MemoryContextLoader {
      * layer skips. RAG auto-inject is opt-in per recipe param
      * {@code rag.autoInject}; see {@link RagAutoInjectService}.
      */
-    public @Nullable String composeBlock(
-            ThinkProcessDocument process, @Nullable String userQuery) {
-        if (process == null || process.getTenantId() == null
+    public @Nullable String composeBlock(ThinkProcessDocument process, @Nullable String userQuery) {
+        if (process == null
+                || process.getTenantId() == null
                 || process.getTenantId().isBlank()) {
             return null;
         }
@@ -173,37 +175,36 @@ public class MemoryContextLoader {
      * <p>Missing parent (orphaned {@code parentProcessId}) → graceful
      * skip; never breaks the prompt build.
      */
-    private void appendParentContext(
-            StringBuilder sb, ThinkProcessDocument process) {
+    private void appendParentContext(StringBuilder sb, ThinkProcessDocument process) {
         String parentId = process.getParentProcessId();
         if (parentId == null || parentId.isBlank()) return;
         ThinkProcessDocument parent;
         try {
             parent = thinkProcessService.findById(parentId).orElse(null);
         } catch (RuntimeException e) {
-            log.debug("appendParentContext: lookup failed for parent='{}': {}",
-                    parentId, e.toString());
+            log.debug("appendParentContext: lookup failed for parent='{}': {}", parentId, e.toString());
             return;
         }
         if (parent == null) return;
 
         StringBuilder block = new StringBuilder();
         block.append("## Parent Context\n\n");
-        block.append("Parent process: `").append(safe(parent.getName()))
-                .append("` (recipe: ").append(safe(parent.getRecipeName()))
-                .append(", engine: ").append(safe(parent.getThinkEngine()))
+        block.append("Parent process: `")
+                .append(safe(parent.getName()))
+                .append("` (recipe: ")
+                .append(safe(parent.getRecipeName()))
+                .append(", engine: ")
+                .append(safe(parent.getThinkEngine()))
                 .append(")\n");
         if (parent.getTitle() != null && !parent.getTitle().isBlank()) {
             block.append("Parent mission: ").append(parent.getTitle()).append("\n");
         }
 
-        boolean sameProject = process.getProjectId() != null
-                && process.getProjectId().equals(parent.getProjectId());
+        boolean sameProject =
+                process.getProjectId() != null && process.getProjectId().equals(parent.getProjectId());
         if (sameProject && parent.getId() != null) {
-            List<MemoryDocument> parentSummaries =
-                    memoryService.activeByProcessAndKind(
-                            parent.getTenantId(), parent.getId(),
-                            MemoryKind.ARCHIVED_CHAT);
+            List<MemoryDocument> parentSummaries = memoryService.activeByProcessAndKind(
+                    parent.getTenantId(), parent.getId(), MemoryKind.ARCHIVED_CHAT);
             if (!parentSummaries.isEmpty()) {
                 MemoryDocument latest = parentSummaries.getLast();
                 String body = latest.getContent();
@@ -240,14 +241,13 @@ public class MemoryContextLoader {
      * in steady state there is at most one active row — the defensive
      * "pick last" handles a write-write race transparently.
      */
-    private void appendArchivedChatSummary(
-            StringBuilder sb, ThinkProcessDocument process) {
+    private void appendArchivedChatSummary(StringBuilder sb, ThinkProcessDocument process) {
         String tenantId = process.getTenantId();
         String processId = process.getId();
         if (tenantId == null || tenantId.isBlank()) return;
         if (processId == null || processId.isBlank()) return;
-        List<MemoryDocument> active = memoryService.activeByProcessAndKind(
-                tenantId, processId, MemoryKind.ARCHIVED_CHAT);
+        List<MemoryDocument> active =
+                memoryService.activeByProcessAndKind(tenantId, processId, MemoryKind.ARCHIVED_CHAT);
         if (active.isEmpty()) return;
         // Range-recompaction rows (metadata.recompaction=true) are also
         // active ARCHIVED_CHAT but surface via their inline SYSTEM marker in
@@ -269,8 +269,7 @@ public class MemoryContextLoader {
 
     /** A range-recompaction ARCHIVED_CHAT (surfaces via its inline marker). */
     private static boolean isRecompaction(MemoryDocument m) {
-        return m.getMetadata() != null
-                && Boolean.TRUE.equals(m.getMetadata().get("recompaction"));
+        return m.getMetadata() != null && Boolean.TRUE.equals(m.getMetadata().get("recompaction"));
     }
 
     /**
@@ -282,10 +281,7 @@ public class MemoryContextLoader {
      * innermost-wins over the cascade setting {@code rag.autoInject.enabled})
      * — see {@link de.mhus.vance.brain.rag.RagAutoInjectService}.
      */
-    private void appendRagAutoInject(
-            StringBuilder sb,
-            ThinkProcessDocument process,
-            @Nullable String userQuery) {
+    private void appendRagAutoInject(StringBuilder sb, ThinkProcessDocument process, @Nullable String userQuery) {
         if (userQuery == null || userQuery.isBlank()) return;
         RagAutoInjectService rag = ragAutoInjectProvider.getIfAvailable();
         if (rag == null) return;
@@ -306,89 +302,76 @@ public class MemoryContextLoader {
      * point telling the LLM "respond in en" if the operator hasn't
      * actually picked anything.
      */
-    private void appendLanguages(
-            StringBuilder sb,
-            ThinkProcessDocument process,
-            @Nullable String projectId) {
+    private void appendLanguages(StringBuilder sb, ThinkProcessDocument process, @Nullable String projectId) {
         // userId for the chat-language cascade comes from the session
         // (ThinkProcessDocument doesn't carry it directly — workers
         // inherit it via the session binding).
         @Nullable String userId = null;
         if (process.getSessionId() != null && !process.getSessionId().isBlank()) {
-            userId = sessionService.findBySessionId(process.getSessionId())
+            userId = sessionService
+                    .findBySessionId(process.getSessionId())
                     .map(SessionDocument::getUserId)
                     .orElse(null);
         }
-        String block = languageResolver.formatLanguageBlock(
-                process.getTenantId(), userId, projectId, process.getId());
+        String block = languageResolver.formatLanguageBlock(process.getTenantId(), userId, projectId, process.getId());
         if (block == null || block.isEmpty()) return;
         if (sb.length() > 0) sb.append('\n');
         sb.append(block);
     }
 
-    private void appendMemorySettings(
-            StringBuilder sb,
-            ThinkProcessDocument process,
-            @Nullable String projectId) {
-        Map<String, String> entries = settingService.findByPrefixCascade(
-                process.getTenantId(),
-                projectId,
-                process.getId(),
-                MEMORY_PREFIX);
+    private void appendMemorySettings(StringBuilder sb, ThinkProcessDocument process, @Nullable String projectId) {
+        Map<String, String> entries =
+                settingService.findByPrefixCascade(process.getTenantId(), projectId, process.getId(), MEMORY_PREFIX);
         if (entries.isEmpty()) return;
         sb.append(MEMORY_HEADING).append('\n');
         entries.forEach((key, value) -> {
-            String stripped = key.startsWith(MEMORY_PREFIX)
-                    ? key.substring(MEMORY_PREFIX.length())
-                    : key;
+            String stripped = key.startsWith(MEMORY_PREFIX) ? key.substring(MEMORY_PREFIX.length()) : key;
             if (stripped.isBlank()) return;
-            sb.append(stripped).append(": ")
-                    .append(value == null ? "" : value).append('\n');
+            sb.append(stripped).append(": ").append(value == null ? "" : value).append('\n');
         });
     }
 
-    private void appendAgentDocument(
-            StringBuilder sb,
-            ThinkProcessDocument process,
-            @Nullable String projectId) {
+    private void appendAgentDocument(StringBuilder sb, ThinkProcessDocument process, @Nullable String projectId) {
         if (projectId == null) return;
         @Nullable String path = resolveAgentPath(process);
         if (path == null) return;
-        documentService.lookupCascade(process.getTenantId(), projectId, path)
-                .ifPresent(result -> {
-                    String content = result.content();
-                    if (content == null || content.isBlank()) {
-                        // Empty agent doc — render the heading only.
-                        if (sb.length() > 0) sb.append('\n');
-                        sb.append(agentHeading(result)).append('\n');
-                        return;
-                    }
-                    String hash = ReadStateService.hashContent(content);
-                    String key = AGENT_DOC_KEY_PREFIX + projectId + ":" + path;
-                    if (readStateService.hasFresh(process, key, hash)) {
-                        // Same content already shown earlier — append a
-                        // brief stub instead of the full body. Saves
-                        // tokens + keeps the prompt-cache marker stable
-                        // across turns. Plan §5.2.
-                        if (sb.length() > 0) sb.append('\n');
-                        sb.append(agentHeading(result)).append('\n')
-                                .append(DEDUP_AGENT_STUB).append('\n');
-                        return;
-                    }
-                    if (sb.length() > 0) sb.append('\n');
-                    sb.append(agentHeading(result)).append('\n')
-                            .append(content.trim()).append('\n');
-                    // Best-effort record — failures don't break the
-                    // prompt build (the doc is still inlined this turn).
-                    try {
-                        readStateService.recordRead(process, key, hash,
-                                /*partialView*/ false,
-                                (long) content.getBytes(
-                                        java.nio.charset.StandardCharsets.UTF_8).length);
-                    } catch (RuntimeException e) {
-                        log.debug("ReadState recordRead failed for {}: {}", key, e.toString());
-                    }
-                });
+        documentService.lookupCascade(process.getTenantId(), projectId, path).ifPresent(result -> {
+            String content = result.content();
+            if (content == null || content.isBlank()) {
+                // Empty agent doc — render the heading only.
+                if (sb.length() > 0) sb.append('\n');
+                sb.append(agentHeading(result)).append('\n');
+                return;
+            }
+            String hash = ReadStateService.hashContent(content);
+            String key = AGENT_DOC_KEY_PREFIX + projectId + ":" + path;
+            if (readStateService.hasFresh(process, key, hash)) {
+                // Same content already shown earlier — append a
+                // brief stub instead of the full body. Saves
+                // tokens + keeps the prompt-cache marker stable
+                // across turns. Plan §5.2.
+                if (sb.length() > 0) sb.append('\n');
+                sb.append(agentHeading(result))
+                        .append('\n')
+                        .append(DEDUP_AGENT_STUB)
+                        .append('\n');
+                return;
+            }
+            if (sb.length() > 0) sb.append('\n');
+            sb.append(agentHeading(result)).append('\n').append(content.trim()).append('\n');
+            // Best-effort record — failures don't break the
+            // prompt build (the doc is still inlined this turn).
+            try {
+                readStateService.recordRead(
+                        process,
+                        key,
+                        hash,
+                        /*partialView*/ false,
+                        (long) content.getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
+            } catch (RuntimeException e) {
+                log.debug("ReadState recordRead failed for {}: {}", key, e.toString());
+            }
+        });
     }
 
     /**
@@ -407,24 +390,25 @@ public class MemoryContextLoader {
             String content = session.getClientAgentDoc();
             if (content == null || content.isBlank()) return;
             String path = session.getClientAgentDocPath();
-            String heading = "## Agent Notes (from client: "
-                    + (path == null || path.isBlank() ? "agent.md" : path) + ")";
+            String heading =
+                    "## Agent Notes (from client: " + (path == null || path.isBlank() ? "agent.md" : path) + ")";
 
             String hash = ReadStateService.hashContent(content);
             String key = CLIENT_AGENT_DOC_KEY_PREFIX + sessionId;
             if (readStateService.hasFresh(process, key, hash)) {
                 if (sb.length() > 0) sb.append('\n');
-                sb.append(heading).append('\n')
-                        .append(DEDUP_CLIENT_AGENT_STUB).append('\n');
+                sb.append(heading).append('\n').append(DEDUP_CLIENT_AGENT_STUB).append('\n');
                 return;
             }
             if (sb.length() > 0) sb.append('\n');
             sb.append(heading).append('\n').append(content.trim()).append('\n');
             try {
-                readStateService.recordRead(process, key, hash,
+                readStateService.recordRead(
+                        process,
+                        key,
+                        hash,
                         /*partialView*/ false,
-                        (long) content.getBytes(
-                                java.nio.charset.StandardCharsets.UTF_8).length);
+                        (long) content.getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
             } catch (RuntimeException e) {
                 log.debug("ReadState recordRead failed for {}: {}", key, e.toString());
             }
@@ -466,7 +450,7 @@ public class MemoryContextLoader {
         String path = result.path();
         return switch (result.source()) {
             case PROJECT -> "## Agent Notes (" + path + ")";
-            case VANCE -> "## Agent Notes (from _vance: " + path + ")";
+            case VANCE -> "## Agent Notes (from _tenant: " + path + ")";
             case RESOURCE -> "## Agent Notes (system default: " + path + ")";
         };
     }
@@ -476,7 +460,8 @@ public class MemoryContextLoader {
         if (sessionId == null || sessionId.isBlank()) {
             return null;
         }
-        return sessionService.findBySessionId(sessionId)
+        return sessionService
+                .findBySessionId(sessionId)
                 .map(SessionDocument::getProjectId)
                 .filter(p -> p != null && !p.isBlank())
                 .orElse(null);

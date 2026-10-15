@@ -44,7 +44,7 @@ innermost wins (same cascade as recipes, manuals, templates):
 | Layer | Path | Use case |
 |---|---|---|
 | **Bundled** (read-only) | `vance-defaults/_vance/report-themes/<name>.css` (on the classpath) | Ships with Vance. `default.css` is always loaded; `acme.css` is the example. You cannot edit these — override them. |
-| **Tenant-wide** | `_vance/report-themes/<name>.css` in the `_vance` tenant | Operator-managed default for the whole tenant. |
+| **Tenant-wide** | `_vance/report-themes/<name>.css` in the `_tenant` project | Operator-managed default for the whole tenant. |
 | **Project** | `_vance/report-themes/<name>.css` in the current project | Per-project theme — beats tenant-wide and bundled. |
 
 The name is the file name without `.css`. `theme: acme` looks up
@@ -97,7 +97,7 @@ that project (use the Cortex, `doc_write`, or a kit — same as any
 document). The theme is now available in that project only.
 
 **For the whole tenant:** create `_vance/report-themes/my-company.css`
-in the `_vance` tenant. Every project in the tenant sees it, unless a
+in the `_tenant` project. Every project in the tenant sees it, unless a
 project has its own `_vance/report-themes/my-company.css` (which then
 wins).
 

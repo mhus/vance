@@ -723,7 +723,7 @@ public class InsightsAdminController {
 
     /**
      * Effective recipe list for a project. Cascade-resolved
-     * ({@code project → _vance → bundled}); each entry carries its
+     * ({@code project → _tenant → bundled}); each entry carries its
      * source so the UI can render the origin badge.
      */
     @GetMapping("/projects/{project}/insights/recipes")
@@ -761,7 +761,7 @@ public class InsightsAdminController {
 
     /**
      * Effective tool list for a project. Walks the same cascade the
-     * runtime dispatcher walks ({@code BUILTIN → _vance → project})
+     * runtime dispatcher walks ({@code BUILTIN → _tenant → project})
      * and attributes each surviving entry to its innermost layer.
      * Disabled inner-layer documents trigger {@code disabledByInnerLayer=true}
      * on the otherwise hidden entry instead of dropping it silently —
@@ -939,10 +939,10 @@ public class InsightsAdminController {
                             .disabledByInnerLayer(false));
         }
 
-        // Layer 2 — tenant-wide _vance project
+        // Layer 2 — tenant-wide _tenant project
         applyToolLayer(acc, tenant, HomeBootstrapService.TENANT_PROJECT_NAME, "VANCE");
 
-        // Layer 3 — caller's project (skip if it IS _vance)
+        // Layer 3 — caller's project (skip if it IS _tenant)
         if (!HomeBootstrapService.TENANT_PROJECT_NAME.equals(project)) {
             applyToolLayer(acc, tenant, project, "PROJECT");
         }

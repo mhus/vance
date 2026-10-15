@@ -11,7 +11,7 @@ import org.springframework.stereotype.Service;
 /**
  * {@link KindHandler} for the {@code vance-wizard} kind — one wizard
  * definition under {@code _vance/wizards/<name>.yaml}, four-tier cascade
- * {@code project → _user → _vance → classpath} (spec
+ * {@code project → _user → _tenant → classpath} (spec
  * {@code specification/wizards.md}). Path-based marker: the wizard tree
  * is the identity, the loader never looks at kind tags.
  *

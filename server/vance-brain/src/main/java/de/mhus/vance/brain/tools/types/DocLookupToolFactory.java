@@ -1,11 +1,11 @@
 package de.mhus.vance.brain.tools.types;
 
-import de.mhus.vance.toolpack.Tool;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
 import de.mhus.vance.shared.servertool.ServerToolDocument;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,20 +34,21 @@ public class DocLookupToolFactory implements ToolFactory {
 
     private static final Map<String, Object> PARAMETERS_SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(
-                    "path", Map.of(
-                            "type", "string",
-                            "description",
+            "properties",
+                    Map.of(
+                            "path",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
                                     "Document path inside the project, "
                                             + "e.g. 'documents/how_to_arthur.md'. "
-                                            + "Resolved via the project → _vance → "
+                                            + "Resolved via the project → _tenant → "
                                             + "classpath cascade.")),
             "required", List.of("path"));
 
-    private static final Map<String, Object> INVOKE_SCHEMA = Map.of(
-            "type", "object",
-            "properties", Map.of(),
-            "additionalProperties", false);
+    private static final Map<String, Object> INVOKE_SCHEMA =
+            Map.of("type", "object", "properties", Map.of(), "additionalProperties", false);
 
     private final DocumentService documentService;
 
@@ -66,8 +67,7 @@ public class DocLookupToolFactory implements ToolFactory {
         Object pathRaw = document.getParameters().get("path");
         if (!(pathRaw instanceof String path) || path.isBlank()) {
             throw new IllegalArgumentException(
-                    "doc_lookup tool '" + document.getName()
-                            + "' is missing required parameter 'path'");
+                    "doc_lookup tool '" + document.getName() + "' is missing required parameter 'path'");
         }
         // Singleton-pack: one document → one tool whose name equals the
         // document name. Multi-tool packs return their sub-tools with
@@ -118,11 +118,9 @@ public class DocLookupToolFactory implements ToolFactory {
             if (ctx == null || ctx.tenantId() == null || ctx.tenantId().isBlank()) {
                 throw new ToolException(name() + " requires a tenant scope");
             }
-            Optional<LookupResult> hit = documentService.lookupCascade(
-                    ctx.tenantId(), ctx.projectId(), path);
+            Optional<LookupResult> hit = documentService.lookupCascade(ctx.tenantId(), ctx.projectId(), path);
             if (hit.isEmpty()) {
-                throw new ToolException(
-                        "Doc not found at path '" + path + "' for tool '" + name() + "'");
+                throw new ToolException("Doc not found at path '" + path + "' for tool '" + name() + "'");
             }
             LookupResult result = hit.get();
             String content = result.content() == null ? "" : result.content();

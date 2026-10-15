@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
  * of the tiered document cascade ({@code _vance/prompts/<engine>-prompt.md}
  * and the Arthur plan-mode variants {@code …-exploring/-planning/-executing},
  * spec {@code specification/public/prompts-and-manuals.md}). Tenants override
- * the bundled prompts by placing matching files in their {@code _vance}
+ * the bundled prompts by placing matching files in their {@code _tenant}
  * project; recipes swap the paths per process.
  *
  * <p><b>Location, not body, is the marker</b> — every document under

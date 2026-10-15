@@ -1,11 +1,11 @@
 package de.mhus.vance.brain.ursahooks;
 
+import de.mhus.vance.api.inbox.Criticality;
+import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.api.ursahooks.UrsaHookEventName;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.inbox.MaximegalonDocument;
 import de.mhus.vance.shared.inbox.MaximegalonService;
-import de.mhus.vance.api.inbox.Criticality;
-import de.mhus.vance.api.inbox.MaximegalonType;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -53,12 +53,15 @@ public class UrsaHookService {
 
     /** Register every hook visible to the project. */
     public int bootstrapProject(String tenantId, String projectId) {
-        Map<UrsaHookEventName, List<UrsaHookDef>> grouped =
-                loader.groupByEvent(tenantId, projectId);
+        Map<UrsaHookEventName, List<UrsaHookDef>> grouped = loader.groupByEvent(tenantId, projectId);
         registry.replace(tenantId, projectId, grouped);
         int total = grouped.values().stream().mapToInt(List::size).sum();
-        log.info("Hooks bootstrap project='{}/{}' registered {} hooks across {} events",
-                tenantId, projectId, total, grouped.size());
+        log.info(
+                "Hooks bootstrap project='{}/{}' registered {} hooks across {} events",
+                tenantId,
+                projectId,
+                total,
+                grouped.size());
         return total;
     }
 
@@ -81,18 +84,21 @@ public class UrsaHookService {
      * @return {@code true} on live re-registration; {@code false}
      *         when the document is absent
      */
-    public boolean refreshOne(
-            String tenantId, String projectId,
-            UrsaHookEventName event, String name) {
+    public boolean refreshOne(String tenantId, String projectId, UrsaHookEventName event, String name) {
         Optional<UrsaHookDef> reloaded = loader.load(tenantId, projectId, event, name);
         // Re-read every hook of that event so the registry stays
         // consistent with the cascade — a single doc going away may
-        // unmask a {@code _vance}-tier hook of the same name.
+        // unmask a {@code _tenant}-tier hook of the same name.
         List<UrsaHookDef> remaining = loader.listForEvent(tenantId, projectId, event);
         registry.replaceEvent(tenantId, projectId, event, remaining);
-        log.info("Hooks refreshOne '{}/{}/{}/{}' → present={} totalForEvent={}",
-                tenantId, projectId, event.wireName(), name,
-                reloaded.isPresent(), remaining.size());
+        log.info(
+                "Hooks refreshOne '{}/{}/{}/{}' → present={} totalForEvent={}",
+                tenantId,
+                projectId,
+                event.wireName(),
+                name,
+                reloaded.isPresent(),
+                remaining.size());
         return reloaded.isPresent();
     }
 
@@ -102,14 +108,11 @@ public class UrsaHookService {
         return registry.allFor(tenantId, projectId);
     }
 
-    public List<UrsaHookDef> listForEvent(
-            String tenantId, String projectId, UrsaHookEventName event) {
+    public List<UrsaHookDef> listForEvent(String tenantId, String projectId, UrsaHookEventName event) {
         return registry.hooksFor(tenantId, projectId, event);
     }
 
-    public Optional<UrsaHookDef> findOne(
-            String tenantId, String projectId,
-            UrsaHookEventName event, String name) {
+    public Optional<UrsaHookDef> findOne(String tenantId, String projectId, UrsaHookEventName event, String name) {
         for (UrsaHookDef def : registry.hooksFor(tenantId, projectId, event)) {
             if (name.equals(def.name())) return Optional.of(def);
         }
@@ -126,16 +129,18 @@ public class UrsaHookService {
      * @return the freshly parsed {@link UrsaHookDef}
      */
     public UrsaHookDef save(
-            String tenantId, String projectId,
-            UrsaHookEventName event, String name,
-            String yaml, @Nullable String createdBy,
+            String tenantId,
+            String projectId,
+            UrsaHookEventName event,
+            String name,
+            String yaml,
+            @Nullable String createdBy,
             de.mhus.vance.shared.permission.WriteActor actor) {
         // Parse first so a bad YAML never lands on disk.
-        UrsaHookDef parsed = parser.parse(yaml, event,
-                de.mhus.vance.api.ursahooks.UrsaHookSource.PROJECT, name, createdBy);
+        UrsaHookDef parsed =
+                parser.parse(yaml, event, de.mhus.vance.api.ursahooks.UrsaHookSource.PROJECT, name, createdBy);
 
-        String path = UrsaHookLoader.HOOK_PATH_ROOT + event.wireName() + "/"
-                + name + UrsaHookLoader.HOOK_PATH_SUFFIX;
+        String path = UrsaHookLoader.HOOK_PATH_ROOT + event.wireName() + "/" + name + UrsaHookLoader.HOOK_PATH_SUFFIX;
         Optional<de.mhus.vance.shared.document.DocumentDocument> existing =
                 documentService.findByPath(tenantId, projectId, path);
         if (existing.isPresent()) {
@@ -148,7 +153,9 @@ public class UrsaHookService {
                     actor);
         } else {
             documentService.create(
-                    tenantId, projectId, path,
+                    tenantId,
+                    projectId,
+                    path,
                     /*title*/ "Hook: " + event.wireName() + "/" + name,
                     parsed.tags(),
                     YAML_MIME,
@@ -168,11 +175,12 @@ public class UrsaHookService {
      * trashed.
      */
     public boolean delete(
-            String tenantId, String projectId,
-            UrsaHookEventName event, String name,
+            String tenantId,
+            String projectId,
+            UrsaHookEventName event,
+            String name,
             de.mhus.vance.shared.permission.WriteActor actor) {
-        String path = UrsaHookLoader.HOOK_PATH_ROOT + event.wireName() + "/"
-                + name + UrsaHookLoader.HOOK_PATH_SUFFIX;
+        String path = UrsaHookLoader.HOOK_PATH_ROOT + event.wireName() + "/" + name + UrsaHookLoader.HOOK_PATH_SUFFIX;
         Optional<de.mhus.vance.shared.document.DocumentDocument> existing =
                 documentService.findByPath(tenantId, projectId, path);
         if (existing.isEmpty()) {
@@ -189,9 +197,7 @@ public class UrsaHookService {
 
     /** Surface every parse failure as an inbox item to {@code createdBy}. */
     public void reportParseErrors(
-            String tenantId, String projectId,
-            List<UrsaHookParseException> errors,
-            @Nullable String recipientUserId) {
+            String tenantId, String projectId, List<UrsaHookParseException> errors, @Nullable String recipientUserId) {
         if (errors.isEmpty() || recipientUserId == null || recipientUserId.isBlank()) {
             return;
         }

@@ -13,7 +13,8 @@ description:
 icon: document-text
 category: integrations
 defaultScope: project
-availableIn: [ "project", "_vance" ]
+# Tenant + regular projects (not per-user). availableIn is a projectId glob.
+availableIn: [ "!_user_*" ]
 
 fields:
 

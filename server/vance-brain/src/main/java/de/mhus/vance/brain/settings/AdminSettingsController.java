@@ -39,7 +39,7 @@ import org.springframework.web.server.ResponseStatusException;
  * {@code user}, {@code project}, {@code think-process} — but storage
  * collapses {@code tenant} and {@code user} onto the project layer:
  * <ul>
- *   <li>wire {@code tenant/<anything>} → storage {@code project/_vance}</li>
+ *   <li>wire {@code tenant/<anything>} → storage {@code project/_tenant}</li>
  *   <li>wire {@code user/<login>} → storage {@code project/_user_<login>}</li>
  *   <li>wire {@code project/<name>} → storage {@code project/<name>}</li>
  *   <li>wire {@code think-process/<id>} → storage {@code think-process/<id>}</li>
@@ -189,7 +189,7 @@ public class AdminSettingsController {
     /**
      * Translates a wire-format scope into the persisted reference.
      * Tenant- and user-scopes collapse onto the project layer with the
-     * synthetic {@code _vance} / {@code _user_<login>} project ids; the
+     * synthetic {@code _tenant} / {@code _user_<login>} project ids; the
      * other two reference types pass through unchanged.
      */
     private static StorageRef mapToStorage(String wireType, String wireId) {
@@ -212,7 +212,7 @@ public class AdminSettingsController {
 
     /**
      * Translates a stored project reference back to the wire form.
-     * The {@code _vance} project becomes wire {@code tenant};
+     * The {@code _tenant} project becomes wire {@code tenant};
      * {@code _user_<login>} becomes wire {@code user/<login>}; other
      * project ids stay {@code project}.
      */

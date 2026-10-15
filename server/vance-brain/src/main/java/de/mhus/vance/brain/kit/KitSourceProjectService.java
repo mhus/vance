@@ -64,28 +64,27 @@ public class KitSourceProjectService {
      *       is deliberately <em>not</em> a "draft" filter, because installing
      *       an unfinished kit to try it out is the whole point of installing
      *       from a project rather than from git.</li>
-     *   <li><b>SYSTEM projects.</b> {@code _vance} and the per-user hubs are
+     *   <li><b>SYSTEM projects.</b> {@code _tenant} and the per-user hubs are
      *       not somebody's authoring workspace, and the loader refuses them
      *       anyway.</li>
      * </ul>
      */
     public List<KitSourceProjectDto> list(String tenantId, SecurityContext subject) {
         List<KitSourceProjectDto> out = new ArrayList<>();
-        for (DocumentDocument marker : documentService.findByPathAcrossProjects(
-                tenantId, KitRecordStore.MANIFEST_PATH)) {
+        for (DocumentDocument marker :
+                documentService.findByPathAcrossProjects(tenantId, KitRecordStore.MANIFEST_PATH)) {
             String projectId = marker.getProjectId();
             if (projectId == null || projectId.isBlank()) continue;
 
-            Optional<ProjectDocument> project =
-                    projectService.findByTenantAndName(tenantId, projectId);
+            Optional<ProjectDocument> project = projectService.findByTenantAndName(tenantId, projectId);
             if (project.isEmpty() || project.get().getKind() == ProjectKind.SYSTEM) continue;
-            if (!permissionService.check(
-                    subject, new Resource.Project(tenantId, projectId), Action.READ)) {
+            if (!permissionService.check(subject, new Resource.Project(tenantId, projectId), Action.READ)) {
                 continue;
             }
 
             KitManifestDto manifest = recordStore.loadManifest(tenantId, projectId);
-            if (manifest == null || manifest.getKit() == null
+            if (manifest == null
+                    || manifest.getKit() == null
                     || manifest.getKit().getName() == null) {
                 // The marker exists but does not parse, or says nothing usable.
                 // loadManifest already logged it; a broken source belongs out
@@ -103,8 +102,8 @@ public class KitSourceProjectService {
                     .sourceUrl(KitSourceType.PROJECT_SCHEME + projectId)
                     .build());
         }
-        out.sort(Comparator.comparing(KitSourceProjectDto::getKitName)
-                .thenComparing(KitSourceProjectDto::getProjectId));
+        out.sort(
+                Comparator.comparing(KitSourceProjectDto::getKitName).thenComparing(KitSourceProjectDto::getProjectId));
         return out;
     }
 
@@ -121,8 +120,12 @@ public class KitSourceProjectService {
         KitDescriptorDto descriptor = recordStore.loadDescriptor(tenantId, projectId);
         if (descriptor == null) return true;
         if (!descriptor.isInstallable() || descriptor.isArtifact()) {
-            log.debug("KitSourceProjectService: '{}/{}' left out — installable={} artifact={}",
-                    tenantId, projectId, descriptor.isInstallable(), descriptor.isArtifact());
+            log.debug(
+                    "KitSourceProjectService: '{}/{}' left out — installable={} artifact={}",
+                    tenantId,
+                    projectId,
+                    descriptor.isInstallable(),
+                    descriptor.isArtifact());
             return false;
         }
         return true;

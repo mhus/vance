@@ -78,7 +78,7 @@ public class DocumentService {
      * Classpath prefix for system-default documents shipped inside the
      * brain JAR — e.g. {@code vance-defaults/agent.md}. The cascade
      * lookup falls through to this layer when neither the user's
-     * project nor the tenant-wide {@code _vance} project carries the
+     * project nor the tenant-wide {@code _tenant} project carries the
      * requested path.
      */
     public static final String RESOURCE_PREFIX = "vance-defaults/";
@@ -2239,13 +2239,13 @@ public class DocumentService {
 
     /**
      * Resolve {@code path} along the cascade
-     * project → {@code _vance} → classpath ({@code vance-defaults/<path>}).
+     * project → {@code _tenant} → classpath ({@code vance-defaults/<path>}).
      * Returns the first match — innermost wins. Storage-backed and
      * inline documents are both materialized to a UTF-8 string, so the
      * caller never has to differentiate.
      *
      * <p>Calling with {@code projectId == "_tenant"} just collapses the
-     * first two layers — the project lookup and the {@code _vance}
+     * first two layers — the project lookup and the {@code _tenant}
      * lookup are the same row and we don't read it twice.
      *
      * @return the resolved document, or {@link Optional#empty()} when
@@ -2254,13 +2254,13 @@ public class DocumentService {
     public Optional<LookupResult> lookupCascade(String tenantId, String projectId, String path) {
         String norm = normalizePath(path);
 
-        // 1. Project (if not the _vance project itself).
+        // 1. Project (if not the _tenant project itself).
         if (!HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
             Optional<LookupResult> hit = tryProjectLookup(tenantId, projectId, norm, LookupResult.Source.PROJECT);
             if (hit.isPresent()) return hit;
         }
 
-        // 2. _vance project.
+        // 2. _tenant project.
         Optional<LookupResult> vance =
                 tryProjectLookup(tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, norm, LookupResult.Source.VANCE);
         if (vance.isPresent()) return vance;
@@ -2274,7 +2274,7 @@ public class DocumentService {
      * across the cascade. Inner sources overwrite outer ones <b>per
      * normalized path</b>: a {@code documents/how_to_tools.md} found in
      * the user's project replaces the same path coming from
-     * {@code _vance} or from the classpath default — exactly one entry
+     * {@code _tenant} or from the classpath default — exactly one entry
      * survives in the returned map regardless of how many layers carry it.
      *
      * <p>One level means: only paths that match {@code <prefix>/<name>}
@@ -2282,7 +2282,7 @@ public class DocumentService {
      * when {@code pathPrefix} is {@code documents/}.
      *
      * <p>The map iteration order is the cascade application order
-     * (resources first, then {@code _vance}, then project) — useful for
+     * (resources first, then {@code _tenant}, then project) — useful for
      * diagnostics, not for semantics. Semantically the map carries
      * "the value the innermost layer set last".
      *

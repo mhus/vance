@@ -129,7 +129,7 @@ public class ImageSearchTool implements Tool {
                 tenantId, ctx.projectId(), ctx.processId(), WebSearchTool.SETTING_KEY);
         if (apiKey == null || apiKey.isBlank()) {
             return errorResult("Serper API key not configured (setting '" + WebSearchTool.SETTING_KEY
-                    + "' in _vance / project / think-process). Ask the operator to set it.");
+                    + "' in _tenant / project / think-process). Ask the operator to set it.");
         }
 
         List<RawResult> raw;

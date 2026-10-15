@@ -19,7 +19,7 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * Read-only access to scope-cascaded settings for the Web-UI. Used
  * when the SPA needs an infrastructure-style value that depends on
- * the current project (project → {@code _vance} tenant default),
+ * the current project (project → {@code _tenant} tenant default),
  * not on the user.
  *
  * <p>The data cookie covers user-scoped preferences ({@code webui.*}
@@ -48,9 +48,7 @@ public class SettingsCascadeController {
      * by design), but keeping this allowlist tight is the primary
      * defense-in-depth.
      */
-    private static final Set<String> PUBLIC_CASCADE_KEYS = Set.of(
-            "maps.tile.url",
-            "maps.tile.attribution");
+    private static final Set<String> PUBLIC_CASCADE_KEYS = Set.of("maps.tile.url", "maps.tile.attribution");
 
     private final SettingService settingService;
 
@@ -61,7 +59,7 @@ public class SettingsCascadeController {
      * to its own hard-coded defaults.
      *
      * <p>{@code projectId} is optional; when absent the cascade
-     * starts at the {@code _vance} tenant default directly.
+     * starts at the {@code _tenant} tenant default directly.
      */
     @GetMapping
     public Map<String, String> resolve(
@@ -69,13 +67,12 @@ public class SettingsCascadeController {
             @RequestParam(value = "projectId", required = false) @Nullable String projectId,
             @RequestParam("key") List<String> keys) {
         if (keys.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "At least one 'key' parameter is required");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "At least one 'key' parameter is required");
         }
         for (String key : keys) {
             if (!PUBLIC_CASCADE_KEYS.contains(key)) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Key not exposed via cascade endpoint: " + key);
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "Key not exposed via cascade endpoint: " + key);
             }
         }
         Map<String, String> out = new LinkedHashMap<>();

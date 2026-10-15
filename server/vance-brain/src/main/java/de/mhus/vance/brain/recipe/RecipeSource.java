@@ -11,7 +11,7 @@ package de.mhus.vance.brain.recipe;
 public enum RecipeSource {
     /** From the user's project under {@code recipes/<name>.yaml}. Innermost. */
     PROJECT,
-    /** From the tenant-wide {@code _vance} system project. */
+    /** From the tenant-wide {@code _tenant} system project. */
     VANCE,
     /** From the bundled classpath resource {@code vance-defaults/recipes/<name>.yaml}. */
     RESOURCE

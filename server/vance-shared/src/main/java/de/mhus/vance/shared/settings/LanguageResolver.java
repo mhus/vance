@@ -13,12 +13,12 @@ import org.springframework.stereotype.Service;
  *       (buttons, labels). User-private, no cascade.</li>
  *   <li>{@link Keys#CHAT_LANGUAGE} — language the assistant speaks /
  *       listens in. Cascade {@code think-process → _user_<userId> →
- *       <projectId> → _vance}: a user's default, but a project may
+ *       <projectId> → _tenant}: a user's default, but a project may
  *       override (e.g. an English code-review project owned by a
  *       German-speaking user).</li>
  *   <li>{@link Keys#CONTENT_LANGUAGE} — language Documents / Insights /
  *       Memory entries are written in. Cascade {@code think-process →
- *       <projectId> → _vance}, deliberately <b>without</b> a user
+ *       <projectId> → _tenant}, deliberately <b>without</b> a user
  *       layer: content belongs to the project, not the writer, so
  *       multi-author projects don't end up with three-language
  *       documents.</li>
@@ -83,20 +83,14 @@ public class LanguageResolver {
      * configured {@code vance.language.default}.
      */
     public @Nullable String findChatLanguage(
-            String tenantId,
-            @Nullable String userId,
-            @Nullable String projectId,
-            @Nullable String thinkProcessId) {
+            String tenantId, @Nullable String userId, @Nullable String projectId, @Nullable String thinkProcessId) {
         return settingService.getStringValueUserProjectCascade(
                 tenantId, userId, projectId, thinkProcessId, Keys.CHAT_LANGUAGE);
     }
 
     /** Same as {@link #findChatLanguage} but falls back to {@link #defaultLanguage}. */
     public String chatLanguage(
-            String tenantId,
-            @Nullable String userId,
-            @Nullable String projectId,
-            @Nullable String thinkProcessId) {
+            String tenantId, @Nullable String userId, @Nullable String projectId, @Nullable String thinkProcessId) {
         String v = findChatLanguage(tenantId, userId, projectId, thinkProcessId);
         return v == null || v.isBlank() ? defaultLanguage : v;
     }
@@ -111,18 +105,12 @@ public class LanguageResolver {
      * belongs to the project.
      */
     public @Nullable String findContentLanguage(
-            String tenantId,
-            @Nullable String projectId,
-            @Nullable String thinkProcessId) {
-        return settingService.getStringValueCascade(
-                tenantId, projectId, thinkProcessId, Keys.CONTENT_LANGUAGE);
+            String tenantId, @Nullable String projectId, @Nullable String thinkProcessId) {
+        return settingService.getStringValueCascade(tenantId, projectId, thinkProcessId, Keys.CONTENT_LANGUAGE);
     }
 
     /** Same as {@link #findContentLanguage} but falls back to {@link #defaultLanguage}. */
-    public String contentLanguage(
-            String tenantId,
-            @Nullable String projectId,
-            @Nullable String thinkProcessId) {
+    public String contentLanguage(String tenantId, @Nullable String projectId, @Nullable String thinkProcessId) {
         String v = findContentLanguage(tenantId, projectId, thinkProcessId);
         return v == null || v.isBlank() ? defaultLanguage : v;
     }
@@ -155,14 +143,9 @@ public class LanguageResolver {
      * directly into their phase system-prompts).
      */
     public String formatLanguageBlock(
-            String tenantId,
-            @Nullable String userId,
-            @Nullable String projectId,
-            @Nullable String thinkProcessId) {
-        @Nullable String chat = findChatLanguage(
-                tenantId, userId, projectId, thinkProcessId);
-        @Nullable String content = findContentLanguage(
-                tenantId, projectId, thinkProcessId);
+            String tenantId, @Nullable String userId, @Nullable String projectId, @Nullable String thinkProcessId) {
+        @Nullable String chat = findChatLanguage(tenantId, userId, projectId, thinkProcessId);
+        @Nullable String content = findContentLanguage(tenantId, projectId, thinkProcessId);
         boolean chatSet = chat != null && !chat.isBlank();
         boolean contentSet = content != null && !content.isBlank();
         if (!chatSet && !contentSet) return "";
@@ -172,7 +155,8 @@ public class LanguageResolver {
         }
         if (contentSet) {
             sb.append("- Content: write documents, insights, and memory entries in ")
-                    .append(content).append('\n');
+                    .append(content)
+                    .append('\n');
         }
         return sb.toString();
     }

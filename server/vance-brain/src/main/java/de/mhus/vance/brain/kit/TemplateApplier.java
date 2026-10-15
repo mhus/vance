@@ -492,7 +492,7 @@ public class TemplateApplier {
         String project = resolveProjectFor(st.input.target(), applyProject);
         // Security (code-review-2): a kit template's setting target must stay within
         // the project the kit is applied to. An untrusted template.yaml could
-        // otherwise select scope=TENANT (→ _vance) or a foreign project and write a
+        // otherwise select scope=TENANT (→ _tenant) or a foreign project and write a
         // (possibly PASSWORD) setting there — e.g. ai.provider.*.apiKey — a
         // tenant-wide privilege escalation, since no authz runs on the resolved
         // target. Confine it to the apply-project.

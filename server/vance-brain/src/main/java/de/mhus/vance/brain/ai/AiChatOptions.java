@@ -258,7 +258,8 @@ public class AiChatOptions {
 
     /**
      * Scope hints used by {@link ModelCatalog} to apply cascade
-     * overrides (project → _vance → bundled) on
+     * overrides (bundled → system tenant {@code _vance/_tenant} →
+     * the tenant's {@code _tenant} → project; innermost wins) on
      * {@code ai-models.yaml}. {@code null} on either field means
      * "no scope" → bundled-only catalog read. Engines populate both
      * from the spawning {@code ThinkProcessDocument} via

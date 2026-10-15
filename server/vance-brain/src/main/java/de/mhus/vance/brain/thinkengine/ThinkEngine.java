@@ -139,7 +139,7 @@ public interface ThinkEngine {
      * Tenant-aware variant of {@link #bundledConfig()} — used by spawners
      * that have a tenant context and want engines to resolve their
      * defaults through the document cascade
-     * (project → {@code _vance} → classpath). Engines that override this
+     * (project → {@code _tenant} → classpath). Engines that override this
      * method can return a fresh config per call (e.g. Eddie reads its
      * prompts via {@link EnginePromptResolver}); the default delegates
      * to the tenant-agnostic {@link #bundledConfig()}.

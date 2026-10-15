@@ -23,7 +23,7 @@ import org.yaml.snakeyaml.Yaml;
 
 /**
  * Loads and parses wizard YAMLs through the four-tier cascade
- * {@code project → _user_<userId> → _vance → classpath:vance-defaults/wizards/}.
+ * {@code project → _user_<userId> → _tenant → classpath:vance-defaults/wizards/}.
  *
  * <p>The {@link DocumentService} only knows the standard three-tier
  * cascade (project / vance / resource); the {@code _user_<userId>}

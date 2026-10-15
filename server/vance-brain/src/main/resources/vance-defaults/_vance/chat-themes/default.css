@@ -7,7 +7,7 @@
  * (Vue scoped styles on the message components), nothing shifts.
  *
  * It is also the template to copy when authoring a chat theme, and an
- * override point: a `default.css` in the `_vance` tenant project or in
+ * override point: a `default.css` in the `_tenant` project or in
  * a user project replaces this file for every chat of that scope.
  *
  * ── Authoring contract ──────────────────────────────────────────────

@@ -36,7 +36,7 @@ import org.yaml.snakeyaml.Yaml;
  *   <li>{@code _user_<login>/skills/<name>/SKILL.md} — only when a
  *       user is in scope</li>
  *   <li>Then {@code DocumentService.lookupCascade} on the regular
- *       {@code project → _vance → classpath:vance-defaults/} chain.</li>
+ *       {@code project → _tenant → classpath:vance-defaults/} chain.</li>
  * </ol>
  *
  * <p>Reference docs are resolved <b>against the layer that produced the

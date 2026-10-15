@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 /**
  * Convenience wrapper around {@link SettingService} for the
  * {@code office.*} setting group. Resolves per-project first,
- * falls back to the tenant-default {@code _vance} project so a
+ * falls back to the tenant-default {@code _tenant} project so a
  * tenant-wide ONLYOFFICE setup doesn't have to be re-declared on
  * every project.
  *
@@ -53,8 +53,7 @@ public class OfficeSettings {
      *  central {@link HomeBootstrapService#TENANT_PROJECT_NAME}
      *  constant — was {@code _vance} before the 2026 migration,
      *  is {@code _tenant} now. */
-    private static final String TENANT_DEFAULT_PROJECT
-            = HomeBootstrapService.TENANT_PROJECT_NAME;
+    private static final String TENANT_DEFAULT_PROJECT = HomeBootstrapService.TENANT_PROJECT_NAME;
 
     private final SettingService settingService;
 
@@ -72,8 +71,7 @@ public class OfficeSettings {
         return new Snapshot(provider, url, jwtSecret, algorithm, callbackBaseUrl);
     }
 
-    private String readString(String tenantId, @Nullable String projectId,
-                              String key, String defaultValue) {
+    private String readString(String tenantId, @Nullable String projectId, String key, String defaultValue) {
         if (projectId != null && !projectId.isBlank()) {
             String v = settingService
                     .find(tenantId, "project", projectId, key)
@@ -88,16 +86,12 @@ public class OfficeSettings {
         return (v != null && !v.isBlank()) ? v.trim() : defaultValue;
     }
 
-    private @Nullable String readDecryptedPassword(String tenantId,
-                                                   @Nullable String projectId,
-                                                   String key) {
+    private @Nullable String readDecryptedPassword(String tenantId, @Nullable String projectId, String key) {
         if (projectId != null && !projectId.isBlank()) {
-            String v = settingService.getDecryptedPassword(
-                    tenantId, "project", projectId, key);
+            String v = settingService.getDecryptedPassword(tenantId, "project", projectId, key);
             if (v != null && !v.isBlank()) return v;
         }
-        String v = settingService.getDecryptedPassword(
-                tenantId, "project", TENANT_DEFAULT_PROJECT, key);
+        String v = settingService.getDecryptedPassword(tenantId, "project", TENANT_DEFAULT_PROJECT, key);
         return (v != null && !v.isBlank()) ? v : null;
     }
 
@@ -114,19 +108,12 @@ public class OfficeSettings {
      * reaches the host via {@code host.docker.internal}).
      */
     public record Snapshot(
-            String provider,
-            String url,
-            @Nullable String jwtSecret,
-            String algorithm,
-            String callbackBaseUrl) {
+            String provider, String url, @Nullable String jwtSecret, String algorithm, String callbackBaseUrl) {
 
         /** {@code true} when a usable office integration is
          *  configured for this scope. */
         public boolean isEnabled() {
-            return !"none".equalsIgnoreCase(provider)
-                    && !url.isBlank()
-                    && jwtSecret != null
-                    && !jwtSecret.isBlank();
+            return !"none".equalsIgnoreCase(provider) && !url.isBlank() && jwtSecret != null && !jwtSecret.isBlank();
         }
     }
 }

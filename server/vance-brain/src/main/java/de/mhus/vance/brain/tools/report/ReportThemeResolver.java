@@ -39,7 +39,7 @@ import org.springframework.stereotype.Service;
  *   <li><b>Theme</b> — a named stylesheet under
  *       {@code _vance/report-themes/<name>.css}, resolved through the
  *       {@link DocumentService#lookupCascade(String, String, String)}
- *       (project &rarr; {@code _vance} tenant &rarr; classpath fallback).
+ *       (project &rarr; {@code _tenant} &rarr; classpath fallback).
  *       Activated by {@code theme: <name>} in the markdown front matter.
  *       The name is validated against {@link #THEME_NAME} — no path
  *       segments, no traversal; the cascade path is built by the resolver,
@@ -81,8 +81,7 @@ public class ReportThemeResolver {
     static final String THEME_PATH_PREFIX = "_vance/report-themes/";
 
     /** Classpath location of the bundled default theme. */
-    private static final String DEFAULT_RESOURCE =
-            "vance-defaults/_vance/report-themes/default.css";
+    private static final String DEFAULT_RESOURCE = "vance-defaults/_vance/report-themes/default.css";
 
     /**
      * Theme name validator — lowercase letters, digits, hyphen. Deliberately
@@ -150,9 +149,11 @@ public class ReportThemeResolver {
     private String loadDefault() {
         String content = readClasspath(DEFAULT_RESOURCE);
         if (content == null) {
-            log.warn("Bundled default report theme not found at classpath:{} — "
-                    + "PDF will render without base styles. This is an internal "
-                    + "misconfiguration.", DEFAULT_RESOURCE);
+            log.warn(
+                    "Bundled default report theme not found at classpath:{} — "
+                            + "PDF will render without base styles. This is an internal "
+                            + "misconfiguration.",
+                    DEFAULT_RESOURCE);
             return "";
         }
         return content;
@@ -160,21 +161,21 @@ public class ReportThemeResolver {
 
     // ──────────────────── theme layer (cascade, optional) ──────────────────
 
-    private @Nullable String loadTheme(
-            String tenantId, String projectName, @Nullable String themeName) {
+    private @Nullable String loadTheme(String tenantId, String projectName, @Nullable String themeName) {
         if (themeName == null || themeName.isBlank()) return null;
         String name = themeName.trim();
         if (!THEME_NAME.matcher(name).matches()) {
-            log.warn("Report theme name '{}' is invalid (must match [a-z0-9-]+) "
-                    + "— theme skipped.", name);
+            log.warn("Report theme name '{}' is invalid (must match [a-z0-9-]+) " + "— theme skipped.", name);
             return null;
         }
         String path = THEME_PATH_PREFIX + name + ".css";
-        Optional<LookupResult> hit = documentService.lookupCascade(
-                tenantId, projectName, path);
+        Optional<LookupResult> hit = documentService.lookupCascade(tenantId, projectName, path);
         if (hit.isEmpty()) {
-            log.warn("Report theme '{}' not found at '{}' in any cascade layer "
-                    + "(project → _vance → classpath) — falling back to default.", name, path);
+            log.warn(
+                    "Report theme '{}' not found at '{}' in any cascade layer "
+                            + "(project → _tenant → classpath) — falling back to default.",
+                    name,
+                    path);
             return null;
         }
         return hit.get().content();
@@ -183,10 +184,7 @@ public class ReportThemeResolver {
     // ──────────────────── css-ref layer (document, optional) ───────────────
 
     private @Nullable String loadCssRef(
-            String tenantId,
-            String projectName,
-            @Nullable String cssRef,
-            @Nullable SecurityContext subject) {
+            String tenantId, String projectName, @Nullable String cssRef, @Nullable SecurityContext subject) {
         if (cssRef == null || cssRef.isBlank()) return null;
         String ref = cssRef.trim();
 
@@ -194,8 +192,10 @@ public class ReportThemeResolver {
         // rather than fall through to a permissive default — a caller that
         // does not name who is asking is a caller that forgot to.
         if (subject == null) {
-            log.warn("Report css reference '{}' was given without a subject "
-                    + "— css layer skipped (nobody to read it on behalf of).", ref);
+            log.warn(
+                    "Report css reference '{}' was given without a subject "
+                            + "— css layer skipped (nobody to read it on behalf of).",
+                    ref);
             return null;
         }
 
@@ -204,8 +204,10 @@ public class ReportThemeResolver {
         try {
             resolved = documentRefResolver.resolve(ref, ctx);
         } catch (de.mhus.vance.shared.document.DocumentRefException e) {
-            log.warn("Report css reference '{}' could not be resolved: {} "
-                    + "— css layer skipped.", ref, e.getMessage());
+            log.warn(
+                    "Report css reference '{}' could not be resolved: {} " + "— css layer skipped.",
+                    ref,
+                    e.getMessage());
             return null;
         }
 
@@ -221,12 +223,14 @@ public class ReportThemeResolver {
         // it into a 403 would fail a render that is otherwise fine.
         if (!permissionService.check(
                 subject,
-                new de.mhus.vance.shared.permission.Resource.Document(
-                        tenantId, resolved.projectId(), resolved.path()),
+                new de.mhus.vance.shared.permission.Resource.Document(tenantId, resolved.projectId(), resolved.path()),
                 Action.READ)) {
-            log.warn("Report css reference '{}' resolved to '{}/{}', which '{}' may not "
-                            + "read — css layer skipped.",
-                    ref, resolved.projectId(), resolved.path(), subject.subjectId());
+            log.warn(
+                    "Report css reference '{}' resolved to '{}/{}', which '{}' may not " + "read — css layer skipped.",
+                    ref,
+                    resolved.projectId(),
+                    resolved.path(),
+                    subject.subjectId());
             return null;
         }
 
@@ -235,12 +239,14 @@ public class ReportThemeResolver {
         // up in the same tenant. findByPath honours the mount namespace, but
         // a CSS ref into _ext/ is not meaningful here — it would just resolve
         // or not, same as any document.
-        Optional<DocumentDocument> doc = documentService.findByPath(
-                tenantId, resolved.projectId(), resolved.path());
+        Optional<DocumentDocument> doc = documentService.findByPath(tenantId, resolved.projectId(), resolved.path());
         if (doc.isEmpty()) {
-            log.warn("Report css reference '{}' resolved to '{}/{}' but no such "
-                    + "document exists — css layer skipped.",
-                    ref, resolved.projectId(), resolved.path());
+            log.warn(
+                    "Report css reference '{}' resolved to '{}/{}' but no such "
+                            + "document exists — css layer skipped.",
+                    ref,
+                    resolved.projectId(),
+                    resolved.path());
             return null;
         }
         return readDocumentContent(doc.get());
@@ -252,23 +258,20 @@ public class ReportThemeResolver {
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            log.warn("Could not read css document '{}': {} — css layer skipped.",
-                    doc.getPath(), e.toString());
+            log.warn("Could not read css document '{}': {} — css layer skipped.", doc.getPath(), e.toString());
             return null;
         }
     }
 
     private @Nullable String readClasspath(String resourcePath) {
         try {
-            Resource resource = resourcePatternResolver.getResource(
-                    "classpath:" + resourcePath);
+            Resource resource = resourcePatternResolver.getResource("classpath:" + resourcePath);
             if (!resource.exists() || !resource.isReadable()) return null;
             try (InputStream in = resource.getInputStream()) {
                 return new String(in.readAllBytes(), StandardCharsets.UTF_8);
             }
         } catch (IOException e) {
-            log.warn("Failed to read classpath resource '{}': {}",
-                    resourcePath, e.toString());
+            log.warn("Failed to read classpath resource '{}': {}", resourcePath, e.toString());
             return null;
         }
     }

@@ -147,7 +147,7 @@ phases:
 - **Ein File pro Strategy** unter `_vance/strategies/<name>.yaml`. Tenant
   overrides leben hier; project-spezifische Overrides in
   `<project>/strategies/<name>.yaml`. Cascade-Reihenfolge:
-  project → `_vance` → bundled.
+  project → `_tenant` → bundled.
 - The bundled set ships under `classpath:vance-defaults/strategies/`.
   Tenants override exactly the strategies they want to change; the rest
   fall through.

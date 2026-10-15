@@ -21,7 +21,7 @@ import org.yaml.snakeyaml.Yaml;
 /**
  * Cascade-aware server-tool loader. Reads one YAML per tool through
  * {@link DocumentService#listByPrefixCascade} / {@link DocumentService#lookupCascade}:
- * {@code project → _vance → classpath(vance-defaults/server-tools/<name>.yaml)}.
+ * {@code project → _tenant → classpath(vance-defaults/server-tools/<name>.yaml)}.
  *
  * <p>Parse errors on individual entries are surfaced to the caller via
  * {@link ServerToolParseException}; bulk listings ({@link #listAll}) log
@@ -53,12 +53,11 @@ public class ServerToolLoader {
      * Resolve a single tool by name in the project/_vance/resource
      * cascade. Returns empty if no tier carries it.
      */
-    public Optional<ServerToolConfig> load(
-            String tenantId, @Nullable String projectId, String name) {
+    public Optional<ServerToolConfig> load(String tenantId, @Nullable String projectId, String name) {
         if (name == null || name.isBlank()) return Optional.empty();
         String normalized = normalizedName(name);
-        Optional<LookupResult> hit = documentService.lookupCascade(
-                tenantId, effectiveProjectId(projectId), pathFor(normalized));
+        Optional<LookupResult> hit =
+                documentService.lookupCascade(tenantId, effectiveProjectId(projectId), pathFor(normalized));
         if (hit.isEmpty()) return Optional.empty();
         try {
             return Optional.of(parse(normalized, hit.get()));
@@ -66,7 +65,8 @@ public class ServerToolLoader {
             throw new ServerToolParseException(
                     "Failed to parse server-tool '" + normalized + "' from "
                             + hit.get().source() + " at path '" + hit.get().path()
-                            + "': " + e.getMessage(), e);
+                            + "': " + e.getMessage(),
+                    e);
         }
     }
 
@@ -83,16 +83,18 @@ public class ServerToolLoader {
             if (path == null) continue;
             String name = nameFromPath(path);
             if (name == null) continue;
-            LookupResult.Source source =
-                    HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)
-                            ? LookupResult.Source.VANCE
-                            : LookupResult.Source.PROJECT;
+            LookupResult.Source source = HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)
+                    ? LookupResult.Source.VANCE
+                    : LookupResult.Source.PROJECT;
             LookupResult hit = new LookupResult(path, documentService.readContent(doc), source, doc);
             try {
                 out.add(parse(name, hit));
             } catch (RuntimeException ex) {
-                log.warn("ServerToolLoader: skipping malformed tool path='{}' source={}: {}",
-                        path, source, ex.getMessage());
+                log.warn(
+                        "ServerToolLoader: skipping malformed tool path='{}' source={}: {}",
+                        path,
+                        source,
+                        ex.getMessage());
             }
         }
         return out;
@@ -100,13 +102,13 @@ public class ServerToolLoader {
 
     /**
      * Every tool visible to the project, cascade-merged. Project entries
-     * override {@code _vance} entries by name; both override classpath
+     * override {@code _tenant} entries by name; both override classpath
      * defaults. Malformed entries are logged and skipped — the rest of
      * the bootstrap continues.
      */
     public List<ServerToolConfig> listAll(String tenantId, @Nullable String projectId) {
-        Map<String, LookupResult> hits = documentService.listByPrefixCascade(
-                tenantId, effectiveProjectId(projectId), SERVER_TOOL_PATH_PREFIX);
+        Map<String, LookupResult> hits =
+                documentService.listByPrefixCascade(tenantId, effectiveProjectId(projectId), SERVER_TOOL_PATH_PREFIX);
         List<ServerToolConfig> out = new ArrayList<>(hits.size());
         for (Map.Entry<String, LookupResult> e : hits.entrySet()) {
             String path = e.getKey();
@@ -115,8 +117,11 @@ public class ServerToolLoader {
             try {
                 out.add(parse(name, e.getValue()));
             } catch (RuntimeException ex) {
-                log.warn("ServerToolLoader: skipping malformed tool path='{}' source={}: {}",
-                        path, e.getValue().source(), ex.getMessage());
+                log.warn(
+                        "ServerToolLoader: skipping malformed tool path='{}' source={}: {}",
+                        path,
+                        e.getValue().source(),
+                        ex.getMessage());
             }
         }
         return out;
@@ -139,8 +144,7 @@ public class ServerToolLoader {
         try {
             return parse(norm, syntheticHit(norm, yaml));
         } catch (RuntimeException ex) {
-            throw new ServerToolParseException(
-                    "server-tool YAML invalid: " + ex.getMessage(), ex);
+            throw new ServerToolParseException("server-tool YAML invalid: " + ex.getMessage(), ex);
         }
     }
 
@@ -155,8 +159,7 @@ public class ServerToolLoader {
     }
 
     private static String effectiveProjectId(@Nullable String projectId) {
-        return (projectId == null || projectId.isBlank())
-                ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
+        return (projectId == null || projectId.isBlank()) ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
     }
 
     /**
@@ -167,18 +170,13 @@ public class ServerToolLoader {
     public static @Nullable String nameFromPath(String path) {
         if (!path.startsWith(SERVER_TOOL_PATH_PREFIX)) return null;
         if (!path.endsWith(SERVER_TOOL_PATH_SUFFIX)) return null;
-        String stem = path.substring(
-                SERVER_TOOL_PATH_PREFIX.length(),
-                path.length() - SERVER_TOOL_PATH_SUFFIX.length());
+        String stem =
+                path.substring(SERVER_TOOL_PATH_PREFIX.length(), path.length() - SERVER_TOOL_PATH_SUFFIX.length());
         return stem.isBlank() ? null : stem;
     }
 
     private static LookupResult syntheticHit(String name, String yaml) {
-        return new LookupResult(
-                pathFor(name),
-                yaml,
-                LookupResult.Source.PROJECT,
-                /*document*/ null);
+        return new LookupResult(pathFor(name), yaml, LookupResult.Source.PROJECT, /*document*/ null);
     }
 
     @SuppressWarnings("unchecked")
@@ -208,8 +206,7 @@ public class ServerToolLoader {
 
         boolean enabled = boolWithDefault(spec.get("enabled"), true, "enabled");
         boolean primary = boolWithDefault(spec.get("primary"), false, "primary");
-        boolean defaultDeferred = boolWithDefault(
-                spec.get("defaultDeferred"), false, "defaultDeferred");
+        boolean defaultDeferred = boolWithDefault(spec.get("defaultDeferred"), false, "defaultDeferred");
         // promptHint is optional — empty string when unset. Engines
         // inject it into the system prompt only when this pack is
         // reachable for the turn.
@@ -243,8 +240,7 @@ public class ServerToolLoader {
 
     private static String stringOrThrow(@Nullable Object raw, String fieldName) {
         if (!(raw instanceof String s) || s.isBlank()) {
-            throw new IllegalStateException(
-                    "missing required field '" + fieldName + "' (must be a non-empty string)");
+            throw new IllegalStateException("missing required field '" + fieldName + "' (must be a non-empty string)");
         }
         return s;
     }
@@ -274,8 +270,7 @@ public class ServerToolLoader {
         List<String> out = new ArrayList<>(list.size());
         for (Object item : list) {
             if (!(item instanceof String s) || s.isBlank()) {
-                throw new IllegalStateException(
-                        "'" + fieldName + "' contains a non-string or blank entry");
+                throw new IllegalStateException("'" + fieldName + "' contains a non-string or blank entry");
             }
             out.add(s);
         }
@@ -290,16 +285,14 @@ public class ServerToolLoader {
         Set<String> out = new LinkedHashSet<>(list.size());
         for (Object item : list) {
             if (!(item instanceof String s) || s.isBlank()) {
-                throw new IllegalStateException(
-                        "'" + fieldName + "' contains a non-string or blank entry");
+                throw new IllegalStateException("'" + fieldName + "' contains a non-string or blank entry");
             }
             out.add(s);
         }
         return out;
     }
 
-    private static boolean boolWithDefault(
-            @Nullable Object raw, boolean defaultValue, String fieldName) {
+    private static boolean boolWithDefault(@Nullable Object raw, boolean defaultValue, String fieldName) {
         if (raw == null) return defaultValue;
         if (raw instanceof Boolean b) return b;
         throw new IllegalStateException(

@@ -28,7 +28,7 @@ import org.springframework.stereotype.Component;
  * schedules, goals, settings — would outlive the account and be inherited by
  * the next Trillian minted under the same name. The exception is kept narrow
  * by shape, not by a flag: anything that is not a Trillian hub is refused, so
- * this class cannot reach a human's hub, let alone {@code _vance}.
+ * this class cannot reach a human's hub, let alone {@code _tenant}.
  *
  * <p>Live sessions in the hub are closed through the session lifecycle first,
  * so the loop's engine stops on its lane before its rows go. Then every

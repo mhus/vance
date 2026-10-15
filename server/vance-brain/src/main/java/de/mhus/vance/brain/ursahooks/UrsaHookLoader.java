@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Reads hook YAML files from the document layer along the cascade
- * (Project → {@code _vance}). Returns {@link UrsaHookDef}s ready to be
+ * (Project → {@code _tenant}). Returns {@link UrsaHookDef}s ready to be
  * registered.
  *
  * <p>The path layout is {@code _vance/hooks/<event>/<name>.yaml}.
@@ -49,11 +49,10 @@ public class UrsaHookLoader {
         return out;
     }
 
-    /** All hooks for one event — Project layer overrides {@code _vance}. */
-    public List<UrsaHookDef> listForEvent(
-            String tenantId, String projectId, UrsaHookEventName event) {
-        Map<String, LookupResult> hits = documentService.listByPrefixCascade(
-                tenantId, projectId, HOOK_PATH_ROOT + event.wireName());
+    /** All hooks for one event — Project layer overrides {@code _tenant}. */
+    public List<UrsaHookDef> listForEvent(String tenantId, String projectId, UrsaHookEventName event) {
+        Map<String, LookupResult> hits =
+                documentService.listByPrefixCascade(tenantId, projectId, HOOK_PATH_ROOT + event.wireName());
         if (hits.isEmpty()) return List.of();
         List<UrsaHookDef> out = new ArrayList<>(hits.size());
         for (Map.Entry<String, LookupResult> e : hits.entrySet()) {
@@ -61,44 +60,47 @@ public class UrsaHookLoader {
             if (!path.endsWith(HOOK_PATH_SUFFIX)) continue;
             String hookName = deriveHookName(path);
             UrsaHookSource source = mapSource(e.getValue().source());
-            @Nullable String createdBy = e.getValue().document() == null
-                    ? null : e.getValue().document().getCreatedBy();
-            boolean privileged = e.getValue().document() != null
-                    && e.getValue().document().isPrivileged();
+            @Nullable
+            String createdBy = e.getValue().document() == null
+                    ? null
+                    : e.getValue().document().getCreatedBy();
+            boolean privileged =
+                    e.getValue().document() != null && e.getValue().document().isPrivileged();
             try {
-                out.add(parser.parse(
-                        e.getValue().content(), event, source, hookName, createdBy)
+                out.add(parser.parse(e.getValue().content(), event, source, hookName, createdBy)
                         .withPrivileged(privileged));
             } catch (UrsaHookParseException ex) {
-                log.warn("Hook '{}/{}/{}/{}' failed to parse: {}",
-                        tenantId, projectId, event.wireName(), hookName, ex.getMessage());
+                log.warn(
+                        "Hook '{}/{}/{}/{}' failed to parse: {}",
+                        tenantId,
+                        projectId,
+                        event.wireName(),
+                        hookName,
+                        ex.getMessage());
             }
         }
         return out;
     }
 
     /** Look up a single hook by event + name, parsed. */
-    public Optional<UrsaHookDef> load(
-            String tenantId, String projectId, UrsaHookEventName event, String hookName) {
+    public Optional<UrsaHookDef> load(String tenantId, String projectId, UrsaHookEventName event, String hookName) {
         String path = HOOK_PATH_ROOT + event.wireName() + "/" + hookName + HOOK_PATH_SUFFIX;
-        Optional<LookupResult> hit = documentService.lookupCascade(
-                tenantId, projectId, path);
+        Optional<LookupResult> hit = documentService.lookupCascade(tenantId, projectId, path);
         if (hit.isEmpty()) return Optional.empty();
         UrsaHookSource source = mapSource(hit.get().source());
-        @Nullable String createdBy = hit.get().document() == null
-                ? null : hit.get().document().getCreatedBy();
-        boolean privileged = hit.get().document() != null
-                && hit.get().document().isPrivileged();
-        return Optional.of(parser.parse(
-                hit.get().content(), event, source, hookName, createdBy)
+        @Nullable
+        String createdBy =
+                hit.get().document() == null ? null : hit.get().document().getCreatedBy();
+        boolean privileged =
+                hit.get().document() != null && hit.get().document().isPrivileged();
+        return Optional.of(parser.parse(hit.get().content(), event, source, hookName, createdBy)
                 .withPrivileged(privileged));
     }
 
     /**
      * Group {@link #listAll} by event for the registry-rebuild path.
      */
-    public Map<UrsaHookEventName, List<UrsaHookDef>> groupByEvent(
-            String tenantId, String projectId) {
+    public Map<UrsaHookEventName, List<UrsaHookDef>> groupByEvent(String tenantId, String projectId) {
         Map<UrsaHookEventName, List<UrsaHookDef>> out = new LinkedHashMap<>();
         for (UrsaHookEventName event : UrsaHookEventName.values()) {
             List<UrsaHookDef> defs = listForEvent(tenantId, projectId, event);
@@ -141,9 +143,7 @@ public class UrsaHookLoader {
     public static @Nullable ParsedPath parsePath(String path) {
         if (!path.startsWith(HOOK_PATH_ROOT)) return null;
         if (!path.endsWith(HOOK_PATH_SUFFIX)) return null;
-        String tail = path.substring(
-                HOOK_PATH_ROOT.length(),
-                path.length() - HOOK_PATH_SUFFIX.length());
+        String tail = path.substring(HOOK_PATH_ROOT.length(), path.length() - HOOK_PATH_SUFFIX.length());
         int slash = tail.indexOf('/');
         if (slash <= 0 || slash == tail.length() - 1) return null;
         String event = tail.substring(0, slash);

@@ -22,7 +22,7 @@ import org.yaml.snakeyaml.Yaml;
  * Cascade-aware grouping order and labels for the user-facing skill picker.
  *
  * <p>Reads {@code _vance/config/skill_categories.yaml} through
- * {@link DocumentService#lookupCascade} — project → {@code _vance} →
+ * {@link DocumentService#lookupCascade} — project → {@code _tenant} →
  * bundled classpath default — the same tiering every skill resolves
  * through. The document is a <b>sort help, not a registry</b>, the same
  * contract as {@code RecipeCategoriesService} for the recipe picker

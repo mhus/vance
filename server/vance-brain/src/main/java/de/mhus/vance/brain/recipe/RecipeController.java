@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <p>{@code GET /brain/{tenant}/projects/{project}/recipes/listed}
  * returns every recipe that opts in via {@code listed: true} in its
- * YAML, resolved through the project → _vance → bundled cascade
+ * YAML, resolved through the project → _tenant → bundled cascade
  * (same merge semantics as {@link RecipeLoader#listAll}). Internal
  * helper recipes ({@code internal: true}) are excluded even when
  * they carry {@code listed: true}.

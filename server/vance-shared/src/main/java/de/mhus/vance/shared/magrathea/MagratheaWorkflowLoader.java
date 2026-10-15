@@ -59,7 +59,7 @@ public class MagratheaWorkflowLoader {
     private final DocumentService documentService;
 
     /**
-     * Resolve a single workflow by name in the project/_vance cascade.
+     * Resolve a single workflow by name in the project/_tenant cascade.
      * Returns empty if no tier carries it.
      */
     public Optional<ResolvedMagratheaWorkflow> load(String tenantId, @Nullable String projectId, String name) {

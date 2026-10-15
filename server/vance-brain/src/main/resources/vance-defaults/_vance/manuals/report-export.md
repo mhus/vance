@@ -155,7 +155,7 @@ cascade):
 
 1. `default.css` — always.
 2. `_vance/report-themes/<theme>.css` — when `theme:` is set. Resolved
-   through the document cascade (project → `_vance` → classpath).
+   through the document cascade (project → `_tenant` → classpath).
 3. The document referenced by `css:` — when set. A `vance:` document ref
    or a bare path, resolved via `DocumentRefResolver` against the
    project root; cross-project via `//authority/`.
@@ -164,7 +164,7 @@ cascade):
 
 - Name matches `[a-z0-9-]+` (no slashes, no dots — no path traversal).
 - File lives at `_vance/report-themes/<name>.css`.
-- Cascade: project overrides `_vance` overrides bundled. A missing theme
+- Cascade: project overrides `_tenant` overrides bundled. A missing theme
   logs a warning and falls back to the default (render never aborts).
 
 ### `css:` — per-document override

@@ -24,7 +24,7 @@ import org.yaml.snakeyaml.Yaml;
  * picker.
  *
  * <p>Reads {@code _vance/config/recipe_categories.yaml} through
- * {@link DocumentService#lookupCascade} — project → {@code _vance} →
+ * {@link DocumentService#lookupCascade} — project → {@code _tenant} →
  * bundled classpath default — the same tiering every recipe resolves
  * through. The document is a <b>sort help, not a registry</b>:
  *

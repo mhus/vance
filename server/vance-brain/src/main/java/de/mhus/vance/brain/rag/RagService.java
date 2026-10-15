@@ -304,7 +304,7 @@ public class RagService {
                     + rag.getName() + "'.");
         }
         // RAG-level operation has no process scope — read from the
-        // _vance/project layer of the project cascade.
+        // _tenant/project layer of the project cascade.
         String apiKey;
         if (embeddingModelService.requiresApiKey(rag.getEmbeddingProvider())) {
             apiKey = settingService.getDecryptedPasswordCascade(

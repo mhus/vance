@@ -22,5 +22,5 @@ everywhere (chat wizard tab, `POST /wizards/<name>/render`).
 
 - A missing `promptTemplate`, empty `fields` or broken Pebble makes
   the wizard **silently vanish** — the server reports it on save.
-- Same name wins from the inside: `_user` over project over `_vance`
+- Same name wins from the inside: `_user` over project over `_tenant`
   over classpath.

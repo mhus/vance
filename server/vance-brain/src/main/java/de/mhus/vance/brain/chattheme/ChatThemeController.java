@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <p>{@code GET /brain/{tenant}/projects/{project}/chat-themes/{name}/css}
  * serves the theme named in the path, resolved through the chat theme
- * cascade (project → {@code _vance} tenant → classpath default), then
+ * cascade (project → {@code _tenant} → classpath default), then
  * filtered by the shared {@link CssSanitizer} and fenced to the chat
  * transcript root by the shared {@link CssScopePrefixer} — the same
  * serving pipeline the markdown document preview endpoint uses, with a

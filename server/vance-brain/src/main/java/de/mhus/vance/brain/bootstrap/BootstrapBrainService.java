@@ -139,10 +139,10 @@ public class BootstrapBrainService {
 
         seedInstantHoleDocuments();
 
-        // The tenant-wide _vance system project hosts settings and
+        // The tenant-wide _tenant system project hosts settings and
         // server-tool defaults. Provision it eagerly so that
         // InitSettingsLoader has somewhere to write — other tenants
-        // get _vance lazily on first login (AccessController).
+        // get _tenant lazily on first login (AccessController).
         homeBootstrapService.ensureTenantProject(ACME_TENANT);
 
         // Seed the mock OAuth provider so the local-dev compose stack
@@ -160,7 +160,7 @@ public class BootstrapBrainService {
 
         // LLM keys, provider/model defaults, etc. — loaded from a
         // gitignored YAML so a Mongo wipe doesn't lose them. The
-        // entries land on the tenant's _vance project (see
+        // entries land on the tenant's _tenant project (see
         // InitSettingsLoader).
         initSettingsLoader.loadIfPresent();
     }

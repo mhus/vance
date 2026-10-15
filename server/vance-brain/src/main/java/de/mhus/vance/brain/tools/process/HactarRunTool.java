@@ -64,7 +64,7 @@ public class HactarRunTool implements Tool {
                         "description",
                         "Document path to the script — REQUIRED. "
                                 + "Resolved via the standard cascade "
-                                + "(project → _vance → resource)."));
+                                + "(project → _tenant → resource)."));
         properties.put(
                 "name",
                 Map.of(

@@ -24,7 +24,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 /**
- * Cascade resolver for recipe names — Project → {@code _vance} →
+ * Cascade resolver for recipe names — Project → {@code _tenant} →
  * classpath, all reached through {@link RecipeLoader} which in turn
  * delegates to {@code DocumentService.lookupCascade}. Returns
  * {@link AppliedRecipe} with caller-supplied param overrides already
@@ -124,7 +124,7 @@ public class RecipeResolver {
     }
 
     /**
-     * Resolves {@code name} in the project/_vance/classpath cascade.
+     * Resolves {@code name} in the project/_tenant/classpath cascade.
      * Returns empty if no tier carries the name — the caller will
      * normally turn this into a 4xx-style error for the LLM/REST API.
      */

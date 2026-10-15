@@ -1,8 +1,8 @@
 package de.mhus.vance.brain.servertool;
 
+import de.mhus.vance.brain.tools.ToolSource;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.brain.tools.ToolSource;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Server-side {@link ToolSource} backed by {@link ServerToolService}'s
- * cascade ({@code project → _vance → built-in beans}). The full
+ * cascade ({@code project → _tenant → built-in beans}). The full
  * cascade lives in the service; this source is a thin adapter that
  * binds the request {@link ToolInvocationContext} to the service.
  *
@@ -20,7 +20,7 @@ import org.springframework.stereotype.Component;
  * resolves first-wins on name collisions).
  *
  * <p>Tools issued for an invocation context without a project fall
- * back to the {@code _vance} system project — this matches the
+ * back to the {@code _tenant} system project — this matches the
  * fall-through behaviour of {@code DocumentService.lookupCascade}.
  */
 @Component

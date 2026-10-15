@@ -42,27 +42,23 @@ import org.jspecify.annotations.Nullable;
  *
  * @see DocumentService
  */
-public sealed interface DocumentChangedEvent
-        permits DocumentChangedEvent.Upserted, DocumentChangedEvent.Deleted {
+public sealed interface DocumentChangedEvent permits DocumentChangedEvent.Upserted, DocumentChangedEvent.Deleted {
 
     /** Owning tenant — {@code ProjectDocument.tenantId}. */
     String tenantId();
 
-    /** Owning project — {@code ProjectDocument.name} (system projects: {@code _tenant}, {@code _vance}). */
+    /** Owning project — {@code ProjectDocument.name} (system projects: {@code _tenant}). */
     String projectId();
 
     /** Full document path (e.g. {@code _vance/server-tools/zoho_imap.yaml}). */
     String path();
 
     /** Mongo id of the document, or {@code null} for deletes when the row is already gone. */
-    @Nullable String documentId();
+    @Nullable
+    String documentId();
 
     /** Create or content-replacement on an existing document. */
-    record Upserted(
-            String tenantId,
-            String projectId,
-            String path,
-            String documentId)
+    record Upserted(String tenantId, String projectId, String path, String documentId)
             implements DocumentChangedEvent {}
 
     /** Hard-delete of a document. */
@@ -70,6 +66,5 @@ public sealed interface DocumentChangedEvent
             String tenantId,
             String projectId,
             String path,
-            @Nullable String documentId)
-            implements DocumentChangedEvent {}
+            @Nullable String documentId) implements DocumentChangedEvent {}
 }

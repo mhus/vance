@@ -25,7 +25,7 @@ import org.yaml.snakeyaml.Yaml;
 /**
  * Read/write access to the tenant-wide project-kits catalog, the only
  * authoritative path to {@code config/project-kits.yaml} in any
- * tenant's {@code _vance} project.
+ * tenant's {@code _tenant} project.
  *
  * <p>Spec: {@code specification/project-kits-catalog.md}.
  */
@@ -47,8 +47,8 @@ public class ProjectKitsCatalogService {
      * catalog (version = {@link #CURRENT_VERSION}, no entries).
      */
     public ProjectKitsCatalogDto load(String tenantId) {
-        Optional<DocumentDocument> doc = documentService.findByPath(
-                tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, CATALOG_PATH);
+        Optional<DocumentDocument> doc =
+                documentService.findByPath(tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, CATALOG_PATH);
         if (doc.isEmpty()) {
             return ProjectKitsCatalogDto.builder()
                     .version(CURRENT_VERSION)
@@ -82,20 +82,26 @@ public class ProjectKitsCatalogService {
     /**
      * Persist {@code catalog} for {@code tenantId}. Validates content
      * (see {@link #validate}), serializes to YAML, upserts the document.
-     * Caller is responsible for having the tenant's {@code _vance}
+     * Caller is responsible for having the tenant's {@code _tenant}
      * project provisioned — this method does <b>not</b> create it.
      */
     public void save(String tenantId, ProjectKitsCatalogDto catalog) {
         validate(catalog);
         String yamlText = serialize(catalog);
-        Optional<DocumentDocument> existing = documentService.findByPath(
-                tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, CATALOG_PATH);
+        Optional<DocumentDocument> existing =
+                documentService.findByPath(tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, CATALOG_PATH);
         if (existing.isPresent()) {
             documentService.update(
-                    existing.get().getId(), null, null, yamlText, null,
+                    existing.get().getId(),
+                    null,
+                    null,
+                    yamlText,
+                    null,
                     de.mhus.vance.shared.permission.WriteActor.SYSTEM);
-            log.info("Updated project-kits catalog tenantId='{}' kits={}",
-                    tenantId, catalog.getKits().size());
+            log.info(
+                    "Updated project-kits catalog tenantId='{}' kits={}",
+                    tenantId,
+                    catalog.getKits().size());
         } else {
             documentService.createText(
                     tenantId,
@@ -106,8 +112,10 @@ public class ProjectKitsCatalogService {
                     yamlText,
                     null,
                     de.mhus.vance.shared.permission.WriteActor.SYSTEM);
-            log.info("Created project-kits catalog tenantId='{}' kits={}",
-                    tenantId, catalog.getKits().size());
+            log.info(
+                    "Created project-kits catalog tenantId='{}' kits={}",
+                    tenantId,
+                    catalog.getKits().size());
         }
     }
 
@@ -119,7 +127,7 @@ public class ProjectKitsCatalogService {
      *   <li>target tenant is the system tenant itself,</li>
      *   <li>source catalog is missing,</li>
      *   <li>target catalog already exists,</li>
-     *   <li>target {@code _vance} project does not exist yet (we don't
+     *   <li>target {@code _tenant} project does not exist yet (we don't
      *       force-create it here — the project is bootstrapped lazily by
      *       other code paths and will pick up the seed on the next call).</li>
      * </ul>
@@ -129,16 +137,12 @@ public class ProjectKitsCatalogService {
             return;
         }
         Optional<DocumentDocument> sourceDoc = documentService.findByPath(
-                TenantService.SYSTEM_TENANT,
-                HomeBootstrapService.TENANT_PROJECT_NAME,
-                CATALOG_PATH);
+                TenantService.SYSTEM_TENANT, HomeBootstrapService.TENANT_PROJECT_NAME, CATALOG_PATH);
         if (sourceDoc.isEmpty()) {
             return;
         }
-        Optional<DocumentDocument> targetDoc = documentService.findByPath(
-                targetTenantId,
-                HomeBootstrapService.TENANT_PROJECT_NAME,
-                CATALOG_PATH);
+        Optional<DocumentDocument> targetDoc =
+                documentService.findByPath(targetTenantId, HomeBootstrapService.TENANT_PROJECT_NAME, CATALOG_PATH);
         if (targetDoc.isPresent()) {
             return;
         }
@@ -156,14 +160,12 @@ public class ProjectKitsCatalogService {
                     yamlText,
                     null,
                     de.mhus.vance.shared.permission.WriteActor.SYSTEM);
-            log.info("Seeded project-kits catalog into tenantId='{}' from system tenant",
-                    targetTenantId);
+            log.info("Seeded project-kits catalog into tenantId='{}' from system tenant", targetTenantId);
         } catch (RuntimeException e) {
-            // Target _vance project may not exist yet — that's expected
+            // Target _tenant project may not exist yet — that's expected
             // during the early tenant-create window, silently skip and
             // let a later call pick it up.
-            log.debug("Skipping catalog seed for tenantId='{}': {}",
-                    targetTenantId, e.getMessage());
+            log.debug("Skipping catalog seed for tenantId='{}': {}", targetTenantId, e.getMessage());
         }
     }
 
@@ -172,8 +174,7 @@ public class ProjectKitsCatalogService {
     static void validate(ProjectKitsCatalogDto catalog) {
         if (catalog.getVersion() != CURRENT_VERSION) {
             throw new IllegalArgumentException(
-                    "Unsupported catalog version: " + catalog.getVersion()
-                            + " (expected " + CURRENT_VERSION + ")");
+                    "Unsupported catalog version: " + catalog.getVersion() + " (expected " + CURRENT_VERSION + ")");
         }
         List<ProjectKitEntry> kits = catalog.getKits();
         if (kits == null) return;
@@ -186,17 +187,14 @@ public class ProjectKitsCatalogService {
                 throw new IllegalArgumentException("Catalog entry has blank name");
             }
             if (StringUtils.isBlank(entry.getTitle())) {
-                throw new IllegalArgumentException(
-                        "Catalog entry '" + entry.getName() + "' has blank title");
+                throw new IllegalArgumentException("Catalog entry '" + entry.getName() + "' has blank title");
             }
             KitInheritDto src = entry.getSource();
             if (src == null || StringUtils.isBlank(src.getUrl())) {
-                throw new IllegalArgumentException(
-                        "Catalog entry '" + entry.getName() + "' has blank source url");
+                throw new IllegalArgumentException("Catalog entry '" + entry.getName() + "' has blank source url");
             }
             if (!seen.add(entry.getName())) {
-                throw new IllegalArgumentException(
-                        "Duplicate catalog entry name: '" + entry.getName() + "'");
+                throw new IllegalArgumentException("Duplicate catalog entry name: '" + entry.getName() + "'");
             }
         }
     }
@@ -212,9 +210,8 @@ public class ProjectKitsCatalogService {
                     .build();
         }
         if (!(loaded instanceof Map<?, ?> map)) {
-            throw new IllegalStateException(
-                    "Catalog at " + tenantId + "/" + HomeBootstrapService.TENANT_PROJECT_NAME
-                            + "/" + CATALOG_PATH + " is not a YAML map");
+            throw new IllegalStateException("Catalog at " + tenantId + "/" + HomeBootstrapService.TENANT_PROJECT_NAME
+                    + "/" + CATALOG_PATH + " is not a YAML map");
         }
         int version = readInt(map, "version", CURRENT_VERSION);
         List<ProjectKitEntry> entries = new ArrayList<>();
@@ -226,10 +223,8 @@ public class ProjectKitsCatalogService {
                 }
             }
         }
-        ProjectKitsCatalogDto dto = ProjectKitsCatalogDto.builder()
-                .version(version)
-                .kits(entries)
-                .build();
+        ProjectKitsCatalogDto dto =
+                ProjectKitsCatalogDto.builder().version(version).kits(entries).build();
         // Don't throw on stale on-disk data: we still want to read what's
         // there. Validation only kicks in on save().
         return dto;
@@ -274,7 +269,10 @@ public class ProjectKitsCatalogService {
         Object v = map.get(key);
         if (v instanceof Number n) return n.intValue();
         if (v instanceof String s) {
-            try { return Integer.parseInt(s.trim()); } catch (NumberFormatException ignored) { }
+            try {
+                return Integer.parseInt(s.trim());
+            } catch (NumberFormatException ignored) {
+            }
         }
         return fallback;
     }

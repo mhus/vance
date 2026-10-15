@@ -17,7 +17,7 @@ public class BootstrapProperties {
 
     /**
      * Whether to seed the Acme demo tenant — users, project groups,
-     * projects, demo documents, the {@code _vance} system project, and
+     * projects, demo documents, the {@code _tenant} system project, and
      * the {@code InitSettingsLoader}-driven LLM key import.
      * Idempotent when {@code true}; complete no-op when {@code false}.
      */

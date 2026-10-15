@@ -22,7 +22,7 @@ import org.yaml.snakeyaml.Yaml;
 /**
  * Cascade-aware event loader. Mirrors {@code UrsaSchedulerLoader}: one YAML
  * per event under {@code _vance/events/<name>.yaml}, resolved through
- * {@link DocumentService#lookupCascade}: {@code project → _vance}.
+ * {@link DocumentService#lookupCascade}: {@code project → _tenant}.
  *
  * <p>The resource tier is intentionally not supported — events ship
  * tenant-specific secrets, so a classpath layer would be a security
@@ -42,7 +42,7 @@ public class UrsaEventLoader {
     private final DocumentService documentService;
 
     /**
-     * Resolve a single event by name in the project/_vance cascade.
+     * Resolve a single event by name in the project/_tenant cascade.
      * Returns empty if no tier carries it.
      */
     public Optional<ResolvedUrsaEvent> load(String tenantId, @Nullable String projectId, String name) {

@@ -25,7 +25,7 @@ import org.yaml.snakeyaml.Yaml;
 
 /**
  * Cascade-aware recipe loader. Reads one YAML per recipe through
- * {@link DocumentService#lookupCascade}: {@code project → _vance →
+ * {@link DocumentService#lookupCascade}: {@code project → _tenant →
  * classpath:vance-defaults/recipes/<name>.yaml}. Replaces the previous
  * legacy {@code BundledRecipeRegistry} + {@code RecipeService} split
  * — every tier is now a document under the {@code recipes/} prefix.
@@ -67,7 +67,7 @@ public class RecipeLoader {
     private final PromptTemplateRenderer templateRenderer;
 
     /**
-     * Resolve {@code name} in the project/_vance/classpath cascade.
+     * Resolve {@code name} in the project/_tenant/classpath cascade.
      * Returns empty if no tier carries the recipe, or if the one that
      * does is not for {@code tenantId}.
      *

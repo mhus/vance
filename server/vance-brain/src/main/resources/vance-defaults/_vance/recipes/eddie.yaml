@@ -56,7 +56,7 @@ params:
     - _vance/eddie/manuals/
     - _vance/manuals/
   # Default prompt is loaded from the document cascade by
-  # EnginePromptResolver: project → _vance → classpath:
+  # EnginePromptResolver: project → _tenant → classpath:
   # vance-defaults/prompts/eddie-prompt.md.
 
 # Engine base is empty (unrestricted) — the recipe is the single

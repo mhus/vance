@@ -21,7 +21,7 @@ import org.springframework.stereotype.Component;
 /**
  * Agent tool that starts a Magrathea workflow run from inside an engine
  * (plan §8.1). The LLM provides {@code name} (a workflow defined under
- * {@code _vance/workflows/} in the current project or {@code _vance})
+ * {@code _vance/workflows/} in the current project or {@code _tenant})
  * and an optional {@code params} object. Returns the freshly
  * generated {@code workflowRunId} so the agent can refer to the run
  * (status check, cancel) afterwards.

@@ -59,37 +59,44 @@ public class ScriptedToolFactory implements ToolFactory {
     static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(5);
     static final Duration MAX_TIMEOUT = Duration.ofSeconds(30);
 
-    private static final Set<String> ALLOWED_INPUT_TYPES = Set.of(
-            "string", "number", "integer", "boolean", "object", "array");
+    private static final Set<String> ALLOWED_INPUT_TYPES =
+            Set.of("string", "number", "integer", "boolean", "object", "array");
 
     private static final Map<String, Object> PARAMETERS_SCHEMA = Map.ofEntries(
             Map.entry("type", "object"),
-            Map.entry("properties", Map.of(
-                    "engine", Map.of(
-                            "type", "string",
-                            "enum", List.of(ENGINE_JS),
-                            "description",
-                                    "Script engine. Currently only 'javascript'."),
-                    "timeoutMs", Map.of(
-                            "type", "integer",
-                            "description",
-                                    "Wall-clock timeout in ms (default 5000, max 30000)."),
-                    "inputs", Map.of(
-                            "type", "array",
-                            "description",
-                                    "Declared tool inputs — each becomes a top-level"
-                                            + " variable in the script and an entry in"
-                                            + " the LLM-visible parameters schema."),
-                    "source", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Inline script source (mutually exclusive with scriptPath)."),
-                    "scriptPath", Map.of(
-                            "type", "string",
-                            "description",
-                                    "Document path of a script file resolved via the"
-                                            + " project → _vance → classpath cascade"
-                                            + " (mutually exclusive with source)."))),
+            Map.entry(
+                    "properties",
+                    Map.of(
+                            "engine",
+                                    Map.of(
+                                            "type", "string",
+                                            "enum", List.of(ENGINE_JS),
+                                            "description", "Script engine. Currently only 'javascript'."),
+                            "timeoutMs",
+                                    Map.of(
+                                            "type", "integer",
+                                            "description", "Wall-clock timeout in ms (default 5000, max 30000)."),
+                            "inputs",
+                                    Map.of(
+                                            "type",
+                                            "array",
+                                            "description",
+                                            "Declared tool inputs — each becomes a top-level"
+                                                    + " variable in the script and an entry in"
+                                                    + " the LLM-visible parameters schema."),
+                            "source",
+                                    Map.of(
+                                            "type", "string",
+                                            "description",
+                                                    "Inline script source (mutually exclusive with scriptPath)."),
+                            "scriptPath",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Document path of a script file resolved via the"
+                                                    + " project → _tenant → classpath cascade"
+                                                    + " (mutually exclusive with source)."))),
             Map.entry("required", List.of("inputs")));
 
     private final ScriptExecutor scriptExecutor;
@@ -107,23 +114,20 @@ public class ScriptedToolFactory implements ToolFactory {
 
     @Override
     public Collection<Tool> create(ServerToolDocument document) {
-        Map<String, Object> params = document.getParameters() == null
-                ? Map.of() : document.getParameters();
+        Map<String, Object> params = document.getParameters() == null ? Map.of() : document.getParameters();
 
         String engine = stringOr(params.get("engine"), ENGINE_JS);
         if (!ENGINE_JS.equals(engine)) {
-            throw new IllegalArgumentException(
-                    "scripted tool '" + document.getName()
-                            + "': unknown engine '" + engine
-                            + "' (only 'javascript' is supported)");
+            throw new IllegalArgumentException("scripted tool '" + document.getName()
+                    + "': unknown engine '" + engine
+                    + "' (only 'javascript' is supported)");
         }
 
         @Nullable String inlineSource = stringOrNull(params.get("source"));
         @Nullable String scriptPath = stringOrNull(params.get("scriptPath"));
         if ((inlineSource == null) == (scriptPath == null)) {
             throw new IllegalArgumentException(
-                    "scripted tool '" + document.getName()
-                            + "' must set exactly one of 'source' or 'scriptPath'");
+                    "scripted tool '" + document.getName() + "' must set exactly one of 'source' or 'scriptPath'");
         }
 
         List<InputSpec> inputs = parseInputs(params.get("inputs"), document.getName());
@@ -131,8 +135,7 @@ public class ScriptedToolFactory implements ToolFactory {
         Duration timeout = resolveTimeout(params.get("timeoutMs"));
 
         return List.of(new ScriptedTool(
-                document, engine, inlineSource, scriptPath, inputs, timeout,
-                scriptExecutor, documentService));
+                document, engine, inlineSource, scriptPath, inputs, timeout, scriptExecutor, documentService));
     }
 
     // ──────────────────── helpers ────────────────────
@@ -142,20 +145,17 @@ public class ScriptedToolFactory implements ToolFactory {
     @SuppressWarnings("unchecked")
     private static List<InputSpec> parseInputs(@Nullable Object raw, String toolName) {
         if (raw == null) {
-            throw new IllegalArgumentException(
-                    "scripted tool '" + toolName + "': 'inputs' is required");
+            throw new IllegalArgumentException("scripted tool '" + toolName + "': 'inputs' is required");
         }
         if (!(raw instanceof List<?> list)) {
-            throw new IllegalArgumentException(
-                    "scripted tool '" + toolName + "': 'inputs' must be a list");
+            throw new IllegalArgumentException("scripted tool '" + toolName + "': 'inputs' must be a list");
         }
         List<InputSpec> out = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
         for (int i = 0; i < list.size(); i++) {
             Object element = list.get(i);
             if (!(element instanceof Map<?, ?> m)) {
-                throw new IllegalArgumentException(
-                        "scripted tool '" + toolName + "': inputs[" + i + "] must be a map");
+                throw new IllegalArgumentException("scripted tool '" + toolName + "': inputs[" + i + "] must be a map");
             }
             Map<String, Object> input = (Map<String, Object>) m;
             String name = stringOrNull(input.get("name"));
@@ -164,8 +164,7 @@ public class ScriptedToolFactory implements ToolFactory {
                         "scripted tool '" + toolName + "': inputs[" + i + "].name is required");
             }
             if ("vance".equals(name)) {
-                throw new IllegalArgumentException(
-                        "scripted tool '" + toolName + "': input name 'vance' is reserved");
+                throw new IllegalArgumentException("scripted tool '" + toolName + "': input name 'vance' is reserved");
             }
             if (!seen.add(name)) {
                 throw new IllegalArgumentException(
@@ -173,9 +172,8 @@ public class ScriptedToolFactory implements ToolFactory {
             }
             String type = stringOr(input.get("type"), "string");
             if (!ALLOWED_INPUT_TYPES.contains(type)) {
-                throw new IllegalArgumentException(
-                        "scripted tool '" + toolName + "': inputs[" + i + "].type '" + type
-                                + "' is not one of " + ALLOWED_INPUT_TYPES);
+                throw new IllegalArgumentException("scripted tool '" + toolName + "': inputs[" + i + "].type '" + type
+                        + "' is not one of " + ALLOWED_INPUT_TYPES);
             }
             String description = stringOrNull(input.get("description"));
             // Default required=true: if the kit author cares enough to
@@ -273,9 +271,8 @@ public class ScriptedToolFactory implements ToolFactory {
 
         @Override
         public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-            throw new ToolException(
-                    "scripted tool '" + name() + "' requires the bound tools surface — "
-                            + "call via the engine's ContextToolsApi");
+            throw new ToolException("scripted tool '" + name() + "' requires the bound tools surface — "
+                    + "call via the engine's ContextToolsApi");
         }
 
         @Override
@@ -288,21 +285,15 @@ public class ScriptedToolFactory implements ToolFactory {
                 Object value = params == null ? null : params.get(spec.name());
                 if (value == null && spec.required()) {
                     throw new ToolException(
-                            "scripted tool '" + name() + "': required input '"
-                                    + spec.name() + "' is missing");
+                            "scripted tool '" + name() + "': required input '" + spec.name() + "' is missing");
                 }
                 bindings.put(spec.name(), value);
             }
 
             String code = resolveSource(ctx);
             try {
-                ScriptResult result = scriptExecutor.run(new ScriptRequest(
-                        "js",
-                        code,
-                        "scripted:" + name(),
-                        tools,
-                        timeout,
-                        bindings));
+                ScriptResult result = scriptExecutor.run(
+                        new ScriptRequest("js", code, "scripted:" + name(), tools, timeout, bindings));
                 Map<String, Object> out = new LinkedHashMap<>();
                 out.put("value", result.value());
                 out.put("durationMs", result.duration().toMillis());
@@ -322,19 +313,15 @@ public class ScriptedToolFactory implements ToolFactory {
             // scriptPath != null guaranteed by the factory's XOR check.
             String path = scriptPath;
             if (ctx == null || ctx.tenantId() == null || ctx.tenantId().isBlank()) {
-                throw new ToolException(
-                        "scripted tool '" + name() + "' with scriptPath requires a tenant scope");
+                throw new ToolException("scripted tool '" + name() + "' with scriptPath requires a tenant scope");
             }
-            Optional<LookupResult> hit = documentService.lookupCascade(
-                    ctx.tenantId(), ctx.projectId(), path);
+            Optional<LookupResult> hit = documentService.lookupCascade(ctx.tenantId(), ctx.projectId(), path);
             if (hit.isEmpty()) {
-                throw new ToolException(
-                        "scripted tool '" + name() + "': script not found at path '" + path + "'");
+                throw new ToolException("scripted tool '" + name() + "': script not found at path '" + path + "'");
             }
             String content = hit.get().content();
             if (content == null || content.isEmpty()) {
-                throw new ToolException(
-                        "scripted tool '" + name() + "': script at '" + path + "' is empty");
+                throw new ToolException("scripted tool '" + name() + "': script at '" + path + "' is empty");
             }
             return content;
         }

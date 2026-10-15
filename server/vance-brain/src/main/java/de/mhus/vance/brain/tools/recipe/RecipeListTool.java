@@ -18,7 +18,7 @@ import org.springframework.stereotype.Component;
 /**
  * Lists all recipes visible to the current tenant/project, with the
  * cascade applied. Inner layers (project) shadow outer ones
- * ({@code _vance}, classpath) by recipe name.
+ * ({@code _tenant}, classpath) by recipe name.
  *
  * <p>Primary so Arthur sees it on every turn — the LLM can decide to
  * fetch the catalog when it's unsure which recipe applies.

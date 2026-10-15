@@ -39,7 +39,7 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
  * {@code _vance/relations/default.yaml} for the tenant-wide fallback and
  * {@code relations/*.yaml} (or any path) for project-scoped overrides. The
  * service collects every {@code kind: relations} document in the cascade
- * (project + tenant {@code _vance}) and concatenates their entries; there
+ * (project + tenant {@code _tenant}) and concatenates their entries; there
  * is no precedence — relations from both layers compose.
  *
  * <p>Truth lives in the source files: this service never writes back, it
@@ -62,7 +62,7 @@ public class DocumentRelationsService {
 
     /**
      * Every relation declared anywhere in the cascade for the project —
-     * tenant-wide defaults from {@code _vance} first, then project-specific
+     * tenant-wide defaults from {@code _tenant} first, then project-specific
      * files. Order is best-effort, matching {@code DocumentService.listByKind}.
      *
      * <p>Unparseable or malformed bodies are skipped with a warning, never
@@ -71,8 +71,8 @@ public class DocumentRelationsService {
      */
     public List<DocumentRelation> listRelations(String tenantId, String projectId) {
         List<DocumentRelation> result = new ArrayList<>();
-        // _vance first so we read tenant defaults even when the caller is
-        // editing a project; skip when projectId == _vance to avoid reading
+        // _tenant first so we read tenant defaults even when the caller is
+        // editing a project; skip when projectId == _tenant to avoid reading
         // the same documents twice.
         appendRelationsFrom(result, tenantId, HomeBootstrapService.TENANT_PROJECT_NAME);
         if (!HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
@@ -82,8 +82,7 @@ public class DocumentRelationsService {
     }
 
     /** All relations whose {@link DocumentRelation#getSource} matches the path. */
-    public List<DocumentRelation> findBySource(
-            String tenantId, String projectId, String sourcePath) {
+    public List<DocumentRelation> findBySource(String tenantId, String projectId, String sourcePath) {
         String needle = sourcePath.trim();
         return listRelations(tenantId, projectId).stream()
                 .filter(r -> needle.equals(r.getSource()))
@@ -91,8 +90,7 @@ public class DocumentRelationsService {
     }
 
     /** All relations whose {@link DocumentRelation#getTarget} matches the path. */
-    public List<DocumentRelation> findByTarget(
-            String tenantId, String projectId, String targetPath) {
+    public List<DocumentRelation> findByTarget(String tenantId, String projectId, String targetPath) {
         String needle = targetPath.trim();
         return listRelations(tenantId, projectId).stream()
                 .filter(r -> needle.equals(r.getTarget()))
@@ -100,8 +98,7 @@ public class DocumentRelationsService {
     }
 
     /** All relations of a given {@link DocumentRelation#getType type}. */
-    public List<DocumentRelation> findByType(
-            String tenantId, String projectId, String type) {
+    public List<DocumentRelation> findByType(String tenantId, String projectId, String type) {
         String needle = type.trim();
         return listRelations(tenantId, projectId).stream()
                 .filter(r -> needle.equals(r.getType()))
@@ -113,8 +110,7 @@ public class DocumentRelationsService {
      * where the path is either source or target. Useful when an agent wants
      * the full neighbourhood of a document without two separate calls.
      */
-    public List<DocumentRelation> findRelated(
-            String tenantId, String projectId, String path) {
+    public List<DocumentRelation> findRelated(String tenantId, String projectId, String path) {
         String needle = path.trim();
         return listRelations(tenantId, projectId).stream()
                 .filter(r -> needle.equals(r.getSource()) || needle.equals(r.getTarget()))
@@ -123,16 +119,18 @@ public class DocumentRelationsService {
 
     // ─── parsing ────────────────────────────────────────────────────────
 
-    private void appendRelationsFrom(
-            List<DocumentRelation> acc, String tenantId, String projectId) {
+    private void appendRelationsFrom(List<DocumentRelation> acc, String tenantId, String projectId) {
         List<DocumentDocument> docs = documentService.listByKind(tenantId, projectId, KIND);
         for (DocumentDocument doc : docs) {
             try {
                 acc.addAll(parseDocument(doc));
             } catch (RuntimeException e) {
                 // Tolerant by design — see class javadoc.
-                log.warn("Failed to parse relations from doc tenantId='{}' path='{}': {}",
-                        tenantId, doc.getPath(), e.toString());
+                log.warn(
+                        "Failed to parse relations from doc tenantId='{}' path='{}': {}",
+                        tenantId,
+                        doc.getPath(),
+                        e.toString());
             }
         }
     }
@@ -153,8 +151,7 @@ public class DocumentRelationsService {
         try {
             docs = yaml.loadAll(body);
         } catch (RuntimeException e) {
-            log.warn("Malformed YAML in relations doc path='{}': {}",
-                    doc.getPath(), e.toString());
+            log.warn("Malformed YAML in relations doc path='{}': {}", doc.getPath(), e.toString());
             return List.of();
         }
 
@@ -181,8 +178,7 @@ public class DocumentRelationsService {
         return result;
     }
 
-    private static @Nullable DocumentRelation entryToRelation(
-            Map<?, ?> map, String definedIn) {
+    private static @Nullable DocumentRelation entryToRelation(Map<?, ?> map, String definedIn) {
         String source = stringValue(map.get("source"));
         String target = stringValue(map.get("target"));
         if (source.isEmpty() || target.isEmpty()) {
@@ -227,8 +223,7 @@ public class DocumentRelationsService {
         try (InputStream in = documentService.loadContent(doc)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            log.warn("Failed to read relations doc path='{}': {}",
-                    doc.getPath(), e.toString());
+            log.warn("Failed to read relations doc path='{}': {}", doc.getPath(), e.toString());
             return "";
         }
     }

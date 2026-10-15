@@ -133,7 +133,7 @@ public class WebSearchTool implements Tool {
         String apiKey = settings.getDecryptedPasswordCascade(tenantId, ctx.projectId(), ctx.processId(), SETTING_KEY);
         if (apiKey == null || apiKey.isBlank()) {
             return errorResult("Serper API key not configured (setting '" + SETTING_KEY
-                    + "' in _vance / project / think-process). Ask the operator to set it.");
+                    + "' in _tenant / project / think-process). Ask the operator to set it.");
         }
 
         Instant firedAt = Instant.now();

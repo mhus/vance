@@ -117,7 +117,7 @@ public class Ford implements ThinkEngine {
      * SMALL models automatically pick up {@code prompts/ford-prompt-small.md}
      * when one exists, otherwise fall through to this base path. Tenants
      * override either variant by placing matching files in their
-     * {@code _vance} project. Recipes can swap the paths via
+     * {@code _tenant} project. Recipes can swap the paths via
      * {@code promptDocument} / {@code promptDocumentSmall} params.
      */
     private static final String DEFAULT_PROMPT_PATH = "_vance/prompts/ford-prompt.md";

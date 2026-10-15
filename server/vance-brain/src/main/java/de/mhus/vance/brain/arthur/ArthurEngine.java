@@ -166,7 +166,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * SMALL models automatically pick up
      * {@code prompts/arthur-prompt-small.md} when one exists, otherwise
      * fall through to this base path. Tenants override either variant by
-     * placing matching files in their {@code _vance} (or per-user) project.
+     * placing matching files in their {@code _tenant} (or per-user) project.
      * Recipes can swap the paths via {@code promptDocument} /
      * {@code promptDocumentSmall} params.
      */
@@ -2400,7 +2400,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
 
         // ── DYNAMIC blocks — change tenant/project/turn-to-turn ──
         // Recipe catalog: depends on tenant + bundled recipes; mutates
-        // when a recipe is added / removed in _vance.
+        // when a recipe is added / removed in _tenant.
         String catalog = buildRecipeCatalogSection(process);
         if (catalog != null && !catalog.isBlank()) {
             messages.add(VanceSystemMessage.dynamic(catalog));
@@ -3062,7 +3062,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // Pass the live projectId so the cascade includes user-namespace
         // recipes that Slart's Phase-D persists into
         // `recipes/_user/<name>.yaml` of the active project. Without the
-        // projectId, the listing falls back to the _vance system project
+        // projectId, the listing falls back to the _tenant system project
         // and Arthur cannot see the user's just-authored recipes — Arthur
         // then either refuses ("rat-der-macher is unknown") or tries to
         // re-create them, which collides at PERSISTING.

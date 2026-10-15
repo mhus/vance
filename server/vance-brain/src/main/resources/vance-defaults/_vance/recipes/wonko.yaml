@@ -24,6 +24,9 @@ params:
   checkRecipe: wonko-check
   interpretRecipe: wonko-interpret
   routeRecipe: wonko-route
+  # The worker a task goes to ("work the results in") — a plain tool loop
+  # with skills, manuals and how-do-I; a project recipe may pick another.
+  workRecipe: frankie
   # Skills every model call carries: names, @label (skill tags) and
   # !-exclusions; skills activated on the process (/skill) come on top.
   # A skill tagged "wonko" applies to every Wonko review; a recipe on top

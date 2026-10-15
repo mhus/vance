@@ -2306,14 +2306,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * returns the input unchanged if the framing isn't present.
      */
     static @Nullable String unwrapChildReply(@Nullable String humanSummary) {
-        if (humanSummary == null) return null;
-        int begin = humanSummary.indexOf("--- BEGIN CHILD REPLY ---");
-        if (begin < 0) return humanSummary;
-        int bodyStart = humanSummary.indexOf('\n', begin);
-        if (bodyStart < 0) return humanSummary;
-        int end = humanSummary.indexOf("--- END CHILD REPLY ---", bodyStart);
-        String inner = end < 0 ? humanSummary.substring(bodyStart + 1) : humanSummary.substring(bodyStart + 1, end);
-        return inner.trim();
+        return de.mhus.vance.brain.thinkengine.ChildReply.unwrap(humanSummary);
     }
 
     // ──────────────────── Prompt building ────────────────────

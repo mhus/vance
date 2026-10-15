@@ -211,11 +211,7 @@ public class ParentNotificationListener {
             if (lastAssistant == null) {
                 return engineSummary;
             }
-            return engineSummary
-                    + "\n\nLast assistant reply from this child (verbatim):\n"
-                    + "--- BEGIN CHILD REPLY ---\n"
-                    + lastAssistant.getContent()
-                    + "\n--- END CHILD REPLY ---";
+            return ChildReply.wrap(engineSummary, lastAssistant.getContent());
         } catch (RuntimeException e) {
             log.warn("enrichWithLastReply failed for child='{}': {}", childProcessId, e.toString());
             return engineSummary;

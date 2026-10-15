@@ -20,16 +20,22 @@ import de.mhus.vance.brain.arthur.PlanModeEventEmitter;
 import de.mhus.vance.brain.context.LanguageContextResolver;
 import de.mhus.vance.brain.discovery.DiscoveryResult;
 import de.mhus.vance.brain.discovery.DiscoveryService;
+import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
+import de.mhus.vance.brain.thinkengine.ChildReply;
 import de.mhus.vance.brain.thinkengine.ParentReport;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
+import de.mhus.vance.shared.document.kind.QuestionsCodec;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.session.SessionService;
+import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
+import de.mhus.vance.shared.thinkprocess.PendingMessageType;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -99,6 +105,9 @@ public class WonkoEngine implements ThinkEngine {
     /** Question key of the budget checkpoint. */
     static final String CHECKPOINT_KEY = "budget-checkpoint";
 
+    /** Key of the question that offers a follow-up at the end of a run. */
+    static final String FOLLOWUP_KEY = "followup";
+
     static final String CHECKPOINT_CONTINUE = "Continue";
     static final String CHECKPOINT_STOP = "Stop";
 
@@ -119,6 +128,7 @@ public class WonkoEngine implements ThinkEngine {
     private final MetricService metricService;
     private final WonkoSkills wonkoSkills;
     private final DiscoveryService discoveryService;
+    private final EngineMessageRouter messageRouter;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -152,7 +162,7 @@ public class WonkoEngine implements ThinkEngine {
     /** Wonko reads subject and references through the permission-checked document tools. */
     @Override
     public Set<String> allowedTools() {
-        return Set.of("doc_read", "doc_list_in_folder");
+        return Set.of("doc_read", "doc_list_in_folder", "process_spawn");
     }
 
     // ──────────────────── Lifecycle ────────────────────
@@ -250,11 +260,24 @@ public class WonkoEngine implements ThinkEngine {
         boolean stop = false;
         WonkoRegister register = null;
         for (SteerMessage msg : drained) {
+            if (msg instanceof SteerMessage.Reply || msg instanceof SteerMessage.ProcessEvent) {
+                if (register == null && !state.getSubjectRefs().isEmpty()) {
+                    register = loadRegister(process, state);
+                }
+                onWorkerMessage(process, ctx, state, msg);
+                continue;
+            }
             if (!(msg instanceof SteerMessage.UserChatInput input)) {
                 log.debug(
                         "Wonko id='{}' ignoring {}",
                         process.getId(),
                         msg.getClass().getSimpleName());
+                continue;
+            }
+            if (state.isWorkerWaiting() && state.getWorkerName() != null) {
+                // The worker asked the user something — this is the answer.
+                appendChat(process, ctx, ChatRole.USER, input.content(), null);
+                forwardToWorker(process, ctx, state, input.content());
                 continue;
             }
             QuestionSetDto open = state.getPendingSet();
@@ -264,6 +287,8 @@ public class WonkoEngine implements ThinkEngine {
             if (state.getSubjectRefs().isEmpty()) {
                 if (adoptSubject(process, ctx, state, input)) {
                     seedQueue(process, ctx, state);
+                    // "Check X and work it in": the part for after the review waits.
+                    rememberFollowUp(process, ctx, state, loadRegister(process, state), input.content());
                 }
                 continue;
             }
@@ -284,16 +309,29 @@ public class WonkoEngine implements ThinkEngine {
                                 : null);
                 if (state.getPendingSet() != null) {
                     // Nothing of it answered the open questions: a question to
-                    // Wonko, or a reply it cannot read — the set stays open.
+                    // Wonko, a task, or a reply it cannot read — the set stays open.
                     WonkoPrompts.RouteResult route = route(process, ctx, state, register, input.content());
-                    appendChat(
+                    if (route != null && route.intent() == WonkoPrompts.RouteIntent.WORK) {
+                        startWork(process, ctx, state, register, route, input.content());
+                    } else {
+                        appendChat(
+                                process,
+                                ctx,
+                                ChatRole.ASSISTANT,
+                                route != null && route.answer() != null
+                                        ? route.answer()
+                                        : "I could not map that reply onto the open questions — they are still open.",
+                                null);
+                    }
+                }
+                // A confirmed follow-up comes in like a new message.
+                while (!state.getFollowUpInputs().isEmpty()) {
+                    routeFreeMessage(
                             process,
                             ctx,
-                            ChatRole.ASSISTANT,
-                            route != null && route.answer() != null
-                                    ? route.answer()
-                                    : "I could not map that reply onto the open questions — they are still open.",
-                            null);
+                            state,
+                            register,
+                            state.getFollowUpInputs().remove(0));
                 }
             } else if (!input.content().isBlank()) {
                 routeFreeMessage(process, ctx, state, register, input.content());
@@ -324,11 +362,15 @@ public class WonkoEngine implements ThinkEngine {
                 process.getId(),
                 intent,
                 route == null ? " (route failed)" : " — " + route.reason());
+        if (route != null && route.followUp() != null && intent != WonkoPrompts.RouteIntent.WORK) {
+            state.getFollowUps().add(route.followUp());
+        }
         switch (intent) {
             case RECHECK -> {
                 state.resetRun();
                 seedQueue(process, ctx, state);
             }
+            case WORK -> startWork(process, ctx, state, register, route, text);
             case STATEMENT -> {
                 state.getUserStatements().add(text);
                 state.setFinished(false);
@@ -373,7 +415,8 @@ public class WonkoEngine implements ThinkEngine {
                 subject.add(new WonkoPrompts.SubjectDoc(ref, body));
             }
         }
-        String prompt = WonkoPrompts.routePrompt(state.getSubjectRefs(), subject, report, state.getPendingSet(), text);
+        String prompt = WonkoPrompts.routePrompt(
+                state.getSubjectRefs(), subject, report, state.getPendingSet(), recentTurns(process, ctx, text), text);
         try {
             WonkoPrompts.RouteResult first = callRoute(process, prompt);
             if (first.lookup() == null
@@ -387,6 +430,213 @@ public class WonkoEngine implements ThinkEngine {
             log.warn("Wonko id='{}' could not route a message: {}", process.getId(), e.toString());
             return null;
         }
+    }
+
+    /**
+     * The conversation so far, oldest first, without the message being routed —
+     * a "yes" only means something next to the question it answers.
+     */
+    private List<WonkoPrompts.Turn> recentTurns(ThinkProcessDocument process, ThinkEngineContext ctx, String current) {
+        List<WonkoPrompts.Turn> turns = new ArrayList<>();
+        try {
+            for (ChatMessageDocument m : ctx.chatMessageService()
+                    .activeHistory(process.getTenantId(), process.getSessionId(), process.getId())) {
+                if ((m.getRole() == ChatRole.USER || m.getRole() == ChatRole.ASSISTANT)
+                        && m.getContent() != null
+                        && !m.getContent().isBlank()) {
+                    turns.add(new WonkoPrompts.Turn(m.getRole().name().toLowerCase(Locale.ROOT), m.getContent()));
+                }
+            }
+        } catch (RuntimeException e) {
+            log.warn("Wonko id='{}' could not read the chat history: {}", process.getId(), e.toString());
+        }
+        if (!turns.isEmpty() && turns.get(turns.size() - 1).text().equals(current)) {
+            turns.remove(turns.size() - 1);
+        }
+        return turns;
+    }
+
+    /** The follow-up part of a message, kept for the end of the run. */
+    private void rememberFollowUp(
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx,
+            WonkoState state,
+            WonkoRegister register,
+            String text) {
+        WonkoPrompts.RouteResult route = route(process, ctx, state, register, text);
+        if (route != null && route.followUp() != null) {
+            state.getFollowUps().add(route.followUp());
+            log.info("Wonko id='{}' follow-up kept for after the review: {}", process.getId(), route.followUp());
+        }
+    }
+
+    // ──────────────────── Work (a worker does the task) ────────────────────
+
+    /**
+     * The router's {@code work}: a task that needs tools goes to a worker —
+     * a plain tool loop with skills, manuals and how-do-I — together with the
+     * review's result. Its reply comes back as an event (see
+     * {@link #onWorkerMessage}).
+     */
+    private void startWork(
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx,
+            WonkoState state,
+            WonkoRegister register,
+            WonkoPrompts.@Nullable RouteResult route,
+            String text) {
+        String task = route != null && route.task() != null ? route.task() : text;
+        String report = state.getFinalReport() != null
+                ? state.getFinalReport()
+                : WonkoReportRenderer.render(register, "", state);
+        if (state.getWorkerName() != null) {
+            // The worker of an earlier task waits for more — it keeps its context.
+            state.setSubjectFingerprint(subjectFingerprint(process, ctx, state, register));
+            forwardToWorker(process, ctx, state, WonkoPrompts.workTask(task, state.getSubjectRefs(), report));
+            if (state.getWorkerName() != null) {
+                log.info("Wonko id='{}' steered worker '{}' with: {}", process.getId(), state.getWorkerName(), task);
+                appendChat(
+                        process,
+                        ctx,
+                        ChatRole.ASSISTANT,
+                        route != null && route.answer() != null ? route.answer() : "On it: " + task,
+                        null);
+                return;
+            }
+        }
+        String name = "wonko-work-" + UUID.randomUUID().toString().substring(0, 6);
+        try {
+            Map<String, Object> spawn = new LinkedHashMap<>();
+            spawn.put("name", name);
+            spawn.put("task", WonkoPrompts.workTask(task, state.getSubjectRefs(), report));
+            spawn.put("recipe", new WonkoParams(params(process)).workRecipe());
+            ctx.tools().invokeInternal("process_spawn", spawn);
+        } catch (RuntimeException e) {
+            log.warn("Wonko id='{}' could not start the work: {}", process.getId(), e.toString());
+            appendChat(process, ctx, ChatRole.ASSISTANT, "I could not start that task: " + e.getMessage(), null);
+            return;
+        }
+        state.setWorkerName(name);
+        state.setWorkerId(thinkProcessService
+                .findByName(process.getTenantId(), process.getSessionId(), name)
+                .map(ThinkProcessDocument::getId)
+                .orElse(null));
+        state.setWorkerWaiting(false);
+        state.setWorkerReplied(false);
+        state.setSubjectFingerprint(subjectFingerprint(process, ctx, state, register));
+        log.info("Wonko id='{}' started worker '{}' for: {}", process.getId(), name, task);
+        appendChat(
+                process,
+                ctx,
+                ChatRole.ASSISTANT,
+                route != null && route.answer() != null ? route.answer() : "On it: " + task,
+                null);
+    }
+
+    /** A message of the worker: its reply goes to the chat; when it ends, a changed subject is checked again. */
+    private void onWorkerMessage(
+            ThinkProcessDocument process, ThinkEngineContext ctx, WonkoState state, SteerMessage msg) {
+        String workerId = state.getWorkerId();
+        if (workerId == null) {
+            return;
+        }
+        if (msg instanceof SteerMessage.Reply reply && workerId.equals(reply.sourceProcessId())) {
+            if (!reply.content().isBlank()) {
+                appendChat(process, ctx, ChatRole.ASSISTANT, reply.content(), null);
+                state.setWorkerReplied(true);
+            }
+            // A reply closes this step of the work — the worker itself waits
+            // for more (a tool loop ends its turn, not its life).
+            recheckIfSubjectChanged(process, ctx, state);
+            return;
+        }
+        if (!(msg instanceof SteerMessage.ProcessEvent event) || !workerId.equals(event.sourceProcessId())) {
+            return;
+        }
+        String body = ChildReply.unwrap(event.humanSummary());
+        switch (event.type()) {
+            case BLOCKED -> {
+                if (!state.isWorkerReplied() && body != null && !body.isBlank()) {
+                    appendChat(process, ctx, ChatRole.ASSISTANT, body, null);
+                }
+                state.setWorkerWaiting(true);
+            }
+            case DONE, FAILED, STOPPED -> {
+                if (!state.isWorkerReplied() && body != null && !body.isBlank()) {
+                    appendChat(process, ctx, ChatRole.ASSISTANT, body, null);
+                }
+                log.info("Wonko id='{}' worker '{}' ended ({})", process.getId(), state.getWorkerName(), event.type());
+                recheckIfSubjectChanged(process, ctx, state);
+                state.setWorkerName(null);
+                state.setWorkerId(null);
+                state.setWorkerWaiting(false);
+                state.setWorkerReplied(false);
+                state.setSubjectFingerprint(null);
+            }
+            default -> {
+                // progress and other lifecycle markers say nothing to the user
+            }
+        }
+    }
+
+    /**
+     * After a step of the work: a changed subject is reviewed again — once per
+     * step, the fingerprint moves on so the same change does not trigger twice.
+     */
+    private void recheckIfSubjectChanged(ThinkProcessDocument process, ThinkEngineContext ctx, WonkoState state) {
+        String before = state.getSubjectFingerprint();
+        if (before == null) {
+            return;
+        }
+        String after = subjectFingerprint(process, ctx, state, loadRegister(process, state));
+        state.setSubjectFingerprint(after);
+        if (!before.equals(after)) {
+            appendChat(process, ctx, ChatRole.ASSISTANT, "The subject changed — checking it again.", null);
+            state.resetRun();
+            seedQueue(process, ctx, state);
+        }
+    }
+
+    /**
+     * A message for the worker — into its inbox through the message router,
+     * the way Arthur forwards to a delegated worker; its lane wakes itself and
+     * the answer comes back as an event.
+     */
+    private void forwardToWorker(ThinkProcessDocument process, ThinkEngineContext ctx, WonkoState state, String text) {
+        String workerId = state.getWorkerId();
+        boolean delivered = workerId != null
+                && messageRouter.dispatch(
+                        process.getId(),
+                        workerId,
+                        PendingMessageDocument.builder()
+                                .type(PendingMessageType.USER_CHAT_INPUT)
+                                .at(Instant.now())
+                                .fromUser("wonko:" + process.getId())
+                                .content(text)
+                                .build());
+        if (delivered) {
+            state.setWorkerWaiting(false);
+            state.setWorkerReplied(false);
+            return;
+        }
+        log.warn("Wonko id='{}' could not reach worker '{}'", process.getId(), state.getWorkerName());
+        appendChat(process, ctx, ChatRole.ASSISTANT, "The task is not reachable any more.", null);
+        state.setWorkerName(null);
+        state.setWorkerId(null);
+        state.setWorkerWaiting(false);
+    }
+
+    /** A fingerprint of the subject's current text — tells whether a worker changed it. */
+    private String subjectFingerprint(
+            ThinkProcessDocument process, ThinkEngineContext ctx, WonkoState state, WonkoRegister register) {
+        WonkoTurn reader = new WonkoTurn(
+                process, ctx, state, register, new WonkoParams(params(process)), "", userIdFor(process), "");
+        StringBuilder sb = new StringBuilder();
+        for (String ref : state.getSubjectRefs()) {
+            String body = reader.doc(ref);
+            sb.append(ref).append('\0').append(body == null ? "" : body).append('\0');
+        }
+        return Integer.toHexString(sb.toString().hashCode()) + ":" + sb.length();
     }
 
     private WonkoPrompts.RouteResult callRoute(ThinkProcessDocument process, String prompt) {
@@ -614,6 +864,7 @@ public class WonkoEngine implements ThinkEngine {
             answers = interpreted.answers();
             stop = interpreted.stop();
         }
+        takeFollowUpAnswer(state, set, answers);
         if (state.isCheckpointAsked()) {
             stop |= applyCheckpoint(process, state, answers);
         }
@@ -633,6 +884,48 @@ public class WonkoEngine implements ThinkEngine {
         state.getPendingProposals().clear();
         state.setCheckpointAsked(false);
         return stop;
+    }
+
+    /**
+     * The answer to an offered follow-up: confirmed, it enters the intake like
+     * a new message (as the user may have reworded it); any other answer
+     * drops it.
+     */
+    static void takeFollowUpAnswer(WonkoState state, QuestionSetDto set, List<QuestionAnswerDto> answers) {
+        boolean offered = set.getQuestions().stream().anyMatch(q -> FOLLOWUP_KEY.equals(q.getKey()));
+        if (!offered || state.getFollowUps().isEmpty()) {
+            return;
+        }
+        String followUp = state.getFollowUps().remove(0);
+        answers.stream()
+                .filter(a -> FOLLOWUP_KEY.equals(a.getKey()) && a.getOutcome() == QuestionOutcome.ANSWERED)
+                .findFirst()
+                .ifPresent(a -> state.getFollowUpInputs()
+                        .add(a.getValue() == null || a.getValue().isBlank() ? followUp : a.getValue()));
+    }
+
+    /**
+     * Offers the first follow-up as a question at the end of a run — nothing
+     * runs unasked; open blockers are named as what will not be worked in.
+     */
+    private void offerFollowUp(
+            ThinkProcessDocument process, ThinkEngineContext ctx, WonkoState state, WonkoRegister register) {
+        List<String> blockers = register.getTopics().stream()
+                .filter(t -> t.getWeight() == QuestionWeight.BLOCKER
+                        && (t.getStatus() == WonkoTopicStatus.OPEN
+                                || t.getStatus() == WonkoTopicStatus.ASKED
+                                || t.getStatus() == WonkoTopicStatus.LATER))
+                .map(t -> t.getTitle().isBlank() ? t.getKey() : t.getTitle())
+                .toList();
+        QuestionSetDto set = QuestionSetDto.builder()
+                .id(UUID.randomUUID().toString())
+                .round(state.getRound() + 1)
+                .questions(new ArrayList<>(List.of(WonkoPrompts.followUpQuestion(
+                        FOLLOWUP_KEY, state.getFollowUps().get(0), blockers))))
+                .build();
+        state.setPendingSet(set);
+        persistState(process, state);
+        appendChat(process, ctx, ChatRole.ASSISTANT, QuestionsCodec.toFence(set), null);
     }
 
     /** The budget checkpoint: "continue" grants another budget, anything else ends the run. */
@@ -982,6 +1275,11 @@ public class WonkoEngine implements ThinkEngine {
         registerService.save(process.getTenantId(), process.getProjectId(), register);
         persistState(process, state);
         appendChat(process, ctx, ChatRole.ASSISTANT, report, null);
+        boolean chat = process.getParentProcessId() == null
+                || process.getParentProcessId().isBlank();
+        if (chat && !"stopped".equals(outcome) && !state.getFollowUps().isEmpty()) {
+            offerFollowUp(process, ctx, state, register);
+        }
         // The closed plan box keeps the last state it saw — make that the end state.
         emitProgress(process, state);
         thinkProcessService.setTodos(process.getId(), List.of());

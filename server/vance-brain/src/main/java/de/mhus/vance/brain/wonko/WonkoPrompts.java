@@ -75,16 +75,32 @@ final class WonkoPrompts {
         STATEMENT,
         /** A question or remark that wants an answer, not a review. */
         QUESTION,
+        /** A task that needs tools (change a document, write something) — a worker does it. */
+        WORK,
         /** Cannot tell — ask back. */
         UNCLEAR
     }
 
     /** Result of routing a free message; {@code answer} is set for question and unclear. */
+    /**
+     * Result of routing a free message. {@code answer} is the reply for
+     * question and unclear (for work: a short note what happens now);
+     * {@code task} the instruction for work; {@code followUp} a part of the
+     * message meant for after the review.
+     */
     record RouteResult(
             RouteIntent intent,
             String reason,
             @Nullable String answer,
-            @Nullable String lookup) {}
+            @Nullable String lookup,
+            @Nullable String task,
+            @Nullable String followUp) {}
+
+    /** One turn of the conversation for the route judge. */
+    record Turn(String role, String text) {}
+
+    private static final int MAX_ROUTE_TURNS = 10;
+    private static final int MAX_ROUTE_TURN_CHARS = 600;
 
     static final String CANNOT_DETERMINE = "cannot_determine";
 
@@ -406,6 +422,7 @@ final class WonkoPrompts {
             List<SubjectDoc> subject,
             @Nullable String report,
             @Nullable QuestionSetDto pending,
+            List<Turn> recent,
             String userText) {
         StringBuilder sb = new StringBuilder("## Subject under review\n");
         subjectRefs.forEach(r -> sb.append("- ").append(r).append('\n'));
@@ -444,6 +461,21 @@ final class WonkoPrompts {
                 sb.append('\n');
             }
         }
+        if (!recent.isEmpty()) {
+            sb.append("\n## Recent conversation (oldest first)\n");
+            List<Turn> last = recent.subList(Math.max(0, recent.size() - MAX_ROUTE_TURNS), recent.size());
+            for (Turn t : last) {
+                String text = t.text().strip();
+                if (text.length() > MAX_ROUTE_TURN_CHARS) {
+                    text = text.substring(0, MAX_ROUTE_TURN_CHARS) + " …";
+                }
+                sb.append("- ")
+                        .append(t.role())
+                        .append(": ")
+                        .append(text.replace("\n", " "))
+                        .append('\n');
+            }
+        }
         sb.append("\n## The user's message\n").append(userText).append('\n');
         return sb.toString();
     }
@@ -452,10 +484,12 @@ final class WonkoPrompts {
         return object(
                 List.of("intent", "reason"),
                 Map.of(
-                        "intent", enumOf("recheck", "statement", "question", "unclear"),
+                        "intent", enumOf("recheck", "statement", "question", "work", "unclear"),
                         "reason", string(),
                         "answer", string(),
-                        "lookup", string()));
+                        "lookup", string(),
+                        "task", string(),
+                        "followUp", string()));
     }
 
     /**
@@ -475,7 +509,55 @@ final class WonkoPrompts {
         if ((intent == RouteIntent.QUESTION || intent == RouteIntent.UNCLEAR) && answer == null) {
             intent = RouteIntent.UNCLEAR;
         }
-        return new RouteResult(intent, nz(str(json.get("reason"))), answer, str(json.get("lookup")));
+        return new RouteResult(
+                intent,
+                nz(str(json.get("reason"))),
+                answer,
+                str(json.get("lookup")),
+                str(json.get("task")),
+                str(json.get("followUp")));
+    }
+
+    // ──────────────────── follow-up + work ────────────────────
+
+    /**
+     * The question that offers a follow-up at the end of a run — a confirm,
+     * the follow-up as its proposal; open blockers are named as what will
+     * not be worked in.
+     */
+    static QuestionDto followUpQuestion(String key, String followUp, List<String> openBlockers) {
+        String context =
+                openBlockers.isEmpty() ? null : "Still open, will not be worked in: " + String.join("; ", openBlockers);
+        return QuestionDto.builder()
+                .key(key)
+                .text("Run the follow-up now?")
+                .kind(QuestionKind.CONFIRM)
+                .proposal(followUp)
+                .context(context)
+                .weight(QuestionWeight.IMPORTANT)
+                .build();
+    }
+
+    /**
+     * The worker's task: what the user asked, the subject, and what the
+     * review found — clarified points with the user's answers, decisions,
+     * open points — with the rule not to invent what is still open.
+     */
+    static String workTask(String task, List<String> subjectRefs, @Nullable String report) {
+        StringBuilder sb = new StringBuilder(task.strip()).append("\n\n");
+        sb.append("## Subject\n");
+        subjectRefs.forEach(r -> sb.append("- ").append(r).append('\n'));
+        if (report != null && !report.isBlank()) {
+            sb.append("\n## Result of the review (the user's answers are binding)\n")
+                    .append(report.strip())
+                    .append('\n');
+        }
+        sb.append("\n## Rules\n")
+                .append("- Work in only what the review clarified or decided; leave points that are still open"
+                        + " or unclear as they are and name them in your reply.\n")
+                .append("- Change nothing else in the documents.\n")
+                .append("- End with a short summary of what you changed and where.\n");
+        return sb.toString();
     }
 
     /** The route prompt once more, with the manual a lookup found — no second lookup. */

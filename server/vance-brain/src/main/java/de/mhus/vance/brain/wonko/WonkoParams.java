@@ -19,6 +19,11 @@ record WonkoParams(Map<String, Object> raw) {
         return string("routeRecipe", "wonko-route");
     }
 
+    /** Recipe of the worker the router's {@code work} starts — a plain tool loop by default. */
+    String workRecipe() {
+        return string("workRecipe", "frankie");
+    }
+
     String decomposeRecipe() {
         return string("decomposeRecipe", "wonko-decompose");
     }

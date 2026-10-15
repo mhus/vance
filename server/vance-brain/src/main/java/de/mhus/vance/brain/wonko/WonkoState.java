@@ -94,10 +94,35 @@ public class WonkoState {
     private @Nullable String finalReport;
 
     /**
+     * Follow-ups the user asked for along with the review ("…and work it
+     * in"). At the end of a run the first one is offered as a question; a
+     * confirmed one goes back into the intake like a new message.
+     */
+    private List<String> followUps = new ArrayList<>();
+
+    /** Confirmed follow-ups waiting to enter the intake — drained in the same turn. */
+    private List<String> followUpInputs = new ArrayList<>();
+
+    /** The worker the router's {@code work} started; {@code null} when none runs. */
+    private @Nullable String workerName;
+
+    private @Nullable String workerId;
+
+    /** The worker asked the user something — the next free message goes to it. */
+    private boolean workerWaiting;
+
+    /** The worker's answer of this exchange reached the chat already (a reply came). */
+    private boolean workerReplied;
+
+    /** The subject's text fingerprint when the work started — a change triggers one recheck. */
+    private @Nullable String subjectFingerprint;
+
+    /**
      * Starts a fresh run on the same subject — the subject changed, so
      * claims, passages and findings of the last run are stale. Kept: the
      * subject, the goal, what the user said and whether the mandate is
-     * applied; everything durable lives in the register anyway.
+     * applied, the follow-ups and a running worker; everything durable lives
+     * in the register anyway.
      */
     public void resetRun() {
         round = 0;

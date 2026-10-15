@@ -68,6 +68,9 @@ class WonkoRouteTest {
                 List.of(new WonkoPrompts.SubjectDoc("requirements/export.md", "Exports go to us-west-2.")),
                 "# Review\n- Region open",
                 pending,
+                List.of(
+                        new WonkoPrompts.Turn("assistant", "Shall I work the five points in?"),
+                        new WonkoPrompts.Turn("user", "x".repeat(700))),
                 "what do you think?");
 
         assertThat(prompt)
@@ -76,7 +79,10 @@ class WonkoRouteTest {
                         "Exports go to us-west-2.",
                         "# Review",
                         "Which region?",
-                        "what do you think?");
+                        "- assistant: Shall I work the five points in?",
+                        "what do you think?")
+                .contains("x".repeat(600) + " …")
+                .doesNotContain("x".repeat(601));
     }
 
     @Test
@@ -101,5 +107,75 @@ class WonkoRouteTest {
         assertThat(state.getPostponedKeys()).isEmpty();
         assertThat(state.isFinished()).isFalse();
         assertThat(state.getFinalReport()).isNull();
+    }
+
+    @Test
+    void parseRoute_readsWorkTaskAndFollowUp() {
+        var work = WonkoPrompts.parseRoute(Map.of(
+                "intent", "work",
+                "reason", "asks to change the document",
+                "answer", "I will work the points in.",
+                "task", "Work the clarified points into requirements/export.md"));
+        org.assertj.core.api.Assertions.assertThat(work.intent()).isEqualTo(WonkoPrompts.RouteIntent.WORK);
+        org.assertj.core.api.Assertions.assertThat(work.task()).contains("requirements/export.md");
+
+        var recheck = WonkoPrompts.parseRoute(
+                Map.of("intent", "recheck", "reason", "check requested", "followUp", "work the results in"));
+        org.assertj.core.api.Assertions.assertThat(recheck.followUp()).isEqualTo("work the results in");
+    }
+
+    @Test
+    void followUpQuestion_isAConfirm_namingOpenBlockers() {
+        var q = WonkoPrompts.followUpQuestion("followup", "work the results in", List.of("Region", "Retention"));
+
+        org.assertj.core.api.Assertions.assertThat(q.getKind())
+                .isEqualTo(de.mhus.vance.api.question.QuestionKind.CONFIRM);
+        org.assertj.core.api.Assertions.assertThat(q.getProposal()).isEqualTo("work the results in");
+        org.assertj.core.api.Assertions.assertThat(q.getContext()).contains("Region; Retention");
+        org.assertj.core.api.Assertions.assertThat(WonkoPrompts.followUpQuestion("followup", "x", List.of())
+                        .getContext())
+                .isNull();
+    }
+
+    @Test
+    void confirmedFollowUp_entersTheIntake_otherAnswersDropIt() {
+        var set = QuestionSetDto.builder()
+                .id("s")
+                .questions(List.of(WonkoPrompts.followUpQuestion(WonkoEngine.FOLLOWUP_KEY, "work it in", List.of())))
+                .build();
+        WonkoState confirmed = new WonkoState();
+        confirmed.getFollowUps().add("work it in");
+        WonkoEngine.takeFollowUpAnswer(
+                confirmed,
+                set,
+                List.of(de.mhus.vance.api.question.QuestionAnswerDto.builder()
+                        .key(WonkoEngine.FOLLOWUP_KEY)
+                        .value("work it in")
+                        .build()));
+        org.assertj.core.api.Assertions.assertThat(confirmed.getFollowUps()).isEmpty();
+        org.assertj.core.api.Assertions.assertThat(confirmed.getFollowUpInputs())
+                .containsExactly("work it in");
+
+        WonkoState later = new WonkoState();
+        later.getFollowUps().add("work it in");
+        WonkoEngine.takeFollowUpAnswer(
+                later,
+                set,
+                List.of(de.mhus.vance.api.question.QuestionAnswerDto.builder()
+                        .key(WonkoEngine.FOLLOWUP_KEY)
+                        .outcome(de.mhus.vance.api.question.QuestionOutcome.LATER)
+                        .build()));
+        org.assertj.core.api.Assertions.assertThat(later.getFollowUps()).isEmpty();
+        org.assertj.core.api.Assertions.assertThat(later.getFollowUpInputs()).isEmpty();
+    }
+
+    @Test
+    void workTask_carriesTaskSubjectReviewAndRules() {
+        String task =
+                WonkoPrompts.workTask("Work the clarified points in.", List.of("req.md"), "# Review\n- Region: EU");
+
+        org.assertj.core.api.Assertions.assertThat(task)
+                .startsWith("Work the clarified points in.")
+                .contains("- req.md", "# Review", "Region: EU", "leave points that are still open");
     }
 }

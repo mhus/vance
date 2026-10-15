@@ -19,15 +19,20 @@ interface Props {
 
 withDefaults(defineProps<Props>(), { navigates: false, danger: false });
 
-defineEmits<{ (e: 'click', event: MouseEvent): void }>();
+defineEmits<{ (e: 'click', event: MouseEvent | KeyboardEvent): void }>();
 </script>
 
 <template>
-  <component
-    :is="navigates ? 'button' : 'div'"
-    :type="navigates ? 'button' : undefined"
+  <!-- A div with role=button rather than a <button>: a navigating row may
+       still hold its own controls (a delete icon, a toggle), and buttons
+       cannot nest. -->
+  <div
+    :role="navigates ? 'button' : undefined"
+    :tabindex="navigates ? 0 : undefined"
     :class="['v-group-row', { 'v-group-row-nav': navigates, 'v-group-row-icon': icon }]"
     @click="(e: MouseEvent) => navigates && $emit('click', e)"
+    @keydown.enter.self="(e: KeyboardEvent) => navigates && $emit('click', e)"
+    @keydown.space.self.prevent="(e: KeyboardEvent) => navigates && $emit('click', e)"
   >
     <span v-if="icon" class="v-group-row-tile"><VIcon :name="icon" :size="16" /></span>
     <span :class="['v-group-row-label', { 'v-group-row-danger': danger }]">
@@ -36,7 +41,7 @@ defineEmits<{ (e: 'click', event: MouseEvent): void }>();
     <span v-if="value" class="v-group-row-value">{{ value }}</span>
     <slot />
     <VIcon v-if="navigates" name="forward" class="v-group-row-chevron" />
-  </component>
+  </div>
 </template>
 
 <style scoped>

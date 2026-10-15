@@ -9,6 +9,8 @@ import {
   VButton,
   VEmptyState,
   VIcon,
+  VGroup,
+  VGroupRow,
   VIconButton,
   VInput,
   VModal,
@@ -650,27 +652,25 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
     <!-- full-height contract (EditorShell): the zone itself never
          scrolls — the page carries its own scroll body, so the rails
          keep their viewport height and the responsive collapse works. -->
-    <div class="h-full min-h-0 flex flex-col">
+    <div class="h-full min-h-0 flex flex-col settings-ground">
     <div class="flex-1 min-h-0 overflow-y-auto">
-    <div class="p-6 max-w-3xl flex flex-col gap-4">
+    <div class="settings-column">
       <div class="flex items-baseline justify-between gap-2">
-        <h2 class="text-lg font-semibold">{{ scopeLabel }}</h2>
-        <span class="text-xs opacity-60 font-mono">{{ scopeInfo.referenceId }}</span>
+        <h2 class="settings-title">{{ scopeLabel }}</h2>
+        <span class="settings-ref">{{ scopeInfo.referenceId }}</span>
       </div>
 
       <VAlert v-if="banner" variant="success">
         <span>{{ banner }}</span>
       </VAlert>
-      <div role="tablist" class="flex gap-1 border-b border-base-300">
+      <div role="tablist" class="settings-tabs">
         <button
           v-for="tabDef in tabDefs"
           :key="tabDef.id"
           type="button"
           role="tab"
-          class="px-3 py-1.5 text-sm font-semibold border-b-2 transition-colors"
-          :class="effectiveTab === tabDef.id
-            ? 'border-primary text-primary'
-            : 'border-transparent opacity-60 hover:opacity-100'"
+          :aria-selected="effectiveTab === tabDef.id"
+          :class="['settings-tab', { 'settings-tab--active': effectiveTab === tabDef.id }]"
           @click="selectTab(tabDef.id)"
         >
           {{ tabDef.label }}
@@ -708,7 +708,7 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
             >{{ t('settings.areas.addEntry') }}</VButton>
           </div>
 
-          <h3 class="text-base font-semibold">
+          <h3 class="settings-section">
             {{ t(activeArea.settingsProvider!.titleKey) }}
           </h3>
 
@@ -720,29 +720,26 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
             :body="t('settings.areas.emptyBody')"
           />
 
-          <ul class="flex flex-col gap-1">
-            <li
+          <VGroup v-if="areaRows.length > 0">
+            <VGroupRow
               v-for="row in areaRows"
               :key="row.documentId"
-              class="flex items-center gap-2 rounded transition-colors bg-base-200 hover:bg-base-300 px-3 py-2"
+              navigates
+              @click="selectEntry(row.documentId)"
             >
-              <button
-                type="button"
-                class="flex-1 text-left text-sm min-w-0"
-                @click="selectEntry(row.documentId)"
-              >
-                <div class="font-semibold truncate">{{ row.title }}</div>
-                <div v-if="row.path" class="text-xs opacity-60 font-mono truncate">{{ row.path }}</div>
-              </button>
+              <template #label>
+                <div class="truncate font-medium">{{ row.title }}</div>
+                <div v-if="row.path" class="settings-row-sub font-mono truncate">{{ row.path }}</div>
+              </template>
               <VIconButton
                 icon="delete"
                 :label="t('settings.areas.deleteEntry')"
                 size="sm"
                 danger
-                @click="deleteEntry(row)"
+                @click.stop="deleteEntry(row)"
               />
-            </li>
-          </ul>
+            </VGroupRow>
+          </VGroup>
         </template>
 
         <!-- Level 1: area list -->
@@ -752,20 +749,15 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
             :headline="t('settings.areas.noneHeadline')"
             :body="t('settings.areas.noneBody')"
           />
-          <ul class="flex flex-col gap-1">
-            <li
+          <VGroup v-if="areas.length > 0">
+            <VGroupRow
               v-for="area in areas"
               :key="area.id"
-            >
-              <button
-                type="button"
-                class="w-full text-left px-3 py-2 text-sm rounded transition-colors bg-base-200 hover:bg-base-300"
-                @click="selectArea(area.id)"
-              >
-                <div class="font-semibold truncate">{{ t(area.settingsProvider!.titleKey) }}</div>
-              </button>
-            </li>
-          </ul>
+              :label="t(area.settingsProvider!.titleKey)"
+              navigates
+              @click="selectArea(area.id)"
+            />
+          </VGroup>
         </template>
       </template>
 
@@ -794,28 +786,23 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
             :body="t('settings.emptyBody')"
           />
 
-          <div
+          <VGroup
             v-for="[cat, group] in groupedForms"
             :key="cat"
-            class="flex flex-col gap-1"
+            :label="cat || undefined"
           >
-            <div
-              v-if="cat"
-              class="text-[10px] uppercase tracking-wide opacity-50 font-semibold px-1 mt-1"
-            >
-              {{ cat }}
-            </div>
-            <button
+            <VGroupRow
               v-for="f in group"
               :key="f.name"
-              type="button"
-              class="text-left px-3 py-2 text-sm rounded transition-colors bg-base-200 hover:bg-base-300"
+              navigates
               @click="selectForm(f.name)"
             >
-              <div class="font-semibold truncate">{{ f.title }}</div>
-              <div class="text-xs opacity-70 mt-0.5 line-clamp-2">{{ f.description }}</div>
-            </button>
-          </div>
+              <template #label>
+                <div class="truncate font-medium">{{ f.title }}</div>
+                <div class="settings-row-sub line-clamp-2">{{ f.description }}</div>
+              </template>
+            </VGroupRow>
+          </VGroup>
         </template>
       </template>
 
@@ -850,7 +837,7 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
 
       <!-- ─── Tab: Erweitert (raw editor) ─── -->
       <template v-else>
-        <p class="text-xs opacity-60">{{ t('settings.raw.hint') }}</p>
+        <p class="settings-row-sub">{{ t('settings.raw.hint') }}</p>
         <RawSettingsPanel
           :reference-type="scopeInfo.kind"
           :reference-id="scopeInfo.referenceId"
@@ -894,21 +881,51 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
 </template>
 
 <style scoped>
+/* corporate-design §7 — grey ground, centred column, grouped lists. */
+.settings-ground { background: var(--v-bg); }
+.settings-column {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 28px 24px 48px;
+}
+.settings-title { margin: 0; font-size: 22px; line-height: 28px; font-weight: 600; letter-spacing: -0.01em; }
+.settings-ref { font-family: var(--v-font-mono); font-size: 12px; color: var(--v-label-tertiary); }
+.settings-section { margin: 0; font-size: 15px; line-height: 20px; font-weight: 600; }
+.settings-row-sub { font-size: 12px; line-height: 16px; color: var(--v-label-secondary); }
+.settings-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--v-separator); }
+.settings-tab {
+  padding: 6px 10px;
+  margin-bottom: -1px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--v-label-secondary);
+  cursor: pointer;
+}
+.settings-tab:hover { color: var(--v-label); }
+.settings-tab--active { color: var(--v-label); border-bottom-color: var(--v-accent); }
 .sidebar-item {
   text-align: left;
   padding: 0.375rem 0.5rem;
-  border-radius: 0.25rem;
+  border-radius: var(--v-radius-control);
   font-size: 0.875rem;
-  transition: background-color 0.15s ease;
+  transition: background-color var(--v-duration) ease-out;
 }
 
 .sidebar-item:hover {
-  background-color: color-mix(in srgb, currentColor 8%, transparent);
+  background-color: var(--v-fill);
 }
 
 .sidebar-item--active {
-  background-color: color-mix(in srgb, currentColor 12%, transparent);
-  font-weight: 600;
+  background-color: var(--v-selection);
+  color: var(--v-accent-text);
+  font-weight: 500;
 }
 
 .sidebar-item:disabled {

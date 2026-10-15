@@ -265,8 +265,8 @@ function actionLabel(action: string): string {
     <template v-else-if="form">
       <!-- Header -->
       <div>
-        <h2 class="text-lg font-semibold">{{ form.title }}</h2>
-        <p class="text-sm opacity-70 mt-1">{{ form.description }}</p>
+        <h2 class="text-[15px] leading-5 font-semibold">{{ form.title }}</h2>
+        <p class="text-[13px] leading-5 text-(--v-label-secondary) mt-1">{{ form.description }}</p>
       </div>
 
       <!-- Live cascade values -->
@@ -278,7 +278,7 @@ function actionLabel(action: string): string {
           <li
             v-for="f in directMappedFields"
             :key="f.name"
-            class="flex items-center justify-between gap-2 border-b border-base-300 last:border-0 pb-1.5 last:pb-0"
+            class="flex items-center justify-between gap-2 border-b border-(--v-separator) last:border-0 pb-1.5 last:pb-0"
           >
             <div class="min-w-0 flex-1">
               <span class="font-mono text-xs opacity-70">{{ f.bindsTo?.key }}</span>
@@ -306,13 +306,15 @@ function actionLabel(action: string): string {
         </ul>
       </VCard>
 
-      <!-- Form -->
-      <FormFields
-        v-model="values"
-        :fields="form.fields ?? []"
-        :errors="errors"
-        :disabled="submitting"
-      />
+      <!-- Form — one group on the grey ground (corporate-design §7.2) -->
+      <VCard>
+        <FormFields
+          v-model="values"
+          :fields="form.fields ?? []"
+          :errors="errors"
+          :disabled="submitting"
+        />
+      </VCard>
 
       <!--
         Submit error sits with the action buttons, not above the fields:

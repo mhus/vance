@@ -35,6 +35,7 @@ export const INSIGHTS_TOP_TABS = [
   'tool-usage',
   'trillian',
   'cluster',
+  'leases',
   'addons',
   'usage',
 ] as const;

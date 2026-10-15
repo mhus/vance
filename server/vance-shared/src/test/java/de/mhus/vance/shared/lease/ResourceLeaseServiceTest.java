@@ -349,6 +349,75 @@ class ResourceLeaseServiceTest {
         assertThat(store.count("tex2pdf|tenant|acme")).isEqualTo(4);
     }
 
+    // ──────────────── operator surface ────────────────
+
+    @Test
+    void revoke_removesTheHolderAndGivesItsSlotsBack() {
+        Lease lease = service.acquire(request(def(1L, 1L, null, null, 0L)));
+
+        Optional<ResourceLeaseHolderDocument> revoked = service.revoke(lease.holderToken(), null);
+
+        assertThat(revoked).map(ResourceLeaseHolderDocument::getToken).contains(lease.holderToken());
+        assertThat(store.holders).isEmpty();
+        assertThat(store.count("tex2pdf|global|")).isZero();
+        assertThat(store.count("tex2pdf|tenant|acme")).isZero();
+        // The holder learns it at its next use.
+        assertThatThrownBy(lease::check).isInstanceOf(LeaseLostException.class);
+    }
+
+    @Test
+    void revoke_withTenant_doesNotReachAnotherTenantsHolder() {
+        Lease lease = service.acquire(request(def(1L, null, null, null, 0L)));
+
+        assertThat(service.revoke(lease.holderToken(), "other-tenant")).isEmpty();
+
+        assertThat(store.holders).containsKey(lease.holderToken());
+        assertThat(store.count("tex2pdf|global|")).isEqualTo(1);
+        assertThat(service.revoke(lease.holderToken(), TENANT)).isPresent();
+    }
+
+    @Test
+    void revoke_unknownToken_isEmptyAndTouchesNoCounter() {
+        service.acquire(request(def(1L, null, null, null, 0L)));
+
+        assertThat(service.revoke("rl-unknown", null)).isEmpty();
+        assertThat(store.count("tex2pdf|global|")).isEqualTo(1);
+    }
+
+    @Test
+    void listHolders_byTenant_filtersOnTheTenant() {
+        service.acquire(request(def(5L, null, null, null, 0L)));
+        service.acquire(LeaseRequest.builder()
+                .type("test")
+                .inline(def(5L, null, null, null, 0L))
+                .tenantId("other")
+                .holderRef("holder-ref")
+                .pod("pod-1")
+                .build());
+
+        assertThat(service.listHolders()).hasSize(2);
+        assertThat(service.listHolders(TENANT))
+                .extracting(ResourceLeaseHolderDocument::getTenantId)
+                .containsExactly(TENANT);
+    }
+
+    @Test
+    void listCounters_byTenant_leavesTheGlobalLevelAndOtherTenantsOut() {
+        Instant at = Instant.parse("2026-01-01T00:00:00Z");
+        store.putCounter("tex2pdf|global|", 3, at);
+        store.putCounter("tex2pdf|tenant|acme", 2, at);
+        store.putCounter("tex2pdf|project|acme/proj-1", 1, at);
+        store.putCounter("tex2pdf|user|acme/alice", 1, at);
+        store.putCounter("tex2pdf|tenant|acme2", 1, at);
+        store.putCounter("tex2pdf|project|acme2/proj-1", 1, at);
+
+        assertThat(service.listCounters()).hasSize(6);
+        assertThat(service.listCounters(TENANT))
+                .extracting(LeaseCounter::key)
+                .containsExactlyInAnyOrder(
+                        "tex2pdf|tenant|acme", "tex2pdf|project|acme/proj-1", "tex2pdf|user|acme/alice");
+    }
+
     private static final class TestHandler implements LeaseHandler {
         @Override
         public String type() {

@@ -47,6 +47,7 @@ import WorkspaceTab from './WorkspaceTab.vue';
 import ExecutionsTab from './ExecutionsTab.vue';
 import ClusterTab from './ClusterTab.vue';
 import AddonsTab from './AddonsTab.vue';
+import LeasesTab from './LeasesTab.vue';
 import EventsTab from './EventsTab.vue';
 import SchedulerTab from './SchedulerTab.vue';
 import UrsahooksTab from './UrsahooksTab.vue';
@@ -189,6 +190,7 @@ const ALL_TABS: ReadonlyArray<{ key: TopTab; label: string }> = [
   { key: 'tool-usage', label: 'Tool Usage' },
   { key: 'trillian', label: 'Trillian' },
   { key: 'cluster', label: 'Cluster' },
+  { key: 'leases', label: 'Leases' },
   { key: 'addons', label: 'Addons' },
   { key: 'usage', label: 'Usage & Cost' },
 ];
@@ -954,7 +956,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
       </div>
 
       <div
-        v-if="topTab !== 'sessions' && topTab !== 'cluster' && topTab !== 'trillian' && topTab !== 'addons' && topTab !== 'usage' && projectContextSource"
+        v-if="topTab !== 'sessions' && topTab !== 'cluster' && topTab !== 'trillian' && topTab !== 'addons' && topTab !== 'leases' && topTab !== 'usage' && projectContextSource"
         class="text-xs opacity-70 -mt-1 mb-1"
       >
         Showing
@@ -980,6 +982,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
       <MegadodoTab v-else-if="topTab === 'activity'" :project-id="effectiveProjectId" />
       <TrillianTab v-else-if="topTab === 'trillian'" />
       <ClusterTab v-else-if="topTab === 'cluster'" />
+      <LeasesTab v-else-if="topTab === 'leases'" />
       <AddonsTab v-else-if="topTab === 'addons'" />
       <UsageCostTab v-else-if="topTab === 'usage'" />
 

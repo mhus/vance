@@ -68,12 +68,21 @@ final class FakeLeaseStore {
         when(template.findAndRemove(any(Query.class), eq(ResourceLeaseHolderDocument.class)))
                 .thenAnswer(inv -> {
                     fail("holder.remove");
-                    return holders.remove(id(inv.getArgument(0)));
+                    Query query = inv.getArgument(0);
+                    ResourceLeaseHolderDocument holder = holders.get(id(query));
+                    if (holder == null || !matchesFields(holder, query.getQueryObject())) return null;
+                    return holders.remove(holder.getToken());
                 });
         when(template.find(any(Query.class), eq(ResourceLeaseHolderDocument.class)))
-                .thenAnswer(inv -> holders.values().stream()
-                        .filter(h -> expired.contains(h.getToken()))
-                        .toList());
+                .thenAnswer(inv -> {
+                    Document filter = ((Query) inv.getArgument(0)).getQueryObject();
+                    return holders.values().stream()
+                            .filter(h -> !filter.containsKey("$expr") || expired.contains(h.getToken()))
+                            .filter(h -> matchesFields(h, filter))
+                            .toList();
+                });
+        when(template.findById(any(), eq(ResourceLeaseHolderDocument.class)))
+                .thenAnswer(inv -> holders.get(String.valueOf(inv.getArgument(0, Object.class))));
         when(template.findAll(ResourceLeaseHolderDocument.class)).thenAnswer(inv -> new ArrayList<>(holders.values()));
     }
 
@@ -221,6 +230,21 @@ final class FakeLeaseStore {
             modified = true;
         }
         return UpdateResult.acknowledged(1, modified ? 1L : 0L, null);
+    }
+
+    /**
+     * Plain equality on the holder fields a filter names ({@code tenantId},
+     * {@code pod}, {@code resource}) — the {@code _id} and the {@code $expr}
+     * idle filter are handled by the callers.
+     */
+    private static boolean matchesFields(ResourceLeaseHolderDocument holder, Document filter) {
+        return equalIfPresent(filter, "tenantId", holder.getTenantId())
+                && equalIfPresent(filter, "pod", holder.getPod())
+                && equalIfPresent(filter, "resource", holder.getResource());
+    }
+
+    private static boolean equalIfPresent(Document filter, String field, @Nullable Object actual) {
+        return !filter.containsKey(field) || Objects.equals(filter.get(field), actual);
     }
 
     private static String id(Query query) {

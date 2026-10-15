@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
@@ -483,9 +484,70 @@ public class ResourceLeaseService {
         return corrections;
     }
 
-    /** All current holders — diagnostics and tests. */
+    // ──────────────── operator surface ────────────────
+
+    /**
+     * Revokes one holder on an operator's decision. Same effect as a reap —
+     * the holder document goes, its booked levels are given back — and the
+     * removed holder is returned so the caller can run the type's handler
+     * (§5: a freed slot alone leaves the resource running). The holder
+     * itself learns it at its next {@link Lease#check()}.
+     *
+     * @param tenantId when set, only a holder of this tenant is revoked —
+     *     tokens are global, the tenant admin's surface must not reach past
+     *     its own tenant
+     * @return the removed holder, empty when the token is unknown, already
+     *     gone or belongs to another tenant
+     */
+    public Optional<ResourceLeaseHolderDocument> revoke(String token, @Nullable String tenantId) {
+        Criteria criteria = Criteria.where("_id").is(token);
+        if (tenantId != null) {
+            criteria = criteria.and("tenantId").is(tenantId);
+        }
+        ResourceLeaseHolderDocument removed =
+                mongoTemplate.findAndRemove(Query.query(criteria), ResourceLeaseHolderDocument.class);
+        if (removed == null) return Optional.empty();
+        removed.getLevels().forEach(this::decCounter);
+        metrics.counter("vance.lease.reap", "reason", "revoke").increment();
+        log.info(
+                "resource lease: revoked holder {} on '{}' (type {}, pod '{}')",
+                removed.getToken(),
+                removed.getResource(),
+                removed.getType(),
+                removed.getPod());
+        return Optional.of(removed);
+    }
+
+    /** All current holders — sweeper, admin shell and tests. */
     public List<ResourceLeaseHolderDocument> listHolders() {
         return mongoTemplate.findAll(ResourceLeaseHolderDocument.class);
+    }
+
+    /** The holders of one tenant — the tenant admin's view. */
+    public List<ResourceLeaseHolderDocument> listHolders(String tenantId) {
+        return mongoTemplate.find(
+                Query.query(Criteria.where("tenantId").is(tenantId)), ResourceLeaseHolderDocument.class);
+    }
+
+    /** One holder by token, regardless of tenant — admin shell. */
+    public Optional<ResourceLeaseHolderDocument> findHolder(String token) {
+        return Optional.ofNullable(mongoTemplate.findById(token, ResourceLeaseHolderDocument.class));
+    }
+
+    /** All funnel counters, key taken apart. */
+    public List<LeaseCounter> listCounters() {
+        return mongoTemplate.findAll(ResourceLeaseCounterDocument.class).stream()
+                .map(LeaseCounter::of)
+                .toList();
+    }
+
+    /**
+     * The counters that count only this tenant's holders — tenant, project
+     * and user level. The global level is left out: its occupancy sums up
+     * every tenant and is not the tenant admin's to see.
+     */
+    public List<LeaseCounter> listCounters(String tenantId) {
+        return listCounters().stream().filter(c -> c.belongsToTenant(tenantId)).toList();
     }
 
     // ──────────────── internals ────────────────

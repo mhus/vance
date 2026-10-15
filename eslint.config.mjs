@@ -12,6 +12,12 @@ import pluginVue from 'eslint-plugin-vue'
 import globals from 'globals'
 
 // Tailwind palette utilities (bg-blue-500, text-gray-400, border-white …).
+// DaisyUI component classes that @vance/components wraps: a view writing
+// `btn` / `badge` / `alert` itself bypasses the CI roles of VButton, VBadge
+// and VAlert.
+// Local scoped classes like `badge-type` are not matched — only the bare
+// class and DaisyUI's own modifiers.
+const DAISY_COMPONENT = String.raw`(?:^|\s)(?:btn|badge|alert)(?:-(?:primary|secondary|accent|neutral|info|success|warning|error|ghost|outline|link|soft|dash|xs|sm|md|lg|xl|wide|block|circle|square))?(?=\s|$)`
 const PALETTE = String.raw`\b(?:bg|text|border|ring|fill|stroke|outline|divide|from|to|via|accent|caret|decoration|shadow)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3}\b|\b(?:bg|text|border)-(?:white|black)\b`
 
 export default defineConfigWithVueTs(
@@ -62,10 +68,12 @@ export default defineConfigWithVueTs(
     // creep back. Emoji / Unicode symbols are not icons (§5 — use VIcon or
     // VIconButton), Tailwind palette colours are not colours (§3 — use the
     // --v-* tokens). User content is data, not template text, and stays free.
-    // The Facelift native shell is excluded until it is migrated (§10.4).
+    // The first block covers the component library; the second the views
+    // (web UI, facelift shell, addons), which additionally may not write the
+    // DaisyUI component classes the library wraps.
     {
         name: 'vance/corporate-design',
-        files: ['client/packages/vance-face/**/*.vue', 'client/packages/components/**/*.vue', 'server/**/client/**/*.vue'],
+        files: ['client/packages/components/**/*.vue'],
         rules: {
             'vue/no-restricted-syntax': [
                 'error',
@@ -80,6 +88,35 @@ export default defineConfigWithVueTs(
                 {
                     selector: String.raw`VAttribute[directive=true][key.argument.name='class'] Literal[value=/${PALETTE}/]`,
                     message: 'Tailwind palette colour — use a --v-* token, e.g. text-(--v-danger) (corporate-design.md §3).',
+                },
+            ],
+        },
+    },
+    {
+        name: 'vance/corporate-design-components',
+        files: ['client/packages/vance-face/**/*.vue', 'client/packages/facelift-bridge/**/*.vue', 'server/**/client/**/*.vue'],
+        rules: {
+            'vue/no-restricted-syntax': [
+                'error',
+                {
+                    selector: String.raw`VElement[name='template'] VText[value=/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{2190}-\u{21FF}\u{25A0}-\u{25FF}]/u]`,
+                    message: 'Emoji / Unicode symbols are not icons — use <VIcon> or <VIconButton> (corporate-design.md §5).',
+                },
+                {
+                    selector: String.raw`VAttribute[directive=false][key.name='class'] > VLiteral[value=/${PALETTE}/]`,
+                    message: 'Tailwind palette colour — use a --v-* token, e.g. text-(--v-danger) (corporate-design.md §3).',
+                },
+                {
+                    selector: String.raw`VAttribute[directive=true][key.argument.name='class'] Literal[value=/${PALETTE}/]`,
+                    message: 'Tailwind palette colour — use a --v-* token, e.g. text-(--v-danger) (corporate-design.md §3).',
+                },
+                {
+                    selector: String.raw`VAttribute[directive=false][key.name='class'] > VLiteral[value=/${DAISY_COMPONENT}/]`,
+                    message: 'DaisyUI btn/badge/alert class — use <VButton>, <VIconButton>, <VBadge> or <VAlert> (corporate-design.md §10.2).',
+                },
+                {
+                    selector: String.raw`VAttribute[directive=true][key.argument.name='class'] Literal[value=/${DAISY_COMPONENT}/]`,
+                    message: 'DaisyUI btn/badge/alert class — use <VButton>, <VIconButton>, <VBadge> or <VAlert> (corporate-design.md §10.2).',
                 },
             ],
         },

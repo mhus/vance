@@ -1,0 +1,32 @@
+{
+  "simpleauth": {
+    "title": "权限",
+    "subtitle": "授予和撤销用户和团队的角色。",
+    "scope": "范围",
+    "project": "项目",
+    "load": "加载",
+    "currentGrants": "当前授权",
+    "noGrants": "此范围内无授权。",
+    "revoke": "撤销",
+    "grantHeading": "授予角色",
+    "subjectType": "主体类型",
+    "subjectId": "用户/团队名称",
+    "role": "角色",
+    "grant": "授予",
+    "required": "范围和主体是必填项。",
+    "granted": "已授予 {subject} “{name}” {role} 角色。",
+    "scopeType": {
+      "TENANT": "租户",
+      "PROJECT": "项目"
+    },
+    "subject": {
+      "USER": "用户",
+      "TEAM": "团队"
+    },
+    "roles": {
+      "READER": "读者",
+      "WRITER": "作者",
+      "ADMIN": "管理员"
+    }
+  }
+}

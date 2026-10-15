@@ -1,0 +1,60 @@
+{
+  "kanban": {
+    "common": {
+      "cancel": "キャンセル",
+      "create": "作成",
+      "delete": "削除",
+      "done": "完了"
+    },
+    "board": {
+      "cardCount": "{n}枚のカード | {n}枚のカード",
+      "columnCount": "{n}列 | {n}列",
+      "reload": "再読み込み",
+      "rebuild": "アーティファクトを再構築",
+      "loading": "ボードを読み込み中…",
+      "emptyHeadline": "まだ列がありません",
+      "emptyBody": "このボードを使用するには、_app.yaml に列を追加してください。",
+      "undeclared": "未宣言",
+      "addCard": "カードを追加",
+      "blocked": "ブロック済み",
+      "newCard": "新規カード",
+      "cardTitlePlaceholder": "カードのタイトル",
+      "assigneePlaceholder": "担当者（任意）",
+      "dueDatePlaceholder": "期日 YYYY-MM-DD（任意）",
+      "error": {
+        "load": "ボードを読み込めませんでした: {message}",
+        "rebuild": "再構築に失敗しました: {message}",
+        "move": "移動に失敗しました: {message}",
+        "delete": "削除に失敗しました: {message}",
+        "create": "作成に失敗しました: {message}"
+      }
+    },
+    "priority": {
+      "none": "優先度なし",
+      "low": "低",
+      "med": "中",
+      "high": "高",
+      "critical": "最重要"
+    },
+    "detail": {
+      "title": "カード詳細",
+      "fieldTitle": "タイトル",
+      "priority": "優先度",
+      "assignee": "担当者",
+      "dueDate": "期日",
+      "dueDatePlaceholder": "YYYY-MM-DD",
+      "estimate": "見積もり",
+      "labels": "ラベル",
+      "blocked": "ブロック済み",
+      "color": "色",
+      "editContent": "コンテンツを編集…",
+      "contentTitle": "カードのコンテンツ",
+      "confirmDelete": "カード「{title}」を削除しますか？",
+      "status": {
+        "edited": "編集済み",
+        "saving": "保存中…",
+        "saved": "保存済み"
+      }
+    }
+  }
+}

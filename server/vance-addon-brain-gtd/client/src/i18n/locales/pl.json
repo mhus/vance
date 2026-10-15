@@ -1,0 +1,56 @@
+{
+  "gtd": {
+    "common": {
+      "loading": "Ładowanie…",
+      "saving": "Zapisywanie…",
+      "saved": "Zapisano",
+      "saveFailed": "Zapisywanie nie powiodło się"
+    },
+    "bucket": {
+      "inbox": "Skrzynka odbiorcza",
+      "today": "Dziś",
+      "upcoming": "Nadchodzące",
+      "anytime": "Kiedykolwiek",
+      "someday": "Kiedyś",
+      "trash": "Kosz"
+    },
+    "app": {
+      "searchPlaceholder": "Szukaj działań…",
+      "untitled": "(bez tytułu)",
+      "noMatch": "Brak pasującego działania.",
+      "rebuildTip": "Przebuduj widoki — przenosi ukończone działania do Kosza",
+      "projects": "Projekty",
+      "contexts": "Konteksty",
+      "capturePlaceholder": "＋ Dodaj do skrzynki odbiorczej…",
+      "nothingHere": "Nic tu nie ma.",
+      "bucketLabel": "Kategoria",
+      "whenHint": "kiedy:",
+      "anytimeValue": "(kiedykolwiek)",
+      "project": "Projekt",
+      "noProject": "(brak projektu)",
+      "newProject": "＋ Nowy projekt…",
+      "deadline": "Termin",
+      "contextsPlaceholder": "@rozmowy, @dom",
+      "done": "Gotowe",
+      "deleteForGood": "Usuń na zawsze",
+      "moveToTrash": "Przenieś do Kosza",
+      "note": "Notatka",
+      "promptUpcoming": "Nadchodząca data (rrrr-MM-dd):",
+      "promptNewProject": "Nazwa nowego projektu:",
+      "confirmDelete": "Usunąć to działanie na zawsze? Tej operacji nie można cofnąć.",
+      "error": {
+        "scan": "Nie udało się przeskanować folderu GTD.",
+        "loadAction": "Nie udało się załadować działania.",
+        "save": "Zapisywanie nie powiodło się.",
+        "update": "Aktualizacja nie powiodła się.",
+        "move": "Przenoszenie nie powiodło się.",
+        "refile": "Ponowne przypisanie nie powiodło się.",
+        "delete": "Usuwanie nie powiodło się.",
+        "reorder": "Zmiana kolejności nie powiodła się.",
+        "capture": "Przechwytywanie nie powiodło się.",
+        "search": "Wyszukiwanie nie powiodło się.",
+        "rebuild": "Przebudowa nie powiodła się."
+      }
+    }
+  }
+}

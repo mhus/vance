@@ -1,0 +1,98 @@
+{
+  "documents": {
+    "detail": {
+      "tabFinance": "Finanse"
+    }
+  },
+  "finance": {
+    "fallbackTitle": "Drzewo finansowe",
+    "reload": "Przeładuj",
+    "unit": "Jednostka",
+    "report": "Raport",
+    "loading": "Ładowanie…",
+    "createRoot": "＋ Utwórz węzeł główny",
+    "pickNode": "Wybierz węzeł, aby go edytować.",
+    "save": {
+      "saved": "zapisano",
+      "dirty": "niezapisane",
+      "saving": "zapisywanie…",
+      "error": "zapis nieudany"
+    },
+    "fields": {
+      "heading": "Pola · {name}",
+      "title": "Tytuł",
+      "icon": "Ikona",
+      "color": "Kolor",
+      "negative": "ujemne (odwraca poddrzewo)",
+      "description": "Opis",
+      "notesRef": "Odnośnik do notatek"
+    },
+    "values": {
+      "heading": "Bloki wartości",
+      "add": "＋ wartość",
+      "amount": "Kwota",
+      "mode": "Tryb",
+      "modeRecurring": "cykliczne",
+      "modeOneTime": "jednorazowe",
+      "per": "za",
+      "unit": "jednostkę",
+      "date": "data",
+      "validFrom": "ważne od",
+      "validTo": "ważne do",
+      "interest": "odsetki",
+      "rate": "stopa %",
+      "compound": "składane"
+    },
+    "perUnit": {
+      "day": "/dzień",
+      "week": "/tydzień",
+      "month": "/miesiąc",
+      "year": "/rok"
+    },
+    "chartType": {
+      "line": "liniowy",
+      "bar": "słupkowy",
+      "area": "obszarowy",
+      "scatter": "punktowy"
+    },
+    "period": {
+      "day": "dzień",
+      "week": "tydzień",
+      "month": "miesiąc",
+      "year": "rok"
+    },
+    "reportModal": {
+      "title": "Generuj raport",
+      "processor": "Procesor",
+      "from": "od",
+      "to": "do",
+      "granularity": "ziarnistość",
+      "chartType": "typ wykresu (serie)",
+      "focus": "fokus (ocena, opcjonalnie)",
+      "persist": "zapisz jako dokument",
+      "outputPath": "ścieżka wyjściowa",
+      "outputPathPlaceholder": "reports/q1.chart.yaml",
+      "generating": "Generowanie…",
+      "generate": "Generuj",
+      "running": "Generowanie raportu…",
+      "savedTo": "Zapisano do {path}"
+    },
+    "tree": {
+      "perUnit": "za {unit}",
+      "addChild": "Dodaj dziecko",
+      "up": "W górę",
+      "down": "W dół",
+      "indent": "Wcięcie",
+      "outdent": "Zmniejsz wcięcie",
+      "delete": "Usuń"
+    },
+    "summary": {
+      "edit": "Edytuj",
+      "perYear": "/ rok",
+      "oneTime": "jednorazowo: {amount}",
+      "empty": "Pusto — otwórz, aby dodać węzły.",
+      "modalTitle": "Drzewo finansowe",
+      "unresolved": "Nie można rozwiązać dokumentu finansowego."
+    }
+  }
+}

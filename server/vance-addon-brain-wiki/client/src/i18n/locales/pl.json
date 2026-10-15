@@ -1,0 +1,87 @@
+{
+  "wiki": {
+    "common": {
+      "saving": "Zapisywanie…",
+      "saved": "Zapisano",
+      "cancel": "Anuluj",
+      "create": "Utwórz",
+      "creating": "Tworzenie…",
+      "loading": "Ładowanie…"
+    },
+    "app": {
+      "fallbackTitle": "Wiki",
+      "indexTitle": "Indeks",
+      "searchPlaceholder": "Szukaj stron…",
+      "noMatch": "Brak pasującej strony.",
+      "createNamed": "Utwórz stronę „{name}”",
+      "createNamedInSpace": "Utwórz stronę „{name}” w {space}",
+      "newPage": "Nowa strona",
+      "newShort": "Nowa",
+      "home": "Start — strona główna",
+      "indexTip": "Indeks — wygenerowana lista stron",
+      "rebuilding": "Przebudowywanie…",
+      "rebuild": "Przebuduj indeksy + linki zwrotne",
+      "newPagePlaceholder": "Tytuł nowej strony…",
+      "newPageInSpacePlaceholder": "Nowa strona w {space}…",
+      "loadingWiki": "Ładowanie wiki…",
+      "loadingPage": "Ładowanie strony…",
+      "missingTitle": "Strona główna „main” jeszcze nie istnieje.",
+      "missingPre": "Wiki otwiera się na swojej",
+      "missingMid": "stronie. Utwórz ją teraz — lub otwórz",
+      "indexLink": "indeks",
+      "createMain": "＋ Utwórz stronę „main”",
+      "noPageSelected": "Nie wybrano strony. Utwórz nową za pomocą ＋ Nowa.",
+      "generatedBadge": "wygenerowano · tylko do odczytu",
+      "deletePage": "Usuń stronę",
+      "status": {
+        "edited": "Edytowano",
+        "saveFailed": "Zapisywanie nie powiodło się"
+      },
+      "confirmDelete": "Usunąć stronę „{title}”?",
+      "confirmCreate": "Strona „{name}” nie istnieje. Utworzyć ją?",
+      "confirmCreateInSpace": "Strona „{name}” nie istnieje. Utworzyć ją w przestrzeni „{space}”?",
+      "error": {
+        "scan": "Nie udało się przeskanować wiki.",
+        "loadPage": "Nie udało się załadować strony.",
+        "save": "Zapisywanie nie powiodło się.",
+        "openLink": "Nie udało się otworzyć linku wiki.",
+        "createMain": "Nie udało się utworzyć strony głównej.",
+        "rebuild": "Przebudowa nie powiodła się.",
+        "titleRequired": "Tytuł jest wymagany",
+        "createPage": "Nie udało się utworzyć strony.",
+        "delete": "Usuwanie nie powiodło się.",
+        "search": "Wyszukiwanie nie powiodło się."
+      }
+    },
+    "backlinks": {
+      "title": "Co tu linkuje",
+      "emptyPre": "Żadne strony jeszcze tu nie linkują. Połącz za pomocą",
+      "emptyPost": ", następnie przebuduj.",
+      "error": "Nie udało się załadować linków zwrotnych."
+    },
+    "notes": {
+      "title": "Notatki",
+      "newNote": "Nowa notatka",
+      "empty": "Brak notatek. Kliknij ＋, aby dodać.",
+      "done": "Gotowe",
+      "markDone": "Oznacz jako gotowe",
+      "delete": "Usuń",
+      "error": {
+        "load": "Nie udało się załadować notatek.",
+        "add": "Nie udało się dodać notatki.",
+        "update": "Nie udało się zaktualizować notatki.",
+        "delete": "Nie udało się usunąć notatki."
+      }
+    },
+    "versions": {
+      "title": "Wersje",
+      "empty": "Brak zarchiwizowanych wersji — pojawią się po następnej edycji.",
+      "restore": "Przywróć",
+      "confirmRestore": "Przywrócić tę wersję? Bieżąca zawartość zostanie najpierw zarchiwizowana.",
+      "error": {
+        "load": "Nie udało się załadować wersji.",
+        "restore": "Przywracanie nie powiodło się."
+      }
+    }
+  }
+}

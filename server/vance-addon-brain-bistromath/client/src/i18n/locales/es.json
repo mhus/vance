@@ -1,0 +1,58 @@
+{
+  "bistromath": {
+    "app": {
+      "fallbackTitle": "App",
+      "loads": "Cargas ({count})",
+      "loadsTip": "{count} documento(s) se cargan para esta app",
+      "rebuild": "Reconstruir",
+      "rebuildTip": "Volver a leer las vistas, reiniciar el programa",
+      "releaseDefault": "Un administrador de tenant decide qué aplicaciones pueden ejecutarse aquí.",
+      "sending": "Enviando…",
+      "requestRelease": "Solicitar lanzamiento",
+      "loadOrder": "Cargas, en este orden",
+      "noProgram": "Nada — esta app no tiene programa.",
+      "surfaceWithheldPre": "Esta vista solicita una superficie de dibujo (",
+      "surfaceWithheldMid": "), que este tenant no permite para esta app. Un administrador de tenant decide eso en",
+      "noViewHeadline": "Ninguna vista aún",
+      "noViewBody": "Esta app se define por sus documentos. Una vista es un documento con `$meta.kind: app-view` — pídele una al chat junto a este panel, o añádela en {folder}."
+    },
+    "view": {
+      "fallbackTitle": "Vista",
+      "recheck": "Volver a verificar",
+      "openApp": "Abrir la app ↗",
+      "openAppTip": "Abrir la app a la que pertenece esta vista",
+      "previewPre": "Vista previa — no hay ningún programa en ejecución, por lo que cualquier cosa vinculada a",
+      "previewMid": "está vacío y",
+      "previewPost": "oculta lo que protege. Abre la app para verlo con datos."
+    },
+    "widget": {
+      "selectPlaceholder": "—",
+      "filterPlaceholder": "Filtrar…",
+      "tableMissingHeadline": "Nada que mostrar",
+      "tableMissingBody": "Nada ha escrito `{key}` aún — el programa lo llena con vance.state.set('{key}', rows). Verifica la clave si esto es inesperado.",
+      "tableEmptyHeadline": "No hay entradas",
+      "tableEmptyBody": "`{key}` está vacío.",
+      "filterEmptyHeadline": "Nada coincide con el filtro",
+      "filterEmptyBody": "{count} fila(s) están ocultas por »{filter}«.",
+      "sortBy": "Ordenar por {column}",
+      "formEmptyHeadline": "Nada seleccionado",
+      "formEmptyBody": "Haz clic en una fila de la tabla para editarla aquí.",
+      "tab": "Pestaña {number}",
+      "repeatEmptyHeadline": "Nada aquí todavía",
+      "repeatEmptyBody": "El programa no ha puesto una lista en `{key}`.",
+      "embedMissingPre": "Nada que incrustar —",
+      "embedMissingPost": "no contiene ninguna ruta de documento.",
+      "embedNoPath": "(sin ruta)",
+      "embedNoRendererPre": "Esta superficie no puede renderizar documentos incrustados. Quiso decir:",
+      "unknownPre": "Esta compilación no puede renderizar un widget",
+      "unknownPost": "."
+    },
+    "details": {
+      "emptyHeadline": "Nada seleccionado",
+      "emptyBody": "Haz clic en una fila de la tabla para verla aquí.",
+      "empty": "—",
+      "yes": "sí",
+      "no": "no"
+    }
+  }
+}

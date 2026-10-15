@@ -1,0 +1,58 @@
+{
+  "bistromath": {
+    "app": {
+      "fallbackTitle": "App",
+      "loads": "Chargements ({count})",
+      "loadsTip": "{count} document(s) se charge(nt) pour cette app",
+      "rebuild": "Reconstruire",
+      "rebuildTip": "Relire les vues, redémarrer le programme",
+      "releaseDefault": "Un administrateur de Tenant décide quelles applications peuvent s'exécuter ici.",
+      "sending": "Envoi…",
+      "requestRelease": "Demander la publication",
+      "loadOrder": "Chargements, dans cet ordre",
+      "noProgram": "Rien — cette app n'a pas de programme.",
+      "surfaceWithheldPre": "Cette vue demande une surface de dessin (",
+      "surfaceWithheldMid": "), que ce Tenant n'autorise pas pour cette app. Un administrateur de Tenant le décide dans",
+      "noViewHeadline": "Aucune vue pour l'instant",
+      "noViewBody": "Cette app est définie par ses documents. Une vue est un document avec `$meta.kind: app-view` — demandez-en une au chat à côté de ce panneau, ou ajoutez-la sous {folder}."
+    },
+    "view": {
+      "fallbackTitle": "Vue",
+      "recheck": "Revérifier",
+      "openApp": "Ouvrir l'app ↗",
+      "openAppTip": "Ouvrir l'app à laquelle appartient cette vue",
+      "previewPre": "Aperçu — aucun programme n'est en cours d'exécution, donc tout ce qui est lié à",
+      "previewMid": "est vide et",
+      "previewPost": "cache ce qu'il protège. Ouvrez l'app pour la voir avec des données."
+    },
+    "widget": {
+      "selectPlaceholder": "—",
+      "filterPlaceholder": "Filtrer…",
+      "tableMissingHeadline": "Rien à afficher",
+      "tableMissingBody": "Rien n'a encore écrit `{key}` — le programme le remplit avec vance.state.set('{key}', rows). Vérifiez la clé si c'est inattendu.",
+      "tableEmptyHeadline": "Aucune entrée",
+      "tableEmptyBody": "`{key}` est vide.",
+      "filterEmptyHeadline": "Rien ne correspond au filtre",
+      "filterEmptyBody": "{count} ligne(s) sont masquées par »{filter}«.",
+      "sortBy": "Trier par {column}",
+      "formEmptyHeadline": "Rien de sélectionné",
+      "formEmptyBody": "Cliquez sur une ligne du tableau pour la modifier ici.",
+      "tab": "Onglet {number}",
+      "repeatEmptyHeadline": "Rien ici pour l'instant",
+      "repeatEmptyBody": "Le programme n'a pas mis de liste dans `{key}`.",
+      "embedMissingPre": "Rien à intégrer —",
+      "embedMissingPost": "ne contient aucun chemin de document.",
+      "embedNoPath": "(aucun chemin)",
+      "embedNoRendererPre": "Cette surface ne peut pas rendre les documents intégrés. Signification :",
+      "unknownPre": "Cette version ne peut pas rendre un widget",
+      "unknownPost": "."
+    },
+    "details": {
+      "emptyHeadline": "Rien de sélectionné",
+      "emptyBody": "Cliquez sur une ligne du tableau pour la voir ici.",
+      "empty": "—",
+      "yes": "oui",
+      "no": "non"
+    }
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "de": {
+    "desktop.emptyBody": "f75fa18daf0b729256ef8b7da634e3a9b406a47cf6dcbba46089afba4ec65939",
+    "desktop.emptyHeadline": "785a56ea56b721fac017ed4827c8c57942eea07c166dae18da53cd4172a34374",
+    "desktop.open": "ed077f3d8125d60dca1979c7133601bd187d47c73ed9975028f677e49e709942",
+    "desktop.openInNewWindow": "fd37e36d80f3921e4a8550233830df72051db0f0f39c14daf41bb060c1e95a50",
+    "desktop.refresh": "0e91610117029a62a478b7fa7df0b8598bebe3ab1e192d4b1882e310719c9671"
+  },
+  "es": {
+    "desktop.emptyBody": "f75fa18daf0b729256ef8b7da634e3a9b406a47cf6dcbba46089afba4ec65939",
+    "desktop.emptyHeadline": "785a56ea56b721fac017ed4827c8c57942eea07c166dae18da53cd4172a34374",
+    "desktop.open": "ed077f3d8125d60dca1979c7133601bd187d47c73ed9975028f677e49e709942",
+    "desktop.openInNewWindow": "fd37e36d80f3921e4a8550233830df72051db0f0f39c14daf41bb060c1e95a50",
+    "desktop.refresh": "0e91610117029a62a478b7fa7df0b8598bebe3ab1e192d4b1882e310719c9671"
+  },
+  "fr": {
+    "desktop.emptyBody": "f75fa18daf0b729256ef8b7da634e3a9b406a47cf6dcbba46089afba4ec65939",
+    "desktop.emptyHeadline": "785a56ea56b721fac017ed4827c8c57942eea07c166dae18da53cd4172a34374",
+    "desktop.open": "ed077f3d8125d60dca1979c7133601bd187d47c73ed9975028f677e49e709942",
+    "desktop.openInNewWindow": "fd37e36d80f3921e4a8550233830df72051db0f0f39c14daf41bb060c1e95a50",
+    "desktop.refresh": "0e91610117029a62a478b7fa7df0b8598bebe3ab1e192d4b1882e310719c9671"
+  },
+  "ja": {
+    "desktop.emptyBody": "f75fa18daf0b729256ef8b7da634e3a9b406a47cf6dcbba46089afba4ec65939",
+    "desktop.emptyHeadline": "785a56ea56b721fac017ed4827c8c57942eea07c166dae18da53cd4172a34374",
+    "desktop.open": "ed077f3d8125d60dca1979c7133601bd187d47c73ed9975028f677e49e709942",
+    "desktop.openInNewWindow": "fd37e36d80f3921e4a8550233830df72051db0f0f39c14daf41bb060c1e95a50",
+    "desktop.refresh": "0e91610117029a62a478b7fa7df0b8598bebe3ab1e192d4b1882e310719c9671"
+  },
+  "pl": {
+    "desktop.emptyBody": "f75fa18daf0b729256ef8b7da634e3a9b406a47cf6dcbba46089afba4ec65939",
+    "desktop.emptyHeadline": "785a56ea56b721fac017ed4827c8c57942eea07c166dae18da53cd4172a34374",
+    "desktop.open": "ed077f3d8125d60dca1979c7133601bd187d47c73ed9975028f677e49e709942",
+    "desktop.openInNewWindow": "fd37e36d80f3921e4a8550233830df72051db0f0f39c14daf41bb060c1e95a50",
+    "desktop.refresh": "0e91610117029a62a478b7fa7df0b8598bebe3ab1e192d4b1882e310719c9671"
+  },
+  "pt": {
+    "desktop.emptyBody": "f75fa18daf0b729256ef8b7da634e3a9b406a47cf6dcbba46089afba4ec65939",
+    "desktop.emptyHeadline": "785a56ea56b721fac017ed4827c8c57942eea07c166dae18da53cd4172a34374",
+    "desktop.open": "ed077f3d8125d60dca1979c7133601bd187d47c73ed9975028f677e49e709942",
+    "desktop.openInNewWindow": "fd37e36d80f3921e4a8550233830df72051db0f0f39c14daf41bb060c1e95a50",
+    "desktop.refresh": "0e91610117029a62a478b7fa7df0b8598bebe3ab1e192d4b1882e310719c9671"
+  },
+  "ru": {
+    "desktop.emptyBody": "f75fa18daf0b729256ef8b7da634e3a9b406a47cf6dcbba46089afba4ec65939",
+    "desktop.emptyHeadline": "785a56ea56b721fac017ed4827c8c57942eea07c166dae18da53cd4172a34374",
+    "desktop.open": "ed077f3d8125d60dca1979c7133601bd187d47c73ed9975028f677e49e709942",
+    "desktop.openInNewWindow": "fd37e36d80f3921e4a8550233830df72051db0f0f39c14daf41bb060c1e95a50",
+    "desktop.refresh": "0e91610117029a62a478b7fa7df0b8598bebe3ab1e192d4b1882e310719c9671"
+  },
+  "zh": {
+    "desktop.emptyBody": "f75fa18daf0b729256ef8b7da634e3a9b406a47cf6dcbba46089afba4ec65939",
+    "desktop.emptyHeadline": "785a56ea56b721fac017ed4827c8c57942eea07c166dae18da53cd4172a34374",
+    "desktop.open": "ed077f3d8125d60dca1979c7133601bd187d47c73ed9975028f677e49e709942",
+    "desktop.openInNewWindow": "fd37e36d80f3921e4a8550233830df72051db0f0f39c14daf41bb060c1e95a50",
+    "desktop.refresh": "0e91610117029a62a478b7fa7df0b8598bebe3ab1e192d4b1882e310719c9671"
+  }
+}

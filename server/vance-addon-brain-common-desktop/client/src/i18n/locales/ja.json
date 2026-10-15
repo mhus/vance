@@ -1,0 +1,9 @@
+{
+  "desktop": {
+    "refresh": "更新",
+    "emptyHeadline": "アプリがありません",
+    "emptyBody": "このフォルダーにアプリを追加してから、更新してください。",
+    "open": "開く",
+    "openInNewWindow": "新しいウィンドウで開く"
+  }
+}

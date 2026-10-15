@@ -1,0 +1,32 @@
+{
+  "simpleauth": {
+    "title": "Permissions",
+    "subtitle": "Accorder et révoquer des rôles pour les utilisateurs et les équipes.",
+    "scope": "Portée",
+    "project": "Projet",
+    "load": "Charger",
+    "currentGrants": "Permissions actuelles",
+    "noGrants": "Aucune permission sur cette portée.",
+    "revoke": "Révoquer",
+    "grantHeading": "Accorder un rôle",
+    "subjectType": "Type de sujet",
+    "subjectId": "Nom d'utilisateur / d'équipe",
+    "role": "Rôle",
+    "grant": "Accorder",
+    "required": "La portée et le sujet sont requis.",
+    "granted": "Rôle {role} accordé à {subject} « {name} ».",
+    "scopeType": {
+      "TENANT": "Tenant",
+      "PROJECT": "Projet"
+    },
+    "subject": {
+      "USER": "Utilisateur",
+      "TEAM": "Équipe"
+    },
+    "roles": {
+      "READER": "Lecteur",
+      "WRITER": "Éditeur",
+      "ADMIN": "Admin"
+    }
+  }
+}

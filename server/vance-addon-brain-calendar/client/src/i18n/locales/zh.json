@@ -1,0 +1,106 @@
+{
+  "documents": {
+    "detail": {
+      "tabCalendar": "日历",
+      "tabTimeline": "时间线",
+      "timelineParseError": "此文档不是有效的时间线 YAML。",
+      "calendarParseError": "此文档不是有效的日历 YAML。"
+    }
+  },
+  "calendar": {
+    "common": {
+      "cancel": "取消",
+      "create": "创建",
+      "save": "保存",
+      "delete": "删除"
+    },
+    "view": {
+      "viewMonth": "月",
+      "viewAgenda": "议程",
+      "today": "今天",
+      "empty": "没有即将发生的事件。",
+      "addToCalendar": "添加到日历",
+      "allDay": "全天"
+    },
+    "planner": {
+      "reload": "重新加载",
+      "rebuild": "重建工件",
+      "loading": "正在加载规划器…",
+      "eventCount": "{n} 个事件 | {n} 个事件",
+      "laneCount": "{n} 条泳道 | {n} 条泳道",
+      "conflictCount": "{n} 个冲突 | {n} 个冲突",
+      "overview": "概览",
+      "overviewHint": "甘特图 + 冲突",
+      "undeclared": "未声明",
+      "gantt": "甘特图",
+      "ganttRenderError": "无法渲染甘特图：{message}",
+      "noGanttHeadline": "暂无甘特图",
+      "noGanttBody": "点击“重建工件”以生成 Mermaid 甘特图。",
+      "conflicts": "冲突",
+      "noConflictsHeadline": "无冲突",
+      "noConflictsBody": "当前窗口中没有两个事件重叠。",
+      "colEventA": "事件 A",
+      "colEventB": "事件 B",
+      "colOverlap": "重叠",
+      "addEvent": "添加事件",
+      "noEventsHeadline": "此泳道中没有事件",
+      "noEventsBody": "添加第一个事件以开始。",
+      "allDayTag": "全天",
+      "recurringTag": "重复",
+      "addToGoogleCalendar": "添加到 Google 日历",
+      "addToOutlook": "添加到 Outlook",
+      "newEvent": "新建事件",
+      "eventTitlePlaceholder": "事件标题",
+      "startPlaceholder": "开始（YYYY-MM-DD 或 YYYY-MM-DDTHH:mm）",
+      "endPlaceholder": "结束（可选）",
+      "error": {
+        "load": "无法加载规划器：{message}",
+        "rebuild": "重建失败：{message}",
+        "create": "创建失败：{message}",
+        "update": "更新失败：{message}",
+        "delete": "删除失败：{message}",
+        "mermaid": "无法从 _gantt.md 中提取 Mermaid 源。"
+      }
+    },
+    "detail": {
+      "title": "事件详情",
+      "fieldTitle": "标题",
+      "start": "开始",
+      "startPlaceholder": "YYYY-MM-DD[THH:mm]",
+      "end": "结束",
+      "endPlaceholder": "（可选）",
+      "allDay": "全天事件",
+      "lane": "泳道",
+      "location": "地点",
+      "attendees": "参与者",
+      "recurrence": "重复（RRULE）",
+      "recurrencePlaceholder": "FREQ=WEEKLY;BYDAY=MO,…",
+      "tags": "标签",
+      "notes": "备注",
+      "addToGoogle": "添加到 Google",
+      "addToOutlook": "添加到 Outlook",
+      "source": "来源：{path}",
+      "discard": "放弃",
+      "confirmDelete": "删除事件“{title}”？"
+    },
+    "timeline": {
+      "entryCount": "{n} 个条目 | {n} 个条目",
+      "zoomOut": "缩小",
+      "zoomIn": "放大",
+      "fitTip": "适应所有条目",
+      "fit": "适应",
+      "unreadable": "{n} 个条目的位置无法被此 {axis} 轴读取，因此未绘制：{list} | {n} 个条目的位置无法被此 {axis} 轴读取，因此未绘制：{list}",
+      "empty": "此时间线没有可放置在其轴上的条目。",
+      "now": "现在",
+      "lane": "泳道：{name}",
+      "inside": "内部：{name}",
+      "bound": {
+        "start": "开始",
+        "end": "结束",
+        "between": "{what} 在 {earliest} 和 {latest} 之间",
+        "noEarlier": "{what} 不早于 {earliest}",
+        "noLater": "{what} 不晚于 {latest}"
+      }
+    }
+  }
+}

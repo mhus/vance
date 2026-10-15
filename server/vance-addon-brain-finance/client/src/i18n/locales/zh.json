@@ -1,0 +1,98 @@
+{
+  "documents": {
+    "detail": {
+      "tabFinance": "财务"
+    }
+  },
+  "finance": {
+    "fallbackTitle": "财务树",
+    "reload": "重新加载",
+    "unit": "单位",
+    "report": "报告",
+    "loading": "加载中…",
+    "createRoot": "＋ 创建根节点",
+    "pickNode": "选择一个节点进行编辑。",
+    "save": {
+      "saved": "已保存",
+      "dirty": "未保存",
+      "saving": "保存中…",
+      "error": "保存失败"
+    },
+    "fields": {
+      "heading": "字段 · {name}",
+      "title": "标题",
+      "icon": "图标",
+      "color": "颜色",
+      "negative": "负值（翻转子树）",
+      "description": "描述",
+      "notesRef": "备注引用"
+    },
+    "values": {
+      "heading": "值块",
+      "add": "＋ 值",
+      "amount": "金额",
+      "mode": "模式",
+      "modeRecurring": "循环",
+      "modeOneTime": "一次性",
+      "per": "每",
+      "unit": "单位",
+      "date": "日期",
+      "validFrom": "生效日期",
+      "validTo": "截止日期",
+      "interest": "利息",
+      "rate": "利率 %",
+      "compound": "复利"
+    },
+    "perUnit": {
+      "day": "/天",
+      "week": "/周",
+      "month": "/月",
+      "year": "/年"
+    },
+    "chartType": {
+      "line": "折线图",
+      "bar": "柱状图",
+      "area": "面积图",
+      "scatter": "散点图"
+    },
+    "period": {
+      "day": "天",
+      "week": "周",
+      "month": "月",
+      "year": "年"
+    },
+    "reportModal": {
+      "title": "生成报告",
+      "processor": "处理器",
+      "from": "从",
+      "to": "到",
+      "granularity": "粒度",
+      "chartType": "图表类型（系列）",
+      "focus": "焦点（评估，可选）",
+      "persist": "保存为文档",
+      "outputPath": "输出路径",
+      "outputPathPlaceholder": "reports/q1.chart.yaml",
+      "generating": "生成中…",
+      "generate": "生成",
+      "running": "正在生成报告…",
+      "savedTo": "已保存到 {path}"
+    },
+    "tree": {
+      "perUnit": "每{unit}",
+      "addChild": "添加子节点",
+      "up": "上移",
+      "down": "下移",
+      "indent": "增加缩进",
+      "outdent": "减少缩进",
+      "delete": "删除"
+    },
+    "summary": {
+      "edit": "编辑",
+      "perYear": "/ 年",
+      "oneTime": "一次性：{amount}",
+      "empty": "空 — 打开以添加节点。",
+      "modalTitle": "财务树",
+      "unresolved": "无法解析财务文档。"
+    }
+  }
+}

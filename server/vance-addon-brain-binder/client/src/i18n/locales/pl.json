@@ -1,0 +1,36 @@
+{
+  "binder": {
+    "common": {
+      "cancel": "Anuluj",
+      "searching": "Szukam…",
+      "noHits": "Brak wyników."
+    },
+    "app": {
+      "fallbackTitle": "Binder",
+      "rebuildIndex": "Przebuduj indeks",
+      "pin": "Przypnij",
+      "filterPlaceholder": "Filtruj…",
+      "empty": "Brak dokumentów. Użyj „+ Przypnij”, aby zakotwiczyć jeden.",
+      "landing": "Strona startowa",
+      "actions": "Akcje",
+      "changeSection": "Zmień sekcję…",
+      "rename": "Zmień nazwę…",
+      "setLanding": "Ustaw jako stronę startową",
+      "removeLanding": "Usuń stronę startową",
+      "remove": "Usuń",
+      "reload": "Przeładuj",
+      "editInCortex": "Edytuj w Cortex",
+      "goneTitle": "Ten dokument już nie istnieje",
+      "goneHint": "Usuń wpis z menu ⋯.",
+      "noRenderer": "Brak dostępnego renderera osadzania.",
+      "pickOne": "Wybierz dokument po lewej lub przypnij go za pomocą „+ Przypnij”.",
+      "confirmRemove": "Usunąć „{title}” z bindera?",
+      "promptTitle": "Wyświetlany tytuł (puste = tytuł dokumentu):",
+      "promptSection": "Sekcja (puste = brak sekcji):"
+    },
+    "picker": {
+      "title": "Przypnij dokument",
+      "searchPlaceholder": "Szukaj po ścieżce lub tytule…"
+    }
+  }
+}

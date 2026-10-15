@@ -1,0 +1,51 @@
+{
+  "issues": {
+    "tabOpen": "Otwarte",
+    "tabClosed": "Zamknięte",
+    "tabArchived": "Zarchiwizowane",
+    "searchPlaceholder": "Szukaj zadań…",
+    "untitled": "(bez tytułu)",
+    "noMatch": "Brak pasujących zadań.",
+    "rebuildTip": "Przebuduj indeks + statystyki",
+    "newIssuePlaceholder": "＋ Nowe zadanie…",
+    "allLabels": "wszystkie",
+    "loading": "Ładowanie…",
+    "nothingHere": "Nic tu nie ma.",
+    "archived": "zarchiwizowane",
+    "state": {
+      "open": "otwarte",
+      "closed": "zamknięte"
+    },
+    "close": "Zamknij",
+    "reopen": "Otwórz ponownie",
+    "archive": "Archiwizuj",
+    "unarchive": "Przywróć z archiwum",
+    "labels": "Etykiety",
+    "labelsPlaceholder": "błąd, auth",
+    "assignee": "Przypisane do",
+    "priority": "Priorytet",
+    "description": "Opis",
+    "discussion": "Dyskusja ({count})",
+    "deleteComment": "Usuń",
+    "commentPlaceholder": "Dodaj komentarz…",
+    "comment": "Skomentuj",
+    "confirmDelete": "Usunąć to zadanie?",
+    "status": {
+      "saving": "Zapisywanie…",
+      "saved": "Zapisano",
+      "saveFailed": "Zapisywanie nie powiodło się"
+    },
+    "error": {
+      "scan": "Nie udało się przeskanować zadań.",
+      "loadIssue": "Nie udało się załadować zadania.",
+      "save": "Zapisywanie nie powiodło się.",
+      "archive": "Archiwizacja nie powiodła się.",
+      "delete": "Usuwanie nie powiodło się.",
+      "comment": "Komentowanie nie powiodło się.",
+      "deleteComment": "Usuwanie komentarza nie powiodło się.",
+      "create": "Tworzenie nie powiodło się.",
+      "search": "Wyszukiwanie nie powiodło się.",
+      "rebuild": "Przebudowa nie powiodła się."
+    }
+  }
+}

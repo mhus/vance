@@ -1,0 +1,60 @@
+{
+  "kanban": {
+    "common": {
+      "cancel": "Отмена",
+      "create": "Создать",
+      "delete": "Удалить",
+      "done": "Готово"
+    },
+    "board": {
+      "cardCount": "{n} карточка | {n} карточки | {n} карточек",
+      "columnCount": "{n} колонка | {n} колонки | {n} колонок",
+      "reload": "Обновить",
+      "rebuild": "Перестроить артефакты",
+      "loading": "Загрузка доски…",
+      "emptyHeadline": "Колонок пока нет",
+      "emptyBody": "Добавьте колонки в _app.yaml, чтобы начать использовать эту доску.",
+      "undeclared": "необъявленный",
+      "addCard": "Добавить карточку",
+      "blocked": "заблокировано",
+      "newCard": "Новая карточка",
+      "cardTitlePlaceholder": "Название карточки",
+      "assigneePlaceholder": "Исполнитель (необязательно)",
+      "dueDatePlaceholder": "Срок YYYY-MM-DD (необязательно)",
+      "error": {
+        "load": "Не удалось загрузить доску: {message}",
+        "rebuild": "Перестроение не удалось: {message}",
+        "move": "Перемещение не удалось: {message}",
+        "delete": "Удаление не удалось: {message}",
+        "create": "Создание не удалось: {message}"
+      }
+    },
+    "priority": {
+      "none": "Без приоритета",
+      "low": "Низкий",
+      "med": "Средний",
+      "high": "Высокий",
+      "critical": "Критический"
+    },
+    "detail": {
+      "title": "Детали карточки",
+      "fieldTitle": "Название",
+      "priority": "Приоритет",
+      "assignee": "Исполнитель",
+      "dueDate": "Срок",
+      "dueDatePlaceholder": "ГГГГ-ММ-ДД",
+      "estimate": "Оценка",
+      "labels": "Метки",
+      "blocked": "Заблокировано",
+      "color": "Цвет",
+      "editContent": "Редактировать содержимое…",
+      "contentTitle": "Содержимое карточки",
+      "confirmDelete": "Удалить карточку «{title}»?",
+      "status": {
+        "edited": "Изменено",
+        "saving": "Сохранение…",
+        "saved": "Сохранено"
+      }
+    }
+  }
+}

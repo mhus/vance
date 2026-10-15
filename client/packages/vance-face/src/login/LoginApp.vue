@@ -156,7 +156,7 @@ onMounted(async () => {
  */
 function syncUiLocaleFromSession(): void {
   const lang = getSessionData()?.webUiSettings?.['webui.language'];
-  setUiLocale(lang ?? null);
+  void setUiLocale(lang ?? null);
 }
 
 async function onSubmit(): Promise<void> {

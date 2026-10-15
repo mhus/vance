@@ -1,0 +1,34 @@
+{
+  "journal": {
+    "today": "Hoje",
+    "searchPlaceholder": "Buscar entradas…",
+    "untitled": "(sem título)",
+    "noMatch": "Nenhuma entrada correspondente.",
+    "rebuilding": "Reconstruindo…",
+    "rebuildTip": "Reconstruir índice + estatísticas",
+    "statEntries": "entradas",
+    "statDayStreak": "dias seguidos",
+    "statLongest": "mais longo",
+    "loading": "Carregando diário…",
+    "loadingEntry": "Carregando entrada…",
+    "badgeNew": "novo",
+    "moodPlaceholder": "humor…",
+    "deleteEntry": "Excluir entrada",
+    "tagsPlaceholder": "tags, separadas, por vírgula",
+    "pickDay": "Escolha um dia no calendário.",
+    "onThisDay": "Neste dia",
+    "nothingEarlier": "Nada de anos anteriores.",
+    "status": {
+      "edited": "Editado",
+      "saving": "Salvando…",
+      "saved": "Salvo"
+    },
+    "confirmDelete": "Excluir a entrada de {date}?",
+    "error": {
+      "scan": "Não foi possível escanear o diário.",
+      "delete": "Falha ao excluir.",
+      "search": "Falha na busca.",
+      "rebuild": "Falha na reconstrução."
+    }
+  }
+}

@@ -4,7 +4,7 @@ import { createPinia } from 'pinia';
 import { ensureAuthenticated } from '@/platform/ensureAuthenticatedWeb';
 import SettingsApp from './SettingsApp.vue';
 import { registerBuiltInKinds } from '@/document/builtInKinds';
-import { i18n } from '@/i18n';
+import { i18n, i18nReady } from '@/i18n';
 import '@/style/app.css';
 
 await ensureAuthenticated();
@@ -15,4 +15,6 @@ registerBuiltInKinds();
 // MarkdownView (the right-panel help renderer) resolves relative document
 // references through a pinia store; without a pinia root its setup throws.
 // The store stays empty here — help text belongs to no open document.
+// First paint in the user's language: the locale's messages load before mount.
+await i18nReady;
 createApp(SettingsApp).use(i18n).use(createPinia()).mount('#app');

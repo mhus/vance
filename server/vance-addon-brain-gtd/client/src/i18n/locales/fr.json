@@ -1,0 +1,56 @@
+{
+  "gtd": {
+    "common": {
+      "loading": "Chargement…",
+      "saving": "Enregistrement…",
+      "saved": "Enregistré",
+      "saveFailed": "Échec de l'enregistrement"
+    },
+    "bucket": {
+      "inbox": "Boîte de réception",
+      "today": "Aujourd'hui",
+      "upcoming": "À venir",
+      "anytime": "N'importe quand",
+      "someday": "Un jour",
+      "trash": "Corbeille"
+    },
+    "app": {
+      "searchPlaceholder": "Rechercher des actions…",
+      "untitled": "(sans titre)",
+      "noMatch": "Aucune action correspondante.",
+      "rebuildTip": "Reconstruire les vues — déplace les actions terminées vers la corbeille",
+      "projects": "Projets",
+      "contexts": "Contextes",
+      "capturePlaceholder": "＋ Capturer vers la boîte de réception…",
+      "nothingHere": "Rien ici.",
+      "bucketLabel": "Catégorie",
+      "whenHint": "quand :",
+      "anytimeValue": "(n'importe quand)",
+      "project": "Projet",
+      "noProject": "(aucun projet)",
+      "newProject": "＋ Nouveau projet…",
+      "deadline": "Échéance",
+      "contextsPlaceholder": "@appels, @maison",
+      "done": "Terminé",
+      "deleteForGood": "Supprimer définitivement",
+      "moveToTrash": "Déplacer vers la corbeille",
+      "note": "Note",
+      "promptUpcoming": "Date à venir (aaaa-MM-jj) :",
+      "promptNewProject": "Nom du nouveau projet :",
+      "confirmDelete": "Supprimer cette action définitivement ? Cette action est irréversible ici.",
+      "error": {
+        "scan": "Impossible de scanner le dossier GTD.",
+        "loadAction": "Impossible de charger l'action.",
+        "save": "Échec de l'enregistrement.",
+        "update": "Échec de la mise à jour.",
+        "move": "Échec du déplacement.",
+        "refile": "Échec du reclassement.",
+        "delete": "Échec de la suppression.",
+        "reorder": "Échec du réordonnancement.",
+        "capture": "Échec de la capture.",
+        "search": "Échec de la recherche.",
+        "rebuild": "Échec de la reconstruction."
+      }
+    }
+  }
+}

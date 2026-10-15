@@ -1,0 +1,138 @@
+{
+  "documents": {
+    "detail": {
+      "tabWorkPage": "ページ"
+    }
+  },
+  "workbook": {
+    "common": {
+      "cancel": "キャンセル",
+      "create": "作成",
+      "creating": "作成中…",
+      "save": "保存",
+      "saving": "保存中…",
+      "saved": "保存済み",
+      "searching": "検索中…"
+    },
+    "app": {
+      "fallbackTitle": "ワークブック",
+      "designMode": "デザインモード — フォームフィールドを編集。クリックでワークモード。",
+      "workMode": "ワークモード — データを入力。クリックでデザインモード。",
+      "newPage": "新規ページ",
+      "rebuilding": "再構築中…",
+      "rebuildIndex": "_index.md を再構築",
+      "filterPlaceholder": "ページをフィルター…",
+      "pageTitlePlaceholder": "ページタイトル",
+      "newSectionPlaceholder": "セクション（オプション）",
+      "sectionWorkbook": "ワークブック",
+      "index": "インデックス",
+      "sectionDefault": "ページ",
+      "moreActions": "その他のアクション",
+      "showPages": "ページを表示",
+      "hidePages": "ページを非表示",
+      "landingPage": "ランディングページ",
+      "emptyPages": "まだページがありません。",
+      "loadingWorkbook": "ワークブックを読み込み中…",
+      "loadingPage": "ページを読み込み中…",
+      "pickPage": "サイドバーからページを選択してください。",
+      "changeCover": "カバーを変更",
+      "removeCover": "削除",
+      "addIcon": "アイコンを追加",
+      "addCover": "カバーを追加",
+      "changeIcon": "アイコンを変更",
+      "status": {
+        "edited": "編集済み",
+        "saveFailed": "保存失敗"
+      },
+      "ctx": {
+        "renameMove": "名前変更 / 移動…",
+        "duplicate": "複製",
+        "pinLanding": "ランディングページとして固定",
+        "unpinLanding": "ランディングページの固定を解除",
+        "delete": "削除",
+        "renameSection": "セクション名を変更…"
+      },
+      "rename": {
+        "header": "名前変更 / 移動",
+        "title": "タイトル",
+        "section": "セクション",
+        "sectionPlaceholder": "（トップレベル）"
+      },
+      "confirmDelete": "ページ「{title}」を削除しますか？",
+      "error": {
+        "titleRequired": "タイトルは必須です",
+        "createPage": "ページを作成できませんでした。",
+        "scan": "ワークブックをスキャンできませんでした。",
+        "loadPage": "ページを読み込めませんでした。",
+        "save": "保存に失敗しました。",
+        "rebuild": "再構築に失敗しました。",
+        "rename": "名前変更に失敗しました。",
+        "duplicate": "複製に失敗しました。",
+        "landing": "ランディングページを更新できませんでした。",
+        "delete": "削除に失敗しました。",
+        "sectionRename": "セクション名の変更に失敗しました。",
+        "move": "移動に失敗しました。",
+        "reorder": "並べ替えに失敗しました。"
+      }
+    },
+    "assets": {
+      "title": "画像を挿入",
+      "tabApp": "アプリ",
+      "tabProject": "プロジェクト",
+      "tabShared": "共有",
+      "upload": "新規アップロード",
+      "uploading": "アップロード中…",
+      "loadingApp": "アセットを読み込み中…",
+      "emptyAppPre": "まだ画像がありません",
+      "searchPlaceholder": "名前またはパスで画像を検索…",
+      "emptyProject": "プロジェクトに画像が見つかりません。",
+      "loadingShared": "共有画像を読み込み中…",
+      "emptySharedPre": "まだ共有画像がありません",
+      "emptySharedMid": "プロジェクト内",
+      "truncated": "{total}件中{shown}件を表示 — 検索を絞り込んでください。",
+      "error": {
+        "loadApp": "アセットを読み込めませんでした。",
+        "search": "検索に失敗しました。",
+        "loadShared": "共有画像を読み込めませんでした。"
+      }
+    },
+    "embed": {
+      "title": "ドキュメントを埋め込む",
+      "tabApp": "アプリ",
+      "tabProject": "プロジェクト",
+      "searchPlaceholder": "埋め込むドキュメントを検索…",
+      "emptyApp": "このアプリに埋め込み可能なドキュメントが見つかりません。",
+      "emptyProject": "プロジェクトに埋め込み可能なドキュメントが見つかりません。",
+      "truncated": "{total}件中{shown}件を表示 — 検索を絞り込んでください。",
+      "searchFailed": "検索に失敗しました"
+    },
+    "form": {
+      "title": "フォームを挿入",
+      "searchPlaceholder": "このアプリのデータドキュメントを検索…",
+      "empty": "このアプリにデータドキュメントが見つかりません。",
+      "hintPre": "以下に作成すると、",
+      "hintMid": "ドキュメントとそのスキーマが",
+      "newNamePlaceholder": "新しいフォーム名…",
+      "searchFailed": "検索に失敗しました",
+      "createFailed": "作成に失敗しました"
+    },
+    "input": {
+      "title": "テキスト入力を挿入",
+      "searchPlaceholder": "このアプリのテキストドキュメントを検索…",
+      "empty": "このアプリにテキストドキュメントが見つかりません — 以下に作成してください。",
+      "newNamePlaceholder": "新しいテキスト名（オプション）…",
+      "searchFailed": "検索に失敗しました",
+      "createFailed": "作成に失敗しました"
+    },
+    "indexBlock": {
+      "slashTitle": "ワークブックインデックス",
+      "slashHint": "ワークブックインデックスにジャンプするリンクブロック",
+      "goto": "ワークブックインデックスへ",
+      "label": "ワークブックインデックス"
+    },
+    "emoji": {
+      "title": "アイコンを選択",
+      "remove": "アイコンを削除"
+    }
+  }
+}

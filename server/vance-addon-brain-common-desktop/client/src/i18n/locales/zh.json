@@ -1,0 +1,9 @@
+{
+  "desktop": {
+    "refresh": "刷新",
+    "emptyHeadline": "此处无应用",
+    "emptyBody": "在此文件夹下添加应用，然后刷新。",
+    "open": "打开",
+    "openInNewWindow": "在新窗口中打开"
+  }
+}

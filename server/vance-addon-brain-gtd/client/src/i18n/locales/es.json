@@ -1,0 +1,56 @@
+{
+  "gtd": {
+    "common": {
+      "loading": "Cargando…",
+      "saving": "Guardando…",
+      "saved": "Guardado",
+      "saveFailed": "Error al guardar"
+    },
+    "bucket": {
+      "inbox": "Bandeja de entrada",
+      "today": "Hoy",
+      "upcoming": "Próximamente",
+      "anytime": "Cualquier momento",
+      "someday": "Algún día",
+      "trash": "Papelera"
+    },
+    "app": {
+      "searchPlaceholder": "Buscar acciones…",
+      "untitled": "(sin título)",
+      "noMatch": "Ninguna acción coincide.",
+      "rebuildTip": "Reconstruir vistas — mueve las acciones completadas a la Papelera",
+      "projects": "Proyectos",
+      "contexts": "Contextos",
+      "capturePlaceholder": "＋ Capturar a Bandeja de entrada…",
+      "nothingHere": "Nada por aquí.",
+      "bucketLabel": "Cubo",
+      "whenHint": "cuándo:",
+      "anytimeValue": "(cualquier momento)",
+      "project": "Proyecto",
+      "noProject": "(sin proyecto)",
+      "newProject": "＋ Nuevo proyecto…",
+      "deadline": "Fecha límite",
+      "contextsPlaceholder": "@llamadas, @casa",
+      "done": "Hecho",
+      "deleteForGood": "Eliminar definitivamente",
+      "moveToTrash": "Mover a la Papelera",
+      "note": "Nota",
+      "promptUpcoming": "Fecha próxima (aaaa-MM-dd):",
+      "promptNewProject": "Nombre del nuevo proyecto:",
+      "confirmDelete": "¿Eliminar esta acción definitivamente? Esto no se puede deshacer aquí.",
+      "error": {
+        "scan": "No se pudo escanear la carpeta GTD.",
+        "loadAction": "No se pudo cargar la acción.",
+        "save": "Error al guardar.",
+        "update": "Error al actualizar.",
+        "move": "Error al mover.",
+        "refile": "Error al reorganizar.",
+        "delete": "Error al eliminar.",
+        "reorder": "Error al reordenar.",
+        "capture": "Error al capturar.",
+        "search": "Error al buscar.",
+        "rebuild": "Error al reconstruir."
+      }
+    }
+  }
+}

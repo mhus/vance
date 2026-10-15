@@ -1,0 +1,138 @@
+{
+  "documents": {
+    "detail": {
+      "tabWorkPage": "Página"
+    }
+  },
+  "workbook": {
+    "common": {
+      "cancel": "Cancelar",
+      "create": "Crear",
+      "creating": "Creando…",
+      "save": "Guardar",
+      "saving": "Guardando…",
+      "saved": "Guardado",
+      "searching": "Buscando…"
+    },
+    "app": {
+      "fallbackTitle": "Workbook",
+      "designMode": "Modo diseño — editando campos de formulario. Clic para modo trabajo.",
+      "workMode": "Modo trabajo — introduciendo datos. Clic para modo diseño.",
+      "newPage": "Nueva página",
+      "rebuilding": "Reconstruyendo…",
+      "rebuildIndex": "Reconstruir _index.md",
+      "filterPlaceholder": "Filtrar páginas…",
+      "pageTitlePlaceholder": "Título de la página",
+      "newSectionPlaceholder": "Sección (opcional)",
+      "sectionWorkbook": "Workbook",
+      "index": "Índice",
+      "sectionDefault": "Páginas",
+      "moreActions": "Más acciones",
+      "showPages": "Mostrar páginas",
+      "hidePages": "Ocultar páginas",
+      "landingPage": "Página de inicio",
+      "emptyPages": "Aún no hay páginas.",
+      "loadingWorkbook": "Cargando workbook…",
+      "loadingPage": "Cargando página…",
+      "pickPage": "Elige una página de la barra lateral.",
+      "changeCover": "Cambiar portada",
+      "removeCover": "Eliminar",
+      "addIcon": "Añadir icono",
+      "addCover": "Añadir portada",
+      "changeIcon": "Cambiar icono",
+      "status": {
+        "edited": "Editado",
+        "saveFailed": "Error al guardar"
+      },
+      "ctx": {
+        "renameMove": "Renombrar / Mover…",
+        "duplicate": "Duplicar",
+        "pinLanding": "Fijar como página de inicio",
+        "unpinLanding": "Desfijar página de inicio",
+        "delete": "Eliminar",
+        "renameSection": "Renombrar sección…"
+      },
+      "rename": {
+        "header": "Renombrar / Mover",
+        "title": "Título",
+        "section": "Sección",
+        "sectionPlaceholder": "(nivel superior)"
+      },
+      "confirmDelete": "¿Eliminar página “{title}”?",
+      "error": {
+        "titleRequired": "Título requerido",
+        "createPage": "No se pudo crear la página.",
+        "scan": "No se pudo escanear el workbook.",
+        "loadPage": "No se pudo cargar la página.",
+        "save": "Error al guardar.",
+        "rebuild": "Error al reconstruir.",
+        "rename": "Error al renombrar.",
+        "duplicate": "Error al duplicar.",
+        "landing": "No se pudo actualizar la página de inicio.",
+        "delete": "Error al eliminar.",
+        "sectionRename": "Error al renombrar la sección.",
+        "move": "Error al mover.",
+        "reorder": "Error al reordenar."
+      }
+    },
+    "assets": {
+      "title": "Insertar imagen",
+      "tabApp": "App",
+      "tabProject": "Proyecto",
+      "tabShared": "Compartido",
+      "upload": "Subir nuevo",
+      "uploading": "Subiendo…",
+      "loadingApp": "Cargando activos…",
+      "emptyAppPre": "Aún no hay imágenes en",
+      "searchPlaceholder": "Buscar imágenes por nombre o ruta…",
+      "emptyProject": "No se encontraron imágenes en el proyecto.",
+      "loadingShared": "Cargando imágenes compartidas…",
+      "emptySharedPre": "Aún no hay imágenes compartidas en",
+      "emptySharedMid": "en el proyecto",
+      "truncated": "Mostrando {shown} de {total} — afina la búsqueda para reducir.",
+      "error": {
+        "loadApp": "No se pudieron cargar los activos.",
+        "search": "Error en la búsqueda.",
+        "loadShared": "No se pudieron cargar las imágenes compartidas."
+      }
+    },
+    "embed": {
+      "title": "Incrustar documento",
+      "tabApp": "App",
+      "tabProject": "Proyecto",
+      "searchPlaceholder": "Buscar documentos para incrustar…",
+      "emptyApp": "No se encontraron documentos incrustables en esta app.",
+      "emptyProject": "No se encontraron documentos incrustables en el proyecto.",
+      "truncated": "Mostrando {shown} de {total} — afina la búsqueda.",
+      "searchFailed": "Error en la búsqueda"
+    },
+    "form": {
+      "title": "Insertar formulario",
+      "searchPlaceholder": "Buscar documentos de datos en esta app…",
+      "empty": "No se encontraron documentos de datos en esta app.",
+      "hintPre": "Crea uno a continuación — eso produce un documento",
+      "hintMid": "con su esquema en",
+      "newNamePlaceholder": "Nuevo nombre de formulario…",
+      "searchFailed": "Error en la búsqueda",
+      "createFailed": "Error al crear"
+    },
+    "input": {
+      "title": "Insertar entrada de texto",
+      "searchPlaceholder": "Buscar documentos de texto en esta app…",
+      "empty": "No se encontraron documentos de texto en esta app — crea uno a continuación.",
+      "newNamePlaceholder": "Nuevo nombre de texto (opcional)…",
+      "searchFailed": "Error en la búsqueda",
+      "createFailed": "Error al crear"
+    },
+    "indexBlock": {
+      "slashTitle": "Índice de Workbook",
+      "slashHint": "Bloque de enlace que salta al índice del workbook",
+      "goto": "Ir al índice del Workbook",
+      "label": "Índice del Workbook"
+    },
+    "emoji": {
+      "title": "Elige un icono",
+      "remove": "Quitar icono"
+    }
+  }
+}

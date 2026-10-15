@@ -1,0 +1,98 @@
+{
+  "documents": {
+    "detail": {
+      "tabFinance": "Финансы"
+    }
+  },
+  "finance": {
+    "fallbackTitle": "Дерево финансов",
+    "reload": "Обновить",
+    "unit": "Единица",
+    "report": "Отчёт",
+    "loading": "Загрузка…",
+    "createRoot": "＋ Создать корневой узел",
+    "pickNode": "Выберите узел для редактирования.",
+    "save": {
+      "saved": "сохранено",
+      "dirty": "несохранено",
+      "saving": "сохранение…",
+      "error": "ошибка сохранения"
+    },
+    "fields": {
+      "heading": "Поля · {name}",
+      "title": "Название",
+      "icon": "Иконка",
+      "color": "Цвет",
+      "negative": "отрицательный (инвертирует поддерево)",
+      "description": "Описание",
+      "notesRef": "Ссылка на заметки"
+    },
+    "values": {
+      "heading": "Блоки значений",
+      "add": "＋ значение",
+      "amount": "Сумма",
+      "mode": "Режим",
+      "modeRecurring": "повторяющийся",
+      "modeOneTime": "единовременный",
+      "per": "за",
+      "unit": "единицу",
+      "date": "дата",
+      "validFrom": "действует с",
+      "validTo": "действует до",
+      "interest": "процент",
+      "rate": "ставка %",
+      "compound": "сложный"
+    },
+    "perUnit": {
+      "day": "/день",
+      "week": "/неделю",
+      "month": "/месяц",
+      "year": "/год"
+    },
+    "chartType": {
+      "line": "линия",
+      "bar": "столбцы",
+      "area": "область",
+      "scatter": "точки"
+    },
+    "period": {
+      "day": "день",
+      "week": "неделя",
+      "month": "месяц",
+      "year": "год"
+    },
+    "reportModal": {
+      "title": "Сформировать отчёт",
+      "processor": "Процессор",
+      "from": "с",
+      "to": "по",
+      "granularity": "детализация",
+      "chartType": "тип графика (серии)",
+      "focus": "фокус (оценка, необязательно)",
+      "persist": "сохранить как документ",
+      "outputPath": "путь вывода",
+      "outputPathPlaceholder": "reports/q1.chart.yaml",
+      "generating": "Генерация…",
+      "generate": "Сформировать",
+      "running": "Генерация отчёта…",
+      "savedTo": "Сохранено в {path}"
+    },
+    "tree": {
+      "perUnit": "за {unit}",
+      "addChild": "Добавить дочерний",
+      "up": "Вверх",
+      "down": "Вниз",
+      "indent": "Увеличить отступ",
+      "outdent": "Уменьшить отступ",
+      "delete": "Удалить"
+    },
+    "summary": {
+      "edit": "Редактировать",
+      "perYear": "/ год",
+      "oneTime": "единовременно: {amount}",
+      "empty": "Пусто — откройте, чтобы добавить узлы.",
+      "modalTitle": "Дерево финансов",
+      "unresolved": "Не удаётся разрешить финансовый документ."
+    }
+  }
+}

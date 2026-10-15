@@ -1,0 +1,58 @@
+{
+  "bistromath": {
+    "app": {
+      "fallbackTitle": "アプリ",
+      "loads": "ロード中 ({count})",
+      "loadsTip": "このアプリには{count}個のドキュメントがロードされます",
+      "rebuild": "再構築",
+      "rebuildTip": "ビューを再読み込みし、プログラムを再起動します",
+      "releaseDefault": "テナント管理者が、ここで実行できるアプリケーションを決定します。",
+      "sending": "送信中…",
+      "requestRelease": "リリースをリクエスト",
+      "loadOrder": "この順序でロード",
+      "noProgram": "なし — このアプリにはプログラムがありません。",
+      "surfaceWithheldPre": "このビューは描画サーフェス (",
+      "surfaceWithheldMid": ") を要求していますが、このテナントはこのアプリに対して許可していません。テナント管理者が",
+      "noViewHeadline": "まだビューがありません",
+      "noViewBody": "このアプリはドキュメントによって定義されます。ビューは`$meta.kind: app-view`を持つドキュメントです — このパネルの横にあるチャットで要求するか、{folder}の下に追加してください。"
+    },
+    "view": {
+      "fallbackTitle": "ビュー",
+      "recheck": "再確認",
+      "openApp": "アプリを開く ↗",
+      "openAppTip": "このビューが属するアプリを開きます",
+      "previewPre": "プレビュー — プログラムは実行されていません。そのため、",
+      "previewMid": "にバインドされているものは空で、",
+      "previewPost": "はゲートされているものを非表示にします。データを表示するにはアプリを開いてください。"
+    },
+    "widget": {
+      "selectPlaceholder": "—",
+      "filterPlaceholder": "フィルター…",
+      "tableMissingHeadline": "表示するものはありません",
+      "tableMissingBody": "まだ何も`{key}`を書き込んでいません — プログラムがvance.state.set('{key}', rows)で埋めます。予期しない場合はキーを確認してください。",
+      "tableEmptyHeadline": "エントリなし",
+      "tableEmptyBody": "`{key}`は空です。",
+      "filterEmptyHeadline": "フィルターに一致するものはありません",
+      "filterEmptyBody": "{count}行が»{filter}«によって非表示になっています。",
+      "sortBy": "{column}でソート",
+      "formEmptyHeadline": "何も選択されていません",
+      "formEmptyBody": "テーブルの行をクリックしてここで編集してください。",
+      "tab": "タブ {number}",
+      "repeatEmptyHeadline": "まだ何もありません",
+      "repeatEmptyBody": "プログラムが`{key}`にリストを入れていません。",
+      "embedMissingPre": "埋め込むものがありません —",
+      "embedMissingPost": "にはドキュメントパスがありません。",
+      "embedNoPath": "(パスなし)",
+      "embedNoRendererPre": "このサーフェスは埋め込みドキュメントをレンダリングできません。意図されたもの:",
+      "unknownPre": "このビルドは",
+      "unknownPost": "ウィジェットをレンダリングできません。"
+    },
+    "details": {
+      "emptyHeadline": "何も選択されていません",
+      "emptyBody": "テーブルの行をクリックしてここで表示してください。",
+      "empty": "—",
+      "yes": "はい",
+      "no": "いいえ"
+    }
+  }
+}

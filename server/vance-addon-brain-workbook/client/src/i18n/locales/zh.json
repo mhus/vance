@@ -1,0 +1,138 @@
+{
+  "documents": {
+    "detail": {
+      "tabWorkPage": "页面"
+    }
+  },
+  "workbook": {
+    "common": {
+      "cancel": "取消",
+      "create": "创建",
+      "creating": "正在创建…",
+      "save": "保存",
+      "saving": "正在保存…",
+      "saved": "已保存",
+      "searching": "正在搜索…"
+    },
+    "app": {
+      "fallbackTitle": "工作簿",
+      "designMode": "设计模式 — 编辑表单字段。点击切换到工作模式。",
+      "workMode": "工作模式 — 输入数据。点击切换到设计模式。",
+      "newPage": "新建页面",
+      "rebuilding": "正在重建…",
+      "rebuildIndex": "重建 _index.md",
+      "filterPlaceholder": "筛选页面…",
+      "pageTitlePlaceholder": "页面标题",
+      "newSectionPlaceholder": "章节（可选）",
+      "sectionWorkbook": "工作簿",
+      "index": "索引",
+      "sectionDefault": "页面",
+      "moreActions": "更多操作",
+      "showPages": "显示页面",
+      "hidePages": "隐藏页面",
+      "landingPage": "着陆页",
+      "emptyPages": "暂无页面。",
+      "loadingWorkbook": "正在加载工作簿…",
+      "loadingPage": "正在加载页面…",
+      "pickPage": "从侧边栏选择一个页面。",
+      "changeCover": "更改封面",
+      "removeCover": "移除",
+      "addIcon": "添加图标",
+      "addCover": "添加封面",
+      "changeIcon": "更改图标",
+      "status": {
+        "edited": "已编辑",
+        "saveFailed": "保存失败"
+      },
+      "ctx": {
+        "renameMove": "重命名/移动…",
+        "duplicate": "复制",
+        "pinLanding": "设为着陆页",
+        "unpinLanding": "取消着陆页",
+        "delete": "删除",
+        "renameSection": "重命名章节…"
+      },
+      "rename": {
+        "header": "重命名/移动",
+        "title": "标题",
+        "section": "章节",
+        "sectionPlaceholder": "（顶级）"
+      },
+      "confirmDelete": "删除页面“{title}”？",
+      "error": {
+        "titleRequired": "标题为必填项",
+        "createPage": "无法创建页面。",
+        "scan": "无法扫描工作簿。",
+        "loadPage": "无法加载页面。",
+        "save": "保存失败。",
+        "rebuild": "重建失败。",
+        "rename": "重命名失败。",
+        "duplicate": "复制失败。",
+        "landing": "无法更新着陆页。",
+        "delete": "删除失败。",
+        "sectionRename": "章节重命名失败。",
+        "move": "移动失败。",
+        "reorder": "重新排序失败。"
+      }
+    },
+    "assets": {
+      "title": "插入图片",
+      "tabApp": "应用",
+      "tabProject": "项目",
+      "tabShared": "共享",
+      "upload": "上传新文件",
+      "uploading": "正在上传…",
+      "loadingApp": "正在加载资产…",
+      "emptyAppPre": "暂无图片，位于",
+      "searchPlaceholder": "按名称或路径搜索图片…",
+      "emptyProject": "项目中未找到图片。",
+      "loadingShared": "正在加载共享图片…",
+      "emptySharedPre": "暂无共享图片，位于",
+      "emptySharedMid": "在项目中",
+      "truncated": "显示 {shown} 共 {total} — 优化搜索以缩小范围。",
+      "error": {
+        "loadApp": "无法加载资产。",
+        "search": "搜索失败。",
+        "loadShared": "无法加载共享图片。"
+      }
+    },
+    "embed": {
+      "title": "嵌入文档",
+      "tabApp": "应用",
+      "tabProject": "项目",
+      "searchPlaceholder": "搜索要嵌入的文档…",
+      "emptyApp": "此应用中未找到可嵌入文档。",
+      "emptyProject": "项目中未找到可嵌入文档。",
+      "truncated": "显示 {shown} 共 {total} — 优化搜索。",
+      "searchFailed": "搜索失败"
+    },
+    "form": {
+      "title": "插入表单",
+      "searchPlaceholder": "在此应用中搜索数据文档…",
+      "empty": "此应用中未找到数据文档。",
+      "hintPre": "在下方创建一个 — 这将生成一个",
+      "hintMid": "文档及其架构，位于",
+      "newNamePlaceholder": "新表单名称…",
+      "searchFailed": "搜索失败",
+      "createFailed": "创建失败"
+    },
+    "input": {
+      "title": "插入文本输入",
+      "searchPlaceholder": "在此应用中搜索文本文档…",
+      "empty": "此应用中未找到文本文档 — 在下方创建一个。",
+      "newNamePlaceholder": "新文本名称（可选）…",
+      "searchFailed": "搜索失败",
+      "createFailed": "创建失败"
+    },
+    "indexBlock": {
+      "slashTitle": "工作簿索引",
+      "slashHint": "跳转到工作簿索引的链接块",
+      "goto": "前往工作簿索引",
+      "label": "工作簿索引"
+    },
+    "emoji": {
+      "title": "选择图标",
+      "remove": "移除图标"
+    }
+  }
+}

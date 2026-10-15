@@ -1,0 +1,51 @@
+{
+  "issues": {
+    "tabOpen": "Abiertas",
+    "tabClosed": "Cerradas",
+    "tabArchived": "Archivadas",
+    "searchPlaceholder": "Buscar issues…",
+    "untitled": "(sin título)",
+    "noMatch": "Ningún issue coincide.",
+    "rebuildTip": "Reconstruir índice + estadísticas",
+    "newIssuePlaceholder": "＋ Nuevo título de issue…",
+    "allLabels": "todas",
+    "loading": "Cargando…",
+    "nothingHere": "Nada por aquí.",
+    "archived": "archivado",
+    "state": {
+      "open": "abierto",
+      "closed": "cerrado"
+    },
+    "close": "Cerrar",
+    "reopen": "Reabrir",
+    "archive": "Archivar",
+    "unarchive": "Desarchivar",
+    "labels": "Etiquetas",
+    "labelsPlaceholder": "bug, auth",
+    "assignee": "Asignado",
+    "priority": "Prioridad",
+    "description": "Descripción",
+    "discussion": "Discusión ({count})",
+    "deleteComment": "Eliminar",
+    "commentPlaceholder": "Añadir un comentario…",
+    "comment": "Comentar",
+    "confirmDelete": "¿Eliminar este issue?",
+    "status": {
+      "saving": "Guardando…",
+      "saved": "Guardado",
+      "saveFailed": "Error al guardar"
+    },
+    "error": {
+      "scan": "No se pudieron escanear los issues.",
+      "loadIssue": "No se pudo cargar el issue.",
+      "save": "Error al guardar.",
+      "archive": "Error al archivar.",
+      "delete": "Error al eliminar.",
+      "comment": "Error al comentar.",
+      "deleteComment": "Error al eliminar comentario.",
+      "create": "Error al crear.",
+      "search": "Error al buscar.",
+      "rebuild": "Error al reconstruir."
+    }
+  }
+}

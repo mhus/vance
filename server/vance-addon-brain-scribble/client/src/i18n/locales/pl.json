@@ -1,0 +1,53 @@
+{
+  "documents": {
+    "detail": {
+      "tabScribble": "Arkusz"
+    }
+  },
+  "scribble": {
+    "common": {
+      "loading": "Ładowanie…",
+      "loadFailed": "Nie udało się załadować arkusza.",
+      "title": "Tytuł",
+      "cancel": "Anuluj",
+      "ok": "OK"
+    },
+    "state": {
+      "saved": "Zapisano",
+      "saving": "Zapisywanie…",
+      "unsaved": "Niezapisane zmiany"
+    },
+    "editor": {
+      "emptyHint": "Pisz lub szkicuj piórem — każde pociągnięcie jest automatycznie zapisywane.",
+      "pen": "Pióro",
+      "sizeSmall": "Cienki",
+      "sizeMedium": "Średni",
+      "sizeLarge": "Gruby",
+      "colorBlack": "Czarny",
+      "colorRed": "Czerwony",
+      "colorBlue": "Niebieski",
+      "colorGreen": "Zielony",
+      "eraser": "Gumka — dotknij lub przeciągnij po pociągnięciu, aby je usunąć",
+      "undo": "Cofnij",
+      "redo": "Ponów",
+      "fit": "Dopasuj do strony",
+      "fingerDraw": "Rysuj palcem (gdy pióro się rozładuje)",
+      "zoom": "Powiększ"
+    },
+    "book": {
+      "newSheet": "Nowy arkusz",
+      "noSheets": "Brak arkuszy",
+      "addSheet": "Nowy arkusz",
+      "rebuildIndex": "Przebuduj indeks",
+      "empty": "Ten notatnik jest pusty — dodaj pierwszy arkusz i zacznij pisać.",
+      "pick": "Wybierz arkusz z menu powyżej.",
+      "toggleEnabled": "Dołącz ten arkusz do eksportu książki",
+      "toggleDefault": "Otwórz ten arkusz jako pierwszy po otwarciu książki",
+      "ocr": "Transkrybuj bieżący arkusz za pomocą AI (Markdown obok)",
+      "ocrDone": "Transkrypcja zapisana:",
+      "pdf": "Eksportuj książkę jako PDF (tylko włączone arkusze)",
+      "pdfDone": "PDF zapisany: {path} ({count} stron)",
+      "pdfSkipped": "pominięto"
+    }
+  }
+}

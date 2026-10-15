@@ -1,0 +1,88 @@
+{
+  "documents": {
+    "detail": {
+      "tabCanvas": "Canvas"
+    }
+  },
+  "canvas": {
+    "common": {
+      "cancel": "Anuluj",
+      "ok": "OK",
+      "back": "Wstecz",
+      "loading": "Ładowanie…",
+      "searching": "Szukanie…",
+      "title": "Tytuł"
+    },
+    "board": {
+      "note": "Notatka",
+      "doc": "Dokument",
+      "link": "Link",
+      "group": "Grupa",
+      "select": "Zaznacz",
+      "selectHint": "Zaznacz kilka, przeciągając pole (lub przytrzymaj Shift i przeciągnij)",
+      "newNote": "Nowa notatka",
+      "groupDialogTitle": "Grupa",
+      "newGroupLabel": "Grupa"
+    },
+    "node": {
+      "noColour": "Bez koloru",
+      "textColour": "Kolor tekstu",
+      "rename": "Zmień nazwę",
+      "changeTarget": "Zmień cel",
+      "copyLink": "Kopiuj link",
+      "copied": "Skopiowano!",
+      "bringToFront": "Przenieś na wierzch",
+      "sendToBack": "Przenieś na spód",
+      "delete": "Usuń",
+      "openInCortex": "Otwórz w Cortex",
+      "titlePlaceholder": "Tytuł",
+      "emptyNote": "(pusta notatka)",
+      "group": "Grupa"
+    },
+    "book": {
+      "noCanvases": "Brak Canvasów",
+      "addCanvas": "Canvas",
+      "rebuildIndex": "Indeks",
+      "saving": "Zapisywanie…",
+      "unsaved": "Niezapisane",
+      "saved": "Zapisano",
+      "newCanvas": "Nowy Canvas",
+      "empty": "Pusty Canvasbook — utwórz nowy za pomocą „+ Canvas”.",
+      "pick": "Wybierz Canvas."
+    },
+    "picker": {
+      "title": "Wstaw odnośnik",
+      "tabDocument": "Dokument",
+      "tabThisApp": "Ta aplikacja",
+      "tabStarred": "Ulubione",
+      "tabApps": "Aplikacje",
+      "searchPlaceholder": "Szukaj po ścieżce lub tytule…",
+      "noHits": "Brak wyników.",
+      "filterPlaceholder": "Filtruj Canvasy w tej aplikacji…",
+      "appItself": "Sama aplikacja, bez konkretnego Canvasu",
+      "noCanvasMatch": "Brak Canvasów pasujących do filtra.",
+      "noStarredApps": "Brak aplikacji w ulubionych.",
+      "noProjectApps": "Brak aplikacji w tym projekcie.",
+      "appItselfNoPlace": "Sama aplikacja, bez konkretnego miejsca"
+    },
+    "edge": {
+      "title": "Edytuj krawędź",
+      "label": "Etykieta",
+      "colour": "Kolor",
+      "colours": {
+        "default": "Domyślny",
+        "red": "Czerwony",
+        "orange": "Pomarańczowy",
+        "yellow": "Żółty",
+        "green": "Zielony",
+        "blue": "Niebieski",
+        "purple": "Fioletowy",
+        "grey": "Szary"
+      },
+      "arrowStart": "Strzałka na początku",
+      "arrowEnd": "Strzałka na końcu",
+      "dashed": "Przerywana",
+      "thick": "Gruba"
+    }
+  }
+}

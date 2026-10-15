@@ -1,0 +1,34 @@
+{
+  "journal": {
+    "today": "Aujourd'hui",
+    "searchPlaceholder": "Rechercher des entrées…",
+    "untitled": "(sans titre)",
+    "noMatch": "Aucune entrée correspondante.",
+    "rebuilding": "Reconstruction…",
+    "rebuildTip": "Reconstruire l'index + les stats",
+    "statEntries": "entrées",
+    "statDayStreak": "jours consécutifs",
+    "statLongest": "plus longue",
+    "loading": "Chargement du journal…",
+    "loadingEntry": "Chargement de l'entrée…",
+    "badgeNew": "nouveau",
+    "moodPlaceholder": "humeur…",
+    "deleteEntry": "Supprimer l'entrée",
+    "tagsPlaceholder": "tags, séparés, par, des, virgules",
+    "pickDay": "Choisissez un jour dans le calendrier.",
+    "onThisDay": "Ce jour-là",
+    "nothingEarlier": "Rien des années précédentes.",
+    "status": {
+      "edited": "Modifié",
+      "saving": "Enregistrement…",
+      "saved": "Enregistré"
+    },
+    "confirmDelete": "Supprimer l'entrée du {date}?",
+    "error": {
+      "scan": "Impossible de scanner le journal.",
+      "delete": "Échec de la suppression.",
+      "search": "Échec de la recherche.",
+      "rebuild": "Échec de la reconstruction."
+    }
+  }
+}

@@ -14,7 +14,7 @@ import {
 } from '@/platform';
 import { editorHref } from '@/platform/editorHref';
 import { SOURCE_CODE_URL } from '@/platform/sourceCode';
-import { setUiLocale } from '@/i18n';
+import { setUiLocale, UI_LOCALES, type Locale } from '@/i18n';
 import InboxBadge from './InboxBadge.vue';
 import ProcessCountsBadge from './ProcessCountsBadge.vue';
 import WorkingProjectBadge from './WorkingProjectBadge.vue';
@@ -111,22 +111,15 @@ function crumbOnClick(c: Crumb): (() => void) | null {
  * stays in the profile page; this is the "I want to read this page in
  * the other language right now" shortcut.
  */
-interface LanguageOption {
-  code: 'en' | 'de';
-  label: string;
-}
-const LANGUAGES: readonly LanguageOption[] = [
-  { code: 'en', label: 'English' },
-  { code: 'de', label: 'Deutsch' },
-];
+const LANGUAGES = UI_LOCALES;
 
 const currentLocale = computed<string>(() => String(locale.value));
 
-function selectLanguage(code: LanguageOption['code']): void {
+function selectLanguage(code: Locale): void {
   // Transient switch for the current page only. The user's persistent
   // default lives on the profile page; switching here reverts on the
   // next page reload because the data cookie is the source of truth.
-  setUiLocale(code);
+  void setUiLocale(code);
 }
 
 async function logout(): Promise<void> {

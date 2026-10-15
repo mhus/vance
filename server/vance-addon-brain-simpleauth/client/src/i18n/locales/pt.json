@@ -1,0 +1,32 @@
+{
+  "simpleauth": {
+    "title": "Permissões",
+    "subtitle": "Conceda e revogue funções para usuários e equipes.",
+    "scope": "Escopo",
+    "project": "Projeto",
+    "load": "Carregar",
+    "currentGrants": "Concessões atuais",
+    "noGrants": "Nenhuma concessão neste escopo.",
+    "revoke": "Revogar",
+    "grantHeading": "Conceder uma função",
+    "subjectType": "Tipo de sujeito",
+    "subjectId": "Nome de usuário / equipe",
+    "role": "Função",
+    "grant": "Conceder",
+    "required": "Escopo e sujeito são obrigatórios.",
+    "granted": "Concedido {role} para {subject} “{name}”.",
+    "scopeType": {
+      "TENANT": "Tenant",
+      "PROJECT": "Projeto"
+    },
+    "subject": {
+      "USER": "Usuário",
+      "TEAM": "Equipe"
+    },
+    "roles": {
+      "READER": "Leitor",
+      "WRITER": "Escritor",
+      "ADMIN": "Admin"
+    }
+  }
+}

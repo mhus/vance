@@ -1,0 +1,34 @@
+{
+  "journal": {
+    "today": "Сегодня",
+    "searchPlaceholder": "Поиск записей…",
+    "untitled": "(без названия)",
+    "noMatch": "Нет совпадений.",
+    "rebuilding": "Перестроение…",
+    "rebuildTip": "Перестроить индекс + статистику",
+    "statEntries": "записей",
+    "statDayStreak": "дней подряд",
+    "statLongest": "самая длинная",
+    "loading": "Загрузка журнала…",
+    "loadingEntry": "Загрузка записи…",
+    "badgeNew": "новая",
+    "moodPlaceholder": "настроение…",
+    "deleteEntry": "Удалить запись",
+    "tagsPlaceholder": "теги, через, запятую",
+    "pickDay": "Выберите день в календаре.",
+    "onThisDay": "В этот день",
+    "nothingEarlier": "Ничего из прошлых лет.",
+    "status": {
+      "edited": "Изменено",
+      "saving": "Сохранение…",
+      "saved": "Сохранено"
+    },
+    "confirmDelete": "Удалить запись за {date}?",
+    "error": {
+      "scan": "Не удалось просканировать журнал.",
+      "delete": "Не удалось удалить.",
+      "search": "Не удалось найти.",
+      "rebuild": "Не удалось перестроить."
+    }
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "gtd": {
+    "common": {
+      "loading": "加载中…",
+      "saving": "保存中…",
+      "saved": "已保存",
+      "saveFailed": "保存失败"
+    },
+    "bucket": {
+      "inbox": "收件箱",
+      "today": "今天",
+      "upcoming": "即将到来",
+      "anytime": "任何时候",
+      "someday": "将来某天",
+      "trash": "废纸篓"
+    },
+    "app": {
+      "searchPlaceholder": "搜索操作…",
+      "untitled": "（无标题）",
+      "noMatch": "无匹配操作。",
+      "rebuildTip": "重建视图 — 将已完成的操作移至废纸篓",
+      "projects": "项目",
+      "contexts": "情境",
+      "capturePlaceholder": "＋ 捕获到收件箱…",
+      "nothingHere": "这里什么都没有。",
+      "bucketLabel": "存储桶",
+      "whenHint": "何时：",
+      "anytimeValue": "（任何时候）",
+      "project": "项目",
+      "noProject": "（无项目）",
+      "newProject": "＋ 新项目…",
+      "deadline": "截止日期",
+      "contextsPlaceholder": "@电话, @家庭",
+      "done": "完成",
+      "deleteForGood": "永久删除",
+      "moveToTrash": "移至废纸篓",
+      "note": "备注",
+      "promptUpcoming": "即将到来的日期 (yyyy-MM-dd):",
+      "promptNewProject": "新项目名称：",
+      "confirmDelete": "永久删除此操作？此操作无法在此处撤消。",
+      "error": {
+        "scan": "无法扫描 GTD 文件夹。",
+        "loadAction": "无法加载操作。",
+        "save": "保存失败。",
+        "update": "更新失败。",
+        "move": "移动失败。",
+        "refile": "重新归档失败。",
+        "delete": "删除失败。",
+        "reorder": "重新排序失败。",
+        "capture": "捕获失败。",
+        "search": "搜索失败。",
+        "rebuild": "重建失败。"
+      }
+    }
+  }
+}

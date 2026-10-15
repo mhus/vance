@@ -19,6 +19,12 @@
  * is pulled the first time one of its kinds is opened, long after the host
  * booted.
  *
+ * <p>Two kinds of locales travel through it. English (the source, always
+ * needed as the fallback) is shipped eagerly. Every other locale is generated
+ * from it by `scripts/translate-client.py` into `locales/<lang>.json` and
+ * shipped as a loader, so a bundle only pulls the language the user picked —
+ * see {@link localeLoaders}.
+ *
  * <p>Platform-neutral on purpose (no Vue, no vue-i18n): this package is the one
  * place both ends of the federation boundary can agree on.
  */
@@ -29,11 +35,21 @@ export type LocaleMessageTree = Record<string, unknown>;
 /** A bundle as an addon ships it: locale code → message tree. */
 export type MessageBundle = Record<string, LocaleMessageTree>;
 
-type MessageSink = (id: string, bundle: MessageBundle) => void;
+/** Locales loaded on demand: locale code → loader of that locale's tree. */
+export type LazyMessageBundle = Record<string, () => Promise<LocaleMessageTree>>;
+
+/**
+ * Receives a bundle. {@code lazy} is absent when the bundle was registered by an
+ * addon built against an older copy of this module — the store is shared across
+ * versions, so its shape only ever grows.
+ */
+type MessageSink = (id: string, bundle: MessageBundle, lazy?: LazyMessageBundle) => void;
 
 interface Registry {
-  /** Bundle id (addon id) → its messages. Re-registering replaces, HMR-friendly. */
+  /** Bundle id (addon id) → its eager messages. Re-registering replaces, HMR-friendly. */
   bundles: Map<string, MessageBundle>;
+  /** Bundle id → its lazy locales. Optional: an older copy creates the store without it. */
+  lazy?: Map<string, LazyMessageBundle>;
   sinks: Set<MessageSink>;
 }
 
@@ -56,16 +72,40 @@ function store(): Registry {
  * @param id     bundle id, conventionally the addon id — re-registering the
  *               same id replaces the previous bundle so HMR does not stack
  *               copies.
- * @param bundle locale code → message tree. Merged into the host's messages per
- *               locale, so an addon may extend a host namespace (a
- *               {@code tabLabelKey} under `documents.detail`) as well as own its
- *               own (`canvas.*`). Locales the host does not support are ignored
- *               by the host, not here.
+ * @param bundle locale code → message tree, available at once. Merged into the
+ *               host's messages per locale, so an addon may extend a host
+ *               namespace (a {@code tabLabelKey} under `documents.detail`) as
+ *               well as own its own (`canvas.*`). Locales the host does not
+ *               support are ignored by the host, not here.
+ * @param lazy   locale code → loader, for the generated locales. The host calls
+ *               a loader only when that locale is (or becomes) active.
  */
-export function registerI18nMessages(id: string, bundle: MessageBundle): void {
+export function registerI18nMessages(
+  id: string,
+  bundle: MessageBundle,
+  lazy: LazyMessageBundle = {},
+): void {
   const s = store();
   s.bundles.set(id, bundle);
-  for (const sink of s.sinks) sink(id, bundle);
+  (s.lazy ??= new Map()).set(id, lazy);
+  for (const sink of s.sinks) sink(id, bundle, lazy);
+}
+
+/**
+ * Turn the result of {@code import.meta.glob('./locales/*.json', { import: 'default' })}
+ * into a {@link LazyMessageBundle}: the file name (`fr.json`) is the locale code.
+ * Takes the plain record so this package stays free of any bundler types.
+ */
+export function localeLoaders(
+  modules: Record<string, () => Promise<unknown>>,
+): LazyMessageBundle {
+  const out: LazyMessageBundle = {};
+  for (const [path, load] of Object.entries(modules)) {
+    const match = /([^/]+)\.json$/.exec(path);
+    if (!match) continue;
+    out[match[1]] = () => load().then((tree) => tree as LocaleMessageTree);
+  }
+  return out;
 }
 
 /**
@@ -77,7 +117,7 @@ export function registerI18nMessages(id: string, bundle: MessageBundle): void {
 export function onI18nMessages(sink: MessageSink): () => void {
   const s = store();
   s.sinks.add(sink);
-  for (const [id, bundle] of s.bundles) sink(id, bundle);
+  for (const [id, bundle] of s.bundles) sink(id, bundle, s.lazy?.get(id));
   return () => {
     s.sinks.delete(sink);
   };

@@ -1,0 +1,36 @@
+{
+  "binder": {
+    "common": {
+      "cancel": "キャンセル",
+      "searching": "検索中…",
+      "noHits": "一致なし。"
+    },
+    "app": {
+      "fallbackTitle": "バインダー",
+      "rebuildIndex": "インデックスを再構築",
+      "pin": "ピン留め",
+      "filterPlaceholder": "フィルター…",
+      "empty": "まだドキュメントがありません。「+ ピン留め」で固定してください。",
+      "landing": "ランディング",
+      "actions": "アクション",
+      "changeSection": "セクションを変更…",
+      "rename": "名前を変更…",
+      "setLanding": "ランディングに設定",
+      "removeLanding": "ランディングを解除",
+      "remove": "削除",
+      "reload": "再読み込み",
+      "editInCortex": "Cortexで編集",
+      "goneTitle": "このドキュメントは存在しません",
+      "goneHint": "⋯メニューからエントリを削除してください。",
+      "noRenderer": "埋め込みレンダラーが利用できません。",
+      "pickOne": "左側のドキュメントを選択するか、「+ ピン留め」でピン留めしてください。",
+      "confirmRemove": "バインダーから「{title}」を削除しますか？",
+      "promptTitle": "表示タイトル（空欄 = ドキュメントタイトル）：",
+      "promptSection": "セクション（空欄 = セクションなし）："
+    },
+    "picker": {
+      "title": "ドキュメントをピン留め",
+      "searchPlaceholder": "パスまたはタイトルで検索…"
+    }
+  }
+}

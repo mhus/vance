@@ -1,0 +1,56 @@
+{
+  "gtd": {
+    "common": {
+      "loading": "読み込み中…",
+      "saving": "保存中…",
+      "saved": "保存しました",
+      "saveFailed": "保存に失敗しました"
+    },
+    "bucket": {
+      "inbox": "受信箱",
+      "today": "今日",
+      "upcoming": "今後",
+      "anytime": "いつでも",
+      "someday": "いつか",
+      "trash": "ゴミ箱"
+    },
+    "app": {
+      "searchPlaceholder": "アクションを検索…",
+      "untitled": "(無題)",
+      "noMatch": "一致するアクションはありません。",
+      "rebuildTip": "ビューを再構築 — 完了したアクションをゴミ箱に移動します",
+      "projects": "プロジェクト",
+      "contexts": "コンテキスト",
+      "capturePlaceholder": "＋ 受信箱にキャプチャ…",
+      "nothingHere": "ここには何もありません。",
+      "bucketLabel": "バケット",
+      "whenHint": "いつ:",
+      "anytimeValue": "(いつでも)",
+      "project": "プロジェクト",
+      "noProject": "(プロジェクトなし)",
+      "newProject": "＋ 新しいプロジェクト…",
+      "deadline": "期限",
+      "contextsPlaceholder": "@calls, @home",
+      "done": "完了",
+      "deleteForGood": "完全に削除",
+      "moveToTrash": "ゴミ箱に移動",
+      "note": "メモ",
+      "promptUpcoming": "今後の日付 (yyyy-MM-dd):",
+      "promptNewProject": "新しいプロジェクト名:",
+      "confirmDelete": "このアクションを完全に削除しますか？この操作は元に戻せません。",
+      "error": {
+        "scan": "GTDフォルダーをスキャンできませんでした。",
+        "loadAction": "アクションを読み込めませんでした。",
+        "save": "保存に失敗しました。",
+        "update": "更新に失敗しました。",
+        "move": "移動に失敗しました。",
+        "refile": "再ファイリングに失敗しました。",
+        "delete": "削除に失敗しました。",
+        "reorder": "並べ替えに失敗しました。",
+        "capture": "キャプチャに失敗しました。",
+        "search": "検索に失敗しました。",
+        "rebuild": "再構築に失敗しました。"
+      }
+    }
+  }
+}

@@ -1,0 +1,138 @@
+{
+  "documents": {
+    "detail": {
+      "tabWorkPage": "Page"
+    }
+  },
+  "workbook": {
+    "common": {
+      "cancel": "Annuler",
+      "create": "Créer",
+      "creating": "Création…",
+      "save": "Enregistrer",
+      "saving": "Enregistrement…",
+      "saved": "Enregistré",
+      "searching": "Recherche…"
+    },
+    "app": {
+      "fallbackTitle": "Workbook",
+      "designMode": "Mode Design — modification des champs de formulaire. Cliquez pour le mode Travail.",
+      "workMode": "Mode Travail — saisie des données. Cliquez pour le mode Design.",
+      "newPage": "Nouvelle page",
+      "rebuilding": "Reconstruction…",
+      "rebuildIndex": "Reconstruire _index.md",
+      "filterPlaceholder": "Filtrer les pages…",
+      "pageTitlePlaceholder": "Titre de la page",
+      "newSectionPlaceholder": "Section (facultatif)",
+      "sectionWorkbook": "Workbook",
+      "index": "Index",
+      "sectionDefault": "Pages",
+      "moreActions": "Plus d'actions",
+      "showPages": "Afficher les pages",
+      "hidePages": "Masquer les pages",
+      "landingPage": "Page d'accueil",
+      "emptyPages": "Aucune page pour l'instant.",
+      "loadingWorkbook": "Chargement du workbook…",
+      "loadingPage": "Chargement de la page…",
+      "pickPage": "Choisissez une page dans la barre latérale.",
+      "changeCover": "Changer la couverture",
+      "removeCover": "Supprimer",
+      "addIcon": "Ajouter une icône",
+      "addCover": "Ajouter une couverture",
+      "changeIcon": "Changer l'icône",
+      "status": {
+        "edited": "Modifié",
+        "saveFailed": "Échec de l'enregistrement"
+      },
+      "ctx": {
+        "renameMove": "Renommer / Déplacer…",
+        "duplicate": "Dupliquer",
+        "pinLanding": "Épingler comme page d'accueil",
+        "unpinLanding": "Désépingler la page d'accueil",
+        "delete": "Supprimer",
+        "renameSection": "Renommer la section…"
+      },
+      "rename": {
+        "header": "Renommer / Déplacer",
+        "title": "Titre",
+        "section": "Section",
+        "sectionPlaceholder": "(niveau supérieur)"
+      },
+      "confirmDelete": "Supprimer la page « {title} » ?",
+      "error": {
+        "titleRequired": "Titre requis",
+        "createPage": "Impossible de créer la page.",
+        "scan": "Impossible de scanner le workbook.",
+        "loadPage": "Impossible de charger la page.",
+        "save": "Échec de l'enregistrement.",
+        "rebuild": "Échec de la reconstruction.",
+        "rename": "Échec du renommage.",
+        "duplicate": "Échec de la duplication.",
+        "landing": "Impossible de mettre à jour la page d'accueil.",
+        "delete": "Échec de la suppression.",
+        "sectionRename": "Échec du renommage de la section.",
+        "move": "Échec du déplacement.",
+        "reorder": "Échec du réordonnancement."
+      }
+    },
+    "assets": {
+      "title": "Insérer une image",
+      "tabApp": "App",
+      "tabProject": "Projet",
+      "tabShared": "Partagé",
+      "upload": "Télécharger",
+      "uploading": "Téléchargement…",
+      "loadingApp": "Chargement des ressources…",
+      "emptyAppPre": "Aucune image pour l'instant sous",
+      "searchPlaceholder": "Rechercher des images par nom ou chemin…",
+      "emptyProject": "Aucune image trouvée dans le projet.",
+      "loadingShared": "Chargement des images partagées…",
+      "emptySharedPre": "Aucune image partagée pour l'instant sous",
+      "emptySharedMid": "dans le projet",
+      "truncated": "Affichage de {shown} sur {total} — affinez la recherche.",
+      "error": {
+        "loadApp": "Impossible de charger les ressources.",
+        "search": "Échec de la recherche.",
+        "loadShared": "Impossible de charger les images partagées."
+      }
+    },
+    "embed": {
+      "title": "Intégrer un document",
+      "tabApp": "App",
+      "tabProject": "Projet",
+      "searchPlaceholder": "Rechercher des documents à intégrer…",
+      "emptyApp": "Aucun document intégrable trouvé dans cette app.",
+      "emptyProject": "Aucun document intégrable trouvé dans le projet.",
+      "truncated": "Affichage de {shown} sur {total} — affinez la recherche.",
+      "searchFailed": "Échec de la recherche"
+    },
+    "form": {
+      "title": "Insérer un formulaire",
+      "searchPlaceholder": "Rechercher des documents de données dans cette app…",
+      "empty": "Aucun document de données trouvé dans cette app.",
+      "hintPre": "Créez-en un ci-dessous — cela génère un",
+      "hintMid": "document avec son schéma sous",
+      "newNamePlaceholder": "Nouveau nom de formulaire…",
+      "searchFailed": "Échec de la recherche",
+      "createFailed": "Échec de la création"
+    },
+    "input": {
+      "title": "Insérer un champ de texte",
+      "searchPlaceholder": "Rechercher des documents texte dans cette app…",
+      "empty": "Aucun document texte trouvé dans cette app — créez-en un ci-dessous.",
+      "newNamePlaceholder": "Nouveau nom de texte (facultatif)…",
+      "searchFailed": "Échec de la recherche",
+      "createFailed": "Échec de la création"
+    },
+    "indexBlock": {
+      "slashTitle": "Index du Workbook",
+      "slashHint": "Bloc de lien qui renvoie à l'index du workbook",
+      "goto": "Vers l'index du classeur",
+      "label": "Index du classeur"
+    },
+    "emoji": {
+      "title": "Choisir une icône",
+      "remove": "Supprimer l'icône"
+    }
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "designer": {
+    "loading": "Carregando designs…",
+    "designs": "{count} design(s)",
+    "files": "{count} arquivo(s)",
+    "create": "Novo design",
+    "createTitle": "Novo design",
+    "nameLabel": "Nome",
+    "namePlaceholder": "landing-page",
+    "nameHelp": "Nome da pasta — letras, números, hífens. Torna-se <nome>/index.html.",
+    "titleLabel": "Título",
+    "titlePlaceholder": "Mostrado no cartão",
+    "descriptionLabel": "Descrição",
+    "editMeta": "Editar título e descrição",
+    "editTitle": "Editar design",
+    "save": "Salvar",
+    "cancel": "Cancelar",
+    "deleteDesign": "Excluir",
+    "deleteTitle": "Excluir design",
+    "deleteConfirm": "Excluir o design \"{name}\" e todos os seus arquivos?",
+    "deleteTrashNote": "Os arquivos vão para a lixeira — podem ser recuperados de lá.",
+    "dragHandle": "Arraste para reordenar · clique para pré-visualizar",
+    "theme": {
+      "auto": "Seguir sistema (dia/noite)",
+      "light": "Forçar dia (claro)",
+      "dark": "Forçar noite (escuro)"
+    },
+    "device": {
+      "desktop": "Largura desktop",
+      "tablet": "Largura tablet (820px)",
+      "phone": "Largura celular (390px)"
+    },
+    "rotate": "Rotacionar (retrato/paisagem)",
+    "reload": "Recarregar pré-visualização",
+    "refresh": "Atualizar catálogo",
+    "previewOf": "Pré-visualização — {name}",
+    "emptyHeadline": "Nenhum design ainda",
+    "emptyBody": "Clique em \"Novo design\" para criar o primeiro — ou peça ao chat (\"crie um design landing-page neste app\").",
+    "skills": {
+      "button": "Skills de design",
+      "title": "Skills de design",
+      "refresh": "Atualizar lista de skills",
+      "activeBadge": "ativo",
+      "chatHint": "As ativações vivem no chat aberto — ative com /skill <nome> no compositor.",
+      "noChatHint": "Abra um chat para ver quais skills de design estão ativas lá — sem um, uma skill não tem estado de ativação.",
+      "emptyHeadline": "Nenhuma skill de design",
+      "emptyBody": "Skills marcadas como \"design\" aparecem aqui. Com um style.css ao lado de seu SKILL.md, elas também mostram uma pré-visualização de estilo ao vivo.",
+      "previewOf": "Pré-visualização de estilo — {name}",
+      "noStyle": "Sem style.css — sem pré-visualização",
+      "play": "Ativar no chat — insere \"/skill <nome>\" no compositor",
+      "clear": "Desativar no chat",
+      "recipeBound": "Vinculado pela Recipe — a configuração do chat é proprietária desta ativação",
+      "error": {
+        "load": "Não foi possível carregar as skills de design: {message}",
+        "clear": "Não foi possível desativar a skill: {message}"
+      }
+    },
+    "error": {
+      "load": "Não foi possível carregar os designs: {message}",
+      "mint": "Não foi possível abrir uma sessão de pré-visualização: {message}",
+      "mutate": "A alteração falhou: {message}"
+    }
+  }
+}

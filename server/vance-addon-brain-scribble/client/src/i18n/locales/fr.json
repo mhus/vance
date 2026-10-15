@@ -1,0 +1,53 @@
+{
+  "documents": {
+    "detail": {
+      "tabScribble": "Feuille"
+    }
+  },
+  "scribble": {
+    "common": {
+      "loading": "Chargement…",
+      "loadFailed": "Impossible de charger la feuille.",
+      "title": "Titre",
+      "cancel": "Annuler",
+      "ok": "OK"
+    },
+    "state": {
+      "saved": "Enregistré",
+      "saving": "Enregistrement…",
+      "unsaved": "Modifications non enregistrées"
+    },
+    "editor": {
+      "emptyHint": "Écrivez ou dessinez avec votre stylet — chaque trait est enregistré automatiquement.",
+      "pen": "Stylet",
+      "sizeSmall": "Fin",
+      "sizeMedium": "Moyen",
+      "sizeLarge": "Épais",
+      "colorBlack": "Noir",
+      "colorRed": "Rouge",
+      "colorBlue": "Bleu",
+      "colorGreen": "Vert",
+      "eraser": "Gomme — touchez ou glissez sur un trait pour le supprimer",
+      "undo": "Annuler",
+      "redo": "Rétablir",
+      "fit": "Ajuster à la page",
+      "fingerDraw": "Dessiner au doigt (quand le stylet n'a plus de batterie)",
+      "zoom": "Zoom"
+    },
+    "book": {
+      "newSheet": "Nouvelle feuille",
+      "noSheets": "Aucune feuille pour l'instant",
+      "addSheet": "Nouvelle feuille",
+      "rebuildIndex": "Reconstruire l'index",
+      "empty": "Ce carnet est vide — ajoutez la première feuille et commencez à écrire.",
+      "pick": "Choisissez une feuille dans le menu ci-dessus.",
+      "toggleEnabled": "Inclure cette feuille dans l'exportation du carnet",
+      "toggleDefault": "Ouvrir cette feuille en premier à l'ouverture du carnet",
+      "ocr": "Transcrire la feuille actuelle avec l'IA (Markdown à côté)",
+      "ocrDone": "Transcription enregistrée :",
+      "pdf": "Exporter le carnet en PDF (feuilles activées uniquement)",
+      "pdfDone": "PDF enregistré : {path} ({count} pages)",
+      "pdfSkipped": "ignoré"
+    }
+  }
+}

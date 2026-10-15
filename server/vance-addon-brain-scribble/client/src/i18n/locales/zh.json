@@ -1,0 +1,53 @@
+{
+  "documents": {
+    "detail": {
+      "tabScribble": "画板"
+    }
+  },
+  "scribble": {
+    "common": {
+      "loading": "加载中…",
+      "loadFailed": "无法加载画板。",
+      "title": "标题",
+      "cancel": "取消",
+      "ok": "确定"
+    },
+    "state": {
+      "saved": "已保存",
+      "saving": "保存中…",
+      "unsaved": "未保存的更改"
+    },
+    "editor": {
+      "emptyHint": "用笔书写或绘画 — 每次笔触都会自动保存。",
+      "pen": "笔",
+      "sizeSmall": "细",
+      "sizeMedium": "中",
+      "sizeLarge": "粗",
+      "colorBlack": "黑色",
+      "colorRed": "红色",
+      "colorBlue": "蓝色",
+      "colorGreen": "绿色",
+      "eraser": "橡皮擦 — 轻触或拖动笔触以擦除",
+      "undo": "撤消",
+      "redo": "重做",
+      "fit": "适应页面",
+      "fingerDraw": "用手指绘画（当笔没电时）",
+      "zoom": "缩放"
+    },
+    "book": {
+      "newSheet": "新建画板",
+      "noSheets": "暂无画板",
+      "addSheet": "新建画板",
+      "rebuildIndex": "重建索引",
+      "empty": "此笔记本为空 — 添加第一个画板并开始书写。",
+      "pick": "从上方菜单中选择一个画板。",
+      "toggleEnabled": "将此画板包含在笔记本导出中",
+      "toggleDefault": "打开笔记本时首先打开此画板",
+      "ocr": "用 AI 转录当前画板（旁边的 Markdown）",
+      "ocrDone": "转录已存储：",
+      "pdf": "将笔记本导出为 PDF（仅限启用的画板）",
+      "pdfDone": "PDF 已存储：{path}（{count} 页）",
+      "pdfSkipped": "已跳过"
+    }
+  }
+}

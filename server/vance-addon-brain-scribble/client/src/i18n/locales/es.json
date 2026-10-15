@@ -1,0 +1,53 @@
+{
+  "documents": {
+    "detail": {
+      "tabScribble": "Hoja"
+    }
+  },
+  "scribble": {
+    "common": {
+      "loading": "Cargando…",
+      "loadFailed": "No se pudo cargar la hoja.",
+      "title": "Título",
+      "cancel": "Cancelar",
+      "ok": "Aceptar"
+    },
+    "state": {
+      "saved": "Guardado",
+      "saving": "Guardando…",
+      "unsaved": "Cambios sin guardar"
+    },
+    "editor": {
+      "emptyHint": "Escribe o dibuja con tu lápiz — cada trazo se guarda automáticamente.",
+      "pen": "Lápiz",
+      "sizeSmall": "Fino",
+      "sizeMedium": "Mediano",
+      "sizeLarge": "Grueso",
+      "colorBlack": "Negro",
+      "colorRed": "Rojo",
+      "colorBlue": "Azul",
+      "colorGreen": "Verde",
+      "eraser": "Borrador — toca o arrastra sobre un trazo para eliminarlo",
+      "undo": "Deshacer",
+      "redo": "Rehacer",
+      "fit": "Ajustar a la página",
+      "fingerDraw": "Dibujar con el dedo (para cuando el lápiz no tiene batería)",
+      "zoom": "Zoom"
+    },
+    "book": {
+      "newSheet": "Nueva hoja",
+      "noSheets": "Aún no hay hojas",
+      "addSheet": "Nueva hoja",
+      "rebuildIndex": "Reconstruir índice",
+      "empty": "Este cuaderno está vacío — añade la primera hoja y empieza a escribir.",
+      "pick": "Elige una hoja del menú superior.",
+      "toggleEnabled": "Incluir esta hoja en la exportación del libro",
+      "toggleDefault": "Abrir esta hoja primero al abrir el libro",
+      "ocr": "Transcribir la hoja actual con IA (Markdown al lado)",
+      "ocrDone": "Transcipción guardada:",
+      "pdf": "Exportar el libro como PDF (solo hojas habilitadas)",
+      "pdfDone": "PDF guardado: {path} ({count} páginas)",
+      "pdfSkipped": "omitido"
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "binder": {
+    "common": {
+      "cancel": "Cancelar",
+      "searching": "Buscando…",
+      "noHits": "Nenhum resultado."
+    },
+    "app": {
+      "fallbackTitle": "Binder",
+      "rebuildIndex": "Reconstruir índice",
+      "pin": "Fixar",
+      "filterPlaceholder": "Filtrar…",
+      "empty": "Nenhum documento ainda. Use “+ Fixar” para ancorar um.",
+      "landing": "Página inicial",
+      "actions": "Ações",
+      "changeSection": "Mudar seção…",
+      "rename": "Renomear…",
+      "setLanding": "Definir como página inicial",
+      "removeLanding": "Remover página inicial",
+      "remove": "Remover",
+      "reload": "Recarregar",
+      "editInCortex": "Editar no Cortex",
+      "goneTitle": "Este documento não existe mais",
+      "goneHint": "Remova a entrada do menu ⋯.",
+      "noRenderer": "Nenhum renderizador de incorporação disponível.",
+      "pickOne": "Escolha um documento à esquerda, ou fixe um com “+ Fixar”.",
+      "confirmRemove": "Remover “{title}” do binder?",
+      "promptTitle": "Título de exibição (vazio = título do documento):",
+      "promptSection": "Seção (vazio = sem seção):"
+    },
+    "picker": {
+      "title": "Fixar documento",
+      "searchPlaceholder": "Buscar por caminho ou título…"
+    }
+  }
+}

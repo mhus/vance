@@ -1,0 +1,51 @@
+{
+  "issues": {
+    "tabOpen": "Открытые",
+    "tabClosed": "Закрытые",
+    "tabArchived": "В архиве",
+    "searchPlaceholder": "Поиск задач…",
+    "untitled": "(без названия)",
+    "noMatch": "Нет совпадений.",
+    "rebuildTip": "Перестроить индекс + статистику",
+    "newIssuePlaceholder": "＋ Новая задача…",
+    "allLabels": "все",
+    "loading": "Загрузка…",
+    "nothingHere": "Здесь ничего нет.",
+    "archived": "в архиве",
+    "state": {
+      "open": "открыта",
+      "closed": "закрыта"
+    },
+    "close": "Закрыть",
+    "reopen": "Открыть снова",
+    "archive": "В архив",
+    "unarchive": "Из архива",
+    "labels": "Метки",
+    "labelsPlaceholder": "баг, авторизация",
+    "assignee": "Исполнитель",
+    "priority": "Приоритет",
+    "description": "Описание",
+    "discussion": "Обсуждение ({count})",
+    "deleteComment": "Удалить",
+    "commentPlaceholder": "Добавить комментарий…",
+    "comment": "Комментировать",
+    "confirmDelete": "Удалить эту задачу?",
+    "status": {
+      "saving": "Сохранение…",
+      "saved": "Сохранено",
+      "saveFailed": "Ошибка сохранения"
+    },
+    "error": {
+      "scan": "Не удалось просканировать задачи.",
+      "loadIssue": "Не удалось загрузить задачу.",
+      "save": "Ошибка сохранения.",
+      "archive": "Ошибка архивирования.",
+      "delete": "Ошибка удаления.",
+      "comment": "Ошибка комментирования.",
+      "deleteComment": "Ошибка удаления комментария.",
+      "create": "Ошибка создания.",
+      "search": "Ошибка поиска.",
+      "rebuild": "Ошибка перестроения."
+    }
+  }
+}

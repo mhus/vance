@@ -1,0 +1,51 @@
+{
+  "issues": {
+    "tabOpen": "开启",
+    "tabClosed": "关闭",
+    "tabArchived": "已归档",
+    "searchPlaceholder": "搜索问题…",
+    "untitled": "（无标题）",
+    "noMatch": "没有匹配的问题。",
+    "rebuildTip": "重建索引 + 统计",
+    "newIssuePlaceholder": "＋ 新问题标题…",
+    "allLabels": "全部",
+    "loading": "加载中…",
+    "nothingHere": "这里什么都没有。",
+    "archived": "已归档",
+    "state": {
+      "open": "开启",
+      "closed": "关闭"
+    },
+    "close": "关闭",
+    "reopen": "重新开启",
+    "archive": "归档",
+    "unarchive": "取消归档",
+    "labels": "标签",
+    "labelsPlaceholder": "bug, auth",
+    "assignee": "经办人",
+    "priority": "优先级",
+    "description": "描述",
+    "discussion": "讨论 ({count})",
+    "deleteComment": "删除",
+    "commentPlaceholder": "添加评论…",
+    "comment": "评论",
+    "confirmDelete": "删除此问题？",
+    "status": {
+      "saving": "保存中…",
+      "saved": "已保存",
+      "saveFailed": "保存失败"
+    },
+    "error": {
+      "scan": "无法扫描问题。",
+      "loadIssue": "无法加载问题。",
+      "save": "保存失败。",
+      "archive": "归档失败。",
+      "delete": "删除失败。",
+      "comment": "评论失败。",
+      "deleteComment": "删除评论失败。",
+      "create": "创建失败。",
+      "search": "搜索失败。",
+      "rebuild": "重建失败。"
+    }
+  }
+}

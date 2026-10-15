@@ -1,0 +1,34 @@
+{
+  "journal": {
+    "today": "Dzisiaj",
+    "searchPlaceholder": "Szukaj wpisów…",
+    "untitled": "(bez tytułu)",
+    "noMatch": "Brak pasujących wpisów.",
+    "rebuilding": "Przebudowa…",
+    "rebuildTip": "Przebuduj indeks + statystyki",
+    "statEntries": "wpisów",
+    "statDayStreak": "dni z rzędu",
+    "statLongest": "najdłuższy",
+    "loading": "Ładowanie dziennika…",
+    "loadingEntry": "Ładowanie wpisu…",
+    "badgeNew": "nowy",
+    "moodPlaceholder": "nastrój…",
+    "deleteEntry": "Usuń wpis",
+    "tagsPlaceholder": "tagi, przecinek, rozdzielone",
+    "pickDay": "Wybierz dzień w kalendarzu.",
+    "onThisDay": "Tego dnia",
+    "nothingEarlier": "Nic z wcześniejszych lat.",
+    "status": {
+      "edited": "Edytowano",
+      "saving": "Zapisywanie…",
+      "saved": "Zapisano"
+    },
+    "confirmDelete": "Usunąć wpis z {date}?",
+    "error": {
+      "scan": "Nie udało się przeskanować dziennika.",
+      "delete": "Usunięcie nie powiodło się.",
+      "search": "Wyszukiwanie nie powiodło się.",
+      "rebuild": "Przebudowa nie powiodła się."
+    }
+  }
+}

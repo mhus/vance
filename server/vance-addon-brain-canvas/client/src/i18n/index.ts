@@ -15,11 +15,17 @@
  * </ul>
  */
 import { useT as useHostT, type Translate } from '@vance/components';
-import { registerI18nMessages } from '@vance/shared/i18n';
+import { localeLoaders, registerI18nMessages } from '@vance/shared/i18n';
 import en from './en';
-import de from './de';
 
-registerI18nMessages('canvas', { en, de });
+// English is the source and ships with the bundle; every other locale is
+// generated into ./locales by scripts/translate-client.py and loaded only when
+// the user picks it.
+registerI18nMessages(
+  'canvas',
+  { en },
+  localeLoaders(import.meta.glob('./locales/*.json', { import: 'default' })),
+);
 
 /** The host's translator. Call in {@code setup()}. */
 export function useT(): Translate {

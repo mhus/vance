@@ -1,0 +1,53 @@
+{
+  "documents": {
+    "detail": {
+      "tabScribble": "シート"
+    }
+  },
+  "scribble": {
+    "common": {
+      "loading": "読み込み中…",
+      "loadFailed": "シートを読み込めませんでした。",
+      "title": "タイトル",
+      "cancel": "キャンセル",
+      "ok": "OK"
+    },
+    "state": {
+      "saved": "保存済み",
+      "saving": "保存中…",
+      "unsaved": "未保存の変更があります"
+    },
+    "editor": {
+      "emptyHint": "ペンで書いたりスケッチしたりしてください — すべてのストロークは自動的に保存されます。",
+      "pen": "ペン",
+      "sizeSmall": "細",
+      "sizeMedium": "中",
+      "sizeLarge": "太",
+      "colorBlack": "黒",
+      "colorRed": "赤",
+      "colorBlue": "青",
+      "colorGreen": "緑",
+      "eraser": "消しゴム — ストロークをタップまたはドラッグして削除します",
+      "undo": "元に戻す",
+      "redo": "やり直す",
+      "fit": "ページに合わせる",
+      "fingerDraw": "指で描画（ペンが電池切れの場合）",
+      "zoom": "ズーム"
+    },
+    "book": {
+      "newSheet": "新しいシート",
+      "noSheets": "まだシートがありません",
+      "addSheet": "新しいシート",
+      "rebuildIndex": "インデックスを再構築",
+      "empty": "このノートブックは空です — 最初のシートを追加して書き始めましょう。",
+      "pick": "上記のメニューからシートを選択してください。",
+      "toggleEnabled": "このシートをブックのエクスポートに含める",
+      "toggleDefault": "ブックを開いたときにこのシートを最初に開く",
+      "ocr": "AIで現在のシートを文字起こし（隣にMarkdown）",
+      "ocrDone": "文字起こしを保存しました:",
+      "pdf": "ブックをPDFとしてエクスポート（有効なシートのみ）",
+      "pdfDone": "PDFを保存しました: {path} ({count} ページ)",
+      "pdfSkipped": "スキップされました"
+    }
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "documents": {
+    "detail": {
+      "tabScribble": "Folha"
+    }
+  },
+  "scribble": {
+    "common": {
+      "loading": "Carregando…",
+      "loadFailed": "Não foi possível carregar a folha.",
+      "title": "Título",
+      "cancel": "Cancelar",
+      "ok": "OK"
+    },
+    "state": {
+      "saved": "Salvo",
+      "saving": "Salvando…",
+      "unsaved": "Alterações não salvas"
+    },
+    "editor": {
+      "emptyHint": "Escreva ou desenhe com sua caneta — cada traço é salvo automaticamente.",
+      "pen": "Caneta",
+      "sizeSmall": "Fina",
+      "sizeMedium": "Média",
+      "sizeLarge": "Grossa",
+      "colorBlack": "Preto",
+      "colorRed": "Vermelho",
+      "colorBlue": "Azul",
+      "colorGreen": "Verde",
+      "eraser": "Borracha — toque ou arraste sobre um traço para removê-lo",
+      "undo": "Desfazer",
+      "redo": "Refazer",
+      "fit": "Ajustar à página",
+      "fingerDraw": "Desenhar com o dedo (para quando a caneta estiver sem bateria)",
+      "zoom": "Zoom"
+    },
+    "book": {
+      "newSheet": "Nova folha",
+      "noSheets": "Nenhuma folha ainda",
+      "addSheet": "Nova folha",
+      "rebuildIndex": "Reconstruir índice",
+      "empty": "Este caderno está vazio — adicione a primeira folha e comece a escrever.",
+      "pick": "Escolha uma folha no menu acima.",
+      "toggleEnabled": "Incluir esta folha na exportação do caderno",
+      "toggleDefault": "Abrir esta folha primeiro quando o caderno abrir",
+      "ocr": "Transcrever a folha atual com IA (Markdown ao lado)",
+      "ocrDone": "Transcrições salvas:",
+      "pdf": "Exportar o caderno como PDF (somente folhas ativadas)",
+      "pdfDone": "PDF salvo: {path} ({count} páginas)",
+      "pdfSkipped": "pulado"
+    }
+  }
+}

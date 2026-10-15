@@ -1,0 +1,58 @@
+{
+  "bistromath": {
+    "app": {
+      "fallbackTitle": "App",
+      "loads": "Carregamentos ({count})",
+      "loadsTip": "{count} documento(s) carregado(s) para este app",
+      "rebuild": "Reconstruir",
+      "rebuildTip": "Re-ler as visualizações, reiniciar o programa",
+      "releaseDefault": "Um administrador de Tenant decide quais aplicativos podem ser executados aqui.",
+      "sending": "Enviando…",
+      "requestRelease": "Solicitar liberação",
+      "loadOrder": "Carregamentos, nesta ordem",
+      "noProgram": "Nada — este app não tem programa.",
+      "surfaceWithheldPre": "Esta visualização pede uma superfície de desenho (",
+      "surfaceWithheldMid": "), que este Tenant não permite para este app. Um administrador de Tenant decide isso em",
+      "noViewHeadline": "Nenhuma visualização ainda",
+      "noViewBody": "Este app é definido por seus documentos. Uma visualização é um documento com `$meta.kind: app-view` — peça uma ao chat ao lado deste painel, ou adicione-a em {folder}."
+    },
+    "view": {
+      "fallbackTitle": "Visualização",
+      "recheck": "Verificar novamente",
+      "openApp": "Abrir o app ↗",
+      "openAppTip": "Abrir o app ao qual esta visualização pertence",
+      "previewPre": "Pré-visualização — nenhum programa está em execução, então tudo o que está vinculado a",
+      "previewMid": "está vazio e",
+      "previewPost": "oculta o que ele controla. Abra o app para vê-lo com dados."
+    },
+    "widget": {
+      "selectPlaceholder": "—",
+      "filterPlaceholder": "Filtrar…",
+      "tableMissingHeadline": "Nada para mostrar",
+      "tableMissingBody": "Nada escreveu `{key}` ainda — o programa o preenche com vance.state.set('{key}', rows). Verifique a chave se isso for inesperado.",
+      "tableEmptyHeadline": "Nenhuma entrada",
+      "tableEmptyBody": "`{key}` está vazio.",
+      "filterEmptyHeadline": "Nada corresponde ao filtro",
+      "filterEmptyBody": "{count} linha(s) estão ocultas por »{filter}«.",
+      "sortBy": "Ordenar por {column}",
+      "formEmptyHeadline": "Nada selecionado",
+      "formEmptyBody": "Clique em uma linha na tabela para editá-la aqui.",
+      "tab": "Aba {number}",
+      "repeatEmptyHeadline": "Nada aqui ainda",
+      "repeatEmptyBody": "O programa não inseriu uma lista em `{key}`.",
+      "embedMissingPre": "Nada para incorporar —",
+      "embedMissingPost": "não contém nenhum caminho de documento.",
+      "embedNoPath": "(sem caminho)",
+      "embedNoRendererPre": "Esta superfície não pode renderizar documentos incorporados. Pretendido:",
+      "unknownPre": "Esta compilação não pode renderizar um widget",
+      "unknownPost": "."
+    },
+    "details": {
+      "emptyHeadline": "Nada selecionado",
+      "emptyBody": "Clique em uma linha na tabela para vê-la aqui.",
+      "empty": "—",
+      "yes": "sim",
+      "no": "não"
+    }
+  }
+}

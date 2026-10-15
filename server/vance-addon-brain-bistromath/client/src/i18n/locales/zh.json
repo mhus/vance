@@ -1,0 +1,58 @@
+{
+  "bistromath": {
+    "app": {
+      "fallbackTitle": "应用",
+      "loads": "加载项 ({count})",
+      "loadsTip": "此应用加载 {count} 个文档",
+      "rebuild": "重建",
+      "rebuildTip": "重新读取视图，重启程序",
+      "releaseDefault": "租户管理员决定哪些应用程序可在此处运行。",
+      "sending": "发送中…",
+      "requestRelease": "请求发布",
+      "loadOrder": "按此顺序加载",
+      "noProgram": "无内容 — 此应用没有程序。",
+      "surfaceWithheldPre": "此视图请求一个绘图界面 (",
+      "surfaceWithheldMid": ")，但此租户不允许此应用使用。租户管理员在",
+      "noViewHeadline": "暂无视图",
+      "noViewBody": "此应用由其文档定义。视图是带有 `$meta.kind: app-view` 的文档 — 请在此面板旁的聊天中请求一个，或在 {folder} 下添加。"
+    },
+    "view": {
+      "fallbackTitle": "视图",
+      "recheck": "重新检查",
+      "openApp": "打开应用 ↗",
+      "openAppTip": "打开此视图所属的应用",
+      "previewPre": "预览 — 没有程序运行，因此任何绑定到",
+      "previewMid": "的内容都为空，并且",
+      "previewPost": "会隐藏其所控制的内容。打开应用以查看带数据的内容。"
+    },
+    "widget": {
+      "selectPlaceholder": "—",
+      "filterPlaceholder": "筛选…",
+      "tableMissingHeadline": "无内容可显示",
+      "tableMissingBody": "尚未写入 `{key}` — 程序会用 vance.state.set('{key}', rows) 填充它。如果意外，请检查键。",
+      "tableEmptyHeadline": "无条目",
+      "tableEmptyBody": "`{key}` 为空。",
+      "filterEmptyHeadline": "无匹配筛选条件",
+      "filterEmptyBody": "{count} 行被 »{filter}« 隐藏。",
+      "sortBy": "按 {column} 排序",
+      "formEmptyHeadline": "未选择任何内容",
+      "formEmptyBody": "点击表格中的一行以在此处编辑。",
+      "tab": "选项卡 {number}",
+      "repeatEmptyHeadline": "此处暂无内容",
+      "repeatEmptyBody": "程序尚未将列表放入 `{key}` 中。",
+      "embedMissingPre": "无内容可嵌入 —",
+      "embedMissingPost": "不包含文档路径。",
+      "embedNoPath": "（无路径）",
+      "embedNoRendererPre": "此界面无法渲染嵌入文档。意为：",
+      "unknownPre": "此构建无法渲染",
+      "unknownPost": "小部件。"
+    },
+    "details": {
+      "emptyHeadline": "未选择任何内容",
+      "emptyBody": "点击表格中的一行以在此处查看。",
+      "empty": "—",
+      "yes": "是",
+      "no": "否"
+    }
+  }
+}

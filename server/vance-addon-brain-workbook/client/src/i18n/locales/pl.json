@@ -1,0 +1,138 @@
+{
+  "documents": {
+    "detail": {
+      "tabWorkPage": "Strona"
+    }
+  },
+  "workbook": {
+    "common": {
+      "cancel": "Anuluj",
+      "create": "Utwórz",
+      "creating": "Tworzenie…",
+      "save": "Zapisz",
+      "saving": "Zapisywanie…",
+      "saved": "Zapisano",
+      "searching": "Szukanie…"
+    },
+    "app": {
+      "fallbackTitle": "Workbook",
+      "designMode": "Tryb projektowania — edycja pól formularza. Kliknij, aby przejść do trybu pracy.",
+      "workMode": "Tryb pracy — wprowadzanie danych. Kliknij, aby przejść do trybu projektowania.",
+      "newPage": "Nowa strona",
+      "rebuilding": "Przebudowa…",
+      "rebuildIndex": "Przebuduj _index.md",
+      "filterPlaceholder": "Filtruj strony…",
+      "pageTitlePlaceholder": "Tytuł strony",
+      "newSectionPlaceholder": "Sekcja (opcjonalnie)",
+      "sectionWorkbook": "Workbook",
+      "index": "Indeks",
+      "sectionDefault": "Strony",
+      "moreActions": "Więcej działań",
+      "showPages": "Pokaż strony",
+      "hidePages": "Ukryj strony",
+      "landingPage": "Strona docelowa",
+      "emptyPages": "Brak stron.",
+      "loadingWorkbook": "Ładowanie workbooka…",
+      "loadingPage": "Ładowanie strony…",
+      "pickPage": "Wybierz stronę z paska bocznego.",
+      "changeCover": "Zmień okładkę",
+      "removeCover": "Usuń",
+      "addIcon": "Dodaj ikonę",
+      "addCover": "Dodaj okładkę",
+      "changeIcon": "Zmień ikonę",
+      "status": {
+        "edited": "Edytowano",
+        "saveFailed": "Zapisywanie nie powiodło się"
+      },
+      "ctx": {
+        "renameMove": "Zmień nazwę / Przenieś…",
+        "duplicate": "Duplikuj",
+        "pinLanding": "Przypnij jako stronę docelową",
+        "unpinLanding": "Odepnij stronę docelową",
+        "delete": "Usuń",
+        "renameSection": "Zmień nazwę sekcji…"
+      },
+      "rename": {
+        "header": "Zmień nazwę / Przenieś",
+        "title": "Tytuł",
+        "section": "Sekcja",
+        "sectionPlaceholder": "(najwyższy poziom)"
+      },
+      "confirmDelete": "Usunąć stronę „{title}”?",
+      "error": {
+        "titleRequired": "Tytuł jest wymagany",
+        "createPage": "Nie udało się utworzyć strony.",
+        "scan": "Nie udało się zeskanować workbooka.",
+        "loadPage": "Nie udało się załadować strony.",
+        "save": "Zapisywanie nie powiodło się.",
+        "rebuild": "Przebudowa nie powiodła się.",
+        "rename": "Zmiana nazwy nie powiodła się.",
+        "duplicate": "Duplikowanie nie powiodło się.",
+        "landing": "Nie udało się zaktualizować strony docelowej.",
+        "delete": "Usuwanie nie powiodło się.",
+        "sectionRename": "Zmiana nazwy sekcji nie powiodła się.",
+        "move": "Przenoszenie nie powiodło się.",
+        "reorder": "Zmiana kolejności nie powiodła się."
+      }
+    },
+    "assets": {
+      "title": "Wstaw obraz",
+      "tabApp": "Aplikacja",
+      "tabProject": "Projekt",
+      "tabShared": "Udostępnione",
+      "upload": "Prześlij nowe",
+      "uploading": "Przesyłanie…",
+      "loadingApp": "Ładowanie zasobów…",
+      "emptyAppPre": "Brak obrazów w",
+      "searchPlaceholder": "Szukaj obrazów po nazwie lub ścieżce…",
+      "emptyProject": "Brak obrazów w projekcie.",
+      "loadingShared": "Ładowanie udostępnionych obrazów…",
+      "emptySharedPre": "Brak udostępnionych obrazów w",
+      "emptySharedMid": "w projekcie",
+      "truncated": "Wyświetlono {shown} z {total} — doprecyzuj wyszukiwanie.",
+      "error": {
+        "loadApp": "Nie udało się załadować zasobów.",
+        "search": "Wyszukiwanie nie powiodło się.",
+        "loadShared": "Nie udało się załadować udostępnionych obrazów."
+      }
+    },
+    "embed": {
+      "title": "Osadź dokument",
+      "tabApp": "Aplikacja",
+      "tabProject": "Projekt",
+      "searchPlaceholder": "Szukaj dokumentów do osadzenia…",
+      "emptyApp": "Brak dokumentów do osadzenia w tej aplikacji.",
+      "emptyProject": "Brak dokumentów do osadzenia w projekcie.",
+      "truncated": "Wyświetlono {shown} z {total} — doprecyzuj wyszukiwanie.",
+      "searchFailed": "Wyszukiwanie nie powiodło się"
+    },
+    "form": {
+      "title": "Wstaw formularz",
+      "searchPlaceholder": "Szukaj dokumentów danych w tej aplikacji…",
+      "empty": "Brak dokumentów danych w tej aplikacji.",
+      "hintPre": "Utwórz jeden poniżej — to utworzy dokument",
+      "hintMid": "z jego schematem w",
+      "newNamePlaceholder": "Nowa nazwa formularza…",
+      "searchFailed": "Wyszukiwanie nie powiodło się",
+      "createFailed": "Tworzenie nie powiodło się"
+    },
+    "input": {
+      "title": "Wstaw pole tekstowe",
+      "searchPlaceholder": "Szukaj dokumentów tekstowych w tej aplikacji…",
+      "empty": "Brak dokumentów tekstowych w tej aplikacji — utwórz jeden poniżej.",
+      "newNamePlaceholder": "Nowa nazwa tekstu (opcjonalnie)…",
+      "searchFailed": "Wyszukiwanie nie powiodło się",
+      "createFailed": "Tworzenie nie powiodło się"
+    },
+    "indexBlock": {
+      "slashTitle": "Indeks Workbooka",
+      "slashHint": "Blok linków, który przenosi do indeksu workbooka",
+      "goto": "Do indeksu skoroszytu",
+      "label": "Indeks skoroszytu"
+    },
+    "emoji": {
+      "title": "Wybierz ikonę",
+      "remove": "Usuń ikonę"
+    }
+  }
+}

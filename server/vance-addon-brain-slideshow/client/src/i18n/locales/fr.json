@@ -1,0 +1,21 @@
+{
+  "slideshow": {
+    "position": "Diapositive {index} / {total}",
+    "pause": "Pause",
+    "play": "Lecture ({seconds}s)",
+    "exitFullscreen": "Quitter le mode plein écran",
+    "fullscreen": "Plein écran (F)",
+    "reload": "Recharger",
+    "rebuild": "Reconstruire l'index",
+    "loading": "Chargement du diaporama…",
+    "emptyHeadline": "Aucune diapositive",
+    "emptyBody": "Téléchargez des images dans ce dossier, puis cliquez sur « Reconstruire l'index » pour rafraîchir le diaporama.",
+    "prevSlide": "Diapositive précédente (←)",
+    "nextSlide": "Diapositive suivante (→)",
+    "slideNumber": "Diapositive {index}",
+    "error": {
+      "load": "Impossible de charger le diaporama : {message}",
+      "rebuild": "Échec de la reconstruction : {message}"
+    }
+  }
+}

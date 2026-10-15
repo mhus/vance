@@ -1,0 +1,21 @@
+{
+  "slideshow": {
+    "position": "幻灯片 {index} / {total}",
+    "pause": "暂停",
+    "play": "播放 ({seconds}秒)",
+    "exitFullscreen": "退出全屏",
+    "fullscreen": "全屏 (F)",
+    "reload": "重新加载",
+    "rebuild": "重建索引",
+    "loading": "正在加载幻灯片…",
+    "emptyHeadline": "无幻灯片",
+    "emptyBody": "将图片上传到此文件夹，然后点击“重建索引”以刷新幻灯片。",
+    "prevSlide": "上一张幻灯片 (←)",
+    "nextSlide": "下一张幻灯片 (→)",
+    "slideNumber": "幻灯片 {index}",
+    "error": {
+      "load": "无法加载幻灯片: {message}",
+      "rebuild": "重建失败: {message}"
+    }
+  }
+}

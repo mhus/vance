@@ -1,0 +1,106 @@
+{
+  "documents": {
+    "detail": {
+      "tabCalendar": "Calendário",
+      "tabTimeline": "Linha do Tempo",
+      "timelineParseError": "Este documento não é um YAML de linha do tempo válido.",
+      "calendarParseError": "Este documento não é um YAML de calendário válido."
+    }
+  },
+  "calendar": {
+    "common": {
+      "cancel": "Cancelar",
+      "create": "Criar",
+      "save": "Salvar",
+      "delete": "Excluir"
+    },
+    "view": {
+      "viewMonth": "Mês",
+      "viewAgenda": "Agenda",
+      "today": "Hoje",
+      "empty": "Nenhum evento futuro.",
+      "addToCalendar": "Adicionar ao calendário",
+      "allDay": "Dia inteiro"
+    },
+    "planner": {
+      "reload": "Recarregar",
+      "rebuild": "Reconstruir artefatos",
+      "loading": "Carregando planejador…",
+      "eventCount": "{n} evento | {n} eventos",
+      "laneCount": "{n} raia | {n} raias",
+      "conflictCount": "{n} conflito | {n} conflitos",
+      "overview": "Visão Geral",
+      "overviewHint": "Gantt + conflitos",
+      "undeclared": "não declarado",
+      "gantt": "Gantt",
+      "ganttRenderError": "Não foi possível renderizar Gantt: {message}",
+      "noGanttHeadline": "Nenhum Gantt ainda",
+      "noGanttBody": "Clique em “Reconstruir artefatos” para gerar o diagrama Mermaid Gantt.",
+      "conflicts": "Conflitos",
+      "noConflictsHeadline": "Sem conflitos",
+      "noConflictsBody": "Nenhum evento se sobrepõe na janela atual.",
+      "colEventA": "Evento A",
+      "colEventB": "Evento B",
+      "colOverlap": "Sobreposição",
+      "addEvent": "Adicionar evento",
+      "noEventsHeadline": "Nenhum evento nesta raia",
+      "noEventsBody": "Adicione o primeiro evento para começar.",
+      "allDayTag": "dia inteiro",
+      "recurringTag": "recorrente",
+      "addToGoogleCalendar": "Adicionar ao Google Calendar",
+      "addToOutlook": "Adicionar ao Outlook",
+      "newEvent": "Novo evento",
+      "eventTitlePlaceholder": "Título do evento",
+      "startPlaceholder": "Início (AAAA-MM-DD ou AAAA-MM-DDTHH:mm)",
+      "endPlaceholder": "Fim (opcional)",
+      "error": {
+        "load": "Não foi possível carregar o planejador: {message}",
+        "rebuild": "Falha na reconstrução: {message}",
+        "create": "Falha na criação: {message}",
+        "update": "Falha na atualização: {message}",
+        "delete": "Falha na exclusão: {message}",
+        "mermaid": "Não foi possível extrair a fonte Mermaid de _gantt.md."
+      }
+    },
+    "detail": {
+      "title": "Detalhe do evento",
+      "fieldTitle": "Título",
+      "start": "Início",
+      "startPlaceholder": "AAAA-MM-DD[THH:mm]",
+      "end": "Fim",
+      "endPlaceholder": "(opcional)",
+      "allDay": "Evento de dia inteiro",
+      "lane": "Raia",
+      "location": "Local",
+      "attendees": "Participantes",
+      "recurrence": "Recorrência (RRULE)",
+      "recurrencePlaceholder": "FREQ=WEEKLY;BYDAY=MO,…",
+      "tags": "Tags",
+      "notes": "Notas",
+      "addToGoogle": "Adicionar ao Google",
+      "addToOutlook": "Adicionar ao Outlook",
+      "source": "Fonte: {path}",
+      "discard": "Descartar",
+      "confirmDelete": "Excluir evento “{title}”?"
+    },
+    "timeline": {
+      "entryCount": "{n} entrada | {n} entradas",
+      "zoomOut": "Diminuir zoom",
+      "zoomIn": "Aumentar zoom",
+      "fitTip": "Ajustar todas as entradas",
+      "fit": "Ajustar",
+      "unreadable": "{n} entrada tem uma posição que este eixo {axis} não consegue ler e não é desenhada: {list} | {n} entradas têm uma posição que este eixo {axis} não consegue ler e não são desenhadas: {list}",
+      "empty": "Esta linha do tempo não tem entradas que possam ser colocadas em seu eixo.",
+      "now": "agora",
+      "lane": "raia: {name}",
+      "inside": "dentro: {name}",
+      "bound": {
+        "start": "início",
+        "end": "fim",
+        "between": "{what} entre {earliest} e {latest}",
+        "noEarlier": "{what} não antes de {earliest}",
+        "noLater": "{what} não depois de {latest}"
+      }
+    }
+  }
+}

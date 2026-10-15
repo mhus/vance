@@ -1,0 +1,87 @@
+{
+  "wiki": {
+    "common": {
+      "saving": "正在保存…",
+      "saved": "已保存",
+      "cancel": "取消",
+      "create": "创建",
+      "creating": "正在创建…",
+      "loading": "正在加载…"
+    },
+    "app": {
+      "fallbackTitle": "维基",
+      "indexTitle": "索引",
+      "searchPlaceholder": "搜索页面…",
+      "noMatch": "无匹配页面。",
+      "createNamed": "创建页面“{name}”",
+      "createNamedInSpace": "在{space}中创建页面“{name}”",
+      "newPage": "新建页面",
+      "newShort": "新建",
+      "home": "主页 — 主页面",
+      "indexTip": "索引 — 生成的页面列表",
+      "rebuilding": "正在重建…",
+      "rebuild": "重建索引 + 反向链接",
+      "newPagePlaceholder": "新页面标题…",
+      "newPageInSpacePlaceholder": "在{space}中新建页面…",
+      "loadingWiki": "正在加载维基…",
+      "loadingPage": "正在加载页面…",
+      "missingTitle": "主页“main”尚不存在。",
+      "missingPre": "维基打开时会显示其",
+      "missingMid": "页面。立即创建它 — 或打开",
+      "indexLink": "索引",
+      "createMain": "＋ 创建“main”页面",
+      "noPageSelected": "未选择页面。使用 ＋ 新建 创建一个。",
+      "generatedBadge": "已生成 · 只读",
+      "deletePage": "删除页面",
+      "status": {
+        "edited": "已编辑",
+        "saveFailed": "保存失败"
+      },
+      "confirmDelete": "删除页面“{title}”？",
+      "confirmCreate": "页面“{name}”不存在。创建它？",
+      "confirmCreateInSpace": "页面“{name}”不存在。在空间“{space}”中创建它？",
+      "error": {
+        "scan": "无法扫描维基。",
+        "loadPage": "无法加载页面。",
+        "save": "保存失败。",
+        "openLink": "无法打开维基链接。",
+        "createMain": "无法创建主页。",
+        "rebuild": "重建失败。",
+        "titleRequired": "标题必填",
+        "createPage": "无法创建页面。",
+        "delete": "删除失败。",
+        "search": "搜索失败。"
+      }
+    },
+    "backlinks": {
+      "title": "引用此页",
+      "emptyPre": "尚无页面引用此页。使用",
+      "emptyPost": "链接，然后重建。",
+      "error": "无法加载反向链接。"
+    },
+    "notes": {
+      "title": "笔记",
+      "newNote": "新建笔记",
+      "empty": "暂无笔记。点击 ＋ 添加。",
+      "done": "完成",
+      "markDone": "标记为完成",
+      "delete": "删除",
+      "error": {
+        "load": "无法加载笔记。",
+        "add": "无法添加笔记。",
+        "update": "无法更新笔记。",
+        "delete": "无法删除笔记。"
+      }
+    },
+    "versions": {
+      "title": "版本",
+      "empty": "暂无存档版本 — 它们将在下次编辑后出现。",
+      "restore": "恢复",
+      "confirmRestore": "恢复此版本？当前内容将首先存档。",
+      "error": {
+        "load": "无法加载版本。",
+        "restore": "恢复失败。"
+      }
+    }
+  }
+}

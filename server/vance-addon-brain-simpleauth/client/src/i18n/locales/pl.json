@@ -1,0 +1,32 @@
+{
+  "simpleauth": {
+    "title": "Uprawnienia",
+    "subtitle": "Nadawaj i odbieraj role użytkownikom i zespołom.",
+    "scope": "Zakres",
+    "project": "Projekt",
+    "load": "Wczytaj",
+    "currentGrants": "Obecne uprawnienia",
+    "noGrants": "Brak uprawnień w tym zakresie.",
+    "revoke": "Odwołaj",
+    "grantHeading": "Nadaj rolę",
+    "subjectType": "Typ podmiotu",
+    "subjectId": "Nazwa użytkownika / zespołu",
+    "role": "Rola",
+    "grant": "Nadaj",
+    "required": "Zakres i podmiot są wymagane.",
+    "granted": "Nadano {role} dla {subject} „{name}”.",
+    "scopeType": {
+      "TENANT": "Tenant",
+      "PROJECT": "Projekt"
+    },
+    "subject": {
+      "USER": "Użytkownik",
+      "TEAM": "Zespół"
+    },
+    "roles": {
+      "READER": "Czytelnik",
+      "WRITER": "Edytor",
+      "ADMIN": "Administrator"
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "binder": {
+    "common": {
+      "cancel": "Cancelar",
+      "searching": "Buscando…",
+      "noHits": "No hay coincidencias."
+    },
+    "app": {
+      "fallbackTitle": "Binder",
+      "rebuildIndex": "Reconstruir índice",
+      "pin": "Anclar",
+      "filterPlaceholder": "Filtrar…",
+      "empty": "Aún no hay documentos. Usa «+ Anclar» para fijar uno.",
+      "landing": "Página de inicio",
+      "actions": "Acciones",
+      "changeSection": "Cambiar sección…",
+      "rename": "Renombrar…",
+      "setLanding": "Establecer como página de inicio",
+      "removeLanding": "Quitar página de inicio",
+      "remove": "Quitar",
+      "reload": "Recargar",
+      "editInCortex": "Editar en Cortex",
+      "goneTitle": "Este documento ya no existe",
+      "goneHint": "Quita la entrada desde el menú ⋯.",
+      "noRenderer": "No hay un renderizador de incrustaciones disponible.",
+      "pickOne": "Elige un documento a la izquierda, o ancla uno con «+ Anclar».",
+      "confirmRemove": "¿Quitar «{title}» del binder?",
+      "promptTitle": "Título a mostrar (vacío = título del documento):",
+      "promptSection": "Sección (vacío = sin sección):"
+    },
+    "picker": {
+      "title": "Anclar documento",
+      "searchPlaceholder": "Buscar por ruta o título…"
+    }
+  }
+}

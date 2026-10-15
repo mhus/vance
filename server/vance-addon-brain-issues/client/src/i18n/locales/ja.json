@@ -1,0 +1,51 @@
+{
+  "issues": {
+    "tabOpen": "開く",
+    "tabClosed": "閉じる",
+    "tabArchived": "アーカイブ済み",
+    "searchPlaceholder": "課題を検索…",
+    "untitled": "(タイトルなし)",
+    "noMatch": "一致する課題はありません。",
+    "rebuildTip": "インデックスと統計を再構築",
+    "newIssuePlaceholder": "＋ 新しい課題のタイトル…",
+    "allLabels": "すべて",
+    "loading": "読み込み中…",
+    "nothingHere": "ここには何もありません。",
+    "archived": "アーカイブ済み",
+    "state": {
+      "open": "開く",
+      "closed": "閉じる"
+    },
+    "close": "閉じる",
+    "reopen": "再度開く",
+    "archive": "アーカイブ",
+    "unarchive": "アーカイブ解除",
+    "labels": "ラベル",
+    "labelsPlaceholder": "バグ, 認証",
+    "assignee": "担当者",
+    "priority": "優先度",
+    "description": "説明",
+    "discussion": "ディスカッション ({count})",
+    "deleteComment": "削除",
+    "commentPlaceholder": "コメントを追加…",
+    "comment": "コメント",
+    "confirmDelete": "この課題を削除しますか？",
+    "status": {
+      "saving": "保存中…",
+      "saved": "保存済み",
+      "saveFailed": "保存に失敗しました"
+    },
+    "error": {
+      "scan": "課題をスキャンできませんでした。",
+      "loadIssue": "課題を読み込めませんでした。",
+      "save": "保存に失敗しました。",
+      "archive": "アーカイブに失敗しました。",
+      "delete": "削除に失敗しました。",
+      "comment": "コメントに失敗しました。",
+      "deleteComment": "コメントの削除に失敗しました。",
+      "create": "作成に失敗しました。",
+      "search": "検索に失敗しました。",
+      "rebuild": "再構築に失敗しました。"
+    }
+  }
+}

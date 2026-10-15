@@ -1,0 +1,88 @@
+{
+  "documents": {
+    "detail": {
+      "tabCanvas": "Canvas"
+    }
+  },
+  "canvas": {
+    "common": {
+      "cancel": "Cancelar",
+      "ok": "Aceptar",
+      "back": "Volver",
+      "loading": "Cargando…",
+      "searching": "Buscando…",
+      "title": "Título"
+    },
+    "board": {
+      "note": "Nota",
+      "doc": "Doc",
+      "link": "Enlace",
+      "group": "Grupo",
+      "select": "Seleccionar",
+      "selectHint": "Selecciona varios arrastrando un cuadro (o mantén Shift y arrastra)",
+      "newNote": "Nueva nota",
+      "groupDialogTitle": "Grupo",
+      "newGroupLabel": "Grupo"
+    },
+    "node": {
+      "noColour": "Sin color",
+      "textColour": "Color de texto",
+      "rename": "Renombrar",
+      "changeTarget": "Cambiar destino",
+      "copyLink": "Copiar enlace",
+      "copied": "¡Copiado!",
+      "bringToFront": "Traer al frente",
+      "sendToBack": "Enviar al fondo",
+      "delete": "Eliminar",
+      "openInCortex": "Abrir en Cortex",
+      "titlePlaceholder": "Título",
+      "emptyNote": "(nota vacía)",
+      "group": "Grupo"
+    },
+    "book": {
+      "noCanvases": "Aún no hay canvases",
+      "addCanvas": "Canvas",
+      "rebuildIndex": "Índice",
+      "saving": "Guardando…",
+      "unsaved": "Sin guardar",
+      "saved": "Guardado",
+      "newCanvas": "Nuevo canvas",
+      "empty": "Canvasbook vacío — crea uno con “+ Canvas”.",
+      "pick": "Elige un canvas."
+    },
+    "picker": {
+      "title": "Insertar referencia",
+      "tabDocument": "Documento",
+      "tabThisApp": "Esta app",
+      "tabStarred": "Favoritos",
+      "tabApps": "Aplicaciones",
+      "searchPlaceholder": "Buscar por ruta o título…",
+      "noHits": "No hay coincidencias.",
+      "filterPlaceholder": "Filtrar canvases en esta app…",
+      "appItself": "La app misma, sin un canvas específico",
+      "noCanvasMatch": "Ningún canvas coincide con el filtro.",
+      "noStarredApps": "Ninguna app en tus favoritos.",
+      "noProjectApps": "Ninguna app en este proyecto.",
+      "appItselfNoPlace": "La app misma, sin un lugar específico"
+    },
+    "edge": {
+      "title": "Editar arista",
+      "label": "Etiqueta",
+      "colour": "Color",
+      "colours": {
+        "default": "Predeterminado",
+        "red": "Rojo",
+        "orange": "Naranja",
+        "yellow": "Amarillo",
+        "green": "Verde",
+        "blue": "Azul",
+        "purple": "Morado",
+        "grey": "Gris"
+      },
+      "arrowStart": "Flecha al inicio",
+      "arrowEnd": "Flecha al final",
+      "dashed": "Discontinua",
+      "thick": "Gruesa"
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "slideshow": {
+    "position": "Slide {index} / {total}",
+    "pause": "Pausar",
+    "play": "Reproduzir ({seconds}s)",
+    "exitFullscreen": "Sair da tela cheia",
+    "fullscreen": "Tela cheia (F)",
+    "reload": "Recarregar",
+    "rebuild": "Reconstruir índice",
+    "loading": "Carregando apresentação de slides…",
+    "emptyHeadline": "Nenhum slide",
+    "emptyBody": "Envie imagens para esta pasta e clique em “Reconstruir índice” para atualizar a apresentação de slides.",
+    "prevSlide": "Slide anterior (←)",
+    "nextSlide": "Próximo slide (→)",
+    "slideNumber": "Slide {index}",
+    "error": {
+      "load": "Não foi possível carregar a apresentação de slides: {message}",
+      "rebuild": "Falha na reconstrução: {message}"
+    }
+  }
+}

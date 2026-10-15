@@ -1,0 +1,21 @@
+{
+  "slideshow": {
+    "position": "Slajd {index} / {total}",
+    "pause": "Pauza",
+    "play": "Odtwórz ({seconds}s)",
+    "exitFullscreen": "Opuść tryb pełnoekranowy",
+    "fullscreen": "Pełny ekran (F)",
+    "reload": "Przeładuj",
+    "rebuild": "Przebuduj indeks",
+    "loading": "Ładowanie pokazu slajdów…",
+    "emptyHeadline": "Brak slajdów",
+    "emptyBody": "Prześlij obrazy do tego folderu, a następnie kliknij „Przebuduj indeks”, aby odświeżyć pokaz slajdów.",
+    "prevSlide": "Poprzedni slajd (←)",
+    "nextSlide": "Następny slajd (→)",
+    "slideNumber": "Slajd {index}",
+    "error": {
+      "load": "Nie udało się załadować pokazu slajdów: {message}",
+      "rebuild": "Przebudowa nie powiodła się: {message}"
+    }
+  }
+}

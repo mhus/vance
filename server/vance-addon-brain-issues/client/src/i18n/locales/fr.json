@@ -1,0 +1,51 @@
+{
+  "issues": {
+    "tabOpen": "Ouvert",
+    "tabClosed": "Fermé",
+    "tabArchived": "Archivé",
+    "searchPlaceholder": "Rechercher des problèmes…",
+    "untitled": "(sans titre)",
+    "noMatch": "Aucun problème correspondant.",
+    "rebuildTip": "Reconstruire l'index + les statistiques",
+    "newIssuePlaceholder": "＋ Nouveau titre de problème…",
+    "allLabels": "tous",
+    "loading": "Chargement…",
+    "nothingHere": "Rien ici.",
+    "archived": "archivé",
+    "state": {
+      "open": "ouvert",
+      "closed": "fermé"
+    },
+    "close": "Fermer",
+    "reopen": "Rouvrir",
+    "archive": "Archiver",
+    "unarchive": "Désarchiver",
+    "labels": "Étiquettes",
+    "labelsPlaceholder": "bug, auth",
+    "assignee": "Responsable",
+    "priority": "Priorité",
+    "description": "Description",
+    "discussion": "Discussion ({count})",
+    "deleteComment": "Supprimer",
+    "commentPlaceholder": "Ajouter un commentaire…",
+    "comment": "Commenter",
+    "confirmDelete": "Supprimer ce problème ?",
+    "status": {
+      "saving": "Enregistrement…",
+      "saved": "Enregistré",
+      "saveFailed": "Échec de l'enregistrement"
+    },
+    "error": {
+      "scan": "Impossible de scanner les problèmes.",
+      "loadIssue": "Impossible de charger le problème.",
+      "save": "Échec de l'enregistrement.",
+      "archive": "Échec de l'archivage.",
+      "delete": "Échec de la suppression.",
+      "comment": "Échec du commentaire.",
+      "deleteComment": "Échec de la suppression du commentaire.",
+      "create": "Échec de la création.",
+      "search": "Échec de la recherche.",
+      "rebuild": "Échec de la reconstruction."
+    }
+  }
+}

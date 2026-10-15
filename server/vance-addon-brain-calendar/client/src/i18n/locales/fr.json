@@ -1,0 +1,106 @@
+{
+  "documents": {
+    "detail": {
+      "tabCalendar": "Calendrier",
+      "tabTimeline": "Chronologie",
+      "timelineParseError": "Ce document n'est pas un YAML de chronologie valide.",
+      "calendarParseError": "Ce document n'est pas un YAML de calendrier valide."
+    }
+  },
+  "calendar": {
+    "common": {
+      "cancel": "Annuler",
+      "create": "Créer",
+      "save": "Enregistrer",
+      "delete": "Supprimer"
+    },
+    "view": {
+      "viewMonth": "Mois",
+      "viewAgenda": "Agenda",
+      "today": "Aujourd'hui",
+      "empty": "Aucun événement à venir.",
+      "addToCalendar": "Ajouter au calendrier",
+      "allDay": "Toute la journée"
+    },
+    "planner": {
+      "reload": "Recharger",
+      "rebuild": "Reconstruire les artefacts",
+      "loading": "Chargement du planificateur…",
+      "eventCount": "{n} événement | {n} événements",
+      "laneCount": "{n} couloir | {n} couloirs",
+      "conflictCount": "{n} conflit | {n} conflits",
+      "overview": "Aperçu",
+      "overviewHint": "Gantt + conflits",
+      "undeclared": "non déclaré",
+      "gantt": "Gantt",
+      "ganttRenderError": "Impossible de rendre le Gantt : {message}",
+      "noGanttHeadline": "Pas encore de Gantt",
+      "noGanttBody": "Cliquez sur « Reconstruire les artefacts » pour générer le diagramme de Gantt Mermaid.",
+      "conflicts": "Conflits",
+      "noConflictsHeadline": "Aucun conflit",
+      "noConflictsBody": "Aucun événement ne se chevauche dans la fenêtre actuelle.",
+      "colEventA": "Événement A",
+      "colEventB": "Événement B",
+      "colOverlap": "Chevauchement",
+      "addEvent": "Ajouter un événement",
+      "noEventsHeadline": "Aucun événement dans ce couloir",
+      "noEventsBody": "Ajoutez le premier événement pour commencer.",
+      "allDayTag": "toute la journée",
+      "recurringTag": "récurrent",
+      "addToGoogleCalendar": "Ajouter à Google Agenda",
+      "addToOutlook": "Ajouter à Outlook",
+      "newEvent": "Nouvel événement",
+      "eventTitlePlaceholder": "Titre de l'événement",
+      "startPlaceholder": "Début (AAAA-MM-JJ ou AAAA-MM-JJTHH:mm)",
+      "endPlaceholder": "Fin (facultatif)",
+      "error": {
+        "load": "Impossible de charger le planificateur : {message}",
+        "rebuild": "La reconstruction a échoué : {message}",
+        "create": "La création a échoué : {message}",
+        "update": "La mise à jour a échoué : {message}",
+        "delete": "La suppression a échoué : {message}",
+        "mermaid": "Impossible d'extraire la source Mermaid de _gantt.md."
+      }
+    },
+    "detail": {
+      "title": "Détail de l'événement",
+      "fieldTitle": "Titre",
+      "start": "Début",
+      "startPlaceholder": "AAAA-MM-JJ[THH:mm]",
+      "end": "Fin",
+      "endPlaceholder": "(facultatif)",
+      "allDay": "Événement toute la journée",
+      "lane": "Couloir",
+      "location": "Lieu",
+      "attendees": "Participants",
+      "recurrence": "Récurrence (RRULE)",
+      "recurrencePlaceholder": "FREQ=WEEKLY;BYDAY=MO,…",
+      "tags": "Tags",
+      "notes": "Notes",
+      "addToGoogle": "Ajouter à Google",
+      "addToOutlook": "Ajouter à Outlook",
+      "source": "Source : {path}",
+      "discard": "Annuler les modifications",
+      "confirmDelete": "Supprimer l'événement « {title} » ?"
+    },
+    "timeline": {
+      "entryCount": "{n} entrée | {n} entrées",
+      "zoomOut": "Dézoomer",
+      "zoomIn": "Zoomer",
+      "fitTip": "Ajuster toutes les entrées",
+      "fit": "Ajuster",
+      "unreadable": "{n} entrée a une position que cet axe {axis} ne peut pas lire et n'est pas dessinée : {list} | {n} entrées ont une position que cet axe {axis} ne peut pas lire et ne sont pas dessinées : {list}",
+      "empty": "Cette chronologie n'a aucune entrée qui peut être placée sur son axe.",
+      "now": "maintenant",
+      "lane": "couloir : {name}",
+      "inside": "à l'intérieur : {name}",
+      "bound": {
+        "start": "début",
+        "end": "fin",
+        "between": "{what} entre {earliest} et {latest}",
+        "noEarlier": "{what} pas avant {earliest}",
+        "noLater": "{what} pas après {latest}"
+      }
+    }
+  }
+}

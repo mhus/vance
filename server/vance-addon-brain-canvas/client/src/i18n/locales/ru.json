@@ -1,0 +1,88 @@
+{
+  "documents": {
+    "detail": {
+      "tabCanvas": "Канва"
+    }
+  },
+  "canvas": {
+    "common": {
+      "cancel": "Отмена",
+      "ok": "ОК",
+      "back": "Назад",
+      "loading": "Загрузка…",
+      "searching": "Поиск…",
+      "title": "Название"
+    },
+    "board": {
+      "note": "Заметка",
+      "doc": "Документ",
+      "link": "Ссылка",
+      "group": "Группа",
+      "select": "Выбрать",
+      "selectHint": "Выделите несколько, перетащив рамку (или удерживайте Shift и перетащите)",
+      "newNote": "Новая заметка",
+      "groupDialogTitle": "Группа",
+      "newGroupLabel": "Группа"
+    },
+    "node": {
+      "noColour": "Без цвета",
+      "textColour": "Цвет текста",
+      "rename": "Переименовать",
+      "changeTarget": "Изменить цель",
+      "copyLink": "Копировать ссылку",
+      "copied": "Скопировано!",
+      "bringToFront": "На передний план",
+      "sendToBack": "На задний план",
+      "delete": "Удалить",
+      "openInCortex": "Открыть в Cortex",
+      "titlePlaceholder": "Название",
+      "emptyNote": "(пустая заметка)",
+      "group": "Группа"
+    },
+    "book": {
+      "noCanvases": "Пока нет канвасов",
+      "addCanvas": "Канва",
+      "rebuildIndex": "Индекс",
+      "saving": "Сохранение…",
+      "unsaved": "Несохранено",
+      "saved": "Сохранено",
+      "newCanvas": "Новая канва",
+      "empty": "Пустой Canvasbook — создайте канву с помощью «+ Канва».",
+      "pick": "Выберите канву."
+    },
+    "picker": {
+      "title": "Вставить ссылку",
+      "tabDocument": "Документ",
+      "tabThisApp": "Это приложение",
+      "tabStarred": "Избранное",
+      "tabApps": "Приложения",
+      "searchPlaceholder": "Поиск по пути или названию…",
+      "noHits": "Нет совпадений.",
+      "filterPlaceholder": "Фильтровать канвасы в этом приложении…",
+      "appItself": "Само приложение, без конкретной канвы",
+      "noCanvasMatch": "Нет канвасов, соответствующих фильтру.",
+      "noStarredApps": "Нет приложений в избранном.",
+      "noProjectApps": "Нет приложений в этом проекте.",
+      "appItselfNoPlace": "Само приложение, без конкретного места"
+    },
+    "edge": {
+      "title": "Редактировать связь",
+      "label": "Метка",
+      "colour": "Цвет",
+      "colours": {
+        "default": "По умолчанию",
+        "red": "Красный",
+        "orange": "Оранжевый",
+        "yellow": "Желтый",
+        "green": "Зеленый",
+        "blue": "Синий",
+        "purple": "Фиолетовый",
+        "grey": "Серый"
+      },
+      "arrowStart": "Стрелка в начале",
+      "arrowEnd": "Стрелка в конце",
+      "dashed": "Пунктирная",
+      "thick": "Толстая"
+    }
+  }
+}

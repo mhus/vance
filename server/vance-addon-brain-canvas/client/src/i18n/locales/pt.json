@@ -1,0 +1,88 @@
+{
+  "documents": {
+    "detail": {
+      "tabCanvas": "Canvas"
+    }
+  },
+  "canvas": {
+    "common": {
+      "cancel": "Cancelar",
+      "ok": "OK",
+      "back": "Voltar",
+      "loading": "Carregando…",
+      "searching": "Buscando…",
+      "title": "Título"
+    },
+    "board": {
+      "note": "Nota",
+      "doc": "Doc",
+      "link": "Link",
+      "group": "Grupo",
+      "select": "Selecionar",
+      "selectHint": "Selecione vários arrastando uma caixa (ou segure Shift e arraste)",
+      "newNote": "Nova nota",
+      "groupDialogTitle": "Grupo",
+      "newGroupLabel": "Grupo"
+    },
+    "node": {
+      "noColour": "Sem cor",
+      "textColour": "Cor do texto",
+      "rename": "Renomear",
+      "changeTarget": "Mudar destino",
+      "copyLink": "Copiar link",
+      "copied": "Copiado!",
+      "bringToFront": "Trazer para frente",
+      "sendToBack": "Enviar para trás",
+      "delete": "Excluir",
+      "openInCortex": "Abrir no Cortex",
+      "titlePlaceholder": "Título",
+      "emptyNote": "(nota vazia)",
+      "group": "Grupo"
+    },
+    "book": {
+      "noCanvases": "Nenhum canvas ainda",
+      "addCanvas": "Canvas",
+      "rebuildIndex": "Índice",
+      "saving": "Salvando…",
+      "unsaved": "Não salvo",
+      "saved": "Salvo",
+      "newCanvas": "Novo canvas",
+      "empty": "Canvasbook vazio — crie um com “+ Canvas”.",
+      "pick": "Escolha um canvas."
+    },
+    "picker": {
+      "title": "Inserir referência",
+      "tabDocument": "Documento",
+      "tabThisApp": "Este aplicativo",
+      "tabStarred": "Favoritos",
+      "tabApps": "Aplicativos",
+      "searchPlaceholder": "Buscar por caminho ou título…",
+      "noHits": "Nenhum resultado.",
+      "filterPlaceholder": "Filtrar canvases neste aplicativo…",
+      "appItself": "O próprio aplicativo, sem um canvas específico",
+      "noCanvasMatch": "Nenhum canvas corresponde ao filtro.",
+      "noStarredApps": "Nenhum aplicativo em seus favoritos.",
+      "noProjectApps": "Nenhum aplicativo neste projeto.",
+      "appItselfNoPlace": "O próprio aplicativo, sem um local específico"
+    },
+    "edge": {
+      "title": "Editar aresta",
+      "label": "Rótulo",
+      "colour": "Cor",
+      "colours": {
+        "default": "Padrão",
+        "red": "Vermelho",
+        "orange": "Laranja",
+        "yellow": "Amarelo",
+        "green": "Verde",
+        "blue": "Azul",
+        "purple": "Roxo",
+        "grey": "Cinza"
+      },
+      "arrowStart": "Seta no início",
+      "arrowEnd": "Seta no fim",
+      "dashed": "Tracejado",
+      "thick": "Espesso"
+    }
+  }
+}

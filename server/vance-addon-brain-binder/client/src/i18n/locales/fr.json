@@ -1,0 +1,36 @@
+{
+  "binder": {
+    "common": {
+      "cancel": "Annuler",
+      "searching": "Recherche…",
+      "noHits": "Aucun résultat."
+    },
+    "app": {
+      "fallbackTitle": "Classeur",
+      "rebuildIndex": "Reconstruire l'index",
+      "pin": "Épingler",
+      "filterPlaceholder": "Filtrer…",
+      "empty": "Aucun document pour l'instant. Utilisez « + Épingler » pour en ancrer un.",
+      "landing": "Page d'accueil",
+      "actions": "Actions",
+      "changeSection": "Changer de section…",
+      "rename": "Renommer…",
+      "setLanding": "Définir comme page d'accueil",
+      "removeLanding": "Supprimer la page d'accueil",
+      "remove": "Supprimer",
+      "reload": "Recharger",
+      "editInCortex": "Modifier dans Cortex",
+      "goneTitle": "Ce document n'existe plus",
+      "goneHint": "Supprimez l'entrée via le menu ⋯.",
+      "noRenderer": "Aucun moteur de rendu intégré disponible.",
+      "pickOne": "Choisissez un document à gauche, ou épinglez-en un avec « + Épingler ».",
+      "confirmRemove": "Supprimer « {title} » du classeur ?",
+      "promptTitle": "Titre d'affichage (vide = titre du document) :",
+      "promptSection": "Section (vide = aucune section) :"
+    },
+    "picker": {
+      "title": "Épingler un document",
+      "searchPlaceholder": "Rechercher par chemin ou titre…"
+    }
+  }
+}

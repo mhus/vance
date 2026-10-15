@@ -1,0 +1,88 @@
+{
+  "documents": {
+    "detail": {
+      "tabCanvas": "Canevas"
+    }
+  },
+  "canvas": {
+    "common": {
+      "cancel": "Annuler",
+      "ok": "OK",
+      "back": "Retour",
+      "loading": "Chargement…",
+      "searching": "Recherche…",
+      "title": "Titre"
+    },
+    "board": {
+      "note": "Note",
+      "doc": "Doc",
+      "link": "Lien",
+      "group": "Groupe",
+      "select": "Sélectionner",
+      "selectHint": "Sélectionnez plusieurs éléments en faisant glisser une boîte (ou maintenez Shift et faites glisser)",
+      "newNote": "Nouvelle note",
+      "groupDialogTitle": "Groupe",
+      "newGroupLabel": "Groupe"
+    },
+    "node": {
+      "noColour": "Aucune couleur",
+      "textColour": "Couleur du texte",
+      "rename": "Renommer",
+      "changeTarget": "Changer la cible",
+      "copyLink": "Copier le lien",
+      "copied": "Copié !",
+      "bringToFront": "Mettre au premier plan",
+      "sendToBack": "Mettre à l'arrière-plan",
+      "delete": "Supprimer",
+      "openInCortex": "Ouvrir dans Cortex",
+      "titlePlaceholder": "Titre",
+      "emptyNote": "(note vide)",
+      "group": "Groupe"
+    },
+    "book": {
+      "noCanvases": "Aucun canevas pour l'instant",
+      "addCanvas": "Canevas",
+      "rebuildIndex": "Index",
+      "saving": "Enregistrement…",
+      "unsaved": "Non enregistré",
+      "saved": "Enregistré",
+      "newCanvas": "Nouveau canevas",
+      "empty": "Canevasbook vide — créez-en un avec « + Canevas ».",
+      "pick": "Choisissez un canevas."
+    },
+    "picker": {
+      "title": "Insérer une référence",
+      "tabDocument": "Document",
+      "tabThisApp": "Cette application",
+      "tabStarred": "Favoris",
+      "tabApps": "Applications",
+      "searchPlaceholder": "Rechercher par chemin ou titre…",
+      "noHits": "Aucun résultat.",
+      "filterPlaceholder": "Filtrer les canevas dans cette application…",
+      "appItself": "L'application elle-même, sans canevas spécifique",
+      "noCanvasMatch": "Aucun canevas ne correspond au filtre.",
+      "noStarredApps": "Aucune application dans vos favoris.",
+      "noProjectApps": "Aucune application dans ce projet.",
+      "appItselfNoPlace": "L'application elle-même, sans emplacement spécifique"
+    },
+    "edge": {
+      "title": "Modifier l'arête",
+      "label": "Étiquette",
+      "colour": "Couleur",
+      "colours": {
+        "default": "Par défaut",
+        "red": "Rouge",
+        "orange": "Orange",
+        "yellow": "Jaune",
+        "green": "Vert",
+        "blue": "Bleu",
+        "purple": "Violet",
+        "grey": "Gris"
+      },
+      "arrowStart": "Flèche au début",
+      "arrowEnd": "Flèche à la fin",
+      "dashed": "Tirets",
+      "thick": "Épais"
+    }
+  }
+}

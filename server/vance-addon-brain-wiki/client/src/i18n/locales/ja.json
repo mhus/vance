@@ -1,0 +1,87 @@
+{
+  "wiki": {
+    "common": {
+      "saving": "保存中…",
+      "saved": "保存しました",
+      "cancel": "キャンセル",
+      "create": "作成",
+      "creating": "作成中…",
+      "loading": "読み込み中…"
+    },
+    "app": {
+      "fallbackTitle": "Wiki",
+      "indexTitle": "インデックス",
+      "searchPlaceholder": "ページを検索…",
+      "noMatch": "一致するページはありません。",
+      "createNamed": "ページ「{name}」を作成",
+      "createNamedInSpace": "{space}にページ「{name}」を作成",
+      "newPage": "新規ページ",
+      "newShort": "新規",
+      "home": "ホーム — メインページ",
+      "indexTip": "インデックス — 生成されたページリスト",
+      "rebuilding": "再構築中…",
+      "rebuild": "インデックスとバックリンクを再構築",
+      "newPagePlaceholder": "新規ページタイトル…",
+      "newPageInSpacePlaceholder": "{space}に新規ページ…",
+      "loadingWiki": "Wikiを読み込み中…",
+      "loadingPage": "ページを読み込み中…",
+      "missingTitle": "ホームぺージ「main」はまだ存在しません。",
+      "missingPre": "Wikiは",
+      "missingMid": "ページで開きます。今すぐ作成するか、",
+      "indexLink": "インデックス",
+      "createMain": "＋ 「main」ページを作成",
+      "noPageSelected": "ページが選択されていません。＋新規で作成してください。",
+      "generatedBadge": "生成済み・読み取り専用",
+      "deletePage": "ページを削除",
+      "status": {
+        "edited": "編集済み",
+        "saveFailed": "保存に失敗しました"
+      },
+      "confirmDelete": "ページ「{title}」を削除しますか？",
+      "confirmCreate": "ページ「{name}」は存在しません。作成しますか？",
+      "confirmCreateInSpace": "ページ「{name}」は存在しません。「{space}」スペースに作成しますか？",
+      "error": {
+        "scan": "Wikiをスキャンできませんでした。",
+        "loadPage": "ページを読み込めませんでした。",
+        "save": "保存に失敗しました。",
+        "openLink": "Wikiリンクを開けませんでした。",
+        "createMain": "メインページを作成できませんでした。",
+        "rebuild": "再構築に失敗しました。",
+        "titleRequired": "タイトルは必須です",
+        "createPage": "ページを作成できませんでした。",
+        "delete": "削除に失敗しました。",
+        "search": "検索に失敗しました。"
+      }
+    },
+    "backlinks": {
+      "title": "ここにリンクしているページ",
+      "emptyPre": "まだここにリンクしているページはありません。",
+      "emptyPost": "でリンクし、再構築してください。",
+      "error": "バックリンクを読み込めませんでした。"
+    },
+    "notes": {
+      "title": "ノート",
+      "newNote": "新規ノート",
+      "empty": "まだノートはありません。＋をクリックして追加してください。",
+      "done": "完了",
+      "markDone": "完了にする",
+      "delete": "削除",
+      "error": {
+        "load": "ノートを読み込めませんでした。",
+        "add": "ノートを追加できませんでした。",
+        "update": "ノートを更新できませんでした。",
+        "delete": "ノートを削除できませんでした。"
+      }
+    },
+    "versions": {
+      "title": "バージョン",
+      "empty": "まだアーカイブされたバージョンはありません — 次の編集後に表示されます。",
+      "restore": "復元",
+      "confirmRestore": "このバージョンを復元しますか？現在のコンテンツは最初にアーカイブされます。",
+      "error": {
+        "load": "バージョンを読み込めませんでした。",
+        "restore": "復元に失敗しました。"
+      }
+    }
+  }
+}

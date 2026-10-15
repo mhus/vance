@@ -1,0 +1,88 @@
+{
+  "documents": {
+    "detail": {
+      "tabCanvas": "キャンバス"
+    }
+  },
+  "canvas": {
+    "common": {
+      "cancel": "キャンセル",
+      "ok": "OK",
+      "back": "戻る",
+      "loading": "読み込み中…",
+      "searching": "検索中…",
+      "title": "タイトル"
+    },
+    "board": {
+      "note": "ノート",
+      "doc": "ドキュメント",
+      "link": "リンク",
+      "group": "グループ",
+      "select": "選択",
+      "selectHint": "ドラッグで範囲選択（またはShiftを押しながらドラッグ）",
+      "newNote": "新規ノート",
+      "groupDialogTitle": "グループ",
+      "newGroupLabel": "グループ"
+    },
+    "node": {
+      "noColour": "色なし",
+      "textColour": "テキストの色",
+      "rename": "名前変更",
+      "changeTarget": "ターゲットを変更",
+      "copyLink": "リンクをコピー",
+      "copied": "コピーしました！",
+      "bringToFront": "最前面へ",
+      "sendToBack": "最背面へ",
+      "delete": "削除",
+      "openInCortex": "Cortexで開く",
+      "titlePlaceholder": "タイトル",
+      "emptyNote": "（空のノート）",
+      "group": "グループ"
+    },
+    "book": {
+      "noCanvases": "まだキャンバスがありません",
+      "addCanvas": "キャンバス",
+      "rebuildIndex": "インデックス",
+      "saving": "保存中…",
+      "unsaved": "未保存",
+      "saved": "保存済み",
+      "newCanvas": "新規キャンバス",
+      "empty": "空のキャンバスブック — 「+ キャンバス」で作成してください。",
+      "pick": "キャンバスを選択してください。"
+    },
+    "picker": {
+      "title": "参照を挿入",
+      "tabDocument": "ドキュメント",
+      "tabThisApp": "このアプリ",
+      "tabStarred": "お気に入り",
+      "tabApps": "アプリケーション",
+      "searchPlaceholder": "パスまたはタイトルで検索…",
+      "noHits": "一致なし。",
+      "filterPlaceholder": "このアプリのキャンバスをフィルタリング…",
+      "appItself": "特定のキャンバスなしでアプリ自体",
+      "noCanvasMatch": "フィルターに一致するキャンバスがありません。",
+      "noStarredApps": "お気に入りのアプリがありません。",
+      "noProjectApps": "このプロジェクトにアプリがありません。",
+      "appItselfNoPlace": "特定の場所なしでアプリ自体"
+    },
+    "edge": {
+      "title": "エッジを編集",
+      "label": "ラベル",
+      "colour": "色",
+      "colours": {
+        "default": "デフォルト",
+        "red": "赤",
+        "orange": "オレンジ",
+        "yellow": "黄",
+        "green": "緑",
+        "blue": "青",
+        "purple": "紫",
+        "grey": "グレー"
+      },
+      "arrowStart": "開始に矢印",
+      "arrowEnd": "終了に矢印",
+      "dashed": "破線",
+      "thick": "太線"
+    }
+  }
+}

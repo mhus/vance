@@ -1,0 +1,98 @@
+{
+  "documents": {
+    "detail": {
+      "tabFinance": "財務"
+    }
+  },
+  "finance": {
+    "fallbackTitle": "財務ツリー",
+    "reload": "再読み込み",
+    "unit": "単位",
+    "report": "レポート",
+    "loading": "読み込み中…",
+    "createRoot": "＋ ルートノードを作成",
+    "pickNode": "編集するノードを選択してください。",
+    "save": {
+      "saved": "保存済み",
+      "dirty": "未保存",
+      "saving": "保存中…",
+      "error": "保存に失敗しました"
+    },
+    "fields": {
+      "heading": "フィールド · {name}",
+      "title": "タイトル",
+      "icon": "アイコン",
+      "color": "色",
+      "negative": "負の値（サブツリーを反転）",
+      "description": "説明",
+      "notesRef": "メモ参照"
+    },
+    "values": {
+      "heading": "値ブロック",
+      "add": "＋ 値",
+      "amount": "金額",
+      "mode": "モード",
+      "modeRecurring": "定期",
+      "modeOneTime": "一度限り",
+      "per": "あたり",
+      "unit": "単位",
+      "date": "日付",
+      "validFrom": "有効開始日",
+      "validTo": "有効終了日",
+      "interest": "利息",
+      "rate": "利率 %",
+      "compound": "複利"
+    },
+    "perUnit": {
+      "day": "/日",
+      "week": "/週",
+      "month": "/月",
+      "year": "/年"
+    },
+    "chartType": {
+      "line": "線",
+      "bar": "棒",
+      "area": "面",
+      "scatter": "散布図"
+    },
+    "period": {
+      "day": "日",
+      "week": "週",
+      "month": "月",
+      "year": "年"
+    },
+    "reportModal": {
+      "title": "レポートを生成",
+      "processor": "プロセッサー",
+      "from": "から",
+      "to": "まで",
+      "granularity": "粒度",
+      "chartType": "チャートタイプ（シリーズ）",
+      "focus": "フォーカス（評価、任意）",
+      "persist": "ドキュメントとして保存",
+      "outputPath": "出力パス",
+      "outputPathPlaceholder": "reports/q1.chart.yaml",
+      "generating": "生成中…",
+      "generate": "生成",
+      "running": "レポートを生成中…",
+      "savedTo": "{path} に保存されました"
+    },
+    "tree": {
+      "perUnit": "{unit} あたり",
+      "addChild": "子を追加",
+      "up": "上へ",
+      "down": "下へ",
+      "indent": "インデント",
+      "outdent": "アウトデント",
+      "delete": "削除"
+    },
+    "summary": {
+      "edit": "編集",
+      "perYear": "/ 年",
+      "oneTime": "一度限り: {amount}",
+      "empty": "空です — ノードを追加するには開いてください。",
+      "modalTitle": "財務ツリー",
+      "unresolved": "財務ドキュメントを解決できません。"
+    }
+  }
+}

@@ -26,7 +26,7 @@ import {
   MIN_RATE,
   MIN_VOLUME,
 } from '@vance/shared';
-import { setUiLocale } from '@/i18n';
+import { setUiLocale, UI_LOCALES } from '@/i18n';
 import {
   EditorShell,
   type SideTab,
@@ -262,11 +262,7 @@ function asUiLevel(value: string | undefined | null): WebUiLevel {
 // UI language.
 const languageOptions = computed(() => [
   { value: '', label: t('profile.preferences.languageBrowserDefault') },
-  { value: 'de', label: 'Deutsch' },
-  { value: 'en', label: 'English' },
-  { value: 'fr', label: 'Français' },
-  { value: 'es', label: 'Español' },
-  { value: 'it', label: 'Italiano' },
+  ...UI_LOCALES.map((l) => ({ value: l.code, label: l.label })),
 ]);
 
 // Chat language ("not set" → no user-level value → cascade falls
@@ -401,7 +397,7 @@ async function onLanguageChanged(value: string | null): Promise<void> {
     // {@link getActiveLanguage} sees the new value on the next read.
     // Switch the live i18n locale here so the page re-renders in the
     // newly chosen language right away.
-    setUiLocale(next === '' ? null : next);
+    await setUiLocale(next === '' ? null : next);
     languageSaved.value = t('profile.preferences.languageSaved');
   }
 }

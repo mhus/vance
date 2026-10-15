@@ -1,0 +1,9 @@
+{
+  "desktop": {
+    "refresh": "Odśwież",
+    "emptyHeadline": "Brak aplikacji",
+    "emptyBody": "Dodaj aplikację do tego folderu, a następnie odśwież.",
+    "open": "Otwórz",
+    "openInNewWindow": "Otwórz w nowym oknie"
+  }
+}

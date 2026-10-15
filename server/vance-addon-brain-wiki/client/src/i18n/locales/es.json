@@ -1,0 +1,87 @@
+{
+  "wiki": {
+    "common": {
+      "saving": "Guardando…",
+      "saved": "Guardado",
+      "cancel": "Cancelar",
+      "create": "Crear",
+      "creating": "Creando…",
+      "loading": "Cargando…"
+    },
+    "app": {
+      "fallbackTitle": "Wiki",
+      "indexTitle": "Índice",
+      "searchPlaceholder": "Buscar páginas…",
+      "noMatch": "Ninguna página coincide.",
+      "createNamed": "Crear página “{name}”",
+      "createNamedInSpace": "Crear página “{name}” en {space}",
+      "newPage": "Nueva página",
+      "newShort": "Nueva",
+      "home": "Inicio — página principal",
+      "indexTip": "Índice — lista de páginas generada",
+      "rebuilding": "Reconstruyendo…",
+      "rebuild": "Reconstruir índices + enlaces inversos",
+      "newPagePlaceholder": "Título de la nueva página…",
+      "newPageInSpacePlaceholder": "Nueva página en {space}…",
+      "loadingWiki": "Cargando wiki…",
+      "loadingPage": "Cargando página…",
+      "missingTitle": "La página de inicio “main” aún no existe.",
+      "missingPre": "Una wiki se abre en su página de",
+      "missingMid": "inicio. Créala ahora — o abre el",
+      "indexLink": "índice",
+      "createMain": "＋ Crear página “main”",
+      "noPageSelected": "Ninguna página seleccionada. Crea una con ＋ Nueva.",
+      "generatedBadge": "generado · solo lectura",
+      "deletePage": "Eliminar página",
+      "status": {
+        "edited": "Editado",
+        "saveFailed": "Error al guardar"
+      },
+      "confirmDelete": "¿Eliminar página “{title}”?",
+      "confirmCreate": "La página “{name}” no existe. ¿Crearla?",
+      "confirmCreateInSpace": "La página “{name}” no existe. ¿Crearla en el espacio “{space}”?",
+      "error": {
+        "scan": "No se pudo escanear la wiki.",
+        "loadPage": "No se pudo cargar la página.",
+        "save": "Error al guardar.",
+        "openLink": "No se pudo abrir el enlace de la wiki.",
+        "createMain": "No se pudo crear la página principal.",
+        "rebuild": "Error al reconstruir.",
+        "titleRequired": "Título requerido",
+        "createPage": "No se pudo crear la página.",
+        "delete": "Error al eliminar.",
+        "search": "Error al buscar."
+      }
+    },
+    "backlinks": {
+      "title": "Qué enlaza aquí",
+      "emptyPre": "Ninguna página enlaza aquí todavía. Enlaza con",
+      "emptyPost": ", luego reconstruye.",
+      "error": "No se pudieron cargar los enlaces inversos."
+    },
+    "notes": {
+      "title": "Notas",
+      "newNote": "Nueva nota",
+      "empty": "Aún no hay notas. Haz clic en ＋ para añadir una.",
+      "done": "Hecho",
+      "markDone": "Marcar como hecho",
+      "delete": "Eliminar",
+      "error": {
+        "load": "No se pudieron cargar las notas.",
+        "add": "No se pudo añadir la nota.",
+        "update": "No se pudo actualizar la nota.",
+        "delete": "No se pudo eliminar la nota."
+      }
+    },
+    "versions": {
+      "title": "Versiones",
+      "empty": "Aún no hay versiones archivadas — aparecerán después de la próxima edición.",
+      "restore": "Restaurar",
+      "confirmRestore": "¿Restaurar esta versión? El contenido actual se archiva primero.",
+      "error": {
+        "load": "No se pudieron cargar las versiones.",
+        "restore": "Error al restaurar."
+      }
+    }
+  }
+}

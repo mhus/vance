@@ -1,0 +1,36 @@
+{
+  "binder": {
+    "common": {
+      "cancel": "取消",
+      "searching": "正在搜索…",
+      "noHits": "无匹配项。"
+    },
+    "app": {
+      "fallbackTitle": "Binder",
+      "rebuildIndex": "重建索引",
+      "pin": "固定",
+      "filterPlaceholder": "筛选…",
+      "empty": "暂无文档。使用“+ 固定”来固定一个。",
+      "landing": "起始页",
+      "actions": "操作",
+      "changeSection": "更改分区…",
+      "rename": "重命名…",
+      "setLanding": "设为起始页",
+      "removeLanding": "移除起始页",
+      "remove": "移除",
+      "reload": "重新加载",
+      "editInCortex": "在 Cortex 中编辑",
+      "goneTitle": "此文档已不存在",
+      "goneHint": "从 ⋯ 菜单中移除此条目。",
+      "noRenderer": "无可用嵌入渲染器。",
+      "pickOne": "在左侧选择一个文档，或使用“+ 固定”固定一个。",
+      "confirmRemove": "从 Binder 中移除“{title}”？",
+      "promptTitle": "显示标题（留空 = 文档标题）：",
+      "promptSection": "分区（留空 = 无分区）："
+    },
+    "picker": {
+      "title": "固定文档",
+      "searchPlaceholder": "按路径或标题搜索…"
+    }
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "journal": {
+    "today": "今天",
+    "searchPlaceholder": "搜索条目…",
+    "untitled": "（无标题）",
+    "noMatch": "无匹配条目。",
+    "rebuilding": "正在重建…",
+    "rebuildTip": "重建索引 + 统计",
+    "statEntries": "条目",
+    "statDayStreak": "天连击",
+    "statLongest": "最长",
+    "loading": "正在加载日志…",
+    "loadingEntry": "正在加载条目…",
+    "badgeNew": "新",
+    "moodPlaceholder": "心情…",
+    "deleteEntry": "删除条目",
+    "tagsPlaceholder": "标签，逗号，分隔",
+    "pickDay": "在日历中选择一天。",
+    "onThisDay": "历史上的今天",
+    "nothingEarlier": "往年无记录。",
+    "status": {
+      "edited": "已编辑",
+      "saving": "正在保存…",
+      "saved": "已保存"
+    },
+    "confirmDelete": "删除 {date} 的条目？",
+    "error": {
+      "scan": "无法扫描日志。",
+      "delete": "删除失败。",
+      "search": "搜索失败。",
+      "rebuild": "重建失败。"
+    }
+  }
+}

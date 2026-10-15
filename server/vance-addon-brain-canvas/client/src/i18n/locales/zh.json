@@ -1,0 +1,88 @@
+{
+  "documents": {
+    "detail": {
+      "tabCanvas": "画布"
+    }
+  },
+  "canvas": {
+    "common": {
+      "cancel": "取消",
+      "ok": "确定",
+      "back": "返回",
+      "loading": "加载中…",
+      "searching": "搜索中…",
+      "title": "标题"
+    },
+    "board": {
+      "note": "便笺",
+      "doc": "文档",
+      "link": "链接",
+      "group": "分组",
+      "select": "选择",
+      "selectHint": "拖动框选（或按住 Shift 拖动）以选择多个",
+      "newNote": "新建便笺",
+      "groupDialogTitle": "分组",
+      "newGroupLabel": "分组"
+    },
+    "node": {
+      "noColour": "无颜色",
+      "textColour": "文本颜色",
+      "rename": "重命名",
+      "changeTarget": "更改目标",
+      "copyLink": "复制链接",
+      "copied": "已复制！",
+      "bringToFront": "置于顶层",
+      "sendToBack": "置于底层",
+      "delete": "删除",
+      "openInCortex": "在 Cortex 中打开",
+      "titlePlaceholder": "标题",
+      "emptyNote": "（空便笺）",
+      "group": "分组"
+    },
+    "book": {
+      "noCanvases": "暂无画布",
+      "addCanvas": "画布",
+      "rebuildIndex": "索引",
+      "saving": "保存中…",
+      "unsaved": "未保存",
+      "saved": "已保存",
+      "newCanvas": "新建画布",
+      "empty": "空画布集 — 使用“+ 画布”创建一个。",
+      "pick": "选择一个画布。"
+    },
+    "picker": {
+      "title": "插入引用",
+      "tabDocument": "文档",
+      "tabThisApp": "此应用",
+      "tabStarred": "已收藏",
+      "tabApps": "应用程序",
+      "searchPlaceholder": "按路径或标题搜索…",
+      "noHits": "无匹配项。",
+      "filterPlaceholder": "在此应用中筛选画布…",
+      "appItself": "应用本身，不指定画布",
+      "noCanvasMatch": "无画布符合筛选条件。",
+      "noStarredApps": "您的收藏夹中没有应用。",
+      "noProjectApps": "此项目中没有应用。",
+      "appItselfNoPlace": "应用本身，不指定位置"
+    },
+    "edge": {
+      "title": "编辑边缘",
+      "label": "标签",
+      "colour": "颜色",
+      "colours": {
+        "default": "默认",
+        "red": "红色",
+        "orange": "橙色",
+        "yellow": "黄色",
+        "green": "绿色",
+        "blue": "蓝色",
+        "purple": "紫色",
+        "grey": "灰色"
+      },
+      "arrowStart": "起始箭头",
+      "arrowEnd": "结束箭头",
+      "dashed": "虚线",
+      "thick": "粗线"
+    }
+  }
+}

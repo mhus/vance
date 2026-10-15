@@ -1,0 +1,56 @@
+{
+  "gtd": {
+    "common": {
+      "loading": "Carregando…",
+      "saving": "Salvando…",
+      "saved": "Salvo",
+      "saveFailed": "Falha ao salvar"
+    },
+    "bucket": {
+      "inbox": "Caixa de Entrada",
+      "today": "Hoje",
+      "upcoming": "Próximos",
+      "anytime": "Qualquer Hora",
+      "someday": "Algum Dia",
+      "trash": "Lixo"
+    },
+    "app": {
+      "searchPlaceholder": "Buscar ações…",
+      "untitled": "(sem título)",
+      "noMatch": "Nenhuma ação correspondente.",
+      "rebuildTip": "Reconstruir visualizações — move ações concluídas para o Lixo",
+      "projects": "Projetos",
+      "contexts": "Contextos",
+      "capturePlaceholder": "＋ Capturar para a Caixa de Entrada…",
+      "nothingHere": "Nada aqui.",
+      "bucketLabel": "Balde",
+      "whenHint": "quando:",
+      "anytimeValue": "(qualquer hora)",
+      "project": "Projeto",
+      "noProject": "(nenhum projeto)",
+      "newProject": "＋ Novo projeto…",
+      "deadline": "Prazo",
+      "contextsPlaceholder": "@ligações, @casa",
+      "done": "Concluído",
+      "deleteForGood": "Excluir permanentemente",
+      "moveToTrash": "Mover para o Lixo",
+      "note": "Nota",
+      "promptUpcoming": "Data futura (aaaa-MM-dd):",
+      "promptNewProject": "Nome do novo projeto:",
+      "confirmDelete": "Excluir esta ação permanentemente? Esta ação não pode ser desfeita aqui.",
+      "error": {
+        "scan": "Não foi possível escanear a pasta GTD.",
+        "loadAction": "Não foi possível carregar a ação.",
+        "save": "Falha ao salvar.",
+        "update": "Falha ao atualizar.",
+        "move": "Falha ao mover.",
+        "refile": "Falha ao arquivar novamente.",
+        "delete": "Falha ao excluir.",
+        "reorder": "Falha ao reordenar.",
+        "capture": "Falha ao capturar.",
+        "search": "Falha na busca.",
+        "rebuild": "Falha ao reconstruir."
+      }
+    }
+  }
+}

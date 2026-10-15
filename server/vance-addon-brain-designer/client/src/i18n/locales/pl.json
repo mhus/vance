@@ -1,0 +1,64 @@
+{
+  "designer": {
+    "loading": "Ładowanie projektów…",
+    "designs": "{count} projekt | {count} projekty | {count} projektów",
+    "files": "{count} plik | {count} pliki | {count} plików",
+    "create": "Nowy projekt",
+    "createTitle": "Nowy projekt",
+    "nameLabel": "Nazwa",
+    "namePlaceholder": "landing-page",
+    "nameHelp": "Nazwa folderu — litery, cyfry, myślniki. Stanie się <nazwa>/index.html.",
+    "titleLabel": "Tytuł",
+    "titlePlaceholder": "Wyświetlany na karcie",
+    "descriptionLabel": "Opis",
+    "editMeta": "Edytuj tytuł i opis",
+    "editTitle": "Edytuj projekt",
+    "save": "Zapisz",
+    "cancel": "Anuluj",
+    "deleteDesign": "Usuń",
+    "deleteTitle": "Usuń projekt",
+    "deleteConfirm": "Usunąć projekt „{name}” i wszystkie jego pliki?",
+    "deleteTrashNote": "Pliki zostaną przeniesione do kosza — można je stamtąd odzyskać.",
+    "dragHandle": "Przeciągnij, aby zmienić kolejność · kliknij, aby wyświetlić podgląd",
+    "theme": {
+      "auto": "Zgodnie z systemem (dzień/noc)",
+      "light": "Wymuś dzień (jasny)",
+      "dark": "Wymuś noc (ciemny)"
+    },
+    "device": {
+      "desktop": "Szerokość pulpitu",
+      "tablet": "Szerokość tabletu (820px)",
+      "phone": "Szerokość telefonu (390px)"
+    },
+    "rotate": "Obróć (pionowo/poziomo)",
+    "reload": "Przeładuj podgląd",
+    "refresh": "Odśwież katalog",
+    "previewOf": "Podgląd — {name}",
+    "emptyHeadline": "Brak projektów",
+    "emptyBody": "Kliknij „Nowy projekt”, aby utworzyć pierwszy — lub zapytaj czat („utwórz projekt landing-page w tej aplikacji”).",
+    "skills": {
+      "button": "Umiejętności projektowania",
+      "title": "Umiejętności projektowania",
+      "refresh": "Odśwież listę umiejętności",
+      "activeBadge": "aktywne",
+      "chatHint": "Aktywacje działają w otwartym czacie — aktywuj za pomocą /skill <nazwa> w edytorze.",
+      "noChatHint": "Otwórz czat, aby zobaczyć, które umiejętności projektowania są tam aktywne — bez czatu umiejętność nie ma stanu aktywacji.",
+      "emptyHeadline": "Brak umiejętności projektowania",
+      "emptyBody": "Umiejętności oznaczone jako „design” pojawiają się tutaj. Z plikiem style.css obok SKILL.md pokazują również podgląd stylu na żywo.",
+      "previewOf": "Podgląd stylu — {name}",
+      "noStyle": "Brak style.css — brak podglądu",
+      "play": "Aktywuj w czacie — wstawia „/skill <nazwa>” do edytora",
+      "clear": "Dezaktywuj w czacie",
+      "recipeBound": "Związane z Recipe — konfiguracja czatu jest właścicielem tej aktywacji",
+      "error": {
+        "load": "Nie udało się załadować umiejętności projektowania: {message}",
+        "clear": "Nie udało się dezaktywować umiejętności: {message}"
+      }
+    },
+    "error": {
+      "load": "Nie udało się załadować projektów: {message}",
+      "mint": "Nie udało się otworzyć sesji podglądu: {message}",
+      "mutate": "Zmiana nie powiodła się: {message}"
+    }
+  }
+}

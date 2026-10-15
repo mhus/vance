@@ -1,0 +1,60 @@
+{
+  "kanban": {
+    "common": {
+      "cancel": "Cancelar",
+      "create": "Crear",
+      "delete": "Eliminar",
+      "done": "Hecho"
+    },
+    "board": {
+      "cardCount": "{n} tarjeta | {n} tarjetas",
+      "columnCount": "{n} columna | {n} columnas",
+      "reload": "Recargar",
+      "rebuild": "Reconstruir artefactos",
+      "loading": "Cargando tablero…",
+      "emptyHeadline": "Aún no hay columnas",
+      "emptyBody": "Añade columnas a _app.yaml para empezar a usar este tablero.",
+      "undeclared": "no declarado",
+      "addCard": "Añadir tarjeta",
+      "blocked": "bloqueado",
+      "newCard": "Nueva tarjeta",
+      "cardTitlePlaceholder": "Título de la tarjeta",
+      "assigneePlaceholder": "Asignado (opcional)",
+      "dueDatePlaceholder": "Fecha de vencimiento AAAA-MM-DD (opcional)",
+      "error": {
+        "load": "No se pudo cargar el tablero: {message}",
+        "rebuild": "Fallo al reconstruir: {message}",
+        "move": "Fallo al mover: {message}",
+        "delete": "Fallo al eliminar: {message}",
+        "create": "Fallo al crear: {message}"
+      }
+    },
+    "priority": {
+      "none": "Sin prioridad",
+      "low": "Baja",
+      "med": "Media",
+      "high": "Alta",
+      "critical": "Crítica"
+    },
+    "detail": {
+      "title": "Detalle de la tarjeta",
+      "fieldTitle": "Título",
+      "priority": "Prioridad",
+      "assignee": "Asignado",
+      "dueDate": "Fecha de vencimiento",
+      "dueDatePlaceholder": "AAAA-MM-DD",
+      "estimate": "Estimación",
+      "labels": "Etiquetas",
+      "blocked": "Bloqueado",
+      "color": "Color",
+      "editContent": "Editar contenido…",
+      "contentTitle": "Contenido de la tarjeta",
+      "confirmDelete": "¿Eliminar tarjeta “{title}”?",
+      "status": {
+        "edited": "Editado",
+        "saving": "Guardando…",
+        "saved": "Guardado"
+      }
+    }
+  }
+}

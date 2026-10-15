@@ -1,0 +1,98 @@
+{
+  "documents": {
+    "detail": {
+      "tabFinance": "Finanças"
+    }
+  },
+  "finance": {
+    "fallbackTitle": "Árvore financeira",
+    "reload": "Recarregar",
+    "unit": "Unidade",
+    "report": "Relatório",
+    "loading": "Carregando…",
+    "createRoot": "＋ Criar nó raiz",
+    "pickNode": "Selecione um nó para editá-lo.",
+    "save": {
+      "saved": "salvo",
+      "dirty": "não salvo",
+      "saving": "salvando…",
+      "error": "falha ao salvar"
+    },
+    "fields": {
+      "heading": "Campos · {name}",
+      "title": "Título",
+      "icon": "Ícone",
+      "color": "Cor",
+      "negative": "negativo (inverte subárvore)",
+      "description": "Descrição",
+      "notesRef": "Ref. de notas"
+    },
+    "values": {
+      "heading": "Blocos de valor",
+      "add": "＋ valor",
+      "amount": "Valor",
+      "mode": "Modo",
+      "modeRecurring": "recorrente",
+      "modeOneTime": "único",
+      "per": "por",
+      "unit": "unidade",
+      "date": "data",
+      "validFrom": "válido de",
+      "validTo": "válido até",
+      "interest": "juros",
+      "rate": "taxa %",
+      "compound": "composto"
+    },
+    "perUnit": {
+      "day": "/dia",
+      "week": "/semana",
+      "month": "/mês",
+      "year": "/ano"
+    },
+    "chartType": {
+      "line": "linha",
+      "bar": "barra",
+      "area": "área",
+      "scatter": "dispersão"
+    },
+    "period": {
+      "day": "dia",
+      "week": "semana",
+      "month": "mês",
+      "year": "ano"
+    },
+    "reportModal": {
+      "title": "Gerar relatório",
+      "processor": "Processador",
+      "from": "de",
+      "to": "até",
+      "granularity": "granularidade",
+      "chartType": "tipo de gráfico (série)",
+      "focus": "foco (avaliação, opcional)",
+      "persist": "salvar como documento",
+      "outputPath": "caminho de saída",
+      "outputPathPlaceholder": "reports/q1.chart.yaml",
+      "generating": "Gerando…",
+      "generate": "Gerar",
+      "running": "Gerando relatório…",
+      "savedTo": "Salvo em {path}"
+    },
+    "tree": {
+      "perUnit": "por {unit}",
+      "addChild": "Adicionar filho",
+      "up": "Para cima",
+      "down": "Para baixo",
+      "indent": "Recuar",
+      "outdent": "Remover recuo",
+      "delete": "Excluir"
+    },
+    "summary": {
+      "edit": "Editar",
+      "perYear": "/ ano",
+      "oneTime": "único: {amount}",
+      "empty": "Vazio — abra para adicionar nós.",
+      "modalTitle": "Árvore financeira",
+      "unresolved": "Não é possível resolver o documento financeiro."
+    }
+  }
+}

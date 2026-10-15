@@ -1,0 +1,106 @@
+{
+  "documents": {
+    "detail": {
+      "tabCalendar": "カレンダー",
+      "tabTimeline": "タイムライン",
+      "timelineParseError": "このドキュメントは有効なタイムラインYAMLではありません。",
+      "calendarParseError": "このドキュメントは有効なカレンダーYAMLではありません。"
+    }
+  },
+  "calendar": {
+    "common": {
+      "cancel": "キャンセル",
+      "create": "作成",
+      "save": "保存",
+      "delete": "削除"
+    },
+    "view": {
+      "viewMonth": "月",
+      "viewAgenda": "予定リスト",
+      "today": "今日",
+      "empty": "今後のイベントはありません。",
+      "addToCalendar": "カレンダーに追加",
+      "allDay": "終日"
+    },
+    "planner": {
+      "reload": "再読み込み",
+      "rebuild": "成果物を再構築",
+      "loading": "プランナーを読み込み中…",
+      "eventCount": "イベント {n} 件",
+      "laneCount": "レーン {n} 件",
+      "conflictCount": "競合 {n} 件",
+      "overview": "概要",
+      "overviewHint": "ガントチャート + 競合",
+      "undeclared": "未宣言",
+      "gantt": "ガントチャート",
+      "ganttRenderError": "ガントチャートをレンダリングできませんでした: {message}",
+      "noGanttHeadline": "ガントチャートはまだありません",
+      "noGanttBody": "「成果物を再構築」をクリックして、Mermaidガントチャートを生成してください。",
+      "conflicts": "競合",
+      "noConflictsHeadline": "競合はありません",
+      "noConflictsBody": "現在のウィンドウでは、2つのイベントが重複していません。",
+      "colEventA": "イベントA",
+      "colEventB": "イベントB",
+      "colOverlap": "重複",
+      "addEvent": "イベントを追加",
+      "noEventsHeadline": "このレーンにイベントはありません",
+      "noEventsBody": "最初のイベントを追加して開始してください。",
+      "allDayTag": "終日",
+      "recurringTag": "繰り返し",
+      "addToGoogleCalendar": "Googleカレンダーに追加",
+      "addToOutlook": "Outlookに追加",
+      "newEvent": "新規イベント",
+      "eventTitlePlaceholder": "イベントのタイトル",
+      "startPlaceholder": "開始 (YYYY-MM-DD または YYYY-MM-DDTHH:mm)",
+      "endPlaceholder": "終了 (任意)",
+      "error": {
+        "load": "プランナーを読み込めませんでした: {message}",
+        "rebuild": "再構築に失敗しました: {message}",
+        "create": "作成に失敗しました: {message}",
+        "update": "更新に失敗しました: {message}",
+        "delete": "削除に失敗しました: {message}",
+        "mermaid": "_gantt.md からMermaidソースを抽出できませんでした。"
+      }
+    },
+    "detail": {
+      "title": "イベント詳細",
+      "fieldTitle": "タイトル",
+      "start": "開始",
+      "startPlaceholder": "YYYY-MM-DD[THH:mm]",
+      "end": "終了",
+      "endPlaceholder": "(任意)",
+      "allDay": "終日イベント",
+      "lane": "レーン",
+      "location": "場所",
+      "attendees": "参加者",
+      "recurrence": "繰り返し (RRULE)",
+      "recurrencePlaceholder": "FREQ=WEEKLY;BYDAY=MO,…",
+      "tags": "タグ",
+      "notes": "メモ",
+      "addToGoogle": "Googleに追加",
+      "addToOutlook": "Outlookに追加",
+      "source": "ソース: {path}",
+      "discard": "破棄",
+      "confirmDelete": "イベント「{title}」を削除しますか？"
+    },
+    "timeline": {
+      "entryCount": "エントリ {n} 件",
+      "zoomOut": "ズームアウト",
+      "zoomIn": "ズームイン",
+      "fitTip": "すべてのエントリをフィット",
+      "fit": "フィット",
+      "unreadable": "{axis}軸で読み取れない位置にあるエントリが{n}件あり、描画されません: {list}",
+      "empty": "このタイムラインには、軸に配置できるエントリがありません。",
+      "now": "現在",
+      "lane": "レーン: {name}",
+      "inside": "内部: {name}",
+      "bound": {
+        "start": "開始",
+        "end": "終了",
+        "between": "{earliest}から{latest}の間にある{what}",
+        "noEarlier": "{earliest}より早くない{what}",
+        "noLater": "{latest}より遅くない{what}"
+      }
+    }
+  }
+}

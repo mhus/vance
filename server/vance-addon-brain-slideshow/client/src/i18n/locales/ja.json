@@ -1,0 +1,21 @@
+{
+  "slideshow": {
+    "position": "スライド {index} / {total}",
+    "pause": "一時停止",
+    "play": "再生 ({seconds}秒)",
+    "exitFullscreen": "フルスクリーンを終了",
+    "fullscreen": "フルスクリーン (F)",
+    "reload": "再読み込み",
+    "rebuild": "インデックスを再構築",
+    "loading": "スライドショーを読み込み中…",
+    "emptyHeadline": "スライドがありません",
+    "emptyBody": "このフォルダーに画像をアップロードし、「インデックスを再構築」をクリックしてスライドショーを更新してください。",
+    "prevSlide": "前のスライド (←)",
+    "nextSlide": "次のスライド (→)",
+    "slideNumber": "スライド {index}",
+    "error": {
+      "load": "スライドショーを読み込めませんでした: {message}",
+      "rebuild": "再構築に失敗しました: {message}"
+    }
+  }
+}

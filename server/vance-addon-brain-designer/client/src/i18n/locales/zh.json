@@ -1,0 +1,64 @@
+{
+  "designer": {
+    "loading": "正在加载设计…",
+    "designs": "{count} 个设计",
+    "files": "{count} 个文件",
+    "create": "新建设计",
+    "createTitle": "新建设计",
+    "nameLabel": "名称",
+    "namePlaceholder": "landing-page",
+    "nameHelp": "文件夹名称 — 字母、数字、破折号。将成为 <name>/index.html。",
+    "titleLabel": "标题",
+    "titlePlaceholder": "显示在卡片上",
+    "descriptionLabel": "描述",
+    "editMeta": "编辑标题和描述",
+    "editTitle": "编辑设计",
+    "save": "保存",
+    "cancel": "取消",
+    "deleteDesign": "删除",
+    "deleteTitle": "删除设计",
+    "deleteConfirm": "删除设计“{name}”及其所有文件吗？",
+    "deleteTrashNote": "文件将移至回收站 — 可从那里恢复。",
+    "dragHandle": "拖动以重新排序 · 点击以预览",
+    "theme": {
+      "auto": "跟随系统（日/夜）",
+      "light": "强制日间（浅色）",
+      "dark": "强制夜间（深色）"
+    },
+    "device": {
+      "desktop": "桌面宽度",
+      "tablet": "平板宽度 (820px)",
+      "phone": "手机宽度 (390px)"
+    },
+    "rotate": "旋转（纵向/横向）",
+    "reload": "重新加载预览",
+    "refresh": "刷新目录",
+    "previewOf": "预览 — {name}",
+    "emptyHeadline": "暂无设计",
+    "emptyBody": "点击“新建设计”创建第一个 — 或在聊天中询问（“在此应用中创建 landing-page 设计”）。",
+    "skills": {
+      "button": "设计技能",
+      "title": "设计技能",
+      "refresh": "刷新技能列表",
+      "activeBadge": "活跃",
+      "chatHint": "激活存在于开放聊天中 — 在编辑器中使用 /skill <name> 激活。",
+      "noChatHint": "打开一个聊天以查看哪些设计技能在那里处于活跃状态 — 没有聊天，技能就没有激活状态。",
+      "emptyHeadline": "暂无设计技能",
+      "emptyBody": "标记为“design”的技能将显示在此处。如果其 SKILL.md 旁边有 style.css，它们还会显示实时样式预览。",
+      "previewOf": "样式预览 — {name}",
+      "noStyle": "无 style.css — 无预览",
+      "play": "在聊天中激活 — 将“/skill <name>”放入编辑器",
+      "clear": "在聊天中停用",
+      "recipeBound": "受 Recipe 绑定 — 聊天配置拥有此激活",
+      "error": {
+        "load": "无法加载设计技能：{message}",
+        "clear": "无法停用技能：{message}"
+      }
+    },
+    "error": {
+      "load": "无法加载设计：{message}",
+      "mint": "无法打开预览会话：{message}",
+      "mutate": "更改失败：{message}"
+    }
+  }
+}

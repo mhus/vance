@@ -1,0 +1,64 @@
+{
+  "designer": {
+    "loading": "Chargement des designs…",
+    "designs": "{count} design(s)",
+    "files": "{count} fichier(s)",
+    "create": "Nouveau design",
+    "createTitle": "Nouveau design",
+    "nameLabel": "Nom",
+    "namePlaceholder": "landing-page",
+    "nameHelp": "Nom du dossier — lettres, chiffres, tirets. Deviendra <name>/index.html.",
+    "titleLabel": "Titre",
+    "titlePlaceholder": "Affiché sur la carte",
+    "descriptionLabel": "Description",
+    "editMeta": "Modifier le titre et la description",
+    "editTitle": "Modifier le design",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "deleteDesign": "Supprimer",
+    "deleteTitle": "Supprimer le design",
+    "deleteConfirm": "Supprimer le design \"{name}\" et tous ses fichiers ?",
+    "deleteTrashNote": "Les fichiers sont déplacés vers la corbeille — récupérables depuis là.",
+    "dragHandle": "Faites glisser pour réorganiser · cliquez pour prévisualiser",
+    "theme": {
+      "auto": "Suivre le système (jour/nuit)",
+      "light": "Forcer le jour (clair)",
+      "dark": "Forcer la nuit (sombre)"
+    },
+    "device": {
+      "desktop": "Largeur bureau",
+      "tablet": "Largeur tablette (820px)",
+      "phone": "Largeur téléphone (390px)"
+    },
+    "rotate": "Pivoter (portrait/paysage)",
+    "reload": "Recharger l'aperçu",
+    "refresh": "Actualiser le catalogue",
+    "previewOf": "Aperçu — {name}",
+    "emptyHeadline": "Aucun design pour l'instant",
+    "emptyBody": "Cliquez sur \"Nouveau design\" pour en créer un — ou demandez au chat (\"créer un design landing-page dans cette application\").",
+    "skills": {
+      "button": "Compétences de design",
+      "title": "Compétences de design",
+      "refresh": "Actualiser la liste des compétences",
+      "activeBadge": "active",
+      "chatHint": "Les activations sont en direct dans le chat ouvert — activez avec /skill <name> dans le compositeur.",
+      "noChatHint": "Ouvrez un chat pour voir quelles compétences de design y sont actives — sans chat, une compétence n'a pas d'état d'activation.",
+      "emptyHeadline": "Aucune compétence de design",
+      "emptyBody": "Les compétences taguées \"design\" apparaissent ici. Avec un style.css à côté de leur SKILL.md, elles affichent également un aperçu de style en direct.",
+      "previewOf": "Aperçu du style — {name}",
+      "noStyle": "Pas de style.css — pas d'aperçu",
+      "play": "Activer dans le chat — insère \"/skill <name>\" dans le compositeur",
+      "clear": "Désactiver dans le chat",
+      "recipeBound": "Lié par la Recipe — la configuration du chat gère cette activation",
+      "error": {
+        "load": "Impossible de charger les compétences de design : {message}",
+        "clear": "Impossible de désactiver la compétence : {message}"
+      }
+    },
+    "error": {
+      "load": "Impossible de charger les designs : {message}",
+      "mint": "Impossible d'ouvrir une session d'aperçu : {message}",
+      "mutate": "La modification a échoué : {message}"
+    }
+  }
+}

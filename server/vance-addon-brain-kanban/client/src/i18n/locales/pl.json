@@ -1,0 +1,60 @@
+{
+  "kanban": {
+    "common": {
+      "cancel": "Anuluj",
+      "create": "Utwórz",
+      "delete": "Usuń",
+      "done": "Gotowe"
+    },
+    "board": {
+      "cardCount": "{n} karta | {n} karty | {n} kart",
+      "columnCount": "{n} kolumna | {n} kolumny | {n} kolumn",
+      "reload": "Przeładuj",
+      "rebuild": "Przebuduj artefakty",
+      "loading": "Ładowanie tablicy…",
+      "emptyHeadline": "Brak kolumn",
+      "emptyBody": "Dodaj kolumny do _app.yaml, aby zacząć używać tej tablicy.",
+      "undeclared": "niezadeklarowane",
+      "addCard": "Dodaj kartę",
+      "blocked": "zablokowane",
+      "newCard": "Nowa karta",
+      "cardTitlePlaceholder": "Tytuł karty",
+      "assigneePlaceholder": "Osoba przypisana (opcjonalnie)",
+      "dueDatePlaceholder": "Termin YYYY-MM-DD (opcjonalnie)",
+      "error": {
+        "load": "Nie udało się załadować tablicy: {message}",
+        "rebuild": "Przebudowa nie powiodła się: {message}",
+        "move": "Przeniesienie nie powiodło się: {message}",
+        "delete": "Usunięcie nie powiodło się: {message}",
+        "create": "Tworzenie nie powiodło się: {message}"
+      }
+    },
+    "priority": {
+      "none": "Brak priorytetu",
+      "low": "Niski",
+      "med": "Średni",
+      "high": "Wysoki",
+      "critical": "Krytyczny"
+    },
+    "detail": {
+      "title": "Szczegóły karty",
+      "fieldTitle": "Tytuł",
+      "priority": "Priorytet",
+      "assignee": "Osoba przypisana",
+      "dueDate": "Termin",
+      "dueDatePlaceholder": "RRRR-MM-DD",
+      "estimate": "Estymacja",
+      "labels": "Etykiety",
+      "blocked": "Zablokowane",
+      "color": "Kolor",
+      "editContent": "Edytuj zawartość…",
+      "contentTitle": "Zawartość karty",
+      "confirmDelete": "Usunąć kartę „{title}”?",
+      "status": {
+        "edited": "Edytowano",
+        "saving": "Zapisywanie…",
+        "saved": "Zapisano"
+      }
+    }
+  }
+}

@@ -1,8 +1,8 @@
-// English translations — the master locale.
-//
-// Every key that exists here MUST exist in every other locale file
-// or it falls through to this one (which is the configured
-// `fallbackLocale`). New strings always land here first.
+// English translations — the master locale and the only one maintained by
+// hand. Every other locale is generated from this file into
+// locales/<code>.json by scripts/translate-client.py (`./wb i18n`); a key
+// missing there falls through to this one (the configured `fallbackLocale`).
+// New and changed strings land here only.
 //
 // Hierarchy mirrors the editor / component the string belongs to.
 // Shared atoms live under `common.*`; per-editor blocks under

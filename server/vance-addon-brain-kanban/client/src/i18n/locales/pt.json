@@ -1,0 +1,60 @@
+{
+  "kanban": {
+    "common": {
+      "cancel": "Cancelar",
+      "create": "Criar",
+      "delete": "Excluir",
+      "done": "Concluído"
+    },
+    "board": {
+      "cardCount": "{n} cartão | {n} cartões",
+      "columnCount": "{n} coluna | {n} colunas",
+      "reload": "Recarregar",
+      "rebuild": "Reconstruir artefatos",
+      "loading": "Carregando quadro…",
+      "emptyHeadline": "Nenhuma coluna ainda",
+      "emptyBody": "Adicione colunas a _app.yaml para começar a usar este quadro.",
+      "undeclared": "não declarado",
+      "addCard": "Adicionar cartão",
+      "blocked": "bloqueado",
+      "newCard": "Novo cartão",
+      "cardTitlePlaceholder": "Título do cartão",
+      "assigneePlaceholder": "Responsável (opcional)",
+      "dueDatePlaceholder": "Data de vencimento AAAA-MM-DD (opcional)",
+      "error": {
+        "load": "Não foi possível carregar o quadro: {message}",
+        "rebuild": "Falha na reconstrução: {message}",
+        "move": "Falha ao mover: {message}",
+        "delete": "Falha ao excluir: {message}",
+        "create": "Falha ao criar: {message}"
+      }
+    },
+    "priority": {
+      "none": "Sem prioridade",
+      "low": "Baixa",
+      "med": "Média",
+      "high": "Alta",
+      "critical": "Crítica"
+    },
+    "detail": {
+      "title": "Detalhe do cartão",
+      "fieldTitle": "Título",
+      "priority": "Prioridade",
+      "assignee": "Responsável",
+      "dueDate": "Data de vencimento",
+      "dueDatePlaceholder": "AAAA-MM-DD",
+      "estimate": "Estimativa",
+      "labels": "Etiquetas",
+      "blocked": "Bloqueado",
+      "color": "Cor",
+      "editContent": "Editar conteúdo…",
+      "contentTitle": "Conteúdo do cartão",
+      "confirmDelete": "Excluir cartão “{title}”?",
+      "status": {
+        "edited": "Editado",
+        "saving": "Salvando…",
+        "saved": "Salvo"
+      }
+    }
+  }
+}

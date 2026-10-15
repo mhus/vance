@@ -1,0 +1,87 @@
+{
+  "wiki": {
+    "common": {
+      "saving": "Enregistrement…",
+      "saved": "Enregistré",
+      "cancel": "Annuler",
+      "create": "Créer",
+      "creating": "Création…",
+      "loading": "Chargement…"
+    },
+    "app": {
+      "fallbackTitle": "Wiki",
+      "indexTitle": "Index",
+      "searchPlaceholder": "Rechercher des pages…",
+      "noMatch": "Aucune page correspondante.",
+      "createNamed": "Créer la page « {name} »",
+      "createNamedInSpace": "Créer la page « {name} » dans {space}",
+      "newPage": "Nouvelle page",
+      "newShort": "Nouveau",
+      "home": "Accueil — page principale",
+      "indexTip": "Index — liste de pages générée",
+      "rebuilding": "Reconstruction…",
+      "rebuild": "Reconstruire les index + liens retours",
+      "newPagePlaceholder": "Titre de la nouvelle page…",
+      "newPageInSpacePlaceholder": "Nouvelle page dans {space}…",
+      "loadingWiki": "Chargement du wiki…",
+      "loadingPage": "Chargement de la page…",
+      "missingTitle": "La page d'accueil « main » n'existe pas encore.",
+      "missingPre": "Un wiki s'ouvre sur sa page",
+      "missingMid": ". Créez-la maintenant — ou ouvrez l'",
+      "indexLink": "index",
+      "createMain": "＋ Créer la page « main »",
+      "noPageSelected": "Aucune page sélectionnée. Créez-en une avec ＋ Nouveau.",
+      "generatedBadge": "généré · lecture seule",
+      "deletePage": "Supprimer la page",
+      "status": {
+        "edited": "Modifié",
+        "saveFailed": "Échec de l'enregistrement"
+      },
+      "confirmDelete": "Supprimer la page « {title} » ?",
+      "confirmCreate": "La page « {name} » n'existe pas. La créer ?",
+      "confirmCreateInSpace": "La page « {name} » n'existe pas. La créer dans l'espace « {space} » ?",
+      "error": {
+        "scan": "Impossible de scanner le wiki.",
+        "loadPage": "Impossible de charger la page.",
+        "save": "Échec de l'enregistrement.",
+        "openLink": "Impossible d'ouvrir le lien wiki.",
+        "createMain": "Impossible de créer la page principale.",
+        "rebuild": "Échec de la reconstruction.",
+        "titleRequired": "Titre requis",
+        "createPage": "Impossible de créer la page.",
+        "delete": "Échec de la suppression.",
+        "search": "Échec de la recherche."
+      }
+    },
+    "backlinks": {
+      "title": "Ce qui pointe ici",
+      "emptyPre": "Aucune page ne pointe ici pour l'instant. Liez avec",
+      "emptyPost": ", puis reconstruisez.",
+      "error": "Impossible de charger les liens retours."
+    },
+    "notes": {
+      "title": "Notes",
+      "newNote": "Nouvelle note",
+      "empty": "Aucune note pour l'instant. Cliquez sur ＋ pour en ajouter une.",
+      "done": "Terminé",
+      "markDone": "Marquer comme terminé",
+      "delete": "Supprimer",
+      "error": {
+        "load": "Impossible de charger les notes.",
+        "add": "Impossible d'ajouter la note.",
+        "update": "Impossible de mettre à jour la note.",
+        "delete": "Impossible de supprimer la note."
+      }
+    },
+    "versions": {
+      "title": "Versions",
+      "empty": "Aucune version archivée pour l'instant — elles apparaissent après la prochaine modification.",
+      "restore": "Restaurer",
+      "confirmRestore": "Restaurer cette version ? Le contenu actuel est d'abord archivé.",
+      "error": {
+        "load": "Impossible de charger les versions.",
+        "restore": "Échec de la restauration."
+      }
+    }
+  }
+}

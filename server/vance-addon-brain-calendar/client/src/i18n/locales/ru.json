@@ -1,0 +1,106 @@
+{
+  "documents": {
+    "detail": {
+      "tabCalendar": "Календарь",
+      "tabTimeline": "Хронология",
+      "timelineParseError": "Этот документ не является действительным YAML-файлом хронологии.",
+      "calendarParseError": "Этот документ не является действительным YAML-файлом календаря."
+    }
+  },
+  "calendar": {
+    "common": {
+      "cancel": "Отмена",
+      "create": "Создать",
+      "save": "Сохранить",
+      "delete": "Удалить"
+    },
+    "view": {
+      "viewMonth": "Месяц",
+      "viewAgenda": "Повестка дня",
+      "today": "Сегодня",
+      "empty": "Нет предстоящих событий.",
+      "addToCalendar": "Добавить в календарь",
+      "allDay": "Весь день"
+    },
+    "planner": {
+      "reload": "Обновить",
+      "rebuild": "Перестроить артефакты",
+      "loading": "Загрузка планировщика…",
+      "eventCount": "{n} событие | {n} события | {n} событий",
+      "laneCount": "{n} дорожка | {n} дорожки | {n} дорожек",
+      "conflictCount": "{n} конфликт | {n} конфликта | {n} конфликтов",
+      "overview": "Обзор",
+      "overviewHint": "Гантт + конфликты",
+      "undeclared": "необъявленный",
+      "gantt": "Гантт",
+      "ganttRenderError": "Не удалось отобразить диаграмму Ганта: {message}",
+      "noGanttHeadline": "Диаграммы Ганта пока нет",
+      "noGanttBody": "Нажмите «Перестроить артефакты», чтобы сгенерировать диаграмму Ганта Mermaid.",
+      "conflicts": "Конфликты",
+      "noConflictsHeadline": "Нет конфликтов",
+      "noConflictsBody": "В текущем окне нет пересекающихся событий.",
+      "colEventA": "Событие А",
+      "colEventB": "Событие Б",
+      "colOverlap": "Перекрытие",
+      "addEvent": "Добавить событие",
+      "noEventsHeadline": "В этой дорожке нет событий",
+      "noEventsBody": "Добавьте первое событие, чтобы начать.",
+      "allDayTag": "весь день",
+      "recurringTag": "повторяющееся",
+      "addToGoogleCalendar": "Добавить в Google Календарь",
+      "addToOutlook": "Добавить в Outlook",
+      "newEvent": "Новое событие",
+      "eventTitlePlaceholder": "Название события",
+      "startPlaceholder": "Начало (ГГГГ-ММ-ДД или ГГГГ-ММ-ДДТЧЧ:мм)",
+      "endPlaceholder": "Конец (необязательно)",
+      "error": {
+        "load": "Не удалось загрузить планировщик: {message}",
+        "rebuild": "Перестроение не удалось: {message}",
+        "create": "Создание не удалось: {message}",
+        "update": "Обновление не удалось: {message}",
+        "delete": "Удаление не удалось: {message}",
+        "mermaid": "Не удалось извлечь исходный код Mermaid из _gantt.md."
+      }
+    },
+    "detail": {
+      "title": "Детали события",
+      "fieldTitle": "Название",
+      "start": "Начало",
+      "startPlaceholder": "ГГГГ-ММ-ДД[TЧЧ:мм]",
+      "end": "Конец",
+      "endPlaceholder": "(необязательно)",
+      "allDay": "Событие на весь день",
+      "lane": "Дорожка",
+      "location": "Местоположение",
+      "attendees": "Участники",
+      "recurrence": "Повторение (RRULE)",
+      "recurrencePlaceholder": "FREQ=WEEKLY;BYDAY=MO,…",
+      "tags": "Теги",
+      "notes": "Заметки",
+      "addToGoogle": "Добавить в Google",
+      "addToOutlook": "Добавить в Outlook",
+      "source": "Источник: {path}",
+      "discard": "Отменить",
+      "confirmDelete": "Удалить событие «{title}»?"
+    },
+    "timeline": {
+      "entryCount": "{n} запись | {n} записи | {n} записей",
+      "zoomOut": "Уменьшить",
+      "zoomIn": "Увеличить",
+      "fitTip": "Подогнать все записи",
+      "fit": "Подогнать",
+      "unreadable": "{n} запись имеет позицию, которую ось {axis} не может прочитать, и не отображается: {list} | {n} записи имеют позицию, которую ось {axis} не может прочитать, и не отображаются: {list} | {n} записей имеют позицию, которую ось {axis} не может прочитать, и не отображаются: {list}",
+      "empty": "Эта хронология не содержит записей, которые можно разместить на ее оси.",
+      "now": "сейчас",
+      "lane": "дорожка: {name}",
+      "inside": "внутри: {name}",
+      "bound": {
+        "start": "начало",
+        "end": "конец",
+        "between": "{what} между {earliest} и {latest}",
+        "noEarlier": "{what} не ранее {earliest}",
+        "noLater": "{what} не позднее {latest}"
+      }
+    }
+  }
+}

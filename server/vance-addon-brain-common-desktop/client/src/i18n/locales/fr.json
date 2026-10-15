@@ -1,0 +1,9 @@
+{
+  "desktop": {
+    "refresh": "Actualiser",
+    "emptyHeadline": "Aucune application ici",
+    "emptyBody": "Ajoutez une application dans ce dossier, puis actualisez.",
+    "open": "Ouvrir",
+    "openInNewWindow": "Ouvrir dans une nouvelle fenêtre"
+  }
+}

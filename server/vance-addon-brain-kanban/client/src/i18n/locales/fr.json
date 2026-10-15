@@ -1,0 +1,60 @@
+{
+  "kanban": {
+    "common": {
+      "cancel": "Annuler",
+      "create": "Créer",
+      "delete": "Supprimer",
+      "done": "Terminé"
+    },
+    "board": {
+      "cardCount": "{n} carte | {n} cartes",
+      "columnCount": "{n} colonne | {n} colonnes",
+      "reload": "Recharger",
+      "rebuild": "Reconstruire les artefacts",
+      "loading": "Chargement du tableau…",
+      "emptyHeadline": "Aucune colonne pour l'instant",
+      "emptyBody": "Ajoutez des colonnes à _app.yaml pour commencer à utiliser ce tableau.",
+      "undeclared": "non déclaré",
+      "addCard": "Ajouter une carte",
+      "blocked": "bloqué",
+      "newCard": "Nouvelle carte",
+      "cardTitlePlaceholder": "Titre de la carte",
+      "assigneePlaceholder": "Assigné (facultatif)",
+      "dueDatePlaceholder": "Date d'échéance AAAA-MM-JJ (facultatif)",
+      "error": {
+        "load": "Impossible de charger le tableau : {message}",
+        "rebuild": "La reconstruction a échoué : {message}",
+        "move": "Le déplacement a échoué : {message}",
+        "delete": "La suppression a échoué : {message}",
+        "create": "La création a échoué : {message}"
+      }
+    },
+    "priority": {
+      "none": "Pas de priorité",
+      "low": "Basse",
+      "med": "Moyenne",
+      "high": "Haute",
+      "critical": "Critique"
+    },
+    "detail": {
+      "title": "Détail de la carte",
+      "fieldTitle": "Titre",
+      "priority": "Priorité",
+      "assignee": "Assigné",
+      "dueDate": "Date d'échéance",
+      "dueDatePlaceholder": "AAAA-MM-JJ",
+      "estimate": "Estimation",
+      "labels": "Étiquettes",
+      "blocked": "Bloqué",
+      "color": "Couleur",
+      "editContent": "Modifier le contenu…",
+      "contentTitle": "Contenu de la carte",
+      "confirmDelete": "Supprimer la carte « {title} » ?",
+      "status": {
+        "edited": "Modifié",
+        "saving": "Enregistrement…",
+        "saved": "Enregistré"
+      }
+    }
+  }
+}

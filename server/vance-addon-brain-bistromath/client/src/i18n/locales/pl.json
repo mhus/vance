@@ -1,0 +1,58 @@
+{
+  "bistromath": {
+    "app": {
+      "fallbackTitle": "Aplikacja",
+      "loads": "Ładuje ({count})",
+      "loadsTip": "{count} dokument(y) ładuje się dla tej aplikacji",
+      "rebuild": "Przebuduj",
+      "rebuildTip": "Ponownie odczytaj widoki, uruchom program ponownie",
+      "releaseDefault": "Administrator Tenant decyduje, które aplikacje mogą tu działać.",
+      "sending": "Wysyłanie…",
+      "requestRelease": "Poproś o udostępnienie",
+      "loadOrder": "Ładuje się, w tej kolejności",
+      "noProgram": "Nic — ta aplikacja nie ma programu.",
+      "surfaceWithheldPre": "Ten widok wymaga powierzchni rysowania (",
+      "surfaceWithheldMid": "), której ten Tenant nie zezwala dla tej aplikacji. Administrator Tenant decyduje o tym w",
+      "noViewHeadline": "Brak widoku",
+      "noViewBody": "Ta aplikacja jest definiowana przez jej dokumenty. Widok to dokument z `$meta.kind: app-view` — poproś o niego czat obok tego panelu lub dodaj go w {folder}."
+    },
+    "view": {
+      "fallbackTitle": "Widok",
+      "recheck": "Sprawdź ponownie",
+      "openApp": "Otwórz aplikację ↗",
+      "openAppTip": "Otwórz aplikację, do której należy ten widok",
+      "previewPre": "Podgląd — żaden program nie działa, więc wszystko powiązane z",
+      "previewMid": "jest puste, a",
+      "previewPost": "ukrywa to, co blokuje. Otwórz aplikację, aby zobaczyć ją z danymi."
+    },
+    "widget": {
+      "selectPlaceholder": "—",
+      "filterPlaceholder": "Filtruj…",
+      "tableMissingHeadline": "Brak danych do wyświetlenia",
+      "tableMissingBody": "Nic jeszcze nie zapisało `{key}` — program wypełnia to za pomocą vance.state.set('{key}', rows). Sprawdź klucz, jeśli jest to nieoczekiwane.",
+      "tableEmptyHeadline": "Brak wpisów",
+      "tableEmptyBody": "`{key}` jest puste.",
+      "filterEmptyHeadline": "Nic nie pasuje do filtra",
+      "filterEmptyBody": "{count} wiersz(e) są ukryte przez »{filter}«.",
+      "sortBy": "Sortuj według {column}",
+      "formEmptyHeadline": "Nic nie wybrano",
+      "formEmptyBody": "Kliknij wiersz w tabeli, aby go tutaj edytować.",
+      "tab": "Zakładka {number}",
+      "repeatEmptyHeadline": "Jeszcze nic tu nie ma",
+      "repeatEmptyBody": "Program nie umieścił listy w `{key}`.",
+      "embedMissingPre": "Nic do osadzenia —",
+      "embedMissingPost": "nie zawiera ścieżki dokumentu.",
+      "embedNoPath": "(brak ścieżki)",
+      "embedNoRendererPre": "Ta powierzchnia nie może renderować osadzonych dokumentów. Oznaczało:",
+      "unknownPre": "Ta kompilacja nie może renderować widżetu",
+      "unknownPost": "."
+    },
+    "details": {
+      "emptyHeadline": "Nic nie wybrano",
+      "emptyBody": "Kliknij wiersz w tabeli, aby zobaczyć go tutaj.",
+      "empty": "—",
+      "yes": "tak",
+      "no": "nie"
+    }
+  }
+}

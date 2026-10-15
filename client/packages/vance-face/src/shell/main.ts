@@ -10,7 +10,7 @@ import { bindRouter, navigateTo } from '@/platform/navigate';
 import { configureVanceNavigate } from '@vance/shared';
 import { startVersionWatch } from './versionWatch';
 import ShellApp from './ShellApp.vue';
-import { i18n } from '@/i18n';
+import { i18n, i18nReady } from '@/i18n';
 import '@/style/app.css';
 
 /**
@@ -43,6 +43,8 @@ bindRouter(router);
 configureVanceNavigate(navigateTo);
 startVersionWatch();
 
+// First paint in the user's language: the locale's messages load before mount.
+await i18nReady;
 createApp({ render: () => h(ShellApp) })
   .use(i18n)
   .use(createPinia())

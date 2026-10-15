@@ -1,0 +1,60 @@
+{
+  "kanban": {
+    "common": {
+      "cancel": "取消",
+      "create": "创建",
+      "delete": "删除",
+      "done": "完成"
+    },
+    "board": {
+      "cardCount": "{n} 张卡片 | {n} 张卡片",
+      "columnCount": "{n} 列 | {n} 列",
+      "reload": "重新加载",
+      "rebuild": "重建工件",
+      "loading": "正在加载看板…",
+      "emptyHeadline": "暂无列",
+      "emptyBody": "请在 _app.yaml 中添加列以开始使用此看板。",
+      "undeclared": "未声明",
+      "addCard": "添加卡片",
+      "blocked": "已阻止",
+      "newCard": "新卡片",
+      "cardTitlePlaceholder": "卡片标题",
+      "assigneePlaceholder": "经办人（可选）",
+      "dueDatePlaceholder": "截止日期 YYYY-MM-DD（可选）",
+      "error": {
+        "load": "无法加载看板：{message}",
+        "rebuild": "重建失败：{message}",
+        "move": "移动失败：{message}",
+        "delete": "删除失败：{message}",
+        "create": "创建失败：{message}"
+      }
+    },
+    "priority": {
+      "none": "无优先级",
+      "low": "低",
+      "med": "中",
+      "high": "高",
+      "critical": "紧急"
+    },
+    "detail": {
+      "title": "卡片详情",
+      "fieldTitle": "标题",
+      "priority": "优先级",
+      "assignee": "经办人",
+      "dueDate": "截止日期",
+      "dueDatePlaceholder": "YYYY-MM-DD",
+      "estimate": "预估",
+      "labels": "标签",
+      "blocked": "已阻止",
+      "color": "颜色",
+      "editContent": "编辑内容…",
+      "contentTitle": "卡片内容",
+      "confirmDelete": "删除卡片“{title}”？",
+      "status": {
+        "edited": "已编辑",
+        "saving": "正在保存…",
+        "saved": "已保存"
+      }
+    }
+  }
+}

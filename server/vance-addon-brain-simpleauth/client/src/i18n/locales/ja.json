@@ -1,0 +1,32 @@
+{
+  "simpleauth": {
+    "title": "権限",
+    "subtitle": "ユーザーとチームのロールを付与および取り消します。",
+    "scope": "スコープ",
+    "project": "プロジェクト",
+    "load": "読み込む",
+    "currentGrants": "現在の付与",
+    "noGrants": "このスコープには付与がありません。",
+    "revoke": "取り消す",
+    "grantHeading": "ロールを付与する",
+    "subjectType": "主体タイプ",
+    "subjectId": "ユーザー / チーム名",
+    "role": "ロール",
+    "grant": "付与する",
+    "required": "スコープと主体は必須です。",
+    "granted": "{role} を {subject} 「{name}」に付与しました。",
+    "scopeType": {
+      "TENANT": "テナント",
+      "PROJECT": "プロジェクト"
+    },
+    "subject": {
+      "USER": "ユーザー",
+      "TEAM": "チーム"
+    },
+    "roles": {
+      "READER": "閲覧者",
+      "WRITER": "編集者",
+      "ADMIN": "管理者"
+    }
+  }
+}

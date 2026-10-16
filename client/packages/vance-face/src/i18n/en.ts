@@ -630,6 +630,8 @@ export default {
       title: 'Chat',
       description:
         'Live chat with the brain over WebSocket. Pick an existing session or start a new one in any project.',
+      llmNotConfigured:
+        'No language model is configured for this tenant yet (ai.default.provider / ai.default.model) — chats will fail until an admin sets one up.',
     },
     documents: {
       title: 'Documents',

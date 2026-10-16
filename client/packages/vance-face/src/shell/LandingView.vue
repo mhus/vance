@@ -16,9 +16,10 @@
 import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { asUiLevel, getActiveUiLevel, loadAddonManifest, rankOf, type WebUiLevel } from '@/platform';
-import { EditorShell, StarredTile } from '@/components';
+import { EditorShell, StarredTile, VAlert } from '@/components';
 import { useStarredStore } from '@/starred/starredStore';
 import { editorHref } from '@/platform/editorHref';
+import { isTenantLlmConfigured } from '@/platform/llmSettings';
 
 const { t } = useI18n();
 
@@ -87,7 +88,14 @@ async function onReconcile(): Promise<void> {
   }
 }
 
+// Fresh tenants often have no default LLM yet; every chat turn then fails.
+// Only an answered "no" warns — an unknown result (failed check) stays quiet.
+const llmMissing = ref(false);
+
 onMounted(async () => {
+  void isTenantLlmConfigured().then((configured) => {
+    llmMissing.value = configured === false;
+  });
   // Re-read on every visit rather than once per session: the reader can change
   // their UI level in the profile page, which is outside this bundle and
   // returns here by a full page load — but a second tab would not.
@@ -146,6 +154,9 @@ onMounted(async () => {
             <RouterLink class="tile-row" to="/chat">
               <div class="font-semibold">{{ $t('index.chat.title') }}</div>
               <div class="text-sm opacity-70">{{ $t('index.chat.description') }}</div>
+              <VAlert v-if="llmMissing" variant="warning" class="mt-2">
+                {{ $t('index.chat.llmNotConfigured') }}
+              </VAlert>
             </RouterLink>
           </li>
           <li>

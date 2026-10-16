@@ -47,8 +47,13 @@ public class SettingsCascadeController {
      * {@link SettingService#getStringValueCascade} (which skips them
      * by design), but keeping this allowlist tight is the primary
      * defense-in-depth.
+     *
+     * <p>{@code ai.default.provider}/{@code ai.default.model} let the
+     * landing page warn when a fresh tenant has no LLM configured yet
+     * — a provider instance name and a model id, no credential.
      */
-    private static final Set<String> PUBLIC_CASCADE_KEYS = Set.of("maps.tile.url", "maps.tile.attribution");
+    private static final Set<String> PUBLIC_CASCADE_KEYS =
+            Set.of("maps.tile.url", "maps.tile.attribution", "ai.default.provider", "ai.default.model");
 
     private final SettingService settingService;
 

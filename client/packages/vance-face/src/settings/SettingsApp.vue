@@ -776,7 +776,9 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
                     <span class="truncate font-medium">{{ row.title }}</span>
                     <VBadge size="sm">{{ t(`settings.areas.inherited.${row.inherited}`) }}</VBadge>
                   </div>
-                  <div v-if="row.description" class="settings-row-sub truncate">{{ row.description }}</div>
+                </template>
+                <template v-if="row.description" #description>
+                  <div class="truncate">{{ row.description }}</div>
                 </template>
                 <VButton
                   v-if="activeArea.settingsProvider?.override"
@@ -792,8 +794,10 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
               >
                 <template #label>
                   <div class="truncate font-medium">{{ row.title }}</div>
-                  <div v-if="row.description" class="settings-row-sub truncate">{{ row.description }}</div>
-                  <div v-if="row.path" class="settings-row-sub font-mono truncate">{{ row.path }}</div>
+                </template>
+                <template v-if="row.description || row.path" #description>
+                  <div v-if="row.description" class="truncate">{{ row.description }}</div>
+                  <div v-if="row.path" class="font-mono truncate">{{ row.path }}</div>
                 </template>
                 <VIconButton
                   icon="delete"
@@ -952,7 +956,7 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
   display: flex;
   flex-direction: column;
   gap: 20px;
-  max-width: 720px;
+  max-width: 1120px;
   margin: 0 auto;
   padding: 28px 24px 48px;
 }

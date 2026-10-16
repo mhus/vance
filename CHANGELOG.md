@@ -16,10 +16,53 @@ breaking changes; a patch bump (`0.1.0` → `0.1.1`) is fixes only.
   the Business Source License 1.1, which would have converted to AGPLv3 on
   2029-06-23; releases up to and including 0.5.0 remain under BSL 1.1.
 
+- **Corporate design** — the Web-UI, the facelift shell and Bistromath apps
+  now share one set of design tokens, theme and fonts: Lucide icons instead
+  of glyphs, four button roles, grouped lists, dialogs with a common anatomy
+  and a readable dark mode (canvas included). Lint rules keep palette colours,
+  glyph icons and raw DaisyUI button classes out of the views.
+- **Settings panel** — server tools and tool templates moved from `tools.html`
+  into the settings panel; inherited entries can be overridden in place.
+  The column is wider, and the language list in the user menu is a submenu.
+- **Kit sources** — each source carries a key ring, the key is picked by
+  `keyId`; the library key ships with the brain. A malformed `kit-sources.yaml`
+  is reported when it is read.
+
 ### Added
 
 - **Source link** — the login page and the user menu link to the source code,
   as AGPLv3 §13 asks of a network service.
+- **Web-UI in nine languages** — English is the master, the other locales are
+  generated and loaded on demand.
+- **Sign in with Google** — for Google Workspace domains and for prepared Gmail
+  accounts, on `login.html` and in the native apps (iOS, desktop). Configured
+  centrally in `_vance/config/sso.yaml`; `anus sso config show|import` writes
+  it validated.
+- **MCP servers with OAuth login** — any remote MCP server can be connected,
+  with the login run by the brain (discovery, client registration, rotating
+  refresh, cross-pod).
+- **Cost budgets** — money limits per tenant and per project; every level has
+  to pass before an LLM call goes out.
+- **Leases** — Insights has a Leases tab with tenant-wide revoke; anus gained
+  lease commands.
+- **No-LLM hint** — the Chat tile warns when the tenant has no default model.
+- **Bistromath buttons** — buttons in apps carry a role
+  (primary/secondary/plain/danger).
+- **Trillian** — an allowed-models layer left blank is skipped; a setting form
+  edits the agent model allowlists.
+
+### Fixed
+
+- **SSO** — offboarding ends password sessions too; the app handoff is
+  confirmed; Google sign-in is offered for the tenant typed into the field.
+- **MCP OAuth** — issuer and resource are checked; the init request is a POST.
+- **Wonko** — questions from a worker reach the worker; a path claim beats
+  `kind=text`, an explicit `kind=text` is a decision again.
+- **Locale switching** — the latest switch wins; addon strings are loaded
+  before the first render.
+- **Setting forms** — a real `number` field type; the dead quota-preset form
+  is gone.
+- **VGroupRow** — a control inside a row no longer triggers the row.
 
 ## [0.5.0] - 2026-10-15
 

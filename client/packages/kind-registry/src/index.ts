@@ -136,8 +136,8 @@ export interface SettingsScope {
   login?: string;
 }
 
-/** One row of a settings-area entry inventory. */
-export interface SettingsDocRow {
+/** Fields every settings-area row carries, owned or inherited. */
+interface SettingsRowBase {
   /** Stable entry name (e.g. file stem) — row key. */
   name: string;
   /** Display title. */
@@ -146,20 +146,49 @@ export interface SettingsDocRow {
   description?: string;
   /** Kind id the row belongs to (the registering entry's {@link KindEntry.id}). */
   kindId: string;
-  /** Document id of the entry — loaded and edited inline by the Settings page. */
-  documentId: string;
-  /** Project the document lives in (may differ from the scope project when the provider lists inherited rows). */
+  /** Project the entry lives in ({@code _tenant} for tenant-inherited rows, the scope project for shipped defaults). */
   projectId: string;
   /** Document path, optional — location-aware views use it for warnings. */
   path?: string;
 }
 
 /**
+ * An entry that lives in the selected scope itself — a document the host
+ * opens inline, edits and deletes.
+ */
+export interface SettingsDocRow extends SettingsRowBase {
+  /** Document id of the entry — loaded and edited inline by the Settings page. */
+  documentId: string;
+  inherited?: undefined;
+}
+
+/**
+ * Where an inherited row comes from: the tenant layer ({@code _tenant})
+ * or a default the server ships (classpath). Both are outer cascade tiers
+ * the selected scope reads through but does not own.
+ */
+export type SettingsInheritedFrom = 'tenant' | 'bundled';
+
+/**
+ * An entry the scope sees through the cascade without owning it — e.g. a
+ * tenant-wide server tool, seen from a project. The host shows it with
+ * its origin, never opens or deletes it in place: the one action is
+ * {@link SettingsProvider.override}, which copies it into the scope.
+ */
+export interface SettingsInheritedRow extends SettingsRowBase {
+  /** Origin tier of the entry. */
+  inherited: SettingsInheritedFrom;
+}
+
+/** One row of a settings-area entry inventory: owned by the scope, or seen through the cascade. */
+export type SettingsAreaRow = SettingsDocRow | SettingsInheritedRow;
+
+/**
  * Contribution of a settings-doc kind: an area in the Settings page's
  * "Bereiche" tab — its entry inventory per scope, plus (optional) entry
  * creation. Opening and editing an entry is the host's job: it loads the
- * document by {@link SettingsDocRow.documentId} and renders the kind's own
- * view, so the provider supplies only the inventory, never a renderer.
+ * document by {@link SettingsDocRow.documentId} and renders the kind's
+ * own view, so the provider supplies only the inventory, never a renderer.
  *
  * <p>Deleting an entry is host-generic (document delete by id); a provider
  * that needs a different flow can hook the registry again later.
@@ -171,13 +200,26 @@ export interface SettingsProvider {
    * message catalog, so addon-registered keys work too.
    */
   titleKey: string;
-  /** Inventory for one scope. Failures should resolve to an empty list (the host shows its own error surface). */
-  list: (scope: SettingsScope) => Promise<SettingsDocRow[]>;
+  /**
+   * Inventory for one scope. Failures should resolve to an empty list (the
+   * host shows its own error surface). A provider whose kind cascades may
+   * add {@link SettingsInheritedRow}s for entries the scope only reads
+   * through — only together with {@link override}, otherwise the host has
+   * nothing to offer for them.
+   */
+  list: (scope: SettingsScope) => Promise<SettingsAreaRow[]>;
   /**
    * Creates a new entry with the given name and returns its row (the
    * host opens it right away). Omitted ⇒ the area shows no add button.
    */
   create?: (scope: SettingsScope, name: string) => Promise<SettingsDocRow>;
+  /**
+   * Copies an inherited entry into the scope — same name, the inherited
+   * content as the starting point — and returns the new local row (the
+   * host opens it right away). From then on the local copy shadows the
+   * outer one in this scope; deleting it brings the inherited one back.
+   */
+  override?: (scope: SettingsScope, row: SettingsInheritedRow) => Promise<SettingsDocRow>;
   /**
    * i18n key for a help line under the add dialog's name input — areas
    * whose name carries structure (e.g. {@code provider/model}) say so

@@ -38,8 +38,6 @@ export type StandaloneSurface =
   | 'login'
   | 'profile'
   | 'settings'
-  | 'tools'
-  | 'tool-templates'
   | 'insights'
   | 'runs'
   | 'users'

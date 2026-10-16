@@ -13,6 +13,7 @@ import {
   useConfirm,
 } from '@/components';
 import KitAdminSection from './KitAdminSection.vue';
+import ToolTemplatesSection from './ToolTemplatesSection.vue';
 import { useAdminProjects } from '@/composables/useAdminProjects';
 import { useScopeSettings } from '@/composables/useScopeSettings';
 import { useSessionGroups } from '@/composables/useSessionGroups';
@@ -517,6 +518,9 @@ function onProjectContentLanguageChanged(value: string | null): void {
 
     <!-- Kits -->
     <KitAdminSection :project-name="projectName" />
+
+    <!-- Tool templates — curated kits with an input form, applied here -->
+    <ToolTemplatesSection :project-name="projectName" />
   </div>
 
   <!-- Copy dialog: form until the copy ran, report afterwards. Both in

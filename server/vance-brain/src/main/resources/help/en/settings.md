@@ -18,13 +18,14 @@ The URL is the state: scope, tab and open entry all live in the address
 ## Tabs
 
 - **Areas** — configuration documents by topic: models, recipes,
-  schedulers, workflows, hooks, guards, prompts, themes, wizards,
-  sources and mounts. One list per area with add/delete; a click opens
-  the entry inline.
+  schedulers, server tools, workflows, hooks, guards, prompts, themes,
+  wizards, sources and mounts. One list per area with add/delete; a click
+  opens the entry inline. Where an area also lists inherited entries
+  (tenant, built-in), **Override here** copies one into this scope.
 - **Settings** — the typed setting forms (key/value with cascade
   hints: "effective from tenant").
 - **Project/Tenant** — management: properties, language, session groups,
-  kits, replication.
+  kits, tool templates, replication.
 - **Advanced** — the raw key/value editor across all layers.
 
 ## Editing an entry

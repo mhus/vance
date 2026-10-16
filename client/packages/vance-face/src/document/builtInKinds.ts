@@ -19,6 +19,13 @@ import { defineAsyncComponent } from 'vue';
 import { registerKind } from '@vance/kind-registry';
 import { parseSchedulerDoc, serializeSchedulerDoc, type SchedulerDoc } from '@/kindViews/schedulerFormCodec';
 import {
+  ServerToolParseError,
+  parseServerToolDoc,
+  serializeServerToolDoc,
+  type ServerToolDoc,
+} from '@/kindViews/serverToolCodec';
+import { SERVER_TOOL_KIND, serverToolSettingsProvider } from '@/kindViews/serverToolSettingsProvider';
+import {
   ResearchSourceParseError,
   parseResearchSourceDoc,
   serializeResearchSourceDoc,
@@ -166,6 +173,24 @@ export function registerBuiltInKinds(): void {
     // Settings 'Bereiche' area over _vance/scheduler/ — the same typed
     // form inline; manual fire and run events stay in Insights.
     settingsProvider: schedulerSettingsProvider,
+  });
+  // ── Server tool: form view over one tool document ─────────────────
+  // _vance/server-tools/<name>.yaml, cascade project → _tenant → classpath.
+  // Model = the whole YAML map (serverToolCodec); MCP servers get the
+  // structured form, the login and the connection test. The area lists
+  // inherited tools too, and overriding copies one into the scope.
+  registerKind<ServerToolDoc>({
+    id: SERVER_TOOL_KIND,
+    matches: (kind) => (kind ?? '').toLowerCase() === SERVER_TOOL_KIND,
+    parse: parseServerToolDoc,
+    serialize: serializeServerToolDoc,
+    isParseError: (e) => e instanceof ServerToolParseError,
+    tabLabelKey: 'documents.serverToolView.tabLabel',
+    parseErrorKey: 'documents.serverToolView.parseError',
+    view: defineAsyncComponent(
+      () => import('@/kindViews/ServerToolFormView.vue'),
+    ),
+    settingsProvider: serverToolSettingsProvider,
   });
   // ── Research source: form view over a source-config document ────
   // Model = the whole YAML map (researchSourceCodec): the form owns

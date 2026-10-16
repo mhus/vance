@@ -26,6 +26,8 @@ import { brainFetch, RestError } from '@vance/shared';
  */
 export function useToolTemplates(): {
   catalog: Ref<ToolTemplateCatalogEntry[]>;
+  /** The catalog is tenant-admin only — {@code true} once the brain refused it. */
+  forbidden: Ref<boolean>;
   loading: Ref<boolean>;
   busy: Ref<boolean>;
   error: Ref<string | null>;
@@ -41,6 +43,7 @@ export function useToolTemplates(): {
   ) => Promise<ToolTemplateApplyResultDto>;
 } {
   const catalog = ref<ToolTemplateCatalogEntry[]>([]);
+  const forbidden = ref(false);
   const loading = ref(false);
   const busy = ref(false);
   const error = ref<string | null>(null);
@@ -48,6 +51,7 @@ export function useToolTemplates(): {
   async function loadCatalog(): Promise<void> {
     loading.value = true;
     error.value = null;
+    forbidden.value = false;
     try {
       const res = await brainFetch<ToolTemplateCatalogDto>(
         'GET',
@@ -55,8 +59,12 @@ export function useToolTemplates(): {
       );
       catalog.value = (res.templates ?? []).slice();
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to load catalog.';
       catalog.value = [];
+      if (e instanceof RestError && e.status === 403) {
+        forbidden.value = true;
+        return;
+      }
+      error.value = e instanceof Error ? e.message : 'Failed to load catalog.';
     } finally {
       loading.value = false;
     }
@@ -116,5 +124,5 @@ export function useToolTemplates(): {
     }
   }
 
-  return { catalog, loading, busy, error, loadCatalog, describe, loadApplied, apply };
+  return { catalog, forbidden, loading, busy, error, loadCatalog, describe, loadApplied, apply };
 }

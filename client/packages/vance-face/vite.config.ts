@@ -23,7 +23,6 @@ const editorEntries = {
   // bundle cannot — see src/login/LoginApp.vue.
   login: resolve(pkgDir, 'login.html'),
   settings: resolve(pkgDir, 'settings.html'),
-  tools: resolve(pkgDir, 'tools.html'),
   insights: resolve(pkgDir, 'insights.html'),
   runs: resolve(pkgDir, 'runs.html'),
   users: resolve(pkgDir, 'users.html'),
@@ -34,7 +33,6 @@ const editorEntries = {
   // redirects the browser here.
   'oauth-consent': resolve(pkgDir, 'oauth-consent.html'),
   'oauth-providers': resolve(pkgDir, 'oauth-providers.html'),
-  'tool-templates': resolve(pkgDir, 'tool-templates.html'),
   // Generic host for federated addon "areas": addon.html?addon=<id> loads the
   // addon's ./area expose (e.g. the Simple-Auth permission-grant UI).
   addon: resolve(pkgDir, 'addon.html'),

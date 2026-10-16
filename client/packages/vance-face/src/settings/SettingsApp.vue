@@ -6,6 +6,7 @@ import {
   ProjectListSidebar,
   SettingFormView,
   VAlert,
+  VBadge,
   VButton,
   VEmptyState,
   VIcon,
@@ -24,6 +25,7 @@ import AreaEntryView from './AreaEntryView.vue';
 import ProjectTab from './ProjectTab.vue';
 import GroupCard from './GroupCard.vue';
 import TenantCard from './TenantCard.vue';
+import ToolTemplatesSection from './ToolTemplatesSection.vue';
 import { resolveSettingsHelpPath } from './settingsHelp';
 import { useProfile } from '@/composables/useProfile';
 import { useAdminProjectGroups } from '@/composables/useAdminProjectGroups';
@@ -33,7 +35,13 @@ import { recallProject, rememberProject } from '@/platform/lastProject';
 import { ensureAddonRemotesRegistered, ensureKindLoaded } from '@/platform/addonRegistry';
 import { getTenantId, listSettingForms, RestError } from '@vance/shared';
 import { brainFetch } from '@vance/shared';
-import { listSettingsKinds, type SettingsDocRow, type SettingsScope } from '@vance/kind-registry';
+import {
+  listSettingsKinds,
+  type SettingsAreaRow,
+  type SettingsDocRow,
+  type SettingsInheritedRow,
+  type SettingsScope,
+} from '@vance/kind-registry';
 import type { SettingFormSummaryDto, ProjectDto, ProjectGroupSummary } from '@vance/generated';
 import {
   parseSettingsView,
@@ -50,15 +58,16 @@ import {
  * a scope, in four tabs:
  *
  * <ul>
- *   <li><b>Bereiche</b> — settings-doc kinds (Research, …) as areas: entry
- *     inventory with add/delete; an entry opens in its kind's own view
- *     right here, inline (no Cortex round-trip).
+ *   <li><b>Bereiche</b> — settings-doc kinds (Research, Server tools, …) as
+ *     areas: entry inventory with add/delete; an entry opens in its kind's
+ *     own view right here, inline (no Cortex round-trip). Cascading kinds
+ *     also list what the scope only inherits, with "override here".
  *   <li><b>Settings</b> — the guided Setting Forms, grouped by category.
  *   <li><b>Projekt/Mandant</b> (scope-gated, not for user scopes) — the
  *     management pane port from the Scopes page: tenant and project
  *     properties, project-group and session-group admin, project copy,
- *     languages and the kit administration. Sidebar edit mode provides
- *     create + drag-and-drop move.
+ *     languages, the kit administration and the tool templates. Sidebar
+ *     edit mode provides create + drag-and-drop move.
  *   <li><b>Erweitert</b> — the free-form key/value editor.
  * </ul>
  *
@@ -117,7 +126,7 @@ const areas = ref<ReturnType<typeof listSettingsKinds>>(listSettingsKinds());
 function refreshSettingsKinds(): void {
   areas.value = listSettingsKinds();
 }
-const areaRows = ref<SettingsDocRow[]>([]);
+const areaRows = ref<SettingsAreaRow[]>([]);
 const areaLoading = ref(false);
 const areaError = ref<string | null>(null);
 /** Add-dialog state, opened from the entry list of the open area. */
@@ -219,9 +228,13 @@ const activeArea = computed(() => {
   return areas.value.find((a) => a.id === view.value.area) ?? null;
 });
 
+/** Rows the scope owns — the only ones the host opens, edits or deletes. */
+const ownedRows = computed<SettingsDocRow[]>(() =>
+  areaRows.value.filter((r): r is SettingsDocRow => !r.inherited));
+
 const activeEntry = computed<SettingsDocRow | null>(() => {
   if (!view.value.entry) return null;
-  return areaRows.value.find((r) => r.documentId === view.value.entry) ?? null;
+  return ownedRows.value.find((r) => r.documentId === view.value.entry) ?? null;
 });
 
 /** Help path for the shell's help drawer (topbar "?") — flips with the open context. */
@@ -320,7 +333,7 @@ async function loadAreaRows(): Promise<void> {
     // here is a host-side bug, but it still must not kill the tab.
     areaRows.value = await activeArea.value.settingsProvider!.list(registryScope.value);
     if (view.value.entry
-        && !areaRows.value.some((r) => r.documentId === view.value.entry)) {
+        && !ownedRows.value.some((r) => r.documentId === view.value.entry)) {
       view.value = { ...view.value, entry: null };
       replaceSettingsView(view.value);
     }
@@ -478,6 +491,33 @@ async function addEntry(): Promise<void> {
     addError.value = err instanceof RestError ? err.message : String(err);
   } finally {
     addBusy.value = false;
+  }
+}
+
+/**
+ * Copies an inherited entry into the scope and opens the copy — the one
+ * thing the scope can do with an entry it does not own.
+ */
+async function overrideEntry(row: SettingsInheritedRow): Promise<void> {
+  const provider = activeArea.value?.settingsProvider;
+  if (!provider?.override) return;
+  if (!await confirmAction({
+    message: t('settings.areas.confirmOverride', {
+      name: row.title,
+      origin: t(`settings.areas.inherited.${row.inherited}`),
+    }),
+    confirmLabel: t('settings.areas.override'),
+  })) return;
+  areaLoading.value = true;
+  areaError.value = null;
+  try {
+    const local = await provider.override(registryScope.value, row);
+    await loadAreaRows();
+    selectEntry(local.documentId);
+  } catch (err) {
+    areaError.value = err instanceof RestError ? err.message : String(err);
+  } finally {
+    areaLoading.value = false;
   }
 }
 
@@ -726,24 +766,44 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
           />
 
           <VGroup v-if="areaRows.length > 0">
-            <VGroupRow
-              v-for="row in areaRows"
-              :key="row.documentId"
-              navigates
-              @click="selectEntry(row.documentId)"
-            >
-              <template #label>
-                <div class="truncate font-medium">{{ row.title }}</div>
-                <div v-if="row.path" class="settings-row-sub font-mono truncate">{{ row.path }}</div>
-              </template>
-              <VIconButton
-                icon="delete"
-                :label="t('settings.areas.deleteEntry')"
-                size="sm"
-                danger
-                @click.stop="deleteEntry(row)"
-              />
-            </VGroupRow>
+            <template v-for="row in areaRows" :key="row.inherited ? `inherited:${row.name}` : row.documentId">
+              <!-- Inherited: seen through the cascade, owned by an outer
+                   layer. Shown with its origin; the only action is a local
+                   copy that shadows it in this scope. -->
+              <VGroupRow v-if="row.inherited">
+                <template #label>
+                  <div class="flex items-center gap-2 min-w-0">
+                    <span class="truncate font-medium">{{ row.title }}</span>
+                    <VBadge size="sm">{{ t(`settings.areas.inherited.${row.inherited}`) }}</VBadge>
+                  </div>
+                  <div v-if="row.description" class="settings-row-sub truncate">{{ row.description }}</div>
+                </template>
+                <VButton
+                  v-if="activeArea.settingsProvider?.override"
+                  variant="secondary"
+                  size="sm"
+                  @click="overrideEntry(row)"
+                >{{ t('settings.areas.override') }}</VButton>
+              </VGroupRow>
+              <VGroupRow
+                v-else
+                navigates
+                @click="selectEntry(row.documentId)"
+              >
+                <template #label>
+                  <div class="truncate font-medium">{{ row.title }}</div>
+                  <div v-if="row.description" class="settings-row-sub truncate">{{ row.description }}</div>
+                  <div v-if="row.path" class="settings-row-sub font-mono truncate">{{ row.path }}</div>
+                </template>
+                <VIconButton
+                  icon="delete"
+                  :label="t('settings.areas.deleteEntry')"
+                  size="sm"
+                  danger
+                  @click.stop="deleteEntry(row)"
+                />
+              </VGroupRow>
+            </template>
           </VGroup>
         </template>
 
@@ -820,10 +880,10 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
           @banner="banner = $event"
           @deleted="onGroupDeleted"
         />
-        <TenantCard
-          v-else-if="isTenantScope"
-          @banner="banner = $event"
-        />
+        <template v-else-if="isTenantScope">
+          <TenantCard @banner="banner = $event" />
+          <ToolTemplatesSection :project-name="TENANT_PROJECT" />
+        </template>
         <ProjectTab
           v-else
           :project-name="view.scope"

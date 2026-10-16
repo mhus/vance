@@ -20,7 +20,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * Connection test and login state of MCP server tools for the admin UI
- * ({@code tools.html}).
+ * (the server-tool form view in the Settings "Server tools" area).
  */
 @Service
 @RequiredArgsConstructor

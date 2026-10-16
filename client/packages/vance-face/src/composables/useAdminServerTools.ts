@@ -3,60 +3,36 @@ import type {
   ServerToolDto,
   ServerToolOAuthStartDto,
   ServerToolTestResultDto,
-  ServerToolWriteRequest,
   ToolTypeDto,
 } from '@vance/generated';
 import { brainFetch } from '@vance/shared';
 
 /**
- * Read + write configured server tools at one project. The
- * {@code _vance} system project is selected like any other project —
- * the editor surfaces it explicitly so tenant-wide defaults can be
- * managed without a separate admin UI.
+ * The operational side of one configured server tool — what the
+ * {@code vance-server-tool} form view needs beyond editing the document:
+ * the tool-type catalog, the cascade-resolved tool (with the caller's MCP
+ * login state), the connection test and the MCP login itself.
  *
- * <p>The cascade fallback to bundled bean tools is <b>not</b>
- * surfaced here — bean tools are not editable. Use {@code recipe_list}
- * / runtime tooling to see what bean tools are visible.
+ * <p>Editing is not here: the tool <em>is</em> its document
+ * ({@code _vance/server-tools/<name>.yaml}) and saves through the document
+ * pipeline like every settings area. Everything below acts on the
+ * <em>saved</em> state — the server resolves the tool by name.
  */
 export function useAdminServerTools(): {
-  tools: Ref<ServerToolDto[]>;
   types: Ref<ToolTypeDto[]>;
-  loading: Ref<boolean>;
+  current: Ref<ServerToolDto | null>;
   busy: Ref<boolean>;
   error: Ref<string | null>;
-  loadProject: (projectId: string) => Promise<void>;
   loadTypes: () => Promise<void>;
-  upsert: (
-    projectId: string,
-    name: string,
-    body: ServerToolWriteRequest,
-  ) => Promise<ServerToolDto>;
-  remove: (projectId: string, name: string) => Promise<void>;
+  loadOne: (projectId: string, name: string) => Promise<void>;
   test: (projectId: string, name: string) => Promise<ServerToolTestResultDto>;
   login: (projectId: string, name: string, returnTo: string) => Promise<void>;
   logout: (projectId: string, name: string) => Promise<void>;
 } {
-  const tools = ref<ServerToolDto[]>([]);
   const types = ref<ToolTypeDto[]>([]);
-  const loading = ref(false);
+  const current = ref<ServerToolDto | null>(null);
   const busy = ref(false);
   const error = ref<string | null>(null);
-
-  async function loadProject(projectId: string): Promise<void> {
-    loading.value = true;
-    error.value = null;
-    try {
-      tools.value = await brainFetch<ServerToolDto[]>(
-        'GET',
-        `admin/projects/${encodeURIComponent(projectId)}/server-tools`,
-      );
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to load server tools.';
-      tools.value = [];
-    } finally {
-      loading.value = false;
-    }
-  }
 
   async function loadTypes(): Promise<void> {
     try {
@@ -67,43 +43,16 @@ export function useAdminServerTools(): {
     }
   }
 
-  async function upsert(
-    projectId: string,
-    name: string,
-    body: ServerToolWriteRequest,
-  ): Promise<ServerToolDto> {
-    busy.value = true;
-    error.value = null;
+  async function loadOne(projectId: string, name: string): Promise<void> {
     try {
-      const saved = await brainFetch<ServerToolDto>(
-        'PUT',
-        `admin/projects/${encodeURIComponent(projectId)}/server-tools/${encodeURIComponent(name)}`,
-        { body },
-      );
-      await loadProject(projectId);
-      return saved;
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to save server tool.';
-      throw e;
-    } finally {
-      busy.value = false;
-    }
-  }
-
-  async function remove(projectId: string, name: string): Promise<void> {
-    busy.value = true;
-    error.value = null;
-    try {
-      await brainFetch<void>(
-        'DELETE',
+      current.value = await brainFetch<ServerToolDto>(
+        'GET',
         `admin/projects/${encodeURIComponent(projectId)}/server-tools/${encodeURIComponent(name)}`,
       );
-      await loadProject(projectId);
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to delete server tool.';
-      throw e;
-    } finally {
-      busy.value = false;
+    } catch {
+      // A tool the cascade does not resolve (unsaved draft, malformed
+      // body) simply has no operational state yet.
+      current.value = null;
     }
   }
 
@@ -160,7 +109,7 @@ export function useAdminServerTools(): {
         'DELETE',
         `oauth-client/mcp/connection?project=${encodeURIComponent(projectId)}&tool=${encodeURIComponent(name)}`,
       );
-      await loadProject(projectId);
+      await loadOne(projectId, name);
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Logout failed.';
       throw e;
@@ -169,5 +118,5 @@ export function useAdminServerTools(): {
     }
   }
 
-  return { tools, types, loading, busy, error, loadProject, loadTypes, upsert, remove, test, login, logout };
+  return { types, current, busy, error, loadTypes, loadOne, test, login, logout };
 }

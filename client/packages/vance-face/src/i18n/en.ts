@@ -647,11 +647,6 @@ export default {
       description:
         'Everything configurable per scope: setting forms, areas, project and tenant administration, kits.',
     },
-    tools: {
-      title: 'Server Tools',
-      description:
-        'Configure server-side tools per project. Pick a project or _vance for tenant-wide defaults.',
-    },
     insights: {
       title: 'Insights',
       description:
@@ -1426,6 +1421,10 @@ export default {
     schedulerView: {
       tabLabel: 'Scheduler',
       parseError: 'This scheduler definition is not valid YAML — fix it in the raw editor.',
+    },
+    serverToolView: {
+      tabLabel: 'Server tool',
+      parseError: 'This server tool is not valid YAML — fix it in the raw editor.',
     },
     recordsEditor: {
       addRow: 'Add row',
@@ -2375,51 +2374,22 @@ export default {
   },
 
   tools: {
-    pageTitle: 'Server Tools',
-    loading: 'Loading…',
-    tenantSystemLabel: '_tenant (system)',
-    pickAProjectHeadline: 'Pick a project',
-    pickAProjectBody: 'Click a project on the left to see its tools.',
-    sidebar: {
-      projectsHeading: 'Projects',
-      addNew: '+ New',
-      noToolsHeadline: 'No tools',
-      noToolsBody: 'Click + New to create one.',
-      disabled: 'disabled',
-      primary: 'primary',
-      deferred: 'deferred',
-    },
     detail: {
-      backToList: 'Back to list',
-      lastEdit: '· last edit {at}',
-      delete: 'Delete',
-      save: 'Save',
       tenantNote:
         'You are editing the _tenant system project — changes here are tenant-wide defaults. User projects shadow individual tools by re-creating them with the same name.',
-      cascadedFromTenant:
-        'This tool is cascaded from _tenant (tenant-wide default). Saving creates a project-specific override that shadows the tenant default only in this project.',
-      cascadedFromBundled:
-        'This tool is a built-in default (vance-defaults). Saving creates a project-specific override that shadows the default in this project.',
-    },
-    source: {
-      project: 'Project',
-      tenant: 'Tenant',
-      bundled: 'Built-in',
-    },
-    sourceTooltip: {
-      project: 'Defined directly in this project.',
-      tenant: 'Cascaded from the _tenant project.',
-      bundled: 'Built-in default from vance-defaults.',
+      draftHint:
+        'This document lies outside _vance/server-tools/ — the tool loader only reads that folder, so the tool is not active.',
     },
     cards: {
       identityTitle: 'Identity',
       parametersTitle: 'Parameters (JSON)',
       parametersHelp:
-        "Type-specific configuration. The factory's parameter schema is shown in the help panel.",
+        "Type-specific configuration. The type's parameter schema is shown below the editor.",
       labelsTitle: 'Labels',
       packTitle: 'Pack',
       packHelp:
         'Multi-tool packs (REST API, MCP server) expand into many sub-tools. The fields below configure pack-wide defaults; singleton packs (e.g. doc_lookup) ignore them.',
+      typeSchemaTitle: 'Parameter schema of this type',
     },
     fields: {
       type: 'Type',
@@ -2436,48 +2406,13 @@ export default {
       labels: 'Labels',
       labelsHelp:
         'One per line (or comma-separated). Recipes can target labels via {\'@\'}<label>.',
-    },
-    rightPanel: {
-      typeSchemaTitle: 'Type schema',
-      pickTypeHint: 'Pick a type to see its parameter schema.',
-      cascadeTitle: 'Cascade',
-      cascadeBody:
-        'At runtime tools resolve through project → _vance → built-in beans. Disabled documents stop the cascade — that\'s how you hide a system tool inside a single project.',
+      promptHint: 'Prompt hint',
+      promptHintHelp:
+        'Optional. Added to the system prompt on turns where this tool is reachable — when and how the model should use it.',
     },
     errors: {
-      typeRequired: 'Type is required.',
-      descriptionRequired: 'Description is required.',
       parametersMustBeObject: 'Parameters must be a JSON object.',
       parametersInvalidJson: 'Parameters: invalid JSON — {message}',
-      nameRequired: 'Name is required.',
-      namePattern:
-        'Name must be lower-case alphanumerics with optional "_" (snake_case).',
-      nameAlreadyExists: 'A tool named "{name}" already exists in this project.',
-      createFailed: 'Failed to create tool.',
-      urlRequired: 'Enter the http(s) URL of the MCP server.',
-    },
-    banners: {
-      saved: 'Saved.',
-      deleted: 'Deleted.',
-      created: 'Created tool "{name}". Fill in the parameters and description.',
-    },
-    confirmDelete:
-      'Delete server tool "{name}"? Bundled bean tools with the same name will become visible again through the cascade fallback.',
-    stubDescription: '{name} — TODO description',
-    newModal: {
-      title: 'New server tool',
-      nameLabel: 'Name',
-      nameHelp:
-        "Lower-case alphanumerics + '_'. Snake_case, like the bundled tools (e.g. doc_getting_started).",
-      stubInfo:
-        'A stub will be created in {project}. Fill in description, parameters and labels afterwards.',
-      kindLabel: 'Kind of tool',
-      kindMcp: 'MCP server',
-      kindOther: 'Other type',
-      urlHelp:
-        'Address of any MCP server (Streamable HTTP). Servers that need a login get a "Log in" button in the list.',
-      cancel: 'Cancel',
-      create: 'Create',
     },
     mcp: {
       serverTitle: 'MCP server',
@@ -2558,6 +2493,7 @@ export default {
       loggedOut: 'Logged out.',
       testTitle: 'Connection test',
       testHelp: 'Connects as you and lists the tools of the server. Switch off tools the model should not see.',
+      savedStateNote: 'Test and login use the saved state — apply your changes first.',
       testRun: 'Test',
       testOk: 'Connected — {n} tool | Connected — {n} tools',
       testToolsNote: 'Switched-off tools are saved as disabled sub-tools.',
@@ -2577,16 +2513,14 @@ export default {
   toolTemplates: {
     pageTitle: 'Tool Templates',
     intro:
-      'Curated tool packs (Jira, IMAP, SMTP, …). Pick one, fill in the inputs, and the kit is applied to your tenant — passwords are stored encrypted.',
+      'Curated tool packs (Jira, IMAP, SMTP, …). Pick one, fill in the inputs, and it is installed into this scope — passwords are stored encrypted.',
     loading: 'Loading…',
     searchPlaceholder: 'Search templates…',
-    projectIdLabel: 'Project',
     apply: 'Apply',
     previouslyApplied: 'Previously applied on {at} by {by}. Form pre-filled — adjust and re-apply to update. Password fields stay blank for security.',
     noInputs: 'This template has no inputs — apply to install it.',
     empty: {
-      headline: 'No templates available',
-      body: 'Ask your tenant administrator to populate the tool-templates catalog at _tenant/config/tool-templates.yaml.',
+      body: 'No templates available — the catalog lives at _tenant/config/tool-templates.yaml.',
     },
     applyFailed: 'Apply failed.',
     unknownUser: 'unknown',
@@ -4059,6 +3993,11 @@ export default {
         title: 'Workflows',
         createHint: 'Kebab-case name — it becomes the file name and with it the workflow name.',
       },
+      serverTools: {
+        title: 'Server tools',
+        createHint:
+          'Snake_case name (lowercase letters, digits, _) — it becomes the file name and the tool name. A new tool starts as a disabled MCP server: fill in the server, then enable it.',
+      },
       hooks: {
         title: 'Hooks',
         createHint:
@@ -4081,6 +4020,13 @@ export default {
       nameLabel: 'Name',
       namePlaceholder: 'e.g. serper-main',
       confirmDeleteEntry: 'Delete "{name}"? This cannot be undone.',
+      inherited: {
+        tenant: 'Tenant',
+        bundled: 'Built-in',
+      },
+      override: 'Override here',
+      confirmOverride:
+        '"{name}" comes from the {origin} layer. Create your own copy in this scope? It shadows the inherited entry here; deleting the copy brings the inherited one back.',
       emptyHeadline: 'No entries in this area',
       emptyBody: 'Nothing of this kind is configured in the selected scope yet.',
       noneHeadline: 'No areas',

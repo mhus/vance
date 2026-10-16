@@ -26,7 +26,7 @@ const { t } = useI18n();
 // Active UI level for tile filtering, read straight from the data cookie.
 //
 //   * standard — chat / documents / inbox  (everyday)
-//   * expert   — + scopes / tools / insights / runs  (power user)
+//   * expert   — + settings / insights / runs  (power user)
 //   * admin    — + users  (tenant admin)
 //
 // Server-side authorization remains the authoritative gate; this just keeps
@@ -172,17 +172,11 @@ onMounted(async () => {
             </RouterLink>
           </li>
 
-          <!-- Expert tier — power-user surfaces (settings / tools / insights). -->
+          <!-- Expert tier — power-user surfaces (settings / insights / runs). -->
           <li v-if="showExpertTiles">
             <a class="tile-row" :href="editorHref('settings')">
                 <div class="font-semibold">{{ $t('index.settings.title') }}</div>
                 <div class="text-sm opacity-70">{{ $t('index.settings.description') }}</div>
-            </a>
-          </li>
-          <li v-if="showExpertTiles">
-            <a class="tile-row" :href="editorHref('tools')">
-                <div class="font-semibold">{{ $t('index.tools.title') }}</div>
-                <div class="text-sm opacity-70">{{ $t('index.tools.description') }}</div>
             </a>
           </li>
           <li v-if="showExpertTiles">
@@ -206,12 +200,6 @@ onMounted(async () => {
             <a class="tile-row" :href="editorHref('users')">
                 <div class="font-semibold">{{ $t('index.users.title') }}</div>
                 <div class="text-sm opacity-70">{{ $t('index.users.description') }}</div>
-            </a>
-          </li>
-          <li v-if="showAdminTiles">
-            <a class="tile-row" :href="editorHref('tool-templates')">
-                <div class="font-semibold">{{ $t('toolTemplates.pageTitle') }}</div>
-                <div class="text-sm opacity-70">{{ $t('toolTemplates.intro') }}</div>
             </a>
           </li>
 

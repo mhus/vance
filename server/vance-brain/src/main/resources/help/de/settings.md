@@ -19,13 +19,15 @@ Adresse — ein Lesezeichen oder Zurück-Knopf reproduziert die Ansicht.
 ## Tabs
 
 - **Bereiche** — Konfigurations-Dokumente je Thema: Modelle, Recipes,
-  Scheduler, Workflows, Hooks, Guards, Prompts, Themes, Wizards,
-  Quellen und Mounts. Je Bereich eine Liste mit Hinzufügen/Löschen; ein
-  Klick öffnet den Eintrag inline.
+  Scheduler, Server-Tools, Workflows, Hooks, Guards, Prompts, Themes,
+  Wizards, Quellen und Mounts. Je Bereich eine Liste mit
+  Hinzufügen/Löschen; ein Klick öffnet den Eintrag inline. Wo ein Bereich
+  auch geerbte Einträge zeigt (Mandant, mitgeliefert), kopiert **Hier
+  überschreiben** einen davon in diesen Scope.
 - **Settings** — die typisierten Setting-Forms (Key/Value mit
   Kaskade-Anzeige: „effektiv aus Mandant").
 - **Projekt/Mandant** — Verwaltung: Eigenschaften, Sprache,
-  Session-Gruppen, Kits, Replikation.
+  Session-Gruppen, Kits, Tool-Templates, Replikation.
 - **Erweitert** — der rohe Key/Value-Editor über alle Ebenen.
 
 ## Eintrag bearbeiten

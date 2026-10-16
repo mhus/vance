@@ -398,7 +398,16 @@ public class ResilientChatModel implements ChatModel {
         return deadlineAtNanos != null && System.nanoTime() - deadlineAtNanos >= 0;
     }
 
-    private AiChatException exhausted(@Nullable Throwable lastError) {
+    /**
+     * The terminal failure. A budget refusal is handed through unwrapped: it
+     * is the answer, not a provider failure, and its message is what the
+     * user has to read — buried as the cause of "chain exhausted" it would
+     * surface as a generic error that names no setting.
+     */
+    private RuntimeException exhausted(@Nullable Throwable lastError) {
+        if (lastError instanceof LlmBudgetExceededException refused) {
+            return refused;
+        }
         Throwable cause = lastError != null ? lastError : new RuntimeException("no chain entries");
         return new AiChatException("All " + chain.size() + " chat-model chain entries exhausted", cause);
     }

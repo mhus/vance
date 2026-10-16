@@ -13,6 +13,7 @@ import de.mhus.vance.brain.ai.ProviderListingHttp;
 import de.mhus.vance.brain.ai.ProviderListingRequest;
 import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ai.ThinkingLevel;
+import de.mhus.vance.brain.ai.UsageGate;
 import de.mhus.vance.brain.ai.UsageSink;
 import de.mhus.vance.brain.ai.openai.OpenAiModelListing;
 import de.mhus.vance.brain.ai.openai.OpenAiProvider;
@@ -119,9 +120,10 @@ public class OpenAiExperimentalProvider extends AbstractChatProvider {
             LlmResponseSanitizer responseSanitizer,
             MessageParserRegistry messageParserRegistry,
             UsageSink usageSink,
+            UsageGate usageGate,
             @Value("${vance.ai.openai-experimental.base-url:}") String baseUrl,
             @Value("${vance.ai.cache.enabled:true}") boolean cacheEnabled) {
-        super(modelCatalog, responseSanitizer, messageParserRegistry, usageSink);
+        super(modelCatalog, responseSanitizer, messageParserRegistry, usageSink, usageGate);
         this.defaultBaseUrl = StringUtils.isBlank(baseUrl) ? OPENAI_EXPERIMENTAL_BASE_URL : baseUrl.trim();
         this.cacheEnabled = cacheEnabled;
     }

@@ -11,8 +11,8 @@ import {
 } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 import type { EChartsType } from 'echarts/core';
-import type { UsageBucketDto } from '@vance/generated';
-import { VAlert, VCard, VEmptyState, VSelect } from '@/components';
+import type { LlmBudgetStatusDto, LlmBudgetWindowDto, UsageBucketDto } from '@vance/generated';
+import { VAlert, VBadge, VCard, VEmptyState, VGroup, VGroupRow, VSelect } from '@/components';
 import { useUsageReport } from '@/composables/useUsageReport';
 import { useI18n } from 'vue-i18n';
 import UsageBreakdownTable from './UsageBreakdownTable.vue';
@@ -35,7 +35,7 @@ const { t } = useI18n();
 const groupBy = ref<'day' | 'week' | 'month'>('day');
 const rangeDays = ref<number>(30);
 
-const { summary, byProject, byModel, byCaller, byRecipe, loading, error, loadAll } =
+const { summary, byProject, byModel, byCaller, byRecipe, budget, loading, error, loadAll } =
   useUsageReport();
 
 async function refresh(): Promise<void> {
@@ -257,6 +257,45 @@ const coverage = computed<{
   return { calls, unpriced, pricedPct, failed };
 });
 
+// ── Budget ───────────────────────────────────────────────────────
+function budgetLevelLabel(status: LlmBudgetStatusDto): string {
+  return status.scope === 'project'
+    ? t('insights.usage.budgetProject', { project: status.scopeId })
+    : t('insights.usage.budgetTenant');
+}
+
+function budgetWindowLabel(window: LlmBudgetWindowDto): string {
+  switch (window.window) {
+    case 'daily': return t('insights.usage.budgetDaily');
+    case 'monthly': return t('insights.usage.budgetMonthly');
+    default: return t('insights.usage.budgetTotal', { from: window.from });
+  }
+}
+
+function budgetValue(window: LlmBudgetWindowDto, currency: string): string {
+  return t('insights.usage.budgetValue', {
+    used: fmtCost(window.used, currency),
+    limit: fmtCost(window.limit, currency),
+    pct: Math.round(window.percent),
+  });
+}
+
+/**
+ * What the amount does not see: models without a price and cost booked in
+ * another currency. Both are real spend the budget cannot stop, so they are
+ * named next to the number rather than left out of it silently.
+ */
+function budgetGaps(window: LlmBudgetWindowDto): string {
+  const parts: string[] = [];
+  if (window.unpricedCalls > 0) {
+    parts.push(t('insights.usage.budgetUnpriced', { calls: window.unpricedCalls }));
+  }
+  for (const [cur, amount] of Object.entries(window.uncounted ?? {})) {
+    parts.push(t('insights.usage.budgetUncounted', { amount: fmtCost(amount, cur) }));
+  }
+  return parts.join(' · ');
+}
+
 /**
  * Where the drill-down stops. Totals go back as far as the tenant does;
  * per-call rows expire. Saying so beats offering a drill-down that comes
@@ -294,6 +333,35 @@ const detailHorizon = computed<string | null>(() => {
     </div>
 
     <VAlert v-if="error" type="error">{{ error }}</VAlert>
+
+    <VCard v-if="budget && budget.length > 0" :title="$t('insights.usage.budgetTitle')">
+      <VGroup
+        v-for="level in budget"
+        :key="level.scope + ':' + level.scopeId"
+        :label="budgetLevelLabel(level)"
+        :note="level.totalIncomplete ? $t('insights.usage.budgetTotalIncomplete') : undefined"
+      >
+        <VGroupRow
+          v-if="level.windows.length === 0"
+          :label="$t('insights.usage.budgetNone')"
+          :description="$t('insights.usage.budgetNoneHint')"
+        />
+        <VGroupRow
+          v-for="w in level.windows"
+          :key="w.window"
+          :label="budgetWindowLabel(w)"
+          :description="budgetGaps(w) || undefined"
+          :value="budgetValue(w, level.currency)"
+        >
+          <VBadge v-if="w.exhausted" variant="error" size="sm">
+            {{ $t('insights.usage.budgetExhausted') }}
+          </VBadge>
+          <VBadge v-else-if="w.warning" variant="warning" size="sm">
+            {{ $t('insights.usage.budgetWarning') }}
+          </VBadge>
+        </VGroupRow>
+      </VGroup>
+    </VCard>
 
     <VEmptyState
       v-if="!loading && !error && !hasData"

@@ -3,6 +3,9 @@ package de.mhus.vance.brain.ai;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import de.mhus.vance.shared.llmusage.BudgetScope;
+import de.mhus.vance.shared.llmusage.BudgetWindow;
+import de.mhus.vance.shared.llmusage.LlmBudgetService;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.ChatModel;
@@ -10,10 +13,12 @@ import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.output.FinishReason;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
@@ -161,6 +166,49 @@ class ResilientChatModelTest {
                 .isInstanceOf(AiChatException.class)
                 .hasMessageContaining("All 2 chat-model chain entries exhausted")
                 .hasRootCauseMessage("connection refused");
+    }
+
+    // ──────────────────── budget refusals ────────────────────
+
+    private static LlmBudgetExceededException budgetRefusal() {
+        return new LlmBudgetExceededException(new LlmBudgetService.WindowStatus(
+                BudgetScope.PROJECT,
+                "p1",
+                BudgetWindow.DAILY,
+                LocalDate.of(2026, 10, 16),
+                1_000_000,
+                1_200_000,
+                "USD",
+                80,
+                0,
+                Map.of()));
+    }
+
+    @Test
+    void a_budget_refusal_is_not_retried_and_reaches_the_caller_unwrapped() {
+        AtomicInteger calls = new AtomicInteger();
+        // A pattern matching the refusal text: the typed marker has to win,
+        // or a refusal would be re-issued against the same exhausted budget.
+        RetryPolicy matchesBudget = new RetryPolicy(3, Duration.ofMillis(1), Duration.ofMillis(2), List.of("budget"));
+        LlmBudgetExceededException refusal = budgetRefusal();
+        ResilientChatModel model = new ResilientChatModel(
+                List.of(new SyncChainEntry(scripted(calls, refusal), "openai:a", matchesBudget)));
+
+        assertThatThrownBy(() -> model.chat(REQUEST)).isSameAs(refusal);
+        assertThat(calls.get()).isEqualTo(1);
+    }
+
+    @Test
+    void a_budget_refusal_advances_to_the_fallback() {
+        AtomicInteger first = new AtomicInteger();
+        AtomicInteger second = new AtomicInteger();
+        ResilientChatModel model = new ResilientChatModel(List.of(
+                entry("openai:a", scripted(first, budgetRefusal())),
+                entry("ollama:local", scripted(second, response("from the free model")))));
+
+        assertThat(model.chat(REQUEST).aiMessage().text()).isEqualTo("from the free model");
+        assertThat(first.get()).isEqualTo(1);
+        assertThat(second.get()).isEqualTo(1);
     }
 
     // ──────────────────── empty replies ────────────────────

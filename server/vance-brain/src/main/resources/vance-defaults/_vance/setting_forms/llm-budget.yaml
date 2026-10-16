@@ -1,0 +1,116 @@
+title:
+  de: "LLM-Kostenbudget"
+  en: "LLM Cost Budget"
+description:
+  de: "Kostenbudget für Chat-Aufrufe auf dieser Ebene — pro Tag, pro Monat
+       und/oder absolut ab einem Datum. Leer = unbegrenzt. Tenant- und
+       Projekt-Budget gelten gemeinsam: ein Aufruf geht nur raus, solange
+       jedes gesetzte Budget noch Luft hat. Ein Projekt kann sich damit nur
+       enger fassen, nie über das Tenant-Budget hinaus. Modelle ohne Preis
+       oder mit Nullsatz (lokale Modelle) laufen immer weiter."
+  en: "Cost budget for chat calls on this level — per day, per month and/or
+       absolute from a start date. Empty = unlimited. Tenant and project
+       budgets apply together: a call only goes out while every budget that
+       is set still has room. A project can therefore only narrow itself,
+       never exceed the tenant budget. Models without pricing or with a zero
+       rate (local models) always keep running."
+icon: banknotes
+category: quotas
+# Written to the scope the form is opened in: `_tenant` in the tenant
+# context, the project otherwise. Not for user hubs.
+defaultScope: project
+availableIn: [ "!_user_*" ]
+
+fields:
+
+  - name: currency
+    type: select
+    allowCustom: true
+    defaultValue: "USD"
+    label:
+      de: "Währung"
+      en: "Currency"
+    help:
+      de: "Währung der Budgets. Gezählt werden nur Kosten, die das
+           Modell-Katalog-`pricing` in dieser Währung ausweist — andere
+           Währungen werden nicht umgerechnet und im Budget-Status als
+           „nicht erfasst“ gezeigt."
+      en: "Currency of the budgets. Only cost the model catalog's `pricing`
+           states in this currency counts — other currencies are never
+           converted and show as \"not counted\" in the budget status."
+    choices:
+      - value: "USD"
+        label: { de: "USD", en: "USD" }
+      - value: "EUR"
+        label: { de: "EUR", en: "EUR" }
+    bindsTo:
+      key: "ai.llm.budget.currency"
+
+  - name: daily
+    type: string
+    label:
+      de: "Budget pro Tag"
+      en: "Budget per day"
+    help:
+      de: "Obergrenze pro UTC-Kalendertag, z.B. `5` oder `2.50`. Leer =
+           unbegrenzt."
+      en: "Ceiling per UTC calendar day, e.g. `5` or `2.50`. Empty =
+           unlimited."
+    bindsTo:
+      key: "ai.llm.budget.daily"
+      settingType: DOUBLE
+
+  - name: monthly
+    type: string
+    label:
+      de: "Budget pro Monat"
+      en: "Budget per month"
+    help:
+      de: "Obergrenze pro UTC-Kalendermonat. Leer = unbegrenzt."
+      en: "Ceiling per UTC calendar month. Empty = unlimited."
+    bindsTo:
+      key: "ai.llm.budget.monthly"
+      settingType: DOUBLE
+
+  - name: total
+    type: string
+    label:
+      de: "Budget absolut"
+      en: "Absolute budget"
+    help:
+      de: "Ein fester Betrag ab einem Startdatum, z.B. ein Projekt-Grant.
+           Gilt erst, wenn auch das Startdatum gesetzt ist. Leer =
+           unbegrenzt."
+      en: "A fixed amount from a start date, e.g. a project grant. Applies
+           only once the start date is set as well. Empty = unlimited."
+    bindsTo:
+      key: "ai.llm.budget.total"
+      settingType: DOUBLE
+
+  - name: totalSince
+    type: string
+    label:
+      de: "Absolutes Budget ab (yyyy-MM-dd)"
+      en: "Absolute budget from (yyyy-MM-dd)"
+    help:
+      de: "Erster Tag (UTC), der gegen das absolute Budget zählt."
+      en: "First day (UTC) that counts against the absolute budget."
+    bindsTo:
+      key: "ai.llm.budget.total-since"
+
+  - name: warnPercent
+    type: integer
+    integerMin: 0
+    integerMax: 99
+    defaultValue: "80"
+    label:
+      de: "Warnung ab (% des Budgets)"
+      en: "Warn at (% of budget)"
+    help:
+      de: "Ab diesem Anteil eines Budgets kommt einmal pro Zeitraum eine
+           Warnung in die Session, deren Aufruf es bemerkt. 0 = keine
+           Warnung."
+      en: "Once this share of a budget is used, a warning goes once per
+           period to the session whose call notices it. 0 = no warning."
+    bindsTo:
+      key: "ai.llm.budget.warn-percent"

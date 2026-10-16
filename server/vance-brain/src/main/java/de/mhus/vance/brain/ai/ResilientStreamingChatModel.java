@@ -189,6 +189,11 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
             Throwable previousError,
             EmptyEvidence evidence) {
         if (chainIdx >= chain.size()) {
+            if (previousError instanceof LlmBudgetExceededException refused) {
+                // The answer, not a provider failure — see ResilientChatModel#exhausted.
+                caller.onError(refused);
+                return;
+            }
             Throwable cause = previousError != null ? previousError : new RuntimeException("no chain entries");
             caller.onError(new AiChatException("All " + chain.size() + " chat-model chain entries exhausted", cause));
             return;

@@ -12,6 +12,7 @@ import de.mhus.vance.brain.prak.PrakSideChannelRunner;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.llmusage.CallAttribution;
+import de.mhus.vance.shared.llmusage.LlmUsageService;
 import de.mhus.vance.shared.memory.MemoryDocument;
 import de.mhus.vance.shared.memory.MemoryKind;
 import de.mhus.vance.shared.memory.MemoryService;
@@ -83,8 +84,11 @@ public class MemoryCompactionService {
      * Caller name for the summarizer call. Compaction is triggered by the
      * engine's turn but is not the engine's work — attributing it separately
      * is what makes "what does memory upkeep cost" answerable at all.
+     * The name also exempts the call from the cost budget gate
+     * ({@code LlmBudgetService.UNGATED_CALLERS}): a session that cannot
+     * compact anymore runs into its context window.
      */
-    private static final String CALLER_COMPACTION = "_compaction";
+    private static final String CALLER_COMPACTION = LlmUsageService.CALLER_COMPACTION;
 
     private static final String SETTING_AI_PROVIDER = "ai.default.provider";
     private static final String SETTING_AI_MODEL = "ai.default.model";

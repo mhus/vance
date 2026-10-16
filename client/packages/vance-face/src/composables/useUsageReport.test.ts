@@ -10,9 +10,10 @@ function report(key: string): { bucketBy: string; buckets: { key: string }[] } {
 }
 
 /**
- * Answers the five cuts in load order: summary, by-project, by-model,
- * by-caller, by-recipe. Each entry is a resolved value or the string
- * 'reject' for a failing endpoint.
+ * Answers the calls in load order: summary, by-project, by-model,
+ * by-caller, by-recipe, budget. Each entry is a resolved value or the
+ * string 'reject' for a failing endpoint; calls past the list resolve to
+ * undefined.
  */
 function cuts(...answers: unknown[]): void {
   brainFetch.mockImplementation(() => {
@@ -80,6 +81,28 @@ describe('useUsageReport', () => {
     expect(api.byModel.value).toBeNull();
     expect(api.byCaller.value).toBeNull();
     expect(api.byRecipe.value).toBeNull();
+    expect(api.error.value).toBe('boom');
+  });
+
+  it('loads the budget state next to the cuts', async () => {
+    const budget = [{ scope: 'tenant', scopeId: '_tenant', currency: 'USD', windows: [] }];
+    cuts(report('day'), report('project'), report('model'), report('caller'), report('recipe'), budget);
+    const api = useUsageReport();
+
+    await api.loadAll({});
+
+    expect(api.budget.value).toEqual(budget);
+    expect(brainFetch).toHaveBeenCalledWith('GET', 'usage/budget');
+  });
+
+  it('keeps the cuts when only the budget endpoint fails', async () => {
+    cuts(report('day'), report('project'), report('model'), report('caller'), report('recipe'), 'reject');
+    const api = useUsageReport();
+
+    await api.loadAll({});
+
+    expect(api.budget.value).toBeNull();
+    expect(api.summary.value?.bucketBy).toBe('day');
     expect(api.error.value).toBe('boom');
   });
 

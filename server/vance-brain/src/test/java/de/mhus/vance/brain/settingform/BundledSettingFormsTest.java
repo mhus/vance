@@ -351,6 +351,38 @@ class BundledSettingFormsTest {
                 .isTrue();
     }
 
+    /**
+     * The budget form writes exactly the keys {@code LlmBudgetService} reads,
+     * and every field is bindable — amounts as {@code string} + DOUBLE, since
+     * the form engine has no decimal field type.
+     */
+    @Test
+    void llm_budget_bindsToTheBudgetKeys() throws IOException {
+        ResolvedSettingForm f = loadBundled("llm-budget");
+
+        assertThat(f.fields())
+                .extracting(field -> field.getBindsTo().getKey())
+                .containsExactly(
+                        de.mhus.vance.shared.llmusage.LlmBudget.KEY_CURRENCY,
+                        de.mhus.vance.shared.llmusage.LlmBudget.KEY_DAILY,
+                        de.mhus.vance.shared.llmusage.LlmBudget.KEY_MONTHLY,
+                        de.mhus.vance.shared.llmusage.LlmBudget.KEY_TOTAL,
+                        de.mhus.vance.shared.llmusage.LlmBudget.KEY_TOTAL_SINCE,
+                        de.mhus.vance.shared.llmusage.LlmBudget.KEY_WARN_PERCENT);
+        assertThat(f.fields()).allSatisfy(field -> {
+            assertThat(SettingFormPlanBuilder.resolveFieldSettingType(field, field.getBindsTo()))
+                    .isNotNull();
+            assertThat(field.isRequired()).isFalse();
+        });
+
+        assertThat(f.defaultScope()).isEqualTo("project");
+        assertThat(SettingFormLoader.isAvailableIn(f.availableIn(), "_tenant")).isTrue();
+        assertThat(SettingFormLoader.isAvailableIn(f.availableIn(), "research-2026"))
+                .isTrue();
+        assertThat(SettingFormLoader.isAvailableIn(f.availableIn(), "_user_road.runner"))
+                .isFalse();
+    }
+
     private ResolvedSettingForm loadBundled(String name) throws IOException {
         String resourcePath = "vance-defaults/_vance/setting_forms/" + name + ".yaml";
         String yaml = readClasspath(resourcePath);

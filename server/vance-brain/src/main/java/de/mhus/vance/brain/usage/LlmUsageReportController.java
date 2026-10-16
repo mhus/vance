@@ -1,12 +1,17 @@
 package de.mhus.vance.brain.usage;
 
+import de.mhus.vance.api.insights.LlmBudgetStatusDto;
 import de.mhus.vance.api.insights.UsageReportDto;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.shared.llmusage.BudgetScope;
+import de.mhus.vance.shared.llmusage.LlmBudgetMapper;
+import de.mhus.vance.shared.llmusage.LlmBudgetService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -32,6 +37,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class LlmUsageReportController {
 
     private final LlmUsageReportService reportService;
+    private final LlmBudgetService budgetService;
     private final RequestAuthority authority;
 
     @GetMapping("/summary")
@@ -102,14 +108,39 @@ public class LlmUsageReportController {
         return reportService.byRecipe(tenant, w.from, w.to);
     }
 
+    /**
+     * Cost-budget state: the project level (when {@code projectId} is given)
+     * and the tenant level, each with the windows whose limit applies today.
+     *
+     * <p>Without {@code projectId} this needs tenant {@code ADMIN}. With it,
+     * project {@code ADMIN} is enough — the project admin is the one who sets
+     * that budget — and the tenant level is included only for a caller who is
+     * also tenant admin, because it carries the whole tenant's spend.
+     */
+    @GetMapping("/budget")
+    public List<LlmBudgetStatusDto> budget(
+            @PathVariable("tenant") String tenant,
+            @RequestParam(value = "projectId", required = false) @Nullable String projectId,
+            HttpServletRequest httpRequest) {
+        boolean tenantAdmin;
+        if (projectId == null || projectId.isBlank()) {
+            authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
+            tenantAdmin = true;
+        } else {
+            authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.ADMIN);
+            tenantAdmin = authority.check(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
+        }
+        return budgetService.status(tenant, projectId).stream()
+                .filter(s -> tenantAdmin || s.scope() != BudgetScope.TENANT)
+                .map(LlmBudgetMapper::toDto)
+                .toList();
+    }
+
     private static Window window(@Nullable Instant from, @Nullable Instant to) {
         Instant effectiveTo = to == null ? Instant.now() : to;
-        Instant effectiveFrom = from == null
-                ? effectiveTo.minus(30, ChronoUnit.DAYS)
-                : from;
+        Instant effectiveFrom = from == null ? effectiveTo.minus(30, ChronoUnit.DAYS) : from;
         if (!effectiveFrom.isBefore(effectiveTo)) {
-            throw new IllegalArgumentException(
-                    "from (" + effectiveFrom + ") must be before to (" + effectiveTo + ")");
+            throw new IllegalArgumentException("from (" + effectiveFrom + ") must be before to (" + effectiveTo + ")");
         }
         return new Window(effectiveFrom, effectiveTo);
     }

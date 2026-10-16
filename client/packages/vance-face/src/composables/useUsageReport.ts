@@ -1,12 +1,14 @@
 import { ref, type Ref } from 'vue';
-import type { UsageReportDto } from '@vance/generated';
+import type { LlmBudgetStatusDto, UsageReportDto } from '@vance/generated';
 import { brainFetch } from '@vance/shared';
 
 /**
  * Reactive wrapper around the tenant-wide LLM usage / cost reports.
  *
  * <p>Hits {@code GET /brain/{tenant}/usage/summary|by-project|by-model|
- * by-caller|by-recipe} with optional from/to/groupBy params. One ref
+ * by-caller|by-recipe} with optional from/to/groupBy params, plus
+ * {@code usage/budget} for the cost-budget state (not windowed — a budget
+ * always reads "today", "this month" and "since its start date"). One ref
  * per cut so the UI can render them in parallel without coupling
  * fetches.
  *
@@ -22,6 +24,7 @@ export function useUsageReport(): {
   byModel: Ref<UsageReportDto | null>;
   byCaller: Ref<UsageReportDto | null>;
   byRecipe: Ref<UsageReportDto | null>;
+  budget: Ref<LlmBudgetStatusDto[] | null>;
   loading: Ref<boolean>;
   error: Ref<string | null>;
   loadAll: (params: UsageQuery) => Promise<void>;
@@ -32,6 +35,7 @@ export function useUsageReport(): {
   const byModel = ref<UsageReportDto | null>(null);
   const byCaller = ref<UsageReportDto | null>(null);
   const byRecipe = ref<UsageReportDto | null>(null);
+  const budget = ref<LlmBudgetStatusDto[] | null>(null);
   const loading = ref(false);
   const error = ref<string | null>(null);
 
@@ -46,7 +50,7 @@ export function useUsageReport(): {
       // "nothing was recorded at all" while the database was fine.
       // Failed cuts stay null, the error banner names the failure, the
       // rest renders.
-      const [s, p, m, c, r] = await Promise.allSettled([
+      const [s, p, m, c, r, b] = await Promise.allSettled([
         brainFetch<UsageReportDto>('GET', `usage/summary?${buildQuery({
           from: params.from,
           to: params.to,
@@ -57,13 +61,15 @@ export function useUsageReport(): {
         brainFetch<UsageReportDto>('GET', `usage/by-model?${window}`),
         brainFetch<UsageReportDto>('GET', `usage/by-caller?${window}`),
         brainFetch<UsageReportDto>('GET', `usage/by-recipe?${window}`),
+        brainFetch<LlmBudgetStatusDto[]>('GET', 'usage/budget'),
       ]);
       if (s.status === 'fulfilled') summary.value = s.value;
       if (p.status === 'fulfilled') byProject.value = p.value;
       if (m.status === 'fulfilled') byModel.value = m.value;
       if (c.status === 'fulfilled') byCaller.value = c.value;
       if (r.status === 'fulfilled') byRecipe.value = r.value;
-      for (const result of [s, p, m, c, r]) {
+      if (b.status === 'fulfilled') budget.value = b.value;
+      for (const result of [s, p, m, c, r, b]) {
         if (result.status === 'rejected') {
           error.value = result.reason instanceof Error
             ? result.reason.message
@@ -82,10 +88,11 @@ export function useUsageReport(): {
     byModel.value = null;
     byCaller.value = null;
     byRecipe.value = null;
+    budget.value = null;
     error.value = null;
   }
 
-  return { summary, byProject, byModel, byCaller, byRecipe, loading, error, loadAll, reset };
+  return { summary, byProject, byModel, byCaller, byRecipe, budget, loading, error, loadAll, reset };
 }
 
 export interface UsageQuery {

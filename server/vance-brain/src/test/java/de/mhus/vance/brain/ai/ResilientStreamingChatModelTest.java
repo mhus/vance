@@ -2,6 +2,9 @@ package de.mhus.vance.brain.ai;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import de.mhus.vance.shared.llmusage.BudgetScope;
+import de.mhus.vance.shared.llmusage.BudgetWindow;
+import de.mhus.vance.shared.llmusage.LlmBudgetService;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatModel;
@@ -10,7 +13,9 @@ import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import dev.langchain4j.model.output.FinishReason;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -285,6 +290,54 @@ class ResilientStreamingChatModelTest {
 
         assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
         assertThat(sink.fires).containsExactly("a x1");
+    }
+
+    @Test
+    void budgetRefusal_isNotRetried_andReachesTheCallerUnwrapped() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        LlmBudgetExceededException refusal = new LlmBudgetExceededException(new LlmBudgetService.WindowStatus(
+                BudgetScope.TENANT,
+                "_tenant",
+                BudgetWindow.MONTHLY,
+                LocalDate.of(2026, 10, 1),
+                5_000_000,
+                5_000_001,
+                "EUR",
+                80,
+                0,
+                Map.of()));
+        StreamingChatModel refusing = new StreamingChatModel() {
+            @Override
+            public void chat(ChatRequest request, StreamingChatResponseHandler handler) {
+                calls.incrementAndGet();
+                handler.onError(refusal);
+            }
+        };
+        RetryPolicy matchesBudget = new RetryPolicy(3, Duration.ofMillis(1), Duration.ofMillis(2), List.of("budget"));
+        ResilientStreamingChatModel model =
+                new ResilientStreamingChatModel(List.of(new ChainEntry(refusing, "primary", matchesBudget)));
+
+        AtomicReference<Throwable> errored = new AtomicReference<>();
+        CountDownLatch done = new CountDownLatch(1);
+        model.chat(REQUEST, new StreamingChatResponseHandler() {
+            @Override
+            public void onPartialResponse(String partial) {}
+
+            @Override
+            public void onCompleteResponse(ChatResponse complete) {
+                done.countDown();
+            }
+
+            @Override
+            public void onError(Throwable error) {
+                errored.set(error);
+                done.countDown();
+            }
+        });
+
+        assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(errored.get()).isSameAs(refusal);
+        assertThat(calls.get()).isEqualTo(1);
     }
 
     private static StreamingChatResponseHandler completeOnly(AtomicReference<String> delivered, CountDownLatch done) {

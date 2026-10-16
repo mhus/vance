@@ -227,6 +227,8 @@ export * from './insights/LeaseCounterInsightsDto';
 export * from './insights/LeaseHolderInsightsDto';
 export * from './insights/LeaseInsightsDto';
 export * from './insights/MarvinNodeInsightsDto';
+export * from './insights/LlmBudgetStatusDto';
+export * from './insights/LlmBudgetWindowDto';
 export * from './insights/MemoryInsightsDto';
 export * from './insights/PendingMessageInsightsDto';
 export * from './insights/PrakRunInsightsDto';

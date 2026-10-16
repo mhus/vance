@@ -52,16 +52,19 @@ public abstract class AbstractChatProvider implements AiModelProvider {
     protected final LlmResponseSanitizer responseSanitizer;
     protected final MessageParserRegistry messageParserRegistry;
     protected final UsageSink usageSink;
+    protected final UsageGate usageGate;
 
     protected AbstractChatProvider(
             ModelCatalog modelCatalog,
             LlmResponseSanitizer responseSanitizer,
             MessageParserRegistry messageParserRegistry,
-            UsageSink usageSink) {
+            UsageSink usageSink,
+            UsageGate usageGate) {
         this.modelCatalog = modelCatalog;
         this.responseSanitizer = responseSanitizer;
         this.messageParserRegistry = messageParserRegistry;
         this.usageSink = usageSink;
+        this.usageGate = usageGate;
     }
 
     /**
@@ -77,6 +80,10 @@ public abstract class AbstractChatProvider implements AiModelProvider {
      * it reaches {@link StandardAiChat} puts the accounting decorator
      * innermost — below the trace log, below the retry layer — so it sees
      * every attempt on the wire exactly once.
+     *
+     * <p>The budget gate is attached here too, directly outside accounting:
+     * a refused attempt never reached the wire and books nothing, and it sits
+     * inside the retry layer so every fallback entry asks with its own model.
      */
     @Override
     public final AiChat createChat(AiChatConfig config, AiChatOptions options, CallAttribution attribution) {
@@ -108,12 +115,17 @@ public abstract class AbstractChatProvider implements AiModelProvider {
                     modelInfo.messageParser());
         }
         try {
-            BuiltChat built = withAccounting(
-                    withCacheAwareUsage(mergeSystemMessages(buildModels(config, effective, modelInfo), modelInfo)),
+            BuiltChat built = withBudgetGate(
+                    withAccounting(
+                            withCacheAwareUsage(
+                                    mergeSystemMessages(buildModels(config, effective, modelInfo), modelInfo)),
+                            attribution,
+                            modelInfo,
+                            config.providerInstance(),
+                            usageSink),
                     attribution,
                     modelInfo,
-                    config.providerInstance(),
-                    usageSink);
+                    usageGate);
             return new StandardAiChat(
                     config.fullName(),
                     getType(),
@@ -157,6 +169,21 @@ public abstract class AbstractChatProvider implements AiModelProvider {
                         ? null
                         : new UsageAccountingStreamingChatModel(
                                 built.streaming(), attribution, modelInfo, providerInstance, sink));
+    }
+
+    /**
+     * Wrap the accounted pair so every attempt first asks the budget gate.
+     * Unconditional like accounting: whether a budget applies is the gate's
+     * question, answered per attempt, not a wiring decision.
+     *
+     * @see BudgetGatedChatModel
+     */
+    static BuiltChat withBudgetGate(BuiltChat built, CallAttribution attribution, ModelInfo modelInfo, UsageGate gate) {
+        return new BuiltChat(
+                new BudgetGatedChatModel(built.sync(), attribution, modelInfo, gate),
+                built.streaming() == null
+                        ? null
+                        : new BudgetGatedStreamingChatModel(built.streaming(), attribution, modelInfo, gate));
     }
 
     /**

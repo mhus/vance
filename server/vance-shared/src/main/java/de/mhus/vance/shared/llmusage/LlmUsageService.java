@@ -4,11 +4,16 @@ import com.mongodb.MongoWriteException;
 import de.mhus.vance.shared.settings.RetentionSettingCache;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.extern.slf4j.Slf4j;
+import org.bson.Document;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.aggregation.Aggregation;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
@@ -84,6 +89,12 @@ public class LlmUsageService {
 
     /** Embedding batches issued by the RAG service. */
     public static final String CALLER_RAG = "_rag";
+
+    /** Memory compaction — the summary pass that keeps a session inside its context window. */
+    public static final String CALLER_COMPACTION = "_compaction";
+
+    /** Eddie's LLM triage stage. */
+    public static final String CALLER_TRIAGE = "_triage";
 
     /** Upper clamp so a fat-fingered setting cannot mean "forever" by accident. */
     static final int MAX_RETENTION_DAYS = 3650;
@@ -277,6 +288,68 @@ public class LlmUsageService {
             if (t.getCause() == t) break;
         }
         return false;
+    }
+
+    // ═════════════════════════ Read: cost totals ═════════════════════════
+
+    /**
+     * Chat and embedding cost booked for {@code tenantId} between two UTC days
+     * (both inclusive), one entry per currency. {@code projectId == null}
+     * sums the whole tenant, any other value that one project only.
+     *
+     * <p>Reads the day buckets, not the detail rows: those expire after weeks
+     * and an absolute budget can be older than that. Failed attempts are not
+     * part of the amount — the bucket keeps them in separate counters, and a
+     * budget follows the amount.
+     *
+     * <p>Image, audio and decision calls are left out on purpose. They have
+     * their own call quotas (Fenchurch, Hotblack, Zem); counting them here
+     * would let a picture eat the chat budget while the chat gate is the only
+     * place that can stop anything.
+     */
+    public List<CostTotal> costTotals(String tenantId, @Nullable String projectId, LocalDate fromDay, LocalDate toDay) {
+        Criteria match = Criteria.where("tenantId")
+                .is(tenantId)
+                .and("day")
+                .gte(fromDay.toString())
+                .lte(toDay.toString())
+                .and("kind")
+                .in(UsageKind.CHAT.name(), UsageKind.EMBEDDING.name());
+        if (projectId != null) {
+            match = match.and("projectId").is(LlmUsageDailyDocument.key(projectId));
+        }
+        Aggregation pipeline = Aggregation.newAggregation(
+                Aggregation.match(match),
+                Aggregation.group("currency")
+                        .sum("costTotalMicros")
+                        .as("costMicros")
+                        .sum("unpricedCalls")
+                        .as("unpricedCalls"));
+        List<CostTotal> out = new ArrayList<>();
+        for (Document row : mongoTemplate
+                .aggregate(pipeline, LlmUsageDailyDocument.class, Document.class)
+                .getMappedResults()) {
+            Object currency = row.get("_id");
+            out.add(new CostTotal(
+                    currency == null ? LlmUsageDailyDocument.NONE : currency.toString(),
+                    asLong(row.get("costMicros")),
+                    asLong(row.get("unpricedCalls"))));
+        }
+        return out;
+    }
+
+    /**
+     * Cost booked in one currency over a window.
+     *
+     * @param currency      ISO code, or {@link LlmUsageDailyDocument#NONE}
+     *                      for buckets of unpriced models
+     * @param costMicros    amount in micro-units of {@code currency}
+     * @param unpricedCalls calls of models without a {@code pricing:} block
+     */
+    public record CostTotal(String currency, long costMicros, long unpricedCalls) {}
+
+    private static long asLong(@Nullable Object value) {
+        return value instanceof Number n ? n.longValue() : 0L;
     }
 
     // ═════════════════════════ Detail row ═════════════════════════

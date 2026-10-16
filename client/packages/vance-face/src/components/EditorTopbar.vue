@@ -115,8 +115,13 @@ function crumbOnClick(c: Crumb): (() => void) | null {
 const LANGUAGES = UI_LOCALES;
 
 const currentLocale = computed<string>(() => String(locale.value));
+const currentLanguageLabel = computed<string>(
+  () => LANGUAGES.find((lang) => lang.code === currentLocale.value)?.label ?? currentLocale.value,
+);
+const languageMenu = ref<HTMLDetailsElement | null>(null);
 
 function selectLanguage(code: Locale): void {
+  if (languageMenu.value) languageMenu.value.open = false;
   // Transient switch for the current page only. The user's persistent
   // default lives on the profile page; switching here reverts on the
   // next page reload because the data cookie is the source of truth.
@@ -313,17 +318,27 @@ function openFook(): void {
           tabindex="0"
           class="dropdown-content menu v-menu z-[1] mt-2 w-56 p-1"
         >
-          <li class="menu-title">
-            <span>{{ $t('header.menu.languageHeader') }}</span>
-          </li>
-          <li v-for="lang in LANGUAGES" :key="lang.code">
-            <a
-              :class="{ active: currentLocale === lang.code }"
-              @click="selectLanguage(lang.code)"
-            >
-              <span class="font-mono text-xs opacity-50 w-6">{{ lang.code.toUpperCase() }}</span>
-              <span>{{ lang.label }}</span>
-            </a>
+          <!-- Collapsed by default: the full locale list is too long to
+               sit open above every other entry. -->
+          <li>
+            <details ref="languageMenu">
+              <summary>
+                <VIcon name="language" />
+                <span>{{ $t('header.menu.languageHeader') }}</span>
+                <span class="v-menu-value">{{ currentLanguageLabel }}</span>
+              </summary>
+              <ul class="v-language-list">
+                <li v-for="lang in LANGUAGES" :key="lang.code">
+                  <a
+                    :class="{ active: currentLocale === lang.code }"
+                    @click="selectLanguage(lang.code)"
+                  >
+                    <span class="font-mono text-xs opacity-50 w-6">{{ lang.code.toUpperCase() }}</span>
+                    <span>{{ lang.label }}</span>
+                  </a>
+                </li>
+              </ul>
+            </details>
           </li>
           <li class="divider-row"><div class="divider my-1" /></li>
           <template v-if="inFacelift">
@@ -386,6 +401,8 @@ function openFook(): void {
   box-shadow: var(--v-shadow-float);
 }
 .v-menu :deep(.v-icon) { color: var(--v-label-secondary); }
+.v-menu-value { margin-left: auto; color: var(--v-label-secondary); }
+.v-language-list { max-height: 240px; overflow-y: auto; }
 .crumb-link {
   background: transparent;
   border: none;

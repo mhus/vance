@@ -558,13 +558,23 @@
     "tenant": "テナント",
     "username": "ユーザー名",
     "password": "パスワード",
-    "rememberUser": "ユーザーを記憶する"
+    "rememberUser": "ユーザーを記憶する",
+    "sso": {
+      "email": "勤務先のメールアドレス",
+      "continueWithGoogle": "Googleで続行",
+      "or": "または",
+      "emailRequired": "Googleで続行するには、勤務先のメールアドレスを入力してください。",
+      "notAvailable": "このアドレスではGoogleでサインインできません。代わりにテナント、ユーザー名、パスワードを使用してください。",
+      "rejected": "あなたのアカウントはGoogleでのサインインが有効になっていません。管理者に問い合わせてください。",
+      "failed": "Googleでのサインインが完了しませんでした。もう一度お試しください。"
+    }
   },
   "index": {
     "sectionTitle": "エディター",
     "chat": {
       "title": "チャット",
-      "description": "WebSocketを介したAIとのライブチャット。既存のセッションを選択するか、任意のプロジェクトで新しいセッションを開始します。"
+      "description": "WebSocketを介したAIとのライブチャット。既存のセッションを選択するか、任意のプロジェクトで新しいセッションを開始します。",
+      "llmNotConfigured": "このテナントにはまだ言語モデルが設定されていません (ai.default.provider / ai.default.model) — 管理者が設定するまでチャットは失敗します。"
     },
     "documents": {
       "title": "ドキュメント",
@@ -577,10 +587,6 @@
     "settings": {
       "title": "設定",
       "description": "スコープごとに設定可能なすべて: 設定フォーム、エリア、プロジェクトとテナントの管理、キット。"
-    },
-    "tools": {
-      "title": "サーバーツール",
-      "description": "プロジェクトごとにサーバーサイドツールを設定します。テナント全体のデフォルトにはプロジェクトまたは _vance を選択します。"
     },
     "insights": {
       "title": "インサイト",
@@ -1323,6 +1329,10 @@
       "tabLabel": "スケジューラー",
       "parseError": "このスケジューラー定義は有効なYAMLではありません — rawエディターで修正してください。"
     },
+    "serverToolView": {
+      "tabLabel": "サーバーツール",
+      "parseError": "このサーバーツールは有効なYAMLではありません — 生エディターで修正してください。"
+    },
     "recordsEditor": {
       "addRow": "行を追加",
       "deleteItem": "行を削除",
@@ -1659,7 +1669,21 @@
       "seriesCacheRead": "キャッシュ読み込み",
       "seriesCost": "コスト ({currency})",
       "axisCost": "コスト",
-      "axisTokens": "トークン"
+      "axisTokens": "トークン",
+      "budgetTitle": "コスト予算",
+      "budgetTenant": "テナント",
+      "budgetProject": "プロジェクト {project}",
+      "budgetDaily": "今日",
+      "budgetMonthly": "今月",
+      "budgetTotal": "{from}から",
+      "budgetValue": "{limit}中{used} ({pct}%)",
+      "budgetExhausted": "予算超過",
+      "budgetWarning": "警告",
+      "budgetNone": "予算未設定",
+      "budgetNoneHint": "無制限。「LLMコスト予算」設定フォームで設定してください。",
+      "budgetUnpriced": "価格設定されていないモデルでの{calls}回の呼び出しは含まれません",
+      "budgetUncounted": "別の通貨での{amount}は含まれません",
+      "budgetTotalIncomplete": "開始日なしで絶対予算が設定されています — 設定されるまで強制されません。"
     },
     "toolUsage": {
       "pickProject": "サイドバーでプロジェクトを選択すると、測定されたツール需要が表示されます。",
@@ -1768,6 +1792,52 @@
       "refreshTail": "末尾を更新",
       "loadingStream": "{stream} を読み込み中…",
       "emptyStream": "（空）"
+    },
+    "leases": {
+      "refresh": "更新",
+      "loading": "リースを読み込み中…",
+      "holderCount": "{n}件のリースが保持されています",
+      "deadPodCount": "デッドポッドで{n}件",
+      "emptyHeadline": "リースなし",
+      "emptyBody": "このテナントでは現在、リソースリースを保持しているものはありません。",
+      "countersHeading": "占有状況",
+      "countersHint": "このテナントのファネルレベルごとの使用中のスロット。グローバルレベルはすべてのテナントにまたがるため表示されません。",
+      "noCounters": "カウンターなし。",
+      "holdersHeading": "保持されているリース",
+      "noHolders": "保持されているリースはありません。",
+      "colResource": "リソース",
+      "colLevel": "レベル",
+      "colScope": "スコープ",
+      "colInUse": "使用中",
+      "colUpdated": "更新日時",
+      "colType": "タイプ",
+      "colHolder": "ホルダー",
+      "colProjectUser": "プロジェクト / ユーザー",
+      "colPod": "ポッド",
+      "colHeld": "保持",
+      "colLastSeen": "最終使用",
+      "level": {
+        "tenant": "テナント",
+        "project": "プロジェクト",
+        "user": "ユーザー"
+      },
+      "drift": "ドリフト",
+      "driftTitle": "このカウンターを予約しているのは{booked}件の保持リースのみです — 次の調整で修正されます。",
+      "pendingTitle": "まだレベルを取得中です。",
+      "tokenTitle": "ホルダートークン",
+      "podDead": "デッドポッド",
+      "podDeadTitle": "ホルダーポッドがなくなりました — リーパーは次のラウンドでこのリースを解放します。",
+      "podBound": "ポッドバウンド",
+      "podBoundTitle": "リソースはホルダーポッド内にあり、ポッドと共に消滅します。",
+      "ttl": "TTL {n}秒",
+      "revoke": "取り消し",
+      "confirmRevoke": "「{resource}」({ref}) の{type}リースを取り消しますか？スロットが解放され、リソースがクリーンアップされます — それを使用している実行中のジョブまたはセッションは停止されます。",
+      "age": {
+        "seconds": "{n}秒前",
+        "minutes": "{n}分前",
+        "hours": "{n}時間前",
+        "days": "{n}日前"
+      }
     },
     "addons": {
       "refresh": "更新",
@@ -2164,46 +2234,18 @@
     }
   },
   "tools": {
-    "pageTitle": "サーバーツール",
-    "loading": "読み込み中…",
-    "tenantSystemLabel": "_tenant (システム)",
-    "pickAProjectHeadline": "プロジェクトを選択",
-    "pickAProjectBody": "左側のプロジェクトをクリックして、そのツールを表示します。",
-    "sidebar": {
-      "projectsHeading": "プロジェクト",
-      "addNew": "+ 新規",
-      "noToolsHeadline": "ツールなし",
-      "noToolsBody": "「+ 新規」をクリックして作成します。",
-      "disabled": "無効",
-      "primary": "プライマリ",
-      "deferred": "遅延"
-    },
     "detail": {
-      "backToList": "リストに戻る",
-      "lastEdit": "· 最終編集 {at}",
-      "delete": "削除",
-      "save": "保存",
       "tenantNote": "_tenant システムプロジェクトを編集しています — ここでの変更はテナント全体のデフォルトになります。ユーザープロジェクトは、同じ名前で個々のツールを再作成することで、それらをシャドウします。",
-      "cascadedFromTenant": "このツールは _tenant (テナント全体のデフォルト) からカスケードされています。保存すると、このプロジェクトでのみテナントのデフォルトをシャドウするプロジェクト固有のオーバーライドが作成されます。",
-      "cascadedFromBundled": "このツールは組み込みのデフォルト (vance-defaults) です。保存すると、このプロジェクトでデフォルトをシャドウするプロジェクト固有のオーバーライドが作成されます。"
-    },
-    "source": {
-      "project": "プロジェクト",
-      "tenant": "テナント",
-      "bundled": "組み込み"
-    },
-    "sourceTooltip": {
-      "project": "このプロジェクトで直接定義されています。",
-      "tenant": "_tenant プロジェクトからカスケードされています。",
-      "bundled": "vance-defaults からの組み込みデフォルト。"
+      "draftHint": "このドキュメントは _vance/server-tools/ の外にあります — ツールローダーはそのフォルダーのみを読み取るため、ツールはアクティブではありません。"
     },
     "cards": {
       "identityTitle": "ID",
       "parametersTitle": "パラメーター (JSON)",
-      "parametersHelp": "タイプ固有の設定。ファクトリのパラメータースキーマはヘルプパネルに表示されます。",
+      "parametersHelp": "タイプ固有の設定。タイプパラメータスキーマはエディターの下に表示されます。",
       "labelsTitle": "ラベル",
       "packTitle": "パック",
-      "packHelp": "マルチツールパック (REST API、MCPサーバー) は多くのサブツールに展開されます。以下のフィールドはパック全体のデフォルトを設定します。シングルトンパック (例: doc_lookup) はこれらを無視します。"
+      "packHelp": "マルチツールパック (REST API、MCPサーバー) は多くのサブツールに展開されます。以下のフィールドはパック全体のデフォルトを設定します。シングルトンパック (例: doc_lookup) はこれらを無視します。",
+      "typeSchemaTitle": "このタイプのパラメータスキーマ"
     },
     "fields": {
       "type": "タイプ",
@@ -2216,52 +2258,117 @@
       "disabledSubTools": "無効なサブツール",
       "disabledSubToolsHelp": "1行に1つのサブツール名。ローカル名のみ（<pack>__ 接頭辞なし）。空の場合はすべてのサブツールがアクティブ。",
       "labels": "ラベル",
-      "labelsHelp": "1行に1つ（またはカンマ区切り）。レシピは{'@'}<label>を介してラベルをターゲットにできます。"
-    },
-    "rightPanel": {
-      "typeSchemaTitle": "タイプスキーマ",
-      "pickTypeHint": "パラメータースキーマを表示するにはタイプを選択してください。",
-      "cascadeTitle": "カスケード",
-      "cascadeBody": "実行時、ツールはプロジェクト → _vance → 組み込みのBeanを介して解決されます。無効なドキュメントはカスケードを停止します — これが単一のプロジェクト内でシステムツールを非表示にする方法です。"
+      "labelsHelp": "1行に1つ（またはカンマ区切り）。レシピは{'@'}<label>を介してラベルをターゲットにできます。",
+      "promptHint": "プロンプトヒント",
+      "promptHintHelp": "オプション。このツールが到達可能なターンでシステムプロンプトに追加されます — モデルがいつ、どのように使用すべきか。"
     },
     "errors": {
-      "typeRequired": "タイプは必須です。",
-      "descriptionRequired": "説明は必須です。",
       "parametersMustBeObject": "パラメーターはJSONオブジェクトである必要があります。",
-      "parametersInvalidJson": "パラメーター: 無効なJSON — {message}",
-      "nameRequired": "名前は必須です。",
-      "namePattern": "名前は小文字の英数字とオプションの「_」（snake_case）である必要があります。",
-      "nameAlreadyExists": "「{name}」という名前のツールがこのプロジェクトにすでに存在します。",
-      "createFailed": "ツールの作成に失敗しました。"
+      "parametersInvalidJson": "パラメーター: 無効なJSON — {message}"
     },
-    "banners": {
-      "saved": "保存しました。",
-      "deleted": "削除しました。",
-      "created": "ツール「{name}」を作成しました。パラメーターと説明を入力してください。"
-    },
-    "confirmDelete": "サーバーツール「{name}」を削除しますか？同じ名前のバンドルされたBeanツールは、カスケードフォールバックを介して再び表示されるようになります。",
-    "stubDescription": "{name} — TODO 説明",
-    "newModal": {
-      "title": "新しいサーバーツール",
-      "nameLabel": "名前",
-      "nameHelp": "小文字の英数字 + '_'。バンドルされたツール（例: doc_getting_started）のようなsnake_case。",
-      "stubInfo": "{project}にスタブが作成されます。後で説明、パラメーター、ラベルを入力してください。",
-      "cancel": "キャンセル",
-      "create": "作成"
+    "mcp": {
+      "serverTitle": "MCPサーバー",
+      "serverHelp": "接続と認証。フォームに表示されない設定についてはJSONに切り替えてください。",
+      "modeLabel": "エディター",
+      "modeForm": "フォーム",
+      "modeJson": "JSON",
+      "connection": "接続",
+      "transport": "トランスポート",
+      "transportHttp": "HTTP",
+      "transportStdio": "ローカルプロセス",
+      "url": "サーバーURL",
+      "urlHelp": "ストリーミング可能なHTTPエンドポイント。例: https://mcp.example.com/mcp。",
+      "command": "コマンド",
+      "commandHelp": "1行に1つの引数。例: npx, -y, {'@'}modelcontextprotocol/server-filesystem, /data。",
+      "cwd": "作業ディレクトリ",
+      "env": "環境",
+      "mapHelp": "1行に1つのKEY=value。",
+      "authentication": "認証",
+      "authType": "認証",
+      "authNone": "なし",
+      "authOauth": "OAuthログイン",
+      "authBearer": "ベアラートークン",
+      "authApiKey": "APIキーヘッダー",
+      "authBasic": "ユーザーとパスワード",
+      "oauthHelp": "サーバーは「ログイン」ボタンでログインされます。Vancetopeはログインサーバーを見つけて自身を登録します — それを許可しないサーバーの場合のみクライアントIDを入力してください。",
+      "loginScope": "アカウントの範囲",
+      "loginScopeHelp": "個人: 各ユーザーが自分のアカウントでログインします。プロジェクトまたはテナント: 管理者がログインした1つのアカウントが全員によって使用されます。",
+      "loginScopeUser": "個人 (各ユーザー)",
+      "loginScopeProject": "プロジェクトごと",
+      "loginScopeTenant": "テナント用",
+      "loginScopeShort": {
+        "user": "個人ログイン",
+        "project": "プロジェクトアカウント",
+        "tenant": "テナントアカウント"
+      },
+      "scopes": "スコープ",
+      "scopesHelp": "スペース区切り。空の場合、サーバーが要求するスコープを使用します。",
+      "clientId": "クライアントID",
+      "clientIdHelp": "オプション — 自己登録のないサーバーのみ。",
+      "clientSecret": "クライアントシークレット",
+      "secretHelp": "参照として使用するのが最適です（例: {'{{'}secret:tenant:my.key{'}}'}）。値は設定として保存されます。",
+      "token": "トークン",
+      "headerName": "ヘッダー",
+      "apiKeyValue": "キー",
+      "user": "ユーザー",
+      "password": "パスワード",
+      "tls": "TLS",
+      "skipVerification": "証明書を検証しない",
+      "skipVerificationHelp": "自己署名証明書を持つテストサーバーのみ。",
+      "trustedCaPem": "信頼されたCA (PEM)",
+      "runtime": "ランタイム",
+      "timeoutSeconds": "タイムアウト (秒)",
+      "initTimeoutSeconds": "開始タイムアウト (秒)",
+      "defaultArgs": "デフォルト引数",
+      "defaultArgsHelp": "1行に1つのKEY=value — モデルが引数を設定しない限り、すべてのツール呼び出しに追加されます。",
+      "lease": "リース",
+      "leaseHelp": "同時セッションを制限するリース定義のオプション名。",
+      "leaseInline": "リースはインラインで定義されています — JSONビューで編集してください。",
+      "loginTitle": "ログイン",
+      "loginNote": {
+        "user": "各ユーザーは自分のアカウントでログインします。他のユーザーはここまたは接続済みアカウントからログインします。",
+        "project": "ツールが呼び出されるプロジェクトで作業する全員のための1つのアカウント。プロジェクト管理者のみがログインできます。",
+        "tenant": "テナント全体の1つのアカウント。テナント管理者のみがログインできます。"
+      },
+      "status": {
+        "CONNECTED": "ログイン済み",
+        "NOT_CONNECTED": "未ログイン",
+        "EXPIRED": "ログイン期限切れ"
+      },
+      "login": "ログイン",
+      "relogin": "再ログイン",
+      "logout": "ログアウト",
+      "confirmLogout": "MCPサーバー「{name}」からログアウトしますか？誰かが再度ログインするまで、そのツールは利用できなくなります。",
+      "loggedIn": "ログインしました。サーバーのツールは次のターンから利用可能です。",
+      "loggedOut": "ログアウトしました。",
+      "testTitle": "接続テスト",
+      "testHelp": "あなたとして接続し、サーバーのツールを一覧表示します。モデルに見せるべきではないツールはオフにしてください。",
+      "savedStateNote": "テストとログインは保存された状態を使用します — まず変更を適用してください。",
+      "testRun": "テスト",
+      "testOk": "{n}個のツールに接続済み",
+      "testToolsNote": "オフにされたツールは無効なサブツールとして保存されます。",
+      "subToolToggle": "モデルに{name}を提供する",
+      "discoveryTitle": "ログインサーバー",
+      "discoveryIssuer": "発行者",
+      "discoveryRegistration": "登録",
+      "registration": {
+        "cimd": "クライアントメタデータドキュメント",
+        "dcr": "動的登録",
+        "manual": "設定済みクライアントID",
+        "none": "不可 — クライアントIDを設定してください"
+      }
     }
   },
   "toolTemplates": {
     "pageTitle": "ツールテンプレート",
-    "intro": "厳選されたツールパック（Jira、IMAP、SMTPなど）。1つ選択し、入力を完了すると、キットがテナントに適用されます。パスワードは暗号化されて保存されます。",
+    "intro": "厳選されたツールパック（Jira、IMAP、SMTPなど）。1つ選択し、入力を記入すると、このスコープにインストールされます — パスワードは暗号化されて保存されます。",
     "loading": "読み込み中…",
     "searchPlaceholder": "テンプレートを検索…",
-    "projectIdLabel": "プロジェクト",
     "apply": "適用",
     "previouslyApplied": "{at}に{by}によって以前適用されました。フォームは事前に入力されています。更新するには調整して再適用してください。セキュリティのため、パスワードフィールドは空白のままです。",
     "noInputs": "このテンプレートには入力がありません。適用してインストールしてください。",
     "empty": {
-      "headline": "利用可能なテンプレートはありません",
-      "body": "テナント管理者に_tenant/config/tool-templates.yamlでツールテンプレートカタログを populate するよう依頼してください。"
+      "body": "利用可能なテンプレートはありません — カタログは_tenant/config/tool-templates.yamlにあります。"
     },
     "applyFailed": "適用に失敗しました。",
     "unknownUser": "不明",
@@ -3132,7 +3239,8 @@
       "mismatch": "新しいパスワードが一致しません。",
       "tooShort": "パスワードは {min} 文字以上である必要があります。",
       "changed": "パスワードを変更しました。",
-      "failed": "パスワードを変更できませんでした。"
+      "failed": "パスワードを変更できませんでした。",
+      "ssoAccount": "{provider} ({email}) でサインインしています。このアカウントには独自のパスワードがありません。"
     },
     "preferences": {
       "title": "設定",
@@ -3722,6 +3830,10 @@
         "title": "ワークフロー",
         "createHint": "ケバブケースの名前 — ファイル名となり、それがワークフロー名になります。"
       },
+      "serverTools": {
+        "title": "サーバーツール",
+        "createHint": "Snake_case名（小文字、数字、_） — ファイル名とツール名になります。新しいツールは無効なMCPサーバーとして開始されます。サーバーを記入し、有効にしてください。"
+      },
       "hooks": {
         "title": "フック",
         "createHint": "「event/hook-name」— 例：process.completed/notify-owner。イベントはパスセグメント、名前は小文字で_と-を使用します。"
@@ -3741,6 +3853,12 @@
       "nameLabel": "名前",
       "namePlaceholder": "例: serper-main",
       "confirmDeleteEntry": "「{name}」を削除しますか？この操作は元に戻せません。",
+      "inherited": {
+        "tenant": "テナント",
+        "bundled": "組み込み"
+      },
+      "override": "ここで上書き",
+      "confirmOverride": "「{name}」は{origin}レイヤーから来ています。このスコープに独自のコピーを作成しますか？ここで継承されたエントリをシャドウします。コピーを削除すると、継承されたエントリが戻ります。",
       "emptyHeadline": "このエリアにエントリはありません",
       "emptyBody": "選択されたスコープでは、この種の設定はまだ行われていません。",
       "noneHeadline": "エリアなし",

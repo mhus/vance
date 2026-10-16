@@ -558,13 +558,23 @@
     "tenant": "租户",
     "username": "用户名",
     "password": "密码",
-    "rememberUser": "记住用户"
+    "rememberUser": "记住用户",
+    "sso": {
+      "email": "工作邮箱地址",
+      "continueWithGoogle": "使用 Google 继续",
+      "or": "或",
+      "emailRequired": "请输入您的工作邮箱地址以继续使用 Google。",
+      "notAvailable": "此地址无法在此处使用 Google 登录。请改用租户、用户名和密码。",
+      "rejected": "您的账户未启用 Google 登录。请联系您的管理员。",
+      "failed": "Google 登录未完成。请重试。"
+    }
   },
   "index": {
     "sectionTitle": "编辑器",
     "chat": {
       "title": "聊天",
-      "description": "通过WebSocket与大脑进行实时聊天。选择现有会话或在任何项目中开始新会话。"
+      "description": "通过WebSocket与大脑进行实时聊天。选择现有会话或在任何项目中开始新会话。",
+      "llmNotConfigured": "此租户尚未配置语言模型 (ai.default.provider / ai.default.model) — 在管理员设置之前，聊天将失败。"
     },
     "documents": {
       "title": "文档",
@@ -577,10 +587,6 @@
     "settings": {
       "title": "设置",
       "description": "所有可按范围配置的内容：设置表单、区域、项目和租户管理、工具包。"
-    },
-    "tools": {
-      "title": "服务器工具",
-      "description": "为每个项目配置服务器端工具。选择一个项目或 _vance 作为租户范围的默认设置。"
     },
     "insights": {
       "title": "洞察",
@@ -1323,6 +1329,10 @@
       "tabLabel": "Scheduler",
       "parseError": "此 Scheduler 定义不是有效的 YAML — 请在原始编辑器中修复。"
     },
+    "serverToolView": {
+      "tabLabel": "服务器工具",
+      "parseError": "此服务器工具不是有效的 YAML — 请在原始编辑器中修复它。"
+    },
     "recordsEditor": {
       "addRow": "添加行",
       "deleteItem": "删除行",
@@ -1659,7 +1669,21 @@
       "seriesCacheRead": "缓存读取",
       "seriesCost": "成本 ({currency})",
       "axisCost": "成本",
-      "axisTokens": "令牌"
+      "axisTokens": "令牌",
+      "budgetTitle": "成本预算",
+      "budgetTenant": "租户",
+      "budgetProject": "项目 {project}",
+      "budgetDaily": "今天",
+      "budgetMonthly": "本月",
+      "budgetTotal": "自 {from} 起",
+      "budgetValue": "{used} / {limit} ({pct}%)",
+      "budgetExhausted": "已用尽",
+      "budgetWarning": "警告",
+      "budgetNone": "未设置预算",
+      "budgetNoneHint": "无限制。在“LLM 成本预算”设置表单中设置。",
+      "budgetUnpriced": "{calls} 次调用未定价模型，未计入",
+      "budgetUncounted": "{amount} 其他货币未计入",
+      "budgetTotalIncomplete": "已设置绝对预算但未设置开始日期 — 在设置之前不会强制执行。"
     },
     "toolUsage": {
       "pickProject": "在侧边栏选择一个项目以查看其工具需求。",
@@ -1768,6 +1792,52 @@
       "refreshTail": "刷新尾部",
       "loadingStream": "正在加载 {stream}…",
       "emptyStream": "（空）"
+    },
+    "leases": {
+      "refresh": "刷新",
+      "loading": "正在加载租约…",
+      "holderCount": "{n} 个租约",
+      "deadPodCount": "{n} 个在失效 Pod 上",
+      "emptyHeadline": "无租约",
+      "emptyBody": "此租户目前没有持有资源租约。",
+      "countersHeading": "占用情况",
+      "countersHint": "此租户每个漏斗级别的槽位使用情况。全局级别跨所有租户，不显示。",
+      "noCounters": "无计数器。",
+      "holdersHeading": "持有的租约",
+      "noHolders": "无持有的租约。",
+      "colResource": "资源",
+      "colLevel": "级别",
+      "colScope": "范围",
+      "colInUse": "使用中",
+      "colUpdated": "更新时间",
+      "colType": "类型",
+      "colHolder": "持有者",
+      "colProjectUser": "项目 / 用户",
+      "colPod": "Pod",
+      "colHeld": "持有时间",
+      "colLastSeen": "上次使用",
+      "level": {
+        "tenant": "租户",
+        "project": "项目",
+        "user": "用户"
+      },
+      "drift": "漂移",
+      "driftTitle": "只有 {booked} 个持有租约预订此计数器 — 下次协调会纠正它。",
+      "pendingTitle": "仍在获取其级别。",
+      "tokenTitle": "持有者令牌",
+      "podDead": "失效 Pod",
+      "podDeadTitle": "持有者 Pod 已消失 — 清理器将在下一轮释放此租约。",
+      "podBound": "Pod 绑定",
+      "podBoundTitle": "资源存在于持有者 Pod 中并随其消亡。",
+      "ttl": "TTL {n}s",
+      "revoke": "撤销",
+      "confirmRevoke": "撤销“{resource}”({ref}) 上的 {type} 租约？槽位将被释放，资源将被清理 — 正在运行的使用它的作业或会话将被停止。",
+      "age": {
+        "seconds": "{n} 秒前",
+        "minutes": "{n} 分钟前",
+        "hours": "{n} 小时前",
+        "days": "{n} 天前"
+      }
     },
     "addons": {
       "refresh": "刷新",
@@ -2164,46 +2234,18 @@
     }
   },
   "tools": {
-    "pageTitle": "服务器工具",
-    "loading": "正在加载…",
-    "tenantSystemLabel": "_tenant (系统)",
-    "pickAProjectHeadline": "选择一个项目",
-    "pickAProjectBody": "点击左侧的项目以查看其工具。",
-    "sidebar": {
-      "projectsHeading": "项目",
-      "addNew": "+ 新建",
-      "noToolsHeadline": "无工具",
-      "noToolsBody": "点击“+ 新建”以创建一个。",
-      "disabled": "已禁用",
-      "primary": "主要",
-      "deferred": "延迟"
-    },
     "detail": {
-      "backToList": "返回列表",
-      "lastEdit": "· 最后编辑于 {at}",
-      "delete": "删除",
-      "save": "保存",
       "tenantNote": "您正在编辑 _tenant 系统项目 — 此处的更改是租户范围的默认设置。用户项目通过重新创建同名工具来覆盖单个工具。",
-      "cascadedFromTenant": "此工具从 _tenant 级联（租户范围默认）。保存将创建一个项目特定的覆盖，仅在此项目中覆盖租户默认值。",
-      "cascadedFromBundled": "此工具是内置默认值 (vance-defaults)。保存将创建一个项目特定的覆盖，在此项目中覆盖默认值。"
-    },
-    "source": {
-      "project": "项目",
-      "tenant": "租户",
-      "bundled": "内置"
-    },
-    "sourceTooltip": {
-      "project": "直接在此项目中定义。",
-      "tenant": "从 _tenant 项目级联。",
-      "bundled": "来自 vance-defaults 的内置默认值。"
+      "draftHint": "此文档位于 _vance/server-tools/ 之外 — 工具加载器只读取该文件夹，因此该工具不活跃。"
     },
     "cards": {
       "identityTitle": "身份",
       "parametersTitle": "参数 (JSON)",
-      "parametersHelp": "特定类型配置。工厂的参数 Schema 显示在帮助面板中。",
+      "parametersHelp": "特定类型配置。类型参数架构显示在编辑器下方。",
       "labelsTitle": "标签",
       "packTitle": "包",
-      "packHelp": "多工具包（REST API、MCP 服务器）会扩展为许多子工具。以下字段配置包范围的默认值；单例包（例如 doc_lookup）会忽略它们。"
+      "packHelp": "多工具包（REST API、MCP 服务器）会扩展为许多子工具。以下字段配置包范围的默认值；单例包（例如 doc_lookup）会忽略它们。",
+      "typeSchemaTitle": "此类型的参数架构"
     },
     "fields": {
       "type": "类型",
@@ -2216,52 +2258,117 @@
       "disabledSubTools": "已禁用子工具",
       "disabledSubToolsHelp": "每行一个子工具名称。仅限本地名称（不带 <pack>__ 前缀）。空表示所有子工具都处于活动状态。",
       "labels": "标签",
-      "labelsHelp": "每行一个（或逗号分隔）。Recipe 可以通过 {'@'}<label> 定位标签。"
-    },
-    "rightPanel": {
-      "typeSchemaTitle": "类型 Schema",
-      "pickTypeHint": "选择一个类型以查看其参数 Schema。",
-      "cascadeTitle": "级联",
-      "cascadeBody": "在运行时，工具通过项目 → _vance → 内置 Bean 解析。禁用的文档会停止级联 — 这就是您在单个项目中隐藏系统工具的方式。"
+      "labelsHelp": "每行一个（或逗号分隔）。Recipe 可以通过 {'@'}<label> 定位标签。",
+      "promptHint": "提示词提示",
+      "promptHintHelp": "可选。在此工具可达的回合中添加到系统提示词 — 模型何时以及如何使用它。"
     },
     "errors": {
-      "typeRequired": "类型是必需的。",
-      "descriptionRequired": "描述是必需的。",
       "parametersMustBeObject": "参数必须是 JSON 对象。",
-      "parametersInvalidJson": "参数：无效的 JSON — {message}",
-      "nameRequired": "名称是必需的。",
-      "namePattern": "名称必须是小写字母数字，可选带“_”（snake_case）。",
-      "nameAlreadyExists": "此项目中已存在名为“{name}”的工具。",
-      "createFailed": "创建工具失败。"
+      "parametersInvalidJson": "参数：无效的 JSON — {message}"
     },
-    "banners": {
-      "saved": "已保存。",
-      "deleted": "已删除。",
-      "created": "已创建工具“{name}”。填写参数和描述。"
-    },
-    "confirmDelete": "删除服务器工具“{name}”？同名的捆绑 Bean 工具将通过级联回退再次可见。",
-    "stubDescription": "{name} — 待办描述",
-    "newModal": {
-      "title": "新建服务器工具",
-      "nameLabel": "名称",
-      "nameHelp": "小写字母数字 + '_'。Snake_case，如捆绑工具（例如 doc_getting_started）。",
-      "stubInfo": "将在 {project} 中创建一个存根。之后填写描述、参数和标签。",
-      "cancel": "取消",
-      "create": "创建"
+    "mcp": {
+      "serverTitle": "MCP 服务器",
+      "serverHelp": "连接和身份验证。切换到 JSON 以获取表单未显示的设置。",
+      "modeLabel": "编辑器",
+      "modeForm": "表单",
+      "modeJson": "JSON",
+      "connection": "连接",
+      "transport": "传输",
+      "transportHttp": "HTTP",
+      "transportStdio": "本地进程",
+      "url": "服务器 URL",
+      "urlHelp": "可流式 HTTP 端点，例如 https://mcp.example.com/mcp。",
+      "command": "命令",
+      "commandHelp": "每行一个参数，例如 npx, -y, {'@'}modelcontextprotocol/server-filesystem, /data。",
+      "cwd": "工作目录",
+      "env": "环境",
+      "mapHelp": "每行一个 KEY=value。",
+      "authentication": "身份验证",
+      "authType": "身份验证",
+      "authNone": "无",
+      "authOauth": "OAuth 登录",
+      "authBearer": "Bearer 令牌",
+      "authApiKey": "API 密钥头",
+      "authBasic": "用户和密码",
+      "oauthHelp": "服务器通过“登录”按钮登录。Vancetope 找到登录服务器并自行注册 — 仅对于不允许这样做的服务器填写客户端 ID。",
+      "loginScope": "谁的账户",
+      "loginScopeHelp": "个人：每个用户使用自己的账户登录。项目或租户：管理员登录一个账户，所有人使用。",
+      "loginScopeUser": "个人（每个用户）",
+      "loginScopeProject": "每个项目一个",
+      "loginScopeTenant": "租户一个",
+      "loginScopeShort": {
+        "user": "个人登录",
+        "project": "项目账户",
+        "tenant": "租户账户"
+      },
+      "scopes": "范围",
+      "scopesHelp": "以空格分隔。为空：服务器请求的范围。",
+      "clientId": "客户端 ID",
+      "clientIdHelp": "可选 — 仅适用于没有自注册的服务器。",
+      "clientSecret": "客户端密钥",
+      "secretHelp": "最好作为引用，例如 {'{{'}secret:tenant:my.key{'}}'}，值存储为设置。",
+      "token": "令牌",
+      "headerName": "标头",
+      "apiKeyValue": "密钥",
+      "user": "用户",
+      "password": "密码",
+      "tls": "TLS",
+      "skipVerification": "不验证证书",
+      "skipVerificationHelp": "仅适用于使用自签名证书的测试服务器。",
+      "trustedCaPem": "受信任的 CA (PEM)",
+      "runtime": "运行时",
+      "timeoutSeconds": "超时（秒）",
+      "initTimeoutSeconds": "启动超时（秒）",
+      "defaultArgs": "默认参数",
+      "defaultArgsHelp": "每行一个 KEY=value — 添加到每个工具调用，除非模型设置了参数。",
+      "lease": "租约",
+      "leaseHelp": "可选的租约定义名称，用于限制并发会话。",
+      "leaseInline": "租约是内联定义的 — 在 JSON 视图中编辑。",
+      "loginTitle": "登录",
+      "loginNote": {
+        "user": "每个用户使用自己的账户登录。其他人在此处或“已连接账户”下登录。",
+        "project": "项目中的所有工作人员共用一个账户。只有项目管理员可以登录。",
+        "tenant": "整个租户共用一个账户。只有租户管理员可以登录。"
+      },
+      "status": {
+        "CONNECTED": "已登录",
+        "NOT_CONNECTED": "未登录",
+        "EXPIRED": "登录已过期"
+      },
+      "login": "登录",
+      "relogin": "重新登录",
+      "logout": "注销",
+      "confirmLogout": "注销 MCP 服务器“{name}”吗？在有人重新登录之前，其工具将不可用。",
+      "loggedIn": "已登录。服务器工具从下一轮开始可用。",
+      "loggedOut": "已注销。",
+      "testTitle": "连接测试",
+      "testHelp": "以您的身份连接并列出服务器的工具。关闭模型不应看到的工具。",
+      "savedStateNote": "测试和登录使用保存的状态 — 请先应用您的更改。",
+      "testRun": "测试",
+      "testOk": "已连接 — {n} 个工具",
+      "testToolsNote": "关闭的工具将保存为禁用的子工具。",
+      "subToolToggle": "向模型提供 {name}",
+      "discoveryTitle": "登录服务器",
+      "discoveryIssuer": "颁发者",
+      "discoveryRegistration": "注册",
+      "registration": {
+        "cimd": "客户端元数据文档",
+        "dcr": "动态注册",
+        "manual": "已配置的客户端 ID",
+        "none": "不可能 — 设置客户端 ID"
+      }
     }
   },
   "toolTemplates": {
     "pageTitle": "工具模板",
-    "intro": "精选工具包（Jira、IMAP、SMTP 等）。选择一个，填写输入，工具包将应用于您的租户——密码将加密存储。",
+    "intro": "精选工具包（Jira、IMAP、SMTP 等）。选择一个，填写输入，它就会安装到此范围 — 密码会加密存储。",
     "loading": "加载中…",
     "searchPlaceholder": "搜索模板…",
-    "projectIdLabel": "项目",
     "apply": "应用",
     "previouslyApplied": "上次由 {by} 在 {at} 应用。表单已预填——调整并重新应用以更新。为安全起见，密码字段留空。",
     "noInputs": "此模板没有输入——应用即可安装。",
     "empty": {
-      "headline": "无可用模板",
-      "body": "请您的租户管理员在 _tenant/config/tool-templates.yaml 填充工具模板目录。"
+      "body": "没有可用的模板 — 目录位于 _tenant/config/tool-templates.yaml。"
     },
     "applyFailed": "应用失败。",
     "unknownUser": "未知用户",
@@ -3132,7 +3239,8 @@
       "mismatch": "新密码不匹配。",
       "tooShort": "密码长度至少为 {min} 个字符。",
       "changed": "密码已更改。",
-      "failed": "无法更改密码。"
+      "failed": "无法更改密码。",
+      "ssoAccount": "您使用 {provider} ({email}) 登录。此账户没有自己的密码。"
     },
     "preferences": {
       "title": "偏好设置",
@@ -3722,6 +3830,10 @@
         "title": "Workflow",
         "createHint": "Kebab-case 命名 — 它将成为文件名，进而成为 Workflow 名称。"
       },
+      "serverTools": {
+        "title": "服务器工具",
+        "createHint": "Snake_case 名称（小写字母、数字、_）— 它将成为文件名和工具名称。新工具最初是禁用的 MCP 服务器：填写服务器，然后启用它。"
+      },
       "hooks": {
         "title": "Hook",
         "createHint": "“事件/Hook 名称” — 例如 process.completed/notify-owner。事件是路径段，名称为小写，带 _ 和 -。"
@@ -3741,6 +3853,12 @@
       "nameLabel": "名称",
       "namePlaceholder": "例如 serper-main",
       "confirmDeleteEntry": "删除“{name}”？此操作无法撤消。",
+      "inherited": {
+        "tenant": "租户",
+        "bundled": "内置"
+      },
+      "override": "在此处覆盖",
+      "confirmOverride": "“{name}”来自 {origin} 层。在此范围创建您自己的副本吗？它会在此处遮蔽继承的条目；删除副本会恢复继承的条目。",
       "emptyHeadline": "此区域无条目",
       "emptyBody": "所选范围内尚未配置此类内容。",
       "noneHeadline": "无区域",

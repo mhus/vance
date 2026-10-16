@@ -558,13 +558,23 @@
     "tenant": "Tenant",
     "username": "Nom d'utilisateur",
     "password": "Mot de passe",
-    "rememberUser": "Se souvenir de l'utilisateur"
+    "rememberUser": "Se souvenir de l'utilisateur",
+    "sso": {
+      "email": "Adresse e-mail professionnelle",
+      "continueWithGoogle": "Continuer avec Google",
+      "or": "ou",
+      "emailRequired": "Entrez votre adresse e-mail professionnelle pour continuer avec Google.",
+      "notAvailable": "Cette adresse ne peut pas se connecter avec Google ici. Utilisez plutôt le tenant, le nom d'utilisateur et le mot de passe.",
+      "rejected": "Votre compte n'est pas activé pour la connexion avec Google. Demandez à votre administrateur.",
+      "failed": "La connexion avec Google n'a pas abouti. Veuillez réessayer."
+    }
   },
   "index": {
     "sectionTitle": "Éditeurs",
     "chat": {
       "title": "Chat",
-      "description": "Chat en direct avec le cerveau via WebSocket. Choisissez une session existante ou démarrez-en une nouvelle dans n'importe quel projet."
+      "description": "Chat en direct avec le cerveau via WebSocket. Choisissez une session existante ou démarrez-en une nouvelle dans n'importe quel projet.",
+      "llmNotConfigured": "Aucun modèle de langage n'est encore configuré pour ce tenant (ai.default.provider / ai.default.model) — les chats échoueront tant qu'un administrateur n'en aura pas configuré un."
     },
     "documents": {
       "title": "Documents",
@@ -577,10 +587,6 @@
     "settings": {
       "title": "Paramètres",
       "description": "Tout est configurable par portée : formulaires de paramètres, zones, administration de projet et de Tenant, Kits."
-    },
-    "tools": {
-      "title": "Outils Serveur",
-      "description": "Configurez les outils côté serveur par projet. Choisissez un projet ou _vance pour les valeurs par défaut du Tenant."
     },
     "insights": {
       "title": "Insights",
@@ -1323,6 +1329,10 @@
       "tabLabel": "Scheduler",
       "parseError": "Cette définition de Scheduler n'est pas un YAML valide — corrigez-la dans l'éditeur brut."
     },
+    "serverToolView": {
+      "tabLabel": "Outil serveur",
+      "parseError": "Cet outil serveur n'est pas un YAML valide — corrigez-le dans l'éditeur brut."
+    },
     "recordsEditor": {
       "addRow": "Ajouter une ligne",
       "deleteItem": "Supprimer la ligne",
@@ -1659,7 +1669,21 @@
       "seriesCacheRead": "Lecture cache",
       "seriesCost": "Coût ({currency})",
       "axisCost": "Coût",
-      "axisTokens": "Tokens"
+      "axisTokens": "Tokens",
+      "budgetTitle": "Budget de coût",
+      "budgetTenant": "Tenant",
+      "budgetProject": "Projet {project}",
+      "budgetDaily": "Aujourd'hui",
+      "budgetMonthly": "Ce mois-ci",
+      "budgetTotal": "Depuis le {from}",
+      "budgetValue": "{used} sur {limit} ({pct}%)",
+      "budgetExhausted": "Épuisé",
+      "budgetWarning": "Avertissement",
+      "budgetNone": "Aucun budget défini",
+      "budgetNoneHint": "Illimité. Définissez-en un dans le formulaire de paramètres « Budget de coût LLM ».",
+      "budgetUnpriced": "{calls} appels sur des modèles non tarifés non inclus",
+      "budgetUncounted": "{amount} dans une autre devise non inclus",
+      "budgetTotalIncomplete": "Un budget absolu est défini sans date de début — il n'est pas appliqué tant qu'une date n'est pas définie."
     },
     "toolUsage": {
       "pickProject": "Sélectionnez un projet dans la barre latérale pour voir la demande d'outils mesurée.",
@@ -1768,6 +1792,52 @@
       "refreshTail": "Actualiser la fin",
       "loadingStream": "Chargement de {stream}…",
       "emptyStream": "(vide)"
+    },
+    "leases": {
+      "refresh": "Actualiser",
+      "loading": "Chargement des baux…",
+      "holderCount": "{n} bail détenu | {n} baux détenus",
+      "deadPodCount": "{n} sur un pod mort | {n} sur des pods morts",
+      "emptyHeadline": "Aucun bail",
+      "emptyBody": "Rien dans ce tenant ne détient un bail de ressource pour le moment.",
+      "countersHeading": "Occupation",
+      "countersHint": "Slots utilisés par niveau d'entonnoir de ce tenant. Le niveau global s'étend à tous les tenants et n'est pas affiché.",
+      "noCounters": "Aucun compteur.",
+      "holdersHeading": "Baux détenus",
+      "noHolders": "Aucun bail détenu.",
+      "colResource": "Ressource",
+      "colLevel": "Niveau",
+      "colScope": "Portée",
+      "colInUse": "En usage",
+      "colUpdated": "Mis à jour",
+      "colType": "Type",
+      "colHolder": "Détenteur",
+      "colProjectUser": "Projet / utilisateur",
+      "colPod": "Pod",
+      "colHeld": "Détenu",
+      "colLastSeen": "Dernière utilisation",
+      "level": {
+        "tenant": "tenant",
+        "project": "projet",
+        "user": "utilisateur"
+      },
+      "drift": "dérive",
+      "driftTitle": "Seuls {booked} baux détenus réservent ce compteur — la prochaine réconciliation le corrigera.",
+      "pendingTitle": "Acquisition de ses niveaux en cours.",
+      "tokenTitle": "Jeton du détenteur",
+      "podDead": "pod mort",
+      "podDeadTitle": "Le pod détenteur a disparu — le reaper libère ce bail lors de son prochain cycle.",
+      "podBound": "lié au pod",
+      "podBoundTitle": "La ressource réside dans le pod détenteur et meurt avec lui.",
+      "ttl": "TTL {n}s",
+      "revoke": "Révoquer",
+      "confirmRevoke": "Révoquer le bail de type {type} sur « {resource} » ({ref}) ? Le slot est libéré et la ressource est nettoyée — un travail ou une session en cours l'utilisant est arrêté.",
+      "age": {
+        "seconds": "il y a {n}s",
+        "minutes": "il y a {n}m",
+        "hours": "il y a {n}h",
+        "days": "il y a {n}j"
+      }
     },
     "addons": {
       "refresh": "Actualiser",
@@ -2164,46 +2234,18 @@
     }
   },
   "tools": {
-    "pageTitle": "Outils du serveur",
-    "loading": "Chargement…",
-    "tenantSystemLabel": "_tenant (système)",
-    "pickAProjectHeadline": "Sélectionnez un projet",
-    "pickAProjectBody": "Cliquez sur un projet à gauche pour voir ses outils.",
-    "sidebar": {
-      "projectsHeading": "Projets",
-      "addNew": "+ Nouveau",
-      "noToolsHeadline": "Aucun outil",
-      "noToolsBody": "Cliquez sur + Nouveau pour en créer un.",
-      "disabled": "désactivé",
-      "primary": "primaire",
-      "deferred": "différé"
-    },
     "detail": {
-      "backToList": "Retour à la liste",
-      "lastEdit": "· dernière modification {at}",
-      "delete": "Supprimer",
-      "save": "Enregistrer",
       "tenantNote": "Vous modifiez le projet système _tenant — les changements ici sont des valeurs par défaut pour l'ensemble du tenant. Les projets utilisateur masquent les outils individuels en les recréant avec le même nom.",
-      "cascadedFromTenant": "Cet outil est en cascade depuis _tenant (valeur par défaut pour l'ensemble du tenant). L'enregistrement crée un remplacement spécifique au projet qui masque la valeur par défaut du tenant uniquement dans ce projet.",
-      "cascadedFromBundled": "Cet outil est une valeur par défaut intégrée (vance-defaults). L'enregistrement crée un remplacement spécifique au projet qui masque la valeur par défaut dans ce projet."
-    },
-    "source": {
-      "project": "Projet",
-      "tenant": "Tenant",
-      "bundled": "Intégré"
-    },
-    "sourceTooltip": {
-      "project": "Défini directement dans ce projet.",
-      "tenant": "En cascade depuis le projet _tenant.",
-      "bundled": "Valeur par défaut intégrée de vance-defaults."
+      "draftHint": "Ce document se trouve en dehors de _vance/server-tools/ — le chargeur d'outils ne lit que ce dossier, donc l'outil n'est pas actif."
     },
     "cards": {
       "identityTitle": "Identité",
       "parametersTitle": "Paramètres (JSON)",
-      "parametersHelp": "Configuration spécifique au type. Le schéma des paramètres de la fabrique est affiché dans le panneau d'aide.",
+      "parametersHelp": "Configuration spécifique au type. Le schéma des paramètres du type est affiché sous l'éditeur.",
       "labelsTitle": "Étiquettes",
       "packTitle": "Pack",
-      "packHelp": "Les packs multi-outils (API REST, serveur MCP) se déploient en de nombreux sous-outils. Les champs ci-dessous configurent les valeurs par défaut du pack ; les packs singleton (par exemple doc_lookup) les ignorent."
+      "packHelp": "Les packs multi-outils (API REST, serveur MCP) se déploient en de nombreux sous-outils. Les champs ci-dessous configurent les valeurs par défaut du pack ; les packs singleton (par exemple doc_lookup) les ignorent.",
+      "typeSchemaTitle": "Schéma des paramètres de ce type"
     },
     "fields": {
       "type": "Type",
@@ -2216,52 +2258,117 @@
       "disabledSubTools": "Sous-outils désactivés",
       "disabledSubToolsHelp": "Un nom de sous-outil par ligne. Noms locaux uniquement (sans le préfixe <pack>__). Vide signifie que tous les sous-outils sont actifs.",
       "labels": "Étiquettes",
-      "labelsHelp": "Une par ligne (ou séparées par des virgules). Les Recipes peuvent cibler des étiquettes via {'@'}<label>."
-    },
-    "rightPanel": {
-      "typeSchemaTitle": "Schéma de type",
-      "pickTypeHint": "Sélectionnez un type pour voir son schéma de paramètres.",
-      "cascadeTitle": "Cascade",
-      "cascadeBody": "À l'exécution, les outils se résolvent via projet → _vance → beans intégrés. Les documents désactivés arrêtent la cascade — c'est ainsi que vous masquez un outil système dans un seul projet."
+      "labelsHelp": "Une par ligne (ou séparées par des virgules). Les Recipes peuvent cibler des étiquettes via {'@'}<label>.",
+      "promptHint": "Indice de prompt",
+      "promptHintHelp": "Facultatif. Ajouté au prompt système lors des tours où cet outil est accessible — quand et comment le modèle doit l'utiliser."
     },
     "errors": {
-      "typeRequired": "Le type est requis.",
-      "descriptionRequired": "La description est requise.",
       "parametersMustBeObject": "Les paramètres doivent être un objet JSON.",
-      "parametersInvalidJson": "Paramètres : JSON invalide — {message}",
-      "nameRequired": "Le nom est requis.",
-      "namePattern": "Le nom doit être alphanumérique en minuscules avec un \"_\" facultatif (snake_case).",
-      "nameAlreadyExists": "Un outil nommé \"{name}\" existe déjà dans ce projet.",
-      "createFailed": "Échec de la création de l'outil."
+      "parametersInvalidJson": "Paramètres : JSON invalide — {message}"
     },
-    "banners": {
-      "saved": "Enregistré.",
-      "deleted": "Supprimé.",
-      "created": "Outil \"{name}\" créé. Remplissez les paramètres et la description."
-    },
-    "confirmDelete": "Supprimer l'outil serveur \"{name}\" ? Les outils bean intégrés portant le même nom redeviendront visibles via le mécanisme de cascade.",
-    "stubDescription": "{name} — TODO description",
-    "newModal": {
-      "title": "Nouvel outil serveur",
-      "nameLabel": "Nom",
-      "nameHelp": "Alphanumérique en minuscules + '_'. Snake_case, comme les outils intégrés (par exemple doc_getting_started).",
-      "stubInfo": "Un stub sera créé dans {project}. Remplissez la description, les paramètres et les étiquettes par la suite.",
-      "cancel": "Annuler",
-      "create": "Créer"
+    "mcp": {
+      "serverTitle": "Serveur MCP",
+      "serverHelp": "Connexion et authentification. Passez en JSON pour les paramètres que le formulaire n'affiche pas.",
+      "modeLabel": "Éditeur",
+      "modeForm": "Formulaire",
+      "modeJson": "JSON",
+      "connection": "Connexion",
+      "transport": "Transport",
+      "transportHttp": "HTTP",
+      "transportStdio": "Processus local",
+      "url": "URL du serveur",
+      "urlHelp": "Point de terminaison HTTP streamable, par exemple https://mcp.example.com/mcp.",
+      "command": "Commande",
+      "commandHelp": "Un argument par ligne, par exemple npx, -y, {'@'}modelcontextprotocol/server-filesystem, /data.",
+      "cwd": "Répertoire de travail",
+      "env": "Environnement",
+      "mapHelp": "Une paire CLÉ=valeur par ligne.",
+      "authentication": "Authentification",
+      "authType": "Authentification",
+      "authNone": "Aucune",
+      "authOauth": "Connexion OAuth",
+      "authBearer": "Jeton Bearer",
+      "authApiKey": "En-tête de clé API",
+      "authBasic": "Utilisateur et mot de passe",
+      "oauthHelp": "Le serveur est connecté avec le bouton « Se connecter ». Vancetope trouve le serveur de connexion et s'enregistre — remplissez un ID client uniquement pour les serveurs qui ne le permettent pas.",
+      "loginScope": "Compte de qui",
+      "loginScopeHelp": "Personnel : chaque utilisateur se connecte avec son propre compte. Projet ou tenant : un compte qu'un administrateur connecte, utilisé par tout le monde.",
+      "loginScopeUser": "Personnel (chaque utilisateur)",
+      "loginScopeProject": "Un par projet",
+      "loginScopeTenant": "Un pour le tenant",
+      "loginScopeShort": {
+        "user": "connexion personnelle",
+        "project": "compte de projet",
+        "tenant": "compte tenant"
+      },
+      "scopes": "Portées",
+      "scopesHelp": "Séparées par des espaces. Vide : les portées demandées par le serveur.",
+      "clientId": "ID client",
+      "clientIdHelp": "Facultatif — uniquement pour les serveurs sans auto-enregistrement.",
+      "clientSecret": "Secret client",
+      "secretHelp": "Mieux comme référence, ex. {'{{'}secret:tenant:my.key{'}}'}, avec la valeur stockée comme paramètre.",
+      "token": "Jeton",
+      "headerName": "En-tête",
+      "apiKeyValue": "Clé",
+      "user": "Utilisateur",
+      "password": "Mot de passe",
+      "tls": "TLS",
+      "skipVerification": "Ne pas vérifier le certificat",
+      "skipVerificationHelp": "Uniquement pour les serveurs de test avec des certificats auto-signés.",
+      "trustedCaPem": "CA de confiance (PEM)",
+      "runtime": "Exécution",
+      "timeoutSeconds": "Délai d'expiration (secondes)",
+      "initTimeoutSeconds": "Délai de démarrage (secondes)",
+      "defaultArgs": "Arguments par défaut",
+      "defaultArgsHelp": "Une paire CLÉ=valeur par ligne — ajoutée à chaque appel d'outil sauf si le modèle définit l'argument.",
+      "lease": "Bail",
+      "leaseHelp": "Nom facultatif d'une définition de bail qui limite les sessions concurrentes.",
+      "leaseInline": "Le bail est défini en ligne — modifiez-le dans la vue JSON.",
+      "loginTitle": "Connexion",
+      "loginNote": {
+        "user": "Chaque utilisateur se connecte avec son propre compte. Les autres se connectent ici ou sous Comptes connectés.",
+        "project": "Un compte pour tous ceux qui travaillent dans le projet où l'outil est appelé. Seuls les administrateurs de projet peuvent se connecter.",
+        "tenant": "Un compte pour l'ensemble du tenant. Seuls les administrateurs de tenant peuvent se connecter."
+      },
+      "status": {
+        "CONNECTED": "Connecté",
+        "NOT_CONNECTED": "Non connecté",
+        "EXPIRED": "Connexion expirée"
+      },
+      "login": "Se connecter",
+      "relogin": "Se reconnecter",
+      "logout": "Se déconnecter",
+      "confirmLogout": "Se déconnecter du serveur MCP \"{name}\" ? Ses outils ne seront plus disponibles tant que quelqu'un ne se reconnectera pas.",
+      "loggedIn": "Connecté. Les outils du serveur sont disponibles à partir du prochain tour.",
+      "loggedOut": "Déconnecté.",
+      "testTitle": "Test de connexion",
+      "testHelp": "Se connecte en tant que vous et liste les outils du serveur. Désactivez les outils que le modèle ne devrait pas voir.",
+      "savedStateNote": "Le test et la connexion utilisent l'état enregistré — appliquez d'abord vos modifications.",
+      "testRun": "Tester",
+      "testOk": "{n} outil connecté | {n} outils connectés",
+      "testToolsNote": "Les outils désactivés sont enregistrés comme sous-outils désactivés.",
+      "subToolToggle": "Proposer {name} au modèle",
+      "discoveryTitle": "Serveur de connexion",
+      "discoveryIssuer": "Émetteur",
+      "discoveryRegistration": "Enregistrement",
+      "registration": {
+        "cimd": "Document de métadonnées client",
+        "dcr": "Enregistrement dynamique",
+        "manual": "ID client configuré",
+        "none": "Impossible — définissez un ID client"
+      }
     }
   },
   "toolTemplates": {
     "pageTitle": "Modèles d'outils",
-    "intro": "Packs d'outils organisés (Jira, IMAP, SMTP, …). Choisissez-en un, remplissez les entrées, et le kit est appliqué à votre tenant — les mots de passe sont stockés chiffrés.",
+    "intro": "Packs d'outils organisés (Jira, IMAP, SMTP, …). Choisissez-en un, remplissez les entrées, et il sera installé dans cette portée — les mots de passe sont stockés chiffrés.",
     "loading": "Chargement…",
     "searchPlaceholder": "Rechercher des modèles…",
-    "projectIdLabel": "Projet",
     "apply": "Appliquer",
     "previouslyApplied": "Appliqué précédemment le {at} par {by}. Formulaire pré-rempli — ajustez et réappliquez pour mettre à jour. Les champs de mot de passe restent vides pour la sécurité.",
     "noInputs": "Ce modèle n'a pas d'entrées — appliquez-le pour l'installer.",
     "empty": {
-      "headline": "Aucun modèle disponible",
-      "body": "Demandez à votre administrateur de tenant de remplir le catalogue de modèles d'outils à _tenant/config/tool-templates.yaml."
+      "body": "Aucun modèle disponible — le catalogue se trouve à _tenant/config/tool-templates.yaml."
     },
     "applyFailed": "Échec de l'application.",
     "unknownUser": "inconnu",
@@ -3132,7 +3239,8 @@
       "mismatch": "Les nouveaux mots de passe ne correspondent pas.",
       "tooShort": "Le mot de passe doit contenir au moins {min} caractères.",
       "changed": "Mot de passe changé.",
-      "failed": "Impossible de changer le mot de passe."
+      "failed": "Impossible de changer le mot de passe.",
+      "ssoAccount": "Vous vous connectez avec {provider} ({email}). Ce compte n'a pas de mot de passe propre."
     },
     "preferences": {
       "title": "Préférences",
@@ -3722,6 +3830,10 @@
         "title": "Workflows",
         "createHint": "Nom en kebab-case — il devient le nom du fichier et par conséquent le nom du Workflow."
       },
+      "serverTools": {
+        "title": "Outils serveur",
+        "createHint": "Nom en snake_case (lettres minuscules, chiffres, _) — il devient le nom de fichier et le nom de l'outil. Un nouvel outil démarre comme un serveur MCP désactivé : remplissez le serveur, puis activez-le."
+      },
       "hooks": {
         "title": "Hooks",
         "createHint": "\"événement/nom-du-hook\" — ex. process.completed/notify-owner. L'événement est un segment de chemin, le nom en minuscules avec _ et -."
@@ -3741,6 +3853,12 @@
       "nameLabel": "Nom",
       "namePlaceholder": "ex. serper-main",
       "confirmDeleteEntry": "Supprimer \"{name}\" ? Cette action est irréversible.",
+      "inherited": {
+        "tenant": "Tenant",
+        "bundled": "Intégré"
+      },
+      "override": "Remplacer ici",
+      "confirmOverride": "\"{name}\" provient de la couche {origin}. Créer votre propre copie dans cette portée ? Elle masquera l'entrée héritée ici ; la suppression de la copie ramènera l'entrée héritée.",
       "emptyHeadline": "Aucune entrée dans cette zone",
       "emptyBody": "Rien de ce type n'est encore configuré dans la portée sélectionnée.",
       "noneHeadline": "Aucune zone",

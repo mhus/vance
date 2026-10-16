@@ -558,13 +558,23 @@
     "tenant": "Tenant",
     "username": "Nazwa użytkownika",
     "password": "Hasło",
-    "rememberUser": "Zapamiętaj użytkownika"
+    "rememberUser": "Zapamiętaj użytkownika",
+    "sso": {
+      "email": "Służbowy adres e-mail",
+      "continueWithGoogle": "Kontynuuj z Google",
+      "or": "lub",
+      "emailRequired": "Wprowadź swój służbowy adres e-mail, aby kontynuować z Google.",
+      "notAvailable": "Ten adres nie może zalogować się tutaj za pomocą Google. Zamiast tego użyj Tenanta, nazwy użytkownika i hasła.",
+      "rejected": "Twoje konto nie jest włączone do logowania za pomocą Google. Skontaktuj się z administratorem.",
+      "failed": "Logowanie za pomocą Google nie powiodło się. Spróbuj ponownie."
+    }
   },
   "index": {
     "sectionTitle": "Edytory",
     "chat": {
       "title": "Czat",
-      "description": "Czat na żywo z mózgiem przez WebSocket. Wybierz istniejącą sesję lub rozpocznij nową w dowolnym projekcie."
+      "description": "Czat na żywo z mózgiem przez WebSocket. Wybierz istniejącą sesję lub rozpocznij nową w dowolnym projekcie.",
+      "llmNotConfigured": "Dla tego Tenanta nie skonfigurowano jeszcze modelu językowego (ai.default.provider / ai.default.model) — czaty będą kończyć się niepowodzeniem, dopóki administrator go nie ustawi."
     },
     "documents": {
       "title": "Dokumenty",
@@ -577,10 +587,6 @@
     "settings": {
       "title": "Ustawienia",
       "description": "Wszystko konfigurowalne dla każdego zakresu: formularze ustawień, obszary, administracja projektami i Tenantami, Kity."
-    },
-    "tools": {
-      "title": "Narzędzia serwerowe",
-      "description": "Konfiguruj narzędzia serwerowe dla każdego projektu. Wybierz projekt lub _vance dla domyślnych ustawień dla całego Tenanta."
     },
     "insights": {
       "title": "Analizy",
@@ -1323,6 +1329,10 @@
       "tabLabel": "Scheduler",
       "parseError": "Ta definicja schedulera nie jest prawidłowym YAML — popraw ją w edytorze raw."
     },
+    "serverToolView": {
+      "tabLabel": "Narzędzie serwerowe",
+      "parseError": "To narzędzie serwerowe nie jest prawidłowym YAML — popraw je w edytorze kodu."
+    },
     "recordsEditor": {
       "addRow": "Dodaj wiersz",
       "deleteItem": "Usuń wiersz",
@@ -1659,7 +1669,21 @@
       "seriesCacheRead": "Odczyt z pamięci podręcznej",
       "seriesCost": "Koszt ({currency})",
       "axisCost": "Koszt",
-      "axisTokens": "Tokeny"
+      "axisTokens": "Tokeny",
+      "budgetTitle": "Budżet kosztów",
+      "budgetTenant": "Tenant",
+      "budgetProject": "Projekt {project}",
+      "budgetDaily": "Dziś",
+      "budgetMonthly": "W tym miesiącu",
+      "budgetTotal": "Od {from}",
+      "budgetValue": "{used} z {limit} ({pct}%)",
+      "budgetExhausted": "Wykorzystano",
+      "budgetWarning": "Ostrzeżenie",
+      "budgetNone": "Brak ustawionego budżetu",
+      "budgetNoneHint": "Nieograniczony. Ustaw w formularzu ustawień „Budżet kosztów LLM”.",
+      "budgetUnpriced": "{calls} wywołań na modelach bez ceny nie uwzględniono",
+      "budgetUncounted": "{amount} w innej walucie nie uwzględniono",
+      "budgetTotalIncomplete": "Ustawiono budżet bez daty początkowej — nie jest on egzekwowany, dopóki nie zostanie ustawiona."
     },
     "toolUsage": {
       "pickProject": "Wybierz projekt na pasku bocznym, aby zobaczyć zmierzone zapotrzebowanie na narzędzia.",
@@ -1768,6 +1792,52 @@
       "refreshTail": "Odśwież ogon",
       "loadingStream": "Ładowanie {stream}…",
       "emptyStream": "(puste)"
+    },
+    "leases": {
+      "refresh": "Odśwież",
+      "loading": "Ładowanie dzierżaw…",
+      "holderCount": "{n} dzierżawa | {n} dzierżawy | {n} dzierżaw",
+      "deadPodCount": "{n} na martwym podzie | {n} na martwych podach | {n} na martwych podach",
+      "emptyHeadline": "Brak dzierżaw",
+      "emptyBody": "Nic w tym Tenancie nie posiada obecnie dzierżawy zasobu.",
+      "countersHeading": "Zajętość",
+      "countersHint": "Zajęte sloty na poziom lejka tego Tenanta. Poziom globalny obejmuje wszystkich Tenantów i nie jest wyświetlany.",
+      "noCounters": "Brak liczników.",
+      "holdersHeading": "Posiadane dzierżawy",
+      "noHolders": "Brak posiadanych dzierżaw.",
+      "colResource": "Zasób",
+      "colLevel": "Poziom",
+      "colScope": "Zakres",
+      "colInUse": "W użyciu",
+      "colUpdated": "Zaktualizowano",
+      "colType": "Typ",
+      "colHolder": "Posiadacz",
+      "colProjectUser": "Projekt / użytkownik",
+      "colPod": "Pod",
+      "colHeld": "Posiadane",
+      "colLastSeen": "Ostatnio używane",
+      "level": {
+        "tenant": "tenant",
+        "project": "projekt",
+        "user": "użytkownik"
+      },
+      "drift": "dryf",
+      "driftTitle": "Tylko {booked} posiadanych dzierżaw rezerwuje ten licznik — następne uzgodnienie to skoryguje.",
+      "pendingTitle": "Nadal nabywa swoje poziomy.",
+      "tokenTitle": "Token posiadacza",
+      "podDead": "martwy pod",
+      "podDeadTitle": "Pod posiadacza zniknął — żniwiarz zwolni tę dzierżawę w następnej rundzie.",
+      "podBound": "powiązany z podem",
+      "podBoundTitle": "Zasób znajduje się w podzie posiadacza i umiera wraz z nim.",
+      "ttl": "TTL {n}s",
+      "revoke": "Cofnij",
+      "confirmRevoke": "Cofnąć dzierżawę typu {type} na „{resource}” ({ref})? Slot zostanie zwolniony, a zasób usunięty — uruchomione zadanie lub sesja korzystająca z niego zostanie zatrzymana.",
+      "age": {
+        "seconds": "{n}s temu",
+        "minutes": "{n}m temu",
+        "hours": "{n}h temu",
+        "days": "{n}d temu"
+      }
     },
     "addons": {
       "refresh": "Odśwież",
@@ -2164,46 +2234,18 @@
     }
   },
   "tools": {
-    "pageTitle": "Narzędzia serwera",
-    "loading": "Ładowanie…",
-    "tenantSystemLabel": "_tenant (system)",
-    "pickAProjectHeadline": "Wybierz projekt",
-    "pickAProjectBody": "Kliknij projekt po lewej, aby zobaczyć jego narzędzia.",
-    "sidebar": {
-      "projectsHeading": "Projekty",
-      "addNew": "+ Nowy",
-      "noToolsHeadline": "Brak narzędzi",
-      "noToolsBody": "Kliknij + Nowy, aby utworzyć.",
-      "disabled": "wyłączone",
-      "primary": "podstawowe",
-      "deferred": "odroczone"
-    },
     "detail": {
-      "backToList": "Wróć do listy",
-      "lastEdit": "· ostatnia edycja {at}",
-      "delete": "Usuń",
-      "save": "Zapisz",
       "tenantNote": "Edytujesz projekt systemowy _tenant — zmiany tutaj są domyślne dla całego Tenanta. Projekty użytkowników przesłaniają pojedyncze narzędzia, tworząc je ponownie z tą samą nazwą.",
-      "cascadedFromTenant": "To narzędzie jest kaskadowane z _tenant (domyślne dla całego Tenanta). Zapisanie tworzy specyficzne dla projektu przesłonięcie, które przesłania domyślne ustawienia Tenanta tylko w tym projekcie.",
-      "cascadedFromBundled": "To narzędzie jest wbudowanym domyślnym (vance-defaults). Zapisanie tworzy specyficzne dla projektu przesłonięcie, które przesłania domyślne ustawienia w tym projekcie."
-    },
-    "source": {
-      "project": "Projekt",
-      "tenant": "Tenant",
-      "bundled": "Wbudowane"
-    },
-    "sourceTooltip": {
-      "project": "Zdefiniowane bezpośrednio w tym projekcie.",
-      "tenant": "Kaskadowane z projektu _tenant.",
-      "bundled": "Wbudowane domyślne z vance-defaults."
+      "draftHint": "Ten dokument znajduje się poza _vance/server-tools/ — ładowarka narzędzi odczytuje tylko ten folder, więc narzędzie nie jest aktywne."
     },
     "cards": {
       "identityTitle": "Tożsamość",
       "parametersTitle": "Parametry (JSON)",
-      "parametersHelp": "Konfiguracja specyficzna dla typu. Schemat parametrów fabryki jest pokazany w panelu pomocy.",
+      "parametersHelp": "Konfiguracja specyficzna dla typu. Schemat parametrów typu jest wyświetlany poniżej edytora.",
       "labelsTitle": "Etykiety",
       "packTitle": "Pack",
-      "packHelp": "Pakiety wielu narzędzi (REST API, serwer MCP) rozszerzają się na wiele podnarzędzi. Poniższe pola konfigurują domyślne ustawienia dla całego pakietu; pakiety pojedyncze (np. doc_lookup) je ignorują."
+      "packHelp": "Pakiety wielu narzędzi (REST API, serwer MCP) rozszerzają się na wiele podnarzędzi. Poniższe pola konfigurują domyślne ustawienia dla całego pakietu; pakiety pojedyncze (np. doc_lookup) je ignorują.",
+      "typeSchemaTitle": "Schemat parametrów tego typu"
     },
     "fields": {
       "type": "Typ",
@@ -2216,52 +2258,117 @@
       "disabledSubTools": "Wyłączone podnarzędzia",
       "disabledSubToolsHelp": "Jedna nazwa podnarzędzia na linię. Tylko nazwy lokalne (bez prefiksu <pack>__). Puste oznacza, że wszystkie podnarzędzia są aktywne.",
       "labels": "Etykiety",
-      "labelsHelp": "Jedna na linię (lub oddzielone przecinkami). Recipes mogą celować w etykiety za pomocą {'@'}<label>."
-    },
-    "rightPanel": {
-      "typeSchemaTitle": "Schemat typu",
-      "pickTypeHint": "Wybierz typ, aby zobaczyć jego schemat parametrów.",
-      "cascadeTitle": "Kaskada",
-      "cascadeBody": "W czasie działania narzędzia rozwiązują się poprzez projekt → _vance → wbudowane beany. Wyłączone dokumenty zatrzymują kaskadę — w ten sposób ukrywasz narzędzie systemowe w pojedynczym projekcie."
+      "labelsHelp": "Jedna na linię (lub oddzielone przecinkami). Recipes mogą celować w etykiety za pomocą {'@'}<label>.",
+      "promptHint": "Podpowiedź promptu",
+      "promptHintHelp": "Opcjonalne. Dodawane do promptu systemowego w turach, w których to narzędzie jest dostępne — kiedy i jak model powinien go używać."
     },
     "errors": {
-      "typeRequired": "Typ jest wymagany.",
-      "descriptionRequired": "Opis jest wymagany.",
       "parametersMustBeObject": "Parametry muszą być obiektem JSON.",
-      "parametersInvalidJson": "Parametry: nieprawidłowy JSON — {message}",
-      "nameRequired": "Nazwa jest wymagana.",
-      "namePattern": "Nazwa musi składać się z małych liter alfanumerycznych z opcjonalnym „_” (snake_case).",
-      "nameAlreadyExists": "Narzędzie o nazwie „{name}” już istnieje w tym projekcie.",
-      "createFailed": "Nie udało się utworzyć narzędzia."
+      "parametersInvalidJson": "Parametry: nieprawidłowy JSON — {message}"
     },
-    "banners": {
-      "saved": "Zapisano.",
-      "deleted": "Usunięto.",
-      "created": "Utworzono narzędzie „{name}”. Wypełnij parametry i opis."
-    },
-    "confirmDelete": "Usunąć narzędzie serwera „{name}”? Wbudowane narzędzia bean o tej samej nazwie ponownie staną się widoczne poprzez kaskadowe wycofanie.",
-    "stubDescription": "{name} — TODO opis",
-    "newModal": {
-      "title": "Nowe narzędzie serwera",
-      "nameLabel": "Nazwa",
-      "nameHelp": "Małe litery alfanumeryczne + '_'. Snake_case, jak wbudowane narzędzia (np. doc_getting_started).",
-      "stubInfo": "Stub zostanie utworzony w {project}. Następnie wypełnij opis, parametry i etykiety.",
-      "cancel": "Anuluj",
-      "create": "Utwórz"
+    "mcp": {
+      "serverTitle": "Serwer MCP",
+      "serverHelp": "Połączenie i uwierzytelnianie. Przełącz na JSON dla ustawień, których formularz nie pokazuje.",
+      "modeLabel": "Edytor",
+      "modeForm": "Formularz",
+      "modeJson": "JSON",
+      "connection": "Połączenie",
+      "transport": "Transport",
+      "transportHttp": "HTTP",
+      "transportStdio": "Proces lokalny",
+      "url": "Adres URL serwera",
+      "urlHelp": "Punkt końcowy HTTP z możliwością strumieniowania, np. https://mcp.example.com/mcp.",
+      "command": "Polecenie",
+      "commandHelp": "Jeden argument na linię, np. npx, -y, {'@'}modelcontextprotocol/server-filesystem, /data.",
+      "cwd": "Katalog roboczy",
+      "env": "Środowisko",
+      "mapHelp": "Jeden KEY=value na linię.",
+      "authentication": "Uwierzytelnianie",
+      "authType": "Uwierzytelnianie",
+      "authNone": "Brak",
+      "authOauth": "Logowanie OAuth",
+      "authBearer": "Token Bearer",
+      "authApiKey": "Nagłówek klucza API",
+      "authBasic": "Użytkownik i hasło",
+      "oauthHelp": "Serwer jest zalogowany przyciskiem „Zaloguj”. Vancetope znajduje serwer logowania i rejestruje się — wypełnij identyfikator klienta tylko dla serwerów, które na to nie pozwalają.",
+      "loginScope": "Czyje konto",
+      "loginScopeHelp": "Osobiste: każdy użytkownik loguje się własnym kontem. Projekt lub Tenant: jedno konto, które administrator loguje, używane przez wszystkich.",
+      "loginScopeUser": "Osobiste (każdy użytkownik)",
+      "loginScopeProject": "Jedno na projekt",
+      "loginScopeTenant": "Jedno dla Tenanta",
+      "loginScopeShort": {
+        "user": "logowanie osobiste",
+        "project": "konto projektu",
+        "tenant": "konto Tenanta"
+      },
+      "scopes": "Zakresy",
+      "scopesHelp": "Oddzielone spacjami. Puste: zakresy, o które prosi serwer.",
+      "clientId": "ID klienta",
+      "clientIdHelp": "Opcjonalne — tylko dla serwerów bez samorejestracji.",
+      "clientSecret": "Sekret klienta",
+      "secretHelp": "Lepiej jako referencja, np. {'{{'}secret:tenant:my.key{'}}'}, z wartością przechowywaną jako ustawienie.",
+      "token": "Token",
+      "headerName": "Nagłówek",
+      "apiKeyValue": "Klucz",
+      "user": "Użytkownik",
+      "password": "Hasło",
+      "tls": "TLS",
+      "skipVerification": "Nie weryfikuj certyfikatu",
+      "skipVerificationHelp": "Tylko dla serwerów testowych z certyfikatami samo-podpisanymi.",
+      "trustedCaPem": "Zaufany CA (PEM)",
+      "runtime": "Środowisko wykonawcze",
+      "timeoutSeconds": "Limit czasu (sekundy)",
+      "initTimeoutSeconds": "Limit czasu startu (sekundy)",
+      "defaultArgs": "Domyślne argumenty",
+      "defaultArgsHelp": "Jeden KLUCZ=wartość na linię — dodawane do każdego wywołania narzędzia, chyba że model ustawi argument.",
+      "lease": "Lease",
+      "leaseHelp": "Opcjonalna nazwa definicji Lease, która ogranicza równoczesne sesje.",
+      "leaseInline": "Lease jest zdefiniowany wbudowany — edytuj go w widoku JSON.",
+      "loginTitle": "Logowanie",
+      "loginNote": {
+        "user": "Każdy użytkownik loguje się na własne konto. Inni logują się tutaj lub w Połączonych kontach.",
+        "project": "Jedno konto dla wszystkich pracujących w projekcie, w którym narzędzie jest wywoływane. Tylko administratorzy projektu mogą się zalogować.",
+        "tenant": "Jedno konto dla całego Tenanta. Tylko administratorzy Tenanta mogą się zalogować."
+      },
+      "status": {
+        "CONNECTED": "Zalogowano",
+        "NOT_CONNECTED": "Niezalogowano",
+        "EXPIRED": "Sesja wygasła"
+      },
+      "login": "Zaloguj się",
+      "relogin": "Zaloguj się ponownie",
+      "logout": "Wyloguj się",
+      "confirmLogout": "Wylogować się z serwera MCP „{name}”? Jego narzędzia nie będą dostępne, dopóki ktoś nie zaloguje się ponownie.",
+      "loggedIn": "Zalogowano. Narzędzia serwera będą dostępne od następnej tury.",
+      "loggedOut": "Wylogowano.",
+      "testTitle": "Test połączenia",
+      "testHelp": "Łączy się jako Ty i wyświetla listę narzędzi serwera. Wyłącz narzędzia, których model nie powinien widzieć.",
+      "savedStateNote": "Test i logowanie używają zapisanego stanu — najpierw zastosuj zmiany.",
+      "testRun": "Testuj",
+      "testOk": "Połączono — {n} narzędzie | Połączono — {n} narzędzia | Połączono — {n} narzędzi",
+      "testToolsNote": "Wyłączone narzędzia są zapisywane jako wyłączone podnarzędzia.",
+      "subToolToggle": "Oferuj {name} modelowi",
+      "discoveryTitle": "Serwer logowania",
+      "discoveryIssuer": "Wystawca",
+      "discoveryRegistration": "Rejestracja",
+      "registration": {
+        "cimd": "Dokument metadanych klienta",
+        "dcr": "Dynamiczna rejestracja",
+        "manual": "Skonfigurowany ID klienta",
+        "none": "Niemożliwe — ustaw ID klienta"
+      }
     }
   },
   "toolTemplates": {
     "pageTitle": "Szablony narzędzi",
-    "intro": "Wyselekcjonowane pakiety narzędzi (Jira, IMAP, SMTP, …). Wybierz jeden, wypełnij dane, a zestaw zostanie zastosowany do Twojego konta — hasła są przechowywane zaszyfrowane.",
+    "intro": "Wyselekcjonowane pakiety narzędzi (Jira, IMAP, SMTP, …). Wybierz jeden, wypełnij dane wejściowe, a zostanie zainstalowany w tym zakresie — hasła są przechowywane zaszyfrowane.",
     "loading": "Ładowanie…",
     "searchPlaceholder": "Szukaj szablonów…",
-    "projectIdLabel": "Projekt",
     "apply": "Zastosuj",
     "previouslyApplied": "Wcześniej zastosowano {at} przez {by}. Formularz wstępnie wypełniony — dostosuj i zastosuj ponownie, aby zaktualizować. Pola haseł pozostają puste ze względów bezpieczeństwa.",
     "noInputs": "Ten szablon nie ma żadnych danych wejściowych — zastosuj, aby go zainstalować.",
     "empty": {
-      "headline": "Brak dostępnych szablonów",
-      "body": "Poproś administratora konta o uzupełnienie katalogu szablonów narzędzi w _tenant/config/tool-templates.yaml."
+      "body": "Brak dostępnych szablonów — katalog znajduje się pod _tenant/config/tool-templates.yaml."
     },
     "applyFailed": "Zastosowanie nie powiodło się.",
     "unknownUser": "nieznany",
@@ -3132,7 +3239,8 @@
       "mismatch": "Nowe hasła nie pasują do siebie.",
       "tooShort": "Hasło musi mieć co najmniej {min} znaków.",
       "changed": "Hasło zmienione.",
-      "failed": "Nie udało się zmienić hasła."
+      "failed": "Nie udało się zmienić hasła.",
+      "ssoAccount": "Logujesz się za pomocą {provider} ({email}). To konto nie ma własnego hasła."
     },
     "preferences": {
       "title": "Preferencje",
@@ -3722,6 +3830,10 @@
         "title": "Workflows",
         "createHint": "Nazwa w formacie kebab-case — stanie się nazwą pliku, a tym samym nazwą Workflow."
       },
+      "serverTools": {
+        "title": "Narzędzia serwera",
+        "createHint": "Nazwa w formacie snake_case (małe litery, cyfry, _) — staje się nazwą pliku i nazwą narzędzia. Nowe narzędzie zaczyna jako wyłączony serwer MCP: wypełnij serwer, a następnie włącz go."
+      },
       "hooks": {
         "title": "Hooks",
         "createHint": "„event/hook-name” — np. process.completed/notify-owner. Zdarzenie to segment ścieżki, nazwa małymi literami z _ i -."
@@ -3741,6 +3853,12 @@
       "nameLabel": "Nazwa",
       "namePlaceholder": "np. serper-main",
       "confirmDeleteEntry": "Usunąć „{name}”? Tej operacji nie można cofnąć.",
+      "inherited": {
+        "tenant": "Tenant",
+        "bundled": "Wbudowane"
+      },
+      "override": "Nadpisz tutaj",
+      "confirmOverride": "„{name}” pochodzi z warstwy {origin}. Utworzyć własną kopię w tym zakresie? Będzie ona zasłaniać dziedziczony wpis; usunięcie kopii przywróci dziedziczony.",
       "emptyHeadline": "Brak wpisów w tym obszarze",
       "emptyBody": "Nic tego rodzaju nie jest jeszcze skonfigurowane w wybranym zakresie.",
       "noneHeadline": "Brak obszarów",

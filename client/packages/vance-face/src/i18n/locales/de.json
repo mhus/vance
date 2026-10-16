@@ -558,13 +558,23 @@
     "tenant": "Mandant",
     "username": "Benutzername",
     "password": "Passwort",
-    "rememberUser": "Benutzer merken"
+    "rememberUser": "Benutzer merken",
+    "sso": {
+      "email": "Geschäfts-E-Mail-Adresse",
+      "continueWithGoogle": "Mit Google fortfahren",
+      "or": "oder",
+      "emailRequired": "Geben Sie Ihre Geschäfts-E-Mail-Adresse ein, um mit Google fortzufahren.",
+      "notAvailable": "Diese Adresse kann hier nicht mit Google angemeldet werden. Verwenden Sie stattdessen Mandant, Benutzername und Passwort.",
+      "rejected": "Ihr Konto ist für die Anmeldung mit Google nicht aktiviert. Fragen Sie Ihren Administrator.",
+      "failed": "Die Anmeldung mit Google wurde nicht abgeschlossen. Bitte versuchen Sie es erneut."
+    }
   },
   "index": {
     "sectionTitle": "Editoren",
     "chat": {
       "title": "Chat",
-      "description": "Live-Chat mit dem Brain über WebSocket. Bestehende Session auswählen oder eine neue in einem beliebigen Projekt starten."
+      "description": "Live-Chat mit dem Brain über WebSocket. Bestehende Session auswählen oder eine neue in einem beliebigen Projekt starten.",
+      "llmNotConfigured": "Für diesen Mandanten ist noch kein Sprachmodell konfiguriert (ai.default.provider / ai.default.model) – Chats schlagen fehl, bis ein Administrator eines einrichtet."
     },
     "documents": {
       "title": "Dokumente",
@@ -577,10 +587,6 @@
     "settings": {
       "title": "Einstellungen",
       "description": "Alles Konfigurierbare je Bereich: Setting-Forms, Bereiche, Projekt- und Mandanten-Verwaltung, Kits."
-    },
-    "tools": {
-      "title": "Server-Tools",
-      "description": "Server-seitige Tools pro Projekt konfigurieren. Projekt oder _vance für mandantenweite Vorgaben wählen."
     },
     "insights": {
       "title": "Insights",
@@ -1323,6 +1329,10 @@
       "tabLabel": "Scheduler",
       "parseError": "Diese Scheduler-Definition ist kein gültiges YAML — im Raw-Editor korrigieren."
     },
+    "serverToolView": {
+      "tabLabel": "Server-Tool",
+      "parseError": "Dieses Server-Tool ist kein gültiges YAML – beheben Sie es im Raw-Editor."
+    },
     "recordsEditor": {
       "addRow": "Zeile hinzufügen",
       "deleteItem": "Zeile löschen",
@@ -1659,7 +1669,21 @@
       "seriesCacheRead": "Cache gelesen",
       "seriesCost": "Kosten ({currency})",
       "axisCost": "Kosten",
-      "axisTokens": "Tokens"
+      "axisTokens": "Tokens",
+      "budgetTitle": "Kostenbudget",
+      "budgetTenant": "Mandant",
+      "budgetProject": "Projekt {project}",
+      "budgetDaily": "Heute",
+      "budgetMonthly": "Diesen Monat",
+      "budgetTotal": "Seit {from}",
+      "budgetValue": "{used} von {limit} ({pct}%)",
+      "budgetExhausted": "Erschöpft",
+      "budgetWarning": "Warnung",
+      "budgetNone": "Kein Budget festgelegt",
+      "budgetNoneHint": "Unbegrenzt. Legen Sie eines im Einstellungsformular „LLM Cost Budget\" fest.",
+      "budgetUnpriced": "{calls} Aufrufe auf nicht bepreisten Modellen nicht enthalten",
+      "budgetUncounted": "{amount} in anderer Währung nicht enthalten",
+      "budgetTotalIncomplete": "Ein absolutes Budget ist ohne Startdatum festgelegt – es wird erst durchgesetzt, wenn eines festgelegt ist."
     },
     "toolUsage": {
       "pickProject": "In der Seitenleiste ein Projekt wählen, um seinen gemessenen Tool-Bedarf zu sehen.",
@@ -1768,6 +1792,52 @@
       "refreshTail": "Tail aktualisieren",
       "loadingStream": "Lädt {stream}…",
       "emptyStream": "(leer)"
+    },
+    "leases": {
+      "refresh": "Aktualisieren",
+      "loading": "Leases werden geladen…",
+      "holderCount": "{n} Lease gehalten | {n} Leases gehalten",
+      "deadPodCount": "{n} auf einem toten Pod | {n} auf toten Pods",
+      "emptyHeadline": "Keine Leases",
+      "emptyBody": "Nichts in diesem Mandanten hält derzeit eine Ressourcen-Lease.",
+      "countersHeading": "Belegung",
+      "countersHint": "Belegte Slots pro Funnel-Ebene dieses Mandanten. Die globale Ebene umfasst alle Mandanten und wird nicht angezeigt.",
+      "noCounters": "Keine Zähler.",
+      "holdersHeading": "Gehaltene Leases",
+      "noHolders": "Keine Leases gehalten.",
+      "colResource": "Ressource",
+      "colLevel": "Ebene",
+      "colScope": "Geltungsbereich",
+      "colInUse": "In Benutzung",
+      "colUpdated": "Aktualisiert",
+      "colType": "Typ",
+      "colHolder": "Halter",
+      "colProjectUser": "Projekt / Benutzer",
+      "colPod": "Pod",
+      "colHeld": "Gehalten",
+      "colLastSeen": "Zuletzt verwendet",
+      "level": {
+        "tenant": "Mandant",
+        "project": "Projekt",
+        "user": "Benutzer"
+      },
+      "drift": "Drift",
+      "driftTitle": "Nur {booked} gehaltene Leases buchen diesen Zähler – der nächste Abgleich korrigiert dies.",
+      "pendingTitle": "Ebenen werden noch erworben.",
+      "tokenTitle": "Halter-Token",
+      "podDead": "toter Pod",
+      "podDeadTitle": "Der Halter-Pod ist verschwunden – der Reaper gibt diese Lease in seiner nächsten Runde frei.",
+      "podBound": "Pod-gebunden",
+      "podBoundTitle": "Die Ressource lebt im Halter-Pod und stirbt mit ihm.",
+      "ttl": "TTL {n}s",
+      "revoke": "Widerrufen",
+      "confirmRevoke": "Die {type}-Lease auf „{resource}\" ({ref}) widerrufen? Der Slot wird freigegeben und die Ressource bereinigt – ein laufender Job oder eine Session, die sie verwendet, wird gestoppt.",
+      "age": {
+        "seconds": "vor {n}s",
+        "minutes": "vor {n}m",
+        "hours": "vor {n}h",
+        "days": "vor {n}T"
+      }
     },
     "addons": {
       "refresh": "Aktualisieren",
@@ -2164,46 +2234,18 @@
     }
   },
   "tools": {
-    "pageTitle": "Server-Tools",
-    "loading": "Laden…",
-    "tenantSystemLabel": "_tenant (System)",
-    "pickAProjectHeadline": "Projekt auswählen",
-    "pickAProjectBody": "Links ein Projekt anklicken, um dessen Tools anzuzeigen.",
-    "sidebar": {
-      "projectsHeading": "Projekte",
-      "addNew": "+ Neu",
-      "noToolsHeadline": "Keine Tools",
-      "noToolsBody": "Auf „+ Neu\" klicken, um eines anzulegen.",
-      "disabled": "deaktiviert",
-      "primary": "primär",
-      "deferred": "deferred"
-    },
     "detail": {
-      "backToList": "Zurück zur Liste",
-      "lastEdit": "· zuletzt bearbeitet {at}",
-      "delete": "Löschen",
-      "save": "Speichern",
       "tenantNote": "Sie bearbeiten das System-Projekt _tenant — Änderungen hier sind mandantenweite Vorgaben. Benutzerprojekte überschreiben einzelne Tools, indem sie sie mit dem gleichen Namen neu anlegen.",
-      "cascadedFromTenant": "Dieses Tool kommt aus _tenant (Mandanten-Default). Speichern legt einen project-spezifischen Override an — der ersetzt die Mandanten-Vorgabe nur in diesem Projekt.",
-      "cascadedFromBundled": "Dieses Tool ist ein eingebauter Default (vance-defaults). Speichern legt einen project-spezifischen Override an, der den Default in diesem Projekt ersetzt."
-    },
-    "source": {
-      "project": "Projekt",
-      "tenant": "Tenant",
-      "bundled": "Built-in"
-    },
-    "sourceTooltip": {
-      "project": "Direkt in diesem Projekt definiert.",
-      "tenant": "Aus dem _tenant-Projekt cascadiert.",
-      "bundled": "Eingebauter Default aus vance-defaults."
+      "draftHint": "Dieses Dokument liegt außerhalb von _vance/server-tools/ – der Tool-Loader liest nur diesen Ordner, daher ist das Tool nicht aktiv."
     },
     "cards": {
       "identityTitle": "Identität",
       "parametersTitle": "Parameter (JSON)",
-      "parametersHelp": "Typ-spezifische Konfiguration. Das Parameter-Schema der Factory wird im Hilfe-Panel angezeigt.",
+      "parametersHelp": "Typspezifische Konfiguration. Das Parameter-Schema des Typs wird unter dem Editor angezeigt.",
       "labelsTitle": "Labels",
       "packTitle": "Pack",
-      "packHelp": "Multi-Tool-Packs (REST-API, MCP-Server) expandieren in viele Sub-Tools. Die folgenden Felder konfigurieren Pack-weite Defaults; Singleton-Packs (z. B. doc_lookup) ignorieren sie."
+      "packHelp": "Multi-Tool-Packs (REST-API, MCP-Server) expandieren in viele Sub-Tools. Die folgenden Felder konfigurieren Pack-weite Defaults; Singleton-Packs (z. B. doc_lookup) ignorieren sie.",
+      "typeSchemaTitle": "Parameter-Schema dieses Typs"
     },
     "fields": {
       "type": "Typ",
@@ -2216,52 +2258,117 @@
       "disabledSubTools": "Deaktivierte Sub-Tools",
       "disabledSubToolsHelp": "Ein Sub-Tool-Name pro Zeile. Nur lokale Namen (ohne <pack>__-Präfix). Leer bedeutet: alle Sub-Tools aktiv.",
       "labels": "Labels",
-      "labelsHelp": "Eines pro Zeile (oder Komma-getrennt). Recipes können Labels über {'@'}<label> ansprechen."
-    },
-    "rightPanel": {
-      "typeSchemaTitle": "Typ-Schema",
-      "pickTypeHint": "Einen Typ auswählen, um sein Parameter-Schema zu sehen.",
-      "cascadeTitle": "Cascade",
-      "cascadeBody": "Zur Laufzeit werden Tools über project → _vance → eingebaute Beans aufgelöst. Deaktivierte Dokumente stoppen die Cascade — so versteckt man ein System-Tool innerhalb eines einzelnen Projekts."
+      "labelsHelp": "Eines pro Zeile (oder Komma-getrennt). Recipes können Labels über {'@'}<label> ansprechen.",
+      "promptHint": "Prompt-Hinweis",
+      "promptHintHelp": "Optional. Wird dem System-Prompt in Zügen hinzugefügt, in denen dieses Tool erreichbar ist – wann und wie das Modell es verwenden soll."
     },
     "errors": {
-      "typeRequired": "Typ ist erforderlich.",
-      "descriptionRequired": "Beschreibung ist erforderlich.",
       "parametersMustBeObject": "Parameter müssen ein JSON-Objekt sein.",
-      "parametersInvalidJson": "Parameter: ungültiges JSON — {message}",
-      "nameRequired": "Name ist erforderlich.",
-      "namePattern": "Name muss aus Kleinbuchstaben/Ziffern bestehen, optional mit „_\" (snake_case).",
-      "nameAlreadyExists": "Ein Tool mit Namen „{name}\" existiert bereits in diesem Projekt.",
-      "createFailed": "Tool konnte nicht angelegt werden."
+      "parametersInvalidJson": "Parameter: ungültiges JSON — {message}"
     },
-    "banners": {
-      "saved": "Gespeichert.",
-      "deleted": "Gelöscht.",
-      "created": "Tool „{name}\" angelegt. Bitte Parameter und Beschreibung ausfüllen."
-    },
-    "confirmDelete": "Server-Tool „{name}\" löschen? Eingebaute Bean-Tools gleichen Namens werden durch die Cascade-Fallback wieder sichtbar.",
-    "stubDescription": "{name} — TODO Beschreibung",
-    "newModal": {
-      "title": "Neues Server-Tool",
-      "nameLabel": "Name",
-      "nameHelp": "Kleinbuchstaben/Ziffern + „_\". Snake_case, wie die mitgelieferten Tools (z. B. doc_getting_started).",
-      "stubInfo": "In {project} wird ein Stub angelegt. Beschreibung, Parameter und Labels werden danach gefüllt.",
-      "cancel": "Abbrechen",
-      "create": "Anlegen"
+    "mcp": {
+      "serverTitle": "MCP-Server",
+      "serverHelp": "Verbindung und Authentifizierung. Wechseln Sie zu JSON für Einstellungen, die das Formular nicht anzeigt.",
+      "modeLabel": "Editor",
+      "modeForm": "Formular",
+      "modeJson": "JSON",
+      "connection": "Verbindung",
+      "transport": "Transport",
+      "transportHttp": "HTTP",
+      "transportStdio": "Lokaler Prozess",
+      "url": "Server-URL",
+      "urlHelp": "Streamable-HTTP-Endpunkt, z.B. https://mcp.example.com/mcp.",
+      "command": "Befehl",
+      "commandHelp": "Ein Argument pro Zeile, z.B. npx, -y, {'@'}modelcontextprotocol/server-filesystem, /data.",
+      "cwd": "Arbeitsverzeichnis",
+      "env": "Umgebung",
+      "mapHelp": "Ein KEY=value pro Zeile.",
+      "authentication": "Authentifizierung",
+      "authType": "Authentifizierung",
+      "authNone": "Keine",
+      "authOauth": "OAuth-Login",
+      "authBearer": "Bearer-Token",
+      "authApiKey": "API-Key-Header",
+      "authBasic": "Benutzer und Passwort",
+      "oauthHelp": "Der Server wird mit dem Button „Anmelden\" eingeloggt. Vancetope findet den Login-Server und registriert sich – geben Sie eine Client-ID nur für Server ein, die dies nicht zulassen.",
+      "loginScope": "Wessen Konto",
+      "loginScopeHelp": "Persönlich: Jeder Benutzer meldet sich mit seinem eigenen Konto an. Projekt oder Mandant: Ein Konto, das ein Administrator anmeldet und von allen verwendet wird.",
+      "loginScopeUser": "Persönlich (jeder Benutzer)",
+      "loginScopeProject": "Eines pro Projekt",
+      "loginScopeTenant": "Eines für den Mandanten",
+      "loginScopeShort": {
+        "user": "persönlicher Login",
+        "project": "Projektkonto",
+        "tenant": "Mandant"
+      },
+      "scopes": "Scopes",
+      "scopesHelp": "Leerzeichen-getrennt. Leer: die vom Server angeforderten Scopes.",
+      "clientId": "Client ID",
+      "clientIdHelp": "Optional — nur für Server ohne Selbstregistrierung.",
+      "clientSecret": "Client Secret",
+      "secretHelp": "Besser als Referenz, z. B. {'{{'}secret:tenant:my.key{'}}'}, mit dem Wert als Einstellung gespeichert.",
+      "token": "Token",
+      "headerName": "Header",
+      "apiKeyValue": "Key",
+      "user": "Benutzer",
+      "password": "Passwort",
+      "tls": "TLS",
+      "skipVerification": "Zertifikat nicht prüfen",
+      "skipVerificationHelp": "Nur für Testserver mit selbstsignierten Zertifikaten.",
+      "trustedCaPem": "Vertrauenswürdige CA (PEM)",
+      "runtime": "Laufzeit",
+      "timeoutSeconds": "Timeout (Sekunden)",
+      "initTimeoutSeconds": "Start-Timeout (Sekunden)",
+      "defaultArgs": "Standardargumente",
+      "defaultArgsHelp": "Ein KEY=value pro Zeile — wird jedem Tool-Aufruf hinzugefügt, es sei denn, das Modell setzt das Argument.",
+      "lease": "Lease",
+      "leaseHelp": "Optionaler Name einer Lease-Definition, die gleichzeitige Sessions begrenzt.",
+      "leaseInline": "Die Lease ist inline definiert — bearbeite sie in der JSON-Ansicht.",
+      "loginTitle": "Login",
+      "loginNote": {
+        "user": "Jeder Benutzer meldet sich mit seinem eigenen Konto an. Andere melden sich hier oder unter Verbundene Konten an.",
+        "project": "Ein Konto für alle, die im Projekt arbeiten, in dem das Tool aufgerufen wird. Nur Projekt-Admins können sich anmelden.",
+        "tenant": "Ein Konto für den gesamten Mandanten. Nur Mandanten-Admins können sich anmelden."
+      },
+      "status": {
+        "CONNECTED": "Angemeldet",
+        "NOT_CONNECTED": "Nicht angemeldet",
+        "EXPIRED": "Login abgelaufen"
+      },
+      "login": "Anmelden",
+      "relogin": "Erneut anmelden",
+      "logout": "Abmelden",
+      "confirmLogout": "Vom MCP-Server „{name}“ abmelden? Seine Tools sind nicht mehr verfügbar, bis sich jemand erneut anmeldet.",
+      "loggedIn": "Angemeldet. Die Tools des Servers sind ab der nächsten Runde verfügbar.",
+      "loggedOut": "Abgemeldet.",
+      "testTitle": "Verbindungstest",
+      "testHelp": "Verbindet sich als du und listet die Tools des Servers auf. Schalte Tools aus, die das Modell nicht sehen soll.",
+      "savedStateNote": "Test und Login verwenden den gespeicherten Zustand — wende deine Änderungen zuerst an.",
+      "testRun": "Testen",
+      "testOk": "Verbunden — {n} Tool | Verbunden — {n} Tools",
+      "testToolsNote": "Deaktivierte Tools werden als deaktivierte Sub-Tools gespeichert.",
+      "subToolToggle": "{name} dem Modell anbieten",
+      "discoveryTitle": "Login-Server",
+      "discoveryIssuer": "Aussteller",
+      "discoveryRegistration": "Registrierung",
+      "registration": {
+        "cimd": "Client-Metadaten-Dokument",
+        "dcr": "Dynamische Registrierung",
+        "manual": "Konfigurierte Client ID",
+        "none": "Nicht möglich — Client ID setzen"
+      }
     }
   },
   "toolTemplates": {
     "pageTitle": "Tool-Vorlagen",
-    "intro": "Kuratierte Tool-Pakete (Jira, IMAP, SMTP, …). Vorlage wählen, Felder ausfüllen — das Kit wird in deinen Tenant installiert. Passwörter werden verschlüsselt gespeichert.",
+    "intro": "Kuratierte Tool-Packs (Jira, IMAP, SMTP, …). Wähle eines aus, fülle die Eingaben aus, und es wird in diesem Scope installiert — Passwörter werden verschlüsselt gespeichert.",
     "loading": "Laden…",
     "searchPlaceholder": "Vorlagen durchsuchen…",
-    "projectIdLabel": "Projekt",
     "apply": "Anwenden",
     "previouslyApplied": "Zuletzt angewendet am {at} durch {by}. Formular ist vorbefüllt — anpassen und erneut anwenden zum Aktualisieren. Passwort-Felder bleiben aus Sicherheitsgründen leer.",
     "noInputs": "Diese Vorlage hat keine Eingabefelder — auf \"Anwenden\" klicken.",
     "empty": {
-      "headline": "Keine Vorlagen verfügbar",
-      "body": "Bitte deine Tenant-Administration, den Tool-Templates-Katalog unter _tenant/config/tool-templates.yaml zu pflegen."
+      "body": "Keine Vorlagen verfügbar — der Katalog befindet sich unter _tenant/config/tool-templates.yaml."
     },
     "applyFailed": "Anwenden fehlgeschlagen.",
     "unknownUser": "unbekannt",
@@ -3132,7 +3239,8 @@
       "mismatch": "Die neuen Passwörter stimmen nicht überein.",
       "tooShort": "Das Passwort muss mindestens {min} Zeichen lang sein.",
       "changed": "Passwort geändert.",
-      "failed": "Passwort konnte nicht geändert werden."
+      "failed": "Passwort konnte nicht geändert werden.",
+      "ssoAccount": "Du meldest dich mit {provider} ({email}) an. Dieses Konto hat kein eigenes Passwort."
     },
     "preferences": {
       "title": "Einstellungen",
@@ -3722,6 +3830,10 @@
         "title": "Workflows",
         "createHint": "Kebab-Case-Name — er wird zum Dateinamen und damit zum Workflow-Namen."
       },
+      "serverTools": {
+        "title": "Server-Tools",
+        "createHint": "Snake_case-Name (Kleinbuchstaben, Ziffern, _) — er wird zum Dateinamen und Tool-Namen. Ein neues Tool startet als deaktivierter MCP-Server: fülle den Server aus, dann aktiviere es."
+      },
       "hooks": {
         "title": "Hooks",
         "createHint": "„event/hook-name“ — z.B. process.completed/notify-owner. Das Event ist ein Pfadsegment, der Name klein mit _ und -."
@@ -3741,6 +3853,12 @@
       "nameLabel": "Name",
       "namePlaceholder": "z.B. serper-main",
       "confirmDeleteEntry": "„{name}\" löschen? Das kann nicht widerrufen werden.",
+      "inherited": {
+        "tenant": "Mandant",
+        "bundled": "Eingebaut"
+      },
+      "override": "Hier überschreiben",
+      "confirmOverride": "„{name}“ stammt aus der {origin}-Ebene. Eine eigene Kopie in diesem Scope erstellen? Sie überschattet den geerbten Eintrag hier; das Löschen der Kopie stellt den geerbten Eintrag wieder her.",
       "emptyHeadline": "Keine Einträge in diesem Bereich",
       "emptyBody": "In diesem Scope ist noch nichts von dieser Art konfiguriert.",
       "noneHeadline": "Keine Bereiche",

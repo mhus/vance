@@ -558,13 +558,23 @@
     "tenant": "Tenant",
     "username": "Nombre de usuario",
     "password": "Contraseña",
-    "rememberUser": "Recordar usuario"
+    "rememberUser": "Recordar usuario",
+    "sso": {
+      "email": "Correo electrónico de trabajo",
+      "continueWithGoogle": "Continuar con Google",
+      "or": "o",
+      "emailRequired": "Introduce tu correo electrónico de trabajo para continuar con Google.",
+      "notAvailable": "Esta dirección no puede iniciar sesión con Google aquí. Usa el Tenant, nombre de usuario y contraseña en su lugar.",
+      "rejected": "Tu cuenta no está habilitada para iniciar sesión con Google. Pregunta a tu administrador.",
+      "failed": "El inicio de sesión con Google no se completó. Por favor, inténtalo de nuevo."
+    }
   },
   "index": {
     "sectionTitle": "Editores",
     "chat": {
       "title": "Chat",
-      "description": "Chat en vivo con el cerebro a través de WebSocket. Elige una sesión existente o inicia una nueva en cualquier proyecto."
+      "description": "Chat en vivo con el cerebro a través de WebSocket. Elige una sesión existente o inicia una nueva en cualquier proyecto.",
+      "llmNotConfigured": "Aún no hay un modelo de lenguaje configurado para este Tenant (ai.default.provider / ai.default.model) — los chats fallarán hasta que un administrador configure uno."
     },
     "documents": {
       "title": "Documentos",
@@ -577,10 +587,6 @@
     "settings": {
       "title": "Ajustes",
       "description": "Todo lo configurable por alcance: formularios de configuración, áreas, administración de proyectos y Tenants, Kits."
-    },
-    "tools": {
-      "title": "Herramientas del servidor",
-      "description": "Configura herramientas del lado del servidor por proyecto. Elige un proyecto o _vance para valores predeterminados de todo el Tenant."
     },
     "insights": {
       "title": "Información",
@@ -1323,6 +1329,10 @@
       "tabLabel": "Scheduler",
       "parseError": "Esta definición de scheduler no es YAML válido — corrígela en el editor raw."
     },
+    "serverToolView": {
+      "tabLabel": "Herramienta de servidor",
+      "parseError": "Esta herramienta de servidor no es YAML válido — corrígela en el editor sin formato."
+    },
     "recordsEditor": {
       "addRow": "Añadir fila",
       "deleteItem": "Eliminar fila",
@@ -1659,7 +1669,21 @@
       "seriesCacheRead": "Lectura de caché",
       "seriesCost": "Costo ({currency})",
       "axisCost": "Costo",
-      "axisTokens": "Tokens"
+      "axisTokens": "Tokens",
+      "budgetTitle": "Presupuesto de costes",
+      "budgetTenant": "Tenant",
+      "budgetProject": "Proyecto {project}",
+      "budgetDaily": "Hoy",
+      "budgetMonthly": "Este mes",
+      "budgetTotal": "Desde {from}",
+      "budgetValue": "{used} de {limit} ({pct}%)",
+      "budgetExhausted": "Agotado",
+      "budgetWarning": "Advertencia",
+      "budgetNone": "Sin presupuesto establecido",
+      "budgetNoneHint": "Ilimitado. Establece uno en el formulario de configuración \"Presupuesto de costes LLM\".",
+      "budgetUnpriced": "{calls} llamadas en modelos sin precio no incluidas",
+      "budgetUncounted": "{amount} en otra moneda no incluido",
+      "budgetTotalIncomplete": "Se ha establecido un presupuesto absoluto sin fecha de inicio; no se aplica hasta que se establezca una."
     },
     "toolUsage": {
       "pickProject": "Elige un proyecto en la barra lateral para ver la demanda de herramientas medida.",
@@ -1768,6 +1792,52 @@
       "refreshTail": "Actualizar cola",
       "loadingStream": "Cargando {stream}…",
       "emptyStream": "(vacío)"
+    },
+    "leases": {
+      "refresh": "Actualizar",
+      "loading": "Cargando concesiones…",
+      "holderCount": "{n} concesión retenida | {n} concesiones retenidas",
+      "deadPodCount": "{n} en un pod inactivo | {n} en pods inactivos",
+      "emptyHeadline": "Ninguna concesión",
+      "emptyBody": "Nada en este Tenant retiene una concesión de recurso en este momento.",
+      "countersHeading": "Ocupación",
+      "countersHint": "Slots en uso por nivel de embudo de este Tenant. El nivel global abarca todos los Tenants y no se muestra.",
+      "noCounters": "Sin contadores.",
+      "holdersHeading": "Concesiones retenidas",
+      "noHolders": "Ninguna concesión retenida.",
+      "colResource": "Recurso",
+      "colLevel": "Nivel",
+      "colScope": "Alcance",
+      "colInUse": "En uso",
+      "colUpdated": "Actualizado",
+      "colType": "Tipo",
+      "colHolder": "Titular",
+      "colProjectUser": "Proyecto / usuario",
+      "colPod": "Pod",
+      "colHeld": "Retenido",
+      "colLastSeen": "Último uso",
+      "level": {
+        "tenant": "Tenant",
+        "project": "proyecto",
+        "user": "usuario"
+      },
+      "drift": "desfase",
+      "driftTitle": "Solo {booked} concesiones retenidas reservan este contador — la próxima conciliación lo corrige.",
+      "pendingTitle": "Todavía adquiriendo sus niveles.",
+      "tokenTitle": "Token del titular",
+      "podDead": "pod inactivo",
+      "podDeadTitle": "El pod titular ha desaparecido — el recolector libera esta concesión en su próxima ronda.",
+      "podBound": "ligado al pod",
+      "podBoundTitle": "El recurso reside en el pod titular y muere con él.",
+      "ttl": "TTL {n}s",
+      "revoke": "Revocar",
+      "confirmRevoke": "¿Revocar la concesión {type} en \"{resource}\" ({ref})? El slot se libera y el recurso se limpia — un trabajo o sesión en ejecución que lo use se detiene.",
+      "age": {
+        "seconds": "hace {n}s",
+        "minutes": "hace {n}m",
+        "hours": "hace {n}h",
+        "days": "hace {n}d"
+      }
     },
     "addons": {
       "refresh": "Actualizar",
@@ -2164,46 +2234,18 @@
     }
   },
   "tools": {
-    "pageTitle": "Herramientas del servidor",
-    "loading": "Cargando…",
-    "tenantSystemLabel": "_tenant (sistema)",
-    "pickAProjectHeadline": "Elige un proyecto",
-    "pickAProjectBody": "Haz clic en un proyecto a la izquierda para ver sus herramientas.",
-    "sidebar": {
-      "projectsHeading": "Proyectos",
-      "addNew": "+ Nuevo",
-      "noToolsHeadline": "No hay herramientas",
-      "noToolsBody": "Haz clic en + Nuevo para crear una.",
-      "disabled": "deshabilitado",
-      "primary": "primaria",
-      "deferred": "diferida"
-    },
     "detail": {
-      "backToList": "Volver a la lista",
-      "lastEdit": "· última edición {at}",
-      "delete": "Eliminar",
-      "save": "Guardar",
       "tenantNote": "Estás editando el proyecto del sistema _tenant — los cambios aquí son valores predeterminados para todo el tenant. Los proyectos de usuario ocultan herramientas individuales recreándolas con el mismo nombre.",
-      "cascadedFromTenant": "Esta herramienta se hereda de _tenant (valor predeterminado para todo el tenant). Al guardar se crea una anulación específica del proyecto que oculta el valor predeterminado del tenant solo en este proyecto.",
-      "cascadedFromBundled": "Esta herramienta es un valor predeterminado incorporado (vance-defaults). Al guardar se crea una anulación específica del proyecto que oculta el valor predeterminado en este proyecto."
-    },
-    "source": {
-      "project": "Proyecto",
-      "tenant": "Tenant",
-      "bundled": "Incorporado"
-    },
-    "sourceTooltip": {
-      "project": "Definido directamente en este proyecto.",
-      "tenant": "Heredado del proyecto _tenant.",
-      "bundled": "Valor predeterminado incorporado de vance-defaults."
+      "draftHint": "Este documento se encuentra fuera de _vance/server-tools/ — el cargador de herramientas solo lee esa carpeta, por lo que la herramienta no está activa."
     },
     "cards": {
       "identityTitle": "Identidad",
       "parametersTitle": "Parámetros (JSON)",
-      "parametersHelp": "Configuración específica del tipo. El esquema de parámetros de la fábrica se muestra en el panel de ayuda.",
+      "parametersHelp": "Configuración específica del tipo. El esquema de parámetros del tipo se muestra debajo del editor.",
       "labelsTitle": "Etiquetas",
       "packTitle": "Paquete",
-      "packHelp": "Los paquetes de múltiples herramientas (API REST, servidor MCP) se expanden en muchas sub-herramientas. Los campos a continuación configuran los valores predeterminados de todo el paquete; los paquetes singleton (por ejemplo, doc_lookup) los ignoran."
+      "packHelp": "Los paquetes de múltiples herramientas (API REST, servidor MCP) se expanden en muchas sub-herramientas. Los campos a continuación configuran los valores predeterminados de todo el paquete; los paquetes singleton (por ejemplo, doc_lookup) los ignoran.",
+      "typeSchemaTitle": "Esquema de parámetros de este tipo"
     },
     "fields": {
       "type": "Tipo",
@@ -2216,52 +2258,117 @@
       "disabledSubTools": "Sub-herramientas deshabilitadas",
       "disabledSubToolsHelp": "Un nombre de sub-herramienta por línea. Solo nombres locales (sin el prefijo <pack>__). Vacío significa que todas las sub-herramientas están activas.",
       "labels": "Etiquetas",
-      "labelsHelp": "Una por línea (o separadas por comas). Las Recipes pueden apuntar a etiquetas a través de {'@'}<label>."
-    },
-    "rightPanel": {
-      "typeSchemaTitle": "Esquema de tipo",
-      "pickTypeHint": "Elige un tipo para ver su esquema de parámetros.",
-      "cascadeTitle": "Cascada",
-      "cascadeBody": "En tiempo de ejecución, las herramientas se resuelven a través de proyecto → _vance → beans incorporados. Los documentos deshabilitados detienen la cascada — así es como se oculta una herramienta del sistema dentro de un solo proyecto."
+      "labelsHelp": "Una por línea (o separadas por comas). Las Recipes pueden apuntar a etiquetas a través de {'@'}<label>.",
+      "promptHint": "Sugerencia de prompt",
+      "promptHintHelp": "Opcional. Se añade al prompt del sistema en los turnos en los que esta herramienta es accesible — cuándo y cómo el modelo debería usarla."
     },
     "errors": {
-      "typeRequired": "El tipo es obligatorio.",
-      "descriptionRequired": "La descripción es obligatoria.",
       "parametersMustBeObject": "Los parámetros deben ser un objeto JSON.",
-      "parametersInvalidJson": "Parámetros: JSON inválido — {message}",
-      "nameRequired": "El nombre es obligatorio.",
-      "namePattern": "El nombre debe ser alfanumérico en minúsculas con '_' opcional (snake_case).",
-      "nameAlreadyExists": "Ya existe una herramienta llamada \"{name}\" en este proyecto.",
-      "createFailed": "Error al crear la herramienta."
+      "parametersInvalidJson": "Parámetros: JSON inválido — {message}"
     },
-    "banners": {
-      "saved": "Guardado.",
-      "deleted": "Eliminado.",
-      "created": "Herramienta \"{name}\" creada. Rellena los parámetros y la descripción."
-    },
-    "confirmDelete": "¿Eliminar la herramienta del servidor \"{name}\"? Las herramientas bean empaquetadas con el mismo nombre volverán a ser visibles a través del fallback en cascada.",
-    "stubDescription": "{name} — TODO descripción",
-    "newModal": {
-      "title": "Nueva herramienta de servidor",
-      "nameLabel": "Nombre",
-      "nameHelp": "Alfanumérico en minúsculas + '_'. Snake_case, como las herramientas empaquetadas (ej. doc_getting_started).",
-      "stubInfo": "Se creará un stub en {project}. Rellena la descripción, los parámetros y las etiquetas después.",
-      "cancel": "Cancelar",
-      "create": "Crear"
+    "mcp": {
+      "serverTitle": "Servidor MCP",
+      "serverHelp": "Conexión y autenticación. Cambia a JSON para ver la configuración que el formulario no muestra.",
+      "modeLabel": "Editor",
+      "modeForm": "Formulario",
+      "modeJson": "JSON",
+      "connection": "Conexión",
+      "transport": "Transporte",
+      "transportHttp": "HTTP",
+      "transportStdio": "Proceso local",
+      "url": "URL del servidor",
+      "urlHelp": "Endpoint HTTP con capacidad de streaming, ej. https://mcp.example.com/mcp.",
+      "command": "Comando",
+      "commandHelp": "Un argumento por línea, ej. npx, -y, {'@'}modelcontextprotocol/server-filesystem, /data.",
+      "cwd": "Directorio de trabajo",
+      "env": "Entorno",
+      "mapHelp": "Una KEY=valor por línea.",
+      "authentication": "Autenticación",
+      "authType": "Autenticación",
+      "authNone": "Ninguna",
+      "authOauth": "Inicio de sesión OAuth",
+      "authBearer": "Token Bearer",
+      "authApiKey": "Cabecera de clave API",
+      "authBasic": "Usuario y contraseña",
+      "oauthHelp": "El servidor se inicia sesión con el botón \"Iniciar sesión\". Vancetope encuentra el servidor de inicio de sesión y se registra — rellena un ID de cliente solo para servidores que no lo permitan.",
+      "loginScope": "Cuenta de quién",
+      "loginScopeHelp": "Personal: cada usuario inicia sesión con su propia cuenta. Proyecto o Tenant: una cuenta que un administrador inicia sesión, usada por todos.",
+      "loginScopeUser": "Personal (cada usuario)",
+      "loginScopeProject": "Una por proyecto",
+      "loginScopeTenant": "Una para el Tenant",
+      "loginScopeShort": {
+        "user": "inicio de sesión personal",
+        "project": "cuenta de proyecto",
+        "tenant": "cuenta del tenant"
+      },
+      "scopes": "Scopes",
+      "scopesHelp": "Separados por espacios. Vacío: los scopes que solicita el servidor.",
+      "clientId": "ID de cliente",
+      "clientIdHelp": "Opcional — solo para servidores sin auto-registro.",
+      "clientSecret": "Secreto de cliente",
+      "secretHelp": "Mejor como referencia, p. ej. {'{{'}secret:tenant:my.key{'}}'}, con el valor almacenado como una configuración.",
+      "token": "Token",
+      "headerName": "Cabecera",
+      "apiKeyValue": "Clave",
+      "user": "Usuario",
+      "password": "Contraseña",
+      "tls": "TLS",
+      "skipVerification": "No verificar el certificado",
+      "skipVerificationHelp": "Solo para servidores de prueba con certificados autofirmados.",
+      "trustedCaPem": "CA de confianza (PEM)",
+      "runtime": "Tiempo de ejecución",
+      "timeoutSeconds": "Tiempo de espera (segundos)",
+      "initTimeoutSeconds": "Tiempo de espera de inicio (segundos)",
+      "defaultArgs": "Argumentos predeterminados",
+      "defaultArgsHelp": "Un KEY=valor por línea — añadido a cada llamada de herramienta a menos que el modelo establezca el argumento.",
+      "lease": "Lease",
+      "leaseHelp": "Nombre opcional de una definición de lease que limita las sesiones concurrentes.",
+      "leaseInline": "El lease se define en línea — edítalo en la vista JSON.",
+      "loginTitle": "Iniciar sesión",
+      "loginNote": {
+        "user": "Cada usuario inicia sesión con su propia cuenta. Otros inician sesión aquí o en Cuentas conectadas.",
+        "project": "Una cuenta para todos los que trabajan en el proyecto en el que se llama a la herramienta. Solo los administradores del proyecto pueden iniciar sesión.",
+        "tenant": "Una cuenta para todo el tenant. Solo los administradores del tenant pueden iniciar sesión."
+      },
+      "status": {
+        "CONNECTED": "Sesión iniciada",
+        "NOT_CONNECTED": "Sesión no iniciada",
+        "EXPIRED": "Sesión caducada"
+      },
+      "login": "Iniciar sesión",
+      "relogin": "Iniciar sesión de nuevo",
+      "logout": "Cerrar sesión",
+      "confirmLogout": "¿Cerrar sesión del servidor MCP \"{name}\"? Sus herramientas ya no estarán disponibles hasta que alguien inicie sesión de nuevo.",
+      "loggedIn": "Sesión iniciada. Las herramientas del servidor estarán disponibles a partir del siguiente turno.",
+      "loggedOut": "Sesión cerrada.",
+      "testTitle": "Prueba de conexión",
+      "testHelp": "Se conecta como tú y lista las herramientas del servidor. Desactiva las herramientas que el modelo no debería ver.",
+      "savedStateNote": "La prueba y el inicio de sesión usan el estado guardado — aplica tus cambios primero.",
+      "testRun": "Probar",
+      "testOk": "Conectado — {n} herramienta | Conectado — {n} herramientas",
+      "testToolsNote": "Las herramientas desactivadas se guardan como sub-herramientas deshabilitadas.",
+      "subToolToggle": "Ofrecer {name} al modelo",
+      "discoveryTitle": "Servidor de inicio de sesión",
+      "discoveryIssuer": "Emisor",
+      "discoveryRegistration": "Registro",
+      "registration": {
+        "cimd": "Documento de metadatos del cliente",
+        "dcr": "Registro dinámico",
+        "manual": "ID de cliente configurado",
+        "none": "No es posible — establece un ID de cliente"
+      }
     }
   },
   "toolTemplates": {
     "pageTitle": "Plantillas de herramientas",
-    "intro": "Paquetes de herramientas seleccionados (Jira, IMAP, SMTP, …). Elige uno, rellena los datos y el Kit se aplicará a tu Tenant — las contraseñas se almacenan cifradas.",
+    "intro": "Paquetes de herramientas seleccionados (Jira, IMAP, SMTP, …). Elige uno, rellena los campos y se instalará en este scope — las contraseñas se almacenan cifradas.",
     "loading": "Cargando…",
     "searchPlaceholder": "Buscar plantillas…",
-    "projectIdLabel": "Proyecto",
     "apply": "Aplicar",
     "previouslyApplied": "Aplicado previamente el {at} por {by}. Formulario precargado — ajusta y vuelve a aplicar para actualizar. Los campos de contraseña permanecen en blanco por seguridad.",
     "noInputs": "Esta plantilla no tiene entradas — aplica para instalarla.",
     "empty": {
-      "headline": "No hay plantillas disponibles",
-      "body": "Pide a tu administrador de Tenant que complete el catálogo de plantillas de herramientas en _tenant/config/tool-templates.yaml."
+      "body": "No hay plantillas disponibles — el catálogo se encuentra en _tenant/config/tool-templates.yaml."
     },
     "applyFailed": "Error al aplicar.",
     "unknownUser": "desconocido",
@@ -3132,7 +3239,8 @@
       "mismatch": "Las nuevas contraseñas no coinciden.",
       "tooShort": "La contraseña debe tener al menos {min} caracteres.",
       "changed": "Contraseña cambiada.",
-      "failed": "No se pudo cambiar la contraseña."
+      "failed": "No se pudo cambiar la contraseña.",
+      "ssoAccount": "Inicias sesión con {provider} ({email}). Esta cuenta no tiene contraseña propia."
     },
     "preferences": {
       "title": "Preferencias",
@@ -3722,6 +3830,10 @@
         "title": "Workflows",
         "createHint": "Nombre en kebab-case; se convierte en el nombre de archivo y, con él, en el nombre del Workflow."
       },
+      "serverTools": {
+        "title": "Herramientas del servidor",
+        "createHint": "Nombre en snake_case (letras minúsculas, dígitos, _) — se convierte en el nombre del archivo y de la herramienta. Una nueva herramienta comienza como un servidor MCP deshabilitado: rellena el servidor y luego habilítala."
+      },
       "hooks": {
         "title": "Hooks",
         "createHint": "\"evento/nombre-del-hook\" — ej. process.completed/notify-owner. El evento es un segmento de ruta, el nombre en minúsculas con _ y -."
@@ -3741,6 +3853,12 @@
       "nameLabel": "Nombre",
       "namePlaceholder": "ej. serper-main",
       "confirmDeleteEntry": "¿Eliminar \"{name}\"? Esto no se puede deshacer.",
+      "inherited": {
+        "tenant": "Tenant",
+        "bundled": "Integrado"
+      },
+      "override": "Anular aquí",
+      "confirmOverride": "“{name}” proviene de la capa {origin}. ¿Crear tu propia copia en este scope? Ocultará la entrada heredada aquí; eliminar la copia hará que la heredada vuelva.",
       "emptyHeadline": "No hay entradas en esta área",
       "emptyBody": "Nada de este tipo está configurado en el ámbito seleccionado todavía.",
       "noneHeadline": "No hay áreas",

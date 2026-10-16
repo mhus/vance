@@ -146,7 +146,7 @@ fields:
   # ─── Quotas ──────────────────────────────────────────────────────
 
   - name: dailyTtsCalls
-    type: number
+    type: integer
     defaultValue: "0"
     label:
       de: "TTS-Aufrufe pro Tag (tenant-weit)"
@@ -161,7 +161,7 @@ fields:
       key: "ai.hotblack.daily-tts-calls"
 
   - name: monthlyTtsCalls
-    type: number
+    type: integer
     defaultValue: "0"
     label:
       de: "TTS-Aufrufe pro Monat (tenant-weit)"
@@ -174,7 +174,7 @@ fields:
       key: "ai.hotblack.monthly-tts-calls"
 
   - name: dailySttCalls
-    type: number
+    type: integer
     defaultValue: "0"
     label:
       de: "STT-Aufrufe pro Tag (tenant-weit)"
@@ -187,7 +187,7 @@ fields:
       key: "ai.hotblack.daily-stt-calls"
 
   - name: monthlySttCalls
-    type: number
+    type: integer
     defaultValue: "0"
     label:
       de: "STT-Aufrufe pro Monat (tenant-weit)"
@@ -200,7 +200,7 @@ fields:
       key: "ai.hotblack.monthly-stt-calls"
 
   - name: dailyMusicCalls
-    type: number
+    type: integer
     defaultValue: "0"
     label:
       de: "Musik-Aufrufe pro Tag (tenant-weit)"
@@ -215,7 +215,7 @@ fields:
       key: "ai.hotblack.daily-music-calls"
 
   - name: monthlyMusicCalls
-    type: number
+    type: integer
     defaultValue: "0"
     label:
       de: "Musik-Aufrufe pro Monat (tenant-weit)"
@@ -228,7 +228,7 @@ fields:
       key: "ai.hotblack.monthly-music-calls"
 
   - name: dailyAuCalls
-    type: number
+    type: integer
     defaultValue: "0"
     label:
       de: "Analyse-Aufrufe pro Tag (tenant-weit)"
@@ -243,7 +243,7 @@ fields:
       key: "ai.hotblack.daily-au-calls"
 
   - name: monthlyAuCalls
-    type: number
+    type: integer
     defaultValue: "0"
     label:
       de: "Analyse-Aufrufe pro Monat (tenant-weit)"
@@ -258,7 +258,7 @@ fields:
   # ─── Performance ─────────────────────────────────────────────────
 
   - name: timeout
-    type: number
+    type: integer
     label:
       de: "Timeout (Sekunden)"
       en: "Timeout (seconds)"
@@ -270,7 +270,7 @@ fields:
       key: "ai.hotblack.timeout"
 
   - name: heartbeatIntervalSec
-    type: number
+    type: integer
     defaultValue: "30"
     label:
       de: "Heartbeat-Intervall (Sekunden)"

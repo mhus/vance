@@ -342,6 +342,7 @@ public class SettingFormPlanBuilder {
             case "string", "textarea", "select" -> SettingType.STRING;
             case "password" -> SettingType.PASSWORD;
             case "integer" -> SettingType.INT;
+            case "number" -> SettingType.DOUBLE;
             case "boolean" -> SettingType.BOOLEAN;
             default ->
                 throw new IllegalStateException(
@@ -368,7 +369,10 @@ public class SettingFormPlanBuilder {
             }
             case DOUBLE -> {
                 try {
-                    yield Double.toString(Double.parseDouble(s));
+                    // Plain decimal, no trailing zeros: "10" stays "10" (an
+                    // integer reader of the same key still parses it), "0.1"
+                    // stays "0.1" instead of a binary-float approximation.
+                    yield new java.math.BigDecimal(s).stripTrailingZeros().toPlainString();
                 } catch (NumberFormatException e) {
                     throw new IllegalStateException("fields[" + field.getName() + "] is not a number: " + s, e);
                 }

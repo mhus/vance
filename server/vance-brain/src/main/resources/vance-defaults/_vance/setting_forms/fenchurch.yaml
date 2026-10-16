@@ -88,7 +88,7 @@ fields:
   # ─── Quotas ──────────────────────────────────────────────────────
 
   - name: dailyImages
-    type: number
+    type: integer
     label:
       de: "Tägliches Limit (Bilder pro Tag)"
       en: "Daily limit (images per day)"
@@ -106,7 +106,7 @@ fields:
       key: "ai.fenchurch.daily_images"
 
   - name: monthlyImages
-    type: number
+    type: integer
     label:
       de: "Monatliches Limit (Bilder pro Monat)"
       en: "Monthly limit (images per month)"
@@ -123,7 +123,7 @@ fields:
   # ─── Performance ─────────────────────────────────────────────────
 
   - name: timeoutSeconds
-    type: number
+    type: integer
     defaultValue: "360"
     label:
       de: "Timeout (Sekunden)"
@@ -142,7 +142,7 @@ fields:
       key: "ai.fenchurch.timeout"
 
   - name: heartbeatIntervalSeconds
-    type: number
+    type: integer
     defaultValue: "30"
     label:
       de: "Heartbeat-Intervall (Sekunden)"

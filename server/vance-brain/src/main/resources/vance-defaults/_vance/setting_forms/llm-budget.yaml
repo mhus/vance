@@ -47,7 +47,7 @@ fields:
       key: "ai.llm.budget.currency"
 
   - name: daily
-    type: string
+    type: number
     label:
       de: "Budget pro Tag"
       en: "Budget per day"
@@ -58,10 +58,9 @@ fields:
            unlimited."
     bindsTo:
       key: "ai.llm.budget.daily"
-      settingType: DOUBLE
 
   - name: monthly
-    type: string
+    type: number
     label:
       de: "Budget pro Monat"
       en: "Budget per month"
@@ -70,10 +69,9 @@ fields:
       en: "Ceiling per UTC calendar month. Empty = unlimited."
     bindsTo:
       key: "ai.llm.budget.monthly"
-      settingType: DOUBLE
 
   - name: total
-    type: string
+    type: number
     label:
       de: "Budget absolut"
       en: "Absolute budget"
@@ -85,7 +83,6 @@ fields:
            only once the start date is set as well. Empty = unlimited."
     bindsTo:
       key: "ai.llm.budget.total"
-      settingType: DOUBLE
 
   - name: totalSince
     type: string

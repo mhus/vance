@@ -90,7 +90,7 @@ fields:
       key: "tex.rbehzadan.apiKey"
 
   - name: rbehzadanTimeoutSeconds
-    type: number
+    type: integer
     defaultValue: "300"
     label:
       de: "Timeout (Sekunden)"
@@ -107,7 +107,7 @@ fields:
       key: "tex.rbehzadan.timeoutSeconds"
 
   - name: rbehzadanPollIntervalSeconds
-    type: number
+    type: integer
     defaultValue: "3"
     label:
       de: "Poll-Intervall (Sekunden)"

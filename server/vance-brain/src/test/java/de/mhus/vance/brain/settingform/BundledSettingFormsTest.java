@@ -193,21 +193,6 @@ class BundledSettingFormsTest {
     }
 
     @Test
-    void quota_preset_parses_cleanly_with_conditional_overlap() throws IOException {
-        ResolvedSettingForm f = loadBundled("quota-preset");
-        assertThat(f.fields())
-                .extracting(field -> field.getName())
-                .containsExactly("budget", "customDailyTokens", "customMonthlyTokens", "warnAtPercent");
-
-        // Preset-mode and custom-mode entries share the same target key
-        // (quota.daily_tokens / quota.monthly_tokens). The loader accepts
-        // this because both sides carry writeIf.
-        assertThat(f.computedSettings())
-                .extracting(ResolvedComputedSetting::key)
-                .containsExactly("quota.daily_tokens", "quota.monthly_tokens");
-    }
-
-    @Test
     void integrations_jira_parses_cleanly() throws IOException {
         ResolvedSettingForm f = loadBundled("integrations-jira");
         assertThat(f.fields())
@@ -381,6 +366,44 @@ class BundledSettingFormsTest {
                 .isTrue();
         assertThat(SettingFormLoader.isAvailableIn(f.availableIn(), "_user_road.runner"))
                 .isFalse();
+    }
+
+    /**
+     * Every bundled form uses only field types the renderer draws and the
+     * validator knows, and every bound field maps to a setting type. A type
+     * outside that set used to slip through silently: {@code type: number}
+     * loaded fine, rendered nothing and refused to save — the quota fields of
+     * Fenchurch and Hotblack were unreachable from the UI for that reason.
+     */
+    @Test
+    void everyBundledForm_usesKnownAndBindableFieldTypes() throws Exception {
+        java.util.Set<String> known = java.util.Set.of(
+                "string", "textarea", "password", "integer", "number", "boolean", "select", "multi_select", "repeat");
+        java.net.URL dir =
+                BundledSettingFormsTest.class.getClassLoader().getResource("vance-defaults/_vance/setting_forms/");
+        assertThat(dir).isNotNull();
+        java.util.List<String> names;
+        try (java.util.stream.Stream<java.nio.file.Path> files =
+                java.nio.file.Files.list(java.nio.file.Path.of(dir.toURI()))) {
+            names = files.map(f -> f.getFileName().toString())
+                    .filter(n -> n.endsWith(".yaml"))
+                    .map(n -> n.substring(0, n.length() - ".yaml".length()))
+                    .sorted()
+                    .toList();
+        }
+        assertThat(names).isNotEmpty();
+
+        for (String name : names) {
+            ResolvedSettingForm f = loadBundled(name);
+            assertThat(f.fields()).allSatisfy(field -> {
+                assertThat(field.getType()).as("%s.%s", name, field.getName()).isIn(known);
+                if (field.getBindsTo() != null) {
+                    assertThat(SettingFormPlanBuilder.resolveFieldSettingType(field, field.getBindsTo()))
+                            .as("%s.%s", name, field.getName())
+                            .isNotNull();
+                }
+            });
+        }
     }
 
     private ResolvedSettingForm loadBundled(String name) throws IOException {

@@ -92,9 +92,8 @@ public class TemplateService {
         // permission provider applies the normal role check (R4: a reserved
         // _vance/ folder needs ADMIN). Passing WriteActor.SYSTEM here would
         // fail-open and let a WRITER plant privileged control-plane docs.
-        String userId = subject.subjectType() == de.mhus.vance.shared.permission.SubjectType.USER
-                ? subject.subjectId()
-                : null;
+        String userId =
+                subject.subjectType() == de.mhus.vance.shared.permission.SubjectType.USER ? subject.subjectId() : null;
 
         String bodyExt = template.bodyExtension();
         String filename = resolveFilename(template, requestedName, bodyExt);
@@ -104,28 +103,32 @@ public class TemplateService {
         // reads. Templates without one keep the historical behaviour.
         String targetFolder = template.folder() != null ? template.folder() : folder;
         String targetPath = joinPath(targetFolder, filename);
-        String mime = template.typeOverride() != null
-                ? template.typeOverride()
-                : DocumentService.mimeFromPath(filename);
+        String mime =
+                template.typeOverride() != null ? template.typeOverride() : DocumentService.mimeFromPath(filename);
 
         String content = renderBody(template, typedValues, filename, userId, projectId, lang, tenantId);
 
-        String project = (projectId == null || projectId.isBlank())
-                ? HomeBootstrapService.TENANT_PROJECT_NAME
-                : projectId;
+        String project =
+                (projectId == null || projectId.isBlank()) ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
 
         DocumentDocument doc = documentService.create(
-                tenantId, project, targetPath,
-                /*title*/ null, /*tags*/ null, mime,
+                tenantId,
+                project,
+                targetPath,
+                /*title*/ null, /*tags*/
+                null,
+                mime,
                 new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8)),
                 /*createdBy*/ userId,
                 de.mhus.vance.shared.permission.WriteActor.user(subject));
 
-        log.info("Template '{}' applied tenant='{}' project='{}' path='{}'",
-                template.name(), tenantId, project, doc.getPath());
-        return new AppliedTemplate(
-                doc.getPath(),
-                doc.getMimeType() != null ? doc.getMimeType() : mime);
+        log.info(
+                "Template '{}' applied tenant='{}' project='{}' path='{}'",
+                template.name(),
+                tenantId,
+                project,
+                doc.getPath());
+        return new AppliedTemplate(doc.getPath(), doc.getMimeType() != null ? doc.getMimeType() : mime);
     }
 
     /**
@@ -160,42 +163,41 @@ public class TemplateService {
 
         String app = template.app();
         // A declared folder wins over the caller's, exactly as on the document path.
-        String targetFolder = normalizeFolder(
-                template.folder() != null ? template.folder() : callerFolder);
+        String targetFolder = normalizeFolder(template.folder() != null ? template.folder() : callerFolder);
         if (targetFolder.isEmpty()) {
             // The app folder *is* the app's identity — a manifest at the project
             // root would turn the whole project into one app.
             throw new IllegalStateException("a target folder is required for an application template");
         }
 
-        String project = (projectId == null || projectId.isBlank())
-                ? HomeBootstrapService.TENANT_PROJECT_NAME
-                : projectId;
+        String project =
+                (projectId == null || projectId.isBlank()) ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
         String manifestPath = targetFolder + "/" + VanceApplication.APP_MANIFEST;
 
-        permissionService.enforce(
-                subject, new Resource.Document(tenantId, project, manifestPath), Action.CREATE);
+        permissionService.enforce(subject, new Resource.Document(tenantId, project, manifestPath), Action.CREATE);
 
         if (documentService.findByPath(tenantId, project, manifestPath).isPresent()) {
-            throw new DocumentService.DocumentAlreadyExistsException(
-                    "Document already exists: " + manifestPath);
+            throw new DocumentService.DocumentAlreadyExistsException("Document already exists: " + manifestPath);
         }
 
-        String userId = subject.subjectType() == de.mhus.vance.shared.permission.SubjectType.USER
-                ? subject.subjectId()
-                : null;
+        String userId =
+                subject.subjectType() == de.mhus.vance.shared.permission.SubjectType.USER ? subject.subjectId() : null;
 
-        VanceApplication.CreateResult result = applicationRegistry.require(app).create(
-                new VanceApplication.CreateContext(
-                        tenantId, project, targetFolder, userId,
-                        /*processId*/ null, /*overwrite*/ false, values));
+        VanceApplication.CreateResult result = applicationRegistry
+                .require(app)
+                .create(new VanceApplication.CreateContext(
+                        tenantId, project, targetFolder, userId, /*processId*/ null, /*overwrite*/ false, values));
 
-        log.info("Template '{}' scaffolded app='{}' tenant='{}' project='{}' folder='{}' artefacts={}",
-                template.name(), app, tenantId, project, targetFolder, result.artefacts().size());
+        log.info(
+                "Template '{}' scaffolded app='{}' tenant='{}' project='{}' folder='{}' artefacts={}",
+                template.name(),
+                app,
+                tenantId,
+                project,
+                targetFolder,
+                result.artefacts().size());
 
-        return new AppliedTemplate(
-                result.manifestPath(),
-                DocumentService.mimeFromPath(VanceApplication.APP_MANIFEST));
+        return new AppliedTemplate(result.manifestPath(), DocumentService.mimeFromPath(VanceApplication.APP_MANIFEST));
     }
 
     /**
@@ -210,8 +212,7 @@ public class TemplateService {
      * this only carries that knowledge into the map. Unparsable or absent
      * values are left untouched — validation, not coercion, is what reports them.
      */
-    private static Map<String, Object> coerceByFieldType(
-            List<FormFieldDto> fields, Map<String, Object> values) {
+    private static Map<String, Object> coerceByFieldType(List<FormFieldDto> fields, Map<String, Object> values) {
         if (fields.isEmpty() || values.isEmpty()) {
             return values;
         }
@@ -228,13 +229,20 @@ public class TemplateService {
                         // Left as the string it was: the validator reports it.
                     }
                 }
+                case FormValidator.TYPE_NUMBER -> {
+                    try {
+                        out.put(field.getName(), new java.math.BigDecimal(s.trim()));
+                    } catch (NumberFormatException ignored) {
+                        // Left as the string it was: the validator reports it.
+                    }
+                }
                 case FormValidator.TYPE_BOOLEAN -> {
                     String v = s.trim().toLowerCase(java.util.Locale.ROOT);
                     if ("true".equals(v) || "false".equals(v)) {
                         out.put(field.getName(), Boolean.valueOf(v));
                     }
                 }
-                default -> { }
+                default -> {}
             }
         }
         return out;
@@ -285,15 +293,17 @@ public class TemplateService {
             String rendered = templateRenderer.renderStructured(template.bodyContent(), ctx);
             return rendered == null ? "" : rendered;
         } catch (PromptTemplateException e) {
-            throw new IllegalStateException(
-                    "template body render failed: " + e.getMessage(), e);
+            throw new IllegalStateException("template body render failed: " + e.getMessage(), e);
         }
     }
 
     /** Renders the FREE-mode {@code name.default} suggestion (no extension). Empty when absent. */
     public String renderNameDefault(
-            ResolvedTemplate template, @Nullable String userId,
-            @Nullable String projectId, @Nullable String lang, String tenantId) {
+            ResolvedTemplate template,
+            @Nullable String userId,
+            @Nullable String projectId,
+            @Nullable String lang,
+            String tenantId) {
         String tpl = template.nameDefaultTemplate();
         if (tpl == null) return "";
         Map<String, Object> ctx = new HashMap<>();

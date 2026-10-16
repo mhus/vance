@@ -98,6 +98,45 @@ class SettingFormLoaderTest {
     }
 
     @Test
+    void unknown_field_type_rejects_form() {
+        String broken = """
+                title:       { en: "Broken" }
+                description: { en: "Broken" }
+                fields:
+                  - name: x
+                    type: decimal
+                    label: { en: "X" }
+                """;
+        when(documentService.lookupCascade(eq(TENANT), any(), any()))
+                .thenReturn(Optional.of(
+                        new LookupResult("_vance/setting_forms/broken.yaml", broken, LookupResult.Source.VANCE, null)));
+
+        assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))
+                .isInstanceOf(SettingFormParseException.class)
+                .hasMessageContaining("not a known field type: 'decimal'");
+    }
+
+    @Test
+    void number_field_isBindable() {
+        String form = """
+                title:       { en: "Budget" }
+                description: { en: "Budget" }
+                fields:
+                  - name: daily
+                    type: number
+                    label: { en: "Daily" }
+                    bindsTo: { key: "ai.llm.budget.daily" }
+                """;
+        when(documentService.lookupCascade(eq(TENANT), any(), any()))
+                .thenReturn(Optional.of(
+                        new LookupResult("_vance/setting_forms/budget.yaml", form, LookupResult.Source.VANCE, null)));
+
+        assertThat(loader.load(TENANT, null, null, "budget"))
+                .hasValueSatisfying(
+                        f -> assertThat(f.fields().get(0).getBindsTo().getKey()).isEqualTo("ai.llm.budget.daily"));
+    }
+
+    @Test
     void invalid_pebble_in_computed_value_rejects_form() {
         String broken = """
                 title:       { en: "Broken" }

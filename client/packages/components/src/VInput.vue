@@ -28,6 +28,11 @@ interface Props {
   size?: 'xs' | 'sm' | 'md';
   /** Optional autocomplete suggestions rendered via a native <datalist>. */
   suggestions?: string[];
+  /**
+   * Native `step` for `type="number"`. A number input defaults to step 1 and
+   * then marks every decimal as invalid — `"any"` admits amounts and ratios.
+   */
+  step?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -76,6 +81,7 @@ defineExpose({ input });
       :disabled="disabled"
       :autocomplete="autocomplete"
       :autocapitalize="autocapitalize"
+      :step="step"
       :list="suggestions.length ? datalistId : undefined"
       :class="['input', 'w-full', sizeClass, { 'input-error': !!error }]"
       @input="(e) => $emit('update:modelValue', (e.target as HTMLInputElement).value)"

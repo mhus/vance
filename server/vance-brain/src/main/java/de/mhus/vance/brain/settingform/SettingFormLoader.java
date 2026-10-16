@@ -64,7 +64,15 @@ public class SettingFormLoader {
 
     /** Form-field types that may carry a {@code bindsTo}. Other types must route through {@code settings:}. */
     private static final Set<String> SCALAR_BINDABLE_TYPES =
-            Set.of("string", "textarea", "password", "integer", "boolean", "select");
+            Set.of("string", "textarea", "password", "integer", "number", "boolean", "select");
+
+    /**
+     * Field types the renderer draws and the validator checks. Anything else
+     * is rejected at load: {@code type: number} once loaded silently, drew
+     * nothing and could not be saved — and nobody noticed for months.
+     */
+    private static final Set<String> KNOWN_FIELD_TYPES = Set.of(
+            "string", "textarea", "password", "integer", "number", "boolean", "select", "multi_select", "repeat");
 
     private final DocumentService documentService;
     private final PromptTemplateRenderer templateRenderer;
@@ -301,7 +309,7 @@ public class SettingFormLoader {
         // referencing the same (key, scope) tuple are a definition error;
         // reject the form so it never enters the listing. Entries gated by
         // writeIf are allowed to share a key (mutually-exclusive presets /
-        // overrides — see quota-preset.yaml for the canonical pattern).
+        // overrides — pinned by SettingFormLoaderTest).
         detectUnconditionalKeyConflicts(fields, computed, defaultScope);
 
         return new ResolvedSettingForm(
@@ -375,6 +383,10 @@ public class SettingFormLoader {
         String type = optionalString(raw.get("type"));
         if (type == null) {
             throw new IllegalStateException("'" + path + ".type' is required");
+        }
+        if (!KNOWN_FIELD_TYPES.contains(type)) {
+            throw new IllegalStateException(
+                    "'" + path + ".type' is not a known field type: '" + type + "' — one of " + KNOWN_FIELD_TYPES);
         }
         Map<String, String> label = requiredLocalizedText(raw.get("label"), path + ".label");
         Map<String, String> help = optionalLocalizedText(raw.get("help"), path + ".help");

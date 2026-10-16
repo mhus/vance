@@ -23,6 +23,7 @@ import org.jspecify.annotations.Nullable;
  *   <li>{@code textarea} — multi-line text (see {@link #rows})</li>
  *   <li>{@code password} — masked input</li>
  *   <li>{@code integer} — whole number (see {@link #integerMin}/{@link #integerMax})</li>
+ *   <li>{@code number} — decimal number, e.g. an amount or a ratio</li>
  *   <li>{@code boolean} — checkbox</li>
  *   <li>{@code select} — single-choice dropdown (see {@link #choices}, {@link #allowCustom})</li>
  *   <li>{@code multi_select} — multi-choice checkbox list (see {@link #choices})</li>

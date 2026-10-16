@@ -301,6 +301,21 @@ function canRemove(field: FormFieldDto): boolean {
         @update:model-value="(v: string) => setField(field.name, v)"
       />
 
+      <!-- ── number (decimal) ── -->
+      <VInput
+        v-else-if="field.type === 'number'"
+        :model-value="stringValue(field.name)"
+        type="number"
+        :label="labelOf(field)"
+        :placeholder="field.defaultValue ?? ''"
+        :help="helpOf(field)"
+        :error="errorOf(field)"
+        :required="field.required"
+        :disabled="disabled"
+        step="any"
+        @update:model-value="(v: string) => setField(field.name, v)"
+      />
+
       <!-- ── textarea ── -->
       <VTextarea
         v-else-if="field.type === 'textarea'"

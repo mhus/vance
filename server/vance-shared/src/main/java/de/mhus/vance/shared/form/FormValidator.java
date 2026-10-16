@@ -3,6 +3,7 @@ package de.mhus.vance.shared.form;
 import de.mhus.vance.api.form.FormChoiceDto;
 import de.mhus.vance.api.form.FormFieldDto;
 import de.mhus.vance.shared.form.FormValidationException.FormValidationError;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -51,6 +52,7 @@ public class FormValidator {
     public static final String TYPE_TEXTAREA = "textarea";
     public static final String TYPE_PASSWORD = "password";
     public static final String TYPE_INTEGER = "integer";
+    public static final String TYPE_NUMBER = "number";
     public static final String TYPE_BOOLEAN = "boolean";
     public static final String TYPE_SELECT = "select";
     public static final String TYPE_MULTI_SELECT = "multi_select";
@@ -112,6 +114,11 @@ public class FormValidator {
                 }
                 if (field.getIntegerMax() != null && parsed > field.getIntegerMax()) {
                     errors.add(new FormValidationError(path, "above_max"));
+                }
+            }
+            case TYPE_NUMBER -> {
+                if (tryParseNumber(raw) == null) {
+                    errors.add(new FormValidationError(path, "expected_number"));
                 }
             }
             case TYPE_BOOLEAN -> {
@@ -195,6 +202,22 @@ public class FormValidator {
             } catch (NumberFormatException e) {
                 return null;
             }
+        }
+        return null;
+    }
+
+    /**
+     * A decimal number, exact. {@code NaN} and infinities are not numbers a
+     * form can mean; {@link BigDecimal} rejects them along with garbage.
+     */
+    static @Nullable BigDecimal tryParseNumber(Object raw) {
+        try {
+            if (raw instanceof BigDecimal b) return b;
+            if (raw instanceof Integer || raw instanceof Long) return BigDecimal.valueOf(((Number) raw).longValue());
+            if (raw instanceof Number n) return new BigDecimal(n.toString());
+            if (raw instanceof String s) return new BigDecimal(s.trim());
+        } catch (NumberFormatException e) {
+            return null;
         }
         return null;
     }

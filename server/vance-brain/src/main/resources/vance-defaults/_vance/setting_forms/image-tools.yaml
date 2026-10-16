@@ -41,7 +41,7 @@ fields:
   # ─── Input limits ────────────────────────────────────────────────
 
   - name: maxInputBytes
-    type: number
+    type: integer
     defaultValue: "20000000"
     label:
       de: "Max. Eingabe-Größe (Bytes)"
@@ -60,7 +60,7 @@ fields:
       key: "image.tools.max_input_bytes"
 
   - name: maxInputDimension
-    type: number
+    type: integer
     defaultValue: "8192"
     label:
       de: "Max. Eingabe-Dimension (Pixel)"
@@ -77,7 +77,7 @@ fields:
   # ─── Output limits ───────────────────────────────────────────────
 
   - name: maxOutputDimension
-    type: number
+    type: integer
     defaultValue: "8192"
     label:
       de: "Max. Ausgabe-Dimension (Pixel)"
@@ -96,7 +96,7 @@ fields:
       key: "image.tools.max_output_dimension"
 
   - name: maxOutputBytes
-    type: number
+    type: integer
     defaultValue: "30000000"
     label:
       de: "Max. Ausgabe-Größe (Bytes)"

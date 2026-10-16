@@ -60,6 +60,26 @@ class FormValidatorTest {
     }
 
     @Test
+    void number_acceptsDecimalsAndWholeNumbers_rejectsGarbage() {
+        FormFieldDto field = FormFieldDto.builder()
+                .name("amount")
+                .type("number")
+                .label(Map.of("en", "Amount"))
+                .build();
+
+        assertThatCode(() -> validator.validate(List.of(field), Map.of("amount", "2.50")))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> validator.validate(List.of(field), Map.of("amount", 10)))
+                .doesNotThrowAnyException();
+        assertThatThrownBy(() -> validator.validate(List.of(field), Map.of("amount", "five")))
+                .isInstanceOf(FormValidationException.class)
+                .hasMessageContaining("expected_number");
+        assertThatThrownBy(() -> validator.validate(List.of(field), Map.of("amount", "NaN")))
+                .isInstanceOf(FormValidationException.class)
+                .hasMessageContaining("expected_number");
+    }
+
+    @Test
     void integer_bounds_areEnforced() {
         FormFieldDto field = FormFieldDto.builder()
                 .name("priority")

@@ -1,7 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
-import DOMPurify from 'dompurify';
-import { marked } from 'marked';
+import { computed, inject, ref, type Component } from 'vue';
 import { VButton, VIcon, VIconButton, VInput, VTextarea } from '@vance/components';
 import ContactAvatar from './ContactAvatar.vue';
 import { useT } from './i18n';
@@ -31,7 +29,15 @@ const labelDraft = ref('');
 const noteOpen = ref(false);
 const editingNote = ref(false);
 const noteDraft = ref('');
-const noteHtml = ref('');
+
+/**
+ * The host's Markdown renderer (`MarkdownView`, provided by the Cortex): one
+ * sanitiser, and external links open in a new tab with
+ * `rel="noopener noreferrer"`, so following one never navigates the workspace
+ * away. No renderer of its own here — a second marked+DOMPurify path is a
+ * second security decision. Without a host the note shows as plain text.
+ */
+const markdownComponent = inject<Component | null>('vance:markdown-component', null);
 
 const name = computed(() => props.pin.contact?.displayName ?? '');
 const subtitle = computed(() => [props.pin.contact?.title, props.pin.contact?.org].filter(Boolean).join(' · '));
@@ -41,14 +47,6 @@ const notePreview = computed(() => {
   const first = (props.pin.note ?? '').split('\n').find((l) => l.trim()) ?? '';
   return first.replace(/[#>*_`~[\]]/g, '').trim();
 });
-
-watch(
-  () => [props.pin.note, noteOpen.value] as const,
-  async ([note, open]) => {
-    noteHtml.value = open && note ? DOMPurify.sanitize(await marked.parse(note)) : '';
-  },
-  { immediate: true },
-);
 
 function startLabel(): void {
   if (!props.editable) return;
@@ -146,8 +144,10 @@ function telHref(value: string): string {
           :label="noteOpen ? t('contacts.board.hideNote') : t('contacts.board.showNote')"
           @click="noteOpen = !noteOpen"
         />
-        <!-- eslint-disable-next-line vue/no-v-html -- markdown, sanitised via DOMPurify -->
-        <div v-if="noteOpen" class="contact-note flex-1 min-w-0 text-sm" v-html="noteHtml"></div>
+        <div v-if="noteOpen" class="flex-1 min-w-0 text-sm">
+          <component :is="markdownComponent" v-if="markdownComponent" :source="pin.note" />
+          <p v-else class="whitespace-pre-wrap">{{ pin.note }}</p>
+        </div>
         <button v-else type="button" class="flex-1 min-w-0 text-left text-sm text-(--v-label-secondary) truncate" @click="noteOpen = true">
           {{ notePreview }}
         </button>
@@ -164,11 +164,3 @@ function telHref(value: string): string {
     </button>
   </div>
 </template>
-
-<style scoped>
-.contact-note :deep(p) { margin: 0 0 0.5em; }
-.contact-note :deep(ul) { list-style: disc; padding-left: 1.25em; margin: 0 0 0.5em; }
-.contact-note :deep(ol) { list-style: decimal; padding-left: 1.25em; margin: 0 0 0.5em; }
-.contact-note :deep(a) { color: var(--v-accent-text); text-decoration: underline; }
-.contact-note :deep(code) { font-family: var(--v-font-mono); }
-</style>

@@ -15,10 +15,12 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.UnaryOperator;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 
 /**
@@ -164,7 +166,11 @@ public class ContactBoardService {
 
     // ── Internals ─────────────────────────────────────────────────
 
-    private record Loaded(DocumentDocument doc, ContactBoard board) {}
+    /** A board as read, with the document version the read saw. */
+    private record Loaded(
+            DocumentDocument doc,
+            ContactBoard board,
+            @Nullable Long version) {}
 
     private Loaded load(ContactCaller caller, String path) {
         String project = requireProject(caller);
@@ -176,7 +182,8 @@ public class ContactBoardService {
         if (!ContactBoardCodec.KIND.equals(doc.getKind())) {
             throw new IllegalArgumentException("'" + path + "' is not a contact-board document");
         }
-        return new Loaded(doc, ContactBoardCodec.parse(documentService.readContent(doc)));
+        Long version = doc.getVersion();
+        return new Loaded(doc, ContactBoardCodec.parse(documentService.readContent(doc)), version);
     }
 
     private ResolvedBoard change(ContactCaller caller, String path, UnaryOperator<List<ContactPin>> edit) {
@@ -187,16 +194,34 @@ public class ContactBoardService {
                 loaded.board().withPins(edit.apply(loaded.board().pins())));
     }
 
+    /**
+     * Write the changed board — only if the document is still at the version
+     * {@link #load} saw. Otherwise somebody else saved in between, and writing
+     * now would silently drop their pin or note.
+     */
     private ResolvedBoard save(ContactCaller caller, Loaded loaded, ContactBoard next) {
         String id = loaded.doc().getId();
         if (id == null) throw new IllegalStateException("Board document without id");
-        documentService.update(
-                id, null, null, ContactBoardCodec.serialize(next), null, WriteActor.user(caller.subject()));
+        Optional<DocumentDocument> now = documentService.findById(id);
+        if (now.isEmpty() || !Objects.equals(now.get().getVersion(), loaded.version())) {
+            throw conflict(loaded, null);
+        }
+        try {
+            documentService.update(
+                    id, null, null, ContactBoardCodec.serialize(next), null, WriteActor.user(caller.subject()));
+        } catch (OptimisticLockingFailureException e) {
+            throw conflict(loaded, e);
+        }
         log.trace(
                 "ContactBoardService: saved {} ({} pins)",
                 loaded.doc().getPath(),
                 next.pins().size());
         return resolve(caller, loaded.doc().getPath(), next);
+    }
+
+    private static ContactConflictException conflict(Loaded loaded, @Nullable Throwable cause) {
+        return new ContactConflictException(
+                "Board '" + loaded.doc().getPath() + "' was changed meanwhile — nothing written; read it again", cause);
     }
 
     private ResolvedBoard resolve(ContactCaller caller, String path, ContactBoard board) {

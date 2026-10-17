@@ -463,6 +463,11 @@ public class WizardLoader {
                 throw new IllegalStateException("'" + path + ".item' must declare at least one nested field");
             }
         }
+        String suggestionsFrom = optionalString(raw.get("suggestionsFrom"));
+        if (suggestionsFrom != null && !"string".equals(type)) {
+            throw new IllegalStateException(
+                    "'" + path + ".suggestionsFrom' only applies to string, got '" + type + "'");
+        }
         return FormFieldDto.builder()
                 .name(name)
                 .type(type)
@@ -477,6 +482,7 @@ public class WizardLoader {
                 .min(min)
                 .max(max)
                 .item(item)
+                .suggestionsFrom(suggestionsFrom)
                 .build();
     }
 

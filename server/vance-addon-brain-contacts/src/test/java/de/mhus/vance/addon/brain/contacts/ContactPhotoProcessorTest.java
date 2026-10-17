@@ -9,6 +9,9 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.util.zip.CRC32;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.Test;
 
@@ -63,5 +66,40 @@ class ContactPhotoProcessorTest {
     void refusesWhatIsNoPicture() {
         assertThatThrownBy(() -> new ContactPhotoProcessor(64).process("hello".getBytes()))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void refusesAHugeDeclaredSizeBeforeDecoding() {
+        // 64 bytes on disk, 10 gigapixels declared — decoding would allocate ~40 GB.
+        byte[] bomb = pngHeaderOnly(100_000, 100_000);
+
+        assertThatThrownBy(() -> new ContactPhotoProcessor(64).process(bomb))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("megapixels");
+    }
+
+    @Test
+    void acceptsADeclaredSizeBelowTheLimit() {
+        ContactPhotoProcessor.checkDimensions(pngHeaderOnly(6000, 6000));
+    }
+
+    /** A PNG signature, an IHDR chunk with the given size and IEND — no pixel data. */
+    private static byte[] pngHeaderOnly(int width, int height) {
+        ByteBuffer ihdr = ByteBuffer.allocate(17);
+        ihdr.put("IHDR".getBytes(StandardCharsets.US_ASCII));
+        ihdr.putInt(width).putInt(height);
+        ihdr.put((byte) 8).put((byte) 2).put((byte) 0).put((byte) 0).put((byte) 0);
+        ByteBuffer out = ByteBuffer.allocate(8 + 4 + 17 + 4 + 12);
+        out.put(new byte[] {(byte) 0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'});
+        out.putInt(13).put(ihdr.array()).putInt(crc(ihdr.array()));
+        byte[] iend = "IEND".getBytes(StandardCharsets.US_ASCII);
+        out.putInt(0).put(iend).putInt(crc(iend));
+        return out.array();
+    }
+
+    private static int crc(byte[] bytes) {
+        CRC32 crc = new CRC32();
+        crc.update(bytes);
+        return (int) crc.getValue();
     }
 }

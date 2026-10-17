@@ -28,12 +28,15 @@ const props = withDefaults(
     preferredLang?: string;
     pathPrefix?: string;
     disabled?: boolean;
+    /** Project that scopes field suggestions (`suggestionsFrom`); unset = tenant/user only. */
+    projectId?: string;
   }>(),
   {
     errors: () => ({}),
     preferredLang: undefined,
     pathPrefix: '',
     disabled: false,
+    projectId: undefined,
   },
 );
 
@@ -54,6 +57,7 @@ const lang = computed(() => props.preferredLang ?? locale.value);
     :preferred-lang="lang"
     :path-prefix="pathPrefix"
     :disabled="disabled"
+    :project-id="projectId"
     :filter-label="t('form.filterPlaceholder')"
     :no-matches-label="t('form.noMatches')"
     :custom-value-hint-label="t('form.customValueHint')"

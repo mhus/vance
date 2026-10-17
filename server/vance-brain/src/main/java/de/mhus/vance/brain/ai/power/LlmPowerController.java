@@ -10,6 +10,7 @@ import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.user.UserDocument;
 import de.mhus.vance.shared.user.UserService;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -34,6 +35,9 @@ import org.springframework.web.bind.annotation.RestController;
  * on every other pod at the next refresh tick; the client checks at
  * {@code verifyAt} that the two views agree. Which pod answers that check does
  * not matter — every pod ticks at the same wall-clock second.
+ *
+ * <p>The update body must name {@code enabled}; a body without it is a 400,
+ * never an implicit "off".
  */
 @RestController
 @RequestMapping("/brain/{tenant}/llm-power")
@@ -53,22 +57,22 @@ public class LlmPowerController {
     @PutMapping
     public LlmPowerStatusDto setTenant(
             @PathVariable("tenant") String tenant,
-            @RequestBody LlmPowerUpdateRequest body,
+            @Valid @RequestBody LlmPowerUpdateRequest body,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         String actor = authority.contextOf(httpRequest).subjectId();
-        return toDto(tenant, powerSwitch.setTenantPower(tenant, body.isEnabled(), actor));
+        return toDto(tenant, powerSwitch.setTenantPower(tenant, body.getEnabled(), actor));
     }
 
     @PutMapping("/users/{userId}")
     public LlmPowerStatusDto setUser(
             @PathVariable("tenant") String tenant,
             @PathVariable("userId") String userId,
-            @RequestBody LlmPowerUpdateRequest body,
+            @Valid @RequestBody LlmPowerUpdateRequest body,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         String actor = authority.contextOf(httpRequest).subjectId();
-        return toDto(tenant, powerSwitch.setUserPower(tenant, userId, body.isEnabled(), actor));
+        return toDto(tenant, powerSwitch.setUserPower(tenant, userId, body.getEnabled(), actor));
     }
 
     private LlmPowerStatusDto toDto(String tenant, LlmPowerState state) {

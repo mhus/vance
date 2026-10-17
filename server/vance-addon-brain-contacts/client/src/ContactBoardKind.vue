@@ -44,31 +44,65 @@ function show(view: ContactBoardView): void {
   if (view.warning) notice.value = view.warning;
 }
 
-async function run(call: () => Promise<ContactBoardView>): Promise<void> {
-  error.value = '';
+/**
+ * Board calls run one after another, never interleaved: each answers with
+ * the whole board, so an answer that overtook a later one would put back a
+ * state the user already changed. `generation` drops answers for a board
+ * document that is no longer the one shown.
+ */
+let queue: Promise<void> = Promise.resolve();
+let generation = 0;
+
+function enqueue(step: () => Promise<void>): Promise<void> {
+  const next = queue.then(step);
+  queue = next.catch(() => undefined);
+  return next;
+}
+
+function fail(e: unknown): void {
+  error.value = e instanceof Error ? e.message : String(e);
+}
+
+async function fetchBoard(mine: number, projectId: string, path: string): Promise<void> {
   try {
-    show(await call());
+    const view = await loadBoard(projectId, path);
+    if (mine === generation) show(view);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e);
-    await reload();
+    if (mine === generation) fail(e);
   }
 }
 
-async function reload(): Promise<void> {
-  try {
-    show(await loadBoard(props.document.projectId, props.document.path));
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e);
-  }
+/** Queues a mutation against the board shown now; on failure the board is reloaded. */
+function run(call: (projectId: string, path: string) => Promise<ContactBoardView>): Promise<void> {
+  const mine = generation;
+  const { projectId, path } = props.document;
+  return enqueue(async () => {
+    if (mine !== generation) return;
+    error.value = '';
+    try {
+      const view = await call(projectId, path);
+      if (mine === generation) show(view);
+    } catch (e) {
+      if (mine !== generation) return;
+      fail(e);
+      await fetchBoard(mine, projectId, path);
+    }
+  });
+}
+
+function reload(): Promise<void> {
+  const mine = generation;
+  const { projectId, path } = props.document;
+  return enqueue(() => fetchBoard(mine, projectId, path));
 }
 
 function onPin(contact: { id: string; scope: ContactScope }): void {
   notice.value = '';
-  void run(() => pinContact(props.document.projectId, props.document.path, contact.id, contact.scope));
+  void run((projectId, path) => pinContact(projectId, path, contact.id, contact.scope));
 }
 
 function onUpdate(pin: ContactPinView, change: { label?: string; note?: string }): void {
-  void run(() => updatePin(props.document.projectId, props.document.path, pin.uuid, change));
+  void run((projectId, path) => updatePin(projectId, path, pin.uuid, change));
 }
 
 async function onUnpin(pin: ContactPinView): Promise<void> {
@@ -77,12 +111,12 @@ async function onUnpin(pin: ContactPinView): Promise<void> {
     confirmLabel: t('contacts.board.unpin'),
     danger: true,
   });
-  if (ok) void run(() => unpinContact(props.document.projectId, props.document.path, pin.uuid));
+  if (ok) void run((projectId, path) => unpinContact(projectId, path, pin.uuid));
 }
 
 function onReorder(): void {
   const order = pins.value.map((p) => p.uuid);
-  void run(() => reorderPins(props.document.projectId, props.document.path, order));
+  void run((projectId, path) => reorderPins(projectId, path, order));
 }
 
 async function onDetails(pin: ContactPinView): Promise<void> {
@@ -100,7 +134,10 @@ useDocumentPrefixReaction({
 });
 
 onMounted(reload);
-watch(() => [props.document.projectId, props.document.path], reload);
+watch(() => [props.document.projectId, props.document.path], () => {
+  generation++;
+  void reload();
+});
 </script>
 
 <template>

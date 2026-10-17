@@ -21,10 +21,17 @@ const src = ref<string | null>(null);
 
 watch(
   () => [props.projectId, props.id, props.scope, props.hasPhoto, props.photoVersion] as const,
-  async ([projectId, id, scope, hasPhoto, version]) => {
+  async ([projectId, id, scope, hasPhoto, version], _previous, onCleanup) => {
+    // A row reused for another contact must not show the picture of the
+    // one before it when that slower load lands last.
+    let stale = false;
+    onCleanup(() => {
+      stale = true;
+    });
     src.value = null;
     if (!hasPhoto || !id || !scope) return;
-    src.value = await photoUrl(projectId, id, scope, version);
+    const url = await photoUrl(projectId, id, scope, version);
+    if (!stale) src.value = url;
   },
   { immediate: true },
 );

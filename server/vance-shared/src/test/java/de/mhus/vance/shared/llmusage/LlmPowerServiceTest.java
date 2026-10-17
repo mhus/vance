@@ -14,6 +14,7 @@ import de.mhus.vance.shared.settings.SettingDocument;
 import de.mhus.vance.shared.settings.SettingService;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /** {@link LlmPowerService}: only "off" is stored, always in {@code _tenant}. */
@@ -83,6 +84,48 @@ class LlmPowerServiceTest {
         assertThatThrownBy(() -> service.setUserPower(TENANT, " ", false, "marvin"))
                 .isInstanceOf(IllegalArgumentException.class);
         verify(settingService, never()).delete(anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void renameUserSwitch_movesTheKey_keepingValueAndNote() {
+        when(settingService.find(TENANT, "project", "_tenant", "llm.power.user.road.runner"))
+                .thenReturn(
+                        Optional.of(setting("llm.power.user.road.runner", "false", null, "Switched off by marvin")));
+
+        assertThat(service.renameUserSwitch(TENANT, "road.runner", "rr")).isEqualTo(1);
+
+        verify(settingService)
+                .set(
+                        TENANT,
+                        "project",
+                        "_tenant",
+                        "llm.power.user.rr",
+                        "false",
+                        SettingType.BOOLEAN,
+                        "Switched off by marvin");
+        verify(settingService).delete(TENANT, "project", "_tenant", "llm.power.user.road.runner");
+    }
+
+    @Test
+    void renameUserSwitch_withoutSwitch_isANoOp() {
+        when(settingService.find(TENANT, "project", "_tenant", "llm.power.user.road.runner"))
+                .thenReturn(Optional.empty());
+
+        assertThat(service.renameUserSwitch(TENANT, "road.runner", "rr")).isZero();
+
+        verify(settingService, never()).set(any(), any(), any(), any(), any(), any(), any());
+        verify(settingService, never()).delete(anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void deleteUserSwitch_removesAnExistingKey_andIsIdempotent() {
+        when(settingService.exists(TENANT, "project", "_tenant", "llm.power.user.road.runner"))
+                .thenReturn(true, false);
+
+        assertThat(service.deleteUserSwitch(TENANT, "road.runner")).isEqualTo(1);
+        assertThat(service.deleteUserSwitch(TENANT, "road.runner")).isZero();
+
+        verify(settingService).delete(TENANT, "project", "_tenant", "llm.power.user.road.runner");
     }
 
     private static SettingDocument setting(String key, String value, Instant at, String description) {

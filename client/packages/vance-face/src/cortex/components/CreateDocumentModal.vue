@@ -741,6 +741,7 @@ async function submit(): Promise<void> {
             v-model="templateValues"
             :fields="selectedTemplate.fields"
             :disabled="creating"
+            :project-id="projectId ?? undefined"
           />
         </template>
       </template>

@@ -27,6 +27,7 @@ import de.mhus.vance.brain.ai.decision.AiDecisionService;
 import de.mhus.vance.brain.ai.decision.DecisionModelInfo;
 import de.mhus.vance.brain.ai.decision.DecisionRequest;
 import de.mhus.vance.brain.ai.decision.DecisionResult;
+import de.mhus.vance.brain.ai.power.LlmPowerGate;
 import de.mhus.vance.brain.recipe.RecipeLoader;
 import de.mhus.vance.brain.recipe.ResolvedRecipe;
 import de.mhus.vance.brain.tools.ToolInterruptChecker;
@@ -60,6 +61,7 @@ class ZemServiceTest {
     private AiDecisionService decisions;
     private UsageSink usageSink;
     private ToolInterruptChecker interrupts;
+    private LlmPowerGate powerGate;
     private ZemService service;
 
     @BeforeEach
@@ -71,6 +73,7 @@ class ZemServiceTest {
         decisions = mock(AiDecisionService.class);
         usageSink = mock(UsageSink.class);
         interrupts = mock(ToolInterruptChecker.class);
+        powerGate = mock(LlmPowerGate.class);
         MetricService metrics = mock(MetricService.class);
         when(metrics.counter(anyString(), any(String[].class))).thenReturn(mock(Counter.class));
         when(settings.getBooleanValueCascade(any(), any(), any(), eq(ZemService.SETTING_ENABLED), anyBoolean()))
@@ -92,7 +95,7 @@ class ZemServiceTest {
                 usageSink,
                 metrics,
                 interrupts,
-                mock(de.mhus.vance.brain.ai.power.LlmPowerGate.class));
+                powerGate);
     }
 
     private static ZemQuestionDto noul(String name) {
@@ -117,6 +120,46 @@ class ZemServiceTest {
                         .build())
                 .toList();
         return new DecisionResult("typesafe/jev-1.13-20260917", answers, tokens, 0L, tokens * 0.042e-6, "gen-1");
+    }
+
+    // ──── power switch ─────────────────────────────────────────────────
+
+    @Test
+    void prepare_asks_the_power_switch_for_the_requesting_user() {
+        when(powerGate.refusal(TENANT, "road.runner", null, "proc-1")).thenReturn("switched off");
+
+        assertReason(
+                () -> service.prepare(
+                        request().userId("road.runner").question(noul("q")).build()),
+                ZemException.Reason.DISABLED);
+        verify(decisions, never()).decide(any(), any());
+    }
+
+    @Test
+    void prepared_call_stops_once_the_switch_goes_off() {
+        when(decisions.decide(any(), any())).thenAnswer(inv -> answerAll(inv.getArgument(1), 1));
+        ZemPreparedCall call = service.prepare(
+                request().userId("road.runner").question(noul("q")).build());
+        ZemUsageAccumulator usage = service.openAccumulator(call);
+        service.decide(call, "r1", usage);
+
+        when(powerGate.refusal(TENANT, "road.runner", null, "proc-1")).thenReturn("switched off");
+
+        assertReason(() -> service.decide(call, "r2", usage), ZemException.Reason.DISABLED);
+        verify(decisions, times(1)).decide(any(), any());
+        service.flush(usage);
+        verify(usageSink, times(1)).onCall(any(), any());
+    }
+
+    @Test
+    void retry_is_not_sent_once_the_switch_goes_off() {
+        when(decisions.decide(any(), any())).thenAnswer(inv -> {
+            when(powerGate.refusal(any(), any(), any(), any())).thenReturn("switched off");
+            throw new AiDecisionException(Failure.RATE_LIMITED, "slow down", 429, Duration.ZERO, null);
+        });
+
+        assertReason(() -> service.decide(request().question(noul("q")).build(), "s"), ZemException.Reason.DISABLED);
+        verify(decisions, times(1)).decide(any(), any());
     }
 
     // ──── prepare ──────────────────────────────────────────────────────

@@ -5,6 +5,7 @@ import de.mhus.vance.addon.brain.contacts.ContactEntry;
 import de.mhus.vance.addon.brain.contacts.ContactSearch;
 import de.mhus.vance.addon.brain.contacts.ContactService;
 import de.mhus.vance.addon.brain.contacts.ContactVCardService;
+import de.mhus.vance.addon.brain.contacts.model.ContactCard;
 import de.mhus.vance.addon.brain.contacts.model.ContactKind;
 import de.mhus.vance.addon.brain.contacts.model.ContactScope;
 import de.mhus.vance.brain.permission.RequestAuthority;
@@ -90,8 +91,9 @@ public class ContactsController {
             @RequestParam(required = false) @Nullable String projectId,
             @RequestBody ContactWriteRequest body,
             HttpServletRequest request) {
+        ContactCard card = requireCard(body);
         ContactCaller caller = caller(tenant, projectId, request);
-        return view(caller, contactService.create(caller, body.card(), body.scope()));
+        return view(caller, contactService.create(caller, card, body.scope()));
     }
 
     @PutMapping(BASE + "/contact/{id}")
@@ -101,8 +103,9 @@ public class ContactsController {
             @RequestParam(required = false) @Nullable String projectId,
             @RequestBody ContactWriteRequest body,
             HttpServletRequest request) {
+        ContactCard card = requireCard(body);
         ContactCaller caller = caller(tenant, projectId, request);
-        return view(caller, contactService.update(caller, id, body.scope(), current -> body.card()));
+        return view(caller, contactService.update(caller, id, body.scope(), current -> card));
     }
 
     @DeleteMapping(BASE + "/contact/{id}")
@@ -125,6 +128,7 @@ public class ContactsController {
             @RequestParam(required = false) @Nullable String projectId,
             @RequestBody MoveContactRequest body,
             HttpServletRequest request) {
+        if (body.to() == null) throw new IllegalArgumentException("'to' is required: the scope to move the contact to");
         ContactCaller caller = caller(tenant, projectId, request);
         ContactService.MoveResult moved = contactService.move(caller, id, body.from(), body.to());
         return new MoveContactView(
@@ -204,6 +208,11 @@ public class ContactsController {
             @RequestParam("file") MultipartFile file,
             HttpServletRequest request)
             throws IOException {
+        // Refused before the upload is read into memory; the import checks the text again.
+        if (file.getSize() > ContactVCardService.MAX_IMPORT_BYTES) {
+            throw new IllegalArgumentException("The .vcf file is too large (" + file.getSize() + " bytes, at most "
+                    + ContactVCardService.MAX_IMPORT_BYTES + ")");
+        }
         ContactCaller caller = caller(tenant, projectId, request);
         ContactVCardService.ImportReport report = vcardService.importVcf(
                 caller, new String(file.getBytes(), StandardCharsets.UTF_8), ContactScope.parse(scope));
@@ -263,6 +272,12 @@ public class ContactsController {
     }
 
     // ── Helpers ───────────────────────────────────────────────────
+
+    /** The request's card; a body without one is a client error, not a 500. */
+    private static ContactCard requireCard(@Nullable ContactWriteRequest body) {
+        if (body == null || body.card() == null) throw new IllegalArgumentException("'card' is required");
+        return body.card();
+    }
 
     private ContactCaller caller(String tenant, @Nullable String projectId, HttpServletRequest request) {
         return ContactCaller.of(

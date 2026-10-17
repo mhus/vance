@@ -274,6 +274,7 @@ defineExpose({ openWizard });
         :fields="active.fields ?? []"
         :errors="errors"
         :disabled="submitting"
+        :project-id="projectId"
       />
 
       <div class="flex gap-2 justify-end mt-2">

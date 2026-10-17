@@ -87,4 +87,16 @@ class ContactSearchTest {
         assertThat(ContactSearch.search(List.of(team, anna, annette), ContactSearch.Criteria.all()))
                 .containsExactly(anna, annette, team);
     }
+
+    @Test
+    void shortStoredNumberIsNoTailOfEveryLongQuery() {
+        // "110" or an extension must not match every number that ends in those digits.
+        assertThat(ContactSearch.phoneMatches("110", "+49 30 1234110")).isFalse();
+        assertThat(ContactSearch.phoneMatches("-42", "030 555 4242")).isFalse();
+        assertThat(ContactSearch.phoneMatches("110", "110")).isTrue();
+        // A full stored number still matches its international spelling.
+        assertThat(ContactSearch.phoneMatches("0170 7654321", "+49 170 7654321"))
+                .isTrue();
+        assertThat(ContactSearch.phoneMatches("170 7654321", "+49 170 7654321")).isTrue();
+    }
 }

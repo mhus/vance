@@ -110,6 +110,9 @@ public final class ContactVCardMapper {
             related.add(new ContactValue(id != null ? id : value, types(r), r.getPref()));
         }
 
+        // A member naming a foreign (non-UUID) UID stays as written here; the
+        // import maps it to the id that card got in the same run
+        // (ContactVCardService#remapMembers) — the mapper sees one card only.
         List<String> members = new ArrayList<>();
         for (Member m : v.getMembers()) {
             if (m.getUri() == null) continue;

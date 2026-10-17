@@ -15,6 +15,7 @@ import de.mhus.vance.brain.ai.decision.AiDecisionService;
 import de.mhus.vance.brain.ai.decision.DecisionModelInfo;
 import de.mhus.vance.brain.ai.decision.DecisionRequest;
 import de.mhus.vance.brain.ai.decision.DecisionResult;
+import de.mhus.vance.brain.ai.power.LlmPowerGate;
 import de.mhus.vance.brain.recipe.RecipeLoader;
 import de.mhus.vance.brain.recipe.ResolvedRecipe;
 import de.mhus.vance.brain.tools.ToolInterruptChecker;
@@ -90,7 +91,7 @@ public class ZemService {
     private final UsageSink usageSink;
     private final MetricService metricService;
     private final ToolInterruptChecker interruptChecker;
-    private final de.mhus.vance.brain.ai.power.LlmPowerGate powerGate;
+    private final LlmPowerGate powerGate;
 
     // ──────────────────── one-off ────────────────────
 
@@ -114,10 +115,7 @@ public class ZemService {
         }
         String projectId = request.getProjectId();
         String processId = request.getProcessId();
-        String powerOff = powerGate.refusal(tenantId, null, null, processId);
-        if (powerOff != null) {
-            throw new ZemException(ZemException.Reason.DISABLED, powerOff);
-        }
+        requirePower(tenantId, request.getUserId(), processId);
         if (!settingService.getBooleanValueCascade(tenantId, projectId, processId, SETTING_ENABLED, true)) {
             throw new ZemException(
                     ZemException.Reason.DISABLED, "Decisions are disabled in this scope (" + SETTING_ENABLED + ")");
@@ -195,8 +193,13 @@ public class ZemService {
      *
      * @param usage {@code null} = book this call to the ledger now;
      *              otherwise add it to the accumulator (bulk path)
-     * @throws ZemException {@code invalid_state}, provider-side reasons,
-     *                      {@code cancelled}
+     * <p>The LLM power switch is asked again here, before every provider
+     * call (retries and split parts included): a bulk caller prepares once
+     * and keeps deciding, and a switch that only {@link #prepare} saw would
+     * not stop it. A refusal before the first call books nothing.
+     *
+     * @throws ZemException {@code invalid_state}, {@code disabled},
+     *                      provider-side reasons, {@code cancelled}
      */
     public ZemDecisionDto decide(ZemPreparedCall call, Object state, @Nullable ZemUsageAccumulator usage) {
         if (!(state instanceof String || state instanceof Map<?, ?> || state instanceof List<?>)) {
@@ -207,6 +210,12 @@ public class ZemService {
         }
         if (usage != null && usage.call() != call) {
             throw new IllegalArgumentException("accumulator belongs to another prepared call");
+        }
+        try {
+            requirePower(call.tenantId(), call.userId(), call.processId());
+        } catch (ZemException e) {
+            count(call, e.reason().wire());
+            throw e;
         }
         Object selected = ZemStateSelector.select(state, call.stateSelect());
         List<List<ZemQuestionDto>> parts =
@@ -219,8 +228,10 @@ public class ZemService {
         boolean anyTokens = false;
         Double cost = null;
         try {
+            boolean powerChecked = true;
             for (List<ZemQuestionDto> part : parts) {
-                DecisionResult result = callWithRetry(call, new DecisionRequest(selected, part));
+                DecisionResult result = callWithRetry(call, new DecisionRequest(selected, part), powerChecked);
+                powerChecked = false;
                 if (reportedModel == null) {
                     reportedModel = result.model();
                 }
@@ -314,10 +325,18 @@ public class ZemService {
         }
     }
 
-    /** Throttled call with retry on retryable failures; maps the last failure. */
-    private DecisionResult callWithRetry(ZemPreparedCall call, DecisionRequest request) {
+    /**
+     * Throttled call with retry on retryable failures; maps the last failure.
+     *
+     * @param powerChecked the power switch was asked right before this call,
+     *                     so its first attempt need not ask again
+     */
+    private DecisionResult callWithRetry(ZemPreparedCall call, DecisionRequest request, boolean powerChecked) {
         for (int attempt = 0; ; attempt++) {
             interruptChecker.throwIfHalted(call.processId());
+            if (attempt > 0 || !powerChecked) {
+                requirePower(call.tenantId(), call.userId(), call.processId());
+            }
             try (ZemThrottle.Permit ignored =
                     throttle.acquire(call.throttleKey(), call.maxConcurrent(), call.rateLimitRps())) {
                 return decisionService.decide(call.config(), request);
@@ -336,6 +355,14 @@ public class ZemService {
                         call.maxRetries());
                 sleep(backoff(e, attempt));
             }
+        }
+    }
+
+    /** Throws {@code disabled} while the tenant's or the user's LLM power switch is off. */
+    private void requirePower(String tenantId, @Nullable String userId, @Nullable String processId) {
+        String powerOff = powerGate.refusal(tenantId, userId, null, processId);
+        if (powerOff != null) {
+            throw new ZemException(ZemException.Reason.DISABLED, powerOff);
         }
     }
 

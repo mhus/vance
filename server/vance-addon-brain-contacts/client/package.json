@@ -27,8 +27,6 @@
     "@vance/generated": "workspace:*",
     "@vance/kind-registry": "workspace:*",
     "@vance/shared": "workspace:*",
-    "dompurify": "^3.4.17",
-    "marked": "^18.1.1",
     "vue-draggable-plus": "^0.6.1"
   },
   "peerDependencies": {

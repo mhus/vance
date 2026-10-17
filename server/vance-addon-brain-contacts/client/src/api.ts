@@ -149,7 +149,8 @@ export async function loadDocument(projectId: string, path: string): Promise<Con
 /**
  * Object URLs of contact pictures, keyed by id + version — fetched with the
  * caller's credentials (an `<img src>` cannot carry a bearer token) and kept
- * for the page's lifetime; a new version is a new key.
+ * for the page's lifetime; a new version is a new key. Only successful
+ * loads stay cached.
  */
 const photoCache = new Map<string, Promise<string | null>>();
 
@@ -166,7 +167,12 @@ export function photoUrl(
       `${BASE}/contact/${encodeURIComponent(id)}/photo${qs({ projectId, scope: scope.toLowerCase() })}`,
     )
       .then(({ blob }) => URL.createObjectURL(blob))
-      .catch(() => null);
+      .catch(() => {
+        // A failed load is not remembered: the next render asks again, so a
+        // transient error does not hide the picture for the page's lifetime.
+        photoCache.delete(key);
+        return null;
+      });
     photoCache.set(key, hit);
   }
   return hit;

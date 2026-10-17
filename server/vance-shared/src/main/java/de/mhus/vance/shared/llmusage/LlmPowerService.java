@@ -29,6 +29,10 @@ import org.springframework.stereotype.Service;
  * cascade a value in the user's own {@code _user_<login>} project could shadow
  * the switch, and the user is exactly who must not be able to turn it back on.
  *
+ * <p>The per-user key names a login, so user maintenance has to follow it:
+ * {@link LlmPowerUserDataHandler} carries it over on a rename and removes it
+ * on a delete.
+ *
  * <p>Plain reads and writes, no cache: the brain's admission path caches the
  * state itself and refreshes it in the background.
  */
@@ -73,10 +77,68 @@ public class LlmPowerService {
 
     /** Switch one user of the tenant on or off. */
     public void setUserPower(String tenantId, String userId, boolean on, @Nullable String actor) {
+        write(tenantId, userKey(userId), on, actor);
+    }
+
+    /** Whether {@code userId} has a stored switch in {@code tenantId} — 1 or 0, for user maintenance. */
+    public long countUserSwitch(String tenantId, String userId) {
+        return settingService.exists(
+                        tenantId,
+                        SettingService.SCOPE_PROJECT,
+                        HomeBootstrapService.TENANT_PROJECT_NAME,
+                        userKey(userId))
+                ? 1
+                : 0;
+    }
+
+    /**
+     * Remove {@code userId}'s switch — the account is being deleted, and a
+     * restriction must not pass to the next account minted under the same
+     * login. Returns how many rows went (0 or 1); idempotent.
+     */
+    public long deleteUserSwitch(String tenantId, String userId) {
+        long present = countUserSwitch(tenantId, userId);
+        if (present > 0) {
+            settingService.delete(
+                    tenantId, SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME, userKey(userId));
+        }
+        return present;
+    }
+
+    /**
+     * Carry {@code userId}'s switch over to {@code newUserId} — a rename, same
+     * person, so a switched-off user stays switched off under the new login.
+     * Value and note are kept; the time stamp becomes the time of the rename.
+     * Returns how many rows moved (0 or 1); idempotent.
+     */
+    public long renameUserSwitch(String tenantId, String userId, String newUserId) {
+        if (StringUtils.isBlank(newUserId)) {
+            throw new IllegalArgumentException("newUserId is required");
+        }
+        SettingDocument old = settingService
+                .find(tenantId, SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME, userKey(userId))
+                .orElse(null);
+        if (old == null) {
+            return 0;
+        }
+        settingService.set(
+                tenantId,
+                SettingService.SCOPE_PROJECT,
+                HomeBootstrapService.TENANT_PROJECT_NAME,
+                userKey(newUserId),
+                old.getValue(),
+                SettingType.BOOLEAN,
+                old.getDescription());
+        settingService.delete(
+                tenantId, SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME, userKey(userId));
+        return 1;
+    }
+
+    private static String userKey(String userId) {
         if (StringUtils.isBlank(userId)) {
             throw new IllegalArgumentException("userId is required");
         }
-        write(tenantId, USER_PREFIX + userId, on, actor);
+        return USER_PREFIX + userId;
     }
 
     private void write(String tenantId, String key, boolean on, @Nullable String actor) {

@@ -11,7 +11,7 @@ import { computed, nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { RestError } from '@vance/shared';
 import { VAlert, VButton, VInput, VModal } from '@/components';
-import { nextNotePath, quickMarkdownPath } from '../quickMarkdownPath';
+import { createNextNote, nextNotePath, quickMarkdownPath } from '../quickMarkdownPath';
 
 interface Props {
   open: boolean;
@@ -71,28 +71,26 @@ async function submit(): Promise<void> {
   error.value = null;
   try {
     if (name.value.trim()) {
-      await props.create(quickMarkdownPath(path.value, name.value) as string);
+      const fullPath = quickMarkdownPath(path.value, name.value);
+      if (!fullPath) {
+        error.value = t('cortex.newMarkdown.invalidName');
+        return;
+      }
+      await props.create(fullPath);
     } else {
-      await createNextNote();
+      await createNextNote(
+        path.value,
+        props.isTaken,
+        props.create,
+        (e) => e instanceof RestError && e.status === 409,
+        MAX_NOTE_CONFLICTS,
+      );
     }
     close();
   } catch (e) {
     error.value = e instanceof Error ? e.message : t('cortex.newMarkdown.failed');
   } finally {
     creating.value = false;
-  }
-}
-
-async function createNextNote(): Promise<void> {
-  let next = nextNotePath(path.value, props.isTaken);
-  for (let attempt = 0; ; attempt++) {
-    try {
-      await props.create(next.path);
-      return;
-    } catch (e) {
-      if (!(e instanceof RestError && e.status === 409) || attempt >= MAX_NOTE_CONFLICTS) throw e;
-      next = nextNotePath(path.value, props.isTaken, next.index + 1);
-    }
   }
 }
 

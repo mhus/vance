@@ -1,5 +1,8 @@
 package de.mhus.vance.brain.ai.power;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.Ticker;
 import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.UsageGate;
 import de.mhus.vance.shared.llmusage.CallAttribution;
@@ -8,11 +11,10 @@ import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import lombok.RequiredArgsConstructor;
+import java.time.Duration;
 import org.apache.commons.lang3.StringUtils;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -31,27 +33,57 @@ import org.springframework.stereotype.Component;
  * only a few callers name directly ({@link CallAttribution#userId()}); calls
  * inside a session or process belong to that session's owner and are resolved
  * from there. That lookup happens only while at least one user of the tenant
- * is switched off, and its answers are remembered — the owner of a session
- * never changes. A call that has neither user, session nor process (scheduler
- * ticks, hooks, background services) is subject to the tenant switch only.
+ * is switched off, and its answers are remembered for {@link #OWNER_TTL}: the
+ * owner of a session does not change during its life, but a user rename
+ * rewrites it to the new login, and a remembered old login would no longer
+ * match the switch that the rename carried over. A call that has neither user,
+ * session nor process (scheduler ticks, hooks, background services) is subject
+ * to the tenant switch only.
+ *
+ * <p>In a multi-user session the owner stands for every participant: a call is
+ * refused when the owner is switched off, not when only the participant who
+ * sent the message is — the model call does not carry its sender.
  *
  * <p>Beyond chat and embeddings, which reach this gate through the decorator
  * chain, the image, audio and decision services ask {@link #refusal} at their
  * own entry and report a refusal through their own error type.
  */
 @Component
-@RequiredArgsConstructor
 public class LlmPowerGate implements UsageGate {
 
-    /** Bound on remembered owners per map; on overflow it is cleared — entries are cheap to rebuild. */
+    /** Bound on remembered owners per cache; entries are cheap to rebuild. */
     static final int MAX_OWNERS = 10_000;
+
+    /**
+     * How long a resolved owner is trusted. Bounds how long a user rename can
+     * leave a stale login here — the switch moves with the rename at once.
+     */
+    static final Duration OWNER_TTL = Duration.ofMinutes(5);
 
     private final LlmPowerSwitch powerSwitch;
     private final SessionService sessionService;
     private final ThinkProcessService thinkProcessService;
 
-    private final Map<String, String> userBySession = new ConcurrentHashMap<>();
-    private final Map<String, String> userByProcess = new ConcurrentHashMap<>();
+    private final Cache<String, String> userBySession;
+    private final Cache<String, String> userByProcess;
+
+    @Autowired
+    public LlmPowerGate(
+            LlmPowerSwitch powerSwitch, SessionService sessionService, ThinkProcessService thinkProcessService) {
+        this(powerSwitch, sessionService, thinkProcessService, Ticker.systemTicker());
+    }
+
+    LlmPowerGate(
+            LlmPowerSwitch powerSwitch,
+            SessionService sessionService,
+            ThinkProcessService thinkProcessService,
+            Ticker ticker) {
+        this.powerSwitch = powerSwitch;
+        this.sessionService = sessionService;
+        this.thinkProcessService = thinkProcessService;
+        this.userBySession = ownerCache(ticker);
+        this.userByProcess = ownerCache(ticker);
+    }
 
     @Override
     public void admit(CallAttribution attribution, ModelInfo model) {
@@ -90,7 +122,7 @@ public class LlmPowerGate implements UsageGate {
             return sessionOwner(sessionId);
         }
         if (StringUtils.isNotBlank(processId)) {
-            String cached = userByProcess.get(processId);
+            String cached = userByProcess.getIfPresent(processId);
             if (cached != null) {
                 return cached;
             }
@@ -107,7 +139,7 @@ public class LlmPowerGate implements UsageGate {
     }
 
     private @Nullable String sessionOwner(String sessionId) {
-        String cached = userBySession.get(sessionId);
+        String cached = userBySession.getIfPresent(sessionId);
         if (cached != null) {
             return cached;
         }
@@ -121,13 +153,17 @@ public class LlmPowerGate implements UsageGate {
     }
 
     /** A miss is not remembered: the session may simply not be written yet. */
-    private static void remember(Map<String, String> map, String key, @Nullable String owner) {
-        if (owner == null) {
-            return;
+    private static void remember(Cache<String, String> cache, String key, @Nullable String owner) {
+        if (owner != null) {
+            cache.put(key, owner);
         }
-        if (map.size() >= MAX_OWNERS) {
-            map.clear();
-        }
-        map.put(key, owner);
+    }
+
+    private static Cache<String, String> ownerCache(Ticker ticker) {
+        return Caffeine.newBuilder()
+                .ticker(ticker)
+                .maximumSize(MAX_OWNERS)
+                .expireAfterWrite(OWNER_TTL)
+                .build();
     }
 }

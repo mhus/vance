@@ -164,13 +164,16 @@ public final class ContactSearch {
     /**
      * Whether two numbers are the same as far as their trailing digits go:
      * "0170 7654321" and "+49 170 7654321" match, because the national form
-     * drops the trunk prefix the international form replaces.
+     * drops the trunk prefix the international form replaces. A stored
+     * number counts as the tail of a longer query only when it is itself at
+     * least six digits — otherwise "110" or an extension would match every
+     * number ending in those digits.
      */
     public static boolean phoneMatches(String stored, String query) {
         String a = stripTrunk(normalizePhone(stored));
         String b = stripTrunk(normalizePhone(query));
         if (b.length() < 3 || a.isEmpty()) return false;
-        if (b.length() >= 6) return a.endsWith(b) || b.endsWith(a);
+        if (b.length() >= 6) return a.endsWith(b) || (a.length() >= 6 && b.endsWith(a));
         return a.contains(b);
     }
 

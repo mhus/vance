@@ -18,6 +18,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 
 /** {@link LlmPowerGate}: tenant switch for everyone, user switch for the call's owner, no exemptions. */
@@ -92,6 +93,21 @@ class LlmPowerGateTest {
         assertThat(gate.refusal(TENANT, null, "sess-3", null)).isNull();
 
         verify(sessionService, times(2)).findBySessionId("sess-3");
+    }
+
+    @Test
+    void rememberedOwner_expires_soARenamedLoginIsPickedUp() {
+        AtomicLong nanos = new AtomicLong();
+        LlmPowerGate ticking = new LlmPowerGate(powerSwitch, sessionService, thinkProcessService, nanos::get);
+        when(powerSwitch.state(TENANT)).thenReturn(new LlmPowerState(null, Map.of("road.runner.new", OFF)));
+        when(sessionService.findBySessionId("sess-4"))
+                .thenReturn(Optional.of(session("road.runner")), Optional.of(session("road.runner.new")));
+
+        assertThat(ticking.refusal(TENANT, null, "sess-4", null)).isNull();
+        nanos.addAndGet(LlmPowerGate.OWNER_TTL.plusSeconds(1).toNanos());
+
+        assertThat(ticking.refusal(TENANT, null, "sess-4", null)).contains("road.runner.new");
+        verify(sessionService, times(2)).findBySessionId("sess-4");
     }
 
     private static CallAttribution attribution(String sessionId, String processId, String userId) {

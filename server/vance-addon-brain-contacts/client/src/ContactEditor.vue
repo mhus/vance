@@ -217,7 +217,7 @@ function addAddress(): void {
 
       <VGroup :label="t('contacts.field.phones')">
         <div v-for="(row, i) in draft.phones" :key="`p${i}`" class="flex gap-2 items-center px-3 py-2">
-          <div class="flex-1"><VInput v-model="row.value" size="sm" placeholder="+49 30 1234567" /></div>
+          <div class="flex-1"><VInput v-model="row.value" size="sm" :placeholder="t('contacts.field.phonePlaceholder')" /></div>
           <div class="w-32"><VSelect v-model="row.type" :options="phoneTypes" /></div>
           <VIconButton icon="delete" :label="t('contacts.field.remove')" size="sm" @click="draft.phones.splice(i, 1)" />
         </div>

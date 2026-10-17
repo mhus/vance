@@ -441,6 +441,12 @@ public class SettingFormLoader {
             }
         }
 
+        String suggestionsFrom = optionalString(raw.get("suggestionsFrom"));
+        if (suggestionsFrom != null && !"string".equals(type)) {
+            throw new IllegalStateException(
+                    "'" + path + ".suggestionsFrom' only applies to string, got '" + type + "'");
+        }
+
         return FormFieldDto.builder()
                 .name(name)
                 .type(type)
@@ -460,6 +466,7 @@ public class SettingFormLoader {
                 .showIf(showIf)
                 .writeIf(writeIf)
                 .choicesFrom(choicesFrom)
+                .suggestionsFrom(suggestionsFrom)
                 .build();
     }
 

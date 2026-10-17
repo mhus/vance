@@ -2,6 +2,8 @@ package de.mhus.vance.brain.ai.power;
 
 import de.mhus.vance.shared.llmusage.LlmPowerService;
 import de.mhus.vance.shared.llmusage.LlmPowerState;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -9,12 +11,14 @@ import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.scheduling.support.CronExpression;
+import org.springframework.scheduling.support.CronTrigger;
 import org.springframework.stereotype.Service;
 
 /**
@@ -68,7 +72,10 @@ public class LlmPowerSwitch {
     private final LlmPowerService powerService;
     private final CronExpression refreshCron;
     private final Clock clock;
+    private final String cron;
     private final Map<String, Entry> states = new ConcurrentHashMap<>();
+    private final AtomicLong tickets = new AtomicLong();
+    private @Nullable ThreadPoolTaskScheduler scheduler;
 
     @Autowired
     public LlmPowerSwitch(
@@ -78,8 +85,30 @@ public class LlmPowerSwitch {
 
     LlmPowerSwitch(LlmPowerService powerService, String cron, Clock clock) {
         this.powerService = powerService;
+        this.cron = cron;
         this.refreshCron = CronExpression.parse(cron);
         this.clock = clock;
+    }
+
+    /** Start the refresh tick on its own thread, in UTC. */
+    @PostConstruct
+    void startRefresh() {
+        ThreadPoolTaskScheduler taskScheduler = new ThreadPoolTaskScheduler();
+        taskScheduler.setPoolSize(1);
+        taskScheduler.setThreadNamePrefix("llm-power-refresh-");
+        taskScheduler.setDaemon(true);
+        taskScheduler.initialize();
+        taskScheduler.schedule(this::refresh, new CronTrigger(cron, ZoneOffset.UTC));
+        this.scheduler = taskScheduler;
+    }
+
+    @PreDestroy
+    void stopRefresh() {
+        ThreadPoolTaskScheduler taskScheduler = scheduler;
+        if (taskScheduler != null) {
+            taskScheduler.shutdown();
+            scheduler = null;
+        }
     }
 
     /**
@@ -110,6 +139,7 @@ public class LlmPowerSwitch {
             entry.lastAsked = now;
             return entry.state;
         }
+        long ticket = tickets.incrementAndGet();
         LlmPowerState loaded;
         try {
             loaded = powerService.load(tenantId);
@@ -117,8 +147,7 @@ public class LlmPowerSwitch {
             log.warn("LLM power state of tenant '{}' not readable, admitting: {}", tenantId, e.toString());
             return LlmPowerState.ALL_ON;
         }
-        remember(tenantId, loaded, now);
-        return loaded;
+        return remember(tenantId, loaded, ticket, now);
     }
 
     /** Switch the tenant on or off and make it effective on this pod at once. */
@@ -140,9 +169,9 @@ public class LlmPowerSwitch {
      * write path, so a change applies here at once.
      */
     LlmPowerState reload(String tenantId) {
+        long ticket = tickets.incrementAndGet();
         LlmPowerState loaded = powerService.load(tenantId);
-        remember(tenantId, loaded, clock.instant());
-        return loaded;
+        return remember(tenantId, loaded, ticket, clock.instant());
     }
 
     /**
@@ -162,8 +191,11 @@ public class LlmPowerSwitch {
         return entry == null ? null : entry.state;
     }
 
-    @Scheduled(cron = "${vance.llm.power.refresh-cron:" + DEFAULT_CRON + "}")
-    public void refresh() {
+    /**
+     * The refresh tick: reload every tenant asked for recently, drop the rest.
+     * Runs on the dedicated scheduler started by {@link #startRefresh}.
+     */
+    void refresh() {
         Instant evictBefore = clock.instant().minus(IDLE_EVICTION);
         for (Map.Entry<String, Entry> e : states.entrySet()) {
             Entry entry = e.getValue();
@@ -171,34 +203,55 @@ public class LlmPowerSwitch {
                 states.remove(e.getKey(), entry);
                 continue;
             }
+            long ticket = tickets.incrementAndGet();
+            LlmPowerState loaded;
             try {
-                entry.state = powerService.load(e.getKey());
+                loaded = powerService.load(e.getKey());
             } catch (RuntimeException ex) {
                 log.warn("LLM power refresh of tenant '{}' failed, keeping last state: {}", e.getKey(), ex.toString());
+                continue;
             }
+            // Only replaces what is still cached — a tenant evicted meanwhile stays evicted.
+            states.computeIfPresent(
+                    e.getKey(),
+                    (key, current) -> current.ticket > ticket ? current : new Entry(loaded, ticket, current.lastAsked));
         }
     }
 
-    private void remember(String tenantId, LlmPowerState state, Instant now) {
-        Entry entry = states.get(tenantId);
-        if (entry != null) {
-            entry.state = state;
-            entry.lastAsked = now;
-            return;
-        }
-        if (states.size() >= MAX_TENANTS) {
+    /**
+     * Cache {@code state} as loaded under {@code ticket}, unless a later load
+     * is already cached. Returns what is cached afterwards — the newer state
+     * wins for the caller too.
+     */
+    private LlmPowerState remember(String tenantId, LlmPowerState state, long ticket, Instant now) {
+        if (states.size() >= MAX_TENANTS && !states.containsKey(tenantId)) {
             states.clear();
         }
-        states.put(tenantId, new Entry(state, now));
+        Entry result = states.compute(tenantId, (key, current) -> {
+            if (current == null) {
+                return new Entry(state, ticket, now);
+            }
+            if (current.ticket > ticket) {
+                current.lastAsked = now;
+                return current;
+            }
+            return new Entry(state, ticket, now);
+        });
+        return result.state;
     }
 
-    /** Mutable on purpose: the refresh swaps the state, the call path stamps the time. */
+    /**
+     * One cached state and the ticket of the load that produced it. A new load
+     * replaces the entry; only the call path's time stamp is mutable.
+     */
     private static final class Entry {
-        volatile LlmPowerState state;
+        final LlmPowerState state;
+        final long ticket;
         volatile Instant lastAsked;
 
-        Entry(LlmPowerState state, Instant lastAsked) {
+        Entry(LlmPowerState state, long ticket, Instant lastAsked) {
             this.state = state;
+            this.ticket = ticket;
             this.lastAsked = lastAsked;
         }
     }

@@ -15,7 +15,7 @@ import org.jspecify.annotations.Nullable;
  * document-templates — {@code name}/{@code type}/{@code label}/
  * {@code help}/{@code required}/{@code defaultValue}/{@code choices}/
  * {@code rows}/{@code integerMin}/{@code integerMax}/{@code min}/
- * {@code max}/{@code item}.
+ * {@code max}/{@code item}/{@code suggestionsFrom}.
  *
  * <p>Deliberately operates on {@code Object} nodes (the output of
  * {@code new Yaml().load(...)}) rather than raw text, so it carries no
@@ -80,6 +80,11 @@ public final class FormFieldYamlParser {
                 throw new IllegalArgumentException("'" + path + ".item' must declare at least one nested field");
             }
         }
+        String suggestionsFrom = optionalString(raw.get("suggestionsFrom"));
+        if (suggestionsFrom != null && !"string".equals(type)) {
+            throw new IllegalArgumentException(
+                    "'" + path + ".suggestionsFrom' only applies to string, got '" + type + "'");
+        }
         return FormFieldDto.builder()
                 .name(name)
                 .type(type)
@@ -95,6 +100,7 @@ public final class FormFieldYamlParser {
                 .min(min)
                 .max(max)
                 .item(item)
+                .suggestionsFrom(suggestionsFrom)
                 .build();
     }
 

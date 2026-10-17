@@ -6,6 +6,7 @@ import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -50,7 +51,7 @@ public class ContactBoardController {
         ContactBoardService.PinResult result = boardService.pin(
                 caller(tenant, projectId, request),
                 path,
-                body.uuid(),
+                requireUuid(body.uuid()),
                 body.scope(),
                 body.label(),
                 body.note(),
@@ -69,7 +70,7 @@ public class ContactBoardController {
                 boardService.updatePin(
                         caller(tenant, projectId, request),
                         path,
-                        body.uuid(),
+                        requireUuid(body.uuid()),
                         body.label(),
                         body.note(),
                         body.position()),
@@ -94,6 +95,12 @@ public class ContactBoardController {
             @RequestBody ReorderPinsRequest body,
             HttpServletRequest request) {
         return ContactBoardView.of(boardService.reorder(caller(tenant, projectId, request), path, body.order()), null);
+    }
+
+    /** A body without the contact id is a client error, not a 500. */
+    private static String requireUuid(@Nullable String uuid) {
+        if (uuid == null || uuid.isBlank()) throw new IllegalArgumentException("'uuid' is required");
+        return uuid;
     }
 
     private ContactCaller caller(String tenant, String projectId, HttpServletRequest request) {

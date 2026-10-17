@@ -63,10 +63,9 @@ class WizardLoaderTest {
         when(documentService.findByPath(eq(TENANT), eq("_user_" + USER), any())).thenReturn(Optional.empty());
         // 2. Cascade returns the wizard from VANCE.
         when(documentService.lookupCascade(
-                TENANT, HomeBootstrapService.TENANT_PROJECT_NAME, "_vance/wizards/gremium.yaml"))
+                        TENANT, HomeBootstrapService.TENANT_PROJECT_NAME, "_vance/wizards/gremium.yaml"))
                 .thenReturn(Optional.of(new LookupResult(
-                        "_vance/wizards/gremium.yaml", GREMIUM_YAML,
-                        LookupResult.Source.VANCE, null)));
+                        "_vance/wizards/gremium.yaml", GREMIUM_YAML, LookupResult.Source.VANCE, null)));
 
         Optional<ResolvedWizard> hit = loader.load(TENANT, PROJECT, USER, "gremium");
 
@@ -121,8 +120,9 @@ class WizardLoaderTest {
                     label: { en: "X" }
                 """;
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
-        when(documentService.lookupCascade(any(), any(), any())).thenReturn(Optional.of(
-                new LookupResult("_vance/wizards/broken.yaml", yaml, LookupResult.Source.VANCE, null)));
+        when(documentService.lookupCascade(any(), any(), any()))
+                .thenReturn(Optional.of(
+                        new LookupResult("_vance/wizards/broken.yaml", yaml, LookupResult.Source.VANCE, null)));
 
         assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))
                 .isInstanceOf(WizardParseException.class)
@@ -141,8 +141,9 @@ class WizardLoaderTest {
                 promptTemplate: "{% if unclosed"
                 """;
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
-        when(documentService.lookupCascade(any(), any(), any())).thenReturn(Optional.of(
-                new LookupResult("_vance/wizards/broken.yaml", yaml, LookupResult.Source.VANCE, null)));
+        when(documentService.lookupCascade(any(), any(), any()))
+                .thenReturn(Optional.of(
+                        new LookupResult("_vance/wizards/broken.yaml", yaml, LookupResult.Source.VANCE, null)));
 
         assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))
                 .isInstanceOf(WizardParseException.class)
@@ -185,8 +186,9 @@ class WizardLoaderTest {
                     condition: runNext == "true"
                 """;
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
-        when(documentService.lookupCascade(any(), any(), any())).thenReturn(Optional.of(
-                new LookupResult("_vance/wizards/host.yaml", yaml, LookupResult.Source.VANCE, null)));
+        when(documentService.lookupCascade(any(), any(), any()))
+                .thenReturn(Optional.of(
+                        new LookupResult("_vance/wizards/host.yaml", yaml, LookupResult.Source.VANCE, null)));
 
         ResolvedWizard w = loader.load(TENANT, null, null, "host").orElseThrow();
 
@@ -212,8 +214,9 @@ class WizardLoaderTest {
                   - label: { en: "Continue" }
                 """;
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
-        when(documentService.lookupCascade(any(), any(), any())).thenReturn(Optional.of(
-                new LookupResult("_vance/wizards/broken.yaml", yaml, LookupResult.Source.VANCE, null)));
+        when(documentService.lookupCascade(any(), any(), any()))
+                .thenReturn(Optional.of(
+                        new LookupResult("_vance/wizards/broken.yaml", yaml, LookupResult.Source.VANCE, null)));
 
         assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))
                 .isInstanceOf(WizardParseException.class)
@@ -237,8 +240,9 @@ class WizardLoaderTest {
                       ref: "{% if unclosed"
                 """;
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
-        when(documentService.lookupCascade(any(), any(), any())).thenReturn(Optional.of(
-                new LookupResult("_vance/wizards/broken.yaml", yaml, LookupResult.Source.VANCE, null)));
+        when(documentService.lookupCascade(any(), any(), any()))
+                .thenReturn(Optional.of(
+                        new LookupResult("_vance/wizards/broken.yaml", yaml, LookupResult.Source.VANCE, null)));
 
         assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))
                 .isInstanceOf(WizardParseException.class)
@@ -248,9 +252,9 @@ class WizardLoaderTest {
     @Test
     void availableIn_defaultsTo_visibleEverywhere() {
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
-        when(documentService.lookupCascade(any(), any(), any())).thenReturn(Optional.of(
-                new LookupResult("_vance/wizards/gremium.yaml", GREMIUM_YAML,
-                        LookupResult.Source.VANCE, null)));
+        when(documentService.lookupCascade(any(), any(), any()))
+                .thenReturn(Optional.of(new LookupResult(
+                        "_vance/wizards/gremium.yaml", GREMIUM_YAML, LookupResult.Source.VANCE, null)));
 
         ResolvedWizard w = loader.load(TENANT, null, null, "gremium").orElseThrow();
 
@@ -270,9 +274,9 @@ class WizardLoaderTest {
                 promptTemplate: "."
                 """;
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
-        when(documentService.lookupCascade(any(), any(), any())).thenReturn(Optional.of(
-                new LookupResult("_vance/wizards/eddie-only.yaml", yaml,
-                        LookupResult.Source.RESOURCE, null)));
+        when(documentService.lookupCascade(any(), any(), any()))
+                .thenReturn(Optional.of(
+                        new LookupResult("_vance/wizards/eddie-only.yaml", yaml, LookupResult.Source.RESOURCE, null)));
 
         ResolvedWizard w = loader.load(TENANT, null, null, "eddie-only").orElseThrow();
 
@@ -292,9 +296,9 @@ class WizardLoaderTest {
                 promptTemplate: "."
                 """;
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
-        when(documentService.lookupCascade(any(), any(), any())).thenReturn(Optional.of(
-                new LookupResult("_vance/wizards/broken.yaml", yaml,
-                        LookupResult.Source.VANCE, null)));
+        when(documentService.lookupCascade(any(), any(), any()))
+                .thenReturn(Optional.of(
+                        new LookupResult("_vance/wizards/broken.yaml", yaml, LookupResult.Source.VANCE, null)));
 
         assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))
                 .isInstanceOf(WizardParseException.class)
@@ -314,9 +318,9 @@ class WizardLoaderTest {
                 promptTemplate: "."
                 """;
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
-        when(documentService.lookupCascade(any(), any(), any())).thenReturn(Optional.of(
-                new LookupResult("_vance/wizards/broken.yaml", yaml,
-                        LookupResult.Source.VANCE, null)));
+        when(documentService.lookupCascade(any(), any(), any()))
+                .thenReturn(Optional.of(
+                        new LookupResult("_vance/wizards/broken.yaml", yaml, LookupResult.Source.VANCE, null)));
 
         assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))
                 .isInstanceOf(WizardParseException.class)
@@ -325,36 +329,38 @@ class WizardLoaderTest {
 
     @Test
     void isAvailableIn_matches_glob_patterns() {
-        assertThat(WizardLoader.isAvailableIn(java.util.List.of("*"), "_tenant")).isTrue();
-        assertThat(WizardLoader.isAvailableIn(java.util.List.of("*"), "research")).isTrue();
+        assertThat(WizardLoader.isAvailableIn(java.util.List.of("*"), "_tenant"))
+                .isTrue();
+        assertThat(WizardLoader.isAvailableIn(java.util.List.of("*"), "research"))
+                .isTrue();
 
         // Pure include match.
-        assertThat(WizardLoader.isAvailableIn(
-                java.util.List.of("_user_*"), "_user_alice")).isTrue();
-        assertThat(WizardLoader.isAvailableIn(
-                java.util.List.of("_user_*"), "_tenant")).isFalse();
-        assertThat(WizardLoader.isAvailableIn(
-                java.util.List.of("_user_*", "_tenant"), "_tenant")).isTrue();
+        assertThat(WizardLoader.isAvailableIn(java.util.List.of("_user_*"), "_user_alice"))
+                .isTrue();
+        assertThat(WizardLoader.isAvailableIn(java.util.List.of("_user_*"), "_tenant"))
+                .isFalse();
+        assertThat(WizardLoader.isAvailableIn(java.util.List.of("_user_*", "_tenant"), "_tenant"))
+                .isTrue();
 
         // Exact name.
-        assertThat(WizardLoader.isAvailableIn(
-                java.util.List.of("research-2026"), "research-2026")).isTrue();
-        assertThat(WizardLoader.isAvailableIn(
-                java.util.List.of("research-2026"), "research")).isFalse();
+        assertThat(WizardLoader.isAvailableIn(java.util.List.of("research-2026"), "research-2026"))
+                .isTrue();
+        assertThat(WizardLoader.isAvailableIn(java.util.List.of("research-2026"), "research"))
+                .isFalse();
 
         // Exclude-only list implies "*" as include.
-        assertThat(WizardLoader.isAvailableIn(
-                java.util.List.of("!_*"), "research")).isTrue();
-        assertThat(WizardLoader.isAvailableIn(
-                java.util.List.of("!_*"), "_user_alice")).isFalse();
-        assertThat(WizardLoader.isAvailableIn(
-                java.util.List.of("!_*"), "_tenant")).isFalse();
+        assertThat(WizardLoader.isAvailableIn(java.util.List.of("!_*"), "research"))
+                .isTrue();
+        assertThat(WizardLoader.isAvailableIn(java.util.List.of("!_*"), "_user_alice"))
+                .isFalse();
+        assertThat(WizardLoader.isAvailableIn(java.util.List.of("!_*"), "_tenant"))
+                .isFalse();
 
         // Mixed include + exclude: exclude trumps a positive match.
-        assertThat(WizardLoader.isAvailableIn(
-                java.util.List.of("*", "!_user_*"), "_user_alice")).isFalse();
-        assertThat(WizardLoader.isAvailableIn(
-                java.util.List.of("*", "!_user_*"), "research")).isTrue();
+        assertThat(WizardLoader.isAvailableIn(java.util.List.of("*", "!_user_*"), "_user_alice"))
+                .isFalse();
+        assertThat(WizardLoader.isAvailableIn(java.util.List.of("*", "!_user_*"), "research"))
+                .isTrue();
 
         // Empty patterns degenerate to visible.
         assertThat(WizardLoader.isAvailableIn(java.util.List.of(), "anywhere")).isTrue();
@@ -384,54 +390,105 @@ class WizardLoaderTest {
 
         // The tenant tier returns both, the user and project tiers are empty.
         when(documentService.listByPrefixCascade(
-                eq(TENANT), eq(HomeBootstrapService.TENANT_PROJECT_NAME), eq("_vance/wizards/")))
+                        eq(TENANT), eq(HomeBootstrapService.TENANT_PROJECT_NAME), eq("_vance/wizards/")))
                 .thenReturn(Map.of(
-                        "_vance/wizards/create-project.eddie.yaml", new LookupResult(
-                                "_vance/wizards/create-project.eddie.yaml", eddieOnlyYaml,
-                                LookupResult.Source.RESOURCE, null),
-                        "_vance/wizards/gremium.yaml", new LookupResult(
-                                "_vance/wizards/gremium.yaml", everywhereYaml,
-                                LookupResult.Source.RESOURCE, null)));
-        when(documentService.listByPrefixCascade(
-                eq(TENANT), eq("_user_" + USER), eq("_vance/wizards/")))
+                        "_vance/wizards/create-project.eddie.yaml",
+                                new LookupResult(
+                                        "_vance/wizards/create-project.eddie.yaml",
+                                        eddieOnlyYaml,
+                                        LookupResult.Source.RESOURCE,
+                                        null),
+                        "_vance/wizards/gremium.yaml",
+                                new LookupResult(
+                                        "_vance/wizards/gremium.yaml",
+                                        everywhereYaml,
+                                        LookupResult.Source.RESOURCE,
+                                        null)));
+        when(documentService.listByPrefixCascade(eq(TENANT), eq("_user_" + USER), eq("_vance/wizards/")))
                 .thenReturn(Map.of());
-        when(documentService.listByPrefixCascade(
-                eq(TENANT), eq(PROJECT), eq("_vance/wizards/")))
+        when(documentService.listByPrefixCascade(eq(TENANT), eq(PROJECT), eq("_vance/wizards/")))
                 .thenReturn(Map.of());
 
         // In a real Arthur project: create-project is filtered out, gremium remains.
         var inArthur = loader.listAll(TENANT, PROJECT, USER);
-        assertThat(inArthur).extracting(ResolvedWizard::name)
-                .containsExactly("gremium");
+        assertThat(inArthur).extracting(ResolvedWizard::name).containsExactly("gremium");
 
         // In Eddie (projectId blank → treated as _tenant): both are visible.
         var inEddie = loader.listAll(TENANT, null, USER);
-        assertThat(inEddie).extracting(ResolvedWizard::name)
-                .containsExactlyInAnyOrder("create-project", "gremium");
+        assertThat(inEddie).extracting(ResolvedWizard::name).containsExactlyInAnyOrder("create-project", "gremium");
     }
 
     @Test
     void listAll_dedups_acrossTiers_innermostWins() {
         when(documentService.listByPrefixCascade(
-                eq(TENANT), eq(HomeBootstrapService.TENANT_PROJECT_NAME), eq("_vance/wizards/")))
+                        eq(TENANT), eq(HomeBootstrapService.TENANT_PROJECT_NAME), eq("_vance/wizards/")))
                 .thenReturn(Map.of(
-                        "_vance/wizards/gremium.yaml", new LookupResult(
-                                "_vance/wizards/gremium.yaml", GREMIUM_YAML,
-                                LookupResult.Source.RESOURCE, null)));
-        when(documentService.listByPrefixCascade(
-                eq(TENANT), eq("_user_" + USER), eq("_vance/wizards/")))
+                        "_vance/wizards/gremium.yaml",
+                        new LookupResult(
+                                "_vance/wizards/gremium.yaml", GREMIUM_YAML, LookupResult.Source.RESOURCE, null)));
+        when(documentService.listByPrefixCascade(eq(TENANT), eq("_user_" + USER), eq("_vance/wizards/")))
                 .thenReturn(Map.of(
-                        "_vance/wizards/gremium.yaml", new LookupResult(
-                                "_vance/wizards/gremium.yaml", GREMIUM_YAML,
-                                LookupResult.Source.PROJECT, projectDoc(GREMIUM_YAML))));
-        when(documentService.listByPrefixCascade(
-                eq(TENANT), eq(PROJECT), eq("_vance/wizards/")))
+                        "_vance/wizards/gremium.yaml",
+                        new LookupResult(
+                                "_vance/wizards/gremium.yaml",
+                                GREMIUM_YAML,
+                                LookupResult.Source.PROJECT,
+                                projectDoc(GREMIUM_YAML))));
+        when(documentService.listByPrefixCascade(eq(TENANT), eq(PROJECT), eq("_vance/wizards/")))
                 .thenReturn(Map.of());
 
         var all = loader.listAll(TENANT, PROJECT, USER);
 
         assertThat(all).hasSize(1);
         assertThat(all.get(0).source()).isEqualTo(WizardSource.USER);
+    }
+
+    @Test
+    void parses_suggestionsFrom_on_string_fields() {
+        String yaml = """
+                title:       { en: "Mail" }
+                description: { en: "Mail" }
+                fields:
+                  - name: to
+                    type: string
+                    label: { en: "To" }
+                    suggestionsFrom: mail-recipients
+                  - name: subject
+                    type: string
+                    label: { en: "Subject" }
+                promptTemplate: "Send to {{ to }}"
+                """;
+        when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
+        when(documentService.lookupCascade(any(), any(), any()))
+                .thenReturn(Optional.of(
+                        new LookupResult("_vance/wizards/mail.yaml", yaml, LookupResult.Source.VANCE, null)));
+
+        ResolvedWizard w = loader.load(TENANT, null, null, "mail").orElseThrow();
+
+        assertThat(w.fields().get(0).getSuggestionsFrom()).isEqualTo("mail-recipients");
+        assertThat(w.fields().get(1).getSuggestionsFrom()).isNull();
+    }
+
+    @Test
+    void rejects_suggestionsFrom_on_non_string_field() {
+        String yaml = """
+                title:       { en: "Mail" }
+                description: { en: "Mail" }
+                fields:
+                  - name: to
+                    type: textarea
+                    label: { en: "To" }
+                    suggestionsFrom: mail-recipients
+                promptTemplate: "Send to {{ to }}"
+                """;
+        when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
+        when(documentService.lookupCascade(any(), any(), any()))
+                .thenReturn(Optional.of(
+                        new LookupResult("_vance/wizards/mail.yaml", yaml, LookupResult.Source.VANCE, null)));
+
+        assertThatThrownBy(() -> loader.load(TENANT, null, null, "mail"))
+                .isInstanceOf(WizardParseException.class)
+                .hasMessageContaining("suggestionsFrom");
     }
 
     private static DocumentDocument projectDoc(String content) {

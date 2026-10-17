@@ -107,18 +107,27 @@ function syncUrl(): void {
   window.history.replaceState(null, '', u.toString());
 }
 
+/**
+ * Search, filters and project each start a reload; only the newest may write
+ * the list, so a slow answer for an older query cannot replace a newer one.
+ */
+let listGeneration = 0;
+
 async function reload(): Promise<void> {
+  const mine = ++listGeneration;
   try {
-    list.value = await listContacts(projectId.value, {
+    const answer = await listContacts(projectId.value, {
       q: query.value.trim() || undefined,
       scope: scopeFilter.value === 'ALL' ? null : scopeFilter.value,
       kind: kindFilter.value || null,
     });
-    if (!list.value.scopes.some((s) => s.scope === importScope.value)) {
-      importScope.value = list.value.defaultScope;
+    if (mine !== listGeneration) return;
+    list.value = answer;
+    if (!answer.scopes.some((s) => s.scope === importScope.value)) {
+      importScope.value = answer.defaultScope;
     }
   } catch (e) {
-    fail(e);
+    if (mine === listGeneration) fail(e);
   }
 }
 
@@ -259,16 +268,31 @@ async function onImport(): Promise<void> {
   }
 }
 
+/**
+ * What the export button exports: the open card, else the listed contacts.
+ * Never an empty id list — the server reads that as "the whole scope", which
+ * is not what an empty search result means.
+ */
+const exportIds = computed(() =>
+  selected.value ? [selected.value.id] : (list.value?.entries ?? []).map((e) => e.id),
+);
+
 async function onExport(): Promise<void> {
+  const ids = exportIds.value;
+  if (ids.length === 0) {
+    notice.value = t('contacts.area.exportNothing');
+    return;
+  }
   try {
-    const ids = selected.value ? [selected.value.id] : (list.value?.entries ?? []).map((e) => e.id);
     const { blob, filename } = await exportVcf(projectId.value, ids);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = filename ?? 'contacts.vcf';
     a.click();
-    URL.revokeObjectURL(url);
+    // Revoking right after click() can cancel the download in some browsers;
+    // the URL only has to outlive the navigation it started.
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
   } catch (e) {
     fail(e);
   }
@@ -313,7 +337,7 @@ const projectSelect = computed({
       <div class="w-40"><VSelect v-model="kindFilter" :options="kindOptions" /></div>
       <template #end>
         <VIconButton icon="upload" :label="t('contacts.area.import')" @click="importOpen = true" />
-        <VIconButton icon="download" :label="t('contacts.area.export')" @click="onExport" />
+        <VIconButton icon="download" :label="t('contacts.area.export')" :disabled="exportIds.length === 0" @click="onExport" />
         <VButton variant="primary" icon="add" :disabled="writableScopes.length === 0" @click="startCreate">
           {{ t('contacts.area.add') }}
         </VButton>
@@ -423,7 +447,7 @@ const projectSelect = computed({
                 />
                 <VIconButton
                   v-if="moveOptions.length"
-                  icon="share"
+                  icon="move"
                   :label="t('contacts.detail.move')"
                   @click="moveTarget = moveOptions[0].value; moveOpen = true"
                 />

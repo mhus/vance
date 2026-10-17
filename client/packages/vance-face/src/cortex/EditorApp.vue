@@ -1423,7 +1423,7 @@ async function onCreateConfirm(result: CreateModalResult): Promise<void> {
       inlineText: result.inlineText,
     });
     // Make the new file's folder visible — it may be one nobody has opened.
-    await store.expandTo(result.fullPath);
+    await revealCreated(result.fullPath);
   } else if (result.kind === 'templateCreated') {
     // The template was applied server-side. Load and expand the folders on
     // the way to the new document, then open it.
@@ -1433,7 +1433,7 @@ async function onCreateConfirm(result: CreateModalResult): Promise<void> {
     // opened is not in `store.files` — and a miss there used to be silence:
     // the document existed, but the user landed on an empty Cortex and had to
     // go find it. Observed with an app template in a project of 605 documents.
-    await store.expandTo(result.path);
+    await revealCreated(result.path);
     try {
       const id = await resolveDocumentIdByPath(projectId.value, result.path, store.files);
       if (id) await store.openFile(id);
@@ -1454,7 +1454,7 @@ async function onCreateConfirm(result: CreateModalResult): Promise<void> {
     // upload's own result rather than "the last row in the list" — with
     // folder-wise loading, list order is no longer a proxy for recency.
     if (result.files.length === 1 && uploaded) {
-      await store.expandTo(uploaded.path);
+      await revealCreated(uploaded.path);
       await store.openFile(uploaded.id);
     }
   }
@@ -1473,7 +1473,20 @@ async function createMarkdown(fullPath: string): Promise<void> {
     mimeType: 'text/markdown',
     inlineText: '',
   });
-  await store.expandTo(fullPath);
+  await revealCreated(fullPath);
+}
+
+/**
+ * Expands the tree to a document that was just created. The document
+ * exists at this point, so a failure here must not be reported as a failed
+ * create — it is logged and the tree simply stays as it was.
+ */
+async function revealCreated(path: string): Promise<void> {
+  try {
+    await store.expandTo(path);
+  } catch (e) {
+    console.warn('Cortex: could not expand the tree to ' + path, e);
+  }
 }
 
 /**
@@ -1488,7 +1501,7 @@ async function onDuplicate(): Promise<void> {
   try {
     if (tab.dirty) await store.saveTab(tab.id, { manual: true });
     const copy = await store.duplicateFile(tab.id);
-    await store.expandTo(copy.path);
+    await revealCreated(copy.path);
   } catch (e) {
     menuNotice.value = {
       text: `${msg('cortex.menu.duplicate')}: ${e instanceof Error ? e.message : 'failed'}`,
@@ -1729,6 +1742,17 @@ function onUnbindChat(): void {
 function closeMenus(): void {
   const el = document.activeElement;
   if (el instanceof HTMLElement) el.blur();
+}
+
+/**
+ * Click handler of a menu-bar entry. daisyUI 5's `menu-disabled` only
+ * greys the entry out — keyboard activation still fires the click — so the
+ * enabled state is checked here, not left to the class.
+ */
+function menuAction(enabled: boolean, action: () => void): void {
+  if (!enabled) return;
+  closeMenus();
+  action();
 }
 
 watch(title, (t) => {
@@ -2091,36 +2115,60 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
                 <kbd class="kbd kbd-xs">⌘O</kbd>
               </a>
             </li>
-            <li :class="{ disabled: !activeTab }">
-              <a @click="closeMenus(); onDuplicate()">
+            <li>
+              <a
+                :class="{ 'menu-disabled': !activeTab }"
+                :aria-disabled="!activeTab || undefined"
+                @click="menuAction(!!activeTab, () => onDuplicate())"
+              >
                 <span class="flex-1">{{ $t('cortex.menu.duplicate') }}</span>
               </a>
             </li>
-            <li :class="{ disabled: !activeTab }">
-              <a @click="closeMenus(); showRename = true">
+            <li>
+              <a
+                :class="{ 'menu-disabled': !activeTab }"
+                :aria-disabled="!activeTab || undefined"
+                @click="menuAction(!!activeTab, () => (showRename = true))"
+              >
                 <span class="flex-1">{{ $t('cortex.menu.rename') }}</span>
               </a>
             </li>
-            <li :class="{ disabled: !activeTab || !activeTab.dirty }">
-              <a @click="closeMenus(); onSave()">
+            <li>
+              <a
+                :class="{ 'menu-disabled': !activeTab || !activeTab.dirty }"
+                :aria-disabled="(!activeTab || !activeTab.dirty) || undefined"
+                @click="menuAction(!!activeTab?.dirty, () => onSave())"
+              >
                 <span class="flex-1">{{ $t('cortex.menu.save') }}</span>
                 <kbd class="kbd kbd-xs">⌘S</kbd>
               </a>
             </li>
-            <li :class="{ disabled: !hasDirtyTabs }">
-              <a @click="closeMenus(); onSaveAll()">
+            <li>
+              <a
+                :class="{ 'menu-disabled': !hasDirtyTabs }"
+                :aria-disabled="!hasDirtyTabs || undefined"
+                @click="menuAction(!!hasDirtyTabs, () => onSaveAll())"
+              >
                 <span class="flex-1">{{ $t('cortex.menu.saveAll') }}</span>
               </a>
             </li>
-            <li :class="{ disabled: !canExportPdf || exportingPdf }">
-              <a @click="closeMenus(); onExportPdf()">
+            <li>
+              <a
+                :class="{ 'menu-disabled': !canExportPdf || exportingPdf }"
+                :aria-disabled="(!canExportPdf || exportingPdf) || undefined"
+                @click="menuAction(canExportPdf && !exportingPdf, () => onExportPdf())"
+              >
                 <span class="flex-1">{{ $t('cortex.menu.exportPdf') }}</span>
                 <span v-if="exportingPdf" class="loading loading-spinner loading-xs" />
               </a>
             </li>
             <li><div class="divider my-0" /></li>
-            <li :class="{ disabled: !activeTab }">
-              <a @click="closeMenus(); onCloseActiveTab()">
+            <li>
+              <a
+                :class="{ 'menu-disabled': !activeTab }"
+                :aria-disabled="!activeTab || undefined"
+                @click="menuAction(!!activeTab, () => onCloseActiveTab())"
+              >
                 <span class="flex-1">{{ $t('cortex.menu.closeTab') }}</span>
                 <kbd class="kbd kbd-xs">⌘W</kbd>
               </a>
@@ -2159,9 +2207,12 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
               <li
                 v-for="item in viewMenuItems"
                 :key="item.id"
-                :class="{ disabled: !menuItemEnabled(item) }"
               >
-                <a @click="closeMenus(); runMenuItem(item)">
+                <a
+                  :class="{ 'menu-disabled': !menuItemEnabled(item) }"
+                  :aria-disabled="!menuItemEnabled(item) || undefined"
+                  @click="menuAction(menuItemEnabled(item), () => runMenuItem(item))"
+                >
                   <span class="flex-1">{{ menuItemLabel(item) }}</span>
                 </a>
               </li>
@@ -2170,8 +2221,12 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
 
         <VDropdown v-if="projectId" menu-class="mt-1 w-64">
           <template #trigger>{{ $t('cortex.menu.actions') }}</template>
-            <li :class="{ disabled: !activeTab }">
-              <a @click="closeMenus(); activeTab && openShare({ documentPath: activeTab.path })">
+            <li>
+              <a
+                :class="{ 'menu-disabled': !activeTab }"
+                :aria-disabled="!activeTab || undefined"
+                @click="menuAction(!!activeTab, () => activeTab && openShare({ documentPath: activeTab.path }))"
+              >
                 <span class="flex-1">{{ $t('share.menuLabel') }}</span>
               </a>
             </li>
@@ -2179,14 +2234,22 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
             <!-- Two controls, three states: the star registers the document
                  with the service, the checkbox decides whether it also gets a
                  tile. A hidden entry keeps a filled star on purpose. -->
-            <li :class="{ disabled: !activeTab }">
-              <a @click="closeMenus(); toggleStar()">
+            <li>
+              <a
+                :class="{ 'menu-disabled': !activeTab }"
+                :aria-disabled="!activeTab || undefined"
+                @click="menuAction(!!activeTab, () => toggleStar())"
+              >
                 <span class="w-4 inline-flex justify-center"><VIcon name="star" :fill="activeIsStarred ? 'currentColor' : 'none'" /></span>
                 <span class="flex-1">{{ $t('starred.menuToggle') }}</span>
               </a>
             </li>
-            <li :class="{ disabled: !activeTab || !activeIsStarred }">
-              <a @click="closeMenus(); toggleOnStartPage()">
+            <li>
+              <a
+                :class="{ 'menu-disabled': !activeTab || !activeIsStarred }"
+                :aria-disabled="(!activeTab || !activeIsStarred) || undefined"
+                @click="menuAction(!!activeTab && activeIsStarred, () => toggleOnStartPage())"
+              >
                 <span class="w-4 inline-flex justify-center"><VIcon v-if="activeOnStartPage" name="check" /></span>
                 <span class="flex-1">{{ $t('starred.menuOnStartPage') }}</span>
               </a>
@@ -2195,14 +2258,22 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
                  document; the original stays untouched. Encrypt works on
                  the active tab's buffer, Decrypt on the stored armored
                  body (planning/age-encryption.md §5.4). -->
-            <li :class="{ disabled: !canEncryptActive }">
-              <a @click="closeMenus(); openAgeTransform('encrypt')">
+            <li>
+              <a
+                :class="{ 'menu-disabled': !canEncryptActive }"
+                :aria-disabled="!canEncryptActive || undefined"
+                @click="menuAction(!!canEncryptActive, () => openAgeTransform('encrypt'))"
+              >
                 <span class="w-4 inline-flex justify-center"><VIcon name="lock" /></span>
                 <span class="flex-1">{{ $t('cortex.menu.ageEncrypt') }}</span>
               </a>
             </li>
-            <li :class="{ disabled: !canDecryptActive }">
-              <a @click="closeMenus(); openAgeTransform('decrypt')">
+            <li>
+              <a
+                :class="{ 'menu-disabled': !canDecryptActive }"
+                :aria-disabled="!canDecryptActive || undefined"
+                @click="menuAction(!!canDecryptActive, () => openAgeTransform('decrypt'))"
+              >
                 <span class="w-4 inline-flex justify-center"><VIcon name="unlock" /></span>
                 <span class="flex-1">{{ $t('cortex.menu.ageDecrypt') }}</span>
               </a>
@@ -2212,9 +2283,12 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
               <li
                 v-for="item in actionsMenuItems"
                 :key="item.id"
-                :class="{ disabled: !menuItemEnabled(item) }"
               >
-                <a @click="closeMenus(); runMenuItem(item)">
+                <a
+                  :class="{ 'menu-disabled': !menuItemEnabled(item) }"
+                  :aria-disabled="!menuItemEnabled(item) || undefined"
+                  @click="menuAction(menuItemEnabled(item), () => runMenuItem(item))"
+                >
                   <span class="flex-1">{{ menuItemLabel(item) }}</span>
                 </a>
               </li>
@@ -2229,9 +2303,12 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
             <li
               v-for="item in extrasMenuItems"
               :key="item.id"
-              :class="{ disabled: !menuItemEnabled(item) }"
             >
-              <a @click="closeMenus(); runMenuItem(item)">
+              <a
+                :class="{ 'menu-disabled': !menuItemEnabled(item) }"
+                :aria-disabled="!menuItemEnabled(item) || undefined"
+                @click="menuAction(menuItemEnabled(item), () => runMenuItem(item))"
+              >
                 <span class="flex-1">{{ menuItemLabel(item) }}</span>
               </a>
             </li>
@@ -2245,14 +2322,22 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
                 <span class="flex-1">{{ $t('cortex.menu.autoFollow') }}</span>
               </a>
             </li>
-            <li :class="{ disabled: !activeTab }">
-              <a @click="closeMenus(); onPinActiveTab()">
+            <li>
+              <a
+                :class="{ 'menu-disabled': !activeTab }"
+                :aria-disabled="!activeTab || undefined"
+                @click="menuAction(!!activeTab, () => onPinActiveTab())"
+              >
                 <span class="w-4 inline-flex justify-center"><VIcon v-if="chatBindMode === 'pinned'" name="check" /></span>
                 <span class="flex-1">{{ $t('cortex.menu.pinToTab') }}</span>
               </a>
             </li>
-            <li :class="{ disabled: chatBindMode === 'off' }">
-              <a @click="closeMenus(); onUnbindChat()">
+            <li>
+              <a
+                :class="{ 'menu-disabled': chatBindMode === 'off' }"
+                :aria-disabled="(chatBindMode === 'off') || undefined"
+                @click="menuAction(chatBindMode !== 'off', () => onUnbindChat())"
+              >
                 <span class="w-4 inline-flex justify-center"><VIcon v-if="chatBindMode === 'off'" name="check" /></span>
                 <span class="flex-1">{{ $t('cortex.menu.unbindChat') }}</span>
               </a>

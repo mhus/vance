@@ -317,6 +317,7 @@ function actionLabel(action: string): string {
           :fields="form.fields ?? []"
           :errors="errors"
           :disabled="submitting"
+          :project-id="projectId"
         />
       </VCard>
 

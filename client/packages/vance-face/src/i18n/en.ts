@@ -476,6 +476,7 @@ export default {
       namePlaceholder: 'meeting-notes',
       nameHelp: 'Leave empty for note1.md, note2.md, …',
       failed: 'Create failed',
+      invalidName: 'Enter a file name, not a folder (it must not end with "/").',
       cancel: 'Cancel',
       create: 'Create',
     },

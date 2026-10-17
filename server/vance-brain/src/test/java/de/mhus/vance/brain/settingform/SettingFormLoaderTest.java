@@ -268,6 +268,48 @@ class SettingFormLoaderTest {
     }
 
     @Test
+    void suggestionsFrom_is_parsed_on_string_fields() {
+        String yaml = """
+                title:       { en: "X" }
+                description: { en: "X" }
+                fields:
+                  - name: recipients
+                    type: string
+                    label: { en: "Recipients" }
+                    suggestionsFrom: mail-recipients
+                    bindsTo: { key: "mail.default.to" }
+                """;
+        when(documentService.lookupCascade(eq(TENANT), any(), any()))
+                .thenReturn(Optional.of(
+                        new LookupResult("_vance/setting_forms/mail.yaml", yaml, LookupResult.Source.VANCE, null)));
+
+        var form = loader.load(TENANT, null, null, "mail").orElseThrow();
+
+        assertThat(form.fields().get(0).getSuggestionsFrom()).isEqualTo("mail-recipients");
+    }
+
+    @Test
+    void suggestionsFrom_on_non_string_is_rejected() {
+        String yaml = """
+                title:       { en: "X" }
+                description: { en: "X" }
+                fields:
+                  - name: recipients
+                    type: select
+                    label: { en: "Recipients" }
+                    choices: [{value: a}]
+                    suggestionsFrom: mail-recipients
+                """;
+        when(documentService.lookupCascade(eq(TENANT), any(), any()))
+                .thenReturn(Optional.of(
+                        new LookupResult("_vance/setting_forms/broken.yaml", yaml, LookupResult.Source.VANCE, null)));
+
+        assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))
+                .isInstanceOf(SettingFormParseException.class)
+                .hasMessageContaining("suggestionsFrom");
+    }
+
+    @Test
     void allowCustom_flag_is_parsed_on_select_fields() {
         String yaml = """
                 title:       { en: "X" }

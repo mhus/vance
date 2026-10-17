@@ -134,6 +134,14 @@ abstract class ContactTestWorld {
                 });
         when(documentService.findByPath(eq(TENANT), anyString(), anyString()))
                 .thenAnswer(inv -> Optional.ofNullable(docs.get(inv.getArgument(1) + "|" + inv.getArgument(2))));
+        when(documentService.findById(anyString())).thenAnswer(inv -> byId(inv.getArgument(0)));
+        doAnswer(inv -> {
+                    actors.add(inv.getArgument(1));
+                    byId(inv.getArgument(0)).ifPresent(d -> docs.remove(d.getProjectId() + "|" + d.getPath()));
+                    return null;
+                })
+                .when(documentService)
+                .delete(anyString(), any(WriteActor.class));
         when(documentService.readContent(any(DocumentDocument.class)))
                 .thenAnswer(inv -> new String(
                         content.get(((DocumentDocument) inv.getArgument(0)).getId()), StandardCharsets.UTF_8));

@@ -78,6 +78,58 @@ class LlmPowerSwitchTest {
     }
 
     @Test
+    void refresh_staleRead_doesNotOverwriteANewerReload() {
+        // The refresh reads ALL_ON; while it is on the wire an admin's write reloads OFF.
+        when(service.load(TENANT))
+                .thenReturn(LlmPowerState.ALL_ON)
+                .thenAnswer(inv -> {
+                    powerSwitch.reload(TENANT);
+                    return LlmPowerState.ALL_ON;
+                })
+                .thenReturn(OFF);
+        powerSwitch.state(TENANT);
+
+        powerSwitch.refresh();
+
+        assertThat(powerSwitch.cached(TENANT)).isEqualTo(OFF);
+    }
+
+    @Test
+    void state_staleFirstLoad_yieldsToANewerReload() {
+        when(service.load(TENANT))
+                .thenAnswer(inv -> {
+                    powerSwitch.reload(TENANT);
+                    return LlmPowerState.ALL_ON;
+                })
+                .thenReturn(OFF);
+
+        assertThat(powerSwitch.state(TENANT)).isEqualTo(OFF);
+        assertThat(powerSwitch.cached(TENANT)).isEqualTo(OFF);
+    }
+
+    @Test
+    void refresh_doesNotResurrectATenantEvictedMeanwhile() {
+        when(service.load(TENANT)).thenReturn(OFF);
+        powerSwitch.state(TENANT);
+        clock.now = clock.now.plus(LlmPowerSwitch.IDLE_EVICTION).plusSeconds(1);
+
+        powerSwitch.refresh();
+        powerSwitch.refresh();
+
+        assertThat(powerSwitch.cached(TENANT)).isNull();
+        verify(service, times(1)).load(TENANT);
+    }
+
+    @Test
+    void refreshTick_startsAndStopsOnItsOwnScheduler() {
+        LlmPowerSwitch ticking = new LlmPowerSwitch(service, "0 0 0 1 1 *", clock);
+
+        ticking.startRefresh();
+        ticking.stopRefresh();
+        ticking.stopRefresh();
+    }
+
+    @Test
     void setTenantPower_appliesOnThisPodAtOnce() {
         when(service.load(TENANT)).thenReturn(LlmPowerState.ALL_ON, OFF);
         powerSwitch.state(TENANT);

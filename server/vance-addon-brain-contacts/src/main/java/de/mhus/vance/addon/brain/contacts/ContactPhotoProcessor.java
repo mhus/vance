@@ -4,7 +4,12 @@ import com.sksamuel.scrimage.ImmutableImage;
 import com.sksamuel.scrimage.nio.JpegWriter;
 import com.sksamuel.scrimage.nio.PngWriter;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.util.Iterator;
+import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
+import javax.imageio.stream.ImageInputStream;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -22,6 +27,14 @@ public class ContactPhotoProcessor {
 
     /** Upper bound for what is even decoded; the stored result is far smaller. */
     public static final int MAX_INPUT_BYTES = 15 * 1024 * 1024;
+
+    /**
+     * Upper bound for the decoded size. A few kilobytes of compressed input
+     * can declare a gigapixel image, and decoding allocates width × height ×
+     * 4 bytes before a single pixel is looked at — so the dimensions are read
+     * from the header and checked first.
+     */
+    public static final long MAX_INPUT_PIXELS = 40_000_000L;
 
     private static final int JPEG_QUALITY = 85;
 
@@ -44,6 +57,7 @@ public class ContactPhotoProcessor {
             throw new IllegalArgumentException(
                     "The picture is larger than " + (MAX_INPUT_BYTES / (1024 * 1024)) + " MB");
         }
+        checkDimensions(input);
         ImmutableImage image;
         try {
             image = ImmutableImage.loader().detectOrientation(true).fromBytes(input);
@@ -59,6 +73,34 @@ public class ContactPhotoProcessor {
             return new Photo(square.bytes(new JpegWriter().withCompression(JPEG_QUALITY)), "image/jpeg", "jpg");
         } catch (IOException e) {
             throw new IllegalStateException("Could not encode the contact picture", e);
+        }
+    }
+
+    /**
+     * Reads width and height from the image header — without decoding — and
+     * refuses what is unreadable or larger than {@link #MAX_INPUT_PIXELS}.
+     */
+    static void checkDimensions(byte[] input) {
+        try (ImageInputStream in = ImageIO.createImageInputStream(new ByteArrayInputStream(input))) {
+            Iterator<ImageReader> readers = in == null ? null : ImageIO.getImageReaders(in);
+            if (readers == null || !readers.hasNext()) {
+                throw new IllegalArgumentException("Not a readable picture (JPEG, PNG, GIF or BMP)");
+            }
+            ImageReader reader = readers.next();
+            try {
+                reader.setInput(in, true, true);
+                long pixels = (long) reader.getWidth(0) * reader.getHeight(0);
+                if (pixels > MAX_INPUT_PIXELS) {
+                    throw new IllegalArgumentException("The picture has more than " + (MAX_INPUT_PIXELS / 1_000_000)
+                            + " megapixels — scale it down first");
+                }
+            } finally {
+                reader.dispose();
+            }
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (IOException | RuntimeException e) {
+            throw new IllegalArgumentException("Not a readable picture (JPEG, PNG, GIF or BMP)", e);
         }
     }
 

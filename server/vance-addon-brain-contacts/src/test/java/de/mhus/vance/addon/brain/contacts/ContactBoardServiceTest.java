@@ -2,9 +2,12 @@ package de.mhus.vance.addon.brain.contacts;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.doAnswer;
 
 import de.mhus.vance.addon.brain.contacts.model.ContactPin;
 import de.mhus.vance.addon.brain.contacts.model.ContactScope;
+import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.permission.WriteReason;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -118,6 +121,25 @@ class ContactBoardServiceTest extends ContactTestWorld {
                 "$meta:\n  kind: contact\nref:\n  uuid: x\n".getBytes(StandardCharsets.UTF_8),
                 "application/yaml");
         assertThatThrownBy(() -> boards.get(caller, "notes/x.yaml")).hasMessageContaining("not a contact-board");
+    }
+
+    @Test
+    void concurrentBoardSaveIsAConflictNotALoss() {
+        ContactEntry bob = service.create(caller, card("Bob"), null);
+        DocumentDocument board = docs.get(PROJECT + "|" + BOARD);
+        // Somebody else saves the board right after our read.
+        doAnswer(inv -> {
+                    String body = new String(content.get(board.getId()), StandardCharsets.UTF_8);
+                    board.setVersion(board.getVersion() + 1);
+                    return body;
+                })
+                .when(documentService)
+                .readContent(argThat((DocumentDocument d) -> d != null && BOARD.equals(d.getPath())));
+
+        assertThatThrownBy(() -> boards.pin(caller, BOARD, bob.id(), null, null, null, null))
+                .isInstanceOf(ContactConflictException.class);
+        assertThat(new String(content.get(board.getId()), StandardCharsets.UTF_8))
+                .doesNotContain(bob.id());
     }
 
     private static List<String> ids(ContactBoardService.ResolvedBoard b) {

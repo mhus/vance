@@ -37,6 +37,17 @@
             <scope>provided</scope>
         </dependency>
 
+        <!-- Picture crop/scale (ContactPhotoProcessor). The brain ships it
+             (image_* tools), so provided — declared here rather than taken
+             transitively, so the addon does not break silently if the brain
+             ever drops it. Keep the version equal to vance-brain/pom.xml. -->
+        <dependency>
+            <groupId>com.sksamuel.scrimage</groupId>
+            <artifactId>scrimage-core</artifactId>
+            <version>4.6.8</version>
+            <scope>provided</scope>
+        </dependency>
+
         <!-- vCard 2.1/3.0/4.0 read + write at the import/export border.
              BSD-2-Clause. Bundled into the .vab (see src/assembly/vab.xml):
              the brain image does not carry it. -->

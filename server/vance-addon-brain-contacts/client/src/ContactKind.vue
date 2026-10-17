@@ -19,16 +19,20 @@ const t = useT();
 const view = ref<ContactDocumentView | null>(null);
 const error = ref<string | null>(null);
 const loading = ref(false);
+/** Only the newest load may write — a slower answer for a previous document is dropped. */
+let generation = 0;
 
 async function load(): Promise<void> {
+  const mine = ++generation;
   loading.value = true;
   error.value = null;
   try {
-    view.value = await loadDocument(props.document.projectId, props.document.path);
+    const answer = await loadDocument(props.document.projectId, props.document.path);
+    if (mine === generation) view.value = answer;
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e);
+    if (mine === generation) error.value = e instanceof Error ? e.message : String(e);
   } finally {
-    loading.value = false;
+    if (mine === generation) loading.value = false;
   }
 }
 

@@ -83,4 +83,64 @@ class MailRecipientSuggestionsTest extends ContactTestWorld {
         assertThat(suggest(USER, "sam")).hasSize(1);
         assertThat(suggest("carl", "sam")).isEmpty();
     }
+
+    @Test
+    void onlyPlainAddressesAreSuggested() {
+        service.create(
+                caller,
+                ContactCard.builder()
+                        .fullName("Anna Berger")
+                        .emails(List.of(
+                                ContactValue.of("Anna <anna@a.example>"),
+                                ContactValue.of("anna@a.example, bob@b.example"),
+                                ContactValue.of("mailto:?subject=hi"),
+                                ContactValue.of("  MAILTO:anna@work.example?subject=hi  "),
+                                ContactValue.of("anna@@double.example"),
+                                ContactValue.of("no-at.example")))
+                        .build(),
+                null);
+
+        assertThat(suggest(USER, "anna"))
+                .extracting(FormSuggestionDto::values)
+                .containsExactly(List.of("anna@work.example"));
+    }
+
+    @Test
+    void groupSkipsInvalidMailtoMembersAndFallsBackToTheNextValidAddress() {
+        ContactEntry anna = service.create(
+                caller,
+                ContactCard.builder()
+                        .fullName("Anna")
+                        .emails(List.of(
+                                new ContactValue("Anna <anna@x.org>", List.of(), 1), ContactValue.of("anna@x.org")))
+                        .build(),
+                null);
+        service.create(
+                caller,
+                ContactCard.builder()
+                        .kind(ContactKind.GROUP)
+                        .fullName("Team Meridian")
+                        .members(List.of(anna.id(), "mailto:?subject=x", "mailto:extern@y.org?cc=z@y.org"))
+                        .build(),
+                null);
+
+        FormSuggestionDto group = suggest(USER, "meridian").get(0);
+
+        assertThat(group.values()).containsExactly("anna@x.org", "extern@y.org");
+        assertThat(group.note()).isEqualTo("1 member without an address");
+    }
+
+    @Test
+    void addressNormalisation() {
+        assertThat(MailRecipientSuggestions.address(" a@b.example ")).isEqualTo("a@b.example");
+        assertThat(MailRecipientSuggestions.address("mailto:a@b.example?subject=x"))
+                .isEqualTo("a@b.example");
+        assertThat(MailRecipientSuggestions.address("Anna <a@b.example>")).isNull();
+        assertThat(MailRecipientSuggestions.address("<a@b.example>")).isNull();
+        assertThat(MailRecipientSuggestions.address("a@b.example;c@d.example")).isNull();
+        assertThat(MailRecipientSuggestions.address("mailto:?subject=x")).isNull();
+        assertThat(MailRecipientSuggestions.address("@b.example")).isNull();
+        assertThat(MailRecipientSuggestions.address("a@")).isNull();
+        assertThat(MailRecipientSuggestions.address(null)).isNull();
+    }
 }

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -12,6 +13,7 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.addon.brain.contacts.model.ContactCard;
 import de.mhus.vance.addon.brain.contacts.model.ContactScope;
 import de.mhus.vance.addon.brain.contacts.model.ContactValue;
+import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.PermissionDeniedException;
 import de.mhus.vance.shared.permission.Resource;
@@ -269,5 +271,188 @@ class ContactServiceTest extends ContactTestWorld {
         assertThat(found.entry().scope()).isEqualTo(ContactScope.USER);
         assertThat(ghost.dangling()).isTrue();
         assertThat(ghost.card()).isNull();
+    }
+
+    @Test
+    void referenceIntoAnUnreadableScopeDanglesLikeADeletedOne() {
+        writable.add(TENANT_PROJECT);
+        ContactEntry shared = service.create(caller, card("Shared"), ContactScope.TENANT);
+        put(
+                PROJECT,
+                "people/shared.yaml",
+                ContactCodec.serializeRef(shared.id(), ContactScope.TENANT).getBytes(StandardCharsets.UTF_8),
+                "application/yaml");
+        readable.remove(TENANT_PROJECT);
+
+        ContactService.ResolvedDocument resolved = service.resolveDocument(caller, PROJECT, "people/shared.yaml");
+
+        assertThat(resolved.dangling()).isTrue();
+        assertThat(resolved.card()).isNull();
+    }
+
+    // ── Optimistic locking ────────────────────────────────────────
+
+    @Test
+    void concurrentChangeIsAConflictAndNothingIsWritten() {
+        ContactEntry bob = service.create(caller, card("Bob"), null);
+        DocumentDocument doc = byId(bob.documentId()).orElseThrow();
+
+        assertThatThrownBy(() -> service.update(caller, bob.id(), null, c -> {
+                    // Somebody else saves between our read and our write.
+                    doc.setVersion(doc.getVersion() + 1);
+                    return c.toBuilder().fullName("Robert").build();
+                }))
+                .isInstanceOf(ContactConflictException.class)
+                .hasMessageContaining("changed meanwhile");
+        assertThat(new String(content.get(doc.getId()), StandardCharsets.UTF_8))
+                .contains("Bob")
+                .doesNotContain("Robert");
+    }
+
+    @Test
+    void updateWorksOnTheStoredCardNotOnTheCache() {
+        ContactEntry bob = service.create(caller, card("Bob"), null);
+        service.get(caller, bob.id(), null); // cached
+        // Written behind the cache's back (another pod, WebDAV …).
+        content.put(
+                bob.documentId(),
+                ContactCodec.serialize(card("Bob").toBuilder().title("CTO").build())
+                        .getBytes(StandardCharsets.UTF_8));
+        byId(bob.documentId()).orElseThrow().setVersion(7L);
+
+        ContactEntry renamed = service.update(
+                caller, bob.id(), null, c -> c.toBuilder().fullName("Robert").build());
+
+        assertThat(renamed.card().fullName()).isEqualTo("Robert");
+        assertThat(renamed.card().title()).isEqualTo("CTO");
+    }
+
+    // ── Move failure ──────────────────────────────────────────────
+
+    @Test
+    void failedMoveLeavesNeitherOrphanNorDuplicate() {
+        ContactEntry bob = service.create(caller, card("Bob"), ContactScope.PROJECT);
+        service.setPhoto(caller, bob.id(), ContactScope.PROJECT, ContactPhotoProcessorTestImages.square());
+        doThrow(new IllegalStateException("store down"))
+                .when(documentService)
+                .trash(eq(bob.documentId()), any(WriteActor.class));
+
+        assertThatThrownBy(() -> service.move(caller, bob.id(), ContactScope.PROJECT, ContactScope.USER))
+                .hasMessageContaining("store down");
+
+        assertThat(docs).doesNotContainKey(HUB + "|" + ContactIds.cardPath(bob.id()));
+        assertThat(docs).doesNotContainKey(HUB + "|" + ContactIds.photoPath(bob.id(), "jpg"));
+        assertThat(docs).containsKey(PROJECT + "|" + ContactIds.cardPath(bob.id()));
+        assertThat(docs).containsKey(PROJECT + "|" + ContactIds.photoPath(bob.id(), "jpg"));
+        assertThat(service.get(caller, bob.id(), null).scope()).isEqualTo(ContactScope.PROJECT);
+    }
+
+    // ── Upsert & members ──────────────────────────────────────────
+
+    @Test
+    void upsertCreatesUnderTheGivenIdThenUpdatesKeepingThePicture() {
+        String id = ContactIds.newId();
+
+        assertThat(service.upsert(caller, id, card("Bob"), null)).isTrue();
+        service.setPhoto(caller, id, null, ContactPhotoProcessorTestImages.square());
+        assertThat(service.upsert(caller, id, card("Robert"), null)).isFalse();
+
+        ContactEntry stored = service.get(caller, id, null);
+        assertThat(stored.projectId()).isEqualTo(HUB);
+        assertThat(stored.card().fullName()).isEqualTo("Robert");
+        assertThat(stored.card().photo()).isEqualTo(id + ".jpg");
+    }
+
+    @Test
+    void admissibleMembersKeepsUrisAndBroadEnoughCardsOnly() {
+        writable.add(TENANT_PROJECT);
+        ContactEntry privateBob = service.create(caller, card("Bob"), ContactScope.USER);
+        ContactEntry sharedCarol = service.create(caller, card("Carol"), ContactScope.TENANT);
+        ContactEntry sharedGroup = service.create(caller, group("Shared", sharedCarol.id()), ContactScope.TENANT);
+
+        List<String> kept = service.admissibleMembers(
+                caller,
+                List.of(
+                        privateBob.id(),
+                        sharedCarol.id(),
+                        sharedGroup.id(),
+                        "mailto:x@y.org",
+                        "not a member",
+                        ContactIds.newId()),
+                ContactScope.TENANT);
+
+        assertThat(kept).containsExactly(sharedCarol.id(), "mailto:x@y.org");
+    }
+
+    // ── Pictures (more) ───────────────────────────────────────────
+
+    @Test
+    void readPhotoReturnsTheStoredPicture() {
+        ContactEntry bob = service.create(caller, card("Bob"), null);
+        assertThatThrownBy(() -> service.readPhoto(caller, bob.id(), null))
+                .isInstanceOf(ContactNotFoundException.class)
+                .hasMessageContaining("no picture");
+
+        service.setPhoto(caller, bob.id(), null, ContactPhotoProcessorTestImages.square());
+        ContactService.PhotoContent photo = service.readPhoto(caller, bob.id(), null);
+
+        assertThat(photo.mimeType()).isEqualTo("image/jpeg");
+        assertThat(photo.bytes()).isNotEmpty();
+    }
+
+    @Test
+    void setPhotoFromDocumentTakesAProjectImage() {
+        ContactEntry bob = service.create(caller, card("Bob"), null);
+        put(PROJECT, "pics/bob.png", ContactPhotoProcessorTestImages.square(), "image/png");
+
+        ContactEntry withPhoto = service.setPhotoFromDocument(caller, bob.id(), null, "pics/bob.png");
+
+        assertThat(withPhoto.photoPath()).isEqualTo(ContactIds.photoPath(bob.id(), "jpg"));
+    }
+
+    @Test
+    void setPhotoFromDocumentRefusesAnOversizedDocumentWithoutReadingIt() {
+        ContactEntry bob = service.create(caller, card("Bob"), null);
+        DocumentDocument big = put(PROJECT, "pics/huge.png", new byte[] {1}, "image/png");
+        big.setSize(ContactPhotoProcessor.MAX_INPUT_BYTES + 1L);
+
+        assertThatThrownBy(() -> service.setPhotoFromDocument(caller, bob.id(), null, "pics/huge.png"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("larger than");
+        verify(documentService, never()).loadContent(big);
+    }
+
+    @Test
+    void gravatarIsNotAskedWithoutWriteAccess() {
+        ContactEntry bob = service.create(
+                caller,
+                card("Bob").toBuilder()
+                        .emails(List.of(ContactValue.of("bob@x.org")))
+                        .build(),
+                ContactScope.PROJECT);
+        writable.remove(PROJECT);
+
+        assertThatThrownBy(() -> service.setPhotoFromGravatar(caller, bob.id(), ContactScope.PROJECT, null))
+                .isInstanceOf(PermissionDeniedException.class);
+        verify(gravatarClient, never()).fetch(anyString(), any(Integer.class));
+    }
+
+    @Test
+    void gravatarOnlyAsksForTheCardsOwnAddresses() {
+        ContactEntry bob = service.create(
+                caller,
+                card("Bob").toBuilder()
+                        .emails(List.of(ContactValue.of("bob@x.org")))
+                        .build(),
+                null);
+        when(gravatarClient.fetch(anyString(), any(Integer.class))).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.setPhotoFromGravatar(caller, bob.id(), null, "someone@else.org"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("not an e-mail address of contact");
+        verify(gravatarClient, never()).fetch(anyString(), any(Integer.class));
+
+        service.setPhotoFromGravatar(caller, bob.id(), null, "  BOB@x.org ");
+        verify(gravatarClient).fetch(eq("bob@x.org"), any(Integer.class));
     }
 }

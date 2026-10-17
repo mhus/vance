@@ -31,7 +31,7 @@ public class ContactBoardPinTool implements Tool {
     @Override
     public String description() {
         return "Pin an address-book contact (id from contact_search) to a contact board, optionally with a "
-                + "heading (label, e.g. 'Ansprechpartnerin Einkauf'), a Markdown note and a 0-based position. "
+                + "heading (label, e.g. 'Purchasing contact'), a Markdown note and a 0-based position. "
                 + "The board references the contact, so it always shows the current card. Answers a warning "
                 + "when other readers of the board cannot see the contact.";
     }

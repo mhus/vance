@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, useId } from 'vue';
 import VIcon from './VIcon.vue';
 import type { FormSuggestionDto } from '@vance/generated';
 
@@ -14,6 +14,11 @@ import type { FormSuggestionDto } from '@vance/generated';
  * means every member, so the reader sees and can drop each recipient before
  * sending. Free text still works: Enter, comma, Tab or leaving the field
  * commits what was typed.
+ *
+ * Leaving the field commits at once, not after a delay: a click on a
+ * dialog's "Send" right after typing must see the typed address in the
+ * model. A click on a suggestion never blurs the input (`mousedown.prevent`
+ * on the list), so it needs no grace period either.
  *
  * This package has no i18n; texts come in as props.
  */
@@ -33,15 +38,59 @@ const props = withDefaults(defineProps<Props>(), { removeLabel: 'Remove' });
 
 const emit = defineEmits<{ (e: 'update:modelValue', value: string): void }>();
 
+/** Debounce before a keystroke turns into a suggestion request. */
+const DEBOUNCE_MS = 200;
+
+const baseId = useId();
+const labelId = baseId + '-label';
+const listId = baseId + '-list';
+
 const draft = ref('');
 const suggestions = ref<FormSuggestionDto[]>([]);
 const active = ref(-1);
+const listbox = ref<HTMLElement | null>(null);
 let timer: ReturnType<typeof setTimeout> | undefined;
+/**
+ * Bumped whenever a pending or in-flight lookup becomes irrelevant — a newer
+ * keystroke, a commit, a choice, Escape, blur. An answer is applied only
+ * while its generation is still the current one.
+ */
 let generation = 0;
+
+const open = computed(() => suggestions.value.length > 0);
 
 const recipients = computed(() =>
   props.modelValue.split(/[,;\s]+/).map((s) => s.trim()).filter(Boolean),
 );
+
+function optionId(index: number): string {
+  return baseId + '-opt-' + index;
+}
+
+function optionKey(s: FormSuggestionDto): string {
+  return s.label + '|' + s.values.join(',');
+}
+
+function removeAria(r: string): string {
+  return props.removeLabel + ' ' + r;
+}
+
+const activeDescendant = computed(() =>
+  open.value && active.value >= 0 ? optionId(active.value) : undefined,
+);
+
+/** Drops a scheduled lookup and invalidates one already on the wire. */
+function cancelPending(): void {
+  clearTimeout(timer);
+  timer = undefined;
+  generation++;
+}
+
+function closeList(): void {
+  cancelPending();
+  suggestions.value = [];
+  active.value = -1;
+}
 
 function write(list: string[]): void {
   const unique: string[] = [];
@@ -54,14 +103,13 @@ function write(list: string[]): void {
 function commitDraft(): void {
   const parts = draft.value.split(/[,;\s]+/).map((s) => s.trim()).filter(Boolean);
   draft.value = '';
-  suggestions.value = [];
+  closeList();
   if (parts.length) write([...recipients.value, ...parts]);
 }
 
 function choose(s: FormSuggestionDto): void {
   draft.value = '';
-  suggestions.value = [];
-  active.value = -1;
+  closeList();
   write([...recipients.value, ...s.values]);
 }
 
@@ -71,7 +119,7 @@ function remove(r: string): void {
 }
 
 function onInput(): void {
-  clearTimeout(timer);
+  cancelPending();
   active.value = -1;
   const q = draft.value.trim();
   if (!props.fetchSuggestions || q.length < 2) {
@@ -79,8 +127,9 @@ function onInput(): void {
     return;
   }
   const fetcher = props.fetchSuggestions;
+  const mine = generation;
   timer = setTimeout(async () => {
-    const mine = ++generation;
+    timer = undefined;
     try {
       const hits = await fetcher(q);
       // A slower answer to an older keystroke must not replace a newer one.
@@ -88,22 +137,42 @@ function onInput(): void {
     } catch {
       if (mine === generation) suggestions.value = [];
     }
-  }, 200);
+  }, DEBOUNCE_MS);
+}
+
+function scrollActiveIntoView(): void {
+  void nextTick(() => {
+    listbox.value
+      ?.querySelector<HTMLElement>('[data-active="true"]')
+      ?.scrollIntoView?.({ block: 'nearest' });
+  });
 }
 
 function onKey(event: KeyboardEvent): void {
-  if (event.key === 'ArrowDown' && suggestions.value.length) {
+  if (event.key === 'ArrowDown' && open.value) {
     event.preventDefault();
     active.value = (active.value + 1) % suggestions.value.length;
-  } else if (event.key === 'ArrowUp' && suggestions.value.length) {
+    scrollActiveIntoView();
+  } else if (event.key === 'ArrowUp' && open.value) {
     event.preventDefault();
     active.value = active.value <= 0 ? suggestions.value.length - 1 : active.value - 1;
-  } else if (event.key === 'Enter' && active.value >= 0) {
+    scrollActiveIntoView();
+  } else if (event.key === 'Enter' && open.value && active.value >= 0) {
     event.preventDefault();
     choose(suggestions.value[active.value]);
   } else if (event.key === 'Escape') {
-    suggestions.value = [];
-  } else if ((event.key === 'Enter' || event.key === ',' || event.key === ';' || event.key === 'Tab') && draft.value.trim()) {
+    // An open list is closed by Escape — only that. Without stopping the
+    // event here a surrounding dialog would close along with it. With the
+    // list closed, Escape belongs to the dialog again.
+    if (open.value) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    closeList();
+  } else if (event.key === 'Tab' && draft.value.trim()) {
+    // Commit, but let focus move on: Tab must never trap the user here.
+    commitDraft();
+  } else if ((event.key === 'Enter' || event.key === ',' || event.key === ';') && draft.value.trim()) {
     event.preventDefault();
     commitDraft();
   } else if (event.key === 'Backspace' && draft.value === '' && recipients.value.length) {
@@ -113,11 +182,8 @@ function onKey(event: KeyboardEvent): void {
 }
 
 function onBlur(): void {
-  // Let a click on a suggestion land before the list closes.
-  setTimeout(() => {
-    if (draft.value.trim()) commitDraft();
-    suggestions.value = [];
-  }, 150);
+  if (draft.value.trim()) commitDraft();
+  else closeList();
 }
 
 onBeforeUnmount(() => clearTimeout(timer));
@@ -127,7 +193,7 @@ const icon = (kind: string | undefined | null) => (kind === 'group' ? 'team' : k
 
 <template>
   <div class="v-field flex flex-col gap-1 w-full relative">
-    <span v-if="label" class="v-field-label text-xs font-semibold text-(--v-label-secondary)">{{ label }}</span>
+    <span v-if="label" :id="labelId" class="v-field-label text-xs font-semibold text-(--v-label-secondary)">{{ label }}</span>
     <div
       :class="['input', 'w-full', 'h-auto', 'min-h-8', 'flex', 'flex-wrap', 'items-center', 'gap-1', 'py-1', { 'input-error': !!error }]"
     >
@@ -141,13 +207,19 @@ const icon = (kind: string | undefined | null) => (kind === 'group' ? 'team' : k
           v-if="!disabled"
           type="button"
           class="opacity-60 hover:opacity-100"
-          :aria-label="`${removeLabel} ${r}`"
+          :aria-label="removeAria(r)"
           @click="remove(r)"
         ><VIcon name="close" /></button>
       </span>
       <input
         v-model="draft"
         type="text"
+        role="combobox"
+        aria-autocomplete="list"
+        :aria-labelledby="label ? labelId : undefined"
+        :aria-expanded="open"
+        :aria-controls="open ? listId : undefined"
+        :aria-activedescendant="activeDescendant"
         class="flex-1 min-w-[8rem] bg-transparent outline-none text-sm"
         :placeholder="recipients.length ? '' : placeholder ?? ''"
         :disabled="disabled"
@@ -158,18 +230,28 @@ const icon = (kind: string | undefined | null) => (kind === 'group' ? 'team' : k
         @blur="onBlur"
       />
     </div>
+    <!-- mousedown.prevent keeps focus in the input, so a click on an option
+         (or the list's scrollbar) never blurs it and cannot race the
+         blur-commit. -->
     <ul
-      v-if="suggestions.length"
+      v-if="open"
+      :id="listId"
+      ref="listbox"
       class="absolute z-20 left-0 right-0 top-full mt-1 max-h-72 overflow-auto rounded-(--v-radius-control) bg-(--v-surface-raised) shadow-(--v-shadow-float)"
       role="listbox"
+      :aria-labelledby="label ? labelId : undefined"
+      @mousedown.prevent
     >
       <li
         v-for="(s, i) in suggestions"
-        :key="`${s.label}|${s.values.join(',')}`"
+        :id="optionId(i)"
+        :key="optionKey(s)"
         role="option"
         :aria-selected="i === active"
+        :data-active="i === active || null"
         :class="['flex items-start gap-2 px-3 py-2 cursor-pointer', i === active ? 'bg-(--v-selection)' : 'hover:bg-(--v-fill)']"
         @mousedown.prevent="choose(s)"
+        @mousemove="active = i"
       >
         <span class="mt-0.5 text-(--v-label-secondary)"><VIcon :name="icon(s.kind)" /></span>
         <span class="min-w-0">

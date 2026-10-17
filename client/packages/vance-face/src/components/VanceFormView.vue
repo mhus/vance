@@ -184,6 +184,9 @@ watch([() => props.form, pageMode], () => {
 }, { deep: true });
 
 // ── Load / save (data only) ───────────────────────────────────────
+/** Project the form document lives in — scopes field suggestions; set by load(). */
+const formProjectId = ref<string | undefined>(undefined);
+
 async function resolveProject(): Promise<{ projectId: string; path: string }> {
   // The data pointer was authored inside a document, so a rootless one
   // means the file next to it.
@@ -224,6 +227,7 @@ async function load() {
   error.value = null;
   try {
     const { projectId, path } = await resolveProject();
+    formProjectId.value = projectId;
     const params = new URLSearchParams({ projectId, doc: path });
     const resp = await brainFetch<{ records: Record<string, unknown>[] }>(
       'GET', `addon/workbook/form?${params}`);
@@ -338,7 +342,7 @@ onMounted(load);
       <!-- WORK MODE: data entry -->
       <template v-else>
         <template v-if="single">
-          <FormFields v-model="singleRecord" :fields="fields" :disabled="saving" />
+          <FormFields v-model="singleRecord" :fields="fields" :disabled="saving" :project-id="formProjectId" />
         </template>
         <template v-else>
           <div v-for="(rec, i) in records" :key="i" class="vance-form-view__record-card">
@@ -357,6 +361,7 @@ onMounted(load);
               :model-value="rec"
               :fields="fields"
               :disabled="saving"
+              :project-id="formProjectId"
               @update:model-value="(v) => (records[i] = v)"
             />
           </div>

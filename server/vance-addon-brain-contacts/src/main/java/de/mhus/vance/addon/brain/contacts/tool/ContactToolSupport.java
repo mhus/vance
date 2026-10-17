@@ -2,6 +2,7 @@ package de.mhus.vance.addon.brain.contacts.tool;
 
 import de.mhus.vance.addon.brain.contacts.ContactCaller;
 import de.mhus.vance.addon.brain.contacts.ContactCodec;
+import de.mhus.vance.addon.brain.contacts.ContactConflictException;
 import de.mhus.vance.addon.brain.contacts.ContactEntry;
 import de.mhus.vance.addon.brain.contacts.ContactNotFoundException;
 import de.mhus.vance.addon.brain.contacts.ContactService;
@@ -94,6 +95,8 @@ public class ContactToolSupport {
             return call.get();
         } catch (ContactNotFoundException | GravatarUnavailableException | IllegalArgumentException e) {
             throw new ToolException(e.getMessage(), e);
+        } catch (ContactConflictException e) {
+            throw new ToolException(e.getMessage() + " Read it again and retry.", e);
         } catch (de.mhus.vance.shared.document.kind.KindCodecException e) {
             throw new ToolException("Unreadable contact data: " + e.getMessage(), e);
         }

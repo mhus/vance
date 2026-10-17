@@ -11,7 +11,9 @@ import { converged, MAX_RETRIES, RETRY_MS, TENANT_KEY, userKey, verifyDelayMs } 
  * that what is stored is also what a pod enforces: the first check runs at the
  * brain's `verifyAt` (next refresh tick on every pod plus a grace), further
  * checks every {@link RETRY_MS}. A switch that does not converge within
- * {@link MAX_RETRIES} lands in `unconfirmed` instead.
+ * {@link MAX_RETRIES} lands in `unconfirmed` instead. A check whose load
+ * fails counts as not converged — the last known status is the PUT answer
+ * itself and proves nothing about the pods.
  */
 export interface UseLlmPower {
   status: Ref<LlmPowerStatusDto | null>;
@@ -19,7 +21,8 @@ export interface UseLlmPower {
   error: Ref<string | null>;
   pending: Ref<Set<string>>;
   unconfirmed: Ref<Set<string>>;
-  load: () => Promise<void>;
+  /** Reload the status; resolves `false` when the request failed (see `error`). */
+  load: () => Promise<boolean>;
   setTenant: (enabled: boolean) => Promise<void>;
   setUser: (userId: string, enabled: boolean) => Promise<void>;
 }
@@ -34,13 +37,15 @@ export function useLlmPower(): UseLlmPower {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let retries = 0;
 
-  async function load(): Promise<void> {
+  async function load(): Promise<boolean> {
     loading.value = true;
     error.value = null;
     try {
       status.value = await brainFetch<LlmPowerStatusDto>('GET', 'llm-power');
+      return true;
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load the LLM power state.';
+      return false;
     } finally {
       loading.value = false;
     }
@@ -69,15 +74,11 @@ export function useLlmPower(): UseLlmPower {
 
   async function verify(): Promise<void> {
     timer = null;
-    await load();
+    const loaded = await load();
     const current = status.value;
-    if (!current) {
-      if (retries++ < MAX_RETRIES) schedule(RETRY_MS);
-      return;
-    }
     const open = new Set<string>();
     for (const key of pending.value) {
-      if (!converged(current, key)) open.add(key);
+      if (!loaded || !current || !converged(current, key)) open.add(key);
     }
     if (open.size === 0) {
       pending.value = new Set();

@@ -79,6 +79,11 @@ public class ContactImportVcfTool implements Tool {
         DocumentDocument doc = documentService
                 .findByPath(ctx.tenantId(), project.getName(), path)
                 .orElseThrow(() -> new ToolException("No document '" + path + "' in " + project.getName()));
+        // Refused on the stored size before the content is read into memory.
+        if (doc.getSize() > ContactVCardService.MAX_IMPORT_BYTES) {
+            throw new ToolException("'" + path + "' is too large to import (" + doc.getSize() + " bytes, at most "
+                    + ContactVCardService.MAX_IMPORT_BYTES + "). Split the file into smaller ones.");
+        }
         String vcf = documentService.readContent(doc);
         ContactCaller caller = support.caller(params, ctx);
         ContactVCardService.ImportReport report =

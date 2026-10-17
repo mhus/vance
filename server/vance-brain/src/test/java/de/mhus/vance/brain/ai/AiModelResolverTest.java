@@ -579,6 +579,56 @@ class AiModelResolverTest {
         assertThat(r.modelName()).isEqualTo("gpt-4o-mini");
     }
 
+    // ──── Traced resolution (Insights) ──────────────────────────────────
+
+    @Test
+    void resolveTraced_recordsEveryExpandedAlias_inOrder() {
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.default.tier1")))
+                .thenReturn("cheap:lookup");
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.cheap.lookup")))
+                .thenReturn("gemini:gemini-2.5-flash");
+
+        AiModelResolver.Traced t = resolver.resolveTraced("default:tier1", "acme", "proj");
+
+        assertThat(t.chain()).containsExactly("default:tier1", "cheap:lookup");
+        assertThat(t.resolved().modelName()).isEqualTo("gemini-2.5-flash");
+        assertThat(t.viaTenantDefault()).isFalse();
+    }
+
+    @Test
+    void resolveTraced_skippedCascadeElements_stayOutOfTheChain() {
+        // default:arthur undefined → next element default:chat is defined.
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.default.chat")))
+                .thenReturn("anthropic:claude-haiku-4-5");
+
+        AiModelResolver.Traced t = resolver.resolveTraced("default:arthur,default:chat", "acme", "proj");
+
+        assertThat(t.chain()).containsExactly("default:chat");
+        assertThat(t.resolved().modelName()).isEqualTo("claude-haiku-4-5");
+    }
+
+    @Test
+    void resolveTraced_undefinedDefaultAlias_marksTenantDefault() {
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.default.provider")))
+                .thenReturn("anthropic");
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.default.model")))
+                .thenReturn("claude-sonnet-4-5");
+
+        AiModelResolver.Traced t = resolver.resolveTraced("default:unknown", "acme", "proj");
+
+        assertThat(t.chain()).containsExactly("default:unknown");
+        assertThat(t.viaTenantDefault()).isTrue();
+        assertThat(t.resolved().modelName()).isEqualTo("claude-sonnet-4-5");
+    }
+
+    @Test
+    void resolveTraced_directSpec_hasEmptyChain() {
+        AiModelResolver.Traced t = resolver.resolveTraced("openai:gpt-4o-mini", "acme", "proj");
+
+        assertThat(t.chain()).isEmpty();
+        assertThat(t.resolved().providerInstance()).isEqualTo("openai");
+    }
+
     // ──── Protocols without a chat adapter ──────────────────────────────
 
     /**

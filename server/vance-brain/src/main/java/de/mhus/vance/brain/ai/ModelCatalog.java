@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.ai;
 
+import de.mhus.vance.api.insights.ModelCatalogLayer;
 import de.mhus.vance.brain.ai.audio.AuModelInfo;
 import de.mhus.vance.brain.ai.audio.MusicModelInfo;
 import de.mhus.vance.brain.ai.audio.SttModelInfo;
@@ -427,6 +428,72 @@ public class ModelCatalog {
         return out;
     }
 
+    // ──────────────────── Diagnostics (Insights) ────────────────────
+
+    /**
+     * One merged catalog document, any kind, with the cascade layer each
+     * top-level field came from. For diagnostics only — runtime callers
+     * use the typed lookups.
+     *
+     * @param kind   {@code chat} when the document carries no {@code kind}
+     * @param spec   merged document, unmodifiable
+     * @param fieldSources innermost layer per top-level field
+     */
+    public record CatalogEntry(
+            String provider,
+            String modelName,
+            String kind,
+            Map<String, Object> spec,
+            Map<String, ModelCatalogLayer> fieldSources) {}
+
+    /** Every catalog document visible in the scope, all kinds. */
+    public List<CatalogEntry> listEntries(@Nullable String tenantId, @Nullable String projectId) {
+        Snapshot snap = snapshot;
+        Map<String, Map<String, Object>> view = snap.viewFor(tenantId, projectId);
+        Map<String, Map<String, ModelCatalogLayer>> sources = snap.modelSourcesFor(tenantId, projectId);
+        List<CatalogEntry> out = new ArrayList<>(view.size());
+        for (Map.Entry<String, Map<String, Object>> entry : view.entrySet()) {
+            String[] parts = splitKey(entry.getKey());
+            if (parts == null) continue;
+            out.add(toEntry(parts, entry.getValue(), sources.get(entry.getKey())));
+        }
+        return out;
+    }
+
+    /** One catalog document, any kind, or empty. */
+    public Optional<CatalogEntry> lookupEntry(
+            @Nullable String tenantId, @Nullable String projectId, String provider, String modelName) {
+        Snapshot snap = snapshot;
+        String k = key(provider, modelName);
+        Map<String, Object> spec = snap.viewFor(tenantId, projectId).get(k);
+        String[] parts = splitKey(k);
+        if (spec == null || parts == null) {
+            return Optional.empty();
+        }
+        return Optional.of(
+                toEntry(parts, spec, snap.modelSourcesFor(tenantId, projectId).get(k)));
+    }
+
+    /** Source layer per field of an instance's {@code _provider.yaml}; empty when there is none. */
+    public Map<String, ModelCatalogLayer> providerFieldSources(
+            @Nullable String tenantId, @Nullable String projectId, String providerInstance) {
+        Map<String, ModelCatalogLayer> sources =
+                snapshot.providerSourcesFor(tenantId, projectId).get(providerInstance.toLowerCase(Locale.ROOT));
+        return sources == null ? Map.of() : Collections.unmodifiableMap(sources);
+    }
+
+    private static CatalogEntry toEntry(
+            String[] parts, Map<String, Object> spec, @Nullable Map<String, ModelCatalogLayer> sources) {
+        Object rawKind = spec.get("kind");
+        String kind = rawKind == null ? "chat" : rawKind.toString().trim().toLowerCase(Locale.ROOT);
+        return new CatalogEntry(
+                parts[0],
+                originalCaseName(spec, parts[1]),
+                kind,
+                Collections.unmodifiableMap(spec),
+                sources == null ? Map.of() : Collections.unmodifiableMap(sources));
+    }
+
     /** Provider metadata ({@code _provider.yaml}) for a scoped instance, or empty. */
     public Optional<Map<String, Object>> lookupProvider(
             @Nullable String tenantId, @Nullable String projectId, String providerInstance) {
@@ -697,46 +764,98 @@ public class ModelCatalog {
 
         private Map<String, Map<String, Object>> buildModelView(TenantProject scope) {
             // Outer → inner application. Each layer overrides fields on
-            // any (provider, model) key it carries; within one scope,
-            // auto runs first then manual so manual fields win.
+            // any (provider, model) key it carries.
             Map<String, Map<String, Object>> acc = new LinkedHashMap<>();
-            applyModelLayer(acc, bundled);
-            applyScopeModel(acc, new TenantProject(SYSTEM_TENANT, HomeBootstrapService.TENANT_PROJECT_NAME));
-            if (scope.tenantId != null) {
-                applyScopeModel(acc, new TenantProject(scope.tenantId, HomeBootstrapService.TENANT_PROJECT_NAME));
-                if (scope.projectId != null && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(scope.projectId)) {
-                    applyScopeModel(acc, new TenantProject(scope.tenantId, scope.projectId));
-                }
+            for (LabeledLayer l : layersFor(scope)) {
+                applyModelLayer(acc, l.layer());
             }
             return Collections.unmodifiableMap(acc);
         }
 
         private Map<String, Map<String, Object>> buildProviderView(TenantProject scope) {
             Map<String, Map<String, Object>> acc = new LinkedHashMap<>();
-            applyProviderLayer(acc, bundled);
-            applyScopeProvider(acc, new TenantProject(SYSTEM_TENANT, HomeBootstrapService.TENANT_PROJECT_NAME));
-            if (scope.tenantId != null) {
-                applyScopeProvider(acc, new TenantProject(scope.tenantId, HomeBootstrapService.TENANT_PROJECT_NAME));
-                if (scope.projectId != null && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(scope.projectId)) {
-                    applyScopeProvider(acc, new TenantProject(scope.tenantId, scope.projectId));
-                }
+            for (LabeledLayer l : layersFor(scope)) {
+                applyProviderLayer(acc, l.layer());
             }
             return Collections.unmodifiableMap(acc);
         }
 
-        /** Apply auto then manual for one scope — manual wins per field. */
-        private void applyScopeModel(Map<String, Map<String, Object>> acc, TenantProject key) {
-            Layer auto = perScopeAuto.get(key);
-            if (auto != null) applyModelLayer(acc, auto);
-            Layer manual = perScopeManual.get(key);
-            if (manual != null) applyModelLayer(acc, manual);
+        /**
+         * Source layer of every top-level model field in the scope's view,
+         * keyed like {@link #viewFor}. Same walk as {@link #buildModelView},
+         * so the innermost layer that wrote a field is the one recorded.
+         * Not memoized — only Insights asks.
+         */
+        Map<String, Map<String, ModelCatalogLayer>> modelSourcesFor(
+                @Nullable String tenantId, @Nullable String projectId) {
+            Map<String, Map<String, ModelCatalogLayer>> acc = new LinkedHashMap<>();
+            for (LabeledLayer l : layersFor(normalizeScope(tenantId, projectId))) {
+                for (Map.Entry<String, Map<String, Map<String, Object>>> provEntry :
+                        l.layer().models.entrySet()) {
+                    for (Map.Entry<String, Map<String, Object>> modelEntry :
+                            provEntry.getValue().entrySet()) {
+                        Map<String, ModelCatalogLayer> fields = acc.computeIfAbsent(
+                                provEntry.getKey() + "/" + modelEntry.getKey(), k -> new LinkedHashMap<>());
+                        for (String field : modelEntry.getValue().keySet()) {
+                            fields.put(field, l.label());
+                        }
+                    }
+                }
+            }
+            return acc;
         }
 
-        private void applyScopeProvider(Map<String, Map<String, Object>> acc, TenantProject key) {
+        /** Provider-sidecar counterpart of {@link #modelSourcesFor}, keyed by instance. */
+        Map<String, Map<String, ModelCatalogLayer>> providerSourcesFor(
+                @Nullable String tenantId, @Nullable String projectId) {
+            Map<String, Map<String, ModelCatalogLayer>> acc = new LinkedHashMap<>();
+            for (LabeledLayer l : layersFor(normalizeScope(tenantId, projectId))) {
+                for (Map.Entry<String, Map<String, Object>> e :
+                        l.layer().providers.entrySet()) {
+                    Map<String, ModelCatalogLayer> fields = acc.computeIfAbsent(e.getKey(), k -> new LinkedHashMap<>());
+                    for (String field : e.getValue().keySet()) {
+                        fields.put(field, l.label());
+                    }
+                }
+            }
+            return acc;
+        }
+
+        /**
+         * The layers a scope's view is merged from, outermost first. Within
+         * one scope auto comes before manual, so manual fields win.
+         */
+        private List<LabeledLayer> layersFor(TenantProject scope) {
+            List<LabeledLayer> out = new ArrayList<>();
+            out.add(new LabeledLayer(ModelCatalogLayer.BUNDLED, bundled));
+            addScope(
+                    out,
+                    new TenantProject(SYSTEM_TENANT, HomeBootstrapService.TENANT_PROJECT_NAME),
+                    ModelCatalogLayer.SYSTEM_AUTO,
+                    ModelCatalogLayer.SYSTEM);
+            if (scope.tenantId != null) {
+                addScope(
+                        out,
+                        new TenantProject(scope.tenantId, HomeBootstrapService.TENANT_PROJECT_NAME),
+                        ModelCatalogLayer.TENANT_AUTO,
+                        ModelCatalogLayer.TENANT);
+                if (scope.projectId != null && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(scope.projectId)) {
+                    addScope(
+                            out,
+                            new TenantProject(scope.tenantId, scope.projectId),
+                            ModelCatalogLayer.PROJECT_AUTO,
+                            ModelCatalogLayer.PROJECT);
+                }
+            }
+            return out;
+        }
+
+        private void addScope(
+                List<LabeledLayer> out, TenantProject key, ModelCatalogLayer autoLabel, ModelCatalogLayer manualLabel) {
             Layer auto = perScopeAuto.get(key);
-            if (auto != null) applyProviderLayer(acc, auto);
+            if (auto != null) out.add(new LabeledLayer(autoLabel, auto));
             Layer manual = perScopeManual.get(key);
-            if (manual != null) applyProviderLayer(acc, manual);
+            if (manual != null) out.add(new LabeledLayer(manualLabel, manual));
         }
 
         private static void applyModelLayer(Map<String, Map<String, Object>> acc, Layer layer) {
@@ -764,6 +883,9 @@ public class ModelCatalog {
             return new TenantProject(t, p);
         }
     }
+
+    /** A layer together with its place in the cascade. */
+    private record LabeledLayer(ModelCatalogLayer label, Layer layer) {}
 
     /** One layer of the catalog — bundled, system, or a single (tenant, project). */
     static final class Layer {

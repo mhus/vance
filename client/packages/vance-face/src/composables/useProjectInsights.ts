@@ -5,6 +5,8 @@ import { ToolHealthScope } from '@vance/generated';
 import type {
   EffectiveRecipeDto,
   EffectiveToolDto,
+  ModelDetailInsightsDto,
+  ModelInsightsDto,
   ToolHealthEntryDto,
   ToolUsageRoleInsightsDto,
   ZarniwoopInsightsDto,
@@ -303,4 +305,61 @@ export function useToolHealth(): UseToolHealth {
   }
 
   return { entries, loading, error, load, clear, clearCooldown };
+}
+
+export interface UseModelInsights {
+  data: Ref<ModelInsightsDto | null>;
+  loading: Ref<boolean>;
+  error: Ref<string | null>;
+  load: (projectId: string) => Promise<void>;
+  clear: () => void;
+  /** Every catalog field of one model with its source layer. */
+  loadDetail: (projectId: string, spec: string) => Promise<ModelDetailInsightsDto>;
+}
+
+/**
+ * The project's merged model catalog (every modality, unfiltered), its
+ * `ai.alias.*` settings resolved there and its default model. A project
+ * switch while a request is in flight drops the stale answer.
+ */
+export function useModelInsights(): UseModelInsights {
+  const data = ref<ModelInsightsDto | null>(null);
+  const loading = ref(false);
+  const error = ref<string | null>(null);
+  let seq = 0;
+
+  async function load(projectId: string): Promise<void> {
+    const mine = ++seq;
+    loading.value = true;
+    error.value = null;
+    try {
+      const out = await brainFetch<ModelInsightsDto>(
+        'GET',
+        `admin/projects/${encodeURIComponent(projectId)}/insights/models`,
+      );
+      if (mine === seq) data.value = out;
+    } catch (e) {
+      if (mine !== seq) return;
+      error.value = e instanceof Error ? e.message : 'Failed to load models.';
+      data.value = null;
+    } finally {
+      if (mine === seq) loading.value = false;
+    }
+  }
+
+  function clear(): void {
+    seq++;
+    data.value = null;
+    error.value = null;
+    loading.value = false;
+  }
+
+  function loadDetail(projectId: string, spec: string): Promise<ModelDetailInsightsDto> {
+    return brainFetch<ModelDetailInsightsDto>(
+      'GET',
+      `admin/projects/${encodeURIComponent(projectId)}/insights/models/detail?spec=${encodeURIComponent(spec)}`,
+    );
+  }
+
+  return { data, loading, error, load, clear, loadDetail };
 }

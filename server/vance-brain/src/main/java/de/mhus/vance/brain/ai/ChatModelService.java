@@ -188,7 +188,7 @@ public class ChatModelService {
      * protocol (Ollama, LM Studio), an explicit base URL, since a keyless
      * instance would otherwise always look available.
      */
-    private boolean isInstanceConfigured(
+    public boolean isInstanceConfigured(
             String instance, String modelName, String tenantId, @Nullable String projectId) {
         AiModelResolver.Resolved resolved;
         try {
@@ -217,7 +217,6 @@ public class ChatModelService {
     }
 
     private static ChatModelDto toDto(ModelInfo info) {
-        ModelInfo.Pricing p = info.pricing();
         return ChatModelDto.builder()
                 .spec(specOf(info))
                 .providerInstance(info.provider())
@@ -225,14 +224,20 @@ public class ChatModelService {
                 .size(info.size().name())
                 .thinking(info.supports(ModelCapability.THINKING))
                 .contextWindow(info.contextWindowTokens())
-                .pricing(
-                        p == null
-                                ? null
-                                : ChatModelPricingDto.builder()
-                                        .currency(p.currency())
-                                        .inputPerMTok(p.inputPerMTok())
-                                        .outputPerMTok(p.outputPerMTok())
-                                        .build())
+                .pricing(pricingOf(info))
+                .build();
+    }
+
+    /** Token list price of a catalog entry, or {@code null} when the catalog has none. */
+    static @Nullable ChatModelPricingDto pricingOf(ModelInfo info) {
+        ModelInfo.Pricing p = info.pricing();
+        if (p == null) {
+            return null;
+        }
+        return ChatModelPricingDto.builder()
+                .currency(p.currency())
+                .inputPerMTok(p.inputPerMTok())
+                .outputPerMTok(p.outputPerMTok())
                 .build();
     }
 

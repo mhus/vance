@@ -12,6 +12,8 @@ import de.mhus.vance.api.insights.EffectiveRecipeDto;
 import de.mhus.vance.api.insights.EffectiveToolDto;
 import de.mhus.vance.api.insights.MarvinNodeInsightsDto;
 import de.mhus.vance.api.insights.MemoryInsightsDto;
+import de.mhus.vance.api.insights.ModelDetailInsightsDto;
+import de.mhus.vance.api.insights.ModelInsightsDto;
 import de.mhus.vance.api.insights.PendingMessageInsightsDto;
 import de.mhus.vance.api.insights.PrakRunInsightsDto;
 import de.mhus.vance.api.insights.SessionClientToolsDto;
@@ -30,6 +32,7 @@ import de.mhus.vance.api.toolhealth.ToolHealthEntryDto;
 import de.mhus.vance.api.toolhealth.ToolHealthScope;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
+import de.mhus.vance.brain.ai.ModelInsightsService;
 import de.mhus.vance.brain.cluster.ClusterMasterService;
 import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.brain.permission.RequestAuthority;
@@ -137,6 +140,7 @@ public class InsightsAdminController {
     private final MarvinNodeService marvinNodeService;
     private final LlmTraceService llmTraceService;
     private final ModelCatalog modelCatalog;
+    private final ModelInsightsService modelInsightsService;
     private final EngineMessageService engineMessageService;
     private final RecipeLoader recipeLoader;
     private final ServerToolService serverToolService;
@@ -757,6 +761,40 @@ public class InsightsAdminController {
         }
         out.sort(Comparator.comparing(EffectiveRecipeDto::getName));
         return out;
+    }
+
+    /**
+     * The project's merged model catalog — every modality, unfiltered,
+     * with the verdicts that decide whether a model can be used there —
+     * plus the {@code ai.alias.*} settings resolved in the project and
+     * its default model.
+     */
+    @GetMapping("/projects/{project}/insights/models")
+    public ModelInsightsDto modelInsights(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("project") String project,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.READ);
+        return modelInsightsService.overview(tenant, project);
+    }
+
+    /**
+     * Every catalog field of one model and its provider sidecar, each with
+     * the cascade layer it came from. {@code spec} is
+     * {@code providerInstance:modelName} — a query parameter, because model
+     * names carry slashes (HF style) and colons (Ollama tags).
+     */
+    @GetMapping("/projects/{project}/insights/models/detail")
+    public ModelDetailInsightsDto modelDetailInsights(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("project") String project,
+            @RequestParam("spec") String spec,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.READ);
+        return modelInsightsService
+                .detail(tenant, project, spec)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Model '" + spec + "' is not in the model catalog of this project"));
     }
 
     /**

@@ -41,6 +41,7 @@ import LiveToolsTab from './LiveToolsTab.vue';
 import LlmTraceTab from './LlmTraceTab.vue';
 import CacheStatsTab from './CacheStatsTab.vue';
 import RecipesTab from './RecipesTab.vue';
+import ModelsTab from './ModelsTab.vue';
 import ProjectToolsTab from './ProjectToolsTab.vue';
 import ToolHealthTab from './ToolHealthTab.vue';
 import WorkspaceTab from './WorkspaceTab.vue';
@@ -177,6 +178,7 @@ const ALL_TABS: ReadonlyArray<{ key: TopTab; label: string }> = [
   { key: 'sessions', label: 'Sessions' },
   { key: 'activity', label: 'Activity' },
   { key: 'recipes', label: 'Recipes' },
+  { key: 'models', label: 'Models' },
   { key: 'tools', label: 'Tools' },
   { key: 'health', label: 'Health' },
   { key: 'workspace', label: 'Workspace' },
@@ -968,6 +970,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
       </div>
 
       <RecipesTab v-if="topTab === 'recipes'" :project-id="effectiveProjectId" />
+      <ModelsTab v-else-if="topTab === 'models'" :project-id="effectiveProjectId" />
       <ProjectToolsTab v-else-if="topTab === 'tools'" :project-id="effectiveProjectId" />
       <ToolHealthTab v-else-if="topTab === 'health'" :project-id="effectiveProjectId" />
       <WorkspaceTab v-else-if="topTab === 'workspace'" :project-id="effectiveProjectId" />

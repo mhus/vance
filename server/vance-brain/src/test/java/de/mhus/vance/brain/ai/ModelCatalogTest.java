@@ -7,6 +7,7 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.api.insights.ModelCatalogLayer;
 import de.mhus.vance.brain.ai.image.ImageModelInfo;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -954,6 +955,70 @@ class ModelCatalogTest {
         ModelInfo info = catalog.lookupOrDefault(TENANT, PROJECT, "my-gateway", "openai", "some-model");
 
         assertThat(info.maxTools()).isNull();
+    }
+
+    // ──── Field provenance (Insights) ─────────────────────────────────
+
+    @Test
+    void lookupEntry_recordsTheInnermostLayerPerField() {
+        stubAutoModelDoc(TENANT, VANCE_TENANT_PROJECT, "anthropic/claude-sonnet-4-5.yaml", """
+                contextWindowTokens: 190000
+                timeoutSeconds: 90
+                """);
+        stubModelDoc(TENANT, PROJECT, "anthropic/claude-sonnet-4-5.yaml", """
+                contextWindowTokens: 100000
+                """);
+        catalog.refresh();
+
+        ModelCatalog.CatalogEntry entry = catalog.lookupEntry(TENANT, PROJECT, "anthropic", "claude-sonnet-4-5")
+                .orElseThrow();
+
+        assertThat(entry.kind()).isEqualTo("chat");
+        assertThat(entry.spec().get("contextWindowTokens")).isEqualTo(100000);
+        assertThat(entry.fieldSources())
+                .containsEntry("contextWindowTokens", ModelCatalogLayer.PROJECT)
+                .containsEntry("timeoutSeconds", ModelCatalogLayer.TENANT_AUTO)
+                .containsEntry("pricing", ModelCatalogLayer.BUNDLED);
+    }
+
+    @Test
+    void lookupEntry_otherProjectsDoNotSeeAProjectLayer() {
+        stubModelDoc(TENANT, PROJECT, "anthropic/claude-sonnet-4-5.yaml", """
+                contextWindowTokens: 100000
+                """);
+        catalog.refresh();
+
+        ModelCatalog.CatalogEntry entry = catalog.lookupEntry(TENANT, "other", "anthropic", "claude-sonnet-4-5")
+                .orElseThrow();
+
+        assertThat(entry.fieldSources()).containsEntry("contextWindowTokens", ModelCatalogLayer.BUNDLED);
+    }
+
+    @Test
+    void listEntries_coversEveryKind() {
+        List<ModelCatalog.CatalogEntry> entries = catalog.listEntries(null, null);
+
+        assertThat(entries)
+                .anyMatch(e -> e.provider().equals("cortecs")
+                        && e.modelName().equals("flux-2-klein-4b")
+                        && e.kind().equals("image"))
+                .anyMatch(e -> e.provider().equals("anthropic")
+                        && e.modelName().equals("claude-sonnet-4-5")
+                        && e.kind().equals("chat"));
+    }
+
+    @Test
+    void providerFieldSources_attributeSidecarFields() {
+        stubModelDoc(TENANT, VANCE_TENANT_PROJECT, "cortecs/_provider.yaml", """
+                maxTools: 64
+                """);
+        catalog.refresh();
+
+        assertThat(catalog.providerFieldSources(TENANT, PROJECT, "cortecs"))
+                .containsEntry("wireType", ModelCatalogLayer.BUNDLED)
+                .containsEntry("maxTools", ModelCatalogLayer.TENANT);
+        assertThat(catalog.providerFieldSources(TENANT, PROJECT, "no-such-instance"))
+                .isEmpty();
     }
 
     private void stubModelDoc(String tenantId, String projectId, String relPath, String yamlBody) {

@@ -162,7 +162,34 @@ public class AiModelResolver {
         if (input == null || input.isBlank()) {
             return tenantDefault(tenantId, projectId, processId, "<missing input>");
         }
-        return resolveCascade(input.trim(), tenantId, projectId, processId, new LinkedHashSet<>());
+        return resolveCascade(input.trim(), tenantId, projectId, processId, new LinkedHashSet<>(), null);
+    }
+
+    /**
+     * Resolution with its trail, for diagnostics (Insights). Same semantics
+     * as {@link #resolve} — and the same {@link UnknownModelException} —
+     * plus the alias specs that were expanded on the way, in order.
+     *
+     * @param chain            alias specs expanded before the final
+     *                         {@code provider:model}; empty for a direct spec
+     * @param viaTenantDefault the last alias was undefined in the
+     *                         {@code default:} namespace and fell back to
+     *                         {@code ai.default.provider}/{@code ai.default.model}
+     */
+    public record Traced(Resolved resolved, List<String> chain, boolean viaTenantDefault) {}
+
+    public Traced resolveTraced(String input, String tenantId, @Nullable String projectId) {
+        Trail trail = new Trail();
+        Resolved resolved = input == null || input.isBlank()
+                ? tenantDefault(tenantId, projectId, null, "<missing input>")
+                : resolveCascade(input.trim(), tenantId, projectId, null, new LinkedHashSet<>(), trail);
+        return new Traced(resolved, List.copyOf(trail.steps), trail.viaTenantDefault);
+    }
+
+    /** Mutable collector behind {@link #resolveTraced}; {@code null} on the hot path. */
+    private static final class Trail {
+        final List<String> steps = new ArrayList<>();
+        boolean viaTenantDefault;
     }
 
     /**
@@ -180,7 +207,7 @@ public class AiModelResolver {
         if (input == null || input.isBlank()) {
             return tenantDefault(tenantId, projectId, processId, "<no override>");
         }
-        return resolveCascade(input.trim(), tenantId, projectId, processId, new LinkedHashSet<>());
+        return resolveCascade(input.trim(), tenantId, projectId, processId, new LinkedHashSet<>(), null);
     }
 
     /**
@@ -195,7 +222,12 @@ public class AiModelResolver {
      * other's cycle detection.
      */
     private Resolved resolveCascade(
-            String input, String tenantId, @Nullable String projectId, @Nullable String processId, Set<String> seen) {
+            String input,
+            String tenantId,
+            @Nullable String projectId,
+            @Nullable String processId,
+            Set<String> seen,
+            @Nullable Trail trail) {
         List<String> elements = splitCascade(input);
         if (elements.isEmpty()) {
             throw new UnknownModelException("Model spec '" + input + "' has no usable elements");
@@ -203,15 +235,15 @@ public class AiModelResolver {
         int lastIdx = elements.size() - 1;
         for (int i = 0; i < lastIdx; i++) {
             @Nullable
-            Resolved r =
-                    resolveElement(elements.get(i), tenantId, projectId, processId, new LinkedHashSet<>(seen), false);
+            Resolved r = resolveElement(
+                    elements.get(i), tenantId, projectId, processId, new LinkedHashSet<>(seen), false, trail);
             if (r != null) {
                 return r;
             }
         }
         @Nullable
-        Resolved last =
-                resolveElement(elements.get(lastIdx), tenantId, projectId, processId, new LinkedHashSet<>(seen), true);
+        Resolved last = resolveElement(
+                elements.get(lastIdx), tenantId, projectId, processId, new LinkedHashSet<>(seen), true, trail);
         if (last == null) {
             // resolveElement with lastInCascade=true never returns null —
             // it either resolves, falls back to tenantDefault, or throws.
@@ -234,7 +266,8 @@ public class AiModelResolver {
             @Nullable String projectId,
             @Nullable String processId,
             Set<String> seen,
-            boolean lastInCascade) {
+            boolean lastInCascade,
+            @Nullable Trail trail) {
         if (!seen.add(input)) {
             throw new UnknownModelException("Alias cycle detected: " + String.join(" → ", seen) + " → " + input);
         }
@@ -273,7 +306,10 @@ public class AiModelResolver {
         @Nullable String aliased = settingService.getStringValueCascade(tenantId, projectId, processId, settingKey);
         if (aliased != null && !aliased.isBlank()) {
             log.debug("AiModelResolver: alias '{}' → '{}'", input, aliased);
-            return resolveCascade(aliased.trim(), tenantId, projectId, processId, seen);
+            if (trail != null) {
+                trail.steps.add(input);
+            }
+            return resolveCascade(aliased.trim(), tenantId, projectId, processId, seen, trail);
         }
 
         // Alias undefined — non-last cascade elements skip to the next.
@@ -284,6 +320,10 @@ public class AiModelResolver {
         // Last element: safety net for `default:` namespace, else throw.
         if (DEFAULT_NAMESPACE.equals(prefix)) {
             log.debug("AiModelResolver: alias '{}' not configured, falling back to tenant default", input);
+            if (trail != null) {
+                trail.steps.add(input);
+                trail.viaTenantDefault = true;
+            }
             return tenantDefault(tenantId, projectId, processId, input);
         }
 

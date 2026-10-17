@@ -129,10 +129,13 @@ class ModelCatalogTest {
 
     @Test
     void bundled_hf_style_wire_name_loaded_from_nested_directory() {
-        // _vance/model/cortecs/google/gemma-4-31B-it.yaml — wire name
-        // recovered from the nested directory path.
-        ModelInfo info = catalog.lookupOrDefault("cortecs", "google/gemma-4-31B-it");
-        assertThat(info.contextWindowTokens()).isEqualTo(131_072);
+        // _vance/model/openrouter/anthropic/claude-haiku-4.5.yaml — wire name
+        // recovered from the nested directory path. The document is generated
+        // by `./wb models openrouter`: the context window follows the listing,
+        // so the test only requires it to come from the file (not the 8K
+        // fallback); the size is pinned by a family rule.
+        ModelInfo info = catalog.lookupOrDefault("openrouter", "anthropic/claude-haiku-4.5");
+        assertThat(info.contextWindowTokens()).isGreaterThan(8192);
         assertThat(info.size()).isEqualTo(ModelSize.SMALL);
     }
 
@@ -467,7 +470,7 @@ class ModelCatalogTest {
      */
     @Test
     void bundled_cortecs_workhorses_are_priced() {
-        for (String model : List.of("kimi-k3", "deepseek-v4-pro", "deepseek-v4-flash-0731", "glm-5", "glm-5.1")) {
+        for (String model : List.of("kimi-k3", "deepseek-v4-pro", "deepseek-v4-flash-0731", "glm-5.1", "glm-5.3")) {
             ModelInfo info = catalog.lookupOrDefault("cortecs", model);
             assertThat(info.pricing()).as("pricing for %s", model).isNotNull();
             assertThat(info.pricing().currency()).isEqualTo("EUR");

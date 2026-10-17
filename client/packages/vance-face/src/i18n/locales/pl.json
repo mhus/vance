@@ -214,6 +214,9 @@
     "menu": {
       "file": "Plik",
       "newFile": "Nowy plik…",
+      "newMarkdown": "Nowy plik Markdown…",
+      "duplicate": "Duplikuj",
+      "rename": "Zmień nazwę…",
       "newFolder": "Nowy folder…",
       "open": "Otwórz…",
       "save": "Zapisz",
@@ -413,6 +416,20 @@
       "loadingText": "ładowanie…",
       "delete": "Usuń",
       "empty": "pusty"
+    },
+    "renameDocument": {
+      "failed": "Zmiana nazwy nie powiodła się"
+    },
+    "newMarkdown": {
+      "title": "Nowy plik Markdown",
+      "pathLabel": "Folder",
+      "pathPlaceholder": "documents/notes",
+      "nameLabel": "Nazwa",
+      "namePlaceholder": "notatki-ze-spotkania",
+      "nameHelp": "Pozostaw puste dla notatka1.md, notatka2.md, …",
+      "failed": "Tworzenie nie powiodło się",
+      "cancel": "Anuluj",
+      "create": "Utwórz"
     },
     "newFolder": {
       "title": "Nowy folder",
@@ -1900,6 +1917,34 @@
       "refreshTail": "Odśwież ogon",
       "loadingStream": "Ładowanie {stream}…",
       "emptyStream": "(puste)"
+    },
+    "power": {
+      "refresh": "Odśwież",
+      "loading": "Ładowanie stanu zasilania LLM…",
+      "hint": "Wyłączenie zatrzymuje każde wywołanie modelu: czat, osadzanie, obrazy, audio, decyzje — w tym darmowe modele lokalne.",
+      "tenantOn": "Dostęp do LLM jest włączony",
+      "tenantOff": "Dostęp do LLM jest wyłączony",
+      "tenantOnBody": "Wywołania modelu tego Tenanta są dozwolone, chyba że użytkownik poniżej jest wyłączony.",
+      "tenantOffBody": "Żadne wywołanie modelu tego Tenanta nie wychodzi. Wywołania już uruchomione kończą się.",
+      "switchOn": "Włącz dostęp do LLM",
+      "switchOff": "Wyłącz dostęp do LLM",
+      "switchUserOn": "Włącz dostęp do LLM dla {user}",
+      "switchUserOff": "Wyłącz dostęp do LLM dla {user}",
+      "confirmOff": "Wyłączyć dostęp do LLM dla całego Tenanta? Każdy czat, agent i zadanie w tle, które potrzebuje modelu, przestaje działać, dopóki nie zostanie ponownie włączone.",
+      "offSince": "Wyłączono od {when}",
+      "offSinceBy": "Wyłączono od {when} — {note}",
+      "pending": "Stosowanie na wszystkich podach mózgu — potwierdzone w następnej pełnej minucie…",
+      "unconfirmed": "Jeszcze nie potwierdzone przez mózg — odśwież, aby sprawdzić ponownie.",
+      "usersHeading": "Użytkownicy",
+      "usersNote": "Wyłączony użytkownik nie może wywołać modelu w żadnym projekcie. Zadania w tle bez użytkownika są zatrzymywane tylko przez główny przełącznik.",
+      "usersNoteTenantOff": "Główny przełącznik jest wyłączony: żaden użytkownik nie może wywołać modelu, niezależnie od stanu jego własnego przełącznika.",
+      "searchPlaceholder": "Szukaj użytkowników",
+      "onlyOff": "Tylko wyłączone ({n})",
+      "noUsers": "Brak pasujących użytkowników",
+      "serviceAccount": "Konto usługi",
+      "unknownUser": "Użytkownik już nie istnieje",
+      "on": "Włączone",
+      "off": "Wyłączone"
     },
     "leases": {
       "refresh": "Odśwież",

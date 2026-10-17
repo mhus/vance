@@ -214,6 +214,9 @@
     "menu": {
       "file": "Archivo",
       "newFile": "Nuevo archivo…",
+      "newMarkdown": "Nuevo archivo Markdown…",
+      "duplicate": "Duplicar",
+      "rename": "Renombrar…",
       "newFolder": "Nueva carpeta…",
       "open": "Abrir…",
       "save": "Guardar",
@@ -413,6 +416,20 @@
       "loadingText": "cargando…",
       "delete": "Eliminar",
       "empty": "vacío"
+    },
+    "renameDocument": {
+      "failed": "Error al renombrar"
+    },
+    "newMarkdown": {
+      "title": "Nuevo archivo Markdown",
+      "pathLabel": "Carpeta",
+      "pathPlaceholder": "documentos/notas",
+      "nameLabel": "Nombre",
+      "namePlaceholder": "notas-reunion",
+      "nameHelp": "Deja vacío para nota1.md, nota2.md, …",
+      "failed": "Error al crear",
+      "cancel": "Cancelar",
+      "create": "Crear"
     },
     "newFolder": {
       "title": "Nueva carpeta",
@@ -1900,6 +1917,34 @@
       "refreshTail": "Actualizar cola",
       "loadingStream": "Cargando {stream}…",
       "emptyStream": "(vacío)"
+    },
+    "power": {
+      "refresh": "Actualizar",
+      "loading": "Cargando estado de energía del LLM…",
+      "hint": "Apagar detiene todas las llamadas a modelos: chat, embeddings, imágenes, audio, decisiones — incluyendo modelos locales gratuitos.",
+      "tenantOn": "Acceso a LLM activado",
+      "tenantOff": "Acceso a LLM desactivado",
+      "tenantOnBody": "Las llamadas a modelos de este tenant están permitidas, a menos que un usuario de abajo esté desactivado.",
+      "tenantOffBody": "Ninguna llamada a modelo de este tenant sale. Las llamadas ya en curso terminan.",
+      "switchOn": "Activar acceso a LLM",
+      "switchOff": "Desactivar acceso a LLM",
+      "switchUserOn": "Activar acceso a LLM para {user}",
+      "switchUserOff": "Desactivar acceso a LLM para {user}",
+      "confirmOff": "¿Desactivar el acceso a LLM para todo el tenant? Cada chat, agente y trabajo en segundo plano que necesite un modelo dejará de funcionar hasta que se vuelva a activar.",
+      "offSince": "Desactivado desde {when}",
+      "offSinceBy": "Desactivado desde {when} — {note}",
+      "pending": "Aplicando en todos los pods cerebrales — confirmado al próximo minuto completo…",
+      "unconfirmed": "Aún no confirmado por el cerebro — actualiza para verificar de nuevo.",
+      "usersHeading": "Usuarios",
+      "usersNote": "Un usuario desactivado no puede llamar a un modelo, en ningún proyecto. Los trabajos en segundo plano sin un usuario solo son detenidos por el interruptor principal.",
+      "usersNoteTenantOff": "El interruptor principal está desactivado: ningún usuario puede llamar a un modelo, independientemente de lo que diga su propio interruptor.",
+      "searchPlaceholder": "Buscar usuarios",
+      "onlyOff": "Solo desactivados ({n})",
+      "noUsers": "No hay usuarios coincidentes",
+      "serviceAccount": "Cuenta de servicio",
+      "unknownUser": "El usuario ya no existe",
+      "on": "Activado",
+      "off": "Desactivado"
     },
     "leases": {
       "refresh": "Actualizar",

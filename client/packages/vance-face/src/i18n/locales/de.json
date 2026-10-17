@@ -214,6 +214,9 @@
     "menu": {
       "file": "Datei",
       "newFile": "Neue Datei…",
+      "newMarkdown": "Neue Markdown-Datei…",
+      "duplicate": "Duplizieren",
+      "rename": "Umbenennen…",
       "newFolder": "Neuer Ordner…",
       "open": "Öffnen…",
       "save": "Speichern",
@@ -413,6 +416,20 @@
       "loadingText": "lädt…",
       "delete": "Löschen",
       "empty": "leer"
+    },
+    "renameDocument": {
+      "failed": "Umbenennen fehlgeschlagen"
+    },
+    "newMarkdown": {
+      "title": "Neue Markdown-Datei",
+      "pathLabel": "Ordner",
+      "pathPlaceholder": "documents/notes",
+      "nameLabel": "Name",
+      "namePlaceholder": "meeting-notes",
+      "nameHelp": "Leer lassen für note1.md, note2.md, …",
+      "failed": "Erstellen fehlgeschlagen",
+      "cancel": "Abbrechen",
+      "create": "Erstellen"
     },
     "newFolder": {
       "title": "Neuer Ordner",
@@ -1900,6 +1917,34 @@
       "refreshTail": "Tail aktualisieren",
       "loadingStream": "Lädt {stream}…",
       "emptyStream": "(leer)"
+    },
+    "power": {
+      "refresh": "Aktualisieren",
+      "loading": "Lädt LLM-Power-Zustand…",
+      "hint": "Ausschalten stoppt jeden Modellaufruf: Chat, Embeddings, Bilder, Audio, Entscheidungen – auch kostenlose lokale Modelle.",
+      "tenantOn": "LLM-Zugriff ist an",
+      "tenantOff": "LLM-Zugriff ist aus",
+      "tenantOnBody": "Modellaufrufe dieses Tenants sind erlaubt, es sei denn, ein Benutzer unten ist ausgeschaltet.",
+      "tenantOffBody": "Kein Modellaufruf dieses Tenants geht raus. Bereits laufende Aufrufe werden beendet.",
+      "switchOn": "LLM-Zugriff einschalten",
+      "switchOff": "LLM-Zugriff ausschalten",
+      "switchUserOn": "LLM-Zugriff für {user} einschalten",
+      "switchUserOff": "LLM-Zugriff für {user} ausschalten",
+      "confirmOff": "LLM-Zugriff für den gesamten Tenant ausschalten? Jeder Chat, Agent und Hintergrundjob, der ein Modell benötigt, funktioniert nicht mehr, bis er wieder eingeschaltet wird.",
+      "offSince": "Aus seit {when}",
+      "offSinceBy": "Aus seit {when} — {note}",
+      "pending": "Wird auf alle Brain-Pods angewendet — bestätigt zur nächsten vollen Minute…",
+      "unconfirmed": "Noch nicht vom Brain bestätigt — zum erneuten Prüfen aktualisieren.",
+      "usersHeading": "Benutzer",
+      "usersNote": "Ein ausgeschalteter Benutzer kann in keinem Projekt ein Modell aufrufen. Hintergrundjobs ohne Benutzer werden nur durch den Hauptschalter gestoppt.",
+      "usersNoteTenantOff": "Der Hauptschalter ist aus: Kein Benutzer kann ein Modell aufrufen, egal was sein eigener Schalter sagt.",
+      "searchPlaceholder": "Benutzer suchen",
+      "onlyOff": "Nur ausgeschaltete ({n})",
+      "noUsers": "Keine passenden Benutzer",
+      "serviceAccount": "Service-Konto",
+      "unknownUser": "Benutzer existiert nicht mehr",
+      "on": "An",
+      "off": "Aus"
     },
     "leases": {
       "refresh": "Aktualisieren",

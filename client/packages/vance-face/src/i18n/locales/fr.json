@@ -214,6 +214,9 @@
     "menu": {
       "file": "Fichier",
       "newFile": "Nouveau fichier…",
+      "newMarkdown": "Nouveau fichier Markdown…",
+      "duplicate": "Dupliquer",
+      "rename": "Renommer…",
       "newFolder": "Nouveau dossier…",
       "open": "Ouvrir…",
       "save": "Enregistrer",
@@ -413,6 +416,20 @@
       "loadingText": "chargement…",
       "delete": "Supprimer",
       "empty": "vide"
+    },
+    "renameDocument": {
+      "failed": "Échec du renommage"
+    },
+    "newMarkdown": {
+      "title": "Nouveau fichier Markdown",
+      "pathLabel": "Dossier",
+      "pathPlaceholder": "documents/notes",
+      "nameLabel": "Nom",
+      "namePlaceholder": "notes-de-reunion",
+      "nameHelp": "Laisser vide pour note1.md, note2.md, …",
+      "failed": "Échec de la création",
+      "cancel": "Annuler",
+      "create": "Créer"
     },
     "newFolder": {
       "title": "Nouveau dossier",
@@ -1900,6 +1917,34 @@
       "refreshTail": "Actualiser la fin",
       "loadingStream": "Chargement de {stream}…",
       "emptyStream": "(vide)"
+    },
+    "power": {
+      "refresh": "Actualiser",
+      "loading": "Chargement de l'état de puissance LLM…",
+      "hint": "Désactiver arrête tous les appels de modèle : chat, embeddings, images, audio, décisions — modèles locaux gratuits inclus.",
+      "tenantOn": "L'accès LLM est activé",
+      "tenantOff": "L'accès LLM est désactivé",
+      "tenantOnBody": "Les appels de modèle de ce Tenant sont autorisés, sauf si un utilisateur ci-dessous est désactivé.",
+      "tenantOffBody": "Aucun appel de modèle de ce Tenant ne sort. Les appels déjà en cours se terminent.",
+      "switchOn": "Activer l'accès LLM",
+      "switchOff": "Désactiver l'accès LLM",
+      "switchUserOn": "Activer l'accès LLM pour {user}",
+      "switchUserOff": "Désactiver l'accès LLM pour {user}",
+      "confirmOff": "Désactiver l'accès LLM pour l'ensemble du Tenant ? Chaque chat, agent et tâche de fond nécessitant un modèle cessera de fonctionner jusqu'à ce qu'il soit réactivé.",
+      "offSince": "Désactivé depuis {when}",
+      "offSinceBy": "Désactivé depuis {when} — {note}",
+      "pending": "Application sur tous les pods cérébraux — confirmé à la prochaine minute complète…",
+      "unconfirmed": "Non confirmé par le cerveau — actualisez pour vérifier à nouveau.",
+      "usersHeading": "Utilisateurs",
+      "usersNote": "Un utilisateur désactivé ne peut pas appeler de modèle, dans aucun projet. Les tâches de fond sans utilisateur ne sont arrêtées que par l'interrupteur principal.",
+      "usersNoteTenantOff": "L'interrupteur principal est désactivé : aucun utilisateur ne peut appeler de modèle, quel que soit l'état de son propre interrupteur.",
+      "searchPlaceholder": "Rechercher des utilisateurs",
+      "onlyOff": "Seulement désactivés ({n})",
+      "noUsers": "Aucun utilisateur correspondant",
+      "serviceAccount": "Compte de service",
+      "unknownUser": "L'utilisateur n'existe plus",
+      "on": "Activé",
+      "off": "Désactivé"
     },
     "leases": {
       "refresh": "Actualiser",

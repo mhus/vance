@@ -214,6 +214,9 @@
     "menu": {
       "file": "Arquivo",
       "newFile": "Novo arquivo…",
+      "newMarkdown": "Novo arquivo Markdown…",
+      "duplicate": "Duplicar",
+      "rename": "Renomear…",
       "newFolder": "Nova pasta…",
       "open": "Abrir…",
       "save": "Salvar",
@@ -413,6 +416,20 @@
       "loadingText": "carregando…",
       "delete": "Excluir",
       "empty": "vazio"
+    },
+    "renameDocument": {
+      "failed": "Falha ao renomear"
+    },
+    "newMarkdown": {
+      "title": "Novo arquivo Markdown",
+      "pathLabel": "Pasta",
+      "pathPlaceholder": "documents/notes",
+      "nameLabel": "Nome",
+      "namePlaceholder": "notas-da-reuniao",
+      "nameHelp": "Deixe em branco para nota1.md, nota2.md, …",
+      "failed": "Falha ao criar",
+      "cancel": "Cancelar",
+      "create": "Criar"
     },
     "newFolder": {
       "title": "Nova pasta",
@@ -1900,6 +1917,34 @@
       "refreshTail": "Atualizar final",
       "loadingStream": "Carregando {stream}…",
       "emptyStream": "(vazio)"
+    },
+    "power": {
+      "refresh": "Atualizar",
+      "loading": "Carregando estado de energia do LLM…",
+      "hint": "Desligar interrompe todas as chamadas de modelo: chat, embeddings, imagens, áudio, decisões — incluindo modelos locais gratuitos.",
+      "tenantOn": "Acesso ao LLM está ligado",
+      "tenantOff": "Acesso ao LLM está desligado",
+      "tenantOnBody": "Chamadas de modelo deste Tenant são permitidas, a menos que um usuário abaixo esteja desligado.",
+      "tenantOffBody": "Nenhuma chamada de modelo deste Tenant é enviada. Chamadas já em execução terminam.",
+      "switchOn": "Ligar acesso ao LLM",
+      "switchOff": "Desligar acesso ao LLM",
+      "switchUserOn": "Ligar acesso ao LLM para {user}",
+      "switchUserOff": "Desligar acesso ao LLM para {user}",
+      "confirmOff": "Desligar o acesso ao LLM para todo o Tenant? Todo chat, agente e job em segundo plano que precisa de um modelo para de funcionar até ser ligado novamente.",
+      "offSince": "Desligado desde {when}",
+      "offSinceBy": "Desligado desde {when} — {note}",
+      "pending": "Aplicando em todos os pods cerebrais — confirmado no próximo minuto completo…",
+      "unconfirmed": "Não confirmado pelo cérebro ainda — atualize para verificar novamente.",
+      "usersHeading": "Usuários",
+      "usersNote": "Um usuário desligado não pode chamar um modelo, em nenhum projeto. Jobs em segundo plano sem um usuário são parados apenas pelo interruptor principal.",
+      "usersNoteTenantOff": "O interruptor principal está desligado: nenhum usuário pode chamar um modelo, independentemente do seu próprio interruptor.",
+      "searchPlaceholder": "Buscar usuários",
+      "onlyOff": "Apenas desligados ({n})",
+      "noUsers": "Nenhum usuário correspondente",
+      "serviceAccount": "Conta de serviço",
+      "unknownUser": "Usuário não existe mais",
+      "on": "Ligado",
+      "off": "Desligado"
     },
     "leases": {
       "refresh": "Atualizar",

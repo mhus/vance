@@ -214,6 +214,9 @@
     "menu": {
       "file": "ファイル",
       "newFile": "新規ファイル…",
+      "newMarkdown": "新規Markdownファイル…",
+      "duplicate": "複製",
+      "rename": "名前を変更…",
       "newFolder": "新規フォルダー…",
       "open": "開く…",
       "save": "保存",
@@ -413,6 +416,20 @@
       "loadingText": "読み込み中…",
       "delete": "削除",
       "empty": "空"
+    },
+    "renameDocument": {
+      "failed": "名前の変更に失敗しました"
+    },
+    "newMarkdown": {
+      "title": "新規Markdownファイル",
+      "pathLabel": "フォルダー",
+      "pathPlaceholder": "documents/notes",
+      "nameLabel": "名前",
+      "namePlaceholder": "meeting-notes",
+      "nameHelp": "空欄にすると note1.md, note2.md, … となります",
+      "failed": "作成に失敗しました",
+      "cancel": "キャンセル",
+      "create": "作成"
     },
     "newFolder": {
       "title": "新しいフォルダ",
@@ -1900,6 +1917,34 @@
       "refreshTail": "末尾を更新",
       "loadingStream": "{stream} を読み込み中…",
       "emptyStream": "（空）"
+    },
+    "power": {
+      "refresh": "更新",
+      "loading": "LLM電源状態を読み込み中…",
+      "hint": "オフにすると、チャット、埋め込み、画像、音声、決定など、すべてのモデル呼び出しが停止します。無料のローカルモデルも含まれます。",
+      "tenantOn": "LLMアクセスはオンです",
+      "tenantOff": "LLMアクセスはオフです",
+      "tenantOnBody": "このテナントのモデル呼び出しは許可されています。ただし、以下のユーザーがオフになっている場合は除きます。",
+      "tenantOffBody": "このテナントのモデル呼び出しは行われません。すでに実行中の呼び出しは完了します。",
+      "switchOn": "LLMアクセスをオンにする",
+      "switchOff": "LLMアクセスをオフにする",
+      "switchUserOn": "{user} のLLMアクセスをオンにする",
+      "switchUserOff": "{user} のLLMアクセスをオフにする",
+      "confirmOff": "テナント全体のLLMアクセスをオフにしますか？モデルを必要とするすべてのチャット、エージェント、バックグラウンドジョブは、再度オンにするまで動作を停止します。",
+      "offSince": "{when} からオフ",
+      "offSinceBy": "{when} からオフ — {note}",
+      "pending": "すべてのブレインポッドに適用中 — 次の完全な分に確認されます…",
+      "unconfirmed": "ブレインによってまだ確認されていません — 再度確認するには更新してください。",
+      "usersHeading": "ユーザー",
+      "usersNote": "オフになっているユーザーは、どのプロジェクトでもモデルを呼び出すことができません。ユーザーなしのバックグラウンドジョブは、メインスイッチによってのみ停止されます。",
+      "usersNoteTenantOff": "メインスイッチがオフになっています。ユーザー自身のスイッチがどうであれ、どのユーザーもモデルを呼び出すことはできません。",
+      "searchPlaceholder": "ユーザーを検索",
+      "onlyOff": "オフのみ ({n})",
+      "noUsers": "一致するユーザーがいません",
+      "serviceAccount": "サービスアカウント",
+      "unknownUser": "ユーザーは存在しません",
+      "on": "オン",
+      "off": "オフ"
     },
     "leases": {
       "refresh": "更新",

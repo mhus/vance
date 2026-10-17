@@ -214,6 +214,9 @@
     "menu": {
       "file": "文件",
       "newFile": "新建文件…",
+      "newMarkdown": "新建 Markdown 文件…",
+      "duplicate": "复制",
+      "rename": "重命名…",
       "newFolder": "新建文件夹…",
       "open": "打开…",
       "save": "保存",
@@ -413,6 +416,20 @@
       "loadingText": "加载中…",
       "delete": "删除",
       "empty": "空"
+    },
+    "renameDocument": {
+      "failed": "重命名失败"
+    },
+    "newMarkdown": {
+      "title": "新建 Markdown 文件",
+      "pathLabel": "文件夹",
+      "pathPlaceholder": "documents/notes",
+      "nameLabel": "名称",
+      "namePlaceholder": "会议记录",
+      "nameHelp": "留空则生成 note1.md, note2.md, …",
+      "failed": "创建失败",
+      "cancel": "取消",
+      "create": "创建"
     },
     "newFolder": {
       "title": "新建文件夹",
@@ -1900,6 +1917,34 @@
       "refreshTail": "刷新尾部",
       "loadingStream": "正在加载 {stream}…",
       "emptyStream": "（空）"
+    },
+    "power": {
+      "refresh": "刷新",
+      "loading": "正在加载 LLM 电源状态…",
+      "hint": "关闭会停止所有模型调用：聊天、嵌入、图像、音频、决策 — 包括免费的本地模型。",
+      "tenantOn": "LLM 访问已开启",
+      "tenantOff": "LLM 访问已关闭",
+      "tenantOnBody": "允许此租户的模型调用，除非以下用户已关闭。",
+      "tenantOffBody": "此租户的所有模型调用都将停止。已在运行的调用将完成。",
+      "switchOn": "开启 LLM 访问",
+      "switchOff": "关闭 LLM 访问",
+      "switchUserOn": "为 {user} 开启 LLM 访问",
+      "switchUserOff": "为 {user} 关闭 LLM 访问",
+      "confirmOff": "关闭整个租户的 LLM 访问？所有需要模型的聊天、代理和后台作业都将停止工作，直到重新开启。",
+      "offSince": "自 {when} 关闭",
+      "offSinceBy": "自 {when} 关闭 — {note}",
+      "pending": "正在应用于所有大脑 Pod — 下一个整分钟确认…",
+      "unconfirmed": "大脑尚未确认 — 刷新以再次检查。",
+      "usersHeading": "用户",
+      "usersNote": "已关闭的用户无法在任何项目中调用模型。没有用户的后台作业仅受主开关控制。",
+      "usersNoteTenantOff": "主开关已关闭：无论用户自己的开关状态如何，任何用户都无法调用模型。",
+      "searchPlaceholder": "搜索用户",
+      "onlyOff": "仅显示已关闭 ({n})",
+      "noUsers": "没有匹配的用户",
+      "serviceAccount": "服务账户",
+      "unknownUser": "用户不存在",
+      "on": "开启",
+      "off": "关闭"
     },
     "leases": {
       "refresh": "刷新",

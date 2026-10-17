@@ -79,3 +79,19 @@ ref:
   uuid: <contact id>
   scope: tenant    # optional
 ```
+
+## Contact boards
+
+A **contact board** (`kind: contact-board`) is a document with pinned
+contacts for one topic — "who is who" on a project or a deal. Each pin is a
+reference to an address-book card plus the board's own **heading** (`label`)
+and **Markdown note**. The card always shows the current address-book data.
+
+- Read: `contact_board_get(path)`. Create: `contact_board_create(path, title)`.
+- Pin: `contact_board_pin(path, id, label?, note?, position?)` — find the id
+  with `contact_search` first.
+- Change heading, note or position: `contact_board_update(path, id, …)`; the
+  note is replaced whole, so read it first when adding to it.
+- Remove: `contact_board_unpin(path, id)` — the contact stays in the address book.
+- A private (`user`) contact on a project board shows only heading and note to
+  the other readers — the tool says so; move the contact to share it.

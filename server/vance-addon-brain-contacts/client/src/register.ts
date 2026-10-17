@@ -5,6 +5,7 @@ import { defineAsyncComponent } from 'vue';
 import { registerKind } from '@vance/kind-registry';
 
 const ContactKind = defineAsyncComponent(() => import('./ContactKind.vue'));
+const ContactBoardKind = defineAsyncComponent(() => import('./ContactBoardKind.vue'));
 
 export function register(): void {
   // A `kind: contact` document: its own card, or a reference into the address
@@ -14,5 +15,14 @@ export function register(): void {
     matches: (kind) => (kind ?? '').toLowerCase() === 'contact',
     view: ContactKind,
     tabLabelKey: 'contacts.kind.tab',
+  });
+
+  // A `kind: contact-board` document: pinned contacts with heading and note,
+  // plus the address book to pin from.
+  registerKind({
+    id: 'contact-board',
+    matches: (kind) => (kind ?? '').toLowerCase() === 'contact-board',
+    view: ContactBoardKind,
+    tabLabelKey: 'contacts.board.tab',
   });
 }

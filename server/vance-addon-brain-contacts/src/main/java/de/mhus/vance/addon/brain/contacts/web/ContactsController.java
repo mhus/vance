@@ -2,11 +2,9 @@ package de.mhus.vance.addon.brain.contacts.web;
 
 import de.mhus.vance.addon.brain.contacts.ContactCaller;
 import de.mhus.vance.addon.brain.contacts.ContactEntry;
-import de.mhus.vance.addon.brain.contacts.ContactNotFoundException;
 import de.mhus.vance.addon.brain.contacts.ContactSearch;
 import de.mhus.vance.addon.brain.contacts.ContactService;
 import de.mhus.vance.addon.brain.contacts.ContactVCardService;
-import de.mhus.vance.addon.brain.contacts.GravatarUnavailableException;
 import de.mhus.vance.addon.brain.contacts.model.ContactKind;
 import de.mhus.vance.addon.brain.contacts.model.ContactScope;
 import de.mhus.vance.brain.permission.RequestAuthority;
@@ -15,19 +13,14 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -49,7 +42,6 @@ import org.springframework.web.multipart.MultipartFile;
  */
 @RestController
 @RequiredArgsConstructor
-@Slf4j
 public class ContactsController {
 
     private static final String BASE = "/brain/{tenant}/addon/contacts";
@@ -268,34 +260,6 @@ public class ContactsController {
                 resolved.entry() == null ? null : ContactSummaryView.of(resolved.entry()),
                 resolved.refId(),
                 resolved.dangling());
-    }
-
-    // ── Errors ────────────────────────────────────────────────────
-
-    @ExceptionHandler(ContactNotFoundException.class)
-    public ResponseEntity<Map<String, Object>> notFound(ContactNotFoundException e) {
-        return error(HttpStatus.NOT_FOUND, "contact-not-found", e.getMessage());
-    }
-
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, Object>> badRequest(IllegalArgumentException e) {
-        return error(HttpStatus.BAD_REQUEST, "contact-invalid", e.getMessage());
-    }
-
-    @ExceptionHandler(GravatarUnavailableException.class)
-    public ResponseEntity<Map<String, Object>> gravatarDown(GravatarUnavailableException e) {
-        log.warn("ContactsController: {}", e.getMessage());
-        return error(HttpStatus.BAD_GATEWAY, "gravatar-unavailable", e.getMessage());
-    }
-
-    private static ResponseEntity<Map<String, Object>> error(
-            HttpStatus status, String reason, @Nullable String message) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("reason", reason);
-        body.put("message", message == null ? status.getReasonPhrase() : message);
-        return ResponseEntity.status(status)
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(body);
     }
 
     // ── Helpers ───────────────────────────────────────────────────

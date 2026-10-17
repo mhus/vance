@@ -1,0 +1,15 @@
+title:       { de: "Kontakt-Board",  en: "Contact board" }
+description: { de: "Angepinnte Kontakte zu einem Thema — jede Karte mit Überschrift und Notiz. Die Karten zeigen immer den aktuellen Stand aus dem Adressbuch.",
+               en: "Pinned contacts for one topic — every card with a heading and a note. The cards always show the current state of the address book." }
+icon: kind-contact
+tags: [contacts, board]
+
+name:
+  mode: free
+  default: "kontakte-{{ date }}"
+
+fields:
+  - name: title
+    type: string
+    required: true
+    label: { de: "Titel", en: "Title" }

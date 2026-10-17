@@ -12,3 +12,4 @@ tile:
 # is opened -- a load trigger, not a copy of the matching rule.
 kinds:
   - contact
+  - contact-board

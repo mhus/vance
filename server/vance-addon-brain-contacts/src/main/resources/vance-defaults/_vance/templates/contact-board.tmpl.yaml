@@ -1,0 +1,9 @@
+$meta:
+  kind: contact-board
+# Block scalar: a title with quotes or a colon stays one plain string.
+title: >-
+  {{ title }}
+# Pin contacts in the board's "Contacts" tab, or ask the assistant
+# (contact_board_pin). Each pin references an address-book card by id and
+# carries its own heading (label) and Markdown note.
+pins: []

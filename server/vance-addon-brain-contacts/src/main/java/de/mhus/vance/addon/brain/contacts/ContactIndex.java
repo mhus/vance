@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
@@ -41,6 +42,8 @@ public class ContactIndex {
     private final Clock clock;
     private final Map<Key, Snapshot> snapshots = new ConcurrentHashMap<>();
 
+    /** Spring's constructor — the clock is only replaced in tests. */
+    @Autowired
     public ContactIndex(DocumentService documentService) {
         this(documentService, Clock.systemUTC());
     }

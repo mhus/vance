@@ -1,5 +1,6 @@
 import { brainFetch, brainFetchBlob } from '@vance/shared';
 import type { TenantProjectsResponse } from '@vance/generated';
+import type { ContactBoardView } from './generated/contacts/ContactBoardView';
 import type { ContactCard } from './generated/contacts/ContactCard';
 import type { ContactDocumentView } from './generated/contacts/ContactDocumentView';
 import type { ContactImportView } from './generated/contacts/ContactImportView';
@@ -177,4 +178,46 @@ export async function loadProjects(): Promise<{ name: string; title: string }[]>
   return (answer.projects ?? [])
     .filter((p) => !p.name.startsWith('_'))
     .map((p) => ({ name: p.name, title: p.title || p.name }));
+}
+
+// ── Contact boards ────────────────────────────────────────────────
+
+/** Every board mutation answers with the whole board — its order is the server's. */
+
+export async function loadBoard(projectId: string, path: string): Promise<ContactBoardView> {
+  return brainFetch<ContactBoardView>('GET', `${BASE}/board${qs({ projectId, path })}`);
+}
+
+export async function pinContact(
+  projectId: string,
+  path: string,
+  uuid: string,
+  scope: ContactScope,
+  position?: number,
+): Promise<ContactBoardView> {
+  return brainFetch<ContactBoardView>('POST', `${BASE}/board/pin${qs({ projectId, path })}`, {
+    body: { uuid, scope, position },
+  });
+}
+
+/** `undefined` = unchanged, `''` = clear. */
+export async function updatePin(
+  projectId: string,
+  path: string,
+  uuid: string,
+  change: { label?: string; note?: string; position?: number },
+): Promise<ContactBoardView> {
+  return brainFetch<ContactBoardView>('PATCH', `${BASE}/board/pin${qs({ projectId, path })}`, {
+    body: { uuid, ...change },
+  });
+}
+
+export async function unpinContact(projectId: string, path: string, uuid: string): Promise<ContactBoardView> {
+  return brainFetch<ContactBoardView>('DELETE', `${BASE}/board/pin${qs({ projectId, path, uuid })}`);
+}
+
+export async function reorderPins(projectId: string, path: string, order: string[]): Promise<ContactBoardView> {
+  return brainFetch<ContactBoardView>('POST', `${BASE}/board/reorder${qs({ projectId, path })}`, {
+    body: { order },
+  });
 }

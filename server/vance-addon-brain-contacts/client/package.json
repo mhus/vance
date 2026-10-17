@@ -13,7 +13,10 @@
       "import": "./src/index.ts"
     }
   },
-  "files": ["src", "dist"],
+  "files": [
+    "src",
+    "dist"
+  ],
   "scripts": {
     "build": "vue-tsc -b && vite build",
     "dev": "vite",
@@ -23,7 +26,10 @@
     "@vance/components": "workspace:*",
     "@vance/generated": "workspace:*",
     "@vance/kind-registry": "workspace:*",
-    "@vance/shared": "workspace:*"
+    "@vance/shared": "workspace:*",
+    "dompurify": "^3.4.17",
+    "marked": "^18.1.1",
+    "vue-draggable-plus": "^0.6.1"
   },
   "peerDependencies": {
     "vue": "^3.5.0"

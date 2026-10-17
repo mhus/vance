@@ -1217,6 +1217,13 @@ export default {
       close: 'Close',
       previewTitle: 'Version from {when}',
       previewBinary: 'Preview not available for this file type — please download.',
+      compare: 'Compare with current',
+      diffTitle: 'Changes since version from {when}',
+      diffDescription: 'Archived version (−) against the current document (+).',
+      diffDescriptionUnsaved:
+        'Archived version (−) against the current document (+), including unsaved edits.',
+      diffIdentical: 'No differences.',
+      diffShowUnchanged: 'Show {count} unchanged lines',
       confirmRestoreTitle: 'Restore this version?',
       confirmRestoreBody:
         'The current content is archived as a new version, then this older version becomes the live document. Nothing is lost.',

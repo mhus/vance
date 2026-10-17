@@ -419,6 +419,8 @@ async function onCreated(created: DocumentDto): Promise<void> {
     <div v-if="versionsMounted" v-show="activeTab === 'versions'">
       <DocumentArchives
         :document="dtoForArchives"
+        :current-text="document.inlineText"
+        :current-dirty="document.dirty"
         @restored="onRestored"
         @created="onCreated"
       />

@@ -2,13 +2,16 @@
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { VAlert, VButton, VIconButton, VModal } from '@/components';
-import { useDocumentArchives } from '@/composables/useDocumentArchives';
-import type { DocumentDto } from '@vance/generated';
+import { isTextualMime, useDocumentArchives } from '@/composables/useDocumentArchives';
+import type { DocumentArchiveSummary, DocumentDto } from '@vance/generated';
+import DocumentVersionDiff from './DocumentVersionDiff.vue';
 
 /**
  * Versions panel slotted into the document detail view. Shows the count
  * (always visible as a header), expands into a date-sorted list, lets
- * the user preview / delete / restore individual versions.
+ * the user preview / compare / delete / restore individual versions.
+ * Compare is offered for textual mime types only and diffs the version
+ * against the current content.
  *
  * <p>Read-only — there is no "edit this archived version" path. Restoring
  * brings the version back as the live document; the previous live content
@@ -18,6 +21,14 @@ import type { DocumentDto } from '@vance/generated';
 const props = defineProps<{
   /** Live document the panel is attached to. {@code null} clears the list. */
   document: DocumentDto | null;
+  /**
+   * Current body as the editor holds it — the "new" side of the version
+   * diff, so unsaved edits are part of the comparison. When absent the
+   * stored live body is fetched instead.
+   */
+  currentText?: string;
+  /** True when {@link currentText} carries edits not yet saved. */
+  currentDirty?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -66,6 +77,34 @@ const count = computed(() => archives.items.value.length);
 // with the current length (typically 0 before {@link load} resolves);
 // subsequent emits cover load results, delete and restore.
 watch(count, (n) => emit('update:count', n), { immediate: true });
+
+// Version compare: archived body (old) against the current content (new).
+const diff = ref<{ archive: DocumentArchiveSummary; oldText: string; newText: string } | null>(
+  null,
+);
+const diffLoading = ref<string | null>(null);
+
+function canDiff(archive: DocumentArchiveSummary): boolean {
+  return isTextualMime(archive.mimeType ?? props.document?.mimeType);
+}
+
+async function openDiff(archive: DocumentArchiveSummary): Promise<void> {
+  if (!props.document) return;
+  const documentId = props.document.id;
+  diffLoading.value = archive.id;
+  try {
+    const [oldText, newText] = await Promise.all([
+      archives.loadText(documentId, archive.id),
+      props.currentText !== undefined
+        ? Promise.resolve(props.currentText)
+        : archives.loadLiveText(documentId),
+    ]);
+    if (oldText === null || newText === null) return;
+    diff.value = { archive, oldText, newText };
+  } finally {
+    diffLoading.value = null;
+  }
+}
 
 function formatDate(ms: number): string {
   return new Date(ms).toLocaleString();
@@ -196,6 +235,14 @@ async function copyToNewFile(): Promise<void> {
           </button>
           <div class="flex gap-1 shrink-0">
             <VIconButton
+              v-if="canDiff(archive)"
+              icon="diff"
+              size="sm"
+              :label="$t('documents.archives.compare')"
+              :disabled="acting || diffLoading !== null"
+              @click="openDiff(archive)"
+            />
+            <VIconButton
               icon="restore"
               size="sm"
               :label="$t('documents.archives.restore')"
@@ -245,6 +292,26 @@ async function copyToNewFile(): Promise<void> {
       </template>
       <template #actions>
         <VButton variant="secondary" @click="archives.clearPreview()">
+          {{ $t('documents.archives.close') }}
+        </VButton>
+      </template>
+    </VModal>
+
+    <!-- Diff modal — archived version against the current content. -->
+    <VModal
+      :model-value="diff !== null"
+      :title="$t('documents.archives.diffTitle', {
+        when: diff ? formatDate(diff.archive.archivedAtMs) : '',
+      })"
+      :description="currentDirty
+        ? $t('documents.archives.diffDescriptionUnsaved')
+        : $t('documents.archives.diffDescription')"
+      size="xl"
+      @update:model-value="(v) => v || (diff = null)"
+    >
+      <DocumentVersionDiff v-if="diff" :old-text="diff.oldText" :new-text="diff.newText" />
+      <template #actions>
+        <VButton variant="secondary" @click="diff = null">
           {{ $t('documents.archives.close') }}
         </VButton>
       </template>

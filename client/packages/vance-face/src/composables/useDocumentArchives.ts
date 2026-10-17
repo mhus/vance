@@ -9,6 +9,25 @@ import type {
 import { brainFetch, brainFetchText } from '@vance/shared';
 
 /**
+ * True for mime types whose body is readable text — the set the archive
+ * preview renders inline and the version diff can compare line by line.
+ */
+export function isTextualMime(mimeType: string | null | undefined): boolean {
+  if (!mimeType) return false;
+  const base = mimeType.split(';')[0].trim().toLowerCase();
+  return (
+    base.startsWith('text/')
+    || base.includes('json')
+    || base.includes('yaml')
+    || base.includes('xml')
+    || base === 'application/javascript'
+    || base === 'application/typescript'
+    || base === 'application/sql'
+    || base === 'application/x-sh'
+  );
+}
+
+/**
  * Reactive wrapper around the document-archive REST endpoints. One instance
  * per editor — caches the version list for the currently-selected document
  * plus the currently-previewed archive entry. The owning editor calls
@@ -32,6 +51,8 @@ export function useDocumentArchives(): {
   restore: (documentId: string, archiveId: string) => Promise<DocumentDto | null>;
   restoreToNewFile: (documentId: string, archiveId: string) => Promise<DocumentDto | null>;
   createNow: (documentId: string) => Promise<'created' | 'unchanged' | 'disabled' | null>;
+  loadText: (documentId: string, archiveId: string) => Promise<string | null>;
+  loadLiveText: (documentId: string) => Promise<string | null>;
 } {
   const items = ref<DocumentArchiveSummary[]>([]);
   const loading = ref(false);
@@ -83,21 +104,6 @@ export function useDocumentArchives(): {
     } finally {
       previewLoading.value = false;
     }
-  }
-
-  function isTextualMime(mimeType: string | null | undefined): boolean {
-    if (!mimeType) return false;
-    const base = mimeType.split(';')[0].trim().toLowerCase();
-    return (
-      base.startsWith('text/')
-      || base.includes('json')
-      || base.includes('yaml')
-      || base.includes('xml')
-      || base === 'application/javascript'
-      || base === 'application/typescript'
-      || base === 'application/sql'
-      || base === 'application/x-sh'
-    );
   }
 
   function clearPreview(): void {
@@ -204,6 +210,39 @@ export function useDocumentArchives(): {
     }
   }
 
+  /**
+   * Fetches the body of one archived version as text — the "old" side of
+   * the version diff. Returns {@code null} on error (banner set via
+   * {@link error}).
+   */
+  async function loadText(documentId: string, archiveId: string): Promise<string | null> {
+    error.value = null;
+    try {
+      return (
+        await brainFetchText(
+          `documents/${encodeURIComponent(documentId)}/archives/${encodeURIComponent(archiveId)}/content`,
+        )
+      ) ?? '';
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to load version.';
+      return null;
+    }
+  }
+
+  /**
+   * Fetches the stored body of the live document — the "new" side of the
+   * version diff when the caller holds no editor buffer.
+   */
+  async function loadLiveText(documentId: string): Promise<string | null> {
+    error.value = null;
+    try {
+      return (await brainFetchText(`documents/${encodeURIComponent(documentId)}/content`)) ?? '';
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to load document.';
+      return null;
+    }
+  }
+
   return {
     items,
     loading,
@@ -217,5 +256,7 @@ export function useDocumentArchives(): {
     restore,
     restoreToNewFile,
     createNow,
+    loadText,
+    loadLiveText,
   };
 }

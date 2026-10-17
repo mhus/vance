@@ -32,6 +32,8 @@ import {
   // addon surfaces
   ChartLine, Expand, Group, Monitor, Pointer, RotateCwSquare, ScanText, Smartphone, Smile, Tablet,
   ZoomIn, ZoomOut,
+  // contacts
+  CircleUserRound, Mail,
 } from 'lucide-vue-next';
 
 export const ICONS = {
@@ -142,6 +144,7 @@ export const ICONS = {
   'kind-slides': Presentation,
   'kind-data': Database,
   'kind-records': Contact,
+  'kind-contact': CircleUserRound,
   'kind-qrcode': QrCode,
   'kind-questions': FileQuestionMark,
   'kind-schema': Braces,
@@ -161,6 +164,7 @@ export const ICONS = {
   'milestone': Flag,
   'listening': Ear,
   'call': Phone,
+  'mail': Mail,
   'mute': VolumeX,
   'multiline': Pilcrow,
   'thinking': Brain,

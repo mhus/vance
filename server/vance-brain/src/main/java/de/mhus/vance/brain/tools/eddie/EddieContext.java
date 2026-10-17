@@ -273,6 +273,18 @@ public class EddieContext {
     }
 
     /**
+     * Whether the calling process belongs to an engine that is confined to its
+     * own project as a trust boundary ({@link ThinkEngine#confinedToOwnProject()}).
+     * Narrower than {@link #isPinnedToOwnProject}: a worker sub-process is
+     * pinned against hallucinated project names, but may still read
+     * scope-fixed data outside its project (the user's hub, {@code _tenant});
+     * a confined process may not.
+     */
+    public boolean isConfined(ToolInvocationContext ctx) {
+        return callingProcess(ctx).map(this::confinedEngine).orElse(false);
+    }
+
+    /**
      * The gate of the document tools' id branch, which bypasses
      * {@link #resolveProject}: same tenant, READ on the document itself,
      * and — for a confined engine's process — inside the process's own

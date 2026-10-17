@@ -19,6 +19,8 @@ public interface UsageGate {
      * Admit one attempt or refuse it.
      *
      * @throws LlmBudgetExceededException when a budget forbids the call
+     * @throws de.mhus.vance.brain.ai.power.LlmPowerOffException when an admin
+     *         has switched LLM access off for the tenant or the user
      */
     void admit(CallAttribution attribution, ModelInfo model);
 

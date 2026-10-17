@@ -15,7 +15,7 @@ import {
   File, FileText, Folder, FolderOpen, FolderPlus, Globe, GripVertical, History, House, Image, Inbox,
   Info, KeyRound, LayoutGrid, Link, List, ListFilter, Loader, Lock, LockOpen, LogIn, LogOut, MapPin,
   Maximize2, Menu, MessageSquare, Mic, Minimize2, Minus, Moon, Package, PanelLeft, PanelRight,
-  Paperclip, Palette, Pause, Pencil, Pin, Play, Plus, Redo2, RotateCw, Save, Search, Send, Settings,
+  Paperclip, Palette, Pause, Pencil, Pin, Play, Plus, Power, Redo2, RotateCw, Save, Search, Send, Settings,
   Share, Sparkles, Square, SquareKanban, Star, Sun, Table, Tag, Terminal, TriangleAlert, Trash2,
   Undo2, Upload, User, Users, Volume2, Wrench, X,
   // document kinds and file types
@@ -42,6 +42,7 @@ export const ICONS = {
   'edit': Pencil,
   'close': X,
   'refresh': RotateCw,
+  'power': Power,
   'search': Search,
   'filter': ListFilter,
   'sort': ArrowUpDown,

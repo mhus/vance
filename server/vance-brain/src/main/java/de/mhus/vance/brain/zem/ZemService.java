@@ -90,6 +90,7 @@ public class ZemService {
     private final UsageSink usageSink;
     private final MetricService metricService;
     private final ToolInterruptChecker interruptChecker;
+    private final de.mhus.vance.brain.ai.power.LlmPowerGate powerGate;
 
     // ──────────────────── one-off ────────────────────
 
@@ -113,6 +114,10 @@ public class ZemService {
         }
         String projectId = request.getProjectId();
         String processId = request.getProcessId();
+        String powerOff = powerGate.refusal(tenantId, null, null, processId);
+        if (powerOff != null) {
+            throw new ZemException(ZemException.Reason.DISABLED, powerOff);
+        }
         if (!settingService.getBooleanValueCascade(tenantId, projectId, processId, SETTING_ENABLED, true)) {
             throw new ZemException(
                     ZemException.Reason.DISABLED, "Decisions are disabled in this scope (" + SETTING_ENABLED + ")");

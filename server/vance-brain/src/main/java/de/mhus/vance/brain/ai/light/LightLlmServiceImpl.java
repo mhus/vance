@@ -449,8 +449,8 @@ public class LightLlmServiceImpl implements LightLlmService {
         // A light call has no think-engine, so it is attributed to the
         // synthetic caller `_light`; the recipe names the concrete one
         // (discovery, follow-up, title generation, …).
-        CallAttribution attribution =
-                CallAttribution.light(req.getTenantId(), req.getProjectId(), req.getProcessId(), recipe.name());
+        CallAttribution attribution = CallAttribution.light(
+                req.getTenantId(), req.getProjectId(), req.getProcessId(), recipe.name(), req.getUserId());
         AiChat chat = aiModelService.createChat(behavior, options, attribution);
         AiChatConfig asked = entries.get(0).config();
         return new BuiltChat(

@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.ai;
 
+import de.mhus.vance.brain.ai.power.LlmPowerOffException;
 import de.mhus.vance.shared.llmusage.CallAttribution;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
@@ -30,7 +31,7 @@ public class BudgetGatedStreamingChatModel implements StreamingChatModel {
     public void chat(ChatRequest request, StreamingChatResponseHandler handler) {
         try {
             gate.admit(attribution, modelInfo);
-        } catch (LlmBudgetExceededException refused) {
+        } catch (LlmBudgetExceededException | LlmPowerOffException refused) {
             handler.onError(refused);
             return;
         }

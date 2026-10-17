@@ -104,6 +104,7 @@ public class FenchurchService {
     private final ThinkProcessService thinkProcessService;
     private final de.mhus.vance.brain.ai.UsageSink usageSink;
     private final de.mhus.vance.brain.ai.attachment.AttachmentResolver attachmentResolver;
+    private final de.mhus.vance.brain.ai.power.LlmPowerGate powerGate;
 
     @Value("${vance.fenchurch.scheduler-pool-size:2}")
     private int schedulerPoolSize;
@@ -385,6 +386,10 @@ public class FenchurchService {
     }
 
     private void ensureEnabled(GenerateImageRequest request) {
+        String powerOff = powerGate.refusal(request.getTenantId(), request.getUserId(), null, request.getProcessId());
+        if (powerOff != null) {
+            throw new FenchurchException(FenchurchException.Reason.DISABLED, powerOff);
+        }
         boolean enabled = settingService.getBooleanValueCascade(
                 request.getTenantId(), request.getProjectId(), request.getProcessId(), SETTING_ENABLED, true);
         if (!enabled) {

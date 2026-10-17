@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.ai;
 
+import de.mhus.vance.brain.ai.power.LlmPowerOffException;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
@@ -282,6 +283,12 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
                             + "propagating without retry: {}",
                     entry.label(),
                     errorSummary(error));
+            caller.onError(error);
+            return;
+        }
+        if (error instanceof LlmPowerOffException) {
+            // Switched off for every model, free ones included: advancing
+            // would only collect the same refusal from each entry.
             caller.onError(error);
             return;
         }

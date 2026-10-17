@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.ai;
 
+import de.mhus.vance.brain.ai.power.LlmPowerOffException;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
@@ -226,6 +227,11 @@ public class ResilientChatModel implements ChatModel {
                 try {
                     response = entry.delegate().chat(request);
                 } catch (RuntimeException error) {
+                    if (error instanceof LlmPowerOffException) {
+                        // Holds for every model, free ones included — the
+                        // remaining entries would all be refused the same way.
+                        throw error;
+                    }
                     lastError = error;
                     ToolLimitVerdict verdict = toolLimitVerdict(request, entry, error);
                     if (verdict != null) {

@@ -39,6 +39,7 @@ export const INSIGHTS_TOP_TABS = [
   'leases',
   'addons',
   'usage',
+  'power',
 ] as const;
 
 export type InsightsTopTab = (typeof INSIGHTS_TOP_TABS)[number];

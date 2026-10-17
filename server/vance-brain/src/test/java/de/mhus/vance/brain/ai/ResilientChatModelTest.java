@@ -3,6 +3,7 @@ package de.mhus.vance.brain.ai;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import de.mhus.vance.brain.ai.power.LlmPowerOffException;
 import de.mhus.vance.shared.llmusage.BudgetScope;
 import de.mhus.vance.shared.llmusage.BudgetWindow;
 import de.mhus.vance.shared.llmusage.LlmBudgetService;
@@ -209,6 +210,22 @@ class ResilientChatModelTest {
         assertThat(model.chat(REQUEST).aiMessage().text()).isEqualTo("from the free model");
         assertThat(first.get()).isEqualTo(1);
         assertThat(second.get()).isEqualTo(1);
+    }
+
+    // ──────────────────── power switch ────────────────────
+
+    @Test
+    void a_power_refusal_ends_the_chain_without_advancing() {
+        AtomicInteger first = new AtomicInteger();
+        AtomicInteger second = new AtomicInteger();
+        LlmPowerOffException refusal = new LlmPowerOffException("switched off");
+        ResilientChatModel model = new ResilientChatModel(List.of(
+                entry("openai:a", scripted(first, refusal)),
+                entry("ollama:local", scripted(second, response("from the free model")))));
+
+        assertThatThrownBy(() -> model.chat(REQUEST)).isSameAs(refusal);
+        assertThat(first.get()).isEqualTo(1);
+        assertThat(second.get()).isZero();
     }
 
     // ──────────────────── empty replies ────────────────────

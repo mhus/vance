@@ -2,6 +2,7 @@ package de.mhus.vance.brain.ai;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import de.mhus.vance.brain.ai.power.LlmPowerOffException;
 import de.mhus.vance.shared.llmusage.BudgetScope;
 import de.mhus.vance.shared.llmusage.BudgetWindow;
 import de.mhus.vance.shared.llmusage.LlmBudgetService;
@@ -338,6 +339,46 @@ class ResilientStreamingChatModelTest {
         assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
         assertThat(errored.get()).isSameAs(refusal);
         assertThat(calls.get()).isEqualTo(1);
+    }
+
+    @Test
+    void powerRefusal_endsTheChain_withoutAdvancingToTheFallback() throws Exception {
+        AtomicInteger first = new AtomicInteger();
+        AtomicInteger second = new AtomicInteger();
+        LlmPowerOffException refusal = new LlmPowerOffException("switched off");
+        StreamingChatModel refusing = new StreamingChatModel() {
+            @Override
+            public void chat(ChatRequest request, StreamingChatResponseHandler handler) {
+                first.incrementAndGet();
+                handler.onError(refusal);
+            }
+        };
+        ResilientStreamingChatModel model = new ResilientStreamingChatModel(List.of(
+                new ChainEntry(refusing, "primary", FAST),
+                new ChainEntry(scripted(second, response("from the free model")), "fallback", FAST)));
+
+        AtomicReference<Throwable> errored = new AtomicReference<>();
+        CountDownLatch done = new CountDownLatch(1);
+        model.chat(REQUEST, new StreamingChatResponseHandler() {
+            @Override
+            public void onPartialResponse(String partial) {}
+
+            @Override
+            public void onCompleteResponse(ChatResponse complete) {
+                done.countDown();
+            }
+
+            @Override
+            public void onError(Throwable error) {
+                errored.set(error);
+                done.countDown();
+            }
+        });
+
+        assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(errored.get()).isSameAs(refusal);
+        assertThat(first.get()).isEqualTo(1);
+        assertThat(second.get()).isZero();
     }
 
     private static StreamingChatResponseHandler completeOnly(AtomicReference<String> delivered, CountDownLatch done) {

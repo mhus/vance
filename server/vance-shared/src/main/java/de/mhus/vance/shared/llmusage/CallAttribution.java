@@ -36,6 +36,12 @@ import org.jspecify.annotations.Nullable;
  *                   that word means a foreign inbound source (Zarniwoop,
  *                   Centauri, Jaglan), which is the opposite direction
  * @param recipeName recipe in effect, {@code null} when none applies
+ * @param userId     the user on whose behalf the call runs, when the caller
+ *                   knows it directly. {@code null} does not mean "nobody":
+ *                   a call inside a session or process belongs to that
+ *                   session's user, and readers that need the user resolve
+ *                   it from there (the LLM power gate does). Not booked
+ *                   into the ledger.
  */
 public record CallAttribution(
         String tenantId,
@@ -43,7 +49,8 @@ public record CallAttribution(
         @Nullable String sessionId,
         @Nullable String processId,
         String caller,
-        @Nullable String recipeName) {
+        @Nullable String recipeName,
+        @Nullable String userId) {
 
     public CallAttribution {
         if (tenantId == null || tenantId.isBlank()) {
@@ -52,6 +59,17 @@ public record CallAttribution(
         if (caller == null || caller.isBlank()) {
             throw new IllegalArgumentException("CallAttribution.caller is required");
         }
+    }
+
+    /** Attribution without a directly known user — see {@code userId}. */
+    public CallAttribution(
+            String tenantId,
+            @Nullable String projectId,
+            @Nullable String sessionId,
+            @Nullable String processId,
+            String caller,
+            @Nullable String recipeName) {
+        this(tenantId, projectId, sessionId, processId, caller, recipeName, null);
     }
 
     /** Attribution for a call issued by a think-engine on behalf of {@code process}. */
@@ -72,21 +90,26 @@ public record CallAttribution(
      * though every row says {@code _light}.
      */
     public static CallAttribution light(
+            String tenantId, @Nullable String projectId, @Nullable String processId, String recipeName) {
+        return light(tenantId, projectId, processId, recipeName, null);
+    }
+
+    /** {@link #light(String, String, String, String)} for a caller that knows the user. */
+    public static CallAttribution light(
             String tenantId,
             @Nullable String projectId,
             @Nullable String processId,
-            String recipeName) {
+            String recipeName,
+            @Nullable String userId) {
         return new CallAttribution(
-                tenantId, projectId, null, processId,
-                LlmUsageService.CALLER_LIGHT, recipeName);
+                tenantId, projectId, null, processId, LlmUsageService.CALLER_LIGHT, recipeName, userId);
     }
 
     /**
      * Attribution for an internal service call outside any process —
      * {@code caller} names the subsystem ({@code _fenchurch}, {@code _rag}).
      */
-    public static CallAttribution ofService(
-            String tenantId, @Nullable String projectId, String caller) {
+    public static CallAttribution ofService(String tenantId, @Nullable String projectId, String caller) {
         return new CallAttribution(tenantId, projectId, null, null, caller, null);
     }
 }

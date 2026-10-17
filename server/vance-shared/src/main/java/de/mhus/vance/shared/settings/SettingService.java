@@ -67,6 +67,24 @@ public class SettingService {
         return repository.findByTenantIdAndKey(tenantId, key);
     }
 
+    /**
+     * Every setting in one scope whose key starts with {@code keyPrefix} —
+     * a single query, for readers that own a key family and poll it.
+     */
+    public List<SettingDocument> findByPrefix(
+            String tenantId, String referenceType, String referenceId, String keyPrefix) {
+        if (keyPrefix == null || keyPrefix.isEmpty()) return List.of();
+        Query query = new Query(Criteria.where("tenantId")
+                .is(tenantId)
+                .and("referenceType")
+                .is(referenceType)
+                .and("referenceId")
+                .is(referenceId)
+                .and("key")
+                .regex("^" + Pattern.quote(keyPrefix)));
+        return mongoTemplate.find(query, SettingDocument.class);
+    }
+
     public boolean exists(String tenantId, String referenceType, String referenceId, String key) {
         return repository.existsByTenantIdAndReferenceTypeAndReferenceIdAndKey(
                 tenantId, referenceType, referenceId, key);

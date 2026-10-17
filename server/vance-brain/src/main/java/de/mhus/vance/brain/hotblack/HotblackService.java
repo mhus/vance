@@ -116,6 +116,7 @@ public class HotblackService {
     private final ThinkProcessService thinkProcessService;
     private final de.mhus.vance.brain.ai.UsageSink usageSink;
     private final AttachmentResolver attachmentResolver;
+    private final de.mhus.vance.brain.ai.power.LlmPowerGate powerGate;
 
     @Value("${vance.hotblack.scheduler-pool-size:2}")
     private int schedulerPoolSize;
@@ -153,6 +154,7 @@ public class HotblackService {
                 MODALITY_TTS,
                 SETTING_TTS_ENABLED,
                 request.getTenantId(),
+                request.getUserId(),
                 request.getProjectId(),
                 request.getProcessId());
 
@@ -342,6 +344,7 @@ public class HotblackService {
                 MODALITY_STT,
                 SETTING_STT_ENABLED,
                 request.getTenantId(),
+                request.getUserId(),
                 request.getProjectId(),
                 request.getProcessId());
 
@@ -520,7 +523,12 @@ public class HotblackService {
     public AnalyzeAudioResult analyze(AnalyzeAudioRequest request) {
         validateScope(request.getTenantId(), request.getPrompt(), "prompt");
         ensureEnabled(
-                MODALITY_AU, SETTING_AU_ENABLED, request.getTenantId(), request.getProjectId(), request.getProcessId());
+                MODALITY_AU,
+                SETTING_AU_ENABLED,
+                request.getTenantId(),
+                request.getUserId(),
+                request.getProjectId(),
+                request.getProcessId());
 
         AudioSource source = resolveAudioSource(request);
 
@@ -689,6 +697,7 @@ public class HotblackService {
                 MODALITY_MUSIC,
                 SETTING_MUSIC_ENABLED,
                 request.getTenantId(),
+                request.getUserId(),
                 request.getProjectId(),
                 request.getProcessId());
 
@@ -872,8 +881,13 @@ public class HotblackService {
             String modality,
             String settingKey,
             String tenantId,
+            @Nullable String userId,
             @Nullable String projectId,
             @Nullable String processId) {
+        String powerOff = powerGate.refusal(tenantId, userId, null, processId);
+        if (powerOff != null) {
+            throw new HotblackException(HotblackException.Reason.DISABLED, powerOff);
+        }
         boolean global = settingService.getBooleanValueCascade(tenantId, projectId, processId, SETTING_ENABLED, true);
         if (!global) {
             throw new HotblackException(

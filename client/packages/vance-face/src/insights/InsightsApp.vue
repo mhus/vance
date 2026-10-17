@@ -55,6 +55,7 @@ import UrsahooksTab from './UrsahooksTab.vue';
 import WorkflowsTab from './WorkflowsTab.vue';
 import RagTab from './RagTab.vue';
 import UsageCostTab from './UsageCostTab.vue';
+import PowerTab from './PowerTab.vue';
 import ZarniwoopTab from './ZarniwoopTab.vue';
 import ToolUsageTab from './ToolUsageTab.vue';
 import MegadodoTab from './MegadodoTab.vue';
@@ -195,6 +196,7 @@ const ALL_TABS: ReadonlyArray<{ key: TopTab; label: string }> = [
   { key: 'leases', label: 'Leases' },
   { key: 'addons', label: 'Addons' },
   { key: 'usage', label: 'Usage & Cost' },
+  { key: 'power', label: 'Power' },
 ];
 
 const tabBarRef = ref<HTMLDivElement | null>(null);
@@ -958,7 +960,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
       </div>
 
       <div
-        v-if="topTab !== 'sessions' && topTab !== 'cluster' && topTab !== 'trillian' && topTab !== 'addons' && topTab !== 'leases' && topTab !== 'usage' && projectContextSource"
+        v-if="topTab !== 'sessions' && topTab !== 'cluster' && topTab !== 'trillian' && topTab !== 'addons' && topTab !== 'leases' && topTab !== 'usage' && topTab !== 'power' && projectContextSource"
         class="text-xs opacity-70 -mt-1 mb-1"
       >
         Showing
@@ -988,6 +990,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
       <LeasesTab v-else-if="topTab === 'leases'" />
       <AddonsTab v-else-if="topTab === 'addons'" />
       <UsageCostTab v-else-if="topTab === 'usage'" />
+      <PowerTab v-else-if="topTab === 'power'" />
 
       <template v-else-if="topTab === 'sessions'">
         <VEmptyState

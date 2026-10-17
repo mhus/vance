@@ -83,7 +83,16 @@ class ZemServiceTest {
                 .thenReturn(Optional.of(JEV));
         when(decisions.canServe("openrouter", "openai")).thenReturn(true);
         service = new ZemService(
-                settings, recipes, resolver, catalog, decisions, new ZemThrottle(), usageSink, metrics, interrupts);
+                settings,
+                recipes,
+                resolver,
+                catalog,
+                decisions,
+                new ZemThrottle(),
+                usageSink,
+                metrics,
+                interrupts,
+                mock(de.mhus.vance.brain.ai.power.LlmPowerGate.class));
     }
 
     private static ZemQuestionDto noul(String name) {

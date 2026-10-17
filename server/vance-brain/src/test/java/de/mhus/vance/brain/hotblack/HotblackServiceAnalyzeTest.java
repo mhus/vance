@@ -87,7 +87,8 @@ class HotblackServiceAnalyzeTest {
                 mock(ProgressEmitter.class),
                 mock(ThinkProcessService.class),
                 mock(de.mhus.vance.brain.ai.UsageSink.class),
-                null);
+                null,
+                mock(de.mhus.vance.brain.ai.power.LlmPowerGate.class));
     }
 
     private static AiModelResolver.Resolved resolved() {

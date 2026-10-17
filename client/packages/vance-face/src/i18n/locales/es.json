@@ -574,7 +574,7 @@
     "chat": {
       "title": "Chat",
       "description": "Chat en vivo con el cerebro a través de WebSocket. Elige una sesión existente o inicia una nueva en cualquier proyecto.",
-      "llmNotConfigured": "Aún no hay un modelo de lenguaje configurado para este Tenant (ai.default.provider / ai.default.model) — los chats fallarán hasta que un administrador configure uno."
+      "llmNotConfigured": "Este Tenant no tiene un modelo de lenguaje predeterminado (ai.default.provider / ai.default.model). Los chats fallarán a menos que su proyecto establezca su propio modelo o un administrador establezca un valor predeterminado para el Tenant."
     },
     "documents": {
       "title": "Documentos",
@@ -608,6 +608,35 @@
     "composer": {
       "showTools": "Mostrar herramientas",
       "hideTools": "Ocultar herramientas"
+    },
+    "modelPicker": {
+      "button": "Modelo y razonamiento",
+      "buttonState": "Modelo: {model} · razonamiento: {level}",
+      "title": "Modelo y razonamiento",
+      "description": "Se aplica a este chat a partir del siguiente turno. Los nuevos chats comienzan de nuevo con el valor predeterminado de la Recipe.",
+      "filter": "Filtrar modelos…",
+      "loading": "Cargando modelos…",
+      "recipeDefault": "Predeterminado de la Recipe",
+      "noModels": "No hay modelos coincidentes",
+      "noModelsBody": "Cambia el filtro o pregunta a un administrador qué modelos están permitidos aquí.",
+      "small": "pequeño",
+      "large": "grande",
+      "context": "{n} contexto",
+      "reasoning": "razonamiento",
+      "noPrice": "sin precio",
+      "reasoningLevel": "Nivel de razonamiento",
+      "noReasoning": "Este modelo no tiene razonamiento ajustable.",
+      "cancel": "Cancelar",
+      "apply": "Aplicar",
+      "commandFailed": "//{verb} falló",
+      "modelError": "El modelo actual no se puede usar: {error} — elige otro modelo o el predeterminado de la Recipe.",
+      "level": {
+        "off": "Desactivado",
+        "minimal": "Mínimo",
+        "low": "Bajo",
+        "medium": "Medio",
+        "high": "Alto"
+      }
     },
     "breadcrumb": {
       "unnamedSession": "Sesión"
@@ -1126,6 +1155,14 @@
       "close": "Cerrar",
       "previewTitle": "Versión de {when}",
       "previewBinary": "Vista previa no disponible para este tipo de archivo; por favor, descarga.",
+      "compare": "Comparar con el actual",
+      "diffTitle": "Cambios desde la versión de {when}",
+      "diffDescription": "Versión archivada (−) contra el documento actual (+).",
+      "diffDescriptionUnsaved": "Versión archivada (−) contra el documento actual (+), incluyendo ediciones no guardadas.",
+      "diffIdentical": "Sin diferencias.",
+      "diffShowUnchanged": "Mostrar {count} líneas sin cambios",
+      "diffShowMore": "Mostrar {count} líneas más ({total} no mostradas)",
+      "diffTooLarge": "Demasiado grande para comparar aquí: {lines} líneas en total, el límite es {max}. Descarga ambas versiones para compararlas.",
       "confirmRestoreTitle": "¿Restaurar esta versión?",
       "confirmRestoreBody": "El contenido actual se archiva como una nueva versión, luego esta versión anterior se convierte en el documento activo. Nada se pierde.",
       "confirmDeleteTitle": "¿Eliminar esta versión permanentemente?",
@@ -1566,6 +1603,77 @@
       "noMatch": "Ninguna Recipe coincide con los filtros actuales.",
       "skillsDefault": "{count} por defecto",
       "skillsWhitelist": "· lista blanca {count}"
+    },
+    "models": {
+      "pickProject": "Elige un proyecto en la barra lateral para ver sus modelos.",
+      "loading": "Cargando modelos…",
+      "reload": "Recargar",
+      "emptyHeadline": "No hay modelos en el catálogo",
+      "emptyBody": "Ni el catálogo incluido ni ninguna capa de Tenant o proyecto lista un modelo para este proyecto.",
+      "search": "Buscar",
+      "searchPlaceholder": "instancia, modelo, capacidad…",
+      "kind": "Tipo",
+      "allKinds": "Todos los tipos ({n})",
+      "kindOption": "{kind} ({n})",
+      "usableOnly": "Ocultar modelos de chat que el selector no ofrece",
+      "count": "{shown} / {total}",
+      "projectHeading": "Este proyecto",
+      "defaultModel": "Modelo predeterminado",
+      "defaultModelHint": "ai.default.provider / ai.default.model",
+      "defaultMissing": "no resoluble",
+      "allowlist": "Lista de permitidos del chat",
+      "allowlistHint": "chat.allowed-models — limita lo que ofrece el selector de modelos",
+      "aliasesHeading": "Alias",
+      "aliasesHint": "ai.alias.* tal como los ve este proyecto, resueltos aquí.",
+      "noAliases": "No se ha establecido ningún alias; las Recipes recurren al modelo predeterminado.",
+      "colAlias": "Alias",
+      "colTarget": "Configuración",
+      "colDefinedIn": "Establecido en",
+      "colResolves": "Resuelve a",
+      "viaTenantDefault": "a través del modelo predeterminado",
+      "modelsHeading": "Catálogo",
+      "modelsHint": "Catálogo de modelos fusionado de este proyecto, todas las modalidades. Haz clic en un modelo para ver sus campos y de dónde proviene cada uno.",
+      "colModel": "Modelo",
+      "colKind": "Tipo",
+      "colSize": "Tamaño",
+      "colContext": "Contexto",
+      "colPrice": "Precio / 1M tokens",
+      "colCapabilities": "Capacidades",
+      "colOrigin": "Origen",
+      "colStatus": "Estado",
+      "noMatch": "Ningún modelo coincide con los filtros actuales.",
+      "discovered": "descubierto",
+      "discoveredTitle": "Contiene campos escritos por el descubrimiento de modelos",
+      "statusUsable": "utilizable",
+      "statusUsableTitle": "Ofrecido por el selector de modelos en este proyecto",
+      "statusNoInstance": "sin credenciales",
+      "statusNoInstanceTitle": "La instancia del proveedor no tiene clave API (o, sin clave, sin URL base) en este proyecto",
+      "statusNotAllowed": "no permitido",
+      "statusNotAllowedTitle": "No aprobado por chat.allowed-models",
+      "detailTitle": "Modelo {spec}",
+      "detailDescription": "Campos de catálogo fusionados y la capa de la que proviene cada uno — la capa más interna que establece un campo gana.",
+      "detailLoading": "Cargando campos…",
+      "detailAliases": "Alias que apuntan aquí",
+      "detailFields": "Documento del modelo",
+      "detailProvider": "Instancia del proveedor ({instance})",
+      "detailNoProvider": "No hay _provider.yaml para esta instancia.",
+      "colField": "Campo",
+      "colValue": "Valor",
+      "colLayer": "Capa",
+      "close": "Cerrar",
+      "layer": {
+        "BUNDLED": "incluido",
+        "SYSTEM_AUTO": "sistema · descubierto",
+        "SYSTEM": "sistema",
+        "TENANT_AUTO": "Tenant · descubierto",
+        "TENANT": "Tenant",
+        "PROJECT_AUTO": "proyecto · descubierto",
+        "PROJECT": "proyecto"
+      },
+      "definedIn": {
+        "PROJECT": "proyecto",
+        "TENANT": "Tenant"
+      }
     },
     "rag": {
       "noProjectHeadline": "Ningún proyecto seleccionado",
@@ -2264,7 +2372,11 @@
     },
     "errors": {
       "parametersMustBeObject": "Los parámetros deben ser un objeto JSON.",
-      "parametersInvalidJson": "Parámetros: JSON inválido — {message}"
+      "parametersInvalidJson": "Parámetros: JSON inválido — {message}",
+      "loadTypesFailed": "No se pudieron cargar los tipos de herramientas.",
+      "testFailed": "La prueba de conexión falló.",
+      "loginFailed": "No se pudo iniciar sesión.",
+      "logoutFailed": "No se pudo cerrar sesión."
     },
     "mcp": {
       "serverTitle": "Servidor MCP",
@@ -3832,7 +3944,11 @@
       },
       "serverTools": {
         "title": "Herramientas del servidor",
-        "createHint": "Nombre en snake_case (letras minúsculas, dígitos, _) — se convierte en el nombre del archivo y de la herramienta. Una nueva herramienta comienza como un servidor MCP deshabilitado: rellena el servidor y luego habilítala."
+        "createHint": "Nombre en snake_case (letras minúsculas, dígitos, _) — se convierte en el nombre del archivo y de la herramienta. Una nueva herramienta comienza como un servidor MCP deshabilitado: rellena el servidor y luego habilítala.",
+        "errors": {
+          "userScope": "Las herramientas de servidor existen para el tenant y para los proyectos, no por usuario.",
+          "invalidName": "El nombre de una herramienta es snake_case: letras minúsculas, dígitos y _."
+        }
       },
       "hooks": {
         "title": "Hooks",

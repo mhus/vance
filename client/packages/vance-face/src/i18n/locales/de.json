@@ -574,7 +574,7 @@
     "chat": {
       "title": "Chat",
       "description": "Live-Chat mit dem Brain über WebSocket. Bestehende Session auswählen oder eine neue in einem beliebigen Projekt starten.",
-      "llmNotConfigured": "Für diesen Mandanten ist noch kein Sprachmodell konfiguriert (ai.default.provider / ai.default.model) – Chats schlagen fehl, bis ein Administrator eines einrichtet."
+      "llmNotConfigured": "Dieser Tenant hat kein Standard-Sprachmodell (ai.default.provider / ai.default.model). Chats schlagen fehl, es sei denn, ihr Projekt legt ein eigenes Modell fest oder ein Admin setzt einen Tenant-Standard."
     },
     "documents": {
       "title": "Dokumente",
@@ -608,6 +608,35 @@
     "composer": {
       "showTools": "Tools anzeigen",
       "hideTools": "Tools ausblenden"
+    },
+    "modelPicker": {
+      "button": "Modell und Reasoning",
+      "buttonState": "Modell: {model} · Reasoning: {level}",
+      "title": "Modell und Reasoning",
+      "description": "Gilt für diesen Chat ab der nächsten Runde. Neue Chats beginnen wieder mit dem Recipe-Standard.",
+      "filter": "Modelle filtern…",
+      "loading": "Modelle werden geladen…",
+      "recipeDefault": "Recipe-Standard",
+      "noModels": "Keine passenden Modelle",
+      "noModelsBody": "Ändere den Filter, oder frage einen Admin, welche Modelle hier erlaubt sind.",
+      "small": "klein",
+      "large": "groß",
+      "context": "{n} Kontext",
+      "reasoning": "Reasoning",
+      "noPrice": "kein Preis",
+      "reasoningLevel": "Reasoning-Level",
+      "noReasoning": "Dieses Modell hat kein einstellbares Reasoning.",
+      "cancel": "Abbrechen",
+      "apply": "Anwenden",
+      "commandFailed": "//{verb} fehlgeschlagen",
+      "modelError": "Das aktuelle Modell kann nicht verwendet werden: {error} — wähle ein anderes Modell oder den Recipe-Standard.",
+      "level": {
+        "off": "Aus",
+        "minimal": "Minimal",
+        "low": "Niedrig",
+        "medium": "Mittel",
+        "high": "Hoch"
+      }
     },
     "breadcrumb": {
       "unnamedSession": "Session"
@@ -1126,6 +1155,14 @@
       "close": "Schließen",
       "previewTitle": "Version vom {when}",
       "previewBinary": "Vorschau für diesen Dateityp nicht möglich — bitte herunterladen.",
+      "compare": "Mit aktueller Version vergleichen",
+      "diffTitle": "Änderungen seit Version vom {when}",
+      "diffDescription": "Archivierte Version (−) gegen das aktuelle Dokument (+).",
+      "diffDescriptionUnsaved": "Archivierte Version (−) gegen das aktuelle Dokument (+), inklusive ungespeicherter Änderungen.",
+      "diffIdentical": "Keine Unterschiede.",
+      "diffShowUnchanged": "{count} unveränderte Zeilen anzeigen",
+      "diffShowMore": "{count} weitere Zeilen anzeigen ({total} nicht gezeigt)",
+      "diffTooLarge": "Zu groß für den Vergleich hier: {lines} Zeilen insgesamt, das Limit ist {max}. Lade beide Versionen herunter, um sie zu vergleichen.",
       "confirmRestoreTitle": "Diese Version wiederherstellen?",
       "confirmRestoreBody": "Der aktuelle Inhalt wird als neue Version archiviert, danach wird diese ältere Version zum aktiven Dokument. Es geht nichts verloren.",
       "confirmDeleteTitle": "Diese Version dauerhaft löschen?",
@@ -1566,6 +1603,77 @@
       "noMatch": "Kein Recipe passt zu den Filtern.",
       "skillsDefault": "{count} Standard",
       "skillsWhitelist": "· Whitelist {count}"
+    },
+    "models": {
+      "pickProject": "Wähle ein Projekt in der Seitenleiste, um dessen Modelle zu sehen.",
+      "loading": "Modelle werden geladen…",
+      "reload": "Neu laden",
+      "emptyHeadline": "Keine Modelle im Katalog",
+      "emptyBody": "Weder der gebündelte Katalog noch eine Tenant- oder Projektebene listet ein Modell für dieses Projekt auf.",
+      "search": "Suchen",
+      "searchPlaceholder": "Instanz, Modell, Fähigkeit…",
+      "kind": "Art",
+      "allKinds": "Alle Arten ({n})",
+      "kindOption": "{kind} ({n})",
+      "usableOnly": "Chat-Modelle ausblenden, die der Picker nicht anbietet",
+      "count": "{shown} / {total}",
+      "projectHeading": "Dieses Projekt",
+      "defaultModel": "Standardmodell",
+      "defaultModelHint": "ai.default.provider / ai.default.model",
+      "defaultMissing": "nicht auflösbar",
+      "allowlist": "Chat-Zulassungsliste",
+      "allowlistHint": "chat.allowed-models — begrenzt, was der Modell-Picker anbietet",
+      "aliasesHeading": "Aliase",
+      "aliasesHint": "ai.alias.*, wie dieses Projekt sie sieht, hier aufgelöst.",
+      "noAliases": "Kein Alias gesetzt — Recipes greifen auf das Standardmodell zurück.",
+      "colAlias": "Alias",
+      "colTarget": "Einstellung",
+      "colDefinedIn": "Gesetzt in",
+      "colResolves": "Löst auf zu",
+      "viaTenantDefault": "via Standardmodell",
+      "modelsHeading": "Katalog",
+      "modelsHint": "Zusammengeführter Modellkatalog dieses Projekts, alle Modalitäten. Klicke auf ein Modell für seine Felder und deren Herkunft.",
+      "colModel": "Modell",
+      "colKind": "Art",
+      "colSize": "Größe",
+      "colContext": "Kontext",
+      "colPrice": "Preis / 1M Tokens",
+      "colCapabilities": "Fähigkeiten",
+      "colOrigin": "Herkunft",
+      "colStatus": "Status",
+      "noMatch": "Keine Modelle entsprechen den aktuellen Filtern.",
+      "discovered": "entdeckt",
+      "discoveredTitle": "Enthält Felder, die durch Modell-Erkennung geschrieben wurden",
+      "statusUsable": "nutzbar",
+      "statusUsableTitle": "Wird vom Modell-Picker in diesem Projekt angeboten",
+      "statusNoInstance": "keine Anmeldedaten",
+      "statusNoInstanceTitle": "Die Provider-Instanz hat keinen API-Schlüssel (oder, schlüssellos, keine Basis-URL) in diesem Projekt",
+      "statusNotAllowed": "nicht erlaubt",
+      "statusNotAllowedTitle": "Nicht durch chat.allowed-models genehmigt",
+      "detailTitle": "Modell {spec}",
+      "detailDescription": "Zusammengeführte Katalogfelder und die Ebene, von der jedes stammt — die innerste Ebene, die ein Feld setzt, gewinnt.",
+      "detailLoading": "Felder werden geladen…",
+      "detailAliases": "Aliase, die hierher zeigen",
+      "detailFields": "Modelldokument",
+      "detailProvider": "Provider-Instanz ({instance})",
+      "detailNoProvider": "Kein _provider.yaml für diese Instanz.",
+      "colField": "Feld",
+      "colValue": "Wert",
+      "colLayer": "Ebene",
+      "close": "Schließen",
+      "layer": {
+        "BUNDLED": "gebündelt",
+        "SYSTEM_AUTO": "System · entdeckt",
+        "SYSTEM": "System",
+        "TENANT_AUTO": "Tenant · entdeckt",
+        "TENANT": "Tenant",
+        "PROJECT_AUTO": "Projekt · entdeckt",
+        "PROJECT": "Projekt"
+      },
+      "definedIn": {
+        "PROJECT": "Projekt",
+        "TENANT": "Tenant"
+      }
     },
     "rag": {
       "noProjectHeadline": "Kein Projekt ausgewählt",
@@ -2264,7 +2372,11 @@
     },
     "errors": {
       "parametersMustBeObject": "Parameter müssen ein JSON-Objekt sein.",
-      "parametersInvalidJson": "Parameter: ungültiges JSON — {message}"
+      "parametersInvalidJson": "Parameter: ungültiges JSON — {message}",
+      "loadTypesFailed": "Die Tool-Typen konnten nicht geladen werden.",
+      "testFailed": "Verbindungstest fehlgeschlagen.",
+      "loginFailed": "Login konnte nicht gestartet werden.",
+      "logoutFailed": "Logout fehlgeschlagen."
     },
     "mcp": {
       "serverTitle": "MCP-Server",
@@ -3832,7 +3944,11 @@
       },
       "serverTools": {
         "title": "Server-Tools",
-        "createHint": "Snake_case-Name (Kleinbuchstaben, Ziffern, _) — er wird zum Dateinamen und Tool-Namen. Ein neues Tool startet als deaktivierter MCP-Server: fülle den Server aus, dann aktiviere es."
+        "createHint": "Snake_case-Name (Kleinbuchstaben, Ziffern, _) — er wird zum Dateinamen und Tool-Namen. Ein neues Tool startet als deaktivierter MCP-Server: fülle den Server aus, dann aktiviere es.",
+        "errors": {
+          "userScope": "Server-Tools existieren für den Mandanten und für Projekte, nicht pro Benutzer.",
+          "invalidName": "Ein Tool-Name ist snake_case: Kleinbuchstaben, Ziffern und Unterstrich."
+        }
       },
       "hooks": {
         "title": "Hooks",

@@ -574,7 +574,7 @@
     "chat": {
       "title": "Czat",
       "description": "Czat na żywo z mózgiem przez WebSocket. Wybierz istniejącą sesję lub rozpocznij nową w dowolnym projekcie.",
-      "llmNotConfigured": "Dla tego Tenanta nie skonfigurowano jeszcze modelu językowego (ai.default.provider / ai.default.model) — czaty będą kończyć się niepowodzeniem, dopóki administrator go nie ustawi."
+      "llmNotConfigured": "Ten Tenant nie ma domyślnego modelu językowego (ai.default.provider / ai.default.model). Czaty nie będą działać, chyba że ich projekt ustawi własny model lub administrator ustawi domyślny dla Tenanta."
     },
     "documents": {
       "title": "Dokumenty",
@@ -608,6 +608,35 @@
     "composer": {
       "showTools": "Pokaż narzędzia",
       "hideTools": "Ukryj narzędzia"
+    },
+    "modelPicker": {
+      "button": "Model i rozumowanie",
+      "buttonState": "Model: {model} · rozumowanie: {level}",
+      "title": "Model i rozumowanie",
+      "description": "Dotyczy tego czatu od następnej tury. Nowe czaty ponownie rozpoczynają się z domyślnym modelem Recipe.",
+      "filter": "Filtruj modele…",
+      "loading": "Ładowanie modeli…",
+      "recipeDefault": "Domyślny Recipe",
+      "noModels": "Brak pasujących modeli",
+      "noModelsBody": "Zmień filtr lub zapytaj administratora, które modele są tutaj dozwolone.",
+      "small": "mały",
+      "large": "duży",
+      "context": "{n} kontekst | {n} konteksty | {n} kontekstów",
+      "reasoning": "rozumowanie",
+      "noPrice": "bez ceny",
+      "reasoningLevel": "Poziom rozumowania",
+      "noReasoning": "Ten model nie ma regulowanego rozumowania.",
+      "cancel": "Anuluj",
+      "apply": "Zastosuj",
+      "commandFailed": "//{verb} nie powiodło się",
+      "modelError": "Bieżący model nie może być użyty: {error} — wybierz inny model lub domyślny Recipe.",
+      "level": {
+        "off": "Wyłączone",
+        "minimal": "Minimalny",
+        "low": "Niski",
+        "medium": "Średni",
+        "high": "Wysoki"
+      }
     },
     "breadcrumb": {
       "unnamedSession": "Sesja"
@@ -1126,6 +1155,14 @@
       "close": "Zamknij",
       "previewTitle": "Wersja z {when}",
       "previewBinary": "Podgląd niedostępny dla tego typu pliku — pobierz.",
+      "compare": "Porównaj z bieżącym",
+      "diffTitle": "Zmiany od wersji z {when}",
+      "diffDescription": "Wersja zarchiwizowana (−) kontra bieżący dokument (+).",
+      "diffDescriptionUnsaved": "Wersja zarchiwizowana (−) kontra bieżący dokument (+), w tym niezapisane edycje.",
+      "diffIdentical": "Brak różnic.",
+      "diffShowUnchanged": "Pokaż {count} niezmienioną linię | Pokaż {count} niezmienione linie | Pokaż {count} niezmienionych linii",
+      "diffShowMore": "Pokaż {count} więcej linii ({total} nie pokazano) | Pokaż {count} więcej linii ({total} nie pokazano) | Pokaż {count} więcej linii ({total} nie pokazano)",
+      "diffTooLarge": "Za duże do porównania tutaj: {lines} linii razem, limit to {max}. Pobierz obie wersje, aby je porównać.",
       "confirmRestoreTitle": "Przywrócić tę wersję?",
       "confirmRestoreBody": "Bieżąca zawartość zostanie zarchiwizowana jako nowa wersja, a następnie ta starsza wersja stanie się aktywnym dokumentem. Nic nie zostanie utracone.",
       "confirmDeleteTitle": "Usunąć tę wersję na stałe?",
@@ -1566,6 +1603,77 @@
       "noMatch": "Brak przepisów pasujących do bieżących filtrów.",
       "skillsDefault": "{count} domyślny | {count} domyślne | {count} domyślnych",
       "skillsWhitelist": "· biała lista {count}"
+    },
+    "models": {
+      "pickProject": "Wybierz projekt na pasku bocznym, aby zobaczyć jego modele.",
+      "loading": "Ładowanie modeli…",
+      "reload": "Przeładuj",
+      "emptyHeadline": "Brak modeli w katalogu",
+      "emptyBody": "Ani dołączony katalog, ani żadna warstwa Tenanta lub projektu nie zawiera modelu dla tego projektu.",
+      "search": "Szukaj",
+      "searchPlaceholder": "instancja, model, zdolność…",
+      "kind": "Rodzaj",
+      "allKinds": "Wszystkie rodzaje ({n})",
+      "kindOption": "{kind} ({n})",
+      "usableOnly": "Ukryj modele czatu, których nie oferuje selektor",
+      "count": "{shown} / {total}",
+      "projectHeading": "Ten projekt",
+      "defaultModel": "Domyślny model",
+      "defaultModelHint": "ai.default.provider / ai.default.model",
+      "defaultMissing": "nierozwiązywalny",
+      "allowlist": "Lista dozwolonych czatów",
+      "allowlistHint": "chat.allowed-models — ogranicza to, co oferuje selektor modeli",
+      "aliasesHeading": "Aliasy",
+      "aliasesHint": "ai.alias.* tak, jak widzi je ten projekt, rozwiązane tutaj.",
+      "noAliases": "Nie ustawiono aliasu — Recipes wracają do domyślnego modelu.",
+      "colAlias": "Alias",
+      "colTarget": "Ustawienie",
+      "colDefinedIn": "Ustawiono w",
+      "colResolves": "Rozwiązuje się do",
+      "viaTenantDefault": "przez domyślny model",
+      "modelsHeading": "Katalog",
+      "modelsHint": "Połączony katalog modeli tego projektu, wszystkie modalności. Kliknij model, aby zobaczyć jego pola i skąd pochodzi każde z nich.",
+      "colModel": "Model",
+      "colKind": "Rodzaj",
+      "colSize": "Rozmiar",
+      "colContext": "Kontekst",
+      "colPrice": "Cena / 1M tokenów",
+      "colCapabilities": "Możliwości",
+      "colOrigin": "Pochodzenie",
+      "colStatus": "Status",
+      "noMatch": "Brak modeli pasujących do bieżących filtrów.",
+      "discovered": "odkryto",
+      "discoveredTitle": "Zawiera pola zapisane przez odkrywanie modeli",
+      "statusUsable": "użyteczny",
+      "statusUsableTitle": "Oferowany przez selektor modeli w tym projekcie",
+      "statusNoInstance": "brak danych uwierzytelniających",
+      "statusNoInstanceTitle": "Instancja dostawcy nie ma klucza API (lub, bez klucza, brak podstawowego adresu URL) w tym projekcie",
+      "statusNotAllowed": "niedozwolony",
+      "statusNotAllowedTitle": "Nie zatwierdzony przez chat.allowed-models",
+      "detailTitle": "Model {spec}",
+      "detailDescription": "Połączone pola katalogu i warstwa, z której pochodzi każde z nich — wygrywa najbardziej wewnętrzna warstwa, która ustawia pole.",
+      "detailLoading": "Ładowanie pól…",
+      "detailAliases": "Aliasy wskazujące tutaj",
+      "detailFields": "Dokument modelu",
+      "detailProvider": "Instancja dostawcy ({instance})",
+      "detailNoProvider": "Brak _provider.yaml dla tej instancji.",
+      "colField": "Pole",
+      "colValue": "Wartość",
+      "colLayer": "Warstwa",
+      "close": "Zamknij",
+      "layer": {
+        "BUNDLED": "dołączony",
+        "SYSTEM_AUTO": "system · odkryto",
+        "SYSTEM": "system",
+        "TENANT_AUTO": "Tenant · odkryto",
+        "TENANT": "Tenant",
+        "PROJECT_AUTO": "projekt · odkryto",
+        "PROJECT": "projekt"
+      },
+      "definedIn": {
+        "PROJECT": "projekt",
+        "TENANT": "Tenant"
+      }
     },
     "rag": {
       "noProjectHeadline": "Nie wybrano projektu",
@@ -2264,7 +2372,11 @@
     },
     "errors": {
       "parametersMustBeObject": "Parametry muszą być obiektem JSON.",
-      "parametersInvalidJson": "Parametry: nieprawidłowy JSON — {message}"
+      "parametersInvalidJson": "Parametry: nieprawidłowy JSON — {message}",
+      "loadTypesFailed": "Nie udało się załadować typów narzędzi.",
+      "testFailed": "Test połączenia nie powiódł się.",
+      "loginFailed": "Nie można było rozpocząć logowania.",
+      "logoutFailed": "Wylogowanie nie powiodło się."
     },
     "mcp": {
       "serverTitle": "Serwer MCP",
@@ -3832,7 +3944,11 @@
       },
       "serverTools": {
         "title": "Narzędzia serwera",
-        "createHint": "Nazwa w formacie snake_case (małe litery, cyfry, _) — staje się nazwą pliku i nazwą narzędzia. Nowe narzędzie zaczyna jako wyłączony serwer MCP: wypełnij serwer, a następnie włącz go."
+        "createHint": "Nazwa w formacie snake_case (małe litery, cyfry, _) — staje się nazwą pliku i nazwą narzędzia. Nowe narzędzie zaczyna jako wyłączony serwer MCP: wypełnij serwer, a następnie włącz go.",
+        "errors": {
+          "userScope": "Narzędzia serwerowe istnieją dla Tenanta i dla projektów, nie dla użytkownika.",
+          "invalidName": "Nazwa narzędzia to snake_case: małe litery, cyfry i _."
+        }
       },
       "hooks": {
         "title": "Hooks",

@@ -574,7 +574,7 @@
     "chat": {
       "title": "Chat",
       "description": "Chat ao vivo com o cérebro via WebSocket. Escolha uma sessão existente ou inicie uma nova em qualquer projeto.",
-      "llmNotConfigured": "Nenhum modelo de linguagem configurado para este tenant ainda (ai.default.provider / ai.default.model) — os chats falharão até que um administrador configure um."
+      "llmNotConfigured": "Este tenant não tem um modelo de linguagem padrão (ai.default.provider / ai.default.model). Os chats falharão a menos que seu projeto defina seu próprio modelo ou um administrador defina um padrão de tenant."
     },
     "documents": {
       "title": "Documentos",
@@ -608,6 +608,35 @@
     "composer": {
       "showTools": "Mostrar ferramentas",
       "hideTools": "Ocultar ferramentas"
+    },
+    "modelPicker": {
+      "button": "Modelo e raciocínio",
+      "buttonState": "Modelo: {model} · raciocínio: {level}",
+      "title": "Modelo e raciocínio",
+      "description": "Aplica-se a este chat a partir da próxima rodada. Novos chats começam novamente com o padrão da Recipe.",
+      "filter": "Filtrar modelos…",
+      "loading": "Carregando modelos…",
+      "recipeDefault": "Padrão da Recipe",
+      "noModels": "Nenhum modelo correspondente",
+      "noModelsBody": "Altere o filtro ou pergunte a um administrador quais modelos são permitidos aqui.",
+      "small": "pequeno",
+      "large": "grande",
+      "context": "{n} contexto",
+      "reasoning": "raciocínio",
+      "noPrice": "sem preço",
+      "reasoningLevel": "Nível de raciocínio",
+      "noReasoning": "Este modelo não tem raciocínio ajustável.",
+      "cancel": "Cancelar",
+      "apply": "Aplicar",
+      "commandFailed": "//{verb} falhou",
+      "modelError": "O modelo atual não pode ser usado: {error} — escolha outro modelo ou o padrão da Recipe.",
+      "level": {
+        "off": "Desligado",
+        "minimal": "Mínimo",
+        "low": "Baixo",
+        "medium": "Médio",
+        "high": "Alto"
+      }
     },
     "breadcrumb": {
       "unnamedSession": "Sessão"
@@ -1126,6 +1155,14 @@
       "close": "Fechar",
       "previewTitle": "Versão de {when}",
       "previewBinary": "Pré-visualização não disponível para este tipo de arquivo — faça o download.",
+      "compare": "Comparar com o atual",
+      "diffTitle": "Alterações desde a versão de {when}",
+      "diffDescription": "Versão arquivada (−) versus o documento atual (+).",
+      "diffDescriptionUnsaved": "Versão arquivada (−) versus o documento atual (+), incluindo edições não salvas.",
+      "diffIdentical": "Nenhuma diferença.",
+      "diffShowUnchanged": "Mostrar {count} linhas inalteradas",
+      "diffShowMore": "Mostrar mais {count} linhas ({total} não mostradas)",
+      "diffTooLarge": "Muito grande para comparar aqui: {lines} linhas no total, o limite é {max}. Baixe ambas as versões para compará-las.",
       "confirmRestoreTitle": "Restaurar esta versão?",
       "confirmRestoreBody": "O conteúdo atual é arquivado como uma nova versão, então esta versão mais antiga se torna o documento ativo. Nada é perdido.",
       "confirmDeleteTitle": "Excluir esta versão permanentemente?",
@@ -1566,6 +1603,77 @@
       "noMatch": "Nenhuma Recipe corresponde aos filtros atuais.",
       "skillsDefault": "{count} padrão",
       "skillsWhitelist": "· whitelist {count}"
+    },
+    "models": {
+      "pickProject": "Escolha um projeto na barra lateral para ver seus modelos.",
+      "loading": "Carregando modelos…",
+      "reload": "Recarregar",
+      "emptyHeadline": "Nenhum modelo no catálogo",
+      "emptyBody": "Nem o catálogo incluído nem qualquer camada de tenant ou projeto lista um modelo para este projeto.",
+      "search": "Pesquisar",
+      "searchPlaceholder": "instância, modelo, capacidade…",
+      "kind": "Tipo",
+      "allKinds": "Todos os tipos ({n})",
+      "kindOption": "{kind} ({n})",
+      "usableOnly": "Ocultar modelos de chat que o seletor não oferece",
+      "count": "{shown} / {total}",
+      "projectHeading": "Este projeto",
+      "defaultModel": "Modelo padrão",
+      "defaultModelHint": "ai.default.provider / ai.default.model",
+      "defaultMissing": "não resolúvel",
+      "allowlist": "Lista de permissões de chat",
+      "allowlistHint": "chat.allowed-models — limita o que o seletor de modelo oferece",
+      "aliasesHeading": "Aliases",
+      "aliasesHint": "ai.alias.* como este projeto os vê, resolvidos aqui.",
+      "noAliases": "Nenhum alias definido — as Recipes voltam para o modelo padrão.",
+      "colAlias": "Alias",
+      "colTarget": "Configuração",
+      "colDefinedIn": "Definido em",
+      "colResolves": "Resolve para",
+      "viaTenantDefault": "via modelo padrão",
+      "modelsHeading": "Catálogo",
+      "modelsHint": "Catálogo de modelos mesclado deste projeto, todas as modalidades. Clique em um modelo para ver seus campos e de onde cada um vem.",
+      "colModel": "Modelo",
+      "colKind": "Tipo",
+      "colSize": "Tamanho",
+      "colContext": "Contexto",
+      "colPrice": "Preço / 1M tokens",
+      "colCapabilities": "Capacidades",
+      "colOrigin": "Origem",
+      "colStatus": "Status",
+      "noMatch": "Nenhum modelo corresponde aos filtros atuais.",
+      "discovered": "descoberto",
+      "discoveredTitle": "Contém campos escritos pela descoberta de modelo",
+      "statusUsable": "utilizável",
+      "statusUsableTitle": "Oferecido pelo seletor de modelo neste projeto",
+      "statusNoInstance": "sem credenciais",
+      "statusNoInstanceTitle": "A instância do provedor não tem chave de API (ou, sem chave, sem URL base) neste projeto",
+      "statusNotAllowed": "não permitido",
+      "statusNotAllowedTitle": "Não aprovado por chat.allowed-models",
+      "detailTitle": "Modelo {spec}",
+      "detailDescription": "Campos de catálogo mesclados e a camada de onde cada um vem — a camada mais interna que define um campo vence.",
+      "detailLoading": "Carregando campos…",
+      "detailAliases": "Aliases apontando para cá",
+      "detailFields": "Documento do modelo",
+      "detailProvider": "Instância do provedor ({instance})",
+      "detailNoProvider": "Nenhum _provider.yaml para esta instância.",
+      "colField": "Campo",
+      "colValue": "Valor",
+      "colLayer": "Camada",
+      "close": "Fechar",
+      "layer": {
+        "BUNDLED": "incluído",
+        "SYSTEM_AUTO": "sistema · descoberto",
+        "SYSTEM": "sistema",
+        "TENANT_AUTO": "tenant · descoberto",
+        "TENANT": "tenant",
+        "PROJECT_AUTO": "projeto · descoberto",
+        "PROJECT": "projeto"
+      },
+      "definedIn": {
+        "PROJECT": "projeto",
+        "TENANT": "tenant"
+      }
     },
     "rag": {
       "noProjectHeadline": "Nenhum projeto selecionado",
@@ -2264,7 +2372,11 @@
     },
     "errors": {
       "parametersMustBeObject": "Os parâmetros devem ser um objeto JSON.",
-      "parametersInvalidJson": "Parâmetros: JSON inválido — {message}"
+      "parametersInvalidJson": "Parâmetros: JSON inválido — {message}",
+      "loadTypesFailed": "Não foi possível carregar os tipos de ferramenta.",
+      "testFailed": "O teste de conexão falhou.",
+      "loginFailed": "Não foi possível iniciar o login.",
+      "logoutFailed": "O logout falhou."
     },
     "mcp": {
       "serverTitle": "Servidor MCP",
@@ -3832,7 +3944,11 @@
       },
       "serverTools": {
         "title": "Ferramentas do servidor",
-        "createHint": "Nome em snake_case (letras minúsculas, dígitos, _) — torna-se o nome do arquivo e o nome da ferramenta. Uma nova ferramenta começa como um servidor MCP desabilitado: preencha o servidor e depois habilite-o."
+        "createHint": "Nome em snake_case (letras minúsculas, dígitos, _) — torna-se o nome do arquivo e o nome da ferramenta. Uma nova ferramenta começa como um servidor MCP desabilitado: preencha o servidor e depois habilite-o.",
+        "errors": {
+          "userScope": "As ferramentas de servidor existem para o tenant e para projetos, não por usuário.",
+          "invalidName": "Um nome de ferramenta é snake_case: letras minúsculas, dígitos e _."
+        }
       },
       "hooks": {
         "title": "Hooks",

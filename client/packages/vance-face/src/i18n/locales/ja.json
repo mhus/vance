@@ -574,7 +574,7 @@
     "chat": {
       "title": "チャット",
       "description": "WebSocketを介したAIとのライブチャット。既存のセッションを選択するか、任意のプロジェクトで新しいセッションを開始します。",
-      "llmNotConfigured": "このテナントにはまだ言語モデルが設定されていません (ai.default.provider / ai.default.model) — 管理者が設定するまでチャットは失敗します。"
+      "llmNotConfigured": "このテナントにはデフォルトの言語モデルが設定されていません (ai.default.provider / ai.default.model)。プロジェクトが独自のモデルを設定するか、管理者がテナントのデフォルトを設定しない限り、チャットは失敗します。"
     },
     "documents": {
       "title": "ドキュメント",
@@ -608,6 +608,35 @@
     "composer": {
       "showTools": "ツールを表示",
       "hideTools": "ツールを非表示"
+    },
+    "modelPicker": {
+      "button": "モデルと推論",
+      "buttonState": "モデル: {model} · 推論: {level}",
+      "title": "モデルと推論",
+      "description": "次回のターンからこのチャットに適用されます。新しいチャットはレシピのデフォルトから再び開始されます。",
+      "filter": "モデルをフィルタリング…",
+      "loading": "モデルを読み込み中…",
+      "recipeDefault": "レシピのデフォルト",
+      "noModels": "一致するモデルがありません",
+      "noModelsBody": "フィルターを変更するか、管理者にここで許可されているモデルを尋ねてください。",
+      "small": "小",
+      "large": "大",
+      "context": "{n} コンテキスト",
+      "reasoning": "推論",
+      "noPrice": "価格なし",
+      "reasoningLevel": "推論レベル",
+      "noReasoning": "このモデルには調整可能な推論がありません。",
+      "cancel": "キャンセル",
+      "apply": "適用",
+      "commandFailed": "//{verb} に失敗しました",
+      "modelError": "現在のモデルは使用できません: {error} — 別のモデルまたはレシピのデフォルトを選択してください。",
+      "level": {
+        "off": "オフ",
+        "minimal": "最小限",
+        "low": "低",
+        "medium": "中",
+        "high": "高"
+      }
     },
     "breadcrumb": {
       "unnamedSession": "セッション"
@@ -1126,6 +1155,14 @@
       "close": "閉じる",
       "previewTitle": "{when} のバージョン",
       "previewBinary": "このファイルタイプではプレビューできません。ダウンロードしてください。",
+      "compare": "現在のものと比較",
+      "diffTitle": "{when} のバージョンからの変更",
+      "diffDescription": "アーカイブされたバージョン (−) と現在のドキュメント (+)。",
+      "diffDescriptionUnsaved": "アーカイブされたバージョン (−) と現在のドキュメント (+)、未保存の編集を含む。",
+      "diffIdentical": "違いはありません。",
+      "diffShowUnchanged": "変更されていない {count} 行を表示",
+      "diffShowMore": "さらに {count} 行を表示 ({total} は非表示)",
+      "diffTooLarge": "ここで比較するには大きすぎます: 合計 {lines} 行、制限は {max} です。両方のバージョンをダウンロードして比較してください。",
       "confirmRestoreTitle": "このバージョンを復元しますか？",
       "confirmRestoreBody": "現在のコンテンツは新しいバージョンとしてアーカイブされ、この古いバージョンがライブドキュメントになります。何も失われません。",
       "confirmDeleteTitle": "このバージョンを完全に削除しますか？",
@@ -1566,6 +1603,77 @@
       "noMatch": "現在のフィルターに一致するレシピはありません。",
       "skillsDefault": "{count}件のデフォルト",
       "skillsWhitelist": "・ホワイトリスト {count}件"
+    },
+    "models": {
+      "pickProject": "サイドバーでプロジェクトを選択してモデルを表示します。",
+      "loading": "モデルを読み込み中…",
+      "reload": "再読み込み",
+      "emptyHeadline": "カタログにモデルがありません",
+      "emptyBody": "バンドルされたカタログも、テナントまたはプロジェクトのレイヤーも、このプロジェクトのモデルをリストしていません。",
+      "search": "検索",
+      "searchPlaceholder": "インスタンス、モデル、機能…",
+      "kind": "種類",
+      "allKinds": "すべての種類 ({n})",
+      "kindOption": "{kind} ({n})",
+      "usableOnly": "ピッカーが提供しないチャットモデルを非表示にする",
+      "count": "{shown} / {total}",
+      "projectHeading": "このプロジェクト",
+      "defaultModel": "デフォルトモデル",
+      "defaultModelHint": "ai.default.provider / ai.default.model",
+      "defaultMissing": "解決できません",
+      "allowlist": "チャット許可リスト",
+      "allowlistHint": "chat.allowed-models — モデルピッカーが提供するものを制限します",
+      "aliasesHeading": "エイリアス",
+      "aliasesHint": "このプロジェクトから見た ai.alias.*、ここで解決されます。",
+      "noAliases": "エイリアスが設定されていません — レシピはデフォルトモデルにフォールバックします。",
+      "colAlias": "エイリアス",
+      "colTarget": "設定",
+      "colDefinedIn": "設定元",
+      "colResolves": "解決先",
+      "viaTenantDefault": "デフォルトモデル経由",
+      "modelsHeading": "カタログ",
+      "modelsHint": "このプロジェクトの統合モデルカタログ、すべてのモダリティ。モデルをクリックすると、そのフィールドとそれぞれの由来が表示されます。",
+      "colModel": "モデル",
+      "colKind": "種類",
+      "colSize": "サイズ",
+      "colContext": "コンテキスト",
+      "colPrice": "価格 / 1Mトークン",
+      "colCapabilities": "機能",
+      "colOrigin": "オリジン",
+      "colStatus": "ステータス",
+      "noMatch": "現在のフィルターに一致するモデルはありません。",
+      "discovered": "検出済み",
+      "discoveredTitle": "モデル検出によって書き込まれたフィールドが含まれています",
+      "statusUsable": "使用可能",
+      "statusUsableTitle": "このプロジェクトのモデルピッカーによって提供されます",
+      "statusNoInstance": "資格情報なし",
+      "statusNoInstanceTitle": "このプロジェクトには、プロバイダーインスタンスのAPIキー（または、キーなしの場合はベースURL）がありません",
+      "statusNotAllowed": "許可されていません",
+      "statusNotAllowedTitle": "chat.allowed-models によって承認されていません",
+      "detailTitle": "モデル {spec}",
+      "detailDescription": "統合されたカタログフィールドと、それぞれの由来レイヤー — フィールドを設定する最も内側のレイヤーが優先されます。",
+      "detailLoading": "フィールドを読み込み中…",
+      "detailAliases": "ここを指すエイリアス",
+      "detailFields": "モデルドキュメント",
+      "detailProvider": "プロバイダーインスタンス ({instance})",
+      "detailNoProvider": "このインスタンスの _provider.yaml はありません。",
+      "colField": "フィールド",
+      "colValue": "値",
+      "colLayer": "レイヤー",
+      "close": "閉じる",
+      "layer": {
+        "BUNDLED": "バンドル済み",
+        "SYSTEM_AUTO": "システム · 検出済み",
+        "SYSTEM": "システム",
+        "TENANT_AUTO": "テナント · 検出済み",
+        "TENANT": "テナント",
+        "PROJECT_AUTO": "プロジェクト · 検出済み",
+        "PROJECT": "プロジェクト"
+      },
+      "definedIn": {
+        "PROJECT": "プロジェクト",
+        "TENANT": "テナント"
+      }
     },
     "rag": {
       "noProjectHeadline": "プロジェクトが選択されていません",
@@ -2264,7 +2372,11 @@
     },
     "errors": {
       "parametersMustBeObject": "パラメーターはJSONオブジェクトである必要があります。",
-      "parametersInvalidJson": "パラメーター: 無効なJSON — {message}"
+      "parametersInvalidJson": "パラメーター: 無効なJSON — {message}",
+      "loadTypesFailed": "ツールタイプを読み込めませんでした。",
+      "testFailed": "接続テストに失敗しました。",
+      "loginFailed": "ログインを開始できませんでした。",
+      "logoutFailed": "ログアウトに失敗しました。"
     },
     "mcp": {
       "serverTitle": "MCPサーバー",
@@ -3832,7 +3944,11 @@
       },
       "serverTools": {
         "title": "サーバーツール",
-        "createHint": "Snake_case名（小文字、数字、_） — ファイル名とツール名になります。新しいツールは無効なMCPサーバーとして開始されます。サーバーを記入し、有効にしてください。"
+        "createHint": "Snake_case名（小文字、数字、_） — ファイル名とツール名になります。新しいツールは無効なMCPサーバーとして開始されます。サーバーを記入し、有効にしてください。",
+        "errors": {
+          "userScope": "サーバーツールはテナントとプロジェクトに存在し、ユーザーごとではありません。",
+          "invalidName": "ツール名はsnake_caseです: 小文字、数字、_ を使用してください。"
+        }
       },
       "hooks": {
         "title": "フック",

@@ -574,7 +574,7 @@
     "chat": {
       "title": "Chat",
       "description": "Chat en direct avec le cerveau via WebSocket. Choisissez une session existante ou démarrez-en une nouvelle dans n'importe quel projet.",
-      "llmNotConfigured": "Aucun modèle de langage n'est encore configuré pour ce tenant (ai.default.provider / ai.default.model) — les chats échoueront tant qu'un administrateur n'en aura pas configuré un."
+      "llmNotConfigured": "Ce Tenant n'a pas de modèle de langage par défaut (ai.default.provider / ai.default.model). Les chats échoueront à moins que leur projet ne définisse son propre modèle ou qu'un administrateur ne définisse un modèle par défaut pour le Tenant."
     },
     "documents": {
       "title": "Documents",
@@ -608,6 +608,35 @@
     "composer": {
       "showTools": "Afficher les outils",
       "hideTools": "Masquer les outils"
+    },
+    "modelPicker": {
+      "button": "Modèle et raisonnement",
+      "buttonState": "Modèle : {model} · raisonnement : {level}",
+      "title": "Modèle et raisonnement",
+      "description": "S'applique à ce chat à partir du prochain tour. Les nouveaux chats reprennent le modèle par défaut de la Recipe.",
+      "filter": "Filtrer les modèles…",
+      "loading": "Chargement des modèles…",
+      "recipeDefault": "Par défaut de la Recipe",
+      "noModels": "Aucun modèle correspondant",
+      "noModelsBody": "Modifiez le filtre, ou demandez à un administrateur quels modèles sont autorisés ici.",
+      "small": "petit",
+      "large": "grand",
+      "context": "{n} contexte",
+      "reasoning": "raisonnement",
+      "noPrice": "pas de prix",
+      "reasoningLevel": "Niveau de raisonnement",
+      "noReasoning": "Ce modèle n'a pas de raisonnement ajustable.",
+      "cancel": "Annuler",
+      "apply": "Appliquer",
+      "commandFailed": "//{verb} a échoué",
+      "modelError": "Le modèle actuel ne peut pas être utilisé : {error} — choisissez un autre modèle ou le modèle par défaut de la Recipe.",
+      "level": {
+        "off": "Désactivé",
+        "minimal": "Minimal",
+        "low": "Faible",
+        "medium": "Moyen",
+        "high": "Élevé"
+      }
     },
     "breadcrumb": {
       "unnamedSession": "Session"
@@ -1126,6 +1155,14 @@
       "close": "Fermer",
       "previewTitle": "Version du {when}",
       "previewBinary": "Aperçu non disponible pour ce type de fichier — veuillez télécharger.",
+      "compare": "Comparer avec l'actuel",
+      "diffTitle": "Modifications depuis la version du {when}",
+      "diffDescription": "Version archivée (−) par rapport au document actuel (+).",
+      "diffDescriptionUnsaved": "Version archivée (−) par rapport au document actuel (+), y compris les modifications non enregistrées.",
+      "diffIdentical": "Aucune différence.",
+      "diffShowUnchanged": "Afficher {count} lignes inchangées",
+      "diffShowMore": "Afficher {count} lignes supplémentaires ({total} non affichées)",
+      "diffTooLarge": "Trop grand pour comparer ici : {lines} lignes au total, la limite est de {max}. Téléchargez les deux versions pour les comparer.",
       "confirmRestoreTitle": "Restaurer cette version ?",
       "confirmRestoreBody": "Le contenu actuel est archivé comme nouvelle version, puis cette version plus ancienne devient le document actif. Rien n'est perdu.",
       "confirmDeleteTitle": "Supprimer cette version définitivement ?",
@@ -1566,6 +1603,77 @@
       "noMatch": "Aucune Recipe ne correspond aux filtres actuels.",
       "skillsDefault": "{count} par défaut",
       "skillsWhitelist": "· liste blanche {count}"
+    },
+    "models": {
+      "pickProject": "Choisissez un projet dans la barre latérale pour voir ses modèles.",
+      "loading": "Chargement des modèles…",
+      "reload": "Recharger",
+      "emptyHeadline": "Aucun modèle dans le catalogue",
+      "emptyBody": "Ni le catalogue intégré, ni aucune couche de Tenant ou de projet ne liste de modèle pour ce projet.",
+      "search": "Rechercher",
+      "searchPlaceholder": "instance, modèle, capacité…",
+      "kind": "Type",
+      "allKinds": "Tous les types ({n})",
+      "kindOption": "{kind} ({n})",
+      "usableOnly": "Masquer les modèles de chat non proposés par le sélecteur",
+      "count": "{shown} / {total}",
+      "projectHeading": "Ce projet",
+      "defaultModel": "Modèle par défaut",
+      "defaultModelHint": "ai.default.provider / ai.default.model",
+      "defaultMissing": "non résolvable",
+      "allowlist": "Liste blanche de chat",
+      "allowlistHint": "chat.allowed-models — limite ce que le sélecteur de modèle propose",
+      "aliasesHeading": "Alias",
+      "aliasesHint": "ai.alias.* tels que ce projet les voit, résolus ici.",
+      "noAliases": "Aucun alias n'est défini — les Recipes reviennent au modèle par défaut.",
+      "colAlias": "Alias",
+      "colTarget": "Paramètre",
+      "colDefinedIn": "Défini dans",
+      "colResolves": "Résout en",
+      "viaTenantDefault": "via le modèle par défaut du Tenant",
+      "modelsHeading": "Catalogue",
+      "modelsHint": "Catalogue de modèles fusionné de ce projet, toutes modalités. Cliquez sur un modèle pour voir ses champs et leur origine.",
+      "colModel": "Modèle",
+      "colKind": "Type",
+      "colSize": "Taille",
+      "colContext": "Contexte",
+      "colPrice": "Prix / 1M tokens",
+      "colCapabilities": "Capacités",
+      "colOrigin": "Origine",
+      "colStatus": "Statut",
+      "noMatch": "Aucun modèle ne correspond aux filtres actuels.",
+      "discovered": "découvert",
+      "discoveredTitle": "Contient des champs écrits par la découverte de modèles",
+      "statusUsable": "utilisable",
+      "statusUsableTitle": "Proposé par le sélecteur de modèle dans ce projet",
+      "statusNoInstance": "pas d'identifiants",
+      "statusNoInstanceTitle": "L'instance du fournisseur n'a pas de clé API (ou, sans clé, pas d'URL de base) dans ce projet",
+      "statusNotAllowed": "non autorisé",
+      "statusNotAllowedTitle": "Non approuvé par chat.allowed-models",
+      "detailTitle": "Modèle {spec}",
+      "detailDescription": "Champs du catalogue fusionnés et la couche d'où chacun provient — la couche la plus interne qui définit un champ l'emporte.",
+      "detailLoading": "Chargement des champs…",
+      "detailAliases": "Alias pointant ici",
+      "detailFields": "Document du modèle",
+      "detailProvider": "Instance du fournisseur ({instance})",
+      "detailNoProvider": "Pas de _provider.yaml pour cette instance.",
+      "colField": "Champ",
+      "colValue": "Valeur",
+      "colLayer": "Couche",
+      "close": "Fermer",
+      "layer": {
+        "BUNDLED": "intégré",
+        "SYSTEM_AUTO": "système · découvert",
+        "SYSTEM": "système",
+        "TENANT_AUTO": "Tenant · découvert",
+        "TENANT": "Tenant",
+        "PROJECT_AUTO": "projet · découvert",
+        "PROJECT": "projet"
+      },
+      "definedIn": {
+        "PROJECT": "projet",
+        "TENANT": "Tenant"
+      }
     },
     "rag": {
       "noProjectHeadline": "Aucun projet sélectionné",
@@ -2264,7 +2372,11 @@
     },
     "errors": {
       "parametersMustBeObject": "Les paramètres doivent être un objet JSON.",
-      "parametersInvalidJson": "Paramètres : JSON invalide — {message}"
+      "parametersInvalidJson": "Paramètres : JSON invalide — {message}",
+      "loadTypesFailed": "Impossible de charger les types d'outils.",
+      "testFailed": "Le test de connexion a échoué.",
+      "loginFailed": "La connexion n'a pas pu être démarrée.",
+      "logoutFailed": "La déconnexion a échoué."
     },
     "mcp": {
       "serverTitle": "Serveur MCP",
@@ -3832,7 +3944,11 @@
       },
       "serverTools": {
         "title": "Outils serveur",
-        "createHint": "Nom en snake_case (lettres minuscules, chiffres, _) — il devient le nom de fichier et le nom de l'outil. Un nouvel outil démarre comme un serveur MCP désactivé : remplissez le serveur, puis activez-le."
+        "createHint": "Nom en snake_case (lettres minuscules, chiffres, _) — il devient le nom de fichier et le nom de l'outil. Un nouvel outil démarre comme un serveur MCP désactivé : remplissez le serveur, puis activez-le.",
+        "errors": {
+          "userScope": "Les outils serveur existent pour le tenant et pour les projets, pas par utilisateur.",
+          "invalidName": "Un nom d'outil est en snake_case : lettres minuscules, chiffres et _."
+        }
       },
       "hooks": {
         "title": "Hooks",

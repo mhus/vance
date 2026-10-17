@@ -574,7 +574,7 @@
     "chat": {
       "title": "聊天",
       "description": "通过WebSocket与大脑进行实时聊天。选择现有会话或在任何项目中开始新会话。",
-      "llmNotConfigured": "此租户尚未配置语言模型 (ai.default.provider / ai.default.model) — 在管理员设置之前，聊天将失败。"
+      "llmNotConfigured": "此租户没有默认语言模型（ai.default.provider / ai.default.model）。除非项目设置了自己的模型或管理员设置了租户默认模型，否则聊天将失败。"
     },
     "documents": {
       "title": "文档",
@@ -608,6 +608,35 @@
     "composer": {
       "showTools": "显示工具",
       "hideTools": "隐藏工具"
+    },
+    "modelPicker": {
+      "button": "模型和推理",
+      "buttonState": "模型：{model} · 推理：{level}",
+      "title": "模型和推理",
+      "description": "从下一轮开始应用于此聊天。新聊天将再次使用 Recipe 默认设置。",
+      "filter": "筛选模型…",
+      "loading": "正在加载模型…",
+      "recipeDefault": "Recipe 默认",
+      "noModels": "没有匹配的模型",
+      "noModelsBody": "更改筛选条件，或询问管理员此处允许使用哪些模型。",
+      "small": "小型",
+      "large": "大型",
+      "context": "{n} 上下文",
+      "reasoning": "推理",
+      "noPrice": "无价格",
+      "reasoningLevel": "推理级别",
+      "noReasoning": "此模型没有可调节的推理。",
+      "cancel": "取消",
+      "apply": "应用",
+      "commandFailed": "//{verb} 失败",
+      "modelError": "当前模型无法使用：{error} — 请选择其他模型或 Recipe 默认模型。",
+      "level": {
+        "off": "关闭",
+        "minimal": "极简",
+        "low": "低",
+        "medium": "中",
+        "high": "高"
+      }
     },
     "breadcrumb": {
       "unnamedSession": "会话"
@@ -1126,6 +1155,14 @@
       "close": "关闭",
       "previewTitle": "{when} 的版本",
       "previewBinary": "此文件类型无法预览 — 请下载。",
+      "compare": "与当前版本比较",
+      "diffTitle": "自 {when} 版本以来的更改",
+      "diffDescription": "存档版本 (−) 与当前文档 (+)。",
+      "diffDescriptionUnsaved": "存档版本 (−) 与当前文档 (+)，包括未保存的编辑。",
+      "diffIdentical": "无差异。",
+      "diffShowUnchanged": "显示 {count} 行未更改的行",
+      "diffShowMore": "显示 {count} 更多行（{total} 未显示）",
+      "diffTooLarge": "此处比较太大：共 {lines} 行，限制为 {max}。下载两个版本进行比较。",
       "confirmRestoreTitle": "恢复此版本？",
       "confirmRestoreBody": "当前内容将作为新版本存档，然后此旧版本将成为实时文档。不会丢失任何内容。",
       "confirmDeleteTitle": "永久删除此版本？",
@@ -1566,6 +1603,77 @@
       "noMatch": "没有 Recipe 符合当前筛选条件。",
       "skillsDefault": "{count} 个默认",
       "skillsWhitelist": "· 白名单 {count}"
+    },
+    "models": {
+      "pickProject": "在侧边栏中选择一个项目以查看其模型。",
+      "loading": "正在加载模型…",
+      "reload": "重新加载",
+      "emptyHeadline": "目录中没有模型",
+      "emptyBody": "捆绑目录以及任何租户或项目层都没有列出此项目的模型。",
+      "search": "搜索",
+      "searchPlaceholder": "实例、模型、功能…",
+      "kind": "类型",
+      "allKinds": "所有类型 ({n})",
+      "kindOption": "{kind} ({n})",
+      "usableOnly": "隐藏模型选择器不提供的聊天模型",
+      "count": "{shown} / {total}",
+      "projectHeading": "此项目",
+      "defaultModel": "默认模型",
+      "defaultModelHint": "ai.default.provider / ai.default.model",
+      "defaultMissing": "无法解析",
+      "allowlist": "聊天允许列表",
+      "allowlistHint": "chat.allowed-models — 限制模型选择器提供的模型",
+      "aliasesHeading": "别名",
+      "aliasesHint": "此项目所见的 ai.alias.*，在此处解析。",
+      "noAliases": "未设置别名 — Recipe 将回退到默认模型。",
+      "colAlias": "别名",
+      "colTarget": "设置",
+      "colDefinedIn": "设置于",
+      "colResolves": "解析为",
+      "viaTenantDefault": "通过默认模型",
+      "modelsHeading": "目录",
+      "modelsHint": "此项目的合并模型目录，所有模态。点击模型以查看其字段以及每个字段的来源。",
+      "colModel": "模型",
+      "colKind": "类型",
+      "colSize": "大小",
+      "colContext": "上下文",
+      "colPrice": "价格 / 1M token",
+      "colCapabilities": "功能",
+      "colOrigin": "来源",
+      "colStatus": "状态",
+      "noMatch": "没有模型与当前筛选条件匹配。",
+      "discovered": "已发现",
+      "discoveredTitle": "包含模型发现写入的字段",
+      "statusUsable": "可用",
+      "statusUsableTitle": "此项目中的模型选择器提供",
+      "statusNoInstance": "无凭据",
+      "statusNoInstanceTitle": "此项目中的提供者实例没有 API 密钥（或无密钥，无基本 URL）",
+      "statusNotAllowed": "不允许",
+      "statusNotAllowedTitle": "未通过 chat.allowed-models 批准",
+      "detailTitle": "模型 {spec}",
+      "detailDescription": "合并的目录字段以及每个字段的来源层 — 设置字段的最内层获胜。",
+      "detailLoading": "正在加载字段…",
+      "detailAliases": "指向此处的别名",
+      "detailFields": "模型文档",
+      "detailProvider": "提供者实例 ({instance})",
+      "detailNoProvider": "此实例没有 _provider.yaml。",
+      "colField": "字段",
+      "colValue": "值",
+      "colLayer": "层",
+      "close": "关闭",
+      "layer": {
+        "BUNDLED": "捆绑",
+        "SYSTEM_AUTO": "系统 · 已发现",
+        "SYSTEM": "系统",
+        "TENANT_AUTO": "租户 · 已发现",
+        "TENANT": "租户",
+        "PROJECT_AUTO": "项目 · 已发现",
+        "PROJECT": "项目"
+      },
+      "definedIn": {
+        "PROJECT": "项目",
+        "TENANT": "租户"
+      }
     },
     "rag": {
       "noProjectHeadline": "未选择项目",
@@ -2264,7 +2372,11 @@
     },
     "errors": {
       "parametersMustBeObject": "参数必须是 JSON 对象。",
-      "parametersInvalidJson": "参数：无效的 JSON — {message}"
+      "parametersInvalidJson": "参数：无效的 JSON — {message}",
+      "loadTypesFailed": "无法加载工具类型。",
+      "testFailed": "连接测试失败。",
+      "loginFailed": "无法开始登录。",
+      "logoutFailed": "注销失败。"
     },
     "mcp": {
       "serverTitle": "MCP 服务器",
@@ -3832,7 +3944,11 @@
       },
       "serverTools": {
         "title": "服务器工具",
-        "createHint": "Snake_case 名称（小写字母、数字、_）— 它将成为文件名和工具名称。新工具最初是禁用的 MCP 服务器：填写服务器，然后启用它。"
+        "createHint": "Snake_case 名称（小写字母、数字、_）— 它将成为文件名和工具名称。新工具最初是禁用的 MCP 服务器：填写服务器，然后启用它。",
+        "errors": {
+          "userScope": "服务器工具存在于租户和项目中，而不是每个用户。",
+          "invalidName": "工具名称为 snake_case：小写字母、数字和下划线。"
+        }
       },
       "hooks": {
         "title": "Hook",

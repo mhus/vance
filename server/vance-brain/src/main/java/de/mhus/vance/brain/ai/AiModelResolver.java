@@ -2,6 +2,7 @@ package de.mhus.vance.brain.ai;
 
 import de.mhus.vance.shared.settings.SettingService;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -27,9 +28,9 @@ import org.springframework.stereotype.Service;
  * <h2>Resolution rules</h2>
  * Given input {@code <prefix>:<rest>}:
  * <ol>
- *   <li>If {@code prefix} is a registered AI provider, return
- *       {@code (prefix, prefix, rest)} directly — instance equals the
- *       protocol wire-name. Lets callers keep using
+ *   <li>If {@code prefix} is a known protocol ({@link ProviderType}
+ *       wire-name), return {@code (prefix, prefix, rest)} directly —
+ *       instance equals the protocol wire-name. Lets callers keep using
  *       {@code anthropic:claude-sonnet-4-5} when they really mean
  *       it.</li>
  *   <li>Otherwise if {@code ai.provider.<prefix>.type} is set, treat
@@ -56,6 +57,13 @@ import org.springframework.stereotype.Service;
  *   <li>Otherwise throw — better than silently picking a model
  *       the operator didn't intend.</li>
  * </ol>
+ *
+ * <p><b>Modality-neutral.</b> The resolver binds names to protocols; it
+ * does not ask whether an adapter exists. Chat, audio and image each keep
+ * their own adapter registry and refuse a protocol they cannot serve at
+ * dispatch ({@code AiModelService#createChat} names the missing adapter).
+ * Requiring a <em>chat</em> adapter here made {@code local:} (the offline
+ * whisper backend) and {@code systemone:} unresolvable for every modality.
  *
  * <p>Cycle-protected: a chain like {@code default:foo → cheap:foo →
  * default:foo} is detected and reported.
@@ -101,7 +109,6 @@ public class AiModelResolver {
     private static final String DEFAULT_NAMESPACE = "default";
     private static final int MAX_DEPTH = 8;
 
-    private final AiModelService aiModelService;
     private final SettingService settingService;
     private final ModelCatalog modelCatalog;
 
@@ -280,9 +287,9 @@ public class AiModelResolver {
             return tenantDefault(tenantId, projectId, processId, input);
         }
 
-        throw new UnknownModelException("Unknown model spec '" + input + "' — neither a registered "
+        throw new UnknownModelException("Unknown model spec '" + input + "' — neither a known "
                 + "provider nor a configured alias. Known providers: "
-                + aiModelService.listProviders()
+                + knownProtocols()
                 + "; expected setting: '" + settingKey + "'");
     }
 
@@ -407,7 +414,7 @@ public class AiModelResolver {
      */
     private @Nullable ProviderBinding resolveProviderBinding(
             String prefix, String tenantId, @Nullable String projectId, @Nullable String processId) {
-        if (aiModelService.hasProvider(prefix)) {
+        if (isKnownProtocol(prefix)) {
             return new ProviderBinding(prefix, prefix);
         }
 
@@ -416,10 +423,10 @@ public class AiModelResolver {
         String instanceType = settingService.getStringValueCascade(tenantId, projectId, processId, instanceTypeKey);
         if (instanceType != null && !instanceType.isBlank()) {
             String typeWireName = instanceType.trim();
-            if (!aiModelService.hasProvider(typeWireName)) {
+            if (!isKnownProtocol(typeWireName)) {
                 throw new UnknownModelException("Provider instance '" + prefix + "' declares unknown type '"
                         + typeWireName + "' (setting '" + instanceTypeKey
-                        + "). Known providers: " + aiModelService.listProviders());
+                        + "). Known providers: " + knownProtocols());
             }
             log.debug("AiModelResolver: instance '{}' → type '{}'", prefix, typeWireName);
             return new ProviderBinding(typeWireName, prefix);
@@ -427,16 +434,25 @@ public class AiModelResolver {
 
         @Nullable String declaredType = declaredWireType(tenantId, projectId, prefix);
         if (declaredType != null) {
-            if (!aiModelService.hasProvider(declaredType)) {
+            if (!isKnownProtocol(declaredType)) {
                 throw new UnknownModelException("Provider instance '" + prefix + "' declares unknown wireType '"
                         + declaredType + "' (document '"
                         + ModelCatalog.MODEL_PATH_PREFIX + prefix + "/_provider.yaml)'"
-                        + ". Known providers: " + aiModelService.listProviders());
+                        + ". Known providers: " + knownProtocols());
             }
             log.debug("AiModelResolver: instance '{}' → type '{}' (from _provider.yaml)", prefix, declaredType);
             return new ProviderBinding(declaredType, prefix);
         }
         return null;
+    }
+
+    /** A protocol this brain knows — see "Modality-neutral" in the class doc. */
+    private static boolean isKnownProtocol(String wireName) {
+        return ProviderType.fromWireName(wireName).isPresent();
+    }
+
+    private static List<String> knownProtocols() {
+        return Arrays.stream(ProviderType.values()).map(ProviderType::wireName).toList();
     }
 
     private Resolved tenantDefault(
@@ -457,7 +473,7 @@ public class AiModelResolver {
                     + "' value '" + provider + "' is neither a provider wire-name nor a configured named "
                     + "instance (no '" + String.format(PROVIDER_TYPE_KEY_FMT, prefix)
                     + "' setting, no " + ModelCatalog.MODEL_PATH_PREFIX + prefix
-                    + "/_provider.yaml). Known providers: " + aiModelService.listProviders());
+                    + "/_provider.yaml). Known providers: " + knownProtocols());
         }
         // Same sidecar TLS lookup as every direct spec — the default endpoint
         // must not silently re-enable validation that an explicit

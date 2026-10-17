@@ -26,22 +26,15 @@ import org.junit.jupiter.api.Test;
  */
 class AiModelResolverTest {
 
-    private AiModelService aiModelService;
     private SettingService settingService;
     private ModelCatalog modelCatalog;
     private AiModelResolver resolver;
 
     @BeforeEach
     void setUp() {
-        aiModelService = mock(AiModelService.class);
         settingService = mock(SettingService.class);
         modelCatalog = mock(ModelCatalog.class);
-        resolver = new AiModelResolver(aiModelService, settingService, modelCatalog);
-
-        // Set up known providers — the resolver short-circuits on these.
-        when(aiModelService.hasProvider("anthropic")).thenReturn(true);
-        when(aiModelService.hasProvider("gemini")).thenReturn(true);
-        when(aiModelService.hasProvider("openai")).thenReturn(true);
+        resolver = new AiModelResolver(settingService, modelCatalog);
     }
 
     // ──── Direct provider:model ──────────────────────────────────────────
@@ -335,7 +328,6 @@ class AiModelResolverTest {
         // pulled back by a document.
         when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.provider.cortecs.type")))
                 .thenReturn("openai-experimental");
-        when(aiModelService.hasProvider("openai-experimental")).thenReturn(true);
         when(modelCatalog.lookupProvider(any(), any(), eq("cortecs")))
                 .thenReturn(Optional.of(Map.of("wireType", "openai")));
 
@@ -585,5 +577,45 @@ class AiModelResolverTest {
         // openai (cascade element wins), not anthropic (tenant default).
         assertThat(r.provider()).isEqualTo("openai");
         assertThat(r.modelName()).isEqualTo("gpt-4o-mini");
+    }
+
+    // ──── Protocols without a chat adapter ──────────────────────────────
+
+    /**
+     * {@code local} (offline whisper) and {@code systemone} have no chat
+     * adapter, but they are protocols: the resolver binds them, and the
+     * modality that cannot serve them refuses at dispatch. Requiring a chat
+     * adapter here broke {@code default:stt → local:faster-whisper-small}.
+     */
+    @Test
+    void resolve_sidecarWireTypeWithoutChatAdapter_binds() {
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("ai.alias.default.stt")))
+                .thenReturn("local:faster-whisper-small");
+        when(modelCatalog.lookupProvider(any(), any(), eq("local")))
+                .thenReturn(Optional.of(Map.of("wireType", "local")));
+
+        AiModelResolver.Resolved r = resolver.resolve("default:stt", "acme", "proj", null);
+
+        assertThat(r.provider()).isEqualTo("local");
+        assertThat(r.providerInstance()).isEqualTo("local");
+        assertThat(r.modelName()).isEqualTo("faster-whisper-small");
+    }
+
+    @Test
+    void resolve_directSpecOfProtocolWithoutChatAdapter_binds() {
+        AiModelResolver.Resolved r = resolver.resolve("systemone:jev-1", "acme", "proj", null);
+
+        assertThat(r.provider()).isEqualTo("systemone");
+        assertThat(r.modelName()).isEqualTo("jev-1");
+    }
+
+    @Test
+    void resolve_unknownSidecarWireType_stillFailsFast() {
+        when(modelCatalog.lookupProvider(any(), any(), eq("weird")))
+                .thenReturn(Optional.of(Map.of("wireType", "carrier-pigeon")));
+
+        assertThatThrownBy(() -> resolver.resolve("weird:x", "acme", "proj", null))
+                .isInstanceOf(AiModelResolver.UnknownModelException.class)
+                .hasMessageContaining("carrier-pigeon");
     }
 }

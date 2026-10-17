@@ -9,7 +9,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.ai.AiModelResolver;
-import de.mhus.vance.brain.ai.AiModelService;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -46,13 +45,9 @@ class AiModelCurrentToolTest {
     void setUp() {
         thinkProcessService = mock(ThinkProcessService.class);
         settingService = mock(SettingService.class);
-        AiModelService aiModelService = mock(AiModelService.class);
         ModelCatalog modelCatalog = mock(ModelCatalog.class);
-        when(aiModelService.hasProvider("openai")).thenReturn(true);
-        when(aiModelService.hasProvider("gemini")).thenReturn(true);
-        when(aiModelService.listProviders()).thenReturn(List.of("openai", "gemini"));
         when(modelCatalog.lookupProvider(any(), any(), any())).thenReturn(Optional.empty());
-        AiModelResolver resolver = new AiModelResolver(aiModelService, settingService, modelCatalog);
+        AiModelResolver resolver = new AiModelResolver(settingService, modelCatalog);
         tool = new AiModelCurrentTool(thinkProcessService, settingService, resolver);
 
         process = new ThinkProcessDocument();

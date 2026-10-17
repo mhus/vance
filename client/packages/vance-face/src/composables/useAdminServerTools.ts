@@ -1,11 +1,12 @@
 import { ref, type Ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type {
   ServerToolDto,
   ServerToolOAuthStartDto,
   ServerToolTestResultDto,
   ToolTypeDto,
 } from '@vance/generated';
-import { brainFetch } from '@vance/shared';
+import { brainFetch, RestError } from '@vance/shared';
 
 /**
  * The operational side of one configured server tool — what the
@@ -17,6 +18,11 @@ import { brainFetch } from '@vance/shared';
  * ({@code _vance/server-tools/<name>.yaml}) and saves through the document
  * pipeline like every settings area. Everything below acts on the
  * <em>saved</em> state — the server resolves the tool by name.
+ *
+ * <p>The type catalog needs tenant admin; a project admin editing a tool
+ * gets a 403 there and the form simply offers no type list (like
+ * {@code useToolTemplates.forbidden}). Every operation starts by clearing
+ * {@code error}, so a banner always belongs to the latest attempt.
  */
 export function useAdminServerTools(): {
   types: Ref<ToolTypeDto[]>;
@@ -33,17 +39,27 @@ export function useAdminServerTools(): {
   const current = ref<ServerToolDto | null>(null);
   const busy = ref(false);
   const error = ref<string | null>(null);
+  const { t } = useI18n();
+
+  function messageOf(e: unknown, fallbackKey: string): string {
+    return e instanceof Error && e.message ? e.message : t(fallbackKey);
+  }
 
   async function loadTypes(): Promise<void> {
+    error.value = null;
     try {
       types.value = await brainFetch<ToolTypeDto[]>('GET', 'admin/server-tool-types');
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to load tool types.';
       types.value = [];
+      // Tenant-admin endpoint: without that right there is no catalog to
+      // offer, which is not an error of this form.
+      if (e instanceof RestError && e.status === 403) return;
+      error.value = messageOf(e, 'tools.errors.loadTypesFailed');
     }
   }
 
   async function loadOne(projectId: string, name: string): Promise<void> {
+    error.value = null;
     try {
       current.value = await brainFetch<ServerToolDto>(
         'GET',
@@ -66,7 +82,7 @@ export function useAdminServerTools(): {
         `admin/projects/${encodeURIComponent(projectId)}/server-tools/${encodeURIComponent(name)}/test`,
       );
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Connection test failed.';
+      error.value = messageOf(e, 'tools.errors.testFailed');
       throw e;
     } finally {
       busy.value = false;
@@ -89,12 +105,12 @@ export function useAdminServerTools(): {
       const started = await brainFetch<ServerToolOAuthStartDto>('POST', `oauth-client/mcp/init?${query}`);
       authorizationUrl = started.authorizationUrl;
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Login could not be started.';
+      error.value = messageOf(e, 'tools.errors.loginFailed');
       busy.value = false;
       throw e;
     }
     if (!authorizationUrl) {
-      error.value = 'Login could not be started.';
+      error.value = t('tools.errors.loginFailed');
       busy.value = false;
       return;
     }
@@ -111,7 +127,7 @@ export function useAdminServerTools(): {
       );
       await loadOne(projectId, name);
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Logout failed.';
+      error.value = messageOf(e, 'tools.errors.logoutFailed');
       throw e;
     } finally {
       busy.value = false;

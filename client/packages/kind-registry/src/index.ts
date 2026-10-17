@@ -201,10 +201,10 @@ export interface SettingsProvider {
    */
   titleKey: string;
   /**
-   * Inventory for one scope. Failures should resolve to an empty list (the
-   * host shows its own error surface). A provider whose kind cascades may
-   * add {@link SettingsInheritedRow}s for entries the scope only reads
-   * through — only together with {@link override}, otherwise the host has
+   * Inventory for one scope. A missing permission (403) resolves to an empty
+   * list; any other failure rejects and the host shows it as the area error.
+   * A provider whose kind cascades may add {@link SettingsInheritedRow}s for
+   * entries the scope only reads through — only together with {@link override}, otherwise the host has
    * nothing to offer for them.
    */
   list: (scope: SettingsScope) => Promise<SettingsAreaRow[]>;

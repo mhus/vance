@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { CatalogModelInsightsDto, ModelDetailInsightsDto } from '@vance/generated';
-import { ModelCatalogLayer } from '@vance/generated';
+import { ModelAliasScope, ModelCatalogLayer } from '@vance/generated';
 import {
   VAlert,
   VBadge,
@@ -209,7 +209,7 @@ watch(
               <td class="px-3 py-1 font-mono">{{ a.alias }}</td>
               <td class="px-3 py-1 font-mono text-xs opacity-80 break-all">{{ a.target }}</td>
               <td class="px-3 py-1 text-xs">
-                <VBadge size="xs" :variant="a.definedIn === 'PROJECT' ? 'primary' : 'neutral'">
+                <VBadge size="xs" :variant="a.definedIn === ModelAliasScope.PROJECT ? 'primary' : 'neutral'">
                   {{ $t(`insights.models.definedIn.${a.definedIn}`) }}
                 </VBadge>
               </td>

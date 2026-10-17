@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -51,6 +52,34 @@ class LlmBudgetGateTest {
                 .isInstanceOf(LlmBudgetExceededException.class)
                 .hasMessageContaining("Project 'p1' LLM budget exhausted")
                 .hasMessageContaining("ai.llm.budget.daily");
+    }
+
+    @Test
+    void tenantRefusal_reachesTheSession_withoutTenantAmounts() {
+        ThinkProcessDocument process = new ThinkProcessDocument();
+        when(thinkProcessService.findById("proc-1")).thenReturn(Optional.of(process));
+        LlmBudgetService.WindowStatus tenantDenial = new LlmBudgetService.WindowStatus(
+                BudgetScope.TENANT,
+                "_tenant",
+                BudgetWindow.MONTHLY,
+                LocalDate.of(2026, 10, 1),
+                50_000_000,
+                50_120_000,
+                "USD",
+                80,
+                0,
+                Map.of());
+        when(budgetService.check("acme", "p1")).thenReturn(new LlmBudgetService.Verdict(tenantDenial, List.of()));
+
+        assertThatThrownBy(() -> gate.admit(ARTHUR, model(pricing(3.0, 15.0))))
+                .isInstanceOf(LlmBudgetExceededException.class)
+                .hasMessage("Tenant LLM budget exhausted this month."
+                        + " Ask a tenant admin to raise 'ai.llm.budget.monthly'.");
+        verify(notificationService)
+                .publish(
+                        eq(process),
+                        argThat((String text) -> !text.contains("50") && !text.contains("USD")),
+                        eq(NotificationSeverity.ERROR));
     }
 
     @Test

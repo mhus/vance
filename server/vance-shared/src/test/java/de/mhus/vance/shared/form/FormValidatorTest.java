@@ -80,6 +80,48 @@ class FormValidatorTest {
     }
 
     @Test
+    void number_bounds_comeFromIntegerMinAndMax() {
+        FormFieldDto field = FormFieldDto.builder()
+                .name("amount")
+                .type("number")
+                .integerMin(0)
+                .integerMax(100)
+                .label(Map.of("en", "Amount"))
+                .build();
+
+        assertThatCode(() -> validator.validate(List.of(field), Map.of("amount", "0")))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> validator.validate(List.of(field), Map.of("amount", "99.99")))
+                .doesNotThrowAnyException();
+        assertThatThrownBy(() -> validator.validate(List.of(field), Map.of("amount", "-0.01")))
+                .isInstanceOf(FormValidationException.class)
+                .hasMessageContaining("below_min");
+        assertThatThrownBy(() -> validator.validate(List.of(field), Map.of("amount", "100.5")))
+                .isInstanceOf(FormValidationException.class)
+                .hasMessageContaining("above_max");
+    }
+
+    @Test
+    void number_outOfMagnitude_isNotANumber() {
+        FormFieldDto field = FormFieldDto.builder()
+                .name("amount")
+                .type("number")
+                .label(Map.of("en", "Amount"))
+                .build();
+
+        // Valid BigDecimals all of them — expanding them to plain digits is what must never happen.
+        for (Object huge : List.of("1e999999999", "1e-999999999", "1" + "0".repeat(70), 1.0e300)) {
+            assertThatThrownBy(() -> validator.validate(List.of(field), Map.of("amount", huge)))
+                    .isInstanceOf(FormValidationException.class)
+                    .hasMessageContaining("expected_number");
+        }
+        assertThat(FormValidator.tryParseNumber("1e5")).isEqualByComparingTo("100000");
+        assertThat(FormValidator.tryParseNumber("0.000001")).isEqualByComparingTo("0.000001");
+        assertThat(FormValidator.tryParseNumber("2.50000000000000000000")).isEqualByComparingTo("2.5");
+        assertThat(FormValidator.tryParseNumber("0e999999999")).isEqualByComparingTo("0");
+    }
+
+    @Test
     void integer_bounds_areEnforced() {
         FormFieldDto field = FormFieldDto.builder()
                 .name("priority")

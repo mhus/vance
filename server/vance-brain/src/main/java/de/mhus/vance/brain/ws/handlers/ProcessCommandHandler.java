@@ -70,8 +70,7 @@ public class ProcessCommandHandler implements WsHandler {
         try {
             request = objectMapper.convertValue(envelope.getData(), ProcessCommandRequest.class);
         } catch (IllegalArgumentException e) {
-            sender.sendError(wsSession, envelope, 400,
-                    "Invalid process-command payload: " + e.getMessage());
+            sender.sendError(wsSession, envelope, 400, "Invalid process-command payload: " + e.getMessage());
             return;
         }
         if (request == null || isBlank(request.getProcessName()) || isBlank(request.getCommand())) {
@@ -89,32 +88,40 @@ public class ProcessCommandHandler implements WsHandler {
         Optional<ThinkProcessDocument> processOpt =
                 thinkProcessService.findByName(tenantId, sessionId, request.getProcessName());
         if (processOpt.isEmpty()) {
-            sender.sendError(wsSession, envelope, 404,
-                    "Think-process '" + request.getProcessName() + "' not found in session '"
-                            + sessionId + "'");
+            sender.sendError(
+                    wsSession,
+                    envelope,
+                    404,
+                    "Think-process '" + request.getProcessName() + "' not found in session '" + sessionId + "'");
             return;
         }
         ThinkProcessDocument process = processOpt.get();
         String processId = process.getId();
-        authority.enforce(ctx,
-                new Resource.ThinkProcess(process.getTenantId(), process.getProjectId(),
-                        process.getSessionId(), processId == null ? "" : processId),
+        authority.enforce(
+                ctx,
+                new Resource.ThinkProcess(
+                        process.getTenantId(),
+                        process.getProjectId(),
+                        process.getSessionId(),
+                        processId == null ? "" : processId),
                 Action.EXECUTE);
 
         String verb = request.getCommand();
-        Map<String, Object> params =
-                request.getParams() == null ? Map.of() : request.getParams();
+        Map<String, Object> params = request.getParams() == null ? Map.of() : request.getParams();
 
         if (dispatcher.bypassesLane(verb)) {
-            // Verb declares it doesn't touch this process — run it right
-            // here. Queueing it behind the lane would make diagnostics and
-            // cross-process stops unavailable precisely when the addressed
-            // process is stuck mid-turn.
-            runLaneDispatch(wsSession, envelope, processId,
-                    request.getProcessName(), verb, params);
+            // Verb declares it needs no lane — it does not touch this process,
+            // or touches it only by an atomic single-field update no
+            // whole-document save can overwrite (//model, //thinking; see
+            // EngineCommandHandler#runsOnLane). Run it right here: queueing
+            // it behind the lane would make diagnostics, cross-process stops
+            // and the model picker unavailable precisely when the addressed
+            // process is mid-turn.
+            runLaneDispatch(wsSession, envelope, processId, request.getProcessName(), verb, params);
         } else {
-            laneScheduler.submit(processId, () -> runLaneDispatch(
-                    wsSession, envelope, processId, request.getProcessName(), verb, params));
+            laneScheduler.submit(
+                    processId,
+                    () -> runLaneDispatch(wsSession, envelope, processId, request.getProcessName(), verb, params));
         }
     }
 
@@ -135,7 +142,10 @@ public class ProcessCommandHandler implements WsHandler {
                 : thinkProcessService.findById(processId).orElse(null);
         if (fresh == null) {
             try {
-                sender.sendError(wsSession, envelope, 404,
+                sender.sendError(
+                        wsSession,
+                        envelope,
+                        404,
                         "Think-process '" + processName + "' disappeared before command dispatch");
             } catch (IOException e) {
                 log.warn("Failed to send process-command 404: {}", e.toString());
@@ -149,8 +159,7 @@ public class ProcessCommandHandler implements WsHandler {
         } catch (RuntimeException e) {
             // Dispatcher is contractually no-throw, but stay defensive so
             // a bug there can't wedge the lane task without a reply.
-            log.error("process-command dispatch threw for verb='{}' id='{}': {}",
-                    verb, processId, e.toString(), e);
+            log.error("process-command dispatch threw for verb='{}' id='{}': {}", verb, processId, e.toString(), e);
             result = EngineCommandResult.error("Dispatch failed: " + e.getMessage());
         }
 

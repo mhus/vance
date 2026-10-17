@@ -67,6 +67,23 @@ class SettingFormPlanBuilderTest {
     }
 
     @Test
+    void number_field_refuses_a_huge_exponent_instead_of_expanding_it() {
+        // toPlainString() of 1e999999999 would allocate a billion characters.
+        FormFieldDto amount = FormFieldDto.builder()
+                .name("daily")
+                .type("number")
+                .label(Map.of("en", "Daily"))
+                .bindsTo(BindsToDto.builder().key("ai.llm.budget.daily").build())
+                .build();
+        ResolvedSettingForm form = formWith(List.of(amount), List.of());
+
+        assertThatThrownBy(() -> planBuilder.buildApplyPlan(
+                        form, Map.of("daily", "1e999999999"), TENANT, PROJECT, USER, "en", Map.of()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("is not a number");
+    }
+
+    @Test
     void password_field_with_empty_value_is_SKIP() {
         ResolvedSettingForm form =
                 formWith(List.of(passwordField("anthKey", "ai.providers.anthropic.api_key")), List.of());

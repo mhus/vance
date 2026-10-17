@@ -121,4 +121,20 @@ class ModelCommandHandlerTest {
 
         assertThat(result.outcome()).isEqualTo(EngineCommandOutcome.ERROR);
     }
+
+    @Test
+    void render_unresolvableOverride_namesTheErrorAndTheWayOut() {
+        ChatModelStateDto broken = ChatModelStateDto.builder()
+                .model("gone:glm-5")
+                .modelError("Unknown model spec 'gone:glm-5'")
+                .modelOverridden(true)
+                .thinking("off")
+                .build();
+
+        assertThat(ModelCommandHandler.render(broken))
+                .contains("gone:glm-5")
+                .contains("cannot be resolved")
+                .contains("//model clear")
+                .doesNotContain("no reasoning support");
+    }
 }

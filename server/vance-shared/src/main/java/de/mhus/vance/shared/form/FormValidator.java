@@ -14,7 +14,8 @@ import org.springframework.stereotype.Service;
  * Validates a submitted {@code Map<String, Object>} against a list of
  * {@link FormFieldDto}s before it's handed to the Pebble renderer.
  * Validation is purely structural: required-presence, type coercion,
- * integer bounds, repeat-bounds, select-whitelist. A {@code select} field
+ * integer/number bounds ({@code integerMin}/{@code integerMax} apply to both),
+ * number magnitude, repeat-bounds, select-whitelist. A {@code select} field
  * with {@code allowCustom} skips the whitelist (see
  * {@link FormFieldDto#isAllowCustom()}) — its choices are then an inventory
  * hint, not a closed enum. The renderer must never see malformed input.
@@ -57,6 +58,15 @@ public class FormValidator {
     public static final String TYPE_SELECT = "select";
     public static final String TYPE_MULTI_SELECT = "multi_select";
     public static final String TYPE_REPEAT = "repeat";
+
+    /** Longest number text a form accepts — far beyond any amount, short enough to parse in no time. */
+    public static final int MAX_NUMBER_LENGTH = 64;
+
+    /** Digits before the decimal point a form number may have (below 10^18). */
+    public static final int MAX_NUMBER_INTEGER_DIGITS = 18;
+
+    /** Digits after the decimal point a form number may have, trailing zeros not counted. */
+    public static final int MAX_NUMBER_FRACTION_DIGITS = 18;
 
     /**
      * Walks {@code fields} and checks each entry against {@code values}.
@@ -117,8 +127,18 @@ public class FormValidator {
                 }
             }
             case TYPE_NUMBER -> {
-                if (tryParseNumber(raw) == null) {
+                BigDecimal parsed = tryParseNumber(raw);
+                if (parsed == null) {
                     errors.add(new FormValidationError(path, "expected_number"));
+                    return;
+                }
+                // integerMin/integerMax bound a decimal field as well — a whole
+                // bound is all a form has needed so far (e.g. "not negative").
+                if (field.getIntegerMin() != null && parsed.compareTo(BigDecimal.valueOf(field.getIntegerMin())) < 0) {
+                    errors.add(new FormValidationError(path, "below_min"));
+                }
+                if (field.getIntegerMax() != null && parsed.compareTo(BigDecimal.valueOf(field.getIntegerMax())) > 0) {
+                    errors.add(new FormValidationError(path, "above_max"));
                 }
             }
             case TYPE_BOOLEAN -> {
@@ -209,17 +229,49 @@ public class FormValidator {
     /**
      * A decimal number, exact. {@code NaN} and infinities are not numbers a
      * form can mean; {@link BigDecimal} rejects them along with garbage.
+     *
+     * <p>Bounded in magnitude and precision: {@code 1e999999999} is a valid
+     * {@link BigDecimal}, and turning it into plain digits — which the setting
+     * write does — allocates a billion characters. No form field means a number
+     * like that, so it is rejected here like garbage, before anyone expands it.
+     *
+     * @return the value, or {@code null} when {@code raw} is no number or out of
+     *         bounds ({@link #MAX_NUMBER_LENGTH}, {@link #MAX_NUMBER_INTEGER_DIGITS},
+     *         {@link #MAX_NUMBER_FRACTION_DIGITS})
      */
-    static @Nullable BigDecimal tryParseNumber(Object raw) {
+    public static @Nullable BigDecimal tryParseNumber(@Nullable Object raw) {
+        BigDecimal value;
         try {
-            if (raw instanceof BigDecimal b) return b;
-            if (raw instanceof Integer || raw instanceof Long) return BigDecimal.valueOf(((Number) raw).longValue());
-            if (raw instanceof Number n) return new BigDecimal(n.toString());
-            if (raw instanceof String s) return new BigDecimal(s.trim());
+            if (raw instanceof BigDecimal b) {
+                value = b;
+            } else if (raw instanceof Integer || raw instanceof Long) {
+                value = BigDecimal.valueOf(((Number) raw).longValue());
+            } else if (raw instanceof Number n) {
+                value = new BigDecimal(n.toString());
+            } else if (raw instanceof String s) {
+                String t = s.trim();
+                if (t.length() > MAX_NUMBER_LENGTH) {
+                    return null;
+                }
+                value = new BigDecimal(t);
+            } else {
+                return null;
+            }
         } catch (NumberFormatException e) {
             return null;
         }
-        return null;
+        return withinBounds(value) ? value : null;
+    }
+
+    private static boolean withinBounds(BigDecimal value) {
+        if (value.signum() == 0) {
+            return true;
+        }
+        // stripTrailingZeros only drops zeros of the unscaled value, which is
+        // short here — cheap even for an extreme scale.
+        BigDecimal stripped = value.stripTrailingZeros();
+        long integerDigits = (long) stripped.precision() - stripped.scale();
+        return integerDigits <= MAX_NUMBER_INTEGER_DIGITS && stripped.scale() <= MAX_NUMBER_FRACTION_DIGITS;
     }
 
     private static boolean isBooleanString(Object raw) {

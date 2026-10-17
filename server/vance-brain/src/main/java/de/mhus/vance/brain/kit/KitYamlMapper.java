@@ -1,5 +1,12 @@
 package de.mhus.vance.brain.kit;
 
+import static de.mhus.vance.shared.kit.KitYamlSupport.booleanOr;
+import static de.mhus.vance.shared.kit.KitYamlSupport.booleanOrFalse;
+import static de.mhus.vance.shared.kit.KitYamlSupport.loadMap;
+import static de.mhus.vance.shared.kit.KitYamlSupport.parseInstant;
+import static de.mhus.vance.shared.kit.KitYamlSupport.requireString;
+import static de.mhus.vance.shared.kit.KitYamlSupport.stringOrNull;
+
 import de.mhus.vance.api.kit.InheritArtefactsDto;
 import de.mhus.vance.api.kit.KitArtefactDto;
 import de.mhus.vance.api.kit.KitArtefactsDto;
@@ -23,7 +30,6 @@ import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.shared.kit.KitDescriptorParser;
 import de.mhus.vance.shared.kit.KitException;
 import java.security.GeneralSecurityException;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,7 +38,6 @@ import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.yaml.snakeyaml.DumperOptions;
-import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 
 /**
@@ -1139,70 +1144,12 @@ public final class KitYamlMapper {
 
     // ──────────────────── helpers ────────────────────
 
-    private static Map<String, Object> loadMap(String yamlText, String label) {
-        return loadMap(yamlText, label, true);
-    }
-
-    /**
-     * @param allowDuplicateKeys SnakeYAML's default ({@code true}) lets a
-     *        repeated key silently replace the earlier one; the kit files
-     *        have always been read that way, so only callers that need to
-     *        refuse it pass {@code false}
-     */
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> loadMap(String yamlText, String label, boolean allowDuplicateKeys) {
-        LoaderOptions options = new LoaderOptions();
-        options.setAllowDuplicateKeys(allowDuplicateKeys);
-        Yaml yaml = new Yaml(options);
-        Object parsed;
-        try {
-            parsed = yaml.load(yamlText);
-        } catch (RuntimeException e) {
-            throw new KitException("Failed to parse " + label + ": " + e.getMessage(), e);
-        }
-        if (parsed == null) {
-            return new LinkedHashMap<>();
-        }
-        if (!(parsed instanceof Map<?, ?> m)) {
-            throw new KitException(label + " must be a top-level map");
-        }
-        return (Map<String, Object>) m;
-    }
-
     private static String dump(Map<String, Object> map) {
         DumperOptions options = new DumperOptions();
         options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
         options.setIndent(2);
         options.setPrettyFlow(true);
         return new Yaml(options).dump(map);
-    }
-
-    private static String requireString(Map<String, Object> map, String key, String label) {
-        Object v = map.get(key);
-        if (v == null) {
-            throw new KitException(label + ": missing required field '" + key + "'");
-        }
-        String s = v.toString().trim();
-        if (s.isEmpty()) {
-            throw new KitException(label + ": field '" + key + "' must not be blank");
-        }
-        return s;
-    }
-
-    private static @Nullable String stringOrNull(@Nullable Object v) {
-        if (v == null) return null;
-        String s = v.toString().trim();
-        return s.isEmpty() ? null : s;
-    }
-
-    private static boolean booleanOrFalse(@Nullable Object v) {
-        return booleanOr(v, false);
-    }
-
-    private static boolean booleanOr(@Nullable Object v, boolean defaultValue) {
-        if (v == null) return defaultValue;
-        if (v instanceof Boolean b) return b;
-        return Boolean.parseBoolean(v.toString().trim());
     }
 
     private static List<String> stringList(@Nullable Object v) {
@@ -1217,16 +1164,5 @@ public final class KitYamlMapper {
             if (!s.isEmpty()) result.add(s);
         }
         return result;
-    }
-
-    private static @Nullable Instant parseInstant(@Nullable Object v) {
-        if (v == null) return null;
-        if (v instanceof Instant i) return i;
-        if (v instanceof java.util.Date d) return d.toInstant();
-        try {
-            return Instant.parse(v.toString().trim());
-        } catch (Exception e) {
-            return null;
-        }
     }
 }

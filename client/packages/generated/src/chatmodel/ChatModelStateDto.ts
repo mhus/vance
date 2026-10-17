@@ -5,9 +5,11 @@
 
 export interface ChatModelStateDto {
   model: string;
+  modelError?: string;
   modelOverridden: boolean;
   recipeModel?: string;
   thinking: string;
+  recipeThinking: string;
   thinkingOverridden: boolean;
   modelSupportsThinking: boolean;
 }

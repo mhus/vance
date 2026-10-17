@@ -101,7 +101,7 @@ vance:
     # _vance/config/mounts/, so the guard for it moved to the document layer
     # (KitRecordStore.isReservedPath for kits, the reserved _vance/ prefix rule
     # for agents). Nothing to deny here any more.
-    agent-write-deny-keys: "ai.provider.*,vault.*,store.*,kit.*"
+    agent-write-deny-keys: "ai.provider.*,vault.*,store.*,kit.*,ai.llm.budget.*"
     # Keys no {{secret:…}} reference may resolve — the read-side counterpart of
     # agentWriteDenyKeys, deliberately a separate list because "may not write"
     # and "may not resolve" are different questions.

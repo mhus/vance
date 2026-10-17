@@ -31,6 +31,7 @@ class ChatModelSupportTest {
                 .modelOverridden(overridden)
                 .recipeModel("anthropic:claude-sonnet")
                 .thinking(thinking)
+                .recipeThinking(thinking)
                 .modelSupportsThinking(true)
                 .build();
     }
@@ -90,16 +91,79 @@ class ChatModelSupportTest {
     @Test
     void stepsFor_sendsOnlyChanges_modelFirst() {
         ChatModelStateDto plain = state("anthropic:claude-sonnet", false, "off");
-        assertThat(ChatModelSupport.stepsFor(plain, ChatModelSupport.RECIPE_DEFAULT, "off"))
+        assertThat(ChatModelSupport.stepsFor(plain, ChatModelSupport.RECIPE_DEFAULT, "off", true))
                 .isEmpty();
-        assertThat(ChatModelSupport.stepsFor(plain, "cortecs:glm-5", "high"))
+        assertThat(ChatModelSupport.stepsFor(plain, "cortecs:glm-5", "high", true))
                 .containsExactly(
                         new ChatModelSupport.Step("model", "cortecs:glm-5"),
                         new ChatModelSupport.Step("thinking", "high"));
 
         ChatModelStateDto overridden = state("cortecs:glm-5", true, "off");
         assertThat(ChatModelSupport.initialSelection(overridden)).isEqualTo("cortecs:glm-5");
-        assertThat(ChatModelSupport.stepsFor(overridden, ChatModelSupport.RECIPE_DEFAULT, "off"))
+        assertThat(ChatModelSupport.stepsFor(overridden, ChatModelSupport.RECIPE_DEFAULT, "off", true))
                 .containsExactly(new ChatModelSupport.Step("model", "clear"));
+    }
+
+    @Test
+    void stepsFor_modelWithoutReasoning_leavesTheLevelAlone() {
+        ChatModelStateDto recipe = state("anthropic:claude-sonnet", false, "medium");
+        assertThat(ChatModelSupport.stepsFor(recipe, "cortecs:deepseek-v4", "high", false))
+                .containsExactly(new ChatModelSupport.Step("model", "cortecs:deepseek-v4"));
+    }
+
+    @Test
+    void stepsFor_roundTripThroughModelWithoutReasoning_keepsRecipeLevel() {
+        ChatModelStateDto recipe = state("anthropic:claude-sonnet", false, "medium");
+        assertThat(ChatModelSupport.stepsFor(
+                        recipe, "cortecs:deepseek-v4", ChatModelSupport.initialThinking(recipe), false))
+                .containsExactly(new ChatModelSupport.Step("model", "cortecs:deepseek-v4"));
+
+        ChatModelStateDto onDeepseek = state("cortecs:deepseek-v4", true, "medium");
+        onDeepseek.setModelSupportsThinking(false);
+        assertThat(ChatModelSupport.stepsFor(
+                        onDeepseek,
+                        ChatModelSupport.RECIPE_DEFAULT,
+                        ChatModelSupport.initialThinking(onDeepseek),
+                        true))
+                .containsExactly(new ChatModelSupport.Step("model", "clear"));
+    }
+
+    @Test
+    void stepsFor_leftoverOffOverride_isClearedOnTheWayBackToTheRecipe() {
+        ChatModelStateDto legacy = state("cortecs:deepseek-v4", true, "off");
+        legacy.setThinkingOverridden(true);
+        legacy.setRecipeThinking("medium");
+        legacy.setModelSupportsThinking(false);
+
+        assertThat(ChatModelSupport.initialThinking(legacy)).isEqualTo("medium");
+        assertThat(ChatModelSupport.stepsFor(
+                        legacy, ChatModelSupport.RECIPE_DEFAULT, ChatModelSupport.initialThinking(legacy), true))
+                .containsExactly(
+                        new ChatModelSupport.Step("model", "clear"), new ChatModelSupport.Step("thinking", "clear"));
+    }
+
+    @Test
+    void initialThinking_keepsAnEffectiveOrNonOffOverride() {
+        ChatModelStateDto high = state("cortecs:deepseek-v4", true, "high");
+        high.setThinkingOverridden(true);
+        high.setRecipeThinking("low");
+        high.setModelSupportsThinking(false);
+        assertThat(ChatModelSupport.initialThinking(high)).isEqualTo("high");
+
+        ChatModelStateDto offOnReasoningModel = state("cortecs:glm-5", true, "off");
+        offOnReasoningModel.setThinkingOverridden(true);
+        offOnReasoningModel.setRecipeThinking("medium");
+        assertThat(ChatModelSupport.initialThinking(offOnReasoningModel)).isEqualTo("off");
+    }
+
+    @Test
+    void stepsFor_levelEqualToRecipe_isSentAsClear() {
+        ChatModelStateDto s = state("anthropic:claude-sonnet", false, "high");
+        s.setThinkingOverridden(true);
+        s.setRecipeThinking("low");
+        assertThat(ChatModelSupport.stepsFor(s, ChatModelSupport.RECIPE_DEFAULT, "low", true))
+                .containsExactly(new ChatModelSupport.Step("thinking", "clear"));
+        assertThat(ChatModelSupport.stepsFor(s, ChatModelSupport.RECIPE_DEFAULT, "medium", true))
+                .containsExactly(new ChatModelSupport.Step("thinking", "medium"));
     }
 }

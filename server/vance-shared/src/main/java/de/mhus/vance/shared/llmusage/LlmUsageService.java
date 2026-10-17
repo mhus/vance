@@ -6,7 +6,9 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.bson.Document;
 import org.jspecify.annotations.Nullable;
@@ -14,6 +16,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.aggregation.Aggregation;
+import org.springframework.data.mongodb.core.aggregation.AggregationExpression;
+import org.springframework.data.mongodb.core.aggregation.BooleanOperators;
+import org.springframework.data.mongodb.core.aggregation.ComparisonOperators;
+import org.springframework.data.mongodb.core.aggregation.ConditionalOperators;
+import org.springframework.data.mongodb.core.aggregation.GroupOperation;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
@@ -102,6 +109,11 @@ public class LlmUsageService {
     static final String SETTING_DAILY_RETENTION = "usage.retentionDays";
     static final String SETTING_DETAIL_RETENTION = "usage.detailRetentionDays";
     static final String SETTING_DETAIL_RETENTION_FAILED = "usage.detailRetentionDaysFailed";
+
+    /** Field-name prefixes of the per-range sums in {@link #costTotals(String, String, List)}. */
+    private static final String COST_FIELD = "cost";
+
+    private static final String UNPRICED_FIELD = "unpriced";
 
     private final MongoTemplate mongoTemplate;
     private final RetentionSettingCache retentionCache;
@@ -308,34 +320,94 @@ public class LlmUsageService {
      * place that can stop anything.
      */
     public List<CostTotal> costTotals(String tenantId, @Nullable String projectId, LocalDate fromDay, LocalDate toDay) {
+        DayRange range = new DayRange(fromDay, toDay);
+        return costTotals(tenantId, projectId, List.of(range)).getOrDefault(range, List.of());
+    }
+
+    /**
+     * {@link #costTotals(String, String, LocalDate, LocalDate)} for several
+     * day ranges at once, in <b>one</b> aggregation: the match covers the
+     * union of the ranges, and every range is its own conditional sum in the
+     * group stage. A budget check asks for up to three windows per level;
+     * this keeps that at one round trip instead of three.
+     *
+     * @return per requested range (equal ranges collapse), the totals per
+     *         currency; a currency with nothing in a range is left out of it
+     */
+    public Map<DayRange, List<CostTotal>> costTotals(
+            String tenantId, @Nullable String projectId, List<DayRange> ranges) {
+        List<DayRange> distinct = ranges.stream().distinct().toList();
+        Map<DayRange, List<CostTotal>> out = new LinkedHashMap<>();
+        if (distinct.isEmpty()) {
+            return out;
+        }
+        LocalDate minFrom = distinct.get(0).from();
+        LocalDate maxTo = distinct.get(0).to();
+        for (DayRange r : distinct) {
+            out.put(r, new ArrayList<>());
+            if (r.from().isBefore(minFrom)) minFrom = r.from();
+            if (r.to().isAfter(maxTo)) maxTo = r.to();
+        }
         Criteria match = Criteria.where("tenantId")
                 .is(tenantId)
                 .and("day")
-                .gte(fromDay.toString())
-                .lte(toDay.toString())
+                .gte(minFrom.toString())
+                .lte(maxTo.toString())
                 .and("kind")
                 .in(UsageKind.CHAT.name(), UsageKind.EMBEDDING.name());
         if (projectId != null) {
             match = match.and("projectId").is(LlmUsageDailyDocument.key(projectId));
         }
-        Aggregation pipeline = Aggregation.newAggregation(
-                Aggregation.match(match),
-                Aggregation.group("currency")
-                        .sum("costTotalMicros")
-                        .as("costMicros")
-                        .sum("unpricedCalls")
-                        .as("unpricedCalls"));
-        List<CostTotal> out = new ArrayList<>();
+        GroupOperation group = Aggregation.group("currency");
+        for (int i = 0; i < distinct.size(); i++) {
+            DayRange r = distinct.get(i);
+            group = group.sum(sumInRange(r, "costTotalMicros"))
+                    .as(COST_FIELD + i)
+                    .sum(sumInRange(r, "unpricedCalls"))
+                    .as(UNPRICED_FIELD + i);
+        }
+        Aggregation pipeline = Aggregation.newAggregation(Aggregation.match(match), group);
         for (Document row : mongoTemplate
                 .aggregate(pipeline, LlmUsageDailyDocument.class, Document.class)
                 .getMappedResults()) {
-            Object currency = row.get("_id");
-            out.add(new CostTotal(
-                    currency == null ? LlmUsageDailyDocument.NONE : currency.toString(),
-                    asLong(row.get("costMicros")),
-                    asLong(row.get("unpricedCalls"))));
+            Object rawCurrency = row.get("_id");
+            String currency = rawCurrency == null ? LlmUsageDailyDocument.NONE : rawCurrency.toString();
+            for (int i = 0; i < distinct.size(); i++) {
+                long cost = asLong(row.get(COST_FIELD + i));
+                long unpriced = asLong(row.get(UNPRICED_FIELD + i));
+                if (cost != 0 || unpriced != 0) {
+                    out.get(distinct.get(i)).add(new CostTotal(currency, cost, unpriced));
+                }
+            }
         }
+        out.replaceAll((range, totals) -> List.copyOf(totals));
         return out;
+    }
+
+    /** {@code field} when the bucket's day lies in {@code range}, else {@code 0}. Days compare as ISO strings. */
+    private static AggregationExpression sumInRange(DayRange range, String field) {
+        return ConditionalOperators.when(BooleanOperators.And.and(
+                        ComparisonOperators.valueOf("day")
+                                .greaterThanEqualToValue(range.from().toString()),
+                        ComparisonOperators.valueOf("day")
+                                .lessThanEqualToValue(range.to().toString())))
+                .thenValueOf(field)
+                .otherwise(0L);
+    }
+
+    /**
+     * An inclusive span of UTC days.
+     *
+     * @param from first day
+     * @param to   last day, not before {@code from}
+     */
+    public record DayRange(LocalDate from, LocalDate to) {
+
+        public DayRange {
+            if (to.isBefore(from)) {
+                throw new IllegalArgumentException("day range ends before it starts: " + from + ".." + to);
+            }
+        }
     }
 
     /**

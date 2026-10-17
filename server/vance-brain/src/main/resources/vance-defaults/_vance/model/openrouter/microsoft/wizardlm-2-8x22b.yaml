@@ -5,7 +5,7 @@
 # agent engines, only plain chat / LightLlm calls.
 contextWindowTokens: 65535
 defaultMaxOutputTokens: 8000
-size: SMALL
+size: LARGE
 
 # Rates: OpenRouter catalog (openrouter.ai/api/v1/models), snapshot 2026-10-17.
 pricing:

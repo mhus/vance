@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CatalogModelInsightsDto, ModelAliasInsightsDto } from '@vance/generated';
-import { ModelCatalogLayer } from '@vance/generated';
+import { ModelAliasScope, ModelCatalogLayer } from '@vance/generated';
 import { aliasesTargeting, filterModels, isAutoLayer, kindCounts, verdictOf } from './modelInsights';
 
 function model(spec: string, over: Partial<CatalogModelInsightsDto> = {}): CatalogModelInsightsDto {
@@ -69,11 +69,19 @@ describe('kindCounts', () => {
 describe('aliasesTargeting', () => {
   it('lists the aliases resolving to a spec', () => {
     const aliases: ModelAliasInsightsDto[] = [
-      { alias: 'default:chat', target: 'default:fast', definedIn: 'TENANT', resolved: 'cortecs:glm-5', chain: [], viaTenantDefault: false },
-      { alias: 'default:fast', target: 'cortecs:glm-5', definedIn: 'TENANT', resolved: 'cortecs:glm-5', chain: [], viaTenantDefault: false },
-      { alias: 'cheap:x', target: 'nowhere:x', definedIn: 'PROJECT', chain: [], viaTenantDefault: false, error: 'unknown' },
+      { alias: 'default:chat', target: 'default:fast', definedIn: ModelAliasScope.TENANT, resolved: 'cortecs:glm-5', chain: [], viaTenantDefault: false },
+      { alias: 'default:fast', target: 'cortecs:glm-5', definedIn: ModelAliasScope.TENANT, resolved: 'cortecs:glm-5', chain: [], viaTenantDefault: false },
+      { alias: 'cheap:x', target: 'nowhere:x', definedIn: ModelAliasScope.PROJECT, chain: [], viaTenantDefault: false, error: 'unknown' },
     ];
     expect(aliasesTargeting(aliases, 'cortecs:glm-5')).toEqual(['default:chat', 'default:fast']);
+  });
+
+  it('compares specs case-insensitively', () => {
+    const aliases: ModelAliasInsightsDto[] = [
+      { alias: 'default:chat', target: 'cortecs:GLM-5', definedIn: ModelAliasScope.PROJECT, resolved: 'cortecs:GLM-5', chain: [], viaTenantDefault: false },
+    ];
+    expect(aliasesTargeting(aliases, 'cortecs:glm-5')).toEqual(['default:chat']);
+    expect(aliasesTargeting(aliases, 'CORTECS:glm-5')).toEqual(['default:chat']);
   });
 });
 

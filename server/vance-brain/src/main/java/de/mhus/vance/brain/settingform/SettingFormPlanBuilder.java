@@ -5,8 +5,10 @@ import de.mhus.vance.api.form.FormFieldDto;
 import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.brain.prompt.PromptTemplateException;
 import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
+import de.mhus.vance.shared.form.FormValidator;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.settings.SettingService;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -368,14 +370,18 @@ public class SettingFormPlanBuilder {
                 }
             }
             case DOUBLE -> {
-                try {
-                    // Plain decimal, no trailing zeros: "10" stays "10" (an
-                    // integer reader of the same key still parses it), "0.1"
-                    // stays "0.1" instead of a binary-float approximation.
-                    yield new java.math.BigDecimal(s).stripTrailingZeros().toPlainString();
-                } catch (NumberFormatException e) {
-                    throw new IllegalStateException("fields[" + field.getName() + "] is not a number: " + s, e);
+                // Bounded parse: the validator already refused anything out of
+                // range, but a plain-digit expansion of "1e999999999" would
+                // allocate a billion characters, so this path does not rely on
+                // having been called after it.
+                BigDecimal value = FormValidator.tryParseNumber(s);
+                if (value == null) {
+                    throw new IllegalStateException("fields[" + field.getName() + "] is not a number: " + s);
                 }
+                // Plain decimal, no trailing zeros: "10" stays "10" (an
+                // integer reader of the same key still parses it), "0.1"
+                // stays "0.1" instead of a binary-float approximation.
+                yield value.stripTrailingZeros().toPlainString();
             }
             case BOOLEAN -> {
                 String low = s.toLowerCase(Locale.ROOT);

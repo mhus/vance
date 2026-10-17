@@ -80,14 +80,35 @@ export function selectionSupportsThinking(
 }
 
 /**
+ * The level the picker starts on. An `off` override on a model that cannot
+ * reason has no effect (earlier picker versions wrote one whenever such a
+ * model was picked), so the picker starts on the recipe's level instead —
+ * moving to a reasoning model then returns to the recipe's level unless the
+ * user picks another. The level control shows that value, so nothing changes
+ * unseen.
+ */
+export function initialThinking(state: ChatModelStateDto): string {
+  const ineffectiveOff =
+    state.thinkingOverridden && state.thinking === 'off' && !state.modelSupportsThinking && !state.modelError;
+  return ineffectiveOff && state.recipeThinking ? state.recipeThinking : state.thinking;
+}
+
+/**
  * The engine commands (`verb`, `text`) that move the process from `state`
  * to the picked model and level. Unchanged values send nothing; the model
  * goes first so a level is never applied to the model being left.
+ *
+ * The level follows two rules (same as `ChatModelSupport.stepsFor` in foot):
+ * - `supportsThinking` false (the picked model cannot reason): no level
+ *   command at all — the process keeps its level for the next model that can.
+ * - A changed level equal to the recipe's is sent as `//thinking clear`, not
+ *   pinned, so the process follows the recipe again.
  */
 export function commandsFor(
   state: ChatModelStateDto,
   selection: string,
   thinking: string,
+  supportsThinking: boolean,
 ): { verb: string; text: string }[] {
   const out: { verb: string; text: string }[] = [];
   if (selection === RECIPE_DEFAULT) {
@@ -95,7 +116,9 @@ export function commandsFor(
   } else if (!state.modelOverridden || state.model !== selection) {
     out.push({ verb: 'model', text: selection });
   }
-  if (thinking !== state.thinking) out.push({ verb: 'thinking', text: thinking });
+  if (supportsThinking && thinking !== state.thinking) {
+    out.push({ verb: 'thinking', text: thinking === state.recipeThinking ? 'clear' : thinking });
+  }
   return out;
 }
 

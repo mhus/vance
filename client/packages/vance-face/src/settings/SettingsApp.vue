@@ -33,7 +33,7 @@ import { useAdminProjects } from '@/composables/useAdminProjects';
 import { useProjectKitsCatalog } from '@/composables/useProjectKitsCatalog';
 import { recallProject, rememberProject } from '@/platform/lastProject';
 import { ensureAddonRemotesRegistered, ensureKindLoaded } from '@/platform/addonRegistry';
-import { getTenantId, listSettingForms, RestError } from '@vance/shared';
+import { getTenantId, listSettingForms } from '@vance/shared';
 import { brainFetch } from '@vance/shared';
 import {
   listSettingsKinds,
@@ -314,7 +314,7 @@ async function loadForms(): Promise<void> {
       replaceSettingsView(view.value);
     }
   } catch (err) {
-    formsError.value = err instanceof RestError ? err.message : String(err);
+    formsError.value = err instanceof Error ? err.message : String(err);
     forms.value = [];
   } finally {
     formsLoading.value = false;
@@ -338,7 +338,7 @@ async function loadAreaRows(): Promise<void> {
       replaceSettingsView(view.value);
     }
   } catch (err) {
-    areaError.value = err instanceof RestError ? err.message : String(err);
+    areaError.value = err instanceof Error ? err.message : String(err);
     areaRows.value = [];
   } finally {
     areaLoading.value = false;
@@ -488,7 +488,7 @@ async function addEntry(): Promise<void> {
     await loadAreaRows();
     selectEntry(row.documentId);
   } catch (err) {
-    addError.value = err instanceof RestError ? err.message : String(err);
+    addError.value = err instanceof Error ? err.message : String(err);
   } finally {
     addBusy.value = false;
   }
@@ -515,7 +515,7 @@ async function overrideEntry(row: SettingsInheritedRow): Promise<void> {
     await loadAreaRows();
     selectEntry(local.documentId);
   } catch (err) {
-    areaError.value = err instanceof RestError ? err.message : String(err);
+    areaError.value = err instanceof Error ? err.message : String(err);
   } finally {
     areaLoading.value = false;
   }
@@ -536,7 +536,7 @@ async function deleteEntry(row: SettingsDocRow): Promise<void> {
     }
     await loadAreaRows();
   } catch (err) {
-    areaError.value = err instanceof RestError ? err.message : String(err);
+    areaError.value = err instanceof Error ? err.message : String(err);
   } finally {
     areaLoading.value = false;
   }

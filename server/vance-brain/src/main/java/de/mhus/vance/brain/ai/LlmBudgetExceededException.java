@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.ai;
 
+import de.mhus.vance.shared.llmusage.BudgetScope;
 import de.mhus.vance.shared.llmusage.LlmBudgetService;
 import de.mhus.vance.shared.llmusage.LlmUsageService;
 import dev.langchain4j.exception.NonRetriableException;
@@ -17,7 +18,10 @@ import java.math.RoundingMode;
  * may be a free local model the gate admits.
  *
  * <p>The message is the user-facing explanation: it names the level, the
- * window, what was used against what limit, and the setting an admin raises.
+ * window and the setting an admin raises. A project refusal also says what was
+ * used against what limit. A tenant refusal does not: it reaches every session
+ * of the tenant, while the tenant's spend is for tenant admins only (the same
+ * line {@code GET /usage/budget} draws), so it carries no amounts.
  */
 public class LlmBudgetExceededException extends NonRetriableException {
 
@@ -50,12 +54,16 @@ public class LlmBudgetExceededException extends NonRetriableException {
                     case TENANT -> "a tenant admin";
                     case PROJECT -> "a project admin";
                 };
+        String raise =
+                " Ask " + admin + " to raise 'ai.llm.budget." + d.window().label() + "'.";
+        if (d.scope() == BudgetScope.TENANT) {
+            return level + " LLM budget exhausted " + period + "." + raise;
+        }
         // Cent precision unless a limit below one cent would read as "0.00".
         int scale = d.limitMicros() < 10_000 ? 6 : 2;
         return level + " LLM budget exhausted: " + amount(d.usedMicros(), scale) + " of "
                 + amount(d.limitMicros(), scale) + " "
-                + d.currency() + " " + period + ". Ask " + admin + " to raise 'ai.llm.budget."
-                + d.window().label() + "'.";
+                + d.currency() + " " + period + "." + raise;
     }
 
     private static String amount(long micros, int scale) {

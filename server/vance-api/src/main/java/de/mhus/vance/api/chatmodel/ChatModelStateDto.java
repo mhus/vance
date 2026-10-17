@@ -20,8 +20,20 @@ import org.jspecify.annotations.Nullable;
 @GenerateTypeScript("chatmodel")
 public class ChatModelStateDto {
 
-    /** Effective model, resolved to {@code providerInstance:modelName}. */
+    /**
+     * Effective model, resolved to {@code providerInstance:modelName}. When
+     * it cannot be resolved ({@link #modelError} set) this is the raw spec
+     * the process is configured with, or empty when there is none.
+     */
     private String model;
+
+    /**
+     * Why {@link #model} cannot be resolved — e.g. an override naming a
+     * provider instance that was removed since. {@code null} when it
+     * resolves. The state is still reported so a picker can replace or
+     * clear the broken choice.
+     */
+    private @Nullable String modelError;
 
     /** {@code true} when {@link #model} comes from a runtime {@code //model} override. */
     private boolean modelOverridden;
@@ -36,9 +48,18 @@ public class ChatModelStateDto {
     /** Effective reasoning level, lowercase ({@code off} … {@code high}). */
     private String thinking;
 
+    /**
+     * The recipe's reasoning level, lowercase — what {@code //thinking clear}
+     * returns to.
+     */
+    private String recipeThinking;
+
     /** {@code true} when {@link #thinking} comes from a runtime {@code //thinking} override. */
     private boolean thinkingOverridden;
 
-    /** Whether the effective model honours a reasoning level other than {@code off}. */
+    /**
+     * Whether the effective model honours a reasoning level other than
+     * {@code off}; {@code false} while {@link #modelError} is set.
+     */
     private boolean modelSupportsThinking;
 }

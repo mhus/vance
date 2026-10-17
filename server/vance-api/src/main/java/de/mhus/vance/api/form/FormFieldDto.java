@@ -108,10 +108,10 @@ public class FormFieldDto {
     /** UI-hint for {@code textarea}: number of visible rows. {@code null} = renderer default. */
     private @Nullable Integer rows;
 
-    /** Lower bound for {@code integer} values (inclusive). {@code null} = unbounded. */
+    /** Lower bound for {@code integer} and {@code number} values (inclusive). {@code null} = unbounded. */
     private @Nullable Integer integerMin;
 
-    /** Upper bound for {@code integer} values (inclusive). {@code null} = unbounded. */
+    /** Upper bound for {@code integer} and {@code number} values (inclusive). {@code null} = unbounded. */
     private @Nullable Integer integerMax;
 
     /** Minimum entries for {@code repeat}. {@code null} = unbounded (incl. zero). */

@@ -24,8 +24,8 @@ public class ModelAliasInsightsDto {
     /** Raw setting value — a spec or a comma cascade of specs. */
     private String target;
 
-    /** {@code PROJECT} or {@code TENANT} — the settings layer the value comes from. */
-    private String definedIn;
+    /** The settings scope the value comes from. */
+    private ModelAliasScope definedIn;
 
     /** Resolved {@code providerInstance:modelName}; {@code null} when resolution fails. */
     private @Nullable String resolved;

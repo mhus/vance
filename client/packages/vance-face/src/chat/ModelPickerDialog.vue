@@ -38,6 +38,7 @@ import {
   formatPrice,
   groupModels,
   initialSelection,
+  initialThinking,
   selectionSupportsThinking,
 } from './modelPicker';
 
@@ -50,7 +51,10 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'update:open', open: boolean): void;
-  /** The process's state after a successful apply — lets the host refresh its indicator. */
+  /**
+   * The process's state after an apply — also after a partly failed one, so
+   * the host's indicator never shows a model the process no longer runs.
+   */
   (e: 'applied', state: ChatModelStateDto): void;
 }>();
 
@@ -85,8 +89,10 @@ const thinkingOptions = computed<SegmentOption<string>[]>(() =>
   })),
 );
 const pendingCommands = computed(() =>
-  state.value ? commandsFor(state.value, selection.value, thinkingEnabled.value ? thinking.value : 'off') : [],
+  state.value ? commandsFor(state.value, selection.value, thinking.value, thinkingEnabled.value) : [],
 );
+/** Apply is possible once the state is loaded and nothing is in flight — button and Enter alike. */
+const canApply = computed(() => !loading.value && !applying.value && !!state.value);
 
 watch(
   () => props.open,
@@ -113,7 +119,7 @@ async function load(): Promise<void> {
     list.value = listed;
     state.value = current;
     selection.value = initialSelection(current);
-    thinking.value = current.thinking;
+    thinking.value = initialThinking(current);
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   } finally {
@@ -137,6 +143,7 @@ async function runCommand(verb: string, text: string): Promise<ChatModelStateDto
 }
 
 async function apply(): Promise<void> {
+  if (!canApply.value) return;
   const commands = pendingCommands.value;
   if (commands.length === 0) {
     close();
@@ -154,8 +161,22 @@ async function apply(): Promise<void> {
     close();
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
+    // An earlier command may have gone through (`//model` set, `//thinking`
+    // refused). Report the real state so the host's indicator does not keep
+    // showing the old model; the dialog stays open with the error.
+    await reportStateAfterFailure();
   } finally {
     applying.value = false;
+  }
+}
+
+async function reportStateAfterFailure(): Promise<void> {
+  try {
+    const after = await runCommand('model', 'get');
+    state.value = after;
+    emit('applied', after);
+  } catch {
+    // The apply error above is already shown; nothing more to report.
   }
 }
 
@@ -213,6 +234,9 @@ function price(m: ChatModelDto): string {
       />
 
       <VAlert v-if="error" variant="error">{{ error }}</VAlert>
+      <VAlert v-else-if="state?.modelError" variant="warning">
+        {{ t('chat.modelPicker.modelError', { model: state.model, error: state.modelError }) }}
+      </VAlert>
 
       <div v-if="loading" class="text-sm text-(--v-label-secondary)">
         {{ t('chat.modelPicker.loading') }}
@@ -272,7 +296,7 @@ function price(m: ChatModelDto): string {
 
     <template #actions>
       <VButton variant="secondary" @click="close">{{ t('chat.modelPicker.cancel') }}</VButton>
-      <VButton variant="primary" :disabled="loading || applying || !state" @click="apply">
+      <VButton variant="primary" :disabled="!canApply" @click="apply">
         {{ t('chat.modelPicker.apply') }}
       </VButton>
     </template>

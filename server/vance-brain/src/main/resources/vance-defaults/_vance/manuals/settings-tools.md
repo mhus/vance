@@ -43,7 +43,7 @@ addresses the tenant-wide layer). Refuses, by design:
   never overwritten through an agent; credentials go through the
   settings editor or a setting form (a human surface).
 - **Deny-listed keys** (`ai.provider.*`, `vault.*`, `store.*`,
-  `kit.*`) — unless the running recipe opted in. The creator's grant
+  `kit.*`, `ai.llm.budget.*`) — unless the running recipe opted in. The creator's grant
   covers exactly `ai.provider.<instance>.type` and `.baseUrl`;
   credentials (`apiKey`) are never grantable.
 

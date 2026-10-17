@@ -38,6 +38,41 @@ class LlmBudgetTest {
     }
 
     @Test
+    void hugeExponents_readAsUnlimited_withoutExpandingTheNumber() {
+        // Each of these would allocate ~a billion digits if moved/rescaled naively.
+        LlmBudget b = LlmBudget.parse(Map.of(
+                LlmBudget.KEY_DAILY, "1e999999999",
+                LlmBudget.KEY_MONTHLY, "1e13",
+                LlmBudget.KEY_TOTAL, "1" + "0".repeat(100)));
+
+        assertThat(b.hasLimit()).isFalse();
+    }
+
+    @Test
+    void largestAcceptedAmount_fitsTheMicroUnitLong() {
+        LlmBudget b = LlmBudget.parse(Map.of(LlmBudget.KEY_DAILY, "999999999999.999999"));
+
+        assertThat(b.dailyMicros()).isEqualTo(999_999_999_999_999_999L);
+    }
+
+    @Test
+    void positiveAmountBelowOneMicroUnit_isTheSmallestLimit_notUnlimited() {
+        LlmBudget b = LlmBudget.parse(Map.of(
+                LlmBudget.KEY_DAILY, "0.0000001",
+                LlmBudget.KEY_MONTHLY, "1e-999999999"));
+
+        assertThat(b.dailyMicros()).isEqualTo(1);
+        assertThat(b.monthlyMicros()).isEqualTo(1);
+    }
+
+    @Test
+    void zeroInAnyNotation_isUnlimited() {
+        LlmBudget b = LlmBudget.parse(Map.of(LlmBudget.KEY_DAILY, "0e999999999", LlmBudget.KEY_MONTHLY, "0.00"));
+
+        assertThat(b.hasLimit()).isFalse();
+    }
+
+    @Test
     void currency_defaultsToUsd_andIsNormalized() {
         assertThat(LlmBudget.parse(Map.of()).currency()).isEqualTo("USD");
         assertThat(LlmBudget.parse(Map.of(LlmBudget.KEY_CURRENCY, " eur ")).currency())
@@ -51,8 +86,15 @@ class LlmBudgetTest {
                 .isEqualTo(95);
         assertThat(LlmBudget.parse(Map.of(LlmBudget.KEY_WARN_PERCENT, "0")).warnPercent())
                 .isZero();
+        // At or beyond 100 % the refusal is the message — off, not capped (and logged).
         assertThat(LlmBudget.parse(Map.of(LlmBudget.KEY_WARN_PERCENT, "100")).warnPercent())
                 .isZero();
+        assertThat(LlmBudget.parse(Map.of(LlmBudget.KEY_WARN_PERCENT, "150")).warnPercent())
+                .isZero();
+        assertThat(LlmBudget.parse(Map.of(LlmBudget.KEY_WARN_PERCENT, "-5")).warnPercent())
+                .isZero();
+        assertThat(LlmBudget.parse(Map.of(LlmBudget.KEY_WARN_PERCENT, "99")).warnPercent())
+                .isEqualTo(99);
         assertThat(LlmBudget.parse(Map.of(LlmBudget.KEY_WARN_PERCENT, "lots")).warnPercent())
                 .isZero();
     }

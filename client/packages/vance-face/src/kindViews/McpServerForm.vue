@@ -30,7 +30,11 @@ import {
  * they were — the JSON view shows them. The parent re-mounts the form
  * (`:key`) when it loads other parameters.
  */
-const props = defineProps<{ modelValue: McpParams }>();
+const props = defineProps<{
+  modelValue: McpParams;
+  /** Greys every field out — the parent's read-only binding. */
+  disabled?: boolean;
+}>();
 const emit = defineEmits<{ (e: 'update:modelValue', value: McpParams): void }>();
 
 const { t } = useI18n();
@@ -68,7 +72,7 @@ const loginScopeOptions = computed(() => [
     <!-- Connection -->
     <section class="flex flex-col gap-3">
       <h4 class="text-xs uppercase text-(--v-label-secondary)">{{ $t('tools.mcp.connection') }}</h4>
-      <VSegment v-model="state.transport" :options="transportOptions" :aria-label="$t('tools.mcp.transport')" />
+      <VSegment v-model="state.transport" :options="transportOptions" :aria-label="$t('tools.mcp.transport')" :disabled="disabled" />
       <template v-if="state.transport === 'http'">
         <VInput
           v-model="state.url"
@@ -77,6 +81,7 @@ const loginScopeOptions = computed(() => [
           :help="$t('tools.mcp.urlHelp')"
           placeholder="https://mcp.example.com/mcp"
           required
+          :disabled="disabled"
         />
       </template>
       <template v-else>
@@ -85,16 +90,17 @@ const loginScopeOptions = computed(() => [
           :label="$t('tools.mcp.command')"
           :help="$t('tools.mcp.commandHelp')"
           :rows="3"
+          :disabled="disabled"
         />
-        <VInput v-model="state.cwd" :label="$t('tools.mcp.cwd')" />
-        <VTextarea v-model="state.env" :label="$t('tools.mcp.env')" :help="$t('tools.mcp.mapHelp')" :rows="3" />
+        <VInput v-model="state.cwd" :label="$t('tools.mcp.cwd')" :disabled="disabled" />
+        <VTextarea v-model="state.env" :label="$t('tools.mcp.env')" :help="$t('tools.mcp.mapHelp')" :rows="3" :disabled="disabled" />
       </template>
     </section>
 
     <!-- Authentication (HTTP only) -->
     <section v-if="state.transport === 'http'" class="flex flex-col gap-3">
       <h4 class="text-xs uppercase text-(--v-label-secondary)">{{ $t('tools.mcp.authentication') }}</h4>
-      <VSelect v-model="state.authType" :options="authOptions" :label="$t('tools.mcp.authType')" />
+      <VSelect v-model="state.authType" :options="authOptions" :label="$t('tools.mcp.authType')" :disabled="disabled" />
       <template v-if="state.authType === 'oauth'">
         <p class="text-xs text-(--v-label-secondary)">{{ $t('tools.mcp.oauthHelp') }}</p>
         <VSelect
@@ -102,26 +108,27 @@ const loginScopeOptions = computed(() => [
           :options="loginScopeOptions"
           :label="$t('tools.mcp.loginScope')"
           :help="$t('tools.mcp.loginScopeHelp')"
+          :disabled="disabled"
         />
-        <VInput v-model="state.scopes" :label="$t('tools.mcp.scopes')" :help="$t('tools.mcp.scopesHelp')" />
+        <VInput v-model="state.scopes" :label="$t('tools.mcp.scopes')" :help="$t('tools.mcp.scopesHelp')" :disabled="disabled" />
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div><VInput v-model="state.clientId" :label="$t('tools.mcp.clientId')" :help="$t('tools.mcp.clientIdHelp')" /></div>
-          <div><VInput v-model="state.clientSecret" :label="$t('tools.mcp.clientSecret')" :help="$t('tools.mcp.secretHelp')" /></div>
+          <div><VInput v-model="state.clientId" :label="$t('tools.mcp.clientId')" :help="$t('tools.mcp.clientIdHelp')" :disabled="disabled" /></div>
+          <div><VInput v-model="state.clientSecret" :label="$t('tools.mcp.clientSecret')" :help="$t('tools.mcp.secretHelp')" :disabled="disabled" /></div>
         </div>
       </template>
       <template v-else-if="state.authType === 'bearer'">
-        <VInput v-model="state.token" :label="$t('tools.mcp.token')" :help="$t('tools.mcp.secretHelp')" />
+        <VInput v-model="state.token" :label="$t('tools.mcp.token')" :help="$t('tools.mcp.secretHelp')" :disabled="disabled" />
       </template>
       <template v-else-if="state.authType === 'apiKey'">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div><VInput v-model="state.headerName" :label="$t('tools.mcp.headerName')" placeholder="X-API-Key" /></div>
-          <div><VInput v-model="state.apiKeyValue" :label="$t('tools.mcp.apiKeyValue')" :help="$t('tools.mcp.secretHelp')" /></div>
+          <div><VInput v-model="state.headerName" :label="$t('tools.mcp.headerName')" placeholder="X-API-Key" :disabled="disabled" /></div>
+          <div><VInput v-model="state.apiKeyValue" :label="$t('tools.mcp.apiKeyValue')" :help="$t('tools.mcp.secretHelp')" :disabled="disabled" /></div>
         </div>
       </template>
       <template v-else-if="state.authType === 'basic'">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div><VInput v-model="state.user" :label="$t('tools.mcp.user')" /></div>
-          <div><VInput v-model="state.password" :label="$t('tools.mcp.password')" :help="$t('tools.mcp.secretHelp')" /></div>
+          <div><VInput v-model="state.user" :label="$t('tools.mcp.user')" :disabled="disabled" /></div>
+          <div><VInput v-model="state.password" :label="$t('tools.mcp.password')" :help="$t('tools.mcp.secretHelp')" :disabled="disabled" /></div>
         </div>
       </template>
     </section>
@@ -133,25 +140,27 @@ const loginScopeOptions = computed(() => [
         v-model="state.skipVerification"
         :label="$t('tools.mcp.skipVerification')"
         :help="$t('tools.mcp.skipVerificationHelp')"
+        :disabled="disabled"
       />
-      <VTextarea v-model="state.trustedCaPem" :label="$t('tools.mcp.trustedCaPem')" :rows="3" />
+      <VTextarea v-model="state.trustedCaPem" :label="$t('tools.mcp.trustedCaPem')" :rows="3" :disabled="disabled" />
     </section>
 
     <!-- Runtime -->
     <section class="flex flex-col gap-3">
       <h4 class="text-xs uppercase text-(--v-label-secondary)">{{ $t('tools.mcp.runtime') }}</h4>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div><VInput v-model="state.timeoutSeconds" type="number" :label="$t('tools.mcp.timeoutSeconds')" /></div>
-        <div><VInput v-model="state.initTimeoutSeconds" type="number" :label="$t('tools.mcp.initTimeoutSeconds')" /></div>
+        <div><VInput v-model="state.timeoutSeconds" type="number" :label="$t('tools.mcp.timeoutSeconds')" :disabled="disabled" /></div>
+        <div><VInput v-model="state.initTimeoutSeconds" type="number" :label="$t('tools.mcp.initTimeoutSeconds')" :disabled="disabled" /></div>
       </div>
       <VTextarea
         v-model="state.defaultArgs"
         :label="$t('tools.mcp.defaultArgs')"
         :help="$t('tools.mcp.defaultArgsHelp')"
         :rows="3"
+        :disabled="disabled"
       />
       <p v-if="leaseIsInline" class="text-xs text-(--v-label-secondary)">{{ $t('tools.mcp.leaseInline') }}</p>
-      <VInput v-else v-model="state.lease" :label="$t('tools.mcp.lease')" :help="$t('tools.mcp.leaseHelp')" />
+      <VInput v-else v-model="state.lease" :label="$t('tools.mcp.lease')" :help="$t('tools.mcp.leaseHelp')" :disabled="disabled" />
     </section>
   </div>
 </template>

@@ -2,16 +2,17 @@
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { VAlert, VButton, VIconButton, VModal } from '@/components';
-import { isTextualMime, useDocumentArchives } from '@/composables/useDocumentArchives';
+import { useDocumentArchives } from '@/composables/useDocumentArchives';
 import type { DocumentArchiveSummary, DocumentDto } from '@vance/generated';
 import DocumentVersionDiff from './DocumentVersionDiff.vue';
+import { canDiffArchive, loadArchiveDiff, type ArchiveDiff } from './archiveDiff';
 
 /**
  * Versions panel slotted into the document detail view. Shows the count
  * (always visible as a header), expands into a date-sorted list, lets
  * the user preview / compare / delete / restore individual versions.
- * Compare is offered for textual mime types only and diffs the version
- * against the current content.
+ * Compare is offered for textual mime types only — never for age-encrypted
+ * documents — and diffs the version against the current content.
  *
  * <p>Read-only — there is no "edit this archived version" path. Restoring
  * brings the version back as the live document; the previous live content
@@ -29,6 +30,11 @@ const props = defineProps<{
   currentText?: string;
   /** True when {@link currentText} carries edits not yet saved. */
   currentDirty?: boolean;
+  /**
+   * True for an age-encrypted document whose {@link document} carries the
+   * decrypted (inner) kind and mime — the panel cannot tell from those.
+   */
+  encrypted?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -56,10 +62,16 @@ const acting = ref(false);
 // "no changes, nothing to snapshot" case where no list row appears).
 const flash = ref<string | null>(null);
 
+// Version compare: archived body (old) against the current content (new).
+const diff = ref<ArchiveDiff | null>(null);
+const diffLoading = ref<string | null>(null);
+
 watch(
   () => props.document?.id,
   async (newId) => {
     flash.value = null;
+    // A comparison belongs to the document it was opened for.
+    diff.value = null;
     if (!newId) {
       archives.items.value = [];
       archives.clearPreview();
@@ -78,14 +90,8 @@ const count = computed(() => archives.items.value.length);
 // subsequent emits cover load results, delete and restore.
 watch(count, (n) => emit('update:count', n), { immediate: true });
 
-// Version compare: archived body (old) against the current content (new).
-const diff = ref<{ archive: DocumentArchiveSummary; oldText: string; newText: string } | null>(
-  null,
-);
-const diffLoading = ref<string | null>(null);
-
 function canDiff(archive: DocumentArchiveSummary): boolean {
-  return isTextualMime(archive.mimeType ?? props.document?.mimeType);
+  return canDiffArchive(archive, props.document, props.encrypted === true);
 }
 
 async function openDiff(archive: DocumentArchiveSummary): Promise<void> {
@@ -93,14 +99,14 @@ async function openDiff(archive: DocumentArchiveSummary): Promise<void> {
   const documentId = props.document.id;
   diffLoading.value = archive.id;
   try {
-    const [oldText, newText] = await Promise.all([
-      archives.loadText(documentId, archive.id),
-      props.currentText !== undefined
-        ? Promise.resolve(props.currentText)
-        : archives.loadLiveText(documentId),
-    ]);
-    if (oldText === null || newText === null) return;
-    diff.value = { archive, oldText, newText };
+    const opened = await loadArchiveDiff(
+      archives,
+      documentId,
+      archive,
+      props.currentText,
+      () => props.document?.id === documentId,
+    );
+    if (opened) diff.value = opened;
   } finally {
     diffLoading.value = null;
   }

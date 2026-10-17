@@ -234,6 +234,7 @@ export * from './insights/LeaseInsightsDto';
 export * from './insights/MarvinNodeInsightsDto';
 export * from './insights/CatalogModelInsightsDto';
 export * from './insights/ModelAliasInsightsDto';
+export * from './insights/ModelAliasScope';
 export * from './insights/ModelCatalogLayer';
 export * from './insights/ModelDetailInsightsDto';
 export * from './insights/ModelFieldInsightsDto';

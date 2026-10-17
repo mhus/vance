@@ -187,11 +187,36 @@ public class ChatModelSupport {
     }
 
     /**
+     * The level the picker starts on. An {@code off} override on a model that
+     * cannot reason has no effect (earlier pickers wrote one whenever such a
+     * model was picked), so the picker starts on the recipe's level instead
+     * — moving to a reasoning model then returns to it unless the user picks
+     * another. Same rule as the Web-UI picker
+     * ({@code modelPicker.ts#initialThinking}).
+     */
+    static String initialThinking(ChatModelStateDto state) {
+        boolean ineffectiveOff = state.isThinkingOverridden()
+                && "off".equals(state.getThinking())
+                && !state.isModelSupportsThinking()
+                && state.getModelError() == null;
+        return ineffectiveOff && state.getRecipeThinking() != null ? state.getRecipeThinking() : state.getThinking();
+    }
+
+    /**
      * Commands that move the process from {@code state} to the picked model
      * and level — model first, unchanged values send nothing. Same plan as
-     * the Web-UI picker ({@code modelPicker.ts#commandsFor}).
+     * the Web-UI picker ({@code modelPicker.ts#commandsFor}):
+     *
+     * <ul>
+     *   <li>{@code supportsThinking} false (the picked model cannot reason):
+     *       no level command — the process keeps its level for the next
+     *       model that can;</li>
+     *   <li>a changed level equal to the recipe's is sent as
+     *       {@code //thinking clear}, not pinned, so the process follows the
+     *       recipe again.</li>
+     * </ul>
      */
-    static List<Step> stepsFor(ChatModelStateDto state, String selection, String thinking) {
+    static List<Step> stepsFor(ChatModelStateDto state, String selection, String thinking, boolean supportsThinking) {
         List<Step> out = new ArrayList<>();
         if (RECIPE_DEFAULT.equals(selection)) {
             if (state.isModelOverridden()) {
@@ -200,8 +225,8 @@ public class ChatModelSupport {
         } else if (!state.isModelOverridden() || !state.getModel().equals(selection)) {
             out.add(new Step("model", selection));
         }
-        if (!thinking.equals(state.getThinking())) {
-            out.add(new Step("thinking", thinking));
+        if (supportsThinking && !thinking.equals(state.getThinking())) {
+            out.add(new Step("thinking", thinking.equals(state.getRecipeThinking()) ? "clear" : thinking));
         }
         return out;
     }

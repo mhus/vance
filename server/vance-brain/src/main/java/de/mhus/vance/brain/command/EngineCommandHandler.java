@@ -7,7 +7,8 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
  * Spring beans; {@link EngineCommandDispatcher} indexes them by
  * {@link #verb()} and routes matching {@link EngineCommand}s here.
  *
- * <p>Handlers run <b>on the process lane</b> (serialized with turns), so
+ * <p>Handlers run <b>on the process lane</b> (serialized with turns)
+ * unless {@link #runsOnLane()} says otherwise, so
  * they may read and mutate the {@link ThinkProcessDocument} without
  * racing an in-flight turn. They must be side-effect-clean on failure —
  * throwing is caught by the dispatcher and reported as
@@ -41,7 +42,15 @@ public interface EngineCommandHandler {
      * thing it is meant to interrupt is no stop at all.
      *
      * <p>A handler returning {@code false} must not mutate
-     * {@code process}.
+     * {@code process} through a whole-document save — it would race the
+     * in-flight turn, and either side's save could overwrite the other.
+     * The one exception is an <b>atomic single-field update</b> that no
+     * whole-document save of the process can overwrite and that the
+     * engine reads fresh on its next turn: today the
+     * {@code engineParamOverrides.<key>} writes of
+     * {@link ModelCommandHandler} and {@link ThinkingCommandHandler}
+     * ({@code ThinkProcessService#setEngineParamOverride}). A new
+     * exception needs the same two guarantees and belongs in this list.
      */
     default boolean runsOnLane() {
         return true;

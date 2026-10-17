@@ -97,11 +97,18 @@ public class ModelCommandHandler implements EngineCommandHandler {
     }
 
     static String render(ChatModelStateDto state) {
+        String note;
+        if (state.getModelError() != null) {
+            note = " — model cannot be resolved: " + state.getModelError()
+                    + (state.isModelOverridden() ? " (//model clear or pick another model)" : "");
+        } else {
+            note = state.isModelSupportsThinking() ? "" : " — model has no reasoning support";
+        }
         return "model: " + state.getModel()
                 + (state.isModelOverridden() ? " (runtime override)" : " (recipe default)")
                 + " · thinking: " + state.getThinking()
                 + (state.isThinkingOverridden() ? " (runtime override)" : " (recipe default)")
-                + (state.isModelSupportsThinking() ? "" : " — model has no reasoning support");
+                + note;
     }
 
     private static String argText(EngineCommand command) {

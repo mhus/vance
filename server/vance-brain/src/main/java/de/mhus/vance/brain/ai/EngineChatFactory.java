@@ -433,8 +433,16 @@ public class EngineChatFactory {
      * rather than blowing up the spawn.
      */
     public static ThinkingLevel readThinkingLevel(ThinkProcessDocument process) {
-        Map<String, Object> params = effectiveParams(process);
-        Object v = params.get("thinking");
+        return parseThinkingLevel(effectiveParams(process).get("thinking"), process.getId());
+    }
+
+    /**
+     * Type-tolerant reading of a {@code params.thinking} value: absent means
+     * {@code off}, boolean {@code true} means {@code medium}, strings go through
+     * {@link ThinkingLevel#fromString}; anything unknown falls back to {@code off}
+     * with a warning naming {@code processId}.
+     */
+    public static ThinkingLevel parseThinkingLevel(@Nullable Object v, @Nullable String processId) {
         if (v == null) {
             return ThinkingLevel.OFF;
         }
@@ -443,13 +451,13 @@ public class EngineChatFactory {
         }
         if (v instanceof String s) {
             return ThinkingLevel.fromString(s).orElseGet(() -> {
-                log.warn("Unknown params.thinking='{}' on process '{}' — falling back to OFF", s, process.getId());
+                log.warn("Unknown params.thinking='{}' on process '{}' — falling back to OFF", s, processId);
                 return ThinkingLevel.OFF;
             });
         }
         log.warn(
                 "params.thinking on process '{}' has unexpected type {} — ignoring",
-                process.getId(),
+                processId,
                 v.getClass().getSimpleName());
         return ThinkingLevel.OFF;
     }

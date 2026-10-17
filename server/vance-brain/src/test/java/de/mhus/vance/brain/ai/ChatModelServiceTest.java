@@ -225,8 +225,10 @@ class ChatModelServiceTest {
         assertThat(state.isModelOverridden()).isTrue();
         assertThat(state.getRecipeModel()).isEqualTo("anthropic:claude-sonnet");
         assertThat(state.getThinking()).isEqualTo("high");
+        assertThat(state.getRecipeThinking()).isEqualTo("low");
         assertThat(state.isThinkingOverridden()).isTrue();
         assertThat(state.isModelSupportsThinking()).isTrue();
+        assertThat(state.getModelError()).isNull();
     }
 
     @Test
@@ -242,5 +244,35 @@ class ChatModelServiceTest {
         assertThat(state.getThinking()).isEqualTo("off");
         assertThat(state.isThinkingOverridden()).isFalse();
         assertThat(state.isModelSupportsThinking()).isFalse();
+    }
+
+    @Test
+    void state_unresolvableOverride_reportsRawSpecInsteadOfFailing() {
+        doThrow(new AiModelResolver.UnknownModelException("Unknown model spec 'gone:glm-5'"))
+                .when(resolver)
+                .resolveOrDefault(eq("gone:glm-5"), any(), any(), any());
+        when(resolver.resolveOrDefault(eq("default:chat"), any(), any(), any()))
+                .thenReturn(new AiModelResolver.Resolved("anthropic", "anthropic", "claude-sonnet"));
+
+        ChatModelStateDto state = service.stateOf(
+                process(Map.of("model", "default:chat", "thinking", true), Map.of("model", "gone:glm-5")));
+
+        assertThat(state.getModel()).isEqualTo("gone:glm-5");
+        assertThat(state.getModelError()).contains("gone:glm-5");
+        assertThat(state.isModelOverridden()).isTrue();
+        assertThat(state.getRecipeModel()).isEqualTo("anthropic:claude-sonnet");
+        assertThat(state.isModelSupportsThinking()).isFalse();
+        assertThat(state.getThinking()).isEqualTo("medium");
+        assertThat(state.getRecipeThinking()).isEqualTo("medium");
+    }
+
+    @Test
+    void recipeThinking_ignoresOverrideAndToleratesOddValues() {
+        assertThat(ChatModelService.recipeThinkingLevel(process(Map.of("thinking", "High"), Map.of("thinking", "off"))))
+                .isEqualTo(ThinkingLevel.HIGH);
+        assertThat(ChatModelService.recipeThinkingLevel(process(Map.of("thinking", "nonsense"), Map.of())))
+                .isEqualTo(ThinkingLevel.OFF);
+        assertThat(ChatModelService.recipeThinkingLevel(process(Map.of(), Map.of())))
+                .isEqualTo(ThinkingLevel.OFF);
     }
 }

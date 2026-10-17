@@ -117,7 +117,8 @@ public class RagService {
                         + tenantId + "' (setting '" + SETTING_EMBED_PROVIDER
                         + "' = '" + PROVIDER_NONE + "'). Pick 'embedded', "
                         + "'gemini' or 'openai' first."));
-        EmbeddingModel model = embeddingModelService.createEmbeddingModel(config);
+        EmbeddingModel model = embeddingModelService.createEmbeddingModel(
+                config, CallAttribution.ofService(tenantId, projectId, LlmUsageService.CALLER_RAG));
         int dim = probeDimension(model);
         return catalog.create(
                 tenantId,
@@ -319,11 +320,13 @@ public class RagService {
         }
         String baseUrl = settingService.getStringValueCascade(
                 rag.getTenantId(), /*projectId*/ null, /*processId*/ null, SETTING_EMBED_BASE_URL);
-        return embeddingModelService.createEmbeddingModel(new EmbeddingConfig(
-                rag.getEmbeddingProvider(),
-                rag.getEmbeddingModel(),
-                apiKey,
-                StringUtils.isBlank(baseUrl) ? null : baseUrl));
+        return embeddingModelService.createEmbeddingModel(
+                new EmbeddingConfig(
+                        rag.getEmbeddingProvider(),
+                        rag.getEmbeddingModel(),
+                        apiKey,
+                        StringUtils.isBlank(baseUrl) ? null : baseUrl),
+                CallAttribution.ofService(rag.getTenantId(), rag.getProjectId(), LlmUsageService.CALLER_RAG));
     }
 
     /**

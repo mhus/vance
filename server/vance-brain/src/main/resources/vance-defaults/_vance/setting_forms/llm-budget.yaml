@@ -48,6 +48,7 @@ fields:
 
   - name: daily
     type: number
+    integerMin: 0
     label:
       de: "Budget pro Tag"
       en: "Budget per day"
@@ -61,6 +62,7 @@ fields:
 
   - name: monthly
     type: number
+    integerMin: 0
     label:
       de: "Budget pro Monat"
       en: "Budget per month"
@@ -72,6 +74,7 @@ fields:
 
   - name: total
     type: number
+    integerMin: 0
     label:
       de: "Budget absolut"
       en: "Absolute budget"

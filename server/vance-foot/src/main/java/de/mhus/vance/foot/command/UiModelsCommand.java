@@ -123,6 +123,10 @@ public class UiModelsCommand implements SlashCommand {
                     + (state.isModelOverridden() ? " (override)" : " (recipe default)")
                     + " · reasoning: " + state.getThinking()
                     + "  —  applies from the next turn"));
+            if (state.getModelError() != null) {
+                root.addComponent(new Label("The current model cannot be used: " + state.getModelError()
+                        + " — pick another model or the recipe default."));
+            }
 
             Panel filterRow = new Panel(new LinearLayout(Direction.HORIZONTAL));
             filterRow.addComponent(new Label("Filter:"));
@@ -143,7 +147,7 @@ public class UiModelsCommand implements SlashCommand {
             for (String level : list.getThinkingLevels()) {
                 levelBox.addItem(level);
             }
-            levelBox.setSelectedItem(state.getThinking());
+            levelBox.setSelectedItem(ChatModelSupport.initialThinking(state));
             levelRow.addComponent(levelBox);
             levelRow.addComponent(levelHint);
             root.addComponent(levelRow);
@@ -195,8 +199,8 @@ public class UiModelsCommand implements SlashCommand {
 
         private void apply() {
             boolean thinking = ChatModelSupport.supportsThinking(selection, state, list.getModels());
-            String level = thinking && levelBox.getSelectedItem() != null ? levelBox.getSelectedItem() : "off";
-            List<ChatModelSupport.Step> steps = ChatModelSupport.stepsFor(state, selection, level);
+            String level = levelBox.getSelectedItem() != null ? levelBox.getSelectedItem() : state.getThinking();
+            List<ChatModelSupport.Step> steps = ChatModelSupport.stepsFor(state, selection, level, thinking);
             try {
                 for (ChatModelSupport.Step step : steps) {
                     ChatModelSupport.Reply reply = support.run(process, step.verb(), step.text());

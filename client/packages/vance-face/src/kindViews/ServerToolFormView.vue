@@ -93,8 +93,24 @@ const mcpFormKey = ref(0);
 
 /** Guards the re-derivation against echoing the doc back as an edit. */
 let suspend = false;
-/** The last model this view emitted — its echo must not reset the form. */
-let lastEmitted: ServerToolDoc | null = null;
+/**
+ * Content of the last model this view emitted — its echo must not reset
+ * the form. Compared by content: the Cortex shell serialises the emitted
+ * model and parses it back into a fresh object on every keystroke.
+ */
+let lastEmittedContent: string | null = null;
+
+/** Key-order-independent JSON form of a model, for the echo comparison. */
+function contentOf(doc: ServerToolDoc): string {
+  return JSON.stringify(doc, (_key, value: unknown) => {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) return value;
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+      sorted[key] = (value as Record<string, unknown>)[key];
+    }
+    return sorted;
+  });
+}
 
 function derive(doc: ServerToolDoc): void {
   suspend = true;
@@ -121,9 +137,11 @@ derive(props.doc);
 watch(
   () => props.doc,
   (doc) => {
-    if (doc === lastEmitted) return;
-    // A new model from outside — typically the state just saved, which
-    // is also what login and test now act on.
+    if (lastEmittedContent !== null && contentOf(doc) === lastEmittedContent) return;
+    // A model this view did not write — a reload, a restored version,
+    // another editor. Re-read the form and the operational state; the
+    // echo of our own edit (same content, fresh object) never gets here,
+    // so typing neither remounts the MCP form nor refetches the tool.
     derive(doc);
     void refreshOperational();
   },
@@ -148,7 +166,7 @@ watch(
   () => {
     if (suspend) return;
     const out = applyFields(props.doc, buildFields());
-    lastEmitted = out;
+    lastEmittedContent = contentOf(out);
     emit('update:doc', out);
   },
   { deep: true },
@@ -410,6 +428,7 @@ onMounted(async () => {
             :model-value="paramsMode"
             :options="paramsModeOptions"
             :aria-label="t('tools.mcp.modeLabel')"
+            :disabled="disabled"
             @update:model-value="switchParamsMode"
           />
         </div>
@@ -418,10 +437,11 @@ onMounted(async () => {
           v-if="paramsMode === 'form'"
           :key="mcpFormKey"
           v-model="parameters"
+          :disabled="disabled"
         />
         <template v-else>
           <VAlert v-if="paramsError" variant="warning">{{ paramsError }}</VAlert>
-          <CodeEditor v-model="parametersJson" mime-type="application/json" :rows="14" />
+          <CodeEditor v-model="parametersJson" mime-type="application/json" :rows="14" :disabled="disabled" />
         </template>
       </section>
 
@@ -484,7 +504,7 @@ onMounted(async () => {
       </h3>
       <p class="text-xs text-(--v-label-secondary)">{{ t('tools.cards.parametersHelp') }}</p>
       <VAlert v-if="paramsError" variant="warning">{{ paramsError }}</VAlert>
-      <CodeEditor v-model="parametersJson" mime-type="application/json" :rows="14" />
+      <CodeEditor v-model="parametersJson" mime-type="application/json" :rows="14" :disabled="disabled" />
       <details v-if="typeSchema" class="text-xs">
         <summary class="cursor-pointer text-(--v-label-secondary)">{{ t('tools.cards.typeSchemaTitle') }}</summary>
         <pre class="mt-2 whitespace-pre-wrap break-words bg-(--v-fill) p-2 rounded">{{ typeSchema }}</pre>

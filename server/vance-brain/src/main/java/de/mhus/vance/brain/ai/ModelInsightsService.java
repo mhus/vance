@@ -2,6 +2,7 @@ package de.mhus.vance.brain.ai;
 
 import de.mhus.vance.api.insights.CatalogModelInsightsDto;
 import de.mhus.vance.api.insights.ModelAliasInsightsDto;
+import de.mhus.vance.api.insights.ModelAliasScope;
 import de.mhus.vance.api.insights.ModelCatalogLayer;
 import de.mhus.vance.api.insights.ModelDetailInsightsDto;
 import de.mhus.vance.api.insights.ModelFieldInsightsDto;
@@ -147,7 +148,10 @@ public class ModelInsightsService {
             ModelAliasInsightsDto.ModelAliasInsightsDtoBuilder dto = ModelAliasInsightsDto.builder()
                     .alias(alias)
                     .target(setting.getValue())
-                    .definedIn(definedInProject(tenantId, projectId, setting.getKey()) ? "PROJECT" : "TENANT")
+                    .definedIn(
+                            definedInProject(tenantId, projectId, setting.getKey())
+                                    ? ModelAliasScope.PROJECT
+                                    : ModelAliasScope.TENANT)
                     .chain(List.of());
             try {
                 AiModelResolver.Traced traced = aiModelResolver.resolveTraced(alias, tenantId, projectId);

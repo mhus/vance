@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.insights.CatalogModelInsightsDto;
 import de.mhus.vance.api.insights.ModelAliasInsightsDto;
+import de.mhus.vance.api.insights.ModelAliasScope;
 import de.mhus.vance.api.insights.ModelCatalogLayer;
 import de.mhus.vance.api.insights.ModelDetailInsightsDto;
 import de.mhus.vance.api.insights.ModelFieldInsightsDto;
@@ -146,10 +147,10 @@ class ModelInsightsServiceTest {
                 .containsExactly("cheap:broken", "default:chat", "default:fast");
         assertThat(out.get(0).getResolved()).isNull();
         assertThat(out.get(0).getError()).contains("nowhere:x");
-        assertThat(out.get(1).getDefinedIn()).isEqualTo("PROJECT");
+        assertThat(out.get(1).getDefinedIn()).isEqualTo(ModelAliasScope.PROJECT);
         assertThat(out.get(1).getChain()).containsExactly("default:chat", "default:fast");
         assertThat(out.get(1).getResolved()).isEqualTo("cortecs:glm-4.6");
-        assertThat(out.get(2).getDefinedIn()).isEqualTo("TENANT");
+        assertThat(out.get(2).getDefinedIn()).isEqualTo(ModelAliasScope.TENANT);
     }
 
     @Test

@@ -6,6 +6,10 @@
 // The brain resolves a model without an explicit spec from exactly this
 // pair (`AiModelResolver.tenantDefault`), so both must be set.
 //
+// Only the tenant layer is checked: the landing page has no project, and a
+// project may well set its own model. The warning text says exactly that —
+// "no tenant default", not "chat cannot work".
+//
 // Deliberately NOT built on `loadProjectCascadeSettings`: that swallows a
 // failed request into `{}`, which here would read as "not configured" and
 // warn on every network hiccup. A failed check is `null` — unknown, no

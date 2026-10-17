@@ -631,7 +631,7 @@ export default {
       description:
         'Live chat with the brain over WebSocket. Pick an existing session or start a new one in any project.',
       llmNotConfigured:
-        'No language model is configured for this tenant yet (ai.default.provider / ai.default.model) — chats will fail until an admin sets one up.',
+        'This tenant has no default language model (ai.default.provider / ai.default.model). Chats fail unless their project sets its own model or an admin sets a tenant default.',
     },
     documents: {
       title: 'Documents',
@@ -692,6 +692,7 @@ export default {
       cancel: 'Cancel',
       apply: 'Apply',
       commandFailed: '//{verb} failed',
+      modelError: 'The current model cannot be used: {error} — pick another model or the recipe default.',
       level: {
         off: 'Off',
         minimal: 'Minimal',
@@ -1252,6 +1253,9 @@ export default {
         'Archived version (−) against the current document (+), including unsaved edits.',
       diffIdentical: 'No differences.',
       diffShowUnchanged: 'Show {count} unchanged lines',
+      diffShowMore: 'Show {count} more lines ({total} not shown)',
+      diffTooLarge:
+        'Too large to compare here: {lines} lines together, the limit is {max}. Download both versions to compare them.',
       confirmRestoreTitle: 'Restore this version?',
       confirmRestoreBody:
         'The current content is archived as a new version, then this older version becomes the live document. Nothing is lost.',
@@ -2534,6 +2538,10 @@ export default {
     errors: {
       parametersMustBeObject: 'Parameters must be a JSON object.',
       parametersInvalidJson: 'Parameters: invalid JSON — {message}',
+      loadTypesFailed: 'Could not load the tool types.',
+      testFailed: 'The connection test failed.',
+      loginFailed: 'The login could not be started.',
+      logoutFailed: 'The logout failed.',
     },
     mcp: {
       serverTitle: 'MCP server',
@@ -4118,6 +4126,10 @@ export default {
         title: 'Server tools',
         createHint:
           'Snake_case name (lowercase letters, digits, _) — it becomes the file name and the tool name. A new tool starts as a disabled MCP server: fill in the server, then enable it.',
+        errors: {
+          userScope: 'Server tools exist for the tenant and for projects, not per user.',
+          invalidName: 'A tool name is snake_case: lowercase letters, digits and _.',
+        },
       },
       hooks: {
         title: 'Hooks',

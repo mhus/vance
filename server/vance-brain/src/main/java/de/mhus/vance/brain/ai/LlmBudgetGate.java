@@ -39,6 +39,11 @@ import org.springframework.stereotype.Component;
  * and a warning repeated on every call would be noise. The admins of a scope
  * are not addressed directly — the permission SPI deliberately does not list
  * who holds a right.
+ *
+ * <p>Because the session is whoever happened to call, a tenant-level notice
+ * carries no money amounts: a warning says the share in percent, a refusal
+ * names window and setting (see {@link LlmBudgetExceededException}). The
+ * tenant's spend itself is for tenant admins, through {@code GET /usage/budget}.
  */
 @Component
 @RequiredArgsConstructor

@@ -35,6 +35,10 @@ import org.springframework.stereotype.Component;
  * document resolves exactly this key through a {@code {{secret:…}}} reference.
  * That asymmetry is why the two lists are separate rather than one.
  *
+ * <p>{@code ai.llm.budget.*} is in the default because the cost budget is the
+ * ceiling on what agents spend: an agent that could write it would raise its own
+ * limit. A human sets it through the {@code llm-budget} setting form.
+ *
  * <p>Grammar: comma-separated, each entry either an exact key or a prefix ending
  * in {@code *}. Deliberately not a full glob — this is security configuration and
  * has to stay readable at a glance.
@@ -43,11 +47,16 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class AgentSettingKeyPolicy {
 
+    /**
+     * Deny list when {@code vance.settings.agent-write-deny-keys} is not set.
+     * {@code application.yml} of the brain repeats it — keep both in step.
+     */
+    public static final String DEFAULT_DENY_KEYS = "ai.provider.*,vault.*,store.*,kit.*,ai.llm.budget.*";
+
     private final List<String> denyPatterns;
 
     public AgentSettingKeyPolicy(
-            @Value("${vance.settings.agent-write-deny-keys:ai.provider.*,vault.*,store.*,kit.*}")
-            String raw) {
+            @Value("${vance.settings.agent-write-deny-keys:" + DEFAULT_DENY_KEYS + "}") String raw) {
         this.denyPatterns = SettingKeyPatterns.parse(raw);
         log.debug("AgentSettingKeyPolicy: {} deny pattern(s): {}", denyPatterns.size(), denyPatterns);
     }
@@ -63,8 +72,10 @@ public class AgentSettingKeyPolicy {
      */
     public void requireAgentWritable(String key) {
         if (isDenied(key)) {
-            log.warn("Refusing agent-originated write to reserved setting key '{}' "
-                    + "(vance.settings.agent-write-deny-keys)", key);
+            log.warn(
+                    "Refusing agent-originated write to reserved setting key '{}' "
+                            + "(vance.settings.agent-write-deny-keys)",
+                    key);
             throw new SecretAccessDeniedException(
                     "setting '" + key + "' is reserved for operator configuration and cannot be "
                             + "written by an agent — a human has to set it through the settings "

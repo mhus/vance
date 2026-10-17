@@ -8,6 +8,7 @@ import {
   formatPrice,
   groupModels,
   initialSelection,
+  initialThinking,
   selectionSupportsThinking,
   shortModelName,
 } from './modelPicker';
@@ -25,6 +26,7 @@ function state(over: Partial<ChatModelStateDto> = {}): ChatModelStateDto {
     modelOverridden: false,
     recipeModel: 'anthropic:claude-sonnet',
     thinking: 'off',
+    recipeThinking: 'off',
     thinkingOverridden: false,
     modelSupportsThinking: true,
     ...over,
@@ -76,24 +78,90 @@ describe('selection', () => {
   });
 });
 
+describe('initialThinking', () => {
+  it('starts on the effective level', () => {
+    expect(initialThinking(state({ thinking: 'high', thinkingOverridden: true }))).toBe('high');
+  });
+  it('starts on the recipe level when an off override has no effect on the current model', () => {
+    const s = state({
+      model: 'cortecs:deepseek-v4',
+      modelOverridden: true,
+      thinking: 'off',
+      thinkingOverridden: true,
+      recipeThinking: 'medium',
+      modelSupportsThinking: false,
+    });
+    expect(initialThinking(s)).toBe('medium');
+  });
+  it('keeps a non-off override on a model that cannot reason', () => {
+    const s = state({
+      thinking: 'high',
+      thinkingOverridden: true,
+      recipeThinking: 'low',
+      modelSupportsThinking: false,
+    });
+    expect(initialThinking(s)).toBe('high');
+  });
+});
+
 describe('commandsFor', () => {
   it('sends nothing when nothing changed', () => {
-    expect(commandsFor(state(), RECIPE_DEFAULT, 'off')).toEqual([]);
+    expect(commandsFor(state(), RECIPE_DEFAULT, 'off', true)).toEqual([]);
   });
   it('sets a new model, then the level', () => {
-    expect(commandsFor(state(), 'cortecs:glm-5', 'high')).toEqual([
+    expect(commandsFor(state(), 'cortecs:glm-5', 'high', true)).toEqual([
       { verb: 'model', text: 'cortecs:glm-5' },
       { verb: 'thinking', text: 'high' },
     ]);
   });
   it('clears an override when going back to the recipe default', () => {
-    expect(commandsFor(state({ model: 'cortecs:glm-5', modelOverridden: true }), RECIPE_DEFAULT, 'off')).toEqual([
+    const s = state({ model: 'cortecs:glm-5', modelOverridden: true });
+    expect(commandsFor(s, RECIPE_DEFAULT, 'off', true)).toEqual([{ verb: 'model', text: 'clear' }]);
+  });
+  it('pins the recipe model explicitly when picked from the list', () => {
+    expect(commandsFor(state(), 'anthropic:claude-sonnet', 'off', true)).toEqual([
+      { verb: 'model', text: 'anthropic:claude-sonnet' },
+    ]);
+  });
+  it('leaves the level alone for a model that cannot reason', () => {
+    const s = state({ thinking: 'medium', recipeThinking: 'medium' });
+    expect(commandsFor(s, 'cortecs:deepseek-v4', 'high', false)).toEqual([
+      { verb: 'model', text: 'cortecs:deepseek-v4' },
+    ]);
+  });
+  it('round-trips through a model without reasoning without losing the recipe level', () => {
+    const recipe = state({ thinking: 'medium', recipeThinking: 'medium' });
+    expect(commandsFor(recipe, 'cortecs:deepseek-v4', initialThinking(recipe), false)).toEqual([
+      { verb: 'model', text: 'cortecs:deepseek-v4' },
+    ]);
+    const onDeepseek = state({
+      model: 'cortecs:deepseek-v4',
+      modelOverridden: true,
+      thinking: 'medium',
+      recipeThinking: 'medium',
+      modelSupportsThinking: false,
+    });
+    expect(commandsFor(onDeepseek, RECIPE_DEFAULT, initialThinking(onDeepseek), true)).toEqual([
       { verb: 'model', text: 'clear' },
     ]);
   });
-  it('pins the recipe model explicitly when picked from the list', () => {
-    expect(commandsFor(state(), 'anthropic:claude-sonnet', 'off')).toEqual([
-      { verb: 'model', text: 'anthropic:claude-sonnet' },
+  it('clears a leftover off override when returning to the recipe default', () => {
+    const legacy = state({
+      model: 'cortecs:deepseek-v4',
+      modelOverridden: true,
+      thinking: 'off',
+      thinkingOverridden: true,
+      recipeThinking: 'medium',
+      modelSupportsThinking: false,
+    });
+    expect(commandsFor(legacy, RECIPE_DEFAULT, initialThinking(legacy), true)).toEqual([
+      { verb: 'model', text: 'clear' },
+      { verb: 'thinking', text: 'clear' },
     ]);
+  });
+  it('sends a level equal to the recipe level as clear, not as a pin', () => {
+    const s = state({ thinking: 'high', thinkingOverridden: true, recipeThinking: 'low' });
+    expect(commandsFor(s, RECIPE_DEFAULT, 'low', true)).toEqual([{ verb: 'thinking', text: 'clear' }]);
+    expect(commandsFor(s, RECIPE_DEFAULT, 'medium', true)).toEqual([{ verb: 'thinking', text: 'medium' }]);
   });
 });

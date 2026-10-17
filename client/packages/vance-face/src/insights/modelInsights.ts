@@ -55,9 +55,14 @@ export function kindCounts(models: CatalogModelInsightsDto[]): Array<{ kind: str
     });
 }
 
-/** Aliases that end up at `spec` in this project. */
+/**
+ * Aliases that end up at `spec` in this project. Compared case-insensitively,
+ * so an alias whose setting spells the model `cortecs:GLM-5` still shows up
+ * at the catalog's `cortecs:glm-5`.
+ */
 export function aliasesTargeting(aliases: ModelAliasInsightsDto[], spec: string): string[] {
-  return aliases.filter((a) => a.resolved === spec).map((a) => a.alias);
+  const wanted = spec.toLowerCase();
+  return aliases.filter((a) => a.resolved?.toLowerCase() === wanted).map((a) => a.alias);
 }
 
 /** Discovery-written layer — the inventory observed at the provider, not set by hand. */

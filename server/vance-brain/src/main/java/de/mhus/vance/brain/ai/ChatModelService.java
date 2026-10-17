@@ -138,14 +138,41 @@ public class ChatModelService {
         return new Selection(resolvedSpec, info.get());
     }
 
-    /** Model and reasoning level {@code process} runs with on its next model call. */
+    /**
+     * Model and reasoning level {@code process} runs with on its next model
+     * call.
+     *
+     * <p>Never fails on an unresolvable model: an override naming a provider
+     * instance that was removed since would otherwise break {@code //model get}
+     * — and with it the picker that is supposed to repair the choice. The
+     * state then carries the raw spec and {@link ChatModelStateDto#getModelError()}.
+     */
     public ChatModelStateDto stateOf(ThinkProcessDocument process) {
         ScopeView scope = scopeFor(process);
-        AiModelResolver.Resolved effective = aiModelResolver.resolveOrDefault(
-                ChatBehaviorBuilder.readModelSpec(process),
-                process.getTenantId(),
-                scope.projectId(),
-                scope.processId());
+        String model;
+        String modelError = null;
+        boolean supportsThinking;
+        try {
+            AiModelResolver.Resolved effective = aiModelResolver.resolveOrDefault(
+                    ChatBehaviorBuilder.readModelSpec(process),
+                    process.getTenantId(),
+                    scope.projectId(),
+                    scope.processId());
+            model = effective.providerInstance() + ":" + effective.modelName();
+            supportsThinking = modelCatalog
+                    .lookup(
+                            process.getTenantId(),
+                            scope.projectId(),
+                            effective.providerInstance(),
+                            effective.modelName())
+                    .map(i -> i.supports(ModelCapability.THINKING))
+                    .orElse(false);
+        } catch (AiModelResolver.UnknownModelException e) {
+            String raw = ChatBehaviorBuilder.readModelSpec(process);
+            model = raw == null ? "" : raw;
+            modelError = e.getMessage() == null ? "model cannot be resolved" : e.getMessage();
+            supportsThinking = false;
+        }
         String recipeModel;
         try {
             AiModelResolver.Resolved recipe = aiModelResolver.resolveOrDefault(
@@ -159,18 +186,25 @@ public class ChatModelService {
         }
         Map<String, Object> overrides = process.getEngineParamOverrides();
         boolean thinkingOverridden = overrides != null && overrides.containsKey("thinking");
-        boolean supportsThinking = modelCatalog
-                .lookup(process.getTenantId(), scope.projectId(), effective.providerInstance(), effective.modelName())
-                .map(i -> i.supports(ModelCapability.THINKING))
-                .orElse(false);
         return ChatModelStateDto.builder()
-                .model(effective.providerInstance() + ":" + effective.modelName())
+                .model(model)
+                .modelError(modelError)
                 .modelOverridden(ChatBehaviorBuilder.hasModelOverride(process))
                 .recipeModel(recipeModel)
                 .thinking(EngineChatFactory.readThinkingLevel(process).name().toLowerCase(Locale.ROOT))
+                .recipeThinking(recipeThinkingLevel(process).name().toLowerCase(Locale.ROOT))
                 .thinkingOverridden(thinkingOverridden)
                 .modelSupportsThinking(supportsThinking)
                 .build();
+    }
+
+    /**
+     * The recipe's {@code params.thinking} without the runtime override, read
+     * by the same parser the engine uses ({@link EngineChatFactory#parseThinkingLevel}).
+     */
+    static ThinkingLevel recipeThinkingLevel(ThinkProcessDocument process) {
+        Map<String, Object> params = process.getEngineParams();
+        return EngineChatFactory.parseThinkingLevel(params == null ? null : params.get("thinking"), process.getId());
     }
 
     /** {@code //thinking} vocabulary, lowest first. */

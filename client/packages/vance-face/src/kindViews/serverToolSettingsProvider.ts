@@ -1,4 +1,4 @@
-import { brainFetch } from '@vance/shared';
+import { brainFetch, RestError } from '@vance/shared';
 import type {
   DocumentCreateRequest,
   DocumentDto,
@@ -74,7 +74,7 @@ export const serverToolSettingsProvider: SettingsProvider = {
     ];
   },
   create: async (scope: SettingsScope, name: string): Promise<SettingsDocRow> => {
-    const trimmed = requireToolName(scope, name);
+    const trimmed = await requireToolName(scope, name);
     // Starts disabled: an MCP server without its URL would fail on first
     // lookup. Fill in the server, then switch it on.
     const doc = serverToolDocFor(trimmed, {
@@ -87,7 +87,7 @@ export const serverToolSettingsProvider: SettingsProvider = {
     return createToolDocument(scope.projectId, trimmed, serializeServerToolDoc(doc));
   },
   override: async (scope: SettingsScope, row: SettingsInheritedRow): Promise<SettingsDocRow> => {
-    const name = requireToolName(scope, row.name);
+    const name = await requireToolName(scope, row.name);
     const dto = await brainFetch<ServerToolDto>(
       'GET',
       `admin/projects/${encodeURIComponent(scope.projectId)}/server-tools/${encodeURIComponent(name)}`,
@@ -116,15 +116,18 @@ function inheritedFrom(source: string | undefined): SettingsInheritedFrom | null
   return null;
 }
 
-function requireToolName(scope: SettingsScope, name: string): string {
-  if (scope.kind === 'user') {
-    throw new Error('Server tools are not available in the user scope.');
-  }
+/**
+ * The validated tool name, or an error with a translated message for the
+ * host to show. The i18n instance is loaded on demand: this module is
+ * part of the kind registry, which loads in places that never boot i18n.
+ */
+async function requireToolName(scope: SettingsScope, name: string): Promise<string> {
   const trimmed = name.trim();
-  if (!TOOL_NAME_PATTERN.test(trimmed)) {
-    throw new Error('A tool name is lower-case letters, digits and "_" (snake_case).');
-  }
-  return trimmed;
+  if (scope.kind !== 'user' && TOOL_NAME_PATTERN.test(trimmed)) return trimmed;
+  const { i18n } = await import('@/i18n');
+  throw new Error(i18n.global.t(scope.kind === 'user'
+    ? 'settings.areas.serverTools.errors.userScope'
+    : 'settings.areas.serverTools.errors.invalidName'));
 }
 
 async function createToolDocument(projectId: string, name: string, inlineText: string): Promise<SettingsDocRow> {
@@ -160,7 +163,9 @@ async function listOwnedTools(projectId: string): Promise<SettingsDocRow[]> {
 
 /**
  * The cascade-resolved tools with their tier. Needs project admin, like
- * writing a tool does; without it the area shows the owned documents only.
+ * writing a tool does; without it (403) the area shows the owned documents
+ * only. Any other failure propagates — the host shows it as the area error
+ * instead of silently hiding every inherited tool.
  */
 async function listResolvedTools(projectId: string): Promise<ServerToolDto[]> {
   try {
@@ -168,7 +173,8 @@ async function listResolvedTools(projectId: string): Promise<ServerToolDto[]> {
       'GET',
       `admin/projects/${encodeURIComponent(projectId)}/server-tools`,
     );
-  } catch {
-    return [];
+  } catch (e) {
+    if (e instanceof RestError && e.status === 403) return [];
+    throw e;
   }
 }

@@ -421,6 +421,7 @@ async function onCreated(created: DocumentDto): Promise<void> {
         :document="dtoForArchives"
         :current-text="document.inlineText"
         :current-dirty="document.dirty"
+        :encrypted="!!document.age"
         @restored="onRestored"
         @created="onCreated"
       />

@@ -13,13 +13,25 @@ import org.junit.jupiter.api.Test;
 class LlmBudgetExceededExceptionTest {
 
     @Test
-    void message_namesTenantMonthAndSetting_atCentPrecision() {
+    void message_namesTenantMonthAndSetting_withoutAmounts() {
+        // Reaches every session of the tenant; the tenant's spend is for tenant admins only.
         String message = LlmBudgetExceededException.messageOf(
                 status(BudgetScope.TENANT, "_tenant", BudgetWindow.MONTHLY, 50_000_000, 50_120_000));
 
         assertThat(message)
-                .isEqualTo("Tenant LLM budget exhausted: 50.12 of 50.00 USD this month."
+                .isEqualTo("Tenant LLM budget exhausted this month."
                         + " Ask a tenant admin to raise 'ai.llm.budget.monthly'.");
+        assertThat(message).doesNotContain("50").doesNotContain("USD");
+    }
+
+    @Test
+    void message_namesProjectAmounts_atCentPrecision() {
+        String message = LlmBudgetExceededException.messageOf(
+                status(BudgetScope.PROJECT, "research", BudgetWindow.MONTHLY, 50_000_000, 50_120_000));
+
+        assertThat(message)
+                .isEqualTo("Project 'research' LLM budget exhausted: 50.12 of 50.00 USD this month."
+                        + " Ask a project admin to raise 'ai.llm.budget.monthly'.");
     }
 
     @Test

@@ -28,7 +28,25 @@ breaking changes; a patch bump (`0.1.0` → `0.1.1`) is fixes only.
   The column is wider, and the language list in the user menu is a submenu.
 - **Kit sources** — each source carries a key ring, the key is picked by
   `keyId`; the library key ships with the brain. A malformed `kit-sources.yaml`
-  is reported when it is read.
+  is reported when it is read. **Incompatible:** the single `publicKey:` form
+  of a source is refused — rewrite it as `publicKeys: {<keyId>: <PEM>}`.
+- **`sso.yaml` is strict (incompatible)** — an unknown key in a provider,
+  domain or consumer-accounts entry drops that entry (a misspelt `allow:` would
+  otherwise open the whole domain); an unknown top-level key is reported.
+  Provider keys must match `[a-z0-9-]+`, and `autoCreate` must be a boolean.
+  Check the configuration with `anus sso config show` after the upgrade.
+- **`{{secret:}}` and OAuth keys (incompatible)** — a reference no longer
+  resolves a shared `oauth.*` login: `project:`, `tenant:` and the cascade form
+  are refused for any `oauth.*` key, and `refresh_token`/`client_secret` are
+  refused in every scope. Only `user:` reaches the caller's own login
+  (`{{secret:user:oauth.<provider>.access_token}}`); a shared MCP login goes to
+  its server's transport directly. Tool documents that used
+  `{{secret:project:oauth.…}}` or `{{secret:tenant:oauth.…}}` have to move to an
+  MCP server tool with `auth.type: oauth` and `auth.loginScope`.
+- **Leases** — one pod-liveness rule for the revocation dispatcher, the
+  Insights view and the sweeper: the own pod always counts as alive, so its
+  leases are revoked locally even while its own heartbeat row lags, instead of
+  being treated as orphaned.
 
 ### Added
 

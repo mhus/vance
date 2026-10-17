@@ -3,10 +3,12 @@
  Source: de.mhus.vance.api.insights.ModelAliasInsightsDto
 */
 
+import { ModelAliasScope } from './ModelAliasScope';
+
 export interface ModelAliasInsightsDto {
   alias: string;
   target: string;
-  definedIn: string;
+  definedIn: ModelAliasScope;
   resolved?: string;
   chain: string[];
   viaTenantDefault: boolean;

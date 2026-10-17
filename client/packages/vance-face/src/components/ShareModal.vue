@@ -253,7 +253,7 @@ function close(): void {
         <p class="text-sm text-(--v-label-secondary) mb-4">
           {{ t('share.viaLabel', { handler: labelOf(picked) }) }}
         </p>
-        <FormFields v-model="values" :fields="fields" :disabled="submitting" />
+        <FormFields v-model="values" :fields="fields" :disabled="submitting" :project-id="props.projectId" />
       </template>
 
       <template v-else>

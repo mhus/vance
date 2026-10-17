@@ -192,6 +192,7 @@ export * from './kit/ToolTemplatesScanRequestDto';
 export * from './form/BindsToDto';
 export * from './form/FormChoiceDto';
 export * from './form/FormFieldDto';
+export * from './form/FormSuggestionDto';
 
 export * from './followup/FollowUpRequestDto';
 export * from './followup/FollowUpResponseDto';

@@ -8,6 +8,7 @@ export * from './recipes';
 export * from './restClient';
 export * from './session-groups';
 export * from './share';
+export * from './suggestions';
 export * from './sessions';
 export * from './settingForms';
 export * from './wizards';

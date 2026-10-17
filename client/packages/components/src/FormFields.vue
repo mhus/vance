@@ -6,7 +6,8 @@ import VInput from './VInput.vue';
 import VSelect from './VSelect.vue';
 import VCombobox from './VCombobox.vue';
 import VTextarea from './VTextarea.vue';
-import { pickLocalized } from '@vance/shared';
+import VRecipientInput from './VRecipientInput.vue';
+import { fetchFieldSuggestions, pickLocalized } from '@vance/shared';
 import { computed, ref } from 'vue';
 import type { FormChoiceDto, FormFieldDto } from '@vance/generated';
 
@@ -66,6 +67,11 @@ interface Props {
   clearSelectionLabel?: string;
   /** The icon button that removes one item of a repeat field. */
   removeItemLabel?: string;
+  /**
+   * Project the form belongs to — handed to live suggestion sources
+   * (`suggestionsFrom`) so they can include project-scoped data.
+   */
+  projectId?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -260,9 +266,24 @@ function canRemove(field: FormFieldDto): boolean {
       :key="field.name"
       :data-form-field="pathOf(field.name)"
     >
+      <!-- ── string with live suggestions: a recipient-style list ── -->
+      <VRecipientInput
+        v-if="field.type === 'string' && field.suggestionsFrom"
+        :model-value="stringValue(field.name)"
+        :label="labelOf(field)"
+        :placeholder="field.defaultValue ?? ''"
+        :help="helpOf(field)"
+        :error="errorOf(field)"
+        :required="field.required"
+        :disabled="disabled"
+        :remove-label="removeItemLabel"
+        :fetch-suggestions="(q: string) => fetchFieldSuggestions(field.suggestionsFrom!, q, projectId)"
+        @update:model-value="(v: string) => setField(field.name, v)"
+      />
+
       <!-- ── string ── -->
       <VInput
-        v-if="field.type === 'string'"
+        v-else-if="field.type === 'string'"
         :model-value="stringValue(field.name)"
         :label="labelOf(field)"
         :placeholder="field.defaultValue ?? ''"
@@ -469,6 +490,8 @@ function canRemove(field: FormFieldDto): boolean {
             :custom-value-hint-label="customValueHintLabel"
             :selected-count-label="selectedCountLabel"
             :clear-selection-label="clearSelectionLabel"
+            :remove-item-label="removeItemLabel"
+            :project-id="projectId"
             @update:model-value="(sub: Record<string, FormValue>) =>
               updateRepeatItem(field, idx, sub as FormValueObject)"
           />

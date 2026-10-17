@@ -35,8 +35,7 @@ final class MailShareSupport {
     static final String FIELD_SUBJECT = "subject";
     static final String FIELD_TEXT = "text";
 
-    private MailShareSupport() {
-    }
+    private MailShareSupport() {}
 
     /**
      * Recipients, subject, message — in that order, and identical across
@@ -50,6 +49,8 @@ final class MailShareSupport {
         fields.add(FormFieldDto.builder()
                 .name(FIELD_TO)
                 .type("string")
+                // Contacts and groups as you type, when the contacts addon is installed.
+                .suggestionsFrom("mail-recipients")
                 .label(Map.of("en", "To", "de", "An"))
                 .help(Map.of(
                         "en", "Mail addresses, separated by comma.",
@@ -67,13 +68,14 @@ final class MailShareSupport {
                 .name(FIELD_TEXT)
                 .type("textarea")
                 .label(Map.of("en", "Message", "de", "Nachricht"))
-                .help(scope.hasDocument()
-                        ? Map.of(
-                                "en", "The document goes along as an attachment.",
-                                "de", "Das Dokument geht als Anhang mit.")
-                        : Map.of(
-                                "en", "Link and quote go into the message.",
-                                "de", "Link und Zitat gehen in die Nachricht."))
+                .help(
+                        scope.hasDocument()
+                                ? Map.of(
+                                        "en", "The document goes along as an attachment.",
+                                        "de", "Das Dokument geht als Anhang mit.")
+                                : Map.of(
+                                        "en", "Link and quote go into the message.",
+                                        "de", "Link und Zitat gehen in die Nachricht."))
                 .rows(4)
                 .build());
         return fields;
@@ -123,8 +125,7 @@ final class MailShareSupport {
      *                 (a relay's own limit versus Gmail's), so the cap is a
      *                 parameter rather than a constant
      */
-    static MailMessage.Attachment attachmentOf(
-            ShareScope scope, DocumentService documentService, long maxBytes) {
+    static MailMessage.Attachment attachmentOf(ShareScope scope, DocumentService documentService, long maxBytes) {
         DocumentDocument doc = scope.document();
         if (doc == null) {
             throw new IllegalStateException("attachmentOf called without a document");
@@ -140,22 +141,19 @@ final class MailShareSupport {
         try (InputStream in = documentService.loadContent(doc)) {
             bytes = in.readAllBytes();
         } catch (IOException e) {
-            throw new ShareTransportException(
-                    "Could not read '" + doc.getPath() + "' for sending", e);
+            throw new ShareTransportException("Could not read '" + doc.getPath() + "' for sending", e);
         }
         if (bytes.length > maxBytes) {
             throw new ShareException(tooLarge(bytes.length, maxBytes));
         }
-        String mimeType = doc.getMimeType() == null || doc.getMimeType().isBlank()
-                ? "text/markdown"
-                : doc.getMimeType();
-        return new MailMessage.Attachment(
-                fileName == null ? "document" : fileName, mimeType, bytes);
+        String mimeType =
+                doc.getMimeType() == null || doc.getMimeType().isBlank() ? "text/markdown" : doc.getMimeType();
+        return new MailMessage.Attachment(fileName == null ? "document" : fileName, mimeType, bytes);
     }
 
     static String tooLarge(long actual, long maxBytes) {
-        return "Too large to send as an attachment: " + (actual / 1024)
-                + " KiB, limit is " + (maxBytes / 1024) + " KiB";
+        return "Too large to send as an attachment: " + (actual / 1024) + " KiB, limit is " + (maxBytes / 1024)
+                + " KiB";
     }
 
     /** Splits on comma / semicolon / whitespace; drops blanks and duplicates. */
@@ -178,9 +176,7 @@ final class MailShareSupport {
         Set<String> out = new LinkedHashSet<>();
         for (String r : recipients) {
             int at = r.lastIndexOf('@');
-            out.add(at >= 0 && at < r.length() - 1
-                    ? r.substring(at + 1).toLowerCase(Locale.ROOT)
-                    : "(no domain)");
+            out.add(at >= 0 && at < r.length() - 1 ? r.substring(at + 1).toLowerCase(Locale.ROOT) : "(no domain)");
         }
         return List.copyOf(out);
     }

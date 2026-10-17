@@ -96,6 +96,23 @@ public class FormFieldDto {
     private @Nullable String choicesFrom;
 
     /**
+     * Live suggestions for a {@code string} field, searched while the user
+     * types — the name of a brain-side {@code SuggestionSource}. Unlike
+     * {@link #choicesFrom} nothing is resolved into the response: the set can
+     * be large and is read with the rights of whoever types, so the UI asks
+     * {@code GET /brain/{tenant}/suggestions/{source}?q=…} per keystroke and
+     * shows a handful of hits. Such a field holds a comma-separated list
+     * (the UI renders it as chips); typed values outside the suggestions
+     * stay allowed.
+     *
+     * <p>Without a registered source (the addon providing it is not
+     * installed) the route answers an empty list and the field is a plain
+     * text input. Known sources: {@code mail-recipients} (contacts addon —
+     * mail addresses of contacts and groups).
+     */
+    private @Nullable String suggestionsFrom;
+
+    /**
      * Select-field UI-hint: the picker also accepts a value outside
      * {@link #choices} (typed by hand or carried over from a stale
      * inventory entry). The {@code FormValidator} then skips the

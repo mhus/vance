@@ -80,6 +80,7 @@ export { default as VLinkPicker } from './VLinkPicker.vue';
 export { default as VModal } from './VModal.vue';
 export { default as VConfirmDialog } from './VConfirmDialog.vue';
 export { default as VPagination } from './VPagination.vue';
+export { default as VRecipientInput } from './VRecipientInput.vue';
 export { default as VSelect } from './VSelect.vue';
 export { default as VShareButton } from './VShareButton.vue';
 export type { ShareSubjectInput } from './VShareButton.vue';

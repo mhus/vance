@@ -27,6 +27,11 @@ export * from './addon/ChecksumStatus';
 
 export * from './attachment/AttachmentRef';
 
+export * from './chatmodel/ChatModelDto';
+export * from './chatmodel/ChatModelListDto';
+export * from './chatmodel/ChatModelPricingDto';
+export * from './chatmodel/ChatModelStateDto';
+
 export * from './command/EngineCommandOutcome';
 export * from './command/ProcessCommandRequest';
 export * from './command/ProcessCommandResponse';

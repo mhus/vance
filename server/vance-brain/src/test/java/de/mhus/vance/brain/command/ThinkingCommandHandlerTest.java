@@ -24,7 +24,8 @@ import org.mockito.quality.Strictness;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class ThinkingCommandHandlerTest {
 
-    @Mock private ThinkProcessService thinkProcessService;
+    @Mock
+    private ThinkProcessService thinkProcessService;
 
     private ThinkingCommandHandler handler;
 
@@ -40,6 +41,11 @@ class ThinkingCommandHandlerTest {
 
     private EngineCommand cmd(String text) {
         return new EngineCommand("thinking", Map.of("text", text));
+    }
+
+    @Test
+    void runsOffTheLane() {
+        assertThat(handler.runsOnLane()).isFalse();
     }
 
     @Test

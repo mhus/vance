@@ -309,10 +309,11 @@ class BundledSettingFormsTest {
     }
 
     /**
-     * The two unattended-engine model gates share one form. The bound keys
-     * must stay in sync with the gates' constants, and the form must be
-     * offered in every scope — Trillian reads hub → project → _tenant,
-     * Wowbagger project → _tenant.
+     * The model gates share one form: the two unattended engines and the
+     * chat model picker. The bound keys must stay in sync with the gates'
+     * constants, and the form must be offered in every scope — Trillian
+     * reads hub → project → _tenant, Wowbagger and the chat picker
+     * project → _tenant.
      */
     @Test
     void agent_model_allowlists_bindToTheGateKeys() throws IOException {
@@ -322,7 +323,8 @@ class BundledSettingFormsTest {
                 .extracting(field -> field.getBindsTo().getKey())
                 .containsExactly(
                         de.mhus.vance.brain.trillian.TrillianModelGate.ALLOWED_MODELS_KEY,
-                        de.mhus.vance.brain.wowbagger.WowbaggerPoolService.ALLOWED_MODELS_KEY);
+                        de.mhus.vance.brain.wowbagger.WowbaggerPoolService.ALLOWED_MODELS_KEY,
+                        de.mhus.vance.brain.ai.ChatModelService.ALLOWED_MODELS_KEY);
         assertThat(f.fields()).allSatisfy(field -> {
             assertThat(field.getType()).isEqualTo("string");
             assertThat(field.isRequired()).isFalse();

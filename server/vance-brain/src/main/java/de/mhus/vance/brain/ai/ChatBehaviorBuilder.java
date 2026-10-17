@@ -18,12 +18,15 @@ import org.slf4j.LoggerFactory;
  * <p>Reads:
  * <ul>
  *   <li>{@code params.model} — primary model alias / spec
- *       (e.g. {@code "default:analyze"} or {@code "anthropic:claude-…"})</li>
+ *       (e.g. {@code "default:analyze"} or {@code "anthropic:claude-…"});
+ *       a runtime {@code //model} override in
+ *       {@code engineParamOverrides} wins over it</li>
  *   <li>{@code params.provider} — legacy companion to {@code params.model}
  *       (kept for backward-compat with non-aliased recipes)</li>
  *   <li>{@code params.fallbackModels} — optional {@code List<String>} of
  *       alias / spec strings tried in order after the primary's retry
- *       budget is exhausted. Empty / missing → single-entry behaviour</li>
+ *       budget is exhausted. Empty / missing → single-entry behaviour;
+ *       ignored while a {@code //model} override is set</li>
  * </ul>
  *
  * <p>API keys come from {@link SettingService} via the
@@ -52,6 +55,14 @@ public final class ChatBehaviorBuilder {
      * instance) read their own base URL each.
      */
     private static final String SETTING_PROVIDER_BASE_URL_FMT = "ai.provider.%s.baseUrl";
+
+    /**
+     * Key of the runtime model override in
+     * {@code ThinkProcessDocument.engineParamOverrides}, written by the
+     * {@code //model} engine command. Always a resolved
+     * {@code providerInstance:modelName}.
+     */
+    public static final String MODEL_OVERRIDE_KEY = "model";
 
     private ChatBehaviorBuilder() {}
 
@@ -252,9 +263,28 @@ public final class ChatBehaviorBuilder {
      * {@link AiModelResolver#parseModelSpec(Map)} so process-driven
      * resolution and {@code LightLlmService}-driven resolution share
      * one parser.
+     *
+     * <p>Reads through {@link EngineChatFactory#effectiveParams}, so a
+     * runtime {@code //model} override ({@link #MODEL_OVERRIDE_KEY} in
+     * {@code engineParamOverrides}) wins over the recipe's
+     * {@code params.model} from the next model call on.
      */
     public static @Nullable String readModelSpec(ThinkProcessDocument process) {
+        return AiModelResolver.parseModelSpec(EngineChatFactory.effectiveParams(process));
+    }
+
+    /**
+     * The model spec the recipe set for this process, ignoring any runtime
+     * override — what {@code //model clear} falls back to.
+     */
+    public static @Nullable String readRecipeModelSpec(ThinkProcessDocument process) {
         return AiModelResolver.parseModelSpec(process.getEngineParams());
+    }
+
+    /** Whether a runtime {@code //model} override is set on this process. */
+    public static boolean hasModelOverride(ThinkProcessDocument process) {
+        Map<String, Object> overrides = process.getEngineParamOverrides();
+        return overrides != null && overrides.get(MODEL_OVERRIDE_KEY) instanceof String s && !s.isBlank();
     }
 
     /**
@@ -300,6 +330,12 @@ public final class ChatBehaviorBuilder {
      */
     @SuppressWarnings("unchecked")
     public static List<String> readFallbackAliases(ThinkProcessDocument process) {
+        if (hasModelOverride(process)) {
+            // An explicitly chosen model is the whole behaviour: silently
+            // switching to a recipe fallback would hide that the chosen
+            // model failed.
+            return List.of();
+        }
         Object raw = param(process, "fallbackModels");
         if (raw instanceof List<?> list) {
             List<String> out = new ArrayList<>(list.size());

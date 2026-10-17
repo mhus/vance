@@ -32,6 +32,10 @@ import org.springframework.stereotype.Component;
  * respawn. Provider-side capability gating still applies: a model without
  * a thinking capability silently downgrades to {@code off}. See
  * {@code specification/public/engine-commands.md} §9.
+ *
+ * <p>Off the lane, like {@link ModelCommandHandler}: the model picker sets
+ * the level while a turn may be running. The only write is one atomic
+ * field update on the override map, read fresh by the next turn.
  */
 @Component
 @RequiredArgsConstructor
@@ -42,6 +46,11 @@ public class ThinkingCommandHandler implements EngineCommandHandler {
     @Override
     public String verb() {
         return "thinking";
+    }
+
+    @Override
+    public boolean runsOnLane() {
+        return false;
     }
 
     @Override

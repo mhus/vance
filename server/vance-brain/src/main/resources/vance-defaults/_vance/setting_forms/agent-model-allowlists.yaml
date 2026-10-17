@@ -1,28 +1,33 @@
 title:
-  de: "Modell-Freigaben für autonome Agenten"
-  en: "Model allowlists for autonomous agents"
+  de: "Modell-Freigaben"
+  en: "Model allowlists"
 description:
   de: "Welche Modelle die beiden unbeaufsichtigt laufenden Engines
-       benutzen dürfen: der Trillian-User-Loop und die Wowbagger-Worker.
-       Format beider Felder: komma-separierte Muster mit `*`-Wildcards,
+       benutzen dürfen (der Trillian-User-Loop und die Wowbagger-Worker)
+       und welche ein User im Chat über den Model-Picker wählen kann.
+       Format aller Felder: komma-separierte Muster mit `*`-Wildcards,
        gematcht gegen `providerInstance:modelName` oder den nackten
        Modellnamen, ohne Groß-/Kleinschreibung — z.B.
-       `ollama:*, cortecs:glm-*`. Die Freigaben gelten nur für neue
-       Starts; laufende Loops und Pools bleiben unberührt."
-  en: "Which models the two unattended engines may run on: the
-       Trillian user loop and the Wowbagger workers. Format of both
-       fields: comma-separated patterns with `*` wildcards, matched
+       `ollama:*, cortecs:glm-*`. Trillian und Wowbagger prüfen nur neue
+       Starts; laufende Loops und Pools bleiben unberührt. Der Chat prüft
+       bei jeder Auswahl."
+  en: "Which models the two unattended engines may run on (the
+       Trillian user loop and the Wowbagger workers) and which a user may
+       pick in the chat through the model picker. Format of all fields:
+       comma-separated patterns with `*` wildcards, matched
        case-insensitively against `providerInstance:modelName` or the
-       bare model name — e.g. `ollama:*, cortecs:glm-*`. The allowlists
-       gate new starts only; running loops and pools are not touched."
+       bare model name — e.g. `ollama:*, cortecs:glm-*`. Trillian and
+       Wowbagger check new starts only; running loops and pools are not
+       touched. The chat checks on every pick."
 icon: shield
 category: ai
 defaultScope: tenant
 # No availableIn → offered in every scope. Trillian reads its allowlist over
 # the Trillian's hub `_user_<trillian>` → project → `_tenant`; Wowbagger over
-# project → `_tenant`. The first layer with a non-blank value wins — values
+# project → `_tenant`, the chat picker (ChatModelService) over project →
+# `_tenant`. The first layer with a non-blank value wins — values
 # are not merged, so a project or hub value replaces the tenant one; a blank
-# value is skipped by both gates.
+# value is skipped by every gate.
 
 fields:
 
@@ -57,3 +62,22 @@ fields:
            empty project value falls back to the tenant value."
     bindsTo:
       key: "wowbagger.allowed-models"
+
+  - name: chatAllowedModels
+    type: string
+    label:
+      de: "Chat — im Model-Picker wählbare Modelle"
+      en: "Chat — models selectable in the model picker"
+    help:
+      de: "Begrenzt, welche Modelle ein User im laufenden Chat über den
+           Model-Picker oder `//model` wählen kann. Auf keiner Ebene gesetzt
+           = alle konfigurierten Modelle wählbar. Gelesen über Projekt →
+           Tenant; ein leerer Projektwert fällt auf den Tenant zurück.
+           Recipes, die ein Modell vorgeben, sind davon nicht betroffen."
+      en: "Limits which models a user may pick for the running chat through
+           the model picker or `//model`. Unset on every layer = every
+           configured model selectable. Read over project → tenant; an
+           empty project value falls back to the tenant value. Recipes that
+           pin a model are not affected."
+    bindsTo:
+      key: "chat.allowed-models"

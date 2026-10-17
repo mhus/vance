@@ -1,6 +1,7 @@
 package de.mhus.vance.foot.connection;
 
 import de.mhus.vance.api.chat.ChatMessageDto;
+import de.mhus.vance.api.chatmodel.ChatModelListDto;
 import de.mhus.vance.api.documents.DocumentDto;
 import de.mhus.vance.api.documents.DocumentFolderListResponse;
 import de.mhus.vance.api.documents.DocumentListResponse;
@@ -78,6 +79,16 @@ public class BrainRestClientService {
         String path =
                 "/brain/" + config.getAuth().getTenant() + "/projects/" + urlEncode(projectId) + "/recipes/listed";
         return get(path, RecipeListedResponse.class);
+    }
+
+    /**
+     * Fetches the chat models selectable in {@code projectId} — the list the
+     * Web-UI model picker shows; {@code /models} and {@code /ui-models}
+     * render it in the terminal.
+     */
+    public ChatModelListDto chatModels(String projectId) throws Exception {
+        String path = "/brain/" + config.getAuth().getTenant() + "/projects/" + urlEncode(projectId) + "/chat-models";
+        return get(path, ChatModelListDto.class);
     }
 
     /**

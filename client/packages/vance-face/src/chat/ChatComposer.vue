@@ -31,7 +31,10 @@ import type {
   AttachmentRef,
   BoundDocSelection,
   ChatMessageDto,
+  ChatModelStateDto,
   ChatRole,
+  ProcessCommandRequest,
+  ProcessCommandResponse,
   ProcessPauseRequest,
   ProcessSteerRequest,
   ProcessSteerResponse,
@@ -45,6 +48,8 @@ import { VAlert, VDropdown, VIcon, VRange, VTextarea, VIconButton } from '@compo
 import { OPTIMISTIC_PREFIX } from './optimisticEcho';
 import { matchTalkCommand, stripCommandTail } from './talkCommands';
 import { caretInFirstLine, pushHistoryEntry } from './composerHistory';
+import ModelPickerDialog from './ModelPickerDialog.vue';
+import { shortModelName } from './modelPicker';
 
 /**
  * Mirrors {@code ChatApp.MediationState}. Non-null while the bound
@@ -451,6 +456,40 @@ function closeAttachmentMenu(): void {
  * the ¶ button pinned next to the send button in the card's toolbar row.
  */
 const multiline = ref(false);
+
+/**
+ * Model + reasoning picker (planning/model-picker.md §5). The state feeds
+ * the button's tooltip; it is read once per chat process via `//model get`
+ * (off the lane, so it answers while a turn runs) and replaced by what the
+ * dialog reports after an apply.
+ */
+const modelPickerOpen = ref(false);
+const modelState = ref<ChatModelStateDto | null>(null);
+const modelButtonLabel = computed(() => {
+  const s = modelState.value;
+  if (!s) return t('chat.modelPicker.button');
+  return t('chat.modelPicker.buttonState', { model: shortModelName(s.model), level: s.thinking });
+});
+watch(
+  () => props.chatProcessName,
+  async (name) => {
+    modelState.value = null;
+    if (!name) return;
+    try {
+      const reply = await props.socket.send<ProcessCommandRequest, ProcessCommandResponse>('process-command', {
+        processName: name,
+        command: 'model',
+        params: { text: 'get' },
+      });
+      if (name === props.chatProcessName && reply.value) {
+        modelState.value = reply.value as ChatModelStateDto;
+      }
+    } catch {
+      // Tooltip falls back to the plain label; the dialog reports errors itself.
+    }
+  },
+  { immediate: true },
+);
 const composerPlaceholder = computed(() => {
   if (autoAiOn.value) return t('chat.autoAi.placeholder');
   return multiline.value
@@ -1664,6 +1703,15 @@ onBeforeUnmount(() => {
           />
         </div>
         <div class="flex-1"></div>
+        <VIconButton
+          icon="ai"
+          size="sm"
+          :active="!!modelState && (modelState.modelOverridden || modelState.thinkingOverridden)"
+          :disabled="!chatProcessName || !chatProjectId"
+          :label="modelButtonLabel"
+          data-testid="model-picker-button"
+          @click="modelPickerOpen = true"
+        />
         <!-- Multi-line toggle — the pilcrow marks the paragraph mode.
              Stays pinned next to the input in every viewport (it is NOT
              part of the collapsible tools cluster). -->
@@ -1685,6 +1733,14 @@ onBeforeUnmount(() => {
          />
       </div>
     </div>
+    <ModelPickerDialog
+      v-if="modelPickerOpen && chatProcessName"
+      v-model:open="modelPickerOpen"
+      :socket="socket"
+      :process-name="chatProcessName"
+      :project-id="chatProjectId"
+      @applied="(s: ChatModelStateDto) => (modelState = s)"
+    />
   </div>
 </template>
 

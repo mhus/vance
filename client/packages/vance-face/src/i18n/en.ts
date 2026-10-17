@@ -247,6 +247,9 @@ export default {
     menu: {
       file: 'File',
       newFile: 'New file…',
+      newMarkdown: 'New Markdown file…',
+      duplicate: 'Duplicate',
+      rename: 'Rename…',
       newFolder: 'New folder…',
       open: 'Open…',
       save: 'Save',
@@ -461,6 +464,20 @@ export default {
       loadingText: 'loading…',
       delete: 'Delete',
       empty: 'empty',
+    },
+    renameDocument: {
+      failed: 'Rename failed',
+    },
+    newMarkdown: {
+      title: 'New Markdown file',
+      pathLabel: 'Folder',
+      pathPlaceholder: 'documents/notes',
+      nameLabel: 'Name',
+      namePlaceholder: 'meeting-notes',
+      nameHelp: 'Leave empty for note1.md, note2.md, …',
+      failed: 'Create failed',
+      cancel: 'Cancel',
+      create: 'Create',
     },
     newFolder: {
       title: 'New folder',

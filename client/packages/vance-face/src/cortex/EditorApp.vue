@@ -81,6 +81,8 @@ import CreateDocumentModal, {
   type CreateModalResult,
 } from './components/CreateDocumentModal.vue';
 import NewFolderModal from './components/NewFolderModal.vue';
+import NewMarkdownModal from './components/NewMarkdownModal.vue';
+import RenameDocumentModal from './components/RenameDocumentModal.vue';
 import OpenDocumentModal from './components/OpenDocumentModal.vue';
 import TranslateDialog from './components/TranslateDialog.vue';
 import AgeTransformDialog from './components/AgeTransformDialog.vue';
@@ -407,6 +409,11 @@ const createPrefill = ref<{ path: string } | null>(null);
 
 const showNewFolder = ref(false);
 const newFolderInitial = ref('');
+
+const showNewMarkdown = ref(false);
+const newMarkdownInitial = ref('');
+
+const showRename = ref(false);
 
 const showOpenDocument = ref(false);
 
@@ -1455,14 +1462,64 @@ async function onCreateConfirm(result: CreateModalResult): Promise<void> {
   createPrefill.value = null;
 }
 
-function onNewFolder(): void {
-  const ref = activeTab.value;
-  if (ref) {
-    const idx = ref.path.lastIndexOf('/');
-    newFolderInitial.value = idx >= 0 ? ref.path.slice(0, idx) : '';
-  } else {
-    newFolderInitial.value = 'documents';
+function onNewMarkdown(): void {
+  newMarkdownInitial.value = activeFolder();
+  showNewMarkdown.value = true;
+}
+
+async function createMarkdown(fullPath: string): Promise<void> {
+  await store.createFile({
+    path: fullPath,
+    mimeType: 'text/markdown',
+    inlineText: '',
+  });
+  await store.expandTo(fullPath);
+}
+
+/**
+ * Copy the active document next to itself and open the copy. Unsaved edits
+ * are saved first — the server copies what it has, and the user means the
+ * text on screen.
+ */
+async function onDuplicate(): Promise<void> {
+  const tab = activeTab.value;
+  if (!tab) return;
+  menuNotice.value = null;
+  try {
+    if (tab.dirty) await store.saveTab(tab.id, { manual: true });
+    const copy = await store.duplicateFile(tab.id);
+    await store.expandTo(copy.path);
+  } catch (e) {
+    menuNotice.value = {
+      text: `${msg('cortex.menu.duplicate')}: ${e instanceof Error ? e.message : 'failed'}`,
+      variant: 'error',
+    };
   }
+}
+
+/** Rename keeps the folder — only the last path segment changes. */
+async function renameActive(newName: string): Promise<void> {
+  const tab = activeTab.value;
+  if (!tab) return;
+  const slash = tab.path.lastIndexOf('/');
+  const newPath = slash < 0 ? newName : `${tab.path.slice(0, slash + 1)}${newName}`;
+  await store.moveFile(tab.id, newPath);
+}
+
+function isKnownPath(path: string): boolean {
+  return store.files.some((f) => f.path === path);
+}
+
+/** Folder of the active tab, or `documents` when nothing is open. */
+function activeFolder(): string {
+  const ref = activeTab.value;
+  if (!ref) return 'documents';
+  const idx = ref.path.lastIndexOf('/');
+  return idx >= 0 ? ref.path.slice(0, idx) : '';
+}
+
+function onNewFolder(): void {
+  newFolderInitial.value = activeFolder();
   showNewFolder.value = true;
 }
 
@@ -2019,6 +2076,11 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
               </a>
             </li>
             <li>
+              <a @click="closeMenus(); onNewMarkdown()">
+                <span class="flex-1">{{ $t('cortex.menu.newMarkdown') }}</span>
+              </a>
+            </li>
+            <li>
               <a @click="closeMenus(); onNewFolder()">
                 <span class="flex-1">{{ $t('cortex.menu.newFolder') }}</span>
               </a>
@@ -2027,6 +2089,16 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
               <a @click="closeMenus(); showOpenDocument = true">
                 <span class="flex-1">{{ $t('cortex.menu.open') }}</span>
                 <kbd class="kbd kbd-xs">⌘O</kbd>
+              </a>
+            </li>
+            <li :class="{ disabled: !activeTab }">
+              <a @click="closeMenus(); onDuplicate()">
+                <span class="flex-1">{{ $t('cortex.menu.duplicate') }}</span>
+              </a>
+            </li>
+            <li :class="{ disabled: !activeTab }">
+              <a @click="closeMenus(); showRename = true">
+                <span class="flex-1">{{ $t('cortex.menu.rename') }}</span>
               </a>
             </li>
             <li :class="{ disabled: !activeTab || !activeTab.dirty }">
@@ -2284,6 +2356,19 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
     :initial-path="createPrefill?.path ?? ''"
     :consume-draft="!hasSession"
     @confirm="onCreateConfirm"
+  />
+
+  <NewMarkdownModal
+    v-model:open="showNewMarkdown"
+    :initial-path="newMarkdownInitial"
+    :create="createMarkdown"
+    :is-taken="isKnownPath"
+  />
+
+  <RenameDocumentModal
+    v-model:open="showRename"
+    :current-name="activeTab?.name ?? ''"
+    :rename="renameActive"
   />
 
   <NewFolderModal

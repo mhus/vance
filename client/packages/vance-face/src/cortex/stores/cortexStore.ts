@@ -862,6 +862,24 @@ export const useCortexStore = defineStore('cortex', () => {
     currentSelection.value = null;
   }
 
+  /**
+   * Copy a document next to itself — the server picks the first free
+   * {@code copy <n>} name — and open the copy as the active tab.
+   */
+  async function duplicateFile(id: string): Promise<CortexDocument> {
+    if (!projectId.value) throw new Error('No project selected');
+    const params = new URLSearchParams({ projectId: projectId.value });
+    const dto = await brainFetch<DocumentDto>(
+      'POST',
+      `documents/${encodeURIComponent(id)}/duplicate?${params}`,
+    );
+    const copy = dtoToDocument(dto);
+    files.value = [...files.value, copy];
+    bumpFolderCount(parentFolderOf(dto.path), 1);
+    await openFile(dto.id);
+    return copy;
+  }
+
   async function deleteFile(id: string): Promise<void> {
     await brainFetch<void>('DELETE', `documents/${encodeURIComponent(id)}`);
     const gone = files.value.find((f) => f.id === id);
@@ -922,6 +940,7 @@ export const useCortexStore = defineStore('cortex', () => {
     saveAllDirty,
     unlockAgeTab,
     createFile,
+    duplicateFile,
     deleteFile,
     updateMeta,
     updateLock,

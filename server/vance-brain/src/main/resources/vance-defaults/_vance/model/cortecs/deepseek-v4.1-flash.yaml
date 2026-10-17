@@ -10,6 +10,8 @@ defaultMaxOutputTokens: 32768
 # Same class as the token cap above: the budget covers the thinking pass.
 timeoutSeconds: 180
 size: SMALL
+capabilities:
+- vision
 
 # DeepSeek V4 via strict OpenAI-compatible proxy (Cortecs) reliably
 # answers in prose without the action-tool wrapper. Skip the correction

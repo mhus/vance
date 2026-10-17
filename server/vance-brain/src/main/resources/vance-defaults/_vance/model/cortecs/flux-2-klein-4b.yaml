@@ -1,10 +1,9 @@
 # FLUX.2 [klein] 4B served by the Cortecs gateway on the OpenAI
 # images wire (/v1/images/generations, b64_json response).
 #
-# Hand-written here, not discovery-owned: Cortecs' /v1/models does not
-# list image models, so ModelDiscoveryService can never observe it —
-# this is the documented exception to the "no model documents in this
-# directory" rule in _provider.yaml.
+# Hand-written here: Cortecs' /v1/models does not list image models, so
+# neither ModelDiscoveryService nor `./wb models cortecs` can observe it
+# (the sync skips `kind: image` documents when reporting stale ones).
 #
 # Dispatches through OpenAiImageProvider (the cortecs sidecar declares
 # wireType: openai). A tenant needs the ai.provider.cortecs.apiKey and

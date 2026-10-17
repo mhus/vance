@@ -3,3 +3,9 @@ contextWindowTokens: 203000
 # visible answer (see glm-5.2.yaml for the failure mode).
 defaultMaxOutputTokens: 32768
 size: SMALL
+
+# Rates: Cortecs catalog (api.cortecs.ai/v1/models), snapshot 2026-10-17.
+pricing:
+  currency: EUR
+  inputPerMTok: 0.072
+  outputPerMTok: 0.429

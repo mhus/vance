@@ -8,14 +8,17 @@ authType: api-key
 # reads `wireType` after checking that setting, so a tenant that needs a
 # different protocol on this name can still override it.
 #
-# There are deliberately no *chat* model documents in this directory —
-# only the curated image models below. OpenRouter serves a changing
-# catalogue of 400+ chat models that we do not curate; run "Discover AI
-# Models" (Profile → Actions) after setting the key and the models land
-# under `_vance/model-auto/openrouter/`. OpenRouter's /v1/models reports
-# context length and per-token USD prices, so discovery carries those
-# observations automatically (limits as auto-docs, prices as
-# `auto: true` files in the manual layer).
+# The documents in this directory mirror the OpenRouter catalogue:
+# `./wb models openrouter` pulls the listings (/models, /images/models,
+# /models?output_modalities=all) and writes one document per model, with
+# one script part per kind (scripts/models/openrouter/: chat, image,
+# tts/stt, decision). Generated documents start with a marker line;
+# deleting it makes the file hand-curated, and the sync then only
+# refreshes context, prices and capabilities of chat documents. Every
+# non-chat document without the marker (the images, TTS/STT, music,
+# audio-understanding and Jev entries below) carries live-verified wire
+# facts and is never touched. Video, embedding and rerank models have no
+# catalog kind and are only reported.
 #
 # Image models: OpenRouter has a *dedicated* Image API
 # (POST /api/v1/images, GET /api/v1/images/models) with an

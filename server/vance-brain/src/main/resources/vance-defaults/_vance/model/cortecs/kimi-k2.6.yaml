@@ -2,11 +2,12 @@ contextWindowTokens: 256000
 defaultMaxOutputTokens: 8192
 size: LARGE
 capabilities:
+- thinking
 - vision
 
-# Rates: Cortecs catalog (api.cortecs.ai/v1/models), snapshot 2026-08-07.
+# Rates: Cortecs catalog (api.cortecs.ai/v1/models), snapshot 2026-10-17.
 pricing:
   currency: EUR
-  inputPerMTok: 0.694
-  outputPerMTok: 3.034
-  cacheReadPerMTok: 0.173
+  inputPerMTok: 0.426
+  outputPerMTok: 2.666
+  cacheReadPerMTok: 0.09

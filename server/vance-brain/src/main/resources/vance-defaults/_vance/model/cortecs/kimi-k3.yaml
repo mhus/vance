@@ -2,6 +2,7 @@ contextWindowTokens: 1048576
 defaultMaxOutputTokens: 8192
 size: LARGE
 capabilities:
+- thinking
 - vision
 
 # Rates: Cortecs catalog (api.cortecs.ai/v1/models), snapshot 2026-08-07.

@@ -8,25 +8,22 @@ authType: api-key
 # reads `wireType` after checking that setting, so a tenant that needs a
 # different protocol on this name can still override it.
 #
-# The bundled chat model documents in this directory are the curated
-# workhorses of the QA matrix (context windows, output caps, sizes,
-# capabilities, EUR pricing snapshots). They used to sit under
-# `_vance/model/openai/` while the `openai` instance was repointed at
-# cortecs.ai; they moved here when cortecs became its own instance so
-# the label prefix names the provider the model actually runs on.
-# Everything else in the cortecs catalogue comes from discovery: run
-# "Discover AI Models" (Profile → Actions) after setting the key and
-# the models land under `_vance/model-auto/cortecs/`. Cortecs' /v1/models
-# reports context size, output limit and owned-by, so discovery carries
-# those observations automatically. Cortecs' /v1/models also ships a price
-# block (EUR per MTok), which discovery writes into `_vance/model/`
-# as `auto: true` machine-owned files — no hand-typed prices. `kind`
-# and capabilities stay manual — add those by hand here when a model
-# needs them. The one standing exception: image models do not appear
-# in /v1/models at all, so they cannot be discovered — see
-# `flux-2-klein-4b.yaml`, the hand-written exception.
+# The chat model documents in this directory mirror the full Cortecs
+# catalogue. `./wb models cortecs` pulls api.cortecs.ai/v1/models and
+# writes them: new models get a mechanical document (context window,
+# output cap, size from the name/parameter heuristic, vision, EUR pricing
+# snapshot), existing ones get context, pricing and missing capabilities
+# refreshed in place — hand-curated fields and comments (timeouts,
+# actionLoopCorrections, measured findings) stay untouched. Models the
+# gateway no longer lists are only reported; `--prune` deletes them.
+# Runtime discovery ("Discover AI Models", Profile → Actions) still
+# writes per-tenant observations to `_vance/model-auto/cortecs/`.
 #
-# No `maxTools:` either. The value belongs to the endpoint, and we have
+# Image models do not appear in /v1/models at all, so the sync never
+# sees them — `flux-2-klein-4b.yaml` is the hand-written exception and is
+# never reported as stale.
+#
+# No `maxTools:` here. The value belongs to the endpoint, and we have
 # not measured what this gateway enforces; an invented cap would silently
 # shrink the tool surface, an absent one lets ObservedToolLimitRegistry
 # learn the real limit from the first rejection.

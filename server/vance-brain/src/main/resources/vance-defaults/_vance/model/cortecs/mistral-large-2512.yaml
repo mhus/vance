@@ -4,9 +4,9 @@ size: LARGE
 capabilities:
 - vision
 
-# Rates: Cortecs catalog (api.cortecs.ai/v1/models), snapshot 2026-08-07.
+# Rates: Cortecs catalog (api.cortecs.ai/v1/models), snapshot 2026-10-17.
 pricing:
   currency: EUR
-  inputPerMTok: 0.5
-  outputPerMTok: 1.5
-  cacheReadPerMTok: 0.05
+  inputPerMTok: 0.55
+  outputPerMTok: 1.65
+  cacheReadPerMTok: 0.055

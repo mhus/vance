@@ -21,9 +21,9 @@ actionLoopCorrections: 0
 # suffix. The undated `deepseek-v4-flash` is not in the catalog and
 # 404s ("NotFoundError: Model not found.").
 #
-# Rates: Cortecs catalog (api.cortecs.ai/v1/models), snapshot 2026-08-08.
+# Rates: Cortecs catalog (api.cortecs.ai/v1/models), snapshot 2026-10-17.
 pricing:
   currency: EUR
-  inputPerMTok: 0.224
-  outputPerMTok: 0.269
-  cacheReadPerMTok: 0.056
+  inputPerMTok: 0.081
+  outputPerMTok: 0.153
+  cacheReadPerMTok: 0.013

@@ -440,15 +440,23 @@ class ModelCatalogTest {
 
     // ──── Pricing block parsing ────────────────────────────────────────
 
+    /**
+     * The cortecs rates are snapshots that {@code ./wb models cortecs}
+     * rewrites from the live listing, so the test checks that the bundled
+     * block parses into sane values — not what the rates currently are.
+     */
     @Test
     void bundled_glm_5_2_has_cortecs_pricing() {
         ModelInfo info = catalog.lookupOrDefault("cortecs", "glm-5.2");
         assertThat(info.pricing()).isNotNull();
         assertThat(info.pricing().currency()).isEqualTo("EUR");
-        assertThat(info.pricing().inputPerMTok()).isEqualTo(1.077);
-        assertThat(info.pricing().outputPerMTok()).isEqualTo(3.77);
-        assertThat(info.pricing().cacheReadPerMTok()).isEqualTo(0.233);
-        assertThat(info.pricing().cacheWritePerMTok()).isNull();
+        assertThat(info.pricing().inputPerMTok()).isPositive();
+        assertThat(info.pricing().outputPerMTok())
+                .isGreaterThanOrEqualTo(info.pricing().inputPerMTok());
+        assertThat(info.pricing().cacheReadPerMTok())
+                .isNotNull()
+                .isPositive()
+                .isLessThan(info.pricing().inputPerMTok());
     }
 
     /**

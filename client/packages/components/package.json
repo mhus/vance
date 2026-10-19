@@ -46,11 +46,11 @@
   },
   "peerDependencies": {
     "vue": "^3.5.0",
-    "daisyui": "^5.7.47"
+    "daisyui": "^5.7.50"
   },
   "devDependencies": {
-    "daisyui": "^5.7.47",
-    "vue": "^3.5.43",
+    "daisyui": "^5.7.50",
+    "vue": "^3.5.44",
     "vue-tsc": "^3.3.13"
   },
   "sideEffects": [

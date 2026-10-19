@@ -100,6 +100,8 @@ export * from './documents/MountListResponse';
 export * from './documents/MountSearchOutcome';
 export * from './documents/WriterRole';
 
+export * from './home/HomeStatusDto';
+
 export * from './oauth/OAuthProviderAdminDto';
 export * from './oauth/OAuthProviderListEntry';
 export * from './oauth/OAuthProviderWriteRequest';

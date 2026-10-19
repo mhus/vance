@@ -20,6 +20,7 @@ import { EditorShell, StarredTile, VAlert } from '@/components';
 import { useStarredStore } from '@/starred/starredStore';
 import { editorHref } from '@/platform/editorHref';
 import { isTenantLlmConfigured } from '@/platform/llmSettings';
+import { useHomeStatus } from '@/composables/useHomeStatus';
 
 const { t } = useI18n();
 
@@ -66,6 +67,15 @@ async function onRemoveStarred(project: string, path: string): Promise<void> {
   await starred.unstar(project, path);
 }
 
+/** Human-readable byte count for the storage-quota hint. */
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
+  return `${(bytes / 1024 / 1024 / 1024 / 1024).toFixed(2)} TB`;
+}
+
 // Result of the last check, shown next to the heading. Without this trigger the
 // broken-tile state would be unreachable for a human: the list deliberately does
 // not resolve its entries on read, so nothing else on this page can discover a
@@ -92,10 +102,16 @@ async function onReconcile(): Promise<void> {
 // Only an answered "no" warns — an unknown result (failed check) stays quiet.
 const llmMissing = ref(false);
 
+// LLM-power + LLM-budget + storage-quota in one roundtrip. Each field is
+// independently nullable; the SPA renders nothing for null so a transient
+// outage never reads as "off" or "full".
+const homeStatus = useHomeStatus();
+
 onMounted(async () => {
   void isTenantLlmConfigured().then((configured) => {
     llmMissing.value = configured === false;
   });
+  void homeStatus.load();
   // Re-read on every visit rather than once per session: the reader can change
   // their UI level in the profile page, which is outside this bundle and
   // returns here by a full page load — but a second tab would not.
@@ -157,12 +173,37 @@ onMounted(async () => {
               <VAlert v-if="llmMissing" variant="warning" class="mt-2">
                 {{ $t('index.chat.llmNotConfigured') }}
               </VAlert>
+              <VAlert
+                v-else-if="homeStatus.status.value?.llmPowerOn === false"
+                variant="error"
+                class="mt-2"
+              >
+                {{ $t('index.chat.llmPowerOff') }}
+              </VAlert>
+              <div
+                v-else-if="(homeStatus.status.value?.llmBudgetPercent ?? -1) >= 0"
+                class="tile-row__hint text-sm opacity-70 mt-2"
+              >
+                {{ $t('index.chat.llmBudgetPercent', {
+                  percent: homeStatus.status.value!.llmBudgetPercent,
+                }) }}
+              </div>
             </RouterLink>
           </li>
           <li>
             <RouterLink class="tile-row" to="/documents">
                 <div class="font-semibold">{{ $t('index.documents.title') }}</div>
                 <div class="text-sm opacity-70">{{ $t('index.documents.description') }}</div>
+                <div
+                  v-if="(homeStatus.status.value?.storageQuotaPercent ?? -1) >= 0
+                    && homeStatus.status.value?.storageBytesFree != null"
+                  class="tile-row__hint text-sm opacity-70 mt-2"
+                >
+                  {{ $t('index.documents.storageQuota', {
+                    percent: homeStatus.status.value!.storageQuotaPercent,
+                    bytesFree: formatBytes(homeStatus.status.value!.storageBytesFree!),
+                  }) }}
+                </div>
             </RouterLink>
           </li>
           <li>
@@ -232,5 +273,10 @@ onMounted(async () => {
 }
 .tile-row:focus-visible {
   @apply outline outline-2 outline-primary outline-offset-2;
+}
+.tile-row__hint {
+  /* A muted second line under the tile description, italic to separate it
+     from the description text without claiming alert attention. */
+  font-style: italic;
 }
 </style>

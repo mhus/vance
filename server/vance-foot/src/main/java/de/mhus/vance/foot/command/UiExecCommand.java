@@ -23,6 +23,7 @@ import de.mhus.vance.foot.ui.InterfaceService;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -110,14 +111,13 @@ public class UiExecCommand implements SlashCommand {
             root.addComponent(header);
             // Leading space compensates for the list border's left line so
             // the column captions sit above their values.
-            root.addComponent(new Label(" " + String.format(
-                    "%-8s  %-9s  %4s  %8s  %8s  %s",
-                    "id", "status", "exit", "runtime", "idle", "command")));
+            root.addComponent(new Label(" "
+                    + String.format(
+                            "%-8s  %-9s  %4s  %8s  %8s  %s", "id", "status", "exit", "runtime", "idle", "command")));
 
             Border listBorder = listBox.withBorder(Borders.singleLine("Jobs"));
-            listBorder.setLayoutData(LinearLayout.createLayoutData(
-                    LinearLayout.Alignment.Fill,
-                    LinearLayout.GrowPolicy.CanGrow));
+            listBorder.setLayoutData(
+                    LinearLayout.createLayoutData(LinearLayout.Alignment.Fill, LinearLayout.GrowPolicy.CanGrow));
             root.addComponent(listBorder);
 
             Panel actions = new Panel();
@@ -125,10 +125,10 @@ public class UiExecCommand implements SlashCommand {
             actions.addComponent(new Button("Refresh", this::refresh));
             actions.addComponent(filterButton);
             actions.addComponent(new Button("Details", this::openSelected));
-            actions.addComponent(new Button("Stdout",
-                    () -> withSelected(job -> showOutput(job, ClientExecutorService.Stream.STDOUT))));
-            actions.addComponent(new Button("Stderr",
-                    () -> withSelected(job -> showOutput(job, ClientExecutorService.Stream.STDERR))));
+            actions.addComponent(new Button(
+                    "Stdout", () -> withSelected(job -> showOutput(job, ClientExecutorService.Stream.STDOUT))));
+            actions.addComponent(new Button(
+                    "Stderr", () -> withSelected(job -> showOutput(job, ClientExecutorService.Stream.STDERR))));
             actions.addComponent(new Button("Kill", () -> withSelected(this::kill)));
             actions.addComponent(new Button("Close", window::close));
             root.addComponent(actions);
@@ -139,7 +139,9 @@ public class UiExecCommand implements SlashCommand {
         void refresh() {
             List<ClientExecStat> all = executor.statAll();
             jobs = runningOnly
-                    ? all.stream().filter(s -> s.status() == ClientExecStatus.RUNNING).toList()
+                    ? all.stream()
+                            .filter(s -> s.status() == ClientExecStatus.RUNNING)
+                            .toList()
                     : all;
             long running = all.stream()
                     .filter(s -> s.status() == ClientExecStatus.RUNNING)
@@ -149,9 +151,10 @@ public class UiExecCommand implements SlashCommand {
                     + "   Enter = details");
             listBox.clearItems();
             if (jobs.isEmpty()) {
-                listBox.addItem(runningOnly
-                        ? "(nothing running)"
-                        : "(no local exec jobs — they appear once a command runs on this machine)",
+                listBox.addItem(
+                        runningOnly
+                                ? "(nothing running)"
+                                : "(no local exec jobs — they appear once a command runs on this machine)",
                         () -> {});
                 return;
             }
@@ -256,8 +259,7 @@ public class UiExecCommand implements SlashCommand {
             Panel root = new Panel();
             root.setLayoutManager(new LinearLayout(Direction.VERTICAL));
 
-            TextBox command = new TextBox(new TerminalSize(80, 3),
-                    job.command(), TextBox.Style.MULTI_LINE);
+            TextBox command = new TextBox(new TerminalSize(80, 3), job.command(), TextBox.Style.MULTI_LINE);
             command.setReadOnly(true);
             root.addComponent(command.withBorder(Borders.singleLine("Command")));
 
@@ -265,10 +267,10 @@ public class UiExecCommand implements SlashCommand {
 
             Panel buttons = new Panel();
             buttons.setLayoutManager(new LinearLayout(Direction.HORIZONTAL));
-            buttons.addComponent(new Button("Stdout",
-                    () -> UiExecCommand.this.showOutput(gui, this.job, ClientExecutorService.Stream.STDOUT)));
-            buttons.addComponent(new Button("Stderr",
-                    () -> UiExecCommand.this.showOutput(gui, this.job, ClientExecutorService.Stream.STDERR)));
+            buttons.addComponent(new Button(
+                    "Stdout", () -> UiExecCommand.this.showOutput(gui, this.job, ClientExecutorService.Stream.STDOUT)));
+            buttons.addComponent(new Button(
+                    "Stderr", () -> UiExecCommand.this.showOutput(gui, this.job, ClientExecutorService.Stream.STDERR)));
             buttons.addComponent(new Button("Kill", this::kill));
             buttons.addComponent(new Button("Reload", this::reload));
             buttons.addComponent(new Button("Close", window::close));
@@ -281,32 +283,50 @@ public class UiExecCommand implements SlashCommand {
         private void renderInfo() {
             Instant now = Instant.now();
             StringBuilder sb = new StringBuilder();
-            sb.append("Status:     ").append(job.status())
-              .append(job.timedOut() ? "  (killed by timeout)" : "").append('\n');
+            sb.append("Status:     ")
+                    .append(job.status())
+                    .append(job.timedOut() ? "  (killed by timeout)" : "")
+                    .append('\n');
             sb.append("Exit code:  ")
-              .append(job.exitCode() == null ? "—" : job.exitCode().toString()).append('\n');
+                    .append(job.exitCode() == null ? "—" : job.exitCode().toString())
+                    .append('\n');
             sb.append("Runtime:    ").append(humanDuration(job.durationMs())).append('\n');
             sb.append("Started:    ").append(job.startedAt()).append('\n');
-            sb.append("Last out:   ").append(job.lastOutputAt())
-              .append("  (").append(humanDuration(
-                      Duration.between(job.lastOutputAt(), now).toMillis())).append(" ago)\n");
+            sb.append("Last out:   ")
+                    .append(job.lastOutputAt())
+                    .append("  (")
+                    .append(humanDuration(
+                            Duration.between(job.lastOutputAt(), now).toMillis()))
+                    .append(" ago)\n");
             sb.append("Finished:   ")
-              .append(job.finishedAt() == null ? "— (still running)" : job.finishedAt().toString())
-              .append('\n');
-            sb.append("Session:    ").append(Objects.toString(job.sessionId(), "— (local)")).append('\n');
-            sb.append("Project:    ").append(Objects.toString(job.projectId(), "— (local)")).append('\n');
-            sb.append("Stdout:     ").append(humanSize(job.stdoutBytes()))
-              .append("  ").append(job.stdoutPath()).append('\n');
-            sb.append("Stderr:     ").append(humanSize(job.stderrBytes()))
-              .append("  ").append(job.stderrPath());
+                    .append(
+                            job.finishedAt() == null
+                                    ? "— (still running)"
+                                    : job.finishedAt().toString())
+                    .append('\n');
+            sb.append("Session:    ")
+                    .append(Objects.toString(job.sessionId(), "— (local)"))
+                    .append('\n');
+            sb.append("Project:    ")
+                    .append(Objects.toString(job.projectId(), "— (local)"))
+                    .append('\n');
+            sb.append("Stdout:     ")
+                    .append(humanSize(job.stdoutBytes()))
+                    .append("  ")
+                    .append(job.stdoutPath())
+                    .append('\n');
+            sb.append("Stderr:     ")
+                    .append(humanSize(job.stderrBytes()))
+                    .append("  ")
+                    .append(job.stderrPath());
             info.setText(sb.toString());
         }
 
         private void reload() {
             ClientExecStat fresh = executor.stat(job.id()).orElse(null);
             if (fresh == null) {
-                MessageDialog.showMessageDialog(gui, "Exec job",
-                        "Job " + job.id() + " is no longer tracked.", MessageDialogButton.OK);
+                MessageDialog.showMessageDialog(
+                        gui, "Exec job", "Job " + job.id() + " is no longer tracked.", MessageDialogButton.OK);
                 window.close();
                 return;
             }
@@ -316,8 +336,8 @@ public class UiExecCommand implements SlashCommand {
 
         private void kill() {
             if (job.status() != ClientExecStatus.RUNNING) {
-                MessageDialog.showMessageDialog(gui, "Exec job",
-                        "Already finished (" + job.status() + ").", MessageDialogButton.OK);
+                MessageDialog.showMessageDialog(
+                        gui, "Exec job", "Already finished (" + job.status() + ").", MessageDialogButton.OK);
                 return;
             }
             MessageDialogButton choice = new MessageDialogBuilder()
@@ -338,12 +358,9 @@ public class UiExecCommand implements SlashCommand {
      * re-tails the file, which is what makes this usable on a job that's
      * still producing output.
      */
-    private void showOutput(WindowBasedTextGUI gui,
-                            ClientExecStat job,
-                            ClientExecutorService.Stream stream) {
+    private void showOutput(WindowBasedTextGUI gui, ClientExecStat job, ClientExecutorService.Stream stream) {
         String streamName = stream == ClientExecutorService.Stream.STDERR ? "stderr" : "stdout";
-        String path = stream == ClientExecutorService.Stream.STDERR
-                ? job.stderrPath() : job.stdoutPath();
+        String path = stream == ClientExecutorService.Stream.STDERR ? job.stderrPath() : job.stdoutPath();
 
         BasicWindow window = new BasicWindow(job.id() + " — " + streamName);
         window.setHints(Set.of(Window.Hint.FULL_SCREEN));
@@ -352,9 +369,7 @@ public class UiExecCommand implements SlashCommand {
         Label head = new Label("");
         TextBox box = new TextBox(new TerminalSize(80, 20), "", TextBox.Style.MULTI_LINE);
         box.setReadOnly(true);
-        box.setLayoutData(LinearLayout.createLayoutData(
-                LinearLayout.Alignment.Fill,
-                LinearLayout.GrowPolicy.CanGrow));
+        box.setLayoutData(LinearLayout.createLayoutData(LinearLayout.Alignment.Fill, LinearLayout.GrowPolicy.CanGrow));
 
         Runnable reload = () -> {
             List<String> lines;
@@ -367,8 +382,7 @@ public class UiExecCommand implements SlashCommand {
             }
             box.setText(lines.isEmpty() ? "(no output)" : String.join("\n", lines));
             head.setText(path + "   " + lines.size() + " line(s)"
-                    + (lines.size() >= MAX_OUTPUT_LINES
-                            ? " — capped at the last " + MAX_OUTPUT_LINES : ""));
+                    + (lines.size() >= MAX_OUTPUT_LINES ? " — capped at the last " + MAX_OUTPUT_LINES : ""));
         };
         reload.run();
 
@@ -393,7 +407,8 @@ public class UiExecCommand implements SlashCommand {
      * output line — the field that tells a stuck job from a slow one.
      */
     static String formatRow(ClientExecStat job, Instant now) {
-        return String.format("%-8s  %-9s  %4s  %8s  %8s  %s",
+        return String.format(
+                "%-8s  %-9s  %4s  %8s  %8s  %s",
                 job.id(),
                 job.status(),
                 job.exitCode() == null ? "—" : job.exitCode().toString(),
@@ -403,19 +418,22 @@ public class UiExecCommand implements SlashCommand {
     }
 
     static String humanDuration(long millis) {
+        // Floating-point format goes through Locale.ROOT — the default locale
+        // would emit "1,2s" on a German JVM and break the row layout that
+        // assumes a fixed decimal point.
         if (millis < 0) return "0s";
-        if (millis < 10_000) return String.format("%.1fs", millis / 1000.0);
+        if (millis < 10_000) return String.format(Locale.ROOT, "%.1fs", millis / 1000.0);
         long seconds = millis / 1000;
         if (seconds < 60) return seconds + "s";
         long minutes = seconds / 60;
-        if (minutes < 60) return String.format("%dm%02ds", minutes, seconds % 60);
-        return String.format("%dh%02dm", minutes / 60, minutes % 60);
+        if (minutes < 60) return String.format(Locale.ROOT, "%dm%02ds", minutes, seconds % 60);
+        return String.format(Locale.ROOT, "%dh%02dm", minutes / 60, minutes % 60);
     }
 
     static String humanSize(long n) {
         if (n < 1024) return n + "B";
-        if (n < 1024 * 1024) return String.format("%.1fK", n / 1024.0);
-        return String.format("%.1fM", n / (1024.0 * 1024));
+        if (n < 1024 * 1024) return String.format(Locale.ROOT, "%.1fK", n / 1024.0);
+        return String.format(Locale.ROOT, "%.1fM", n / (1024.0 * 1024));
     }
 
     private static String truncate(String s, int max) {

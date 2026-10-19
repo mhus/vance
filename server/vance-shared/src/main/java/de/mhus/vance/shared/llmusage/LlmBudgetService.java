@@ -1,5 +1,6 @@
 package de.mhus.vance.shared.llmusage;
 
+import de.mhus.vance.shared.cache.TtlTenantCache;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.settings.SettingDocument;
 import de.mhus.vance.shared.settings.SettingService;
@@ -94,7 +95,18 @@ public class LlmBudgetService {
     private final SettingService settingService;
     private final LlmUsageService usageService;
     private final Clock clock;
-    private final Map<String, CachedBudget> cache = new ConcurrentHashMap<>();
+    private final TtlTenantCache<String, LlmBudget> cache = new TtlTenantCache<>(SETTINGS_TTL);
+
+    /**
+     * Closed-day sums per scope and window start. Kept as a plain
+     * {@link ConcurrentHashMap} rather than a {@link TtlTenantCache}: the
+     * write side batches multiple ranges into one
+     * {@link LlmUsageService#costTotals} call, and the get-or-load shape of
+     * {@link TtlTenantCache#get} would force one aggregation per range
+     * instead. The TTL/overflow convention matches
+     * {@link TtlTenantCache#MAX_ENTRIES} so the two caches behave the same
+     * when an unlikely scope flood arrives.
+     */
     private final Map<String, CachedTotals> closedDays = new ConcurrentHashMap<>();
 
     @Autowired
@@ -156,7 +168,7 @@ public class LlmBudgetService {
 
     /** Drops the cached limits and closed-day sums — for tests and for an explicit reload. */
     public void invalidate() {
-        cache.clear();
+        cache.invalidateAll();
         closedDays.clear();
     }
 
@@ -282,17 +294,7 @@ public class LlmBudgetService {
 
     private LlmBudget budgetOf(String tenantId, String scopeId) {
         String key = tenantId + '\0' + scopeId;
-        long now = System.nanoTime();
-        CachedBudget hit = cache.get(key);
-        if (hit != null && now - hit.expiresAtNanos() < 0) {
-            return hit.budget();
-        }
-        LlmBudget budget = readBudget(tenantId, scopeId);
-        if (cache.size() >= MAX_ENTRIES) {
-            cache.clear();
-        }
-        cache.put(key, new CachedBudget(budget, now + SETTINGS_TTL.toNanos()));
-        return budget;
+        return cache.get(key, () -> readBudget(tenantId, scopeId));
     }
 
     private LlmBudget readBudget(String tenantId, String scopeId) {
@@ -311,8 +313,6 @@ public class LlmBudgetService {
                 && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)
                 && !LlmUsageDailyDocument.NONE.equals(projectId);
     }
-
-    private record CachedBudget(LlmBudget budget, long expiresAtNanos) {}
 
     private record CachedTotals(List<LlmUsageService.CostTotal> totals, long expiresAtNanos) {}
 

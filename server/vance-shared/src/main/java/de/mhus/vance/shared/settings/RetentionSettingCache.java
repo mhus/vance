@@ -1,8 +1,7 @@
 package de.mhus.vance.shared.settings;
 
+import de.mhus.vance.shared.cache.TtlTenantCache;
 import java.time.Duration;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -52,17 +51,8 @@ public class RetentionSettingCache {
      */
     static final Duration TTL = Duration.ofMinutes(1);
 
-    /**
-     * Bound on distinct entries, so a tenant with very many projects cannot
-     * turn this into a leak. On overflow the map is cleared rather than
-     * evicted one by one: the entries are cheap to rebuild, and an
-     * approximate LRU here would be more machinery than the problem deserves.
-     */
-    static final int MAX_ENTRIES = 10_000;
-
     private final SettingService settingService;
-
-    private final Map<String, Entry> cache = new ConcurrentHashMap<>();
+    private final TtlTenantCache<String, Integer> cache = new TtlTenantCache<>(TTL);
 
     /**
      * The effective retention in days for {@code (tenant, project)}, or
@@ -74,39 +64,25 @@ public class RetentionSettingCache {
      */
     public int days(String tenantId, @Nullable String projectId, String key, int fallback) {
         String cacheKey = tenantId + '\0' + (projectId == null ? "" : projectId) + '\0' + key;
-        long now = System.nanoTime();
-        Entry hit = cache.get(cacheKey);
-        if (hit != null && now < hit.expiresAtNanos()) {
-            return hit.days();
-        }
-        int resolved = read(tenantId, projectId, key, fallback);
-        if (cache.size() >= MAX_ENTRIES) {
-            cache.clear();
-        }
-        cache.put(cacheKey, new Entry(resolved, now + TTL.toNanos()));
-        return resolved;
+        Integer cached = cache.get(cacheKey, () -> read(tenantId, projectId, key, fallback));
+        return cached == null ? fallback : cached;
     }
 
     /** Drops every entry — for tests and for an explicit reload action. */
     public void invalidate() {
-        cache.clear();
+        cache.invalidateAll();
     }
 
     private int read(String tenantId, @Nullable String projectId, String key, int fallback) {
-        String raw = settingService.getStringValueCascade(
-                tenantId, projectId, /*thinkProcessId*/ null, key);
+        String raw = settingService.getStringValueCascade(tenantId, projectId, /*thinkProcessId*/ null, key);
         if (raw == null || raw.isBlank()) {
             return fallback;
         }
         try {
             return Integer.parseInt(raw.trim());
         } catch (NumberFormatException ex) {
-            log.warn("Retention setting '{}' is not an integer ('{}'), falling back to {}d",
-                    key, raw, fallback);
+            log.warn("Retention setting '{}' is not an integer ('{}'), falling back to {}d", key, raw, fallback);
             return fallback;
         }
     }
-
-    /** {@code expiresAtNanos} is on {@link System#nanoTime()}, which never jumps. */
-    private record Entry(int days, long expiresAtNanos) {}
 }

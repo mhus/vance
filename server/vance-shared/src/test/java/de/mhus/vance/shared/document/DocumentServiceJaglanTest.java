@@ -3,6 +3,7 @@ package de.mhus.vance.shared.document;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -13,8 +14,8 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.api.documents.MountAccess;
 import de.mhus.vance.api.mount.MountedStat;
 import de.mhus.vance.shared.document.jaglan.JaglanAccessException;
-import de.mhus.vance.shared.document.jaglan.JaglanUnavailableException;
 import de.mhus.vance.shared.document.jaglan.JaglanPort;
+import de.mhus.vance.shared.document.jaglan.JaglanUnavailableException;
 import de.mhus.vance.shared.permission.WriteActor;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.storage.StorageService;
@@ -60,9 +61,14 @@ class DocumentServiceJaglanTest {
         DocumentArchiveService archiveService = mock(DocumentArchiveService.class);
         SettingService settingService = mock(SettingService.class);
         service = new DocumentService(
-                repository, storageService, mongoTemplate,
-                resourcePatternResolver, headerParser,
-                archiveService, settingService, DocTestSupport.permissionProvider());
+                repository,
+                storageService,
+                mongoTemplate,
+                resourcePatternResolver,
+                headerParser,
+                archiveService,
+                settingService,
+                DocTestSupport.permissionProvider());
         port = mock(JaglanPort.class);
         installPort(port);
     }
@@ -107,8 +113,7 @@ class DocumentServiceJaglanTest {
                 .thenReturn(new ByteArrayInputStream("pdf-bytes".getBytes(StandardCharsets.UTF_8)));
 
         try (InputStream in = service.loadContent(mountedDoc())) {
-            assertThat(new String(in.readAllBytes(), StandardCharsets.UTF_8))
-                    .isEqualTo("pdf-bytes");
+            assertThat(new String(in.readAllBytes(), StandardCharsets.UTF_8)).isEqualTo("pdf-bytes");
         }
         verify(storageService, never()).load(anyString());
     }
@@ -146,23 +151,20 @@ class DocumentServiceJaglanTest {
         // The five-argument form, because that is the one DocumentService calls.
         // Verifying the four-argument default here would pass no matter what —
         // a green assertion that has stopped watching anything.
-        verify(port, never()).open(anyString(), anyString(), anyString(), anyString(),
-                org.mockito.ArgumentMatchers.any());
+        verify(port, never())
+                .open(anyString(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any());
     }
 
     // ─── write ──────────────────────────────────────────────────────────
 
     @Test
-    void streamingStoreContent_mountedPath_writesThroughPortAndKeepsNoStorageId()
-            throws IOException {
+    void streamingStoreContent_mountedPath_writesThroughPortAndKeepsNoStorageId() throws IOException {
         when(port.write(eq("acme"), eq("research"), eq("library"), eq("books/dune.pdf"), any()))
-                .thenReturn(new MountedStat(
-                        "books/dune.pdf", false, 9, "application/pdf", "e1", null, MountAccess.RW));
+                .thenReturn(new MountedStat("books/dune.pdf", false, 9, "application/pdf", "e1", null, MountAccess.RW));
 
         DocumentService.ContentWriteResult result;
         try (InputStream in = new ByteArrayInputStream("pdf-bytes".getBytes(StandardCharsets.UTF_8))) {
-            result = service.streamingStoreContent(
-                    "acme", "research", "_ext/library/books/dune.pdf", in);
+            result = service.streamingStoreContent("acme", "research", "_ext/library/books/dune.pdf", in);
         }
 
         assertThat(result.storageId()).isNull();
@@ -172,22 +174,19 @@ class DocumentServiceJaglanTest {
     }
 
     @Test
-    void streamingStoreContent_mountedPath_fallsBackToCountedBytesWhenSourceReportsNoSize()
-            throws IOException {
+    void streamingStoreContent_mountedPath_fallsBackToCountedBytesWhenSourceReportsNoSize() throws IOException {
         // A source that answers 0 has told us nothing; persisting 0 for a
         // non-empty document would be a lie we could have avoided.
         when(port.write(anyString(), anyString(), anyString(), anyString(), any()))
                 .thenAnswer(invocation -> {
                     InputStream body = invocation.getArgument(4);
                     body.readAllBytes();
-                    return new MountedStat(
-                            "books/dune.pdf", false, 0, null, null, null, MountAccess.RW);
+                    return new MountedStat("books/dune.pdf", false, 0, null, null, null, MountAccess.RW);
                 });
 
         DocumentService.ContentWriteResult result;
         try (InputStream in = new ByteArrayInputStream("12345".getBytes(StandardCharsets.UTF_8))) {
-            result = service.streamingStoreContent(
-                    "acme", "research", "_ext/library/books/dune.pdf", in);
+            result = service.streamingStoreContent("acme", "research", "_ext/library/books/dune.pdf", in);
         }
 
         assertThat(result.originalSize()).isEqualTo(5);
@@ -198,14 +197,13 @@ class DocumentServiceJaglanTest {
         installPort(null);
 
         assertThatThrownBy(() -> service.streamingStoreContent(
-                "acme", "research", "_ext/library/x.pdf",
-                new ByteArrayInputStream(new byte[0])))
+                        "acme", "research", "_ext/library/x.pdf", new ByteArrayInputStream(new byte[0])))
                 .isInstanceOf(JaglanUnavailableException.class);
     }
 
     @Test
     void streamingStoreContent_ordinaryPath_stillHitsStorage() throws IOException {
-        when(storageService.store(anyString(), anyString(), any()))
+        when(storageService.store(anyString(), anyString(), any(), anyLong()))
                 .thenReturn(new StorageService.StorageInfo(
                         "blob-new", 4L, new java.util.Date(), "acme", "documents/notes.md"));
 
@@ -235,12 +233,12 @@ class DocumentServiceJaglanTest {
         DocumentDocument doc = mountedDoc();
         when(repository.findById("ext_deadbeef")).thenReturn(Optional.of(doc));
         org.mockito.Mockito.doThrow(new JaglanAccessException("library", "read-only"))
-                .when(port).delete(anyString(), anyString(), anyString(), anyString());
+                .when(port)
+                .delete(anyString(), anyString(), anyString(), anyString());
 
         // Dropping only the Mongo shell would make the document reappear on
         // the next stat — so a refusal has to stop the delete, not be logged.
-        assertThatThrownBy(() -> service.delete("ext_deadbeef", ACTOR))
-                .isInstanceOf(JaglanAccessException.class);
+        assertThatThrownBy(() -> service.delete("ext_deadbeef", ACTOR)).isInstanceOf(JaglanAccessException.class);
         verify(repository, never()).delete(any());
     }
 
@@ -287,8 +285,7 @@ class DocumentServiceJaglanTest {
     /** The claim query handed to {@code findAndModify}, rendered for matching. */
     private String capturedClaimQuery() {
         ArgumentCaptor<Query> captor = ArgumentCaptor.forClass(Query.class);
-        verify(mongoTemplate).findAndModify(
-                captor.capture(), any(), any(), eq(DocumentDocument.class));
+        verify(mongoTemplate).findAndModify(captor.capture(), any(), any(), eq(DocumentDocument.class));
         return captor.getValue().getQueryObject().toJson();
     }
 

@@ -3,6 +3,7 @@ package de.mhus.vance.shared.document;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -55,29 +56,34 @@ class DocumentServiceArchiveTriggerTest {
         } catch (java.io.IOException e) {
             throw new RuntimeException(e); // mock setup, never throws
         }
-        when(storageService.store(any(), any(), any())).thenAnswer(inv -> {
+        when(storageService.store(any(), any(), any(), anyLong())).thenAnswer(inv -> {
             java.io.InputStream stream = inv.getArgument(2);
             long size = stream.readAllBytes().length;
-            return new StorageService.StorageInfo(
-                    "blob-" + java.util.UUID.randomUUID(), size, new Date(), null, null);
+            return new StorageService.StorageInfo("blob-" + java.util.UUID.randomUUID(), size, new Date(), null, null);
         });
         service = new DocumentService(
-                repository, storageService, mongoTemplate,
-                resourcePatternResolver, headerParser,
-                archiveService, settingService, DocTestSupport.permissionProvider());
+                repository,
+                storageService,
+                mongoTemplate,
+                resourcePatternResolver,
+                headerParser,
+                archiveService,
+                settingService,
+                DocTestSupport.permissionProvider());
         ReflectionTestUtils.setField(service, "inlineThreshold", 40960);
         ReflectionTestUtils.setField(service, "compressionEnabled", false);
         ReflectionTestUtils.setField(service, "compressionThreshold", 1000);
         ReflectionTestUtils.setField(service, "archiveEnabledDefault", true);
         ReflectionTestUtils.setField(service, "archiveMinIntervalSecondsDefault", 600L);
         when(settingService.getBooleanValueCascade(
-                anyString(), anyString(), any(), eq(DocumentService.SETTING_ARCHIVE_ENABLED), anyBoolean()))
+                        anyString(), anyString(), any(), eq(DocumentService.SETTING_ARCHIVE_ENABLED), anyBoolean()))
                 .thenReturn(true);
-        when(repository.save(any(DocumentDocument.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
+        when(repository.save(any(DocumentDocument.class))).thenAnswer(inv -> inv.getArgument(0));
     }
 
-    private static boolean anyBoolean() { return org.mockito.ArgumentMatchers.anyBoolean(); }
+    private static boolean anyBoolean() {
+        return org.mockito.ArgumentMatchers.anyBoolean();
+    }
 
     // ──── update() — trigger logic ─────────────────────────────────────
 
@@ -117,8 +123,7 @@ class DocumentServiceArchiveTriggerTest {
         DocumentDocument doc = freshDoc("hello", Instant.now().minusSeconds(3600));
         when(repository.findById("doc-1")).thenReturn(Optional.of(doc));
         when(settingService.getBooleanValueCascade(
-                anyString(), anyString(), any(),
-                eq(DocumentService.SETTING_ARCHIVE_ENABLED), anyBoolean()))
+                        anyString(), anyString(), any(), eq(DocumentService.SETTING_ARCHIVE_ENABLED), anyBoolean()))
                 .thenReturn(false);
 
         service.update("doc-1", null, null, "world", null, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
@@ -135,8 +140,8 @@ class DocumentServiceArchiveTriggerTest {
         service.update("doc-1", null, null, "world", null, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
 
         verify(archiveService, never()).archiveCurrent(any(DocumentDocument.class));
-        verify(settingService, never()).getBooleanValueCascade(
-                anyString(), anyString(), any(), anyString(), anyBoolean());
+        verify(settingService, never())
+                .getBooleanValueCascade(anyString(), anyString(), any(), anyString(), anyBoolean());
     }
 
     @Test
@@ -173,8 +178,7 @@ class DocumentServiceArchiveTriggerTest {
         DocumentDocument doc = freshDoc("hello", Instant.now().minusSeconds(60));
         when(repository.findById("doc-1")).thenReturn(Optional.of(doc));
         // Different size ⇒ definitely changed (short-circuit, no body read).
-        when(archiveService.findLatestForLineage("t1", "p1", "lin-1"))
-                .thenReturn(archiveOf("hi"));
+        when(archiveService.findLatestForLineage("t1", "p1", "lin-1")).thenReturn(archiveOf("hi"));
         when(archiveService.archiveSnapshot(any())).thenReturn(archiveOf("hello"));
 
         DocumentService.CreateVersionResult result =
@@ -190,15 +194,13 @@ class DocumentServiceArchiveTriggerTest {
         when(repository.findById("doc-1")).thenReturn(Optional.of(doc));
         DocumentArchiveDocument latest = archiveOf("hello");
         when(archiveService.findLatestForLineage("t1", "p1", "lin-1")).thenReturn(latest);
-        when(archiveService.loadContent(latest))
-                .thenReturn(new java.io.ByteArrayInputStream("hello".getBytes()));
+        when(archiveService.loadContent(latest)).thenReturn(new java.io.ByteArrayInputStream("hello".getBytes()));
 
         DocumentService.CreateVersionResult result =
                 service.createVersionNow("doc-1", de.mhus.vance.shared.permission.WriteActor.SYSTEM);
 
         assertThat(result.created()).isFalse();
-        assertThat(result.reason())
-                .isEqualTo(DocumentService.CreateVersionResult.Reason.UNCHANGED);
+        assertThat(result.reason()).isEqualTo(DocumentService.CreateVersionResult.Reason.UNCHANGED);
         verify(archiveService, never()).archiveSnapshot(any());
     }
 
@@ -225,16 +227,14 @@ class DocumentServiceArchiveTriggerTest {
         DocumentDocument doc = freshDoc("hello", Instant.now().minusSeconds(60));
         when(repository.findById("doc-1")).thenReturn(Optional.of(doc));
         when(settingService.getBooleanValueCascade(
-                anyString(), anyString(), any(),
-                eq(DocumentService.SETTING_ARCHIVE_ENABLED), anyBoolean()))
+                        anyString(), anyString(), any(), eq(DocumentService.SETTING_ARCHIVE_ENABLED), anyBoolean()))
                 .thenReturn(false);
 
         DocumentService.CreateVersionResult result =
                 service.createVersionNow("doc-1", de.mhus.vance.shared.permission.WriteActor.SYSTEM);
 
         assertThat(result.created()).isFalse();
-        assertThat(result.reason())
-                .isEqualTo(DocumentService.CreateVersionResult.Reason.DISABLED);
+        assertThat(result.reason()).isEqualTo(DocumentService.CreateVersionResult.Reason.DISABLED);
         verify(archiveService, never()).archiveSnapshot(any());
     }
 
@@ -248,8 +248,7 @@ class DocumentServiceArchiveTriggerTest {
                 service.createVersionNow("doc-1", de.mhus.vance.shared.permission.WriteActor.SYSTEM);
 
         assertThat(result.created()).isFalse();
-        assertThat(result.reason())
-                .isEqualTo(DocumentService.CreateVersionResult.Reason.DISABLED);
+        assertThat(result.reason()).isEqualTo(DocumentService.CreateVersionResult.Reason.DISABLED);
         verify(archiveService, never()).archiveSnapshot(any());
     }
 
@@ -266,21 +265,24 @@ class DocumentServiceArchiveTriggerTest {
                         de.mhus.vance.shared.permission.WriteActor.SYSTEM.subject(),
                         new de.mhus.vance.shared.permission.Resource.Document("t1", "p1", "notes/a.md"),
                         de.mhus.vance.shared.permission.Action.WRITE);
-        org.mockito.Mockito.doThrow(denied)
-                .when(denying).enforce(any(), any(), any(), any());
+        org.mockito.Mockito.doThrow(denied).when(denying).enforce(any(), any(), any(), any());
         @SuppressWarnings("unchecked")
-        org.springframework.beans.factory.ObjectProvider<
-                de.mhus.vance.shared.permission.PermissionService> provider =
+        org.springframework.beans.factory.ObjectProvider<de.mhus.vance.shared.permission.PermissionService> provider =
                 mock(org.springframework.beans.factory.ObjectProvider.class);
         when(provider.getObject()).thenReturn(denying);
         DocumentService denyingService = new DocumentService(
-                repository, storageService, mongoTemplate,
-                resourcePatternResolver, headerParser,
-                archiveService, settingService, provider);
+                repository,
+                storageService,
+                mongoTemplate,
+                resourcePatternResolver,
+                headerParser,
+                archiveService,
+                settingService,
+                provider);
         ReflectionTestUtils.setField(denyingService, "archiveEnabledDefault", true);
 
-        assertThatThrownBy(() -> denyingService.createVersionNow(
-                "doc-1", de.mhus.vance.shared.permission.WriteActor.SYSTEM))
+        assertThatThrownBy(() ->
+                        denyingService.createVersionNow("doc-1", de.mhus.vance.shared.permission.WriteActor.SYSTEM))
                 .isInstanceOf(de.mhus.vance.shared.permission.PermissionDeniedException.class);
 
         // Permission is checked before any snapshot / setting / diff work runs.
@@ -298,8 +300,7 @@ class DocumentServiceArchiveTriggerTest {
         archive.setId("arc-1");
         archive.setArchivedAt(Instant.parse("2026-07-20T10:15:30Z"));
         when(archiveService.findById("arc-1")).thenReturn(Optional.of(archive));
-        when(archiveService.loadContent(archive))
-                .thenReturn(new java.io.ByteArrayInputStream("hello".getBytes()));
+        when(archiveService.loadContent(archive)).thenReturn(new java.io.ByteArrayInputStream("hello".getBytes()));
         when(archiveService.listForLineage("t1", "p1", "lin-1")).thenReturn(List.of(archive));
 
         DocumentDocument created = service.restoreArchiveToNewDocument(
@@ -318,12 +319,10 @@ class DocumentServiceArchiveTriggerTest {
         DocumentArchiveDocument archive = archiveOf("hello");
         archive.setId("arc-1");
         when(archiveService.findById("arc-1")).thenReturn(Optional.of(archive));
-        when(archiveService.loadContent(archive))
-                .thenReturn(new java.io.ByteArrayInputStream("hello".getBytes()));
+        when(archiveService.loadContent(archive)).thenReturn(new java.io.ByteArrayInputStream("hello".getBytes()));
 
         DocumentDocument created = service.restoreArchiveToNewDocument(
-                "doc-1", "arc-1", "notes/manual-copy.md",
-                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+                "doc-1", "arc-1", "notes/manual-copy.md", de.mhus.vance.shared.permission.WriteActor.SYSTEM);
 
         assertThat(created.getPath()).isEqualTo("notes/manual-copy.md");
         // No name generation → no lineage listing needed.
@@ -340,7 +339,7 @@ class DocumentServiceArchiveTriggerTest {
         when(archiveService.findById("arc-x")).thenReturn(Optional.of(foreign));
 
         assertThatThrownBy(() -> service.restoreArchiveToNewDocument(
-                "doc-1", "arc-x", null, de.mhus.vance.shared.permission.WriteActor.SYSTEM))
+                        "doc-1", "arc-x", null, de.mhus.vance.shared.permission.WriteActor.SYSTEM))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("lineage");
     }
@@ -376,7 +375,8 @@ class DocumentServiceArchiveTriggerTest {
         DocumentDocument doc = freshDoc("hello", Instant.now().minusSeconds(60));
         when(repository.findById("doc-1")).thenReturn(Optional.of(doc));
         org.mockito.Mockito.doThrow(new RuntimeException("mongo down"))
-                .when(archiveService).deleteAllForLineage(any(), any(), any());
+                .when(archiveService)
+                .deleteAllForLineage(any(), any(), any());
 
         // Must not throw — live delete already happened.
         service.delete("doc-1", de.mhus.vance.shared.permission.WriteActor.SYSTEM);
@@ -387,8 +387,7 @@ class DocumentServiceArchiveTriggerTest {
     // ──── helpers ───────────────────────────────────────────────────────
 
     private DocumentDocument freshDoc(String body, Instant createdAt) {
-        when(storageService.load("blob-baseline")).thenAnswer(inv ->
-                new java.io.ByteArrayInputStream(body.getBytes()));
+        when(storageService.load("blob-baseline")).thenAnswer(inv -> new java.io.ByteArrayInputStream(body.getBytes()));
         DocumentDocument doc = DocumentDocument.builder()
                 .tenantId("t1")
                 .projectId("p1")

@@ -39,6 +39,11 @@ import org.springframework.stereotype.Component;
  * ceiling on what agents spend: an agent that could write it would raise its own
  * limit. A human sets it through the {@code llm-budget} setting form.
  *
+ * <p>{@code storage.quota.*} is in the default for the same reason — it caps
+ * the tenant's footprint, and an agent that could raise it would defeat the
+ * operator's whole point of setting a limit. A human sets it through the
+ * {@code storage-quota} setting form.
+ *
  * <p>Grammar: comma-separated, each entry either an exact key or a prefix ending
  * in {@code *}. Deliberately not a full glob — this is security configuration and
  * has to stay readable at a glance.
@@ -51,7 +56,8 @@ public class AgentSettingKeyPolicy {
      * Deny list when {@code vance.settings.agent-write-deny-keys} is not set.
      * {@code application.yml} of the brain repeats it — keep both in step.
      */
-    public static final String DEFAULT_DENY_KEYS = "ai.provider.*,vault.*,store.*,kit.*,ai.llm.budget.*";
+    public static final String DEFAULT_DENY_KEYS =
+            "ai.provider.*,vault.*,store.*,kit.*,ai.llm.budget.*,storage.quota.*";
 
     private final List<String> denyPatterns;
 

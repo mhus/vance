@@ -16,6 +16,15 @@ public abstract class StorageService {
     /** Stores the stream and returns metadata including the new storage id. */
     public abstract StorageInfo store(String tenantId, String path, InputStream stream);
 
+    /**
+     * Stores the stream when the caller knows the size up front. The size
+     * flows into the storage-quota pre-check; pass {@code -1} for unknown
+     * to keep the old behaviour (no pre-check on size, R4 bypass).
+     */
+    public StorageInfo store(String tenantId, String path, InputStream stream, long expectedBytes) {
+        return store(tenantId, path, stream);
+    }
+
     /** Opens a streaming read over the blob addressed by {@code storageId}. */
     public abstract @Nullable InputStream load(String storageId);
 
@@ -80,6 +89,5 @@ public abstract class StorageService {
             long size,
             Date createdAt,
             @Nullable String tenantId,
-            @Nullable String path) {
-    }
+            @Nullable String path) {}
 }

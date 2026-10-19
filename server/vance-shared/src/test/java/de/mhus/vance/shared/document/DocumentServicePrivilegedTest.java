@@ -3,8 +3,8 @@ package de.mhus.vance.shared.document;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -41,8 +41,7 @@ class DocumentServicePrivilegedTest {
     private DocumentHeaderParser headerParser;
     private DocumentService service;
 
-    private final WriteActor writer =
-            WriteActor.user(SecurityContext.user("alice", "acme", List.of()));
+    private final WriteActor writer = WriteActor.user(SecurityContext.user("alice", "acme", List.of()));
 
     @BeforeEach
     void setUp() {
@@ -61,28 +60,34 @@ class DocumentServicePrivilegedTest {
         // (SYSTEM subject) must pass, WriteActor.system(user) must not.
         PermissionService permissionService = mock(PermissionService.class);
         org.mockito.Mockito.doAnswer(inv -> {
-            SecurityContext subject = inv.getArgument(0);
-            if (subject.subjectType() == de.mhus.vance.shared.permission.SubjectType.SYSTEM) {
-                return null;
-            }
-            throw new PermissionDeniedException(
-                    subject, new Resource.Document("acme", "proj", "x"), Action.ADMIN);
-        }).when(permissionService).enforce(any(), any(), eq(Action.ADMIN), any());
+                    SecurityContext subject = inv.getArgument(0);
+                    if (subject.subjectType() == de.mhus.vance.shared.permission.SubjectType.SYSTEM) {
+                        return null;
+                    }
+                    throw new PermissionDeniedException(
+                            subject, new Resource.Document("acme", "proj", "x"), Action.ADMIN);
+                })
+                .when(permissionService)
+                .enforce(any(), any(), eq(Action.ADMIN), any());
         @SuppressWarnings("unchecked")
         ObjectProvider<PermissionService> psp = mock(ObjectProvider.class);
         when(psp.getObject()).thenReturn(permissionService);
 
-        when(storageService.store(any(), any(), any())).thenAnswer(inv -> {
+        when(storageService.store(any(), any(), any(), anyLong())).thenAnswer(inv -> {
             java.io.InputStream stream = inv.getArgument(2);
             long size = stream.readAllBytes().length;
-            return new StorageService.StorageInfo(
-                    "blob-" + java.util.UUID.randomUUID(), size, new Date(), null, null);
+            return new StorageService.StorageInfo("blob-" + java.util.UUID.randomUUID(), size, new Date(), null, null);
         });
 
         service = new DocumentService(
-                repository, storageService, mongoTemplate,
-                resourcePatternResolver, headerParser,
-                archiveService, settingService, psp);
+                repository,
+                storageService,
+                mongoTemplate,
+                resourcePatternResolver,
+                headerParser,
+                archiveService,
+                settingService,
+                psp);
         ReflectionTestUtils.setField(service, "inlineThreshold", 40960);
         ReflectionTestUtils.setField(service, "compressionEnabled", false);
         ReflectionTestUtils.setField(service, "compressionThreshold", 1000);
@@ -90,8 +95,11 @@ class DocumentServicePrivilegedTest {
 
     private DocumentDocument doc(String id, boolean privileged) {
         DocumentDocument d = DocumentDocument.builder()
-                .tenantId("acme").projectId("proj").path("_vance/scheduler/x.yaml")
-                .mimeType("application/yaml").build();
+                .tenantId("acme")
+                .projectId("proj")
+                .path("_vance/scheduler/x.yaml")
+                .mimeType("application/yaml")
+                .build();
         d.setId(id);
         d.setPrivileged(privileged);
         return d;
@@ -101,8 +109,7 @@ class DocumentServicePrivilegedTest {
     void modifyingPrivilegedDocument_requiresAdmin() {
         when(repository.findById("d1")).thenReturn(Optional.of(doc("d1", true)));
 
-        assertThatThrownBy(() -> service.update(
-                "d1", null, null, "new body", null, writer))
+        assertThatThrownBy(() -> service.update("d1", null, null, "new body", null, writer))
                 .isInstanceOf(PermissionDeniedException.class);
     }
 
@@ -126,8 +133,7 @@ class DocumentServicePrivilegedTest {
     void deletingPrivilegedDocument_requiresAdmin() {
         when(repository.findById("d3")).thenReturn(Optional.of(doc("d3", true)));
 
-        assertThatThrownBy(() -> service.delete("d3", writer))
-                .isInstanceOf(PermissionDeniedException.class);
+        assertThatThrownBy(() -> service.delete("d3", writer)).isInstanceOf(PermissionDeniedException.class);
     }
 
     @Test
@@ -148,9 +154,8 @@ class DocumentServicePrivilegedTest {
         // would be off on the only paths it exists for.
         when(repository.findById("d5")).thenReturn(Optional.of(doc("d5", true)));
 
-        assertThatThrownBy(() -> service.update(
-                "d5", null, null, "new body", null,
-                WriteActor.system(writer.subject())))
+        assertThatThrownBy(
+                        () -> service.update("d5", null, null, "new body", null, WriteActor.system(writer.subject())))
                 .isInstanceOf(PermissionDeniedException.class);
     }
 

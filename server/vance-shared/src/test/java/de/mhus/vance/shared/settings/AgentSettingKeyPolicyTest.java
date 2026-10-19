@@ -28,6 +28,8 @@ class AgentSettingKeyPolicyTest {
         assertThat(policy.isDenied("vault.type")).isTrue();
         assertThat(policy.isDenied("store.token.acme")).isTrue();
         assertThat(policy.isDenied("kit.token.acme")).isTrue();
+        assertThat(policy.isDenied("storage.quota.maxBytes")).isTrue();
+        assertThat(policy.isDenied("storage.quota.warnPercent")).isTrue();
     }
 
     @Test

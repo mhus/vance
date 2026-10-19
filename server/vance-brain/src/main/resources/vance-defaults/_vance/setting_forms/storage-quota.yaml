@@ -1,0 +1,60 @@
+title:
+  de: "Speicher-Quota"
+  en: "Storage Quota"
+description:
+  de: "Begrenzt die Gesamtgröße aller Dokumente, Trash-Inhalte und
+       Archive dieses Mandanten. Externe Mounts (`_ext/...`) zählen
+       nicht, weil sie nicht in Vances Storage liegen. Leer oder `0`
+       = unbegrenzt. Eine Überschreitung blockiert nur neue Schreib-
+       vorgänge — Lesen und Löschen bleiben erlaubt, damit der Tenant
+       selbst aufräumen kann."
+  en: "Caps the total size of all documents, trash and archives
+       belonging to this tenant. External mounts (`_ext/...`) do not
+       count, because they do not live in Vance's storage. Empty or
+       `0` = unlimited. An overrun blocks new writes only — reads and
+       deletes keep working so the tenant can clean up."
+icon: hard-drive
+category: quotas
+defaultScope: project
+# Tenant-only — the spec scopes storage quota to the tenant. _user_*
+# hubs do not see the form because their quota, if any, comes from
+# the tenant cascade.
+availableIn: [ "!_user_*" ]
+
+fields:
+
+  - name: maxBytes
+    type: number
+    integerMin: 0
+    label:
+      de: "Max. Größe (Bytes)"
+      en: "Max size (bytes)"
+    help:
+      de: "Obergrenze in Bytes für alle `storage_data`-Blobs des
+           Mandanten. Leer oder `0` = unbegrenzt. Beispiele:
+           `104857600` für 100 MB, `1073741824` für 1 GB, `1099511627776`
+           für 1 TB."
+      en: "Ceiling in bytes for all of this tenant's `storage_data`
+           blobs. Empty or `0` = unlimited. Examples: `104857600`
+           for 100 MB, `1073741824` for 1 GB, `1099511627776` for
+           1 TB."
+    bindsTo:
+      key: "storage.quota.maxBytes"
+
+  - name: warnPercent
+    type: integer
+    integerMin: 0
+    integerMax: 99
+    defaultValue: "80"
+    label:
+      de: "Warnung ab (% des Limits)"
+      en: "Warn at (% of limit)"
+    help:
+      de: "Ab diesem Anteil erscheint eine Warnung im Storage-
+           Insights-Tab. `0` = keine Warnung. Werte außerhalb
+           `0..99` werden ignoriert."
+      en: "From this share of the limit upwards, a warning is shown
+           on the Storage insights tab. `0` = no warning. Values
+           outside `0..99` are ignored."
+    bindsTo:
+      key: "storage.quota.warnPercent"

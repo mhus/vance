@@ -18,14 +18,23 @@ import org.springframework.data.mongodb.core.mapping.Document;
  */
 @Document(collection = "storage_data")
 @CompoundIndexes({
-        @CompoundIndex(name = "uuid_index_idx", def = "{ 'uuid': 1, 'index': 1 }", unique = true),
-        // Orphan-storage sweep driver: iterate final chunks in createdAt order,
-        // honouring the grace period via the createdAt range filter. Partial
-        // filter keeps the index at one entry per blob (one final chunk per
-        // uuid), not one per data chunk.
-        @CompoundIndex(name = "final_createdAt_idx",
-                def = "{ 'isFinal': 1, 'createdAt': 1 }",
-                partialFilter = "{ 'isFinal': true }")
+    @CompoundIndex(name = "uuid_index_idx", def = "{ 'uuid': 1, 'index': 1 }", unique = true),
+    // Orphan-storage sweep driver: iterate final chunks in createdAt order,
+    // honouring the grace period via the createdAt range filter. Partial
+    // filter keeps the index at one entry per blob (one final chunk per
+    // uuid), not one per data chunk.
+    @CompoundIndex(
+            name = "final_createdAt_idx",
+            def = "{ 'isFinal': 1, 'createdAt': 1 }",
+            partialFilter = "{ 'isFinal': true }"),
+    // Storage-quota driver: aggregate bytes per tenant for the quota
+    // pre-check (see StorageQuotaService). Same partial filter as above
+    // — only the final chunk carries the total size, the data chunks
+    // have size: 0 and must not enter the sum.
+    @CompoundIndex(
+            name = "tenant_final_size_idx",
+            def = "{ 'tenantId': 1, 'isFinal': 1 }",
+            partialFilter = "{ 'isFinal': true }")
 })
 @Data
 @Builder

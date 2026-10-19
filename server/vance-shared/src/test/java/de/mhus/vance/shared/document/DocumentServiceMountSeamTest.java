@@ -3,6 +3,7 @@ package de.mhus.vance.shared.document;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -50,8 +51,7 @@ class DocumentServiceMountSeamTest {
     private JaglanPort port;
     private DocumentService service;
 
-    private final WriteActor actor =
-            WriteActor.user(SecurityContext.user("alice", TENANT, List.of()));
+    private final WriteActor actor = WriteActor.user(SecurityContext.user("alice", TENANT, List.of()));
 
     @BeforeEach
     void setUp() {
@@ -68,17 +68,21 @@ class DocumentServiceMountSeamTest {
         ObjectProvider<PermissionService> psp = mock(ObjectProvider.class);
         when(psp.getObject()).thenReturn(permissionService);
 
-        when(storageService.store(any(), any(), any())).thenAnswer(inv -> {
+        when(storageService.store(any(), any(), any(), anyLong())).thenAnswer(inv -> {
             java.io.InputStream stream = inv.getArgument(2);
-            return new StorageService.StorageInfo(
-                    "blob-1", stream.readAllBytes().length, new Date(), null, null);
+            return new StorageService.StorageInfo("blob-1", stream.readAllBytes().length, new Date(), null, null);
         });
         when(headerParser.parse(any(), any())).thenReturn(Optional.empty());
 
         service = new DocumentService(
-                repository, storageService, mongoTemplate,
-                resourcePatternResolver, headerParser,
-                archiveService, settingService, psp);
+                repository,
+                storageService,
+                mongoTemplate,
+                resourcePatternResolver,
+                headerParser,
+                archiveService,
+                settingService,
+                psp);
         ReflectionTestUtils.setField(service, "inlineThreshold", 40960);
         ReflectionTestUtils.setField(service, "compressionEnabled", false);
         ReflectionTestUtils.setField(service, "compressionThreshold", 1000);
@@ -103,14 +107,12 @@ class DocumentServiceMountSeamTest {
         when(repository.findByTenantIdAndProjectIdAndPath(TENANT, PROJECT, MOUNTED_PATH))
                 .thenReturn(Optional.empty());
         when(port.write(any(), any(), any(), any(), any()))
-                .thenReturn(new MountedStat("notes.md", false, 5, "text/markdown",
-                        "etag-1", 1L, MountAccess.RW));
+                .thenReturn(new MountedStat("notes.md", false, 5, "text/markdown", "etag-1", 1L, MountAccess.RW));
         when(repository.save(any(DocumentDocument.class))).thenAnswer(inv -> inv.getArgument(0));
 
         service.createText(TENANT, PROJECT, MOUNTED_PATH, null, null, "hello", "alice", actor);
 
-        ArgumentCaptor<DocumentDocument> saved =
-                ArgumentCaptor.forClass(DocumentDocument.class);
+        ArgumentCaptor<DocumentDocument> saved = ArgumentCaptor.forClass(DocumentDocument.class);
         org.mockito.Mockito.verify(repository).save(saved.capture());
         String expected = JaglanPaths.documentIdForPath(TENANT, PROJECT, MOUNTED_PATH);
         assertThat(saved.getValue().getId()).isEqualTo(expected);
@@ -129,11 +131,9 @@ class DocumentServiceMountSeamTest {
         when(repository.findByTenantIdAndProjectIdAndPath(TENANT, PROJECT, MOUNTED_PATH))
                 .thenReturn(Optional.of(shell));
 
-        assertThatThrownBy(() -> service.createText(
-                TENANT, PROJECT, MOUNTED_PATH, null, null, "hello", "alice", actor))
+        assertThatThrownBy(() -> service.createText(TENANT, PROJECT, MOUNTED_PATH, null, null, "hello", "alice", actor))
                 .isInstanceOf(DocumentService.DocumentAlreadyExistsException.class);
-        org.mockito.Mockito.verify(port, org.mockito.Mockito.never())
-                .write(any(), any(), any(), any(), any());
+        org.mockito.Mockito.verify(port, org.mockito.Mockito.never()).write(any(), any(), any(), any(), any());
     }
 
     // ─── rename / move ──────────────────────────────────────────────────
@@ -145,8 +145,7 @@ class DocumentServiceMountSeamTest {
         // touched, so the rename would be a lie either way.
         when(repository.findById("ext-1")).thenReturn(Optional.of(mountedRow()));
 
-        assertThatThrownBy(() -> service.update(
-                "ext-1", null, null, null, "_ext/library/renamed.md", actor))
+        assertThatThrownBy(() -> service.update("ext-1", null, null, null, "_ext/library/renamed.md", actor))
                 .isInstanceOf(JaglanAccessException.class)
                 .hasMessageContaining("cannot be renamed");
     }
@@ -157,22 +156,23 @@ class DocumentServiceMountSeamTest {
         // without a storageId, so its content reads as empty with no error.
         when(repository.findById("ext-1")).thenReturn(Optional.of(mountedRow()));
 
-        assertThatThrownBy(() -> service.update(
-                "ext-1", null, null, null, "documents/notes.md", actor))
+        assertThatThrownBy(() -> service.update("ext-1", null, null, null, "documents/notes.md", actor))
                 .isInstanceOf(JaglanAccessException.class);
     }
 
     @Test
     void moveIntoAMount_isRefused() {
         DocumentDocument ordinary = DocumentDocument.builder()
-                .tenantId(TENANT).projectId(PROJECT).path("documents/notes.md")
-                .mimeType("text/markdown").lineageId("lin-1")
+                .tenantId(TENANT)
+                .projectId(PROJECT)
+                .path("documents/notes.md")
+                .mimeType("text/markdown")
+                .lineageId("lin-1")
                 .build();
         ordinary.setId("doc-1");
         when(repository.findById("doc-1")).thenReturn(Optional.of(ordinary));
 
-        assertThatThrownBy(() -> service.update(
-                "doc-1", null, null, null, MOUNTED_PATH, actor))
+        assertThatThrownBy(() -> service.update("doc-1", null, null, null, MOUNTED_PATH, actor))
                 .isInstanceOf(JaglanAccessException.class)
                 .hasMessageContaining("cannot be moved into a mount");
     }
@@ -213,8 +213,11 @@ class DocumentServiceMountSeamTest {
 
     private DocumentDocument mountedRow() {
         DocumentDocument doc = DocumentDocument.builder()
-                .tenantId(TENANT).projectId(PROJECT).path(MOUNTED_PATH)
-                .name("notes.md").mimeType("text/markdown")
+                .tenantId(TENANT)
+                .projectId(PROJECT)
+                .path(MOUNTED_PATH)
+                .name("notes.md")
+                .mimeType("text/markdown")
                 .lineageId(JaglanPaths.documentIdForPath(TENANT, PROJECT, MOUNTED_PATH))
                 .build();
         doc.setId("ext-1");

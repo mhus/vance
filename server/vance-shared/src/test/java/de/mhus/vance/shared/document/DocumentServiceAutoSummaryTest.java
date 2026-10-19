@@ -2,6 +2,7 @@ package de.mhus.vance.shared.document;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -58,16 +59,20 @@ class DocumentServiceAutoSummaryTest {
         }
         // streamingStoreContent() always hits storageService.store(); pretend
         // every blob lands at a deterministic id.
-        when(storageService.store(any(), any(), any())).thenAnswer(inv -> {
+        when(storageService.store(any(), any(), any(), anyLong())).thenAnswer(inv -> {
             java.io.InputStream stream = inv.getArgument(2);
             long size = stream.readAllBytes().length;
-            return new StorageService.StorageInfo(
-                    "blob-" + java.util.UUID.randomUUID(), size, new Date(), null, null);
+            return new StorageService.StorageInfo("blob-" + java.util.UUID.randomUUID(), size, new Date(), null, null);
         });
         service = new DocumentService(
-                repository, storageService, mongoTemplate,
-                resourcePatternResolver, headerParser,
-                archiveService, settingService, DocTestSupport.permissionProvider());
+                repository,
+                storageService,
+                mongoTemplate,
+                resourcePatternResolver,
+                headerParser,
+                archiveService,
+                settingService,
+                DocTestSupport.permissionProvider());
         ReflectionTestUtils.setField(service, "inlineThreshold", 40960);
         ReflectionTestUtils.setField(service, "compressionEnabled", false);
         ReflectionTestUtils.setField(service, "compressionThreshold", 1000);
@@ -79,11 +84,16 @@ class DocumentServiceAutoSummaryTest {
 
     @Test
     void create_markdown_setsAutoSummaryTrue() {
-        when(repository.save(any(DocumentDocument.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
+        when(repository.save(any(DocumentDocument.class))).thenAnswer(inv -> inv.getArgument(0));
         DocumentDocument saved = service.create(
-                "t1", "p1", "notes/a.md", null, null, "text/markdown",
-                new ByteArrayInputStream("hello".getBytes()), "alice",
+                "t1",
+                "p1",
+                "notes/a.md",
+                null,
+                null,
+                "text/markdown",
+                new ByteArrayInputStream("hello".getBytes()),
+                "alice",
                 de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         assertThat(saved.isAutoSummary()).isTrue();
         assertThat(saved.isSummaryDirty()).isFalse();
@@ -91,45 +101,65 @@ class DocumentServiceAutoSummaryTest {
 
     @Test
     void create_plainText_setsAutoSummaryTrue() {
-        when(repository.save(any(DocumentDocument.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
+        when(repository.save(any(DocumentDocument.class))).thenAnswer(inv -> inv.getArgument(0));
         DocumentDocument saved = service.create(
-                "t1", "p1", "notes/a.txt", null, null, "text/plain",
-                new ByteArrayInputStream("hello".getBytes()), "alice",
+                "t1",
+                "p1",
+                "notes/a.txt",
+                null,
+                null,
+                "text/plain",
+                new ByteArrayInputStream("hello".getBytes()),
+                "alice",
                 de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         assertThat(saved.isAutoSummary()).isTrue();
     }
 
     @Test
     void create_markdownWithCharsetSuffix_setsAutoSummaryTrue() {
-        when(repository.save(any(DocumentDocument.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
+        when(repository.save(any(DocumentDocument.class))).thenAnswer(inv -> inv.getArgument(0));
         DocumentDocument saved = service.create(
-                "t1", "p1", "notes/a.md", null, null, "text/markdown; charset=utf-8",
-                new ByteArrayInputStream("hello".getBytes()), "alice",
+                "t1",
+                "p1",
+                "notes/a.md",
+                null,
+                null,
+                "text/markdown; charset=utf-8",
+                new ByteArrayInputStream("hello".getBytes()),
+                "alice",
                 de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         assertThat(saved.isAutoSummary()).isTrue();
     }
 
     @Test
     void create_jsonCodeFile_doesNotSetAutoSummary() {
-        when(repository.save(any(DocumentDocument.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
+        when(repository.save(any(DocumentDocument.class))).thenAnswer(inv -> inv.getArgument(0));
         DocumentDocument saved = service.create(
-                "t1", "p1", "config/a.json", null, null, "application/json",
-                new ByteArrayInputStream("{}".getBytes()), "alice",
+                "t1",
+                "p1",
+                "config/a.json",
+                null,
+                null,
+                "application/json",
+                new ByteArrayInputStream("{}".getBytes()),
+                "alice",
                 de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         assertThat(saved.isAutoSummary()).isFalse();
     }
 
     @Test
     void create_pdf_doesNotSetAutoSummary() {
-        when(repository.save(any(DocumentDocument.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
+        when(repository.save(any(DocumentDocument.class))).thenAnswer(inv -> inv.getArgument(0));
         // setUp() already provides a streaming store stub.
         DocumentDocument saved = service.create(
-                "t1", "p1", "docs/a.pdf", null, null, "application/pdf",
-                new ByteArrayInputStream("%PDF-".getBytes()), "alice",
+                "t1",
+                "p1",
+                "docs/a.pdf",
+                null,
+                null,
+                "application/pdf",
+                new ByteArrayInputStream("%PDF-".getBytes()),
+                "alice",
                 de.mhus.vance.shared.permission.WriteActor.SYSTEM);
         assertThat(saved.isAutoSummary()).isFalse();
     }
@@ -138,15 +168,17 @@ class DocumentServiceAutoSummaryTest {
 
     @Test
     void upsertEphemeralText_create_forcesAutoSummaryOffAndRagDisabled() {
-        when(repository.findByTenantIdAndProjectIdAndPath(
-                any(), any(), any())).thenReturn(Optional.empty());
-        when(repository.save(any(DocumentDocument.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
+        when(repository.findByTenantIdAndProjectIdAndPath(any(), any(), any())).thenReturn(Optional.empty());
+        when(repository.save(any(DocumentDocument.class))).thenAnswer(inv -> inv.getArgument(0));
 
         DocumentDocument saved = service.upsertEphemeralText(
-                "t1", "p1", "_vance/logs/scheduler/run-1.md",
-                "Scheduler run 1", List.of("scheduler-log"),
-                "body", "ursascheduler",
+                "t1",
+                "p1",
+                "_vance/logs/scheduler/run-1.md",
+                "Scheduler run 1",
+                List.of("scheduler-log"),
+                "body",
+                "ursascheduler",
                 Instant.now().plus(Duration.ofDays(7)),
                 de.mhus.vance.shared.permission.WriteActor.SYSTEM);
 
@@ -166,26 +198,30 @@ class DocumentServiceAutoSummaryTest {
     void upsertEphemeralText_reupsert_clearsDirtyFlagsFromUpdate() {
         // Existing doc that's already ephemeral-correctly configured.
         DocumentDocument existing = DocumentDocument.builder()
-                .id("d1").tenantId("t1").projectId("p1")
+                .id("d1")
+                .tenantId("t1")
+                .projectId("p1")
                 .path("_vance/logs/scheduler/run-1.md")
                 .name("run-1.md")
                 .mimeType("text/markdown")
-                .storageId("blob-old").size(8)
+                .storageId("blob-old")
+                .size(8)
                 .autoSummary(false)
                 .ragEnabled(false)
                 .build();
-        when(repository.findByTenantIdAndProjectIdAndPath(
-                any(), any(), any())).thenReturn(Optional.of(existing));
+        when(repository.findByTenantIdAndProjectIdAndPath(any(), any(), any())).thenReturn(Optional.of(existing));
         when(repository.findById("d1")).thenReturn(Optional.of(existing));
-        when(repository.save(any(DocumentDocument.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
-        when(storageService.load("blob-old")).thenReturn(
-                new java.io.ByteArrayInputStream("old body".getBytes()));
+        when(repository.save(any(DocumentDocument.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(storageService.load("blob-old")).thenReturn(new java.io.ByteArrayInputStream("old body".getBytes()));
 
         DocumentDocument saved = service.upsertEphemeralText(
-                "t1", "p1", "_vance/logs/scheduler/run-1.md",
-                "Scheduler run 1", List.of("scheduler-log"),
-                "new body", "ursascheduler",
+                "t1",
+                "p1",
+                "_vance/logs/scheduler/run-1.md",
+                "Scheduler run 1",
+                List.of("scheduler-log"),
+                "new body",
+                "ursascheduler",
                 Instant.now().plus(Duration.ofDays(7)),
                 de.mhus.vance.shared.permission.WriteActor.SYSTEM);
 
@@ -202,20 +238,21 @@ class DocumentServiceAutoSummaryTest {
     @Test
     void update_inlineTextChanged_setsSummaryDirty() {
         DocumentDocument existing = DocumentDocument.builder()
-                .id("d1").tenantId("t1").projectId("p1")
-                .path("a.md").name("a.md")
+                .id("d1")
+                .tenantId("t1")
+                .projectId("p1")
+                .path("a.md")
+                .name("a.md")
                 .mimeType("text/markdown")
-                .storageId("blob-old").size(8)
+                .storageId("blob-old")
+                .size(8)
                 .build();
         when(repository.findById("d1")).thenReturn(Optional.of(existing));
-        when(repository.save(any(DocumentDocument.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
-        when(storageService.load("blob-old")).thenReturn(
-                new java.io.ByteArrayInputStream("old body".getBytes()));
+        when(repository.save(any(DocumentDocument.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(storageService.load("blob-old")).thenReturn(new java.io.ByteArrayInputStream("old body".getBytes()));
 
-        DocumentDocument saved = service.update(
-                "d1", null, null, "new body", null,
-                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+        DocumentDocument saved =
+                service.update("d1", null, null, "new body", null, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
 
         assertThat(saved.isSummaryDirty()).isTrue();
         assertThat(saved.getStorageId()).isNotNull();
@@ -225,20 +262,21 @@ class DocumentServiceAutoSummaryTest {
     @Test
     void update_inlineTextUnchanged_doesNotSetSummaryDirty() {
         DocumentDocument existing = DocumentDocument.builder()
-                .id("d1").tenantId("t1").projectId("p1")
-                .path("a.md").name("a.md")
+                .id("d1")
+                .tenantId("t1")
+                .projectId("p1")
+                .path("a.md")
+                .name("a.md")
                 .mimeType("text/markdown")
-                .storageId("blob-body").size(4)
+                .storageId("blob-body")
+                .size(4)
                 .build();
         when(repository.findById("d1")).thenReturn(Optional.of(existing));
-        when(repository.save(any(DocumentDocument.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
-        when(storageService.load("blob-body")).thenReturn(
-                new java.io.ByteArrayInputStream("body".getBytes()));
+        when(repository.save(any(DocumentDocument.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(storageService.load("blob-body")).thenReturn(new java.io.ByteArrayInputStream("body".getBytes()));
 
-        DocumentDocument saved = service.update(
-                "d1", null, null, "body", null,
-                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+        DocumentDocument saved =
+                service.update("d1", null, null, "body", null, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
 
         assertThat(saved.isSummaryDirty()).isFalse();
     }
@@ -246,18 +284,20 @@ class DocumentServiceAutoSummaryTest {
     @Test
     void update_titleOnly_doesNotSetSummaryDirty() {
         DocumentDocument existing = DocumentDocument.builder()
-                .id("d1").tenantId("t1").projectId("p1")
-                .path("a.md").name("a.md")
+                .id("d1")
+                .tenantId("t1")
+                .projectId("p1")
+                .path("a.md")
+                .name("a.md")
                 .mimeType("text/markdown")
-                .storageId("blob-body").size(4)
+                .storageId("blob-body")
+                .size(4)
                 .build();
         when(repository.findById("d1")).thenReturn(Optional.of(existing));
-        when(repository.save(any(DocumentDocument.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
+        when(repository.save(any(DocumentDocument.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        DocumentDocument saved = service.update(
-                "d1", "New Title", null, null, null,
-                de.mhus.vance.shared.permission.WriteActor.SYSTEM);
+        DocumentDocument saved =
+                service.update("d1", "New Title", null, null, null, de.mhus.vance.shared.permission.WriteActor.SYSTEM);
 
         assertThat(saved.isSummaryDirty()).isFalse();
         assertThat(saved.getTitle()).isEqualTo("New Title");
@@ -268,38 +308,40 @@ class DocumentServiceAutoSummaryTest {
     @Test
     void claimForSummary_runsStaleRecoveryThenClaimsAvailable() {
         DocumentDocument claimed = DocumentDocument.builder()
-                .id("d1").tenantId("t1").projectId("p1")
-                .summaryDirty(true).autoSummary(true)
-                .claimedBy("pod-a").claimedAt(Instant.now())
+                .id("d1")
+                .tenantId("t1")
+                .projectId("p1")
+                .summaryDirty(true)
+                .autoSummary(true)
+                .claimedBy("pod-a")
+                .claimedAt(Instant.now())
                 .build();
         when(mongoTemplate.findAndModify(
-                any(Query.class), any(Update.class),
-                any(FindAndModifyOptions.class), eq(DocumentDocument.class)))
+                        any(Query.class), any(Update.class),
+                        any(FindAndModifyOptions.class), eq(DocumentDocument.class)))
                 .thenReturn(claimed)
                 .thenReturn(null);
 
-        List<DocumentDocument> result = service.claimForSummary(
-                "t1", "p1", "pod-a", 5, Duration.ofMinutes(10));
+        List<DocumentDocument> result = service.claimForSummary("t1", "p1", "pod-a", 5, Duration.ofMinutes(10));
 
         assertThat(result).hasSize(1);
         // Stale-recovery updateMulti runs once.
-        verify(mongoTemplate).updateMulti(
-                any(Query.class), any(Update.class), eq(DocumentDocument.class));
+        verify(mongoTemplate).updateMulti(any(Query.class), any(Update.class), eq(DocumentDocument.class));
         // Claim loop calls findAndModify until null is returned.
-        verify(mongoTemplate, org.mockito.Mockito.times(2)).findAndModify(
-                any(Query.class), any(Update.class),
-                any(FindAndModifyOptions.class), eq(DocumentDocument.class));
+        verify(mongoTemplate, org.mockito.Mockito.times(2))
+                .findAndModify(
+                        any(Query.class), any(Update.class),
+                        any(FindAndModifyOptions.class), eq(DocumentDocument.class));
     }
 
     @Test
     void claimForSummary_returnsEmptyWhenNoDirtyDocs() {
         when(mongoTemplate.findAndModify(
-                any(Query.class), any(Update.class),
-                any(FindAndModifyOptions.class), eq(DocumentDocument.class)))
+                        any(Query.class), any(Update.class),
+                        any(FindAndModifyOptions.class), eq(DocumentDocument.class)))
                 .thenReturn(null);
 
-        List<DocumentDocument> result = service.claimForSummary(
-                "t1", "p1", "pod-a", 5, Duration.ofMinutes(10));
+        List<DocumentDocument> result = service.claimForSummary("t1", "p1", "pod-a", 5, Duration.ofMinutes(10));
 
         assertThat(result).isEmpty();
     }
@@ -308,30 +350,27 @@ class DocumentServiceAutoSummaryTest {
     void claimForSummary_stopsAtBatchSize() {
         DocumentDocument doc = DocumentDocument.builder().id("d1").build();
         when(mongoTemplate.findAndModify(
-                any(Query.class), any(Update.class),
-                any(FindAndModifyOptions.class), eq(DocumentDocument.class)))
+                        any(Query.class), any(Update.class),
+                        any(FindAndModifyOptions.class), eq(DocumentDocument.class)))
                 .thenReturn(doc);
 
-        List<DocumentDocument> result = service.claimForSummary(
-                "t1", "p1", "pod-a", 3, Duration.ofMinutes(10));
+        List<DocumentDocument> result = service.claimForSummary("t1", "p1", "pod-a", 3, Duration.ofMinutes(10));
 
         assertThat(result).hasSize(3);
-        verify(mongoTemplate, org.mockito.Mockito.times(3)).findAndModify(
-                any(Query.class), any(Update.class),
-                any(FindAndModifyOptions.class), eq(DocumentDocument.class));
+        verify(mongoTemplate, org.mockito.Mockito.times(3))
+                .findAndModify(
+                        any(Query.class), any(Update.class),
+                        any(FindAndModifyOptions.class), eq(DocumentDocument.class));
     }
 
     // ──── writeSummary() ────────────────────────────────────────────────
 
     @Test
     void writeSummary_clearsSummaryDirtyAndClaimFields() {
-        service.writeSummary("d1", "the summary",
-                List.of("alpha", "beta"));
+        service.writeSummary("d1", "the summary", List.of("alpha", "beta"));
 
         ArgumentCaptor<Update> updateCap = ArgumentCaptor.forClass(Update.class);
-        verify(mongoTemplate).updateFirst(
-                any(Query.class), updateCap.capture(),
-                eq(DocumentDocument.class));
+        verify(mongoTemplate).updateFirst(any(Query.class), updateCap.capture(), eq(DocumentDocument.class));
 
         Document wire = updateCap.getValue().getUpdateObject();
         Document set = (Document) wire.get("$set");
@@ -351,9 +390,7 @@ class DocumentServiceAutoSummaryTest {
         service.releaseClaim("d1");
 
         ArgumentCaptor<Update> updateCap = ArgumentCaptor.forClass(Update.class);
-        verify(mongoTemplate).updateFirst(
-                any(Query.class), updateCap.capture(),
-                eq(DocumentDocument.class));
+        verify(mongoTemplate).updateFirst(any(Query.class), updateCap.capture(), eq(DocumentDocument.class));
 
         Document wire = updateCap.getValue().getUpdateObject();
         Document unset = (Document) wire.get("$unset");

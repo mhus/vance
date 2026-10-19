@@ -1595,7 +1595,13 @@ public class DocumentService {
             willCompress = false;
         }
 
-        StorageService.StorageInfo info = storageService.store(tenantId, path, finalStream);
+        // When we do not compress, totalBytes already holds the exact byte
+        // count that will reach StorageService — feed it into the quota
+        // pre-check as expectedBytes. The compressed path keeps the
+        // unknown-size bypass because the final size only materialises at
+        // the storage layer.
+        long expectedBytes = willCompress ? -1L : totalBytes.get();
+        StorageService.StorageInfo info = storageService.store(tenantId, path, finalStream, expectedBytes);
         return new ContentWriteResult(info.id(), willCompress, totalBytes.get());
     }
 

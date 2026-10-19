@@ -8,12 +8,12 @@ import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.IncorrectResultSizeDataAccessException;
-import java.util.stream.Stream;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
@@ -39,24 +39,63 @@ public class MongoStorageService extends StorageService {
     private final StorageDataRepository storageDataRepository;
     private final StorageDeleteRepository storageDeleteRepository;
     private final MongoTemplate mongoTemplate;
+    private final StorageQuotaService storageQuotaService;
 
     @Value("${vance.storage.chunk-size:524288}")
     private int chunkSize;
 
     @Override
     public StorageInfo store(String tenantId, String path, InputStream stream) {
-        return store(UUID.randomUUID().toString(), tenantId, path, stream);
+        return store(tenantId, path, stream, -1L);
+    }
+
+    @Override
+    public StorageInfo store(String tenantId, String path, InputStream stream, long expectedBytes) {
+        return storeWithQuota(UUID.randomUUID().toString(), tenantId, path, stream, expectedBytes, -1L);
+    }
+
+    /**
+     * Internal write path with quota pre-check. {@code oldSizeBytes == -1}
+     * signals "no previous blob to account for" (a fresh write); the public
+     * {@link #update} and {@link #replace} paths compute and pass the actual
+     * previous size where it matters.
+     */
+    @Transactional
+    StorageInfo storeWithQuota(
+            String storageId, String tenantId, String path, InputStream stream, long expectedBytes, long oldSizeBytes) {
+        // Pre-check; throws StorageQuotaExceededException when the write would
+        // exceed the configured limit. fail-open paths (R1, R4, R5) return
+        // allowed() — see StorageQuotaService for the rationale.
+        StorageQuotaService.Check check = storageQuotaService.check(tenantId, expectedBytes, oldSizeBytes);
+        if (!check.allowed()) {
+            throw new StorageQuotaExceededException(
+                    tenantId, check.currentUsageBytes(), expectedBytes > 0 ? expectedBytes : 0L, check.limitBytes());
+        }
+
+        Date createdAt = new Date();
+        try (ChunkedOutputStream out =
+                new ChunkedOutputStream(storageDataRepository, storageId, tenantId, path, chunkSize, createdAt)) {
+            stream.transferTo(out);
+            long totalSize = out.getTotalBytesWritten();
+            log.debug("Stored blob: storageId={} tenant={} path={} size={}", storageId, tenantId, path, totalSize);
+            // Invalidate the pre-check cache on this pod so the very next
+            // pre-check sees the new size (multi-pod race tolerance).
+            storageQuotaService.invalidateAllCaches(tenantId);
+            return new StorageInfo(storageId, totalSize, createdAt, tenantId, path);
+        } catch (IOException e) {
+            log.error("Failed to store blob: path={}", path, e);
+            throw new IllegalStateException("Failed to store blob", e);
+        }
     }
 
     @Transactional
     StorageInfo store(String storageId, String tenantId, String path, InputStream stream) {
         Date createdAt = new Date();
-        try (ChunkedOutputStream out = new ChunkedOutputStream(
-                storageDataRepository, storageId, tenantId, path, chunkSize, createdAt)) {
+        try (ChunkedOutputStream out =
+                new ChunkedOutputStream(storageDataRepository, storageId, tenantId, path, chunkSize, createdAt)) {
             stream.transferTo(out);
             long totalSize = out.getTotalBytesWritten();
-            log.debug("Stored blob: storageId={} tenant={} path={} size={}",
-                    storageId, tenantId, path, totalSize);
+            log.debug("Stored blob: storageId={} tenant={} path={} size={}", storageId, tenantId, path, totalSize);
             return new StorageInfo(storageId, totalSize, createdAt, tenantId, path);
         } catch (IOException e) {
             log.error("Failed to store blob: path={}", path, e);
@@ -100,11 +139,15 @@ public class MongoStorageService extends StorageService {
         }
         String path = oldFinal.getPath();
         String tenantId = oldFinal.getTenantId();
+        long oldSize = oldFinal.getSize();
 
-        StorageInfo newInfo = store(
+        StorageInfo newInfo = storeWithQuota(
+                UUID.randomUUID().toString(),
                 tenantId == null ? "" : tenantId,
                 path == null ? "" : path,
-                stream);
+                stream,
+                -1L,
+                oldSize);
         delete(storageId);
         log.debug("Updated storage: oldId={} newId={}", storageId, newInfo.id());
         return newInfo;
@@ -121,13 +164,13 @@ public class MongoStorageService extends StorageService {
         String tenantId = oldFinal.getTenantId();
         String uuid = oldFinal.getUuid();
 
+        // Hard-delete the old chunks so the aggregation already excludes
+        // them by the time the new write's pre-check runs. Pass oldSize=-1
+        // because the bytes are no longer counted in storage_data.
         List<StorageData> toDrop = storageDataRepository.findAllByUuid(uuid);
         toDrop.forEach(storageDataRepository::delete);
 
-        return store(uuid,
-                tenantId == null ? "" : tenantId,
-                path == null ? "" : path,
-                stream);
+        return storeWithQuota(uuid, tenantId == null ? "" : tenantId, path == null ? "" : path, stream, -1L, -1L);
     }
 
     @Override
@@ -151,8 +194,7 @@ public class MongoStorageService extends StorageService {
             });
             finalChunk = finals.removeLast();
             for (StorageData dup : finals) {
-                log.info("Deleting duplicate final chunk id={} createdAt={}",
-                        dup.getId(), dup.getCreatedAt());
+                log.info("Deleting duplicate final chunk id={} createdAt={}", dup.getId(), dup.getCreatedAt());
                 storageDataRepository.delete(dup);
             }
         }
@@ -180,12 +222,12 @@ public class MongoStorageService extends StorageService {
             return null;
         }
         try {
-            StorageInfo copy = store(
-                    targetTenantId,
-                    sourceInfo.path() == null ? "" : sourceInfo.path(),
-                    sourceStream);
-            log.debug("Duplicated storage: sourceId={} targetId={} targetTenant={}",
-                    sourceStorageId, copy.id(), targetTenantId);
+            StorageInfo copy = store(targetTenantId, sourceInfo.path() == null ? "" : sourceInfo.path(), sourceStream);
+            log.debug(
+                    "Duplicated storage: sourceId={} targetId={} targetTenant={}",
+                    sourceStorageId,
+                    copy.id(),
+                    targetTenantId);
             return copy.id();
         } finally {
             try {
@@ -197,11 +239,9 @@ public class MongoStorageService extends StorageService {
     }
 
     @Override
-    public void forEachFinalStorageIdOlderThan(
-            Instant cutoff, int batchSize, Consumer<List<String>> batchHandler) {
+    public void forEachFinalStorageIdOlderThan(Instant cutoff, int batchSize, Consumer<List<String>> batchHandler) {
         if (batchSize <= 0) throw new IllegalArgumentException("batchSize must be > 0");
-        Query q = new Query(Criteria.where("isFinal").is(true)
-                .and("createdAt").lt(Date.from(cutoff)));
+        Query q = new Query(Criteria.where("isFinal").is(true).and("createdAt").lt(Date.from(cutoff)));
         q.fields().include("uuid");
         List<String> batch = new ArrayList<>(batchSize);
         try (Stream<StorageData> stream = mongoTemplate.stream(q, StorageData.class)) {

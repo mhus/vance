@@ -8,9 +8,11 @@ import de.mhus.vance.shared.llmusage.LlmPowerState;
 import de.mhus.vance.shared.storage.StorageQuotaService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -43,7 +45,9 @@ public class HomeStatusController {
     private final StorageQuotaService storageQuotaService;
 
     @GetMapping("/status")
-    public HomeStatusDto status(@PathVariable("tenant") String tenant) {
+    public HomeStatusDto status(
+            @PathVariable("tenant") String tenant,
+            @RequestParam(value = "projectId", required = false) @Nullable String projectId) {
         HomeStatusDto.HomeStatusDtoBuilder b = HomeStatusDto.builder();
 
         // LLM main switch — read from the store, never from the in-memory
@@ -57,23 +61,39 @@ public class HomeStatusController {
             log.warn("LLM power state of tenant '{}' not readable: {}", tenant, e.toString());
         }
 
-        // Tenant LLM cost budget — pick the most-loaded active window. A
-        // tenant without any limit reports percent = -1 so the SPA can
-        // distinguish "no budget" from "could not answer".
+        // LLM cost budget — tenant by default, project when ?projectId=X.
+        // Pick the most-loaded active window; -1 when no limit is set on
+        // the queried scope (distinct from "could not answer", which
+        // leaves the field null). The scope label travels with the
+        // percent so the SPA can show "Tenant" vs "Project" without
+        // tracking the request itself.
         try {
-            int percent = llmBudgetService.status(tenant, null).stream()
-                    .filter(s -> s.scope() == BudgetScope.TENANT)
+            BudgetScope scope;
+            String scopeLabel;
+            String serviceProjectId;
+            if (projectId != null && !projectId.isBlank()) {
+                scope = BudgetScope.PROJECT;
+                scopeLabel = projectId;
+                serviceProjectId = projectId;
+            } else {
+                scope = BudgetScope.TENANT;
+                scopeLabel = "_tenant";
+                serviceProjectId = null;
+            }
+            int percent = llmBudgetService.status(tenant, serviceProjectId).stream()
+                    .filter(s -> s.scope() == scope)
                     .findFirst()
                     .map(s -> highestWindowPercent(s))
                     .orElse(-1);
             b.llmBudgetPercent(percent);
+            b.llmBudgetScope(scopeLabel);
         } catch (RuntimeException e) {
-            log.warn("LLM budget status of tenant '{}' not readable: {}", tenant, e.toString());
+            log.warn("LLM budget status of '{}/{}' not readable: {}", tenant, projectId, e.toString());
         }
 
-        // Storage quota — same shape as the pre-check, but for the home
-        // status. An unlimited quota reports percent = -1; an aggregation
-        // failure leaves the field null.
+        // Storage quota — tenant-only. There is no per-project storage
+        // quota (per planning/storage-quota.md), so a projectId here is
+        // intentionally ignored for the storage fields.
         try {
             StorageQuotaService.Status s = storageQuotaService.status(tenant);
             if (s.limitBytes() > 0) {

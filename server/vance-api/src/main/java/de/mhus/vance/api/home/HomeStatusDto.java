@@ -42,14 +42,28 @@ public class HomeStatusDto {
     /**
      * Tenant LLM cost budget usage, expressed as a percent of the most
      * loaded active window (daily / monthly / total-with-since). {@code -1}
-     * when no budget is configured at the tenant level; {@code null} when the
-     * value could not be answered.
+     * when no budget is configured at the level named in
+     * {@link #llmBudgetScope}; {@code null} when the value could not be
+     * answered.
      *
-     * <p>Only the tenant level is sampled — a per-project budget must not
-     * bleed into the landing-page tile, the page has no project.
+     * <p>The endpoint reads tenant by default. With {@code ?projectId=X}
+     * it reads the project level instead — the session picker passes the
+     * selected project so the user sees their own project budget, not the
+     * tenant's. Project and tenant are independent layers (a tenant cap
+     * still applies on top of any project cap), but the tile shows only
+     * one number — the one for the active scope.
      */
     @Nullable
     private Integer llmBudgetPercent;
+
+    /**
+     * Which scope {@link #llmBudgetPercent} was read against —
+     * {@code "tenant"} (default) or {@code "project"} (when
+     * {@code ?projectId=X} was passed). {@code null} when the value
+     * could not be answered at all (no scope to report).
+     */
+    @Nullable
+    private String llmBudgetScope;
 
     /**
      * Tenant storage quota usage, percent of {@code storage.quota.maxBytes}.

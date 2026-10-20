@@ -6,6 +6,7 @@
 export interface HomeStatusDto {
   llmPowerOn?: boolean;
   llmBudgetPercent?: number;
+  llmBudgetScope?: string;
   storageQuotaPercent?: number;
   storageBytesFree?: number;
 }

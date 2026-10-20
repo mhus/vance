@@ -927,6 +927,11 @@ export default {
       signedInAs: 'Signed in as {username}',
       newSession: 'New session',
       sessionsLoading: 'Loading sessions…',
+      budgetBanner: {
+        label: 'LLM budget:',
+        scopeTenant: 'tenant',
+        scopeProject: 'project {project}',
+      },
       noSessions: 'No sessions in this project',
       noSessionsBody: "Click 'New session' to start one.",
       occupied: 'occupied',

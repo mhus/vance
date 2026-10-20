@@ -1,4 +1,4 @@
-import { ref, type Ref } from 'vue';
+import { ref, watch, type Ref } from 'vue';
 import { brainFetch } from '@vance/shared';
 import type { HomeStatusDto } from '@vance/generated';
 
@@ -19,7 +19,7 @@ export interface UseHomeStatus {
   status: Ref<HomeStatusDto | null>;
   loading: Ref<boolean>;
   error: Ref<string | null>;
-  load: () => Promise<boolean>;
+  load: (projectId?: string | null) => Promise<boolean>;
 }
 
 export function useHomeStatus(): UseHomeStatus {
@@ -27,11 +27,14 @@ export function useHomeStatus(): UseHomeStatus {
   const loading = ref(false);
   const error = ref<string | null>(null);
 
-  async function load(): Promise<boolean> {
+  async function load(projectId?: string | null): Promise<boolean> {
     loading.value = true;
     error.value = null;
     try {
-      status.value = await brainFetch<HomeStatusDto>('GET', 'home/status');
+      const qs = projectId && projectId.trim().length > 0
+        ? `?projectId=${encodeURIComponent(projectId)}`
+        : '';
+      status.value = await brainFetch<HomeStatusDto>('GET', `home/status${qs}`);
       return true;
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load home status.';
@@ -42,4 +45,22 @@ export function useHomeStatus(): UseHomeStatus {
   }
 
   return { status, loading, error, load };
+}
+
+/**
+ * Convenience wrapper: returns a loader that re-fetches whenever
+ * {@code projectIdRef} changes. Used by the session picker so the budget
+ * banner tracks the selected project without the parent having to
+ * wire a watch.
+ */
+export function useProjectHomeStatus(projectIdRef: Ref<string | null | undefined>): UseHomeStatus {
+  const home = useHomeStatus();
+  watch(
+    projectIdRef,
+    (id) => {
+      void home.load(id ?? null);
+    },
+    { immediate: true },
+  );
+  return home;
 }

@@ -23,6 +23,7 @@ import { sendSessionBootstrap } from '@/ws/wsConnectionStore';
 import { useTenantProjects } from '@composables/useTenantProjects';
 import { useSessionGroups } from '@composables/useSessionGroups';
 import { useSessionGroupCollapse } from '@composables/useSessionGroupCollapse';
+import { useProjectHomeStatus } from '@composables/useHomeStatus';
 import {
   ProjectListSidebar,
   SessionActionsMenu,
@@ -496,6 +497,12 @@ async function refreshSessions(): Promise<void> {
   if (selectedProjectName.value) await loadSessions(selectedProjectName.value);
 }
 
+// Project-scoped home status — the LLM-budget banner under the header
+// tracks the selected project. Storage + power stay tenant-scope and
+// ignore the projectId. The composable re-fetches when `selectedProjectName`
+// changes, so picking a new project updates the banner without manual wiring.
+const projectHomeStatus = useProjectHomeStatus(selectedProjectName);
+
 /** Transient info banner (e.g. compaction outcome). Auto-clears. */
 const sessionNotice = ref<string | null>(null);
 let noticeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -870,6 +877,29 @@ onBeforeUnmount(stopAutoScroll);
         </div>
 
         <div v-else class="flex flex-col gap-3">
+          <!-- LLM-budget banner for the selected project. Sticky at the top
+               of the scrollable list so the user sees it without scrolling
+               back up after a long session. Rendered only when the queried
+               scope has a budget configured (>=0); -1 = unlimited, null =
+               could not answer — both invisible. -->
+          <div
+            v-if="(projectHomeStatus.status.value?.llmBudgetPercent ?? -1) >= 0"
+            class="project-budget-banner sticky top-0 z-10 bg-(--v-surface) border
+                   border-(--v-separator) rounded-lg shadow-sm px-3 py-2 text-sm
+                   flex items-center gap-3"
+          >
+            <span class="opacity-70">{{ $t('chat.picker.budgetBanner.label') }}</span>
+            <strong class="font-mono tabular-nums">
+              {{ projectHomeStatus.status.value!.llmBudgetPercent }}%
+            </strong>
+            <span class="text-(--v-label-tertiary)">
+              {{ projectHomeStatus.status.value?.llmBudgetScope === '_tenant'
+                ? $t('chat.picker.budgetBanner.scopeTenant')
+                : $t('chat.picker.budgetBanner.scopeProject', {
+                    project: selectedProjectName,
+                  }) }}
+            </span>
+          </div>
           <div
             v-for="block in sessionBlocks"
             :key="block.group ? block.group.name : '__ungrouped__'"

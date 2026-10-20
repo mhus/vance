@@ -651,15 +651,15 @@ export default {
       llmNotConfigured:
         'This tenant has no default language model (ai.default.provider / ai.default.model). Chats fail unless their project sets its own model or an admin sets a tenant default.',
       llmPowerOff:
-        'LLM access for this tenant is switched off. A tenant admin must turn it back on under Insights → Power.',
+        'LLM access for this tenant is switched off.',
       llmBudgetPercent:
-        'Tenant LLM budget used: {percent}% of the most-loaded window. A tenant admin can review the windows under Insights → Usage & Cost.',
+        'LLM budget: {percent}% used.',
     },
     documents: {
       title: 'Documents',
       description: 'Browse and edit project documents.',
       storageQuota:
-        'Storage used: {percent}% ({bytesFree} free). A tenant admin can raise the limit under _tenant → Storage quota.',
+        'Storage: {percent}% used ({bytesFree} free).',
     },
     inbox: {
       title: 'Inbox',

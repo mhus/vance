@@ -1,4 +1,4 @@
-import { nextTick, onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue';
+import { InjectionKey, nextTick, onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue';
 
 /**
  * Browser-history binding for the Insights walker.
@@ -16,6 +16,21 @@ import { nextTick, onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue'
  * intent, and restore state on `popstate` + initial load — the same pattern
  * cortex/EditorApp and inbox/InboxApp use.
  */
+
+/**
+ * Provide/inject key for the sidebar-driven project scope. The sidebar in
+ * InsightsApp owns the ref; project-scoped tabs (Recipes, Tools, Quotas,
+ * …) inject it so they react to the same selector without each one wiring
+ * its own dropdown. A `null` / empty value means "whole tenant".
+ *
+ * <p>Kept here next to the navigation hooks because the scope is part of
+ * the same URL-mirroring story — the sidebar remembers the last selection
+ * via {@code recallProject} and writes it back via {@code rememberProject},
+ * but it is not itself in the URL (the URL mirrors the navigation axes,
+ * not the filter).
+ */
+export const INJECT_INSIGHTS_PROJECT_SCOPE: InjectionKey<Ref<string | null>> =
+    Symbol('vance.insights.projectScope');
 
 /** Top-level project tab keys — the axis mirrored to `?tab=`. */
 export const INSIGHTS_TOP_TABS = [

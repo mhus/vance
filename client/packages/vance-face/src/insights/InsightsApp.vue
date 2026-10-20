@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   EditorShell,
@@ -32,6 +32,7 @@ import {
 import { useInsightsControl } from '@/composables/useInsightsControl';
 import {
   useInsightsNavigation,
+  INJECT_INSIGHTS_PROJECT_SCOPE,
   type InsightsTopTab,
 } from '@/composables/useInsightsNavigation';
 import { useHelp } from '@/composables/useHelp';
@@ -148,6 +149,10 @@ const focusZone = ref<FocusZone>('main');
 
 // ─── Filter state ───────────────────────────────────────────────────────
 const filterProjectId = ref<string | null>(null);
+// Expose the sidebar project scope to project-aware tabs (Recipes, Tools,
+// Quotas, …). They read this same ref via {@code inject} so a switch in
+// the sidebar drives every scoped tab at once — no per-tab dropdown.
+provide(INJECT_INSIGHTS_PROJECT_SCOPE, filterProjectId);
 const filterUserId = ref<string>('');
 // Status-filter presets sent verbatim as the `status` query value. "live"
 // is the default view: sessions that are alive (starting, running or idle);

@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, inject, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type {
   LlmBudgetStatusDto,
   LlmBudgetWindowDto,
   StorageCleanupResultDto,
 } from '@vance/generated';
-import { VAlert, VBadge, VButton, VCard, VEmptyState, VGroup, VGroupRow, VIcon, VSelect, useConfirm } from '@/components';
+import { VAlert, VBadge, VButton, VCard, VEmptyState, VGroup, VGroupRow, VIcon, useConfirm } from '@/components';
 import { useHomeStatus } from '@/composables/useHomeStatus';
+import {
+  INJECT_INSIGHTS_PROJECT_SCOPE,
+} from '@/composables/useInsightsNavigation';
 import { useStorageCleanup } from '@/composables/useStorageCleanup';
-import { useTenantProjects } from '@/composables/useTenantProjects';
 import { useUsageReport } from '@/composables/useUsageReport';
 import CleanupDialog from './CleanupDialog.vue';
 import {
@@ -57,29 +59,36 @@ const home = useHomeStatus();
 const usage = useUsageReport();
 const cleanup = useStorageCleanup();
 const confirmAction = useConfirm();
-const tenantProjects = useTenantProjects();
 
-const cleanupScope = ref<string>(''); // '' = tenant-wide
+/**
+ * Project scope comes from the sidebar (InsightsApp.filterProjectId), not
+ * from a per-tab dropdown — the sidebar already has the "Whole tenant vs
+ * one project" selector and every project-scoped tab reads the same value
+ * via provide/inject. {@code null} / empty string = whole tenant.
+ */
+const projectScope = inject(
+    INJECT_INSIGHTS_PROJECT_SCOPE,
+    ref<string | null>(null),
+);
+
 const cleanupDialogOpen = ref(false);
 const cleanupBusy = ref(false);
 const lastCleanup = ref<{ action: string; freedBytes: number } | null>(null);
 
-const cleanupScopeOptions = computed(() => [
-  { value: '', label: t('insights.quotas.scopeTenant') },
-  ...tenantProjects.projects.value.map(p => ({
-    value: p.name,
-    label: p.title || p.name,
-  })),
-]);
+/** Normalised scope for the cleanup calls: {@code null} when the sidebar says tenant-wide. */
+const cleanupProjectId = computed<string | null>(() => {
+  const v = projectScope.value;
+  return v && v.trim().length > 0 ? v : null;
+});
 
 const cleanupError = computed<string | null>(() => cleanup.error.value);
 const cleanupLoading = computed(() => cleanup.loading.value);
 
 async function refreshCleanup(): Promise<void> {
-  await cleanup.loadBreakdown(cleanupScope.value || null);
+  await cleanup.loadBreakdown(cleanupProjectId.value);
 }
 
-watch(cleanupScope, () => {
+watch(projectScope, () => {
   void refreshCleanup();
 });
 
@@ -96,7 +105,7 @@ async function onEmptyTrash(): Promise<void> {
   })) return;
   cleanupBusy.value = true;
   try {
-    const result = await cleanup.emptyTrash(cleanupScope.value || null);
+    const result = await cleanup.emptyTrash(cleanupProjectId.value);
     lastCleanup.value = { action: 'trash', freedBytes: result.freedBytes };
     // The breakdown has already been refreshed inside the composable.
     await refreshHomeQuota();
@@ -138,8 +147,7 @@ async function refresh(): Promise<void> {
   await Promise.allSettled([
     home.load(null),
     usage.loadAll(buildParams()),
-    cleanup.loadBreakdown(cleanupScope.value || null),
-    tenantProjects.reload(),
+    cleanup.loadBreakdown(cleanupProjectId.value),
   ]);
 }
 
@@ -268,13 +276,14 @@ const projectTotalsByCurrency = computed<Map<string, number>>(() => costByCurren
       <h3 class="quotas-heading">{{ $t('insights.quotas.documentsHeading') }}</h3>
 
       <VCard :title="$t('insights.quotas.storageTitle')">
+        <p class="quotas-storage__hint">
+          {{
+            cleanupProjectId
+              ? $t('insights.quotas.scopeProject', { project: cleanupProjectId })
+              : $t('insights.quotas.scopeTenantHint')
+          }}
+        </p>
         <div class="quotas-storage__controls">
-          <VSelect
-            v-model="cleanupScope"
-            :options="cleanupScopeOptions"
-            :label="$t('insights.quotas.scope')"
-            size="sm"
-          />
           <div class="quotas-storage__actions">
             <VButton
               variant="secondary"
@@ -366,7 +375,7 @@ const projectTotalsByCurrency = computed<Map<string, number>>(() => costByCurren
 
       <CleanupDialog
         :open="cleanupDialogOpen"
-        :project-id="cleanupScope || null"
+        :project-id="cleanupProjectId"
         :breakdown="cleanup.breakdown.value"
         @close="cleanupDialogOpen = false"
         @done="onArchiveDone"

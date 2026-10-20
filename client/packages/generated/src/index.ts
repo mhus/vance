@@ -31,6 +31,10 @@ export * from './chatmodel/ChatModelDto';
 export * from './chatmodel/ChatModelListDto';
 export * from './chatmodel/ChatModelPricingDto';
 export * from './chatmodel/ChatModelStateDto';
+export * from './cleanup/ArchiveWeightDto';
+export * from './cleanup/StorageBreakdownDto';
+export * from './cleanup/StorageCleanupRequest';
+export * from './cleanup/StorageCleanupResultDto';
 
 export * from './command/EngineCommandOutcome';
 export * from './command/ProcessCommandRequest';

@@ -55,6 +55,7 @@ import UrsahooksTab from './UrsahooksTab.vue';
 import WorkflowsTab from './WorkflowsTab.vue';
 import RagTab from './RagTab.vue';
 import UsageCostTab from './UsageCostTab.vue';
+import QuotasTab from './QuotasTab.vue';
 import PowerTab from './PowerTab.vue';
 import ZarniwoopTab from './ZarniwoopTab.vue';
 import ToolUsageTab from './ToolUsageTab.vue';
@@ -196,6 +197,7 @@ const ALL_TABS: ReadonlyArray<{ key: TopTab; label: string }> = [
   { key: 'leases', label: 'Leases' },
   { key: 'addons', label: 'Addons' },
   { key: 'usage', label: 'Usage & Cost' },
+  { key: 'quotas', label: 'Quotas' },
   { key: 'power', label: 'Power' },
 ];
 
@@ -960,7 +962,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
       </div>
 
       <div
-        v-if="topTab !== 'sessions' && topTab !== 'cluster' && topTab !== 'trillian' && topTab !== 'addons' && topTab !== 'leases' && topTab !== 'usage' && topTab !== 'power' && projectContextSource"
+        v-if="topTab !== 'sessions' && topTab !== 'cluster' && topTab !== 'trillian' && topTab !== 'addons' && topTab !== 'leases' && topTab !== 'usage' && topTab !== 'quotas' && topTab !== 'power' && projectContextSource"
         class="text-xs opacity-70 -mt-1 mb-1"
       >
         Showing
@@ -990,6 +992,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
       <LeasesTab v-else-if="topTab === 'leases'" />
       <AddonsTab v-else-if="topTab === 'addons'" />
       <UsageCostTab v-else-if="topTab === 'usage'" />
+      <QuotasTab v-else-if="topTab === 'quotas'" />
       <PowerTab v-else-if="topTab === 'power'" />
 
       <template v-else-if="topTab === 'sessions'">

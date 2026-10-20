@@ -39,6 +39,7 @@ export const INSIGHTS_TOP_TABS = [
   'leases',
   'addons',
   'usage',
+  'quotas',
   'power',
 ] as const;
 

@@ -75,7 +75,7 @@ class MongoStorageServiceQuotaTest {
         ArgumentCaptor<Long> delta = ArgumentCaptor.forClass(Long.class);
         verify(quotaService).check(eq("acme"), delta.capture(), eq(-1L));
         assertThat(delta.getValue()).isEqualTo(11L);
-        verify(quotaService).invalidateAllCaches("acme");
+        verify(quotaService).invalidateUsage("acme");
     }
 
     @Test
@@ -91,7 +91,7 @@ class MongoStorageServiceQuotaTest {
 
         // No invalidation must run when the write was refused — the cache
         // already reflects reality.
-        verify(quotaService, org.mockito.Mockito.never()).invalidateAllCaches(anyString());
+        verify(quotaService, org.mockito.Mockito.never()).invalidateUsage(anyString());
     }
 
     @Test
@@ -133,7 +133,55 @@ class MongoStorageServiceQuotaTest {
     }
 
     @Test
-    void replace_hardDeletesFirstThenPassesUnknownOldSize() throws IOException {
+    void streamPastTheCap_isAbortedAndItsChunksDropped() {
+        when(quotaService.check(eq("acme"), eq(-1L), eq(-1L)))
+                .thenReturn(StorageQuotaService.Check.capped(1_000L, 2_000L, 1_000L, "unknown-size-capped"));
+        StorageData written = StorageData.builder().uuid("x").index(0).build();
+        when(storageDataRepository.findAllByUuid(anyString())).thenReturn(List.of(written));
+
+        InputStream payload = new ByteArrayInputStream(new byte[5_000]);
+        assertThatThrownBy(() -> service.store("acme", "docs/stream.bin", payload))
+                .isInstanceOf(StorageQuotaExceededException.class);
+
+        verify(storageDataRepository).deleteAll(List.of(written));
+        verify(quotaService, org.mockito.Mockito.never()).invalidateUsage(anyString());
+    }
+
+    @Test
+    void streamWithinTheCap_isStored() {
+        when(quotaService.check(eq("acme"), eq(-1L), eq(-1L)))
+                .thenReturn(StorageQuotaService.Check.capped(1_000L, 20_000L, 19_000L, "unknown-size-capped"));
+
+        StorageService.StorageInfo info =
+                service.store("acme", "docs/stream.bin", new ByteArrayInputStream(new byte[5_000]));
+
+        assertThat(info.size()).isEqualTo(5_000L);
+        verify(quotaService).invalidateUsage("acme");
+    }
+
+    @Test
+    void replace_deniedBeforeTheOldChunksAreTouched() {
+        StorageData oldFinal = StorageData.builder()
+                .id(new ObjectId().toHexString())
+                .uuid("blob-d")
+                .path("docs/d.md")
+                .tenantId("acme")
+                .index(0)
+                .isFinal(true)
+                .size(50_000L)
+                .build();
+        when(storageDataRepository.findByUuidAndIsFinalTrue("blob-d")).thenReturn(oldFinal);
+        when(quotaService.check(eq("acme"), eq(-1L), eq(50_000L)))
+                .thenReturn(StorageQuotaService.Check.denied(2_000_000L, 0L, 1_000_000L));
+
+        assertThatThrownBy(() -> service.replace("blob-d", new ByteArrayInputStream(new byte[10])))
+                .isInstanceOf(StorageQuotaExceededException.class);
+
+        verify(storageDataRepository, org.mockito.Mockito.never()).delete(oldFinal);
+    }
+
+    @Test
+    void replace_checksWithTheOldSizeThenHardDeletes() throws IOException {
         StorageData oldFinal = StorageData.builder()
                 .id(new ObjectId().toHexString())
                 .uuid("blob-r")
@@ -146,15 +194,16 @@ class MongoStorageServiceQuotaTest {
         when(storageDataRepository.findByUuidAndIsFinalTrue("blob-r")).thenReturn(oldFinal);
         when(storageDataRepository.findAllByUuid("blob-r")).thenReturn(List.of(oldFinal));
 
-        when(quotaService.check(eq("acme"), anyLong(), eq(-1L)))
-                .thenReturn(StorageQuotaService.Check.allowed(0L, 1024L, "ok"));
+        when(quotaService.check(eq("acme"), eq(-1L), eq(50_000L)))
+                .thenReturn(StorageQuotaService.Check.capped(0L, 1_000_000L, 1_000_000L, "unknown-size-capped"));
 
         InputStream payload = new ByteArrayInputStream(new byte[80_000]);
         service.replace("blob-r", payload);
 
-        // Hard-delete must run before the new pre-check; the new pre-check
-        // sees oldSize=-1 because the bytes are no longer counted.
+        // The pre-check runs while the old chunks still exist, with their size
+        // credited; only then are they hard-deleted.
+        verify(quotaService).check(eq("acme"), eq(-1L), eq(50_000L));
         verify(storageDataRepository).delete(oldFinal);
-        verify(quotaService).check(eq("acme"), anyLong(), eq(-1L));
+        verify(quotaService).invalidateUsage("acme");
     }
 }

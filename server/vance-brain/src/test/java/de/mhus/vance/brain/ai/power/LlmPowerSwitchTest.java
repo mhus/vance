@@ -78,6 +78,21 @@ class LlmPowerSwitchTest {
     }
 
     @Test
+    void state_hitKeepsAnActiveTenantCached_andAMongoHiccupKeepsItOff() {
+        when(service.load(TENANT)).thenReturn(OFF).thenThrow(new IllegalStateException("mongo down"));
+        powerSwitch.state(TENANT);
+        // Asked again shortly before the idle window ends: that hit has to count.
+        clock.now = clock.now.plus(LlmPowerSwitch.IDLE_EVICTION).minusSeconds(1);
+        powerSwitch.state(TENANT);
+        clock.now = clock.now.plusSeconds(2);
+
+        powerSwitch.refresh();
+
+        assertThat(powerSwitch.cached(TENANT)).isEqualTo(OFF);
+        assertThat(powerSwitch.state(TENANT).tenantOn()).isFalse();
+    }
+
+    @Test
     void refresh_staleRead_doesNotOverwriteANewerReload() {
         // The refresh reads ALL_ON; while it is on the wire an admin's write reloads OFF.
         when(service.load(TENANT))

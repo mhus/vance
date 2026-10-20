@@ -2,6 +2,7 @@ package de.mhus.vance.shared.storage;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
@@ -56,36 +57,68 @@ public class MongoStorageService extends StorageService {
 
     /**
      * Internal write path with quota pre-check. {@code oldSizeBytes == -1}
-     * signals "no previous blob to account for" (a fresh write); the public
-     * {@link #update} and {@link #replace} paths compute and pass the actual
-     * previous size where it matters.
+     * signals "no previous blob to account for" (a fresh write); {@link #update}
+     * passes the size of the blob it supersedes.
+     *
+     * <p>The pre-check answers with the room left under the limit, and the
+     * copy stops once the stream passes it — that is what holds the quota for
+     * writes whose size is not known up front. An aborted write drops the
+     * chunks it already stored before the exception leaves this method.
      */
     @Transactional
     StorageInfo storeWithQuota(
             String storageId, String tenantId, String path, InputStream stream, long expectedBytes, long oldSizeBytes) {
-        // Pre-check; throws StorageQuotaExceededException when the write would
-        // exceed the configured limit. fail-open paths (R1, R4, R5) return
-        // allowed() — see StorageQuotaService for the rationale.
+        StorageQuotaService.Check check = requireQuota(tenantId, expectedBytes, oldSizeBytes);
+
+        Date createdAt = new Date();
+        boolean withinQuota;
+        long totalSize;
+        try (ChunkedOutputStream out =
+                new ChunkedOutputStream(storageDataRepository, storageId, tenantId, path, chunkSize, createdAt)) {
+            withinQuota = copyWithin(stream, out, check.remainingBytes());
+            totalSize = out.getTotalBytesWritten();
+        } catch (IOException e) {
+            log.error("Failed to store blob: path={}", path, e);
+            throw new IllegalStateException("Failed to store blob", e);
+        }
+        if (!withinQuota) {
+            storageDataRepository.deleteAll(storageDataRepository.findAllByUuid(storageId));
+            log.debug("Aborted blob over quota: storageId={} tenant={} path={}", storageId, tenantId, path);
+            throw new StorageQuotaExceededException(
+                    tenantId, check.currentUsageBytes(), check.remainingBytes() + 1, check.limitBytes());
+        }
+        log.debug("Stored blob: storageId={} tenant={} path={} size={}", storageId, tenantId, path, totalSize);
+        // The next pre-check on this pod must see the new size.
+        storageQuotaService.invalidateUsage(tenantId);
+        return new StorageInfo(storageId, totalSize, createdAt, tenantId, path);
+    }
+
+    private StorageQuotaService.Check requireQuota(String tenantId, long expectedBytes, long oldSizeBytes) {
         StorageQuotaService.Check check = storageQuotaService.check(tenantId, expectedBytes, oldSizeBytes);
         if (!check.allowed()) {
             throw new StorageQuotaExceededException(
                     tenantId, check.currentUsageBytes(), expectedBytes > 0 ? expectedBytes : 0L, check.limitBytes());
         }
+        return check;
+    }
 
-        Date createdAt = new Date();
-        try (ChunkedOutputStream out =
-                new ChunkedOutputStream(storageDataRepository, storageId, tenantId, path, chunkSize, createdAt)) {
-            stream.transferTo(out);
-            long totalSize = out.getTotalBytesWritten();
-            log.debug("Stored blob: storageId={} tenant={} path={} size={}", storageId, tenantId, path, totalSize);
-            // Invalidate the pre-check cache on this pod so the very next
-            // pre-check sees the new size (multi-pod race tolerance).
-            storageQuotaService.invalidateAllCaches(tenantId);
-            return new StorageInfo(storageId, totalSize, createdAt, tenantId, path);
-        } catch (IOException e) {
-            log.error("Failed to store blob: path={}", path, e);
-            throw new IllegalStateException("Failed to store blob", e);
+    /**
+     * Copies {@code in} to {@code out} as long as the total stays within
+     * {@code maxBytes}. Returns {@code false} — with the overflowing buffer
+     * not written — as soon as the stream passes the limit.
+     */
+    private static boolean copyWithin(InputStream in, OutputStream out, long maxBytes) throws IOException {
+        byte[] buffer = new byte[8192];
+        long total = 0;
+        int n;
+        while ((n = in.read(buffer)) != -1) {
+            total += n;
+            if (total > maxBytes) {
+                return false;
+            }
+            out.write(buffer, 0, n);
         }
+        return true;
     }
 
     @Transactional
@@ -164,13 +197,21 @@ public class MongoStorageService extends StorageService {
         String tenantId = oldFinal.getTenantId();
         String uuid = oldFinal.getUuid();
 
-        // Hard-delete the old chunks so the aggregation already excludes
-        // them by the time the new write's pre-check runs. Pass oldSize=-1
-        // because the bytes are no longer counted in storage_data.
+        String tenant = tenantId == null ? "" : tenantId;
+
+        // Quota first, while the old chunks still exist: a denial must leave
+        // the blob untouched. There is no stream cap after the drop — aborting
+        // half-way would lose the old content under the same uuid, and replace
+        // is the in-place variant that already accepts inconsistent reads.
+        // update() is the capped path.
+        requireQuota(tenant, -1L, oldFinal.getSize());
+
         List<StorageData> toDrop = storageDataRepository.findAllByUuid(uuid);
         toDrop.forEach(storageDataRepository::delete);
 
-        return storeWithQuota(uuid, tenantId == null ? "" : tenantId, path == null ? "" : path, stream, -1L, -1L);
+        StorageInfo info = store(uuid, tenant, path == null ? "" : path, stream);
+        storageQuotaService.invalidateUsage(tenant);
+        return info;
     }
 
     @Override
@@ -222,7 +263,11 @@ public class MongoStorageService extends StorageService {
             return null;
         }
         try {
-            StorageInfo copy = store(targetTenantId, sourceInfo.path() == null ? "" : sourceInfo.path(), sourceStream);
+            StorageInfo copy = store(
+                    targetTenantId,
+                    sourceInfo.path() == null ? "" : sourceInfo.path(),
+                    sourceStream,
+                    sourceInfo.size());
             log.debug(
                     "Duplicated storage: sourceId={} targetId={} targetTenant={}",
                     sourceStorageId,

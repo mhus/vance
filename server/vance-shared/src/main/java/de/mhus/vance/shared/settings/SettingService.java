@@ -95,6 +95,15 @@ public class SettingService {
                 .toList();
     }
 
+    /**
+     * Operator-side counterpart to {@link #findAll}: the per-scope listing
+     * including the {@code vancetope.*} system keys. For the {@code anus}
+     * admin shell, which has to show the deny lists it writes.
+     */
+    public List<SettingDocument> forceFindAll(String tenantId, String referenceType, String referenceId) {
+        return repository.findByTenantIdAndReferenceTypeAndReferenceId(tenantId, referenceType, referenceId);
+    }
+
     /** All settings across scopes for a tenant sharing the same {@code key}. */
     public List<SettingDocument> findByKey(String tenantId, String key) {
         if (VancetopePolicy.isSystemKey(key)) {
@@ -102,6 +111,14 @@ public class SettingService {
             // cache loader and forceSet callers go through forceGetStringValue.
             return List.of();
         }
+        return repository.findByTenantIdAndKey(tenantId, key);
+    }
+
+    /**
+     * Operator-side counterpart to {@link #findByKey}, including
+     * {@code vancetope.*} system keys — for the {@code anus} admin shell.
+     */
+    public List<SettingDocument> forceFindByKey(String tenantId, String key) {
         return repository.findByTenantIdAndKey(tenantId, key);
     }
 
@@ -154,6 +171,7 @@ public class SettingService {
     public void forceDelete(String tenantId, String referenceType, String referenceId, String key) {
         vancetopePolicy.requireForceWritable(key);
         repository.deleteByTenantIdAndReferenceTypeAndReferenceIdAndKey(tenantId, referenceType, referenceId, key);
+        vancetopePolicy.onSettingChanged(tenantId, key);
     }
 
     public long deleteAll(String tenantId, String referenceType, String referenceId) {
@@ -171,28 +189,53 @@ public class SettingService {
      */
     public long deleteByPrefix(String tenantId, String referenceType, String referenceId, String keyPrefix) {
         if (keyPrefix == null || keyPrefix.isEmpty()) return 0;
-        // Prefix-deletion without per-key policy check is unsafe: a delete that
-        // covers e.g. "oauth." in a project may remove deny-list-protected keys
-        // like "oauth.provider.apiKey" without the operator knowing. The check
-        // runs against the first concrete key in scope; if the policy would
-        // refuse that key, the whole prefix is refused.
-        vancetopePolicy.requireWritable(tenantId, referenceType, referenceId, keyPrefix);
-        return forceDeleteByPrefix(tenantId, referenceType, referenceId, keyPrefix);
+        // Every key the prefix covers has to pass the write policy. Checking
+        // the prefix string alone is not enough: "oauth." would remove a
+        // deny-listed "oauth.provider.apiKey", and "v" would remove the
+        // vancetope.* deny lists themselves. One refused key refuses the
+        // whole delete.
+        for (SettingDocument doc : mongoTemplate.find(
+                prefixQuery(tenantId, referenceType, referenceId, keyPrefix), SettingDocument.class)) {
+            vancetopePolicy.requireWritable(tenantId, referenceType, referenceId, doc.getKey());
+        }
+        return removeByPrefix(tenantId, referenceType, referenceId, keyPrefix);
     }
 
     /**
-     * Operator escape hatch for {@link #deleteByPrefix}. Skips the per-key
-     * policy check; the hardcoded {@code vancetope.*}-prefix check still
-     * applies via {@link VancetopePolicy#requireForceWritable}.
+     * Operator escape hatch for {@link #deleteByPrefix}. Skips the deny lists;
+     * the hardcoded {@code vancetope.*}-prefix check still applies to every
+     * covered key via {@link VancetopePolicy#requireForceWritable}, so a short
+     * prefix cannot sweep non-meta system keys along.
      */
     public long forceDeleteByPrefix(String tenantId, String referenceType, String referenceId, String keyPrefix) {
         if (keyPrefix == null || keyPrefix.isEmpty()) return 0;
-        vancetopePolicy.requireForceWritable(keyPrefix);
-        // Single atomic prefix-remove instead of scan-then-N-deletes: no
-        // window for a concurrent write to slip a matching key past the delete,
-        // and one round-trip instead of O(n). Pattern.quote keeps prefix dots
-        // (e.g. "oauth.slack.") literal rather than regex wildcards.
-        Query query = new Query(Criteria.where("tenantId")
+        List<SettingDocument> covered =
+                mongoTemplate.find(prefixQuery(tenantId, referenceType, referenceId, keyPrefix), SettingDocument.class);
+        for (SettingDocument doc : covered) {
+            vancetopePolicy.requireForceWritable(doc.getKey());
+        }
+        long deleted = removeByPrefix(tenantId, referenceType, referenceId, keyPrefix);
+        for (SettingDocument doc : covered) {
+            vancetopePolicy.onSettingChanged(tenantId, doc.getKey());
+        }
+        return deleted;
+    }
+
+    /**
+     * Single atomic prefix-remove instead of N single deletes: one round-trip,
+     * and no key slips past the delete half-way. The policy scan before it is
+     * a separate read — a key written in between is removed unchecked, which
+     * is acceptable because writing it already went through the policy.
+     */
+    private long removeByPrefix(String tenantId, String referenceType, String referenceId, String keyPrefix) {
+        return mongoTemplate
+                .remove(prefixQuery(tenantId, referenceType, referenceId, keyPrefix), SettingDocument.class)
+                .getDeletedCount();
+    }
+
+    /** Pattern.quote keeps prefix dots (e.g. "oauth.slack.") literal rather than regex wildcards. */
+    private static Query prefixQuery(String tenantId, String referenceType, String referenceId, String keyPrefix) {
+        return new Query(Criteria.where("tenantId")
                 .is(tenantId)
                 .and("referenceType")
                 .is(referenceType)
@@ -200,7 +243,6 @@ public class SettingService {
                 .is(referenceId)
                 .and("key")
                 .regex("^" + Pattern.quote(keyPrefix)));
-        return mongoTemplate.remove(query, SettingDocument.class).getDeletedCount();
     }
 
     // ──────────────────── Set / upsert ────────────────────
@@ -832,6 +874,9 @@ public class SettingService {
             @Nullable String plaintext,
             SettingType type) {
         agentKeyPolicy.requireAgentWritable(key);
+        // The vancetope.* namespace and the tenant/project deny lists bind an
+        // agent at least as much as any other caller of set().
+        vancetopePolicy.requireWritable(tenantId, referenceType, referenceId, key);
         Optional<SettingDocument> existing = find(tenantId, referenceType, referenceId, key);
         // The threshold is referenceReadable(), not encrypted(): W1 protects
         // exactly what an agent may not read back, and HIDDEN has to stay
@@ -857,12 +902,9 @@ public class SettingService {
                             + "Resolution: a human has to change this setting through the settings editor, the "
                             + "admin REST endpoint, or the anus admin shell.");
         }
-        // Write via forceSet: agent-write path has already passed agentKeyPolicy
-        // (W3) and the W1 PASSWORD-overwrite guard. The encrypted value is
-        // built here because we cannot route through set() (which would re-run
-        // VancetopePolicy — already settled) and we want the same
-        // activity-feed row as a regular write. Use forceSetEncryptedSecret so
-        // the encrypt step is shared with that path.
+        // Every guard has run above — agentKeyPolicy (W3), VancetopePolicy and
+        // the W1 PASSWORD-overwrite guard — so the write goes straight to the
+        // encrypting force path instead of re-running the policy in set().
         return forceSetEncryptedSecret(tenantId, referenceType, referenceId, key, plaintext, type);
     }
 
@@ -1215,6 +1257,8 @@ public class SettingService {
         if (!type.encrypted()) {
             throw new IllegalArgumentException("storeServerEncrypted() requires an encrypted type, got " + type);
         }
+        // The verbatim-blob write below bypasses set(), so the policy runs here.
+        vancetopePolicy.requireWritable(tenantId, referenceType, referenceId, key);
         if (ciphertext == null) {
             setEncryptedSecret(tenantId, referenceType, referenceId, key, null, type);
             return SecretImportOutcome.WRITTEN;

@@ -84,7 +84,8 @@ public class SettingCommands {
             } catch (IllegalArgumentException e) {
                 return e.getMessage();
             }
-            List<SettingDocument> docs = settingService.findAll(tenant, storage.type(), storage.id());
+            // forceFindAll: the operator shell lists the vancetope.* deny lists too.
+            List<SettingDocument> docs = settingService.forceFindAll(tenant, storage.type(), storage.id());
             if (StringUtils.isNotBlank(key)) {
                 docs = docs.stream().filter(d -> key.equals(d.getKey())).toList();
             }
@@ -94,7 +95,7 @@ public class SettingCommands {
             return renderTable(docs);
         }
         // Key-only fallthrough — find every scope in the tenant that holds this key.
-        List<SettingDocument> docs = settingService.findByKey(tenant, key);
+        List<SettingDocument> docs = settingService.forceFindByKey(tenant, key);
         if (docs.isEmpty()) {
             return "(no settings with key='" + key + "' in tenant='" + tenant + "')";
         }
@@ -147,9 +148,9 @@ public class SettingCommands {
                     SettingType type,
             @Option(longName = "description", shortName = 'd') @Nullable String description) {
 
-        // Every encrypted type, not just PASSWORD: SettingService.set() throws
-        // for those, so a type-specific guard would let HIDDEN through into an
-        // IllegalArgumentException instead of this message.
+        // Every encrypted type, not just PASSWORD: forceSet() stores the value
+        // as-is and expects ciphertext for those, so a plaintext secret has to
+        // go through 'setting set-secret', which encrypts it.
         if (type.encrypted()) {
             return "Refusing to set " + type + " via 'setting set' — use " + "'setting set-secret --type " + type
                     + "' instead.";

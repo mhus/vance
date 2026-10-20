@@ -1,18 +1,25 @@
 package de.mhus.vance.brain.home;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.home.HomeStatusDto;
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.llmusage.BudgetScope;
 import de.mhus.vance.shared.llmusage.BudgetWindow;
 import de.mhus.vance.shared.llmusage.LlmBudget;
 import de.mhus.vance.shared.llmusage.LlmBudgetService;
 import de.mhus.vance.shared.llmusage.LlmPowerService;
 import de.mhus.vance.shared.llmusage.LlmPowerState;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.storage.StorageQuotaService;
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,6 +39,8 @@ class HomeStatusControllerTest {
     private LlmPowerService llmPowerService;
     private LlmBudgetService llmBudgetService;
     private StorageQuotaService storageQuotaService;
+    private RequestAuthority authority;
+    private HttpServletRequest request;
     private HomeStatusController controller;
 
     @BeforeEach
@@ -39,7 +48,10 @@ class HomeStatusControllerTest {
         llmPowerService = mock(LlmPowerService.class);
         llmBudgetService = mock(LlmBudgetService.class);
         storageQuotaService = mock(StorageQuotaService.class);
-        controller = new HomeStatusController(llmPowerService, llmBudgetService, storageQuotaService);
+        authority = mock(RequestAuthority.class);
+        request = mock(HttpServletRequest.class);
+        when(authority.check(eq(request), any(Resource.class), eq(Action.READ))).thenReturn(true);
+        controller = new HomeStatusController(llmPowerService, llmBudgetService, storageQuotaService, authority);
     }
 
     @Test
@@ -49,7 +61,7 @@ class HomeStatusControllerTest {
         when(storageQuotaService.status(TENANT))
                 .thenReturn(new StorageQuotaService.Status(TENANT, 800_000L, 1_000_000L, 80, false, true));
 
-        HomeStatusDto s = controller.status(TENANT, null);
+        HomeStatusDto s = controller.status(request, TENANT, null);
 
         assertThat(s.getLlmPowerOn()).isTrue();
         assertThat(s.getLlmBudgetPercent()).isEqualTo(73);
@@ -65,7 +77,7 @@ class HomeStatusControllerTest {
         when(storageQuotaService.status(TENANT))
                 .thenReturn(new StorageQuotaService.Status(TENANT, 0L, 0L, -1, false, false));
 
-        HomeStatusDto s = controller.status(TENANT, null);
+        HomeStatusDto s = controller.status(request, TENANT, null);
 
         assertThat(s.getLlmPowerOn()).isFalse();
     }
@@ -77,7 +89,7 @@ class HomeStatusControllerTest {
         when(storageQuotaService.status(TENANT))
                 .thenReturn(new StorageQuotaService.Status(TENANT, 100L, 0L, -1, false, false));
 
-        HomeStatusDto s = controller.status(TENANT, null);
+        HomeStatusDto s = controller.status(request, TENANT, null);
 
         // Unlimited budget must read as -1 (no budget), not as 0.
         assertThat(s.getLlmBudgetPercent()).isEqualTo(-1);
@@ -90,7 +102,7 @@ class HomeStatusControllerTest {
         when(storageQuotaService.status(TENANT))
                 .thenReturn(new StorageQuotaService.Status(TENANT, 123L, 0L, -1, false, false));
 
-        HomeStatusDto s = controller.status(TENANT, null);
+        HomeStatusDto s = controller.status(request, TENANT, null);
 
         assertThat(s.getStorageQuotaPercent()).isEqualTo(-1);
         // bytesFree stays null: unlimited → no second line on the tile
@@ -104,7 +116,7 @@ class HomeStatusControllerTest {
         when(storageQuotaService.status(TENANT))
                 .thenReturn(new StorageQuotaService.Status(TENANT, 50L, 100L, 50, false, false));
 
-        HomeStatusDto s = controller.status(TENANT, null);
+        HomeStatusDto s = controller.status(request, TENANT, null);
 
         assertThat(s.getLlmPowerOn()).isNull();
         assertThat(s.getLlmBudgetPercent()).isEqualTo(20);
@@ -118,7 +130,7 @@ class HomeStatusControllerTest {
         when(storageQuotaService.status(TENANT))
                 .thenReturn(new StorageQuotaService.Status(TENANT, 50L, 100L, 50, false, false));
 
-        HomeStatusDto s = controller.status(TENANT, null);
+        HomeStatusDto s = controller.status(request, TENANT, null);
 
         assertThat(s.getLlmPowerOn()).isTrue();
         assertThat(s.getLlmBudgetPercent()).isNull();
@@ -131,7 +143,7 @@ class HomeStatusControllerTest {
         when(llmBudgetService.status(eq(TENANT), eq(null))).thenReturn(List.of(tenantScope(20.0)));
         when(storageQuotaService.status(TENANT)).thenThrow(new RuntimeException("aggregation blip"));
 
-        HomeStatusDto s = controller.status(TENANT, null);
+        HomeStatusDto s = controller.status(request, TENANT, null);
 
         assertThat(s.getStorageQuotaPercent()).isNull();
         assertThat(s.getStorageBytesFree()).isNull();
@@ -146,7 +158,7 @@ class HomeStatusControllerTest {
         when(storageQuotaService.status(TENANT))
                 .thenReturn(new StorageQuotaService.Status(TENANT, 0L, 0L, -1, false, false));
 
-        HomeStatusDto s = controller.status(TENANT, null);
+        HomeStatusDto s = controller.status(request, TENANT, null);
 
         assertThat(s.getLlmBudgetPercent()).isEqualTo(87);
     }
@@ -164,7 +176,7 @@ class HomeStatusControllerTest {
         when(storageQuotaService.status(TENANT))
                 .thenReturn(new StorageQuotaService.Status(TENANT, 0L, 0L, -1, false, false));
 
-        HomeStatusDto s = controller.status(TENANT, null);
+        HomeStatusDto s = controller.status(request, TENANT, null);
 
         assertThat(s.getLlmBudgetPercent()).isEqualTo(40);
         assertThat(s.getLlmBudgetScope()).isEqualTo("_tenant");
@@ -185,12 +197,40 @@ class HomeStatusControllerTest {
         when(storageQuotaService.status(TENANT))
                 .thenReturn(new StorageQuotaService.Status(TENANT, 0L, 0L, -1, false, false));
 
-        HomeStatusDto s = controller.status(TENANT, "research");
+        HomeStatusDto s = controller.status(request, TENANT, "research");
 
         assertThat(s.getLlmBudgetPercent()).isEqualTo(65);
         assertThat(s.getLlmBudgetScope()).isEqualTo("research");
         // Storage stays tenant-only regardless of projectId.
         assertThat(s.getStorageQuotaPercent()).isEqualTo(-1);
+    }
+
+    @Test
+    void projectIdUnreadable_leavesBudgetEmpty_andKeepsTenantFields() {
+        when(authority.check(eq(request), eq(new Resource.Project(TENANT, "secret")), eq(Action.READ)))
+                .thenReturn(false);
+        when(llmPowerService.load(TENANT)).thenReturn(LlmPowerState.ALL_ON);
+        when(storageQuotaService.status(TENANT))
+                .thenReturn(new StorageQuotaService.Status(TENANT, 800_000L, 1_000_000L, 80, false, true));
+
+        HomeStatusDto s = controller.status(request, TENANT, "secret");
+
+        assertThat(s.getLlmBudgetPercent()).isNull();
+        assertThat(s.getLlmBudgetScope()).isNull();
+        assertThat(s.getLlmPowerOn()).isTrue();
+        assertThat(s.getStorageQuotaPercent()).isEqualTo(80);
+        verify(llmBudgetService, never()).status(any(), any());
+    }
+
+    @Test
+    void storageUsageUnknown_leavesStorageFieldsEmpty() {
+        when(storageQuotaService.status(TENANT))
+                .thenReturn(new StorageQuotaService.Status(TENANT, -1L, 1_000_000L, 0, false, false));
+
+        HomeStatusDto s = controller.status(request, TENANT, null);
+
+        assertThat(s.getStorageQuotaPercent()).isNull();
+        assertThat(s.getStorageBytesFree()).isNull();
     }
 
     @Test
@@ -202,7 +242,7 @@ class HomeStatusControllerTest {
         when(storageQuotaService.status(TENANT))
                 .thenReturn(new StorageQuotaService.Status(TENANT, 0L, 0L, -1, false, false));
 
-        HomeStatusDto s = controller.status(TENANT, "");
+        HomeStatusDto s = controller.status(request, TENANT, "");
 
         assertThat(s.getLlmBudgetPercent()).isEqualTo(50);
         assertThat(s.getLlmBudgetScope()).isEqualTo("_tenant");

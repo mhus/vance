@@ -3,17 +3,23 @@ package de.mhus.vance.shared.settings;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.mongodb.client.result.DeleteResult;
 import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.shared.audit.AuditService;
 import de.mhus.vance.shared.crypto.AesEncryptionService;
 import de.mhus.vance.shared.home.HomeBootstrapService;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Query;
 
 /**
  * Pins the {@link VancetopePolicy} behaviour: the three protection layers
@@ -29,12 +35,14 @@ class VancetopePolicyTest {
     private static final String TENANT = "acme";
 
     private SettingRepository repository;
+    private MongoTemplate mongoTemplate;
     private SettingService service;
     private VancetopePolicy policy;
 
     @BeforeEach
     void setUp() {
         repository = mock(SettingRepository.class);
+        mongoTemplate = mock(MongoTemplate.class);
         AesEncryptionService encryption = new AesEncryptionService("unit-test-master-key");
         // Two-step build: the policy needs the final service reference for its
         // cache loader, so the service gets the policy and the policy gets a
@@ -47,7 +55,7 @@ class VancetopePolicyTest {
 
         service = new SettingService(
                 repository,
-                mock(MongoTemplate.class),
+                mongoTemplate,
                 encryption,
                 mock(AuditService.class),
                 megadodoProvider(),
@@ -350,5 +358,159 @@ class VancetopePolicyTest {
                         HomeBootstrapService.TENANT_PROJECT_NAME,
                         "specific.setting"))
                 .isInstanceOf(SecretAccessDeniedException.class);
+    }
+
+    // ──────────────── write paths around set() ────────────────
+
+    private static SettingDocument doc(String referenceId, String key) {
+        return SettingDocument.builder()
+                .tenantId(TENANT)
+                .referenceType(SettingService.SCOPE_PROJECT)
+                .referenceId(referenceId)
+                .key(key)
+                .value("x")
+                .type(SettingType.STRING)
+                .build();
+    }
+
+    private void stubPrefixScan(SettingDocument... docs) {
+        when(mongoTemplate.find(any(Query.class), eq(SettingDocument.class))).thenReturn(List.of(docs));
+        DeleteResult result = mock(DeleteResult.class);
+        when(result.getDeletedCount()).thenReturn((long) docs.length);
+        when(mongoTemplate.remove(any(Query.class), eq(SettingDocument.class))).thenReturn(result);
+    }
+
+    @Test
+    void deleteByPrefix_refusesWhenACoveredKeyIsDenyListed() {
+        stubDenyLists(null, "oauth.provider.apiKey");
+        stubPrefixScan(doc("user-project", "oauth.provider.token"), doc("user-project", "oauth.provider.apiKey"));
+
+        assertThatThrownBy(() -> service.deleteByPrefix(TENANT, SettingService.SCOPE_PROJECT, "user-project", "oauth."))
+                .isInstanceOf(SecretAccessDeniedException.class)
+                .extracting(e -> ((SecretAccessDeniedException) e).getReason())
+                .isEqualTo(SecretAccessDeniedException.Reason.WRITE_PROJECT_DENY_LIST);
+        verify(mongoTemplate, never()).remove(any(Query.class), eq(SettingDocument.class));
+    }
+
+    @Test
+    void deleteByPrefix_shortPrefixCannotSweepTheSystemNamespace() {
+        stubDenyLists(null, null);
+        stubPrefixScan(doc(HomeBootstrapService.TENANT_PROJECT_NAME, VancetopePolicy.KEY_DENIED_PROJECT));
+
+        assertThatThrownBy(() -> service.deleteByPrefix(
+                        TENANT, SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME, "v"))
+                .isInstanceOf(SecretAccessDeniedException.class)
+                .extracting(e -> ((SecretAccessDeniedException) e).getReason())
+                .isEqualTo(SecretAccessDeniedException.Reason.WRITE_SYSTEM_NAMESPACE);
+    }
+
+    @Test
+    void deleteByPrefix_allowedKeysAreRemoved() {
+        stubDenyLists(null, "billing.*");
+        stubPrefixScan(doc("user-project", "oauth.slack.token"));
+
+        long deleted = service.deleteByPrefix(TENANT, SettingService.SCOPE_PROJECT, "user-project", "oauth.slack.");
+
+        assertThat(deleted).isEqualTo(1L);
+    }
+
+    @Test
+    void forceDeleteByPrefix_refusesNonMetaSystemKeys() {
+        stubPrefixScan(doc(HomeBootstrapService.TENANT_PROJECT_NAME, "vancetope.foo"));
+
+        assertThatThrownBy(() -> service.forceDeleteByPrefix(
+                        TENANT, SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME, "vancetope"))
+                .isInstanceOf(SecretAccessDeniedException.class)
+                .extracting(e -> ((SecretAccessDeniedException) e).getReason())
+                .isEqualTo(SecretAccessDeniedException.Reason.WRITE_FORCE_NON_META);
+    }
+
+    @Test
+    void forceDeleteByPrefix_ofADenyList_dropsTheCachedList() {
+        stubDenyLists(null, "billing.*");
+        assertThat(policy.projectDenyPatterns(TENANT)).containsExactly("billing.*");
+        stubPrefixScan(doc(HomeBootstrapService.TENANT_PROJECT_NAME, VancetopePolicy.KEY_DENIED_PROJECT));
+        stubDenyLists(null, null);
+
+        service.forceDeleteByPrefix(
+                TENANT, SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME, "vancetope.denied.");
+
+        assertThat(policy.projectDenyPatterns(TENANT)).isEmpty();
+    }
+
+    @Test
+    void forceDelete_ofADenyList_dropsTheCachedList() {
+        stubDenyLists("smtp.*", null);
+        assertThat(policy.tenantDenyPatterns(TENANT)).containsExactly("smtp.*");
+        stubDenyLists(null, null);
+
+        service.forceDelete(
+                TENANT,
+                SettingService.SCOPE_PROJECT,
+                HomeBootstrapService.TENANT_PROJECT_NAME,
+                VancetopePolicy.KEY_DENIED_TENANT);
+
+        assertThat(policy.tenantDenyPatterns(TENANT)).isEmpty();
+    }
+
+    @Test
+    void setAgentSecret_honoursTheProjectDenyList() {
+        stubDenyLists(null, "billing.*");
+
+        assertThatThrownBy(() -> service.setAgentSecret(
+                        TENANT,
+                        SettingService.SCOPE_PROJECT,
+                        "user-project",
+                        "billing.key",
+                        "s3cret",
+                        SettingType.HIDDEN))
+                .isInstanceOf(SecretAccessDeniedException.class)
+                .extracting(e -> ((SecretAccessDeniedException) e).getReason())
+                .isEqualTo(SecretAccessDeniedException.Reason.WRITE_PROJECT_DENY_LIST);
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void setAgentSecret_cannotWriteADenyList() {
+        assertThatThrownBy(() -> service.setAgentSecret(
+                        TENANT,
+                        SettingService.SCOPE_PROJECT,
+                        HomeBootstrapService.TENANT_PROJECT_NAME,
+                        VancetopePolicy.KEY_DENIED_PROJECT,
+                        "",
+                        SettingType.HIDDEN))
+                .isInstanceOf(SecretAccessDeniedException.class)
+                .extracting(e -> ((SecretAccessDeniedException) e).getReason())
+                .isEqualTo(SecretAccessDeniedException.Reason.WRITE_SYSTEM_NAMESPACE);
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void storeServerEncrypted_honoursTheProjectDenyList() {
+        stubDenyLists(null, "billing.*");
+
+        assertThatThrownBy(() -> service.storeServerEncrypted(
+                        TENANT,
+                        SettingService.SCOPE_PROJECT,
+                        "user-project",
+                        "billing.key",
+                        "blob",
+                        SettingType.HIDDEN))
+                .isInstanceOf(SecretAccessDeniedException.class);
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void forceFindAll_listsTheSystemKeys_findAllDoesNot() {
+        SettingDocument deny = doc(HomeBootstrapService.TENANT_PROJECT_NAME, VancetopePolicy.KEY_DENIED_TENANT);
+        SettingDocument plain = doc(HomeBootstrapService.TENANT_PROJECT_NAME, "smtp.host");
+        when(repository.findByTenantIdAndReferenceTypeAndReferenceId(
+                        TENANT, SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME))
+                .thenReturn(List.of(deny, plain));
+
+        assertThat(service.findAll(TENANT, SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME))
+                .containsExactly(plain);
+        assertThat(service.forceFindAll(TENANT, SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME))
+                .containsExactly(deny, plain);
     }
 }

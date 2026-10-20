@@ -1595,13 +1595,27 @@ public class DocumentService {
             willCompress = false;
         }
 
-        // When we do not compress, totalBytes already holds the exact byte
-        // count that will reach StorageService — feed it into the quota
-        // pre-check as expectedBytes. The compressed path keeps the
-        // unknown-size bypass because the final size only materialises at
-        // the storage layer.
-        long expectedBytes = willCompress ? -1L : totalBytes.get();
-        StorageService.StorageInfo info = storageService.store(tenantId, path, finalStream, expectedBytes);
+        // Only the small payload knows its size up front — everything fit in
+        // initialBuffer. The two large paths stream (gzip, or buffer + rest),
+        // so they pass -1 and the storage layer caps the stream at the room
+        // left under the quota instead.
+        long expectedBytes = bytesRead > compressionThreshold ? -1L : bytesRead;
+        StorageService.StorageInfo info;
+        try {
+            info = storageService.store(tenantId, path, finalStream, expectedBytes);
+        } catch (RuntimeException e) {
+            if (willCompress) {
+                // A refused or aborted write stops reading the pipe; closing
+                // the read end makes the compression task fail its next write
+                // instead of blocking on a full pipe forever.
+                try {
+                    finalStream.close();
+                } catch (IOException ignored) {
+                    /* best effort */
+                }
+            }
+            throw e;
+        }
         return new ContentWriteResult(info.id(), willCompress, totalBytes.get());
     }
 

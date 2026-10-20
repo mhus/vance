@@ -17,8 +17,9 @@ import org.jspecify.annotations.Nullable;
  * controller absent on this build). The SPA renders nothing for a null field
  * — a missing value never blocks the launcher.
  *
- * <p>This DTO is deliberately read-only and tenant-scope only: there are no
- * per-project or per-user fields, and no admin actions. The full admin
+ * <p>This DTO is deliberately read-only: no amounts, no per-user fields, no
+ * admin actions. The only project-scoped value is the LLM budget percent
+ * (see {@link #llmBudgetPercent}). The full admin
  * surface stays behind {@code GET /usage/budget} (admin-only) and
  * {@code GET /llm-power} (admin-only) — see {@code llm-resource-management.md}
  * §5a and §5b.
@@ -58,9 +59,10 @@ public class HomeStatusDto {
 
     /**
      * Which scope {@link #llmBudgetPercent} was read against —
-     * {@code "tenant"} (default) or {@code "project"} (when
-     * {@code ?projectId=X} was passed). {@code null} when the value
-     * could not be answered at all (no scope to report).
+     * {@code "_tenant"} (default) or the project name passed as
+     * {@code ?projectId=X}. {@code null} when the value could not be answered
+     * at all (no scope to report), including a project the caller may not
+     * read.
      */
     @Nullable
     private String llmBudgetScope;

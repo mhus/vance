@@ -1,5 +1,7 @@
 package de.mhus.vance.shared.storage;
 
+import java.util.Locale;
+
 /**
  * Thrown when a storage write would push the tenant over its configured
  * {@code storage.quota.maxBytes}. Throws from the quota pre-check in
@@ -56,8 +58,8 @@ public class StorageQuotaExceededException extends RuntimeException {
 
     private static String formatBytes(long bytes) {
         if (bytes < 1024) return bytes + " B";
-        if (bytes < 1024L * 1024) return String.format("%.1f KB", bytes / 1024.0);
-        if (bytes < 1024L * 1024 * 1024) return String.format("%.1f MB", bytes / 1024.0 / 1024);
-        return String.format("%.2f GB", bytes / 1024.0 / 1024 / 1024);
+        if (bytes < 1024L * 1024) return String.format(Locale.ROOT, "%.1f KB", bytes / 1024.0);
+        if (bytes < 1024L * 1024 * 1024) return String.format(Locale.ROOT, "%.1f MB", bytes / 1024.0 / 1024);
+        return String.format(Locale.ROOT, "%.2f GB", bytes / 1024.0 / 1024 / 1024);
     }
 }

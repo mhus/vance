@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.settings.SettingType;
@@ -24,9 +27,10 @@ import org.springframework.data.mongodb.core.aggregation.AggregationResults;
  * service directly and rely on its in-memory caches staying cold for the
  * duration of each test (each test gets a fresh instance).
  *
- * <p>Fail-open paths (R1/R4/R5 from {@code planning/storage-quota.md})
- * are tested explicitly: a broken aggregation, an unknown size, and an
- * absent setting must each allow the write through.
+ * <p>Fail-open paths (R1/R5 from {@code planning/storage-quota.md}) are
+ * tested explicitly: a broken aggregation and an absent setting must each
+ * allow the write through. An unknown size is not waved through — it gets
+ * the room left under the limit as a cap.
  */
 class StorageQuotaServiceTest {
 
@@ -90,12 +94,62 @@ class StorageQuotaServiceTest {
     }
 
     @Test
-    void unknownSize_bypassesQuota() {
+    void unknownSize_isCappedAtTheRoomLeft() {
         seedSetting("acme", StorageQuotaService.KEY_MAX_BYTES, "1048576");
-        // Aggregation would otherwise matter; we do not stub it.
+        stubAggregation("acme", 1_000_000L);
         StorageQuotaService.Check c = service.check("acme", -1L, -1L);
         assertThat(c.allowed()).isTrue();
-        assertThat(c.reason()).isEqualTo("unknown-size-bypass");
+        assertThat(c.reason()).isEqualTo("unknown-size-capped");
+        assertThat(c.remainingBytes()).isEqualTo(48_576L);
+    }
+
+    @Test
+    void unknownSize_creditsTheReplacedBlob() {
+        seedSetting("acme", StorageQuotaService.KEY_MAX_BYTES, "1048576");
+        stubAggregation("acme", 1_048_576L); // exactly full, old blob included
+        StorageQuotaService.Check c = service.check("acme", -1L, 10_000L);
+        assertThat(c.allowed()).isTrue();
+        assertThat(c.remainingBytes()).isEqualTo(10_000L);
+    }
+
+    @Test
+    void unknownSize_tenantAlreadyFull_denied() {
+        seedSetting("acme", StorageQuotaService.KEY_MAX_BYTES, "1048576");
+        stubAggregation("acme", 1_100_000L);
+        StorageQuotaService.Check c = service.check("acme", -1L, -1L);
+        assertThat(c.allowed()).isFalse();
+    }
+
+    @Test
+    void unlimited_isNotCapped() {
+        seedSetting("acme", StorageQuotaService.KEY_MAX_BYTES, "0");
+        StorageQuotaService.Check c = service.check("acme", -1L, -1L);
+        assertThat(c.allowed()).isTrue();
+        assertThat(c.remainingBytes()).isEqualTo(StorageQuotaService.Check.UNCAPPED);
+    }
+
+    @Test
+    void precheck_reusesTheAggregationUntilInvalidated() {
+        seedSetting("acme", StorageQuotaService.KEY_MAX_BYTES, "1048576");
+        stubAggregation("acme", 500_000L);
+        service.check("acme", 100L, -1L);
+        service.check("acme", 200L, -1L);
+        verify(mongoTemplate, times(1))
+                .aggregate(any(Aggregation.class), eq("storage_data"), eq(StorageQuotaService.SumResult.class));
+
+        service.invalidateUsage("acme");
+        service.check("acme", 300L, -1L);
+        verify(mongoTemplate, times(2))
+                .aggregate(any(Aggregation.class), eq("storage_data"), eq(StorageQuotaService.SumResult.class));
+    }
+
+    @Test
+    void status_unlimitedTenant_skipsTheAggregation() {
+        seedSetting("acme", StorageQuotaService.KEY_MAX_BYTES, "0");
+        StorageQuotaService.Status st = service.status("acme");
+        assertThat(st.limitBytes()).isZero();
+        assertThat(st.usedBytes()).isEqualTo(-1L);
+        verify(mongoTemplate, never()).aggregate(any(Aggregation.class), any(String.class), any(Class.class));
     }
 
     @Test

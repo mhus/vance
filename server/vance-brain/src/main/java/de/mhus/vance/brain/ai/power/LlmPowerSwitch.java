@@ -94,10 +94,9 @@ public class LlmPowerSwitch {
 
     /** The current state of {@code tenantId} — from RAM except for the first call. */
     public LlmPowerState state(String tenantId) {
-        LlmPowerState cached = cache.peek(tenantId);
-        if (cached != null) {
-            return cached;
-        }
+        // getOrLoad, not peek: a hit has to refresh lastAsked, otherwise an
+        // active tenant is evicted after IDLE_EVICTION and its next load could
+        // land in a Mongo hiccup — admitting a switched-off tenant.
         try {
             return cache.getOrLoad(tenantId);
         } catch (RuntimeException e) {

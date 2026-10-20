@@ -23,15 +23,21 @@ import org.springframework.stereotype.Service;
  *
  * <p>The hook lives in {@link MongoStorageService}; this service is
  * the read-side. It exposes {@link #check} for the pre-check path
- * and {@link #status} for the UI/status endpoint, plus
- * {@link #invalidateAllCaches} for the cross-pod listener that fires
- * when the setting is written.
+ * and {@link #status} for the UI/status endpoint. A changed
+ * {@code storage.quota.*} setting takes effect once the settings cache
+ * expires ({@code vance.storage.quota.settings-ttl}).
+ *
+ * <p><b>Unknown sizes are capped, not waved through.</b> Most large
+ * writes do not know their size up front (streaming gzip, a stream of
+ * unknown length). For those {@link #check} answers with
+ * {@link Check#remainingBytes()} — the room left under the limit — and
+ * {@link MongoStorageService} aborts the write once the stream passes it.
  *
  * <p><b>Fail-open:</b> a settings read that returns no value, an
- * aggregation that throws, or a {@code delta <= 0} path all return
- * {@link Check#allowed()} = {@code true}. The rationale is documented
- * in {@code planning/storage-quota.md} R1/R4/R5 — "im Zweifel für den
- * User", never lock a tenant out because of our infrastructure failing.
+ * aggregation that throws, or a known {@code delta <= 0} path all return
+ * {@link Check#allowed()} = {@code true} without a cap. The rationale is
+ * documented in {@code planning/storage-quota.md} R1/R5 — never lock a
+ * tenant out because of our infrastructure failing.
  */
 @Service
 @Slf4j
@@ -72,9 +78,11 @@ public class StorageQuotaService {
      * for a new write that does not replace anything.
      *
      * <p>{@code deltaBytes == -1} signals "size unknown" — the caller has no
-     * way to know the size in advance (e.g. multipart upload). We bypass the
-     * pre-check and let the write through; the next periodic aggregation
-     * will catch any resulting overrun (multi-pod race + R4).
+     * way to know the size in advance (streaming compression, a stream of
+     * unknown length). The answer then carries the room left under the limit
+     * as {@link Check#remainingBytes()}; the storage layer enforces it while
+     * the stream drains. A tenant already at or over the limit is denied up
+     * front.
      */
     public Check check(@Nullable String tenantId, long deltaBytes, long oldSizeBytes) {
         if (tenantId == null || tenantId.isBlank()) {
@@ -86,33 +94,35 @@ public class StorageQuotaService {
             return Check.allowed(0L, 0L, "unlimited");
         }
 
-        if (deltaBytes < 0) {
-            // Caller does not know the size — R4: bypass. Must be checked
-            // before the effectiveDelta computation, otherwise (delta=-1,
-            // oldSize=-1) would collapse to no-growth and the unknown-size
-            // signal would be lost.
-            return Check.allowed(0L, settings.maxBytes(), "unknown-size-bypass");
-        }
-
-        long effectiveDelta = (deltaBytes > 0 ? deltaBytes : 0L) - (oldSizeBytes > 0 ? oldSizeBytes : 0L);
-        if (effectiveDelta <= 0) {
-            // Replace/update smaller than the previous content: the write
-            // cannot grow the footprint, so no pre-check needed.
+        long oldBytes = oldSizeBytes > 0 ? oldSizeBytes : 0L;
+        if (deltaBytes >= 0 && deltaBytes - oldBytes <= 0) {
+            // Known size, not larger than the content it replaces: the write
+            // cannot grow the footprint, so no aggregation needed.
             return Check.allowed(0L, settings.maxBytes(), "no-growth");
         }
 
         long currentUsage;
         try {
-            currentUsage = aggregateUsage(tenantId);
+            currentUsage = precheckCache.get(tenantId, () -> aggregateUsage(tenantId));
         } catch (RuntimeException e) {
             log.warn("Storage quota aggregation failed for tenant={}, bypassing pre-check", tenantId, e);
             return Check.allowed(0L, settings.maxBytes(), "aggregation-failed-bypass");
         }
 
+        // The replaced blob is still counted in storage_data until the cleanup
+        // scheduler runs, so its bytes are room the new content may use.
+        long remaining = settings.maxBytes() - currentUsage + oldBytes;
+        if (deltaBytes < 0) {
+            if (remaining <= 0) {
+                return Check.denied(currentUsage, 0L, settings.maxBytes());
+            }
+            return Check.capped(currentUsage, settings.maxBytes(), remaining, "unknown-size-capped");
+        }
+        long effectiveDelta = deltaBytes - oldBytes;
         if (currentUsage + effectiveDelta > settings.maxBytes()) {
             return Check.denied(currentUsage, effectiveDelta, settings.maxBytes());
         }
-        return Check.allowed(currentUsage, settings.maxBytes(), "ok");
+        return Check.capped(currentUsage, settings.maxBytes(), remaining, "ok");
     }
 
     /** UI / status payload. Cached for {@code usageTtl}. */
@@ -121,15 +131,24 @@ public class StorageQuotaService {
     }
 
     /**
-     * Invalidate every cache layer for {@code tenantId}. Called by the
-     * {@code RoutedDocumentChangedEvent} listener in {@code vance-brain}
-     * when {@code storage.quota.*} settings are written, and by
-     * {@link MongoStorageService} after a successful write (so the next
-     * pre-check on the same pod sees the new size).
+     * Invalidate every cache layer for {@code tenantId} — for tests and an
+     * explicit reload. The write path uses {@link #invalidateUsage}, which
+     * leaves the settings cache alone.
      */
     public void invalidateAllCaches(@Nullable String tenantId) {
         if (tenantId == null || tenantId.isBlank()) return;
         settingsCache.invalidate(tenantId);
+        invalidateUsage(tenantId);
+    }
+
+    /**
+     * Drop the cached usage numbers for {@code tenantId}. Called by
+     * {@link MongoStorageService} after a successful write so the next
+     * pre-check on this pod sees the new size; other pods catch up after
+     * {@code vance.storage.quota.precheck-ttl}.
+     */
+    public void invalidateUsage(@Nullable String tenantId) {
+        if (tenantId == null || tenantId.isBlank()) return;
         precheckCache.invalidate(tenantId);
         usageCache.invalidate(tenantId);
     }
@@ -191,6 +210,10 @@ public class StorageQuotaService {
 
     private Status computeStatus(String tenantId) {
         QuotaSettings s = loadSettings(tenantId);
+        if (s.maxBytes() <= 0) {
+            // Nobody reads the usage of an unlimited tenant — skip the aggregation.
+            return new Status(tenantId, -1L, 0L, -1, false, false);
+        }
         long used;
         try {
             used = aggregateUsage(tenantId);
@@ -198,23 +221,34 @@ public class StorageQuotaService {
             log.warn("Status aggregation failed for tenant={}", tenantId, e);
             used = -1L;
         }
-        boolean unlimited = s.maxBytes() <= 0;
-        int percent = unlimited ? -1 : (int) Math.min(100L, Math.max(0L, used * 100L / s.maxBytes()));
-        boolean exhausted = !unlimited && used >= s.maxBytes();
-        boolean warning = !unlimited && s.warnPercent() > 0 && percent >= s.warnPercent();
+        int percent = (int) Math.min(100L, Math.max(0L, used * 100L / s.maxBytes()));
+        boolean exhausted = used >= s.maxBytes();
+        boolean warning = s.warnPercent() > 0 && percent >= s.warnPercent();
         return new Status(tenantId, used, s.maxBytes(), percent, exhausted, warning);
     }
 
     // ──────────────────── records ────────────────────
 
-    /** One pre-check outcome. */
-    public record Check(boolean allowed, long currentUsageBytes, long limitBytes, String reason) {
+    /**
+     * One pre-check outcome. {@code remainingBytes} is the most the write may
+     * store — {@link #UNCAPPED} when nothing limits it (unlimited tenant,
+     * fail-open path, no-growth write).
+     */
+    public record Check(boolean allowed, long currentUsageBytes, long limitBytes, long remainingBytes, String reason) {
+
+        /** {@link #remainingBytes()} when the write is not capped. */
+        public static final long UNCAPPED = Long.MAX_VALUE;
+
         public static Check allowed(long used, long limit, String reason) {
-            return new Check(true, used, limit, reason);
+            return new Check(true, used, limit, UNCAPPED, reason);
+        }
+
+        public static Check capped(long used, long limit, long remaining, String reason) {
+            return new Check(true, used, limit, remaining, reason);
         }
 
         public static Check denied(long used, long delta, long limit) {
-            return new Check(false, used, limit, "would-exceed:" + used + "+" + delta + ">" + limit);
+            return new Check(false, used, limit, 0L, "would-exceed:" + used + "+" + delta + ">" + limit);
         }
     }
 
@@ -223,7 +257,11 @@ public class StorageQuotaService {
         public static final QuotaSettings NONE = new QuotaSettings(0L, 0);
     }
 
-    /** UI / endpoint payload. {@code usedBytes == -1} signals aggregation failure. */
+    /**
+     * UI / endpoint payload. {@code usedBytes == -1} means the usage was not
+     * computed — the tenant is unlimited ({@code limitBytes == 0}) or the
+     * aggregation failed.
+     */
     public record Status(
             String tenant, long usedBytes, long limitBytes, int percentUsed, boolean exhausted, boolean warning) {}
 

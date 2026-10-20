@@ -1,82 +1,88 @@
 package de.mhus.vance.shared.settings;
 
+import de.mhus.vance.shared.cache.TtlTenantCache;
 import de.mhus.vance.shared.home.HomeBootstrapService;
+import java.time.Duration;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 /**
- * Schreibschutz-Policy für den {@code vancetope.*}-Namespace. Drei Schichten:
+ * Write protection for the {@code vancetope.*} namespace. Three layers:
  *
  * <ol>
- *   <li><b>Hartkodiertes Prefix</b> {@code vancetope.}: alles darunter ist
- *       über {@link SettingService#set} nicht schreibbar — weder in
- *       {@code _tenant} noch in User-Projekten. anus darf via
- *       {@code forceSet} nur die explizit erlaubten Meta-Keys
- *       ({@code vancetope.denied.*}) setzen.</li>
- *   <li><b>Tenant-Deny-Liste</b>: Setting {@code vancetope.denied.tenant} im
- *       {@code _tenant}-Projekt blockiert {@code set} im
- *       {@code _tenant}-Projekt für die gelisteten Patterns.</li>
- *   <li><b>Project-Deny-Liste</b>: Setting {@code vancetope.denied.project}
- *       im {@code _tenant}-Projekt blockiert {@code set} in allen
- *       User-Projekten (jedem {@code referenceType=project}-Scope, der nicht
- *       {@code _tenant} ist) für die gelisteten Patterns.</li>
+ *   <li><b>Hardcoded prefix</b> {@code vancetope.}: nothing below it is
+ *       writable through {@link SettingService#set} — neither in
+ *       {@code _tenant} nor in user projects. anus may write only the
+ *       explicitly allowed meta keys ({@code vancetope.denied.*}) via
+ *       {@code forceSet}.</li>
+ *   <li><b>Tenant deny list</b>: setting {@code vancetope.denied.tenant} in
+ *       the {@code _tenant} project blocks {@code set} into the
+ *       {@code _tenant} project for the listed patterns.</li>
+ *   <li><b>Project deny list</b>: setting {@code vancetope.denied.project}
+ *       in the {@code _tenant} project blocks {@code set} into every other
+ *       scope (any {@code referenceType=project} scope that is not
+ *       {@code _tenant}, and think-process scopes) for the listed
+ *       patterns.</li>
  * </ol>
  *
- * <p>{@link SettingService#forceSet} (und alle Force-Varianten) umgehen die
- * Listen. Nur der hartkodierte Prefix-Schutz bleibt — anus darf damit keine
- * hypothetischen {@code vancetope.foo}-System-Settings setzen, die nicht zur
- * Deny-Listen-Mechanik gehören.
+ * <p>{@link SettingService#forceSet} (and every force variant) bypasses the
+ * lists. Only the hardcoded prefix protection remains — anus cannot write
+ * hypothetical {@code vancetope.foo} system settings that are not part of
+ * the deny-list mechanics.
  *
- * <p>Die Listen werden per {@link #refresh} aus dem {@code _tenant}-Projekt
- * geladen, gecacht pro Tenant. {@link SettingService} ruft
- * {@link #onSettingChanged} nach jedem erfolgreichen Write — bei
- * Meta-Deny-Keys wird der Cache geleert, damit der nächste
- * {@link #requireWritable}-Call die frische Liste zieht.
+ * <p>The lists are read from the {@code _tenant} project and cached per
+ * tenant for {@link #CACHE_TTL}. The TTL is what carries a change made by
+ * anus — a separate process — to every brain pod; {@link #onSettingChanged}
+ * additionally drops the entry at once in the process that wrote it.
  *
- * <p>Settings-Pattern-Grammatik: comma-separated, jeder Eintrag entweder ein
- * exakter Key oder ein Prefix mit {@code *}-Suffix. Dieselbe Grammatik wie
- * {@link AgentSettingKeyPolicy} und {@link KitSettingKeyPolicy}, damit alle
- * Deny-Listen gleich lesbar sind.
+ * <p>Pattern grammar: comma-separated, each entry either an exact key or a
+ * prefix with a {@code *} suffix. The same grammar as
+ * {@link AgentSettingKeyPolicy} and {@link KitSettingKeyPolicy}, so every
+ * deny list reads the same.
  */
 @Component
 @Slf4j
 public class VancetopePolicy {
 
     /**
-     * System-Key-Namespace. Alle Keys mit diesem Prefix sind über {@code set}
-     * immer blockiert. anus darf via {@code forceSet} nur Keys unter
-     * {@link #META_DENY_PREFIX} setzen — das sind die Settings, die diese
-     * Policy selbst konfigurieren.
+     * System key namespace. Every key with this prefix is always blocked for
+     * {@code set}. anus may write only keys under {@link #META_DENY_PREFIX}
+     * via {@code forceSet} — the settings that configure this policy.
      */
     public static final String SYSTEM_KEY_PREFIX = "vancetope.";
 
     /**
-     * Sub-Prefix der "Meta"-System-Keys (die Deny-Listen selbst). Diese dürfen
-     * via {@code forceSet} gesetzt werden, weil sonst die Listen nie
-     * einrichtbar wären. Alles andere unter {@link #SYSTEM_KEY_PREFIX} bleibt
-     * für {@code forceSet} ebenfalls blockiert.
+     * Sub-prefix of the "meta" system keys (the deny lists themselves). These
+     * may be written via {@code forceSet}, otherwise the lists could never be
+     * set up. Everything else under {@link #SYSTEM_KEY_PREFIX} stays blocked
+     * for {@code forceSet} too.
      */
     public static final String META_DENY_PREFIX = "vancetope.denied.";
 
-    /** Setting-Key der Tenant-Deny-Liste. Lebt im {@code _tenant}-Projekt. */
+    /** Setting key of the tenant deny list. Lives in the {@code _tenant} project. */
     public static final String KEY_DENIED_TENANT = "vancetope.denied.tenant";
 
-    /** Setting-Key der Project-Deny-Liste. Lebt im {@code _tenant}-Projekt. */
+    /** Setting key of the project deny list. Lives in the {@code _tenant} project. */
     public static final String KEY_DENIED_PROJECT = "vancetope.denied.project";
 
-    /** Hartkodierter Default für die Tenant-Liste, falls das Setting fehlt. */
+    /** Hardcoded default for the tenant list when the setting is absent. */
     public static final String DEFAULT_DENIED_TENANT = "";
 
-    /** Hartkodierter Default für die Project-Liste, falls das Setting fehlt. */
+    /** Hardcoded default for the project list when the setting is absent. */
     public static final String DEFAULT_DENIED_PROJECT = "";
 
+    /**
+     * How long a tenant's deny lists are trusted. Bounds how long a change
+     * written by anus takes to reach a brain pod — there is no cross-process
+     * invalidation, and none is needed for an operator setting.
+     */
+    static final Duration CACHE_TTL = Duration.ofSeconds(30);
+
     private final ObjectProvider<SettingService> settingServiceProvider;
-    private final ConcurrentMap<String, DenyLists> cacheByTenant = new ConcurrentHashMap<>();
+    private final TtlTenantCache<String, DenyLists> cacheByTenant = new TtlTenantCache<>(CACHE_TTL);
 
     public VancetopePolicy(ObjectProvider<SettingService> settingServiceProvider) {
         this.settingServiceProvider = settingServiceProvider;
@@ -85,31 +91,31 @@ public class VancetopePolicy {
     // ──────────────────── Public API ────────────────────
 
     /**
-     * Ob {@code key} im {@code vancetope.*}-System-Namespace liegt. Lese- und
-     * Schreibschutz laufen beide über diesen Test.
+     * Whether {@code key} is in the {@code vancetope.*} system namespace. Read
+     * and write protection both go through this test.
      */
     public static boolean isSystemKey(@Nullable String key) {
         return key != null && key.startsWith(SYSTEM_KEY_PREFIX);
     }
 
     /**
-     * Ob {@code key} ein "Meta-Deny-Key" ist — eine {@code vancetope.denied.*}-
-     * Einstellung, die diese Policy selbst konfiguriert. Diese dürfen via
-     * {@code forceSet} gesetzt werden; alle anderen {@code vancetope.*}-Keys
-     * bleiben für {@code forceSet} blockiert.
+     * Whether {@code key} is a "meta deny key" — a {@code vancetope.denied.*}
+     * setting that configures this policy. These may be written via
+     * {@code forceSet}; every other {@code vancetope.*} key stays blocked for
+     * {@code forceSet}.
      */
     public static boolean isMetaDenyKey(@Nullable String key) {
         return key != null && key.startsWith(META_DENY_PREFIX);
     }
 
     /**
-     * Throws {@link SecretAccessDeniedException} wenn {@code set} (nicht
-     * {@code forceSet}) den Schreibvorgang ablehnen muss.
+     * Throws {@link SecretAccessDeniedException} when {@code set} (not
+     * {@code forceSet}) has to refuse the write.
      *
      * @param key the setting key
      * @param referenceType {@code project} | {@code think-process}
-     * @param referenceId Projekt- oder Think-Process-Id
-     * @param tenantId Tenant, zu dem die Deny-Listen geladen werden
+     * @param referenceId project or think-process id
+     * @param tenantId tenant whose deny lists apply
      */
     public void requireWritable(String tenantId, String referenceType, String referenceId, String key) {
         if (isSystemKey(key)) {
@@ -128,7 +134,7 @@ public class VancetopePolicy {
                             + "Resolution: use forceSet from the anus admin shell to write this key, "
                             + "or rename the setting to a non-reserved namespace.");
         }
-        DenyLists lists = cacheByTenant.computeIfAbsent(tenantId, this::loadDenyLists);
+        DenyLists lists = lists(tenantId);
         boolean inTenantScope = SettingService.SCOPE_PROJECT.equals(referenceType)
                 && HomeBootstrapService.TENANT_PROJECT_NAME.equals(referenceId);
         if (inTenantScope) {
@@ -161,9 +167,9 @@ public class VancetopePolicy {
     }
 
     /**
-     * Throws {@link SecretAccessDeniedException} wenn {@code forceSet} den
-     * Schreibvorgang ablehnen muss. Einziger Schutz: das
-     * {@code vancetope.*}-Prefix, und auch da nur für nicht-Meta-Keys.
+     * Throws {@link SecretAccessDeniedException} when {@code forceSet} has to
+     * refuse the write. The only protection: the {@code vancetope.*} prefix,
+     * and even there only for non-meta keys.
      */
     public void requireForceWritable(String key) {
         if (isSystemKey(key) && !isMetaDenyKey(key)) {
@@ -181,41 +187,46 @@ public class VancetopePolicy {
     }
 
     /**
-     * Liest die aktuelle Tenant-Deny-Liste für Diagnostik / Reports. Über
-     * {@code forceGet} — nicht über die normale Cascade, weil
-     * {@code vancetope.*} aus der User-Cascade herausgefiltert wird.
+     * The current tenant deny list, for diagnostics and reports. Read via
+     * {@code forceGetStringValue} — not through the regular cascade, which
+     * filters {@code vancetope.*} out of the user view.
      */
     public List<String> tenantDenyPatterns(String tenantId) {
-        return cacheByTenant.computeIfAbsent(tenantId, this::loadDenyLists).tenant;
+        return lists(tenantId).tenant;
     }
 
-    /** Liest die aktuelle Project-Deny-Liste für Diagnostik / Reports. */
+    /** The current project deny list, for diagnostics and reports. */
     public List<String> projectDenyPatterns(String tenantId) {
-        return cacheByTenant.computeIfAbsent(tenantId, this::loadDenyLists).project;
+        return lists(tenantId).project;
     }
 
     /**
-     * Verwirft die gecachte Deny-Liste für {@code tenantId}. Wird von
-     * {@link SettingService} nach jedem erfolgreichen Write eines
-     * Meta-Deny-Keys aufgerufen.
+     * Drops the cached deny lists of {@code tenantId}, so the next check
+     * reads them fresh.
      */
     public void refresh(String tenantId) {
-        cacheByTenant.remove(tenantId);
+        cacheByTenant.invalidate(tenantId);
     }
 
     /**
-     * Notification, dass ein Setting geändert wurde. Bei Meta-Deny-Keys wird
-     * der Cache geleert.
+     * Notification that a setting was written or deleted. For meta deny keys
+     * the cache entry is dropped.
      *
-     * <p>Wird vom {@code SettingService} nach jedem erfolgreichen
-     * {@code forceSet} aufgerufen. Da {@code set} Meta-Deny-Keys ohnehin
-     * ablehnt, ist nur der Force-Pfad hier relevant.
+     * <p>Called by {@code SettingService} after every successful force write
+     * and force delete. {@code set} refuses meta deny keys anyway, so only the
+     * force path matters here. Other processes pick the change up after
+     * {@link #CACHE_TTL}.
      */
     public void onSettingChanged(String tenantId, String key) {
         if (isMetaDenyKey(key)) {
             refresh(tenantId);
-            log.debug("VancetopePolicy cache refreshed for tenant='{}' due to {}", tenantId, key);
+            log.trace("VancetopePolicy cache refreshed for tenant='{}' due to {}", tenantId, key);
         }
+    }
+
+    private DenyLists lists(String tenantId) {
+        DenyLists lists = cacheByTenant.get(tenantId, () -> loadDenyLists(tenantId));
+        return lists == null ? DenyLists.NONE : lists;
     }
 
     // ──────────────────── Internals ────────────────────
@@ -237,9 +248,11 @@ public class VancetopePolicy {
         List<String> project = projectRaw == null
                 ? SettingKeyPatterns.parse(DEFAULT_DENIED_PROJECT)
                 : SettingKeyPatterns.parse(projectRaw);
-        log.debug("VancetopePolicy tenant='{}': tenant={} project={}", tenantId, tenant, project);
+        log.trace("VancetopePolicy tenant='{}': tenant={} project={}", tenantId, tenant, project);
         return new DenyLists(tenant, project);
     }
 
-    private record DenyLists(List<String> tenant, List<String> project) {}
+    private record DenyLists(List<String> tenant, List<String> project) {
+        static final DenyLists NONE = new DenyLists(List.of(), List.of());
+    }
 }

@@ -83,9 +83,15 @@ public class AgentSettingKeyPolicy {
                             + "(vance.settings.agent-write-deny-keys)",
                     key);
             throw new SecretAccessDeniedException(
-                    "setting '" + key + "' is reserved for operator configuration and cannot be "
-                            + "written by an agent — a human has to set it through the settings "
-                            + "editor or the matching setting form");
+                    SecretAccessDeniedException.Reason.AGENT_RESERVED_KEY,
+                    key,
+                    "Setting '" + key + "' is reserved for operator configuration and cannot be "
+                            + "written by an agent. "
+                            + "Reason: '" + key + "' matches a pattern in the agent-write deny list "
+                            + "(vance.settings.agent-write-deny-keys), which protects infrastructure keys "
+                            + "(LLM providers, vault, store, kit, cost budget, storage quota). "
+                            + "Resolution: a human has to set this key through the settings editor, "
+                            + "the matching setting form, or the anus admin shell.");
         }
     }
 

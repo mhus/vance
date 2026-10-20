@@ -85,8 +85,8 @@ class SettingCommandsTest {
 
     @Test
     void storageToWire_tenantSystemProject_becomesTenantScopeWithEmptyRef() {
-        StorageRef wire = SettingCommands.storageToWire(
-                SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME);
+        StorageRef wire =
+                SettingCommands.storageToWire(SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME);
 
         assertThat(wire.type()).isEqualTo(SettingService.SCOPE_TENANT);
         assertThat(wire.id()).isEqualTo("");
@@ -103,8 +103,7 @@ class SettingCommandsTest {
 
     @Test
     void storageToWire_regularProject_staysAsProject() {
-        StorageRef wire = SettingCommands.storageToWire(
-                SettingService.SCOPE_PROJECT, "literature-review");
+        StorageRef wire = SettingCommands.storageToWire(SettingService.SCOPE_PROJECT, "literature-review");
 
         assertThat(wire.type()).isEqualTo(SettingService.SCOPE_PROJECT);
         assertThat(wire.id()).isEqualTo("literature-review");
@@ -112,8 +111,7 @@ class SettingCommandsTest {
 
     @Test
     void storageToWire_thinkProcess_passesThrough() {
-        StorageRef wire = SettingCommands.storageToWire(
-                SettingService.SCOPE_THINK_PROCESS, "tp-7");
+        StorageRef wire = SettingCommands.storageToWire(SettingService.SCOPE_THINK_PROCESS, "tp-7");
 
         assertThat(wire.type()).isEqualTo(SettingService.SCOPE_THINK_PROCESS);
         assertThat(wire.id()).isEqualTo("tp-7");
@@ -156,8 +154,8 @@ class SettingCommandsTest {
         SettingService settings = mock(SettingService.class);
         SettingCommands commands = new SettingCommands(settings, emptyLineReader());
 
-        String out = commands.set("acme", SettingService.SCOPE_TENANT, null,
-                "smtp.password", "s3cret", SettingType.HIDDEN, null);
+        String out = commands.set(
+                "acme", SettingService.SCOPE_TENANT, null, "smtp.password", "s3cret", SettingType.HIDDEN, null);
 
         assertThat(out).contains("set-secret").contains("HIDDEN");
         verifyNoInteractions(settings);
@@ -166,16 +164,20 @@ class SettingCommandsTest {
     @Test
     void setSecret_hiddenType_writesThroughTheEncryptedPathKeepingTheType() {
         SettingService settings = mock(SettingService.class);
-        when(settings.setEncryptedSecret(any(), any(), any(), any(), any(), any()))
+        when(settings.forceSetEncryptedSecret(any(), any(), any(), any(), any(), any()))
                 .thenReturn(doc(SettingType.HIDDEN, "cipher"));
         SettingCommands commands = new SettingCommands(settings, emptyLineReader());
 
-        commands.setSecret("acme", SettingService.SCOPE_TENANT, null,
-                "smtp.password", "s3cret", SettingType.HIDDEN);
+        commands.setSecret("acme", SettingService.SCOPE_TENANT, null, "smtp.password", "s3cret", SettingType.HIDDEN);
 
-        verify(settings).setEncryptedSecret(
-                "acme", SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME,
-                "smtp.password", "s3cret", SettingType.HIDDEN);
+        verify(settings)
+                .forceSetEncryptedSecret(
+                        "acme",
+                        SettingService.SCOPE_PROJECT,
+                        HomeBootstrapService.TENANT_PROJECT_NAME,
+                        "smtp.password",
+                        "s3cret",
+                        SettingType.HIDDEN);
     }
 
     @Test
@@ -183,8 +185,7 @@ class SettingCommandsTest {
         SettingService settings = mock(SettingService.class);
         SettingCommands commands = new SettingCommands(settings, emptyLineReader());
 
-        String out = commands.setSecret("acme", SettingService.SCOPE_TENANT, null,
-                "retries", "3", SettingType.INT);
+        String out = commands.setSecret("acme", SettingService.SCOPE_TENANT, null, "retries", "3", SettingType.INT);
 
         assertThat(out).contains("setting set");
         verifyNoInteractions(settings);
@@ -196,14 +197,22 @@ class SettingCommandsTest {
         SettingCommands commands = new SettingCommands(settings, emptyLineReader());
 
         SettingCommands.Outcome outcome = commands.applyOne(
-                "acme", SettingCommands.mapToStorage(SettingService.SCOPE_TENANT, null),
-                "imap.password", Map.of("type", "HIDDEN", "value", "s3cret"), false);
+                "acme",
+                SettingCommands.mapToStorage(SettingService.SCOPE_TENANT, null),
+                "imap.password",
+                Map.of("type", "HIDDEN", "value", "s3cret"),
+                false);
 
         assertThat(outcome.applied()).isTrue();
-        verify(settings).setEncryptedSecret(
-                "acme", SettingService.SCOPE_PROJECT, HomeBootstrapService.TENANT_PROJECT_NAME,
-                "imap.password", "s3cret", SettingType.HIDDEN);
-        verify(settings, never()).set(any(), any(), any(), any(), any(), any(), any());
+        verify(settings)
+                .forceSetEncryptedSecret(
+                        "acme",
+                        SettingService.SCOPE_PROJECT,
+                        HomeBootstrapService.TENANT_PROJECT_NAME,
+                        "imap.password",
+                        "s3cret",
+                        SettingType.HIDDEN);
+        verify(settings, never()).forceSet(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -213,8 +222,11 @@ class SettingCommandsTest {
 
         for (SettingType type : new SettingType[] {SettingType.PASSWORD, SettingType.HIDDEN}) {
             SettingCommands.Outcome outcome = commands.applyOne(
-                    "acme", SettingCommands.mapToStorage(SettingService.SCOPE_TENANT, null),
-                    "k", Map.of("type", type.name(), "value", "s3cret"), true);
+                    "acme",
+                    SettingCommands.mapToStorage(SettingService.SCOPE_TENANT, null),
+                    "k",
+                    Map.of("type", type.name(), "value", "s3cret"),
+                    true);
 
             assertThat(outcome.line()).doesNotContain("s3cret").contains("<encrypted>");
         }

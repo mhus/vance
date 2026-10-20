@@ -1,7 +1,6 @@
 package de.mhus.vance.shared.settings;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -45,19 +44,54 @@ class SettingServiceTest {
         mongoTemplate = mock(org.springframework.data.mongodb.core.MongoTemplate.class);
         audit = mock(AuditService.class);
         encryption = new AesEncryptionService("unit-test-master-key");
+        // Two-step build: the noop policy needs the final service reference, so
+        // build a placeholder first, swap it in, then construct the real
+        // service that closes over the same instance.
+        SettingService[] holder = new SettingService[1];
+        VancetopePolicy policy = mockPolicy(() -> holder[0]);
         service = new SettingService(
-                repository, mongoTemplate, encryption, audit, megadodoProvider(), new AgentSettingKeyPolicy(""));
+                repository,
+                mongoTemplate,
+                encryption,
+                audit,
+                megadodoProvider(),
+                new AgentSettingKeyPolicy(""),
+                policy);
+        holder[0] = service;
         when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+    }
+
+    /**
+     * VancetopePolicy with no deny-list entries — set/delete calls in these
+     * tests exercise the write path, not the policy semantics. A dedicated
+     * {@code VancetopePolicyTest} covers the deny-list behaviour.
+     */
+    private static VancetopePolicy mockPolicy(java.util.function.Supplier<SettingService> owningService) {
+        org.springframework.beans.factory.ObjectProvider<SettingService> provider =
+                mock(org.springframework.beans.factory.ObjectProvider.class);
+        // The cache loader looks up the deny lists; the underlying service
+        // returns null for unset keys, which parse() collapses to the empty
+        // default — a clean "no lists configured" state for these tests.
+        when(provider.getObject()).thenAnswer(inv -> owningService.get());
+        return new VancetopePolicy(provider);
     }
 
     // ──────────────── write path ────────────────
 
     @Test
-    void set_rejectsPasswordType() {
-        assertThatThrownBy(() ->
-                        service.set(TENANT, PROJECT, "proj", "api.key", "some-ciphertext", SettingType.PASSWORD, null))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("setEncryptedSecret");
+    void set_encryptedType_encryptsAndPersists() {
+        // set() now encrypts transparently for encrypted types — the previous
+        // split into set()/setEncryptedSecret() was a leak, not a feature.
+        // The caller passes plaintext, the service stores ciphertext.
+        SettingDocument saved = service.set(TENANT, PROJECT, "proj", "api.key", "s3cr3t", SettingType.PASSWORD, null);
+
+        assertThat(saved.getType()).isEqualTo(SettingType.PASSWORD);
+        assertThat(saved.getValue()).isNotEqualTo("s3cr3t");
+        when(repository.findByTenantIdAndReferenceTypeAndReferenceIdAndKey(
+                        anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(Optional.of(saved));
+        assertThat(service.getDecryptedPassword(TENANT, PROJECT, "proj", "api.key"))
+                .isEqualTo("s3cr3t");
     }
 
     @Test

@@ -50,55 +50,58 @@ class SettingTypeEncryptedContractTest {
     @BeforeEach
     void setUp() {
         repository = mock(SettingRepository.class);
-        service = new SettingService(repository, mock(MongoTemplate.class),
-                new AesEncryptionService("unit-test-master-key"), mock(AuditService.class),
-                megadodoProvider(), new AgentSettingKeyPolicy(""));
+        // Two-step build: the noop policy needs the final service reference.
+        SettingService[] holder = new SettingService[1];
+        VancetopePolicy policy = noopPolicy(() -> holder[0]);
+        service = new SettingService(
+                repository,
+                mock(MongoTemplate.class),
+                new AesEncryptionService("unit-test-master-key"),
+                mock(AuditService.class),
+                megadodoProvider(),
+                new AgentSettingKeyPolicy(""),
+                policy);
+        holder[0] = service;
         when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
     }
 
-    // ──────────────── write path: encrypted types never reach set() ────────────────
-
-    @ParameterizedTest
-    @EnumSource(SettingType.class)
-    void set_rejectsEveryEncryptedType(SettingType type) {
-        if (!type.encrypted()) return;
-
-        assertThatThrownBy(() -> service.set(
-                TENANT, PROJECT, REF, "some.key", "value", type, null))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("setEncryptedSecret");
+    @SuppressWarnings("unchecked")
+    private VancetopePolicy noopPolicy(java.util.function.Supplier<SettingService> owningService) {
+        org.springframework.beans.factory.ObjectProvider<SettingService> provider =
+                mock(org.springframework.beans.factory.ObjectProvider.class);
+        when(provider.getObject()).thenAnswer(inv -> owningService.get());
+        return new VancetopePolicy(provider);
     }
 
+    // ──────────────── write path: set() handles every type, encrypts when needed ────────────────
+
+    /**
+     * set() now accepts every type — plain types store plaintext, encrypted
+     * types are encrypted on the way in. The previous split into set() /
+     * setEncryptedSecret() was a leak, not a feature: the encrypted-only path
+     * bypassed the write policy.
+     */
     @ParameterizedTest
     @EnumSource(SettingType.class)
-    void set_acceptsEveryPlainType(SettingType type) {
-        if (type.encrypted()) return;
-
-        SettingDocument saved = service.set(
-                TENANT, PROJECT, REF, "some.key", "value", type, null);
+    void set_acceptsEveryType(SettingType type) {
+        SettingDocument saved = service.set(TENANT, PROJECT, REF, "some.key", "value", type, null);
 
         assertThat(saved.getType()).isEqualTo(type);
-        assertThat(saved.getValue()).isEqualTo("value");
+        if (type.encrypted()) {
+            // Ciphertext, never plaintext.
+            assertThat(saved.getValue()).isNotEqualTo("value");
+        } else {
+            assertThat(saved.getValue()).isEqualTo("value");
+        }
     }
 
     @ParameterizedTest
     @EnumSource(SettingType.class)
-    void setEncryptedSecret_rejectsEveryPlainType(SettingType type) {
-        if (type.encrypted()) return;
-
-        assertThatThrownBy(() -> service.setEncryptedSecret(
-                TENANT, PROJECT, REF, "some.key", "value", type))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("requires an encrypted type");
-    }
-
-    @ParameterizedTest
-    @EnumSource(SettingType.class)
-    void setEncryptedSecret_storesCiphertextAndRoundTripsForEveryEncryptedType(SettingType type) {
+    void setEncryptedSecret_isAnAliasOnSet_worksForEveryEncryptedType(SettingType type) {
         if (!type.encrypted()) return;
 
-        SettingDocument saved = service.setEncryptedSecret(
-                TENANT, PROJECT, REF, "api.key", "s3cr3t", type);
+        // Deprecated alias: still callable, still encrypts on the way in.
+        SettingDocument saved = service.setEncryptedSecret(TENANT, PROJECT, REF, "api.key", "s3cr3t", type);
 
         assertThat(saved.getType()).isEqualTo(type);
         assertThat(saved.getValue()).isNotNull().isNotEqualTo("s3cr3t");
@@ -115,8 +118,7 @@ class SettingTypeEncryptedContractTest {
     void getStringValue_refusesEveryEncryptedType(SettingType type) {
         if (!type.encrypted()) return;
 
-        stubFind(service.setEncryptedSecret(
-                TENANT, PROJECT, REF, "api.key", "s3cr3t", type));
+        stubFind(service.set(TENANT, PROJECT, REF, "api.key", "s3cr3t", type, null));
 
         assertThat(service.getStringValue(TENANT, PROJECT, REF, "api.key")).isNull();
     }
@@ -126,14 +128,12 @@ class SettingTypeEncryptedContractTest {
     void prefixRead_skipsEveryEncryptedType(SettingType type) {
         if (!type.encrypted()) return;
 
-        SettingDocument secret = service.setEncryptedSecret(
-                TENANT, PROJECT, REF, "ai.provider.x.apiKey", "s3cr3t", type);
-        SettingDocument plain = service.set(
-                TENANT, PROJECT, REF, "ai.provider.x.baseUrl", "https://x", SettingType.STRING, null);
+        SettingDocument secret = service.set(TENANT, PROJECT, REF, "ai.provider.x.apiKey", "s3cr3t", type, null);
+        SettingDocument plain =
+                service.set(TENANT, PROJECT, REF, "ai.provider.x.baseUrl", "https://x", SettingType.STRING, null);
         when(repository.findByTenantIdAndReferenceTypeAndReferenceId(TENANT, PROJECT, REF))
                 .thenReturn(List.of(secret, plain));
-        when(repository.findByTenantIdAndReferenceTypeAndReferenceId(
-                anyString(), anyString(), anyString()))
+        when(repository.findByTenantIdAndReferenceTypeAndReferenceId(anyString(), anyString(), anyString()))
                 .thenReturn(List.of(secret, plain));
 
         assertThat(service.findByPrefixCascade(TENANT, REF, null, "ai.provider."))
@@ -163,12 +163,12 @@ class SettingTypeEncryptedContractTest {
 
     @Test
     void setAgentSecret_refusesToOverwriteWhatAnAgentMayNotReadBack() {
-        SettingDocument stored = service.setEncryptedSecret(
-                TENANT, PROJECT, REF, "smtp.password", "operator-set", SettingType.PASSWORD);
+        SettingDocument stored =
+                service.setEncryptedSecret(TENANT, PROJECT, REF, "smtp.password", "operator-set", SettingType.PASSWORD);
         stubFind(stored);
 
-        assertThatThrownBy(() -> service.setAgentSecret(
-                TENANT, PROJECT, REF, "smtp.password", "agent-set", SettingType.HIDDEN))
+        assertThatThrownBy(() ->
+                        service.setAgentSecret(TENANT, PROJECT, REF, "smtp.password", "agent-set", SettingType.HIDDEN))
                 .isInstanceOf(SecretAccessDeniedException.class)
                 .hasMessageContaining("smtp.password");
     }
@@ -177,12 +177,11 @@ class SettingTypeEncryptedContractTest {
     void setAgentSecret_overwritesAHiddenSetting() {
         // The other side of the same threshold: a vault secret exists to be
         // written by the tools that resolve it, so HIDDEN has to stay writable.
-        SettingDocument stored = service.setEncryptedSecret(
-                TENANT, PROJECT, REF, "deploy-token", "old", SettingType.HIDDEN);
+        SettingDocument stored =
+                service.setEncryptedSecret(TENANT, PROJECT, REF, "deploy-token", "old", SettingType.HIDDEN);
         stubFind(stored);
 
-        SettingDocument saved = service.setAgentSecret(
-                TENANT, PROJECT, REF, "deploy-token", "new", SettingType.HIDDEN);
+        SettingDocument saved = service.setAgentSecret(TENANT, PROJECT, REF, "deploy-token", "new", SettingType.HIDDEN);
 
         assertThat(saved.getType()).isEqualTo(SettingType.HIDDEN);
     }
@@ -194,11 +193,10 @@ class SettingTypeEncryptedContractTest {
      * direction and either operator, plus the {@code equals} spelling of the
      * same thought.
      */
-    private static final Pattern CONSTANT_COMPARISON = Pattern.compile(
-            "(?:[=!]=\\s*SettingType\\.(?:PASSWORD|HIDDEN))"
-                    + "|(?:SettingType\\.(?:PASSWORD|HIDDEN)\\s*[=!]=)"
-                    + "|(?:SettingType\\.(?:PASSWORD|HIDDEN)\\.equals\\s*\\()"
-                    + "|(?:\\.equals\\s*\\(\\s*SettingType\\.(?:PASSWORD|HIDDEN)\\s*\\))");
+    private static final Pattern CONSTANT_COMPARISON = Pattern.compile("(?:[=!]=\\s*SettingType\\.(?:PASSWORD|HIDDEN))"
+            + "|(?:SettingType\\.(?:PASSWORD|HIDDEN)\\s*[=!]=)"
+            + "|(?:SettingType\\.(?:PASSWORD|HIDDEN)\\.equals\\s*\\()"
+            + "|(?:\\.equals\\s*\\(\\s*SettingType\\.(?:PASSWORD|HIDDEN)\\s*\\))");
 
     /**
      * The one rule CLAUDE.md and {@code specification/public/settings-system.md}
@@ -216,9 +214,7 @@ class SettingTypeEncryptedContractTest {
     void noProductionSourceComparesAgainstAProtectionConstant() {
         Path serverRoot = serverRoot();
         List<Path> sourceRoots = mainJavaRoots(serverRoot);
-        assertThat(sourceRoots)
-                .as("source roots found below %s", serverRoot)
-                .isNotEmpty();
+        assertThat(sourceRoots).as("source roots found below %s", serverRoot).isNotEmpty();
 
         List<String> offenders = new ArrayList<>();
         for (Path root : sourceRoots) {
@@ -282,20 +278,17 @@ class SettingTypeEncryptedContractTest {
 
     private void stubFind(SettingDocument doc) {
         when(repository.findByTenantIdAndReferenceTypeAndReferenceIdAndKey(
-                anyString(), anyString(), anyString(), anyString()))
+                        anyString(), anyString(), anyString(), anyString()))
                 .thenReturn(Optional.of(doc));
     }
 
     /** Lazy provider stand-in — SettingService resolves Megadodo on demand. */
     @SuppressWarnings("unchecked")
-    private static org.springframework.beans.factory.ObjectProvider<
-            de.mhus.vance.shared.megadodo.MegadodoService> megadodoProvider() {
-        org.springframework.beans.factory.ObjectProvider<
-                de.mhus.vance.shared.megadodo.MegadodoService> provider =
+    private static org.springframework.beans.factory.ObjectProvider<de.mhus.vance.shared.megadodo.MegadodoService>
+            megadodoProvider() {
+        org.springframework.beans.factory.ObjectProvider<de.mhus.vance.shared.megadodo.MegadodoService> provider =
                 mock(org.springframework.beans.factory.ObjectProvider.class);
-        when(provider.getObject())
-                .thenReturn(mock(de.mhus.vance.shared.megadodo.MegadodoService.class));
+        when(provider.getObject()).thenReturn(mock(de.mhus.vance.shared.megadodo.MegadodoService.class));
         return provider;
     }
-
 }

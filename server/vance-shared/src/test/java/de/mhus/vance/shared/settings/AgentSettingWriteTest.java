@@ -10,8 +10,8 @@ import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.shared.audit.AuditService;
 import de.mhus.vance.shared.crypto.AesEncryptionService;
 import java.util.Optional;
-import org.junit.jupiter.api.Test;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.Test;
 import org.springframework.data.mongodb.core.MongoTemplate;
 
 /**
@@ -26,15 +26,33 @@ class AgentSettingWriteTest {
     private static final String REF = "instant-hole";
 
     private final SettingRepository repository = mock(SettingRepository.class);
-    private final AesEncryptionService encryption =
-            new AesEncryptionService("unit-test-master-key");
+    private final AesEncryptionService encryption = new AesEncryptionService("unit-test-master-key");
 
     private SettingService serviceWith(String denyKeys) {
-        SettingService s = new SettingService(repository, mock(MongoTemplate.class),
-                encryption, mock(AuditService.class),
-                megadodoProvider(), new AgentSettingKeyPolicy(denyKeys));
+        // Two-step build: the noop policy needs the final service reference, so
+        // build a placeholder first, swap it in, then construct the real
+        // service that closes over the same instance.
+        SettingService[] holder = new SettingService[1];
+        VancetopePolicy policy = noopPolicy(() -> holder[0]);
+        SettingService s = new SettingService(
+                repository,
+                mock(MongoTemplate.class),
+                encryption,
+                mock(AuditService.class),
+                megadodoProvider(),
+                new AgentSettingKeyPolicy(denyKeys),
+                policy);
+        holder[0] = s;
         when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         return s;
+    }
+
+    @SuppressWarnings("unchecked")
+    private VancetopePolicy noopPolicy(java.util.function.Supplier<SettingService> owningService) {
+        org.springframework.beans.factory.ObjectProvider<SettingService> provider =
+                mock(org.springframework.beans.factory.ObjectProvider.class);
+        when(provider.getObject()).thenAnswer(inv -> owningService.get());
+        return new VancetopePolicy(provider);
     }
 
     // ─────── the type follows the use, not the origin ───────
@@ -47,8 +65,8 @@ class AgentSettingWriteTest {
         SettingService service = serviceWith("");
         stub("smtp.password", null);
 
-        SettingDocument saved = service.setAgentSecret(
-                TENANT, PROJECT, REF, "smtp.password", "s3cr3t", SettingType.PASSWORD);
+        SettingDocument saved =
+                service.setAgentSecret(TENANT, PROJECT, REF, "smtp.password", "s3cr3t", SettingType.PASSWORD);
 
         assertThat(saved.getType()).isEqualTo(SettingType.PASSWORD);
         assertThat(saved.getValue()).isNotNull().isNotEqualTo("s3cr3t");
@@ -59,8 +77,8 @@ class AgentSettingWriteTest {
         SettingService service = serviceWith("");
         stub("deploy-token", null);
 
-        assertThat(service.setAgentSecret(
-                TENANT, PROJECT, REF, "deploy-token", "s3cr3t", SettingType.HIDDEN).getType())
+        assertThat(service.setAgentSecret(TENANT, PROJECT, REF, "deploy-token", "s3cr3t", SettingType.HIDDEN)
+                        .getType())
                 .isEqualTo(SettingType.HIDDEN);
     }
 
@@ -69,8 +87,8 @@ class AgentSettingWriteTest {
         SettingService service = serviceWith("");
         stub("deploy-token", doc(SettingType.HIDDEN, encryption.encrypt("old")));
 
-        assertThat(service.setAgentSecret(
-                TENANT, PROJECT, REF, "deploy-token", "new", SettingType.HIDDEN).getType())
+        assertThat(service.setAgentSecret(TENANT, PROJECT, REF, "deploy-token", "new", SettingType.HIDDEN)
+                        .getType())
                 .isEqualTo(SettingType.HIDDEN);
     }
 
@@ -82,7 +100,7 @@ class AgentSettingWriteTest {
         stub("smtp.password", doc(SettingType.PASSWORD, encryption.encrypt("real-credential")));
 
         assertThatThrownBy(() -> service.setAgentSecret(
-                TENANT, PROJECT, REF, "smtp.password", "agent-value", SettingType.PASSWORD))
+                        TENANT, PROJECT, REF, "smtp.password", "agent-value", SettingType.PASSWORD))
                 .isInstanceOf(SecretAccessDeniedException.class)
                 .hasMessageContaining("cannot be overwritten by an agent");
     }
@@ -94,8 +112,8 @@ class AgentSettingWriteTest {
         SettingService service = serviceWith("");
         stub("smtp.password", doc(SettingType.PASSWORD, encryption.encrypt("real-credential")));
 
-        assertThat(service.setEncryptedSecret(
-                TENANT, PROJECT, REF, "smtp.password", "new", SettingType.PASSWORD).getType())
+        assertThat(service.setEncryptedSecret(TENANT, PROJECT, REF, "smtp.password", "new", SettingType.PASSWORD)
+                        .getType())
                 .isEqualTo(SettingType.PASSWORD);
     }
 
@@ -109,8 +127,7 @@ class AgentSettingWriteTest {
         stub("ai.provider.default.apiKey", null);
 
         assertThatThrownBy(() -> service.setAgentSecret(
-                TENANT, PROJECT, REF, "ai.provider.default.apiKey", "sk-agent-chosen",
-                SettingType.PASSWORD))
+                        TENANT, PROJECT, REF, "ai.provider.default.apiKey", "sk-agent-chosen", SettingType.PASSWORD))
                 .isInstanceOf(SecretAccessDeniedException.class)
                 .hasMessageContaining("reserved for operator configuration");
     }
@@ -121,8 +138,8 @@ class AgentSettingWriteTest {
         stub("credentials.jira.api_token", null);
 
         assertThat(service.setAgentSecret(
-                TENANT, PROJECT, REF, "credentials.jira.api_token", "tok",
-                SettingType.PASSWORD).getType())
+                                TENANT, PROJECT, REF, "credentials.jira.api_token", "tok", SettingType.PASSWORD)
+                        .getType())
                 .isEqualTo(SettingType.PASSWORD);
     }
 
@@ -130,8 +147,7 @@ class AgentSettingWriteTest {
 
     @Test
     void deny_patterns_match_exact_keys_and_trailing_wildcards_only() {
-        AgentSettingKeyPolicy policy =
-                new AgentSettingKeyPolicy(" ai.provider.* , vault.clientSecret ");
+        AgentSettingKeyPolicy policy = new AgentSettingKeyPolicy(" ai.provider.* , vault.clientSecret ");
 
         assertThat(policy.denyPatterns()).containsExactly("ai.provider.*", "vault.clientSecret");
         assertThat(policy.isDenied("ai.provider.default.apiKey")).isTrue();
@@ -155,8 +171,7 @@ class AgentSettingWriteTest {
     // ─────── helpers ───────
 
     private void stub(String key, @Nullable SettingDocument doc) {
-        when(repository.findByTenantIdAndReferenceTypeAndReferenceIdAndKey(
-                TENANT, PROJECT, REF, key))
+        when(repository.findByTenantIdAndReferenceTypeAndReferenceIdAndKey(TENANT, PROJECT, REF, key))
                 .thenReturn(Optional.ofNullable(doc));
     }
 
@@ -170,14 +185,11 @@ class AgentSettingWriteTest {
 
     /** Lazy provider stand-in — SettingService resolves Megadodo on demand. */
     @SuppressWarnings("unchecked")
-    private static org.springframework.beans.factory.ObjectProvider<
-            de.mhus.vance.shared.megadodo.MegadodoService> megadodoProvider() {
-        org.springframework.beans.factory.ObjectProvider<
-                de.mhus.vance.shared.megadodo.MegadodoService> provider =
+    private static org.springframework.beans.factory.ObjectProvider<de.mhus.vance.shared.megadodo.MegadodoService>
+            megadodoProvider() {
+        org.springframework.beans.factory.ObjectProvider<de.mhus.vance.shared.megadodo.MegadodoService> provider =
                 mock(org.springframework.beans.factory.ObjectProvider.class);
-        when(provider.getObject())
-                .thenReturn(mock(de.mhus.vance.shared.megadodo.MegadodoService.class));
+        when(provider.getObject()).thenReturn(mock(de.mhus.vance.shared.megadodo.MegadodoService.class));
         return provider;
     }
-
 }

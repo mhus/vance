@@ -42,10 +42,27 @@ class SettingServiceReferenceSecretTest {
     void setUp() {
         repository = mock(SettingRepository.class);
         encryption = new AesEncryptionService("unit-test-master-key");
-        service = new SettingService(repository, mock(MongoTemplate.class),
-                encryption, mock(AuditService.class),
-                megadodoProvider(), new AgentSettingKeyPolicy(""));
+        // Two-step build: the noop policy needs the final service reference.
+        SettingService[] holder = new SettingService[1];
+        VancetopePolicy policy = noopPolicy(() -> holder[0]);
+        service = new SettingService(
+                repository,
+                mock(MongoTemplate.class),
+                encryption,
+                mock(AuditService.class),
+                megadodoProvider(),
+                new AgentSettingKeyPolicy(""),
+                policy);
+        holder[0] = service;
         when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+    }
+
+    @SuppressWarnings("unchecked")
+    private VancetopePolicy noopPolicy(java.util.function.Supplier<SettingService> owningService) {
+        org.springframework.beans.factory.ObjectProvider<SettingService> provider =
+                mock(org.springframework.beans.factory.ObjectProvider.class);
+        when(provider.getObject()).thenAnswer(inv -> owningService.get());
+        return new VancetopePolicy(provider);
     }
 
     // ─────── single scope ───────
@@ -138,7 +155,10 @@ class SettingServiceReferenceSecretTest {
 
     @Test
     void user_scope_reads_the_hub_project() {
-        stub(PROJECT, HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + USER, KEY,
+        stub(
+                PROJECT,
+                HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + USER,
+                KEY,
                 secret(SettingType.HIDDEN, "user-secret"));
 
         assertThat(service.getReferenceUserSecret(TENANT, USER, KEY)).isEqualTo("user-secret");
@@ -146,7 +166,10 @@ class SettingServiceReferenceSecretTest {
 
     @Test
     void user_scope_refuses_a_password_setting() {
-        stub(PROJECT, HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + USER, KEY,
+        stub(
+                PROJECT,
+                HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + USER,
+                KEY,
                 secret(SettingType.PASSWORD, "user-secret"));
 
         assertThatThrownBy(() -> service.getReferenceUserSecret(TENANT, USER, KEY))
@@ -174,23 +197,22 @@ class SettingServiceReferenceSecretTest {
         return d;
     }
 
-    private void stub(String referenceType, String referenceId, String key,
+    private void stub(
+            String referenceType,
+            String referenceId,
+            String key,
             @org.jspecify.annotations.Nullable SettingDocument doc) {
-        when(repository.findByTenantIdAndReferenceTypeAndReferenceIdAndKey(
-                TENANT, referenceType, referenceId, key))
+        when(repository.findByTenantIdAndReferenceTypeAndReferenceIdAndKey(TENANT, referenceType, referenceId, key))
                 .thenReturn(Optional.ofNullable(doc));
     }
 
     /** Lazy provider stand-in — SettingService resolves Megadodo on demand. */
     @SuppressWarnings("unchecked")
-    private static org.springframework.beans.factory.ObjectProvider<
-            de.mhus.vance.shared.megadodo.MegadodoService> megadodoProvider() {
-        org.springframework.beans.factory.ObjectProvider<
-                de.mhus.vance.shared.megadodo.MegadodoService> provider =
+    private static org.springframework.beans.factory.ObjectProvider<de.mhus.vance.shared.megadodo.MegadodoService>
+            megadodoProvider() {
+        org.springframework.beans.factory.ObjectProvider<de.mhus.vance.shared.megadodo.MegadodoService> provider =
                 mock(org.springframework.beans.factory.ObjectProvider.class);
-        when(provider.getObject())
-                .thenReturn(mock(de.mhus.vance.shared.megadodo.MegadodoService.class));
+        when(provider.getObject()).thenReturn(mock(de.mhus.vance.shared.megadodo.MegadodoService.class));
         return provider;
     }
-
 }

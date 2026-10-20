@@ -116,7 +116,7 @@ class SetupWizardHeadlessTest {
                         "ai.alias.default.code",
                         "ai.embedding.provider");
         // no api key in the config → the existing one is kept, not overwritten
-        verify(settingService, never()).setEncryptedPassword(any(), any(), any(), any(), any());
+        verify(settingService, never()).forceSetEncryptedPassword(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -140,7 +140,7 @@ class SetupWizardHeadlessTest {
                         "ai.alias.default.code",
                         "ai.embedding.provider");
         verify(settingService)
-                .set(
+                .forceSet(
                         eq("acme"),
                         eq(SettingService.SCOPE_PROJECT),
                         eq(HomeBootstrapService.TENANT_PROJECT_NAME),
@@ -152,11 +152,11 @@ class SetupWizardHeadlessTest {
 
     // ---- helpers -------------------------------------------------------
 
-    /** All keys the save path wrote through {@code SettingService.set}. */
+    /** All keys the save path wrote through {@code SettingService.forceSet}. */
     private List<String> stringKeysWritten() {
         ArgumentCaptor<String> keys = ArgumentCaptor.forClass(String.class);
         Mockito.verify(settingService, Mockito.atLeastOnce())
-                .set(any(), any(), any(), keys.capture(), any(), any(), any());
+                .forceSet(any(), any(), any(), keys.capture(), any(), any(), any());
         return keys.getAllValues();
     }
 

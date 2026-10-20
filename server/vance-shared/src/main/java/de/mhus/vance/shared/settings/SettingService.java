@@ -23,12 +23,35 @@ import org.springframework.stereotype.Service;
  * Setting CRUD and typed getters/setters. All reads and writes are scoped by
  * {@code (tenantId, referenceType, referenceId, key)}.
  *
+ * <h2>Write API</h2>
+ * Two layers, by design:
+ *
+ * <ul>
+ *   <li><b>{@code set}</b> — the public, policy-respecting write path. Brain
+ *       and any user-facing caller go through here. Throws
+ *       {@link SecretAccessDeniedException} when the key is in the
+ *       {@code vancetope.*} namespace or matches one of the tenant/project
+ *       deny lists (see {@link VancetopePolicy}).</li>
+ *   <li><b>{@code forceSet}</b> — the operator escape hatch used by the
+ *       {@code anus} admin shell. Bypasses the deny lists; only the
+ *       hardcoded {@code vancetope.*}-prefix check remains, and only for
+ *       non-meta keys ({@code vancetope.denied.*} is the one prefix
+ *       {@code forceSet} accepts).</li>
+ * </ul>
+ *
  * <p>Encrypted types ({@link SettingType#encrypted()} — {@code PASSWORD} and
- * {@code HIDDEN}) are encrypted on write and are never returned via the generic
- * {@link #getStringValue} path — use {@link #getDecryptedPassword} explicitly.
- * Which of the two a value carries decides whether an authored
- * {@code {{secret:…}}} reference may resolve it; that gate lives on the
- * resolution path, not here.
+ * {@code HIDDEN}) are encrypted on write. {@code set} does that
+ * transparently; {@code forceSet} expects ciphertext (use
+ * {@code forceSetEncryptedSecret} for plaintext). No {@code set}
+ * entry point rejects encrypted types anymore — the previous
+ * {@code IllegalArgumentException} split into two methods was a leak, not a
+ * feature.
+ *
+ * <h2>Read API</h2>
+ * {@link #getStringValue} and the cascade resolvers filter out keys in the
+ * {@code vancetope.*} namespace — those are operator-only and never appear in
+ * user-facing reads. {@link #forceGetStringValue} bypasses the filter for
+ * {@code anus} and the internal policy/cache code.
  */
 @Service
 @RequiredArgsConstructor
@@ -51,6 +74,10 @@ public class SettingService {
             megadodoServiceProvider;
 
     private final AgentSettingKeyPolicy agentKeyPolicy;
+    private final VancetopePolicy vancetopePolicy;
+
+    /** Reserved namespace prefix — see {@link VancetopePolicy#SYSTEM_KEY_PREFIX}. */
+    public static final String SYSTEM_KEY_PREFIX = VancetopePolicy.SYSTEM_KEY_PREFIX;
 
     // ──────────────────── Raw lookup ────────────────────
 
@@ -59,11 +86,22 @@ public class SettingService {
     }
 
     public List<SettingDocument> findAll(String tenantId, String referenceType, String referenceId) {
-        return repository.findByTenantIdAndReferenceTypeAndReferenceId(tenantId, referenceType, referenceId);
+        List<SettingDocument> docs =
+                repository.findByTenantIdAndReferenceTypeAndReferenceId(tenantId, referenceType, referenceId);
+        // System-namespace filter applies to the per-scope listing too —
+        // anus 'setting list' would otherwise expose the deny-list settings.
+        return docs.stream()
+                .filter(d -> !VancetopePolicy.isSystemKey(d.getKey()))
+                .toList();
     }
 
     /** All settings across scopes for a tenant sharing the same {@code key}. */
     public List<SettingDocument> findByKey(String tenantId, String key) {
+        if (VancetopePolicy.isSystemKey(key)) {
+            // System keys are not part of any user-visible key lookup; the
+            // cache loader and forceSet callers go through forceGetStringValue.
+            return List.of();
+        }
         return repository.findByTenantIdAndKey(tenantId, key);
     }
 
@@ -74,6 +112,11 @@ public class SettingService {
     public List<SettingDocument> findByPrefix(
             String tenantId, String referenceType, String referenceId, String keyPrefix) {
         if (keyPrefix == null || keyPrefix.isEmpty()) return List.of();
+        // System-namespace prefix: a caller asking for "vancetope." gets an
+        // empty list — the filter on the read path is consistent with the
+        // per-key filter in getStringValue, so user code cannot accidentally
+        // enumerate operator settings.
+        if (VancetopePolicy.SYSTEM_KEY_PREFIX.equals(keyPrefix)) return List.of();
         Query query = new Query(Criteria.where("tenantId")
                 .is(tenantId)
                 .and("referenceType")
@@ -82,7 +125,14 @@ public class SettingService {
                 .is(referenceId)
                 .and("key")
                 .regex("^" + Pattern.quote(keyPrefix)));
-        return mongoTemplate.find(query, SettingDocument.class);
+        List<SettingDocument> docs = mongoTemplate.find(query, SettingDocument.class);
+        // Defense in depth: if a caller asks for a prefix that is not itself
+        // a system prefix but happens to overlap with one (e.g. "v" matches
+        // "vancetope.x"), filter those rows out so they never escape this
+        // method.
+        return docs.stream()
+                .filter(d -> !VancetopePolicy.isSystemKey(d.getKey()))
+                .toList();
     }
 
     public boolean exists(String tenantId, String referenceType, String referenceId, String key) {
@@ -91,6 +141,18 @@ public class SettingService {
     }
 
     public void delete(String tenantId, String referenceType, String referenceId, String key) {
+        vancetopePolicy.requireWritable(tenantId, referenceType, referenceId, key);
+        repository.deleteByTenantIdAndReferenceTypeAndReferenceIdAndKey(tenantId, referenceType, referenceId, key);
+    }
+
+    /**
+     * Operator escape hatch for {@link #delete}. Bypasses the
+     * {@link VancetopePolicy} deny lists; only the hardcoded
+     * {@code vancetope.*}-prefix check remains, and even there only
+     * {@link VancetopePolicy#isMetaDenyKey meta-deny keys} are accepted.
+     */
+    public void forceDelete(String tenantId, String referenceType, String referenceId, String key) {
+        vancetopePolicy.requireForceWritable(key);
         repository.deleteByTenantIdAndReferenceTypeAndReferenceIdAndKey(tenantId, referenceType, referenceId, key);
     }
 
@@ -109,6 +171,23 @@ public class SettingService {
      */
     public long deleteByPrefix(String tenantId, String referenceType, String referenceId, String keyPrefix) {
         if (keyPrefix == null || keyPrefix.isEmpty()) return 0;
+        // Prefix-deletion without per-key policy check is unsafe: a delete that
+        // covers e.g. "oauth." in a project may remove deny-list-protected keys
+        // like "oauth.provider.apiKey" without the operator knowing. The check
+        // runs against the first concrete key in scope; if the policy would
+        // refuse that key, the whole prefix is refused.
+        vancetopePolicy.requireWritable(tenantId, referenceType, referenceId, keyPrefix);
+        return forceDeleteByPrefix(tenantId, referenceType, referenceId, keyPrefix);
+    }
+
+    /**
+     * Operator escape hatch for {@link #deleteByPrefix}. Skips the per-key
+     * policy check; the hardcoded {@code vancetope.*}-prefix check still
+     * applies via {@link VancetopePolicy#requireForceWritable}.
+     */
+    public long forceDeleteByPrefix(String tenantId, String referenceType, String referenceId, String keyPrefix) {
+        if (keyPrefix == null || keyPrefix.isEmpty()) return 0;
+        vancetopePolicy.requireForceWritable(keyPrefix);
         // Single atomic prefix-remove instead of scan-then-N-deletes: no
         // window for a concurrent write to slip a matching key past the delete,
         // and one round-trip instead of O(n). Pattern.quote keeps prefix dots
@@ -127,14 +206,67 @@ public class SettingService {
     // ──────────────────── Set / upsert ────────────────────
 
     /**
-     * Sets {@code key} to {@code value} with the given type. Encrypted types
-     * ({@link SettingType#encrypted()}) are rejected here — they go through
-     * {@link #setEncryptedSecret}.
+     * Operator escape hatch for {@link #set}. Bypasses the
+     * {@link VancetopePolicy} deny lists and writes the value as-is — for
+     * encrypted types the caller is expected to have passed ciphertext.
+     * Use {@link #forceSetEncryptedSecret} for plaintext secrets.
+     *
+     * <p>The only protection that remains is the hardcoded
+     * {@code vancetope.*} prefix — and even there only
+     * {@link VancetopePolicy#isMetaDenyKey meta-deny keys}
+     * ({@code vancetope.denied.*}) are accepted, because otherwise the
+     * configurable deny lists themselves could never be set up.
+     *
+     * <p>Intended for the {@code anus} admin shell only. Brain code must call
+     * {@link #set} / {@link #setAs} so the policy runs.
+     *
+     * @throws SecretAccessDeniedException for vancetope.* keys outside the
+     *         .denied. sub-prefix
+     */
+    public SettingDocument forceSet(
+            String tenantId,
+            String referenceType,
+            String referenceId,
+            String key,
+            @Nullable String value,
+            SettingType type,
+            @Nullable String description) {
+        return forceSetAs(tenantId, referenceType, referenceId, key, value, type, description, /*actor*/ null);
+    }
+
+    /**
+     * {@link #forceSet} on behalf of a named actor — same actor semantics as
+     * {@link #setAs}.
+     */
+    public SettingDocument forceSetAs(
+            String tenantId,
+            String referenceType,
+            String referenceId,
+            String key,
+            @Nullable String value,
+            SettingType type,
+            @Nullable String description,
+            @Nullable String actor) {
+        vancetopePolicy.requireForceWritable(key);
+        SettingDocument saved = setInternal(tenantId, referenceType, referenceId, key, value, type, description, actor);
+        // Cache invalidation must run after the write succeeded — a failed
+        // write has no observable effect on the next read.
+        vancetopePolicy.onSettingChanged(tenantId, key);
+        return saved;
+    }
+
+    /**
+     * Policy-respecting write path. {@link VancetopePolicy#requireWritable}
+     * blocks {@code vancetope.*} keys and anything matching the tenant or
+     * project deny list before the write reaches {@link #setInternal}.
+     * Encrypted types ({@link SettingType#encrypted()}) are encrypted on the
+     * way in — callers pass plaintext, the service does the rest.
      *
      * <p>Records the change without an actor — see
      * {@link #setAs(String, String, String, String, String, SettingType, String, String)}
      * for what that means in the activity feed. Server-driven writes (OAuth
-     * token refresh, bootstrap, kit apply) are the intended users of this form.
+     * token refresh, bootstrap, kit apply) are the intended users of this
+     * no-actor form.
      */
     public SettingDocument set(
             String tenantId,
@@ -148,7 +280,11 @@ public class SettingService {
     }
 
     /**
-     * {@link #set} on behalf of a named actor.
+     * {@link #set} on behalf of a named actor. Encrypted types are encrypted
+     * here, plaintext for all others — the caller picks the type and the
+     * service does the right thing. The previous split into {@code set} (plain
+     * only) and {@code setEncryptedSecret} (encrypted only) was a leak: the
+     * encrypted-only path bypassed the write policy. One path, one policy.
      *
      * <p>"Why does it behave differently since yesterday?" is the question the
      * {@code setting.change} feed row exists to answer, and the answer is
@@ -171,13 +307,15 @@ public class SettingService {
             SettingType type,
             @Nullable String description,
             @Nullable String actor) {
+        vancetopePolicy.requireWritable(tenantId, referenceType, referenceId, key);
+        String effectiveValue = value;
         if (type.encrypted()) {
-            // Encrypted values must be encrypted at rest — route through
-            // setEncryptedSecret so nothing can persist a plaintext secret
-            // via the generic setter (code-review F4).
-            throw new IllegalArgumentException(type + " settings must be written via setEncryptedSecret(), not set()");
+            // Encrypt on the way in — callers pass plaintext, the service
+            // stores ciphertext. Same path for PASSWORD and HIDDEN; the type
+            // difference is purely a read-side and reference-resolution concern.
+            effectiveValue = encryption.encrypt(value);
         }
-        return setInternal(tenantId, referenceType, referenceId, key, value, type, description, actor);
+        return setInternal(tenantId, referenceType, referenceId, key, effectiveValue, type, description, actor);
     }
 
     private SettingDocument setInternal(
@@ -230,6 +368,14 @@ public class SettingService {
      * either encrypted type.
      */
     public @Nullable String getStringValue(String tenantId, String referenceType, String referenceId, String key) {
+        if (VancetopePolicy.isSystemKey(key)) {
+            // System-namespace keys never appear in user-facing reads. This is
+            // not a "denied" path — there is nothing to deny, the value is
+            // simply absent as far as a non-operator caller is concerned. The
+            // null return matches the "setting does not exist" case so the
+            // cascade naturally walks past these.
+            return null;
+        }
         Optional<SettingDocument> opt = find(tenantId, referenceType, referenceId, key);
         if (opt.isEmpty()) {
             return null;
@@ -238,6 +384,31 @@ public class SettingService {
         if (doc.getType().encrypted()) {
             log.warn(
                     "Refusing to read {} setting via getStringValue: tenant='{}' ref='{}:{}' key='{}'",
+                    doc.getType(),
+                    tenantId,
+                    referenceType,
+                    referenceId,
+                    key);
+            return null;
+        }
+        return doc.getValue();
+    }
+
+    /**
+     * Operator-side counterpart to {@link #getStringValue}. Bypasses the
+     * {@code vancetope.*}-system-namespace filter — the {@code anus} admin
+     * shell and the {@link VancetopePolicy} cache loader use this to read
+     * the deny-list settings themselves.
+     */
+    public @Nullable String forceGetStringValue(String tenantId, String referenceType, String referenceId, String key) {
+        Optional<SettingDocument> opt = find(tenantId, referenceType, referenceId, key);
+        if (opt.isEmpty()) {
+            return null;
+        }
+        SettingDocument doc = opt.get();
+        if (doc.getType().encrypted()) {
+            log.warn(
+                    "Refusing to read {} setting via forceGetStringValue: tenant='{}' ref='{}:{}' key='{}'",
                     doc.getType(),
                     tenantId,
                     referenceType,
@@ -602,6 +773,7 @@ public class SettingService {
         for (SettingDocument doc : findAll(tenantId, referenceType, referenceId)) {
             String key = doc.getKey();
             if (key == null || !key.startsWith(keyPrefix)) continue;
+            if (VancetopePolicy.isSystemKey(key)) continue;
             if (doc.getType().encrypted()) continue;
             acc.put(key, doc.getValue() == null ? "" : doc.getValue());
         }
@@ -611,15 +783,18 @@ public class SettingService {
      * Stores {@code plaintext} encrypted as {@link SettingType#PASSWORD}.
      * Passing {@code null} stores a {@code null} value but keeps the type.
      *
-     * <p>Convenience overload of {@link #setEncryptedSecret} for the many
-     * callers that write a real secret (OAuth tokens, bootstrap credentials,
-     * human-driven admin/form writes). Anything that has to preserve a
-     * declared type — or that writes {@link SettingType#HIDDEN} — calls
-     * {@link #setEncryptedSecret} directly.
+     * <p>Deprecated alias for {@link #set} with {@link SettingType#PASSWORD}.
+     * The unified {@link #set} now accepts encrypted types and encrypts on
+     * the way in, so callers should call
+     * {@code set(PASSWORD, plaintext)} directly. Kept so existing call sites
+     * keep compiling while the migration happens.
+     *
+     * @deprecated use {@link #set} instead
      */
+    @Deprecated
     public SettingDocument setEncryptedPassword(
             String tenantId, String referenceType, String referenceId, String key, @Nullable String plaintext) {
-        return setEncryptedSecret(tenantId, referenceType, referenceId, key, plaintext, SettingType.PASSWORD);
+        return set(tenantId, referenceType, referenceId, key, plaintext, SettingType.PASSWORD, null);
     }
 
     /**
@@ -673,23 +848,34 @@ public class SettingService {
                     referenceId,
                     key);
             throw new SecretAccessDeniedException(
-                    "setting '" + key + "' exists as PASSWORD and cannot be overwritten by an "
-                            + "agent: PASSWORD settings can neither be read nor written through "
-                            + "an agent-reachable path. A human has to change it.");
+                    SecretAccessDeniedException.Reason.AGENT_OVERWRITE_PASSWORD,
+                    key,
+                    "Setting '" + key
+                            + "' is reserved: an existing PASSWORD setting cannot be overwritten by an agent. "
+                            + "Reason: W1 — agents may not read PASSWORD-typed values, so allowing them to overwrite "
+                            + "one would let an agent replace a credential it cannot see, and the original is then lost. "
+                            + "Resolution: a human has to change this setting through the settings editor, the "
+                            + "admin REST endpoint, or the anus admin shell.");
         }
-        return setEncryptedSecret(tenantId, referenceType, referenceId, key, plaintext, type);
+        // Write via forceSet: agent-write path has already passed agentKeyPolicy
+        // (W3) and the W1 PASSWORD-overwrite guard. The encrypted value is
+        // built here because we cannot route through set() (which would re-run
+        // VancetopePolicy — already settled) and we want the same
+        // activity-feed row as a regular write. Use forceSetEncryptedSecret so
+        // the encrypt step is shared with that path.
+        return forceSetEncryptedSecret(tenantId, referenceType, referenceId, key, plaintext, type);
     }
 
     /**
-     * Stores {@code plaintext} encrypted under the given encrypted {@code type}
-     * ({@link SettingType#PASSWORD} or {@link SettingType#HIDDEN}). The only
-     * write path for encrypted values — {@link #set} rejects them.
+     * Deprecated alias for {@link #set} with an encrypted {@code type}. The
+     * unified {@link #set} now accepts encrypted types and encrypts on the way
+     * in, so callers should call {@code set(type, plaintext)} directly. This
+     * alias is kept so existing call sites and tests keep compiling while the
+     * migration happens.
      *
-     * <p>Carries no agent-write restriction: callers on an agent-reachable path
-     * use {@link #setAgentSecret} instead.
-     *
-     * @throws IllegalArgumentException if {@code type} is not an encrypted type
+     * @deprecated use {@link #set} instead
      */
+    @Deprecated
     public SettingDocument setEncryptedSecret(
             String tenantId,
             String referenceType,
@@ -697,15 +883,16 @@ public class SettingService {
             String key,
             @Nullable String plaintext,
             SettingType type) {
-        return setEncryptedSecretAs(tenantId, referenceType, referenceId, key, plaintext, type, /*actor*/ null);
+        return set(tenantId, referenceType, referenceId, key, plaintext, type, null);
     }
 
     /**
-     * {@link #setEncryptedSecret} on behalf of a named actor — see
-     * {@link #setAs} for why the name matters and what a {@code null} means.
-     * The feed row for an encrypted type is a {@code WARN}, i.e. exactly the
-     * line a reader is most likely to want a name on.
+     * Deprecated alias for {@link #setAs} with an encrypted {@code type}. Use
+     * {@link #setAs} instead.
+     *
+     * @deprecated use {@link #setAs} instead
      */
+    @Deprecated
     public SettingDocument setEncryptedSecretAs(
             String tenantId,
             String referenceType,
@@ -714,17 +901,16 @@ public class SettingService {
             @Nullable String plaintext,
             SettingType type,
             @Nullable String actor) {
-        return setEncryptedSecretAs(
-                tenantId, referenceType, referenceId, key, plaintext, type, /*description*/ null, actor);
+        return setAs(tenantId, referenceType, referenceId, key, plaintext, type, null, actor);
     }
 
     /**
-     * {@link #setEncryptedSecretAs} with a description — the parity this
-     * method owes {@code setAs}: an encrypted setting is just as entitled to
-     * a human note as a plain one, and the admin REST / init loader / project
-     * copy all have one to carry. {@code null} keeps an existing description
-     * (same semantics as {@link #setAs}), a value overwrites it.
+     * Deprecated alias for {@link #setAs} with description and encrypted
+     * {@code type}. Use {@link #setAs} instead.
+     *
+     * @deprecated use {@link #setAs} instead
      */
+    @Deprecated
     public SettingDocument setEncryptedSecretAs(
             String tenantId,
             String referenceType,
@@ -734,11 +920,44 @@ public class SettingService {
             SettingType type,
             @Nullable String description,
             @Nullable String actor) {
+        return setAs(tenantId, referenceType, referenceId, key, plaintext, type, description, actor);
+    }
+
+    /**
+     * Convenience for {@link #forceSet} with an encrypted {@code type} and
+     * plaintext. Encrypts on the way in, then writes via the force path
+     * (bypassing {@link VancetopePolicy} deny lists). This is the
+     * {@code anus}-side counterpart to {@link #set} for encrypted types —
+     * no policy, no encrypted-type-rejection, just the hardcoded
+     * {@code vancetope.*} prefix check.
+     */
+    public SettingDocument forceSetEncryptedSecret(
+            String tenantId,
+            String referenceType,
+            String referenceId,
+            String key,
+            @Nullable String plaintext,
+            SettingType type) {
         if (!type.encrypted()) {
-            throw new IllegalArgumentException("setEncryptedSecret() requires an encrypted type, got " + type);
+            throw new IllegalArgumentException("forceSetEncryptedSecret() requires an encrypted type, got " + type);
         }
+        vancetopePolicy.requireForceWritable(key);
         String ciphertext = encryption.encrypt(plaintext);
-        return setInternal(tenantId, referenceType, referenceId, key, ciphertext, type, description, actor);
+        SettingDocument saved = setInternal(
+                tenantId, referenceType, referenceId, key, ciphertext, type, /*description*/ null, /*actor*/ null);
+        vancetopePolicy.onSettingChanged(tenantId, key);
+        return saved;
+    }
+
+    /**
+     * Convenience alias for {@link #forceSetEncryptedSecret} with
+     * {@link SettingType#PASSWORD}. Mirrors the historical
+     * {@link #setEncryptedPassword} (now an alias on the policy-respecting
+     * side).
+     */
+    public SettingDocument forceSetEncryptedPassword(
+            String tenantId, String referenceType, String referenceId, String key, @Nullable String plaintext) {
+        return forceSetEncryptedSecret(tenantId, referenceType, referenceId, key, plaintext, SettingType.PASSWORD);
     }
 
     /**

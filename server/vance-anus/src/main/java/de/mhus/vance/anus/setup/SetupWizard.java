@@ -981,7 +981,7 @@ public class SetupWizard {
             }
         }
         if (!StringUtils.isBlank(state.getAiApiKey())) {
-            settingService.setEncryptedPassword(
+            settingService.forceSetEncryptedPassword(
                     tenantId,
                     SettingService.SCOPE_PROJECT,
                     HomeBootstrapService.TENANT_PROJECT_NAME,
@@ -1005,7 +1005,7 @@ public class SetupWizard {
                                     SettingService.SCOPE_PROJECT,
                                     HomeBootstrapService.TENANT_PROJECT_NAME,
                                     "ai.embedding.apiKey")))) {
-                settingService.setEncryptedPassword(
+                settingService.forceSetEncryptedPassword(
                         tenantId,
                         SettingService.SCOPE_PROJECT,
                         HomeBootstrapService.TENANT_PROJECT_NAME,
@@ -1184,7 +1184,11 @@ public class SetupWizard {
         if (StringUtils.isNotBlank(settingService.getStringValue(tenantId, scope, refId, key))) {
             return false;
         }
-        settingService.set(tenantId, scope, refId, key, value, SettingType.STRING, description);
+        // anus is the operator shell — bypass the write policy so a deployment
+        // with deny lists configured still lets the setup wizard seed the
+        // tenant defaults. forceSet writes the value as-is and skips the
+        // vancetope.* / deny-list checks.
+        settingService.forceSet(tenantId, scope, refId, key, value, SettingType.STRING, description);
         return true;
     }
 
@@ -1211,7 +1215,7 @@ public class SetupWizard {
     }
 
     private void setString(String tenantId, String key, String value, @Nullable String description) {
-        settingService.set(
+        settingService.forceSet(
                 tenantId,
                 SettingService.SCOPE_PROJECT,
                 HomeBootstrapService.TENANT_PROJECT_NAME,

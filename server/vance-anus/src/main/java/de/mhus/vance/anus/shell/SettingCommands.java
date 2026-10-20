@@ -163,7 +163,10 @@ public class SettingCommands {
         if (value != null && !isParseable(type, value)) {
             return "Value '" + value + "' is not a valid " + type + ".";
         }
-        SettingDocument saved = settingService.set(tenant, storage.type(), storage.id(), key, value, type, description);
+        // anus is the operator shell — use forceSet so an operator can write
+        // keys that the deny lists (vancetope.denied.*) would otherwise block.
+        SettingDocument saved =
+                settingService.forceSet(tenant, storage.type(), storage.id(), key, value, type, description);
         return "Set:\n" + renderOne(saved);
     }
 
@@ -208,8 +211,11 @@ public class SettingCommands {
         if (StringUtils.isBlank(plain)) {
             return "Empty value — refusing.";
         }
+        // anus is the operator shell — use forceSetEncryptedSecret so an
+        // operator can rotate credentials even when the deny lists (or the
+        // vancetope.* namespace) would otherwise block the write.
         SettingDocument saved =
-                settingService.setEncryptedSecret(tenant, storage.type(), storage.id(), key, plain, type);
+                settingService.forceSetEncryptedSecret(tenant, storage.type(), storage.id(), key, plain, type);
         return "Set (encrypted):\n" + renderOne(saved);
     }
 
@@ -385,10 +391,10 @@ public class SettingCommands {
             // The YAML's declared type is preserved: a HIDDEN entry must not be
             // promoted to PASSWORD (it would stop resolving through the
             // {{secret:…}} references the same file's tools rely on).
-            settingService.setEncryptedSecret(tenant, storage.type(), storage.id(), key, value, type);
+            settingService.forceSetEncryptedSecret(tenant, storage.type(), storage.id(), key, value, type);
             return new Outcome(true, "[ok] " + tenant + "/" + key + " (" + type + ", encrypted)");
         }
-        settingService.set(tenant, storage.type(), storage.id(), key, value, type, description);
+        settingService.forceSet(tenant, storage.type(), storage.id(), key, value, type, description);
         return new Outcome(true, "[ok] " + tenant + "/" + key + " (" + type + ")");
     }
 
@@ -448,7 +454,9 @@ public class SettingCommands {
         if (settingService.find(tenant, storage.type(), storage.id(), key).isEmpty()) {
             return "Setting not found — nothing to delete.";
         }
-        settingService.delete(tenant, storage.type(), storage.id(), key);
+        // anus is the operator shell — use forceDelete so an operator can
+        // remove settings even when the deny lists would otherwise block them.
+        settingService.forceDelete(tenant, storage.type(), storage.id(), key);
         return "Deleted — tenant='" + tenant + "' scope='" + scope + "' ref='" + storage.id() + "' key='" + key + "'.";
     }
 

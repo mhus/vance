@@ -427,6 +427,21 @@ public class ProjectService {
                     .findByTenantIdAndName(tenantId, name)
                     .orElseThrow(() -> new ProjectNotFoundException(
                             "Project '" + name + "' not found in tenant '" + tenantId + "'"));
+            // Conflict diagnostics: the exception message carries the actual
+            // status, but we also log at WARN with caller-frame context so the
+            // race that produced the conflict (e.g. ClusterDistributorTick vs.
+            // Boot-Self-Pull both bringing the same orphan) is visible in the
+            // log without having to grep for the exception text. The deepest
+            // Vance frame is the caller; Reflection/Proxy frames from Mongo
+            // driver and Spring are skipped.
+            log.warn(
+                    "ProjectStatusConflict: tenant='{}' name='{}' actual={} expected={} target={} caller={}",
+                    tenantId,
+                    name,
+                    actual.getStatus(),
+                    expected,
+                    target,
+                    VanceCallerLocator.firstVanceFrame(3));
             throw new ProjectStatusConflictException("Project '" + name + "' status was " + actual.getStatus()
                     + ", expected " + expected + " for transition to " + target);
         }

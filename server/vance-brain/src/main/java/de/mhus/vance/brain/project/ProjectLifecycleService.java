@@ -307,9 +307,56 @@ public class ProjectLifecycleService {
         // the project un-activated and the next bring retries the whole pass
         // rather than short-circuiting on a half-started project.
         activationRegistry.activate(tenantId, projectName);
-        doc = projectService.transitionStatus(tenantId, projectName, ProjectStatus.RECOVERING, ProjectStatus.RUNNING);
+        doc = finishBringTransition(tenantId, projectName);
         log.info("Project '{}/{}' brought to RUNNING (was {})", tenantId, projectName, from);
         return doc;
+    }
+
+    /**
+     * Write the second half of {@link #bring}'s status round-trip
+     * (RECOVERING → RUNNING), tolerating convergence with a parallel bring.
+     *
+     * <p>Why this is not the same CAS as the first one. The first CAS
+     * ({@code from → RECOVERING}) is <em>strict</em>: it must reject an
+     * explicit SUSPEND or CLOSE that landed between the read and the write,
+     * because "ignore an operator's suspend" is a much worse outcome than
+     * "retry the bring on the next tick". The second CAS
+     * ({@code RECOVERING → RUNNING}) is different — it is the local
+     * "I'm done" marker of this pass, and two pods finishing the same
+     * recovery work in parallel can both believe they own it. The activation
+     * registry is pod-local, so the "already active here" guard from above
+     * cannot see the sibling pod's activation.
+     *
+     * <p>If a sibling pod won the second CAS first, the project is already
+     * RUNNING and the result of this bring is identical to theirs. Return
+     * the refreshed document and let the caller treat it as success. If the
+     * status is anything else (e.g. SUSPENDING because an operator raced in
+     * between), the conflict is real and we surface it — the operator's
+     * intent wins over the implicit bring.
+     */
+    private ProjectDocument finishBringTransition(String tenantId, String projectName) {
+        try {
+            return projectService.transitionStatus(
+                    tenantId, projectName, ProjectStatus.RECOVERING, ProjectStatus.RUNNING);
+        } catch (ProjectService.ProjectStatusConflictException e) {
+            ProjectDocument refreshed = projectService
+                    .findByTenantAndName(tenantId, projectName)
+                    .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
+                            "Project '" + projectName + "' not found in tenant '" + tenantId + "'"));
+            if (refreshed.getStatus() != ProjectStatus.RUNNING) {
+                log.warn(
+                        "Project '{}/{}' bring: RECOVERING → RUNNING lost the CAS to status {} — surfacing conflict",
+                        tenantId,
+                        projectName,
+                        refreshed.getStatus());
+                throw e;
+            }
+            log.info(
+                    "Project '{}/{}' bring: RECOVERING → RUNNING converged with a parallel bring — finishing idempotently",
+                    tenantId,
+                    projectName);
+            return refreshed;
+        }
     }
 
     /**

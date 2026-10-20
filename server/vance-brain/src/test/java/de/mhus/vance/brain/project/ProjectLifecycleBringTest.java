@@ -19,6 +19,7 @@ import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.project.ProjectStatus;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.workspace.WorkspaceService;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
@@ -136,5 +137,68 @@ class ProjectLifecycleBringTest {
 
         org.assertj.core.api.Assertions.assertThat(registry.isActive(TENANT, PROJECT))
                 .isFalse();
+    }
+
+    /**
+     * Convergence with a parallel bring on another pod: a sibling pod won
+     * the RECOVERING → RUNNING CAS first, the project is RUNNING in Mongo,
+     * and this pod's {@code bring} must finish without throwing so the
+     * caller (ClusterDistributorTick / Boot-Self-Pull / REST resume) treats
+     * it as success.
+     *
+     * <p>The full activation pass on this pod still ran — workspace init,
+     * RAG, engine-start event — because the convergence can only happen on
+     * the last CAS of the round trip, after the work above it.
+     */
+    @Test
+    void recoveringToRunningConflictConvergesWithAnotherBring_returnsTheRefreshedDoc() {
+        givenClaimedWithStatus(ProjectStatus.SUSPENDED);
+        ProjectDocument runningDoc = ProjectDocument.builder()
+                .tenantId(TENANT)
+                .name(PROJECT)
+                .status(ProjectStatus.RUNNING)
+                .build();
+        // The second CAS (RECOVERING → RUNNING) loses to a parallel bring.
+        // The first CAS (SUSPENDED → RECOVERING) succeeds, and so do all
+        // transitionStatus calls with non-RUNNING targets.
+        org.mockito.Mockito.when(projectService.transitionStatus(
+                        TENANT, PROJECT, ProjectStatus.RECOVERING, ProjectStatus.RUNNING))
+                .thenThrow(new ProjectService.ProjectStatusConflictException(
+                        "Project 'test1' status was RUNNING, expected RECOVERING for transition to RUNNING"));
+        when(projectService.findByTenantAndName(TENANT, PROJECT)).thenReturn(Optional.of(runningDoc));
+
+        ProjectDocument result = service.bring(TENANT, PROJECT);
+
+        // Activation work happened on this pod before the conflict surfaced.
+        verify(workspaceService, times(1)).init(TENANT, PROJECT);
+        verify(eventPublisher, times(1)).publishEvent(new ProjectEnginesStartRequested(TENANT, PROJECT));
+        // Returned doc reflects the converged state, not the doc we started
+        // the bring with — important for callers that read the returned
+        // status (e.g. REST `/resume`).
+        org.assertj.core.api.Assertions.assertThat(result.getStatus()).isEqualTo(ProjectStatus.RUNNING);
+    }
+
+    /**
+     * The convergence guard only swallows the CAS conflict when the
+     * post-conflict status is RUNNING. If an operator raced a SUSPEND in
+     * between (status = SUSPENDING / SUSPENDED), the conflict is real and
+     * must surface — operator intent beats an implicit bring.
+     */
+    @Test
+    void recoveringToRunningConflictAgainstSuspendingStatus_stillThrows() {
+        givenClaimedWithStatus(ProjectStatus.SUSPENDED);
+        ProjectDocument suspendingDoc = ProjectDocument.builder()
+                .tenantId(TENANT)
+                .name(PROJECT)
+                .status(ProjectStatus.SUSPENDING)
+                .build();
+        org.mockito.Mockito.when(projectService.transitionStatus(
+                        TENANT, PROJECT, ProjectStatus.RECOVERING, ProjectStatus.RUNNING))
+                .thenThrow(new ProjectService.ProjectStatusConflictException(
+                        "Project 'test1' status was SUSPENDING, expected RECOVERING for transition to RUNNING"));
+        when(projectService.findByTenantAndName(TENANT, PROJECT)).thenReturn(Optional.of(suspendingDoc));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.bring(TENANT, PROJECT))
+                .isInstanceOf(ProjectService.ProjectStatusConflictException.class);
     }
 }

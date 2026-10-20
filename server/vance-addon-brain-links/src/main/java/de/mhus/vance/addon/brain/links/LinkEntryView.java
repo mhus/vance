@@ -14,6 +14,12 @@ import org.jspecify.annotations.Nullable;
  * tell "somebody wrote this" from "this is what the page says today", and
  * only the first is editable.
  *
+ * <p>{@code open} is the <em>stored override</em> and is usually null — the
+ * client coalesces {@code entry.open ?? view.open ?? 'tab'}. Raw rather than
+ * resolved, for the same reason {@code teaser} is: the edit dialog has to be
+ * able to tell "this entry carries its own mode" from "it follows the
+ * list", and only the first is editable.
+ *
  * <p>{@code host} is derived, sent so every surface shows the same source
  * label without re-parsing the URL.
  */
@@ -24,6 +30,7 @@ public record LinkEntryView(
         @Nullable String teaser,
         @Nullable String image,
         @Nullable String group,
+        @Nullable String open,
         List<String> tags,
         @Nullable String note,
         @Nullable String addedAt,
@@ -31,8 +38,15 @@ public record LinkEntryView(
         String host) {
 
     public static LinkEntryView of(LinkEntry entry) {
-        return new LinkEntryView(entry.url(), entry.title(), entry.teaser(), entry.image(),
-                entry.group(), entry.tags(), entry.note(),
+        return new LinkEntryView(
+                entry.url(),
+                entry.title(),
+                entry.teaser(),
+                entry.image(),
+                entry.group(),
+                entry.open() == null ? null : entry.open().wireName(),
+                entry.tags(),
+                entry.note(),
                 entry.addedAt() == null ? null : entry.addedAt().toString(),
                 entry.viewedAt() == null ? null : entry.viewedAt().toString(),
                 LinkUrls.hostLabel(entry.url()));

@@ -11,4 +11,5 @@ export interface AddLinkRequest {
   group?: string;
   tags?: string[];
   note?: string;
+  open?: string;
 }

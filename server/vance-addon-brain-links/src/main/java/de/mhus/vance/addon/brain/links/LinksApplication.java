@@ -42,8 +42,7 @@ public class LinksApplication implements VanceApplication {
     private final DocumentLinkBuilder linkBuilder;
     private final LinksManifestOps manifestOps;
 
-    public LinksApplication(LinksStore store, DocumentLinkBuilder linkBuilder,
-                            LinksManifestOps manifestOps) {
+    public LinksApplication(LinksStore store, DocumentLinkBuilder linkBuilder, LinksManifestOps manifestOps) {
         this.store = store;
         this.linkBuilder = linkBuilder;
         this.manifestOps = manifestOps;
@@ -76,25 +75,40 @@ public class LinksApplication implements VanceApplication {
             }
         }
 
-        LinksConfig config = new LinksConfig(groups, List.of(), LinksConfig.DEFAULT_INDEX);
-        DocumentDocument stored = store.writeManifest(ctx.tenantId(), ctx.projectName(), folder,
-                title, description, config, ctx.userId());
+        // Strict like every write path: an unknown word here would be
+        // silently dropped by the lenient reader, and a list whose declared
+        // opening mode "did not take" is the silent failure this app
+        // refuses elsewhere (checkedOpen / checkedImage).
+        String openRaw = asString(params.get("open"));
+        LinkOpenMode open = null;
+        if (openRaw != null) {
+            open = LinkOpenMode.parse(openRaw);
+            if (open == null) {
+                throw new ToolException("open must be one of 'tab', 'same', 'frame' — got '" + openRaw + "'");
+            }
+        }
 
-        RefreshResult refresh = refresh(new RefreshContext(
-                ctx.tenantId(), ctx.projectName(), folder, ctx.userId(), ctx.processId()));
+        LinksConfig config = new LinksConfig(groups, List.of(), LinksConfig.DEFAULT_INDEX, open);
+        DocumentDocument stored = store.writeManifest(
+                ctx.tenantId(), ctx.projectName(), folder, title, description, config, ctx.userId());
 
-        log.info("LinksApplication.create tenant='{}' folder='{}' groups={}",
-                ctx.tenantId(), folder, groups.size());
+        RefreshResult refresh =
+                refresh(new RefreshContext(ctx.tenantId(), ctx.projectName(), folder, ctx.userId(), ctx.processId()));
+
+        log.info("LinksApplication.create tenant='{}' folder='{}' groups={}", ctx.tenantId(), folder, groups.size());
 
         Map<String, Object> stats = new LinkedHashMap<>();
         if (title != null) stats.put("title", title);
         stats.put("groupCount", groups.size());
 
-        return new CreateResult(APP_NAME, folder, stored.getPath(),
+        return new CreateResult(
+                APP_NAME,
+                folder,
+                stored.getPath(),
                 linkBuilder.linkFor(stored, ctx.projectName()),
-                List.of(), refresh.artefacts(),
-                "Link list ready. Add links with "
-                        + "`links_entry_add(folder=\"" + folder + "\", url=\"https://…\")`.",
+                List.of(),
+                refresh.artefacts(),
+                "Link list ready. Add links with " + "`links_entry_add(folder=\"" + folder + "\", url=\"https://…\")`.",
                 stats);
     }
 
@@ -108,18 +122,27 @@ public class LinksApplication implements VanceApplication {
         if (title == null || title.isBlank()) title = leafFolderName(folder);
 
         String outputPath = LinksStore.resolveOutputPath(folder, config.indexOutputPath());
-        DocumentDocument stored = store.writeArtefact(ctx.tenantId(), ctx.projectName(),
-                outputPath, "Index — " + title, MD_MIME, renderIndex(config, title),
-                List.of(APP_NAME, "generated", "index"), ctx.userId());
+        DocumentDocument stored = store.writeArtefact(
+                ctx.tenantId(),
+                ctx.projectName(),
+                outputPath,
+                "Index — " + title,
+                MD_MIME,
+                renderIndex(config, title),
+                List.of(APP_NAME, "generated", "index"),
+                ctx.userId());
 
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("entryCount", config.entries().size());
         stats.put("groupCount", config.orderedGroups().size());
-        ArtefactResult index = new ArtefactResult("index", stored.getPath(),
-                linkBuilder.linkFor(stored, ctx.projectName()), stats);
+        ArtefactResult index =
+                new ArtefactResult("index", stored.getPath(), linkBuilder.linkFor(stored, ctx.projectName()), stats);
 
-        log.info("LinksApplication.refresh tenant='{}' folder='{}' entries={}",
-                ctx.tenantId(), folder, config.entries().size());
+        log.info(
+                "LinksApplication.refresh tenant='{}' folder='{}' entries={}",
+                ctx.tenantId(),
+                folder,
+                config.entries().size());
         return new RefreshResult(APP_NAME, folder, List.of(index));
     }
 
@@ -180,13 +203,12 @@ public class LinksApplication implements VanceApplication {
         if (ctx.purpose() != TargetPurpose.INTAKE) return List.of();
         LinksConfig config;
         try {
-            config = store.load(ctx.tenantId(), ctx.projectName(),
-                    LinksStore.normaliseFolder(ctx.folder())).config();
+            config = store.load(ctx.tenantId(), ctx.projectName(), LinksStore.normaliseFolder(ctx.folder()))
+                    .config();
         } catch (RuntimeException e) {
             // A broken manifest is reported where it is edited. Here it means
             // "no places", and the app itself stays a valid share target.
-            log.debug("LinksApplication.targets folder='{}' unreadable: {}",
-                    ctx.folder(), e.toString());
+            log.debug("LinksApplication.targets folder='{}' unreadable: {}", ctx.folder(), e.toString());
             return List.of();
         }
         List<AppTarget> out = new ArrayList<>(config.groups().size());
@@ -223,9 +245,12 @@ public class LinksApplication implements VanceApplication {
         // the group list may have changed between the dialog opening and the
         // share arriving, and losing the group is better than losing the link.
         String group = resolveGroup(loaded.config(), ctx.target());
-        boolean added = manifestOps.addEntry(ctx.tenantId(), ctx.projectName(), folder, url,
-                new LinksManifestOps.LinkFields(ctx.intake().title(), null, null, group, null,
-                        ctx.note()),
+        boolean added = manifestOps.addEntry(
+                ctx.tenantId(),
+                ctx.projectName(),
+                folder,
+                url,
+                new LinksManifestOps.LinkFields(ctx.intake().title(), null, null, group, null, ctx.note(), null),
                 ctx.userId());
 
         String label = loaded.manifestDoc().title();
@@ -243,22 +268,25 @@ public class LinksApplication implements VanceApplication {
     public @Nullable String promptInject(PromptInjectContext ctx) {
         LinksConfig config;
         try {
-            config = store.load(ctx.tenantId(), ctx.projectName(),
-                    LinksStore.normaliseFolder(ctx.folder())).config();
+            config = store.load(ctx.tenantId(), ctx.projectName(), LinksStore.normaliseFolder(ctx.folder()))
+                    .config();
         } catch (RuntimeException e) {
             return null;
         }
         String folder = LinksStore.normaliseFolder(ctx.folder());
         StringBuilder sb = new StringBuilder();
-        sb.append("You are in a link list at `").append(folder)
+        sb.append("You are in a link list at `")
+                .append(folder)
                 .append("` — a curated collection of external URLs (not project documents). ")
-                .append(config.entries().size()).append(" link(s)");
+                .append(config.entries().size())
+                .append(" link(s)");
         List<String> groups = config.orderedGroups();
         if (!groups.isEmpty()) {
             sb.append(", groups: ").append(String.join(", ", groups));
         }
         sb.append(".\n")
-                .append("Add one with `links_entry_add(folder=\"").append(folder)
+                .append("Add one with `links_entry_add(folder=\"")
+                .append(folder)
                 .append("\", url=\"https://…\", group?, teaser?, tags?)`; the title is fetched ")
                 .append("from the page automatically. Read the list with `links_list`, edit an ")
                 .append("entry with `links_entry_update`, drop one with `links_entry_remove`.\n")
@@ -294,8 +322,7 @@ public class LinksApplication implements VanceApplication {
      * would add a bullet to a list the model reads as ours. Both branches go
      * through {@link ForeignPromptText} now, so they cannot drift apart again.
      */
-    private static void appendSelection(StringBuilder sb, LinksConfig config,
-                                        @Nullable String selection) {
+    private static void appendSelection(StringBuilder sb, LinksConfig config, @Nullable String selection) {
         if (selection == null || selection.isBlank()) return;
         String url = selection.trim();
         LinkEntry selected = null;
@@ -315,11 +342,16 @@ public class LinksApplication implements VanceApplication {
                 .append("\"this link\", \"the selected link\" or \"the entry I marked\" — it is the ")
                 .append("app's own pick, NOT a text selection inside a document. Never answer ")
                 .append("that no selection arrived, and never ask them to mark it again:\n")
-                .append("- url: ").append(ForeignPromptText.quoted(selected.url())).append('\n')
-                .append("- title: ").append(ForeignPromptText.quoted(selected.displayTitle()))
+                .append("- url: ")
+                .append(ForeignPromptText.quoted(selected.url()))
+                .append('\n')
+                .append("- title: ")
+                .append(ForeignPromptText.quoted(selected.displayTitle()))
                 .append('\n');
         if (selected.group() != null) {
-            sb.append("- group: ").append(ForeignPromptText.quoted(selected.group())).append('\n');
+            sb.append("- group: ")
+                    .append(ForeignPromptText.quoted(selected.group()))
+                    .append('\n');
         }
         if (!selected.tags().isEmpty()) {
             List<String> tags = new ArrayList<>(selected.tags().size());
@@ -329,16 +361,19 @@ public class LinksApplication implements VanceApplication {
             sb.append("- tags: ").append(String.join(", ", tags)).append('\n');
         }
         if (selected.note() != null) {
-            sb.append("- note (theirs): ").append(ForeignPromptText.quoted(selected.note()))
+            sb.append("- note (theirs): ")
+                    .append(ForeignPromptText.quoted(selected.note()))
                     .append('\n');
         }
         if (selected.teaser() != null) {
-            sb.append("- teaser (theirs): ").append(ForeignPromptText.quoted(selected.teaser()))
+            sb.append("- teaser (theirs): ")
+                    .append(ForeignPromptText.quoted(selected.teaser()))
                     .append('\n');
         } else {
             sb.append("- teaser: none stored — the page's own description is shown live.\n");
         }
-        sb.append(ForeignPromptText.PROVENANCE_NOTE).append('\n')
+        sb.append(ForeignPromptText.PROVENANCE_NOTE)
+                .append('\n')
                 .append("To read the page itself use `web_fetch` on that URL; the list stores no ")
                 .append("page content.\n");
     }
@@ -366,7 +401,7 @@ public class LinksApplication implements VanceApplication {
         }
 
         List<String> sections = new ArrayList<>();
-        sections.add("");                       // the ungrouped lead group
+        sections.add(""); // the ungrouped lead group
         sections.addAll(config.orderedGroups());
         for (String group : sections) {
             List<LinkEntry> rows = config.entriesOf(group);
@@ -379,8 +414,11 @@ public class LinksApplication implements VanceApplication {
                 // paragraph next to a bare URL in brackets. The title is the
                 // field that comes off the foreign page, so it is the one that
                 // needs it most.
-                sb.append("- [").append(mdText(oneLine(e.displayTitle()))).append("](")
-                        .append(e.url()).append(")");
+                sb.append("- [")
+                        .append(mdText(oneLine(e.displayTitle())))
+                        .append("](")
+                        .append(e.url())
+                        .append(")");
                 // Teaser then note, in that order and visibly different: the
                 // teaser is what the page says about itself, the note is why
                 // this list keeps it. The note is the part a reader wrote by

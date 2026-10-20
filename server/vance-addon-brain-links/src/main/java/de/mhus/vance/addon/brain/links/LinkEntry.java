@@ -46,6 +46,10 @@ import org.jspecify.annotations.Nullable;
  *                 timestamp is not derivable from the boolean. It costs the
  *                 same byte in the YAML and buys "seen last week" and a sort
  *                 order that a flag could never give back.
+ * @param open     how this link opens, overriding the list default.
+ *                 {@code null} means "whatever the list says" — the
+ *                 inheritance is the common case, an override is the
+ *                 exception somebody set on purpose.
  */
 public record LinkEntry(
         String url,
@@ -56,7 +60,8 @@ public record LinkEntry(
         List<String> tags,
         @Nullable String note,
         @Nullable Instant addedAt,
-        @Nullable Instant viewedAt) {
+        @Nullable Instant viewedAt,
+        @Nullable LinkOpenMode open) {
 
     public LinkEntry {
         if (tags == null) tags = List.of();
@@ -87,7 +92,8 @@ public record LinkEntry(
                 tags(map.get("tags")),
                 asString(map.get("note")),
                 instant(map.get("addedAt")),
-                instant(map.get("viewedAt")));
+                instant(map.get("viewedAt")),
+                openMode(map.get("open")));
     }
 
     /** Serialise back to the manifest form — only fields that carry a value. */
@@ -102,6 +108,7 @@ public record LinkEntry(
         putIfSet(m, "note", note);
         if (addedAt != null) m.put("addedAt", addedAt.toString());
         if (viewedAt != null) m.put("viewedAt", viewedAt.toString());
+        if (open != null) m.put("open", open.wireName());
         return m;
     }
 
@@ -140,6 +147,12 @@ public record LinkEntry(
             // An unreadable timestamp costs a sort key, not the entry.
             return null;
         }
+    }
+
+    private static @Nullable LinkOpenMode openMode(@Nullable Object raw) {
+        // Wrong type costs the override, not the entry — the same leniency as
+        // every other hand-editable value.
+        return raw instanceof String s ? LinkOpenMode.parse(s) : null;
     }
 
     private static @Nullable String asString(@Nullable Object v) {

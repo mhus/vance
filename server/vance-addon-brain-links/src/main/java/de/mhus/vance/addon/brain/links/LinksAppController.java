@@ -47,10 +47,11 @@ public class LinksAppController {
     private final RequestAuthority authority;
 
     @GetMapping("/brain/{tenant}/addon/links/scan")
-    public LinksView scan(@PathVariable String tenant,
-                          @RequestParam String projectId,
-                          @RequestParam String folder,
-                          HttpServletRequest request) {
+    public LinksView scan(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String folder,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
         return view(tenant, projectId, folder);
     }
@@ -71,28 +72,28 @@ public class LinksAppController {
 
     /** The group headings for a "file it under…" dropdown, without the links. */
     @GetMapping("/brain/{tenant}/addon/links/groups")
-    public LinkGroupsView listGroups(@PathVariable String tenant,
-                                     @RequestParam String projectId,
-                                     @RequestParam String folder,
-                                     HttpServletRequest request) {
+    public LinkGroupsView listGroups(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String folder,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
         LinksStore.Loaded loaded = store.load(tenant, projectId, folder);
-        return new LinkGroupsView(loaded.folder(), loaded.manifestDoc().title(),
-                loaded.config().orderedGroups());
+        return new LinkGroupsView(
+                loaded.folder(), loaded.manifestDoc().title(), loaded.config().orderedGroups());
     }
 
     /** Whether one page is already in this list, and what the list says about it. */
     @GetMapping("/brain/{tenant}/addon/links/entry/lookup")
-    public LinkLookupView lookupEntry(@PathVariable String tenant,
-                                      @RequestParam String projectId,
-                                      @RequestParam String folder,
-                                      @RequestParam String url,
-                                      HttpServletRequest request) {
+    public LinkLookupView lookupEntry(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String folder,
+            @RequestParam String url,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.READ);
         LinkEntry entry = manifestOps.lookup(tenant, projectId, folder, url);
-        return entry == null
-                ? LinkLookupView.notFound(LinkUrls.identity(url))
-                : LinkLookupView.of(entry);
+        return entry == null ? LinkLookupView.notFound(LinkUrls.identity(url)) : LinkLookupView.of(entry);
     }
 
     /**
@@ -104,44 +105,58 @@ public class LinksAppController {
      * case for a capture tool, not an error, so it stays a {@code 200}.
      */
     @PostMapping("/brain/{tenant}/addon/links/capture")
-    public LinkCaptureView capture(@PathVariable String tenant,
-                                   @RequestParam String projectId,
-                                   @RequestParam String folder,
-                                   @RequestBody CaptureLinkRequest req,
-                                   HttpServletRequest request) {
+    public LinkCaptureView capture(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String folder,
+            @RequestBody CaptureLinkRequest req,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
-        return LinkCaptureView.of(manifestOps.capture(tenant, projectId, folder, req.url(),
-                new LinksManifestOps.LinkFields(req.title(), null, null,
-                        req.group(), req.tags(), req.note()),
+        return LinkCaptureView.of(manifestOps.capture(
+                tenant,
+                projectId,
+                folder,
+                req.url(),
+                new LinksManifestOps.LinkFields(req.title(), null, null, req.group(), req.tags(), req.note(), null),
                 currentUser(request)));
     }
 
     // ── the app surface ───────────────────────────────────────────
 
     @PostMapping("/brain/{tenant}/addon/links/entry")
-    public LinksView addEntry(@PathVariable String tenant,
-                              @RequestParam String projectId,
-                              @RequestParam String folder,
-                              @RequestBody AddLinkRequest req,
-                              HttpServletRequest request) {
+    public LinksView addEntry(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String folder,
+            @RequestBody AddLinkRequest req,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
-        manifestOps.addEntry(tenant, projectId, folder, req.url(),
-                new LinksManifestOps.LinkFields(req.title(), req.teaser(), req.image(),
-                        req.group(), req.tags(), req.note()),
+        manifestOps.addEntry(
+                tenant,
+                projectId,
+                folder,
+                req.url(),
+                new LinksManifestOps.LinkFields(
+                        req.title(), req.teaser(), req.image(), req.group(), req.tags(), req.note(), req.open()),
                 currentUser(request));
         return view(tenant, projectId, folder);
     }
 
     @PatchMapping("/brain/{tenant}/addon/links/entry")
-    public LinksView updateEntry(@PathVariable String tenant,
-                                 @RequestParam String projectId,
-                                 @RequestParam String folder,
-                                 @RequestBody UpdateLinkRequest req,
-                                 HttpServletRequest request) {
+    public LinksView updateEntry(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String folder,
+            @RequestBody UpdateLinkRequest req,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
-        manifestOps.updateEntry(tenant, projectId, folder, req.url(),
-                new LinksManifestOps.LinkFields(req.title(), req.teaser(), req.image(),
-                        req.group(), req.tags(), req.note()),
+        manifestOps.updateEntry(
+                tenant,
+                projectId,
+                folder,
+                req.url(),
+                new LinksManifestOps.LinkFields(
+                        req.title(), req.teaser(), req.image(), req.group(), req.tags(), req.note(), req.open()),
                 currentUser(request));
         return view(tenant, projectId, folder);
     }
@@ -155,77 +170,104 @@ public class LinksAppController {
      * reasonably be given beyond capture.
      */
     @PostMapping("/brain/{tenant}/addon/links/entry/viewed")
-    public LinksView setViewed(@PathVariable String tenant,
-                               @RequestParam String projectId,
-                               @RequestParam String folder,
-                               @RequestBody SetViewedRequest req,
-                               HttpServletRequest request) {
+    public LinksView setViewed(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String folder,
+            @RequestBody SetViewedRequest req,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
-        manifestOps.setViewed(tenant, projectId, folder, req.url(), req.viewed(),
-                currentUser(request));
+        manifestOps.setViewed(tenant, projectId, folder, req.url(), req.viewed(), currentUser(request));
         return view(tenant, projectId, folder);
     }
 
     @DeleteMapping("/brain/{tenant}/addon/links/entry")
-    public LinksView removeEntry(@PathVariable String tenant,
-                                 @RequestParam String projectId,
-                                 @RequestParam String folder,
-                                 @RequestParam String url,
-                                 HttpServletRequest request) {
+    public LinksView removeEntry(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String folder,
+            @RequestParam String url,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
         manifestOps.removeEntry(tenant, projectId, folder, url, currentUser(request));
         return view(tenant, projectId, folder);
     }
 
     @PostMapping("/brain/{tenant}/addon/links/reorder")
-    public LinksView reorder(@PathVariable String tenant,
-                             @RequestParam String projectId,
-                             @RequestParam String folder,
-                             @RequestBody ReorderLinksRequest req,
-                             HttpServletRequest request) {
+    public LinksView reorder(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String folder,
+            @RequestBody ReorderLinksRequest req,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
-        manifestOps.reorder(tenant, projectId, folder,
+        manifestOps.reorder(
+                tenant,
+                projectId,
+                folder,
                 req.orderedUrls() == null ? List.of() : req.orderedUrls(),
                 currentUser(request));
         return view(tenant, projectId, folder);
     }
 
     @PostMapping("/brain/{tenant}/addon/links/groups")
-    public LinksView setGroups(@PathVariable String tenant,
-                               @RequestParam String projectId,
-                               @RequestParam String folder,
-                               @RequestBody GroupsRequest req,
-                               HttpServletRequest request) {
+    public LinksView setGroups(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String folder,
+            @RequestBody GroupsRequest req,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
-        manifestOps.setGroups(tenant, projectId, folder,
-                req.groups() == null ? List.of() : req.groups(), currentUser(request));
+        manifestOps.setGroups(
+                tenant, projectId, folder, req.groups() == null ? List.of() : req.groups(), currentUser(request));
+        return view(tenant, projectId, folder);
+    }
+
+    /**
+     * Set the list default for how a link opens: {@code tab}, {@code same} or
+     * {@code frame}. Blank clears it, which reads as {@code tab}.
+     *
+     * <p>Its own route rather than a field on some generic manifest PATCH:
+     * there is no generic PATCH — every mutation here is named, and this is
+     * the one the app's settings dialog writes.
+     */
+    @PostMapping("/brain/{tenant}/addon/links/settings")
+    public LinksView updateSettings(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String folder,
+            @RequestBody UpdateSettingsRequest req,
+            HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
+        manifestOps.setOpen(tenant, projectId, folder, req.open(), currentUser(request));
         return view(tenant, projectId, folder);
     }
 
     @PostMapping("/brain/{tenant}/addon/links/group/rename")
-    public LinksView renameGroup(@PathVariable String tenant,
-                                 @RequestParam String projectId,
-                                 @RequestParam String folder,
-                                 @RequestBody RenameGroupRequest req,
-                                 HttpServletRequest request) {
+    public LinksView renameGroup(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String folder,
+            @RequestBody RenameGroupRequest req,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
-        manifestOps.renameGroup(tenant, projectId, folder, req.from(), req.to(),
-                currentUser(request));
+        manifestOps.renameGroup(tenant, projectId, folder, req.from(), req.to(), currentUser(request));
         return view(tenant, projectId, folder);
     }
 
     @PostMapping("/brain/{tenant}/addon/links/rebuild")
-    public LinksRebuildResponse rebuild(@PathVariable String tenant,
-                                        @RequestParam String projectId,
-                                        @RequestParam String folder,
-                                        HttpServletRequest request) {
+    public LinksRebuildResponse rebuild(
+            @PathVariable String tenant,
+            @RequestParam String projectId,
+            @RequestParam String folder,
+            HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
         VanceApplication.RefreshResult result = application.refresh(
-                new VanceApplication.RefreshContext(
-                        tenant, projectId, folder, currentUser(request), null));
+                new VanceApplication.RefreshContext(tenant, projectId, folder, currentUser(request), null));
         ArtefactResult index =
                 result.artefacts().isEmpty() ? null : result.artefacts().getFirst();
-        return new LinksRebuildResponse(result.folder(),
+        return new LinksRebuildResponse(
+                result.folder(),
                 index == null ? "" : index.path(),
                 index == null ? null : index.markdownLink(),
                 statInt(index, "entryCount"),
@@ -240,8 +282,13 @@ public class LinksAppController {
         for (LinkEntry e : loaded.config().entries()) {
             entries.add(LinkEntryView.of(e));
         }
-        return new LinksView(loaded.folder(), loaded.manifestDoc().title(),
-                loaded.manifestDoc().description(), loaded.config().orderedGroups(), entries);
+        return new LinksView(
+                loaded.folder(),
+                loaded.manifestDoc().title(),
+                loaded.manifestDoc().description(),
+                loaded.config().orderedGroups(),
+                loaded.config().effectiveOpen().wireName(),
+                entries);
     }
 
     private static int statInt(@Nullable ArtefactResult index, String key) {

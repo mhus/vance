@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
-import de.mhus.vance.shared.document.kind.validate.Finding;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.document.kind.validate.Finding;
 import de.mhus.vance.toolpack.ToolException;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -18,25 +18,28 @@ import org.junit.jupiter.api.Test;
  */
 class LinksValidationServiceTest {
 
-    private final LinksValidationService service =
-            new LinksValidationService(mock(DocumentService.class));
+    private final LinksValidationService service = new LinksValidationService(mock(DocumentService.class));
 
     @Test
     void validate_healthyManifestHasNoFindings() {
         // A validator that cries about correct files trains its reader to skip
-        // it — this is the test that keeps the other checks honest.
+        // it — this is the test that keeps the other checks honest. Carries
+        // valid `open` values at both levels for the same reason: a correct
+        // frame setting must not be flagged.
         assertThat(service.findings("""
                 $meta:
                   kind: application
                   app: links
                 title: Reading
                 links:
+                  open: frame
                   groups:
                   - Rust
                   entries:
                   - url: https://a.example/one
                     title: One
                     group: Rust
+                    open: tab
                     tags: [async]
                     addedAt: '2026-08-21T08:00:00Z'
                   - url: https://b.example/two
@@ -102,8 +105,7 @@ class LinksValidationServiceTest {
                 $meta: { kind: application, app: binder }
                 links:
                   entries: []
-                """))
-                .extracting(Finding::code).contains("wrong-app");
+                """)).extracting(Finding::code).contains("wrong-app");
     }
 
     @Test
@@ -118,10 +120,8 @@ class LinksValidationServiceTest {
                     tags: not-a-list
                 """);
 
-        assertThat(findings).extracting(Finding::code)
-                .containsExactlyInAnyOrder("field-ignored", "tags-not-a-list");
-        assertThat(findings).allSatisfy(f ->
-                assertThat(f.level()).isEqualTo(Finding.Level.WARNING));
+        assertThat(findings).extracting(Finding::code).containsExactlyInAnyOrder("field-ignored", "tags-not-a-list");
+        assertThat(findings).allSatisfy(f -> assertThat(f.level()).isEqualTo(Finding.Level.WARNING));
     }
 
     @Test
@@ -133,8 +133,7 @@ class LinksValidationServiceTest {
                   entries:
                   - url: https://a.example/x
                     image: /local/file.png
-                """))
-                .extracting(Finding::code).contains("image-not-http");
+                """)).extracting(Finding::code).contains("image-not-http");
     }
 
     @Test
@@ -142,8 +141,7 @@ class LinksValidationServiceTest {
         // Everything after a parse error would be guesswork on a broken tree.
         List<Finding> findings = service.findings("$meta: {kind: application\nlinks: [");
 
-        assertThat(findings).singleElement()
-                .extracting(Finding::code).isEqualTo("yaml-broken");
+        assertThat(findings).singleElement().extracting(Finding::code).isEqualTo("yaml-broken");
     }
 
     @Test
@@ -151,8 +149,7 @@ class LinksValidationServiceTest {
         assertThat(service.findings("""
                 links:
                   entries: []
-                """))
-                .extracting(Finding::code).contains("meta-missing");
+                """)).extracting(Finding::code).contains("meta-missing");
     }
 
     @Test
@@ -161,8 +158,7 @@ class LinksValidationServiceTest {
                 $meta: { kind: application, app: links }
                 links:
                   entries: just a string
-                """))
-                .extracting(Finding::code).contains("entries-not-a-list");
+                """)).extracting(Finding::code).contains("entries-not-a-list");
     }
 
     @Test
@@ -184,14 +180,54 @@ class LinksValidationServiceTest {
                   entries: []
                   index:
                     outputPath: ../elsewhere.md
-                """))
-                .extracting(Finding::code).contains("index-escapes");
+                """)).extracting(Finding::code).contains("index-escapes");
+    }
+
+    @Test
+    void validate_reportsAnOpenTheReaderDrops() {
+        // One unknown word at each level, and both are lost in silence: the
+        // list falls back to a new tab, the entry falls back to the list.
+        List<Finding> findings = service.findings("""
+                $meta: { kind: application, app: links }
+                links:
+                  open: sideways
+                  entries:
+                  - url: https://a.example/
+                    open: also-sideways
+                """);
+
+        assertThat(findings).hasSize(2);
+        assertThat(findings.get(0)).satisfies(f -> {
+            assertThat(f.code()).isEqualTo("open-invalid");
+            assertThat(f.location()).isEqualTo("links.open");
+        });
+        assertThat(findings.get(1)).satisfies(f -> {
+            assertThat(f.code()).isEqualTo("open-invalid");
+            assertThat(f.location()).isEqualTo("links.entries[0].open");
+        });
+    }
+
+    @Test
+    void validate_openOfTheWrongTypeIsFieldIgnored() {
+        // Not a string at all — the same silent drop every other mistyped
+        // field suffers.
+        List<Finding> findings = service.findings("""
+                $meta: { kind: application, app: links }
+                links:
+                  entries:
+                  - url: https://a.example/
+                    open: 42
+                """);
+
+        assertThat(findings).singleElement().satisfies(f -> {
+            assertThat(f.code()).isEqualTo("field-ignored");
+            assertThat(f.location()).isEqualTo("links.entries[0].open");
+        });
     }
 
     @Test
     void validate_emptyDocumentIsAnError() {
-        assertThat(service.findings("   "))
-                .extracting(Finding::code).containsExactly("empty");
+        assertThat(service.findings("   ")).extracting(Finding::code).containsExactly("empty");
     }
 
     @Test

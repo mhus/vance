@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import { VButton, VInput, VModal, VTagEditor, VTextarea } from '@vance/components';
+import { computed, ref } from 'vue';
+import { VButton, VInput, VModal, VSelect, VTagEditor, VTextarea } from '@vance/components';
 import type { LinkEntryView } from './generated/links/LinkEntryView';
 import type { LinkFields } from './api';
 import { useT } from './i18n';
@@ -14,6 +14,10 @@ import { useT } from './i18n';
  * again. Without that the reader could not tell whether a teaser is theirs
  * to keep or a snapshot that will drift.
  *
+ * The opening mode follows the same shape at its own scale: "inherit the
+ * list default" is the unset state, and choosing one makes this link an
+ * exception on purpose.
+ *
  * Only changed fields are emitted, so the untouched ones keep the
  * server-side null that means "unchanged" — see UpdateLinkRequest.
  */
@@ -24,6 +28,8 @@ const props = defineProps<{
   /** What the page says right now, for the placeholders. */
   pageTeaser: string | null;
   pageImage: string | null;
+  /** The list default, so "inherit" can say what it inherits. */
+  listOpen: string;
   busy?: boolean;
 }>();
 
@@ -43,6 +49,25 @@ const group = ref(props.entry.group ?? '');
 const note = ref(props.entry.note ?? '');
 const tags = ref<string[]>([...(props.entry.tags ?? [])]);
 
+// The select cannot carry '' as a value — VSelect maps an empty option to
+// null — so inheritance goes through its own sentinel instead. The blank
+// string is what the wire means by "back to the list default".
+const OPEN_INHERIT = '__inherit__';
+const openChoice = ref<string | null>(props.entry.open ?? OPEN_INHERIT);
+const openNow = (): string => openChoice.value ?? OPEN_INHERIT;
+
+const openOptions = computed(() => [
+  { value: OPEN_INHERIT, label: t('links.edit.openInherit', { mode: t(`links.settings.open${cap(props.listOpen)}`) }) },
+  { value: 'tab', label: t('links.settings.openTab') },
+  { value: 'same', label: t('links.settings.openSame') },
+  { value: 'frame', label: t('links.settings.openFrame') },
+]);
+
+/** 'tab' → 'Tab' — the option keys differ from the wire values by a capital. */
+function cap(value: string): string {
+  return value ? value[0].toUpperCase() + value.slice(1) : value;
+}
+
 function save(): void {
   const fields: LinkFields = {};
   if (title.value !== (props.entry.title ?? '')) fields.title = title.value;
@@ -51,6 +76,9 @@ function save(): void {
   if (group.value !== (props.entry.group ?? '')) fields.group = group.value;
   if (note.value !== (props.entry.note ?? '')) fields.note = note.value;
   if (!sameTags(tags.value, props.entry.tags ?? [])) fields.tags = tags.value;
+  if (openNow() !== (props.entry.open ?? OPEN_INHERIT)) {
+    fields.open = openNow() === OPEN_INHERIT ? '' : openNow();
+  }
   emit('save', fields);
 }
 
@@ -105,6 +133,15 @@ function close(): void {
         :label="t('links.edit.tags')"
         :placeholder="t('links.edit.tagsPlaceholder')"
       />
+
+      <div class="w-64">
+        <VSelect
+          v-model="openChoice"
+          :options="openOptions"
+          :label="t('links.edit.openLabel')"
+          :help="t('links.edit.openHelp')"
+        />
+      </div>
 
       <VTextarea
         v-model="note"

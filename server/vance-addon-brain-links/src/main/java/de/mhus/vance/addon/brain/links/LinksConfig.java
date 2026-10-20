@@ -27,14 +27,20 @@ import org.jspecify.annotations.Nullable;
  * @param entries         the links, in display order.
  * @param indexOutputPath relative path of the generated index
  *                        (default {@code _index.md}).
+ * @param open            how a link opens when its card is clicked — the
+ *                        list default a per-entry {@code open} overrides.
+ *                        {@code null} means unset, which reads as
+ *                        {@link LinkOpenMode#TAB}.
  */
 public record LinksConfig(
         List<String> groups,
         List<LinkEntry> entries,
-        String indexOutputPath) {
+        String indexOutputPath,
+        @Nullable LinkOpenMode open) {
 
     /** Block key inside {@code config}, and the app discriminator. */
     public static final String BLOCK = "links";
+
     public static final String DEFAULT_INDEX = "_index.md";
 
     public LinksConfig {
@@ -46,7 +52,7 @@ public record LinksConfig(
     }
 
     public static LinksConfig empty() {
-        return new LinksConfig(List.of(), List.of(), DEFAULT_INDEX);
+        return new LinksConfig(List.of(), List.of(), DEFAULT_INDEX, null);
     }
 
     /** Read the block out of an application manifest. */
@@ -83,13 +89,19 @@ public record LinksConfig(
             if (out != null) indexOutput = out;
         }
 
-        return new LinksConfig(groups, entries, indexOutput);
+        LinkOpenMode open = null;
+        if (block.get("open") instanceof String rawOpen) {
+            open = LinkOpenMode.parse(rawOpen);
+        }
+
+        return new LinksConfig(groups, entries, indexOutput, open);
     }
 
     /** The YAML form written back into {@code config.links}. */
     public Map<String, Object> toBlock() {
         Map<String, Object> block = new LinkedHashMap<>();
         if (!groups.isEmpty()) block.put("groups", List.copyOf(groups));
+        if (open != null) block.put("open", open.wireName());
         List<Map<String, Object>> rows = new ArrayList<>(entries.size());
         for (LinkEntry e : entries) rows.add(e.toMap());
         block.put("entries", rows);
@@ -122,6 +134,11 @@ public record LinksConfig(
             if (g.equals(want)) out.add(e);
         }
         return List.copyOf(out);
+    }
+
+    /** The effective list default — the stored value or {@link LinkOpenMode#TAB}. */
+    public LinkOpenMode effectiveOpen() {
+        return open != null ? open : LinkOpenMode.TAB;
     }
 
     private static @Nullable String asString(@Nullable Object v) {

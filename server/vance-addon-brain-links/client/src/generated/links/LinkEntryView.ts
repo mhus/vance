@@ -9,6 +9,7 @@ export interface LinkEntryView {
   teaser?: string;
   image?: string;
   group?: string;
+  open?: string;
   tags: string[];
   note?: string;
   addedAt?: string;

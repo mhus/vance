@@ -46,6 +46,16 @@ public class LinksAppCreateTool implements Tool {
                                     "items",
                                     Map.of("type", "string")));
                     put(
+                            "open",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Optional: how links open by default — 'tab' (new browser "
+                                            + "tab), 'same' (same tab) or 'frame' (embedded "
+                                            + "pane). Default 'tab'. A single entry can override "
+                                            + "it with links_entry_add."));
+                    put(
                             "overwrite",
                             Map.of("type", "boolean", "description", "Replace an existing manifest. Default false."));
                     put("projectId", Map.of("type", "string"));

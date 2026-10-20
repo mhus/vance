@@ -60,6 +60,16 @@ public class LinksEntryUpdateTool implements Tool {
                                     "items",
                                     Map.of("type", "string")));
                     put("note", Map.of("type", "string", "description", "New remark. Empty string clears it."));
+                    put(
+                            "open",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "How the app opens this link — 'tab' (new browser tab), "
+                                            + "'same' (same tab) or 'frame' (embedded pane). "
+                                            + "Empty string removes the override so the list "
+                                            + "default applies."));
                     put("projectId", Map.of("type", "string"));
                 }
             },

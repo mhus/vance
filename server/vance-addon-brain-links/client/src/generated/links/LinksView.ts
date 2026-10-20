@@ -10,5 +10,6 @@ export interface LinksView {
   title?: string;
   description?: string;
   groups: string[];
+  open: string;
   entries: LinkEntryView[];
 }

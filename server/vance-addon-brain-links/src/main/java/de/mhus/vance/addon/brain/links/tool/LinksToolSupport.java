@@ -53,7 +53,8 @@ final class LinksToolSupport {
                 null,
                 rawString(params, "group"),
                 paramStringList(params, "tags"),
-                rawString(params, "note"));
+                rawString(params, "note"),
+                rawString(params, "open"));
     }
 
     /**

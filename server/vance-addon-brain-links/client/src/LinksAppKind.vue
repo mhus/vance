@@ -15,7 +15,9 @@ import {
 import { safeUrl } from '@vance/shared';
 import LinkPicture from './LinkPicture.vue';
 import LinkEditDialog from './LinkEditDialog.vue';
-import CaptureTokenDialog from './CaptureTokenDialog.vue';
+import LinkFrameView from './LinkFrameView.vue';
+import LinksSettingsDialog from './LinksSettingsDialog.vue';
+import { resolveOpen, type OpenMode } from './openMode';
 import {
   addLink,
   rebuildLinks,
@@ -71,6 +73,8 @@ const settingsOpen = ref(false);
 const openMenu = ref<string | null>(null);
 const dragged = ref<string | null>(null);
 const selectedUrl = ref<string | null>(null);
+/** The entry whose page fills the app area while the frame view is open. */
+const framed = ref<LinkEntryView | null>(null);
 
 type Section = { group: string; items: LinkEntryView[] };
 
@@ -534,6 +538,53 @@ function href(entry: LinkEntryView): string | null {
   return safeUrl(entry.url);
 }
 
+/**
+ * The effective opening mode for one entry: its own override, else the
+ * list default. The server sends both raw — the entry override nullable so
+ * the edit dialog can tell "own mode" from "follows the list", the list
+ * default resolved so the client never has to guess the fallback.
+ */
+function openModeOf(entry: LinkEntryView): OpenMode {
+  return resolveOpen(entry.open, view.value?.open);
+}
+
+/**
+ * `target` for the title anchor. `same` navigates the tab itself — no target
+ * attribute, so modifier clicks keep their native meaning. `frame` keeps
+ * `_blank` as the fallback for exactly those modifier clicks: a plain click
+ * is intercepted below, and everything we do not intercept should still
+ * open a real tab rather than fight the reader.
+ */
+function openTarget(entry: LinkEntryView): string | undefined {
+  return openModeOf(entry) === 'same' ? undefined : '_blank';
+}
+
+/**
+ * A plain click on the title opens the in-app pane; everything else —
+ * middle-click, Cmd/Ctrl/Shift/Alt — keeps its native meaning, for the same
+ * reason `same` mode has no target: taking the browser's "open in a new
+ * tab" away would turn the mode into a trap.
+ */
+function onTitleClick(ev: MouseEvent, entry: LinkEntryView): void {
+  if (openModeOf(entry) !== 'frame') return;
+  if (ev.defaultPrevented || ev.button !== 0
+      || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+  ev.preventDefault();
+  openFrame(entry);
+}
+
+/**
+ * Open the entry in the app's browsing pane. The opened card becomes the
+ * selection — the same ring the search app puts on an opened hit — so when
+ * the reader comes back to the list, it says which page they were on, and
+ * "this link" in the chat names what they were reading.
+ */
+function openFrame(entry: LinkEntryView): void {
+  framed.value = entry;
+  selectedUrl.value = entry.url;
+  openMenu.value = null;
+}
+
 function teaser(entry: LinkEntryView): string | null {
   return teaserOf(entry.teaser, entry.url);
 }
@@ -560,6 +611,16 @@ function message(e: unknown): string {
 
 <template>
   <div class="flex h-full min-h-0 flex-col gap-3 p-3">
+    <!-- The browsing pane replaces the whole content: while a page fills the
+         app area, curating is not what the reader is doing. -->
+    <LinkFrameView
+      v-if="framed"
+      :key="framed.url"
+      :entry="framed"
+      @close="framed = null"
+    />
+
+    <template v-else>
     <!-- Paste row. A text field rather than a dialog: adding a link is the
          one thing this app does constantly. -->
     <div class="flex items-start gap-2">
@@ -593,9 +654,9 @@ function message(e: unknown): string {
         :disabled="busy"
         @click="onRebuild()"
        />
-      <!-- Capture access. Its own control rather than an item in a card's ⋯
-           menu: it is about the list as a whole, not about any one link. -->
-      <VIconButton icon="settings" :label="t('links.app.captureTip')"
+      <!-- Settings of the list as a whole: how links open, capture access.
+         Its own control rather than an item in a card's ⋯ menu. -->
+      <VIconButton icon="settings" :label="t('links.app.settingsTip')"
         @click="settingsOpen = true"
        />
     </div>
@@ -736,10 +797,10 @@ function message(e: unknown): string {
                 <a
                   v-if="href(entry)"
                   :href="href(entry)!"
-                  target="_blank"
+                  :target="openTarget(entry)"
                   rel="noopener noreferrer"
                   class="font-semibold hover:underline"
-                  @click.stop
+                  @click.stop="onTitleClick($event, entry)"
                 >
                   {{ entry.title ?? entry.host }}
                 </a>
@@ -840,11 +901,14 @@ function message(e: unknown): string {
         </template>
       </div>
     </div>
+    </template>
 
-    <CaptureTokenDialog
+    <LinksSettingsDialog
       v-if="settingsOpen"
       :project-id="props.document.projectId"
       :folder="folder"
+      :open="view?.open ?? 'tab'"
+      @saved="apply"
       @close="settingsOpen = false"
     />
 
@@ -852,6 +916,7 @@ function message(e: unknown): string {
       v-if="editing"
       :entry="editing"
       :groups="groups"
+      :list-open="view?.open ?? 'tab'"
       :page-teaser="previewFor(editing.url)?.description ?? null"
       :page-image="previewFor(editing.url)?.image ?? null"
       :busy="busy"

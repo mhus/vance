@@ -12,6 +12,11 @@ bookmark or sort external URLs:
   freezes a guess in place of it.
 - Read the list with `links_list(folder, group?, query?)`, move or relabel an
   entry with `links_entry_update`, drop one with `links_entry_remove`.
+- How a link opens is configurable: the list default, plus an optional
+  per-link override — `'tab'` (new browser tab), `'same'` (same tab) or
+  `'frame'` (embedded pane inside the app). Set it via `open` on
+  `links_app_create` (list default) or `links_entry_add` / `links_entry_update`
+  (single link), and only when the user asked for it.
 - To say what a linked page actually contains, fetch the URL (`web_fetch`) —
   `links_list` returns only what the list stores.
 - **Prefer the typed tools over editing `_app.yaml`.** The manifest reader is

@@ -23,6 +23,7 @@ a project document has a path and a kind, and an external page has neither.
 | `teaser` | **only when somebody typed one**; otherwise resolved live |
 | `image` | **only when somebody typed one**; otherwise resolved live |
 | `group`, `tags`, `note`, `addedAt` | yes |
+| `open` | optional — per-link override of how the app opens it (see below) |
 | `viewedAt` | yes — set when the reader marks the link seen |
 
 Teaser and picture come from the brain's link-preview proxy, which already
@@ -35,6 +36,22 @@ says today*. **Do not write a teaser unless the user dictated one.**
 
 `note` is separate from `teaser` on purpose: a teaser describes the page, a note
 describes why *this* list has it.
+
+## How a link opens
+
+The list has an opening mode, and a single entry can override it:
+
+- `tab` — a new browser tab (the default)
+- `same` — the same tab; replaces the workspace, the browser's back button returns
+- `frame` — an embedded pane inside the app with its own toolbar
+
+An entry without `open` inherits the list's mode. Only set `open` on an entry
+when the user asked for *that* link to behave differently — inheritance is the
+normal state, an override is a decision.
+
+Note for `frame`: many sites (GitHub, Google, most login pages) refuse to be
+embedded and the pane will stay empty. That refusal cannot be detected, so the
+pane's toolbar always offers an "open in a new tab" button.
 
 ## Read vs. unread
 
@@ -74,11 +91,14 @@ links:
 
 ## Tools
 
-- `links_app_create(folder, title?, description?, groups?)` — bootstrap the manifest.
-- `links_entry_add(folder, url, group?, title?, teaser?, tags?, note?)` — add one
-  (idempotent on the URL; the title is fetched for you).
-- `links_entry_update(folder, url, group?, title?, teaser?, tags?, note?)` — omitted
-  field = unchanged, empty string = cleared. An empty `title` re-fetches it.
+- `links_app_create(folder, title?, description?, groups?, open?)` — bootstrap
+  the manifest. `open` is the list's default opening mode: `tab`, `same` or `frame`.
+- `links_entry_add(folder, url, group?, title?, teaser?, tags?, note?, open?)` — add
+  one (idempotent on the URL; the title is fetched for you). `open` is the
+  optional per-link override.
+- `links_entry_update(folder, url, group?, title?, teaser?, tags?, note?, open?)` —
+  omitted field = unchanged, empty string = cleared. An empty `title` re-fetches
+  it; an empty `open` returns the link to the list's default.
 - `links_entry_remove(folder, url)` — drop the entry. Nothing else is deleted.
 - `links_list(folder, group?, query?, limit?)` — read the inventory.
 - `links_validate(folder | content)` — self-check, see below.

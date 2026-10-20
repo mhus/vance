@@ -135,6 +135,9 @@ public class LinksListTool implements Tool {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("folder", LinksStore.normaliseFolder(folder));
         result.put("groups", config.orderedGroups());
+        // The default every entry without its own `open` inherits — an agent
+        // asked "how do links open here" answers from this, not from guessing.
+        result.put("open", config.effectiveOpen().wireName());
         result.put("total", matched);
         result.put("entries", rows);
         if (matched > rows.size()) {
@@ -153,6 +156,9 @@ public class LinksListTool implements Tool {
         if (e.group() != null) m.put("group", e.group());
         if (e.teaser() != null) m.put("teaser", e.teaser());
         if (e.note() != null) m.put("note", e.note());
+        // Only when the entry carries its own override — the list default is
+        // the `open` field of the result envelope, not repeated per row.
+        if (e.open() != null) m.put("open", e.open().wireName());
         if (!e.tags().isEmpty()) m.put("tags", e.tags());
         if (e.addedAt() != null) m.put("addedAt", e.addedAt().toString());
         // Carried even though nothing here filters on it: without it an agent

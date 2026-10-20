@@ -21,4 +21,5 @@ public record UpdateLinkRequest(
         @Nullable String image,
         @Nullable String group,
         @Nullable List<String> tags,
-        @Nullable String note) {}
+        @Nullable String note,
+        @Nullable String open) {}

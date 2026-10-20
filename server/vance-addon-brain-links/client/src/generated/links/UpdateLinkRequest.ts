@@ -11,4 +11,5 @@ export interface UpdateLinkRequest {
   group?: string;
   tags?: string[];
   note?: string;
+  open?: string;
 }

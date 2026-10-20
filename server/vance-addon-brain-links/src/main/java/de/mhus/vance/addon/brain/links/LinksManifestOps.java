@@ -89,10 +89,11 @@ public class LinksManifestOps {
             @Nullable String image,
             @Nullable String group,
             @Nullable List<String> tags,
-            @Nullable String note) {
+            @Nullable String note,
+            @Nullable String open) {
 
         public static LinkFields none() {
-            return new LinkFields(null, null, null, null, null, null);
+            return new LinkFields(null, null, null, null, null, null, null);
         }
     }
 
@@ -117,8 +118,8 @@ public class LinksManifestOps {
      *
      * @return true when an entry was added, false when it was already there.
      */
-    public boolean addEntry(String tenantId, String projectId, String folder,
-                            String url, LinkFields fields, @Nullable String userId) {
+    public boolean addEntry(
+            String tenantId, String projectId, String folder, String url, LinkFields fields, @Nullable String userId) {
         return capture(tenantId, projectId, folder, url, fields, userId).added();
     }
 
@@ -129,20 +130,19 @@ public class LinksManifestOps {
      * add implementations would be two idempotency rules, and this one is
      * load-bearing for every caller that saves the same page twice.
      */
-    public CaptureResult capture(String tenantId, String projectId, String folder,
-                                 String url, LinkFields fields, @Nullable String userId) {
-        return mutate(tenantId, projectId, folder,
-                () -> addEntryLocked(tenantId, projectId, folder, url, fields, userId));
+    public CaptureResult capture(
+            String tenantId, String projectId, String folder, String url, LinkFields fields, @Nullable String userId) {
+        return mutate(
+                tenantId, projectId, folder, () -> addEntryLocked(tenantId, projectId, folder, url, fields, userId));
     }
 
-    private CaptureResult addEntryLocked(String tenantId, String projectId, String folder,
-                                         String url, LinkFields fields, @Nullable String userId) {
+    private CaptureResult addEntryLocked(
+            String tenantId, String projectId, String folder, String url, LinkFields fields, @Nullable String userId) {
         LinksStore.Loaded loaded = store.load(tenantId, projectId, folder);
         String id = LinkUrls.identity(url);
         LinkEntry existing = find(loaded.config().entries(), id);
         if (existing != null) {
-            log.debug("LinksManifestOps.addEntry folder='{}' url='{}' already present",
-                    folder, id);
+            log.debug("LinksManifestOps.addEntry folder='{}' url='{}' already present", folder, id);
             return new CaptureResult(false, existing);
         }
         String group = blankToNull(fields.group());
@@ -150,15 +150,26 @@ public class LinksManifestOps {
         if (title == null) {
             title = fetchTitle(id, tenantId, projectId);
         }
-        LinkEntry entry = new LinkEntry(id, title,
-                blankToNull(fields.teaser()), blankToNull(checkedImage(fields.image())), group,
+        LinkEntry entry = new LinkEntry(
+                id,
+                title,
+                blankToNull(fields.teaser()),
+                blankToNull(checkedImage(fields.image())),
+                group,
                 fields.tags() == null ? List.of() : cleanTags(fields.tags()),
-                blankToNull(fields.note()), Instant.now(), null);
+                blankToNull(fields.note()),
+                Instant.now(),
+                null,
+                checkedOpen(fields.open()));
 
         List<LinkEntry> entries = insertGrouped(loaded.config().entries(), entry);
         store.saveConfig(loaded, withEntries(loaded.config(), entries, group), userId);
-        log.info("LinksManifestOps.addEntry tenant='{}' folder='{}' url='{}' group='{}'",
-                tenantId, folder, id, group == null ? "" : group);
+        log.info(
+                "LinksManifestOps.addEntry tenant='{}' folder='{}' url='{}' group='{}'",
+                tenantId,
+                folder,
+                id,
+                group == null ? "" : group);
         return new CaptureResult(true, entry);
     }
 
@@ -169,43 +180,38 @@ public class LinksManifestOps {
      * here costs a badge that is one save behind, and holding the write lock
      * for a lookup that an extension fires on every page load would not.
      */
-    public @Nullable LinkEntry lookup(String tenantId, String projectId, String folder,
-                                      String url) {
-        return find(store.load(tenantId, projectId, folder).config().entries(),
-                LinkUrls.identity(url));
+    public @Nullable LinkEntry lookup(String tenantId, String projectId, String folder, String url) {
+        return find(store.load(tenantId, projectId, folder).config().entries(), LinkUrls.identity(url));
     }
 
     /** Remove the entry with this URL. Unknown URL is an error, not a no-op. */
-    public void removeEntry(String tenantId, String projectId, String folder,
-                            String url, @Nullable String userId) {
-        mutateVoid(tenantId, projectId, folder,
-                () -> removeEntryLocked(tenantId, projectId, folder, url, userId));
+    public void removeEntry(String tenantId, String projectId, String folder, String url, @Nullable String userId) {
+        mutateVoid(tenantId, projectId, folder, () -> removeEntryLocked(tenantId, projectId, folder, url, userId));
     }
 
-    private void removeEntryLocked(String tenantId, String projectId, String folder,
-                                   String url, @Nullable String userId) {
+    private void removeEntryLocked(
+            String tenantId, String projectId, String folder, String url, @Nullable String userId) {
         LinksStore.Loaded loaded = store.load(tenantId, projectId, folder);
         String id = LinkUrls.identity(url);
         List<LinkEntry> entries = new ArrayList<>(loaded.config().entries());
         boolean removed = entries.removeIf(e -> e.url().equals(id));
         if (!removed) throw new ToolException("No link entry for '" + id + "'.");
         store.saveConfig(loaded, withEntries(loaded.config(), entries, null), userId);
-        log.info("LinksManifestOps.removeEntry tenant='{}' folder='{}' url='{}'",
-                tenantId, folder, id);
+        log.info("LinksManifestOps.removeEntry tenant='{}' folder='{}' url='{}'", tenantId, folder, id);
     }
 
     /**
      * Edit one entry. See the class comment for the null/blank convention;
      * a blank {@code title} re-derives the snapshot from the page.
      */
-    public void updateEntry(String tenantId, String projectId, String folder,
-                            String url, LinkFields fields, @Nullable String userId) {
-        mutateVoid(tenantId, projectId, folder,
-                () -> updateEntryLocked(tenantId, projectId, folder, url, fields, userId));
+    public void updateEntry(
+            String tenantId, String projectId, String folder, String url, LinkFields fields, @Nullable String userId) {
+        mutateVoid(
+                tenantId, projectId, folder, () -> updateEntryLocked(tenantId, projectId, folder, url, fields, userId));
     }
 
-    private void updateEntryLocked(String tenantId, String projectId, String folder,
-                                   String url, LinkFields fields, @Nullable String userId) {
+    private void updateEntryLocked(
+            String tenantId, String projectId, String folder, String url, LinkFields fields, @Nullable String userId) {
         LinksStore.Loaded loaded = store.load(tenantId, projectId, folder);
         String id = LinkUrls.identity(url);
         LinkEntry current = find(loaded.config().entries(), id);
@@ -214,7 +220,7 @@ public class LinksManifestOps {
         String title = current.title();
         if (fields.title() != null) {
             title = fields.title().isBlank()
-                    ? fetchTitle(id, tenantId, projectId)   // clear ⇒ re-derive
+                    ? fetchTitle(id, tenantId, projectId) // clear ⇒ re-derive
                     : fields.title().trim();
         }
         LinkEntry next = new LinkEntry(
@@ -228,7 +234,10 @@ public class LinksManifestOps {
                 current.addedAt(),
                 // Editing a link says nothing about whether it was read. The
                 // one mutation that touches this is setViewed.
-                current.viewedAt());
+                current.viewedAt(),
+                // Like patch(), but for the enum: null keeps the override,
+                // blank drops it back to the list default.
+                fields.open() == null ? current.open() : checkedOpen(fields.open()));
 
         boolean groupChanged = !equalGroup(current.group(), next.group());
         List<LinkEntry> entries = new ArrayList<>();
@@ -245,8 +254,7 @@ public class LinksManifestOps {
         if (groupChanged) entries = insertGrouped(entries, next);
 
         store.saveConfig(loaded, withEntries(loaded.config(), entries, next.group()), userId);
-        log.info("LinksManifestOps.updateEntry tenant='{}' folder='{}' url='{}'",
-                tenantId, folder, id);
+        log.info("LinksManifestOps.updateEntry tenant='{}' folder='{}' url='{}'", tenantId, folder, id);
     }
 
     /**
@@ -268,21 +276,20 @@ public class LinksManifestOps {
      * click that acknowledged it would lose the reader's place — the view
      * decides where a seen entry is shown, the manifest keeps its order.
      */
-    public void setViewed(String tenantId, String projectId, String folder,
-                          String url, boolean viewed, @Nullable String userId) {
-        mutateVoid(tenantId, projectId, folder,
-                () -> setViewedLocked(tenantId, projectId, folder, url, viewed, userId));
+    public void setViewed(
+            String tenantId, String projectId, String folder, String url, boolean viewed, @Nullable String userId) {
+        mutateVoid(
+                tenantId, projectId, folder, () -> setViewedLocked(tenantId, projectId, folder, url, viewed, userId));
     }
 
-    private void setViewedLocked(String tenantId, String projectId, String folder,
-                                 String url, boolean viewed, @Nullable String userId) {
+    private void setViewedLocked(
+            String tenantId, String projectId, String folder, String url, boolean viewed, @Nullable String userId) {
         LinksStore.Loaded loaded = store.load(tenantId, projectId, folder);
         String id = LinkUrls.identity(url);
         LinkEntry current = find(loaded.config().entries(), id);
         if (current == null) throw new ToolException("No link entry for '" + id + "'.");
 
-        Instant next = viewed ? (current.viewedAt() == null ? Instant.now() : current.viewedAt())
-                : null;
+        Instant next = viewed ? (current.viewedAt() == null ? Instant.now() : current.viewedAt()) : null;
         if (Objects.equals(next, current.viewedAt())) {
             // Nothing to write. A click that changes nothing must not cost a
             // document version, and the views are full of repeat clicks.
@@ -291,14 +298,23 @@ public class LinksManifestOps {
 
         List<LinkEntry> entries = new ArrayList<>();
         for (LinkEntry e : loaded.config().entries()) {
-            entries.add(e.url().equals(id)
-                    ? new LinkEntry(e.url(), e.title(), e.teaser(), e.image(), e.group(),
-                            e.tags(), e.note(), e.addedAt(), next)
-                    : e);
+            entries.add(
+                    e.url().equals(id)
+                            ? new LinkEntry(
+                                    e.url(),
+                                    e.title(),
+                                    e.teaser(),
+                                    e.image(),
+                                    e.group(),
+                                    e.tags(),
+                                    e.note(),
+                                    e.addedAt(),
+                                    next,
+                                    e.open())
+                            : e);
         }
         store.saveConfig(loaded, withEntries(loaded.config(), entries, null), userId);
-        log.info("LinksManifestOps.setViewed tenant='{}' folder='{}' url='{}' viewed={}",
-                tenantId, folder, id, viewed);
+        log.info("LinksManifestOps.setViewed tenant='{}' folder='{}' url='{}' viewed={}", tenantId, folder, id, viewed);
     }
 
     /**
@@ -307,14 +323,13 @@ public class LinksManifestOps {
      * order it is showing, and a list that changed underneath must not throw
      * away the entries the client did not know about.
      */
-    public void reorder(String tenantId, String projectId, String folder,
-                        List<String> orderedUrls, @Nullable String userId) {
-        mutateVoid(tenantId, projectId, folder,
-                () -> reorderLocked(tenantId, projectId, folder, orderedUrls, userId));
+    public void reorder(
+            String tenantId, String projectId, String folder, List<String> orderedUrls, @Nullable String userId) {
+        mutateVoid(tenantId, projectId, folder, () -> reorderLocked(tenantId, projectId, folder, orderedUrls, userId));
     }
 
-    private void reorderLocked(String tenantId, String projectId, String folder,
-                               List<String> orderedUrls, @Nullable String userId) {
+    private void reorderLocked(
+            String tenantId, String projectId, String folder, List<String> orderedUrls, @Nullable String userId) {
         LinksStore.Loaded loaded = store.load(tenantId, projectId, folder);
         List<LinkEntry> remaining = new ArrayList<>(loaded.config().entries());
         List<LinkEntry> ordered = new ArrayList<>();
@@ -342,14 +357,13 @@ public class LinksManifestOps {
      * declared list is the honest form. Use {@link #renameGroup} to empty a
      * group first.
      */
-    public void setGroups(String tenantId, String projectId, String folder,
-                          List<String> groups, @Nullable String userId) {
-        mutateVoid(tenantId, projectId, folder,
-                () -> setGroupsLocked(tenantId, projectId, folder, groups, userId));
+    public void setGroups(
+            String tenantId, String projectId, String folder, List<String> groups, @Nullable String userId) {
+        mutateVoid(tenantId, projectId, folder, () -> setGroupsLocked(tenantId, projectId, folder, groups, userId));
     }
 
-    private void setGroupsLocked(String tenantId, String projectId, String folder,
-                                 List<String> groups, @Nullable String userId) {
+    private void setGroupsLocked(
+            String tenantId, String projectId, String folder, List<String> groups, @Nullable String userId) {
         LinksStore.Loaded loaded = store.load(tenantId, projectId, folder);
         SequencedSet<String> next = new LinkedHashSet<>();
         for (String g : groups) {
@@ -361,7 +375,10 @@ public class LinksManifestOps {
             if (g != null) next.add(g);
         }
         LinksConfig config = new LinksConfig(
-                List.copyOf(next), loaded.config().entries(), loaded.config().indexOutputPath());
+                List.copyOf(next),
+                loaded.config().entries(),
+                loaded.config().indexOutputPath(),
+                loaded.config().open());
         store.saveConfig(loaded, config, userId);
     }
 
@@ -370,14 +387,23 @@ public class LinksManifestOps {
      * {@code to} moves the entries into the lead (ungrouped) group and drops
      * the heading.
      */
-    public void renameGroup(String tenantId, String projectId, String folder,
-                            String from, @Nullable String to, @Nullable String userId) {
-        mutateVoid(tenantId, projectId, folder,
-                () -> renameGroupLocked(tenantId, projectId, folder, from, to, userId));
+    public void renameGroup(
+            String tenantId,
+            String projectId,
+            String folder,
+            String from,
+            @Nullable String to,
+            @Nullable String userId) {
+        mutateVoid(tenantId, projectId, folder, () -> renameGroupLocked(tenantId, projectId, folder, from, to, userId));
     }
 
-    private void renameGroupLocked(String tenantId, String projectId, String folder,
-                                   String from, @Nullable String to, @Nullable String userId) {
+    private void renameGroupLocked(
+            String tenantId,
+            String projectId,
+            String folder,
+            String from,
+            @Nullable String to,
+            @Nullable String userId) {
         String source = blankToNull(from);
         if (source == null) throw new ToolException("from is required");
         String target = blankToNull(to);
@@ -387,8 +413,17 @@ public class LinksManifestOps {
         boolean touched = false;
         for (LinkEntry e : loaded.config().entries()) {
             if (source.equals(e.group())) {
-                relabelled.add(new LinkEntry(e.url(), e.title(), e.teaser(), e.image(),
-                        target, e.tags(), e.note(), e.addedAt(), e.viewedAt()));
+                relabelled.add(new LinkEntry(
+                        e.url(),
+                        e.title(),
+                        e.teaser(),
+                        e.image(),
+                        target,
+                        e.tags(),
+                        e.note(),
+                        e.addedAt(),
+                        e.viewedAt(),
+                        e.open()));
                 touched = true;
             } else {
                 relabelled.add(e);
@@ -413,17 +448,56 @@ public class LinksManifestOps {
         if (!touched && !declared) {
             throw new ToolException("No group named '" + source + "'.");
         }
-        store.saveConfig(loaded, new LinksConfig(List.copyOf(groups), entries,
-                loaded.config().indexOutputPath()), userId);
-        log.info("LinksManifestOps.renameGroup tenant='{}' folder='{}' '{}' -> '{}'",
-                tenantId, folder, source, target == null ? "(ungrouped)" : target);
+        store.saveConfig(
+                loaded,
+                new LinksConfig(
+                        List.copyOf(groups),
+                        entries,
+                        loaded.config().indexOutputPath(),
+                        loaded.config().open()),
+                userId);
+        log.info(
+                "LinksManifestOps.renameGroup tenant='{}' folder='{}' '{}' -> '{}'",
+                tenantId,
+                folder,
+                source,
+                target == null ? "(ungrouped)" : target);
+    }
+
+    /**
+     * Set the list default for how a link opens — the value a per-entry
+     * {@code open} overrides. Blank clears the setting, which reads the same
+     * as {@link LinkOpenMode#TAB} but keeps the manifest honest about what
+     * somebody chose and what is default.
+     */
+    public void setOpen(
+            String tenantId, String projectId, String folder, @Nullable String open, @Nullable String userId) {
+        LinkOpenMode parsed = checkedOpen(open);
+        mutateVoid(tenantId, projectId, folder, () -> setOpenLocked(tenantId, projectId, folder, parsed, userId));
+    }
+
+    private void setOpenLocked(
+            String tenantId, String projectId, String folder, @Nullable LinkOpenMode open, @Nullable String userId) {
+        LinksStore.Loaded loaded = store.load(tenantId, projectId, folder);
+        store.saveConfig(
+                loaded,
+                new LinksConfig(
+                        loaded.config().groups(),
+                        loaded.config().entries(),
+                        loaded.config().indexOutputPath(),
+                        open),
+                userId);
+        log.info(
+                "LinksManifestOps.setOpen tenant='{}' folder='{}' open={}",
+                tenantId,
+                folder,
+                open == null ? "(default)" : open.wireName());
     }
 
     // ── helpers ───────────────────────────────────────────────────
 
     /** Run one read-modify-write of a single manifest under its stripe. */
-    private static <T> T mutate(String tenantId, String projectId, String folder,
-                                Supplier<T> body) {
+    private static <T> T mutate(String tenantId, String projectId, String folder, Supplier<T> body) {
         ReentrantLock lock = lockFor(tenantId, projectId, folder);
         lock.lock();
         try {
@@ -434,8 +508,7 @@ public class LinksManifestOps {
     }
 
     /** {@link #mutate} for a mutation with nothing to report back. */
-    private static void mutateVoid(String tenantId, String projectId, String folder,
-                                   Runnable body) {
+    private static void mutateVoid(String tenantId, String projectId, String folder, Runnable body) {
         ReentrantLock lock = lockFor(tenantId, projectId, folder);
         lock.lock();
         try {
@@ -470,9 +543,7 @@ public class LinksManifestOps {
             String raw = dto.getTitle();
             String title = UntrustedContent.collapseWhitespace(raw == null ? "" : raw);
             if (title.isEmpty()) return null;
-            return title.length() > MAX_TITLE_CHARS
-                    ? title.substring(0, MAX_TITLE_CHARS) + "…"
-                    : title;
+            return title.length() > MAX_TITLE_CHARS ? title.substring(0, MAX_TITLE_CHARS) + "…" : title;
         } catch (RuntimeException e) {
             log.debug("LinksManifestOps: no title for {} ({})", url, e.toString());
             return null;
@@ -504,15 +575,14 @@ public class LinksManifestOps {
      * is not declared yet — so a group typed into the add form becomes a
      * heading that survives its last entry being removed.
      */
-    private static LinksConfig withEntries(LinksConfig config, List<LinkEntry> entries,
-                                           @Nullable String newGroup) {
+    private static LinksConfig withEntries(LinksConfig config, List<LinkEntry> entries, @Nullable String newGroup) {
         List<String> groups = config.groups();
         if (newGroup != null && !groups.contains(newGroup)) {
             List<String> next = new ArrayList<>(groups);
             next.add(newGroup);
             groups = next;
         }
-        return new LinksConfig(groups, entries, config.indexOutputPath());
+        return new LinksConfig(groups, entries, config.indexOutputPath(), config.open());
     }
 
     private static @Nullable LinkEntry find(List<LinkEntry> entries, String id) {
@@ -540,6 +610,22 @@ public class LinksManifestOps {
             throw new ToolException("image must be an http(s) URL — got '" + s + "'");
         }
         return s;
+    }
+
+    /**
+     * The open mode, strictly — the same reasoning as {@link #checkedImage}:
+     * a mutation may not store a value the lenient reader would silently
+     * drop, or every later surface would inherit a setting that does
+     * nothing. {@code null} and blank pass through: what they mean (not
+     * given / clear back to the list default) is the caller's convention.
+     */
+    private static @Nullable LinkOpenMode checkedOpen(@Nullable String open) {
+        if (open == null || open.isBlank()) return null;
+        LinkOpenMode mode = LinkOpenMode.parse(open);
+        if (mode == null) {
+            throw new ToolException("open must be one of 'tab', 'same', 'frame' — got '" + open.trim() + "'");
+        }
+        return mode;
     }
 
     /** {@code null} keeps the current value, blank clears it. */

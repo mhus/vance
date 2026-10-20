@@ -74,6 +74,15 @@ public class LinksEntryAddTool implements Tool {
                                     "description",
                                     "Optional remark on why this list has the link. "
                                             + "Distinct from the teaser, which describes the page."));
+                    put(
+                            "open",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Optional: how the app opens this link — 'tab' (new browser "
+                                            + "tab), 'same' (same tab) or 'frame' (embedded "
+                                            + "pane). Omit for the list default."));
                     put("projectId", Map.of("type", "string"));
                 }
             },

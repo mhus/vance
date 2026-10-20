@@ -1,6 +1,9 @@
 import { brainFetch } from '@vance/shared';
+import type { OpenMode } from './openMode';
 import type { LinksView } from './generated/links/LinksView';
 import type { LinksRebuildResponse } from './generated/links/LinksRebuildResponse';
+
+export type { OpenMode } from './openMode';
 
 /**
  * The links REST surface.
@@ -25,6 +28,8 @@ export interface LinkFields {
   group?: string | null;
   tags?: string[] | null;
   note?: string | null;
+  /** Per-entry opening mode. Omitted = unchanged; '' = back to the list default. */
+  open?: string | null;
 }
 
 export async function scanLinks(projectId: string, folder: string): Promise<LinksView> {
@@ -107,6 +112,20 @@ export async function renameGroup(
 ): Promise<LinksView> {
   return brainFetch<LinksView>('POST', `addon/links/group/rename?${qs({ projectId, folder })}`, {
     body: { from, to },
+  });
+}
+
+/**
+ * Set the list default for how a link opens. Blank clears it — reads the
+ * same as `'tab'` but keeps the manifest honest about what was chosen.
+ */
+export async function updateOpen(
+  projectId: string,
+  folder: string,
+  open: OpenMode | null,
+): Promise<LinksView> {
+  return brainFetch<LinksView>('POST', `addon/links/settings?${qs({ projectId, folder })}`, {
+    body: { open: open ?? '' },
   });
 }
 

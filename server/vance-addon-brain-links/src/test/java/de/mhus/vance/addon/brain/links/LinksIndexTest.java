@@ -14,11 +14,14 @@ class LinksIndexTest {
 
     @Test
     void ungroupedEntriesLeadAndGroupsFollowInDeclaredOrder() {
-        LinksConfig config = new LinksConfig(List.of("Second", "First"), List.of(
-                entry("https://loose.example/", "Loose", null),
-                entry("https://b.example/", "In first", "First"),
-                entry("https://a.example/", "In second", "Second")),
-                LinksConfig.DEFAULT_INDEX);
+        LinksConfig config = new LinksConfig(
+                List.of("Second", "First"),
+                List.of(
+                        entry("https://loose.example/", "Loose", null),
+                        entry("https://b.example/", "In first", "First"),
+                        entry("https://a.example/", "In second", "Second")),
+                LinksConfig.DEFAULT_INDEX,
+                null);
 
         String md = LinksApplication.renderIndex(config, "Reading");
 
@@ -30,9 +33,11 @@ class LinksIndexTest {
     void aTitleWithBracketsCannotBreakOutOfTheLinkLabel() {
         // The title is somebody else's og:title. An unescaped ] would end the
         // label early and leave the rest of it loose next to a broken URL.
-        LinksConfig config = new LinksConfig(List.of(), List.of(
-                entry("https://a.example/", "Read [this] now", null)),
-                LinksConfig.DEFAULT_INDEX);
+        LinksConfig config = new LinksConfig(
+                List.of(),
+                List.of(entry("https://a.example/", "Read [this] now", null)),
+                LinksConfig.DEFAULT_INDEX,
+                null);
 
         String md = LinksApplication.renderIndex(config, "Reading");
 
@@ -41,10 +46,12 @@ class LinksIndexTest {
 
     @Test
     void aMultilineTeaserBecomesOneLineSoTheListStaysAList() {
-        LinksConfig config = new LinksConfig(List.of(), List.of(
-                new LinkEntry("https://a.example/", "T", "first\n\nsecond", null, null,
-                        List.of(), null, null, null)),
-                LinksConfig.DEFAULT_INDEX);
+        LinksConfig config = new LinksConfig(
+                List.of(),
+                List.of(new LinkEntry(
+                        "https://a.example/", "T", "first\n\nsecond", null, null, List.of(), null, null, null, null)),
+                LinksConfig.DEFAULT_INDEX,
+                null);
 
         String md = LinksApplication.renderIndex(config, "Reading");
 
@@ -55,44 +62,58 @@ class LinksIndexTest {
     void theOwnNoteTravelsIntoTheIndex() {
         // The note is the half that cannot be recovered from the page, so the
         // one artefact that travels (chat, embed, export) must carry it.
-        LinksConfig config = new LinksConfig(List.of(), List.of(
-                new LinkEntry("https://a.example/", "T", null, null, null,
-                        List.of(), "send to the team", null, null)),
-                LinksConfig.DEFAULT_INDEX);
+        LinksConfig config = new LinksConfig(
+                List.of(),
+                List.of(new LinkEntry(
+                        "https://a.example/", "T", null, null, null, List.of(), "send to the team", null, null, null)),
+                LinksConfig.DEFAULT_INDEX,
+                null);
 
-        assertThat(LinksApplication.renderIndex(config, "Reading"))
-                .contains("— *send to the team*");
+        assertThat(LinksApplication.renderIndex(config, "Reading")).contains("— *send to the team*");
     }
 
     @Test
     void teaserAndNoteAppearInThatOrderAndStayDistinguishable() {
-        LinksConfig config = new LinksConfig(List.of(), List.of(
-                new LinkEntry("https://a.example/", "T", "what the page says", null, null,
-                        List.of(), "why I kept it", null, null)),
-                LinksConfig.DEFAULT_INDEX);
+        LinksConfig config = new LinksConfig(
+                List.of(),
+                List.of(new LinkEntry(
+                        "https://a.example/",
+                        "T",
+                        "what the page says",
+                        null,
+                        null,
+                        List.of(),
+                        "why I kept it",
+                        null,
+                        null,
+                        null)),
+                LinksConfig.DEFAULT_INDEX,
+                null);
 
-        assertThat(LinksApplication.renderIndex(config, "Reading"))
-                .contains("— what the page says · *why I kept it*");
+        assertThat(LinksApplication.renderIndex(config, "Reading")).contains("— what the page says · *why I kept it*");
     }
 
     @Test
     void anAsteriskInBorrowedTextCannotItaliciseTheRestOfTheLine() {
         // The note is wrapped in *…*, so one unescaped asterisk inside would
         // close the emphasis and run it over everything after.
-        LinksConfig config = new LinksConfig(List.of(), List.of(
-                new LinkEntry("https://a.example/", "T", null, null, null,
-                        List.of(), "read *this* first", null, null)),
-                LinksConfig.DEFAULT_INDEX);
+        LinksConfig config = new LinksConfig(
+                List.of(),
+                List.of(new LinkEntry(
+                        "https://a.example/", "T", null, null, null, List.of(), "read *this* first", null, null, null)),
+                LinksConfig.DEFAULT_INDEX,
+                null);
 
-        assertThat(LinksApplication.renderIndex(config, "Reading"))
-                .contains("*read \\*this\\* first*");
+        assertThat(LinksApplication.renderIndex(config, "Reading")).contains("*read \\*this\\* first*");
     }
 
     @Test
     void noTitleFallsBackToTheHost() {
-        LinksConfig config = new LinksConfig(List.of(), List.of(
-                entry("https://www.example.com/deep/page", null, null)),
-                LinksConfig.DEFAULT_INDEX);
+        LinksConfig config = new LinksConfig(
+                List.of(),
+                List.of(entry("https://www.example.com/deep/page", null, null)),
+                LinksConfig.DEFAULT_INDEX,
+                null);
 
         assertThat(LinksApplication.renderIndex(config, "Reading"))
                 .contains("[example.com](https://www.example.com/deep/page)");
@@ -120,9 +141,11 @@ class LinksIndexTest {
         // the list item itself: the rest of the title lands as a loose
         // paragraph next to a bare URL in brackets. And the title is precisely
         // the field that comes off the foreign page.
-        LinksConfig config = new LinksConfig(List.of(), List.of(
-                entry("https://a.example/", "Async Rust\n\nrevisited", null)),
-                LinksConfig.DEFAULT_INDEX);
+        LinksConfig config = new LinksConfig(
+                List.of(),
+                List.of(entry("https://a.example/", "Async Rust\n\nrevisited", null)),
+                LinksConfig.DEFAULT_INDEX,
+                null);
 
         String md = LinksApplication.renderIndex(config, "Reading");
 
@@ -147,6 +170,6 @@ class LinksIndexTest {
     }
 
     private static LinkEntry entry(String url, String title, String group) {
-        return new LinkEntry(url, title, null, null, group, List.of(), null, null, null);
+        return new LinkEntry(url, title, null, null, group, List.of(), null, null, null, null);
     }
 }

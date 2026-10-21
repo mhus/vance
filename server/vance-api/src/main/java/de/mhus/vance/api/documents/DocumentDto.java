@@ -54,6 +54,14 @@ public class DocumentDto {
 
     private @Nullable Long createdAtMs;
 
+    /**
+     * Wall-clock at which the document was last meaningfully changed —
+     * see {@link DocumentSummary#updatedAtMs}. Surfaced on the detail
+     * DTO because Cortex and the script form read it directly without
+     * the {@code /content} round trip.
+     */
+    private @Nullable Long updatedAtMs;
+
     private @Nullable String createdBy;
 
     /**

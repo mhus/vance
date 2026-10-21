@@ -2255,6 +2255,7 @@ public class DocumentController {
                 .size(doc.getSize())
                 .tags(doc.getTags())
                 .createdAtMs(toEpochMillis(doc.getCreatedAt()))
+                .updatedAtMs(toEpochMillis(doc.getUpdatedAt()))
                 .createdBy(doc.getCreatedBy())
                 .kind(doc.getKind())
                 .build();
@@ -2272,6 +2273,7 @@ public class DocumentController {
                 .size(doc.getSize())
                 .tags(doc.getTags())
                 .createdAtMs(toEpochMillis(doc.getCreatedAt()))
+                .updatedAtMs(toEpochMillis(doc.getUpdatedAt()))
                 .createdBy(doc.getCreatedBy())
                 .kind(doc.getKind())
                 .headers(

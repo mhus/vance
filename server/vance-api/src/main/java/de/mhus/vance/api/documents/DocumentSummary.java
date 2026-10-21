@@ -54,6 +54,21 @@ public class DocumentSummary {
 
     private @Nullable Long createdAtMs;
 
+    /**
+     * Wall-clock at which the document was last meaningfully changed —
+     * a content write, a metadata edit (title, tags, color, notes,
+     * path/rename), or a lock-state change. Drives the "zuletzt
+     * geändert" column in the UI and the mtime of files in the Liver
+     * backup tool ({@code planning/user-backup.md} §3.1). Bookkeeping
+     * writes (auto-summary, RAG index, archive pointer updates) do not
+     * bump this field.
+     *
+     * <p>{@code null} on rows that pre-date the
+     * {@code Migrator_2026_10_21_001_DocumentUpdatedAt} backfill and
+     * have not been written to since.
+     */
+    private @Nullable Long updatedAtMs;
+
     private @Nullable String createdBy;
 
     /** Legacy client-side cache flag — server no longer sets this. */

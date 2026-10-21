@@ -67,6 +67,10 @@ public abstract class AbstractDavResource implements Resource, PropFindableResou
 
     @Override
     public @Nullable Date getModifiedDate() {
+        // Concrete file resources override this; folders have no meaningful
+        // mtime of their own and the milton protocol treats null as
+        // "no claim", which lets PROPFIND skip the field rather than
+        // reporting a wrong value.
         return null;
     }
 

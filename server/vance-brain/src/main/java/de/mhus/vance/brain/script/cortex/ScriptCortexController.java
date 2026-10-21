@@ -519,6 +519,7 @@ public class ScriptCortexController {
                 .size(doc.getSize())
                 .tags(doc.getTags())
                 .createdAtMs(toMillis(doc.getCreatedAt()))
+                .updatedAtMs(toMillis(doc.getUpdatedAt()))
                 .createdBy(doc.getCreatedBy())
                 .kind(doc.getKind())
                 .build();
@@ -535,6 +536,7 @@ public class ScriptCortexController {
                 .size(doc.getSize())
                 .tags(doc.getTags())
                 .createdAtMs(toMillis(doc.getCreatedAt()))
+                .updatedAtMs(toMillis(doc.getUpdatedAt()))
                 .createdBy(doc.getCreatedBy())
                 .kind(doc.getKind())
                 .headers(doc.getHeaders() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(doc.getHeaders()))

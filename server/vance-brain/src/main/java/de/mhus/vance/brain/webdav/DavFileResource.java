@@ -59,7 +59,13 @@ class DavFileResource extends AbstractDavResource
 
     @Override
     public @Nullable Date getModifiedDate() {
-        return doc.getCreatedAt() == null ? null : Date.from(doc.getCreatedAt());
+        // updatedAt is the user's "last meaningful change" — content,
+        // metadata, path/rename. Falls back to createdAt for rows that
+        // pre-date the backfill migration; null is reserved for very old
+        // rows that genuinely have neither field.
+        if (doc.getUpdatedAt() != null) return Date.from(doc.getUpdatedAt());
+        if (doc.getCreatedAt() != null) return Date.from(doc.getCreatedAt());
+        return null;
     }
 
     @Override

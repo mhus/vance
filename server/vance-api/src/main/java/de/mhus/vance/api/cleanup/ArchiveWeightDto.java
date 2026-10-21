@@ -10,8 +10,9 @@ import lombok.NoArgsConstructor;
 import org.jspecify.annotations.Nullable;
 
 /**
- * One entry of the breakdown's {@code topArchives} list — a single archive
- * version with its size and the number of siblings under the same lineage.
+ * One entry of the breakdown's {@code topArchives} list — one lineage,
+ * represented by its largest archive version, with the number of versions
+ * the lineage has.
  *
  * <p>The UI uses {@link #size} as the sort key (biggest first) and
  * {@link #versionCount} as the hint "this document has been rewritten N

@@ -10,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.aggregation.Aggregation;
+import org.springframework.data.mongodb.core.aggregation.AggregationOperation;
 import org.springframework.data.mongodb.core.aggregation.AggregationResults;
 import org.springframework.stereotype.Service;
 
@@ -195,7 +196,28 @@ public class StorageQuotaService {
         }
     }
 
-    /** Aggregates {@code storage_data} for the tenant's final chunks. */
+    /**
+     * Current usage of {@code tenantId} in bytes, regardless of whether a
+     * limit is configured — {@link #status} skips the aggregation for an
+     * unlimited tenant, an admin breakdown still wants the number. Shares
+     * the pre-check cache. {@code -1} when the aggregation fails.
+     */
+    public long currentUsage(String tenantId) {
+        try {
+            return precheckCache.get(tenantId, () -> aggregateUsage(tenantId));
+        } catch (RuntimeException e) {
+            log.warn("Storage usage aggregation failed for tenant={}", tenantId, e);
+            return -1L;
+        }
+    }
+
+    /**
+     * Bytes of the tenant's final chunks in {@code storage_data}, minus the
+     * blobs whose deletion is already scheduled. {@link MongoStorageService#delete}
+     * only writes a {@link StorageDelete} marker; the chunks stay until the
+     * cleanup scheduler runs minutes later. Counting them would keep a
+     * freshly emptied trash on the meter for that whole window.
+     */
     long aggregateUsage(String tenantId) {
         Aggregation agg = Aggregation.newAggregation(
                 Aggregation.match(org.springframework.data.mongodb.core.query.Criteria.where("tenantId")
@@ -205,7 +227,44 @@ public class StorageQuotaService {
                 Aggregation.group().sum("size").as("total"));
         AggregationResults<SumResult> results = mongoTemplate.aggregate(agg, "storage_data", SumResult.class);
         SumResult r = results.getUniqueMappedResult();
+        long total = r == null ? 0L : r.getTotal();
+        return Math.max(0L, total - aggregatePendingDeletes(tenantId));
+    }
+
+    /**
+     * Bytes of the tenant's blobs that carry a {@link StorageDelete} marker.
+     * Starts from {@code storage_delete} — small, it only holds the markers
+     * of the last scheduler interval — grouped by {@code storageId} so a blob
+     * marked twice is subtracted once, then joins each blob's final chunk.
+     */
+    long aggregatePendingDeletes(String tenantId) {
+        // Raw stages: Spring's field-reference check would reject
+        // "finalChunk" after the $group, it only knows the exposed _id.
+        org.bson.Document lookup = new org.bson.Document("from", "storage_data")
+                .append("localField", "_id")
+                .append("foreignField", "uuid")
+                .append(
+                        "pipeline",
+                        java.util.List.of(
+                                new org.bson.Document(
+                                        "$match", new org.bson.Document("tenantId", tenantId).append("isFinal", true)),
+                                new org.bson.Document("$project", new org.bson.Document("size", 1))))
+                .append("as", "finalChunk");
+        Aggregation agg = Aggregation.newAggregation(
+                stage("$group", new org.bson.Document("_id", "$storageId")),
+                stage("$lookup", lookup),
+                stage("$unwind", "$finalChunk"),
+                stage(
+                        "$group",
+                        new org.bson.Document("_id", null)
+                                .append("total", new org.bson.Document("$sum", "$finalChunk.size"))));
+        AggregationResults<SumResult> results = mongoTemplate.aggregate(agg, "storage_delete", SumResult.class);
+        SumResult r = results.getUniqueMappedResult();
         return r == null ? 0L : r.getTotal();
+    }
+
+    private static AggregationOperation stage(String operator, Object body) {
+        return context -> new org.bson.Document(operator, body);
     }
 
     private Status computeStatus(String tenantId) {

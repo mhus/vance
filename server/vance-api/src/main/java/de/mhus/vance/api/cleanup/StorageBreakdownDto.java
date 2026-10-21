@@ -18,19 +18,27 @@ import org.jspecify.annotations.Nullable;
  * limit needs to see which pool is eating the bytes before picking the right
  * cleanup action.
  *
- * <p>The four byte counts add up:
+ * <p>Two kinds of figures:
  * <ul>
- *   <li>{@link #usedBytes} — every byte that counts against the quota,
- *       whatever lives behind it.</li>
- *   <li>{@link #trashBytes} — bytes still bound to documents in the project's
- *       {@code _vance/trash/} folder. Releasing these is a single admin click:
- *       hard-delete every entry.</li>
- *   <li>{@link #archiveBytes} — bytes bound to archived document versions
- *       ({@code document_archives}). Releasing these needs a "keep latest N"
- *       decision per lineage.</li>
- *   <li>{@link #liveBytes} — what is left after the two above; the working
- *       set. Cannot be reclaimed without losing work.</li>
+ *   <li>{@link #usedBytes} — the tenant's quota counter: every stored byte
+ *       of the tenant, whatever lives behind it (documents, archives,
+ *       attachments). Always tenant-wide, also on a project-scoped call.</li>
+ *   <li>The three pools of the requested scope, summed from the document
+ *       sizes:
+ *     <ul>
+ *       <li>{@link #liveBytes} — active documents outside the trash; the
+ *           working set. Cannot be reclaimed without losing work.</li>
+ *       <li>{@link #trashBytes} — documents in the {@code _vance/trash/}
+ *           folder. Releasing these is a single admin click: hard-delete
+ *           every entry.</li>
+ *       <li>{@link #archiveBytes} — archived document versions
+ *           ({@code document_archives}). Releasing these needs a "keep
+ *           latest N" decision per lineage.</li>
+ *     </ul></li>
  * </ul>
+ * The pools do not add up to {@link #usedBytes}: the quota counter also
+ * sees blobs outside the document collections, and a project scope sees
+ * only one project's pools.
  *
  * <p>{@link #reclaimableBytes} is {@code trashBytes + archiveBytes} — the
  * upper bound for what the two cleanup actions can return. The UI uses it as
@@ -54,7 +62,7 @@ public class StorageBreakdownDto {
     /** {@code null} for tenant-wide, the project name for a project-scoped call. */
     private @Nullable String projectId;
 
-    /** Every byte that counts against the quota — live + trash + archives. */
+    /** Tenant quota usage in bytes — always tenant-wide; on a tenant without a limit still the real usage. */
     private long usedBytes;
 
     /** Bytes bound to documents under {@code _vance/trash/}. One hard-delete per entry releases them. */
@@ -63,7 +71,7 @@ public class StorageBreakdownDto {
     /** Bytes bound to archived document versions (the {@code document_archives} collection). */
     private long archiveBytes;
 
-    /** {@code usedBytes − trashBytes} — the working set; the bytes that cannot be reclaimed by cleanup. */
+    /** Active documents of the scope outside the trash — the working set; not reclaimable by cleanup. */
     private long liveBytes;
 
     /** {@code trashBytes + archiveBytes} — what the cleanup actions can return at best. */
@@ -76,8 +84,8 @@ public class StorageBreakdownDto {
     private long archiveCount;
 
     /**
-     * Top-N individual archives by size, lineage-grouped. The admin sees the
-     * five biggest version histories in one glance — usually the place where
+     * Top-N archive lineages, one row each, ranked by their largest version.
+     * The admin sees the five biggest version histories in one glance — usually the place where
      * the bulk of {@link #archiveBytes} sits. Empty when the scope has no
      * archives.
      */

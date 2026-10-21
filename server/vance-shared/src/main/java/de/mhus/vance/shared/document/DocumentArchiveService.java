@@ -14,12 +14,15 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
-import java.util.stream.Stream;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.aggregation.Aggregation;
+import org.springframework.data.mongodb.core.aggregation.AggregationOptions;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Service;
@@ -72,13 +75,10 @@ public class DocumentArchiveService {
      */
     public DocumentArchiveDocument archiveCurrent(DocumentDocument doc) {
         if (doc.getId() == null) {
-            throw new IllegalArgumentException(
-                    "Cannot archive a transient document (id == null)");
+            throw new IllegalArgumentException("Cannot archive a transient document (id == null)");
         }
         if (doc.getLineageId() == null || doc.getLineageId().isBlank()) {
-            throw new IllegalArgumentException(
-                    "Cannot archive document id='" + doc.getId()
-                            + "' without lineageId");
+            throw new IllegalArgumentException("Cannot archive document id='" + doc.getId() + "' without lineageId");
         }
         String movedStorageId = doc.getStorageId();
         DocumentArchiveDocument entry = DocumentArchiveDocument.builder()
@@ -89,22 +89,16 @@ public class DocumentArchiveService {
                 .path(doc.getPath())
                 .name(doc.getName())
                 .title(doc.getTitle())
-                .tags(doc.getTags() == null
-                        ? new java.util.ArrayList<>()
-                        : new java.util.ArrayList<>(doc.getTags()))
+                .tags(doc.getTags() == null ? new java.util.ArrayList<>() : new java.util.ArrayList<>(doc.getTags()))
                 .mimeType(doc.getMimeType())
                 .size(doc.getSize())
                 .storageId(movedStorageId)
                 .compressed(doc.isCompressed())
                 .kind(doc.getKind())
-                .headers(doc.getHeaders() == null
-                        ? new LinkedHashMap<>()
-                        : new LinkedHashMap<>(doc.getHeaders()))
+                .headers(doc.getHeaders() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(doc.getHeaders()))
                 .createdBy(doc.getCreatedBy())
                 .archivedAt(Instant.now())
-                .notes(doc.getNotes() == null
-                        ? new LinkedHashMap<>()
-                        : new LinkedHashMap<>(doc.getNotes()))
+                .notes(doc.getNotes() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(doc.getNotes()))
                 .build();
         DocumentArchiveDocument saved = repository.save(entry);
         if (movedStorageId != null) {
@@ -113,9 +107,14 @@ public class DocumentArchiveService {
             // accidentally delete it through StorageService.delete().
             doc.setStorageId(null);
         }
-        log.info("Archived document tenantId='{}' projectId='{}' path='{}' lineageId='{}' archiveId='{}' archivedAt='{}'",
-                saved.getTenantId(), saved.getProjectId(), saved.getPath(),
-                saved.getLineageId(), saved.getId(), saved.getArchivedAt());
+        log.info(
+                "Archived document tenantId='{}' projectId='{}' path='{}' lineageId='{}' archiveId='{}' archivedAt='{}'",
+                saved.getTenantId(),
+                saved.getProjectId(),
+                saved.getPath(),
+                saved.getLineageId(),
+                saved.getId(),
+                saved.getArchivedAt());
         return saved;
     }
 
@@ -136,22 +135,18 @@ public class DocumentArchiveService {
      */
     public DocumentArchiveDocument archiveSnapshot(DocumentDocument doc) {
         if (doc.getId() == null) {
-            throw new IllegalArgumentException(
-                    "Cannot archive a transient document (id == null)");
+            throw new IllegalArgumentException("Cannot archive a transient document (id == null)");
         }
         if (doc.getLineageId() == null || doc.getLineageId().isBlank()) {
-            throw new IllegalArgumentException(
-                    "Cannot archive document id='" + doc.getId()
-                            + "' without lineageId");
+            throw new IllegalArgumentException("Cannot archive document id='" + doc.getId() + "' without lineageId");
         }
         String liveStorageId = doc.getStorageId();
         String archiveStorageId = null;
         if (liveStorageId != null) {
             archiveStorageId = storageService.duplicate(liveStorageId, doc.getTenantId());
             if (archiveStorageId == null) {
-                throw new IllegalStateException(
-                        "Failed to duplicate storage blob '" + liveStorageId
-                                + "' for snapshot — document id='" + doc.getId() + "'");
+                throw new IllegalStateException("Failed to duplicate storage blob '" + liveStorageId
+                        + "' for snapshot — document id='" + doc.getId() + "'");
             }
         }
         DocumentArchiveDocument entry = DocumentArchiveDocument.builder()
@@ -162,27 +157,26 @@ public class DocumentArchiveService {
                 .path(doc.getPath())
                 .name(doc.getName())
                 .title(doc.getTitle())
-                .tags(doc.getTags() == null
-                        ? new java.util.ArrayList<>()
-                        : new java.util.ArrayList<>(doc.getTags()))
+                .tags(doc.getTags() == null ? new java.util.ArrayList<>() : new java.util.ArrayList<>(doc.getTags()))
                 .mimeType(doc.getMimeType())
                 .size(doc.getSize())
                 .storageId(archiveStorageId)
                 .compressed(doc.isCompressed())
                 .kind(doc.getKind())
-                .headers(doc.getHeaders() == null
-                        ? new LinkedHashMap<>()
-                        : new LinkedHashMap<>(doc.getHeaders()))
+                .headers(doc.getHeaders() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(doc.getHeaders()))
                 .createdBy(doc.getCreatedBy())
                 .archivedAt(Instant.now())
-                .notes(doc.getNotes() == null
-                        ? new LinkedHashMap<>()
-                        : new LinkedHashMap<>(doc.getNotes()))
+                .notes(doc.getNotes() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(doc.getNotes()))
                 .build();
         DocumentArchiveDocument saved = repository.save(entry);
-        log.info("Snapshotted document tenantId='{}' projectId='{}' path='{}' lineageId='{}' archiveId='{}' archivedAt='{}'",
-                saved.getTenantId(), saved.getProjectId(), saved.getPath(),
-                saved.getLineageId(), saved.getId(), saved.getArchivedAt());
+        log.info(
+                "Snapshotted document tenantId='{}' projectId='{}' path='{}' lineageId='{}' archiveId='{}' archivedAt='{}'",
+                saved.getTenantId(),
+                saved.getProjectId(),
+                saved.getPath(),
+                saved.getLineageId(),
+                saved.getId(),
+                saved.getArchivedAt());
         return saved;
     }
 
@@ -198,17 +192,23 @@ public class DocumentArchiveService {
         }
         InputStream stream = storageService.load(sid);
         if (stream == null) {
-            log.warn("StorageService returned null for archive id='{}' storageId='{}'",
-                    archive.getId(), sid);
+            log.warn("StorageService returned null for archive id='{}' storageId='{}'", archive.getId(), sid);
             return InputStream.nullInputStream();
         }
         if (archive.isCompressed()) {
             try {
                 return new GZIPInputStream(stream);
             } catch (IOException e) {
-                log.warn("Failed to open gzip stream for archive id='{}' storageId='{}': {}",
-                        archive.getId(), sid, e.toString());
-                try { stream.close(); } catch (IOException ignored) { /* best effort */ }
+                log.warn(
+                        "Failed to open gzip stream for archive id='{}' storageId='{}': {}",
+                        archive.getId(),
+                        sid,
+                        e.toString());
+                try {
+                    stream.close();
+                } catch (IOException ignored) {
+                    /* best effort */
+                }
                 return InputStream.nullInputStream();
             }
         }
@@ -223,8 +223,11 @@ public class DocumentArchiveService {
         try (InputStream in = loadContent(archive)) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            log.warn("Failed to read archive id='{}' lineageId='{}': {}",
-                    archive.getId(), archive.getLineageId(), e.toString());
+            log.warn(
+                    "Failed to read archive id='{}' lineageId='{}': {}",
+                    archive.getId(),
+                    archive.getLineageId(),
+                    e.toString());
             return "";
         }
     }
@@ -244,16 +247,18 @@ public class DocumentArchiveService {
         String sid = archive.getStorageId();
         if (sid == null) {
             // Empty archive — restoring yields an empty live document.
-            return new RestorePayload(null, false, 0L,
+            return new RestorePayload(
+                    null,
+                    false,
+                    0L,
                     archive.getMimeType(),
                     archive.getTitle(),
                     new java.util.ArrayList<>(archive.getTags()));
         }
         String dupId = storageService.duplicate(sid, archive.getTenantId());
         if (dupId == null) {
-            throw new IllegalStateException(
-                    "Failed to duplicate storage blob '" + sid + "' for restore — "
-                            + "archive id='" + archive.getId() + "'");
+            throw new IllegalStateException("Failed to duplicate storage blob '" + sid + "' for restore — "
+                    + "archive id='" + archive.getId() + "'");
         }
         // duplicate() copies raw bytes — gzip wrapper (if any) carries over,
         // so the compressed flag of the archive applies to the new blob too.
@@ -279,13 +284,15 @@ public class DocumentArchiveService {
             try {
                 storageService.delete(sid);
             } catch (Exception e) {
-                log.warn("Failed to delete storage blob for archive id='{}' storageId='{}'",
-                        archiveId, sid, e);
+                log.warn("Failed to delete storage blob for archive id='{}' storageId='{}'", archiveId, sid, e);
             }
         }
         repository.delete(archive);
-        log.info("Deleted archive id='{}' lineageId='{}' path='{}'",
-                archive.getId(), archive.getLineageId(), archive.getPath());
+        log.info(
+                "Deleted archive id='{}' lineageId='{}' path='{}'",
+                archive.getId(),
+                archive.getLineageId(),
+                archive.getPath());
     }
 
     /**
@@ -298,24 +305,25 @@ public class DocumentArchiveService {
     public long deleteAllForLineage(String tenantId, String projectId, String lineageId) {
         if (lineageId == null || lineageId.isBlank()) return 0;
         List<DocumentArchiveDocument> archives =
-                repository.findByTenantIdAndProjectIdAndLineageIdOrderByArchivedAtDesc(
-                        tenantId, projectId, lineageId);
+                repository.findByTenantIdAndProjectIdAndLineageIdOrderByArchivedAtDesc(tenantId, projectId, lineageId);
         for (DocumentArchiveDocument a : archives) {
             String sid = a.getStorageId();
             if (sid != null) {
                 try {
                     storageService.delete(sid);
                 } catch (Exception e) {
-                    log.warn("Failed to delete storage blob for archive id='{}' storageId='{}'",
-                            a.getId(), sid, e);
+                    log.warn("Failed to delete storage blob for archive id='{}' storageId='{}'", a.getId(), sid, e);
                 }
             }
         }
-        long deleted = repository.deleteByTenantIdAndProjectIdAndLineageId(
-                tenantId, projectId, lineageId);
+        long deleted = repository.deleteByTenantIdAndProjectIdAndLineageId(tenantId, projectId, lineageId);
         if (deleted > 0) {
-            log.info("Deleted {} archive entries for tenantId='{}' projectId='{}' lineageId='{}'",
-                    deleted, tenantId, projectId, lineageId);
+            log.info(
+                    "Deleted {} archive entries for tenantId='{}' projectId='{}' lineageId='{}'",
+                    deleted,
+                    tenantId,
+                    projectId,
+                    lineageId);
         }
         return deleted;
     }
@@ -330,11 +338,9 @@ public class DocumentArchiveService {
     }
 
     /** Archives for the lineage, newest first. */
-    public List<DocumentArchiveDocument> listForLineage(
-            String tenantId, String projectId, String lineageId) {
+    public List<DocumentArchiveDocument> listForLineage(String tenantId, String projectId, String lineageId) {
         if (lineageId == null || lineageId.isBlank()) return List.of();
-        return repository.findByTenantIdAndProjectIdAndLineageIdOrderByArchivedAtDesc(
-                tenantId, projectId, lineageId);
+        return repository.findByTenantIdAndProjectIdAndLineageIdOrderByArchivedAtDesc(tenantId, projectId, lineageId);
     }
 
     /**
@@ -343,12 +349,10 @@ public class DocumentArchiveService {
      * content-diff guard — a single indexed lookup instead of loading the
      * whole list.
      */
-    public @Nullable DocumentArchiveDocument findLatestForLineage(
-            String tenantId, String projectId, String lineageId) {
+    public @Nullable DocumentArchiveDocument findLatestForLineage(String tenantId, String projectId, String lineageId) {
         if (lineageId == null || lineageId.isBlank()) return null;
         return repository
-                .findFirstByTenantIdAndProjectIdAndLineageIdOrderByArchivedAtDesc(
-                        tenantId, projectId, lineageId)
+                .findFirstByTenantIdAndProjectIdAndLineageIdOrderByArchivedAtDesc(tenantId, projectId, lineageId)
                 .orElse(null);
     }
 
@@ -362,8 +366,7 @@ public class DocumentArchiveService {
             long size,
             @Nullable String mimeType,
             @Nullable String title,
-            List<String> tags) {
-    }
+            List<String> tags) {}
 
     // ────────────────────────────────────────────────────────────────────
     // Orphan-cleanup support — read-only batch + cursor helpers used by
@@ -398,12 +401,10 @@ public class DocumentArchiveService {
         Query q = new Query();
         q.fields().include("_id").include("lineageId");
         List<ArchiveOrphanCandidate> batch = new ArrayList<>(batchSize);
-        try (Stream<DocumentArchiveDocument> stream =
-                     mongoTemplate.stream(q, DocumentArchiveDocument.class)) {
+        try (Stream<DocumentArchiveDocument> stream = mongoTemplate.stream(q, DocumentArchiveDocument.class)) {
             for (DocumentArchiveDocument a : (Iterable<DocumentArchiveDocument>) stream::iterator) {
                 if (a.getId() == null) continue;
-                batch.add(new ArchiveOrphanCandidate(a.getId(),
-                        a.getLineageId() == null ? "" : a.getLineageId()));
+                batch.add(new ArchiveOrphanCandidate(a.getId(), a.getLineageId() == null ? "" : a.getLineageId()));
                 if (batch.size() >= batchSize) {
                     batchHandler.accept(batch);
                     batch = new ArrayList<>(batchSize);
@@ -417,4 +418,139 @@ public class DocumentArchiveService {
 
     /** Trimmed projection of an archive for orphan-detection. */
     public record ArchiveOrphanCandidate(String archiveId, String lineageId) {}
+
+    // ────────────────────────────────────────────────────────────────────
+    // Storage-cleanup support — read side of Insights → Quotas
+    // (StorageCleanupService). Scope is tenant-wide for
+    // {@code projectId == null}, one project otherwise.
+    // ────────────────────────────────────────────────────────────────────
+
+    /** {@code size} sum and count of the archive entries in a scope. */
+    public SizeTotals sumSizes(String tenantId, @Nullable String projectId) {
+        Aggregation agg = Aggregation.newAggregation(
+                Aggregation.match(scopeCriteria(tenantId, projectId)),
+                Aggregation.group().sum("size").as("bytes").count().as("count"));
+        org.bson.Document row = mongoTemplate
+                .aggregate(agg, DocumentArchiveDocument.class, org.bson.Document.class)
+                .getUniqueMappedResult();
+        if (row == null) return SizeTotals.EMPTY;
+        return new SizeTotals(longOf(row, "bytes"), longOf(row, "count"));
+    }
+
+    /** {@code size} sum of every archive entry of one lineage — what a hard delete of the live document frees on top of its own bytes. */
+    public long sumSizeForLineage(String tenantId, String projectId, String lineageId) {
+        if (lineageId == null || lineageId.isBlank()) return 0L;
+        Aggregation agg = Aggregation.newAggregation(
+                Aggregation.match(Criteria.where("tenantId")
+                        .is(tenantId)
+                        .and("projectId")
+                        .is(projectId)
+                        .and("lineageId")
+                        .is(lineageId)),
+                Aggregation.group().sum("size").as("bytes"));
+        org.bson.Document row = mongoTemplate
+                .aggregate(agg, DocumentArchiveDocument.class, org.bson.Document.class)
+                .getUniqueMappedResult();
+        return row == null ? 0L : longOf(row, "bytes");
+    }
+
+    /**
+     * The {@code limit} lineages with the largest single archive entry, one
+     * row per lineage. Each row names the largest entry (ties go to the
+     * newest) and carries the lineage's total version count — the figure
+     * that tells an admin whether thinning that lineage is worth it.
+     */
+    public List<LineageWeight> heaviestLineages(String tenantId, @Nullable String projectId, int limit) {
+        Aggregation agg = Aggregation.newAggregation(
+                        Aggregation.match(scopeCriteria(tenantId, projectId)),
+                        Aggregation.sort(Sort.by(Sort.Order.desc("size"), Sort.Order.desc("archivedAt"))),
+                        Aggregation.group("projectId", "lineageId")
+                                .first("_id")
+                                .as("archiveId")
+                                .first("path")
+                                .as("path")
+                                .first("size")
+                                .as("size")
+                                .first("archivedAt")
+                                .as("archivedAt")
+                                .count()
+                                .as("versionCount"),
+                        Aggregation.sort(Sort.by(Sort.Order.desc("size"), Sort.Order.desc("archivedAt"))),
+                        Aggregation.limit(limit))
+                .withOptions(AggregationOptions.builder().allowDiskUse(true).build());
+        List<LineageWeight> out = new ArrayList<>();
+        for (org.bson.Document row : mongoTemplate
+                .aggregate(agg, DocumentArchiveDocument.class, org.bson.Document.class)
+                .getMappedResults()) {
+            org.bson.Document key = row.get("_id", org.bson.Document.class);
+            Object archivedAt = row.get("archivedAt");
+            out.add(new LineageWeight(
+                    String.valueOf(row.get("archiveId")),
+                    key == null ? "" : String.valueOf(key.getOrDefault("projectId", "")),
+                    key == null ? "" : String.valueOf(key.getOrDefault("lineageId", "")),
+                    String.valueOf(row.getOrDefault("path", "")),
+                    longOf(row, "size"),
+                    archivedAt instanceof java.util.Date d ? d.toInstant() : Instant.EPOCH,
+                    longOf(row, "versionCount")));
+        }
+        return out;
+    }
+
+    /**
+     * Every archive entry beyond the {@code keep} newest of its lineage —
+     * the delete pile of a "keep latest N" thinning. Streams the scope once
+     * in index order ({@code lineage_archived_idx}) and returns only id and
+     * size, so memory stays at O(delete pile), not O(archive bodies).
+     */
+    public List<ArchiveSize> findBeyondKeepLatest(String tenantId, @Nullable String projectId, int keep) {
+        Query q = new Query(scopeCriteria(tenantId, projectId))
+                .with(Sort.by(Sort.Order.asc("projectId"), Sort.Order.asc("lineageId"), Sort.Order.desc("archivedAt")));
+        q.fields().include("_id").include("projectId").include("lineageId").include("size");
+
+        List<ArchiveSize> toDelete = new ArrayList<>();
+        String currentKey = null;
+        int kept = 0;
+        try (Stream<DocumentArchiveDocument> stream = mongoTemplate.stream(q, DocumentArchiveDocument.class)) {
+            for (DocumentArchiveDocument a : (Iterable<DocumentArchiveDocument>) stream::iterator) {
+                if (a.getId() == null) continue;
+                String key = a.getProjectId() + '\u0000' + a.getLineageId();
+                if (!key.equals(currentKey)) {
+                    currentKey = key;
+                    kept = 0;
+                }
+                if (kept < keep) {
+                    kept++;
+                } else {
+                    toDelete.add(new ArchiveSize(a.getId(), a.getSize()));
+                }
+            }
+        }
+        return toDelete;
+    }
+
+    private static Criteria scopeCriteria(String tenantId, @Nullable String projectId) {
+        Criteria c = Criteria.where("tenantId").is(tenantId);
+        if (projectId != null && !projectId.isBlank()) {
+            c = c.and("projectId").is(projectId);
+        }
+        return c;
+    }
+
+    private static long longOf(org.bson.Document row, String field) {
+        Object v = row.get(field);
+        return v instanceof Number n ? n.longValue() : 0L;
+    }
+
+    /** One lineage in {@link #heaviestLineages}: its largest entry plus the lineage's version count. */
+    public record LineageWeight(
+            String archiveId,
+            String projectId,
+            String lineageId,
+            String path,
+            long size,
+            Instant archivedAt,
+            long versionCount) {}
+
+    /** Id and byte size of one archive entry. */
+    public record ArchiveSize(String archiveId, long size) {}
 }

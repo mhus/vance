@@ -40,7 +40,7 @@ public class StorageCleanupResultDto {
     /** Echo of the depth parameter so the UI can confirm "kept N versions per document". */
     private int keepLatest;
 
-    /** Quota limit for the tenant, post-cleanup. Mirrors {@code StorageQuotaService.status()}. */
+    /** Quota limit for the tenant, post-cleanup, or {@code -1} when no limit is configured. */
     private long limitBytes;
 
     /** Tenant quota usage, freshly aggregated post-cleanup. */

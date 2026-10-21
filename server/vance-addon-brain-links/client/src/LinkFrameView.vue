@@ -23,10 +23,15 @@ import { useT } from './i18n';
  * pane is also the stabler reading surface: the chrome stays where it is
  * while the page loads and reflows.
  *
- * <p><b>No {@code sandbox} attribute, deliberately.</b> The framed page is a
- * normal page in its own origin — scripts and logins have to work for this
- * to be worth a mode at all — and it cannot touch this app's origin any more
- * than the same page in a tab could. {@code referrerpolicy="no-referrer"}
+ * <p><b>Sandboxed, minus top navigation.</b> The framed page is a normal
+ * page in its own origin — scripts, forms, logins, popups and downloads
+ * have to work for this to be worth a mode at all, so the sandbox grants
+ * them. What it withholds is {@code allow-top-navigation}: an unsandboxed
+ * frame may, after one click inside it, replace this whole window
+ * ({@code top.location = …}) with a look-alike login — a power the same page
+ * in a tab does not have over the app. Frame-busting sites break out of
+ * nothing then; they stay framed or show the browser's refusal, and the
+ * "open in a new tab" button is the way out. {@code referrerpolicy="no-referrer"}
  * matches the app's other foreign requests.
  *
  * <p><b>Some sites refuse to be embedded</b> ({@code X-Frame-Options},
@@ -118,11 +123,13 @@ function onOpenExternal(): void {
     </div>
 
     <!-- Fills the remaining height; the framed page scrolls inside its own
-         viewport. No sandbox: see the component comment. -->
+         viewport. Sandbox without allow-top-navigation: see the component
+         comment. -->
     <iframe
       ref="frame"
       :src="url"
       class="min-h-0 w-full flex-1 rounded-lg border border-(--v-separator)"
+      sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads allow-modals"
       referrerpolicy="no-referrer"
       @load="onLoad()"
     ></iframe>

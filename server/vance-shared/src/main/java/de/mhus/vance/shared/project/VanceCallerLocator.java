@@ -13,7 +13,8 @@ import org.jspecify.annotations.Nullable;
  * <p>"Vance frame" = any class whose fully-qualified name starts with
  * {@code de.mhus.vance.} but is not this helper itself (the helper lives in
  * {@code de.mhus.vance.shared.project}, so the second filter is needed when
- * called from the same package).
+ * called from the same package) and not a generated Spring proxy
+ * ({@code $$SpringCGLIB$$}), which only forwards to the real caller.
  *
  * <p>Returns the frame as a {@link StackTraceElement#toString()} string —
  * {@code "<class>.<method>(<file>:<line>)"} — which is what the log line
@@ -27,9 +28,9 @@ public final class VanceCallerLocator {
      * Returns the first Vance frame at depth {@code >= skip}, or {@code null}
      * if no Vance frame is found above {@code skip}.
      *
-     * @param skip number of frames to skip before scanning — at minimum 1
-     *     (the caller of this helper); pass more to step over helper +
-     *     immediate-caller frames in a chain.
+     * @param skip number of frames to skip before scanning; frame 0 is this
+     *     helper, frame 1 its caller. At minimum 1. A service method that
+     *     wants <em>its</em> caller passes 2.
      */
     public static @Nullable String firstVanceFrame(int skip) {
         int start = Math.max(1, skip);
@@ -42,8 +43,9 @@ public final class VanceCallerLocator {
                 .orElse(null));
     }
 
-    private static boolean isVanceFrame(StackTraceElement e) {
+    static boolean isVanceFrame(StackTraceElement e) {
         String cn = e.getClassName();
+        if (cn.contains("$$")) return false;
         // Exclude this helper class itself — but only the helper, not its
         // sibling test class `VanceCallerLocatorTest` (String#startsWith has
         // no notion of word boundaries).

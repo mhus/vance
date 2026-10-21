@@ -29,8 +29,8 @@ import org.springframework.web.bind.annotation.RestController;
  * <ul>
  *   <li>{@code GET /brain/{tenant}/storage/breakdown?projectId=X} — the
  *       bytes-of-storage breakdown that drives the Quotas tab's "Live /
- *       Trash / Archives" rows. Cheap: two {@code $group} aggregations
- *       plus one indexed find for the top-N heaviest archives.</li>
+ *       Trash / Archives" rows. Cheap: three {@code $group} sums plus
+ *       one lineage-grouped aggregation for the top-N heaviest archives.</li>
  *   <li>{@code POST /brain/{tenant}/cleanup/trash?projectId=X} — hard-
  *       delete every document under {@code _vance/trash/} in the scope.
  *       No body; the dialog confirms with the breakdown numbers it just
@@ -87,12 +87,15 @@ public class StorageCleanupController {
             @PathVariable("tenant") String tenant,
             @RequestParam(value = "projectId", required = false) @Nullable String projectId,
             @RequestHeader(value = HEADER_EDITOR_ID, required = false) @Nullable String editorId,
-            @RequestBody StorageCleanupRequest request,
+            @RequestBody(required = false) @Nullable StorageCleanupRequest request,
             HttpServletRequest httpRequest) {
         enforceAdmin(httpRequest, tenant, projectId);
-        int keep = request.getKeepLatest();
         return cleanupService.thinArchives(
-                tenant, projectId, keep, writerIdentity(httpRequest, editorId), actor(httpRequest));
+                tenant,
+                projectId,
+                request == null ? null : request.getKeepLatest(),
+                writerIdentity(httpRequest, editorId),
+                actor(httpRequest));
     }
 
     // ──────────────────── auth helpers ────────────────────

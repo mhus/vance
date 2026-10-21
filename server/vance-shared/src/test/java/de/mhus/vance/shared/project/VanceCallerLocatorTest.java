@@ -53,4 +53,27 @@ class VanceCallerLocatorTest {
         assertThat(frame).startsWith("de.mhus.vance.");
         assertThat(frame).doesNotContain("VanceCallerLocator.firstVanceFrame");
     }
+
+    @Test
+    void skipTwo_fromAServiceMethod_namesThatMethodsCaller() {
+        // The shape ProjectService.transitionStatus uses: the helper is
+        // called inside a method that wants to name *its* caller.
+        String frame = serviceMethod();
+
+        assertThat(frame).contains("VanceCallerLocatorTest.skipTwo_fromAServiceMethod_namesThatMethodsCaller");
+    }
+
+    @Test
+    void springProxyFrames_areNotVanceFrames() {
+        assertThat(VanceCallerLocator.isVanceFrame(new StackTraceElement(
+                        "de.mhus.vance.shared.project.ProjectService$$SpringCGLIB$$0", "transitionStatus", null, -1)))
+                .isFalse();
+        assertThat(VanceCallerLocator.isVanceFrame(new StackTraceElement(
+                        "de.mhus.vance.brain.project.ProjectLifecycleService", "bring", null, -1)))
+                .isTrue();
+    }
+
+    private static String serviceMethod() {
+        return VanceCallerLocator.firstVanceFrame(2);
+    }
 }

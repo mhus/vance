@@ -3815,6 +3815,76 @@ public class DocumentService {
         return path != null && path.startsWith(TRASH_FOLDER_PREFIX);
     }
 
+    // ──────────────────── storage breakdown / cleanup support ────────────────────
+
+    /**
+     * One page of trash documents in a scope ({@code projectId == null} =
+     * tenant-wide), ordered by {@code _id}. The cursor is the {@code _id} of
+     * the last row of the previous page — unique across the tenant, unlike
+     * the trash path, which repeats per project.
+     */
+    public List<DocumentDocument> listTrashPage(
+            String tenantId, @Nullable String projectId, @Nullable String afterId, int limit) {
+        Query q = scopeQuery(tenantId, projectId)
+                .addCriteria(Criteria.where("path").regex("^" + java.util.regex.Pattern.quote(TRASH_FOLDER_PREFIX)))
+                .with(Sort.by("_id"))
+                .limit(limit);
+        if (afterId != null) {
+            q.addCriteria(Criteria.where("_id").gt(new org.bson.types.ObjectId(afterId)));
+        }
+        return mongoTemplate.find(q, DocumentDocument.class);
+    }
+
+    /** {@code size} sum and count of the trash documents in a scope. */
+    public SizeTotals sumTrash(String tenantId, @Nullable String projectId) {
+        return sumSizes(scopeCriteria(tenantId, projectId)
+                .and("path")
+                .regex("^" + java.util.regex.Pattern.quote(TRASH_FOLDER_PREFIX)));
+    }
+
+    /**
+     * {@code size} sum and count of the live working set in a scope — every
+     * active document outside the trash folder. Mounted documents
+     * ({@value JaglanPaths#PREFIX}) are left out: their content lives in the
+     * foreign source and costs no quota.
+     */
+    public SizeTotals sumLive(String tenantId, @Nullable String projectId) {
+        return sumSizes(scopeCriteria(tenantId, projectId)
+                .and("path")
+                .not()
+                .regex("^(" + java.util.regex.Pattern.quote(TRASH_FOLDER_PREFIX) + "|"
+                        + java.util.regex.Pattern.quote(JaglanPaths.PREFIX) + ")"));
+    }
+
+    private SizeTotals sumSizes(Criteria match) {
+        var agg = org.springframework.data.mongodb.core.aggregation.Aggregation.newAggregation(
+                org.springframework.data.mongodb.core.aggregation.Aggregation.match(match),
+                org.springframework.data.mongodb.core.aggregation.Aggregation.group()
+                        .sum("size")
+                        .as("bytes")
+                        .count()
+                        .as("count"));
+        org.bson.Document row = mongoTemplate
+                .aggregate(agg, DocumentDocument.class, org.bson.Document.class)
+                .getUniqueMappedResult();
+        if (row == null) return SizeTotals.EMPTY;
+        return new SizeTotals(
+                ((Number) row.getOrDefault("bytes", 0L)).longValue(),
+                ((Number) row.getOrDefault("count", 0L)).longValue());
+    }
+
+    private static Criteria scopeCriteria(String tenantId, @Nullable String projectId) {
+        Criteria c = Criteria.where("tenantId").is(tenantId).and("status").is(DocumentStatus.ACTIVE);
+        if (projectId != null && !projectId.isBlank()) {
+            c = c.and("projectId").is(projectId);
+        }
+        return c;
+    }
+
+    private static Query scopeQuery(String tenantId, @Nullable String projectId) {
+        return new Query(scopeCriteria(tenantId, projectId));
+    }
+
     /** {@code true} when the path lives under the default
      *  user-documents folder ({@link #DOCUMENTS_FOLDER_PREFIX}). */
     public static boolean isInDocuments(@Nullable String path) {

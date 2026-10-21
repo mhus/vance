@@ -428,20 +428,21 @@ public class ProjectService {
                     .orElseThrow(() -> new ProjectNotFoundException(
                             "Project '" + name + "' not found in tenant '" + tenantId + "'"));
             // Conflict diagnostics: the exception message carries the actual
-            // status, but we also log at WARN with caller-frame context so the
-            // race that produced the conflict (e.g. ClusterDistributorTick vs.
-            // Boot-Self-Pull both bringing the same orphan) is visible in the
-            // log without having to grep for the exception text. The deepest
-            // Vance frame is the caller; Reflection/Proxy frames from Mongo
-            // driver and Spring are skipped.
-            log.warn(
+            // status, this line adds the caller frame so the race that
+            // produced the conflict (e.g. ClusterDistributorTick vs.
+            // Boot-Self-Pull both bringing the same orphan) is visible without
+            // grepping for the exception text. INFO, not WARN: a conflict is
+            // often benign (bring treats a lost RECOVERING → RUNNING as done),
+            // and the caller that cannot tolerate it logs its own warning.
+            // Skip 2 = past the helper and this method, to the caller.
+            log.info(
                     "ProjectStatusConflict: tenant='{}' name='{}' actual={} expected={} target={} caller={}",
                     tenantId,
                     name,
                     actual.getStatus(),
                     expected,
                     target,
-                    VanceCallerLocator.firstVanceFrame(3));
+                    VanceCallerLocator.firstVanceFrame(2));
             throw new ProjectStatusConflictException("Project '" + name + "' status was " + actual.getStatus()
                     + ", expected " + expected + " for transition to " + target);
         }

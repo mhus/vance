@@ -4,5 +4,5 @@
 */
 
 export interface StorageCleanupRequest {
-  keepLatest: number;
+  keepLatest?: number;
 }

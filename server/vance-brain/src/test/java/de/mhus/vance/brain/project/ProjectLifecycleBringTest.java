@@ -166,6 +166,7 @@ class ProjectLifecycleBringTest {
                 .thenThrow(new ProjectService.ProjectStatusConflictException(
                         "Project 'test1' status was RUNNING, expected RECOVERING for transition to RUNNING"));
         when(projectService.findByTenantAndName(TENANT, PROJECT)).thenReturn(Optional.of(runningDoc));
+        when(projectManager.isOwnedByLocalPod(TENANT, PROJECT)).thenReturn(true);
 
         ProjectDocument result = service.bring(TENANT, PROJECT);
 
@@ -200,5 +201,83 @@ class ProjectLifecycleBringTest {
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.bring(TENANT, PROJECT))
                 .isInstanceOf(ProjectService.ProjectStatusConflictException.class);
+    }
+
+    /**
+     * RUNNING after a lost second CAS is only "done" while the lease is still
+     * here. If it moved (expired during a slow restore), the other pod runs
+     * the project — this bring must not report success for a local start
+     * that the lease reconcile is about to unload.
+     */
+    @Test
+    void recoveringToRunningConflict_leaseMovedToAnotherPod_throws() {
+        givenClaimedWithStatus(ProjectStatus.SUSPENDED);
+        ProjectDocument runningDoc = ProjectDocument.builder()
+                .tenantId(TENANT)
+                .name(PROJECT)
+                .status(ProjectStatus.RUNNING)
+                .build();
+        when(projectService.transitionStatus(TENANT, PROJECT, ProjectStatus.RECOVERING, ProjectStatus.RUNNING))
+                .thenThrow(new ProjectService.ProjectStatusConflictException(
+                        "Project 'test1' status was RUNNING, expected RECOVERING for transition to RUNNING"));
+        when(projectService.findByTenantAndName(TENANT, PROJECT)).thenReturn(Optional.of(runningDoc));
+        when(projectManager.isOwnedByLocalPod(TENANT, PROJECT)).thenReturn(false);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.bring(TENANT, PROJECT))
+                .isInstanceOf(ProjectService.ProjectStatusConflictException.class);
+    }
+
+    /**
+     * Two callers on this pod (self-pull and a WS handler, say) bring the
+     * same project at once. The second one must wait for the first and then
+     * take the "already active here" short-circuit instead of running the
+     * activation pass a second time.
+     */
+    @Test
+    void concurrentBringsOnThisPod_activateOnce() throws Exception {
+        ProjectDocument suspended = ProjectDocument.builder()
+                .tenantId(TENANT)
+                .name(PROJECT)
+                .status(ProjectStatus.SUSPENDED)
+                .build();
+        ProjectDocument running = ProjectDocument.builder()
+                .tenantId(TENANT)
+                .name(PROJECT)
+                .status(ProjectStatus.RUNNING)
+                .build();
+        when(projectManager.claimForLocalPod(TENANT, PROJECT)).thenReturn(suspended, running);
+        when(projectService.transitionStatus(eq(TENANT), eq(PROJECT), any(), any()))
+                .thenReturn(running);
+        when(sessionService.unbindAllForProjects(anyString(), anyList())).thenReturn(0L);
+
+        Thread[] second = new Thread[1];
+        java.util.concurrent.atomic.AtomicReference<Throwable> secondFailure =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        org.mockito.Mockito.doAnswer(inv -> {
+                    // While the first bring is inside its activation pass,
+                    // start the second one and give it time to run into the
+                    // lock. Without the lock it would claim and init right now.
+                    second[0] = new Thread(() -> {
+                        try {
+                            service.bring(TENANT, PROJECT);
+                        } catch (Throwable t) {
+                            secondFailure.set(t);
+                        }
+                    });
+                    second[0].start();
+                    second[0].join(300);
+                    return null;
+                })
+                .doReturn(null)
+                .when(workspaceService)
+                .init(TENANT, PROJECT);
+
+        service.bring(TENANT, PROJECT);
+        second[0].join(5_000);
+
+        org.assertj.core.api.Assertions.assertThat(second[0].isAlive()).isFalse();
+        org.assertj.core.api.Assertions.assertThat(secondFailure.get()).isNull();
+        verify(workspaceService, times(1)).init(TENANT, PROJECT);
+        verify(eventPublisher, times(1)).publishEvent(new ProjectEnginesStartRequested(TENANT, PROJECT));
     }
 }

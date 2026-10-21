@@ -18,6 +18,8 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -92,6 +94,17 @@ public class ProjectLifecycleService {
      * no-op there. See {@code planning/permission-system-concept.md} §7.0.
      */
     private final ObjectProvider<de.mhus.vance.shared.permission.PermissionBootstrap> permissionBootstrapProvider;
+
+    /**
+     * One lock per project key, serialising {@link #bring} on this pod. The
+     * lease keeps other pods out; on this pod self-pull, the distributor and
+     * the WS handlers all call {@code bring} and may hit the same project at
+     * once. Without the lock both threads pass the "already active here"
+     * check and start the engines twice. With it the second caller waits and
+     * then takes the short-circuit. Bounded by the projects this pod has
+     * brought.
+     */
+    private final ConcurrentHashMap<String, ReentrantLock> bringLocks = new ConcurrentHashMap<>();
 
     /**
      * Create a new project and bring it to RUNNING in one shot —
@@ -267,12 +280,25 @@ public class ProjectLifecycleService {
      * is refused: nothing runs there — no workspace, no engines, no
      * scheduler. Its documents are the cascade layer and are read from
      * Mongo by whichever project needs them.
+     *
+     * <p>Serialised per project on this pod (see {@link #bringLocks}).
      */
     public ProjectDocument bring(String tenantId, String projectName) {
         if (ProjectService.isHomeless(projectName)) {
             throw new ProjectService.SystemProjectProtectedException(
                     "Project '" + projectName + "' is homeless — nothing runs there");
         }
+        ReentrantLock lock = bringLocks.computeIfAbsent(
+                ProjectActivationRegistry.key(tenantId, projectName), k -> new ReentrantLock());
+        lock.lock();
+        try {
+            return bringLocked(tenantId, projectName);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private ProjectDocument bringLocked(String tenantId, String projectName) {
         ProjectDocument doc = projectManager.claimForLocalPod(tenantId, projectName);
         if (doc.getStatus() == ProjectStatus.RUNNING && activationRegistry.isActive(tenantId, projectName)) {
             // Already up *on this pod*: lease refreshed, nothing to do.
@@ -314,25 +340,26 @@ public class ProjectLifecycleService {
 
     /**
      * Write the second half of {@link #bring}'s status round-trip
-     * (RECOVERING → RUNNING), tolerating convergence with a parallel bring.
+     * (RECOVERING → RUNNING), tolerating an already-RUNNING project as long
+     * as this pod still holds the lease.
      *
      * <p>Why this is not the same CAS as the first one. The first CAS
      * ({@code from → RECOVERING}) is <em>strict</em>: it must reject an
      * explicit SUSPEND or CLOSE that landed between the read and the write,
      * because "ignore an operator's suspend" is a much worse outcome than
      * "retry the bring on the next tick". The second CAS
-     * ({@code RECOVERING → RUNNING}) is different — it is the local
-     * "I'm done" marker of this pass, and two pods finishing the same
-     * recovery work in parallel can both believe they own it. The activation
-     * registry is pod-local, so the "already active here" guard from above
-     * cannot see the sibling pod's activation.
+     * ({@code RECOVERING → RUNNING}) is the "I'm done" marker of this pass.
      *
-     * <p>If a sibling pod won the second CAS first, the project is already
-     * RUNNING and the result of this bring is identical to theirs. Return
-     * the refreshed document and let the caller treat it as success. If the
-     * status is anything else (e.g. SUSPENDING because an operator raced in
-     * between), the conflict is real and we surface it — the operator's
-     * intent wins over the implicit bring.
+     * <p>Losing it to RUNNING is success only while the lease is ours: the
+     * engines started here belong to the lease holder, so the project runs
+     * exactly once. If the lease went to another pod meanwhile (it expired
+     * during a slow workspace restore), that pod runs the project and this
+     * bring surfaces the conflict. The local start it already made is an
+     * "active here, lease elsewhere" project — exactly what
+     * {@link ProjectLeaseService}'s drift reconcile unloads (with the
+     * home-lost witness row), so it is not torn down a second way here. Any status other than
+     * RUNNING (e.g. SUSPENDING from a racing operator) is a real conflict
+     * as well — the operator's intent wins over the implicit bring.
      */
     private ProjectDocument finishBringTransition(String tenantId, String projectName) {
         try {
@@ -351,8 +378,16 @@ public class ProjectLifecycleService {
                         refreshed.getStatus());
                 throw e;
             }
+            if (!projectManager.isOwnedByLocalPod(tenantId, projectName)) {
+                log.warn(
+                        "Project '{}/{}' bring: project is RUNNING but the lease moved to another pod — "
+                                + "surfacing conflict, the lease reconcile unloads the local start",
+                        tenantId,
+                        projectName);
+                throw e;
+            }
             log.info(
-                    "Project '{}/{}' bring: RECOVERING → RUNNING converged with a parallel bring — finishing idempotently",
+                    "Project '{}/{}' bring: RECOVERING → RUNNING already done, lease still here — finishing idempotently",
                     tenantId,
                     projectName);
             return refreshed;

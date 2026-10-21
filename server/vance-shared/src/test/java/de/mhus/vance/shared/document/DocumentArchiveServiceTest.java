@@ -36,22 +36,18 @@ class DocumentArchiveServiceTest {
         storageService = mock(StorageService.class);
         mongoTemplate = mock(org.springframework.data.mongodb.core.MongoTemplate.class);
         service = new DocumentArchiveService(repository, storageService, mongoTemplate);
-        when(repository.save(any(DocumentArchiveDocument.class)))
-                .thenAnswer(inv -> {
-                    DocumentArchiveDocument a = inv.getArgument(0);
-                    if (a.getId() == null) a.setId("arc-" + System.nanoTime());
-                    return a;
-                });
+        when(repository.save(any(DocumentArchiveDocument.class))).thenAnswer(inv -> {
+            DocumentArchiveDocument a = inv.getArgument(0);
+            if (a.getId() == null) a.setId("arc-" + System.nanoTime());
+            return a;
+        });
     }
 
     // ──── archiveCurrent ───────────────────────────────────────────────
 
     @Test
     void archiveCurrent_storageBacked_movesPointerAndClearsLiveStorageId() {
-        DocumentDocument doc = baseDoc()
-                .storageId("blob-1")
-                .size(1024)
-                .build();
+        DocumentDocument doc = baseDoc().storageId("blob-1").size(1024).build();
         doc.setId("doc-1");
         doc.setLineageId("lin-1");
 
@@ -99,16 +95,26 @@ class DocumentArchiveServiceTest {
         doc.setId("doc-n");
         doc.setLineageId("lin-n");
         java.util.Map<String, DocumentNote> notes = new java.util.LinkedHashMap<>();
-        notes.put("n-1", DocumentNote.builder()
-                .id("n-1").text("note 1").userId("alice").done(false)
-                .createdAt(java.time.Instant.parse("2026-06-19T10:00:00Z"))
-                .updatedAt(java.time.Instant.parse("2026-06-19T10:00:00Z"))
-                .build());
-        notes.put("n-2", DocumentNote.builder()
-                .id("n-2").text("done").userId("bob").done(true)
-                .createdAt(java.time.Instant.parse("2026-06-19T10:01:00Z"))
-                .updatedAt(java.time.Instant.parse("2026-06-19T10:02:00Z"))
-                .build());
+        notes.put(
+                "n-1",
+                DocumentNote.builder()
+                        .id("n-1")
+                        .text("note 1")
+                        .userId("alice")
+                        .done(false)
+                        .createdAt(java.time.Instant.parse("2026-06-19T10:00:00Z"))
+                        .updatedAt(java.time.Instant.parse("2026-06-19T10:00:00Z"))
+                        .build());
+        notes.put(
+                "n-2",
+                DocumentNote.builder()
+                        .id("n-2")
+                        .text("done")
+                        .userId("bob")
+                        .done(true)
+                        .createdAt(java.time.Instant.parse("2026-06-19T10:01:00Z"))
+                        .updatedAt(java.time.Instant.parse("2026-06-19T10:02:00Z"))
+                        .build());
         doc.setNotes(notes);
 
         DocumentArchiveDocument saved = service.archiveCurrent(doc);
@@ -124,10 +130,7 @@ class DocumentArchiveServiceTest {
 
     @Test
     void archiveSnapshot_storageBacked_duplicatesBlobAndKeepsLivePointer() {
-        DocumentDocument doc = baseDoc()
-                .storageId("blob-1")
-                .size(1024)
-                .build();
+        DocumentDocument doc = baseDoc().storageId("blob-1").size(1024).build();
         doc.setId("doc-1");
         doc.setLineageId("lin-1");
         when(storageService.duplicate("blob-1", "t1")).thenReturn("blob-copy");
@@ -194,8 +197,15 @@ class DocumentArchiveServiceTest {
     @Test
     void restore_storageDuplicateFailure_propagates() {
         DocumentArchiveDocument archive = DocumentArchiveDocument.builder()
-                .id("arc-3").lineageId("lin-3").tenantId("t1").projectId("p1")
-                .path("x").name("x").storageId("blob-z").size(1).build();
+                .id("arc-3")
+                .lineageId("lin-3")
+                .tenantId("t1")
+                .projectId("p1")
+                .path("x")
+                .name("x")
+                .storageId("blob-z")
+                .size(1)
+                .build();
         when(storageService.duplicate("blob-z", "t1")).thenReturn(null);
 
         assertThatThrownBy(() -> service.restore(archive))
@@ -208,8 +218,15 @@ class DocumentArchiveServiceTest {
     @Test
     void deleteArchive_removesRowAndBlob() {
         DocumentArchiveDocument archive = DocumentArchiveDocument.builder()
-                .id("arc-9").lineageId("lin-9").tenantId("t1").projectId("p1")
-                .path("x").name("x").storageId("blob-9").size(1).build();
+                .id("arc-9")
+                .lineageId("lin-9")
+                .tenantId("t1")
+                .projectId("p1")
+                .path("x")
+                .name("x")
+                .storageId("blob-9")
+                .size(1)
+                .build();
         when(repository.findById("arc-9")).thenReturn(Optional.of(archive));
 
         service.deleteArchive("arc-9");
@@ -231,14 +248,26 @@ class DocumentArchiveServiceTest {
     @Test
     void deleteAllForLineage_dropsEachBlobAndAllRows() {
         DocumentArchiveDocument a1 = DocumentArchiveDocument.builder()
-                .id("arc-1").lineageId("lin-x").tenantId("t1").projectId("p1")
-                .storageId("blob-1").build();
+                .id("arc-1")
+                .lineageId("lin-x")
+                .tenantId("t1")
+                .projectId("p1")
+                .storageId("blob-1")
+                .build();
         DocumentArchiveDocument a2 = DocumentArchiveDocument.builder()
-                .id("arc-2").lineageId("lin-x").tenantId("t1").projectId("p1")
-                .storageId("blob-2").build();
+                .id("arc-2")
+                .lineageId("lin-x")
+                .tenantId("t1")
+                .projectId("p1")
+                .storageId("blob-2")
+                .build();
         DocumentArchiveDocument a3 = DocumentArchiveDocument.builder()
-                .id("arc-3").lineageId("lin-x").tenantId("t1").projectId("p1")
-                .storageId("blob-3").build();
+                .id("arc-3")
+                .lineageId("lin-x")
+                .tenantId("t1")
+                .projectId("p1")
+                .storageId("blob-3")
+                .build();
         when(repository.findByTenantIdAndProjectIdAndLineageIdOrderByArchivedAtDesc("t1", "p1", "lin-x"))
                 .thenReturn(List.of(a1, a2, a3));
         when(repository.deleteByTenantIdAndProjectIdAndLineageId("t1", "p1", "lin-x"))
@@ -260,6 +289,108 @@ class DocumentArchiveServiceTest {
         verify(repository, never()).deleteByTenantIdAndProjectIdAndLineageId(any(), any(), any());
     }
 
+    // ──── storage-cleanup support ───────────────────────────────────────
+
+    @Test
+    void findBeyondKeepLatest_keepsTheNewestPerLineage() {
+        // Stream order = index order: lineage, then newest first. lin-A has
+        // 7 entries, lin-B 3; keep=5 → the two oldest of lin-A.
+        List<DocumentArchiveDocument> all = new java.util.ArrayList<>();
+        for (int i = 1; i <= 7; i++) all.add(archive("a" + i, "p1", "lin-A", 100));
+        for (int i = 1; i <= 3; i++) all.add(archive("b" + i, "p1", "lin-B", 50));
+        when(mongoTemplate.stream(
+                        any(org.springframework.data.mongodb.core.query.Query.class),
+                        eq(DocumentArchiveDocument.class)))
+                .thenReturn(all.stream());
+
+        List<DocumentArchiveService.ArchiveSize> pile = service.findBeyondKeepLatest("t1", null, 5);
+
+        assertThat(pile)
+                .extracting(DocumentArchiveService.ArchiveSize::archiveId)
+                .containsExactly("a6", "a7");
+        assertThat(pile).extracting(DocumentArchiveService.ArchiveSize::size).containsExactly(100L, 100L);
+    }
+
+    @Test
+    void findBeyondKeepLatest_sameLineageIdInTwoProjects_countsSeparately() {
+        // Tenant-wide run: a lineage id is only unique inside its project,
+        // so the keep counter resets on a project change too.
+        List<DocumentArchiveDocument> all = List.of(
+                archive("p1-1", "p1", "lin", 10),
+                archive("p1-2", "p1", "lin", 10),
+                archive("p2-1", "p2", "lin", 10),
+                archive("p2-2", "p2", "lin", 10));
+        when(mongoTemplate.stream(
+                        any(org.springframework.data.mongodb.core.query.Query.class),
+                        eq(DocumentArchiveDocument.class)))
+                .thenReturn(all.stream());
+
+        List<DocumentArchiveService.ArchiveSize> pile = service.findBeyondKeepLatest("t1", null, 1);
+
+        assertThat(pile)
+                .extracting(DocumentArchiveService.ArchiveSize::archiveId)
+                .containsExactly("p1-2", "p2-2");
+    }
+
+    @Test
+    void findBeyondKeepLatest_keepZero_deletesEverything() {
+        when(mongoTemplate.stream(
+                        any(org.springframework.data.mongodb.core.query.Query.class),
+                        eq(DocumentArchiveDocument.class)))
+                .thenReturn(List.of(archive("a1", "p1", "lin", 5), archive("a2", "p1", "lin", 5)).stream());
+
+        assertThat(service.findBeyondKeepLatest("t1", "p1", 0)).hasSize(2);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void heaviestLineages_mapsOneRowPerLineageWithItsVersionCount() {
+        org.bson.Document row = new org.bson.Document(
+                        "_id", new org.bson.Document("projectId", "p1").append("lineageId", "lin-A"))
+                .append("archiveId", "arc-9")
+                .append("path", "notes/big.md")
+                .append("size", 4_000L)
+                .append("archivedAt", java.util.Date.from(java.time.Instant.parse("2026-10-01T00:00:00Z")))
+                .append("versionCount", 14);
+        when(mongoTemplate.aggregate(
+                        any(org.springframework.data.mongodb.core.aggregation.Aggregation.class),
+                        eq(DocumentArchiveDocument.class),
+                        eq(org.bson.Document.class)))
+                .thenReturn(new org.springframework.data.mongodb.core.aggregation.AggregationResults<>(
+                        List.of(row), new org.bson.Document()));
+
+        List<DocumentArchiveService.LineageWeight> top = service.heaviestLineages("t1", null, 5);
+
+        assertThat(top).hasSize(1);
+        DocumentArchiveService.LineageWeight w = top.get(0);
+        assertThat(w.archiveId()).isEqualTo("arc-9");
+        assertThat(w.projectId()).isEqualTo("p1");
+        assertThat(w.lineageId()).isEqualTo("lin-A");
+        assertThat(w.size()).isEqualTo(4_000L);
+        assertThat(w.versionCount()).isEqualTo(14L);
+        assertThat(w.archivedAt()).isEqualTo(java.time.Instant.parse("2026-10-01T00:00:00Z"));
+
+        // The pipeline groups by project + lineage before ranking — one row
+        // per lineage, not one per version.
+        ArgumentCaptor<org.springframework.data.mongodb.core.aggregation.Aggregation> agg =
+                ArgumentCaptor.forClass(org.springframework.data.mongodb.core.aggregation.Aggregation.class);
+        verify(mongoTemplate).aggregate(agg.capture(), eq(DocumentArchiveDocument.class), eq(org.bson.Document.class));
+        assertThat(agg.getValue().toString())
+                .contains("$group")
+                .contains("lineageId")
+                .contains("$limit");
+    }
+
+    @Test
+    void sumSizeForLineage_blankLineage_isZeroWithoutQuery() {
+        assertThat(service.sumSizeForLineage("t1", "p1", "")).isZero();
+        verify(mongoTemplate, never())
+                .aggregate(
+                        any(org.springframework.data.mongodb.core.aggregation.Aggregation.class),
+                        any(Class.class),
+                        any(Class.class));
+    }
+
     // ──── helpers ───────────────────────────────────────────────────────
 
     private static DocumentDocument.DocumentDocumentBuilder baseDoc() {
@@ -272,5 +403,15 @@ class DocumentArchiveServiceTest {
                 .tags(new java.util.ArrayList<>(List.of("draft")))
                 .mimeType("text/markdown")
                 .createdBy("alice");
+    }
+
+    private static DocumentArchiveDocument archive(String id, String project, String lineage, long size) {
+        return DocumentArchiveDocument.builder()
+                .id(id)
+                .tenantId("t1")
+                .projectId(project)
+                .lineageId(lineage)
+                .size(size)
+                .build();
     }
 }

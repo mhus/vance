@@ -6,16 +6,18 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Body of {@code POST /brain/{tenant}/cleanup/archives}. The depth knob the
  * admin sets in the dialog before confirming: how many versions of each
  * document to keep after the run. The server clamps to a sane range so a
- * typo (e.g. {@code -1} or {@code 9999999}) cannot wipe every version or
- * loop forever.
+ * typo (e.g. {@code -1} or {@code 9999999}) cannot wipe every version.
  *
  * <p>{@code keepLatest == 0} keeps nothing — every archive entry of every
- * lineage is deleted, leaving only the live documents. The UI shows a
+ * lineage is deleted, leaving only the live documents. That takes an
+ * explicit {@code 0}: a missing field (empty body, misspelled key) is
+ * {@code null} and means the default, never "keep nothing". The UI shows a
  * separate confirmation for {@code 0}.
  */
 @Data
@@ -27,9 +29,9 @@ import lombok.NoArgsConstructor;
 public class StorageCleanupRequest {
 
     /**
-     * Versions to keep per lineage, newest first. Server clamps to
-     * {@code [0, MAX_KEEP_LATEST]}; anything outside that range becomes
-     * {@code DEFAULT_KEEP_LATEST}.
+     * Versions to keep per lineage, newest first. {@code null} and negative
+     * values become {@code DEFAULT_KEEP_LATEST}; values above
+     * {@code MAX_KEEP_LATEST} are capped to it.
      */
-    private int keepLatest;
+    private @Nullable Integer keepLatest;
 }

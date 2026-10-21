@@ -144,6 +144,28 @@ class StorageQuotaServiceTest {
     }
 
     @Test
+    void usage_leavesOutBlobsWhoseDeletionIsScheduled() {
+        // A cleanup only marks blobs (StorageDelete); the chunks stay until
+        // the scheduler runs. The usage must not count them in the meantime.
+        seedSetting("acme", StorageQuotaService.KEY_MAX_BYTES, "1000000");
+        stubAggregation("acme", 800_000L);
+        stubPendingDeletes(300_000L);
+
+        StorageQuotaService.Status st = service.status("acme");
+
+        assertThat(st.usedBytes()).isEqualTo(500_000L);
+        assertThat(st.percentUsed()).isEqualTo(50);
+    }
+
+    @Test
+    void currentUsage_unlimitedTenant_stillAggregates() {
+        seedSetting("acme", StorageQuotaService.KEY_MAX_BYTES, "0");
+        stubAggregation("acme", 42L);
+
+        assertThat(service.currentUsage("acme")).isEqualTo(42L);
+    }
+
+    @Test
     void status_unlimitedTenant_skipsTheAggregation() {
         seedSetting("acme", StorageQuotaService.KEY_MAX_BYTES, "0");
         StorageQuotaService.Status st = service.status("acme");
@@ -232,6 +254,18 @@ class StorageQuotaServiceTest {
         when(results.getUniqueMappedResult()).thenReturn(r);
         when(mongoTemplate.aggregate(
                         any(Aggregation.class), eq("storage_data"), eq(StorageQuotaService.SumResult.class)))
+                .thenReturn(results);
+        stubPendingDeletes(0L);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void stubPendingDeletes(long total) {
+        StorageQuotaService.SumResult r = new StorageQuotaService.SumResult();
+        r.setTotal(total);
+        AggregationResults<StorageQuotaService.SumResult> results = mock(AggregationResults.class);
+        when(results.getUniqueMappedResult()).thenReturn(total == 0L ? null : r);
+        when(mongoTemplate.aggregate(
+                        any(Aggregation.class), eq("storage_delete"), eq(StorageQuotaService.SumResult.class)))
                 .thenReturn(results);
     }
 }

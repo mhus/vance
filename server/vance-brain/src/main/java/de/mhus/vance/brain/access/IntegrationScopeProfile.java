@@ -57,4 +57,27 @@ public interface IntegrationScopeProfile {
     default boolean requiresProject() {
         return true;
     }
+
+    /**
+     * Whether a token of this profile has a <em>sliding</em> lifetime: a
+     * successful run of the profile's purpose sets {@code expiresAt} to
+     * {@code now + idleDays}, instead of the fixed end chosen at mint time.
+     *
+     * <p>Default {@code false}, and the default is the point: a fixed
+     * end-of-life is a date a person can write into a calendar, and "the
+     * token stops working the day it stops being used" only makes sense for
+     * tools that are inherently continuous (the Liver backup is the example
+     * that motivated the feature: a forgotten backup that gets a new lease
+     * on life every successful run, and dies the moment the user stops
+     * running it — the cost of the dead-but-not-revoked token is the cost
+     * of writing it down).
+     *
+     * <p>Profiles that opt in must declare an {@code idleDays} on the mint
+     * request and trigger {@link IntegrationTokenService#extend} from exactly
+     * one liveness signal per run — otherwise a tool that only calls
+     * {@code status} would keep the token alive without ever backing up.
+     */
+    default boolean slidingLifetime() {
+        return false;
+    }
 }

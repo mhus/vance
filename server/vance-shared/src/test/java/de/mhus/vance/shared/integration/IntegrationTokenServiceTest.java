@@ -268,4 +268,128 @@ class IntegrationTokenServiceTest {
 
         assertThat(cached.isActive("tok-1", "acme", "alice", "links-proj")).isFalse();
     }
+
+    // ─── extend() — sliding lifetime (planning/user-backup.md §7.6) ─────
+
+    /**
+     * A successful run of a sliding-lifetime token sets expiresAt to
+     * {@code now + idleDays}. The query must filter on revokedAt == null AND
+     * expiresAt > now so neither a revoked nor an already-expired row can be
+     * brought back — the atomic \$set is what makes that guarantee hold even
+     * under concurrent revoke().
+     */
+    @Test
+    void extend_setsExpiresAtToNowPlusIdleDays_onAliveToken() {
+        IntegrationTokenDocument doc = row();
+        doc.setIdleDays(90);
+        com.mongodb.client.result.UpdateResult updateResult = mock(com.mongodb.client.result.UpdateResult.class);
+        when(updateResult.getModifiedCount()).thenReturn(1L);
+        when(repository.findByTokenId("tok-1")).thenReturn(Optional.of(doc));
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class), eq(IntegrationTokenDocument.class)))
+                .thenReturn(updateResult);
+
+        Instant before = Instant.now();
+        assertThat(service.extend("tok-1")).isTrue();
+
+        ArgumentCaptor<Update> updateCaptor = ArgumentCaptor.forClass(Update.class);
+        verify(mongoTemplate).updateFirst(any(Query.class), updateCaptor.capture(), eq(IntegrationTokenDocument.class));
+        // The Update wraps a BSON Document; under Mockito the typed value
+        // (Instant) survives unmolested in the inner map.
+        org.bson.Document setFields =
+                (org.bson.Document) updateCaptor.getValue().getUpdateObject().get("$set");
+        Object newExpiryRaw = setFields.get("expiresAt");
+        assertThat(newExpiryRaw).isInstanceOf(Instant.class);
+        Instant newExpiry = (Instant) newExpiryRaw;
+        assertThat(newExpiry)
+                .as("extend() must write a fresh now + idleDays, not the original expiresAt")
+                .isAfterOrEqualTo(before.plus(89, ChronoUnit.DAYS))
+                .isBeforeOrEqualTo(Instant.now().plus(91, ChronoUnit.DAYS));
+    }
+
+    @Test
+    void extend_returnsFalse_whenTokenIsRevoked() {
+        IntegrationTokenDocument doc = row();
+        doc.setIdleDays(90);
+        doc.setRevokedAt(Instant.now().minusSeconds(60));
+        com.mongodb.client.result.UpdateResult updateResult = mock(com.mongodb.client.result.UpdateResult.class);
+        when(updateResult.getModifiedCount()).thenReturn(0L);
+        when(repository.findByTokenId("tok-1")).thenReturn(Optional.of(doc));
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class), eq(IntegrationTokenDocument.class)))
+                .thenReturn(updateResult);
+
+        assertThat(service.extend("tok-1")).isFalse();
+    }
+
+    @Test
+    void extend_returnsFalse_whenTokenAlreadyExpired() {
+        // The atomic update is conditional on expiresAt > now. A row whose
+        // expiresAt has just passed must not be revived by the next
+        // successful run — a forgotten backup that wandered off is the
+        // failure mode the sliding-lifetime design exists to avoid.
+        IntegrationTokenDocument doc = row();
+        doc.setIdleDays(90);
+        doc.setExpiresAt(Instant.now().minusSeconds(1));
+        com.mongodb.client.result.UpdateResult updateResult = mock(com.mongodb.client.result.UpdateResult.class);
+        when(updateResult.getModifiedCount()).thenReturn(0L);
+        when(repository.findByTokenId("tok-1")).thenReturn(Optional.of(doc));
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class), eq(IntegrationTokenDocument.class)))
+                .thenReturn(updateResult);
+
+        assertThat(service.extend("tok-1")).isFalse();
+    }
+
+    @Test
+    void extend_returnsFalse_forNonSlidingToken() {
+        // A token minted with a profile that does not opt into sliding
+        // lifetime has no idleDays. extend() should refuse rather than pick
+        // a default — the only way a non-sliding token reaches this path is
+        // a caller bug, and silently extending it would mask the bug.
+        IntegrationTokenDocument doc = row();
+        doc.setIdleDays(null);
+        when(repository.findByTokenId("tok-1")).thenReturn(Optional.of(doc));
+
+        assertThat(service.extend("tok-1")).isFalse();
+        verify(mongoTemplate, never())
+                .updateFirst(any(Query.class), any(Update.class), eq(IntegrationTokenDocument.class));
+    }
+
+    @Test
+    void extend_returnsFalse_whenTokenDoesNotExist() {
+        when(repository.findByTokenId("tok-missing")).thenReturn(Optional.empty());
+
+        assertThat(service.extend("tok-missing")).isFalse();
+        verify(mongoTemplate, never())
+                .updateFirst(any(Query.class), any(Update.class), eq(IntegrationTokenDocument.class));
+    }
+
+    @Test
+    void extend_evictsLocalCache_soNextIsActiveSeesTheNewExpiry() {
+        // The cache holds a "still alive" decision. extend() must invalidate
+        // it locally so the very next request hits the DB and sees the new
+        // expiresAt — without this the cache could keep authenticating for
+        // up to the cache-ttl window after revocation, and the same applies
+        // in reverse to a fresh extension.
+        IntegrationTokenService cached = new IntegrationTokenService(repository, mongoTemplate, 60);
+        IntegrationTokenDocument doc = row();
+        doc.setIdleDays(90);
+        com.mongodb.client.result.UpdateResult updateResult = mock(com.mongodb.client.result.UpdateResult.class);
+        when(updateResult.getModifiedCount()).thenReturn(1L);
+        when(repository.findByTokenId("tok-1")).thenReturn(Optional.of(doc));
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class), eq(IntegrationTokenDocument.class)))
+                .thenReturn(updateResult);
+
+        // Prime the cache via a successful liveness check.
+        assertThat(cached.isActive("tok-1", "acme", "alice", "links-proj")).isTrue();
+
+        cached.extend("tok-1");
+
+        // Second isActive() should reload — we observe the repository call.
+        verify(repository, times(2)).findByTokenId("tok-1");
+    }
+
+    private static com.mongodb.client.result.UpdateResult mockUpdated(long count) {
+        com.mongodb.client.result.UpdateResult result = mock(com.mongodb.client.result.UpdateResult.class);
+        when(result.getModifiedCount()).thenReturn(count);
+        return result;
+    }
 }

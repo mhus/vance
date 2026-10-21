@@ -305,4 +305,78 @@ public class IntegrationTokenService {
         random.nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
+
+    /**
+     * Set a sliding-lifetime token's {@link IntegrationTokenDocument#getExpiresAt()}
+     * to {@code now + idleDays} on a successful run, so a continuously-used
+     * token never trips over its own fixed expiry. See
+     * {@code planning/user-backup.md} §7.6.
+     *
+     * <p>The update is conditional on the row still being alive: {@code revokedAt
+     * == null} AND {@code expiresAt > now}. Both halves matter:
+     * <ul>
+     *   <li>{@code revokedAt == null} — a revoked token cannot be brought back.
+     *       The owner revoked it for a reason; the next successful run from
+     *       the thief should not undo that.</li>
+     *   <li>{@code expiresAt > now} — an expired-but-not-revoked token is
+     *       dead from the cache's point of view, and {@link #isActive}
+     *       already rejected it on the last request. Extending it would be
+     *       resurrecting a forgotten credential, exactly the failure mode the
+     *       sliding-lifetime design avoids.</li>
+     * </ul>
+     *
+     * <p>One atomic {@code \$set}, never a read-then-write: a concurrent
+     * {@link #revoke} between load and write would be undone by a stale save
+     * (the row is the revocation channel — same reasoning as the
+     * {@code lastUsedAt} write in {@link #loadAndCheck}).
+     *
+     * @return {@code true} when the row was extended, {@code false} when the
+     *         token was already revoked or had expired (the caller treats
+     *         this as a sign the tool should stop, not retry)
+     */
+    public boolean extend(String tokenId) {
+        IntegrationTokenDocument doc = repository.findByTokenId(tokenId).orElse(null);
+        if (doc == null) {
+            log.debug("IntegrationTokenService.extend rejected: no registry row for '{}'", tokenId);
+            return false;
+        }
+        Integer idleDays = doc.getIdleDays();
+        if (idleDays == null || idleDays <= 0) {
+            // A non-sliding token has no business being extended — the design
+            // says the property lives on the profile, and a profile that did
+            // not opt in should never reach this path. Logged as INFO, not
+            // DEBUG, because the only way a non-sliding token gets here is a
+            // caller bug — the liveness signal is wired to the profile for a
+            // reason.
+            log.info(
+                    "IntegrationTokenService.extend rejected: token '{}' has no idleDays (not a sliding-lifetime token)",
+                    tokenId);
+            return false;
+        }
+        Instant newExpiry = Instant.now().plus(Duration.ofDays(idleDays));
+        long modified = mongoTemplate
+                .updateFirst(
+                        new Query(Criteria.where("tokenId")
+                                .is(tokenId)
+                                .and("revokedAt")
+                                .is(null)
+                                .and("expiresAt")
+                                .gt(Instant.now())),
+                        new Update().set("expiresAt", newExpiry),
+                        IntegrationTokenDocument.class)
+                .getModifiedCount();
+        if (modified == 0) {
+            // Either revoked, expired, or both — the cache eviction is safe
+            // regardless; the next isActive() will reload.
+            cache.remove(tokenId);
+            log.debug("IntegrationTokenService.extend rejected: token '{}' is revoked or already expired", tokenId);
+            return false;
+        }
+        // Local cache eviction: the next isActive() call will re-read the row
+        // with the new expiry, so the extended token is recognised immediately
+        // on this pod. Other pods notice within the cache window.
+        cache.remove(tokenId);
+        log.debug("IntegrationTokenService.extend tokenId='{}' newExpiresAt={}", tokenId, newExpiry);
+        return true;
+    }
 }

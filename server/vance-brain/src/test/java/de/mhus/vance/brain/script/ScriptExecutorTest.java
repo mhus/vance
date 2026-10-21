@@ -66,11 +66,19 @@ class ScriptExecutorTest {
     }
 
     private static ScriptResult eval(String code, ContextToolsApi tools) {
-        return executor.run(new ScriptRequest("js", code, "test", tools, Duration.ofSeconds(5)));
+        return eval(code, tools, Duration.ofSeconds(5));
+    }
+
+    private static ScriptResult eval(String code, ContextToolsApi tools, Duration timeout) {
+        return executor.run(new ScriptRequest("js", code, "test", tools, timeout));
     }
 
     private static ScriptResult eval(String code) {
         return eval(code, unrestrictedTools());
+    }
+
+    private static ScriptResult eval(String code, Duration timeout) {
+        return eval(code, unrestrictedTools(), timeout);
     }
 
     // ------------------------------------------------------------------
@@ -160,7 +168,12 @@ class ScriptExecutorTest {
         for (int i = 0; i < 20000; i++) {
             code.append("console.log('line-").append(i).append("');\n");
         }
-        ScriptResult result = eval(code.toString());
+        // 20 000 console.log calls is a CPU-bound workload; the default 5 s
+        // budget is enough on a fast machine but tight on a slow one. The
+        // production cap (planning/agent.md §timeouts) is 30 s; give this
+        // test the same headroom rather than treating timing as the unit
+        // under test.
+        ScriptResult result = eval(code.toString(), Duration.ofSeconds(30));
 
         // The capture is capped (64 KB): the beginning is gone, the end stays.
         assertThat(result.consoleOutput()).contains("line-19999");

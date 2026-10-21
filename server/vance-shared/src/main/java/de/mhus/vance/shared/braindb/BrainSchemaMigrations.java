@@ -122,7 +122,17 @@ public class BrainSchemaMigrations implements SchemaMigrationSource {
             // write the `$meta.kind` marker since this release. What this fixes
             // is the row kind of sources written before the kind existed —
             // without it they open in the raw editor instead of their form.
-            new Registered("2026-10-03_001", Migrator_2026_10_03_001_ResearchSourceKind.class));
+            new Registered("2026-10-03_001", Migrator_2026_10_03_001_ResearchSourceKind.class),
+            // runOnBaseline: a baselined database (restored from before the
+            // anchor) would otherwise skip this backfill, leaving every
+            // pre-existing document row with `null` updatedAt. The Liver backup
+            // tool reads the field as the local file mtime and the UI shows it
+            // as "zuletzt geändert" — a `null` reads as "never modified",
+            // which is the silent-wrong-read failure pattern the baseline
+            // mechanism exists to prevent. Self-emptying filter (only rows
+            // without `updatedAt` match), so on a genuinely new database the
+            // updateMulti is a no-op.
+            new Registered("2026-10-21_001", Migrator_2026_10_21_001_DocumentUpdatedAt.class, /*runOnBaseline*/ true));
 
     @Override
     public List<Registered> migrations() {

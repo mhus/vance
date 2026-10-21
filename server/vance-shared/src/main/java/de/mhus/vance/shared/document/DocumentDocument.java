@@ -35,19 +35,17 @@ import org.springframework.data.mongodb.core.mapping.Document;
  */
 @Document(collection = "documents")
 @CompoundIndexes({
-        @CompoundIndex(
-                name = "tenant_project_path_idx",
-                def = "{ 'tenantId': 1, 'projectId': 1, 'path': 1 }",
-                unique = true),
-        @CompoundIndex(
-                name = "tenant_project_status_idx",
-                def = "{ 'tenantId': 1, 'projectId': 1, 'status': 1 }"),
-        @CompoundIndex(
-                name = "tenant_project_summary_claim_idx",
-                def = "{ 'tenantId': 1, 'projectId': 1, 'summaryDirty': 1, 'autoSummary': 1, 'claimedBy': 1 }"),
-        @CompoundIndex(
-                name = "tenant_project_rag_claim_idx",
-                def = "{ 'tenantId': 1, 'projectId': 1, 'ragDirty': 1, 'ragClaimedBy': 1 }")
+    @CompoundIndex(
+            name = "tenant_project_path_idx",
+            def = "{ 'tenantId': 1, 'projectId': 1, 'path': 1 }",
+            unique = true),
+    @CompoundIndex(name = "tenant_project_status_idx", def = "{ 'tenantId': 1, 'projectId': 1, 'status': 1 }"),
+    @CompoundIndex(
+            name = "tenant_project_summary_claim_idx",
+            def = "{ 'tenantId': 1, 'projectId': 1, 'summaryDirty': 1, 'autoSummary': 1, 'claimedBy': 1 }"),
+    @CompoundIndex(
+            name = "tenant_project_rag_claim_idx",
+            def = "{ 'tenantId': 1, 'projectId': 1, 'ragDirty': 1, 'ragClaimedBy': 1 }")
 })
 @Data
 @Builder
@@ -156,6 +154,27 @@ public class DocumentDocument {
 
     @CreatedDate
     private @Nullable Instant createdAt;
+
+    /**
+     * Wall-clock at which the document was last <em>meaningfully</em> changed —
+     * a content write, a metadata edit by the user/agent (title, tags, color,
+     * notes, path/rename), lock-state change, or a restore. Used by the UI as
+     * "last modified" and by {@code planning/user-backup.md} (Liver) as the
+     * mtime of the local file copy.
+     *
+     * <p><b>Deliberately not {@code @LastModifiedDate}.</b> Auditing fires on
+     * every {@code save()}, including bookkeeping writes
+     * ({@code summarizedAt}, {@code claimedAt}, {@code ragClaimedAt},
+     * {@code lastDeepReviewedAt}, {@code mountFreshUntil},
+     * {@code lastArchivedAt}); a "last modified" field that bumped on those
+     * would mislead without any user action. The value is set explicitly by
+     * the write paths in {@link DocumentService} (create / update / replace /
+     * trash / restore / lock), via the private {@code markChanged(doc)}
+     * helper. The migration {@code Migrator_2026_10_21_001_DocumentUpdatedAt}
+     * backfills the best available approximation
+     * ({@code max(createdAt, lastArchivedAt)}) on existing rows.
+     */
+    private @Nullable Instant updatedAt;
 
     /**
      * Opt-in marker for the auto-summary scheduler. Default is set in

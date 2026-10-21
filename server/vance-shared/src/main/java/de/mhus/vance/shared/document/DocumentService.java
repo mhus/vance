@@ -3873,6 +3873,111 @@ public class DocumentService {
         return mongoTemplate.find(q, DocumentDocument.class);
     }
 
+    /**
+     * One page of live (non-trash, non-mounted) documents in a project,
+     * filtered by deny-globs and cursor-paginated. Drives the
+     * {@code POST /brain/{tenant}/backup/projects/{project}/entries}
+     * endpoint of the Liver backup tool
+     * ({@code planning/user-backup.md} §6.1).
+     *
+     * <p><b>Filter cost</b>. Two-tier: deny-globs that are prefix-only
+     * (e.g. {@code "_vance/**"} or {@code "drafts/**"}) become a Mongo
+     * regex on the path field, so Mongo can reject them at the index
+     * level. Anything more complex — globs with {@code *} inside a
+     * segment, or mixed {@code ?} — is applied in-JVM after the fetch.
+     * The client also applies the same filter, defence-in-depth, so the
+     * server-side tier is an optimisation, not a correctness gate.
+     *
+     * <p><b>Cursor</b>. {@code _id}-based, ascending, so concurrent writes
+     * between pages do not duplicate or drop entries (page numbers would
+     * shift underfoot). {@code afterId} is the last {@code _id} of the
+     * previous page; {@code null} for the first page.
+     *
+     * <p><b>Mounted documents</b> are filtered server-side: their content
+     * lives in a foreign source, and the backup tool explicitly excludes
+     * mounts (planning §5). Trash is also excluded — a backup pulls live
+     * documents only, and a snapshot taken from a half-trashed project
+     * would carry the trash contents the user already dismissed.
+     */
+    public List<DocumentDocument> listBackupPage(
+            String tenantId, String projectId, java.util.List<String> denyGlobs, @Nullable String afterId, int limit) {
+        java.util.List<String> prefixDenies = new java.util.ArrayList<>();
+        java.util.List<String> nonPrefixDenies = new java.util.ArrayList<>();
+        for (String g : denyGlobs) {
+            if (g == null || g.isBlank()) continue;
+            String trimmed = g.trim();
+            if (isPurePrefixGlob(trimmed)) {
+                prefixDenies.add(trimmed);
+            } else {
+                nonPrefixDenies.add(trimmed);
+            }
+        }
+
+        // Build a single Criteria with all the path filters joined via
+        // andOperator (one $and at the Mongo level). Spring Data refuses
+        // to add a second `path` clause on the same Criteria — one
+        // Document, one key — and the natural-looking
+        // `criteria.and("path").not().regex(...)` would throw at runtime.
+        Criteria notTrashOrMount = Criteria.where("path")
+                .not()
+                .regex("^(" + java.util.regex.Pattern.quote(TRASH_FOLDER_PREFIX) + "|"
+                        + java.util.regex.Pattern.quote(JaglanPaths.PREFIX) + ")");
+        Criteria combined = notTrashOrMount;
+        if (!prefixDenies.isEmpty()) {
+            StringBuilder alt = new StringBuilder("^(?:");
+            for (int i = 0; i < prefixDenies.size(); i++) {
+                if (i > 0) alt.append('|');
+                alt.append(prefixGlobsToRegex(prefixDenies.get(i)));
+            }
+            alt.append(")");
+            combined = new Criteria()
+                    .andOperator(notTrashOrMount, Criteria.where("path").not().regex(alt.toString()));
+        }
+        Query q = scopeQuery(tenantId, projectId)
+                .addCriteria(combined)
+                .with(Sort.by("_id"))
+                .limit(limit);
+        if (afterId != null) {
+            q.addCriteria(Criteria.where("_id").gt(new org.bson.types.ObjectId(afterId)));
+        }
+        java.util.List<DocumentDocument> rows = mongoTemplate.find(q, DocumentDocument.class);
+        if (nonPrefixDenies.isEmpty()) return rows;
+        // Post-fetch: globs with intra-segment * or ? that the index cannot
+        // help with. Done in the same shape as the server-side filter so
+        // the client sees the same answer; both sides compile the same
+        // PathGlob, so the result is identical by construction.
+        java.util.List<de.mhus.vance.api.util.PathGlob> compiled =
+                de.mhus.vance.api.util.PathGlob.compileAll(nonPrefixDenies);
+        java.util.List<DocumentDocument> out = new java.util.ArrayList<>(rows.size());
+        for (DocumentDocument row : rows) {
+            if (!de.mhus.vance.api.util.PathGlob.anyMatch(compiled, row.getPath())) {
+                out.add(row);
+            }
+        }
+        return out;
+    }
+
+    /** A glob that contains only literal segments followed by a trailing {@code /**}. */
+    private static boolean isPurePrefixGlob(String glob) {
+        if (!glob.endsWith("/**")) return false;
+        String prefix = glob.substring(0, glob.length() - 3);
+        // No '*' or '?' inside the prefix segments.
+        return prefix.indexOf('*') < 0 && prefix.indexOf('?') < 0;
+    }
+
+    /**
+     * Translate a {@code "foo/**"} prefix glob into the regex the index can
+     * match. Other prefix shapes (literal "foo") become exact-match
+     * regexes — the caller has already verified the shape via
+     * {@link #isPurePrefixGlob}.
+     */
+    private static String prefixGlobsToRegex(String glob) {
+        if (glob.endsWith("/**")) {
+            return java.util.regex.Pattern.quote(glob.substring(0, glob.length() - 2)) + ".*";
+        }
+        return "^" + java.util.regex.Pattern.quote(glob) + "$";
+    }
+
     /** {@code size} sum and count of the trash documents in a scope. */
     public SizeTotals sumTrash(String tenantId, @Nullable String projectId) {
         return sumSizes(scopeCriteria(tenantId, projectId)

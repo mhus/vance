@@ -1160,6 +1160,7 @@ function confirmNewFolder(): void {
               <th class="text-left px-2 py-2 w-32">{{ $t('explorer.colTags') }}</th>
               <th class="text-right px-2 py-2 w-20">{{ $t('explorer.colSize') }}</th>
               <th class="text-left px-2 py-2 w-28">{{ $t('explorer.colCreated') }}</th>
+              <th class="text-left px-2 py-2 w-28">{{ $t('explorer.colUpdated') }}</th>
               <th class="text-left px-2 py-2 w-32">{{ $t('explorer.colBy') }}</th>
               <th class="w-10 pr-3 py-2"></th>
             </tr>
@@ -1181,6 +1182,7 @@ function confirmNewFolder(): void {
               <td class="px-2 py-1.5"><VIcon name="folder" class="doc-row-icon" /></td>
               <td class="px-2 py-1.5 font-medium">{{ folder }}</td>
               <td class="px-2 py-1.5 doc-meta">{{ $t('explorer.folder') }}</td>
+              <td class="px-2 py-1.5"></td>
               <td class="px-2 py-1.5"></td>
               <td class="px-2 py-1.5"></td>
               <td class="px-2 py-1.5"></td>
@@ -1227,6 +1229,7 @@ function confirmNewFolder(): void {
               </td>
               <td class="px-2 py-1.5 text-right text-xs">{{ formatSize(doc.size) }}</td>
               <td class="px-2 py-1.5 text-xs">{{ formatDate(doc.createdAtMs) }}</td>
+              <td class="px-2 py-1.5 text-xs">{{ formatDate(doc.updatedAtMs) }}</td>
               <td class="px-2 py-1.5 text-xs opacity-70 truncate">{{ doc.createdBy ?? '—' }}</td>
               <td class="pr-3 py-1.5 text-right" @click.stop>
                 <RowActionsMenu

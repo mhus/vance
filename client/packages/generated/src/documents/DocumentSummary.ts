@@ -16,6 +16,7 @@ export interface DocumentSummary {
   size: number;
   tags: string[];
   createdAtMs?: number;
+  updatedAtMs?: number;
   createdBy?: string;
   inline: boolean;
   kind?: string;

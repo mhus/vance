@@ -4010,6 +4010,7 @@ export default {
     colTags: 'Tags',
     colSize: 'Size',
     colCreated: 'Created',
+    colUpdated: 'Modified',
     colBy: 'By',
     folder: 'folder',
   },

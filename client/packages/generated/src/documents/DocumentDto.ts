@@ -19,6 +19,7 @@ export interface DocumentDto {
   size: number;
   tags: string[];
   createdAtMs?: number;
+  updatedAtMs?: number;
   createdBy?: string;
   inline: boolean;
   inlineText?: string;

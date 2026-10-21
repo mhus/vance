@@ -92,6 +92,19 @@ public class IntegrationTokenDocument {
     private @Nullable Instant revokedAt;
 
     /**
+     * Idle window for a sliding-lifetime token, in days. Set at mint time for
+     * tokens of a profile that opts into sliding lifetime
+     * ({@code IntegrationScopeProfile.slidingLifetime() = true}); {@code null}
+     * for every fixed-end token. After this many days without a successful
+     * {@code POST backup/runs} (or whichever endpoint is the liveness signal for
+     * the profile), the token is treated as dead — a fresh {@code extend()}
+     * call on every successful run sets {@link #expiresAt} to {@code now +
+     * idleDays}, so a long-running tool never trips over its own fixed
+     * expiry. See {@code planning/user-backup.md} §7.6.
+     */
+    private @Nullable Integer idleDays;
+
+    /**
      * Last time the token authenticated a request. Written lazily (see
      * {@code IntegrationTokenService}) — this is how a leaked or forgotten
      * token becomes visible at all, so it is worth the occasional write, but

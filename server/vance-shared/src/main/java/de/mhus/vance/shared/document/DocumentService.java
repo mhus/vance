@@ -22,6 +22,7 @@ import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
 import java.io.SequenceInputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -95,6 +96,16 @@ public class DocumentService {
      *  the actor-carrying overloads enforce through {@link #enforceWrite}. */
     private final org.springframework.beans.factory.ObjectProvider<de.mhus.vance.shared.permission.PermissionService>
             permissionServiceProvider;
+
+    /**
+     * Wall-clock used by {@link #markChanged} to stamp {@code updatedAt}.
+     * Field-injected (Spring resolves a {@code Clock} bean if present, else
+     * falls back to {@link Clock#systemUTC()}) so tests can pin the value via
+     * {@code ReflectionTestUtils.setField} — a {@code @LastModifiedDate}
+     * auditing hook would defeat the explicit-stamp design.
+     */
+    @Autowired(required = false)
+    private @Nullable Clock clock;
 
     @Value("${vance.document.inline-threshold:40960}")
     private int inlineThreshold;
@@ -1778,6 +1789,12 @@ public class DocumentService {
         // it returns false and we never enqueue an embed run.
         doc.setRagDirty(isRagEligible(doc));
 
+        // Creation is a meaningful change: stamp updatedAt so the UI shows
+        // "now" and the Liver backup tool uses the right mtime on the first
+        // snapshot. Without this, the row would carry only createdAt and
+        // updatedAt would be null until the next write.
+        markChanged(doc);
+
         DocumentDocument saved = repository.save(doc);
         log.info(
                 "Created document tenantId='{}' projectId='{}' path='{}' id='{}' compressed={} size={}",
@@ -2045,6 +2062,7 @@ public class DocumentService {
             doc.setRagDirty(isRagEligible(doc));
         }
         applyHeader(doc);
+        markChanged(doc);
 
         DocumentDocument saved = repository.save(doc);
         log.info(
@@ -2134,6 +2152,7 @@ public class DocumentService {
         doc.setCompressed(write.compressed());
         doc.setSize(write.originalSize());
         doc.setRagDirty(isRagEligible(doc));
+        markChanged(doc);
         // updatedBy is unused for now — DocumentDocument has no
         // last-editor field. Reserved in the signature so the
         // office-callback path can record audit info once that
@@ -2729,6 +2748,11 @@ public class DocumentService {
         if (newInlineText != null || newPath != null || newRagEnabled != null) {
             doc.setRagDirty(true);
         }
+
+        // update() covers content edits, metadata edits (title/tags/headers),
+        // and move/rename — all three count as meaningful changes. Stamp
+        // updatedAt here so the UI and Liver agree on "what changed".
+        markChanged(doc);
 
         DocumentDocument saved = repository.save(doc);
         log.info(
@@ -3747,6 +3771,13 @@ public class DocumentService {
 
         doc.setPath(trashPath);
         doc.setName(extractName(trashPath));
+        // A trash moves the document out of the live namespace; the row
+        // stays in Mongo until retention sweeps it. Stamping updatedAt here
+        // means a backup snapshot taken right after the trash still
+        // carries the correct mtime on the (now non-active) row — the
+        // listing endpoint filters trash out, but the row's identity is
+        // preserved for restore and archive lookups.
+        markChanged(doc);
         DocumentDocument saved = repository.save(doc);
         log.info("Trashed document id='{}' from path='{}' to '{}'", id, originalPath, trashPath);
         // Cache-coherence: a trash makes the document disappear from its
@@ -3802,6 +3833,13 @@ public class DocumentService {
         doc.setPath(target);
         doc.setName(extractName(target));
         if (headers != null) headers.remove(TRASH_ORIGINAL_PATH_HEADER);
+        // A restore makes the document live again at a new path. Stamp
+        // updatedAt so the next backup picks it up under the new path with
+        // the correct mtime — otherwise the row keeps the pre-trash
+        // timestamp (which is what the migration backfilled), which would
+        // read as a recent change even though the document was just brought
+        // back from the dead.
+        markChanged(doc);
         DocumentDocument saved = repository.save(doc);
         log.info("Restored document id='{}' from trash to path='{}'", id, target);
         // Mirror trash: a restore is an Upserted at the restored path so
@@ -4135,6 +4173,23 @@ public class DocumentService {
             if (value.equals(existing)) return;
         }
         tags.add(value);
+    }
+
+    /**
+     * Stamp {@code updatedAt} on a document that is about to be written
+     * because of a user-/agent-initiated change. Called from every write
+     * path whose semantics are "the user changed something meaningful" —
+     * create, replaceContent, update (incl. move/rename and metadata edits),
+     * trash, restore, setLockedFor. Deliberately <b>not</b> called from
+     * bookkeeping writes ({@code writeSummary}, RAG {@code markRagClean},
+     * archive pointer updates): those run on the same row without a user
+     * action and would otherwise inflate "zuletzt geändert" without cause.
+     *
+     * <p>The clock comes from the injected {@link #clock} field, defaulting to
+     * {@link Clock#systemUTC()} — test-only pin via {@code ReflectionTestUtils}.
+     */
+    private void markChanged(DocumentDocument doc) {
+        doc.setUpdatedAt(clock == null ? Instant.now() : clock.instant());
     }
 
     private static String normalizePath(String path) {
@@ -4509,6 +4564,11 @@ public class DocumentService {
         enforcePrivilegedAdmin(doc, actor);
         java.util.Set<de.mhus.vance.api.documents.WriterRole> normalized = normalizeLockedFor(lockedFor);
         doc.setLockedFor(normalized);
+        // Lock-state changes are user-initiated metadata writes — the row
+        // is mutated through PATCH /lock, not as a side effect of content
+        // writes, and the user who flipped the lock expects "zuletzt
+        // geändert" to move forward.
+        markChanged(doc);
         DocumentDocument saved = repository.save(doc);
         log.info(
                 "Updated document lock tenantId='{}' projectId='{}' path='{}' id='{}' lockedFor={}",

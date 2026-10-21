@@ -100,7 +100,8 @@ public class IntegrationTokenService {
             String label,
             @Nullable String createdBy,
             @Nullable Instant expiresAt,
-            @Nullable String parentGrantId) {
+            @Nullable String parentGrantId,
+            @Nullable Integer idleDays) {
         IntegrationTokenDocument doc = IntegrationTokenDocument.builder()
                 .tokenId(newTokenId())
                 .tenantId(tenantId)
@@ -112,6 +113,7 @@ public class IntegrationTokenService {
                 .createdBy(createdBy)
                 .expiresAt(expiresAt)
                 .parentGrantId(parentGrantId)
+                .idleDays(idleDays)
                 .build();
         IntegrationTokenDocument saved = repository.save(doc);
         log.info(

@@ -32,6 +32,7 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -221,7 +222,7 @@ public class BackupController {
     // ─── GET /backup/documents/{id}/content ───────────────────────────
 
     @GetMapping("/brain/{tenant}/backup/documents/{id}/content")
-    public ResponseEntity<InputStream> fetchContent(
+    public ResponseEntity<InputStreamResource> fetchContent(
             @PathVariable String tenant, @PathVariable String id, HttpServletRequest request) {
         String username = requireUser(request);
         BackupAccessConfig policy = backupAccessService.load(tenant);
@@ -237,12 +238,16 @@ public class BackupController {
         }
         authority.enforce(request, new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
 
+        // InputStreamResource (rather than raw InputStream) — Spring's
+        // generic InputStream converter would 500 on a streaming source
+        // because there is no registered MessageConverter for it; the
+        // Resource path has StreamingResponseBody + ByteRange support.
         InputStream stream = documentService.loadContent(doc);
         String etag = "\"" + contentVersion(doc) + "\"";
         HttpHeaders headers = new HttpHeaders();
         headers.setETag(etag);
         headers.setContentType(mediaTypeOf(doc));
-        return new ResponseEntity<>(stream, headers, HttpStatus.OK);
+        return new ResponseEntity<>(new InputStreamResource(stream), headers, HttpStatus.OK);
     }
 
     // ─── POST /backup/runs ────────────────────────────────────────────

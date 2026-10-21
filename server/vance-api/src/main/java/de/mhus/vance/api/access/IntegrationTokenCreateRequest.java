@@ -46,4 +46,14 @@ public class IntegrationTokenCreateRequest {
      * should eventually stop on its own.
      */
     private int expiresInDays;
+
+    /**
+     * Sliding-lifetime window in days. Required for tokens of profiles that
+     * declare {@code slidingLifetime() = true} (e.g. {@code backup}); ignored
+     * for fixed-end tokens. Each successful liveness signal
+     * ({@code POST /backup/runs} for the backup profile) extends the token by
+     * this many days from that moment. See
+     * {@code planning/user-backup.md} §7.6.
+     */
+    private @Nullable Integer idleDays;
 }

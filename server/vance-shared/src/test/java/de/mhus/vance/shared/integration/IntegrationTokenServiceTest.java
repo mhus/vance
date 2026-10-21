@@ -213,9 +213,9 @@ class IntegrationTokenServiceTest {
         when(repository.save(any(IntegrationTokenDocument.class))).thenAnswer(inv -> inv.getArgument(0));
 
         IntegrationTokenDocument a =
-                service.create("acme", "alice", List.of("links-capture"), "p", "one", "alice", null, null);
+                service.create("acme", "alice", List.of("links-capture"), "p", "one", "alice", null, null, null);
         IntegrationTokenDocument b =
-                service.create("acme", "alice", List.of("links-capture"), "p", "two", "alice", null, null);
+                service.create("acme", "alice", List.of("links-capture"), "p", "two", "alice", null, null, null);
 
         assertThat(a.getTokenId()).isNotBlank().isNotEqualTo(b.getTokenId());
     }
@@ -225,7 +225,7 @@ class IntegrationTokenServiceTest {
         when(repository.save(any(IntegrationTokenDocument.class))).thenAnswer(inv -> inv.getArgument(0));
 
         IntegrationTokenDocument doc =
-                service.create("acme", "alice", List.of("links-capture"), "p", "app", "alice", null, "grant-7");
+                service.create("acme", "alice", List.of("links-capture"), "p", "app", "alice", null, "grant-7", null);
 
         assertThat(doc.getParentGrantId()).isEqualTo("grant-7");
     }

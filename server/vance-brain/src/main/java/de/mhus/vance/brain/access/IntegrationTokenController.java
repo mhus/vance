@@ -169,12 +169,31 @@ public class IntegrationTokenController {
         // Row first, token second — see IntegrationTokenService.create.
         List<String> profileIds =
                 granted.stream().map(IntegrationScopeProfile::id).toList();
+        // Sliding-lifetime tokens carry idleDays so extend() knows what to set
+        // the new expiry to. Fixed-end tokens get null — extend() refuses
+        // them with an INFO log so a misconfiguration is visible rather than
+        // silently masking a token that the profile intended to be sliding.
+        Integer idleDays = granted.stream().anyMatch(IntegrationScopeProfile::slidingLifetime)
+                ? req.getIdleDays() == null || req.getIdleDays() <= 0 ? 90 : req.getIdleDays()
+                : null;
+        if (idleDays != null && (idleDays < 1 || idleDays > MAX_EXPIRES_IN_DAYS)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "idleDays must be between 1 and " + MAX_EXPIRES_IN_DAYS);
+        }
         // Minted through an OAuth login: the token is a child of that grant and
         // dies with it (IntegrationTokenService.revokeAllForParentGrant) — a
         // revoked app login must not leave credentials it created behind.
         String parentGrantId = caller.tokenType() == TokenType.OAUTH ? caller.tokenId() : null;
         IntegrationTokenDocument doc = tokenService.create(
-                tenant, username, profileIds, projectId, req.getLabel().trim(), username, expiresAt, parentGrantId);
+                tenant,
+                username,
+                profileIds,
+                projectId,
+                req.getLabel().trim(),
+                username,
+                expiresAt,
+                parentGrantId,
+                idleDays);
         String token =
                 jwtService.createIntegrationToken(tenant, username, doc.getTokenId(), profileIds, projectId, expiresAt);
 

@@ -66,7 +66,7 @@ class IntegrationTokenControllerTest {
                 new IntegrationScopeRegistry(List.of(new Profile("links-capture", true), new Profile("mcp", false))),
                 authority,
                 auditService);
-        when(tokenService.create(anyString(), anyString(), anyList(), any(), anyString(), any(), any(), any()))
+        when(tokenService.create(anyString(), anyString(), anyList(), any(), anyString(), any(), any(), any(), any()))
                 .thenAnswer(inv -> IntegrationTokenDocument.builder()
                         .tokenId("tok-1")
                         .tenantId(inv.getArgument(0))
@@ -112,7 +112,7 @@ class IntegrationTokenControllerTest {
     void tenantWideProfile_withProjectId_isRefused() {
         assertThat(statusOf(() -> controller.create("acme", mint(List.of("mcp"), "proj"), request(login()))))
                 .isEqualTo(HttpStatus.BAD_REQUEST);
-        verify(tokenService, never()).create(any(), any(), any(), any(), any(), any(), any(), any());
+        verify(tokenService, never()).create(any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -153,6 +153,7 @@ class IntegrationTokenControllerTest {
                         eq("tool"),
                         eq("alice"),
                         any(),
+                        isNull(),
                         isNull());
     }
 
@@ -172,7 +173,8 @@ class IntegrationTokenControllerTest {
                         eq("tool"),
                         eq("alice"),
                         any(),
-                        eq("grant-7"));
+                        eq("grant-7"),
+                        isNull());
     }
 
     @Test

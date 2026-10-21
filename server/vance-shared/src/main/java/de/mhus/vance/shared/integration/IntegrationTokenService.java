@@ -134,18 +134,34 @@ public class IntegrationTokenService {
      * signature proves the claims were minted by us, this proves they were
      * minted as <em>this</em> row. Without it a token whose row was later
      * re-created for another user would keep the old claims alive.
+     *
+     * @param clientIp IP of the requesting client, written lazily onto
+     *                 {@link IntegrationTokenDocument#getLastUsedIp()} for
+     *                 visibility in "Apps with Zugriff". {@code null} when the
+     *                 caller does not have an IP to supply (tests, internal
+     *                 callers).
      */
-    public boolean isActive(String tokenId, String tenantId, String userId, @Nullable String projectId) {
+    public boolean isActive(
+            String tokenId, String tenantId, String userId, @Nullable String projectId, @Nullable String clientIp) {
         Decision cached = cache.get(tokenId);
         if (cached != null && fresh(cached)) {
             return cached.active();
         }
-        boolean active = loadAndCheck(tokenId, tenantId, userId, projectId);
+        boolean active = loadAndCheck(tokenId, tenantId, userId, projectId, clientIp);
         cache.put(tokenId, new Decision(active, Instant.now()));
         return active;
     }
 
-    private boolean loadAndCheck(String tokenId, String tenantId, String userId, @Nullable String projectId) {
+    /**
+     * Back-compat overload for callers without a client IP — used by tests
+     * and any future internal caller. Delegates with a {@code null} IP.
+     */
+    public boolean isActive(String tokenId, String tenantId, String userId, @Nullable String projectId) {
+        return isActive(tokenId, tenantId, userId, projectId, null);
+    }
+
+    private boolean loadAndCheck(
+            String tokenId, String tenantId, String userId, @Nullable String projectId, @Nullable String clientIp) {
         IntegrationTokenDocument doc = repository.findByTokenId(tokenId).orElse(null);
         if (doc == null) {
             log.debug("Integration token '{}' rejected: no registry row", tokenId);
@@ -195,8 +211,11 @@ public class IntegrationTokenService {
         // stale copy back — and revokedAt is silently null again, permanently.
         // The row *is* the revocation channel, so its writes touch one field
         // each and never carry a snapshot of the others.
-        mongoTemplate.updateFirst(
-                byTokenId(tokenId), new Update().set("lastUsedAt", Instant.now()), IntegrationTokenDocument.class);
+        Update touch = new Update().set("lastUsedAt", Instant.now());
+        if (clientIp != null) {
+            touch.set("lastUsedIp", clientIp);
+        }
+        mongoTemplate.updateFirst(byTokenId(tokenId), touch, IntegrationTokenDocument.class);
         return true;
     }
 

@@ -5,6 +5,7 @@ import de.mhus.vance.shared.jwt.VanceJwtClaims;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 
 /**
@@ -57,6 +58,27 @@ public class IntegrationTokenAuthService {
         }
         // Liveness last: it is the only check that touches the database, so the
         // cheap structural rejections happen first.
-        return tokenService.isActive(tokenId, claims.tenantId(), claims.username(), claims.projectId());
+        return tokenService.isActive(
+                tokenId, claims.tenantId(), claims.username(), claims.projectId(), clientIp(request));
+    }
+
+    /**
+     * Best-effort extraction of the requesting client's IP. Trusts the
+     * {@code X-Forwarded-For} header when present (the operator's edge proxy
+     * is expected to set it; tests do not exercise this path). Falls back to
+     * {@link HttpServletRequest#getRemoteAddr()}; never throws.
+     */
+    private static @Nullable String clientIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            // The first entry is the original client; subsequent entries are
+            // proxies. Trim rather than parse — the surface value goes into a
+            // visibility row, not an authorisation decision.
+            int comma = forwarded.indexOf(',');
+            String first = (comma < 0 ? forwarded : forwarded.substring(0, comma)).trim();
+            return first.isEmpty() ? null : first;
+        }
+        String remote = request.getRemoteAddr();
+        return remote == null || remote.isBlank() ? null : remote;
     }
 }

@@ -43,7 +43,7 @@ class IntegrationTokenAuthServiceTest {
     @BeforeEach
     void setUp() {
         tokenService = mock(IntegrationTokenService.class);
-        when(tokenService.isActive(anyString(), anyString(), anyString(), any()))
+        when(tokenService.isActive(anyString(), anyString(), anyString(), any(), any()))
                 .thenReturn(true);
         service = new IntegrationTokenAuthService(
                 tokenService,
@@ -142,7 +142,7 @@ class IntegrationTokenAuthServiceTest {
                         claims("links-capture", "links-proj", "tok-1"),
                         request("POST", "/brain/acme/addon/links/entry")))
                 .isFalse();
-        verify(tokenService, never()).isActive(anyString(), anyString(), anyString(), any());
+        verify(tokenService, never()).isActive(anyString(), anyString(), anyString(), any(), any());
     }
 
     /** Mixing both kinds in one token can never satisfy both pin rules. */
@@ -172,7 +172,7 @@ class IntegrationTokenAuthServiceTest {
 
     @Test
     void rejects_aRevokedToken() {
-        when(tokenService.isActive(anyString(), anyString(), anyString(), any()))
+        when(tokenService.isActive(anyString(), anyString(), anyString(), any(), any()))
                 .thenReturn(false);
 
         assertThat(service.isAcceptable(
@@ -263,6 +263,52 @@ class IntegrationTokenAuthServiceTest {
         service.isAcceptable(
                 claims("links-capture", "links-proj", "tok-1"), request("DELETE", "/brain/acme/addon/links/entry"));
 
-        verify(tokenService, never()).isActive(anyString(), anyString(), anyString(), any());
+        verify(tokenService, never()).isActive(anyString(), anyString(), anyString(), any(), any());
+    }
+
+    // ─── clientIp handoff (planning/user-backup.md §7.5) ────────────
+
+    /**
+     * X-Forwarded-For takes priority over getRemoteAddr — the operator's edge
+     * proxy sets it; trusting it is what makes the "second IP in Apps mit
+     * Zugriff" detection possible. The first hop is the original client;
+     * subsequent entries are proxies and are ignored.
+     */
+    @Test
+    void forwards_XForwardedForAsClientIp() {
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getMethod()).thenReturn("POST");
+        when(req.getRequestURI()).thenReturn("/brain/acme/addon/links/entry");
+        when(req.getHeader("X-Forwarded-For")).thenReturn("203.0.113.7, 10.0.0.1, 10.0.0.2");
+
+        service.isAcceptable(claims("links-capture", "links-proj", "tok-1"), req);
+
+        verify(tokenService).isActive("tok-1", "acme", "alice", "links-proj", "203.0.113.7");
+    }
+
+    @Test
+    void fallsBackToRemoteAddr_whenNoForwardedHeader() {
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getMethod()).thenReturn("POST");
+        when(req.getRequestURI()).thenReturn("/brain/acme/addon/links/entry");
+        when(req.getHeader("X-Forwarded-For")).thenReturn(null);
+        when(req.getRemoteAddr()).thenReturn("198.51.100.4");
+
+        service.isAcceptable(claims("links-capture", "links-proj", "tok-1"), req);
+
+        verify(tokenService).isActive("tok-1", "acme", "alice", "links-proj", "198.51.100.4");
+    }
+
+    @Test
+    void passesNullIp_whenNeitherHeaderNorRemoteAddrIsAvailable() {
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getMethod()).thenReturn("POST");
+        when(req.getRequestURI()).thenReturn("/brain/acme/addon/links/entry");
+        when(req.getHeader("X-Forwarded-For")).thenReturn("");
+        when(req.getRemoteAddr()).thenReturn("");
+
+        service.isAcceptable(claims("links-capture", "links-proj", "tok-1"), req);
+
+        verify(tokenService).isActive("tok-1", "acme", "alice", "links-proj", null);
     }
 }

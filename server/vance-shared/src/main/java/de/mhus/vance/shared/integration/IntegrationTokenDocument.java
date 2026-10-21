@@ -111,4 +111,14 @@ public class IntegrationTokenDocument {
      * not one per request.
      */
     private @Nullable Instant lastUsedAt;
+
+    /**
+     * IP of the most recent request that authenticated with this token.
+     * Set by the same lazy write as {@link #lastUsedAt} — used by the
+     * "Apps with Zugriff" view to surface a second IP that suggests the
+     * token was stolen. {@code null} when the liveness row was never
+     * updated (token just minted, no request yet) or when the caller did
+     * not provide one.
+     */
+    private @Nullable String lastUsedIp;
 }

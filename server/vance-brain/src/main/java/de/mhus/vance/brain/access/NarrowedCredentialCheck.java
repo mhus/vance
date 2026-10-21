@@ -54,6 +54,27 @@ public class NarrowedCredentialCheck {
      */
     private static final Pattern WS_UPGRADE_PATH = Pattern.compile("^/ws/?$");
 
+    /**
+     * The self-revoke endpoint. {@code DELETE /integration-tokens/current}
+     * is reachable for any INTEGRATION token, regardless of the profiles it
+     * carries — the URL itself is the authority, and the carried profiles are
+     * consulted on the next (non-self-revoke) request.
+     *
+     * <p>This mirrors the OAuth {@code POST revoke}, which every client can
+     * call on its own grant. Without it, a stolen backup token could only be
+     * killed through an interactive login — the exact failure mode the
+     * self-revoke door exists to avoid. Putting the carve-out here rather
+     * than on a fake "self-revoke" profile keeps the {@code scp} claim
+     * honest: profiles stay a static declaration of what the token was minted
+     * to do, not a moving target that grows an entry whenever a new
+     * administrative door is needed.
+     *
+     * <p>Restricted to {@code INTEGRATION}: the endpoint is for credentials
+     * that exist to be self-managed, not for access tokens whose revocation
+     * happens through the session they belong to.
+     */
+    private static final String SELF_REVOKE_PATH = "/integration-tokens/current";
+
     private final IntegrationScopeRegistry profiles;
 
     /**
@@ -63,6 +84,20 @@ public class NarrowedCredentialCheck {
      */
     public boolean admits(String kind, VanceJwtClaims claims, HttpServletRequest request) {
         String tokenId = claims.tokenId();
+
+        // Tenant-path lookup is shared between the self-revoke carve-out
+        // above and the structural check below — compute once.
+        String tenantPath = tenantPath(request.getRequestURI());
+
+        // Self-revoke carve-out (see SELF_REVOKE_PATH). An INTEGRATION token
+        // can always kill itself at the documented URL, regardless of the
+        // profiles it carries. Computed before the structural checks so the
+        // path lookup is shared with the rest of the method below.
+        if ("INTEGRATION".equals(kind)
+                && "DELETE".equalsIgnoreCase(request.getMethod())
+                && SELF_REVOKE_PATH.equals(tenantPath)) {
+            return true;
+        }
         // Every named profile must resolve. An unknown one is not skipped: the
         // token was minted to carry a capability that this brain no longer
         // has, and silently serving the remaining ones would answer a
@@ -106,7 +141,6 @@ public class NarrowedCredentialCheck {
             return false;
         }
 
-        String tenantPath = tenantPath(request.getRequestURI());
         if (tenantPath == null) {
             // Not a tenant-scoped URL. A narrowed token has no business
             // anywhere else, and the profiles cannot express such a path.

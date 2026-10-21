@@ -26,6 +26,7 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
@@ -50,6 +51,7 @@ class IntegrationTokenControllerTest {
     private JwtService jwtService;
     private IntegrationTokenService tokenService;
     private RequestAuthority authority;
+    private AuditService auditService;
     private IntegrationTokenController controller;
 
     @BeforeEach
@@ -57,12 +59,13 @@ class IntegrationTokenControllerTest {
         jwtService = mock(JwtService.class);
         tokenService = mock(IntegrationTokenService.class);
         authority = mock(RequestAuthority.class);
+        auditService = mock(AuditService.class);
         controller = new IntegrationTokenController(
                 jwtService,
                 tokenService,
                 new IntegrationScopeRegistry(List.of(new Profile("links-capture", true), new Profile("mcp", false))),
                 authority,
-                mock(AuditService.class));
+                auditService);
         when(tokenService.create(anyString(), anyString(), anyList(), any(), anyString(), any(), any(), any()))
                 .thenAnswer(inv -> IntegrationTokenDocument.builder()
                         .tokenId("tok-1")
@@ -182,5 +185,71 @@ class IntegrationTokenControllerTest {
                 .satisfies(e -> assertThat(
                                 ((ResponseStatusException) e).getStatusCode().value())
                         .isEqualTo(403));
+    }
+
+    // ─── self-revoke via DELETE .../current (planning/user-backup.md §7.4) ──
+
+    /**
+     * The whole point of the endpoint: an INTEGRATION token (regardless of
+     * the profiles it carries) can revoke itself by hitting the documented
+     * URL. The {@code jti} comes from the request's verified claims, never
+     * from the URL — the path literal {@code current} is a sentinel, not an
+     * identifier.
+     */
+    @Test
+    void integrationToken_canSelfRevoke() {
+        VanceJwtClaims integration =
+                VanceJwtClaims.integration("alice", "acme", null, null, "tok-self", List.of("mcp"), null);
+        when(tokenService.revoke("acme", "tok-self")).thenReturn(true);
+
+        ResponseEntity<Void> response = controller.revokeCurrent("acme", request(integration));
+
+        assertThat(response.getStatusCode().value()).isEqualTo(204);
+        verify(tokenService).revoke("acme", "tok-self");
+        verify(auditService).authIntegrationTokenRevoked("acme", "alice", "tok-self");
+    }
+
+    @Test
+    void selfRevoke_withAccessCredentials_isRefused_with400() {
+        // ACCESS / REFRESH / OAuth tokens must not be able to use the
+        // self-revoke door — that is the contract the URL is reachable only
+        // for INTEGRATION. A non-INTEGRATION credential that lands here is a
+        // caller bug, and the 400 is the right shape for it.
+        assertThatThrownBy(() -> controller.revokeCurrent("acme", request(login())))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e -> assertThat(
+                                ((ResponseStatusException) e).getStatusCode().value())
+                        .isEqualTo(400));
+        verify(tokenService, never()).revoke(any(), any());
+    }
+
+    @Test
+    void selfRevoke_withOauthCredentials_isRefused_with400() {
+        // OAuth grants revoke themselves through POST revoke; the
+        // integration-tokens/current URL is the wrong door.
+        VanceJwtClaims oauth =
+                VanceJwtClaims.oauth("alice", "acme", null, null, "grant-7", List.of("mcp"), null, null, "client-1");
+
+        assertThatThrownBy(() -> controller.revokeCurrent("acme", request(oauth)))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e -> assertThat(
+                                ((ResponseStatusException) e).getStatusCode().value())
+                        .isEqualTo(400));
+        verify(tokenService, never()).revoke(any(), any());
+    }
+
+    @Test
+    void selfRevoke_isIdempotent_whenTokenAlreadyRevoked() {
+        // tokenService.revoke is already idempotent on a revoked row. The
+        // controller still returns 204 (the credential is dead either way),
+        // and the audit is still emitted with the original jti so the trail
+        // is intact.
+        VanceJwtClaims integration =
+                VanceJwtClaims.integration("alice", "acme", null, null, "tok-self", List.of("mcp"), null);
+        when(tokenService.revoke("acme", "tok-self")).thenReturn(false);
+
+        ResponseEntity<Void> response = controller.revokeCurrent("acme", request(integration));
+
+        assertThat(response.getStatusCode().value()).isEqualTo(204);
     }
 }

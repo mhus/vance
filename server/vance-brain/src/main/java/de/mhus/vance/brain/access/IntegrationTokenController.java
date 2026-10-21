@@ -206,6 +206,62 @@ public class IntegrationTokenController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Self-revoke: an INTEGRATION token kills itself by hitting this URL.
+     * The endpoint is open to every INTEGRATION token, regardless of the
+     * profiles it carries — the carve-out lives in
+     * {@link NarrowedCredentialCheck} and mirrors the OAuth
+     * {@code POST revoke} pattern (every client can revoke its own grant).
+     *
+     * <p>Path literal {@code current} takes routing precedence over the
+     * {@code {tokenId}} variable on {@link #revoke}; Spring's path matcher
+     * prefers concrete segments, so a token whose id happens to be
+     * {@code "current"} would still land here. Token ids are 22-character
+     * base64, so the collision is structural rather than practical.
+     */
+    @DeleteMapping("/brain/{tenant}/integration-tokens/current")
+    public ResponseEntity<Void> revokeCurrent(@PathVariable String tenant, HttpServletRequest request) {
+        VanceJwtClaims claims = requireIntegrationToken(request);
+        String tokenId = claims.tokenId();
+        // We still need to know which row this is — the jti is the registry
+        // key, and tokenService.revoke(tenant, tokenId) is idempotent against
+        // an already-revoked row (returns true but writes nothing), so a
+        // double self-revoke is harmless.
+        boolean found = tokenService.revoke(tenant, tokenId);
+        if (found) {
+            auditService.authIntegrationTokenRevoked(tenant, claims.username(), tokenId);
+            log.info(
+                    "Self-revoked integration token tenant='{}' user='{}' jti='{}'",
+                    tenant,
+                    claims.username(),
+                    tokenId);
+        }
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * The self-revoke door is for credentials that exist to be self-managed.
+     * ACCESS, REFRESH, OAuth-grant tokens all revoke themselves through the
+     * session they belong to — a request that reaches this endpoint with any
+     * other credential kind is almost certainly a caller bug, and the
+     * fail-loud 400 is the right shape for it.
+     */
+    private static VanceJwtClaims requireIntegrationToken(HttpServletRequest request) {
+        Object claims = request.getAttribute(AccessFilterBase.ATTR_CLAIMS);
+        if (!(claims instanceof VanceJwtClaims c) || c.tokenType() != TokenType.INTEGRATION) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Only integration tokens can be self-revoked at /integration-tokens/current");
+        }
+        if (c.tokenId() == null || c.tokenId().isBlank()) {
+            // Should be impossible — IntegrationTokenService refuses to mint
+            // without a tokenId — but a missing id means we cannot find the
+            // row to revoke. Refuse rather than guess.
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Integration token claims missing jti");
+        }
+        return c;
+    }
+
     // ── helpers ───────────────────────────────────────────────────
 
     private IntegrationTokenDto toDto(IntegrationTokenDocument doc, @Nullable String token) {

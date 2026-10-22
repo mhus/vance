@@ -162,7 +162,9 @@ public final class RunCommand implements Callable<Integer> {
                     BackupEntriesRequest entriesReq = new BackupEntriesRequest();
                     entriesReq.setDeny(projectDeny);
                     entriesReq.setSize(ENTRIES_PAGE_SIZE);
-                    entriesReq.setCursor(cursor == null ? "" : cursor);
+                    if (cursor != null && !cursor.isEmpty()) {
+                        entriesReq.setCursor(cursor);
+                    }
                     BackupEntriesResponse entriesResp = client.listEntries(projectName, entriesReq);
 
                     for (BackupEntryDto entry : entriesResp.getEntries()) {

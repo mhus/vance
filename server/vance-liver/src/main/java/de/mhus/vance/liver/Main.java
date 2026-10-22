@@ -33,10 +33,11 @@ import picocli.CommandLine.Command;
         exitCodeOnInvalidInput = 4,
         subcommands = {
             // Subcommand classes land here as they are implemented.
-            // Currently: info (the smallest end-to-end verification).
-            // init, run, status, list, verify, prune, find, history,
-            // extract, logout follow in later commits.
+            // Currently: info (the smallest end-to-end verification),
+            // run (the actual backup). init, status, list, verify,
+            // prune, find, history, extract, logout follow.
             de.mhus.vance.liver.cli.InfoCommand.class,
+            de.mhus.vance.liver.cli.RunCommand.class,
         })
 public final class Main implements Runnable {
 

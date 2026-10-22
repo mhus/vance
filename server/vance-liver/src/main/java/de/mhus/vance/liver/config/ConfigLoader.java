@@ -1,6 +1,7 @@
 package de.mhus.vance.liver.config;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -19,15 +20,13 @@ import tools.jackson.dataformat.yaml.YAMLFactory;
  * <ul>
  *   <li>Default path: {@code ${user.home}/.vancetope/liver/backup.yaml}.
  *       Foot's {@code ~/.vancetope/} is the workbench-wide spot for
- *       per-user state; {@code liver/} keeps this tool isolated
- *       (planning §7 + the follow-up note that foot itself should
- *       migrate to {@code ~/.vancetope/foot/}).
+ *       per-user state; {@code liver/} keeps this tool isolated.
  *   <li>{@code --config <file>} overrides the default and wins.
- *   <li>{@code connectionFile:} in the YAML may point at a separate
- *       file containing just the connection string — so a team-shared
- *       config can stay secret-free.
- *   <li>The target directory defaults to {@code ~/VancetopeBackup} when
- *       the user omits it.
+ *   <li>{@code tokenFile:} in the YAML may point at a separate file
+ *       containing just the JWT — so a team-shared config can stay
+ *       secret-free.
+ *   <li>The target directory defaults to {@code ~/VancetopeBackup}
+ *       when the user omits it.
  *   <li>A missing config file is a hard error (exit code 4). A file
  *       that exists but does not parse is also a hard error. We do
  *       <em>not</em> fall back to defaults silently — a fresh install
@@ -90,13 +89,15 @@ public final class ConfigLoader {
      *
      * <p>Validation enforced here:
      * <ul>
-     *   <li>{@code connection} (after optional {@code connectionFile}
-     *       dereferencing) must be present and start with {@code vancetope1.}
-     *       — the planning §4.3 connection-string scheme.
-     *   <li>{@code target} defaults to {@code ~/VancetopeBackup} when
-     *       empty.
-     *   <li>{@code retention} numbers must be non-negative (a value
-     *       of zero means "skip that bucket").
+     *   <li>{@code server.url} must be a valid {@code http://} or
+     *       {@code https://} URI. No path component — the client
+     *       builds the path from {@code /brain/<tenant>/backup}.
+     *   <li>{@code server.tenant} must be non-blank.
+     *   <li>{@code token} (or {@code tokenFile}, after dereferencing)
+     *       must be non-blank.
+     *   <li>{@code target} defaults to {@code ~/VancetopeBackup}
+     *       when empty.
+     *   <li>{@code retention} numbers must be non-negative.
      * </ul>
      *
      * <p>Globs are not compiled here — they are passed through to the
@@ -108,10 +109,7 @@ public final class ConfigLoader {
         return loadFrom(file);
     }
 
-    /**
-     * Loads the config from an explicit path. Splitting this out
-     * keeps the test surface narrow.
-     */
+    /** Loads the config from an explicit path. Split out for tests. */
     public BackupConfig loadFrom(Path file) {
         if (!Files.exists(file)) {
             throw new ConfigException("Config file not found: " + file
@@ -123,10 +121,6 @@ public final class ConfigLoader {
         if (!Files.isReadable(file)) {
             throw new ConfigException("Config file is not readable: " + file);
         }
-        // Jackson 3.x throws 'No content to map due to end-of-input'
-        // for an empty file instead of returning null — handle the
-        // empty-file case explicitly so the user gets the helpful
-        // 'init' hint instead of a parse error.
         try {
             if (Files.size(file) == 0) {
                 throw new ConfigException("Config file is empty: " + file + " — run 'vancetope-backup init' first.");
@@ -149,26 +143,22 @@ public final class ConfigLoader {
             throw new ConfigException("Failed to parse config " + file + ": " + e.getMessage(), e);
         }
         if (cfg == null) {
-            // jackson returns null when the YAML is literally empty.
-            // Treat that as "missing" — the init command owns file creation.
             throw new ConfigException("Config file is empty: " + file + " — run 'vancetope-backup init' first.");
         }
 
-        // Resolve connectionFile if present — the inline `connection`
-        // field then becomes optional. The two are mutually exclusive:
-        // if both are set, the explicit `connection` wins so a mistake
-        // doesn't silently swap the token.
-        if (cfg.connection == null && cfg.connectionFile != null) {
-            cfg.connection = readConnectionFile(Path.of(cfg.connectionFile));
+        // Resolve tokenFile if present — the inline `token` field
+        // then becomes optional. The two are mutually exclusive: if
+        // both are set, the explicit `token` wins so a mistake
+        // doesn't silently swap the credential.
+        if (cfg.token == null && cfg.tokenFile != null) {
+            cfg.token = readTokenFile(Path.of(cfg.tokenFile));
         }
 
-        if (cfg.connection == null || cfg.connection.isBlank()) {
-            throw new ConfigException("Config is missing 'connection' (or 'connectionFile')."
-                    + " Run 'vancetope-backup init' to set up an INTEGRATION token.");
-        }
-        if (!cfg.connection.startsWith("vancetope1.")) {
-            throw new ConfigException(
-                    "Connection string must start with 'vancetope1.' (got: " + redact(cfg.connection) + ").");
+        validateServer(cfg.server);
+        if (cfg.token == null || cfg.token.isBlank()) {
+            throw new ConfigException("Config is missing 'token' (or 'tokenFile')."
+                    + " Mint one with POST /integration-tokens (scope profile 'backup')"
+                    + " and paste the JWT here.");
         }
 
         if (cfg.target == null || cfg.target.isBlank()) {
@@ -181,14 +171,41 @@ public final class ConfigLoader {
         return cfg;
     }
 
-    private static String readConnectionFile(Path file) {
+    private static void validateServer(BackupConfig.Server server) {
+        if (server.url == null || server.url.isBlank()) {
+            throw new ConfigException(
+                    "Config is missing 'server.url' (e.g." + " 'https://brain.example' or 'http://localhost:9991').");
+        }
+        URI uri;
+        try {
+            uri = URI.create(server.url);
+        } catch (IllegalArgumentException e) {
+            throw new ConfigException("server.url is not a valid URI: " + e.getMessage(), e);
+        }
+        String scheme = uri.getScheme();
+        if (scheme == null || (!scheme.equals("http") && !scheme.equals("https"))) {
+            throw new ConfigException("server.url must use http:// or https:// (got: " + server.url + ").");
+        }
+        if (uri.getHost() == null || uri.getHost().isBlank()) {
+            throw new ConfigException("server.url is missing a host (got: " + server.url + ").");
+        }
+        if (uri.getPath() != null && !uri.getPath().isEmpty() && !uri.getPath().equals("/")) {
+            throw new ConfigException("server.url must not include a path (got: " + server.url
+                    + "). The backup routes are appended as /brain/<tenant>/backup.");
+        }
+        if (server.tenant == null || server.tenant.isBlank()) {
+            throw new ConfigException("Config is missing 'server.tenant' (e.g. 'acme').");
+        }
+    }
+
+    private static String readTokenFile(Path file) {
         if (!Files.exists(file)) {
-            throw new ConfigException("connectionFile does not exist: " + file);
+            throw new ConfigException("tokenFile does not exist: " + file);
         }
         try {
             return Files.readString(file).trim();
         } catch (IOException e) {
-            throw new ConfigException("Failed to read connectionFile " + file + ": " + e.getMessage(), e);
+            throw new ConfigException("Failed to read tokenFile " + file + ": " + e.getMessage(), e);
         }
     }
 
@@ -216,28 +233,17 @@ public final class ConfigLoader {
     }
 
     /**
-     * Redacts everything past the {@code vancetope1.} prefix so an
-     * error message can confirm the scheme without leaking the token.
-     */
-    static String redact(String connection) {
-        if (connection.length() <= "vancetope1.".length() + 6) {
-            return connection.substring(0, Math.min(connection.length(), "vancetope1.".length())) + "…";
-        }
-        return connection.substring(0, "vancetope1.".length() + 6) + "…";
-    }
-
-    /**
      * Convenience for the {@code init} command — writes a starter YAML
      * to {@code file} (creating parent directories if needed). The
-     * caller is expected to inject a connection string afterwards.
+     * caller is expected to inject the token afterwards.
      */
     public void writeStarter(Path file) {
         try {
             Files.createDirectories(file.getParent());
             BackupConfig starter = new BackupConfig();
             // Keep all defaults from the field initializers — they
-            // already encode the planning §4.3 example. The user fills
-            // in connection (or connectionFile) and edits target.
+            // already encode the planning §4.3 example. The user
+            // fills in server.url, server.tenant, and token.
             try (var out = Files.newBufferedWriter(file)) {
                 yaml.writerWithDefaultPrettyPrinter().writeValue(out, starter);
             }

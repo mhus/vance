@@ -7,7 +7,6 @@ import de.mhus.vance.api.backup.BackupProjectsRequest;
 import de.mhus.vance.api.backup.BackupProjectsResponse;
 import de.mhus.vance.api.backup.BackupRunsRequest;
 import de.mhus.vance.api.backup.BackupRunsResponse;
-import de.mhus.vance.liver.config.ConfigException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -15,6 +14,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
@@ -28,11 +28,12 @@ import tools.jackson.databind.ObjectMapper;
  * That keeps the runtime lean and makes the tool trivially auditable
  * by anyone who knows {@code java.net.http}.
  *
- * <p>Connection string format ({@code planning/user-backup.md} §4.3):
- * {@code vancetope1.<brainHost>/<tenant>/<profile>/<token>}. The
- * profile is fixed to {@code backup} for this tool — the connection
- * string does not carry a per-request profile, it identifies the
- * tool.
+ * <p>Construction takes the three pieces a backup run needs: the
+ * brain URL (with scheme), the tenant name, and the signed JWT
+ * minted via {@code POST /integration-tokens} with the
+ * {@code backup} profile. There is no connection-string mini-language
+ * to learn — the values come straight from the config file
+ * ({@code planning/user-backup.md} §4.3).
  *
  * <p>Streaming content reads ({@link #downloadContent}) do not pipe
  * the body through a {@code String} — that would balloon the heap
@@ -42,24 +43,27 @@ import tools.jackson.databind.ObjectMapper;
 @NullMarked
 public final class BackupApiClient implements AutoCloseable {
 
-    /** Profile name the connection string must reference. */
-    public static final String PROFILE = "backup";
-
     /** Connect timeout — same as the brain's default reverse-proxy window. */
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(30);
 
-    private final URI base;
+    private final URI apiBase;
     private final String tenant;
     private final String token;
     private final HttpClient http;
     private final ObjectMapper json;
 
     /**
-     * @param connectionString {@code vancetope1.<host>/<tenant>/backup/<token>}
+     * Production constructor. The {@code brainUrl} is the root of the
+     * brain deployment (no path) and carries its scheme — so a dev
+     * brain on {@code http://localhost:9991} and a production brain
+     * on {@code https://brain.example} both work without any
+     * heuristics.
      */
-    public BackupApiClient(String connectionString) {
+    public BackupApiClient(URI brainUrl, String tenant, String token) {
         this(
-                connectionString,
+                brainUrl,
+                tenant,
+                token,
                 HttpClient.newBuilder()
                         .connectTimeout(CONNECT_TIMEOUT)
                         .followRedirects(HttpClient.Redirect.NORMAL)
@@ -67,72 +71,47 @@ public final class BackupApiClient implements AutoCloseable {
     }
 
     /** Test-friendly constructor that injects the HTTP client. */
-    BackupApiClient(String connectionString, HttpClient http) {
-        this(connectionString, http, "https");
-    }
-
-    /**
-     * Test-only escape hatch: override the URL scheme so a loopback
-     * {@code HttpServer} (which speaks plain HTTP) can stand in for
-     * the brain. The default scheme is {@code https}; production code
-     * always reaches the constructor above.
-     */
-    BackupApiClient(String connectionString, HttpClient http, String scheme) {
-        Parsed parsed = parseConnection(connectionString, scheme);
-        this.base = parsed.base;
-        this.tenant = parsed.tenant;
-        this.token = parsed.token;
+    BackupApiClient(URI brainUrl, String tenant, String token, HttpClient http) {
+        if (brainUrl.getScheme() == null
+                || (!brainUrl.getScheme().equals("http")
+                        && !brainUrl.getScheme().equals("https"))) {
+            throw new IllegalArgumentException("brainUrl must use http:// or https:// (got: " + brainUrl + ")");
+        }
+        if (brainUrl.getHost() == null || brainUrl.getHost().isBlank()) {
+            throw new IllegalArgumentException("brainUrl is missing a host: " + brainUrl);
+        }
+        String path = brainUrl.getPath();
+        if (path != null && !path.isEmpty() && !path.equals("/")) {
+            throw new IllegalArgumentException("brainUrl must not include a path (got: " + brainUrl
+                    + "). Backup routes are appended as /brain/<tenant>/backup.");
+        }
+        // The API root is <brainUrl>/brain/<tenant>/backup. We resolve
+        // against brainUrl so trailing slashes are tolerated.
+        this.apiBase = brainUrl.resolve("/brain/" + tenant + "/backup");
+        this.tenant = tenant;
+        this.token = token;
         this.http = http;
         this.json = new ObjectMapper();
     }
 
-    /** Parses {@code vancetope1.<host>/<tenant>/<profile>/<token>}. */
-    private static Parsed parseConnection(String connection, String scheme) {
-        if (!connection.startsWith("vancetope1.")) {
-            throw new ConfigException("Connection string must start with 'vancetope1.'");
-        }
-        String rest = connection.substring("vancetope1.".length());
-        String[] parts = rest.split("/", -1);
-        if (parts.length != 4) {
-            throw new ConfigException(
-                    "Connection string must have 4 slash-separated parts: vancetope1.<host>/<tenant>/<profile>/<token>");
-        }
-        if (!parts[2].equals(PROFILE)) {
-            throw new ConfigException("Connection string profile must be '" + PROFILE + "' (got: " + parts[2] + ")");
-        }
-        URI base;
-        try {
-            base = URI.create(scheme + "://" + parts[0] + "/brain/" + parts[1] + "/backup");
-        } catch (IllegalArgumentException e) {
-            throw new ConfigException("Invalid brain host in connection string: " + parts[0], e);
-        }
-        return new Parsed(base, parts[1], parts[3]);
-    }
-
-    private record Parsed(URI base, String tenant, String token) {}
-
-    /**
-     * Returns the tenant name parsed from the connection string.
-     * Exposed for logging and for the {@code run} command.
-     */
+    /** Returns the tenant name passed at construction. */
     public String tenant() {
         return tenant;
     }
 
-    /**
-     * Sends {@code GET /backup/info}.
-     */
-    public BackupInfoResponse getInfo() {
-        HttpResponse<String> resp = send("GET", "/info", null);
-        return parseJson(resp.body(), BackupInfoResponse.class);
+    /** Returns the resolved API base URL — exposed for tests and debug output. */
+    public URI apiBase() {
+        return apiBase;
     }
 
-    /**
-     * Sends {@code POST /backup/projects}.
-     */
+    /** Sends {@code GET /backup/info}. */
+    public BackupInfoResponse getInfo() {
+        return parseJson(send("GET", "/info", null).body(), BackupInfoResponse.class);
+    }
+
+    /** Sends {@code POST /backup/projects}. */
     public BackupProjectsResponse listProjects(BackupProjectsRequest req) {
-        HttpResponse<String> resp = send("POST", "/projects", toJson(req));
-        return parseJson(resp.body(), BackupProjectsResponse.class);
+        return parseJson(send("POST", "/projects", toJson(req)).body(), BackupProjectsResponse.class);
     }
 
     /**
@@ -142,8 +121,10 @@ public final class BackupApiClient implements AutoCloseable {
      */
     public BackupEntriesResponse listEntries(String project, BackupEntriesRequest req) {
         String encodedProject = urlEncode(project);
-        HttpResponse<String> resp = send("POST", "/projects/" + encodedProject + "/entries", toJson(req));
-        return parseJson(resp.body(), BackupEntriesResponse.class);
+        return parseJson(
+                send("POST", "/projects/" + encodedProject + "/entries", toJson(req))
+                        .body(),
+                BackupEntriesResponse.class);
     }
 
     /**
@@ -158,7 +139,7 @@ public final class BackupApiClient implements AutoCloseable {
      */
     public HttpResponse<InputStream> downloadContent(String documentId, @Nullable String ifNoneMatch) {
         String encoded = urlEncode(documentId);
-        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(base + "/documents/" + encoded + "/content"))
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(apiBase + "/documents/" + encoded + "/content"))
                 .timeout(Duration.ofMinutes(10))
                 .header("Authorization", "Bearer " + token)
                 .GET();
@@ -174,19 +155,13 @@ public final class BackupApiClient implements AutoCloseable {
      * ({@code planning/user-backup.md} §7.6).
      */
     public BackupRunsResponse reportRun(BackupRunsRequest req) {
-        HttpResponse<String> resp = send("POST", "/runs", toJson(req));
-        return parseJson(resp.body(), BackupRunsResponse.class);
-    }
-
-    /** Returns the base URL — exposed for tests and debug output. */
-    public URI baseUrl() {
-        return base;
+        return parseJson(send("POST", "/runs", toJson(req)).body(), BackupRunsResponse.class);
     }
 
     // -- internals ------------------------------------------------------------
 
     private HttpResponse<String> send(String method, String path, @Nullable String body) {
-        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(base + path))
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(apiBase + path))
                 .timeout(Duration.ofMinutes(10))
                 .header("Authorization", "Bearer " + token)
                 .header("Accept", "application/json");
@@ -211,9 +186,9 @@ public final class BackupApiClient implements AutoCloseable {
             if (status >= 200 && status < 300) {
                 return resp;
             }
-            // 401/403 → token problem (exit 2). 410 Gone → token
-            // revoked. 404 → endpoint removed mid-version (rare but
-            // possible). Everything else is also exit 2.
+            // For string handlers we can surface the response body in
+            // the error. Stream handlers can't — the body may be too
+            // big to buffer for an exception message.
             String body = "string".equals(handler.getClass().getName()) ? readAsString(resp) : null;
             throw new ApiException(
                     status,
@@ -228,17 +203,9 @@ public final class BackupApiClient implements AutoCloseable {
         }
     }
 
-    @SuppressWarnings("unchecked")
     private static String readAsString(HttpResponse<?> resp) {
-        try {
-            // BodyHandlers.ofString returns a String body — this
-            // helper narrows it for the error message without
-            // forcing the caller to deal with generics.
-            Object body = resp.body();
-            return body instanceof String s ? s : null;
-        } catch (ClassCastException e) {
-            return null;
-        }
+        Object body = resp.body();
+        return body instanceof String s ? s : null;
     }
 
     private String toJson(Object value) {
@@ -277,7 +244,7 @@ public final class BackupApiClient implements AutoCloseable {
                 out.append(c);
             } else {
                 // UTF-8 percent-encoding per RFC 3986.
-                for (byte b : String.valueOf(c).getBytes(java.nio.charset.StandardCharsets.UTF_8)) {
+                for (byte b : String.valueOf(c).getBytes(StandardCharsets.UTF_8)) {
                     out.append('%');
                     out.append(String.format("%02X", b & 0xFF));
                 }

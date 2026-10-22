@@ -7,10 +7,10 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import de.mhus.vance.api.backup.BackupInfoResponse;
 import de.mhus.vance.api.backup.Stored;
-import de.mhus.vance.liver.config.ConfigException;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.net.http.HttpClient;
 import java.util.List;
 import java.util.Map;
@@ -31,7 +31,7 @@ import tools.jackson.databind.ObjectMapper;
  * <p>Each test installs a handler that asserts the request, then
  * returns the canned JSON. The path the brain serves
  * ({@code /brain/{tenant}/backup/...}) is built into the client from
- * the connection string — we don't reproduce that here.
+ * the brain URL + tenant — we don't reproduce that here.
  */
 class BackupApiClientTest {
 
@@ -55,36 +55,40 @@ class BackupApiClientTest {
     }
 
     private BackupApiClient newClient() {
-        // The brain URL inside the connection string goes to the
-        // loopback server. The token is opaque to the server.
-        String conn = "vancetope1.127.0.0.1:" + port + "/acme/backup/testtoken";
         // Plain HTTP — the loopback com.sun.net.httpserver.HttpServer
         // does not speak TLS. Production code uses the public
-        // constructor, which always builds an https:// URL.
-        return new BackupApiClient(conn, HttpClient.newHttpClient(), "http");
+        // constructor with an https:// URL.
+        URI brainUrl = URI.create("http://127.0.0.1:" + port);
+        return new BackupApiClient(brainUrl, "acme", "testtoken", HttpClient.newHttpClient());
     }
 
     @Test
-    void connectionString_profileMustBeBackup() {
-        String wrong = "vancetope1.example.com/acme/scp/TOKEN";
-        assertThatThrownBy(() -> new BackupApiClient(wrong))
-                .isInstanceOf(ConfigException.class)
-                .hasMessageContaining("profile must be 'backup'");
+    void rejectsNonHttpScheme() {
+        assertThatThrownBy(() -> new BackupApiClient(URI.create("ftp://example"), "acme", "tok"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("http:// or https://");
     }
 
     @Test
-    void connectionString_mustHaveFourParts() {
-        String wrong = "vancetope1.example.com/acme/backup";
-        assertThatThrownBy(() -> new BackupApiClient(wrong))
-                .isInstanceOf(ConfigException.class)
-                .hasMessageContaining("4 slash-separated parts");
+    void rejectsMissingHost() {
+        assertThatThrownBy(() -> new BackupApiClient(URI.create("http:///path"), "acme", "tok"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("missing a host");
     }
 
     @Test
-    void connectionString_mustStartWithVancetope1() {
-        assertThatThrownBy(() -> new BackupApiClient("https://brain.example"))
-                .isInstanceOf(ConfigException.class)
-                .hasMessageContaining("must start with 'vancetope1.'");
+    void rejectsPathInBrainUrl() {
+        assertThatThrownBy(() -> new BackupApiClient(URI.create("http://example.com/some/path"), "acme", "tok"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must not include a path");
+    }
+
+    @Test
+    void apiBase_isResolvedCorrectly() {
+        try (var client = newClient()) {
+            assertThat(client.apiBase().toString()).isEqualTo("http://127.0.0.1:" + port + "/brain/acme/backup");
+            assertThat(client.tenant()).isEqualTo("acme");
+        }
     }
 
     @Test
@@ -218,13 +222,6 @@ class BackupApiClientTest {
 
         try (var client = newClient()) {
             assertThatThrownBy(client::getInfo).isInstanceOf(ApiException.class).hasMessageContaining("401");
-        }
-    }
-
-    @Test
-    void tenantExtractedFromConnectionString() {
-        try (var client = newClient()) {
-            assertThat(client.tenant()).isEqualTo("acme");
         }
     }
 

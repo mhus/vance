@@ -34,7 +34,7 @@ import picocli.CommandLine.Command;
         subcommands = {
             // Subcommand classes land here as they are implemented.
             // Currently: info, run, logout, list, status, init,
-            // verify. prune, find, history, extract follow.
+            // verify, prune. find, history, extract follow.
             de.mhus.vance.liver.cli.InfoCommand.class,
             de.mhus.vance.liver.cli.RunCommand.class,
             de.mhus.vance.liver.cli.LogoutCommand.class,
@@ -42,6 +42,7 @@ import picocli.CommandLine.Command;
             de.mhus.vance.liver.cli.StatusCommand.class,
             de.mhus.vance.liver.cli.InitCommand.class,
             de.mhus.vance.liver.cli.VerifyCommand.class,
+            de.mhus.vance.liver.cli.PruneCommand.class,
         })
 public final class Main implements Runnable {
 

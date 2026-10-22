@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { CatalogModelInsightsDto, ModelAliasInsightsDto } from '@vance/generated';
 import { ModelAliasScope, ModelCatalogLayer } from '@vance/generated';
-import { aliasesTargeting, filterModels, isAutoLayer, kindCounts, verdictOf } from './modelInsights';
+import {
+  aliasesTargeting,
+  filterModels,
+  groupCounts,
+  isAutoLayer,
+  kindGroupOf,
+  sortModels,
+  verdictOf,
+} from './modelInsights';
 
 function model(spec: string, over: Partial<CatalogModelInsightsDto> = {}): CatalogModelInsightsDto {
   const colon = spec.indexOf(':');
@@ -38,31 +46,69 @@ describe('verdictOf', () => {
 
 describe('filterModels', () => {
   it('matches spec and capability', () => {
-    const hits = filterModels(models, { query: 'vision', kind: '', usableOnly: false });
+    const hits = filterModels(models, { query: 'vision', group: '', usableOnly: false });
     expect(hits.map((m) => m.spec)).toEqual(['anthropic:claude-sonnet']);
-    expect(filterModels(models, { query: 'CORTECS', kind: '', usableOnly: false })).toHaveLength(2);
+    expect(filterModels(models, { query: 'CORTECS', group: '', usableOnly: false })).toHaveLength(2);
   });
 
   it('usableOnly drops refused chat models but keeps other kinds', () => {
-    const hits = filterModels(models, { query: '', kind: '', usableOnly: true });
+    const hits = filterModels(models, { query: '', group: '', usableOnly: true });
     expect(hits.map((m) => m.spec)).toEqual(['anthropic:claude-sonnet', 'cortecs:flux']);
   });
 
-  it('filters by kind', () => {
-    expect(filterModels(models, { query: '', kind: 'image', usableOnly: false }).map((m) => m.spec))
+  it('filters by type group', () => {
+    expect(filterModels(models, { query: '', group: 'image', usableOnly: false }).map((m) => m.spec))
       .toEqual(['cortecs:flux']);
+    const audio = [model('a:say', { kind: 'tts' }), model('a:hear', { kind: 'stt' }), model('a:chat')];
+    expect(filterModels(audio, { query: '', group: 'audio', usableOnly: false }).map((m) => m.spec))
+      .toEqual(['a:say', 'a:hear']);
   });
 });
 
-describe('kindCounts', () => {
-  it('puts chat first', () => {
+describe('kindGroupOf', () => {
+  it('folds the fine kinds into the switch groups', () => {
+    expect(['chat', 'embedding', 'tts', 'stt', 'au', 'music', 'image', 'decision'].map(kindGroupOf))
+      .toEqual(['llm', 'llm', 'audio', 'audio', 'audio', 'audio', 'image', 'decision']);
+  });
+
+  it('keeps an unknown kind findable under other', () => {
+    expect(kindGroupOf('video')).toBe('other');
+  });
+});
+
+describe('groupCounts', () => {
+  it('counts per group in switch order and leaves empty groups out', () => {
     const more = [...models, model('a:tts', { kind: 'tts' }), model('a:au', { kind: 'au' })];
-    expect(kindCounts(more)).toEqual([
-      { kind: 'chat', count: 3 },
-      { kind: 'au', count: 1 },
-      { kind: 'image', count: 1 },
-      { kind: 'tts', count: 1 },
+    expect(groupCounts(more)).toEqual([
+      { group: 'llm', count: 3 },
+      { group: 'audio', count: 2 },
+      { group: 'image', count: 1 },
     ]);
+  });
+});
+
+describe('sortModels', () => {
+  const priced = (spec: string, output?: number) =>
+    model(spec, output === undefined
+      ? {}
+      : { pricing: { inputPerMTok: 1, outputPerMTok: output, currency: 'USD' } });
+
+  it('sorts by model name, then provider', () => {
+    const list = [priced('b:zeta'), priced('b:alpha'), priced('a:alpha')];
+    expect(sortModels(list, 'name', 'asc').map((m) => m.spec)).toEqual(['a:alpha', 'b:alpha', 'b:zeta']);
+    expect(sortModels(list, 'name', 'desc').map((m) => m.spec)).toEqual(['b:zeta', 'b:alpha', 'a:alpha']);
+  });
+
+  it('sorts by output price and keeps unpriced models last in both directions', () => {
+    const list = [priced('a:mid', 5), priced('a:free'), priced('a:cheap', 0.5), priced('a:dear', 15)];
+    expect(sortModels(list, 'price', 'asc').map((m) => m.spec)).toEqual(['a:cheap', 'a:mid', 'a:dear', 'a:free']);
+    expect(sortModels(list, 'price', 'desc').map((m) => m.spec)).toEqual(['a:dear', 'a:mid', 'a:cheap', 'a:free']);
+  });
+
+  it('does not reorder the input', () => {
+    const list = [priced('b:x'), priced('a:x')];
+    sortModels(list, 'name', 'asc');
+    expect(list.map((m) => m.spec)).toEqual(['b:x', 'a:x']);
   });
 });
 

@@ -2,8 +2,8 @@ import type { CatalogModelInsightsDto, ModelAliasInsightsDto } from '@vance/gene
 import { ModelCatalogLayer } from '@vance/generated';
 
 /**
- * Pure helpers behind the Insights "Models" tab — filtering, verdicts and
- * the alias lookup, kept out of the component so they are testable. Token
+ * Pure helpers behind the Insights "Models" tab — filtering, sorting,
+ * verdicts and the alias lookup, kept out of the component so they are testable. Token
  * and price formatting is the model picker's (`chat/modelPicker.ts`).
  */
 
@@ -17,10 +17,45 @@ export function verdictOf(m: CatalogModelInsightsDto): ModelVerdict {
   return 'usable';
 }
 
+/**
+ * The type switch above the catalog. The catalog's `kind` is finer than what
+ * a reader filters by: speech in, speech out, audio understanding and music
+ * are all "audio". A kind that fits none of the groups lands in `other`, which
+ * the tab only offers when such a model exists — a new kind stays findable.
+ */
+export type KindGroup = 'llm' | 'audio' | 'image' | 'decision' | 'other';
+
+const KIND_GROUPS: Record<string, KindGroup> = {
+  chat: 'llm',
+  embedding: 'llm',
+  tts: 'audio',
+  stt: 'audio',
+  au: 'audio',
+  music: 'audio',
+  image: 'image',
+  decision: 'decision',
+};
+
+export function kindGroupOf(kind: string): KindGroup {
+  return KIND_GROUPS[kind] ?? 'other';
+}
+
+const GROUP_ORDER: KindGroup[] = ['llm', 'audio', 'image', 'decision', 'other'];
+
+/** Groups present in the catalog with their counts, in switch order; empty groups are left out. */
+export function groupCounts(models: CatalogModelInsightsDto[]): Array<{ group: KindGroup; count: number }> {
+  const counts = new Map<KindGroup, number>();
+  for (const m of models) {
+    const g = kindGroupOf(m.kind);
+    counts.set(g, (counts.get(g) ?? 0) + 1);
+  }
+  return GROUP_ORDER.filter((g) => counts.has(g)).map((g) => ({ group: g, count: counts.get(g)! }));
+}
+
 export interface ModelFilter {
   query: string;
-  /** `''` = every kind. */
-  kind: string;
+  /** `''` = every group. */
+  group: KindGroup | '';
   /** Hide chat models the picker would not offer (non-chat kinds stay). */
   usableOnly: boolean;
 }
@@ -31,7 +66,7 @@ export function filterModels(
 ): CatalogModelInsightsDto[] {
   const q = filter.query.trim().toLowerCase();
   return models.filter((m) => {
-    if (filter.kind && m.kind !== filter.kind) return false;
+    if (filter.group && kindGroupOf(m.kind) !== filter.group) return false;
     if (filter.usableOnly) {
       const v = verdictOf(m);
       if (v === 'no-instance' || v === 'not-allowed') return false;
@@ -42,17 +77,33 @@ export function filterModels(
   });
 }
 
-/** Kinds present in the catalog with their counts — `chat` first, then alphabetical. */
-export function kindCounts(models: CatalogModelInsightsDto[]): Array<{ kind: string; count: number }> {
-  const counts = new Map<string, number>();
-  for (const m of models) counts.set(m.kind, (counts.get(m.kind) ?? 0) + 1);
-  return [...counts.entries()]
-    .map(([kind, count]) => ({ kind, count }))
-    .sort((a, b) => {
-      if (a.kind === 'chat') return -1;
-      if (b.kind === 'chat') return 1;
-      return a.kind.localeCompare(b.kind);
-    });
+export type ModelSortKey = 'name' | 'price';
+export type SortDirection = 'asc' | 'desc';
+
+/**
+ * Sorted copy. `name` compares the model name first and the provider instance
+ * second, so the same model from several providers sits together — which is
+ * where a price comparison happens. `price` is the output price per million
+ * tokens; a model without a price (most non-chat kinds) goes last in either
+ * direction, since "unknown" is neither cheap nor expensive.
+ */
+export function sortModels(
+  models: CatalogModelInsightsDto[],
+  key: ModelSortKey,
+  direction: SortDirection,
+): CatalogModelInsightsDto[] {
+  const sign = direction === 'asc' ? 1 : -1;
+  const byName = (a: CatalogModelInsightsDto, b: CatalogModelInsightsDto): number =>
+    a.modelName.localeCompare(b.modelName) || a.providerInstance.localeCompare(b.providerInstance);
+  return [...models].sort((a, b) => {
+    if (key === 'name') return sign * byName(a, b);
+    const pa = a.pricing?.outputPerMTok;
+    const pb = b.pricing?.outputPerMTok;
+    if (pa == null && pb == null) return byName(a, b);
+    if (pa == null) return 1;
+    if (pb == null) return -1;
+    return sign * (pa - pb) || byName(a, b);
+  });
 }
 
 /**

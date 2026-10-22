@@ -14,11 +14,21 @@ import {
   VIcon,
   VInput,
   VModal,
-  VSelect,
+  VSegment,
 } from '@/components';
 import { useModelInsights } from '@/composables/useProjectInsights';
 import { formatContext, formatPrice } from '@/chat/modelPicker';
-import { aliasesTargeting, filterModels, kindCounts, verdictOf, type ModelVerdict } from './modelInsights';
+import {
+  aliasesTargeting,
+  filterModels,
+  groupCounts,
+  sortModels,
+  verdictOf,
+  type KindGroup,
+  type ModelSortKey,
+  type ModelVerdict,
+  type SortDirection,
+} from './modelInsights';
 
 /**
  * Every model the project's merged catalog knows — all modalities, nothing
@@ -37,30 +47,62 @@ function reload(): void {
   if (props.projectId) state.load(props.projectId);
 }
 
-// ─── Filter ────────────────────────────────────────────────────────────
+// ─── Filter + sort ─────────────────────────────────────────────────────
 const ALL = 'all';
 const query = ref('');
-const kind = ref<string>(ALL);
+const group = ref<KindGroup | typeof ALL>(ALL);
 const usableOnly = ref(false);
+const sortKey = ref<ModelSortKey>('name');
+const sortDirection = ref<SortDirection>('asc');
 
 const models = computed<CatalogModelInsightsDto[]>(() => state.data.value?.models ?? []);
 const aliases = computed(() => state.data.value?.aliases ?? []);
 
-const kindOptions = computed(() => [
-  { value: ALL, label: t('insights.models.allKinds', { n: models.value.length }) },
-  ...kindCounts(models.value).map((k) => ({
-    value: k.kind,
-    label: t('insights.models.kindOption', { kind: k.kind, n: k.count }),
+const groupOptions = computed(() => [
+  { value: ALL, label: t('insights.models.groupAll', { n: models.value.length }) },
+  ...groupCounts(models.value).map((g) => ({
+    value: g.group,
+    label: t('insights.models.groupOption', { group: t(`insights.models.group.${g.group}`), n: g.count }),
   })),
 ]);
 
+// A group can vanish on reload (other project, other catalog) — fall back
+// to "all" instead of showing an empty table under a switch nobody can see.
+watch(groupOptions, (options) => {
+  if (!options.some((o) => o.value === group.value)) group.value = ALL;
+});
+
 const shown = computed(() =>
-  filterModels(models.value, {
-    query: query.value,
-    kind: kind.value === ALL ? '' : kind.value,
-    usableOnly: usableOnly.value,
-  }),
+  sortModels(
+    filterModels(models.value, {
+      query: query.value,
+      group: group.value === ALL ? '' : group.value,
+      usableOnly: usableOnly.value,
+    }),
+    sortKey.value,
+    sortDirection.value,
+  ),
 );
+
+/** Header click: a new column starts ascending, the same column flips. */
+function sortBy(key: ModelSortKey): void {
+  if (sortKey.value === key) {
+    sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc';
+  } else {
+    sortKey.value = key;
+    sortDirection.value = 'asc';
+  }
+}
+
+function sortIcon(key: ModelSortKey): 'sort' | 'arrow-up' | 'arrow-down' {
+  if (sortKey.value !== key) return 'sort';
+  return sortDirection.value === 'asc' ? 'arrow-up' : 'arrow-down';
+}
+
+function ariaSort(key: ModelSortKey): 'ascending' | 'descending' | 'none' {
+  if (sortKey.value !== key) return 'none';
+  return sortDirection.value === 'asc' ? 'ascending' : 'descending';
+}
 
 // ─── Labels ────────────────────────────────────────────────────────────
 function layerLabel(layer: ModelCatalogLayer): string {
@@ -156,8 +198,9 @@ watch(
             :placeholder="$t('insights.models.searchPlaceholder')"
           />
         </div>
-        <div class="w-48">
-          <VSelect v-model="kind" :label="$t('insights.models.kind')" :options="kindOptions" />
+        <div class="flex flex-col gap-1">
+          <span class="text-xs opacity-60">{{ $t('insights.models.kind') }}</span>
+          <VSegment v-model="group" :options="groupOptions" :aria-label="$t('insights.models.kind')" />
         </div>
         <div class="pb-2">
           <VCheckbox v-model="usableOnly" :label="$t('insights.models.usableOnly')" />
@@ -243,11 +286,31 @@ watch(
         <table v-else class="w-full text-sm">
           <thead class="text-xs opacity-60">
             <tr class="text-left">
-              <th class="font-normal px-3 py-1">{{ $t('insights.models.colModel') }}</th>
+              <th class="font-normal px-3 py-1" :aria-sort="ariaSort('name')">
+                <button
+                  type="button"
+                  class="sort-head"
+                  :title="$t('insights.models.sortByName')"
+                  @click="sortBy('name')"
+                >
+                  {{ $t('insights.models.colModel') }}
+                  <VIcon :name="sortIcon('name')" :class="sortKey === 'name' ? '' : 'opacity-40'" />
+                </button>
+              </th>
               <th class="font-normal px-3 py-1 w-16">{{ $t('insights.models.colKind') }}</th>
               <th class="font-normal px-3 py-1 w-16">{{ $t('insights.models.colSize') }}</th>
               <th class="font-normal px-3 py-1 w-20 text-right">{{ $t('insights.models.colContext') }}</th>
-              <th class="font-normal px-3 py-1 w-36 text-right">{{ $t('insights.models.colPrice') }}</th>
+              <th class="font-normal px-3 py-1 w-36 text-right" :aria-sort="ariaSort('price')">
+                <button
+                  type="button"
+                  class="sort-head ml-auto"
+                  :title="$t('insights.models.sortByPrice')"
+                  @click="sortBy('price')"
+                >
+                  {{ $t('insights.models.colPrice') }}
+                  <VIcon :name="sortIcon('price')" :class="sortKey === 'price' ? '' : 'opacity-40'" />
+                </button>
+              </th>
               <th class="font-normal px-3 py-1">{{ $t('insights.models.colCapabilities') }}</th>
               <th class="font-normal px-3 py-1 w-36">{{ $t('insights.models.colOrigin') }}</th>
               <th class="font-normal px-3 py-1 w-28">{{ $t('insights.models.colStatus') }}</th>
@@ -367,6 +430,19 @@ watch(
 </template>
 
 <style scoped>
+.sort-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.sort-head:hover,
+.sort-head:focus-visible {
+  color: var(--v-accent-text);
+  outline: none;
+}
 .model-row:hover,
 .model-row:focus-visible {
   background: var(--v-fill);

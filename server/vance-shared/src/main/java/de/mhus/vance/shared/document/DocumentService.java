@@ -3937,7 +3937,12 @@ public class DocumentService {
                 .addCriteria(combined)
                 .with(Sort.by("_id"))
                 .limit(limit);
-        if (afterId != null) {
+        if (afterId != null && !afterId.isBlank()) {
+            // The cursor is a hex ObjectId. An empty string (e.g. when
+            // the client sends "cursor: \"\"" by accident) used to
+            // throw IllegalArgumentException from ObjectId("").
+            // Treat null and blank as "first page" — same answer as
+            // omitting the cursor altogether.
             q.addCriteria(Criteria.where("_id").gt(new org.bson.types.ObjectId(afterId)));
         }
         java.util.List<DocumentDocument> rows = mongoTemplate.find(q, DocumentDocument.class);

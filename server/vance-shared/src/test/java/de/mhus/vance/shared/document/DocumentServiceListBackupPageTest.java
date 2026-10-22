@@ -83,6 +83,26 @@ class DocumentServiceListBackupPageTest {
         verify(mongoTemplate, times(1)).find(any(Query.class), any(Class.class));
     }
 
+    @Test
+    void blankAfterId_treatedAsFirstPage() {
+        // A previous version of this code did `new ObjectId(afterId)`
+        // unconditionally inside the if (afterId != null) branch — fine
+        // for null, broken for "". An empty-string cursor threw
+        // IllegalArgumentException from ObjectId.
+        when(mongoTemplate.find(any(Query.class), any(Class.class))).thenReturn(List.of());
+
+        service.listBackupPage("acme", "wiki", List.of(), "", 100);
+
+        // No exception; one find() with no _id filter clause.
+        ArgumentCaptor<Query> queryCaptor = ArgumentCaptor.forClass(Query.class);
+        verify(mongoTemplate).find(queryCaptor.capture(), any(Class.class));
+        String queryStr = queryCaptor.getValue().getQueryObject().toString();
+        assertThat(queryStr)
+                .as("blank cursor must NOT add a _id.gt filter clause")
+                .doesNotContain("_id");
+        // Sort still includes _id — that's the stable ordering, not a filter.
+    }
+
     // ── post-fetch filter for non-prefix globs ──────────────────────
 
     @Test

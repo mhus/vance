@@ -189,7 +189,7 @@ public final class BackupApiClient implements AutoCloseable {
             // For string handlers we can surface the response body in
             // the error. Stream handlers can't — the body may be too
             // big to buffer for an exception message.
-            String body = "string".equals(handler.getClass().getName()) ? readAsString(resp) : null;
+            String body = bodyAsString(resp);
             throw new ApiException(
                     status,
                     "Server returned " + status + " for " + req.method() + " "
@@ -203,7 +203,14 @@ public final class BackupApiClient implements AutoCloseable {
         }
     }
 
-    private static String readAsString(HttpResponse<?> resp) {
+    /**
+     * Returns the response body when it is a {@link String} (the
+     * {@code BodyHandlers.ofString()} case); {@code null} otherwise.
+     * The JDK uses anonymous classes for the built-in handlers, so
+     * type-checking by class name is brittle; reading the body and
+     * checking its runtime type is the stable path.
+     */
+    private static String bodyAsString(HttpResponse<?> resp) {
         Object body = resp.body();
         return body instanceof String s ? s : null;
     }

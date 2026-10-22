@@ -33,10 +33,10 @@ import picocli.CommandLine.Command;
         exitCodeOnInvalidInput = 4,
         subcommands = {
             // Subcommand classes land here as they are implemented.
-            // Keeping the list empty for now makes the skeleton
-            // buildable and exercisable: `java -jar vance-liver.jar --help`
-            // prints the root description without dying on a missing
-            // handler.
+            // Currently: info (the smallest end-to-end verification).
+            // init, run, status, list, verify, prune, find, history,
+            // extract, logout follow in later commits.
+            de.mhus.vance.liver.cli.InfoCommand.class,
         })
 public final class Main implements Runnable {
 

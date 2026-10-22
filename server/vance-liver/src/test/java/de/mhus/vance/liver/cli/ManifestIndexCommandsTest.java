@@ -118,6 +118,74 @@ class ManifestIndexCommandsTest {
     }
 
     @Test
+    void history_showsOnlyContentChangesAndRenames(@TempDir Path home) throws IOException {
+        Path target = home.resolve("snapshots");
+        writeSnapshotWithEntry(target, "2026-10-21T09-30-00Z", entry("wiki", "notes/a.md", "v1", "lin-1", "A"));
+        // Unchanged — must not produce a row.
+        writeSnapshotWithEntry(target, "2026-10-21T10-30-00Z", entry("wiki", "notes/a.md", "v1", "lin-1", "A"));
+        // Renamed, same content.
+        writeSnapshotWithEntry(target, "2026-10-21T11-30-00Z", entry("wiki", "notes/b.md", "v1", "lin-1", "A"));
+        // New content.
+        writeSnapshotWithEntry(target, "2026-10-21T12-30-00Z", entry("wiki", "notes/b.md", "v2", "lin-1", "A"));
+        writeSnapshotWithEntry(target, "2026-10-21T13-30-00Z", entry("wiki", "notes/b.md", "v2", "lin-1", "A"));
+
+        int exit = runHistory(home, target, "wiki/notes/b.md");
+
+        assertThat(exit).isEqualTo(0);
+        String out = capturedOut.toString(StandardCharsets.UTF_8);
+        assertThat(out)
+                .contains("2026-10-21T09-30-00Z")
+                .contains("2026-10-21T11-30-00Z")
+                .contains("renamed from notes/a.md, same content")
+                .contains("2026-10-21T12-30-00Z");
+        assertThat(out).doesNotContain("2026-10-21T10-30-00Z").doesNotContain("2026-10-21T13-30-00Z");
+        assertThat(out).doesNotContain("Not in the latest snapshot");
+    }
+
+    @Test
+    void history_documentGoneFromLatest_saysSo(@TempDir Path home) throws IOException {
+        Path target = home.resolve("snapshots");
+        writeSnapshotWithEntry(target, "2026-10-21T09-30-00Z", entry("wiki", "notes/a.md", "v1", "lin-1", "A"));
+        writeSnapshotWithEntry(target, "2026-10-21T10-30-00Z", entry("wiki", "notes/other.md", "v1", "lin-2", "O"));
+
+        runHistory(home, target, "wiki/notes/a.md");
+
+        assertThat(capturedOut.toString(StandardCharsets.UTF_8)).contains("Not in the latest snapshot");
+    }
+
+    @Test
+    void findDeleted_listsOnlyDocumentsMissingFromTheLatestSnapshot(@TempDir Path home) throws IOException {
+        Path target = home.resolve("snapshots");
+        writeSnapshotWithEntry(
+                target,
+                "2026-10-21T09-30-00Z",
+                entry("wiki", "notes/gone.md", "v1", "lin-gone", "Gone"),
+                entry("wiki", "notes/old-name.md", "v1", "lin-renamed", "Renamed"),
+                entry("wiki", "notes/kept.md", "v1", "lin-kept", "Kept"));
+        writeSnapshotWithEntry(
+                target,
+                "2026-10-21T10-30-00Z",
+                entry("wiki", "notes/gone.md", "v1", "lin-gone", "Gone"),
+                entry("wiki", "notes/new-name.md", "v1", "lin-renamed", "Renamed"),
+                entry("wiki", "notes/kept.md", "v1", "lin-kept", "Kept"));
+        writeSnapshotWithEntry(
+                target,
+                "2026-10-21T11-30-00Z",
+                entry("wiki", "notes/new-name.md", "v1", "lin-renamed", "Renamed"),
+                entry("wiki", "notes/kept.md", "v1", "lin-kept", "Kept"));
+
+        int exit = runFind(home, target, "--deleted", "notes");
+
+        assertThat(exit).isEqualTo(0);
+        String out = capturedOut.toString(StandardCharsets.UTF_8);
+        // Once, from the newest snapshot that still has it.
+        assertThat(out.lines().filter(l -> l.contains("gone.md")).toList())
+                .containsExactly("2026-10-21T10-30-00Z\twiki/notes/gone.md\tGone");
+        // A rename is not a deletion; a kept document is not either.
+        assertThat(out).doesNotContain("old-name.md").doesNotContain("kept.md");
+    }
+
+    @Test
     void history_unknownDocument_returnsZero(@TempDir Path home) throws IOException {
         Path target = home.resolve("snapshots");
         Files.createDirectories(target);

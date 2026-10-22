@@ -120,7 +120,7 @@ public final class ListCommand implements Callable<Integer> {
         return row;
     }
 
-    private static String humanBytes(long bytes) {
+    static String humanBytes(long bytes) {
         if (bytes < 1024) return bytes + "B";
         if (bytes < 1024 * 1024) return String.format("%.1fK", bytes / 1024.0);
         if (bytes < 1024L * 1024 * 1024) return String.format("%.1fM", bytes / (1024.0 * 1024));

@@ -11,9 +11,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.Callable;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
@@ -23,10 +26,10 @@ import picocli.CommandLine.Option;
 /**
  * Subcommand {@code vancetope-backup history <project>/<path>}.
  *
- * <p>Walks every snapshot under the target and prints every entry
- * whose {@code lineageId} matches the latest-known lineage of
- * {@code <project>/<path>}. This shows the version history of one
- * document across all snapshots, oldest first.
+ * <p>Walks every snapshot under the target and follows the
+ * {@code lineageId} of {@code <project>/<path>}, oldest first. One row
+ * per version: a new {@code contentVersion} or a rename — not one per
+ * snapshot the unchanged document happens to lie in.
  *
  * <p>Follows renames: the same {@code lineageId} stays stable across
  * path changes, so a document renamed from {@code notes/old.md} to
@@ -109,18 +112,44 @@ public final class HistoryCommand implements Callable<Integer> {
             return 0;
         }
 
-        // Second pass: walk oldest first, collect entries with that lineageId.
+        // Second pass: walk oldest first and keep one row per version. A
+        // document lies unchanged in most snapshots; only a new
+        // contentVersion (or a rename) is an event worth a line
+        // (planning §4.9).
         List<HistoryRow> rows = new ArrayList<>();
-        for (Path snap : snapshots) {
+        @Nullable ManifestEntry previous = null;
+        boolean inLatest = false;
+        for (int i = 0; i < snapshots.size(); i++) {
+            Path snap = snapshots.get(i);
+            @Nullable ManifestEntry current = null;
             try {
                 for (ManifestEntry entry : new ManifestIO().readEntries(snap)) {
                     if (lineageId.equals(entry.lineageId())) {
-                        rows.add(new HistoryRow(snap.getFileName().toString(), entry));
+                        current = entry;
+                        break;
                     }
                 }
             } catch (IOException e) {
                 LOG.log(System.Logger.Level.WARNING, "read " + snap, e);
             }
+            if (i == snapshots.size() - 1) {
+                inLatest = current != null;
+            }
+            if (current == null) {
+                continue;
+            }
+            if (previous == null) {
+                rows.add(new HistoryRow(snap.getFileName().toString(), current, "first backup"));
+            } else if (!Objects.equals(previous.contentVersion(), current.contentVersion())) {
+                rows.add(new HistoryRow(
+                        snap.getFileName().toString(),
+                        current,
+                        previous.path().equals(current.path()) ? "" : "renamed from " + previous.path()));
+            } else if (!previous.path().equals(current.path())) {
+                rows.add(new HistoryRow(
+                        snap.getFileName().toString(), current, "renamed from " + previous.path() + ", same content"));
+            }
+            previous = current;
         }
 
         if (rows.isEmpty()) {
@@ -128,28 +157,35 @@ public final class HistoryCommand implements Callable<Integer> {
             return 0;
         }
 
-        out.println(String.format("%-26s  %-10s  %s", "SNAPSHOT", "WHEN", "PATH"));
+        out.println(String.format("%-17s  %9s  %-22s  %s", "CHANGED", "SIZE", "FIRST IN SNAPSHOT", "PATH"));
         out.println("-".repeat(80));
         for (HistoryRow row : rows) {
-            String when = "unknown";
-            try {
-                when = Instant.parse(
-                                row.entry.createdAtMs() != null
-                                        ? Instant.ofEpochMilli(row.entry.createdAtMs())
-                                                .toString()
-                                        : Instant.parse(row.snapshotId.substring(0, 19) + "Z")
-                                                .toString())
-                        .toString();
-            } catch (RuntimeException ignored) {
-                // best-effort
-            }
             String displayPath = row.entry.project() + "/" + row.entry.path();
             out.println(String.format(
-                    "%-26s  %-10s  %s",
-                    row.snapshotId, when.length() >= 10 ? when.substring(0, 10) : when, displayPath));
+                    "%-17s  %9s  %-22s  %s%s",
+                    changedAt(row.entry),
+                    ListCommand.humanBytes(row.entry.size()),
+                    row.snapshotId,
+                    displayPath,
+                    row.note.isEmpty() ? "" : "  (" + row.note + ")"));
+        }
+        if (!inLatest) {
+            out.println("Not in the latest snapshot — deleted, or excluded by the filter, since then.");
         }
         return 0;
     }
 
-    private record HistoryRow(String snapshotId, ManifestEntry entry) {}
+    /** When this version was written: {@code updatedAt}, else {@code createdAt}, in UTC to the minute. */
+    private static String changedAt(ManifestEntry entry) {
+        Long millis = entry.updatedAtMs() != null ? entry.updatedAtMs() : entry.createdAtMs();
+        if (millis == null) {
+            return "unknown";
+        }
+        return CHANGED_FORMAT.format(Instant.ofEpochMilli(millis));
+    }
+
+    private static final DateTimeFormatter CHANGED_FORMAT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneOffset.UTC);
+
+    private record HistoryRow(String snapshotId, ManifestEntry entry, String note) {}
 }

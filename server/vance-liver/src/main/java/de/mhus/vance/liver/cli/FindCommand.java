@@ -13,7 +13,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NullMarked;
@@ -107,6 +109,11 @@ public final class FindCommand implements Callable<Integer> {
         }
 
         List<Path> snapshots = listSnapshots(target);
+        if (deleted) {
+            // Always measured against the newest snapshot, before --snapshot
+            // narrows the search set.
+            return findDeleted(regex, usePath, useTitle, snapshots);
+        }
         if (snapshotId != null) {
             snapshots.removeIf(p -> !p.getFileName().toString().equals(snapshotId));
         }
@@ -132,6 +139,60 @@ public final class FindCommand implements Callable<Integer> {
             out.println("No matches.");
         }
         return 0;
+    }
+
+    /**
+     * Documents that exist in an older snapshot but not in the newest one —
+     * the usual reason to open a backup. Identity is the {@code lineageId},
+     * so a rename is not reported as a deletion; entries without one fall
+     * back to project + path. Each document is printed once, with the
+     * newest snapshot that still holds it — the one to extract from.
+     */
+    private int findDeleted(Pattern regex, boolean usePath, boolean useTitle, List<Path> newestFirst) {
+        if (newestFirst.isEmpty()) {
+            out.println("No snapshots to search.");
+            return 0;
+        }
+        Set<String> present = new HashSet<>();
+        try {
+            for (ManifestEntry entry : new ManifestIO().readEntries(newestFirst.get(0))) {
+                present.add(identity(entry));
+            }
+        } catch (IOException e) {
+            err.println("Cannot read the latest snapshot " + newestFirst.get(0) + ": " + e.getMessage());
+            return 2;
+        }
+        Set<String> reported = new HashSet<>();
+        long matches = 0;
+        for (Path snap : newestFirst.subList(1, newestFirst.size())) {
+            if (snapshotId != null && !snap.getFileName().toString().equals(snapshotId)) {
+                continue;
+            }
+            try {
+                for (ManifestEntry entry : new ManifestIO().readEntries(snap)) {
+                    String id = identity(entry);
+                    if (present.contains(id) || reported.contains(id)) {
+                        continue;
+                    }
+                    if (matchesEntry(regex, entry, usePath, useTitle)) {
+                        reported.add(id);
+                        out.println(formatHit(snap, entry));
+                        matches++;
+                    }
+                }
+            } catch (IOException e) {
+                LOG.log(System.Logger.Level.WARNING, "Cannot read " + snap + ": " + e.getMessage());
+            }
+        }
+        if (matches == 0) {
+            out.println("No deleted documents match.");
+        }
+        return 0;
+    }
+
+    private static String identity(ManifestEntry entry) {
+        String lineage = entry.lineageId();
+        return lineage != null && !lineage.isBlank() ? "L:" + lineage : "P:" + entry.project() + "\0" + entry.path();
     }
 
     private static boolean matchesEntry(Pattern regex, ManifestEntry e, boolean path, boolean title) {

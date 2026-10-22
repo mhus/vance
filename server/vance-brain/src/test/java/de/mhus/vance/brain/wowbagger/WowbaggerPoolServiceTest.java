@@ -401,7 +401,11 @@ class WowbaggerPoolServiceTest {
         assertThat(s.getPointer()).isEqualTo(5);
         assertThat(s.isFinished()).isTrue();
         assertThat(s.getFailedChunks()).isEmpty();
-        // start/finish wakeups reached the agent's pending queue.
+        // start/finish wakeups reached the agent's pending queue. finish()
+        // releases the run *before* it sends the finish wakeup (an agent that
+        // reacts to the note must already see the pool as stopped), so
+        // "not running" does not yet mean "note sent" — wait for the note.
+        waitFor(20_000, () -> !pendingNotes("run finished").isEmpty());
         verify(thinkProcessService, atLeast(2)).appendPending(eq(PROC_ID), any(), anyString());
     }
 

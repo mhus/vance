@@ -6,8 +6,8 @@ import java.util.Enumeration;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The address a request came from, for rate limiting — not for
- * authentication.
+ * The address a request came from, for rate limiting and for visibility
+ * ({@code lastUsedIp} of integration tokens) — not for authentication.
  *
  * <p>The brain trusts {@link HttpServletRequest#getRemoteAddr()}, the socket
  * peer, and never a header on its own. In the deployed chain that peer is a

@@ -80,4 +80,24 @@ public interface IntegrationScopeProfile {
     default boolean slidingLifetime() {
         return false;
     }
+
+    /**
+     * Whether {@code username} may mint a token of this profile in
+     * {@code tenantId}. Default {@code true}: the profile list and the
+     * caller's own rights are the gate. A profile behind a tenant policy
+     * (backup: {@code backup-access.yaml}) answers it here, so the mint
+     * refuses what every later request would refuse anyway.
+     */
+    default boolean admitsMint(String tenantId, String username) {
+        return true;
+    }
+
+    /**
+     * The largest {@code idleDays} a sliding-lifetime token of this profile
+     * may carry in {@code tenantId}. Only consulted when
+     * {@link #slidingLifetime()} is true; a tenant policy narrows it.
+     */
+    default int idleDaysCeiling(String tenantId) {
+        return 365;
+    }
 }

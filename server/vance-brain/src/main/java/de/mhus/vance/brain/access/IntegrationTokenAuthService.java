@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.access;
 
+import de.mhus.vance.brain.oauthserver.ClientAddresses;
 import de.mhus.vance.shared.integration.IntegrationTokenService;
 import de.mhus.vance.shared.jwt.VanceJwtClaims;
 import jakarta.servlet.http.HttpServletRequest;
@@ -63,22 +64,15 @@ public class IntegrationTokenAuthService {
     }
 
     /**
-     * Best-effort extraction of the requesting client's IP. Trusts the
-     * {@code X-Forwarded-For} header when present (the operator's edge proxy
-     * is expected to set it; tests do not exercise this path). Falls back to
-     * {@link HttpServletRequest#getRemoteAddr()}; never throws.
+     * The requesting client's address for the {@code lastUsedIp} visibility
+     * row. Read the same way as the OAuth server's rate limiting
+     * ({@link ClientAddresses}): {@code X-Forwarded-For} only along our own
+     * proxies, from the right. Taking the leftmost entry would let a thief
+     * with a stolen token show the victim's address — and this row is what
+     * the owner checks to notice a second user (planning §7.5).
      */
     private static @Nullable String clientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            // The first entry is the original client; subsequent entries are
-            // proxies. Trim rather than parse — the surface value goes into a
-            // visibility row, not an authorisation decision.
-            int comma = forwarded.indexOf(',');
-            String first = (comma < 0 ? forwarded : forwarded.substring(0, comma)).trim();
-            return first.isEmpty() ? null : first;
-        }
-        String remote = request.getRemoteAddr();
-        return remote == null || remote.isBlank() ? null : remote;
+        String address = ClientAddresses.of(request);
+        return address == null || address.isBlank() ? null : address;
     }
 }

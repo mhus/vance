@@ -1,8 +1,11 @@
 package de.mhus.vance.brain.backup;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.access.IntegrationScopeProfile;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -19,7 +22,24 @@ import org.junit.jupiter.api.Test;
  */
 class BackupScopeProfileTest {
 
-    private final BackupScopeProfile profile = new BackupScopeProfile();
+    private final BackupAccessService access = mock(BackupAccessService.class);
+    private final BackupScopeProfile profile = new BackupScopeProfile(access);
+
+    @Test
+    void mint_followsTheTenantPolicy() {
+        when(access.load("acme")).thenReturn(new BackupAccessConfig(true, List.of("mike"), 14));
+
+        assertThat(profile.admitsMint("acme", "mike")).isTrue();
+        assertThat(profile.admitsMint("acme", "eve")).isFalse();
+        assertThat(profile.idleDaysCeiling("acme")).isEqualTo(14);
+    }
+
+    @Test
+    void mint_closedPolicy_refusesEveryone() {
+        when(access.load("acme")).thenReturn(new BackupAccessConfig(false, List.of(), 90));
+
+        assertThat(profile.admitsMint("acme", "mike")).isFalse();
+    }
 
     @Test
     void id_isStable() {

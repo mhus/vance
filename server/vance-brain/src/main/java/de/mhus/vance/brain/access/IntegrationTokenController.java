@@ -160,27 +160,57 @@ public class IntegrationTokenController {
             authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
         }
 
-        int days = req.getExpiresInDays() <= 0 ? DEFAULT_EXPIRES_IN_DAYS : req.getExpiresInDays();
-        if (days > MAX_EXPIRES_IN_DAYS) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, "expiresInDays must be at most " + MAX_EXPIRES_IN_DAYS);
+        for (IntegrationScopeProfile profile : granted) {
+            if (!profile.admitsMint(tenant, username)) {
+                throw new ResponseStatusException(
+                        HttpStatus.FORBIDDEN,
+                        "Scope profile '" + profile.id() + "' is not available to this account in tenant '" + tenant
+                                + "'");
+            }
         }
-        Instant expiresAt = Instant.now().plus(Duration.ofDays(days));
+
+        // Two lifetimes, never mixed in one token. A sliding token lives as
+        // long as its purpose keeps happening: the row's expiresAt starts at
+        // now + idleDays and extend() pushes it on, so the JWT carries no
+        // `exp` — a signed end would kill the token however often it is
+        // extended. The row is checked on every request and is the one
+        // authority on liveness. A fixed token keeps its end in both places.
+        boolean sliding = granted.stream().anyMatch(IntegrationScopeProfile::slidingLifetime);
+        if (sliding && !granted.stream().allMatch(IntegrationScopeProfile::slidingLifetime)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Sliding-lifetime scope profiles cannot be combined with fixed-lifetime ones in one token");
+        }
+        Integer idleDays = null;
+        Instant expiresAt;
+        @Nullable Instant jwtExpiresAt;
+        if (sliding) {
+            int ceiling = granted.stream()
+                    .mapToInt(p -> p.idleDaysCeiling(tenant))
+                    .min()
+                    .orElse(MAX_EXPIRES_IN_DAYS);
+            ceiling = Math.min(ceiling, MAX_EXPIRES_IN_DAYS);
+            idleDays = req.getIdleDays() == null || req.getIdleDays() <= 0
+                    ? Math.min(DEFAULT_EXPIRES_IN_DAYS, ceiling)
+                    : req.getIdleDays();
+            if (idleDays > ceiling) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "idleDays must be between 1 and " + ceiling);
+            }
+            expiresAt = Instant.now().plus(Duration.ofDays(idleDays));
+            jwtExpiresAt = null;
+        } else {
+            int days = req.getExpiresInDays() <= 0 ? DEFAULT_EXPIRES_IN_DAYS : req.getExpiresInDays();
+            if (days > MAX_EXPIRES_IN_DAYS) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "expiresInDays must be at most " + MAX_EXPIRES_IN_DAYS);
+            }
+            expiresAt = Instant.now().plus(Duration.ofDays(days));
+            jwtExpiresAt = expiresAt;
+        }
 
         // Row first, token second — see IntegrationTokenService.create.
         List<String> profileIds =
                 granted.stream().map(IntegrationScopeProfile::id).toList();
-        // Sliding-lifetime tokens carry idleDays so extend() knows what to set
-        // the new expiry to. Fixed-end tokens get null — extend() refuses
-        // them with an INFO log so a misconfiguration is visible rather than
-        // silently masking a token that the profile intended to be sliding.
-        Integer idleDays = granted.stream().anyMatch(IntegrationScopeProfile::slidingLifetime)
-                ? req.getIdleDays() == null || req.getIdleDays() <= 0 ? 90 : req.getIdleDays()
-                : null;
-        if (idleDays != null && (idleDays < 1 || idleDays > MAX_EXPIRES_IN_DAYS)) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, "idleDays must be between 1 and " + MAX_EXPIRES_IN_DAYS);
-        }
         // Minted through an OAuth login: the token is a child of that grant and
         // dies with it (IntegrationTokenService.revokeAllForParentGrant) — a
         // revoked app login must not leave credentials it created behind.
@@ -195,8 +225,8 @@ public class IntegrationTokenController {
                 expiresAt,
                 parentGrantId,
                 idleDays);
-        String token =
-                jwtService.createIntegrationToken(tenant, username, doc.getTokenId(), profileIds, projectId, expiresAt);
+        String token = jwtService.createIntegrationToken(
+                tenant, username, doc.getTokenId(), profileIds, projectId, jwtExpiresAt);
 
         auditService.authIntegrationTokenIssued(tenant, username, profileIds, projectId, doc.getTokenId());
         log.info(

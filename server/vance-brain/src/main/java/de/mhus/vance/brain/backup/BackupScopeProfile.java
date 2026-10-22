@@ -3,6 +3,7 @@ package de.mhus.vance.brain.backup;
 import de.mhus.vance.brain.access.IntegrationScopeProfile;
 import de.mhus.vance.brain.access.IntegrationSurface;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
@@ -34,7 +35,10 @@ import org.springframework.stereotype.Component;
  * </ul>
  */
 @Component
+@RequiredArgsConstructor
 public class BackupScopeProfile implements IntegrationScopeProfile {
+
+    private final BackupAccessService backupAccessService;
 
     @Override
     public String id() {
@@ -64,5 +68,16 @@ public class BackupScopeProfile implements IntegrationScopeProfile {
     @Override
     public boolean slidingLifetime() {
         return true;
+    }
+
+    /** The tenant policy decides at mint time too — not only on each request. */
+    @Override
+    public boolean admitsMint(String tenantId, String username) {
+        return backupAccessService.load(tenantId).admits(username);
+    }
+
+    @Override
+    public int idleDaysCeiling(String tenantId) {
+        return backupAccessService.load(tenantId).effectiveIdleDaysCeiling();
     }
 }

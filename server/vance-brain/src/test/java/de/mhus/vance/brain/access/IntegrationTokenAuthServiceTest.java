@@ -269,46 +269,48 @@ class IntegrationTokenAuthServiceTest {
     // ─── clientIp handoff (planning/user-backup.md §7.5) ────────────
 
     /**
-     * X-Forwarded-For takes priority over getRemoteAddr — the operator's edge
-     * proxy sets it; trusting it is what makes the "second IP in Apps mit
-     * Zugriff" detection possible. The first hop is the original client;
-     * subsequent entries are proxies and are ignored.
+     * Behind our own proxies the client is the rightmost public entry of
+     * X-Forwarded-For — the entries our proxies append. A client can only
+     * prepend, so a forged leftmost entry never becomes the recorded IP.
      */
     @Test
-    void forwards_XForwardedForAsClientIp() {
-        HttpServletRequest req = mock(HttpServletRequest.class);
-        when(req.getMethod()).thenReturn("POST");
-        when(req.getRequestURI()).thenReturn("/brain/acme/addon/links/entry");
-        when(req.getHeader("X-Forwarded-For")).thenReturn("203.0.113.7, 10.0.0.1, 10.0.0.2");
+    void forwardedChain_isReadFromTheRight_alongInternalProxies() {
+        HttpServletRequest req = forwarded("10.42.0.5", "9.9.9.9, 1.1.1.1, 10.0.0.1");
 
         service.isAcceptable(claims("links-capture", "links-proj", "tok-1"), req);
 
-        verify(tokenService).isActive("tok-1", "acme", "alice", "links-proj", "203.0.113.7");
+        verify(tokenService).isActive("tok-1", "acme", "alice", "links-proj", "1.1.1.1");
     }
 
     @Test
-    void fallsBackToRemoteAddr_whenNoForwardedHeader() {
-        HttpServletRequest req = mock(HttpServletRequest.class);
-        when(req.getMethod()).thenReturn("POST");
-        when(req.getRequestURI()).thenReturn("/brain/acme/addon/links/entry");
-        when(req.getHeader("X-Forwarded-For")).thenReturn(null);
-        when(req.getRemoteAddr()).thenReturn("198.51.100.4");
+    void forwardedHeader_isIgnored_whenThePeerIsPublic() {
+        // Public test addresses on purpose: the documentation ranges
+        // (198.51.100/24, 203.0.113/24) count as non-public there.
+        // A public peer is the client itself — nothing it sends in a header
+        // can override the socket address.
+        HttpServletRequest req = forwarded("8.8.8.8", "1.1.1.1");
 
         service.isAcceptable(claims("links-capture", "links-proj", "tok-1"), req);
 
-        verify(tokenService).isActive("tok-1", "acme", "alice", "links-proj", "198.51.100.4");
+        verify(tokenService).isActive("tok-1", "acme", "alice", "links-proj", "8.8.8.8");
     }
 
     @Test
-    void passesNullIp_whenNeitherHeaderNorRemoteAddrIsAvailable() {
-        HttpServletRequest req = mock(HttpServletRequest.class);
-        when(req.getMethod()).thenReturn("POST");
-        when(req.getRequestURI()).thenReturn("/brain/acme/addon/links/entry");
-        when(req.getHeader("X-Forwarded-For")).thenReturn("");
-        when(req.getRemoteAddr()).thenReturn("");
+    void passesNullIp_whenNoAddressIsAvailable() {
+        HttpServletRequest req = forwarded("", null);
 
         service.isAcceptable(claims("links-capture", "links-proj", "tok-1"), req);
 
         verify(tokenService).isActive("tok-1", "acme", "alice", "links-proj", null);
+    }
+
+    private static HttpServletRequest forwarded(String remoteAddr, @org.jspecify.annotations.Nullable String xff) {
+        HttpServletRequest req = mock(HttpServletRequest.class);
+        when(req.getMethod()).thenReturn("POST");
+        when(req.getRequestURI()).thenReturn("/brain/acme/addon/links/entry");
+        when(req.getRemoteAddr()).thenReturn(remoteAddr);
+        when(req.getHeaders("X-Forwarded-For"))
+                .thenReturn(java.util.Collections.enumeration(xff == null ? List.of() : List.of(xff)));
+        return req;
     }
 }

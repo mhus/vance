@@ -7,20 +7,23 @@ import de.mhus.vance.liver.manifest.ManifestIO;
 import de.mhus.vance.liver.manifest.SnapshotManifest;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.http.HttpResponse;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.HexFormat;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
@@ -35,14 +38,13 @@ import org.jspecify.annotations.Nullable;
  *       {@code .in-progress-<snapshotId>} directory and a fresh
  *       {@code LATEST} marker. The directory stays hidden (dot-prefix)
  *       until the run finishes.
- *   <li>{@link #ingest(BackupEntryDto, BackupEntryDto, InputStream, String)}
- *       is called once per document. The writer tries a hardlink
- *       from the previous snapshot; falls back to copy when the
- *       hardlink is not possible (different filesystem, link budget
- *       exceeded); falls back to download from the byte stream when
- *       the entry is new or has changed. Per-file failures are
- *       recorded with {@link ManifestEntry.Stored#FAILED} — a single
- *       bad document does not abort the run.
+ *   <li>{@link #ingest(BackupEntryDto, ContentSource)} is called once
+ *       per document. The writer tries a hardlink from the previous
+ *       snapshot; falls back to a local copy when the hardlink is not
+ *       possible (different filesystem, link budget exceeded); opens the
+ *       content source only when the entry is new or has changed.
+ *       Per-file failures are recorded with {@link ManifestEntry.Stored#FAILED}
+ *       — a single bad document does not abort the run.
  *   <li>{@link #finish(Counts, Bytes)} closes the manifest with the
  *       final counts, atomically renames the in-progress directory
  *       to the published snapshot id, and updates {@code LATEST}.
@@ -69,14 +71,15 @@ import org.jspecify.annotations.Nullable;
  *   <li>Same entry in previous snapshot on the same filesystem →
  *       hardlink.
  *   <li>Hardlink fails (cross-device, link budget) → copy.
- *   <li>Copy fails (permission, disk full) → record FAILED, no file.
+ *   <li>Copy fails (previous file missing/unreadable) → download.
+ *   <li>Download fails → record FAILED, no file.
  * </ol>
  */
 @NullMarked
 public final class SnapshotWriter {
 
-    /** Maximum number of copy-fallback failures before the writer gives up entirely. */
-    public static final int COPY_FAILURE_LIMIT = 50;
+    /** Consecutive link failures, without any success, after which a run stops trying links. */
+    public static final int LINK_FAILURE_LIMIT = 50;
 
     /** Name of the file inside each snapshot that names the latest snapshot. */
     public static final String LATEST_FILENAME = "LATEST";
@@ -88,7 +91,12 @@ public final class SnapshotWriter {
 
     private @Nullable Path inProgressDir;
     private @Nullable Path previousSnapshotDir;
-    private @Nullable Map<String, Path> previousByContentVersion;
+    private @Nullable Map<String, ManifestEntry> previousByContentVersion;
+    private final Set<String> allocatedFiles = new HashSet<>();
+    private final Set<String> allocatedDirs = new HashSet<>();
+    private long bytesDownloaded;
+    private long linkSuccesses;
+    private int consecutiveLinkFailures;
 
     public SnapshotWriter(Path targetRoot) {
         this(targetRoot, new ManifestIO());
@@ -138,72 +146,89 @@ public final class SnapshotWriter {
     }
 
     /**
-     * Writes one entry. The byte stream is consumed and closed.
-     * Returns a {@link ManifestEntry} for the manifest — the caller
-     * appends it to {@code entries.jsonl}.
+     * Supplies the body of a document that has to be downloaded. Only
+     * opened when the previous snapshot cannot provide the bytes — an
+     * unchanged document never touches the network.
      */
-    public ManifestEntry ingest(BackupEntryDto entry, InputStream body, String contentSha256) throws IOException {
-        Path dir = requireInProgress();
-        // Layout (planning §4.4): <snapshot>/projects/<project>/<path>.
-        // The 'projects/' segment is fixed so the snapshot folder is
-        // self-describing on disk — no extra metadata file needed to
-        // tell where a project starts.
-        String file = "projects/" + PathMapper.map(entry.getProjectId()) + "/" + PathMapper.map(entry.getPath());
-        Path target = dir.resolve(file);
+    @FunctionalInterface
+    public interface ContentSource {
+        InputStream open() throws IOException;
+    }
 
+    /**
+     * Writes one entry and appends it to {@code entries.jsonl}.
+     *
+     * <p>Chain, decided per file (planning §4.4): a document whose
+     * {@code contentVersion} is in the previous snapshot is hardlinked,
+     * or copied locally when the link fails; only otherwise is
+     * {@code source} opened and the body streamed to disk, hashed on
+     * the fly. A failed download is recorded as {@link ManifestEntry.Stored#FAILED}
+     * with no file left behind.
+     *
+     * <p>Exceptions thrown by {@code source} other than {@link IOException}
+     * propagate — the caller decides whether they end the run (an auth
+     * failure) or just this entry.
+     */
+    public ManifestEntry ingest(BackupEntryDto entry, ContentSource source) throws IOException {
+        Path dir = requireInProgress();
+        String file = allocateFile(entry.getProjectId(), entry.getPath());
+        Path target = dir.resolve(file);
         Files.createDirectories(target.getParent());
 
-        ManifestEntry result;
-        // 1. Hardlink?
-        Path previous = previousFileFor(entry.getContentVersion());
+        ManifestEntry previous = previousEntryFor(entry.getContentVersion());
         if (previous != null) {
-            try {
-                Files.createLink(target, previous);
-                result = entryResult(entry, file, ManifestEntry.Stored.LINKED, contentSha256);
-                io.appendEntry(dir, result);
-                return result;
-            } catch (UnsupportedOperationException | IOException e) {
-                // cross-device (EXDEV), link budget exceeded, or
-                // permission denied — fall through to copy.
+            Path previousFile = requirePreviousDir().resolve(previous.file());
+            if (linkAttemptsWorthwhile()) {
+                try {
+                    Files.createLink(target, previousFile);
+                    linkSuccesses++;
+                    consecutiveLinkFailures = 0;
+                    return append(dir, entryResult(entry, file, ManifestEntry.Stored.LINKED, previous.sha256()));
+                } catch (UnsupportedOperationException | IOException e) {
+                    // Per file, not per run: network shares fail some links
+                    // and not others, and every filesystem caps the links
+                    // per inode (NTFS 1023). Fall through to a local copy.
+                    consecutiveLinkFailures++;
+                }
             }
-        }
-        // 2. Copy from previous snapshot if available (different FS).
-        if (previous != null) {
             try {
-                Files.copy(previous, target, LinkOption.NOFOLLOW_LINKS);
-                result = entryResult(entry, file, ManifestEntry.Stored.COPIED, contentSha256);
-                io.appendEntry(dir, result);
-                return result;
+                Files.copy(previousFile, target, LinkOption.NOFOLLOW_LINKS);
+                return append(dir, entryResult(entry, file, ManifestEntry.Stored.COPIED, previous.sha256()));
             } catch (IOException e) {
-                // fall through to download.
+                // Previous file missing or unreadable — download instead.
+                Files.deleteIfExists(target);
             }
         }
-        // 3. Download.
-        try {
-            Files.copy(body, target, StandardCopyOption.REPLACE_EXISTING);
-            result = entryResult(entry, file, ManifestEntry.Stored.DOWNLOADED, contentSha256);
-            io.appendEntry(dir, result);
-            return result;
+
+        try (InputStream body = source.open();
+                DigestInputStream digesting = new DigestInputStream(body, newSha256())) {
+            // No REPLACE_EXISTING: allocateFile hands out a free name, so an
+            // existing file here is a bug — failing beats silently
+            // overwriting another document's bytes.
+            long written = Files.copy(digesting, target);
+            bytesDownloaded += written;
+            String sha256 =
+                    HexFormat.of().formatHex(digesting.getMessageDigest().digest());
+            return append(dir, entryResult(entry, file, ManifestEntry.Stored.DOWNLOADED, sha256));
         } catch (IOException e) {
-            result = new ManifestEntry(
-                    entry.getProjectId(),
-                    entry.getPath(),
-                    file,
-                    entry.getId(),
-                    entry.getLineageId(),
-                    entry.getKind(),
-                    entry.getTitle(),
-                    entry.getMimeType(),
-                    entry.getSize(),
-                    entry.getCreatedAtMs(),
-                    entry.getUpdatedAtMs(),
-                    entry.getContentVersion(),
-                    entry.isEncrypted(),
-                    null,
-                    ManifestEntry.Stored.FAILED);
-            io.appendEntry(dir, result);
-            return result;
+            Files.deleteIfExists(target);
+            return recordFailed(entry, file);
         }
+    }
+
+    /**
+     * Records an entry that could not be fetched at all (for example a
+     * document deleted between listing and download). Allocates its file
+     * name like any other entry so names stay stable within the snapshot.
+     */
+    public ManifestEntry recordFailed(BackupEntryDto entry) throws IOException {
+        requireInProgress();
+        return recordFailed(entry, allocateFile(entry.getProjectId(), entry.getPath()));
+    }
+
+    /** Bytes written from downloads in this run (links and copies cost no transfer). */
+    public long bytesDownloaded() {
+        return bytesDownloaded;
     }
 
     /** Closes the snapshot: writes final counts and atomically publishes. */
@@ -269,7 +294,14 @@ public final class SnapshotWriter {
         return inProgressDir;
     }
 
-    private @Nullable Path previousFileFor(@Nullable String contentVersion) {
+    private Path requirePreviousDir() {
+        if (previousSnapshotDir == null) {
+            throw new IllegalStateException("no previous snapshot");
+        }
+        return previousSnapshotDir;
+    }
+
+    private @Nullable ManifestEntry previousEntryFor(@Nullable String contentVersion) {
         if (contentVersion == null || previousByContentVersion == null) {
             return null;
         }
@@ -277,19 +309,85 @@ public final class SnapshotWriter {
     }
 
     /**
-     * Reads the previous snapshot's {@code entries.jsonl} and builds a
-     * {@code contentVersion → relative file path} index. Used to
-     * decide whether to hardlink or download.
+     * Skip link attempts once the target has refused {@value #LINK_FAILURE_LIMIT}
+     * in a row without a single success (exFAT/FAT cannot link at all).
+     * Only saves failed syscalls — {@code stored} is still per file, and the
+     * next run tries again.
      */
-    private static Map<String, Path> loadPreviousIndex(Path previousSnapshot) throws IOException {
-        Map<String, Path> index = new HashMap<>();
-        ManifestIO io = new ManifestIO();
-        for (ManifestEntry entry : io.readEntries(previousSnapshot)) {
-            if (entry.contentVersion() != null && entry.file() != null) {
-                index.put(entry.contentVersion(), previousSnapshot.resolve(entry.file()));
+    private boolean linkAttemptsWorthwhile() {
+        return linkSuccesses > 0 || consecutiveLinkFailures < LINK_FAILURE_LIMIT;
+    }
+
+    /**
+     * Hands out the on-disk path for a document, unique within this
+     * snapshot (planning §4.5). Names are compared case-folded because the
+     * default APFS and NTFS volumes are case-insensitive: {@code Readme.md}
+     * and {@code README.md} would otherwise land on one file. A document
+     * name that is already a folder gets a {@code ~N} variant; a folder
+     * segment that is already a document gets {@link PathMapper#FOLDER_CONFLICT_SUFFIX}.
+     * Allocation follows listing order, which is stable ({@code _id}).
+     */
+    private String allocateFile(String project, String documentPath) {
+        String[] segments = ("projects/" + PathMapper.map(project) + "/" + PathMapper.map(documentPath)).split("/");
+        StringBuilder dirPath = new StringBuilder();
+        for (int i = 0; i < segments.length - 1; i++) {
+            String segment = segments[i];
+            String candidate = join(dirPath, segment);
+            while (allocatedFiles.contains(fold(candidate))) {
+                segment = segment + PathMapper.FOLDER_CONFLICT_SUFFIX;
+                candidate = join(dirPath, segment);
+            }
+            allocatedDirs.add(fold(candidate));
+            dirPath.setLength(0);
+            dirPath.append(candidate);
+        }
+        String base = join(dirPath, segments[segments.length - 1]);
+        String file = base;
+        for (int attempt = 2; allocatedFiles.contains(fold(file)) || allocatedDirs.contains(fold(file)); attempt++) {
+            file = PathMapper.collisionVariant(base, attempt);
+        }
+        allocatedFiles.add(fold(file));
+        return file;
+    }
+
+    private static String join(CharSequence dir, String segment) {
+        return dir.isEmpty() ? segment : dir + "/" + segment;
+    }
+
+    private static String fold(String path) {
+        return path.toLowerCase(Locale.ROOT);
+    }
+
+    private ManifestEntry append(Path dir, ManifestEntry result) throws IOException {
+        io.appendEntry(dir, result);
+        return result;
+    }
+
+    private ManifestEntry recordFailed(BackupEntryDto entry, String file) throws IOException {
+        return append(requireInProgress(), entryResult(entry, file, ManifestEntry.Stored.FAILED, null));
+    }
+
+    /**
+     * Reads the previous snapshot's {@code entries.jsonl} and builds a
+     * {@code contentVersion → entry} index — the entry carries the file
+     * to link and the hash to carry over. Failed entries have no file.
+     */
+    private static Map<String, ManifestEntry> loadPreviousIndex(Path previousSnapshot) throws IOException {
+        Map<String, ManifestEntry> index = new HashMap<>();
+        for (ManifestEntry entry : new ManifestIO().readEntries(previousSnapshot)) {
+            if (entry.contentVersion() != null && entry.stored() != ManifestEntry.Stored.FAILED) {
+                index.put(entry.contentVersion(), entry);
             }
         }
         return index;
+    }
+
+    private static MessageDigest newSha256() throws IOException {
+        try {
+            return MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException e) {
+            throw new IOException("SHA-256 not available", e);
+        }
     }
 
     private static ManifestEntry entryResult(
@@ -312,19 +410,15 @@ public final class SnapshotWriter {
                 stored);
     }
 
-    /** Computes the SHA-256 of a byte stream (consumed and closed). */
+    /** Computes the SHA-256 of a byte stream (consumed, not closed). */
     public static String sha256(InputStream body) throws IOException {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] buf = new byte[64 * 1024];
-            int n;
-            while ((n = body.read(buf)) > 0) {
-                digest.update(buf, 0, n);
-            }
-            return HexFormat.of().formatHex(digest.digest());
-        } catch (NoSuchAlgorithmException e) {
-            throw new IOException("SHA-256 not available", e);
+        MessageDigest digest = newSha256();
+        byte[] buf = new byte[64 * 1024];
+        int n;
+        while ((n = body.read(buf)) > 0) {
+            digest.update(buf, 0, n);
         }
+        return HexFormat.of().formatHex(digest.digest());
     }
 
     /**
@@ -350,13 +444,6 @@ public final class SnapshotWriter {
             return targetRoot.resolve(id);
         } catch (IOException e) {
             return null;
-        }
-    }
-
-    /** Reads an HttpResponse<InputStream> body fully — exposed for the run command. */
-    public static byte[] readAll(HttpResponse<InputStream> resp) throws IOException {
-        try (var body = resp.body()) {
-            return body.readAllBytes();
         }
     }
 }

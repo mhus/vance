@@ -41,6 +41,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -139,12 +140,9 @@ public class BackupController {
         List<String> exclude = req == null ? List.of() : nonNull(req.getExclude());
         boolean includeDisabled = req != null && req.isIncludeDisabled();
 
-        // listReadableBy always drops disabled projects (the default
-        // visibility rule — a disabled project is one the user explicitly
-        // set aside). The includeDisabled flag re-adds them by widening
-        // the source list before the filter so the same READ-check still
-        // applies: a disabled project the user cannot read stays out,
-        // a disabled project they can read reappears.
+        // Disabled projects are only backed up on request (planning §5):
+        // drop them from the candidate list unless includeDisabled is set,
+        // then run the same READ filter listReadableBy uses.
         List<ProjectDocument> candidates = new ArrayList<>(projectService.all(tenant));
         if (!includeDisabled) {
             candidates.removeIf(p -> !p.isEnabled());
@@ -189,32 +187,28 @@ public class BackupController {
         }
         authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
 
-        // Per-call deny list = tenant-level deny + project-specific deny,
-        // the latter winning (last-wins filter, same shape the client uses).
+        // Per-call deny list = the client's global deny + its deny for this
+        // project; a path matching either is left out. The default entry
+        // "_vance/**" lives in the client config, where the user can remove
+        // it (planning §5) — adding it here would make it unremovable.
         List<String> deny = new ArrayList<>();
         if (req != null) deny.addAll(nonNull(req.getDeny()));
         if (req != null) deny.addAll(nonNull(req.getProjectDeny()));
-        if (!deny.contains("_vance/**")) {
-            // The default deny-list entry — explicit, removable on the
-            // client side. Same default the planning doc recommends.
-            deny.add("_vance/**");
-        }
         int size = clampSize(req == null ? 0 : req.getSize());
         @Nullable String cursor = req == null ? null : req.getCursor();
 
-        List<DocumentDocument> rows = documentService.listBackupPage(tenant, project, deny, cursor, size);
-        List<BackupEntryDto> entries = new ArrayList<>(rows.size());
+        DocumentService.BackupPage page = documentService.listBackupPage(tenant, project, deny, cursor, size);
+        List<BackupEntryDto> entries = new ArrayList<>(page.rows().size());
         long bytesTotal = 0L;
-        for (DocumentDocument row : rows) {
+        for (DocumentDocument row : page.rows()) {
             entries.add(toEntry(row));
             bytesTotal += row.getSize();
         }
-        String nextCursor = rows.isEmpty() || rows.size() < size
-                ? null
-                : rows.get(rows.size() - 1).getId();
+        // The cursor follows the rows the service scanned, not the ones that
+        // survived the deny filter — a filtered-short page is not the last.
         return BackupEntriesResponse.builder()
                 .entries(entries)
-                .nextCursor(nextCursor)
+                .nextCursor(page.nextAfterId())
                 .bytesTotal(bytesTotal)
                 .build();
     }
@@ -223,7 +217,10 @@ public class BackupController {
 
     @GetMapping("/brain/{tenant}/backup/documents/{id}/content")
     public ResponseEntity<InputStreamResource> fetchContent(
-            @PathVariable String tenant, @PathVariable String id, HttpServletRequest request) {
+            @PathVariable String tenant,
+            @PathVariable String id,
+            @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) @Nullable String ifNoneMatch,
+            HttpServletRequest request) {
         String username = requireUser(request);
         BackupAccessConfig policy = backupAccessService.load(tenant);
         if (!policy.admits(username)) {
@@ -242,10 +239,15 @@ public class BackupController {
         // generic InputStream converter would 500 on a streaming source
         // because there is no registered MessageConverter for it; the
         // Resource path has StreamingResponseBody + ByteRange support.
-        InputStream stream = documentService.loadContent(doc);
         String etag = "\"" + contentVersion(doc) + "\"";
         HttpHeaders headers = new HttpHeaders();
         headers.setETag(etag);
+        if (etag.equals(ifNoneMatch)) {
+            // The client already holds these bytes — storageId changes on
+            // every content write, so an equal tag means identical content.
+            return new ResponseEntity<>(headers, HttpStatus.NOT_MODIFIED);
+        }
+        InputStream stream = documentService.loadContent(doc);
         headers.setContentType(mediaTypeOf(doc));
         return new ResponseEntity<>(new InputStreamResource(stream), headers, HttpStatus.OK);
     }

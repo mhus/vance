@@ -214,6 +214,25 @@ class DocumentServiceUpdatedAtTest {
 
     // ─── fixtures ──────────────────────────────────────────────────────
 
+    @Test
+    void restoreArchive_stamps_updatedAt_onSave() {
+        DocumentDocument doc = freshDoc("current");
+        when(repository.findById("doc-1")).thenReturn(Optional.of(doc));
+        DocumentArchiveDocument archive = DocumentArchiveDocument.builder()
+                .id("arch-1")
+                .lineageId(doc.getLineageId())
+                .build();
+        when(archiveService.findById("arch-1")).thenReturn(Optional.of(archive));
+        when(archiveService.restore(archive))
+                .thenReturn(new DocumentArchiveService.RestorePayload(
+                        "storage-restored", false, 3L, "text/markdown", "Old", List.of()));
+
+        DocumentDocument saved = service.restoreArchive("doc-1", "arch-1", WriteActor.SYSTEM);
+
+        // Restoring replaces the content — "zuletzt geändert" must move.
+        assertThat(saved.getUpdatedAt()).isEqualTo(FIXED_INSTANT);
+    }
+
     private DocumentDocument freshDoc(String body) {
         DocumentDocument doc = new DocumentDocument();
         doc.setId("doc-1");

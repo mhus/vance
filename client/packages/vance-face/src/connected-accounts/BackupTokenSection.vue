@@ -29,6 +29,8 @@ import {
   VButton,
   VCard,
   VEmptyState,
+  VInput,
+  VSelect,
 } from '@/components';
 
 const { t } = useI18n();
@@ -43,7 +45,8 @@ const profileError = ref<string | null>(null);
 
 const selectedProfileId = ref<string | null>(null);
 const label = ref('');
-const idleDays = ref(30);
+// VInput emits strings; parsed in idleDaysClamped / idleDaysError.
+const idleDays = ref('30');
 const submitting = ref(false);
 const formError = ref<string | null>(null);
 
@@ -52,6 +55,9 @@ const copied = ref(false);
 
 const BACKUP_PROFILE_ID = 'backup';
 const IDLE_DAYS_MAX = 365;
+
+const profileOptions = computed(() =>
+  profiles.value.map((p) => ({ value: p.id, label: `${p.label} (${p.id})` })));
 
 const selectedProfile = computed<IntegrationScopeProfileDto | null>(() =>
   profiles.value.find((p) => p.id === selectedProfileId.value) ?? null);
@@ -102,10 +108,10 @@ async function onSubmit(): Promise<void> {
     const result = await createIntegrationToken({
       scopeProfiles: [selectedProfileId.value!],
       label: label.value.trim(),
-      // Fixed-end expiry is informational on sliding tokens — the
-      // server keeps it short so a forgotten tool doesn't outlive
-      // the user's attention span.
-      expiresInDays: 7,
+      // A sliding token has no fixed end: it lives idleDays past its last
+      // successful run (planning §7.6). expiresInDays only applies to
+      // fixed-lifetime profiles; 0 asks for the server default.
+      expiresInDays: 0,
       idleDays: idleDaysClamped.value,
     });
     mintedToken.value = result;
@@ -149,7 +155,7 @@ function onDismiss(): void {
   copied.value = false;
   // Reset the form so the next mint starts clean.
   label.value = '';
-  idleDays.value = 30;
+  idleDays.value = '30';
 }
 </script>
 
@@ -202,19 +208,13 @@ function onDismiss(): void {
       />
       <div v-else class="flex flex-col gap-3">
         <div class="flex flex-col gap-1">
-          <label class="text-sm font-medium">{{ $t('connectedApps.backup.profile') }}</label>
-          <select
-            v-model="selectedProfileId"
-            class="select select-bordered select-sm w-full max-w-md"
-          >
-            <option
-              v-for="p in profiles"
-              :key="p.id"
-              :value="p.id"
-            >
-              {{ p.label }} ({{ p.id }})
-            </option>
-          </select>
+          <div class="max-w-md">
+            <VSelect
+              v-model="selectedProfileId"
+              :options="profileOptions"
+              :label="$t('connectedApps.backup.profile')"
+            />
+          </div>
           <div v-if="selectedProfile" class="text-xs opacity-70">
             {{ $t('connectedApps.backup.profileSurfaces') }}
             <ul class="list-disc list-inside">
@@ -223,41 +223,27 @@ function onDismiss(): void {
           </div>
         </div>
 
-        <div class="flex flex-col gap-1 max-w-md">
-          <label class="text-sm font-medium">
-            {{ $t('connectedApps.backup.labelLabel') }}
-          </label>
-          <input
+        <div class="max-w-md">
+          <VInput
             v-model="label"
-            type="text"
-            class="input input-bordered input-sm w-full"
+            size="sm"
+            :label="$t('connectedApps.backup.labelLabel')"
             :placeholder="$t('connectedApps.backup.labelPlaceholder')"
           />
         </div>
 
-        <div class="flex flex-col gap-1 max-w-md">
-          <label class="text-sm font-medium">
-            {{ $t('connectedApps.backup.idleDaysLabel') }}
-          </label>
-          <input
-            v-model.number="idleDays"
+        <div class="max-w-md">
+          <VInput
+            v-model="idleDays"
             type="number"
-            min="1"
-            :max="IDLE_DAYS_MAX"
-            class="input input-bordered input-sm w-full"
+            size="sm"
+            :label="$t('connectedApps.backup.idleDaysLabel')"
             :disabled="!selectedProfile?.slidingLifetime"
+            :help="selectedProfile?.slidingLifetime
+              ? $t('connectedApps.backup.idleDaysHelp', { days: idleDaysClamped })
+              : $t('connectedApps.backup.idleDaysFixed')"
+            :error="idleDaysError ?? undefined"
           />
-          <div class="text-xs opacity-70">
-            <span v-if="selectedProfile?.slidingLifetime">
-              {{ $t('connectedApps.backup.idleDaysHelp', { days: idleDaysClamped }) }}
-            </span>
-            <span v-else>
-              {{ $t('connectedApps.backup.idleDaysFixed') }}
-            </span>
-          </div>
-          <div v-if="idleDaysError" class="text-xs text-error">
-            {{ idleDaysError }}
-          </div>
         </div>
 
         <VAlert v-if="formError" variant="error">

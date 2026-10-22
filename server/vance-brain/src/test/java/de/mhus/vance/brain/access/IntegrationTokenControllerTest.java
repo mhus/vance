@@ -22,9 +22,12 @@ import de.mhus.vance.shared.jwt.JwtService;
 import de.mhus.vance.shared.jwt.TokenType;
 import de.mhus.vance.shared.jwt.VanceJwtClaims;
 import jakarta.servlet.http.HttpServletRequest;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.server.ResponseStatusException;
@@ -48,6 +51,39 @@ class IntegrationTokenControllerTest {
         }
     }
 
+    /** A tenant-wide sliding profile behind a policy, like {@code backup}. */
+    private record Sliding(String id, int ceiling, boolean admits) implements IntegrationScopeProfile {
+        @Override
+        public String label() {
+            return id;
+        }
+
+        @Override
+        public List<IntegrationSurface> surfaces() {
+            return List.of(IntegrationSurface.of("POST", "/" + id));
+        }
+
+        @Override
+        public boolean requiresProject() {
+            return false;
+        }
+
+        @Override
+        public boolean slidingLifetime() {
+            return true;
+        }
+
+        @Override
+        public boolean admitsMint(String tenantId, String username) {
+            return admits;
+        }
+
+        @Override
+        public int idleDaysCeiling(String tenantId) {
+            return ceiling;
+        }
+    }
+
     private JwtService jwtService;
     private IntegrationTokenService tokenService;
     private RequestAuthority authority;
@@ -63,7 +99,11 @@ class IntegrationTokenControllerTest {
         controller = new IntegrationTokenController(
                 jwtService,
                 tokenService,
-                new IntegrationScopeRegistry(List.of(new Profile("links-capture", true), new Profile("mcp", false))),
+                new IntegrationScopeRegistry(List.of(
+                        new Profile("links-capture", true),
+                        new Profile("mcp", false),
+                        new Sliding("backup", 30, true),
+                        new Sliding("closed", 90, false))),
                 authority,
                 auditService);
         when(tokenService.create(anyString(), anyString(), anyList(), any(), anyString(), any(), any(), any(), any()))
@@ -106,6 +146,71 @@ class IntegrationTokenControllerTest {
             return HttpStatus.valueOf(e.getStatusCode().value());
         }
         return HttpStatus.OK;
+    }
+
+    private static IntegrationTokenCreateRequest mintSliding(String profile, Integer idleDays) {
+        return IntegrationTokenCreateRequest.builder()
+                .scopeProfiles(List.of(profile))
+                .label("tool")
+                .expiresInDays(7)
+                .idleDays(idleDays)
+                .build();
+    }
+
+    @Test
+    void slidingMint_signsNoExpiry_andStartsTheRowAtIdleDays() {
+        Instant before = Instant.now();
+        controller.create("acme", mintSliding("backup", 20), request(login()));
+
+        // A signed exp would end the token however often it is extended —
+        // the row is the only authority on a sliding token's life.
+        verify(jwtService)
+                .createIntegrationToken(
+                        eq("acme"), eq("alice"), eq("tok-1"), eq(List.of("backup")), isNull(), isNull());
+        ArgumentCaptor<Instant> rowExpiry = ArgumentCaptor.forClass(Instant.class);
+        verify(tokenService).create(any(), any(), any(), any(), any(), any(), rowExpiry.capture(), any(), eq(20));
+        assertThat(rowExpiry.getValue())
+                .isBetween(before.plus(Duration.ofDays(20)), Instant.now().plus(Duration.ofDays(20)));
+    }
+
+    @Test
+    void slidingMint_defaultIdleDays_isClampedToTheCeiling() {
+        controller.create("acme", mintSliding("backup", null), request(login()));
+
+        verify(tokenService).create(any(), any(), any(), any(), any(), any(), any(), any(), eq(30));
+    }
+
+    @Test
+    void slidingMint_aboveTheCeiling_isRefused() {
+        assertThat(statusOf(() -> controller.create("acme", mintSliding("backup", 31), request(login()))))
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+        verify(tokenService, never()).create(any(), any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void mint_refusedByProfilePolicy_isForbidden() {
+        assertThat(statusOf(() -> controller.create("acme", mintSliding("closed", 10), request(login()))))
+                .isEqualTo(HttpStatus.FORBIDDEN);
+        verify(tokenService, never()).create(any(), any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void mixingSlidingAndFixedProfiles_isRefused() {
+        IntegrationTokenCreateRequest req = IntegrationTokenCreateRequest.builder()
+                .scopeProfiles(List.of("backup", "mcp"))
+                .label("tool")
+                .build();
+        assertThat(statusOf(() -> controller.create("acme", req, request(login()))))
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void fixedMint_signsTheSameEndAsTheRow() {
+        controller.create("acme", mint(List.of("mcp"), null), request(login()));
+
+        ArgumentCaptor<Instant> rowExpiry = ArgumentCaptor.forClass(Instant.class);
+        verify(tokenService).create(any(), any(), any(), any(), any(), any(), rowExpiry.capture(), any(), isNull());
+        verify(jwtService).createIntegrationToken(any(), any(), any(), anyList(), any(), eq(rowExpiry.getValue()));
     }
 
     @Test

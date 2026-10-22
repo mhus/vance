@@ -2973,6 +2973,7 @@ public class DocumentService {
         live.setSummaryDirty(true);
         live.setRagDirty(true);
         applyHeader(live);
+        markChanged(live);
 
         DocumentDocument saved = repository.save(live);
 
@@ -3890,8 +3891,14 @@ public class DocumentService {
      *
      * <p><b>Cursor</b>. {@code _id}-based, ascending, so concurrent writes
      * between pages do not duplicate or drop entries (page numbers would
-     * shift underfoot). {@code afterId} is the last {@code _id} of the
-     * previous page; {@code null} for the first page.
+     * shift underfoot). {@code afterId} is the {@link BackupPage#nextAfterId}
+     * of the previous page; {@code null} for the first page.
+     *
+     * <p>The next cursor is derived from the rows <em>scanned</em>, not the
+     * rows returned: the in-JVM deny filter can shorten a page, and a short
+     * page must not read as "last page" while Mongo still holds more rows.
+     * A page may therefore come back with fewer than {@code limit} — even
+     * zero — rows and still carry a cursor.
      *
      * <p><b>Mounted documents</b> are filtered server-side: their content
      * lives in a foreign source, and the backup tool explicitly excludes
@@ -3899,7 +3906,7 @@ public class DocumentService {
      * documents only, and a snapshot taken from a half-trashed project
      * would carry the trash contents the user already dismissed.
      */
-    public List<DocumentDocument> listBackupPage(
+    public BackupPage listBackupPage(
             String tenantId, String projectId, java.util.List<String> denyGlobs, @Nullable String afterId, int limit) {
         java.util.List<String> prefixDenies = new java.util.ArrayList<>();
         java.util.List<String> nonPrefixDenies = new java.util.ArrayList<>();
@@ -3946,7 +3953,10 @@ public class DocumentService {
             q.addCriteria(Criteria.where("_id").gt(new org.bson.types.ObjectId(afterId)));
         }
         java.util.List<DocumentDocument> rows = mongoTemplate.find(q, DocumentDocument.class);
-        if (nonPrefixDenies.isEmpty()) return rows;
+        @Nullable
+        String nextAfterId =
+                rows.size() < limit ? null : rows.get(rows.size() - 1).getId();
+        if (nonPrefixDenies.isEmpty()) return new BackupPage(rows, nextAfterId);
         // Post-fetch: globs with intra-segment * or ? that the index cannot
         // help with. Done in the same shape as the server-side filter so
         // the client sees the same answer; both sides compile the same
@@ -3959,8 +3969,15 @@ public class DocumentService {
                 out.add(row);
             }
         }
-        return out;
+        return new BackupPage(out, nextAfterId);
     }
+
+    /**
+     * One page of {@link #listBackupPage}. {@code nextAfterId} is null when
+     * the scan reached the end of the project.
+     */
+    public record BackupPage(
+            java.util.List<DocumentDocument> rows, @Nullable String nextAfterId) {}
 
     /** A glob that contains only literal segments followed by a trailing {@code /**}. */
     private static boolean isPurePrefixGlob(String glob) {

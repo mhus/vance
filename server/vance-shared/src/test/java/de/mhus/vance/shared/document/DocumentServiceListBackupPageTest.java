@@ -111,7 +111,8 @@ class DocumentServiceListBackupPageTest {
         when(mongoTemplate.find(any(Query.class), any(Class.class)))
                 .thenReturn(List.of(row("notes/keep.md"), row("notes/scratch.tmp"), row("notes/other.md")));
 
-        List<DocumentDocument> result = service.listBackupPage("acme", "wiki", List.of("**/*.tmp"), null, 100);
+        List<DocumentDocument> result = service.listBackupPage("acme", "wiki", List.of("**/*.tmp"), null, 100)
+                .rows();
 
         assertThat(result).extracting(DocumentDocument::getPath).containsExactly("notes/keep.md", "notes/other.md");
     }
@@ -125,8 +126,9 @@ class DocumentServiceListBackupPageTest {
                         row("_vance/config/x.yaml"),
                         row("drafts/wip.md")));
 
-        List<DocumentDocument> result =
-                service.listBackupPage("acme", "wiki", List.of("_vance/**", "drafts/**", "**/*.tmp"), null, 100);
+        List<DocumentDocument> result = service.listBackupPage(
+                        "acme", "wiki", List.of("_vance/**", "drafts/**", "**/*.tmp"), null, 100)
+                .rows();
 
         // The Mongo prefix-filter is exercised through the captured Query
         // (separate test). Here the mock returns everything, so the
@@ -156,6 +158,42 @@ class DocumentServiceListBackupPageTest {
     void nullCursor_isAccepted_asFirstPage() {
         when(mongoTemplate.find(any(Query.class), any(Class.class))).thenReturn(List.of());
 
-        assertThat(service.listBackupPage("acme", "wiki", List.of(), null, 100)).isEmpty();
+        DocumentService.BackupPage page = service.listBackupPage("acme", "wiki", List.of(), null, 100);
+
+        assertThat(page.rows()).isEmpty();
+        assertThat(page.nextAfterId()).isNull();
+    }
+
+    @Test
+    void filteredShortPage_stillCarriesCursor() {
+        // A full page from Mongo where the in-JVM deny filter drops a row:
+        // the page is shorter than the limit, but Mongo may hold more — the
+        // cursor must follow the last *scanned* row, or paging stops early.
+        when(mongoTemplate.find(any(Query.class), any(Class.class)))
+                .thenReturn(List.of(row("a.md"), row("b.tmp"), row("c.md")));
+
+        DocumentService.BackupPage page = service.listBackupPage("acme", "wiki", List.of("**/*.tmp"), null, 3);
+
+        assertThat(page.rows()).extracting(DocumentDocument::getPath).containsExactly("a.md", "c.md");
+        assertThat(page.nextAfterId()).isEqualTo("id-c.md");
+    }
+
+    @Test
+    void fullyFilteredPage_stillCarriesCursor() {
+        when(mongoTemplate.find(any(Query.class), any(Class.class))).thenReturn(List.of(row("a.tmp"), row("b.tmp")));
+
+        DocumentService.BackupPage page = service.listBackupPage("acme", "wiki", List.of("**/*.tmp"), null, 2);
+
+        assertThat(page.rows()).isEmpty();
+        assertThat(page.nextAfterId()).isEqualTo("id-b.tmp");
+    }
+
+    @Test
+    void shortScan_endsPaging() {
+        when(mongoTemplate.find(any(Query.class), any(Class.class))).thenReturn(List.of(row("a.md")));
+
+        DocumentService.BackupPage page = service.listBackupPage("acme", "wiki", List.of(), null, 50);
+
+        assertThat(page.nextAfterId()).isNull();
     }
 }

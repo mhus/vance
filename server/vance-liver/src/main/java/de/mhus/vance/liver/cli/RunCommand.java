@@ -8,27 +8,23 @@ import de.mhus.vance.api.backup.BackupProjectsRequest;
 import de.mhus.vance.api.backup.BackupProjectsResponse;
 import de.mhus.vance.api.backup.BackupRunsRequest;
 import de.mhus.vance.api.backup.BackupRunsResponse;
+import de.mhus.vance.api.util.PathGlob;
 import de.mhus.vance.liver.api.ApiException;
 import de.mhus.vance.liver.api.BackupApiClient;
 import de.mhus.vance.liver.config.BackupConfig;
 import de.mhus.vance.liver.config.ConfigException;
 import de.mhus.vance.liver.config.ConfigLoader;
+import de.mhus.vance.liver.manifest.ManifestEntry;
 import de.mhus.vance.liver.manifest.ManifestIO;
 import de.mhus.vance.liver.manifest.SnapshotManifest;
 import de.mhus.vance.liver.snapshot.SnapshotWriter;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.PrintWriter;
 import java.net.URI;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Callable;
@@ -48,9 +44,9 @@ import picocli.CommandLine.Option;
  *   <li>{@code GET /backup/info} — policy + token check.
  *   <li>{@code POST /backup/projects} with the filter.
  *   <li>Per project: {@code POST /backup/projects/{p}/entries} paginated.
- *   <li>Per entry: if a previous snapshot has the same
- *       {@code contentVersion}, hardlink (writer handles the fallback
- *       to copy → download). Otherwise download.
+ *   <li>Per entry (after the client-side deny filter): if the previous
+ *       snapshot has the same {@code contentVersion}, hardlink or copy
+ *       without contacting the server; otherwise stream the download.
  *   <li>Finish the snapshot (atomic publish, LATEST marker).
  *   <li>{@code POST /backup/runs} — extends the sliding-lifetime token.
  * </ol>
@@ -102,6 +98,8 @@ public final class RunCommand implements Callable<Integer> {
             return 3;
         }
 
+        @Nullable SnapshotWriter writer = null;
+        boolean published = false;
         try (var client = new BackupApiClient(URI.create(cfg.server.url), cfg.server.tenant, cfg.token)) {
 
             // 1. Policy check
@@ -115,7 +113,7 @@ public final class RunCommand implements Callable<Integer> {
             Instant startedAt = Instant.now();
             String snapshotId = new SnapshotWriter(target).newSnapshotId(startedAt);
             Path previousSnapshot = SnapshotWriter.latestSnapshot(target);
-            SnapshotWriter writer = new SnapshotWriter(target);
+            writer = new SnapshotWriter(target);
             SnapshotManifest initial = new SnapshotManifest(
                     SnapshotManifest.CURRENT_FORMAT,
                     TOOL_VERSION,
@@ -151,16 +149,21 @@ public final class RunCommand implements Callable<Integer> {
             long countLinked = 0;
             long countCopied = 0;
             long countFailed = 0;
-            long bytesDownloaded = 0;
+            List<PathGlob> globalDeny = PathGlob.compileAll(cfg.deny);
 
             for (BackupProjectDto project : projects) {
                 String projectName = project.getName();
                 @Nullable String cursor = null;
                 List<String> projectDeny = cfg.projectDeny.getOrDefault(projectName, List.of());
+                List<PathGlob> projectDenyGlobs = PathGlob.compileAll(projectDeny);
 
                 while (true) {
+                    // The server narrows the transfer; the client applies the
+                    // same globs again so the config is honoured even against
+                    // a server that filters less (planning §6.3).
                     BackupEntriesRequest entriesReq = new BackupEntriesRequest();
-                    entriesReq.setDeny(projectDeny);
+                    entriesReq.setDeny(cfg.deny);
+                    entriesReq.setProjectDeny(projectDeny);
                     entriesReq.setSize(ENTRIES_PAGE_SIZE);
                     if (cursor != null && !cursor.isEmpty()) {
                         entriesReq.setCursor(cursor);
@@ -168,15 +171,17 @@ public final class RunCommand implements Callable<Integer> {
                     BackupEntriesResponse entriesResp = client.listEntries(projectName, entriesReq);
 
                     for (BackupEntryDto entry : entriesResp.getEntries()) {
+                        if (PathGlob.anyMatch(globalDeny, entry.getPath())
+                                || PathGlob.anyMatch(projectDenyGlobs, entry.getPath())) {
+                            continue;
+                        }
                         countDocs++;
-                        PathEntryOutcome outcome = ingestOne(client, writer, entry);
-                        switch (outcome.stored) {
+                        switch (ingestOne(client, writer, entry)) {
                             case DOWNLOADED -> countDownloaded++;
                             case LINKED -> countLinked++;
                             case COPIED -> countCopied++;
                             case FAILED -> countFailed++;
                         }
-                        bytesDownloaded += outcome.bytesDownloaded;
                     }
 
                     cursor = entriesResp.getNextCursor();
@@ -189,9 +194,11 @@ public final class RunCommand implements Callable<Integer> {
             // 5. Finish — atomic publish + LATEST marker
             SnapshotManifest.Counts counts =
                     new SnapshotManifest.Counts(countDocs, countDownloaded, countLinked, countCopied, countFailed);
+            long bytesDownloaded = writer.bytesDownloaded();
             SnapshotManifest.Bytes bytes = new SnapshotManifest.Bytes(0L, bytesDownloaded);
             String finishedAt = Instant.now().toString();
             writer.finish(counts, bytes, finishedAt);
+            published = true;
 
             out.println("Snapshot finished: " + snapshotId);
             out.println("  documents  : " + countDocs);
@@ -204,7 +211,11 @@ public final class RunCommand implements Callable<Integer> {
             // 6. Tell the brain — extends the sliding-lifetime token
             BackupRunsRequest runsReq = new BackupRunsRequest();
             runsReq.setToolVersion(TOOL_VERSION);
-            runsReq.setSucceeded(countFailed == 0);
+            // A published snapshot is a successful run, even with single
+            // failed documents (exit 1) — planning §4.7: only an aborted run
+            // does not extend the token. A document deleted mid-run must not
+            // cost the user their access.
+            runsReq.setSucceeded(true);
             // documentsCount is an int on the wire — a tenant with
             // more than 2^31 documents is implausible for a personal
             // backup tool, but the truncation is logged just in case.
@@ -240,6 +251,10 @@ public final class RunCommand implements Callable<Integer> {
             err.println("Run failed: " + e.getMessage());
             return 2;
         } finally {
+            if (writer != null && !published) {
+                // Do not leave a half-written .in-progress directory behind.
+                writer.abort();
+            }
             try {
                 Files.deleteIfExists(lockFile);
             } catch (IOException ignored) {
@@ -249,51 +264,32 @@ public final class RunCommand implements Callable<Integer> {
     }
 
     /**
-     * Ingests a single entry: fetches the content (or skips via
-     * ETag against the previous snapshot), hashes, writes.
+     * Ingests a single entry. The writer reuses the previous snapshot's file
+     * when the content version is unchanged and only then calls the server —
+     * an unchanged document costs no transfer.
+     *
+     * <p>A failure of this one document (deleted between listing and fetch,
+     * a 5xx, a broken stream) is recorded as FAILED and the run goes on.
+     * Credential failures (401/403) end the run: every following call would
+     * fail the same way.
      */
-    private static PathEntryOutcome ingestOne(BackupApiClient client, SnapshotWriter writer, BackupEntryDto entry) {
+    private static ManifestEntry.Stored ingestOne(BackupApiClient client, SnapshotWriter writer, BackupEntryDto entry)
+            throws IOException {
         try {
-            // The hardlink / copy shortcut happens inside
-            // SnapshotWriter — the API call only happens when the
-            // writer falls through to download. We still fetch
-            // here so the writer can choose: pass a pipe that
-            // writes to a temp file, then let the writer decide.
-            // For simplicity v1 always downloads — the writer's
-            // hardlink path is exercised on the *second* run, when
-            // the previous snapshot's entries.jsonl is already
-            // populated.
-            //
-            // A streaming optimisation is a future commit: the
-            // writer hands the API response body to Files.copy
-            // directly, hashing on the fly.
-            HttpResponse<InputStream> resp = client.downloadContent(entry.getId(), null);
-            byte[] bytes;
-            try (var body = resp.body()) {
-                bytes = body.readAllBytes();
+            return writer.ingest(
+                            entry,
+                            () -> client.downloadContent(entry.getId(), null).body())
+                    .stored();
+        } catch (ApiException e) {
+            if (e.statusCode() == 401 || e.statusCode() == 403) {
+                throw e;
             }
-            String sha256 = sha256(bytes);
-            var manifestEntry = writer.ingest(entry, new ByteArrayInputStream(bytes), sha256);
-            return new PathEntryOutcome(manifestEntry.stored(), bytes.length);
-        } catch (IOException e) {
             LOG.log(
                     System.Logger.Level.WARNING,
-                    "Failed to ingest " + entry.getProjectId() + "/" + entry.getPath() + ": " + e.getMessage());
-            return new PathEntryOutcome(de.mhus.vance.liver.manifest.ManifestEntry.Stored.FAILED, 0L);
+                    "Failed to fetch " + entry.getProjectId() + "/" + entry.getPath() + ": " + e.getMessage());
+            return writer.recordFailed(entry).stored();
         }
     }
-
-    private static String sha256(byte[] data) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of().formatHex(digest.digest(data));
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
-    }
-
-    /** Internal: per-entry result of the download/write phase. */
-    private record PathEntryOutcome(de.mhus.vance.liver.manifest.ManifestEntry.Stored stored, long bytesDownloaded) {}
 
     /**
      * Reads the previous snapshot's manifest, used by callers who

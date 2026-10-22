@@ -9,6 +9,7 @@ import de.mhus.vance.liver.manifest.ManifestIO;
 import de.mhus.vance.liver.manifest.SnapshotManifest;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -65,7 +66,7 @@ class SnapshotWriterTest {
         writer.begin(m.snapshotId(), m, null);
 
         BackupEntryDto entry = sampleEntry("wiki", "notes/idee.md", "v1", "v1");
-        ManifestEntry result = writer.ingest(entry, new ByteArrayInputStream("hello".getBytes()), null);
+        ManifestEntry result = writer.ingest(entry, body("hello"));
 
         assertThat(result.stored()).isEqualTo(ManifestEntry.Stored.DOWNLOADED);
         assertThat(writer.targetRoot()
@@ -104,8 +105,8 @@ class SnapshotWriterTest {
         // First run: download two files into snapshot A.
         SnapshotManifest a = sampleManifest("2026-10-21T09-30-00Z");
         writer.begin(a.snapshotId(), a, null);
-        writer.ingest(sampleEntry("wiki", "a.md", "v1", "v1"), new ByteArrayInputStream("aaa".getBytes()), null);
-        writer.ingest(sampleEntry("wiki", "b.md", "v2", "v2"), new ByteArrayInputStream("bbb".getBytes()), null);
+        writer.ingest(sampleEntry("wiki", "a.md", "v1", "v1"), body("aaa"));
+        writer.ingest(sampleEntry("wiki", "b.md", "v2", "v2"), body("bbb"));
         writer.finish(
                 new SnapshotManifest.Counts(2, 2, 0, 0, 0), new SnapshotManifest.Bytes(6L, 6L), "2026-10-21T09:30:05Z");
 
@@ -117,10 +118,8 @@ class SnapshotWriterTest {
         writer2.begin(b.snapshotId(), b, publishedA);
 
         Path newSnapshot = targetRoot.resolve(".in-progress-2026-10-21T10-30-00Z");
-        ManifestEntry entryA = writer2.ingest(
-                sampleEntry("wiki", "a.md", "v1", "v1"), new ByteArrayInputStream("aaa".getBytes()), null);
-        ManifestEntry entryB = writer2.ingest(
-                sampleEntry("wiki", "b.md", "v2", "v2"), new ByteArrayInputStream("bbb".getBytes()), null);
+        ManifestEntry entryA = writer2.ingest(sampleEntry("wiki", "a.md", "v1", "v1"), body("aaa"));
+        ManifestEntry entryB = writer2.ingest(sampleEntry("wiki", "b.md", "v2", "v2"), body("bbb"));
 
         assertThat(entryA.stored()).isEqualTo(ManifestEntry.Stored.LINKED);
         assertThat(entryB.stored()).isEqualTo(ManifestEntry.Stored.LINKED);
@@ -137,7 +136,7 @@ class SnapshotWriterTest {
         // First run with v1.
         SnapshotManifest a = sampleManifest("2026-10-21T09-30-00Z");
         writer.begin(a.snapshotId(), a, null);
-        writer.ingest(sampleEntry("wiki", "a.md", "v1", "v1"), new ByteArrayInputStream("aaa".getBytes()), null);
+        writer.ingest(sampleEntry("wiki", "a.md", "v1", "v1"), body("aaa"));
         writer.finish(
                 new SnapshotManifest.Counts(1, 1, 0, 0, 0), new SnapshotManifest.Bytes(3L, 3L), "2026-10-21T09:30:05Z");
 
@@ -147,8 +146,7 @@ class SnapshotWriterTest {
         SnapshotManifest b = sampleManifest("2026-10-21T10-30-00Z");
         writer2.begin(b.snapshotId(), b, publishedA);
 
-        ManifestEntry result = writer2.ingest(
-                sampleEntry("wiki", "a.md", "v2", "v2"), new ByteArrayInputStream("aaa-new".getBytes()), null);
+        ManifestEntry result = writer2.ingest(sampleEntry("wiki", "a.md", "v2", "v2"), body("aaa-new"));
         assertThat(result.stored()).isEqualTo(ManifestEntry.Stored.DOWNLOADED);
         Path newFile = targetRoot.resolve(".in-progress-2026-10-21T10-30-00Z").resolve("projects/wiki/a.md");
         assertThat(newFile).hasContent("aaa-new");
@@ -161,7 +159,7 @@ class SnapshotWriterTest {
         // in the previous index, must download.
         SnapshotManifest a = sampleManifest("2026-10-21T09-30-00Z");
         writer.begin(a.snapshotId(), a, null);
-        writer.ingest(sampleEntry("wiki", "a.md", "v1", "v1"), new ByteArrayInputStream("aaa".getBytes()), null);
+        writer.ingest(sampleEntry("wiki", "a.md", "v1", "v1"), body("aaa"));
         writer.finish(
                 new SnapshotManifest.Counts(1, 1, 0, 0, 0), new SnapshotManifest.Bytes(3L, 3L), "2026-10-21T09:30:05Z");
 
@@ -171,7 +169,7 @@ class SnapshotWriterTest {
         writer2.begin(b.snapshotId(), b, publishedA);
 
         BackupEntryDto noVersion = sampleEntry("wiki", "a.md", "v2", null);
-        ManifestEntry result = writer2.ingest(noVersion, new ByteArrayInputStream("aaa-new".getBytes()), null);
+        ManifestEntry result = writer2.ingest(noVersion, body("aaa-new"));
         assertThat(result.stored()).isEqualTo(ManifestEntry.Stored.DOWNLOADED);
     }
 
@@ -179,7 +177,7 @@ class SnapshotWriterTest {
     void abort_removesInProgressDir() throws IOException {
         SnapshotManifest m = sampleManifest("2026-10-21T09-30-00Z");
         Path dir = writer.begin(m.snapshotId(), m, null);
-        writer.ingest(sampleEntry("wiki", "a.md", "v1", "v1"), new ByteArrayInputStream("aaa".getBytes()), null);
+        writer.ingest(sampleEntry("wiki", "a.md", "v1", "v1"), body("aaa"));
 
         writer.abort();
 
@@ -206,7 +204,100 @@ class SnapshotWriterTest {
         assertThat(SnapshotWriter.latestSnapshot(targetRoot)).isEqualTo(targetRoot.resolve("2026-10-21T09-30-00Z"));
     }
 
+    @Test
+    void ingest_unchangedContent_neverOpensSource() throws IOException {
+        SnapshotManifest a = sampleManifest("2026-10-21T09-30-00Z");
+        writer.begin(a.snapshotId(), a, null);
+        ManifestEntry first = writer.ingest(sampleEntry("wiki", "a.md", "v1", "v1"), body("aaa"));
+        writer.finish(
+                new SnapshotManifest.Counts(1, 1, 0, 0, 0), new SnapshotManifest.Bytes(3L, 3L), "2026-10-21T09:30:05Z");
+
+        SnapshotWriter writer2 = new SnapshotWriter(targetRoot);
+        SnapshotManifest b = sampleManifest("2026-10-21T10-30-00Z");
+        writer2.begin(b.snapshotId(), b, targetRoot.resolve("2026-10-21T09-30-00Z"));
+
+        ManifestEntry second = writer2.ingest(sampleEntry("wiki", "a.md", "v1", "v1"), () -> {
+            throw new AssertionError("an unchanged document must not be downloaded");
+        });
+
+        assertThat(second.stored()).isEqualTo(ManifestEntry.Stored.LINKED);
+        // The hash is carried over from the previous manifest.
+        assertThat(second.sha256()).isEqualTo(first.sha256()).isNotNull();
+        assertThat(writer2.bytesDownloaded()).isZero();
+    }
+
+    @Test
+    void ingest_download_isHashedWhileStreaming() throws IOException {
+        SnapshotManifest m = sampleManifest("2026-10-21T09-30-00Z");
+        writer.begin(m.snapshotId(), m, null);
+
+        ManifestEntry result = writer.ingest(sampleEntry("wiki", "a.md", "v1", "v1"), body("hello"));
+
+        assertThat(result.sha256()).isEqualTo("2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
+        assertThat(writer.bytesDownloaded()).isEqualTo(5L);
+    }
+
+    @Test
+    void ingest_caseOnlyCollision_getsVariantInsteadOfOverwriting() throws IOException {
+        SnapshotManifest m = sampleManifest("2026-10-21T09-30-00Z");
+        Path dir = writer.begin(m.snapshotId(), m, null);
+
+        ManifestEntry first = writer.ingest(sampleEntry("wiki", "Readme.md", "d1", "v1"), body("first"));
+        ManifestEntry second = writer.ingest(sampleEntry("wiki", "README.md", "d2", "v2"), body("second"));
+
+        assertThat(first.file()).isEqualTo("projects/wiki/Readme.md");
+        assertThat(second.file()).isEqualTo("projects/wiki/README~2.md");
+        assertThat(dir.resolve(first.file())).hasContent("first");
+        assertThat(dir.resolve(second.file())).hasContent("second");
+    }
+
+    @Test
+    void ingest_documentNamedLikeExistingFolder_getsVariant() throws IOException {
+        SnapshotManifest m = sampleManifest("2026-10-21T09-30-00Z");
+        Path dir = writer.begin(m.snapshotId(), m, null);
+
+        writer.ingest(sampleEntry("wiki", "a/b.md", "d1", "v1"), body("inside"));
+        ManifestEntry doc = writer.ingest(sampleEntry("wiki", "a", "d2", "v2"), body("document a"));
+
+        assertThat(doc.stored()).isEqualTo(ManifestEntry.Stored.DOWNLOADED);
+        assertThat(doc.file()).isEqualTo("projects/wiki/a~2");
+        assertThat(dir.resolve(doc.file())).hasContent("document a");
+        assertThat(dir.resolve("projects/wiki/a/b.md")).hasContent("inside");
+    }
+
+    @Test
+    void ingest_folderNamedLikeExistingDocument_getsFolderSuffix() throws IOException {
+        SnapshotManifest m = sampleManifest("2026-10-21T09-30-00Z");
+        Path dir = writer.begin(m.snapshotId(), m, null);
+
+        writer.ingest(sampleEntry("wiki", "a", "d1", "v1"), body("document a"));
+        ManifestEntry nested = writer.ingest(sampleEntry("wiki", "a/b.md", "d2", "v2"), body("inside"));
+
+        assertThat(nested.stored()).isEqualTo(ManifestEntry.Stored.DOWNLOADED);
+        assertThat(nested.file()).isEqualTo("projects/wiki/a~dir/b.md");
+        assertThat(dir.resolve("projects/wiki/a")).hasContent("document a");
+        assertThat(dir.resolve(nested.file())).hasContent("inside");
+    }
+
+    @Test
+    void ingest_brokenDownload_recordsFailedAndLeavesNoFile() throws IOException {
+        SnapshotManifest m = sampleManifest("2026-10-21T09-30-00Z");
+        Path dir = writer.begin(m.snapshotId(), m, null);
+
+        ManifestEntry result = writer.ingest(sampleEntry("wiki", "a.md", "v1", "v1"), () -> {
+            throw new IOException("connection reset");
+        });
+
+        assertThat(result.stored()).isEqualTo(ManifestEntry.Stored.FAILED);
+        assertThat(result.sha256()).isNull();
+        assertThat(dir.resolve("projects/wiki/a.md")).doesNotExist();
+    }
+
     // -- helpers --------------------------------------------------------------
+
+    private static SnapshotWriter.ContentSource body(String text) {
+        return () -> new ByteArrayInputStream(text.getBytes(StandardCharsets.UTF_8));
+    }
 
     private static SnapshotManifest sampleManifest(String id) {
         return new SnapshotManifest(

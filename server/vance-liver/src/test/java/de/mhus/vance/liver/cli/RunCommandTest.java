@@ -68,6 +68,10 @@ class RunCommandTest {
     }
 
     private Path writeConfig(@TempDir Path home, String token) throws IOException {
+        return writeConfig(home, token, "");
+    }
+
+    private Path writeConfig(Path home, String token, String extra) throws IOException {
         Path file = home.resolve("backup.yaml");
         Path target = home.resolve("VancetopeBackup");
         Files.writeString(file, """
@@ -76,7 +80,7 @@ class RunCommandTest {
                   tenant: acme
                 token: "%s"
                 target: "%s"
-                """.formatted(port, token, target));
+                """.formatted(port, token, target) + extra);
         return file;
     }
 
@@ -214,7 +218,133 @@ class RunCommandTest {
         }
     }
 
+    @Test
+    void run_sendsGlobalAndProjectDeny_andFiltersClientSide(@TempDir Path home) throws Exception {
+        java.util.concurrent.atomic.AtomicReference<String> entriesBody =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        registerBasics();
+        server.createContext(
+                "/brain/acme/backup/runs",
+                exchange -> writeJson(exchange, 200, Map.of("extended", true, "tokenExpiresAtMs", 1795212648001L)));
+        server.createContext("/brain/acme/backup/projects/wiki/entries", exchange -> {
+            entriesBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            // A server that filters less than asked: the secret comes back anyway.
+            writeJson(
+                    exchange,
+                    200,
+                    Map.of(
+                            "entries",
+                            List.of(
+                                    docEntry("doc-1", "wiki", "notes/a.md", "v1", "A"),
+                                    docEntry("doc-2", "wiki", "secrets/key.md", "v2", "Key")),
+                            "bytesTotal",
+                            26L));
+        });
+        server.createContext("/brain/acme/backup/documents/doc-1/content", exchange -> writeBytes(exchange, "A"));
+        server.createContext("/brain/acme/backup/documents/doc-2/content", exchange -> {
+            throw new AssertionError("denied document must not be downloaded");
+        });
+
+        Path cfg = writeConfig(home, "testtoken", """
+                deny:
+                  - "secrets/**"
+                projectDeny:
+                  wiki:
+                    - "drafts/**"
+                """);
+        int exit = new CommandLine(new RunCommand()).execute("--config", cfg.toString());
+
+        assertThat(exit).isEqualTo(0);
+        assertThat(entriesBody.get()).contains("\"deny\":[\"secrets/**\"]").contains("\"projectDeny\":[\"drafts/**\"]");
+        Path snapshot = onlySnapshot(home);
+        assertThat(snapshot.resolve("projects/wiki/notes/a.md")).exists();
+        assertThat(snapshot.resolve("projects/wiki/secrets")).doesNotExist();
+    }
+
+    @Test
+    void run_documentGoneMidRun_isRecordedAndRunContinues(@TempDir Path home) throws Exception {
+        java.util.concurrent.atomic.AtomicReference<String> runsBody =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        registerBasics();
+        server.createContext(
+                "/brain/acme/backup/projects/wiki/entries",
+                exchange -> writeJson(
+                        exchange,
+                        200,
+                        Map.of(
+                                "entries",
+                                List.of(
+                                        docEntry("doc-1", "wiki", "gone.md", "v1", "Gone"),
+                                        docEntry("doc-2", "wiki", "here.md", "v2", "Here")),
+                                "bytesTotal",
+                                26L)));
+        server.createContext("/brain/acme/backup/documents/doc-1/content", exchange -> {
+            exchange.sendResponseHeaders(404, -1);
+            exchange.close();
+        });
+        server.createContext("/brain/acme/backup/documents/doc-2/content", exchange -> writeBytes(exchange, "here"));
+        server.createContext("/brain/acme/backup/runs", exchange -> {
+            runsBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            writeJson(exchange, 200, Map.of("extended", true, "tokenExpiresAtMs", 1795212648001L));
+        });
+
+        Path cfg = writeConfig(home, "testtoken");
+        int exit = new CommandLine(new RunCommand()).execute("--config", cfg.toString());
+
+        // Partial failure: exit 1, snapshot published, token still extended.
+        assertThat(exit).isEqualTo(1);
+        Path snapshot = onlySnapshot(home);
+        assertThat(snapshot.resolve("projects/wiki/here.md")).hasContent("here");
+        assertThat(Files.readString(snapshot.resolve("entries.jsonl"))).contains("\"FAILED\"");
+        assertThat(runsBody.get()).contains("\"succeeded\":true");
+        try (var leftovers = Files.list(home.resolve("VancetopeBackup"))) {
+            assertThat(leftovers.map(p -> p.getFileName().toString())).noneMatch(n -> n.startsWith(".in-progress-"));
+        }
+    }
+
     // -- helpers --------------------------------------------------------------
+
+    /** Registers /info and /projects; each test adds /entries, /content and /runs. */
+    private void registerBasics() {
+        server.createContext(
+                "/brain/acme/backup/info",
+                exchange -> writeJson(
+                        exchange,
+                        200,
+                        Map.of(
+                                "allowed",
+                                true,
+                                "manifestFormat",
+                                1,
+                                "serverVersion",
+                                "0.7.0-test",
+                                "idleDaysCeiling",
+                                90)));
+        server.createContext(
+                "/brain/acme/backup/projects",
+                exchange -> writeJson(
+                        exchange,
+                        200,
+                        Map.of("projects", List.of(Map.of("name", "wiki", "title", "Wiki", "enabled", true)))));
+    }
+
+    private static Path onlySnapshot(Path home) throws IOException {
+        try (var children = Files.list(home.resolve("VancetopeBackup"))) {
+            List<Path> snapshots = children.filter(Files::isDirectory)
+                    .filter(p -> !p.getFileName().toString().startsWith("."))
+                    .toList();
+            assertThat(snapshots).hasSize(1);
+            return snapshots.get(0);
+        }
+    }
+
+    private static void writeBytes(HttpExchange exchange, String text) throws IOException {
+        byte[] payload = text.getBytes(StandardCharsets.UTF_8);
+        exchange.sendResponseHeaders(200, payload.length);
+        try (OutputStream os = exchange.getResponseBody()) {
+            os.write(payload);
+        }
+    }
 
     private static Map<String, Object> docEntry(String id, String project, String path, String version, String title) {
         // Map.of caps at 10 pairs; this entry has more, so LinkedHashMap.

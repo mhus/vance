@@ -139,12 +139,16 @@ async function onRevokeToken(tk: IntegrationTokenDto): Promise<void> {
             <div class="flex items-center gap-2">
               <span class="font-medium truncate">{{ tk.label }}</span>
               <VBadge variant="neutral" size="sm">{{ $t('connectedApps.tokenBadge') }}</VBadge>
+              <VBadge v-if="tk.idleDays" variant="info" size="sm">
+                {{ $t('connectedApps.tokenSliding', { days: tk.idleDays }) }}
+              </VBadge>
             </div>
             <div class="text-xs opacity-70">
               {{ tk.scopeProfileLabels.join(', ') }}<span v-if="tk.projectId"> · {{ tk.projectId }}</span>
             </div>
             <div class="text-xs opacity-60">
               {{ $t('connectedApps.lastUsed', { when: when(tk.lastUsedAtTimestamp) }) }}
+              <span v-if="tk.lastUsedIp" class="font-mono"> · {{ tk.lastUsedIp }}</span>
             </div>
           </div>
           <VButton variant="danger" size="sm" :loading="busy" @click="onRevokeToken(tk)">

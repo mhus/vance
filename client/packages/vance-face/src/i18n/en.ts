@@ -87,6 +87,7 @@ export default {
     signIn: 'Sign in',
     profile: 'Profile',
     settings: 'Settings',
+    connectedApps: 'Apps with access',
     home: 'Home',
     backToHome: 'Back to home',
     projectPicker: {
@@ -2854,6 +2855,7 @@ export default {
     revoke: 'Revoke',
     confirmRevoke: 'Revoke the access of "{name}"? The program will have to sign in again.',
     lastUsed: 'Last used: {when}',
+    tokenSliding: 'Sliding · renews on use ({days}d idle)',
     never: 'never',
     tokenBadge: 'Token',
     empty: {

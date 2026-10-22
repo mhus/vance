@@ -349,6 +349,7 @@ function openFook(): void {
           </template>
           <li><a href="/profile.html"><VIcon name="user" />{{ $t('common.profile') }}</a></li>
           <li><a :href="editorHref('settings', { scope: 'user' })"><VIcon name="settings" />{{ $t('common.settings') }}</a></li>
+          <li><a :href="editorHref('connected-accounts')"><VIcon name="key" />{{ $t('common.connectedApps') }}</a></li>
           <li><a @click="openFook"><VIcon name="report-bug" />{{ $t('fook.menuLabel') }}</a></li>
           <li>
             <a :href="SOURCE_CODE_URL" target="_blank" rel="noopener noreferrer"><VIcon name="code" />{{ $t('header.menu.sourceCode') }}</a>

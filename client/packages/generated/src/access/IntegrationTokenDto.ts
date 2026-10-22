@@ -13,5 +13,7 @@ export interface IntegrationTokenDto {
   createdAtTimestamp?: number;
   expiresAtTimestamp?: number;
   lastUsedAtTimestamp?: number;
+  lastUsedIp?: string;
+  idleDays?: number;
   revokedAtTimestamp?: number;
 }

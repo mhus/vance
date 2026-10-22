@@ -302,6 +302,8 @@ public class IntegrationTokenController {
                 .createdAtTimestamp(millis(doc.getCreatedAt()))
                 .expiresAtTimestamp(millis(doc.getExpiresAt()))
                 .lastUsedAtTimestamp(millis(doc.getLastUsedAt()))
+                .lastUsedIp(doc.getLastUsedIp())
+                .idleDays(doc.getIdleDays())
                 .revokedAtTimestamp(millis(doc.getRevokedAt()))
                 .build();
     }

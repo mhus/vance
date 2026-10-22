@@ -47,5 +47,20 @@ public class IntegrationTokenDto {
 
     private @Nullable Long lastUsedAtTimestamp;
 
+    /**
+     * IP from which the token last authenticated. {@code null} when the token
+     * has never been used. Surfaced to the owner so a token used from an
+     * unexpected IP stands out — that's the second-place visibility the
+     * sliding-lifetime threat model relies on.
+     */
+    private @Nullable String lastUsedIp;
+
+    /**
+     * The idle-days ceiling in effect when this token was minted. Null on
+     * fixed-end tokens. The Face UI uses it to surface "renews on every
+     * backup run" without a separate profile lookup.
+     */
+    private @Nullable Integer idleDays;
+
     private @Nullable Long revokedAtTimestamp;
 }

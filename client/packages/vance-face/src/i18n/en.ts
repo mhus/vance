@@ -2866,6 +2866,40 @@ export default {
       agents: 'Agents door',
       account: 'Whole account',
     },
+    backup: {
+      title: 'Backup access',
+      intro:
+        'Mint an integration token for the local backup tool (vancetope-backup). '
+        + 'The token can read all documents you can read, and renews itself automatically while a backup runs.',
+      profile: 'Profile',
+      profileSurfaces: 'What this token can do:',
+      labelLabel: 'Label',
+      labelPlaceholder: 'e.g. "Mike\'s laptop"',
+      idleDaysLabel: 'Idle days',
+      idleDaysHelp:
+        'Token renews on every successful backup. Dies after {days} days without one.',
+      idleDaysFixed:
+        'This profile uses a fixed lifetime — idleDays does not apply.',
+      idleDaysRange: 'idleDays must be between {min} and {max}.',
+      submit: 'Mint backup token',
+      loadingProfiles: 'Loading profiles…',
+      profilesLoadFailed: 'Could not load the integration token profiles.',
+      mintFailed: 'Could not mint the token.',
+      noProfiles: {
+        headline: 'No integration profiles available',
+        body:
+          'This brain does not expose any integration profiles — ask the operator to enable one.',
+      },
+      tokenTitle: 'Your token — shown only once',
+      oneTimeWarning:
+        'Copy this token now. We do not store it, so once you leave this page we cannot show it again. '
+        + 'If you lose it, revoke the token and mint a new one.',
+      copy: 'Copy',
+      copied: 'Copied',
+      dismiss: 'I have copied the token',
+      usage:
+        'Use it in the backup tool: when init asks for a token, paste the string above into ~/.vancetope/liver/backup.yaml.',
+    },
   },
 
   connectedAccounts: {

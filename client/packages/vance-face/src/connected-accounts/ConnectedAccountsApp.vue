@@ -10,6 +10,7 @@ import {
   useConfirm,
 } from '@/components';
 import { useOAuthConnectedAccounts } from '@/composables/useOAuthConnectedAccounts';
+import BackupTokenSection from './BackupTokenSection.vue';
 import ConnectedAppsSection from './ConnectedAppsSection.vue';
 
 const { t } = useI18n();
@@ -125,6 +126,7 @@ async function onDisconnect(providerId: string): Promise<void> {
         </VCard>
       </div>
 
+      <BackupTokenSection @minted="state.reload" />
       <ConnectedAppsSection />
     </div>
   </EditorShell>

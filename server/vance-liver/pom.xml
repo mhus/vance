@@ -79,13 +79,12 @@
         <finalName>vance-liver</finalName>
         <plugins>
             <!--
-                Plain executable JAR for `java -jar vance-liver.jar`. We
-                avoid maven-shade-plugin because it is fiddly with
-                service-loader files; the fat-JAR step (all deps shaded
-                into one JAR with a manifest Main-Class) is a separate
-                release-time concern, handled by `wb release` later.
-                For development, `mvn -pl vance-liver exec:java` runs
-                the Main directly.
+                Executable JAR for `java -jar target/vance-liver.jar`: the
+                runtime dependencies are copied next to it into target/lib/
+                and the manifest Class-Path points there. No shading — it is
+                fiddly with service-loader files. The Docker image
+                (deployment/docker/liver) copies exactly this pair; a native
+                binary is a later, separate step (planning/user-backup.md §4.1).
             -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -94,9 +93,28 @@
                     <archive>
                         <manifest>
                             <mainClass>de.mhus.vance.liver.Main</mainClass>
+                            <addClasspath>true</addClasspath>
+                            <classpathPrefix>lib/</classpathPrefix>
                         </manifest>
                     </archive>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-runtime-dependencies</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>copy-dependencies</goal>
+                        </goals>
+                        <configuration>
+                            <includeScope>runtime</includeScope>
+                            <outputDirectory>${project.build.directory}/lib</outputDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

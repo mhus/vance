@@ -8,4 +8,5 @@ export interface IntegrationTokenCreateRequest {
   projectId?: string;
   label: string;
   expiresInDays: number;
+  idleDays?: number;
 }

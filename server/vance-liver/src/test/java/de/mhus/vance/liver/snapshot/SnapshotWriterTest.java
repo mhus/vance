@@ -155,6 +155,27 @@ class SnapshotWriterTest {
     }
 
     @Test
+    void ingest_unknownContentVersion_downloadsNotCopies() throws IOException {
+        // Previous snapshot has v1 for this path. New entry has
+        // contentVersion=null (server didn't send one) → no match
+        // in the previous index, must download.
+        SnapshotManifest a = sampleManifest("2026-10-21T09-30-00Z");
+        writer.begin(a.snapshotId(), a, null);
+        writer.ingest(sampleEntry("wiki", "a.md", "v1", "v1"), new ByteArrayInputStream("aaa".getBytes()), null);
+        writer.finish(
+                new SnapshotManifest.Counts(1, 1, 0, 0, 0), new SnapshotManifest.Bytes(3L, 3L), "2026-10-21T09:30:05Z");
+
+        Path publishedA = targetRoot.resolve("2026-10-21T09-30-00Z");
+        SnapshotWriter writer2 = new SnapshotWriter(targetRoot);
+        SnapshotManifest b = sampleManifest("2026-10-21T10-30-00Z");
+        writer2.begin(b.snapshotId(), b, publishedA);
+
+        BackupEntryDto noVersion = sampleEntry("wiki", "a.md", "v2", null);
+        ManifestEntry result = writer2.ingest(noVersion, new ByteArrayInputStream("aaa-new".getBytes()), null);
+        assertThat(result.stored()).isEqualTo(ManifestEntry.Stored.DOWNLOADED);
+    }
+
+    @Test
     void abort_removesInProgressDir() throws IOException {
         SnapshotManifest m = sampleManifest("2026-10-21T09-30-00Z");
         Path dir = writer.begin(m.snapshotId(), m, null);

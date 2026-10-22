@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.FileTime;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -193,6 +194,7 @@ public final class SnapshotWriter {
             }
             try {
                 Files.copy(previousFile, target, LinkOption.NOFOLLOW_LINKS);
+                stampModified(target, entry);
                 return append(dir, entryResult(entry, file, ManifestEntry.Stored.COPIED, previous.sha256()));
             } catch (IOException e) {
                 // Previous file missing or unreadable — download instead.
@@ -207,6 +209,7 @@ public final class SnapshotWriter {
             // overwriting another document's bytes.
             long written = Files.copy(digesting, target);
             bytesDownloaded += written;
+            stampModified(target, entry);
             String sha256 =
                     HexFormat.of().formatHex(digesting.getMessageDigest().digest());
             return append(dir, entryResult(entry, file, ManifestEntry.Stored.DOWNLOADED, sha256));
@@ -348,6 +351,32 @@ public final class SnapshotWriter {
         }
         allocatedFiles.add(fold(file));
         return file;
+    }
+
+    /**
+     * Sets the file's modification time to the document's {@code updatedAt}
+     * (planning §4.5), falling back to {@code createdAt} for documents from
+     * before the field existed. Finder and Explorer then sort by the real
+     * last change instead of the backup time.
+     *
+     * <p>Only for files this run writes. A hardlink shares the inode — and
+     * with it the mtime — of the previous snapshot's file; restamping it
+     * would rewrite history there. Same content version, so the old time is
+     * accepted (a metadata-only change does not move it).
+     *
+     * <p>Best effort: some network shares refuse to set times, and a wrong
+     * mtime must not cost the document its place in the snapshot.
+     */
+    private static void stampModified(Path target, BackupEntryDto entry) {
+        Long millis = entry.getUpdatedAtMs() != null ? entry.getUpdatedAtMs() : entry.getCreatedAtMs();
+        if (millis == null) {
+            return;
+        }
+        try {
+            Files.setLastModifiedTime(target, FileTime.fromMillis(millis));
+        } catch (IOException e) {
+            // keep the write time — see above
+        }
     }
 
     private static String join(CharSequence dir, String segment) {

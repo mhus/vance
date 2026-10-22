@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -291,6 +292,33 @@ class SnapshotWriterTest {
         assertThat(result.stored()).isEqualTo(ManifestEntry.Stored.FAILED);
         assertThat(result.sha256()).isNull();
         assertThat(dir.resolve("projects/wiki/a.md")).doesNotExist();
+    }
+
+    @Test
+    void ingest_download_takesUpdatedAtAsModificationTime() throws IOException {
+        SnapshotManifest m = sampleManifest("2026-10-21T09-30-00Z");
+        Path dir = writer.begin(m.snapshotId(), m, null);
+        BackupEntryDto entry = sampleEntry("wiki", "a.md", "d1", "v1");
+        entry.setCreatedAtMs(1_700_000_000_000L);
+        entry.setUpdatedAtMs(1_790_000_000_000L);
+
+        writer.ingest(entry, body("aaa"));
+
+        assertThat(Files.getLastModifiedTime(dir.resolve("projects/wiki/a.md")))
+                .isEqualTo(FileTime.fromMillis(1_790_000_000_000L));
+    }
+
+    @Test
+    void ingest_withoutUpdatedAt_fallsBackToCreatedAt() throws IOException {
+        SnapshotManifest m = sampleManifest("2026-10-21T09-30-00Z");
+        Path dir = writer.begin(m.snapshotId(), m, null);
+        BackupEntryDto entry = sampleEntry("wiki", "a.md", "d1", "v1");
+        entry.setCreatedAtMs(1_700_000_000_000L);
+
+        writer.ingest(entry, body("aaa"));
+
+        assertThat(Files.getLastModifiedTime(dir.resolve("projects/wiki/a.md")))
+                .isEqualTo(FileTime.fromMillis(1_700_000_000_000L));
     }
 
     // -- helpers --------------------------------------------------------------

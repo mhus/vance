@@ -35,13 +35,14 @@ import picocli.CommandLine.Command;
             // Subcommand classes land here as they are implemented.
             // Currently: info (the smallest end-to-end verification),
             // run (the actual backup), logout (self-revoke), list
-            // (snapshots), status (dashboard). init, verify, prune,
-            // find, history, extract follow in later commits.
+            // (snapshots), status (dashboard), init (interactive
+            // setup). verify, prune, find, history, extract follow.
             de.mhus.vance.liver.cli.InfoCommand.class,
             de.mhus.vance.liver.cli.RunCommand.class,
             de.mhus.vance.liver.cli.LogoutCommand.class,
             de.mhus.vance.liver.cli.ListCommand.class,
             de.mhus.vance.liver.cli.StatusCommand.class,
+            de.mhus.vance.liver.cli.InitCommand.class,
         })
 public final class Main implements Runnable {
 

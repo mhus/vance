@@ -28,5 +28,12 @@ public class IntegrationScopeProfileDto {
 
     private boolean requiresProject;
 
+    /**
+     * Whether the token's lifetime is sliding (extended on every successful
+     * run) or fixed (expires after {@code expiresInDays}). The Face UI uses
+     * this to show or hide the {@code idleDays} input on the mint form.
+     */
+    private boolean slidingLifetime;
+
     private List<String> surfaces;
 }

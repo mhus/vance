@@ -93,6 +93,7 @@ public class IntegrationTokenController {
                     .id(profile.id())
                     .label(profile.label())
                     .requiresProject(profile.requiresProject())
+                    .slidingLifetime(profile.slidingLifetime())
                     .surfaces(surfaces)
                     .build());
         }

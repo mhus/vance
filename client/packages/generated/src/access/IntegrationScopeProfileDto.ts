@@ -7,5 +7,6 @@ export interface IntegrationScopeProfileDto {
   id: string;
   label: string;
   requiresProject: boolean;
+  slidingLifetime: boolean;
   surfaces: string[];
 }

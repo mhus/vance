@@ -1,0 +1,103 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>de.mhus.vance</groupId>
+        <artifactId>vance</artifactId>
+        <version>0.7.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>vance-liver</artifactId>
+    <name>vance-liver</name>
+    <description>
+        Vance Liver — the local user-backup tool (planning/user-backup.md).
+        Pure-JVM CLI, no Spring, no Mongo: just vance-api + Jackson + JDK
+        HttpClient + Picocli. Talks to /brain/{tenant}/backup/... on the brain
+        using an INTEGRATION token of the 'backup' scope profile.
+    </description>
+    <packaging>jar</packaging>
+
+    <dependencies>
+        <!--
+            Wire contract only. Brings Jackson 3.x transitively, which
+            matches the runtime the brain speaks (the generated TS layer
+            shares the same shapes). No Spring, no Mongo, no toolpack,
+            no shared — the tool runs on a workstation with no server
+            infrastructure in the classpath.
+        -->
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!--
+            CLI framework. The bare `picocli` artifact (no spring-boot-
+            starter) is what we want: Picocli reads @Command annotations,
+            parses argv, and prints help — the rest of the lifecycle is
+            ours.
+        -->
+        <dependency>
+            <groupId>info.picocli</groupId>
+            <artifactId>picocli</artifactId>
+        </dependency>
+
+        <!--
+            YAML config support. The liver config file at
+            ~/.vancetope/liver/backup.yaml is YAML; jackson-databind
+            comes from vance-api, so we only need the YAML format module.
+        -->
+        <dependency>
+            <groupId>tools.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
+        </dependency>
+
+        <!--
+            Tests. JUnit 5, Mockito, AssertJ are managed by the parent
+            POM (vance) — versions are inherited, only the scope
+            declaration is needed.
+        -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>vance-liver</finalName>
+        <plugins>
+            <!--
+                Plain executable JAR for `java -jar vance-liver.jar`. We
+                avoid maven-shade-plugin because it is fiddly with
+                service-loader files; the fat-JAR step (all deps shaded
+                into one JAR with a manifest Main-Class) is a separate
+                release-time concern, handled by `wb release` later.
+                For development, `mvn -pl vance-liver exec:java` runs
+                the Main directly.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <mainClass>de.mhus.vance.liver.Main</mainClass>
+                        </manifest>
+                    </archive>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

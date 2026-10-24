@@ -84,10 +84,10 @@ public class KindToolSupport {
     /**
      * The mandatory {@link de.mhus.vance.shared.permission.WriteActor} for a
      * tool-driven DocumentService write. Carries the real tool subject
-     * ({@code forToolSubject} maps a null userId → SYSTEM). The reason follows
-     * the agreed rule: a deliberate write into {@code _vance/} is a system
-     * resource → {@code WriteReason.SYSTEM}; everything else is the user's own
-     * write → {@code WriteReason.USER}. Authorization has already run through
+     * ({@code forToolSubject} maps a null userId → SYSTEM) and always
+     * {@code WriteReason.USER} — the target path is the caller's, so the
+     * reserved {@code _vance/} rule is asked again at the DocumentService
+     * chokepoint. Authorization has already run through
      * {@link #enforceDocWrite} at the tool's resolution source; this threads the
      * actor so the DocumentService chokepoint sees a real reason, not a
      * transitional default. (F1)

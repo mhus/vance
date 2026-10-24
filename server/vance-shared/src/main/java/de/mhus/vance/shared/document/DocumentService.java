@@ -2019,7 +2019,7 @@ public class DocumentService {
         } catch (IOException e) {
             throw new IllegalStateException("Failed to buffer new content for id='" + id + "'", e);
         }
-        enforceExecutionIdentity(doc, actor, new String(newBytes, java.nio.charset.StandardCharsets.UTF_8));
+        enforceExecutionIdentity(doc, actor, () -> new String(newBytes, StandardCharsets.UTF_8));
 
         boolean mimeChanged = newMimeType != null && !newMimeType.isBlank() && !newMimeType.equals(doc.getMimeType());
         boolean contentChanged = isContentDifferent(doc, newBytes);
@@ -2139,10 +2139,11 @@ public class DocumentService {
                 de.mhus.vance.shared.permission.Action.WRITE,
                 actor);
         enforcePrivilegedAdmin(doc, actor);
-        requireWriteAllowed(doc, identity);
         if (bytes == null) {
             throw new IllegalArgumentException("bytes must not be null for binary replace");
         }
+        enforceExecutionIdentity(doc, actor, () -> new String(bytes, StandardCharsets.UTF_8));
+        requireWriteAllowed(doc, identity);
         // Age documents hold armored ciphertext — binary payloads (images,
         // PDFs) are refused rather than silently replacing it.
         requireAgeArmorIfEncrypted(doc, bytes);
@@ -2626,7 +2627,22 @@ public class DocumentService {
                 de.mhus.vance.shared.permission.Action.WRITE,
                 actor);
         enforcePrivilegedAdmin(doc, actor);
-        enforceExecutionIdentity(doc, actor, newInlineText);
+        java.util.function.@Nullable Supplier<String> nextText = newInlineText == null ? null : () -> newInlineText;
+        enforceExecutionIdentity(doc, actor, nextText);
+        // A move is a write at the target too: the reserved _vance/ rule, the
+        // privileged gate and the identity rule must see where the document
+        // lands, not only where it sat.
+        String moveTarget = newPath == null ? null : normalizePath(newPath);
+        if (moveTarget != null && !moveTarget.equals(doc.getPath())) {
+            enforceWrite(
+                    doc.getTenantId(),
+                    doc.getProjectId(),
+                    moveTarget,
+                    de.mhus.vance.shared.permission.Action.CREATE,
+                    actor);
+            enforcePrivilegedAdmin(doc, moveTarget, actor);
+            enforceExecutionIdentity(doc, moveTarget, actor, nextText);
+        }
         requireWriteAllowed(doc, identity);
 
         // Lazy backfill for documents created before lineage-tracking
@@ -2940,7 +2956,6 @@ public class DocumentService {
                 de.mhus.vance.shared.permission.Action.WRITE,
                 actor);
         enforcePrivilegedAdmin(live, actor);
-        enforceExecutionIdentity(live, actor, null);
         requireNotMountedForVersioning(live);
         DocumentArchiveDocument archive = archiveService
                 .findById(archiveId)
@@ -2950,6 +2965,9 @@ public class DocumentService {
                     + "document id='" + liveDocId
                     + "' (lineage mismatch)");
         }
+        // The restored body is the new content: an old version may declare a
+        // runAs the restoring subject could not write today.
+        enforceExecutionIdentity(live, actor, () -> readArchiveText(archive));
 
         // 1. Archive the current live content (unconditional — restoring
         //    is itself a meaningful version event, regardless of the
@@ -3839,8 +3857,8 @@ public class DocumentService {
         }
         enforceWrite(
                 doc.getTenantId(), doc.getProjectId(), target, de.mhus.vance.shared.permission.Action.WRITE, actor);
-        enforcePrivilegedAdmin(doc, actor);
-        enforceExecutionIdentity(doc, actor, null);
+        enforcePrivilegedAdmin(doc, target, actor);
+        enforceExecutionIdentity(doc, target, actor, null);
         if (repository.existsByTenantIdAndProjectIdAndPath(doc.getTenantId(), doc.getProjectId(), target)) {
             throw new DocumentAlreadyExistsException("Cannot restore to '" + target
                     + "' — a document already lives there. " + "Pass a different newPath.");
@@ -3860,6 +3878,14 @@ public class DocumentService {
         // Mirror trash: a restore is an Upserted at the restored path so
         // listeners can pick the document back into their caches.
         return publishUpserted(saved);
+    }
+
+    private String readArchiveText(DocumentArchiveDocument archive) {
+        try (InputStream in = archiveService.loadContent(archive)) {
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to read archive id='" + archive.getId() + "'", e);
+        }
     }
 
     /** {@code true} when the path lives under the project's trash
@@ -4853,13 +4879,23 @@ public class DocumentService {
      * principal there to hold responsible.
      */
     private void enforcePrivilegedAdmin(DocumentDocument doc, de.mhus.vance.shared.permission.WriteActor actor) {
+        enforcePrivilegedAdmin(doc, doc.getPath(), actor);
+    }
+
+    /**
+     * {@link #enforcePrivilegedAdmin(DocumentDocument, de.mhus.vance.shared.permission.WriteActor)}
+     * at {@code path} — the target of a move or restore, where the document
+     * will live after the write.
+     */
+    private void enforcePrivilegedAdmin(
+            DocumentDocument doc, String path, de.mhus.vance.shared.permission.WriteActor actor) {
         if (!doc.isPrivileged()) return;
         permissionServiceProvider
                 .getObject()
                 .enforce(
                         actor.subject(),
                         new de.mhus.vance.shared.permission.Resource.Document(
-                                doc.getTenantId(), doc.getProjectId(), doc.getPath()),
+                                doc.getTenantId(), doc.getProjectId(), path),
                         de.mhus.vance.shared.permission.Action.ADMIN,
                         de.mhus.vance.shared.permission.WriteReason.USER);
     }
@@ -4879,15 +4915,33 @@ public class DocumentService {
      * {@code WriteActor.system(subject)}, the same reasoning as
      * {@link #enforcePrivilegedAdmin}. A SYSTEM subject (bootstrap, kits,
      * migrations) passes.
+     *
+     * <p>{@code newText} is a supplier so the body is only decoded when the
+     * path is actually executed and the document privileged — almost every
+     * write returns before that.
      */
     private void enforceExecutionIdentity(
-            DocumentDocument doc, de.mhus.vance.shared.permission.WriteActor actor, @Nullable String newText) {
+            DocumentDocument doc,
+            de.mhus.vance.shared.permission.WriteActor actor,
+            java.util.function.@Nullable Supplier<String> newText) {
+        enforceExecutionIdentity(doc, doc.getPath(), actor, newText);
+    }
+
+    /**
+     * The identity rule evaluated at {@code path} — where the document will
+     * live after the write. A move or restore into an executed namespace
+     * ({@code _vance/schedulers/…}) is checked at the target; the source path
+     * may not be executed at all.
+     */
+    private void enforceExecutionIdentity(
+            DocumentDocument doc,
+            String path,
+            de.mhus.vance.shared.permission.WriteActor actor,
+            java.util.function.@Nullable Supplier<String> newText) {
         ObjectProvider<de.mhus.vance.shared.permission.RunAsReader> readers = runAsReaders;
         if (readers == null) return;
-        de.mhus.vance.shared.permission.RunAsReader reader = readers.stream()
-                .filter(r -> r.executes(doc.getPath()))
-                .findFirst()
-                .orElse(null);
+        de.mhus.vance.shared.permission.RunAsReader reader =
+                readers.stream().filter(r -> r.executes(path)).findFirst().orElse(null);
         if (reader == null) return;
         de.mhus.vance.shared.permission.PermissionService permissions = permissionServiceProvider.getObject();
         de.mhus.vance.shared.permission.SecurityContext subject = actor.subject();
@@ -4896,13 +4950,13 @@ public class DocumentService {
         }
         if (!doc.isPrivileged()) return;
         if (doc.getStorageId() != null) {
-            String currentRunAs = reader.declaredRunAs(doc.getPath(), readContent(doc));
+            String currentRunAs = reader.declaredRunAs(path, readContent(doc));
             if (currentRunAs != null) {
                 permissions.enforceMayActAs(subject, currentRunAs);
             }
         }
         if (newText != null) {
-            String nextRunAs = reader.declaredRunAs(doc.getPath(), newText);
+            String nextRunAs = reader.declaredRunAs(path, newText.get());
             if (nextRunAs != null) {
                 permissions.enforceMayActAs(subject, nextRunAs);
             }

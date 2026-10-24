@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.api.inbox.AnswerOutcome;
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.MaximegalonType;
+import de.mhus.vance.api.inbox.ResolvedBy;
 import de.mhus.vance.api.roles.ProjectRole;
 import de.mhus.vance.api.roles.RoleScopeType;
 import de.mhus.vance.api.roles.RoleSubjectType;
@@ -182,6 +183,28 @@ class RoleRequestEffectTest {
     }
 
     @Test
+    void approvalWithoutDecider_grantsNothing() {
+        when(requests.findById("req-1")).thenReturn(Optional.of(pending()));
+        AnswerPayload anonymous = answer();
+        anonymous.setAnsweredBy("");
+
+        assertThatThrownBy(() -> effect.onApproved(item("req-1"), anonymous)).isInstanceOf(IllegalStateException.class);
+        verify(administration, never()).assignProjectRole(any(), any(), any(), any(), any(), any());
+        verify(requests).markFailed(eq("req-1"), eq(""), any());
+    }
+
+    @Test
+    void automaticApproval_grantsNothing() {
+        when(requests.findById("req-1")).thenReturn(Optional.of(pending()));
+        MaximegalonDocument auto = item("req-1");
+        auto.setResolvedBy(ResolvedBy.AUTO_DEFAULT);
+
+        assertThatThrownBy(() -> effect.onApproved(auto, answer())).isInstanceOf(IllegalStateException.class);
+        verify(administration, never()).assignProjectRole(any(), any(), any(), any(), any(), any());
+        verify(requests, never()).markApproved(any(), any());
+    }
+
+    @Test
     void vanishedRequest_isNotAnError() {
         when(requests.findById("req-1")).thenReturn(Optional.empty());
 
@@ -260,6 +283,7 @@ class RoleRequestEffectTest {
                 .effectType(RoleRequestEffect.EFFECT_TYPE)
                 .effectRef(requestId)
                 .requiresAction(true)
+                .resolvedBy(ResolvedBy.USER)
                 .build();
     }
 

@@ -3,6 +3,7 @@ package de.mhus.vance.brain.roles;
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.EffectDescription;
 import de.mhus.vance.api.inbox.EffectFact;
+import de.mhus.vance.api.inbox.ResolvedBy;
 import de.mhus.vance.api.roles.RoleScopeType;
 import de.mhus.vance.api.roles.TenantRole;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
@@ -78,6 +79,14 @@ public class RoleRequestEffect implements InboxEffect {
         }
         String requestId = Objects.requireNonNull(request.getId());
         String decidedBy = answer.getAnsweredBy();
+        if (item.getResolvedBy() != ResolvedBy.USER || StringUtils.isBlank(decidedBy)) {
+            // Only a human yes grants a role. forToolSubject would turn a
+            // missing decider into the SYSTEM context, which holds every
+            // right, and an AUTO_* answer names no user at all.
+            String reason = "approval was not given by a user (resolvedBy=" + item.getResolvedBy() + ")";
+            requests.markFailed(requestId, decidedBy, reason);
+            throw new IllegalStateException("role-request '" + requestId + "': " + reason);
+        }
         try {
             apply(request, contextFactory.forToolSubject(request.getTenantId(), decidedBy));
         } catch (RuntimeException e) {

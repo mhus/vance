@@ -97,4 +97,16 @@ public class RoleBootstrap {
         }
         requests.expireForSubject(tenant, RoleSubjectType.USER, username);
     }
+
+    /**
+     * Team counterpart of {@link #revokeAll}: drops every role held by the team
+     * {@code team} and expires every pending request naming it. Idempotent.
+     */
+    public void revokeAllOfTeam(String tenant, String team) {
+        int removed = assignments.removeAll(tenant, RoleSubjectType.TEAM, team);
+        if (removed > 0) {
+            log.info("Revoked {} role assignment(s) of team '{}' in tenant '{}'", removed, team, tenant);
+        }
+        requests.expireForSubject(tenant, RoleSubjectType.TEAM, team);
+    }
 }

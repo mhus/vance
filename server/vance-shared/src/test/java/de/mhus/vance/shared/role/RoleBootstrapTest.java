@@ -108,6 +108,14 @@ class RoleBootstrapTest {
         assertThatCode(() -> bootstrap.revokeAll("acme", "ghost")).doesNotThrowAnyException();
     }
 
+    @Test
+    void revokeAllOfTeam_removesTeamRolesAndExpiresRequests() {
+        bootstrap.revokeAllOfTeam("acme", "rd");
+
+        verify(assignments).removeAll("acme", RoleSubjectType.TEAM, "rd");
+        verify(requests).expireForSubject("acme", RoleSubjectType.TEAM, "rd");
+    }
+
     private static RoleAssignmentDocument row(ProjectRole role, String createdBy) {
         return RoleAssignmentDocument.builder()
                 .tenantId("acme")

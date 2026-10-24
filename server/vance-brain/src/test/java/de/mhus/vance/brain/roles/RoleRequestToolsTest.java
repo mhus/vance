@@ -198,6 +198,24 @@ class RoleRequestToolsTest {
     }
 
     @Test
+    void revokingATenantAdmin_goesToATenantAdminOnly() {
+        Map<String, Object> params = revokeParams();
+        params.put("scopeType", "TENANT");
+        params.put("scopeId", TENANT);
+        when(assignments.tenantRoleOf(TENANT, SUBJECT)).thenReturn(TenantRole.TENANT_ADMIN);
+        when(assignments.usersWithTenantRole(TENANT, TenantRole.ADMIN)).thenReturn(List.of("aaa.admin"));
+        when(assignments.usersWithTenantRole(TENANT, TenantRole.TENANT_ADMIN)).thenReturn(List.of("root"));
+
+        revokeTool.invoke(params, ctx);
+
+        // An ADMIN's approval would be refused by the effect — the item would
+        // fail without a TENANT_ADMIN ever seeing it.
+        ArgumentCaptor<MaximegalonDocument> item = ArgumentCaptor.forClass(MaximegalonDocument.class);
+        verify(inboxItemService).create(item.capture());
+        assertThat(item.getValue().getAssignedToUserId()).isEqualTo("root");
+    }
+
+    @Test
     void nobodyCanDecide_createsNoItemAndSaysSo() {
         when(assignments.forScope(any(), any(), any())).thenReturn(List.of());
 

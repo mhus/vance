@@ -27,6 +27,7 @@ import {
   type CortexMenuContext,
   type CortexMenuDocument,
 } from './cortexMenu';
+import { ensureMe } from './me';
 import { asUiLevel, getActiveUiLevel, rankOf } from './webUiSession';
 
 const DEFAULT_EXPOSE = './menu';
@@ -52,6 +53,9 @@ export async function loadCortexMenuContributions(): Promise<void> {
   if (loaded) return;
   loaded = true;
 
+  // Decided once per page, so the level must be the user's, not the default
+  // that stands in while the first `/me` answer is still on its way.
+  await ensureMe();
   const level = rankOf(getActiveUiLevel());
   const addons = await loadAddonManifest();
   for (const addon of addons) {

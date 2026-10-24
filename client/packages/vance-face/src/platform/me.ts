@@ -77,6 +77,19 @@ export function getMe(): MeDto | null {
   return meRef.value;
 }
 
+/**
+ * The current answer, waiting for the first one when nothing is known yet —
+ * no snapshot on this device, or after a logout. For readers that decide once
+ * per page (addon menu entries, profile tabs by UI level): reading
+ * synchronously there would fix the defaults for the page's whole lifetime.
+ * Without a session there is nothing to wait for.
+ */
+export async function ensureMe(): Promise<MeDto | null> {
+  const known = getMe();
+  if (known || !getSessionData()) return known;
+  return loadMe();
+}
+
 /** One UI setting of the current user; `null` when unset or unknown. */
 export function meSetting(key: string): string | null {
   const value = getMe()?.settings?.[key];
@@ -84,17 +97,23 @@ export function meSetting(key: string): string | null {
 }
 
 /**
- * Fetch the answer. With `project`, the own project role and the project's
- * budget come along. Resolves to `null` when the call fails; the previous
+ * Fetch the answer. Resolves to `null` when the call fails; the previous
  * answer then stays in place.
+ *
+ * With `project`, the own project role and the project's budget come along —
+ * that answer belongs to the asking view only. It is returned, never stored:
+ * the shared answer and its snapshot are the tenant-level view, and a
+ * project-scoped one landing there (whichever request resolves last) would
+ * show one project's budget as the tenant's and carry it into the next page.
  */
 export function loadMe(project?: string | null): Promise<MeDto | null> {
   hydrate();
-  const query = project && project.trim().length > 0 ? `?project=${encodeURIComponent(project)}` : '';
+  const scoped = !!project && project.trim().length > 0;
+  const query = scoped ? `?project=${encodeURIComponent(project!)}` : '';
   // Boot and the first view of a page ask at the same moment — one request.
   const pending = inFlight.get(query);
   if (pending) return pending;
-  const request = fetchMe(query).finally(() => inFlight.delete(query));
+  const request = (scoped ? fetchScoped(query) : fetchMe(query)).finally(() => inFlight.delete(query));
   inFlight.set(query, request);
   return request;
 }
@@ -117,6 +136,14 @@ async function fetchMe(query: string): Promise<MeDto | null> {
     }
   }
   return next;
+}
+
+async function fetchScoped(query: string): Promise<MeDto | null> {
+  try {
+    return await brainFetch<MeDto>('GET', `me${query}`);
+  } catch {
+    return null;
+  }
 }
 
 /** Called after every fresh answer with the previous one. Returns an unsubscribe. */

@@ -279,7 +279,8 @@ class ManifestIndexCommandsTest {
                 1700000000000L,
                 version,
                 false,
-                "abc",
+                // One body per version — the hash follows the content.
+                "sha-" + version,
                 ManifestEntry.Stored.DOWNLOADED);
     }
 

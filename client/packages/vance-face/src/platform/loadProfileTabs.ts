@@ -33,6 +33,7 @@ import { registerRemotes, loadRemote } from '@module-federation/runtime';
 import { markRaw, type Component } from 'vue';
 import { addonLocalesSettled } from '@/i18n/addonLocales';
 import { addonRemoteEntry, addonRemoteName, loadAddonManifest } from './addonManifest';
+import { ensureMe } from './me';
 import { asUiLevel, getActiveUiLevel, rankOf } from './webUiSession';
 
 /** One addon-contributed tab, ready to render. */
@@ -56,6 +57,9 @@ const DEFAULT_EXPOSE = './profile';
 export async function loadProfileTabs(): Promise<ProfileTab[]> {
   // Filtered before the remotes are registered, not after: a tab the reader
   // may not see must not cost the fetch that would render it.
+  // Decided once per page, so the level must be the user's, not the default
+  // that stands in while the first `/me` answer is still on its way.
+  await ensureMe();
   const level = rankOf(getActiveUiLevel());
   const contributors = (await loadAddonManifest()).filter(
     (a) => a.profile?.label && level >= rankOf(asUiLevel(a.profile.minLevel)),

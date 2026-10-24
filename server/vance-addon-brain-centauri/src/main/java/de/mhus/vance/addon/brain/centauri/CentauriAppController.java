@@ -253,11 +253,10 @@ public class CentauriAppController {
      *
      * <p>Same lesson as the clip endpoint, which the manifest path did not
      * inherit. A project-level check plus a caller-supplied {@code folder} lets
-     * a WRITER reach {@code _vance/…/_app.yaml}, and the document layer is no
-     * backstop: it derives the write actor from the target path and vouches for
-     * reserved ones as system writes, so the reserved-namespace rule (R4) is
-     * never asked. The project check stays — a document grant is not a licence
-     * to use the app at all.
+     * a WRITER reach {@code _vance/…/_app.yaml}. The document layer asks the
+     * reserved-namespace rule again as a backstop, but the call site is where
+     * the touched path is known first. The project check stays — a document
+     * grant is not a licence to use the app at all.
      */
     private String manifestFolder(
             String tenant, String projectId, String folder, HttpServletRequest request, Action action) {
@@ -338,9 +337,8 @@ public class CentauriAppController {
      * admin-only matches on a prefix, so {@code /_vance/manuals/x.md} passed as
      * an ordinary document and landed as {@code _vance/manuals/x.md} — a system
      * manual, writable by anyone with CREATE on the project. The service-level
-     * check is no backstop for this: it derives its write actor from the
-     * <em>target</em> path and vouches for reserved ones as internal writes, so
-     * this call site is the only place the question is really asked.
+     * check repeats the question as a backstop; this call site asks it on the
+     * path that is actually written.
      */
     @PostMapping("/brain/{tenant}/addon/centauri/clip")
     public ResponseEntity<ClipResponse> clip(

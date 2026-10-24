@@ -59,17 +59,32 @@ describe('me', () => {
     expect(brainFetch).toHaveBeenCalledTimes(1);
   });
 
-  it('passes the project and tells listeners what changed', async () => {
+  it('tells listeners what changed', async () => {
     const mod = await fresh();
     const seen: Array<[string | undefined, string | undefined]> = [];
     mod.onMeChanged((next, prev) => seen.push([prev?.settings?.['webui.theme'], next?.settings?.['webui.theme']]));
     brainFetch.mockResolvedValueOnce(me('alice', 'light')).mockResolvedValueOnce(me('alice', 'dark'));
 
     await mod.loadMe();
-    await mod.loadMe('rocket');
+    await mod.loadMe();
+
+    expect(seen).toEqual([[undefined, 'light'], ['light', 'dark']]);
+  });
+
+  it('returns a project-scoped answer without replacing the shared one', async () => {
+    const mod = await fresh();
+    const seen: string[] = [];
+    mod.onMeChanged(() => seen.push('changed'));
+    brainFetch.mockResolvedValueOnce(me('alice', 'light')).mockResolvedValueOnce(me('alice', 'dark'));
+
+    await mod.loadMe();
+    const scoped = await mod.loadMe('rocket');
 
     expect(brainFetch).toHaveBeenLastCalledWith('GET', 'me?project=rocket');
-    expect(seen).toEqual([[undefined, 'light'], ['light', 'dark']]);
+    expect(scoped?.settings?.['webui.theme']).toBe('dark');
+    expect(mod.meSetting('webui.theme')).toBe('light');
+    expect(seen).toEqual(['changed']);
+    expect(JSON.parse(store.get('vance.me.snapshot')!).me.settings['webui.theme']).toBe('light');
   });
 
   it('keeps the previous answer when the call fails', async () => {
@@ -80,6 +95,26 @@ describe('me', () => {
     expect(await mod.loadMe()).toBeNull();
 
     expect(mod.meSetting('webui.theme')).toBe('dark');
+  });
+
+  it('waits for the first answer when nothing is known yet', async () => {
+    const mod = await fresh();
+    brainFetch.mockResolvedValue(me('alice', 'dark'));
+
+    expect(mod.getMe()).toBeNull();
+    await mod.ensureMe();
+
+    expect(mod.meSetting('webui.theme')).toBe('dark');
+    await mod.ensureMe();
+    expect(brainFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not ask without a session', async () => {
+    getSessionData.mockReturnValue(null);
+    const mod = await fresh();
+
+    expect(await mod.ensureMe()).toBeNull();
+    expect(brainFetch).not.toHaveBeenCalled();
   });
 
   it('forgets everything on logout', async () => {

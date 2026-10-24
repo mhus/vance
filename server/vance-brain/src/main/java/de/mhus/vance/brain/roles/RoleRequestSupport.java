@@ -153,7 +153,7 @@ public class RoleRequestSupport {
      * Someone who may decide. For a project: an ADMIN of the project, else a
      * tenant ADMIN (who administers every project). For the tenant: a user whose
      * tenant role covers the requested one — at least ADMIN, TENANT_ADMIN when
-     * TENANT_ADMIN is asked for. Sorted, so the choice is reproducible; whoever
+     * TENANT_ADMIN is asked for or the subject is a TENANT_ADMIN today. Sorted, so the choice is reproducible; whoever
      * gets it can hand it on through the inbox's delegation.
      *
      * <p>Only users are considered — resolving a team membership to its members
@@ -169,12 +169,27 @@ public class RoleRequestSupport {
             }
         }
         if (candidates.isEmpty()) {
-            if (target.tenantRole() != TenantRole.TENANT_ADMIN) {
+            if (!needsTenantAdmin(tenantId, target)) {
                 candidates.addAll(assignments.usersWithTenantRole(tenantId, TenantRole.ADMIN));
             }
             candidates.addAll(assignments.usersWithTenantRole(tenantId, TenantRole.TENANT_ADMIN));
         }
         return candidates.stream().sorted().findFirst();
+    }
+
+    /**
+     * Whether only a TENANT_ADMIN can carry the tenant-scope request out: when
+     * TENANT_ADMIN is asked for, and when the subject holds it today — a revoke
+     * or demotion of a tenant admin reaches above an ADMIN's own role, and the
+     * effect would refuse an ADMIN's approval.
+     */
+    private boolean needsTenantAdmin(String tenantId, RoleRequestService.Target target) {
+        if (target.tenantRole() == TenantRole.TENANT_ADMIN) {
+            return true;
+        }
+        return target.scopeType() == RoleScopeType.TENANT
+                && target.subjectType() == RoleSubjectType.USER
+                && assignments.tenantRoleOf(tenantId, target.subjectId()) == TenantRole.TENANT_ADMIN;
     }
 
     static @Nullable String roleName(RoleRequestService.Target target) {

@@ -118,20 +118,22 @@ public class SecurityContextFactory {
 
     /**
      * The mandatory {@link de.mhus.vance.shared.permission.WriteActor} for a
-     * tool-driven DocumentService write. Subject via {@link #forToolSubject}
-     * (null userId → SYSTEM subject); the reason follows the agreed rule — a
-     * deliberate write into {@code _vance/} is a system resource
-     * ({@code WriteReason.SYSTEM}), everything else is the user's own write
-     * ({@code WriteReason.USER}). (F1)
+     * tool- or user-driven DocumentService write. Subject via
+     * {@link #forToolSubject} (null userId → SYSTEM subject); the reason is
+     * always {@code WriteReason.USER}, whatever the path. A caller-controlled
+     * path must never buy system trust: a {@code _vance/} target is exactly
+     * where the reserved-namespace rule (project ADMIN) has to be asked, and a
+     * SYSTEM reason would skip it at the document chokepoint. Code-determined
+     * plumbing and dedicated {@code _vance/} authoring tools with their own
+     * ADMIN check build {@code WriteActor.system(subject)} explicitly
+     * (permission-system.md §5, "Anti-Pattern"). The {@code path} parameter is
+     * kept so every call site names the target it writes. (F1)
      */
     public de.mhus.vance.shared.permission.WriteActor writeActor(
             String tenantId,
             @org.jspecify.annotations.Nullable String userId,
             @org.jspecify.annotations.Nullable String path) {
-        SecurityContext subject = forToolSubject(tenantId, userId);
-        return path != null && path.startsWith("_vance/")
-                ? de.mhus.vance.shared.permission.WriteActor.system(subject)
-                : de.mhus.vance.shared.permission.WriteActor.user(subject);
+        return de.mhus.vance.shared.permission.WriteActor.user(forToolSubject(tenantId, userId));
     }
 
     /**

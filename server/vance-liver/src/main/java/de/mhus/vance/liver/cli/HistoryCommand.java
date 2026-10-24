@@ -114,7 +114,7 @@ public final class HistoryCommand implements Callable<Integer> {
 
         // Second pass: walk oldest first and keep one row per version. A
         // document lies unchanged in most snapshots; only a new
-        // contentVersion (or a rename) is an event worth a line
+        // body (or a rename) is an event worth a line
         // (planning §4.9).
         List<HistoryRow> rows = new ArrayList<>();
         @Nullable ManifestEntry previous = null;
@@ -140,7 +140,7 @@ public final class HistoryCommand implements Callable<Integer> {
             }
             if (previous == null) {
                 rows.add(new HistoryRow(snap.getFileName().toString(), current, "first backup"));
-            } else if (!Objects.equals(previous.contentVersion(), current.contentVersion())) {
+            } else if (contentChanged(previous, current)) {
                 rows.add(new HistoryRow(
                         snap.getFileName().toString(),
                         current,
@@ -176,6 +176,30 @@ public final class HistoryCommand implements Callable<Integer> {
     }
 
     /** When this version was written: {@code updatedAt}, else {@code createdAt}, in UTC to the minute. */
+    /**
+     * Whether {@code current} holds a different body than {@code previous}.
+     * The hash of the stored bytes answers it exactly when both rows carry
+     * one. Otherwise the content version decides where it identifies a body —
+     * it is absent in older manifests and on mounted rows, and for an inline
+     * document it is the document id, which never changes; there, size and
+     * {@code updatedAt} decide.
+     */
+    static boolean contentChanged(ManifestEntry previous, ManifestEntry current) {
+        String previousHash = previous.sha256();
+        String currentHash = current.sha256();
+        if (previousHash != null && currentHash != null) {
+            return !previousHash.equals(currentHash);
+        }
+        if (!Objects.equals(previous.contentVersion(), current.contentVersion())) {
+            return true;
+        }
+        String version = current.contentVersion();
+        if (version != null && !version.equals(current.id())) {
+            return false;
+        }
+        return previous.size() != current.size() || !Objects.equals(previous.updatedAtMs(), current.updatedAtMs());
+    }
+
     private static String changedAt(ManifestEntry entry) {
         Long millis = entry.updatedAtMs() != null ? entry.updatedAtMs() : entry.createdAtMs();
         if (millis == null) {

@@ -7,6 +7,7 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 /**
@@ -22,6 +23,9 @@ import org.springframework.stereotype.Service;
 public class TeamService implements TeamMembership {
 
     private final TeamRepository repository;
+
+    /** Name-keyed stores (role assignments) that must follow a team's lifecycle. */
+    private final ObjectProvider<TeamLifecycleListener> lifecycleListeners;
 
     public Optional<TeamDocument> findByTenantAndName(String tenantId, String name) {
         return repository.findByTenantIdAndName(tenantId, name);
@@ -62,6 +66,19 @@ public class TeamService implements TeamMembership {
                 .enabled(true)
                 .build();
         TeamDocument saved = repository.save(team);
+        // Best-effort: the team exists by now, so there is nothing to abort.
+        lifecycleListeners.orderedStream().forEach(listener -> {
+            try {
+                listener.onTeamCreated(saved);
+            } catch (RuntimeException e) {
+                log.warn(
+                        "Team-lifecycle listener {} failed for created team '{}' in tenant '{}'",
+                        listener.getClass().getSimpleName(),
+                        name,
+                        tenantId,
+                        e);
+            }
+        });
         log.info(
                 "Created team tenantId='{}' name='{}' id='{}' members={}",
                 saved.getTenantId(),
@@ -105,11 +122,18 @@ public class TeamService implements TeamMembership {
         return saved;
     }
 
+    /**
+     * Deletes a team after every {@link TeamLifecycleListener} has released
+     * what it holds under the name — the team's role assignments above all.
+     */
     public void delete(String tenantId, String name) {
         TeamDocument team = repository
                 .findByTenantIdAndName(tenantId, name)
                 .orElseThrow(
                         () -> new TeamNotFoundException("Team '" + name + "' not found in tenant '" + tenantId + "'"));
+        // Before the document goes: a failing role store aborts the delete
+        // rather than leaving roles behind for the next team of that name.
+        lifecycleListeners.orderedStream().forEach(l -> l.onTeamDeleted(tenantId, name));
         repository.delete(team);
         log.info("Deleted team tenantId='{}' name='{}'", tenantId, name);
     }

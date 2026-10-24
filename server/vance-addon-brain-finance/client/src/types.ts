@@ -53,6 +53,14 @@ export interface ReportResult {
 export type Granularity = 'day' | 'week' | 'month' | 'year';
 export type ValueModeWire = 'recurring' | 'one_time';
 
+/** Where a dragged node lands relative to the row it is dropped on. */
+export type DropPosition = 'before' | 'after' | 'inside';
+
+export interface DropTarget {
+  name: string;
+  position: DropPosition;
+}
+
 export type NodeAction =
   | 'select'
   | 'add-child'
@@ -60,4 +68,5 @@ export type NodeAction =
   | 'move-up'
   | 'move-down'
   | 'indent'
-  | 'outdent';
+  | 'outdent'
+  | 'toggle-disabled';

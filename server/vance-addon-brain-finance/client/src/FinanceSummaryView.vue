@@ -87,9 +87,10 @@ async function onEditClosed(): Promise<void> {
       </div>
 
       <ul v-if="topChildren.length" class="flex flex-col gap-0.5 mt-1">
-        <li v-for="c in topChildren" :key="c.name" class="flex items-center gap-2">
+        <li v-for="c in topChildren" :key="c.name" class="flex items-center gap-2"
+            :class="{ 'opacity-50': c.disabled }">
           <span v-if="c.icon">{{ c.icon }}</span>
-          <span class="flex-1 truncate">{{ c.title || c.name }}</span>
+          <span class="flex-1 truncate" :class="{ 'line-through': c.disabled }">{{ c.title || c.name }}</span>
           <span class="tabular-nums opacity-70">{{ money(snap?.[c.name]?.perYear) }}</span>
         </li>
       </ul>

@@ -1,5 +1,6 @@
 import type { FinanceNodeDto } from './generated/finance/FinanceNodeDto';
 import type { FinanceTreeDto } from './generated/finance/FinanceTreeDto';
+import type { DropPosition } from './types';
 
 export interface Located {
   node: FinanceNodeDto;
@@ -48,7 +49,7 @@ export function nextName(tree: FinanceTreeDto, prefix = 'node'): string {
 }
 
 export function newNode(name: string, title: string): FinanceNodeDto {
-  return { name, title, sign: 1, values: [], children: [] };
+  return { name, title, sign: 1, disabled: false, values: [], children: [] };
 }
 
 /** Add a child under parentName, or set the root when parentName is null. */
@@ -59,6 +60,12 @@ export function addChild(tree: FinanceTreeDto, parentName: string | null, node: 
   }
   const loc = locate(tree, parentName);
   if (loc) loc.node.children.push(node);
+}
+
+/** Switch a node off (hard 0, nothing rolls up past it) or back on. */
+export function toggleDisabled(tree: FinanceTreeDto, name: string): void {
+  const loc = locate(tree, name);
+  if (loc) loc.node.disabled = !loc.node.disabled;
 }
 
 export function removeNode(tree: FinanceTreeDto, name: string): void {
@@ -97,4 +104,48 @@ export function outdent(tree: FinanceTreeDto, name: string): void {
   if (!parentLoc || !parentLoc.siblings) return; // parent is root — cannot outdent
   const [n] = loc.parent.children.splice(loc.index, 1);
   parentLoc.siblings.splice(parentLoc.index + 1, 0, n);
+}
+
+/** True when `name` is `ancestor` itself or lies anywhere in its subtree. */
+function isInSubtree(ancestor: FinanceNodeDto, name: string): boolean {
+  if (ancestor.name === name) return true;
+  return ancestor.children.some((c) => isInSubtree(c, name));
+}
+
+/**
+ * Whether `source` may be dropped at `position` of `target`: the root never
+ * moves, nothing lands before/after the root, and a node can't go into its
+ * own subtree.
+ */
+export function canMoveTo(
+  tree: FinanceTreeDto,
+  source: string,
+  target: string,
+  position: DropPosition,
+): boolean {
+  const src = locate(tree, source);
+  const tgt = locate(tree, target);
+  if (!src || !tgt || src.parent === null) return false;
+  if (position !== 'inside' && tgt.parent === null) return false;
+  return !isInSubtree(src.node, target);
+}
+
+/** Drag-and-drop move: detach `source` and re-insert it relative to `target`. */
+export function moveTo(
+  tree: FinanceTreeDto,
+  source: string,
+  target: string,
+  position: DropPosition,
+): void {
+  if (!canMoveTo(tree, source, target, position)) return;
+  const src = locate(tree, source);
+  if (!src || !src.siblings) return;
+  const [n] = src.siblings.splice(src.index, 1);
+  const tgt = locate(tree, target); // re-locate: indices shifted by the splice
+  if (!tgt) return;
+  if (position === 'inside') {
+    tgt.node.children.push(n);
+  } else if (tgt.siblings) {
+    tgt.siblings.splice(position === 'before' ? tgt.index : tgt.index + 1, 0, n);
+  }
 }

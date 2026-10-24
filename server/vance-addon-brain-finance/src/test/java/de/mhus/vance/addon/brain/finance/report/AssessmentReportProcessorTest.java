@@ -26,23 +26,42 @@ class AssessmentReportProcessorTest {
 
     /** projekt(+) { einnahmen(+ 12000/yr), ausgaben(-1 branch, 800/month) }. */
     private static FinanceTreeDocument tree() {
-        FinanceNode einnahmen = new FinanceNode("einnahmen", "Einnahmen", null, null, 1, null, null,
-                List.of(new FinanceValue(12000, ValueMode.RECURRING, new Period(1, PeriodUnit.YEAR),
-                        null, null, null, null)),
+        FinanceNode einnahmen = new FinanceNode(
+                "einnahmen",
+                "Einnahmen",
+                null,
+                null,
+                1,
+                false,
+                null,
+                null,
+                List.of(new FinanceValue(
+                        12000, ValueMode.RECURRING, new Period(1, PeriodUnit.YEAR), null, null, null, null)),
                 List.of());
-        FinanceNode ausgaben = new FinanceNode("ausgaben", "Ausgaben", null, null, -1, null, null,
-                List.of(new FinanceValue(800, ValueMode.RECURRING, new Period(1, PeriodUnit.MONTH),
-                        null, null, null, null)),
+        FinanceNode ausgaben = new FinanceNode(
+                "ausgaben",
+                "Ausgaben",
+                null,
+                null,
+                -1,
+                false,
+                null,
+                null,
+                List.of(new FinanceValue(
+                        800, ValueMode.RECURRING, new Period(1, PeriodUnit.MONTH), null, null, null, null)),
                 List.of());
-        FinanceNode root = new FinanceNode("projekt", "Projekt", null, null, 1, null, null,
-                List.of(), List.of(einnahmen, ausgaben));
+        FinanceNode root = new FinanceNode(
+                "projekt", "Projekt", null, null, 1, false, null, null, List.of(), List.of(einnahmen, ausgaben));
         return new FinanceTreeDocument(1, "Q1 Plan", null, root);
     }
 
     private static LanguageResolver langResolver(String lang) {
         LanguageResolver r = mock(LanguageResolver.class);
-        when(r.chatLanguage(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+        when(r.chatLanguage(
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any()))
                 .thenReturn(lang);
         return r;
     }
@@ -52,8 +71,8 @@ class AssessmentReportProcessorTest {
         LightLlmService llm = mock(LightLlmService.class);
         when(llm.call(org.mockito.ArgumentMatchers.any())).thenReturn("## Assessment\nLooks tight.");
 
-        FinanceReport report = new AssessmentReportProcessor(llm, langResolver("de"))
-                .render(tree(), ReportParams.of(Map.of()), CTX);
+        FinanceReport report =
+                new AssessmentReportProcessor(llm, langResolver("de")).render(tree(), ReportParams.of(Map.of()), CTX);
 
         assertThat(report.outputKind()).isEqualTo("markdown");
         assertThat(report.mimeType()).isEqualTo("text/markdown");
@@ -75,7 +94,7 @@ class AssessmentReportProcessorTest {
     void render_emptyTree_throws() {
         LightLlmService llm = mock(LightLlmService.class);
         assertThatThrownBy(() -> new AssessmentReportProcessor(llm, langResolver("en"))
-                .render(FinanceTreeDocument.empty("x", null), ReportParams.of(Map.of()), CTX))
+                        .render(FinanceTreeDocument.empty("x", null), ReportParams.of(Map.of()), CTX))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("empty");
     }

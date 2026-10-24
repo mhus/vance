@@ -1,6 +1,16 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
-import { VAlert, VButton, VCheckbox, VIconButton, VInput, VModal, VSelect } from '@vance/components';
+import {
+  VAlert,
+  VButton,
+  VCheckbox,
+  VEmojiPicker,
+  VIconButton,
+  VInput,
+  VModal,
+  VSelect,
+} from '@vance/components';
+import FinanceColorMenu from './FinanceColorMenu.vue';
 import FinanceTreeNode from './FinanceTreeNode.vue';
 import * as ops from './treeOps';
 import { calc, generateReport, getSnapshot, getTree, listProcessors, putTree } from './api';
@@ -8,6 +18,8 @@ import type { FinanceNodeDto } from './generated/finance/FinanceNodeDto';
 import type { FinanceTreeDto } from './generated/finance/FinanceTreeDto';
 import type { FinanceValueDto } from './generated/finance/FinanceValueDto';
 import type {
+  DropPosition,
+  DropTarget,
   Granularity,
   NodeAction,
   NodeSnapshot,
@@ -124,7 +136,46 @@ function handleAction(action: NodeAction, name: string): void {
     case 'move-down': ops.move(t, name, 1); break;
     case 'indent': ops.indent(t, name); break;
     case 'outdent': ops.outdent(t, name); break;
+    case 'toggle-disabled': ops.toggleDisabled(t, name); break;
   }
+}
+
+// ── Drag-and-drop move ────────────────────────────────────────
+// Grab a node's title, drop it on a row: top quarter = before, bottom quarter
+// = after, middle = as last child. The root itself never moves.
+
+const dragName = ref<string | null>(null);
+const dropTarget = ref<DropTarget | null>(null);
+
+function onDragStart(name: string): void {
+  dragName.value = name;
+}
+
+/** Returns whether the drop is allowed (the row then calls preventDefault). */
+function onDragOver(name: string, position: DropPosition): boolean {
+  if (!tree.value || !dragName.value) return false;
+  if (!ops.canMoveTo(tree.value, dragName.value, name, position)) {
+    dropTarget.value = null;
+    return false;
+  }
+  if (dropTarget.value?.name !== name || dropTarget.value.position !== position) {
+    dropTarget.value = { name, position };
+  }
+  return true;
+}
+
+function onDrop(): void {
+  const source = dragName.value;
+  const target = dropTarget.value;
+  onDragEnd();
+  if (!tree.value || !source || !target) return;
+  ops.moveTo(tree.value, source, target.name, target.position);
+  selectedName.value = source;
+}
+
+function onDragEnd(): void {
+  dragName.value = null;
+  dropTarget.value = null;
 }
 
 function addRoot(): void {
@@ -279,10 +330,16 @@ async function runReport(): Promise<void> {
           v-if="tree?.root"
           :node="tree.root"
           :depth="0"
+          :inactive="false"
           :selected-name="selectedName"
           :computed-map="computedMap"
           :unit-key="unitKey"
           :on-action="handleAction"
+          :drop-target="dropTarget"
+          :on-drag-start="onDragStart"
+          :on-drag-over="onDragOver"
+          :on-drop="onDrop"
+          :on-drag-end="onDragEnd"
         />
         <VButton v-else variant="primary" icon="add" @click="addRoot">{{ t('finance.createRoot') }}</VButton>
       </div>
@@ -300,19 +357,29 @@ async function runReport(): Promise<void> {
                      @input="selected.title = strOrNull($event)" />
             </label>
             <div class="flex gap-2">
-              <label class="flex flex-col gap-0.5 w-20">
+              <div class="flex flex-col gap-0.5">
                 <span class="opacity-70">{{ t('finance.fields.icon') }}</span>
-                <input :value="selected.icon ?? ''" class="fx-in"
-                       @input="selected.icon = strOrNull($event)" />
-              </label>
-              <label class="flex flex-col gap-0.5 w-28">
+                <VEmojiPicker
+                  :model-value="selected.icon"
+                  placeholder="💰"
+                  @update:model-value="(v) => { if (selected) selected.icon = v ?? undefined; }"
+                />
+              </div>
+              <div class="flex flex-col gap-0.5">
                 <span class="opacity-70">{{ t('finance.fields.color') }}</span>
-                <input :value="selected.color ?? ''" class="fx-in" placeholder="#4f8"
-                       @input="selected.color = strOrNull($event)" />
-              </label>
+                <FinanceColorMenu
+                  :model-value="selected.color"
+                  @update:model-value="(v) => { if (selected) selected.color = v; }"
+                />
+              </div>
               <label class="flex items-end gap-1 pb-1">
                 <input type="checkbox" :checked="selected.sign < 0" @change="toggleSign(selected)" />
                 <span class="opacity-70">{{ t('finance.fields.negative') }}</span>
+              </label>
+              <label class="flex items-end gap-1 pb-1">
+                <input type="checkbox" :checked="selected.disabled"
+                       @change="selected.disabled = ($event.target as HTMLInputElement).checked" />
+                <span class="opacity-70">{{ t('finance.fields.disabled') }}</span>
               </label>
             </div>
             <label class="flex flex-col gap-0.5">

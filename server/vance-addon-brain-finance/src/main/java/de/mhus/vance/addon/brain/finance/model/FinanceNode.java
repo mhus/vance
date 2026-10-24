@@ -12,6 +12,10 @@ import org.jspecify.annotations.Nullable;
  * cost sub-tree is a node with {@code sign = -1} over positively-entered
  * children.
  *
+ * <p>{@code disabled} switches the node off "hard": its own contribution is
+ * {@code 0} and nothing of its subtree rolls up past it. Its children are
+ * still computed on their own (for reference), they just don't count.
+ *
  * <p>{@code name} is the business key within the tree scope; {@code title} is
  * the display label; {@code notesRef} points at a separate notes document.
  */
@@ -21,6 +25,7 @@ public record FinanceNode(
         @Nullable String icon,
         @Nullable String color,
         int sign,
+        boolean disabled,
         @Nullable String description,
         @Nullable String notesRef,
         List<FinanceValue> values,

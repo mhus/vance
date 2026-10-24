@@ -40,16 +40,14 @@ public final class FinanceTreeOps {
      * (error if a root already exists); otherwise it is appended under the
      * named parent. Node names must be unique across the tree.
      */
-    public static FinanceTreeDocument addChild(FinanceTreeDocument doc,
-                                               @Nullable String parentName,
-                                               FinanceNode child) {
+    public static FinanceTreeDocument addChild(
+            FinanceTreeDocument doc, @Nullable String parentName, FinanceNode child) {
         if (find(doc, child.name()) != null) {
             throw new ToolException("A node named '" + child.name() + "' already exists.");
         }
         if (parentName == null) {
             if (doc.root() != null) {
-                throw new ToolException(
-                        "Root already exists; pass a parentName to attach '" + child.name() + "'.");
+                throw new ToolException("Root already exists; pass a parentName to attach '" + child.name() + "'.");
             }
             return withRoot(doc, child);
         }
@@ -62,8 +60,7 @@ public final class FinanceTreeOps {
         return withRoot(doc, newRoot);
     }
 
-    private static FinanceNode addUnder(FinanceNode node, String parentName,
-                                        FinanceNode child, boolean[] found) {
+    private static FinanceNode addUnder(FinanceNode node, String parentName, FinanceNode child, boolean[] found) {
         List<FinanceNode> children = new ArrayList<>();
         for (FinanceNode c : node.children()) children.add(addUnder(c, parentName, child, found));
         if (node.name().equals(parentName)) {
@@ -74,8 +71,7 @@ public final class FinanceTreeOps {
     }
 
     /** Update a node's display fields from {@code patch} (name/values/children untouched). */
-    public static FinanceTreeDocument updateNode(FinanceTreeDocument doc, String name,
-                                                 Map<String, Object> patch) {
+    public static FinanceTreeDocument updateNode(FinanceTreeDocument doc, String name, Map<String, Object> patch) {
         FinanceNode root = requireRoot(doc);
         boolean[] found = {false};
         FinanceNode newRoot = applyUpdate(root, name, patch, found);
@@ -83,8 +79,7 @@ public final class FinanceTreeOps {
         return withRoot(doc, newRoot);
     }
 
-    private static FinanceNode applyUpdate(FinanceNode node, String name,
-                                           Map<String, Object> patch, boolean[] found) {
+    private static FinanceNode applyUpdate(FinanceNode node, String name, Map<String, Object> patch, boolean[] found) {
         List<FinanceNode> children = new ArrayList<>();
         for (FinanceNode c : node.children()) children.add(applyUpdate(c, name, patch, found));
         FinanceNode rebuilt = withChildren(node, children);
@@ -120,8 +115,7 @@ public final class FinanceTreeOps {
     }
 
     /** Replace a node's value records. */
-    public static FinanceTreeDocument setValues(FinanceTreeDocument doc, String name,
-                                                List<FinanceValue> values) {
+    public static FinanceTreeDocument setValues(FinanceTreeDocument doc, String name, List<FinanceValue> values) {
         FinanceNode root = requireRoot(doc);
         boolean[] found = {false};
         FinanceNode newRoot = setVals(root, name, values, found);
@@ -129,8 +123,7 @@ public final class FinanceTreeOps {
         return withRoot(doc, newRoot);
     }
 
-    private static FinanceNode setVals(FinanceNode node, String name,
-                                       List<FinanceValue> values, boolean[] found) {
+    private static FinanceNode setVals(FinanceNode node, String name, List<FinanceValue> values, boolean[] found) {
         List<FinanceNode> children = new ArrayList<>();
         for (FinanceNode c : node.children()) children.add(setVals(c, name, values, found));
         FinanceNode rebuilt = withChildren(node, children);
@@ -154,38 +147,65 @@ public final class FinanceTreeOps {
     }
 
     private static FinanceNode withChildren(FinanceNode n, List<FinanceNode> children) {
-        return new FinanceNode(n.name(), n.title(), n.icon(), n.color(), n.sign(),
-                n.description(), n.notesRef(), n.values(), children);
+        return new FinanceNode(
+                n.name(),
+                n.title(),
+                n.icon(),
+                n.color(),
+                n.sign(),
+                n.disabled(),
+                n.description(),
+                n.notesRef(),
+                n.values(),
+                children);
     }
 
     private static FinanceNode withValues(FinanceNode n, List<FinanceValue> values) {
-        return new FinanceNode(n.name(), n.title(), n.icon(), n.color(), n.sign(),
-                n.description(), n.notesRef(), values, n.children());
+        return new FinanceNode(
+                n.name(),
+                n.title(),
+                n.icon(),
+                n.color(),
+                n.sign(),
+                n.disabled(),
+                n.description(),
+                n.notesRef(),
+                values,
+                n.children());
     }
 
     private static FinanceNode applyPatch(FinanceNode n, Map<String, Object> patch) {
-        int sign = patch.containsKey("sign")
-                ? (toInt(patch.get("sign"), n.sign()) < 0 ? -1 : 1)
-                : n.sign();
+        int sign = patch.containsKey("sign") ? (toInt(patch.get("sign"), n.sign()) < 0 ? -1 : 1) : n.sign();
+        boolean disabled = patch.containsKey("disabled") ? toBool(patch.get("disabled"), n.disabled()) : n.disabled();
         return new FinanceNode(
                 n.name(),
                 strPatch(patch, "title", n.title()),
                 strPatch(patch, "icon", n.icon()),
                 strPatch(patch, "color", n.color()),
                 sign,
+                disabled,
                 strPatch(patch, "description", n.description()),
                 strPatch(patch, "notesRef", n.notesRef()),
                 n.values(),
                 n.children());
     }
 
-    private static @Nullable String strPatch(Map<String, Object> patch, String key,
-                                             @Nullable String current) {
+    private static @Nullable String strPatch(Map<String, Object> patch, String key, @Nullable String current) {
         if (!patch.containsKey(key)) return current;
         Object v = patch.get(key);
         if (v == null) return null;
         String s = v.toString();
         return s.isBlank() ? null : s.trim();
+    }
+
+    private static boolean toBool(@Nullable Object o, boolean fallback) {
+        if (o instanceof Boolean b) return b;
+        if (o instanceof String s) {
+            String t = s.trim();
+            if (t.equalsIgnoreCase("true")) return true;
+            if (t.equalsIgnoreCase("false")) return false;
+        }
+        return fallback;
     }
 
     private static int toInt(@Nullable Object o, int fallback) {

@@ -22,24 +22,27 @@ class TableReportProcessorTest {
 
     /** Single leaf "x" at 3650/year (= 10/day). */
     private static FinanceTreeDocument tree() {
-        FinanceValue v = new FinanceValue(3650, ValueMode.RECURRING,
-                new Period(1, PeriodUnit.YEAR), null, null, null, null);
-        FinanceNode root = new FinanceNode("x", null, null, null, 1, null, null,
-                List.of(v), List.of());
+        FinanceValue v =
+                new FinanceValue(3650, ValueMode.RECURRING, new Period(1, PeriodUnit.YEAR), null, null, null, null);
+        FinanceNode root = new FinanceNode("x", null, null, null, 1, false, null, null, List.of(v), List.of());
         return new FinanceTreeDocument(1, "Plan", null, root);
     }
 
     private static String cell(SheetDocument s, String field) {
-        return s.cells().stream().filter(c -> c.field().equals(field))
-                .map(SheetCell::data).findFirst().orElse(null);
+        return s.cells().stream()
+                .filter(c -> c.field().equals(field))
+                .map(SheetCell::data)
+                .findFirst()
+                .orElse(null);
     }
 
     @Test
     void render_producesSheetMatrixWithHeaderPeriodsAndTotal() {
-        FinanceReport report = new TableReportProcessor().render(
-                tree(),
-                ReportParams.of(Map.of("from", "2026-01-01", "to", "2026-03-01",
-                        "granularity", "month")), CTX);
+        FinanceReport report = new TableReportProcessor()
+                .render(
+                        tree(),
+                        ReportParams.of(Map.of("from", "2026-01-01", "to", "2026-03-01", "granularity", "month")),
+                        CTX);
 
         assertThat(report.outputKind()).isEqualTo("sheet");
         SheetDocument sheet = SheetCodec.parse(report.body(), YAML);
@@ -57,10 +60,29 @@ class TableReportProcessorTest {
 
     @Test
     void render_bodyRoundTripsThroughSheetCodec() {
-        FinanceReport report = new TableReportProcessor().render(
-                tree(),
-                ReportParams.of(Map.of("from", "2026-01-01", "to", "2026-02-01")), CTX);
+        FinanceReport report = new TableReportProcessor()
+                .render(tree(), ReportParams.of(Map.of("from", "2026-01-01", "to", "2026-02-01")), CTX);
         SheetDocument sheet = SheetCodec.parse(report.body(), YAML);
         assertThat(SheetCodec.serialize(sheet, YAML)).isEqualTo(report.body());
+    }
+
+    @Test
+    void render_dropsRowsBelowDisabledNode_keepsDisabledNodeAsZero() {
+        FinanceValue v =
+                new FinanceValue(3650, ValueMode.RECURRING, new Period(1, PeriodUnit.YEAR), null, null, null, null);
+        FinanceNode child = new FinanceNode("child", null, null, null, 1, false, null, null, List.of(v), List.of());
+        FinanceNode off = new FinanceNode("off", null, null, null, 1, true, null, null, List.of(), List.of(child));
+        FinanceNode root = new FinanceNode("root", null, null, null, 1, false, null, null, List.of(), List.of(off));
+        FinanceReport report = new TableReportProcessor()
+                .render(
+                        new FinanceTreeDocument(1, "Plan", null, root),
+                        ReportParams.of(Map.of("from", "2026-01-01", "to", "2026-02-01")),
+                        CTX);
+        SheetDocument sheet = SheetCodec.parse(report.body(), YAML);
+
+        assertThat(cell(sheet, "A2")).isEqualTo("root");
+        assertThat(cell(sheet, "A3")).isEqualTo("off");
+        assertThat(cell(sheet, "B3")).isEqualTo("0.00");
+        assertThat(cell(sheet, "A4")).isNull();
     }
 }

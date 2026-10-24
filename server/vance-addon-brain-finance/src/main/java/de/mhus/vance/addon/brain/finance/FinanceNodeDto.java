@@ -12,6 +12,7 @@ public record FinanceNodeDto(
         @Nullable String icon,
         @Nullable String color,
         int sign,
+        boolean disabled,
         @Nullable String description,
         @Nullable String notesRef,
         List<FinanceValueDto> values,

@@ -11,6 +11,7 @@ export interface FinanceNodeDto {
   icon?: string;
   color?: string;
   sign: number;
+  disabled: boolean;
   description?: string;
   notesRef?: string;
   values: FinanceValueDto[];

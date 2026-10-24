@@ -31,7 +31,9 @@ export default {
       title: 'Title',
       icon: 'Icon',
       color: 'Color',
+      pickColor: 'Pick color',
       negative: 'negative (flips subtree)',
+      disabled: 'disabled (counts as 0)',
       description: 'Description',
       notesRef: 'Notes ref',
     },
@@ -95,6 +97,8 @@ export default {
       indent: 'Indent',
       outdent: 'Outdent',
       delete: 'Delete',
+      disable: 'Switch off (counts as 0)',
+      enable: 'Switch on',
     },
     summary: {
       edit: 'Edit…',

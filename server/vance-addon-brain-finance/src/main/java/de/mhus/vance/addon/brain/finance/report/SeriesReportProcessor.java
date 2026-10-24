@@ -1,6 +1,7 @@
 package de.mhus.vance.addon.brain.finance.report;
 
 import de.mhus.vance.addon.brain.finance.FinanceProjector;
+import de.mhus.vance.addon.brain.finance.model.FinanceNode;
 import de.mhus.vance.addon.brain.finance.model.FinanceProjection;
 import de.mhus.vance.addon.brain.finance.model.FinanceTreeDocument;
 import de.mhus.vance.addon.brain.finance.model.ProjectionPeriod;
@@ -28,11 +29,20 @@ import org.springframework.stereotype.Component;
 @Component
 public class SeriesReportProcessor implements FinanceReportProcessor {
 
-    @Override public String type() { return "series"; }
+    @Override
+    public String type() {
+        return "series";
+    }
 
-    @Override public String title() { return "Series (chart)"; }
+    @Override
+    public String title() {
+        return "Series (chart)";
+    }
 
-    @Override public String outputKind() { return "chart"; }
+    @Override
+    public String outputKind() {
+        return "chart";
+    }
 
     @Override
     public FinanceReport render(FinanceTreeDocument tree, ReportParams params, ReportContext ctx) {
@@ -45,15 +55,17 @@ public class SeriesReportProcessor implements FinanceReportProcessor {
                     "series report supports line/bar/area/scatter, not '" + chartType.wire() + "'");
         }
 
-        FinanceProjection proj = tree.root() == null
+        FinanceNode root = tree.root();
+        FinanceProjection proj = root == null
                 ? new FinanceProjection(List.of(), List.of())
-                : FinanceProjector.project(tree.root(), r.from(), r.to(), r.granularity());
+                : FinanceProjector.project(root, r.from(), r.to(), r.granularity());
 
         List<String> categories = new ArrayList<>();
         for (ProjectionPeriod p : proj.periods()) categories.add(p.label());
 
         List<ChartSeries> series = new ArrayList<>();
-        for (ProjectionRow pr : proj.rows()) {
+        List<ProjectionRow> rows = root == null ? proj.rows() : ReportSupport.countingRows(proj, root);
+        for (ProjectionRow pr : rows) {
             List<Object> data = new ArrayList<>();
             for (int i = 0; i < pr.amounts().size(); i++) {
                 Map<String, Object> point = new LinkedHashMap<>();
@@ -66,8 +78,8 @@ public class SeriesReportProcessor implements FinanceReportProcessor {
 
         ChartHeader header = new ChartHeader(chartType, tree.title(), null, true, false, false);
         ChartAxis xAxis = new ChartAxis(AxisType.CATEGORY, null, null, null, categories);
-        ChartDocument chart = new ChartDocument(
-                "chart", header, xAxis, ChartAxis.defaultY(), series, null, new LinkedHashMap<>());
+        ChartDocument chart =
+                new ChartDocument("chart", header, xAxis, ChartAxis.defaultY(), series, null, new LinkedHashMap<>());
 
         String body = ChartCodec.serialize(chart, ReportSupport.YAML_MIME);
         return new FinanceReport("chart", ReportSupport.YAML_MIME, body, null);

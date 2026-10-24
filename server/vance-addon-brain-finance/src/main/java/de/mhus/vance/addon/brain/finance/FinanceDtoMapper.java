@@ -30,8 +30,8 @@ public final class FinanceDtoMapper {
     // ── model → DTO ───────────────────────────────────────────────
 
     public static FinanceTreeDto toDto(FinanceTreeDocument doc) {
-        return new FinanceTreeDto(doc.version(), doc.title(), doc.description(),
-                doc.root() == null ? null : nodeToDto(doc.root()));
+        return new FinanceTreeDto(
+                doc.version(), doc.title(), doc.description(), doc.root() == null ? null : nodeToDto(doc.root()));
     }
 
     private static FinanceNodeDto nodeToDto(FinanceNode n) {
@@ -39,8 +39,17 @@ public final class FinanceDtoMapper {
         for (FinanceValue v : n.values()) values.add(valueToDto(v));
         List<FinanceNodeDto> children = new ArrayList<>();
         for (FinanceNode c : n.children()) children.add(nodeToDto(c));
-        return new FinanceNodeDto(n.name(), n.title(), n.icon(), n.color(), n.sign(),
-                n.description(), n.notesRef(), values, children);
+        return new FinanceNodeDto(
+                n.name(),
+                n.title(),
+                n.icon(),
+                n.color(),
+                n.sign(),
+                n.disabled(),
+                n.description(),
+                n.notesRef(),
+                values,
+                children);
     }
 
     private static FinanceValueDto valueToDto(FinanceValue v) {
@@ -59,16 +68,14 @@ public final class FinanceDtoMapper {
     }
 
     private static FinanceInterestDto interestToDto(FinanceInterest i) {
-        return new FinanceInterestDto(i.rate(), periodToDto(i.period()), i.basis().wire(),
-                i.compound());
+        return new FinanceInterestDto(
+                i.rate(), periodToDto(i.period()), i.basis().wire(), i.compound());
     }
 
     // ── DTO → model (via codec grammar) ───────────────────────────
 
     public static FinanceTreeDocument fromDto(FinanceTreeDto dto) {
-        FinanceNode root = dto.root() == null
-                ? null
-                : FinanceTreeCodec.nodeFromMap(nodeToMap(dto.root()));
+        FinanceNode root = dto.root() == null ? null : FinanceTreeCodec.nodeFromMap(nodeToMap(dto.root()));
         int version = dto.version() <= 0 ? FinanceTreeDocument.CURRENT_VERSION : dto.version();
         return new FinanceTreeDocument(version, dto.title(), dto.description(), root);
     }
@@ -80,6 +87,7 @@ public final class FinanceDtoMapper {
         putIfNotNull(m, "icon", n.icon());
         putIfNotNull(m, "color", n.color());
         m.put("sign", n.sign());
+        m.put("disabled", n.disabled());
         putIfNotNull(m, "description", n.description());
         putIfNotNull(m, "notesRef", n.notesRef());
         List<Map<String, Object>> values = new ArrayList<>();

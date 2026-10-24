@@ -35,7 +35,7 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p>Compactness rules (to keep the on-disk tree lean, symmetric with the
  * defaults re-applied on parse): {@code sign} is emitted only when
- * {@code != +1}; {@code mode} only for {@link ValueMode#ONE_TIME}; empty
+ * {@code != +1}; {@code disabled} only when {@code true}; {@code mode} only for {@link ValueMode#ONE_TIME}; empty
  * {@code values}/{@code children} lists are dropped; interest {@code basis}
  * only when {@code != VOM_HUNDERT} and {@code compound} only when {@code true}.
  */
@@ -51,12 +51,11 @@ public final class FinanceTreeCodec {
      * both hold. Not applied to JSON (no comments).
      */
     private static final String YAML_HINT =
-            "# vance finance-tree v1 · amounts are per record; a node's sign flips its whole subtree\n"
-            + "# agent: run manual_read('finance-tree') before interpreting · computed values under $computed\n";
+            "# vance finance-tree v1 · amounts are per record; a node's sign flips its whole subtree; a disabled node counts as 0\n"
+                    + "# agent: run manual_read('finance-tree') before interpreting · computed values under $computed\n";
 
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final TypeReference<LinkedHashMap<String, Object>> JSON_MAP =
-            new TypeReference<>() {};
+    private static final TypeReference<LinkedHashMap<String, Object>> JSON_MAP = new TypeReference<>() {};
 
     private FinanceTreeCodec() {
         // utility class
@@ -80,8 +79,8 @@ public final class FinanceTreeCodec {
      * {@link #parse} (parse reads only the input keys), so a recompute simply
      * rewrites it.
      */
-    public static String serialize(FinanceTreeDocument doc, @Nullable FinanceComputed computed,
-                                   @Nullable String mimeType) {
+    public static String serialize(
+            FinanceTreeDocument doc, @Nullable FinanceComputed computed, @Nullable String mimeType) {
         if (isJson(mimeType)) return serializeJson(doc, computed);
         if (isYaml(mimeType)) {
             return YAML_HINT + KindHeaderCodec.dumpYamlBody(KIND, buildBody(doc, computed));
@@ -137,8 +136,7 @@ public final class FinanceTreeCodec {
         }
     }
 
-    private static Map<String, Object> buildBody(FinanceTreeDocument doc,
-                                                 @Nullable FinanceComputed computed) {
+    private static Map<String, Object> buildBody(FinanceTreeDocument doc, @Nullable FinanceComputed computed) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("version", doc.version());
         if (doc.title() != null) body.put("title", doc.title());
@@ -178,6 +176,7 @@ public final class FinanceTreeCodec {
         String name = str(raw, "name");
         if (name == null) throw new KindCodecException("finance node requires `name`");
         int sign = intOr(raw.get("sign"), 1) < 0 ? -1 : 1;
+        boolean disabled = boolOr(raw.get("disabled"), false);
 
         List<FinanceValue> values = new ArrayList<>();
         for (Map<String, Object> v : mapList(raw.get("values"))) {
@@ -193,6 +192,7 @@ public final class FinanceTreeCodec {
                 str(raw, "icon"),
                 str(raw, "color"),
                 sign,
+                disabled,
                 str(raw, "description"),
                 str(raw, "notesRef"),
                 values,
@@ -206,6 +206,7 @@ public final class FinanceTreeCodec {
         if (n.icon() != null) m.put("icon", n.icon());
         if (n.color() != null) m.put("color", n.color());
         if (n.sign() != 1) m.put("sign", n.sign());
+        if (n.disabled()) m.put("disabled", true);
         if (n.description() != null) m.put("description", n.description());
         if (n.notesRef() != null) m.put("notesRef", n.notesRef());
         if (!n.values().isEmpty()) {

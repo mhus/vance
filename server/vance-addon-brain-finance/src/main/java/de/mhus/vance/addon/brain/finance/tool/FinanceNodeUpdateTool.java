@@ -13,7 +13,7 @@ import java.util.Map;
 import java.util.Set;
 import org.springframework.stereotype.Component;
 
-/** Update a node's display fields (title/icon/color/sign/description/notesRef). */
+/** Update a node's display fields (title/icon/color/sign/disabled/description/notesRef). */
 @Component
 public class FinanceNodeUpdateTool implements Tool {
 
@@ -31,8 +31,9 @@ public class FinanceNodeUpdateTool implements Tool {
                                     "type",
                                     "object",
                                     "description",
-                                    "Fields to change: title, icon, color, sign (+1/-1), "
-                                            + "description, notesRef. Values/children are untouched."));
+                                    "Fields to change: title, icon (one emoji), color (SLATE|RED|ORANGE|AMBER|"
+                                            + "GREEN|TEAL|CYAN|BLUE|INDIGO|PURPLE|PINK|ROSE), sign (+1/-1), "
+                                            + "disabled (bool), description, notesRef. Values/children are untouched."));
                     put("projectId", Map.of("type", "string"));
                 }
             },
@@ -59,7 +60,9 @@ public class FinanceNodeUpdateTool implements Tool {
     public String description() {
         return "Update a finance-tree node's display fields (title, icon, color, sign, "
                 + "description, notesRef). The node name and its values/children are not "
-                + "changed. Set `sign` to -1 to make the node's subtree subtract.";
+                + "changed. Set `sign` to -1 to make the node's subtree subtract; set "
+                + "`disabled` to true to switch the node off (it counts as 0, its subtree "
+                + "no longer rolls up).";
     }
 
     @Override

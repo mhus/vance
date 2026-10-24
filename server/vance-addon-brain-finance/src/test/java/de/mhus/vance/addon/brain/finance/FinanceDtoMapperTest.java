@@ -18,16 +18,19 @@ import org.junit.jupiter.api.Test;
 class FinanceDtoMapperTest {
 
     private static FinanceTreeDocument sample() {
-        FinanceValue rent = new FinanceValue(800, ValueMode.RECURRING,
-                new Period(1, PeriodUnit.MONTH), "2026-01-01", null, null,
-                new FinanceInterest(5.0, new Period(1, PeriodUnit.YEAR),
-                        InterestBasis.VOM_HUNDERT, false));
-        FinanceValue lump = new FinanceValue(5000, ValueMode.ONE_TIME, null,
-                "2026-03-01", null, null, null);
-        FinanceNode ausgaben = new FinanceNode("ausgaben", "Ausgaben", "🧾", null, -1,
-                "costs", "notes", List.of(rent, lump), List.of());
-        FinanceNode root = new FinanceNode("projekt", "Projekt", null, null, 1, null, null,
-                List.of(), List.of(ausgaben));
+        FinanceValue rent = new FinanceValue(
+                800,
+                ValueMode.RECURRING,
+                new Period(1, PeriodUnit.MONTH),
+                "2026-01-01",
+                null,
+                null,
+                new FinanceInterest(5.0, new Period(1, PeriodUnit.YEAR), InterestBasis.VOM_HUNDERT, false));
+        FinanceValue lump = new FinanceValue(5000, ValueMode.ONE_TIME, null, "2026-03-01", null, null, null);
+        FinanceNode ausgaben = new FinanceNode(
+                "ausgaben", "Ausgaben", "🧾", null, -1, false, "costs", "notes", List.of(rent, lump), List.of());
+        FinanceNode root =
+                new FinanceNode("projekt", "Projekt", null, null, 1, false, null, null, List.of(), List.of(ausgaben));
         return new FinanceTreeDocument(1, "Plan", "desc", root);
     }
 
@@ -57,8 +60,7 @@ class FinanceDtoMapperTest {
     @Test
     void fromDto_reusesCodecValidation_recurringWithoutPeriodThrows() {
         FinanceValueDto bad = new FinanceValueDto(10, "recurring", null, null, null, null, null);
-        FinanceNodeDto root = new FinanceNodeDto("r", null, null, null, 1, null, null,
-                List.of(bad), List.of());
+        FinanceNodeDto root = new FinanceNodeDto("r", null, null, null, 1, false, null, null, List.of(bad), List.of());
         FinanceTreeDto dto = new FinanceTreeDto(1, "t", null, root);
         assertThatThrownBy(() -> FinanceDtoMapper.fromDto(dto))
                 .isInstanceOf(KindCodecException.class)

@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
 class FinanceTreeOpsTest {
 
     private static FinanceNode node(String name) {
-        return new FinanceNode(name, null, null, null, 1, null, null, List.of(), List.of());
+        return new FinanceNode(name, null, null, null, 1, false, null, null, List.of(), List.of());
     }
 
     private static FinanceTreeDocument empty() {
@@ -69,8 +69,7 @@ class FinanceTreeOpsTest {
     void updateNode_changesDisplayFieldsKeepsChildren() {
         FinanceTreeDocument doc = FinanceTreeOps.addChild(empty(), null, node("projekt"));
         doc = FinanceTreeOps.addChild(doc, "projekt", node("ausgaben"));
-        doc = FinanceTreeOps.updateNode(doc, "ausgaben",
-                Map.of("title", "Ausgaben", "sign", -1));
+        doc = FinanceTreeOps.updateNode(doc, "ausgaben", Map.of("title", "Ausgaben", "sign", -1));
 
         FinanceNode ausgaben = FinanceTreeOps.find(doc, "ausgaben");
         assertThat(ausgaben.title()).isEqualTo("Ausgaben");
@@ -97,8 +96,8 @@ class FinanceTreeOpsTest {
     @Test
     void setValues_replacesNodeValues() {
         FinanceTreeDocument doc = FinanceTreeOps.addChild(empty(), null, node("projekt"));
-        FinanceValue v = new FinanceValue(800, ValueMode.RECURRING,
-                new Period(1, PeriodUnit.MONTH), null, null, null, null);
+        FinanceValue v =
+                new FinanceValue(800, ValueMode.RECURRING, new Period(1, PeriodUnit.MONTH), null, null, null, null);
         doc = FinanceTreeOps.setValues(doc, "projekt", List.of(v));
         assertThat(FinanceTreeOps.find(doc, "projekt").values()).hasSize(1);
         assertThat(FinanceTreeOps.find(doc, "projekt").values().get(0).value()).isEqualTo(800.0);
@@ -111,5 +110,20 @@ class FinanceTreeOpsTest {
         assertThatThrownBy(() -> FinanceTreeOps.setValues(fixed, "nope", List.of()))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("No node named 'nope'");
+    }
+
+    @Test
+    void updateNode_togglesDisabled_otherFieldsUntouched() {
+        FinanceTreeDocument doc = FinanceTreeOps.addChild(empty(), null, node("projekt"));
+        doc = FinanceTreeOps.updateNode(doc, "projekt", Map.of("title", "P"));
+        doc = FinanceTreeOps.updateNode(doc, "projekt", Map.of("disabled", true));
+        assertThat(FinanceTreeOps.find(doc, "projekt").disabled()).isTrue();
+        assertThat(FinanceTreeOps.find(doc, "projekt").title()).isEqualTo("P");
+
+        doc = FinanceTreeOps.updateNode(doc, "projekt", Map.of("sign", -1));
+        assertThat(FinanceTreeOps.find(doc, "projekt").disabled()).isTrue();
+
+        doc = FinanceTreeOps.updateNode(doc, "projekt", Map.of("disabled", "false"));
+        assertThat(FinanceTreeOps.find(doc, "projekt").disabled()).isFalse();
     }
 }

@@ -35,8 +35,9 @@ public class FinanceNodeAddTool implements Tool {
                                     "type",
                                     "object",
                                     "description",
-                                    "Node: {name (required), title, icon, color, "
-                                            + "sign (+1/-1), description, notesRef}. Add values later "
+                                    "Node: {name (required), title, icon (one emoji), color (SLATE|RED|ORANGE|"
+                                            + "AMBER|GREEN|TEAL|CYAN|BLUE|INDIGO|PURPLE|PINK|ROSE), "
+                                            + "sign (+1/-1), disabled (bool), description, notesRef}. Add values later "
                                             + "with finance_node_value_set."));
                     put("projectId", Map.of("type", "string"));
                 }

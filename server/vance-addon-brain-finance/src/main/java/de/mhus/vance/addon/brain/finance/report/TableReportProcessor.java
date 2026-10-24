@@ -1,6 +1,7 @@
 package de.mhus.vance.addon.brain.finance.report;
 
 import de.mhus.vance.addon.brain.finance.FinanceProjector;
+import de.mhus.vance.addon.brain.finance.model.FinanceNode;
 import de.mhus.vance.addon.brain.finance.model.FinanceProjection;
 import de.mhus.vance.addon.brain.finance.model.FinanceTreeDocument;
 import de.mhus.vance.addon.brain.finance.model.ProjectionPeriod;
@@ -21,21 +22,31 @@ import org.springframework.stereotype.Component;
 @Component
 public class TableReportProcessor implements FinanceReportProcessor {
 
-    @Override public String type() { return "table"; }
+    @Override
+    public String type() {
+        return "table";
+    }
 
-    @Override public String title() { return "Table (sheet)"; }
+    @Override
+    public String title() {
+        return "Table (sheet)";
+    }
 
-    @Override public String outputKind() { return "sheet"; }
+    @Override
+    public String outputKind() {
+        return "sheet";
+    }
 
     @Override
     public FinanceReport render(FinanceTreeDocument tree, ReportParams params, ReportContext ctx) {
         ReportSupport.Range r = ReportSupport.resolveRange(type(), params);
-        FinanceProjection proj = tree.root() == null
+        FinanceNode root = tree.root();
+        FinanceProjection proj = root == null
                 ? new FinanceProjection(List.of(), List.of())
-                : FinanceProjector.project(tree.root(), r.from(), r.to(), r.granularity());
+                : FinanceProjector.project(root, r.from(), r.to(), r.granularity());
 
         List<ProjectionPeriod> periods = proj.periods();
-        List<ProjectionRow> rows = proj.rows();
+        List<ProjectionRow> rows = root == null ? proj.rows() : ReportSupport.countingRows(proj, root);
         int totalCol = 1 + periods.size() + 1; // A(name) + periods + Total
 
         List<String> schema = new ArrayList<>();
@@ -52,16 +63,22 @@ public class TableReportProcessor implements FinanceReportProcessor {
         for (ProjectionRow pr : rows) {
             cells.add(cell("A" + row, pr.name()));
             for (int i = 0; i < pr.amounts().size(); i++) {
-                cells.add(cell(col(2 + i) + row, ReportSupport.money(pr.amounts().get(i))));
+                cells.add(
+                        cell(col(2 + i) + row, ReportSupport.money(pr.amounts().get(i))));
             }
             cells.add(cell(col(totalCol) + row, ReportSupport.money(pr.total())));
             row++;
         }
 
-        SheetDocument sheet =
-                new SheetDocument("sheet", schema, 1 + rows.size(), cells,
-                        new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>(),
-                        new LinkedHashMap<>());
+        SheetDocument sheet = new SheetDocument(
+                "sheet",
+                schema,
+                1 + rows.size(),
+                cells,
+                new LinkedHashMap<>(),
+                new LinkedHashMap<>(),
+                new LinkedHashMap<>(),
+                new LinkedHashMap<>());
         String body = SheetCodec.serialize(sheet, ReportSupport.YAML_MIME);
         return new FinanceReport("sheet", ReportSupport.YAML_MIME, body, null);
     }

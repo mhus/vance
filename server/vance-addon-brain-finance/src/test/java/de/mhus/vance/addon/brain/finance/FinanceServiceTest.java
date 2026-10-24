@@ -42,10 +42,10 @@ class FinanceServiceTest {
 
     /** Root project with a recurring rent (no validity, always active). */
     private static FinanceTreeDocument sample() {
-        FinanceValue rent = new FinanceValue(800, ValueMode.RECURRING,
-                new Period(1, PeriodUnit.MONTH), null, null, null, null);
-        FinanceNode root = new FinanceNode("projekt", "Projekt", null, null, 1, null, null,
-                List.of(rent), List.of());
+        FinanceValue rent =
+                new FinanceValue(800, ValueMode.RECURRING, new Period(1, PeriodUnit.MONTH), null, null, null, null);
+        FinanceNode root =
+                new FinanceNode("projekt", "Projekt", null, null, 1, false, null, null, List.of(rent), List.of());
         return new FinanceTreeDocument(1, "Plan", null, root);
     }
 
@@ -58,17 +58,15 @@ class FinanceServiceTest {
         String body = FinanceTreeCodec.serialize(tree, YAML);
         when(documentService.loadContent(doc))
                 .thenReturn(new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8)));
-        when(documentService.update(
-                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+        when(documentService.update(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(doc);
         return doc;
     }
 
     private String capturedBody() {
         ArgumentCaptor<String> cap = ArgumentCaptor.forClass(String.class);
-        verify(documentService).update(
-                eq("id1"), any(), any(), cap.capture(), any(), any(), any(), any(), any(),
-                any(), any());
+        verify(documentService)
+                .update(eq("id1"), any(), any(), cap.capture(), any(), any(), any(), any(), any(), any(), any());
         return cap.getValue();
     }
 

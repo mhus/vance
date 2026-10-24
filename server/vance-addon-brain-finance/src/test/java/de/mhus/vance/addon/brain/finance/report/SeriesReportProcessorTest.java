@@ -22,10 +22,9 @@ class SeriesReportProcessorTest {
     private static final ReportContext CTX = new ReportContext("t1", "p1", null, null);
 
     private static FinanceTreeDocument tree() {
-        FinanceValue v = new FinanceValue(3650, ValueMode.RECURRING,
-                new Period(1, PeriodUnit.YEAR), null, null, null, null);
-        FinanceNode root = new FinanceNode("x", null, null, null, 1, null, null,
-                List.of(v), List.of());
+        FinanceValue v =
+                new FinanceValue(3650, ValueMode.RECURRING, new Period(1, PeriodUnit.YEAR), null, null, null, null);
+        FinanceNode root = new FinanceNode("x", null, null, null, 1, false, null, null, List.of(v), List.of());
         return new FinanceTreeDocument(1, "Plan", null, root);
     }
 
@@ -51,23 +50,22 @@ class SeriesReportProcessorTest {
         assertThat(chart.series().get(0).name()).isEqualTo("x");
 
         @SuppressWarnings("unchecked")
-        Map<String, Object> point0 = (Map<String, Object>) chart.series().get(0).data().get(0);
+        Map<String, Object> point0 =
+                (Map<String, Object>) chart.series().get(0).data().get(0);
         assertThat(point0.get("x")).isEqualTo("2026-01");
         assertThat(((Number) point0.get("y")).doubleValue()).isEqualTo(310.0);
     }
 
     @Test
     void render_honoursChartTypeParam() {
-        FinanceReport report = new SeriesReportProcessor()
-                .render(tree(), params(Map.of("chartType", "bar")), CTX);
+        FinanceReport report = new SeriesReportProcessor().render(tree(), params(Map.of("chartType", "bar")), CTX);
         ChartDocument chart = ChartCodec.parse(report.body(), YAML);
         assertThat(chart.chart().chartType()).isEqualTo(ChartType.BAR);
     }
 
     @Test
     void render_rejectsNonXyChartType() {
-        assertThatThrownBy(() -> new SeriesReportProcessor()
-                .render(tree(), params(Map.of("chartType", "pie")), CTX))
+        assertThatThrownBy(() -> new SeriesReportProcessor().render(tree(), params(Map.of("chartType", "pie")), CTX))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("line/bar/area/scatter");
     }
@@ -75,7 +73,7 @@ class SeriesReportProcessorTest {
     @Test
     void render_requiresRange() {
         assertThatThrownBy(() -> new SeriesReportProcessor()
-                .render(tree(), ReportParams.of(Map.of("granularity", "month")), CTX))
+                        .render(tree(), ReportParams.of(Map.of("granularity", "month")), CTX))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("'from' and 'to'");
     }

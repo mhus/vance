@@ -37,11 +37,20 @@ public class AssessmentReportProcessor implements FinanceReportProcessor {
         this.languageResolver = languageResolver;
     }
 
-    @Override public String type() { return "assessment"; }
+    @Override
+    public String type() {
+        return "assessment";
+    }
 
-    @Override public String title() { return "Assessment (LLM markdown)"; }
+    @Override
+    public String title() {
+        return "Assessment (LLM markdown)";
+    }
 
-    @Override public String outputKind() { return "markdown"; }
+    @Override
+    public String outputKind() {
+        return "markdown";
+    }
 
     @Override
     public FinanceReport render(FinanceTreeDocument tree, ReportParams params, ReportContext ctx) {
@@ -58,8 +67,7 @@ public class AssessmentReportProcessor implements FinanceReportProcessor {
         vars.put("focus", focus == null ? "" : focus);
         // Configured language (same resolver the big prompt contexts use) so the
         // report is written in the user's language, not just the model's titles.
-        vars.put("lang", languageResolver.chatLanguage(
-                ctx.tenantId(), ctx.userId(), ctx.projectId(), ctx.processId()));
+        vars.put("lang", languageResolver.chatLanguage(ctx.tenantId(), ctx.userId(), ctx.projectId(), ctx.processId()));
 
         String markdown = lightLlm.call(LightLlmRequest.builder()
                 .recipeName(RECIPE)
@@ -78,35 +86,47 @@ public class AssessmentReportProcessor implements FinanceReportProcessor {
      * the snapshot value (so expense branches read as negative), with base/
      * interest split and a separate one-time note.
      */
-    private static String layout(FinanceTreeDocument tree, FinanceNode root,
-                                 List<NodeSnapshot> snapshot) {
+    private static String layout(FinanceTreeDocument tree, FinanceNode root, List<NodeSnapshot> snapshot) {
         Map<String, NodeSnapshot> byName = new HashMap<>();
         for (NodeSnapshot s : snapshot) byName.put(s.name(), s);
 
         StringBuilder sb = new StringBuilder();
         if (tree.title() != null) sb.append("Model: ").append(tree.title()).append('\n');
-        sb.append("(figures per year; negative = net outflow; one-time held separate)\n\n");
-        appendNode(root, 0, byName, sb);
+        sb.append("(figures per year; negative = net outflow; one-time held separate;"
+                + " DISABLED nodes are switched off and count as 0 — figures below them are"
+                + " shown for reference only and do not count)\n\n");
+        appendNode(root, 0, false, byName, sb);
         return sb.toString();
     }
 
-    private static void appendNode(FinanceNode node, int depth,
-                                   Map<String, NodeSnapshot> byName, StringBuilder sb) {
+    private static void appendNode(
+            FinanceNode node, int depth, boolean underDisabled, Map<String, NodeSnapshot> byName, StringBuilder sb) {
         NodeSnapshot s = byName.get(node.name());
         sb.append("  ".repeat(depth)).append("- ");
         sb.append(node.title() != null ? node.title() + " (" + node.name() + ")" : node.name());
+        if (node.disabled()) {
+            sb.append(" [DISABLED]");
+        } else if (underDisabled) {
+            sb.append(" [inside disabled branch, not counted]");
+        }
         if (s != null) {
             sb.append(": ").append(money(s.perYear())).append("/yr");
             if (Math.abs(s.interest()) > 0.005) {
-                sb.append(" [base ").append(money(s.base()))
-                        .append(", interest ").append(money(s.interest())).append("]");
+                sb.append(" [base ")
+                        .append(money(s.base()))
+                        .append(", interest ")
+                        .append(money(s.interest()))
+                        .append("]");
             }
             if (Math.abs(s.oneTimeSum()) > 0.005) {
                 sb.append(", one-time ").append(money(s.oneTimeSum()));
             }
         }
         sb.append('\n');
-        for (FinanceNode child : node.children()) appendNode(child, depth + 1, byName, sb);
+        boolean childrenUnderDisabled = underDisabled || node.disabled();
+        for (FinanceNode child : node.children()) {
+            appendNode(child, depth + 1, childrenUnderDisabled, byName, sb);
+        }
     }
 
     private static String money(double v) {

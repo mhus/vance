@@ -12,7 +12,9 @@ project finance planning, budgets, cashflow and cost/revenue modelling — a
 ## The model
 
 **Node** — one card in the tree. Fields: `name` (unique key in the tree),
-`title`, `icon`, `color`, `description`, `notesRef` (link to a notes doc), and
+`title`, `icon` (one emoji), `color` (an accent name: `SLATE`, `RED`, `ORANGE`,
+`AMBER`, `GREEN`, `TEAL`, `CYAN`, `BLUE`, `INDIGO`, `PURPLE`, `PINK`, `ROSE`),
+`description`, `notesRef` (link to a notes doc), and
 `sign` (`+1` / `-1`). A node's **sign flips its whole contribution**:
 
 ```
@@ -22,6 +24,13 @@ total(node) = sign × ( Σ own values + Σ children totals )
 So an **expense branch** is a node with `sign: -1` over children whose amounts
 you enter as **positive** — the `-1` makes the subtree subtract. (There is no
 need to enter negative numbers.)
+
+**Disabled** — `disabled: true` switches a node off *hard*: its own figure is
+`0` and nothing of its subtree rolls up past it. Its children are still
+computed and keep their own `$computed` figures — **for reference only, they
+don't count**. Use it to try a scenario without a branch instead of deleting
+values (`finance_node_update(path, name, {disabled: true})`, `false` to switch
+back on).
 
 **Value record** — an additive amount on a node. Two modes:
 - `recurring` (default): a **rate** — `value` per `period` (`{count, unit}`,
@@ -58,4 +67,6 @@ Never hand-write the YAML — use the tools:
 
 Read the current state with `doc_read` — the tree is plain YAML. When giving an
 opinion, interpret `sign`, the per-year figures under `$computed`, and keep
-`oneTimeSum` separate from the recurring rate.
+`oneTimeSum` separate from the recurring rate. Leave everything below a
+`disabled` node out of the totals — say so if the switched-off branch matters
+for the user's question.

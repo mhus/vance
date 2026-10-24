@@ -28,6 +28,9 @@ import org.jspecify.annotations.Nullable;
  *       {@code VOM_HUNDERT} in v1; {@code compound} is a projection concern.</li>
  *   <li><b>Sign rollup</b> — {@code total = sign × (Σ own + Σ children total)}.
  *       A per-record {@code sign} multiplies just that record.</li>
+ *   <li><b>Disabled</b> — a {@code disabled} node's own snapshot is hard
+ *       {@code 0} and it contributes nothing upward; its children are still
+ *       computed and keep their own snapshots.</li>
  *   <li><b>Validity</b> — a {@code RECURRING} record only counts when
  *       {@code today} is inside {@code [validFrom, validTo]} (null = open).</li>
  *   <li><b>One-time</b> — {@code ONE_TIME} records never enter the per-year
@@ -80,17 +83,21 @@ public final class FinanceCalculator {
         }
 
         int sign = node.sign() < 0 ? -1 : 1;
-        double base = sign * (ownBase + childBase);
-        double interest = sign * (ownInterest + childInterest);
-        double oneTime = sign * (ownOneTime + childOneTime);
+        boolean off = node.disabled(); // explicit 0, not 0 × x (avoids -0.0)
+        double base = off ? 0 : sign * (ownBase + childBase);
+        double interest = off ? 0 : sign * (ownInterest + childInterest);
+        double oneTime = off ? 0 : sign * (ownOneTime + childOneTime);
         double perYear = base + interest;
 
         snapshots.add(new NodeSnapshot(
-                node.name(), perYear,
+                node.name(),
+                perYear,
                 perDisplay(perYear, PeriodUnit.MONTH),
                 perDisplay(perYear, PeriodUnit.WEEK),
                 perDisplay(perYear, PeriodUnit.DAY),
-                base, interest, oneTime));
+                base,
+                interest,
+                oneTime));
         snapshots.addAll(childSnapshots);
         return new Result(new Totals(base, interest, oneTime), snapshots);
     }

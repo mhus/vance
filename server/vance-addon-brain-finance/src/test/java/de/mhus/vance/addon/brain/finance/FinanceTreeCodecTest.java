@@ -29,24 +29,33 @@ class FinanceTreeCodecTest {
      */
     private static FinanceTreeDocument sample() {
         FinanceValue clientA = new FinanceValue(
-                50, ValueMode.RECURRING, new Period(3, PeriodUnit.MONTH),
-                "2026-01-01", null, null,
-                new FinanceInterest(5.0, new Period(1, PeriodUnit.YEAR),
-                        InterestBasis.VOM_HUNDERT, false));
-        FinanceNode einnahmen = new FinanceNode("einnahmen", "Einnahmen", "💰", "#4f8", 1,
-                null, null, List.of(clientA), List.of());
+                50,
+                ValueMode.RECURRING,
+                new Period(3, PeriodUnit.MONTH),
+                "2026-01-01",
+                null,
+                null,
+                new FinanceInterest(5.0, new Period(1, PeriodUnit.YEAR), InterestBasis.VOM_HUNDERT, false));
+        FinanceNode einnahmen = new FinanceNode(
+                "einnahmen", "Einnahmen", "💰", "#4f8", 1, false, null, null, List.of(clientA), List.of());
 
-        FinanceValue miete = new FinanceValue(
-                800, ValueMode.RECURRING, new Period(1, PeriodUnit.MONTH),
-                null, null, null, null);
-        FinanceValue anschaffung = new FinanceValue(
-                5000, ValueMode.ONE_TIME, null, "2026-03-01", null, null, null);
-        FinanceNode ausgaben = new FinanceNode("ausgaben", "Ausgaben", "🧾", null, -1,
-                "laufende Kosten", "ausgaben-notes",
-                List.of(miete, anschaffung), List.of());
+        FinanceValue miete =
+                new FinanceValue(800, ValueMode.RECURRING, new Period(1, PeriodUnit.MONTH), null, null, null, null);
+        FinanceValue anschaffung = new FinanceValue(5000, ValueMode.ONE_TIME, null, "2026-03-01", null, null, null);
+        FinanceNode ausgaben = new FinanceNode(
+                "ausgaben",
+                "Ausgaben",
+                "🧾",
+                null,
+                -1,
+                false,
+                "laufende Kosten",
+                "ausgaben-notes",
+                List.of(miete, anschaffung),
+                List.of());
 
-        FinanceNode root = new FinanceNode("projekt", "Projekt", "📊", null, 1,
-                null, null, List.of(), List.of(einnahmen, ausgaben));
+        FinanceNode root = new FinanceNode(
+                "projekt", "Projekt", "📊", null, 1, false, null, null, List.of(), List.of(einnahmen, ausgaben));
         return new FinanceTreeDocument(1, "Q1 Finanzplanung", "desc", root);
     }
 
@@ -60,8 +69,7 @@ class FinanceTreeCodecTest {
         assertThat(back.title()).isEqualTo("Q1 Finanzplanung");
         assertThat(back.root()).isNotNull();
         assertThat(back.root().name()).isEqualTo("projekt");
-        assertThat(back.root().children()).extracting(FinanceNode::name)
-                .containsExactly("einnahmen", "ausgaben");
+        assertThat(back.root().children()).extracting(FinanceNode::name).containsExactly("einnahmen", "ausgaben");
 
         FinanceNode ausgaben = back.root().children().get(1);
         assertThat(ausgaben.sign()).isEqualTo(-1);
@@ -83,8 +91,7 @@ class FinanceTreeCodecTest {
     @Test
     void jsonRoundTrip_matchesYamlModel() {
         FinanceTreeDocument original = sample();
-        FinanceTreeDocument back =
-                FinanceTreeCodec.parse(FinanceTreeCodec.serialize(original, JSON), JSON);
+        FinanceTreeDocument back = FinanceTreeCodec.parse(FinanceTreeCodec.serialize(original, JSON), JSON);
 
         assertThat(back.root()).isNotNull();
         assertThat(back.root().children().get(0).values().get(0).value()).isEqualTo(50.0);
@@ -94,10 +101,13 @@ class FinanceTreeCodecTest {
     @Test
     void serialize_omitsDefaults() {
         FinanceValue plain = new FinanceValue(
-                800, ValueMode.RECURRING, new Period(1, PeriodUnit.MONTH),
-                null, null, null,
-                new FinanceInterest(3.0, new Period(1, PeriodUnit.YEAR),
-                        InterestBasis.VOM_HUNDERT, false));
+                800,
+                ValueMode.RECURRING,
+                new Period(1, PeriodUnit.MONTH),
+                null,
+                null,
+                null,
+                new FinanceInterest(3.0, new Period(1, PeriodUnit.YEAR), InterestBasis.VOM_HUNDERT, false));
         Map<String, Object> m = FinanceTreeCodec.valueToMap(plain);
 
         // RECURRING mode + null validity/sign are omitted; default interest
@@ -110,8 +120,7 @@ class FinanceTreeCodecTest {
 
     @Test
     void serialize_omitsPositiveSignAndEmptyLists() {
-        FinanceNode leaf = new FinanceNode("x", null, null, null, 1,
-                null, null, List.of(), List.of());
+        FinanceNode leaf = new FinanceNode("x", null, null, null, 1, false, null, null, List.of(), List.of());
         Map<String, Object> m = FinanceTreeCodec.nodeToMap(leaf);
         assertThat(m).doesNotContainKeys("sign", "values", "children", "title", "icon");
         assertThat(m).containsEntry("name", "x");
@@ -153,9 +162,9 @@ class FinanceTreeCodecTest {
     @Test
     void serializeWithComputed_emitsOverlayAndParseIgnoresIt() {
         FinanceTreeDocument doc = sample();
-        FinanceComputed computed = new FinanceComputed("2026-07-24T10:00:00Z",
-                List.of(new NodeSnapshot("projekt", 1050.0, 87.5, 20.19, 2.87,
-                        1000.0, 50.0, 0.0)));
+        FinanceComputed computed = new FinanceComputed(
+                "2026-07-24T10:00:00Z",
+                List.of(new NodeSnapshot("projekt", 1050.0, 87.5, 20.19, 2.87, 1000.0, 50.0, 0.0)));
 
         String yaml = FinanceTreeCodec.serialize(doc, computed, YAML);
         assertThat(yaml).contains("$computed").contains("computedAt").contains("perYear");
@@ -195,5 +204,22 @@ class FinanceTreeCodecTest {
         FinanceTreeDocument doc = FinanceTreeCodec.parse(yaml, YAML);
         assertThat(doc.version()).isEqualTo(1);
         assertThat(doc.root()).isNotNull();
+    }
+
+    @Test
+    void disabled_emittedOnlyWhenTrue_andRoundTrips() {
+        FinanceNode on = new FinanceNode("on", null, null, null, 1, false, null, null, List.of(), List.of());
+        FinanceNode off = new FinanceNode("off", null, null, null, 1, true, null, null, List.of(), List.of());
+        assertThat(FinanceTreeCodec.nodeToMap(on)).doesNotContainKey("disabled");
+        assertThat(FinanceTreeCodec.nodeToMap(off)).containsEntry("disabled", true);
+
+        FinanceTreeDocument doc = new FinanceTreeDocument(
+                1,
+                "t",
+                null,
+                new FinanceNode("r", null, null, null, 1, false, null, null, List.of(), List.of(on, off)));
+        String yaml = FinanceTreeCodec.serialize(doc, "application/yaml");
+        FinanceTreeDocument back = FinanceTreeCodec.parse(yaml, "application/yaml");
+        assertThat(back.root().children()).extracting(FinanceNode::disabled).containsExactly(false, true);
     }
 }

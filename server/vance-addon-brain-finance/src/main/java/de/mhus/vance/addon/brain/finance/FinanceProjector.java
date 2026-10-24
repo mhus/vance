@@ -43,7 +43,9 @@ import org.jspecify.annotations.Nullable;
  *       {@code validFrom}; interest on one-time lumps is a v2 refinement.</li>
  * </ul>
  * Sign rollup is identical to the snapshot: {@code total = sign × (Σ own + Σ
- * children)}, with a per-record {@code sign} multiplying just that record.
+ * children)}, with a per-record {@code sign} multiplying just that record. A
+ * {@code disabled} node is hard {@code 0} in every bucket and contributes
+ * nothing upward; its children keep their own rows.
  */
 public final class FinanceProjector {
 
@@ -53,8 +55,7 @@ public final class FinanceProjector {
         // utility class
     }
 
-    public static FinanceProjection project(FinanceNode root, LocalDate from, LocalDate to,
-                                            PeriodUnit granularity) {
+    public static FinanceProjection project(FinanceNode root, LocalDate from, LocalDate to, PeriodUnit granularity) {
         if (!from.isBefore(to)) {
             throw new IllegalArgumentException("projection range `from` must be before `to`");
         }
@@ -65,13 +66,11 @@ public final class FinanceProjector {
         while (cursor.isBefore(to)) {
             LocalDate next = advance(cursor, granularity);
             LocalDate end = next.isAfter(to) ? to : next;
-            periods.add(new ProjectionPeriod(label(cursor, granularity),
-                    cursor.toString(), end.toString()));
+            periods.add(new ProjectionPeriod(label(cursor, granularity), cursor.toString(), end.toString()));
             bounds.add(new LocalDate[] {cursor, end});
             if (periods.size() > MAX_PERIODS) {
                 throw new IllegalArgumentException(
-                        "projection exceeds " + MAX_PERIODS
-                                + " periods; widen the granularity or narrow the range");
+                        "projection exceeds " + MAX_PERIODS + " periods; widen the granularity or narrow the range");
             }
             cursor = next;
         }
@@ -102,8 +101,7 @@ public final class FinanceProjector {
 
     // ── Tree walk (per bucket) ────────────────────────────────────
 
-    private static double walkPeriod(FinanceNode node, LocalDate ps, LocalDate pe,
-                                     Map<String, Double> out) {
+    private static double walkPeriod(FinanceNode node, LocalDate ps, LocalDate pe, Map<String, Double> out) {
         double own = 0;
         for (FinanceValue v : node.values()) {
             own += periodContribution(v, ps, pe);
@@ -113,7 +111,7 @@ public final class FinanceProjector {
             childSum += walkPeriod(child, ps, pe, out);
         }
         int sign = node.sign() < 0 ? -1 : 1;
-        double total = sign * (own + childSum);
+        double total = node.disabled() ? 0 : sign * (own + childSum);
         out.put(node.name(), total);
         return total;
     }
@@ -134,8 +132,8 @@ public final class FinanceProjector {
         return rs * (base + interest);
     }
 
-    private static double interestForPeriod(FinanceValue v, LocalDate ps, LocalDate pe,
-                                            @Nullable LocalDate from, long activeDays) {
+    private static double interestForPeriod(
+            FinanceValue v, LocalDate ps, LocalDate pe, @Nullable LocalDate from, long activeDays) {
         FinanceInterest i = v.interest();
         if (i == null) return 0;
         double annual = v.value() * (i.rate() / 100.0) / i.period().years();
@@ -151,8 +149,7 @@ public final class FinanceProjector {
     }
 
     /** Days of {@code [ps, pe)} that fall inside the inclusive validity window. */
-    private static long overlapDays(LocalDate ps, LocalDate pe,
-                                    @Nullable LocalDate from, @Nullable LocalDate to) {
+    private static long overlapDays(LocalDate ps, LocalDate pe, @Nullable LocalDate from, @Nullable LocalDate to) {
         LocalDate lo = (from == null || from.isBefore(ps)) ? ps : from;
         LocalDate hiExcl = pe;
         if (to != null) {

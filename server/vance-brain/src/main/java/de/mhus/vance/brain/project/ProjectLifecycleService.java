@@ -87,13 +87,10 @@ public class ProjectLifecycleService {
      */
     private final ObjectProvider<EngineMessageRouter> messageRouterProvider;
     /**
-     * Optional permission-bootstrap SPI. Present only when a provider addon
-     * that stores grants in Vance (simple-auth) is loaded; then the creator
-     * of a project is seeded as its PROJECT-ADMIN. Absent under the allow-all
-     * provider or an external governor — {@code ifAvailable} makes the seed a
-     * no-op there. See {@code planning/permission-system-concept.md} §7.0.
+     * Seeds the creator of a project as its project ADMIN — project
+     * memberships live in Vance under every permission provider.
      */
-    private final ObjectProvider<de.mhus.vance.shared.permission.PermissionBootstrap> permissionBootstrapProvider;
+    private final de.mhus.vance.shared.role.RoleBootstrap roleBootstrap;
 
     /**
      * One lock per project key, serialising {@link #bring} on this pod. The
@@ -159,10 +156,10 @@ public class ProjectLifecycleService {
                 .findByTenantAndName(tenantId, name)
                 .orElseThrow(() ->
                         new ProjectService.ProjectNotFoundException("Project '" + name + "' vanished during create"));
-        // Seed the creator as PROJECT-ADMIN so they can manage the project
-        // they just made. No-op unless a grant-storing provider is loaded.
+        // Seed the creator as project ADMIN so they can manage the project
+        // they just made.
         if (createdBy != null && !createdBy.isBlank() && kind != ProjectKind.SYSTEM) {
-            permissionBootstrapProvider.ifAvailable(pb -> pb.grantProjectAdmin(tenantId, saved.getName(), createdBy));
+            roleBootstrap.grantProjectAdmin(tenantId, saved.getName(), createdBy);
         }
         return saved;
     }

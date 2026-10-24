@@ -30,7 +30,7 @@ import org.springframework.web.server.ResponseStatusException;
  * id; triage runs asynchronously and the reporter sees the result
  * as an inbox item once Fook has decided.
  *
- * <p>Authorization: {@link Action#WRITE} on
+ * <p>Authorization: {@link Action#START} on
  * {@link Resource.Tenant} — any authenticated user in the tenant
  * may file a support request. The userId is taken from the JWT
  * via {@link RequestAuthority#contextOf}; the tenant path segment
@@ -59,17 +59,16 @@ public class FookController {
             @Valid @RequestBody FookSubmissionRequestDto body,
             HttpServletRequest request) {
 
-        authority.enforce(request, new Resource.Tenant(tenant), Action.WRITE);
+        authority.enforce(request, new Resource.Tenant(tenant), Action.START);
 
         if (!enabled) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                    "Feedback (Fook) is disabled on this brain");
+            throw new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE, "Feedback (Fook) is disabled on this brain");
         }
         SecurityContext sc = authority.contextOf(request);
 
         if (body.getText() == null || body.getText().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "'text' is required");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "'text' is required");
         }
 
         SubmissionRequest req = SubmissionRequest.builder()

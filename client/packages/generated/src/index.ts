@@ -461,6 +461,15 @@ export * from './users/UserDto';
 export * from './users/UserPasswordRequest';
 export * from './users/UserUpdateRequest';
 
+export * from './roles/MyRolesDto';
+export * from './roles/ProjectRole';
+export * from './roles/ProjectRoleSetRequest';
+export * from './roles/RoleAssignmentDto';
+export * from './roles/RoleScopeType';
+export * from './roles/RoleSubjectType';
+export * from './roles/TenantRole';
+export * from './roles/TenantRoleSetRequest';
+
 export * from './web/LinkPreviewDto';
 
 export * from './ws/ClientAgentUploadRequest';

@@ -76,7 +76,7 @@ public class TeamDescribeTool implements Tool {
         boolean admin = permissionService.check(
                 contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
                 new de.mhus.vance.shared.permission.Resource.Tenant(ctx.tenantId()),
-                de.mhus.vance.shared.permission.Action.ADMIN);
+                de.mhus.vance.shared.permission.Action.WRITE);
         boolean member = ctx.userId() != null
                 && team.getMembers() != null
                 && team.getMembers().contains(ctx.userId());

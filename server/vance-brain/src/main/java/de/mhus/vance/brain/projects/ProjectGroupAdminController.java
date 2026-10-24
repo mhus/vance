@@ -27,7 +27,9 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Admin CRUD for project groups.
+ * Admin CRUD for project groups. Every member may list them (the project
+ * dialog of a CREATOR offers them); changing them is the tenant role ADMIN
+ * ({@code Tenant WRITE}).
  *
  * <p>Tenant in the path is validated by
  * {@link de.mhus.vance.brain.access.BrainAccessFilter} against the JWT's
@@ -44,7 +46,7 @@ public class ProjectGroupAdminController {
 
     @GetMapping
     public List<ProjectGroupSummary> list(@PathVariable("tenant") String tenant, HttpServletRequest httpRequest) {
-        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.READ);
         return projectGroupService.all(tenant).stream()
                 .sorted(Comparator.comparing(ProjectGroupDocument::getName))
                 .map(ProjectGroupAdminController::toSummary)
@@ -56,7 +58,7 @@ public class ProjectGroupAdminController {
             @PathVariable("tenant") String tenant,
             @Valid @RequestBody ProjectGroupCreateRequest request,
             HttpServletRequest httpRequest) {
-        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.WRITE);
         try {
             ProjectGroupDocument saved = projectGroupService.create(tenant, request.getName(), request.getTitle());
             return ResponseEntity.status(HttpStatus.CREATED).body(toSummary(saved));
@@ -71,7 +73,7 @@ public class ProjectGroupAdminController {
             @PathVariable("name") String name,
             @Valid @RequestBody ProjectGroupUpdateRequest request,
             HttpServletRequest httpRequest) {
-        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.WRITE);
         try {
             ProjectGroupDocument saved =
                     projectGroupService.update(tenant, name, request.getTitle(), request.getEnabled());
@@ -84,7 +86,7 @@ public class ProjectGroupAdminController {
     @DeleteMapping("/{name}")
     public ResponseEntity<Void> delete(
             @PathVariable("tenant") String tenant, @PathVariable("name") String name, HttpServletRequest httpRequest) {
-        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.WRITE);
         try {
             projectGroupService.delete(tenant, name);
             return ResponseEntity.noContent().build();

@@ -31,11 +31,10 @@ import org.springframework.stereotype.Component;
  * assignee's desk.
  *
  * <p><b>The same rule exists a second time</b>, in
- * {@code MongoPermissionResolver#inboxAllowed} (rule R5), which is what the WS
- * handlers hit through the abstract {@code Resource.InboxItem} gate. The
- * duplication is forced by the module boundary — the resolver ships in
- * {@code vance-addon-shared-simpleauth}, which builds on {@code vance-shared}
- * and must not depend on {@code vance-brain}, so it cannot call this class.
+ * {@code RoleTable#inboxAllows} (rule R5), which is what the WS handlers hit
+ * through the abstract {@code Resource.InboxItem} gate. The duplication is
+ * forced by the module boundary — the role table lives in {@code vance-shared},
+ * which must not depend on {@code vance-brain}, so it cannot call this class.
  * (An earlier plan was to extract this helper into shared for exactly that
  * reason; it ended up in brain instead.) That copy mirrors {@link #mayDecide};
  * the participant/team widening of {@link #maySee} is <b>not</b> in it, because
@@ -76,8 +75,7 @@ public class InboxAuthz {
      * thread work must not widen it.
      */
     public boolean mayDecide(String tenant, String currentUser, @Nullable String assignee) {
-        return assignee != null
-                && (assignee.equals(currentUser) || sharesTeam(tenant, currentUser, assignee));
+        return assignee != null && (assignee.equals(currentUser) || sharesTeam(tenant, currentUser, assignee));
     }
 
     /**

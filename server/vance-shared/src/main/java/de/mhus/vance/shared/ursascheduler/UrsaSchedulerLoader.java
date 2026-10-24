@@ -7,6 +7,7 @@ import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
 import de.mhus.vance.shared.home.HomeBootstrapService;
+import de.mhus.vance.shared.permission.RunAsReader;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -44,7 +45,7 @@ import org.yaml.snakeyaml.Yaml;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class UrsaSchedulerLoader {
+public class UrsaSchedulerLoader implements RunAsReader {
 
     /** Path prefix used for scheduler documents in any cascade tier. */
     public static final String SCHEDULER_PATH_PREFIX = "_vance/scheduler/";
@@ -146,6 +147,25 @@ public class UrsaSchedulerLoader {
         if (!path.endsWith(SCHEDULER_PATH_SUFFIX)) return null;
         String stem = path.substring(SCHEDULER_PATH_PREFIX.length(), path.length() - SCHEDULER_PATH_SUFFIX.length());
         return stem.isBlank() ? null : stem;
+    }
+
+    /** Scheduler documents are executed under their author or their {@code runAs}. */
+    @Override
+    public boolean executes(String path) {
+        return nameFromPath(path) != null;
+    }
+
+    @Override
+    public @Nullable String declaredRunAs(String path, String content) {
+        String name = nameFromPath(path);
+        if (name == null) return null;
+        try {
+            String runAs = parseValidated(name, content).runAs();
+            return runAs == null || runAs.isBlank() ? null : runAs;
+        } catch (RuntimeException e) {
+            // Does not parse → the scheduler will not run it either.
+            return null;
+        }
     }
 
     /**

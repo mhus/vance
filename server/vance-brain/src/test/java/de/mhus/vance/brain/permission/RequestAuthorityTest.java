@@ -8,7 +8,7 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.PermissionService;
-import de.mhus.vance.shared.permission.RecordingPermissionResolver;
+import de.mhus.vance.shared.permission.RecordingPermissionProvider;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.permission.SecurityContext;
 import de.mhus.vance.shared.team.TeamService;
@@ -21,17 +21,17 @@ import org.junit.jupiter.api.Test;
 
 class RequestAuthorityTest {
 
-    private RecordingPermissionResolver recorder;
+    private RecordingPermissionProvider recorder;
     private RequestAuthority authority;
 
     @BeforeEach
     void setUp() {
-        recorder = new RecordingPermissionResolver();
+        recorder = new RecordingPermissionProvider();
         TeamService teamService = mock(TeamService.class);
         when(teamService.byMember("acme", "alice")).thenReturn(List.of());
 
         SecurityContextFactory factory = new SecurityContextFactory(teamService);
-        PermissionService service = new PermissionService(List.of(recorder));
+        PermissionService service = recorder.service();
         authority = new RequestAuthority(service, factory);
     }
 
@@ -43,7 +43,7 @@ class RequestAuthorityTest {
         authority.enforce(request, resource, Action.READ);
 
         assertThat(recorder.checks()).hasSize(1);
-        RecordingPermissionResolver.Check check = recorder.lastCheck();
+        RecordingPermissionProvider.Check check = recorder.lastCheck();
         assertThat(check.subject().subjectId()).isEqualTo("alice");
         assertThat(check.subject().tenantId()).isEqualTo("acme");
         assertThat(check.resource()).isEqualTo(resource);
@@ -52,9 +52,8 @@ class RequestAuthorityTest {
 
     @Test
     void enforce_connection_buildsUserContext_andRecordsCheck() {
-        ConnectionContext connection = new ConnectionContext(
-                "acme", "alice", null, "default", "1.0", "vance-foot",
-                "conn-1", "10.0.0.1");
+        ConnectionContext connection =
+                new ConnectionContext("acme", "alice", null, "default", "1.0", "vance-foot", "conn-1", "10.0.0.1");
         Resource resource = new Resource.Tenant("acme");
 
         authority.enforce(connection, resource, Action.START);
@@ -68,8 +67,7 @@ class RequestAuthorityTest {
         recorder.verdict(false);
         HttpServletRequest request = mockRequestWith("alice", "acme");
 
-        assertThatThrownBy(() -> authority.enforce(request,
-                new Resource.Project("acme", "proj"), Action.WRITE))
+        assertThatThrownBy(() -> authority.enforce(request, new Resource.Project("acme", "proj"), Action.WRITE))
                 .isInstanceOf(de.mhus.vance.shared.permission.PermissionDeniedException.class);
     }
 
@@ -90,11 +88,13 @@ class RequestAuthorityTest {
         when(request.getAttribute(SecurityContextFactory.REQ_ATTR_CONTEXT))
                 .thenAnswer(inv -> attrs.get(SecurityContextFactory.REQ_ATTR_CONTEXT));
         org.mockito.Mockito.doAnswer(inv -> {
-            attrs.put(inv.getArgument(0), inv.getArgument(1));
-            return null;
-        }).when(request).setAttribute(
-                org.mockito.ArgumentMatchers.eq(SecurityContextFactory.REQ_ATTR_CONTEXT),
-                org.mockito.ArgumentMatchers.any());
+                    attrs.put(inv.getArgument(0), inv.getArgument(1));
+                    return null;
+                })
+                .when(request)
+                .setAttribute(
+                        org.mockito.ArgumentMatchers.eq(SecurityContextFactory.REQ_ATTR_CONTEXT),
+                        org.mockito.ArgumentMatchers.any());
         return request;
     }
 }

@@ -8,7 +8,7 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.PermissionDeniedException;
 import de.mhus.vance.shared.permission.PermissionService;
-import de.mhus.vance.shared.permission.RecordingPermissionResolver;
+import de.mhus.vance.shared.permission.RecordingPermissionProvider;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.permission.SubjectType;
 import de.mhus.vance.toolpack.Tool;
@@ -27,14 +27,14 @@ import org.junit.jupiter.api.Test;
  */
 class ToolDispatcherPermissionTest {
 
-    private RecordingPermissionResolver recorder;
+    private RecordingPermissionProvider recorder;
     private ToolDispatcher dispatcher;
     private Tool fakeTool;
 
     @BeforeEach
     void setUp() {
-        recorder = new RecordingPermissionResolver();
-        PermissionService permissions = new PermissionService(List.of(recorder));
+        recorder = new RecordingPermissionProvider();
+        PermissionService permissions = recorder.service();
 
         fakeTool = mock(Tool.class);
         when(fakeTool.name()).thenReturn("fake.tool");
@@ -62,7 +62,7 @@ class ToolDispatcherPermissionTest {
         dispatcher.invoke("fake.tool", Map.of(), ctx);
 
         assertThat(recorder.checks()).hasSize(1);
-        RecordingPermissionResolver.Check check = recorder.lastCheck();
+        RecordingPermissionProvider.Check check = recorder.lastCheck();
         assertThat(check.subject().subjectType()).isEqualTo(SubjectType.USER);
         assertThat(check.subject().subjectId()).isEqualTo("alice");
         assertThat(check.action()).isEqualTo(Action.EXECUTE);

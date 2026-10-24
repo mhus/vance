@@ -2,6 +2,7 @@ package de.mhus.vance.anus.brain;
 
 import de.mhus.vance.shared.jwt.JwtService;
 import de.mhus.vance.shared.jwt.TokenType;
+import de.mhus.vance.shared.role.RoleBootstrap;
 import de.mhus.vance.shared.tenant.TenantService;
 import de.mhus.vance.shared.user.UserDocument;
 import de.mhus.vance.shared.user.UserService;
@@ -24,6 +25,13 @@ import org.springframework.stereotype.Service;
  * key, so the Brain validates them through its standard filter without
  * any special case.
  *
+ * <p>The account is the operator acting through the Brain, so it holds the
+ * tenant role TENANT_ADMIN — seeded here, on every mint, through
+ * {@link RoleBootstrap}. It is the one service account with a tenant role:
+ * {@code role set} refuses tenant roles to {@code _} accounts, and the
+ * reserved {@code _vance-} prefix cannot be created by anyone else
+ * ({@link UserService#RESERVED_VANCE_PREFIX}).
+ *
  * <p>Tokens are not cached. Every call re-mints — they are cheap, and
  * caching would add lifecycle questions (when does the token expire,
  * who refreshes, what happens after a key rotation) for no real win at
@@ -40,6 +48,7 @@ public class AnusTokenService {
     private final TenantService tenantService;
     private final UserService userService;
     private final JwtService jwtService;
+    private final RoleBootstrap roleBootstrap;
     private final AnusBrainProperties properties;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(4);
 
@@ -59,11 +68,11 @@ public class AnusTokenService {
         // touching a brand-new tenant after a manual mongo seed.
         tenantService.ensure(tenantName, null);
         ensureAdminUser(tenantName);
+        roleBootstrap.grantTenantAdmin(tenantName, ADMIN_USERNAME);
 
         Instant expiresAt = Instant.now().plus(properties.getAdminTokenTtl());
         String token = jwtService.createToken(tenantName, ADMIN_USERNAME, expiresAt, TokenType.ACCESS);
-        log.debug("Minted Anus admin token tenant='{}' ttl={}",
-                tenantName, properties.getAdminTokenTtl());
+        log.debug("Minted Anus admin token tenant='{}' ttl={}", tenantName, properties.getAdminTokenTtl());
         return token;
     }
 
@@ -76,10 +85,6 @@ public class AnusTokenService {
     public UserDocument ensureAdminUser(String tenantName) {
         String randomHash = encoder.encode(UUID.randomUUID().toString());
         return userService.ensureVanceServiceAccount(
-                tenantName,
-                ADMIN_USERNAME,
-                randomHash,
-                properties.getAdminUserTitle(),
-                /* email */ null);
+                tenantName, ADMIN_USERNAME, randomHash, properties.getAdminUserTitle(), /* email */ null);
     }
 }

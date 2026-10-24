@@ -2,13 +2,10 @@ package de.mhus.vance.brain;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import de.mhus.vance.shared.permission.PermissionResolver;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.ApplicationContext;
-import org.springframework.context.annotation.Bean;
 
 /**
  * Boots the full Brain Spring context against an <b>embedded</b> MongoDB and
@@ -46,13 +43,13 @@ import org.springframework.context.annotation.Bean;
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
-                "de.flapdoodle.mongodb.embedded.version=7.0.12",
-                "spring.mongodb.uri=",
-                "spring.mongodb.database=vance-smoke",
-                "spring.data.mongodb.auto-index-creation=false",
-                "vance.bootstrap.acme=false",
-                "vance.encryption.password=smoke-test",
-                "vance.redis.enabled=false",
+            "de.flapdoodle.mongodb.embedded.version=7.0.12",
+            "spring.mongodb.uri=",
+            "spring.mongodb.database=vance-smoke",
+            "spring.data.mongodb.auto-index-creation=false",
+            "vance.bootstrap.acme=false",
+            "vance.encryption.password=smoke-test",
+            "vance.redis.enabled=false",
         })
 class VanceBrainContextSmokeTest {
 
@@ -62,20 +59,5 @@ class VanceBrainContextSmokeTest {
     @Test
     void springContext_boots_andInstantiatesAllSingletons() {
         assertThat(context).isNotNull();
-    }
-
-    /**
-     * The bare {@code vance-brain} module ships no permission-provider addon,
-     * but {@code PermissionService} enforces exactly one on the classpath.
-     * Supply a permissive allow-all resolver on the test classpath only — this
-     * smoke test validates wiring, not authorization. Mirrors the ai-test
-     * harness's {@code AitestAllowAllPermissionConfig}.
-     */
-    @TestConfiguration
-    static class AllowAllPermissionConfig {
-        @Bean
-        PermissionResolver smokeAllowAllPermissionResolver() {
-            return (subject, resource, action) -> true;
-        }
     }
 }

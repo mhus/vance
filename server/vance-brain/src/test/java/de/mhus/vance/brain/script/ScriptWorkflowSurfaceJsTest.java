@@ -9,8 +9,7 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.brain.tools.ToolSource;
-import de.mhus.vance.shared.permission.PermissionService;
-import de.mhus.vance.shared.permission.RecordingPermissionResolver;
+import de.mhus.vance.shared.permission.RecordingPermissionProvider;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.time.Duration;
@@ -54,7 +53,7 @@ class ScriptWorkflowSurfaceJsTest {
         when(src.find(any(), any())).thenReturn(Optional.empty());
         ToolDispatcher dispatcher = new ToolDispatcher(
                 List.of(src),
-                new PermissionService(List.of(new RecordingPermissionResolver())),
+                new RecordingPermissionProvider().service(),
                 mock(de.mhus.vance.brain.agrajag.AgrajagChecker.class),
                 mock(de.mhus.vance.shared.toolhealth.ToolHealthService.class),
                 mock(de.mhus.vance.shared.team.TeamService.class),

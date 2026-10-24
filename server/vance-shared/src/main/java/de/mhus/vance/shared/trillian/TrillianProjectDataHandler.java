@@ -1,9 +1,9 @@
 package de.mhus.vance.shared.trillian;
 
 import de.mhus.vance.shared.home.HomeBootstrapService;
-import de.mhus.vance.shared.permission.PermissionBootstrap;
 import de.mhus.vance.shared.project.maintenance.ProjectDataHandler;
 import de.mhus.vance.shared.project.maintenance.UserHubSweeper;
+import de.mhus.vance.shared.role.RoleBootstrap;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.user.UserDocument;
@@ -65,8 +65,8 @@ import org.springframework.stereotype.Component;
  * fails, so the run reports the project as incomplete.
  *
  * <p><b>Rename does nothing</b>, and that is a real answer rather than a gap:
- * the account name carries no project name, its grant is carried over by the
- * permission-grants handler, and the attribute document travels with the
+ * the account name carries no project name, its role is carried over by the
+ * role-assignments handler, and the attribute document travels with the
  * project like any other. There is nothing Trillian-specific left to rewrite.
  */
 @Component
@@ -83,8 +83,7 @@ public class TrillianProjectDataHandler implements ProjectDataHandler {
     private final ThinkProcessService thinkProcessService;
     private final UserService userService;
 
-    /** Absent unless a grant-storing permission provider is loaded. */
-    private final ObjectProvider<PermissionBootstrap> permissionBootstrapProvider;
+    private final RoleBootstrap roleBootstrap;
 
     /**
      * Sweeps an account's hub. Lazy: in the shell the sweeper is built on the
@@ -178,9 +177,9 @@ public class TrillianProjectDataHandler implements ProjectDataHandler {
      */
     private boolean releaseAccount(String tenantId, String account) {
         try {
-            permissionBootstrapProvider.ifAvailable(pb -> pb.revokeAll(tenantId, account));
+            roleBootstrap.revokeAll(tenantId, account);
         } catch (RuntimeException e) {
-            log.warn("Trillian: revoking grants of '{}' failed: {}", account, e.toString());
+            log.warn("Trillian: revoking roles of '{}' failed: {}", account, e.toString());
         }
         // Presence check rather than catching UserNotFoundException: this runs
         // as a repair path too, and an already-clean account is a success, not

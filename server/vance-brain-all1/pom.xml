@@ -19,21 +19,6 @@
             <artifactId>vance-brain</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <!-- Permission provider: Simple-Auth is the only provider. The
-             bootstrap seeds the demo tenant admin (marvin.acme); real
-             role-based enforcement is active in the dev/IDE bundle too. -->
-        <dependency>
-            <groupId>de.mhus.vance</groupId>
-            <artifactId>vance-addon-shared-simpleauth</artifactId>
-            <version>${project.version}</version>
-            <scope>runtime</scope>
-        </dependency>
-        <dependency>
-            <groupId>de.mhus.vance</groupId>
-            <artifactId>vance-addon-brain-simpleauth</artifactId>
-            <version>${project.version}</version>
-            <scope>runtime</scope>
-        </dependency>
         <dependency>
             <groupId>de.mhus.vance</groupId>
             <artifactId>vance-addon-brain-slideshow</artifactId>

@@ -67,11 +67,10 @@ public class SetupWizard {
     private final SettingService settingService;
     private final DocumentService documentService;
     private final HomeBootstrapService homeBootstrapService;
-    // Optional permission-bootstrap SPI — present only when a grant-storing
-    // provider (Simple-Auth) is loaded. The setup wizard only ever provisions
-    // an ADMIN, so the created user is seeded as tenant-admin; all other users
-    // get their grants later through the normal tooling.
-    private final ObjectProvider<de.mhus.vance.shared.permission.PermissionBootstrap> permissionBootstrapProvider;
+    // The setup wizard only ever provisions the tenant's first user, so that
+    // user is seeded as TENANT_ADMIN; all other users get their roles later
+    // through the normal tooling.
+    private final de.mhus.vance.shared.role.RoleBootstrap roleBootstrap;
     // ObjectProvider mirrors the AccessCommands trick — the LineReader bean
     // depends transitively on the command catalog, so resolving it lazily
     // breaks the wiring cycle Spring Boot 4 otherwise rejects.
@@ -85,7 +84,7 @@ public class SetupWizard {
             SettingService settingService,
             DocumentService documentService,
             HomeBootstrapService homeBootstrapService,
-            ObjectProvider<de.mhus.vance.shared.permission.PermissionBootstrap> permissionBootstrapProvider,
+            de.mhus.vance.shared.role.RoleBootstrap roleBootstrap,
             ObjectProvider<LineReader> lineReaderProvider) {
         this.tenantService = tenantService;
         this.userService = userService;
@@ -94,7 +93,7 @@ public class SetupWizard {
         this.settingService = settingService;
         this.documentService = documentService;
         this.homeBootstrapService = homeBootstrapService;
-        this.permissionBootstrapProvider = permissionBootstrapProvider;
+        this.roleBootstrap = roleBootstrap;
         this.lineReaderProvider = lineReaderProvider;
     }
 
@@ -888,12 +887,11 @@ public class SetupWizard {
             out.println("  ~ user '" + state.getUserName() + "' updated");
         }
 
-        // Seed the setup user as TENANT-ADMIN. The wizard only provisions
-        // admins; every other user is granted later via the normal tooling.
-        // No-op unless a grant-storing provider (Simple-Auth) is loaded.
+        // Seed the setup user as TENANT_ADMIN. The wizard only provisions
+        // the tenant's first user; every other user gets a role later via the
+        // normal tooling.
         if (StringUtils.isNotBlank(state.getUserName())) {
-            permissionBootstrapProvider.ifAvailable(
-                    pb -> pb.grantTenantAdmin(state.getTenantId(), state.getUserName()));
+            roleBootstrap.grantTenantAdmin(state.getTenantId(), state.getUserName());
         }
 
         seedLanguageSettings(out, state);

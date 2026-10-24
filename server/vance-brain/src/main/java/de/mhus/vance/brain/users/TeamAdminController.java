@@ -30,8 +30,8 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * Admin CRUD for teams.
  *
- * <p>v1 authorisation model: any authenticated user inside the tenant
- * can read and write team records. Cross-tenant probing is blocked by
+ * <p>Managing teams is the tenant role ADMIN ({@code Tenant WRITE} to list and
+ * create, {@code Team ADMIN} per team). Cross-tenant probing is blocked by
  * {@link de.mhus.vance.brain.access.BrainAccessFilter}.
  */
 @RestController
@@ -45,7 +45,7 @@ public class TeamAdminController {
 
     @GetMapping
     public List<TeamDto> list(@PathVariable("tenant") String tenant, HttpServletRequest httpRequest) {
-        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.WRITE);
         return teamService.all(tenant).stream()
                 .sorted(Comparator.comparing(TeamDocument::getName))
                 .map(TeamAdminController::toDto)
@@ -67,7 +67,7 @@ public class TeamAdminController {
             @PathVariable("tenant") String tenant,
             @Valid @RequestBody TeamCreateRequest request,
             HttpServletRequest httpRequest) {
-        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.WRITE);
         try {
             TeamDocument saved =
                     teamService.create(tenant, request.getName(), request.getTitle(), request.getMembers());

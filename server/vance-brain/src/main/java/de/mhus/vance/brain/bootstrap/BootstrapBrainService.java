@@ -65,15 +65,8 @@ public class BootstrapBrainService {
     private final HomeBootstrapService homeBootstrapService;
     private final InitSettingsLoader initSettingsLoader;
     private final BootstrapProperties properties;
-    /**
-     * Optional permission-bootstrap SPI (see
-     * {@code planning/permission-system-concept.md} §7.0). Present only when a
-     * grant-storing provider addon (simple-auth) is loaded; then the Acme demo
-     * admin is seeded as TENANT-ADMIN. Absent under the allow-all provider or
-     * an external governor — {@code ifAvailable} keeps the seed a no-op.
-     */
-    private final org.springframework.beans.factory.ObjectProvider<de.mhus.vance.shared.permission.PermissionBootstrap>
-            permissionBootstrapProvider;
+    /** Seeds the Acme demo roles — the demo admin is TENANT_ADMIN. */
+    private final de.mhus.vance.shared.role.RoleBootstrap roleBootstrap;
 
     @PostConstruct
     void init() {
@@ -120,22 +113,19 @@ public class BootstrapBrainService {
                 "Field Testing & Quality Assurance",
                 List.of("wile.coyote", "road.runner"));
 
-        // Seed sensible demo grants once a grant-storing provider (Simple-Auth)
-        // is loaded; no-op otherwise. marvin.acme runs the tenant; the two demo
-        // teams get WRITER on the projects they work on. This also showcases
-        // scoped access: road.runner (only in field-testing-qa) can touch the
+        // Seed the demo roles. marvin.acme runs the tenant; the two demo teams
+        // are MEMBERs of the projects they work on. This also showcases scoped
+        // access: road.runner (only in field-testing-qa) can touch the
         // testing/logistics projects but not the engineering ones, while
         // wile.coyote (in both teams) reaches everything. Idempotent per boot.
-        permissionBootstrapProvider.ifAvailable(pb -> {
-            pb.grantTenantAdmin(ACME_TENANT, "marvin.acme");
-            for (String project :
-                    List.of("instant-hole", "dehydrated-boulders", "rocket-powered-skates", "giant-slingshot")) {
-                pb.grantProjectTeamWriter(ACME_TENANT, project, "rd-propulsion");
-            }
-            for (String project : List.of("invisible-paint", "iron-seed", "cloud-delivery")) {
-                pb.grantProjectTeamWriter(ACME_TENANT, project, "field-testing-qa");
-            }
-        });
+        roleBootstrap.grantTenantAdmin(ACME_TENANT, "marvin.acme");
+        for (String project :
+                List.of("instant-hole", "dehydrated-boulders", "rocket-powered-skates", "giant-slingshot")) {
+            roleBootstrap.grantProjectTeamMember(ACME_TENANT, project, "rd-propulsion");
+        }
+        for (String project : List.of("invisible-paint", "iron-seed", "cloud-delivery")) {
+            roleBootstrap.grantProjectTeamMember(ACME_TENANT, project, "field-testing-qa");
+        }
 
         seedInstantHoleDocuments();
 

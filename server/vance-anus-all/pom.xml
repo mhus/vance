@@ -19,25 +19,6 @@
             <artifactId>vance-anus</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <!-- Permission provider: Simple-Auth is the only provider. The anus
-             context scans vance-shared and instantiates PermissionService, so
-             it must satisfy the mandatory single-provider guard. The shared
-             core carries the resolver; the anus module carries the CRUD
-             commands. These are addons — pulled at runtime only and discovered
-             via their META-INF/spring/AutoConfiguration.imports; nothing here
-             compiles against them, hence runtime scope (not a hard dependency). -->
-        <dependency>
-            <groupId>de.mhus.vance</groupId>
-            <artifactId>vance-addon-shared-simpleauth</artifactId>
-            <version>${project.version}</version>
-            <scope>runtime</scope>
-        </dependency>
-        <dependency>
-            <groupId>de.mhus.vance</groupId>
-            <artifactId>vance-addon-anus-simpleauth</artifactId>
-            <version>${project.version}</version>
-            <scope>runtime</scope>
-        </dependency>
     </dependencies>
 
     <build>

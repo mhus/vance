@@ -43,33 +43,28 @@ class FookControllerTest {
         fookService = mock(FookService.class);
         authority = mock(RequestAuthority.class);
         request = mock(HttpServletRequest.class);
-        when(authority.contextOf(request))
-                .thenReturn(SecurityContext.user(USER, TENANT, List.of()));
+        when(authority.contextOf(request)).thenReturn(SecurityContext.user(USER, TENANT, List.of()));
         when(fookService.submit(any())).thenReturn("sub-123");
         controller = new FookController(fookService, authority);
     }
 
     @Test
-    void submit_enforces_write_on_tenant_and_returns_submission_id() {
+    void submit_enforces_start_on_tenant_and_returns_submission_id() {
         FookSubmissionRequestDto body = FookSubmissionRequestDto.builder()
                 .text("Brain crashes on boot when recipes.yaml is missing.")
                 .build();
 
         FookSubmissionResponseDto resp = controller.submit(TENANT, body, request);
 
-        verify(authority).enforce(request,
-                new Resource.Tenant(TENANT), Action.WRITE);
+        verify(authority).enforce(request, new Resource.Tenant(TENANT), Action.START);
         assertThat(resp.getSubmissionId()).isEqualTo("sub-123");
         assertThat(resp.getStatus()).isEqualTo("queued");
 
-        ArgumentCaptor<SubmissionRequest> cap =
-                ArgumentCaptor.forClass(SubmissionRequest.class);
+        ArgumentCaptor<SubmissionRequest> cap = ArgumentCaptor.forClass(SubmissionRequest.class);
         verify(fookService).submit(cap.capture());
         SubmissionRequest req = cap.getValue();
-        assertThat(req.getText())
-                .isEqualTo("Brain crashes on boot when recipes.yaml is missing.");
-        assertThat(req.getReporter().getKind())
-                .isEqualTo(TicketReporter.Kind.USER_DIRECT);
+        assertThat(req.getText()).isEqualTo("Brain crashes on boot when recipes.yaml is missing.");
+        assertThat(req.getReporter().getKind()).isEqualTo(TicketReporter.Kind.USER_DIRECT);
         assertThat(req.getReporter().getUserId()).isEqualTo(USER);
         assertThat(req.getReporter().getTenantId()).isEqualTo(TENANT);
         assertThat(req.getContext()).isNull();
@@ -85,8 +80,7 @@ class FookControllerTest {
 
         controller.submit(TENANT, body, request);
 
-        ArgumentCaptor<SubmissionRequest> cap =
-                ArgumentCaptor.forClass(SubmissionRequest.class);
+        ArgumentCaptor<SubmissionRequest> cap = ArgumentCaptor.forClass(SubmissionRequest.class);
         verify(fookService).submit(cap.capture());
         TicketContext ctx = cap.getValue().getContext();
         assertThat(ctx).isNotNull();
@@ -99,38 +93,36 @@ class FookControllerTest {
 
     @Test
     void submit_rejects_blank_text_with_400() {
-        FookSubmissionRequestDto body = FookSubmissionRequestDto.builder()
-                .text("   ")
-                .build();
+        FookSubmissionRequestDto body =
+                FookSubmissionRequestDto.builder().text("   ").build();
 
         assertThatThrownBy(() -> controller.submit(TENANT, body, request))
-                .isInstanceOfSatisfying(ResponseStatusException.class, e ->
-                        assertThat(e.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST))
+                .isInstanceOfSatisfying(
+                        ResponseStatusException.class,
+                        e -> assertThat(e.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST))
                 .hasMessageContaining("text");
     }
 
     @Test
     void submit_returns_503_when_disabled() {
-        org.springframework.test.util.ReflectionTestUtils.setField(
-                controller, "enabled", false);
+        org.springframework.test.util.ReflectionTestUtils.setField(controller, "enabled", false);
 
-        assertThatThrownBy(() -> controller.submit(TENANT,
-                FookSubmissionRequestDto.builder().text("x").build(),
-                request))
-                .isInstanceOfSatisfying(ResponseStatusException.class, e ->
-                        assertThat(e.getStatusCode())
-                                .isEqualTo(HttpStatus.SERVICE_UNAVAILABLE));
+        assertThatThrownBy(() -> controller.submit(
+                        TENANT, FookSubmissionRequestDto.builder().text("x").build(), request))
+                .isInstanceOfSatisfying(
+                        ResponseStatusException.class,
+                        e -> assertThat(e.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE));
         verifyNoInteractions(fookService);
     }
 
     @Test
     void submit_propagates_authority_denial() {
         org.mockito.Mockito.doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN))
-                .when(authority).enforce(eq(request), any(), any());
+                .when(authority)
+                .enforce(eq(request), any(), any());
 
-        assertThatThrownBy(() -> controller.submit(TENANT,
-                FookSubmissionRequestDto.builder().text("x").build(),
-                request))
+        assertThatThrownBy(() -> controller.submit(
+                        TENANT, FookSubmissionRequestDto.builder().text("x").build(), request))
                 .isInstanceOf(ResponseStatusException.class);
         verifyNoInteractions(fookService);
     }

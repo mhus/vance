@@ -21,9 +21,11 @@ import { useAdminUsers } from '@/composables/useAdminUsers';
 import { useAdminTeams } from '@/composables/useAdminTeams';
 import { useScopeSettings } from '@/composables/useScopeSettings';
 import { useHelp } from '@/composables/useHelp';
+import { fetchMyRoles, TENANT_ROLES, tenantRoleAtLeast, useTenantRoles } from '@/composables/useRoles';
 import { getUsername, isEncryptedSettingType } from '@vance/shared';
 import {
   SettingType,
+  TenantRole,
   type SettingDto,
   type TeamDto,
   type UserDto,
@@ -35,7 +37,25 @@ const usersState = useAdminUsers();
 const teamsState = useAdminTeams();
 const settingsState = useScopeSettings();
 const help = useHelp();
+const rolesState = useTenantRoles();
 const currentUsername = getUsername() ?? '';
+
+// The caller's own tenant role: nobody assigns above it, and nobody changes
+// the role of someone above it — the server refuses both, the select only
+// offers what can succeed.
+const myTenantRole = ref<TenantRole | null>(null);
+const roleDraft = ref<TenantRole>(TenantRole.USER);
+const assignableRoles = computed(() =>
+  TENANT_ROLES.filter((r) => tenantRoleAtLeast(myTenantRole.value, r)).map((value) => ({
+    value,
+    label: t(`users.role.options.${value}`),
+  })));
+const selectedUserRole = computed<TenantRole>(() =>
+  selectedUser.value ? rolesState.roleOf(selectedUser.value.name) : TenantRole.USER);
+const canChangeSelectedRole = computed(() =>
+  tenantRoleAtLeast(myTenantRole.value, TenantRole.ADMIN)
+  && tenantRoleAtLeast(myTenantRole.value, selectedUserRole.value)
+  && !(selectedUser.value?.name.startsWith('_') ?? false));
 
 // SettingType labels are the wire-enum values themselves — they're
 // recognisable across UI languages, no translation needed.
@@ -148,7 +168,7 @@ const breadcrumbs = computed<string[]>(() => {
 });
 
 const combinedError = computed<string | null>(() =>
-  usersState.error.value || teamsState.error.value || settingsState.error.value);
+  usersState.error.value || teamsState.error.value || settingsState.error.value || rolesState.error.value);
 
 // ─── Lifecycle ──────────────────────────────────────────────────────────
 
@@ -156,6 +176,10 @@ onMounted(async () => {
   await Promise.all([
     usersState.reload(),
     teamsState.reload(),
+    rolesState.reload(),
+    fetchMyRoles().then((mine) => {
+      myTenantRole.value = mine?.tenantRole ?? null;
+    }),
     help.load('user-team-admin.md'),
   ]);
 });
@@ -255,8 +279,13 @@ watch(() => selectedTeam.value, () => {
   if (selection.value?.kind === 'team') populateForm();
 });
 
+watch(selectedUserRole, (role) => {
+  roleDraft.value = role;
+});
+
 function populateForm(): void {
   if (selectedUser.value) {
+    roleDraft.value = selectedUserRole.value;
     userForm.title = selectedUser.value.title ?? '';
     userForm.email = selectedUser.value.email ?? '';
     userForm.status = selectedUser.value.status;
@@ -302,6 +331,17 @@ async function saveUser(): Promise<void> {
     banner.value = t('users.user.saved');
   } catch {
     /* error in usersState.error */
+  }
+}
+
+async function saveRole(): Promise<void> {
+  if (selection.value?.kind !== 'user') return;
+  banner.value = null;
+  try {
+    await rolesState.setRole(selection.value.name, roleDraft.value);
+    banner.value = t('users.role.saved', { role: t(`users.role.options.${roleDraft.value}`) });
+  } catch {
+    /* error in rolesState.error */
   }
 }
 
@@ -639,6 +679,32 @@ function fmt(value: unknown): string {
                 </VButton>
               </div>
             </div>
+          </VCard>
+
+          <!-- ─── Tenant role ─── -->
+          <VCard :title="$t('users.role.cardTitle')">
+            <p class="text-xs text-(--v-label-secondary) mb-3">{{ $t('users.role.intro') }}</p>
+            <div class="flex flex-wrap items-end gap-3">
+              <div class="w-56">
+                <VSelect
+                  v-model="roleDraft"
+                  :options="canChangeSelectedRole
+                    ? assignableRoles
+                    : [{ value: selectedUserRole, label: $t(`users.role.options.${selectedUserRole}`) }]"
+                  :label="$t('users.role.label')"
+                  :disabled="!canChangeSelectedRole"
+                />
+              </div>
+              <VButton
+                variant="secondary"
+                :disabled="!canChangeSelectedRole || roleDraft === selectedUserRole"
+                :loading="rolesState.busy.value"
+                @click="saveRole"
+              >{{ $t('users.role.save') }}</VButton>
+            </div>
+            <p class="text-xs text-(--v-label-secondary) mt-2">
+              {{ $t(`users.role.descriptions.${roleDraft}`) }}
+            </p>
           </VCard>
 
           <!-- ─── User settings ─── -->

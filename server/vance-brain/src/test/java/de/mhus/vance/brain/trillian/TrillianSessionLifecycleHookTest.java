@@ -7,7 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.session.SessionLifecycleService;
-import de.mhus.vance.shared.permission.PermissionBootstrap;
+import de.mhus.vance.shared.role.RoleBootstrap;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
@@ -55,10 +55,7 @@ class TrillianSessionLifecycleHookTest {
     de.mhus.vance.shared.session.SessionService sessionService;
 
     @Mock
-    PermissionBootstrap permissionBootstrap;
-
-    @Mock
-    ObjectProvider<PermissionBootstrap> permissionProvider;
+    RoleBootstrap roleBootstrap;
 
     @Mock
     de.mhus.vance.brain.trillian.nature.TrillianNature nature;
@@ -75,12 +72,6 @@ class TrillianSessionLifecycleHookTest {
     @SuppressWarnings("unchecked")
     void setUp() {
         when(lifecycleProvider.getObject()).thenReturn(lifecycleService);
-        org.mockito.Mockito.doAnswer(inv -> {
-                    ((java.util.function.Consumer<PermissionBootstrap>) inv.getArgument(0)).accept(permissionBootstrap);
-                    return null;
-                })
-                .when(permissionProvider)
-                .ifAvailable(any());
         when(sessionService.findBySessionId(any()))
                 .thenAnswer(inv -> java.util.Optional.of(session(inv.getArgument(0))));
         when(userService.findByTenantAndName(TENANT, ACCOUNT))
@@ -92,7 +83,7 @@ class TrillianSessionLifecycleHookTest {
                 sessionService,
                 userService,
                 lifecycleProvider,
-                permissionProvider,
+                roleBootstrap,
                 new de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry(List.of(nature)),
                 hubSweeper,
                 headService);
@@ -118,7 +109,7 @@ class TrillianSessionLifecycleHookTest {
 
         // The account holds the name until a re-run finishes the sweep.
         verify(userService, never()).delete(TENANT, ACCOUNT);
-        verify(permissionBootstrap).revokeAll(TENANT, ACCOUNT);
+        verify(roleBootstrap).revokeAll(TENANT, ACCOUNT);
     }
 
     @Test
@@ -135,8 +126,8 @@ class TrillianSessionLifecycleHookTest {
     void closingControl_revokesGrantsThenDeletesTheAccount() {
         hook.onSessionClosed(session(CONTROL));
 
-        org.mockito.InOrder order = org.mockito.Mockito.inOrder(permissionBootstrap, userService);
-        order.verify(permissionBootstrap).revokeAll(TENANT, ACCOUNT);
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(roleBootstrap, userService);
+        order.verify(roleBootstrap).revokeAll(TENANT, ACCOUNT);
         order.verify(userService).delete(TENANT, ACCOUNT);
         verify(lifecycleService).closeWithCascade(PEER);
     }
@@ -198,7 +189,7 @@ class TrillianSessionLifecycleHookTest {
         // process level both look like CLOSED — and the close reason that
         // would tell them apart is written after the event.
         verify(userService, never()).delete(any(), any());
-        verify(permissionBootstrap, never()).revokeAll(any(), any());
+        verify(roleBootstrap, never()).revokeAll(any(), any());
     }
 
     @Test
@@ -227,7 +218,7 @@ class TrillianSessionLifecycleHookTest {
         hook.onSessionDeleted(session(CONTROL));
 
         verify(nature).accountDiscarded(TENANT, PROJECT, ACCOUNT);
-        verify(permissionBootstrap).revokeAll(TENANT, ACCOUNT);
+        verify(roleBootstrap).revokeAll(TENANT, ACCOUNT);
         verify(userService).delete(TENANT, ACCOUNT);
     }
 
@@ -335,7 +326,7 @@ class TrillianSessionLifecycleHookTest {
 
         verify(userService).delete(TENANT, ACCOUNT);
         verify(userService, never()).delete(TENANT, "_trillian-adam-0001");
-        verify(permissionBootstrap, never()).revokeAll(TENANT, "_trillian-adam-0001");
+        verify(roleBootstrap, never()).revokeAll(TENANT, "_trillian-adam-0001");
     }
 
     @Test

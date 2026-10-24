@@ -4,6 +4,7 @@ import de.mhus.vance.api.ursahooks.UrsaHookEventName;
 import de.mhus.vance.api.ursahooks.UrsaHookSource;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
+import de.mhus.vance.shared.permission.RunAsReader;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,7 +29,7 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class UrsaHookLoader {
+public class UrsaHookLoader implements RunAsReader {
 
     public static final String HOOK_PATH_ROOT = "_vance/hooks/";
     public static final String HOOK_PATH_SUFFIX = ".yaml";
@@ -153,6 +154,31 @@ public class UrsaHookLoader {
         // {event}/{name} segment, never sub-folders below the event.
         if (hookName.indexOf('/') >= 0) return null;
         return new ParsedPath(event, hookName);
+    }
+
+    /** Hook documents are executed under their author or their {@code runAs}. */
+    @Override
+    public boolean executes(String path) {
+        return parsePath(path) != null;
+    }
+
+    @Override
+    public @Nullable String declaredRunAs(String path, String content) {
+        ParsedPath parsed = parsePath(path);
+        if (parsed == null || !UrsaHookEventName.isKnown(parsed.event())) return null;
+        try {
+            String runAs = parser.parse(
+                            content,
+                            UrsaHookEventName.ofWire(parsed.event()),
+                            UrsaHookSource.PROJECT,
+                            parsed.hookName())
+                    .action()
+                    .runAs();
+            return runAs == null || runAs.isBlank() ? null : runAs;
+        } catch (RuntimeException e) {
+            // Does not parse → the dispatcher will not run it either.
+            return null;
+        }
     }
 
     private static UrsaHookSource mapSource(LookupResult.Source s) {

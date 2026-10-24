@@ -13,10 +13,10 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.rag.ProjectRagService;
 import de.mhus.vance.brain.session.SessionChatBootstrapper;
-import de.mhus.vance.shared.permission.PermissionBootstrap;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.project.ProjectStatus;
+import de.mhus.vance.shared.role.RoleBootstrap;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import java.util.Optional;
@@ -63,7 +63,7 @@ class ProjectLifecycleBringTest {
         ObjectProvider<ProjectRagService> rag = mock(ObjectProvider.class);
         ObjectProvider<SessionChatBootstrapper> chat = mock(ObjectProvider.class);
         ObjectProvider<EngineMessageRouter> router = mock(ObjectProvider.class);
-        ObjectProvider<PermissionBootstrap> perms = mock(ObjectProvider.class);
+        RoleBootstrap perms = mock(RoleBootstrap.class);
 
         service = new ProjectLifecycleService(
                 projectService,

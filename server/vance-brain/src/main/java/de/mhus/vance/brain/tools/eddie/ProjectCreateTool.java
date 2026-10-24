@@ -3,10 +3,14 @@ package de.mhus.vance.brain.tools.eddie;
 import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.brain.eddie.activity.EddieActivityService;
 import de.mhus.vance.brain.kit.catalog.ProjectKitInstaller;
+import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.shared.activity.EddieActivityKind;
 import de.mhus.vance.shared.activity.EntityRef;
 import de.mhus.vance.shared.kit.KitException;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.PermissionService;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.project.ProjectKind;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.toolpack.Tool;
@@ -109,6 +113,8 @@ public class ProjectCreateTool implements Tool {
 
     private final EddieActivityService activityService;
     private final ProjectKitInstaller projectKitInstaller;
+    private final PermissionService permissionService;
+    private final SecurityContextFactory contextFactory;
 
     @Override
     public String name() {
@@ -147,6 +153,12 @@ public class ProjectCreateTool implements Tool {
         if (ctx.userId() == null) {
             throw new ToolException("project_create requires a user identity");
         }
+        // Creating a project is the tenant role CREATOR — the same gate as the
+        // project dialog's REST endpoint. The creator becomes its project ADMIN.
+        permissionService.enforce(
+                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
+                new Resource.Tenant(ctx.tenantId()),
+                Action.CREATE);
         String projectName = stringOrThrow(params, "name");
         String title = optString(params, "title");
         String projectGroupId = optString(params, "projectGroupId");

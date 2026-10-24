@@ -157,10 +157,10 @@ class UserDataCoverageTest {
     }
 
     @Test
-    void grantsAreRemovedBeforeAuthorshipIsTombstoned() {
+    void rolesAreRemovedBeforeAuthorshipIsTombstoned() {
         // Two handlers on one collection with different classes: the subject of
-        // a grant is authority and goes, its author is a record and stays.
-        assertThat(orderOf("permission-grants")).isLessThan(orderOf("permission-grant-authors"));
+        // a role is authority and goes, its author is a record and stays.
+        assertThat(orderOf("role-assignments")).isLessThan(orderOf("role-assignment-authors"));
     }
 
     private int orderOf(String handlerId) {

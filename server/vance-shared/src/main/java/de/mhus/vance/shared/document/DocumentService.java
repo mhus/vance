@@ -136,6 +136,15 @@ public class DocumentService {
     private @Nullable ObjectProvider<JaglanPort> jaglanPortProvider;
 
     /**
+     * Readers of the documents the server executes under an identity
+     * (schedulers, hooks, events) — see {@link #enforceExecutionIdentity}.
+     * Field-injected for the same reason as the port above; absent readers mean
+     * no document is treated as executable.
+     */
+    @Autowired(required = false)
+    private @Nullable ObjectProvider<de.mhus.vance.shared.permission.RunAsReader> runAsReaders;
+
+    /**
      * Shell-row lifecycle for mounted paths — stat-on-demand, TTL, folder
      * markers. Field-injected for the same reason as the port above.
      *
@@ -1785,6 +1794,7 @@ public class DocumentService {
         // Setting $meta.privileged is a runAs-authority escalation → Document
         // ADMIN, on top of the CREATE check above (F1).
         enforcePrivilegedAdmin(doc, actor);
+        enforceExecutionIdentity(doc, actor, null);
         // isRagEligible respects the override set above: if ragEnabled=false
         // it returns false and we never enqueue an embed run.
         doc.setRagDirty(isRagEligible(doc));
@@ -2009,6 +2019,7 @@ public class DocumentService {
         } catch (IOException e) {
             throw new IllegalStateException("Failed to buffer new content for id='" + id + "'", e);
         }
+        enforceExecutionIdentity(doc, actor, new String(newBytes, java.nio.charset.StandardCharsets.UTF_8));
 
         boolean mimeChanged = newMimeType != null && !newMimeType.isBlank() && !newMimeType.equals(doc.getMimeType());
         boolean contentChanged = isContentDifferent(doc, newBytes);
@@ -2615,6 +2626,7 @@ public class DocumentService {
                 de.mhus.vance.shared.permission.Action.WRITE,
                 actor);
         enforcePrivilegedAdmin(doc, actor);
+        enforceExecutionIdentity(doc, actor, newInlineText);
         requireWriteAllowed(doc, identity);
 
         // Lazy backfill for documents created before lineage-tracking
@@ -2928,6 +2940,7 @@ public class DocumentService {
                 de.mhus.vance.shared.permission.Action.WRITE,
                 actor);
         enforcePrivilegedAdmin(live, actor);
+        enforceExecutionIdentity(live, actor, null);
         requireNotMountedForVersioning(live);
         DocumentArchiveDocument archive = archiveService
                 .findById(archiveId)
@@ -3827,6 +3840,7 @@ public class DocumentService {
         enforceWrite(
                 doc.getTenantId(), doc.getProjectId(), target, de.mhus.vance.shared.permission.Action.WRITE, actor);
         enforcePrivilegedAdmin(doc, actor);
+        enforceExecutionIdentity(doc, actor, null);
         if (repository.existsByTenantIdAndProjectIdAndPath(doc.getTenantId(), doc.getProjectId(), target)) {
             throw new DocumentAlreadyExistsException("Cannot restore to '" + target
                     + "' — a document already lives there. " + "Pass a different newPath.");
@@ -4848,6 +4862,51 @@ public class DocumentService {
                                 doc.getTenantId(), doc.getProjectId(), doc.getPath()),
                         de.mhus.vance.shared.permission.Action.ADMIN,
                         de.mhus.vance.shared.permission.WriteReason.USER);
+    }
+
+    /**
+     * Nobody writes a document the server executes under an identity stronger
+     * than their own ({@code PermissionService#mayActAs}). The identities
+     * checked are the ones the document runs as: its creator — a scheduler,
+     * hook or event without {@code runAs} runs as {@code createdBy} — and, for a
+     * privileged document, the {@code runAs} it declares now and the one it
+     * would declare after this write ({@code newText}).
+     *
+     * <p>Without this, an ADMIN would reach TENANT_ADMIN by editing a hook a
+     * tenant admin created, or by planting {@code runAs: <tenant admin>},
+     * instead of being granted the role. Checked under the real subject, never
+     * under {@code actor.reason()} — the dedicated authoring tools all write as
+     * {@code WriteActor.system(subject)}, the same reasoning as
+     * {@link #enforcePrivilegedAdmin}. A SYSTEM subject (bootstrap, kits,
+     * migrations) passes.
+     */
+    private void enforceExecutionIdentity(
+            DocumentDocument doc, de.mhus.vance.shared.permission.WriteActor actor, @Nullable String newText) {
+        ObjectProvider<de.mhus.vance.shared.permission.RunAsReader> readers = runAsReaders;
+        if (readers == null) return;
+        de.mhus.vance.shared.permission.RunAsReader reader = readers.stream()
+                .filter(r -> r.executes(doc.getPath()))
+                .findFirst()
+                .orElse(null);
+        if (reader == null) return;
+        de.mhus.vance.shared.permission.PermissionService permissions = permissionServiceProvider.getObject();
+        de.mhus.vance.shared.permission.SecurityContext subject = actor.subject();
+        if (doc.getCreatedBy() != null && !doc.getCreatedBy().isBlank()) {
+            permissions.enforceMayActAs(subject, doc.getCreatedBy());
+        }
+        if (!doc.isPrivileged()) return;
+        if (doc.getStorageId() != null) {
+            String currentRunAs = reader.declaredRunAs(doc.getPath(), readContent(doc));
+            if (currentRunAs != null) {
+                permissions.enforceMayActAs(subject, currentRunAs);
+            }
+        }
+        if (newText != null) {
+            String nextRunAs = reader.declaredRunAs(doc.getPath(), newText);
+            if (nextRunAs != null) {
+                permissions.enforceMayActAs(subject, nextRunAs);
+            }
+        }
     }
 
     /**

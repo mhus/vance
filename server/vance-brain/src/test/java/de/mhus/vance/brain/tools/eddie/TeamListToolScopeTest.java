@@ -28,20 +28,19 @@ class TeamListToolScopeTest {
     private final TeamService teamService = mock(TeamService.class);
     private final PermissionService permissionService = mock(PermissionService.class);
     private final SecurityContextFactory contextFactory = mock(SecurityContextFactory.class);
-    private final TeamListTool tool =
-            new TeamListTool(eddieContext, teamService, permissionService, contextFactory);
+    private final TeamListTool tool = new TeamListTool(eddieContext, teamService, permissionService, contextFactory);
 
     @Test
     void tenantWide_nonAdmin_sees_only_own_teams() {
         SecurityContext bob = SecurityContext.user("bob", "acme", List.of());
         when(contextFactory.forToolSubject("acme", "bob")).thenReturn(bob);
         when(teamService.all("acme")).thenReturn(List.of(team("rd"), team("qa"), team("ops")));
-        when(permissionService.check(eq(bob),
-                eq(new Resource.Tenant("acme")), eq(Action.ADMIN))).thenReturn(false);
+        when(permissionService.check(eq(bob), eq(new Resource.Tenant("acme")), eq(Action.WRITE)))
+                .thenReturn(false);
         when(teamService.byMember("acme", "bob")).thenReturn(List.of(team("rd")));
 
-        Map<String, Object> out = tool.invoke(Map.of("projectId", "all"),
-                new ToolInvocationContext("acme", "p", "s", "proc", "bob"));
+        Map<String, Object> out =
+                tool.invoke(Map.of("projectId", "all"), new ToolInvocationContext("acme", "p", "s", "proc", "bob"));
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("teams");
@@ -53,11 +52,11 @@ class TeamListToolScopeTest {
         SecurityContext admin = SecurityContext.user("root", "acme", List.of());
         when(contextFactory.forToolSubject("acme", "root")).thenReturn(admin);
         when(teamService.all("acme")).thenReturn(List.of(team("rd"), team("qa")));
-        when(permissionService.check(eq(admin),
-                eq(new Resource.Tenant("acme")), eq(Action.ADMIN))).thenReturn(true);
+        when(permissionService.check(eq(admin), eq(new Resource.Tenant("acme")), eq(Action.WRITE)))
+                .thenReturn(true);
 
-        Map<String, Object> out = tool.invoke(Map.of("projectId", "all"),
-                new ToolInvocationContext("acme", "p", "s", "proc", "root"));
+        Map<String, Object> out =
+                tool.invoke(Map.of("projectId", "all"), new ToolInvocationContext("acme", "p", "s", "proc", "root"));
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("teams");

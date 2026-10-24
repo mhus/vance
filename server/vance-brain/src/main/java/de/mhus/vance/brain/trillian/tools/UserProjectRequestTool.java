@@ -1,9 +1,13 @@
 package de.mhus.vance.brain.trillian.tools;
 
+import de.mhus.vance.api.roles.ProjectRole;
+import de.mhus.vance.api.roles.RoleSubjectType;
+import de.mhus.vance.brain.roles.RoleRequestSupport;
 import de.mhus.vance.brain.trillian.TrillianControlEngine;
 import de.mhus.vance.brain.trillian.TrillianInternalApi;
 import de.mhus.vance.brain.trillian.TrillianSessionBootstrapper;
-import de.mhus.vance.shared.permission.PermissionRequestPort;
+import de.mhus.vance.shared.role.request.RoleRequestOperation;
+import de.mhus.vance.shared.role.request.RoleRequestService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
@@ -16,7 +20,6 @@ import java.util.Optional;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 /**
@@ -31,7 +34,7 @@ import org.springframework.stereotype.Component;
  *
  * <p>It grants nothing. The request goes to whoever administers the
  * target project, and only their approval performs the change; see
- * {@code planning/permission-request-inbox.md}. Role is WRITER: a worker
+ * {@code planning/permission-request-inbox.md}. Role is MEMBER: a worker
  * let into a foreign project is there to work, not to administer.
  *
  * <p>Gated on the control role, so the worker loop cannot widen its own
@@ -42,7 +45,7 @@ import org.springframework.stereotype.Component;
 public class UserProjectRequestTool implements Tool {
 
     private final TrillianInternalApi api;
-    private final ObjectProvider<PermissionRequestPort> requestPortProvider;
+    private final RoleRequestSupport requestSupport;
 
     @Override
     public String name() {
@@ -104,29 +107,22 @@ public class UserProjectRequestTool implements Tool {
         }
         String trillianUser = boundWorkerName(ctx);
 
-        PermissionRequestPort port = requestPortProvider.getIfAvailable();
-        if (port == null) {
-            // An external governor manages rights elsewhere; asking through
-            // Vance is not a thing here.
-            throw new ToolException("This deployment manages permissions outside Vance — "
-                    + "ask an administrator to grant '" + trillianUser + "' access to '"
-                    + projectId + "' directly.");
-        }
-
-        PermissionRequestPort.PermissionRequestReceipt receipt = port.requestProjectWriter(
+        RoleRequestSupport.Receipt receipt = requestSupport.raise(
                 ctx.tenantId(),
-                projectId,
-                trillianUser,
-                str(params, "reason"),
                 ctx.userId() == null ? "system" : ctx.userId(),
-                ctx.processId());
+                ctx.processId(),
+                ctx.sessionId(),
+                RoleRequestOperation.GRANT,
+                RoleRequestService.Target.projectGrant(
+                        projectId, RoleSubjectType.USER, trillianUser, ProjectRole.MEMBER),
+                str(params, "reason"));
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("requested", true);
         out.put("granted", false);
         out.put("projectId", projectId);
         out.put("subjectId", trillianUser);
-        out.put("role", "WRITER");
+        out.put("role", ProjectRole.MEMBER.name());
         out.put("status", receipt.status());
         out.put("requestId", receipt.requestId());
         if (receipt.itemId() != null) {

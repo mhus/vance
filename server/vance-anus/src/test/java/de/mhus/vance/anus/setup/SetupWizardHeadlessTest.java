@@ -12,6 +12,7 @@ import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.password.PasswordPolicyService;
 import de.mhus.vance.shared.password.PasswordService;
+import de.mhus.vance.shared.role.RoleBootstrap;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.tenant.TenantDocument;
 import de.mhus.vance.shared.tenant.TenantService;
@@ -69,6 +70,7 @@ class SetupWizardHeadlessTest {
     private final SettingService settingService = mock(SettingService.class);
     private final DocumentService documentService = mock(DocumentService.class);
     private final HomeBootstrapService homeBootstrapService = mock(HomeBootstrapService.class);
+    private final RoleBootstrap roleBootstrap = mock(RoleBootstrap.class);
 
     private SetupWizard wizard;
 
@@ -85,7 +87,7 @@ class SetupWizardHeadlessTest {
                 settingService,
                 documentService,
                 homeBootstrapService,
-                mock(ObjectProvider.class),
+                roleBootstrap,
                 mock(ObjectProvider.class));
     }
 
@@ -130,6 +132,8 @@ class SetupWizardHeadlessTest {
         int exit = wizard.runHeadless(configFile(CONFIG_FRESH), false);
 
         assertThat(exit).isZero();
+        // the tenant's first user is its TENANT_ADMIN — the root account
+        verify(roleBootstrap).grantTenantAdmin("acme", "admin");
         // fresh tenant: the derived tiers are bootstrapped to the config model
         assertThat(stringKeysWritten())
                 .contains(

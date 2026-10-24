@@ -64,7 +64,7 @@ public class ProjectAdminController {
 
     @GetMapping
     public List<ProjectDto> list(@PathVariable("tenant") String tenant, HttpServletRequest httpRequest) {
-        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.WRITE);
         return projectService.all(tenant).stream()
                 .sorted(Comparator.comparing(
                                 (ProjectDocument p) -> p.getProjectGroupId() == null ? "￿" : p.getProjectGroupId())
@@ -78,7 +78,7 @@ public class ProjectAdminController {
             @PathVariable("tenant") String tenant,
             @Valid @RequestBody ProjectCreateRequest request,
             HttpServletRequest httpRequest) {
-        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.CREATE);
         // Before anything is created, and not inside the kit-install block
         // below: that block deliberately answers 201 with a header, because by
         // then the project exists and the kit is the only thing that failed.
@@ -176,7 +176,10 @@ public class ProjectAdminController {
             @PathVariable("name") String name,
             @Valid @RequestBody ProjectCopyRequest request,
             HttpServletRequest httpRequest) {
-        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.CREATE);
+        // A copy carries the source's configuration (and, on request, its
+        // secrets) — the one who may administer the source decides that.
+        authority.enforce(httpRequest, new Resource.Project(tenant, name), Action.ADMIN);
         try {
             ProjectCopyReportDto report = copyService.copy(
                     tenant,

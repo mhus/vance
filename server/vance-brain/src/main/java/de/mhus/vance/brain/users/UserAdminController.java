@@ -35,11 +35,14 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * Admin CRUD for users.
  *
- * <p>v1 authorisation model: any authenticated user inside the tenant
- * can read and write user records. Cross-tenant probing is blocked by
- * {@link de.mhus.vance.brain.access.BrainAccessFilter}. The one
- * self-protect rule: a user cannot delete or disable their own account
- * — that prevents an admin from accidentally locking themselves out.
+ * <p>Managing users is the tenant role ADMIN: listing, reading and creating
+ * check {@code Tenant WRITE}; changing, setting the password of and deleting a
+ * user check {@code User ADMIN}, which additionally refuses to act on anyone
+ * whose tenant role is above the caller's (no reaching TENANT_ADMIN through a
+ * password reset). Cross-tenant probing is blocked by
+ * {@link de.mhus.vance.brain.access.BrainAccessFilter}. The one self-protect
+ * rule: a user cannot delete or disable their own account — that prevents an
+ * admin from accidentally locking themselves out.
  *
  * <p>Passwords are sent as plaintext and hashed server-side via
  * {@link PasswordService#hash(String)}; the hash never leaves through
@@ -58,7 +61,7 @@ public class UserAdminController {
 
     @GetMapping
     public List<UserDto> list(@PathVariable("tenant") String tenant, HttpServletRequest httpRequest) {
-        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.WRITE);
         return userService.all(tenant).stream()
                 .sorted(Comparator.comparing(UserDocument::getName))
                 .map(UserAdminController::toDto)
@@ -68,7 +71,7 @@ public class UserAdminController {
     @GetMapping("/{name}")
     public UserDto get(
             @PathVariable("tenant") String tenant, @PathVariable("name") String name, HttpServletRequest httpRequest) {
-        authority.enforce(httpRequest, new Resource.User(tenant, name), Action.ADMIN);
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.WRITE);
         return userService
                 .findByTenantAndName(tenant, name)
                 .map(UserAdminController::toDto)
@@ -80,7 +83,7 @@ public class UserAdminController {
             @PathVariable("tenant") String tenant,
             @Valid @RequestBody UserCreateRequest request,
             HttpServletRequest httpRequest) {
-        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.WRITE);
         boolean withPassword =
                 request.getPassword() != null && !request.getPassword().isBlank();
         if (withPassword) {

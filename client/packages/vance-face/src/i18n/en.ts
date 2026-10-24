@@ -2995,6 +2995,28 @@ export default {
     },
   },
 
+  projectMembers: {
+    title: 'Members',
+    intro: 'Who works in this project, and with which role. A team as member gives the role to every member of the team — that is also how a project is opened to everyone. Tenant admins have full rights here without being members.',
+    loading: 'Loading members…',
+    empty: 'No members yet.',
+    subjectType: 'Type',
+    subjectId: 'User or team name',
+    role: 'Role',
+    add: 'Add member',
+    added: '{name} is now {role}.',
+    remove: 'Remove member',
+    confirmRemove: 'Remove {name} from this project?',
+    subject: {
+      USER: 'User',
+      TEAM: 'Team',
+    },
+    roles: {
+      READER: 'Reader',
+      MEMBER: 'Member',
+      ADMIN: 'Admin',
+    },
+  },
   users: {
     pageTitle: 'Users & Teams',
     loading: 'Loading…',
@@ -3014,6 +3036,25 @@ export default {
     empty: {
       headline: 'Pick a user or team',
       body: 'Use the lists on the left, or create a new entry with + User / + Team.',
+    },
+    role: {
+      cardTitle: 'Tenant role',
+      intro: 'What this user may do in the tenant beyond the projects they are a member of.',
+      label: 'Role',
+      save: 'Set role',
+      saved: 'Role set to {role}.',
+      options: {
+        USER: 'User',
+        CREATOR: 'Creator',
+        ADMIN: 'Admin',
+        TENANT_ADMIN: 'Tenant admin',
+      },
+      descriptions: {
+        USER: 'Works in the projects they are a member of.',
+        CREATOR: 'Also creates projects and becomes their project admin.',
+        ADMIN: 'Also manages users and teams and has full rights in every project — except the tenant configuration.',
+        TENANT_ADMIN: 'Also changes the tenant configuration and appoints tenant admins.',
+      },
     },
     user: {
       cardTitle: 'User: {name}',

@@ -21,6 +21,8 @@ import { useStarredStore } from '@/starred/starredStore';
 import { editorHref } from '@/platform/editorHref';
 import { isTenantLlmConfigured } from '@/platform/llmSettings';
 import { useHomeStatus } from '@/composables/useHomeStatus';
+import { fetchMyRoles, tenantRoleAtLeast } from '@/composables/useRoles';
+import { TenantRole } from '@vance/generated';
 
 const { t } = useI18n();
 
@@ -28,20 +30,25 @@ const { t } = useI18n();
 //
 //   * standard — chat / documents / inbox  (everyday)
 //   * expert   — + settings / insights / runs  (power user)
-//   * admin    — + users  (tenant admin)
+//   * admin    — + users  (needs the tenant role ADMIN as well)
 //
 // Server-side authorization remains the authoritative gate; this just keeps
 // the page tidy for accounts that never need the power tiles.
 const uiLevel = ref<WebUiLevel>(getActiveUiLevel());
 
+// The reader's tenant role — an admin tile shows only when the role allows
+// what it leads to *and* the UI level asks for it. Unknown (call failed)
+// reads as no admin: a tile that answers 403 is worse than a missing one.
+const myTenantRole = ref<TenantRole | null>(null);
+
 const showExpertTiles = computed(() => rankOf(uiLevel.value) >= rankOf('expert'));
-const showAdminTiles = computed(() => rankOf(uiLevel.value) >= rankOf('admin'));
+const showAdminTiles = computed(() =>
+  rankOf(uiLevel.value) >= rankOf('admin') && tenantRoleAtLeast(myTenantRole.value, TenantRole.ADMIN));
 
 // Landing tiles contributed by installed addons (declarative, from
 // /face/addons — no federation remote loaded here). Each is gated by the
 // user's UI level just like the built-in tiles, and only appears when the
-// addon is actually present, so e.g. the Simple-Auth "Permissions" tile is
-// there iff the simpleauth addon is loaded.
+// addon is actually present.
 interface AddonTileEntry {
   name: string;
   label: string;
@@ -112,6 +119,9 @@ onMounted(async () => {
     llmMissing.value = configured === false;
   });
   void homeStatus.load();
+  void fetchMyRoles().then((mine) => {
+    myTenantRole.value = mine?.tenantRole ?? null;
+  });
   // Re-read on every visit rather than once per session: the reader can change
   // their UI level in the profile page, which is outside this bundle and
   // returns here by a full page load — but a second tab would not.
@@ -234,9 +244,9 @@ onMounted(async () => {
                 <div class="text-sm opacity-70">{{ $t('index.runs.description') }}</div>
             </a>
           </li>
-          <!-- Admin tier — tenant-management surfaces. The brain still
-               denies non-admins at the REST layer; this is just a
-               clutter filter. -->
+          <!-- Admin tier — tenant-management surfaces, for the tenant role
+               ADMIN and up. The brain still denies everyone else at the
+               REST layer; this is just a clutter filter. -->
           <li v-if="showAdminTiles">
             <a class="tile-row" :href="editorHref('users')">
                 <div class="font-semibold">{{ $t('index.users.title') }}</div>
@@ -244,8 +254,8 @@ onMounted(async () => {
             </a>
           </li>
 
-          <!-- Addon-contributed tiles (e.g. Simple-Auth "Permissions").
-               Present only when the addon is installed; gated by UI level. -->
+          <!-- Addon-contributed tiles. Present only when the addon is
+               installed; gated by UI level. -->
           <li v-for="tile in visibleAddonTiles" :key="tile.name">
             <a class="tile-row" :href="editorHref('addon', { addon: tile.name })">
                 <div class="font-semibold">{{ tile.label }}</div>

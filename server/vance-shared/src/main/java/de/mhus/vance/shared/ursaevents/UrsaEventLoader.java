@@ -5,6 +5,7 @@ import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
 import de.mhus.vance.shared.home.HomeBootstrapService;
+import de.mhus.vance.shared.permission.RunAsReader;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -31,7 +32,7 @@ import org.yaml.snakeyaml.Yaml;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class UrsaEventLoader {
+public class UrsaEventLoader implements RunAsReader {
 
     /** Path prefix used for event documents in any cascade tier. */
     public static final String EVENT_PATH_PREFIX = "_vance/events/";
@@ -92,6 +93,25 @@ public class UrsaEventLoader {
             }
         }
         return out;
+    }
+
+    /** Event documents are executed under their author or their {@code runAs}. */
+    @Override
+    public boolean executes(String path) {
+        return nameFromPath(path) != null;
+    }
+
+    @Override
+    public @Nullable String declaredRunAs(String path, String content) {
+        String name = nameFromPath(path);
+        if (name == null) return null;
+        try {
+            String runAs = validateYaml(name, content).runAs();
+            return runAs == null || runAs.isBlank() ? null : runAs;
+        } catch (RuntimeException e) {
+            // Does not parse → the event endpoint will not run it either.
+            return null;
+        }
     }
 
     /**

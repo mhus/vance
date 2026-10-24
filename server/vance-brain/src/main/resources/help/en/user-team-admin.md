@@ -5,9 +5,11 @@ that drive feature visibility (team-inbox, project access, …).
 
 ## Authorisation
 
-Any authenticated user inside the tenant can read and write user and
-team records. Cross-tenant probing is blocked by the brain's access
-filter — a JWT for tenant `acme` cannot reach `/brain/foo/...`.
+Managing users and teams needs the tenant role **ADMIN** (or
+TENANT_ADMIN). An admin cannot change, reset the password of or delete
+someone whose tenant role is above their own. Cross-tenant probing is
+blocked by the brain's access filter — a JWT for tenant `acme` cannot
+reach `/brain/foo/...`.
 
 Two self-protect rules are enforced on user records:
 
@@ -17,9 +19,16 @@ Two self-protect rules are enforced on user records:
 Both prevent accidental lock-outs. Other admins in the tenant can
 still do it on someone else's account.
 
-A finer role-based authorisation (e.g. tenant-admin vs. plain user)
-is not in v1 — when it lands, the access filter and these endpoints
-will tighten without the editor needing to change.
+## Tenant role
+
+Each user has a tenant role — **User** (works in the projects they are a
+member of), **Creator** (also creates projects), **Admin** (also manages
+users and teams and has full rights in every project, except the tenant
+configuration) or **Tenant admin** (also the tenant configuration and
+appointing tenant admins). The card offers only roles up to your own;
+the last tenant admin of a tenant cannot be demoted. Service accounts
+(`_` prefix) always hold User. Who is a member of a project is set in
+the project's settings, under **Members**.
 
 ## Users
 
@@ -88,8 +97,8 @@ will tighten without the editor needing to change.
 
 ## What this view is not
 
-- Not a place to manage **roles or permissions** — the role concept
-  doesn't exist yet.
+- Not a place to manage **project memberships** — those live in each
+  project's settings (Members).
 - Not a place to manage **identity providers / SSO** — that lives
   elsewhere when it arrives.
 - Not a place to **invite** users — there is no email flow yet;

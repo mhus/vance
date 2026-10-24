@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.shared.jwt.JwtService;
 import de.mhus.vance.shared.jwt.TokenType;
+import de.mhus.vance.shared.role.RoleBootstrap;
 import de.mhus.vance.shared.tenant.TenantDocument;
 import de.mhus.vance.shared.tenant.TenantService;
 import de.mhus.vance.shared.user.UserDocument;
@@ -35,6 +36,7 @@ class AnusTokenServiceTest {
     private TenantService tenantService;
     private UserService userService;
     private JwtService jwtService;
+    private RoleBootstrap roleBootstrap;
     private AnusBrainProperties properties;
     private AnusTokenService tokenService;
 
@@ -43,21 +45,23 @@ class AnusTokenServiceTest {
         tenantService = mock(TenantService.class);
         userService = mock(UserService.class);
         jwtService = mock(JwtService.class);
+        roleBootstrap = mock(RoleBootstrap.class);
         properties = new AnusBrainProperties();
         properties.setAdminTokenTtl(Duration.ofSeconds(45));
 
         when(tenantService.ensure(eq(TENANT), any()))
                 .thenReturn(TenantDocument.builder().name(TENANT).build());
-        when(userService.ensureVanceServiceAccount(eq(TENANT), eq("_vance-admin"),
-                any(), any(), any()))
+        when(userService.ensureVanceServiceAccount(eq(TENANT), eq("_vance-admin"), any(), any(), any()))
                 .thenReturn(UserDocument.builder()
-                        .tenantId(TENANT).name("_vance-admin")
-                        .serviceAccount(true).loginEnabled(false).build());
-        when(jwtService.createToken(eq(TENANT), eq("_vance-admin"),
-                any(Instant.class), eq(TokenType.ACCESS)))
+                        .tenantId(TENANT)
+                        .name("_vance-admin")
+                        .serviceAccount(true)
+                        .loginEnabled(false)
+                        .build());
+        when(jwtService.createToken(eq(TENANT), eq("_vance-admin"), any(Instant.class), eq(TokenType.ACCESS)))
                 .thenReturn("signed-jwt");
 
-        tokenService = new AnusTokenService(tenantService, userService, jwtService, properties);
+        tokenService = new AnusTokenService(tenantService, userService, jwtService, roleBootstrap, properties);
     }
 
     @Test
@@ -66,8 +70,9 @@ class AnusTokenServiceTest {
 
         assertThat(token).isEqualTo("signed-jwt");
         verify(tenantService).ensure(eq(TENANT), any());
-        verify(userService).ensureVanceServiceAccount(eq(TENANT), eq("_vance-admin"),
-                any(), any(), any());
+        // The operator acting through the Brain holds the top tenant role.
+        verify(roleBootstrap).grantTenantAdmin(TENANT, "_vance-admin");
+        verify(userService).ensureVanceServiceAccount(eq(TENANT), eq("_vance-admin"), any(), any(), any());
     }
 
     @Test
@@ -77,13 +82,14 @@ class AnusTokenServiceTest {
         Instant after = Instant.now();
 
         ArgumentCaptor<Instant> expCaptor = ArgumentCaptor.forClass(Instant.class);
-        verify(jwtService).createToken(eq(TENANT), eq("_vance-admin"),
-                expCaptor.capture(), eq(TokenType.ACCESS));
+        verify(jwtService).createToken(eq(TENANT), eq("_vance-admin"), expCaptor.capture(), eq(TokenType.ACCESS));
 
         // The mint sets expiresAt = now + ttl. Bound the captured value
         // by the real clock window we just observed.
         Instant exp = expCaptor.getValue();
-        assertThat(exp).isAfterOrEqualTo(before.plus(properties.getAdminTokenTtl()).minusMillis(50));
-        assertThat(exp).isBeforeOrEqualTo(after.plus(properties.getAdminTokenTtl()).plusMillis(50));
+        assertThat(exp)
+                .isAfterOrEqualTo(before.plus(properties.getAdminTokenTtl()).minusMillis(50));
+        assertThat(exp)
+                .isBeforeOrEqualTo(after.plus(properties.getAdminTokenTtl()).plusMillis(50));
     }
 }

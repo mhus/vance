@@ -8,7 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.shared.permission.PermissionService;
-import de.mhus.vance.shared.permission.RecordingPermissionResolver;
+import de.mhus.vance.shared.permission.RecordingPermissionProvider;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -35,7 +35,7 @@ class ToolDispatcherHintTest {
 
     @BeforeEach
     void setUp() {
-        PermissionService permissions = new PermissionService(List.of(new RecordingPermissionResolver()));
+        PermissionService permissions = new RecordingPermissionProvider().service();
 
         failing = mock(Tool.class);
         when(failing.name()).thenReturn("fake.edit");

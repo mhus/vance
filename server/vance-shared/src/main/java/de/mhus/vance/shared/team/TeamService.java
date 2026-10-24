@@ -1,5 +1,6 @@
 package de.mhus.vance.shared.team;
 
+import de.mhus.vance.shared.permission.TeamMembership;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -10,11 +11,15 @@ import org.springframework.stereotype.Service;
 
 /**
  * Team lifecycle and lookup — the one entry point to team data.
+ *
+ * <p>Also answers {@link TeamMembership} for the permission layer, which needs
+ * a user's teams to decide inbox visibility (R5) without depending on this
+ * service's other surface.
  */
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class TeamService {
+public class TeamService implements TeamMembership {
 
     private final TeamRepository repository;
 
@@ -35,19 +40,19 @@ public class TeamService {
         return repository.findByTenantIdAndMembersContaining(tenantId, username);
     }
 
+    @Override
+    public List<String> teamNamesOf(String tenantId, String username) {
+        return byMember(tenantId, username).stream().map(TeamDocument::getName).toList();
+    }
+
     /**
      * Creates a team inside {@code tenantId}. {@code members} may be empty.
      * Throws {@link TeamAlreadyExistsException} if a team with the same
      * {@code name} already lives in that tenant.
      */
-    public TeamDocument create(
-            String tenantId,
-            String name,
-            @Nullable String title,
-            @Nullable List<String> members) {
+    public TeamDocument create(String tenantId, String name, @Nullable String title, @Nullable List<String> members) {
         if (repository.existsByTenantIdAndName(tenantId, name)) {
-            throw new TeamAlreadyExistsException(
-                    "Team '" + name + "' already exists in tenant '" + tenantId + "'");
+            throw new TeamAlreadyExistsException("Team '" + name + "' already exists in tenant '" + tenantId + "'");
         }
         TeamDocument team = TeamDocument.builder()
                 .tenantId(tenantId)
@@ -57,8 +62,12 @@ public class TeamService {
                 .enabled(true)
                 .build();
         TeamDocument saved = repository.save(team);
-        log.info("Created team tenantId='{}' name='{}' id='{}' members={}",
-                saved.getTenantId(), saved.getName(), saved.getId(), saved.getMembers().size());
+        log.info(
+                "Created team tenantId='{}' name='{}' id='{}' members={}",
+                saved.getTenantId(),
+                saved.getName(),
+                saved.getId(),
+                saved.getMembers().size());
         return saved;
     }
 
@@ -73,9 +82,10 @@ public class TeamService {
             @Nullable String title,
             @Nullable Boolean enabled,
             @Nullable List<String> members) {
-        TeamDocument team = repository.findByTenantIdAndName(tenantId, name)
-                .orElseThrow(() -> new TeamNotFoundException(
-                        "Team '" + name + "' not found in tenant '" + tenantId + "'"));
+        TeamDocument team = repository
+                .findByTenantIdAndName(tenantId, name)
+                .orElseThrow(
+                        () -> new TeamNotFoundException("Team '" + name + "' not found in tenant '" + tenantId + "'"));
         if (title != null) {
             team.setTitle(title);
         }
@@ -86,15 +96,20 @@ public class TeamService {
             team.setMembers(new ArrayList<>(members));
         }
         TeamDocument saved = repository.save(team);
-        log.info("Updated team tenantId='{}' name='{}' enabled={} members={}",
-                saved.getTenantId(), saved.getName(), saved.isEnabled(), saved.getMembers().size());
+        log.info(
+                "Updated team tenantId='{}' name='{}' enabled={} members={}",
+                saved.getTenantId(),
+                saved.getName(),
+                saved.isEnabled(),
+                saved.getMembers().size());
         return saved;
     }
 
     public void delete(String tenantId, String name) {
-        TeamDocument team = repository.findByTenantIdAndName(tenantId, name)
-                .orElseThrow(() -> new TeamNotFoundException(
-                        "Team '" + name + "' not found in tenant '" + tenantId + "'"));
+        TeamDocument team = repository
+                .findByTenantIdAndName(tenantId, name)
+                .orElseThrow(
+                        () -> new TeamNotFoundException("Team '" + name + "' not found in tenant '" + tenantId + "'"));
         repository.delete(team);
         log.info("Deleted team tenantId='{}' name='{}'", tenantId, name);
     }

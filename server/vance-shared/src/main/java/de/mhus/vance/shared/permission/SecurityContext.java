@@ -21,10 +21,10 @@ import org.jspecify.annotations.Nullable;
  * is set when the caller authenticated with a credential that is narrower than
  * the account behind it — today an
  * {@link de.mhus.vance.shared.jwt.TokenType#INTEGRATION} token pinned to one
- * project. {@link PermissionService} intersects it with whatever the resolver
- * says: the restriction can only ever take rights away. That direction is the
+ * project. {@link PermissionService} intersects it with whatever the roles
+ * allow: the restriction can only ever take rights away. That direction is the
  * whole safety property, and it is enforced structurally — the field is read in
- * exactly one place, and no {@link PermissionResolver} sees it at all, so no
+ * exactly one place, and no {@link PermissionProvider} sees it at all, so no
  * provider (including an enterprise one) can widen a restricted context by
  * accident.
  *

@@ -29,9 +29,9 @@ import org.springframework.context.ApplicationContext;
  *       the test. ({@code OneShotCommandRunner} is a no-op here: neither
  *       {@code --sudo} nor {@code --setup} mode is active, so it falls through
  *       without {@code System.exit}.)</li>
- *   <li><b>Redis</b>: disabled. <b>Permission provider</b>: the real
- *       {@code MongoPermissionResolver} is already on the Anus classpath (via
- *       the simple-auth addon), so no test resolver is added.</li>
+ *   <li><b>Redis</b>: disabled. <b>Permission provider</b>: the core's local
+ *       provider ({@code LocalPermissionProvider}, from {@code vance-shared})
+ *       is the real one, so no test provider is added.</li>
  *   <li>{@code vance.encryption.password} is required with no default, so a
  *       test value is supplied.</li>
  * </ul>
@@ -39,13 +39,13 @@ import org.springframework.context.ApplicationContext;
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = {
-                "de.flapdoodle.mongodb.embedded.version=7.0.12",
-                "spring.mongodb.uri=",
-                "spring.mongodb.database=vance-smoke",
-                "spring.data.mongodb.auto-index-creation=false",
-                "spring.shell.interactive.enabled=false",
-                "vance.encryption.password=smoke-test",
-                "vance.redis.enabled=false",
+            "de.flapdoodle.mongodb.embedded.version=7.0.12",
+            "spring.mongodb.uri=",
+            "spring.mongodb.database=vance-smoke",
+            "spring.data.mongodb.auto-index-creation=false",
+            "spring.shell.interactive.enabled=false",
+            "vance.encryption.password=smoke-test",
+            "vance.redis.enabled=false",
         })
 class VanceAnusContextSmokeTest {
 

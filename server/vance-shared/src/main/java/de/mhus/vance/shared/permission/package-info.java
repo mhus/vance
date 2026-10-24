@@ -7,18 +7,20 @@
  * inbound layers translate the JWT claims into a {@link SecurityContext} and
  * call {@link PermissionService#enforce} before delegating to a service.
  *
- * <p>The actual rule evaluation is delegated to a {@link PermissionResolver}.
- * This module ships only the SPI — the concrete resolver is contributed by a
- * provider addon (allow-all for dev/test, simple-auth for production, or an
- * enterprise governor). {@link PermissionService} requires exactly one such
- * provider on the classpath and fails startup fast otherwise. Swapping the
- * provider addon changes the whole authorization behaviour without touching a
- * single call site.
+ * <p>The role model is core: the roles ({@code TenantRole}, {@code ProjectRole}
+ * in {@code vance-api}), what each one permits ({@link RoleTable}) and the
+ * structural rules ({@link CorePreconditions}). A {@link PermissionProvider}
+ * only reports who holds which role and may veto; the core's local provider
+ * ({@code de.mhus.vance.shared.role}) does so from {@code role_assignments}
+ * unless an addon contributes another one.
  *
  * <p>Convention:
  * <ul>
  *   <li>Inbound layers (REST controllers, WS handlers, slash-command dispatchers)
  *       call {@link PermissionService#enforce} explicitly. No annotations, no AOP.</li>
+ *   <li>Call sites speak {@code (Resource, Action)} — never role names. The
+ *       few places that are about roles themselves use the role-shaped methods
+ *       of {@link PermissionService}.</li>
  *   <li>Services trust their callers; they do not re-check.</li>
  *   <li>Background jobs and lifecycle listeners use
  *       {@link SecurityContext#SYSTEM} so the check is recorded but allowed.</li>

@@ -19,9 +19,9 @@ import org.springframework.stereotype.Component;
 /**
  * What approving or refusing a release request does.
  *
- * <p>An {@link InboxEffect} contributed by this addon — the same shape
- * {@code PermissionRequestEffect} uses in the Simple-Auth addon, which is why
- * none of this needs a change in the core.
+ * <p>An {@link InboxEffect} contributed by this addon — the same shape the
+ * core's {@code RoleRequestEffect} uses, which is why none of this needs a
+ * change in the core.
  *
  * <p>The mutation is a line in {@link AppGrantStore}, written under the
  * **approver's** identity: they are the admin whose decision it is, and a write
@@ -69,16 +69,14 @@ public class AppReleaseEffect implements InboxEffect {
         if (record == null) return Optional.empty();
 
         List<EffectFact> facts = new ArrayList<>();
-        facts.add(new EffectFact("Application", item.getEffectRef() == null
-                ? "?" : item.getEffectRef()));
+        facts.add(new EffectFact("Application", item.getEffectRef() == null ? "?" : item.getEffectRef()));
         facts.add(new EffectFact("Mode", record.mode().name().toLowerCase()));
         List<String> rest = record.restFamilies();
-        facts.add(new EffectFact("REST routes",
-                rest == null || rest.isEmpty() ? "none — its own documents only"
-                        : String.join(", ", rest)));
+        facts.add(new EffectFact(
+                "REST routes",
+                rest == null || rest.isEmpty() ? "none — its own documents only" : String.join(", ", rest)));
         facts.add(new EffectFact("Own drawing surface", record.surface() ? "yes" : "no"));
-        facts.add(new EffectFact("Documents",
-                record.documentsWritable() ? "read and write" : "read only"));
+        facts.add(new EffectFact("Documents", record.documentsWritable() ? "read and write" : "read only"));
         if (record.requestedBy() != null) {
             facts.add(new EffectFact("Requested by", record.requestedBy()));
         }
@@ -90,8 +88,7 @@ public class AppReleaseEffect implements InboxEffect {
                 facts));
     }
 
-    private void settle(MaximegalonDocument item, AnswerPayload answer,
-                        AppGrantRecord.Status status) {
+    private void settle(MaximegalonDocument item, AnswerPayload answer, AppGrantRecord.Status status) {
         String appKey = item.getEffectRef();
         if (appKey == null || appKey.isBlank()) {
             log.warn("App release item '{}' has no effectRef — nothing to settle", item.getId());
@@ -102,8 +99,7 @@ public class AppReleaseEffect implements InboxEffect {
             // The request is gone (an admin edited the document, or the tenant
             // was cleaned up). The human decision is not discarded — the item
             // stays answered — but there is nothing left to apply.
-            log.warn("App release item '{}' has no record for '{}' — nothing to settle",
-                    item.getId(), appKey);
+            log.warn("App release item '{}' has no record for '{}' — nothing to settle", item.getId(), appKey);
             return;
         }
         if (!record.open()) {
@@ -113,15 +109,23 @@ public class AppReleaseEffect implements InboxEffect {
         }
 
         String decidedBy = answer.getAnsweredBy();
-        grants.put(item.getTenantId(), appKey,
-                new AppGrantRecord(status, record.mode(), record.restFamilies(),
-                        record.surface(), record.documentsWritable(),
-                        record.requestedBy(), record.requestedAt(), record.inboxItemId(),
-                        decidedBy, Instant.now().toString()),
+        grants.put(
+                item.getTenantId(),
+                appKey,
+                new AppGrantRecord(
+                        status,
+                        record.mode(),
+                        record.restFamilies(),
+                        record.surface(),
+                        record.documentsWritable(),
+                        record.requestedBy(),
+                        record.requestedAt(),
+                        record.inboxItemId(),
+                        decidedBy,
+                        Instant.now().toString()),
                 WriteActor.system(contextFactory.forToolSubject(item.getTenantId(), decidedBy)));
 
-        log.info("App release {} tenant='{}' app='{}' by='{}'",
-                status, item.getTenantId(), appKey, decidedBy);
+        log.info("App release {} tenant='{}' app='{}' by='{}'", status, item.getTenantId(), appKey, decidedBy);
     }
 
     private @Nullable AppGrantRecord record(MaximegalonDocument item) {

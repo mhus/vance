@@ -57,7 +57,7 @@ public class TeamListTool implements Tool {
         if (permissionService.check(
                 contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
                 new de.mhus.vance.shared.permission.Resource.Tenant(ctx.tenantId()),
-                de.mhus.vance.shared.permission.Action.ADMIN)) {
+                de.mhus.vance.shared.permission.Action.WRITE)) {
             return all;
         }
         return ctx.userId() == null ? List.of() : teamService.byMember(ctx.tenantId(), ctx.userId());

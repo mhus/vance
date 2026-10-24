@@ -16,7 +16,7 @@ import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
-import de.mhus.vance.shared.permission.PermissionBootstrap;
+import de.mhus.vance.shared.role.RoleBootstrap;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -229,12 +229,7 @@ public class TrillianSessionBootstrapper {
     /** P2/D8: the kill switch — no new user-loop while {@code trillian.enabled} is off. */
     private final TrillianActivationGate activationGate;
 
-    /**
-     * Present only when a grant-storing permission provider is loaded
-     * (simple-auth); {@code ifAvailable} keeps the seed a no-op under an
-     * external governor that manages rights elsewhere.
-     */
-    private final ObjectProvider<PermissionBootstrap> permissionBootstrapProvider;
+    private final RoleBootstrap roleBootstrap;
 
     private final SecureRandom random = new SecureRandom();
 
@@ -421,22 +416,21 @@ public class TrillianSessionBootstrapper {
         //     an adopted account adopts its hub along with it.
         homeBootstrapService.ensureHome(controlSession.getTenantId(), trillianName);
 
-        // 2d. Seed the account's authority. Without a grant the account
+        // 2d. Seed the account's authority. Without a membership the account
         //     exists but may do nothing: every tool call goes through
         //     ToolDispatcher -> PermissionService.enforce(EXECUTE), which
-        //     resolves to WRITER-on-project. Scope is deliberately the
-        //     control session's project — Trillian stands in for the human
-        //     in the project they started it in, and nowhere else. Spawning
-        //     into other projects (cross_process_create) therefore stays
-        //     denied until someone grants that explicitly. Every time, not
-        //     only on mint: grants are idempotent, and an attempt that died
-        //     between mint and grant must not leave an account without one.
-        //     WRITER, not ADMIN: a Trillian works in the project, it does not
-        //     administer it — no grants, and no _vance/ configuration (R4),
+        //     needs MEMBER on the project. Scope is deliberately the control
+        //     session's project — Trillian stands in for the human in the
+        //     project they started it in, and nowhere else. Spawning into
+        //     other projects (cross_process_create) therefore stays denied
+        //     until someone grants that explicitly. Every time, not only on
+        //     mint: the seed is idempotent, and an attempt that died between
+        //     mint and seed must not leave an account without one. MEMBER,
+        //     not ADMIN: a Trillian works in the project, it does not
+        //     administer it — no memberships, and no _vance/ configuration,
         //     which an agent steered by a conversation counterpart must never
         //     rewrite. Re-seeding lowers the ADMIN earlier versions seeded.
-        permissionBootstrapProvider.ifAvailable(
-                pb -> pb.grantProjectWriter(controlSession.getTenantId(), controlSession.getProjectId(), trillianName));
+        roleBootstrap.grantProjectMember(controlSession.getTenantId(), controlSession.getProjectId(), trillianName);
 
         // 4. Create the headless user-session owned by the service-
         //    account. system=true marks it as auto-managed (UI may

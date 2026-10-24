@@ -19,7 +19,7 @@ import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
-import de.mhus.vance.shared.permission.PermissionBootstrap;
+import de.mhus.vance.shared.role.RoleBootstrap;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -31,7 +31,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.Consumer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -77,10 +76,7 @@ class TrillianSessionBootstrapperTest {
     ChatMessageService chatMessageService;
 
     @Mock
-    PermissionBootstrap permissionBootstrap;
-
-    @Mock
-    ObjectProvider<PermissionBootstrap> permissionBootstrapProvider;
+    RoleBootstrap roleBootstrap;
 
     @Mock
     ThinkEngine engine;
@@ -136,7 +132,7 @@ class TrillianSessionBootstrapperTest {
                 lifecycleProvider,
                 modelGate,
                 activationGate,
-                permissionBootstrapProvider);
+                roleBootstrap);
 
         when(activationGate.loopsEnabled(anyString(), any(), any())).thenReturn(true);
         when(lifecycleProvider.getObject()).thenReturn(lifecycleService);
@@ -194,24 +190,17 @@ class TrillianSessionBootstrapperTest {
                 })
                 .when(laneScheduler)
                 .submit(anyString(), any(Callable.class));
-
-        doAnswer(inv -> {
-                    ((Consumer<PermissionBootstrap>) inv.getArgument(0)).accept(permissionBootstrap);
-                    return null;
-                })
-                .when(permissionBootstrapProvider)
-                .ifAvailable(any());
     }
 
     @Test
-    void bootstrap_grantsTheMintedAccountWriterOnTheControlProject_neverAdmin() {
+    void bootstrap_makesTheMintedAccountMemberOfTheControlProject_neverAdmin() {
         // A Trillian works in its human's project, it does not administer it:
         // ADMIN would let it (and a counterpart steering it) rewrite _vance/.
         bootstrap(controlSession(), controlProcess());
-        verify(permissionBootstrap, never()).grantProjectAdmin(any(), any(), any());
+        verify(roleBootstrap, never()).grantProjectAdmin(any(), any(), any());
 
         ArgumentCaptor<String> username = ArgumentCaptor.forClass(String.class);
-        verify(permissionBootstrap).grantProjectWriter(eq(TENANT), eq(PROJECT), username.capture());
+        verify(roleBootstrap).grantProjectMember(eq(TENANT), eq(PROJECT), username.capture());
         org.assertj.core.api.Assertions.assertThat(username.getValue()).startsWith("_trillian-void-");
     }
 
@@ -222,7 +211,7 @@ class TrillianSessionBootstrapperTest {
         // Cross-project spawning stays denied until someone grants it
         // explicitly — an ephemeral, LLM-driven account must not hold
         // tenant-wide authority.
-        verify(permissionBootstrap, never()).grantTenantAdmin(any(), any());
+        verify(roleBootstrap, never()).grantTenantAdmin(any(), any());
     }
 
     @Test
@@ -251,7 +240,7 @@ class TrillianSessionBootstrapperTest {
 
         ArgumentCaptor<String> granted = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> owner = ArgumentCaptor.forClass(String.class);
-        verify(permissionBootstrap).grantProjectWriter(any(), any(), granted.capture());
+        verify(roleBootstrap).grantProjectMember(any(), any(), granted.capture());
         verify(sessionService).create(any(), owner.capture(), any(), any(), any(), any(), any(), anyBoolean());
         // A mismatch here is invisible at runtime until the first tool call
         // is denied — exactly the failure this pair of fixes removes.
@@ -282,7 +271,7 @@ class TrillianSessionBootstrapperTest {
         ArgumentCaptor<ChatMessageDocument> message = ArgumentCaptor.forClass(ChatMessageDocument.class);
         verify(chatMessageService).append(message.capture());
         ArgumentCaptor<String> granted = ArgumentCaptor.forClass(String.class);
-        verify(permissionBootstrap).grantProjectWriter(any(), any(), granted.capture());
+        verify(roleBootstrap).grantProjectMember(any(), any(), granted.capture());
 
         // The operator needs this name to widen the worker's reach later;
         // the brain log is not a place they can be expected to look.
@@ -353,7 +342,7 @@ class TrillianSessionBootstrapperTest {
                 lifecycleProvider,
                 modelGate,
                 activationGate,
-                permissionBootstrapProvider);
+                roleBootstrap);
 
         bootstrap(controlSession(), controlProcess("adam"));
 
@@ -557,7 +546,7 @@ class TrillianSessionBootstrapperTest {
                 lifecycleProvider,
                 modelGate,
                 activationGate,
-                permissionBootstrapProvider);
+                roleBootstrap);
 
         bootstrap(controlSession(), controlProcess("adam"));
 
@@ -604,7 +593,7 @@ class TrillianSessionBootstrapperTest {
 
         verify(userService, never()).createServiceAccount(anyString(), anyString(), any(), any(), any());
         verify(homeBootstrapService, never()).ensureHome(anyString(), anyString());
-        verify(permissionBootstrap, never()).grantProjectWriter(any(), any(), any());
+        verify(roleBootstrap, never()).grantProjectMember(any(), any(), any());
     }
 
     @Test
@@ -728,7 +717,7 @@ class TrillianSessionBootstrapperTest {
 
         bootstrap(controlSession(), arthur);
 
-        verify(permissionBootstrap, never()).grantProjectWriter(any(), any(), any());
+        verify(roleBootstrap, never()).grantProjectMember(any(), any(), any());
         verify(userService, never()).createServiceAccount(any(), any(), any(), any(), any());
     }
 

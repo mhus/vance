@@ -8,8 +8,7 @@ import de.mhus.vance.anus.VanceAnusApplication;
  * {@code --sudo}/{@code --setup} flags before Spring Boot sees them and wires up
  * the one-shot shell runners, none of which the bundle wants to duplicate.
  *
- * <p>Anus addons (simpleauth, ...) sit on the classpath via this module's pom
- * dependencies; Spring Boot discovers them through their
+ * <p>Anus addons sit on the classpath via this module's pom dependencies; Spring Boot discovers them through their
  * {@code META-INF/spring/.../AutoConfiguration.imports} files without any code
  * change here.
  */

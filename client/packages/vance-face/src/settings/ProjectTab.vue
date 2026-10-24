@@ -13,6 +13,7 @@ import {
   useConfirm,
 } from '@/components';
 import KitAdminSection from './KitAdminSection.vue';
+import ProjectMembersSection from './ProjectMembersSection.vue';
 import ToolTemplatesSection from './ToolTemplatesSection.vue';
 import { useAdminProjects } from '@/composables/useAdminProjects';
 import { useScopeSettings } from '@/composables/useScopeSettings';
@@ -515,6 +516,9 @@ function onProjectContentLanguageChanged(value: string | null): void {
         >{{ t('scopes.sessionGroups.add') }}</VButton>
       </div>
     </VCard>
+
+    <!-- Members — who works here, with which project role -->
+    <ProjectMembersSection :project-name="projectName" />
 
     <!-- Kits -->
     <KitAdminSection :project-name="projectName" />

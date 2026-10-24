@@ -8,8 +8,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import de.mhus.vance.shared.permission.PermissionBootstrap;
 import de.mhus.vance.shared.project.maintenance.UserHubSweeper;
+import de.mhus.vance.shared.role.RoleBootstrap;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.user.UserDocument;
@@ -17,7 +17,6 @@ import de.mhus.vance.shared.user.UserService;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 
@@ -30,10 +29,7 @@ class TrillianProjectDataHandlerTest {
 
     private final ThinkProcessService thinkProcessService = mock(ThinkProcessService.class);
     private final UserService userService = mock(UserService.class);
-    private final PermissionBootstrap permissionBootstrap = mock(PermissionBootstrap.class);
-
-    @SuppressWarnings("unchecked")
-    private final ObjectProvider<PermissionBootstrap> bootstrapProvider = mock(ObjectProvider.class);
+    private final RoleBootstrap roleBootstrap = mock(RoleBootstrap.class);
 
     private final UserHubSweeper hubSweeper = mock(UserHubSweeper.class);
 
@@ -41,11 +37,9 @@ class TrillianProjectDataHandlerTest {
     private final ObjectProvider<UserHubSweeper> sweeperProvider = mock(ObjectProvider.class);
 
     private final TrillianProjectDataHandler handler =
-            new TrillianProjectDataHandler(thinkProcessService, userService, bootstrapProvider, sweeperProvider);
+            new TrillianProjectDataHandler(thinkProcessService, userService, roleBootstrap, sweeperProvider);
 
     TrillianProjectDataHandlerTest() {
-        // ObjectProvider.ifAvailable(consumer) — hand the mock through.
-        doAnswerWithBootstrap();
         when(sweeperProvider.getIfAvailable()).thenReturn(hubSweeper);
         when(hubSweeper.sweepUserHub(
                         org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString()))
@@ -99,7 +93,7 @@ class TrillianProjectDataHandlerTest {
 
         // A grant keys on the user name, and a name comes back — a leftover
         // grant would be inherited by the next account minted under it.
-        verify(permissionBootstrap).revokeAll("acme", "_trillian-void-a7f3");
+        verify(roleBootstrap).revokeAll("acme", "_trillian-void-a7f3");
         verify(userService).delete("acme", "_trillian-void-a7f3");
     }
 
@@ -126,7 +120,7 @@ class TrillianProjectDataHandlerTest {
 
         // Grants are still revoked: this doubles as the repair path for an
         // account whose deletion succeeded but whose grants did not.
-        verify(permissionBootstrap).revokeAll("acme", "_trillian-void-a7f3");
+        verify(roleBootstrap).revokeAll("acme", "_trillian-void-a7f3");
         verify(userService, never()).delete("acme", "_trillian-void-a7f3");
     }
 
@@ -195,15 +189,5 @@ class TrillianProjectDataHandlerTest {
                 .thinkEngine(TrillianProcessKeys.CONTROL_ENGINE_NAME)
                 .engineParams(Map.of(TrillianProcessKeys.PARAM_TRILLIAN_USER_NAME, account))
                 .build();
-    }
-
-    @SuppressWarnings("unchecked")
-    private void doAnswerWithBootstrap() {
-        org.mockito.Mockito.doAnswer(invocation -> {
-                    ((Consumer<PermissionBootstrap>) invocation.getArgument(0)).accept(permissionBootstrap);
-                    return null;
-                })
-                .when(bootstrapProvider)
-                .ifAvailable(org.mockito.ArgumentMatchers.any());
     }
 }

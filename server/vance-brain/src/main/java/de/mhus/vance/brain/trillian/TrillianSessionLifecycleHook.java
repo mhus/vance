@@ -2,7 +2,7 @@ package de.mhus.vance.brain.trillian;
 
 import de.mhus.vance.brain.session.SessionLifecycleHook;
 import de.mhus.vance.brain.session.SessionLifecycleService;
-import de.mhus.vance.shared.permission.PermissionBootstrap;
+import de.mhus.vance.shared.role.RoleBootstrap;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -62,8 +62,7 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
     /** Breaks the cycle: the service owns this hook. */
     private final ObjectProvider<SessionLifecycleService> lifecycleProvider;
 
-    /** Absent unless a grant-storing permission provider is loaded. */
-    private final ObjectProvider<PermissionBootstrap> permissionBootstrapProvider;
+    private final RoleBootstrap roleBootstrap;
 
     private final de.mhus.vance.brain.trillian.nature.TrillianNatureRegistry natureRegistry;
     private final TrillianHubSweeper hubSweeper;
@@ -116,15 +115,15 @@ public class TrillianSessionLifecycleHook implements SessionLifecycleHook {
             } catch (RuntimeException e) {
                 log.warn("Trillian: discarding stored attributes of '{}' failed: {}", account, e.toString());
             }
-            // Grants next: they key on the user *name* too, and one must
+            // Roles next: they key on the user *name* too, and one must
             // not outlive its subject. Deleting the account below cascades
             // there through UserLifecycleListener — but only if the account
             // still exists, and the presence check further down is reached
             // on paths where it does not. This covers exactly that case.
             try {
-                permissionBootstrapProvider.ifAvailable(pb -> pb.revokeAll(session.getTenantId(), account));
+                roleBootstrap.revokeAll(session.getTenantId(), account);
             } catch (RuntimeException e) {
-                log.warn("Trillian: revoking grants of '{}' failed: {}", account, e.toString());
+                log.warn("Trillian: revoking roles of '{}' failed: {}", account, e.toString());
             }
             // Sessions it opened elsewhere (session_open) run as this
             // account in other people's projects; left open, their engines

@@ -9,7 +9,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.home.HomeStatusDto;
-import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.llmusage.BudgetScope;
 import de.mhus.vance.shared.llmusage.BudgetWindow;
 import de.mhus.vance.shared.llmusage.LlmBudget;
@@ -17,41 +16,42 @@ import de.mhus.vance.shared.llmusage.LlmBudgetService;
 import de.mhus.vance.shared.llmusage.LlmPowerService;
 import de.mhus.vance.shared.llmusage.LlmPowerState;
 import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.PermissionService;
 import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.shared.permission.SecurityContext;
 import de.mhus.vance.shared.storage.StorageQuotaService;
-import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link HomeStatusController}: each field is independent and nullable, the
+ * {@link HomeStatusService}: each field is independent and nullable, the
  * controller must not fail the whole call when one component is unreachable.
  * That mirrors the fail-open philosophy of {@link LlmBudgetService} check()
  * and {@link StorageQuotaService} check() (R1/R5 in
  * {@code planning/storage-quota.md}).
  */
-class HomeStatusControllerTest {
+class HomeStatusServiceTest {
 
     private static final String TENANT = "acme";
 
     private LlmPowerService llmPowerService;
     private LlmBudgetService llmBudgetService;
     private StorageQuotaService storageQuotaService;
-    private RequestAuthority authority;
-    private HttpServletRequest request;
-    private HomeStatusController controller;
+    private PermissionService permissionService;
+    private final SecurityContext request = SecurityContext.user("alice", "acme", List.of());
+    private HomeStatusService controller;
 
     @BeforeEach
     void setUp() {
         llmPowerService = mock(LlmPowerService.class);
         llmBudgetService = mock(LlmBudgetService.class);
         storageQuotaService = mock(StorageQuotaService.class);
-        authority = mock(RequestAuthority.class);
-        request = mock(HttpServletRequest.class);
-        when(authority.check(eq(request), any(Resource.class), eq(Action.READ))).thenReturn(true);
-        controller = new HomeStatusController(llmPowerService, llmBudgetService, storageQuotaService, authority);
+        permissionService = mock(PermissionService.class);
+        when(permissionService.check(eq(request), any(Resource.class), eq(Action.READ)))
+                .thenReturn(true);
+        controller = new HomeStatusService(llmPowerService, llmBudgetService, storageQuotaService, permissionService);
     }
 
     @Test
@@ -207,7 +207,7 @@ class HomeStatusControllerTest {
 
     @Test
     void projectIdUnreadable_leavesBudgetEmpty_andKeepsTenantFields() {
-        when(authority.check(eq(request), eq(new Resource.Project(TENANT, "secret")), eq(Action.READ)))
+        when(permissionService.check(eq(request), eq(new Resource.Project(TENANT, "secret")), eq(Action.READ)))
                 .thenReturn(false);
         when(llmPowerService.load(TENANT)).thenReturn(LlmPowerState.ALL_ON);
         when(storageQuotaService.status(TENANT))

@@ -20,8 +20,8 @@ import { EditorShell, StarredTile, VAlert } from '@/components';
 import { useStarredStore } from '@/starred/starredStore';
 import { editorHref } from '@/platform/editorHref';
 import { isTenantLlmConfigured } from '@/platform/llmSettings';
-import { useHomeStatus } from '@/composables/useHomeStatus';
-import { fetchMyRoles, tenantRoleAtLeast } from '@/composables/useRoles';
+import { useMe } from '@/composables/useMe';
+import { tenantRoleAtLeast } from '@/composables/useRoles';
 import { TenantRole } from '@vance/generated';
 
 const { t } = useI18n();
@@ -37,9 +37,11 @@ const { t } = useI18n();
 const uiLevel = ref<WebUiLevel>(getActiveUiLevel());
 
 // The reader's tenant role — an admin tile shows only when the role allows
-// what it leads to *and* the UI level asks for it. Unknown (call failed)
+// what it leads to *and* the UI level asks for it. Unknown (no answer yet)
 // reads as no admin: a tile that answers 403 is worse than a missing one.
-const myTenantRole = ref<TenantRole | null>(null);
+// Same `/me` answer as the status hints below.
+const homeStatus = useMe();
+const myTenantRole = computed<TenantRole | null>(() => homeStatus.me.value?.tenantRole ?? null);
 
 const showExpertTiles = computed(() => rankOf(uiLevel.value) >= rankOf('expert'));
 const showAdminTiles = computed(() =>
@@ -109,18 +111,18 @@ async function onReconcile(): Promise<void> {
 // Only an answered "no" warns — an unknown result (failed check) stays quiet.
 const llmMissing = ref(false);
 
-// LLM-power + LLM-budget + storage-quota in one roundtrip. Each field is
-// independently nullable; the SPA renders nothing for null so a transient
-// outage never reads as "off" or "full".
-const homeStatus = useHomeStatus();
+// LLM-power + LLM-budget + storage-quota ride in `homeStatus` (the `/me`
+// answer above). Each field is independently nullable; the SPA renders
+// nothing for null so a transient outage never reads as "off" or "full".
 
 onMounted(async () => {
   void isTenantLlmConfigured().then((configured) => {
     llmMissing.value = configured === false;
   });
-  void homeStatus.load();
-  void fetchMyRoles().then((mine) => {
-    myTenantRole.value = mine?.tenantRole ?? null;
+  // Fresh on every visit — the landing is entered often and the status
+  // changes underneath it. On the first visit this joins the boot request.
+  void homeStatus.load().then(() => {
+    uiLevel.value = getActiveUiLevel();
   });
   // Re-read on every visit rather than once per session: the reader can change
   // their UI level in the profile page, which is outside this bundle and

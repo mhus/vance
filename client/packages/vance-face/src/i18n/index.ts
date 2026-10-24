@@ -22,7 +22,7 @@ import {
   type LazyMessageBundle,
   type LocaleMessageTree,
 } from '@vance/shared/i18n';
-import { getActiveLanguage } from '@/platform';
+import { getActiveLanguage, onMeChanged } from '@/platform';
 import { trackAddonLocaleLoad } from './addonLocales';
 import en from './en';
 import { isUiLocale, pluralIndex, THREE_FORM_LOCALES, type Locale } from './locales';
@@ -171,6 +171,15 @@ export const i18nReady: Promise<void> = (async () => {
   if (generation === localeGeneration) applyLocale(locale);
 })();
 
+// The startup locale came from the last `/me` snapshot; when the fresh answer
+// carries a different language (changed elsewhere, or no snapshot yet), follow
+// it. Cleared means back to the browser's language.
+onMeChanged((next, previous) => {
+  if (next?.settings?.['webui.language'] !== previous?.settings?.['webui.language']) {
+    void setUiLocale(resolveStartupLocale());
+  }
+});
+
 /** Install on the given Vue app. Call before {@code app.mount()}. */
 export function installI18n(app: App): void {
   app.use(i18n);
@@ -180,8 +189,7 @@ export function installI18n(app: App): void {
  * Switch the live UI language. Used by the profile page after the
  * user picks a different language and by the topbar's transient switch —
  * loads the locale's messages, then flips the i18n locale ref so all bound
- * templates re-render, without waiting for the page reload that would
- * otherwise re-read the data cookie.
+ * templates re-render right away.
  *
  * Unsupported codes silently no-op (rather than throwing) — the user
  * has already saved the value to the server, the UI just doesn't

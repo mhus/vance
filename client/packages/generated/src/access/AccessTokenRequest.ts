@@ -8,5 +8,4 @@ export interface AccessTokenRequest {
   refreshToken?: string;
   requestRefreshToken: boolean;
   requestCookies: boolean;
-  includeWebUiSettings: boolean;
 }

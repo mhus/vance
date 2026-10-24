@@ -34,11 +34,6 @@ import org.jspecify.annotations.Nullable;
  * the CLI clients. When true, an SPA can rely on browser-managed
  * {@code HttpOnly} storage without JavaScript ever holding the bearer
  * token.
- *
- * <p>{@link #includeWebUiSettings} is a request to also embed the
- * caller's {@code _user_<login>} project settings whose keys start with
- * {@code webui.} into the {@code vance_data} cookie. Only meaningful
- * when {@code requestCookies=true}.
  */
 @Data
 @Builder
@@ -55,6 +50,4 @@ public class AccessTokenRequest {
     private boolean requestRefreshToken;
 
     private boolean requestCookies;
-
-    private boolean includeWebUiSettings;
 }

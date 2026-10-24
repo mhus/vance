@@ -3,9 +3,8 @@
  * of the role-administration REST surface.
  *
  * <p>Served by {@code de.mhus.vance.brain.roles.RoleAdminController} under
- * {@code /brain/{tenant}/admin/roles} and by
- * {@code de.mhus.vance.brain.roles.MyRolesController} under
- * {@code /brain/{tenant}/me/roles}. What each role permits is decided in
+ * {@code /brain/{tenant}/admin/roles}; the caller's own roles travel in
+ * {@code MeDto} ({@code GET /brain/{tenant}/me}). What each role permits is decided in
  * {@code vance-shared} ({@code PermissionService}); this package only names
  * them. See {@code specification/public/permission-system.md}.
  */

@@ -34,6 +34,11 @@ export const StorageKeys = {
   /** Username of the currently signed-in user. Mirror semantics like
    *  {@link identityTenantId}. */
   identityUsername: 'vance.identity.username',
+  /** Last answer of {@code GET /brain/{tenant}/me} (JSON) — identity,
+   *  roles, UI settings, status. Lets a page render theme, language and
+   *  role-gated surfaces before the fresh answer is in; always
+   *  re-validated on boot. Ignored when it belongs to another identity. */
+  meSnapshot: 'vance.me.snapshot',
   /** Brain HTTP base URL (e.g. {@code http://10.0.0.5:8080}) the
    *  user pointed the app at on the last successful login. Mobile
    *  only — Web pulls the brain origin from {@code window.location}.

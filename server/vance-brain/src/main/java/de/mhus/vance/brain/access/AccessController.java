@@ -246,8 +246,7 @@ public class AccessController {
                     issued.accessToken(),
                     issued.accessExpiresAt(),
                     issued.refreshToken(),
-                    issued.refreshExpiresAt(),
-                    request.isIncludeWebUiSettings());
+                    issued.refreshExpiresAt());
         }
         return responseEntityBuilder.body(responseBuilder.build());
     }

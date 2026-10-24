@@ -21,7 +21,8 @@ import { useAdminUsers } from '@/composables/useAdminUsers';
 import { useAdminTeams } from '@/composables/useAdminTeams';
 import { useScopeSettings } from '@/composables/useScopeSettings';
 import { useHelp } from '@/composables/useHelp';
-import { fetchMyRoles, TENANT_ROLES, tenantRoleAtLeast, useTenantRoles } from '@/composables/useRoles';
+import { TENANT_ROLES, tenantRoleAtLeast, useTenantRoles } from '@/composables/useRoles';
+import { useMe } from '@/composables/useMe';
 import { getUsername, isEncryptedSettingType } from '@vance/shared';
 import {
   SettingType,
@@ -43,7 +44,8 @@ const currentUsername = getUsername() ?? '';
 // The caller's own tenant role: nobody assigns above it, and nobody changes
 // the role of someone above it — the server refuses both, the select only
 // offers what can succeed.
-const myTenantRole = ref<TenantRole | null>(null);
+const meState = useMe();
+const myTenantRole = computed<TenantRole | null>(() => meState.me.value?.tenantRole ?? null);
 const roleDraft = ref<TenantRole>(TenantRole.USER);
 const assignableRoles = computed(() =>
   TENANT_ROLES.filter((r) => tenantRoleAtLeast(myTenantRole.value, r)).map((value) => ({
@@ -177,9 +179,7 @@ onMounted(async () => {
     usersState.reload(),
     teamsState.reload(),
     rolesState.reload(),
-    fetchMyRoles().then((mine) => {
-      myTenantRole.value = mine?.tenantRole ?? null;
-    }),
+    meState.load(),
     help.load('user-team-admin.md'),
   ]);
 });

@@ -1,60 +1,50 @@
 package de.mhus.vance.brain.home;
 
 import de.mhus.vance.api.home.HomeStatusDto;
-import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.llmusage.BudgetScope;
 import de.mhus.vance.shared.llmusage.LlmBudgetService;
 import de.mhus.vance.shared.llmusage.LlmPowerService;
 import de.mhus.vance.shared.llmusage.LlmPowerState;
 import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.PermissionService;
 import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.shared.permission.SecurityContext;
 import de.mhus.vance.shared.storage.StorageQuotaService;
-import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.stereotype.Service;
 
 /**
- * Read-only landing-page status. The SPA hits this once when the home view
- * mounts, to render the small status hints next to the "Chat" and
- * "Dokumente" tiles, and from the session picker for the selected project.
+ * The status hints the Web-UI shows next to its tiles and in the session
+ * picker: LLM power switch, cost budget, storage quota. Served as part of
+ * {@code GET /brain/{tenant}/me} ({@code MeDto.status}).
  *
- * <p>Endpoint: {@code GET /brain/{tenant}/home/status}. Any signed-in member
- * of the tenant may read the tenant-level fields — they are percentages, no
- * amounts. With {@code ?projectId=X} the budget is read at the project level,
- * and only when the caller may read that project: otherwise the budget fields
- * stay {@code null}, exactly like an unanswerable value, so the endpoint
- * neither leaks another project's spend nor tells whether it exists.
+ * <p>Any signed-in member of the tenant may read the tenant-level fields —
+ * they are percentages, no amounts. With a project the budget is read at the
+ * project level, and only when the caller may read that project: otherwise
+ * the budget fields stay {@code null}, exactly like an unanswerable value, so
+ * neither another project's spend nor its existence leaks.
  *
- * <p>Each field is independently nullable: a failed load on one
- * component (Mongo blip on the storage aggregation, missing brain
- * dependency on a custom build) leaves the other two. The SPA renders
- * nothing for null — the worst case is a tile without a status hint,
- * never a tile with a misleading one. The same fail-open philosophy as
- * {@link LlmBudgetService} {@code check()} and
+ * <p>Each field is independently nullable: a failed load on one component
+ * (Mongo blip on the storage aggregation, missing dependency on a custom
+ * build) leaves the others. The SPA renders nothing for null — the worst case
+ * is a tile without a status hint, never a tile with a misleading one. The
+ * same fail-open philosophy as {@link LlmBudgetService} {@code check()} and
  * {@link StorageQuotaService} {@code check()} (R1/R5).
  */
-@RestController
-@RequestMapping("/brain/{tenant}/home")
+@Service
 @RequiredArgsConstructor
 @Slf4j
-public class HomeStatusController {
+public class HomeStatusService {
 
     private final LlmPowerService llmPowerService;
     private final LlmBudgetService llmBudgetService;
     private final StorageQuotaService storageQuotaService;
-    private final RequestAuthority authority;
+    private final PermissionService permissionService;
 
-    @GetMapping("/status")
-    public HomeStatusDto status(
-            HttpServletRequest httpRequest,
-            @PathVariable("tenant") String tenant,
-            @RequestParam(value = "projectId", required = false) @Nullable String projectId) {
+    /** Status of the tenant, with the budget of {@code projectId} when given and readable by {@code caller}. */
+    public HomeStatusDto status(SecurityContext caller, String tenant, @Nullable String projectId) {
         HomeStatusDto.HomeStatusDtoBuilder b = HomeStatusDto.builder();
 
         // LLM main switch — read from the store, never from the in-memory
@@ -80,7 +70,7 @@ public class HomeStatusController {
             String scopeLabel;
             String serviceProjectId;
             if (projectId != null && !projectId.isBlank()) {
-                if (!authority.check(httpRequest, new Resource.Project(tenant, projectId), Action.READ)) {
+                if (!permissionService.check(caller, new Resource.Project(tenant, projectId), Action.READ)) {
                     return finish(b, tenant);
                 }
                 scope = BudgetScope.PROJECT;

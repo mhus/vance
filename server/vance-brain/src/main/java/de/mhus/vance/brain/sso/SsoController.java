@@ -199,8 +199,7 @@ public class SsoController {
                 success.issued().accessToken(),
                 success.issued().accessExpiresAt(),
                 success.issued().refreshToken(),
-                success.issued().refreshExpiresAt(),
-                true);
+                success.issued().refreshExpiresAt());
         return builder.build();
     }
 
@@ -227,8 +226,7 @@ public class SsoController {
                 issued.accessToken(),
                 issued.accessExpiresAt(),
                 issued.refreshToken(),
-                issued.refreshExpiresAt(),
-                true);
+                issued.refreshExpiresAt());
         AccessTokenResponse.AccessTokenResponseBuilder response = AccessTokenResponse.builder()
                 .token(issued.accessToken())
                 .expiresAtTimestamp(issued.accessExpiresAt().toEpochMilli());

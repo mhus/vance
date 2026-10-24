@@ -461,7 +461,8 @@ export * from './users/UserDto';
 export * from './users/UserPasswordRequest';
 export * from './users/UserUpdateRequest';
 
-export * from './roles/MyRolesDto';
+export * from './me/MeDto';
+
 export * from './roles/ProjectRole';
 export * from './roles/ProjectRoleSetRequest';
 export * from './roles/RoleAssignmentDto';

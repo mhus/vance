@@ -1,6 +1,7 @@
 import { configurePlatform, configureVanceWs } from '@vance/shared';
 import { refreshAccessCookie } from './refreshWeb';
-import { hydrateIdentity } from './webUiSession';
+import { getSessionData, hydrateIdentity } from './webUiSession';
+import { loadMe, onMeChanged } from './me';
 import { applyTheme, ensurePrintLightTheme } from './themeWeb';
 import { applyTenantCustomCss } from './tenantCustomCss';
 import { storageWeb } from './storageWeb';
@@ -88,6 +89,14 @@ applyTheme();
 // Printing pins the light theme for the duration of the job — a dark
 // page reaches the printer as white-on-white.
 ensurePrintLightTheme();
+// The theme above came from the last `/me` snapshot; the fresh answer may
+// carry a different one (changed in another tab or on another device).
+onMeChanged((next, previous) => {
+  if (next?.settings?.['webui.theme'] !== previous?.settings?.['webui.theme']) applyTheme();
+});
+// The signed-in user — identity, roles, settings, status — fresh for this
+// page. Fire-and-forget: the snapshot carries the first frame.
+if (getSessionData()) void loadMe();
 // Tenant custom stylesheet — fetched after hydrateIdentity so the
 // tenant is known, fire-and-forget so boot never waits on it. Injected
 // after applyTheme so the tenant sheet is the last one in the head and

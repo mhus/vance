@@ -2,7 +2,6 @@ import { ref, type Ref } from 'vue';
 import {
   ProjectRole,
   TenantRole,
-  type MyRolesDto,
   type RoleAssignmentDto,
   type RoleSubjectType,
 } from '@vance/generated';
@@ -23,19 +22,6 @@ export const PROJECT_ROLES: ProjectRole[] = [ProjectRole.READER, ProjectRole.MEM
 export function tenantRoleAtLeast(actual: TenantRole | null | undefined, required: TenantRole): boolean {
   if (!actual) return false;
   return TENANT_ROLES.indexOf(actual) >= TENANT_ROLES.indexOf(required);
-}
-
-/**
- * The caller's own roles. Display information only — the server enforces every
- * request on its own. {@code null} while unknown or when the call failed.
- */
-export async function fetchMyRoles(project?: string): Promise<MyRolesDto | null> {
-  try {
-    const query = project ? `?project=${encodeURIComponent(project)}` : '';
-    return await brainFetch<MyRolesDto>('GET', `me/roles${query}`);
-  } catch {
-    return null;
-  }
 }
 
 /** Tenant roles of users (tenant ADMIN). Everyone not listed holds USER. */

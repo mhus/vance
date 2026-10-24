@@ -26,9 +26,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -74,7 +72,7 @@ class AccessControllerTest {
                 passwordService,
                 new LoginTokenIssuer(jwtService, homeBootstrapService),
                 auditService,
-                new WebUiCookieService(jwtService, settingService, /* cookieSecure */ true));
+                new WebUiCookieService(/* cookieSecure */ true));
 
         // Default wiring — an active user exists in the tenant with a
         // password hash. Individual tests override what they need.
@@ -597,57 +595,21 @@ class AccessControllerTest {
     }
 
     @Test
-    void requestCookies_includesWebUiSettings_whenRequested() {
-        Map<String, String> savedSettings = new LinkedHashMap<>();
-        savedSettings.put("webui.theme", "dark");
-        savedSettings.put("webui.language", "de");
-        when(settingService.findUserSettingsByPrefix(TENANT, USERNAME, WebUiCookies.SETTINGS_PREFIX))
-                .thenReturn(savedSettings);
-
+    void dataCookie_carriesAuthFactsOnly() {
+        // Settings, display name and roles come from GET /me — a cookie is
+        // only re-issued on login and refresh and would go stale.
         AccessTokenRequest req = AccessTokenRequest.builder()
                 .password("right-password")
                 .requestCookies(true)
-                .includeWebUiSettings(true)
                 .build();
 
         ResponseEntity<AccessTokenResponse> resp = controller.createToken(TENANT, USERNAME, req, emptyRequest());
 
-        List<String> setCookies = resp.getHeaders().get(HttpHeaders.SET_COOKIE);
-        String data = findCookie(setCookies, WebUiCookies.DATA);
-        String decoded = decodeDataCookie(data);
-
-        // The settings are embedded as JSON inside the data cookie —
-        // we don't reparse via Jackson here (that would import yet
-        // another dependency); a substring check is enough to verify
-        // the prefix lookup ran and the values landed.
-        assertThat(decoded).contains("\"webui.theme\":\"dark\"");
-        assertThat(decoded).contains("\"webui.language\":\"de\"");
+        String decoded = decodeDataCookie(findCookie(resp.getHeaders().get(HttpHeaders.SET_COOKIE), WebUiCookies.DATA));
         assertThat(decoded).contains("\"username\":\"" + USERNAME + "\"");
         assertThat(decoded).contains("\"tenantId\":\"" + TENANT + "\"");
-    }
-
-    @Test
-    void requestCookies_omitsSettings_whenIncludeFlagFalse() {
-        // Even when the user has settings stored, requestCookies
-        // alone (without includeWebUiSettings) keeps them out of the
-        // payload — the SPA opts in explicitly.
-        Map<String, String> savedSettings = new LinkedHashMap<>();
-        savedSettings.put("webui.theme", "dark");
-        when(settingService.findUserSettingsByPrefix(TENANT, USERNAME, WebUiCookies.SETTINGS_PREFIX))
-                .thenReturn(savedSettings);
-
-        AccessTokenRequest req = AccessTokenRequest.builder()
-                .password("right-password")
-                .requestCookies(true)
-                .build();
-
-        ResponseEntity<AccessTokenResponse> resp = controller.createToken(TENANT, USERNAME, req, emptyRequest());
-
-        String data = findCookie(resp.getHeaders().get(HttpHeaders.SET_COOKIE), WebUiCookies.DATA);
-        String decoded = decodeDataCookie(data);
-
-        assertThat(decoded).doesNotContain("webui.theme");
-        // findUserSettingsByPrefix must not be queried unnecessarily.
+        assertThat(decoded).contains("accessExpiresAtTimestamp");
+        assertThat(decoded).doesNotContain("webUiSettings").doesNotContain("displayName");
         verify(settingService, never())
                 .findUserSettingsByPrefix(
                         org.mockito.ArgumentMatchers.anyString(),
@@ -665,7 +627,7 @@ class AccessControllerTest {
                 passwordService,
                 new LoginTokenIssuer(jwtService, homeBootstrapService),
                 auditService,
-                new WebUiCookieService(jwtService, settingService, /* cookieSecure */ false));
+                new WebUiCookieService(/* cookieSecure */ false));
 
         AccessTokenRequest req = AccessTokenRequest.builder()
                 .password("right-password")

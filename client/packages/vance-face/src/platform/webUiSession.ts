@@ -5,22 +5,23 @@
 //                     it; the browser ships it on every same-origin
 //                     request automatically.
 //   * vance_refresh — HttpOnly, the refresh JWT. Same JS-invisibility.
-//   * vance_data    — JS-readable JSON: username, tenantId, displayName,
-//                     access/refresh expiry timestamps, webui.* settings.
+//   * vance_data    — JS-readable JSON: username, tenantId and the
+//                     access/refresh expiry timestamps. Nothing else.
 //
-// The data cookie is the single source of truth for SPA-visible
-// settings. The server re-issues it on every login, silent refresh,
-// and profile-settings mutation (PUT/DELETE /profile/settings/...), so
-// `getActive*()` always sees the current state — no client-side
-// sessionStorage mirror, no client-side cookie patching.
+// The data cookie carries authentication facts only: who is signed in,
+// and when to re-mint. Settings, display name, roles and quotas come from
+// `GET /brain/{tenant}/me` (see `./me`) — the cookie is only re-issued on
+// login and refresh, so anything else in it went stale as soon as it was
+// changed somewhere else.
 //
 // We never trust its content for security decisions (the server
-// re-verifies on every request); we use it only for UI hints — show
-// the username, schedule a silent refresh before the access cookie
-// expires, decide whether to render the login form.
+// re-verifies on every request); we use it only to schedule a silent
+// refresh before the access cookie expires and to decide whether to
+// render the login form.
 
 import type { WebUiSessionData } from '@vance/generated';
 import { StorageKeys, getStorage } from '@vance/shared';
+import { meSetting } from './me';
 
 const DATA_COOKIE_NAME = 'vance_data';
 
@@ -106,9 +107,8 @@ export function hydrateIdentity(): void {
 
 // ──────────────── Active webui.* settings ────────────────
 //
-// Read straight from the data cookie. The server re-issues the cookie
-// on every settings mutation so these reads are always current — no
-// session-scoped override layer to drift out of sync.
+// Read from the current `/me` answer (`./me`): its snapshot until the
+// fresh answer of this page load is in, then the fresh one.
 
 export type WebUiTheme = 'auto' | 'light' | 'dark';
 export type WebUiLevel = 'standard' | 'expert' | 'admin';
@@ -153,47 +153,45 @@ export function asUiLevel(value: string | null | undefined): WebUiLevel {
 }
 
 /**
- * The active web-UI language from the data cookie. Returns `null`
+ * The active web-UI language. Returns `null`
  * when the user has not picked a language and the server has no
  * default — callers should then defer to the browser's
  * `navigator.language`.
  */
 export function getActiveLanguage(): string | null {
-  const fromCookie = getSessionData()?.webUiSettings?.['webui.language'];
-  return fromCookie && fromCookie.length > 0 ? fromCookie : null;
+  return meSetting('webui.language');
 }
 
 /**
- * The active web-UI theme from the data cookie, defaulting to
+ * The active web-UI theme, defaulting to
  * {@code 'auto'} when nothing is set — matching the user-visible
  * "follow the system" default.
  */
 export function getActiveTheme(): WebUiTheme {
-  const fromCookie = getSessionData()?.webUiSettings?.['webui.theme'];
-  return isWebUiTheme(fromCookie) ? fromCookie : 'auto';
+  const value = meSetting('webui.theme');
+  return isWebUiTheme(value) ? value : 'auto';
 }
 
 /**
- * The active web-UI level from the data cookie, defaulting to
+ * The active web-UI level, defaulting to
  * {@code 'standard'} — the safest baseline that hides every tile
  * that is not part of everyday use.
  */
 export function getActiveUiLevel(): WebUiLevel {
-  const fromCookie = getSessionData()?.webUiSettings?.['webui.uiLevel'];
-  return isWebUiLevel(fromCookie) ? fromCookie : 'standard';
+  const value = meSetting('webui.uiLevel');
+  return isWebUiLevel(value) ? value : 'standard';
 }
 
 /**
  * Whether `vance:` document links inside Markdown should open in a new
- * browser tab (the default) or replace the current page. Read from the
- * data cookie; default {@code true} so the user keeps their place in
+ * browser tab (the default) or replace the current page. Default
+ * {@code true} so the user keeps their place in
  * the chat / sessions list. The setting is ignored when a host like
  * Cortex has injected a {@code VanceLinkHandler} — that handler claims
  * the click first and routes the doc into an in-app tab instead.
  */
 export function getOpenDocumentsInNewTab(): boolean {
-  const fromCookie = getSessionData()?.webUiSettings?.['webui.document.openInNewTab'];
-  return fromCookie !== 'false';
+  return meSetting('webui.document.openInNewTab') !== 'false';
 }
 
 function readCookie(name: string): string | null {

@@ -1,3 +1,4 @@
+import { clearMe } from './me';
 import type { AccessTokenRequest, AccessTokenResponse } from '@vance/generated';
 import { brainBaseUrl } from '@vance/shared';
 import { pushShareCredentials } from './faceliftShareSetup';
@@ -32,7 +33,6 @@ export async function login(params: {
     password: params.password,
     requestRefreshToken: true,
     requestCookies: true,
-    includeWebUiSettings: true,
   };
   const url = `${brainBaseUrl()}/brain/${encodeURIComponent(params.tenant)}/access/${encodeURIComponent(params.username)}`;
 
@@ -98,7 +98,6 @@ export async function silentLogin(params: {
   const body: AccessTokenRequest = {
     requestRefreshToken: true,
     requestCookies: true,
-    includeWebUiSettings: true,
   };
   const url = `${brainBaseUrl()}/brain/${encodeURIComponent(params.tenant)}/access/${encodeURIComponent(params.username)}`;
 
@@ -154,4 +153,5 @@ export async function logout(tenant: string): Promise<void> {
     // and the local clear below removes the data cookie immediately.
   }
   document.cookie = 'vance_data=; Max-Age=0; Path=/; SameSite=Strict';
+  clearMe();
 }

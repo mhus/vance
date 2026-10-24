@@ -7,7 +7,7 @@ import type {
   StorageCleanupResultDto,
 } from '@vance/generated';
 import { VAlert, VBadge, VButton, VCard, VEmptyState, VGroup, VGroupRow, VIcon, useConfirm } from '@/components';
-import { useHomeStatus } from '@/composables/useHomeStatus';
+import { useMe } from '@/composables/useMe';
 import {
   INJECT_INSIGHTS_PROJECT_SCOPE,
 } from '@/composables/useInsightsNavigation';
@@ -39,9 +39,9 @@ import {
  * </ol>
  *
  * <p>Endpoints used (all already shipped — see
- * {@code HomeStatusController}, {@code LlmUsageReportController}):
+ * {@code MeController}, {@code LlmUsageReportController}):
  * <ul>
- *   <li>{@code GET /brain/{tenant}/home/status} — available to every
+ *   <li>{@code GET /brain/{tenant}/me} ({@code status}) — available to every
  *       signed-in member; powers section 1 and the power-switch line in
  *       section 2.</li>
  *   <li>{@code GET /brain/{tenant}/usage/budget} — admin; powers the
@@ -55,7 +55,7 @@ import {
  * fail-open philosophy as the rest of the landing-page status hints.
  */
 const { t } = useI18n();
-const home = useHomeStatus();
+const home = useMe();
 const usage = useUsageReport();
 const cleanup = useStorageCleanup();
 const confirmAction = useConfirm();
@@ -154,7 +154,7 @@ async function refresh(): Promise<void> {
 /**
  * Reload the home quota after a cleanup so the top-of-card meter reflects
  * the freed bytes. Cleanup endpoint already invalidated the local cache,
- * but the home/status response also carries bytes-free — re-read so the
+ * but the `/me` status also carries bytes-free — re-read so the
  * two numbers in this tab agree.
  */
 async function refreshHomeQuota(): Promise<void> {

@@ -23,7 +23,7 @@ import { sendSessionBootstrap } from '@/ws/wsConnectionStore';
 import { useTenantProjects } from '@composables/useTenantProjects';
 import { useSessionGroups } from '@composables/useSessionGroups';
 import { useSessionGroupCollapse } from '@composables/useSessionGroupCollapse';
-import { useProjectHomeStatus } from '@composables/useHomeStatus';
+import { useProjectMe } from '@composables/useMe';
 import {
   ProjectListSidebar,
   SessionActionsMenu,
@@ -501,7 +501,7 @@ async function refreshSessions(): Promise<void> {
 // tracks the selected project. Storage + power stay tenant-scope and
 // ignore the projectId. The composable re-fetches when `selectedProjectName`
 // changes, so picking a new project updates the banner without manual wiring.
-const projectHomeStatus = useProjectHomeStatus(selectedProjectName);
+const projectHomeStatus = useProjectMe(selectedProjectName);
 
 /** Transient info banner (e.g. compaction outcome). Auto-clears. */
 const sessionNotice = ref<string | null>(null);

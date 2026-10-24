@@ -28,8 +28,10 @@ import {
   setRememberedLogin,
 } from '@vance/shared';
 import {
+  getActiveLanguage,
   getSessionData,
   hydrateIdentity,
+  loadMe,
   isAccessAlive,
   isRefreshAlive,
   discoverSso,
@@ -176,7 +178,7 @@ onMounted(async () => {
     // Already-alive cookie path (user opened a fresh tab while logged in, or
     // followed a stale link to the door). Nothing to ask — go where they were
     // heading.
-    syncUiLocaleFromSession();
+    await syncUiLocaleFromSession();
     goOn();
     return;
   }
@@ -193,7 +195,7 @@ onMounted(async () => {
       // Refresh re-issued the data cookie — pick the fresh values
       // up before the redirect boots the workspace.
       hydrateIdentity();
-      syncUiLocaleFromSession();
+      void syncUiLocaleFromSession();
       window.setTimeout(goOn, 1000);
       return;
     }
@@ -205,13 +207,14 @@ onMounted(async () => {
 });
 
 /**
- * Pull the language from the data cookie and feed it into the i18n
- * instance, so the one-second auto-login notice is in the user's own
- * language rather than the browser's.
+ * Fetch the signed-in user (`/me`) and switch the i18n instance to their
+ * language, so the one-second auto-login notice is in the user's own
+ * language rather than the browser's — and the next page boots from a warm
+ * `/me` snapshot with the right theme and language in its first frame.
  */
-function syncUiLocaleFromSession(): void {
-  const lang = getSessionData()?.webUiSettings?.['webui.language'];
-  void setUiLocale(lang ?? null);
+async function syncUiLocaleFromSession(): Promise<void> {
+  await loadMe();
+  await setUiLocale(getActiveLanguage());
 }
 
 async function onSubmit(): Promise<void> {
@@ -230,7 +233,7 @@ async function onSubmit(): Promise<void> {
     // them again, but the auto-login notice and any error rendered here
     // shouldn't see a half-empty session in the meantime.
     hydrateIdentity();
-    syncUiLocaleFromSession();
+    await syncUiLocaleFromSession();
     // Persist or clear the (tenant, username) hint based on the
     // checkbox. Only a successful login is allowed to write — a
     // failed attempt mustn't leak its inputs into localStorage.
@@ -303,7 +306,7 @@ async function startSso(email: string | null, boundTenant: string | null): Promi
   const outcome = await signInViaApp({ email, tenant: boundTenant, next: readNextParam() });
   if (outcome.kind === 'ok') {
     hydrateIdentity();
-    syncUiLocaleFromSession();
+    await syncUiLocaleFromSession();
     const session = getSessionData();
     if (session && typeof outcome.response.token === 'string') {
       pushShareCredentials({

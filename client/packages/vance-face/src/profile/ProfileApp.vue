@@ -401,10 +401,9 @@ async function onLanguageChanged(value: string | null): Promise<void> {
   languageDraft.value = next;
   await saveSetting(LANGUAGE_KEY, next === '' ? null : next).catch(() => undefined);
   if (!error.value) {
-    // The PUT response refreshes the data cookie server-side, so
-    // {@link getActiveLanguage} sees the new value on the next read.
-    // Switch the live i18n locale here so the page re-renders in the
-    // newly chosen language right away.
+    // saveSetting reloaded `/me`, so {@link getActiveLanguage} sees the
+    // new value. Switch the live i18n locale here so the page re-renders
+    // in the newly chosen language right away.
     await setUiLocale(next === '' ? null : next);
     languageSaved.value = t('profile.preferences.languageSaved');
   }
@@ -435,8 +434,8 @@ async function onThemeChanged(value: string | null): Promise<void> {
   // pass null so the brain DELETEs it. light / dark are stored as-is.
   await saveSetting(THEME_KEY, next === 'auto' ? null : next).catch(() => undefined);
   if (!error.value) {
-    // PUT refreshes the data cookie; flip the DOM theme here so the
-    // change is visible without waiting for a page reload.
+    // saveSetting reloaded `/me`; flip the DOM theme here so the change
+    // is visible without waiting for a page reload.
     applyTheme(next);
     themeSaved.value = t('profile.preferences.themeSaved');
   }
@@ -451,8 +450,7 @@ async function onUiLevelChanged(value: string | null): Promise<void> {
   await saveSetting(UI_LEVEL_KEY, next === 'standard' ? null : next).catch(() => undefined);
   if (!error.value) {
     // Index-page tile filtering reads {@link getActiveUiLevel} from
-    // the data cookie on its next mount, which the PUT response just
-    // refreshed.
+    // `/me`, which saveSetting just reloaded.
     uiLevelSaved.value = t('profile.preferences.uiLevelSaved');
   }
 }

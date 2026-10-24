@@ -1,23 +1,12 @@
 package de.mhus.vance.brain.access;
 
 import de.mhus.vance.api.access.WebUiSessionData;
-import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.access.WebUiCookies;
-import de.mhus.vance.shared.jwt.JwtService;
-import de.mhus.vance.shared.jwt.TokenType;
-import de.mhus.vance.shared.jwt.VanceJwtClaims;
-import de.mhus.vance.shared.settings.LanguageResolver;
-import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.user.UserDocument;
-import jakarta.servlet.http.Cookie;
-import jakarta.servlet.http.HttpServletRequest;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,13 +19,16 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Builds and attaches the three web-UI cookies (access / refresh / data).
+ * Builds and attaches the three web-UI cookies (access / refresh / data) on
+ * the login and silent-refresh paths.
  *
- * <p>Used by {@link AccessController} on the login + silent-refresh path
- * (mints all three cookies in lockstep) and by mutation endpoints — most
- * notably {@code ProfileController} — that need to re-issue just the
- * data cookie so settings written to MongoDB also land in the cookie
- * the SPA reads on the next page load.
+ * <p>The data cookie carries <b>authentication facts only</b> — username,
+ * tenant and the two expiry timestamps the SPA needs to schedule a silent
+ * re-mint and to route before its first request. Everything that can change
+ * while the cookie lives (display name, settings, roles, quotas) comes from
+ * {@code GET /brain/{tenant}/me} instead: a cookie is only re-issued on login
+ * and refresh, so anything else in it would go stale the moment it is changed
+ * somewhere else.
  *
  * <p>Cookie sticky-bits:
  * <ul>
@@ -54,42 +46,17 @@ import tools.jackson.databind.json.JsonMapper;
 @Slf4j
 public class WebUiCookieService {
 
-    /**
-     * Settings that ship in the data cookie even though they sit
-     * outside the {@code webui.*} prefix. Keep this small — every
-     * entry costs cookie size on every request, and any value here
-     * leaks into the JS-readable cookie payload.
-     *
-     * <p>{@code chat.language} is here because the Web-UI chat composer
-     * needs the resolved language at mount time (for speech
-     * recognition) without an extra round-trip to {@code /profile}.
-     *
-     * <p>All entries in this set are <b>user-scoped</b>. Project-scoped
-     * config (infrastructure-style settings that depend on the
-     * currently-active project) belongs to
-     * {@code SettingsCascadeController} instead — the cookie is
-     * minted once at login and cannot follow project switches.
-     */
-    private static final Set<String> EXTRA_COOKIE_SETTING_KEYS = Set.of(
-            LanguageResolver.Keys.CHAT_LANGUAGE);
-
-    private final JwtService jwtService;
-    private final SettingService settingService;
     private final boolean cookieSecure;
     private final ObjectMapper objectMapper = JsonMapper.builder().build();
 
     /**
      * @param cookieSecure default {@code true}. Set to {@code false} in
-     *                     local non-HTTPS development so the browser
+     *                     local dev over plain HTTP so the browser
      *                     accepts the cookies. Production must keep it
-     *                     true — otherwise the {@code HttpOnly} access
+     *                     {@code true}, otherwise the credential
      *                     cookie can be sniffed off the wire.
      */
-    public WebUiCookieService(JwtService jwtService,
-                              SettingService settingService,
-                              @Value("${vance.web.cookies.secure:true}") boolean cookieSecure) {
-        this.jwtService = jwtService;
-        this.settingService = settingService;
+    public WebUiCookieService(@Value("${vance.web.cookies.secure:true}") boolean cookieSecure) {
         this.cookieSecure = cookieSecure;
     }
 
@@ -97,12 +64,6 @@ public class WebUiCookieService {
      * Mints all three cookies for the login / silent-refresh path. The
      * refresh cookie is only set when a refresh token was actually
      * issued.
-     *
-     * @param includeWebUiSettings if {@code true}, the data cookie's
-     *                             payload includes the user's
-     *                             {@code webui.*} settings — the SPA
-     *                             needs them to render its post-login
-     *                             state without an extra REST call.
      */
     public void attachLoginCookies(
             ResponseEntity.BodyBuilder responseBuilder,
@@ -110,8 +71,7 @@ public class WebUiCookieService {
             String accessToken,
             Instant accessExpiresAt,
             @Nullable String refreshToken,
-            @Nullable Instant refreshExpiresAt,
-            boolean includeWebUiSettings) {
+            @Nullable Instant refreshExpiresAt) {
 
         ResponseCookie access = baseCookie(WebUiCookies.ACCESS, accessToken)
                 .httpOnly(true)
@@ -127,36 +87,7 @@ public class WebUiCookieService {
             responseBuilder.header(HttpHeaders.SET_COOKIE, refresh.toString());
         }
 
-        attachDataCookie(responseBuilder, user, accessExpiresAt, refreshExpiresAt,
-                includeWebUiSettings);
-    }
-
-    /**
-     * Re-mint the data cookie for an already-authenticated request.
-     * Used by mutation endpoints (Profile settings, display-name, …)
-     * so the {@code webui.*} snapshot the SPA reads stays in sync with
-     * what's in MongoDB without forcing a re-login.
-     *
-     * <p>Access-token expiry comes from the {@link VanceJwtClaims}
-     * deposited by {@link AccessFilterBase} on every authenticated
-     * request. Refresh-token expiry is read from the {@code vance_refresh}
-     * cookie — present on every browser request because the
-     * {@code HttpOnly} cookie auto-attaches — and parsed via
-     * {@link JwtService} so we trust its expiry the same way the auth
-     * filter trusts the access claims.
-     *
-     * <p>If no refresh cookie is present (CLI clients hitting this
-     * endpoint via bearer header) the data cookie's lifetime matches
-     * the access token's — the SPA cookie path is the one that needs
-     * the longer lifetime anyway.
-     */
-    public void refreshDataCookie(
-            HttpServletRequest request,
-            ResponseEntity.HeadersBuilder<?> responseBuilder,
-            UserDocument user) {
-        Instant accessExpiresAt = accessExpiryFromRequest(request);
-        Instant refreshExpiresAt = refreshExpiryFromRequest(request);
-        attachDataCookie(responseBuilder, user, accessExpiresAt, refreshExpiresAt, true);
+        attachDataCookie(responseBuilder, user, accessExpiresAt, refreshExpiresAt);
     }
 
     /**
@@ -168,7 +99,7 @@ public class WebUiCookieService {
      * moment.
      */
     public void clearCookies(ResponseEntity.HeadersBuilder<?> responseBuilder) {
-        for (String name : new String[]{WebUiCookies.ACCESS, WebUiCookies.REFRESH, WebUiCookies.DATA}) {
+        for (String name : new String[] {WebUiCookies.ACCESS, WebUiCookies.REFRESH, WebUiCookies.DATA}) {
             ResponseCookie expired = baseCookie(name, "")
                     .httpOnly(!WebUiCookies.DATA.equals(name))
                     .maxAge(0)
@@ -183,22 +114,13 @@ public class WebUiCookieService {
             ResponseEntity.HeadersBuilder<?> responseBuilder,
             UserDocument user,
             Instant accessExpiresAt,
-            @Nullable Instant refreshExpiresAt,
-            boolean includeWebUiSettings) {
-
-        Map<String, String> webUiSettings = includeWebUiSettings
-                ? loadCookieSettings(user.getTenantId(), user.getName())
-                : Map.of();
+            @Nullable Instant refreshExpiresAt) {
 
         WebUiSessionData sessionData = WebUiSessionData.builder()
                 .username(user.getName())
                 .tenantId(user.getTenantId())
-                .displayName(user.getTitle())
                 .accessExpiresAtTimestamp(accessExpiresAt.toEpochMilli())
-                .refreshExpiresAtTimestamp(refreshExpiresAt == null
-                        ? null
-                        : refreshExpiresAt.toEpochMilli())
-                .webUiSettings(webUiSettings)
+                .refreshExpiresAtTimestamp(refreshExpiresAt == null ? null : refreshExpiresAt.toEpochMilli())
                 .build();
 
         // The data cookie's lifetime mirrors whichever credential cookie
@@ -214,23 +136,6 @@ public class WebUiCookieService {
                 .maxAge(Duration.between(Instant.now(), dataExpiresAt))
                 .build();
         responseBuilder.header(HttpHeaders.SET_COOKIE, data.toString());
-    }
-
-    /**
-     * Collect all settings that ship in the data cookie — the
-     * {@code webui.*} prefix scan plus the explicit
-     * {@link #EXTRA_COOKIE_SETTING_KEYS} allowlist for cookie-visible
-     * extras like {@code chat.language}.
-     */
-    private Map<String, String> loadCookieSettings(String tenantId, String username) {
-        Map<String, String> result = new LinkedHashMap<>(
-                settingService.findUserSettingsByPrefix(
-                        tenantId, username, WebUiCookies.SETTINGS_PREFIX));
-        for (String key : EXTRA_COOKIE_SETTING_KEYS) {
-            String v = settingService.getUserStringValue(tenantId, username, key);
-            if (v != null) result.put(key, v);
-        }
-        return result;
     }
 
     private ResponseCookie.ResponseCookieBuilder baseCookie(String name, String value) {
@@ -251,67 +156,15 @@ public class WebUiCookieService {
             String json = objectMapper.writeValueAsString(sessionData);
             return URLEncoder.encode(json, StandardCharsets.UTF_8);
         } catch (JacksonException e) {
-            // The DTO is fully POJO and never throws — this branch is
-            // defensive only. Fall back to a minimal payload so the
-            // SPA at least has identity, even if settings are missing.
-            log.warn("Failed to serialise WebUiSessionData for tenant='{}' user='{}': {}",
-                    sessionData.getTenantId(), sessionData.getUsername(), e.getMessage());
-            // Serialise a minimal Map via Jackson — never hand-build JSON
-            // (a username/tenantId containing a quote would otherwise produce
-            // malformed/injected cookie JSON). CLAUDE.md: keine JSON-Manipulation.
-            try {
-                String json = objectMapper.writeValueAsString(java.util.Map.of(
-                        "username", sessionData.getUsername(),
-                        "tenantId", sessionData.getTenantId()));
-                return URLEncoder.encode(json, StandardCharsets.UTF_8);
-            } catch (JacksonException fatal) {
-                // A plain string Map cannot fail to serialise; if it somehow
-                // does, drop the data cookie rather than emit broken JSON.
-                return "";
-            }
+            // The DTO is a plain POJO and never throws — defensive only.
+            // Drop the data cookie rather than emit broken JSON; the SPA
+            // then treats the session as absent and re-authenticates.
+            log.warn(
+                    "Failed to serialise WebUiSessionData for tenant='{}' user='{}': {}",
+                    sessionData.getTenantId(),
+                    sessionData.getUsername(),
+                    e.getMessage());
+            return "";
         }
-    }
-
-    private static Instant accessExpiryFromRequest(HttpServletRequest request) {
-        Object attr = request.getAttribute(AccessFilterBase.ATTR_CLAIMS);
-        if (!(attr instanceof VanceJwtClaims claims)) {
-            throw new IllegalStateException(
-                    "No verified JWT claims on request — refreshDataCookie called "
-                            + "from an unauthenticated endpoint?");
-        }
-        Instant exp = claims.expiresAt();
-        if (exp == null) {
-            // Non-expiring access tokens are not used in practice (every
-            // createToken path sets an expiry). Defensive fall-back: a
-            // 24h window keeps the data cookie usable.
-            return Instant.now().plus(Duration.ofHours(24));
-        }
-        return exp;
-    }
-
-    private @Nullable Instant refreshExpiryFromRequest(HttpServletRequest request) {
-        String refreshToken = extractRefreshCookie(request);
-        if (refreshToken == null) return null;
-        VanceJwtClaims claims = jwtService.validateToken(refreshToken).orElse(null);
-        if (claims == null) {
-            // Refresh cookie present but invalid — log + ignore. The
-            // data cookie just falls back to the shorter access-token
-            // lifetime; the SPA will hit /access on the next mount.
-            log.debug("Ignoring invalid refresh cookie when refreshing data cookie");
-            return null;
-        }
-        if (claims.tokenType() != TokenType.REFRESH) return null;
-        return claims.expiresAt();
-    }
-
-    private static @Nullable String extractRefreshCookie(HttpServletRequest request) {
-        Cookie[] cookies = request.getCookies();
-        if (cookies == null) return null;
-        for (Cookie cookie : cookies) {
-            if (!WebUiCookies.REFRESH.equals(cookie.getName())) continue;
-            String value = cookie.getValue();
-            return (value == null || value.isBlank()) ? null : value.trim();
-        }
-        return null;
     }
 }

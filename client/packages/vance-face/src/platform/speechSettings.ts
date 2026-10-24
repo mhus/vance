@@ -1,10 +1,8 @@
-// Web speech preferences — cookie-backed, server-persistent.
+// Web speech preferences — server-persistent, read from `/me`.
 //
-// Source of truth is the `vance_data` cookie, which the brain
-// re-issues on every successful PUT/DELETE /profile/settings call.
-// Reads come straight from the cookie; writes go through brainFetch
-// and rely on the server's Set-Cookie response to refresh the local
-// snapshot in time for the next read.
+// Reads come from the current `/me` answer (`./me`); writes go through
+// PUT/DELETE /profile/settings and then reload `/me`, so the next read
+// sees the new value.
 //
 // The matching `@vance/shared/speech/preferences` module is a
 // localStorage-based equivalent used by the mobile client. The
@@ -21,7 +19,7 @@ import {
   MIN_RATE,
   MIN_VOLUME,
 } from '@vance/shared';
-import { getSessionData } from './webUiSession';
+import { loadMe, meSetting } from './me';
 
 // ──────────────── Setting keys ────────────────
 
@@ -87,17 +85,16 @@ export function defaultTalkCommands(): TalkCommandConfig {
 
 // ──────────────── Reads ────────────────
 
-function readCookieSetting(key: string): string | null {
-  const raw = getSessionData()?.webUiSettings?.[key];
-  return raw && raw.length > 0 ? raw : null;
+function readSetting(key: string): string | null {
+  return meSetting(key);
 }
 
 export function getSpeechVoiceURI(): string | null {
-  return readCookieSetting(KEY_VOICE_URI);
+  return readSetting(KEY_VOICE_URI);
 }
 
 export function getSpeechRate(): number {
-  const raw = readCookieSetting(KEY_RATE);
+  const raw = readSetting(KEY_RATE);
   if (!raw) return DEFAULT_RATE;
   const parsed = parseFloat(raw);
   if (!Number.isFinite(parsed)) return DEFAULT_RATE;
@@ -105,7 +102,7 @@ export function getSpeechRate(): number {
 }
 
 export function getSpeechVolume(): number {
-  const raw = readCookieSetting(KEY_VOLUME);
+  const raw = readSetting(KEY_VOLUME);
   if (!raw) return DEFAULT_VOLUME;
   const parsed = parseFloat(raw);
   if (!Number.isFinite(parsed)) return DEFAULT_VOLUME;
@@ -113,7 +110,7 @@ export function getSpeechVolume(): number {
 }
 
 export function getSpeakerEnabled(): boolean {
-  return readCookieSetting(KEY_SPEAKER_ENABLED) === '1';
+  return readSetting(KEY_SPEAKER_ENABLED) === '1';
 }
 
 /**
@@ -121,7 +118,7 @@ export function getSpeakerEnabled(): boolean {
  * per-action synonym lists replace the default list wholesale when
  * present). Malformed / empty JSON yields the plain default so a broken
  * setting never disables talk mode. Pure — callers pass the raw setting
- * value from whichever source they hold (cookie or profile object).
+ * value from whichever source they hold (`/me` or profile object).
  */
 export function parseTalkCommands(raw: string | null | undefined): TalkCommandConfig {
   if (!raw) return defaultTalkCommands();
@@ -152,9 +149,9 @@ export function parseTalkCommands(raw: string | null | undefined): TalkCommandCo
   return merged;
 }
 
-/** Talk-mode command config from the current session (cookie-backed). */
+/** Talk-mode command config of the current user (from `/me`). */
 export function getTalkCommands(): TalkCommandConfig {
-  return parseTalkCommands(readCookieSetting(KEY_TALK_COMMANDS));
+  return parseTalkCommands(readSetting(KEY_TALK_COMMANDS));
 }
 
 /**
@@ -172,9 +169,9 @@ export function getTalkCommands(): TalkCommandConfig {
  * Web Speech API understands.
  */
 export function resolveSpeechLanguage(): string {
-  const fromChat = readCookieSetting(KEY_CHAT_LANGUAGE);
+  const fromChat = readSetting(KEY_CHAT_LANGUAGE);
   if (fromChat) return expandLanguageTag(fromChat);
-  const fromWebUi = readCookieSetting(KEY_WEBUI_LANGUAGE);
+  const fromWebUi = readSetting(KEY_WEBUI_LANGUAGE);
   if (fromWebUi) return expandLanguageTag(fromWebUi);
   if (typeof navigator !== 'undefined' && navigator.language) {
     return navigator.language;
@@ -188,10 +185,12 @@ async function putSetting(key: string, value: string): Promise<void> {
   await brainFetch('PUT', `profile/settings/${encodeURIComponent(key)}`, {
     body: { value },
   });
+  await loadMe();
 }
 
 async function deleteSetting(key: string): Promise<void> {
   await brainFetch('DELETE', `profile/settings/${encodeURIComponent(key)}`);
+  await loadMe();
 }
 
 export async function saveSpeechVoiceURI(uri: string | null): Promise<void> {

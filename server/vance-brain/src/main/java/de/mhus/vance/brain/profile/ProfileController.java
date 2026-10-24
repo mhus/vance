@@ -5,7 +5,6 @@ import de.mhus.vance.api.profile.ProfileSettingWriteRequest;
 import de.mhus.vance.api.profile.ProfileUpdateRequest;
 import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.api.teams.TeamSummary;
-import de.mhus.vance.brain.access.WebUiCookieService;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.access.WebUiCookies;
 import de.mhus.vance.shared.home.HomeBootstrapService;
@@ -18,7 +17,6 @@ import de.mhus.vance.shared.user.UserService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -64,19 +62,13 @@ import org.springframework.web.server.ResponseStatusException;
 @Slf4j
 public class ProfileController {
 
-    /**
-     * Extra keys (outside the {@code webui.*} prefix) that the profile
-     * endpoint accepts as self-service writes. Keep this small and
-     * deliberate — every entry here is something the user is trusted
-     * to set without admin involvement.
-     */
-    static final Set<String> ALLOWED_EXTRA_KEYS = Set.of(
-            LanguageResolver.Keys.CHAT_LANGUAGE, de.mhus.vance.shared.settings.TimezoneResolver.Keys.DISPLAY_TIMEZONE);
+    /** Self-service keys outside the {@code webui.*} prefix — see {@link UiSettingsService}. */
+    static final Set<String> ALLOWED_EXTRA_KEYS = UiSettingsService.SELF_SERVICE_EXTRA_KEYS;
 
     private final UserService userService;
     private final SettingService settingService;
     private final TeamService teamService;
-    private final WebUiCookieService webUiCookieService;
+    private final UiSettingsService uiSettingsService;
     private final de.mhus.vance.shared.password.PasswordService passwordService;
     private final de.mhus.vance.shared.password.PasswordPolicyService passwordPolicyService;
 
@@ -111,8 +103,7 @@ public class ProfileController {
             UserDocument saved =
                     userService.update(tenant, username, request.getTitle(), request.getEmail(), null, null);
             log.info("Profile updated tenant='{}' user='{}'", tenant, username);
-            return withRefreshedDataCookie(
-                    httpRequest, saved, toDto(saved, loadTeams(tenant, username), loadSettings(tenant, username)));
+            return ResponseEntity.ok(toDto(saved, loadTeams(tenant, username), loadSettings(tenant, username)));
         } catch (UserService.UserNotFoundException e) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         }
@@ -184,8 +175,7 @@ public class ProfileController {
                 .findByTenantAndName(tenant, username)
                 .orElseThrow(
                         () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Profile not found for current user"));
-        return withRefreshedDataCookie(
-                httpRequest, user, toDto(user, loadTeams(tenant, username), loadSettings(tenant, username)));
+        return ResponseEntity.ok(toDto(user, loadTeams(tenant, username), loadSettings(tenant, username)));
     }
 
     @DeleteMapping("/settings/{key}")
@@ -196,29 +186,10 @@ public class ProfileController {
         settingService.delete(
                 tenant, SettingService.SCOPE_PROJECT, HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + username, key);
         log.info("Profile setting deleted tenant='{}' user='{}' key='{}'", tenant, username, key);
-        UserDocument user = userService
-                .findByTenantAndName(tenant, username)
-                .orElseThrow(
-                        () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Profile not found for current user"));
-        ResponseEntity.HeadersBuilder<?> builder = ResponseEntity.noContent();
-        webUiCookieService.refreshDataCookie(httpRequest, builder, user);
-        return builder.build();
+        return ResponseEntity.noContent().build();
     }
 
     // ─── Helpers ───────────────────────────────────────────────────────────
-
-    /**
-     * Wrap {@code body} in a 200-response that also carries a freshly
-     * minted {@code vance_data} cookie. Profile mutations must update
-     * the cookie so subsequent page loads pick up the new settings
-     * snapshot instead of re-applying the stale login-time view.
-     */
-    private ResponseEntity<ProfileDto> withRefreshedDataCookie(
-            HttpServletRequest httpRequest, UserDocument user, ProfileDto body) {
-        ResponseEntity.BodyBuilder builder = ResponseEntity.ok();
-        webUiCookieService.refreshDataCookie(httpRequest, builder, user);
-        return builder.body(body);
-    }
 
     private static String currentUser(HttpServletRequest req) {
         Object u = req.getAttribute(AccessFilterBase.ATTR_USERNAME);
@@ -257,17 +228,7 @@ public class ProfileController {
     }
 
     private Map<String, String> loadSettings(String tenant, String username) {
-        Map<String, String> merged = new LinkedHashMap<>(
-                settingService.findUserSettingsByPrefix(tenant, username, WebUiCookies.SETTINGS_PREFIX));
-        // Pull each allowlisted self-service key from the user scope
-        // explicitly. They live outside the webui.* prefix so the
-        // prefix query above misses them; we still want them in the
-        // profile DTO so the UI can render the current value.
-        for (String key : ALLOWED_EXTRA_KEYS) {
-            String v = settingService.getUserStringValue(tenant, username, key);
-            if (v != null) merged.put(key, v);
-        }
-        return merged;
+        return uiSettingsService.load(tenant, username);
     }
 
     private ProfileDto toDto(UserDocument user, List<TeamSummary> teams, Map<String, String> settings) {

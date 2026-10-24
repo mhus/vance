@@ -6,8 +6,6 @@
 export interface WebUiSessionData {
   username: string;
   tenantId: string;
-  displayName?: string;
   accessExpiresAtTimestamp: number;
   refreshExpiresAtTimestamp?: number;
-  webUiSettings: Record<string, string>;
 }

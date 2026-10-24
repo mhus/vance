@@ -6,6 +6,7 @@ import type {
   ProfileUpdateRequest,
 } from '@vance/generated';
 import { brainFetch } from '@vance/shared';
+import { loadMe } from '@/platform/me';
 
 /**
  * REST loader / mutator for the self-service profile page. Talks to
@@ -66,6 +67,9 @@ export function useProfile(): {
         `profile/settings/${encodeURIComponent(key)}`,
         { body },
       );
+      // Settings reach the rest of the UI through `/me` — refresh it so the
+      // next read (theme, language, UI level) sees the new value.
+      await loadMe();
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to save setting.';
       throw e;
@@ -83,8 +87,9 @@ export function useProfile(): {
         `profile/settings/${encodeURIComponent(key)}`,
       );
       // Reload so the {@code webUiSettings} map matches what the
-      // server now thinks. Cheaper than reasoning about stale keys.
+      // server now thinks — and `/me`, which the rest of the UI reads.
       await load();
+      await loadMe();
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to delete setting.';
       throw e;

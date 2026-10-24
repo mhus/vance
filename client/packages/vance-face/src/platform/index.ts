@@ -4,6 +4,7 @@
 
 export * from './addonManifest';
 export * from './webUiSession';
+export * from './me';
 export * from './themeWeb';
 export * from './loginWeb';
 export * from './ssoWeb';

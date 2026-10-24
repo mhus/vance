@@ -12,7 +12,7 @@ Protocol — Claude Code, Cursor, any MCP client. Vance has two doors:
 | Door | Route | Surface | Regulated by |
 |---|---|---|---|
 | **Project** | `/brain/{tenant}/mcp/{project}` | fixed `doc_*` set only | `_vance/config/mcp-access.yaml` per project |
-| Global | `/brain/{tenant}/mcp` | the full tool catalogue | the service account's permission grants |
+| Global | `/brain/{tenant}/mcp` | the full tool catalogue | the service account's project roles |
 
 The **project door** is the one to set up for a user who wants "give my
 coding agent access to the spec documents": narrow, document-shaped,
@@ -22,7 +22,7 @@ without saying what it opens.
 
 ## Before the first write
 
-- **Rights**: writing `_vance/…` needs ADMIN. A denied write means the
+- **Rights**: writing `_vance/…` needs ADMIN on the project. A denied write means the
   delegating user is not an operator for this project — say so plainly,
   do not retry.
 - **Check what exists**: `doc_list_in_folder` with `pathPrefix:

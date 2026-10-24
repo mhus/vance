@@ -56,9 +56,9 @@ whether the call actually works.
 ## Writing them
 
 Aliases are plain STRING settings — not on the deny list, so `setting_set`
-may write them wherever the invoking user is ADMIN: in a project
-(scoped to it) or `projectId: '_tenant'` (tenant-wide default, the usual
-home). Verify with `setting_get` — it reports which layer holds the value.
+may write them wherever the invoking user may: as project ADMIN in a
+project (scoped to it), or as TENANT_ADMIN with `projectId: '_tenant'`
+(tenant-wide default, the usual home). Verify with `setting_get` — it reports which layer holds the value.
 
 Typical request: "in this project, code should run on coding-proxy" →
 

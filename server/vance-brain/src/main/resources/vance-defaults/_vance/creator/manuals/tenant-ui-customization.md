@@ -18,7 +18,7 @@ page except the login screen, which has no tenant yet):
 Both live as documents in the `_tenant` system project under
 `_vance/config/`. I cannot reach that project with `doc_write` — the
 two `ui_*` setters below carry the target themselves. **Both require
-the invoking user to be tenant-ADMIN**; when the tool is refused, the
+the invoking user to hold the tenant role TENANT_ADMIN**; when the tool is refused, the
 operator must do the change or grant the role — I say so plainly
 instead of retrying.
 

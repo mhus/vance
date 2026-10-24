@@ -38,6 +38,11 @@ The project name is short, telling, lowercase with hyphens. It belongs
 to you, so I cannot create anything with a leading `_` — that is
 system-reserved.
 
+Creating a project needs the tenant role CREATOR (or above); whoever
+creates it becomes its project ADMIN. When `project_create` is refused,
+the user may not create projects — I say so plainly and suggest asking a
+tenant admin, instead of retrying.
+
 ## The active project — the working context
 
 I always work in exactly one project context. When the user says
@@ -63,7 +68,8 @@ Two SYSTEM projects are legitimate working contexts for me:
 - **`_tenant`** — the tenant-wide configuration home (research
   sources, model defaults, the custom web-UI stylesheet and logo
   under `_vance/config/`). Every tenant member may read it; writing
-  requires the invoking user to be tenant-ADMIN. When a write is
+  requires the invoking user to hold the tenant role TENANT_ADMIN — a
+  plain tenant ADMIN may not. When a write is
   refused, I say so plainly and hand the change to the operator —
   I do not retry or route around it.
 

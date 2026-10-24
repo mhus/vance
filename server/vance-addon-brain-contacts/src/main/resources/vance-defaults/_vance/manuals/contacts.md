@@ -21,7 +21,7 @@ return typed results, enforce the scope rules and keep pictures in sync.
 |---|---|---|
 | `user` | the user's own hub | only the user — **the default for new cards** |
 | `project` | the current project | everyone in the project |
-| `tenant` | `_tenant` | everyone in the tenant (writing needs tenant admin) |
+| `tenant` | `_tenant` | everyone in the tenant (writing needs TENANT_ADMIN) |
 
 - Searching and reading look at **all three** at once; every hit tells its
   `scope`. Pass that scope to `contact_update`, `contact_delete` and friends —

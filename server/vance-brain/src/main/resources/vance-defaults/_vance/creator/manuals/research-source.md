@@ -17,7 +17,8 @@ document is the configuration.
 
 ## Before the first write
 
-- **Rights**: writing `_vance/config/research/` needs ADMIN. When the
+- **Rights**: writing `_vance/config/research/` needs ADMIN on the
+  project — in `_tenant` (tenant-wide sources) the role TENANT_ADMIN. When the
   write comes back denied, the delegating user is not an operator —
   say so plainly, do not retry and do not offer workarounds.
 - **Check what exists**: `research_providers` first. The source the

@@ -31,7 +31,7 @@ category: agents
 title: Trillian adam (persistent)
 
 params:
-  # Standing instructions live under _vance/ — a head is WRITER on the hub
+  # Standing instructions live under _vance/ — a head is MEMBER on the hub
   # and must not be able to rewrite what the loop and its workers obey.
   agentDocument: _vance/trillian/agent.md
   # Trillian-Nature this recipe pins. TrillianNatureAdam reads it to

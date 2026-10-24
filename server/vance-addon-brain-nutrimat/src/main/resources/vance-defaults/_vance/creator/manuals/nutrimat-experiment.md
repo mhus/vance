@@ -95,6 +95,6 @@ Rules of thumb:
 ## Scope
 
 Write experiments in the **project** unless the user explicitly wants them
-tenant-wide (then the tenant's `_tenant` project — that write is ADMIN-gated).
+tenant-wide (then the tenant's `_tenant` project — that write needs TENANT_ADMIN).
 Never touch the bundled recipes (`nutrimat-janx` etc.): they are the fixed
 baseline the experiments measure against.

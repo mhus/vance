@@ -105,7 +105,7 @@ When the endpoint's model list should not be curated by hand, run
 `ai.provider.<instance>.*` settings, calls each provider's listing
 endpoint and writes `_vance/model-auto/<instance>/<slug>.yaml`
 (overwritten on every run — never write or "fix" anything there).
-It needs tenant ADMIN; when the call comes back denied, say so
+It needs the tenant role TENANT_ADMIN; when the call comes back denied, say so
 plainly and tell the user the button does the same: Profile →
 Actions → Discover AI Models. Auto-docs carry the observations the
 listing endpoint reports — `contextWindowTokens`, `maxOutputTokens`,
@@ -159,8 +159,8 @@ fields:
    every `<instance>:<model>` spec the user can then reference.
 3. `doc_write` the sidecar, then the model docs (omit `kind` — the YAML
    body lives in a plain text doc, like the discovery job writes them).
-4. Set the baseUrl via `setting_set` (needs an ADMIN user; projectId
-   `_tenant` for tenant-wide) and confirm it with `setting_get`. Name the
+4. Set the baseUrl via `setting_set` (needs ADMIN on the project; for
+   tenant-wide use projectId `_tenant`, which needs TENANT_ADMIN) and confirm it with `setting_get`. Name the
    apiKey key for the operator — passwords stay on the human surfaces.
 5. Run `ai_models_discover` once the operator has set the apiKey —
    the call also makes the sidecar and manual docs visible via the

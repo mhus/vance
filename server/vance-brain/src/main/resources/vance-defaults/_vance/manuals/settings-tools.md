@@ -24,7 +24,7 @@ inheritance is visible instead of guessed.
 | PASSWORD | `[set]` — set or not, never the value |
 
 Rights: READ on the project's setting; an explicit `_tenant` read
-needs ADMIN on the tenant.
+needs the tenant role TENANT_ADMIN.
 
 **The HIDDEN value is a secret.** It comes back with
 `confidential: true` and a handling note — use it for the task at
@@ -50,7 +50,8 @@ addresses the tenant-wide layer). Refuses, by design:
 ## Typical flow
 
 1. `setting_get` — what applies here, and from which layer?
-2. `setting_set` — write the plain value (ADMIN user needed).
+2. `setting_set` — write the plain value (needs ADMIN on the project;
+   TENANT_ADMIN for `_tenant`).
 3. `setting_get` — verify; confirm key + value + scope in chat.
 
 ## Anti-patterns

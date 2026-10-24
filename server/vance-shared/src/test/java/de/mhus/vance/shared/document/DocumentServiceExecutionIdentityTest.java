@@ -18,8 +18,11 @@ import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.permission.RunAsReader;
 import de.mhus.vance.shared.permission.SecurityContext;
 import de.mhus.vance.shared.permission.WriteActor;
+import de.mhus.vance.shared.permission.WriteReason;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.storage.StorageService;
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
@@ -47,6 +50,7 @@ class DocumentServiceExecutionIdentityTest {
     private DocumentRepository repository;
     private DocumentHeaderParser headerParser;
     private PermissionService permissionService;
+    private DocumentArchiveService archiveService;
     private DocumentService service;
 
     /** Executes paths under {@code _vance/scheduler/}; reads a {@code runAs:} line. */
@@ -72,6 +76,7 @@ class DocumentServiceExecutionIdentityTest {
         StorageService storageService = mock(StorageService.class);
         headerParser = mock(DocumentHeaderParser.class);
         permissionService = mock(PermissionService.class);
+        archiveService = mock(DocumentArchiveService.class);
         doThrow(new PermissionDeniedException(ALICE, new Resource.User("acme", "root"), Action.IMPERSONATE))
                 .when(permissionService)
                 .enforceMayActAs(ALICE, "root");
@@ -93,7 +98,7 @@ class DocumentServiceExecutionIdentityTest {
                 mock(MongoTemplate.class),
                 mock(ResourcePatternResolver.class),
                 headerParser,
-                mock(DocumentArchiveService.class),
+                archiveService,
                 mock(SettingService.class),
                 psp);
         ReflectionTestUtils.setField(service, "inlineThreshold", 40960);
@@ -168,5 +173,121 @@ class DocumentServiceExecutionIdentityTest {
         assertThatCode(() -> service.update("d1", null, null, "text", null, WriteActor.user(ALICE)))
                 .doesNotThrowAnyException();
         verify(permissionService, never()).enforceMayActAs(any(), eq("root"));
+    }
+
+    // ── move / restore: the target path is checked ──────────────────────────
+
+    @Test
+    void movingAStrongerUsersDocumentIntoAnExecutedPath_isDenied() {
+        // The source path is not executed, so nothing is asked there; the
+        // target is, and the document would run as its creator.
+        when(repository.findById("d1")).thenReturn(Optional.of(doc("notes/x.yaml", "root", false)));
+
+        assertThatThrownBy(() -> service.update("d1", null, null, null, SCHEDULER, WriteActor.user(ALICE)))
+                .isInstanceOf(PermissionDeniedException.class);
+        verify(repository, never()).save(any(DocumentDocument.class));
+    }
+
+    @Test
+    void movingAPrivilegedDocumentIntoAnExecutedPath_checksItsRunAs() {
+        DocumentDocument d = doc("notes/s.yaml", "alice", true);
+        when(repository.findById("d1")).thenReturn(Optional.of(d));
+
+        assertThatThrownBy(() -> service.update("d1", null, null, "runAs: root", SCHEDULER, WriteActor.user(ALICE)))
+                .isInstanceOf(PermissionDeniedException.class);
+    }
+
+    @Test
+    void aMove_asksCreateAtTheTarget() {
+        when(repository.findById("d1")).thenReturn(Optional.of(doc("notes/a.md", "alice", false)));
+
+        service.update("d1", null, null, null, "_vance/recipes/a.yaml", WriteActor.user(ALICE));
+
+        verify(permissionService)
+                .enforce(
+                        ALICE,
+                        new Resource.Document("acme", "proj", "_vance/recipes/a.yaml"),
+                        Action.CREATE,
+                        WriteReason.USER);
+    }
+
+    @Test
+    void aMoveTheTargetRefuses_doesNotHappen() {
+        when(repository.findById("d1")).thenReturn(Optional.of(doc("notes/a.md", "alice", false)));
+        Resource target = new Resource.Document("acme", "proj", "_vance/recipes/a.yaml");
+        doThrow(new PermissionDeniedException(ALICE, target, Action.CREATE))
+                .when(permissionService)
+                .enforce(ALICE, target, Action.CREATE, WriteReason.USER);
+
+        assertThatThrownBy(
+                        () -> service.update("d1", null, null, null, "_vance/recipes/a.yaml", WriteActor.user(ALICE)))
+                .isInstanceOf(PermissionDeniedException.class);
+        verify(repository, never()).save(any(DocumentDocument.class));
+    }
+
+    @Test
+    void movingAPrivilegedDocument_asksAdminAtTheTarget_underTheUserReason() {
+        when(repository.findById("d1")).thenReturn(Optional.of(doc("notes/s.yaml", "alice", true)));
+
+        service.update("d1", null, null, null, "docs/s.yaml", WriteActor.system(ALICE));
+
+        verify(permissionService)
+                .enforce(ALICE, new Resource.Document("acme", "proj", "docs/s.yaml"), Action.ADMIN, WriteReason.USER);
+    }
+
+    @Test
+    void restoringFromTrashIntoAnExecutedPath_checksTheTarget() {
+        DocumentDocument trashed = doc(DocumentService.TRASH_FOLDER_PREFIX + "abc_x.yaml", "root", false);
+        when(repository.findById("d1")).thenReturn(Optional.of(trashed));
+
+        assertThatThrownBy(() -> service.restore("d1", SCHEDULER, WriteActor.user(ALICE)))
+                .isInstanceOf(PermissionDeniedException.class);
+        verify(repository, never()).save(any(DocumentDocument.class));
+    }
+
+    // ── the remaining content funnels ───────────────────────────────────────
+
+    @Test
+    void binaryReplaceOfAStrongerUsersScheduler_isDenied() {
+        when(repository.findById("d1")).thenReturn(Optional.of(doc(SCHEDULER, "root", false)));
+
+        assertThatThrownBy(() -> service.replaceBinaryContent(
+                        "d1",
+                        null,
+                        "cron: x".getBytes(StandardCharsets.UTF_8),
+                        "alice",
+                        DocumentService.TOOL_IDENTITY,
+                        WriteActor.user(ALICE)))
+                .isInstanceOf(PermissionDeniedException.class);
+    }
+
+    @Test
+    void binaryReplace_checksTheRunAsOfTheNewBytes() {
+        when(repository.findById("d1")).thenReturn(Optional.of(doc(SCHEDULER, "alice", true)));
+
+        assertThatThrownBy(() -> service.replaceBinaryContent(
+                        "d1",
+                        null,
+                        "runAs: root".getBytes(StandardCharsets.UTF_8),
+                        "alice",
+                        DocumentService.TOOL_IDENTITY,
+                        WriteActor.user(ALICE)))
+                .isInstanceOf(PermissionDeniedException.class);
+    }
+
+    @Test
+    void restoringAnOldVersion_checksTheRunAsItDeclares() {
+        DocumentDocument live = doc(SCHEDULER, "alice", true);
+        live.setLineageId("lin-1");
+        when(repository.findById("d1")).thenReturn(Optional.of(live));
+        DocumentArchiveDocument archive =
+                DocumentArchiveDocument.builder().id("a1").lineageId("lin-1").build();
+        when(archiveService.findById("a1")).thenReturn(Optional.of(archive));
+        when(archiveService.loadContent(archive))
+                .thenReturn(new ByteArrayInputStream("runAs: root".getBytes(StandardCharsets.UTF_8)));
+
+        assertThatThrownBy(() -> service.restoreArchive("d1", "a1", WriteActor.user(ALICE)))
+                .isInstanceOf(PermissionDeniedException.class);
+        verify(archiveService, never()).archiveCurrent(any());
     }
 }

@@ -11,6 +11,8 @@ import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.permission.SecurityContext;
 import de.mhus.vance.shared.permission.SubjectType;
+import de.mhus.vance.shared.permission.WriteActor;
+import de.mhus.vance.shared.permission.WriteReason;
 import de.mhus.vance.shared.team.TeamDocument;
 import de.mhus.vance.shared.team.TeamService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -34,8 +36,7 @@ class SecurityContextFactoryTest {
     @Test
     void fromRequest_buildsUserContext_andResolvesTeams() {
         HttpServletRequest request = mockRequestWith("alice", "acme");
-        when(teamService.byMember("acme", "alice"))
-                .thenReturn(List.of(team("admins"), team("dev")));
+        when(teamService.byMember("acme", "alice")).thenReturn(List.of(team("admins"), team("dev")));
 
         SecurityContext ctx = factory.fromRequest(request);
 
@@ -72,9 +73,7 @@ class SecurityContextFactoryTest {
     @Test
     void fromConnection_buildsUserContext_fromWsState() {
         ConnectionContext connection = new ConnectionContext(
-                "acme", "alice", "Alice A.",
-                "default", "1.0", "vance-foot",
-                "conn-1", "10.0.0.1");
+                "acme", "alice", "Alice A.", "default", "1.0", "vance-foot", "conn-1", "10.0.0.1");
         when(teamService.byMember("acme", "alice")).thenReturn(List.of(team("dev")));
 
         SecurityContext ctx = factory.fromConnection(connection);
@@ -91,9 +90,7 @@ class SecurityContextFactoryTest {
         // from Mongo on every permission-checked WS frame. The resolved context
         // is now cached on the ConnectionContext for its lifetime.
         ConnectionContext connection = new ConnectionContext(
-                "acme", "alice", "Alice A.",
-                "default", "1.0", "vance-foot",
-                "conn-1", "10.0.0.1");
+                "acme", "alice", "Alice A.", "default", "1.0", "vance-foot", "conn-1", "10.0.0.1");
         when(teamService.byMember("acme", "alice")).thenReturn(List.of(team("dev")));
 
         SecurityContext first = factory.fromConnection(connection);
@@ -119,7 +116,9 @@ class SecurityContextFactoryTest {
             return null;
         };
         org.mockito.Mockito.doAnswer(setter)
-                .when(request).setAttribute(org.mockito.ArgumentMatchers.eq(SecurityContextFactory.REQ_ATTR_CONTEXT),
+                .when(request)
+                .setAttribute(
+                        org.mockito.ArgumentMatchers.eq(SecurityContextFactory.REQ_ATTR_CONTEXT),
                         org.mockito.ArgumentMatchers.any());
         return request;
     }
@@ -128,5 +127,32 @@ class SecurityContextFactoryTest {
         TeamDocument t = new TeamDocument();
         t.setName(name);
         return t;
+    }
+
+    @Test
+    void writeActor_reservedPath_staysAUserWrite() {
+        // A caller-controlled _vance/ path must not buy system trust — the
+        // reserved-namespace rule has to be asked at the document layer.
+        when(teamService.byMember("acme", "alice")).thenReturn(List.of());
+
+        WriteActor actor = factory.writeActor("acme", "alice", "_vance/hooks/x.yaml");
+
+        assertThat(actor.reason()).isEqualTo(WriteReason.USER);
+        assertThat(actor.subject().subjectId()).isEqualTo("alice");
+    }
+
+    @Test
+    void writeActor_ordinaryPath_isAUserWrite() {
+        when(teamService.byMember("acme", "alice")).thenReturn(List.of());
+
+        assertThat(factory.writeActor("acme", "alice", "notes/a.md").reason()).isEqualTo(WriteReason.USER);
+    }
+
+    @Test
+    void writeActor_withoutUser_hasTheSystemSubject_butNoSystemReason() {
+        WriteActor actor = factory.writeActor("acme", null, "_vance/logs/run.log");
+
+        assertThat(actor.subject().subjectType()).isEqualTo(SubjectType.SYSTEM);
+        assertThat(actor.reason()).isEqualTo(WriteReason.USER);
     }
 }

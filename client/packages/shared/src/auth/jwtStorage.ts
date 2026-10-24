@@ -33,21 +33,30 @@ export function setActiveSessionId(sessionId: string | null): void {
 
 /**
  * Per-WebSocket-connection identity assigned by the server in the
- * {@code welcome} frame. Kept in module-level state (not persisted) so
- * REST writes can include it as the {@code X-Editor-Id} header — the
- * brain's live-broadcast layer uses it to filter the writer's own
- * connection out of {@code documents.changed} fan-out, preventing the
- * "saw my own save as an external change" banner. The value is reset
- * to {@code null} on disconnect; a reconnect produces a fresh value.
+ * {@code welcome} frame. Not persisted, so REST writes can include it as
+ * the {@code X-Editor-Id} header — the brain's live-broadcast layer uses
+ * it to filter the writer's own connection out of {@code documents.changed}
+ * fan-out, preventing the "saw my own save as an external change" reload.
+ * The value is reset to {@code null} on disconnect; a reconnect produces a
+ * fresh value.
+ *
+ * <p>Stored on {@code globalThis}, not in module scope: every Module
+ * Federation addon remote bundles its own copy of {@code @vance/shared},
+ * and only the host's copy owns the WebSocket that receives the welcome
+ * frame. A module-level variable would stay {@code null} in each remote,
+ * so addon writes went out without the header (same reason as the WS
+ * bridge in {@code ws/bridge.ts}).
  */
-let currentEditorId: string | null = null;
+declare global {
+  var __VANCE_EDITOR_ID__: string | null | undefined;
+}
 
 export function getCurrentEditorId(): string | null {
-  return currentEditorId;
+  return globalThis.__VANCE_EDITOR_ID__ ?? null;
 }
 
 export function setCurrentEditorId(editorId: string | null): void {
-  currentEditorId = editorId;
+  globalThis.__VANCE_EDITOR_ID__ = editorId;
 }
 
 /**

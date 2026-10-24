@@ -10,7 +10,7 @@
 
     <artifactId>vance-addon-brain-workbook</artifactId>
     <name>vance-addon-brain-workbook</name>
-    <description>Workbook Vance Application — folder-as-workbook container for kind: canvas pages. Generates _index.md, surfaces page-tree to the active chat. Companion to vance-addon-brain-canvas.</description>
+    <description>Workbook Vance Application — folder-as-workbook container for kind: workpage pages (the block-editor document kind, which this addon also owns). Generates _index.md, surfaces page-tree to the active chat.</description>
     <packaging>jar</packaging>
 
     <properties>

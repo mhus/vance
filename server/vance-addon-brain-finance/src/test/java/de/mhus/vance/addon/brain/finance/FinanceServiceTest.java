@@ -74,7 +74,7 @@ class FinanceServiceTest {
     void recalculate_writesComputedSnapshotBack() {
         DocumentDocument doc = docWithTree(sample());
 
-        FinanceComputed computed = service.recalculate(doc, "alice");
+        FinanceComputed computed = service.recalculate(doc, "alice", DocumentService.TOOL_IDENTITY);
 
         NodeSnapshot root = computed.nodes().get(0);
         assertThat(root.name()).isEqualTo("projekt");
@@ -83,5 +83,16 @@ class FinanceServiceTest {
         String body = capturedBody();
         assertThat(body).contains("$computed");
         assertThat(body).contains("perYear");
+    }
+
+    @Test
+    void writeDocument_passesWriterIdentityToLiveBroadcast() {
+        DocumentDocument doc = docWithTree(sample());
+        DocumentService.WriterIdentity writer = DocumentService.WriterIdentity.of("editor-7", "alice", "alice");
+
+        service.writeDocument(doc, service.readDocument(doc), null, "alice", writer);
+
+        verify(documentService)
+                .update(eq("id1"), any(), any(), any(), any(), any(), any(), any(), any(), eq(writer), any());
     }
 }

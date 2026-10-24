@@ -71,7 +71,7 @@ public class FinanceCalcTool implements Tool {
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         FinanceToolSupport.Resolved r = FinanceToolSupport.resolveByPath(eddieContext, documentService, params, ctx);
-        FinanceComputed computed = financeService.recalculate(r.doc(), ctx.userId());
+        FinanceComputed computed = financeService.recalculate(r.doc(), ctx.userId(), DocumentService.TOOL_IDENTITY);
 
         Map<String, Object> nodes = new LinkedHashMap<>();
         for (NodeSnapshot s : computed.nodes()) {

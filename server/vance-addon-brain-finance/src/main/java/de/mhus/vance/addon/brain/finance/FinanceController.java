@@ -45,6 +45,9 @@ public class FinanceController {
     private final DocumentService documentService;
     private final RequestAuthority authority;
 
+    /** Writer's WebSocket connection, sent by the Web-UI on every REST write. */
+    private static final String HEADER_EDITOR_ID = "X-Editor-Id";
+
     public record ProcessorInfo(
             String type,
             String title,
@@ -88,8 +91,9 @@ public class FinanceController {
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
         DocumentDocument doc = requireDoc(tenant, projectId, path);
-        financeService.writeDocument(doc, FinanceDtoMapper.fromDto(dto), null, currentUser(request));
-        return FinanceDtoMapper.toDto(financeService.readDocument(doc));
+        DocumentDocument stored = financeService.writeDocument(
+                doc, FinanceDtoMapper.fromDto(dto), null, currentUser(request), writer(request));
+        return FinanceDtoMapper.toDto(financeService.readDocument(stored));
     }
 
     @PostMapping("/brain/{tenant}/addon/finance/create")
@@ -111,7 +115,7 @@ public class FinanceController {
             @RequestParam String path,
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
-        return financeService.recalculate(requireDoc(tenant, projectId, path), currentUser(request));
+        return financeService.recalculate(requireDoc(tenant, projectId, path), currentUser(request), writer(request));
     }
 
     @GetMapping("/brain/{tenant}/addon/finance/snapshot")
@@ -184,6 +188,16 @@ public class FinanceController {
         } catch (DateTimeParseException e) {
             throw new ToolException("Invalid '" + field + "' date '" + iso + "' (expect yyyy-MM-dd).", e);
         }
+    }
+
+    /**
+     * The editor's WebSocket connection ({@code X-Editor-Id}, from the welcome
+     * frame) plus the authenticated user — lets the live broadcast skip the
+     * writing tab, so the editor isn't reloaded by its own autosave.
+     */
+    private static DocumentService.WriterIdentity writer(HttpServletRequest request) {
+        String user = currentUser(request);
+        return DocumentService.WriterIdentity.of(request.getHeader(HEADER_EDITOR_ID), user, user);
     }
 
     private static @Nullable String currentUser(HttpServletRequest request) {

@@ -111,21 +111,37 @@ public class FinanceService {
 
     public DocumentDocument addNode(
             DocumentDocument doc, @Nullable String parentName, FinanceNode child, @Nullable String userId) {
-        return writeDocument(doc, FinanceTreeOps.addChild(readDocument(doc), parentName, child), null, userId);
+        return writeDocument(
+                doc,
+                FinanceTreeOps.addChild(readDocument(doc), parentName, child),
+                null,
+                userId,
+                DocumentService.TOOL_IDENTITY);
     }
 
     public DocumentDocument updateNode(
             DocumentDocument doc, String name, Map<String, Object> patch, @Nullable String userId) {
-        return writeDocument(doc, FinanceTreeOps.updateNode(readDocument(doc), name, patch), null, userId);
+        return writeDocument(
+                doc,
+                FinanceTreeOps.updateNode(readDocument(doc), name, patch),
+                null,
+                userId,
+                DocumentService.TOOL_IDENTITY);
     }
 
     public DocumentDocument removeNode(DocumentDocument doc, String name, @Nullable String userId) {
-        return writeDocument(doc, FinanceTreeOps.removeNode(readDocument(doc), name), null, userId);
+        return writeDocument(
+                doc, FinanceTreeOps.removeNode(readDocument(doc), name), null, userId, DocumentService.TOOL_IDENTITY);
     }
 
     public DocumentDocument setValues(
             DocumentDocument doc, String name, List<FinanceValue> values, @Nullable String userId) {
-        return writeDocument(doc, FinanceTreeOps.setValues(readDocument(doc), name, values), null, userId);
+        return writeDocument(
+                doc,
+                FinanceTreeOps.setValues(readDocument(doc), name, values),
+                null,
+                userId,
+                DocumentService.TOOL_IDENTITY);
     }
 
     // ── Read / write ──────────────────────────────────────────────
@@ -135,11 +151,19 @@ public class FinanceService {
         return FinanceTreeCodec.parse(readBody(doc), mime);
     }
 
+    /**
+     * Persist {@code tree} (plus an optional {@code $computed} overlay).
+     * {@code writer} is who the live broadcast attributes the change to: the
+     * REST surface passes the caller's editor connection so its own tab is
+     * skipped in the {@code documents.changed} fan-out (otherwise Cortex
+     * reloads the editor mid-typing); tools pass {@link DocumentService#TOOL_IDENTITY}.
+     */
     public DocumentDocument writeDocument(
             DocumentDocument doc,
             FinanceTreeDocument tree,
             @Nullable FinanceComputed computed,
-            @Nullable String userId) {
+            @Nullable String userId,
+            DocumentService.WriterIdentity writer) {
         String mime = FinanceTreeCodec.supports(doc.getMimeType()) ? doc.getMimeType() : DEFAULT_MIME;
         String body = FinanceTreeCodec.serialize(tree, computed, mime);
         return documentService.update(
@@ -152,7 +176,7 @@ public class FinanceService {
                 null,
                 null,
                 mime,
-                DocumentService.TOOL_IDENTITY,
+                writer,
                 contextFactory.writeActor(doc.getTenantId(), userId, doc.getPath()));
     }
 
@@ -175,12 +199,13 @@ public class FinanceService {
         return new FinanceComputed(Instant.now().toString(), nodes);
     }
 
-    public FinanceComputed recalculate(DocumentDocument doc, @Nullable String userId) {
+    public FinanceComputed recalculate(
+            DocumentDocument doc, @Nullable String userId, DocumentService.WriterIdentity writer) {
         FinanceTreeDocument tree = readDocument(doc);
         List<NodeSnapshot> nodes =
                 tree.root() == null ? List.of() : FinanceCalculator.compute(tree.root(), LocalDate.now(ZoneOffset.UTC));
         FinanceComputed computed = new FinanceComputed(Instant.now().toString(), nodes);
-        writeDocument(doc, tree, computed, userId);
+        writeDocument(doc, tree, computed, userId, writer);
         log.debug("FinanceService.recalculate path='{}' nodes={}", doc.getPath(), nodes.size());
         return computed;
     }

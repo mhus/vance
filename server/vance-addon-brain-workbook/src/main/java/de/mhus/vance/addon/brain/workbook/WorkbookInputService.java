@@ -66,7 +66,8 @@ public class WorkbookInputService {
             @Nullable String content,
             @Nullable String saveScript,
             boolean session,
-            String editorId) {
+            String userId,
+            DocumentService.WriterIdentity writer) {
         String full = content != null ? content : "";
         Optional<DocumentDocument> existing = documentService.findByPath(tenantId, projectId, docPath);
         if (existing.isPresent()) {
@@ -74,8 +75,8 @@ public class WorkbookInputService {
                     existing.get().getId(),
                     new ByteArrayInputStream(full.getBytes(StandardCharsets.UTF_8)),
                     DocumentService.mimeFromPath(docPath),
-                    DocumentService.WriterIdentity.of(editorId, null, null),
-                    contextFactory.writeActor(tenantId, editorId, docPath));
+                    writer,
+                    contextFactory.writeActor(tenantId, userId, docPath));
         } else {
             documentService.createText(
                     tenantId,
@@ -84,12 +85,12 @@ public class WorkbookInputService {
                     null,
                     null,
                     full,
-                    editorId,
-                    contextFactory.writeActor(tenantId, editorId, docPath));
+                    userId,
+                    contextFactory.writeActor(tenantId, userId, docPath));
         }
         log.info("WorkbookInputService.saveInput tenant='{}' doc='{}' len={}", tenantId, docPath, full.length());
 
-        runOnSave(tenantId, projectId, docPath, saveScript, session, editorId);
+        runOnSave(tenantId, projectId, docPath, saveScript, session, userId);
     }
 
     /**
@@ -101,8 +102,7 @@ public class WorkbookInputService {
      * (error if it exists). Without a {@code name} the first free
      * {@code input-<n>.md} is used.
      */
-    public String createInput(
-            String tenantId, String projectId, String folder, @Nullable String name, String editorId) {
+    public String createInput(String tenantId, String projectId, String folder, @Nullable String name, String userId) {
         String base = folder == null ? "" : folder.strip();
         if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
         String fileName = fileNameFrom(name);
@@ -118,8 +118,8 @@ public class WorkbookInputService {
                     null,
                     null,
                     "",
-                    editorId,
-                    contextFactory.writeActor(tenantId, editorId, path));
+                    userId,
+                    contextFactory.writeActor(tenantId, userId, path));
             log.info("WorkbookInputService.createInput tenant='{}' doc='{}'", tenantId, path);
             return path;
         }
@@ -133,8 +133,8 @@ public class WorkbookInputService {
                         null,
                         null,
                         "",
-                        editorId,
-                        contextFactory.writeActor(tenantId, editorId, path));
+                        userId,
+                        contextFactory.writeActor(tenantId, userId, path));
                 log.info("WorkbookInputService.createInput tenant='{}' doc='{}'", tenantId, path);
                 return path;
             }
@@ -158,7 +158,7 @@ public class WorkbookInputService {
             String docPath,
             @Nullable String fenceScript,
             boolean session,
-            String editorId) {
+            String userId) {
         if (fenceScript == null || fenceScript.isBlank()) return;
         String scriptPath = resolveRelative(
                 docPath, WorkbookFormService.stripVanceScheme(fenceScript).strip());
@@ -171,8 +171,8 @@ public class WorkbookInputService {
                 .orElseThrow(() -> new ToolException("saveScript not found: " + scriptPath));
         String code = read(scriptDoc);
 
-        String sessionId = session ? resolveInputSession(tenantId, projectId, docPath, editorId) : null;
-        ToolInvocationContext scope = new ToolInvocationContext(tenantId, projectId, sessionId, null, editorId);
+        String sessionId = session ? resolveInputSession(tenantId, projectId, docPath, userId) : null;
+        ToolInvocationContext scope = new ToolInvocationContext(tenantId, projectId, sessionId, null, userId);
         ContextToolsApi tools = new ContextToolsApi(toolDispatcher, scope);
         try {
             scriptExecutor.run(new ScriptRequest("js", code, "input-saveScript:" + scriptPath, tools, ON_SAVE_TIMEOUT)

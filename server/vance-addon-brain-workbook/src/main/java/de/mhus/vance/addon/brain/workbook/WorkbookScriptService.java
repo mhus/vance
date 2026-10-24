@@ -38,7 +38,7 @@ public class WorkbookScriptService {
     private static final Duration TIMEOUT = Duration.ofSeconds(30);
 
     /** Execute the {@code .js} document at {@code scriptPath}. */
-    public void run(String tenantId, String projectId, String scriptPath, @Nullable String editorId) {
+    public void run(String tenantId, String projectId, String scriptPath, @Nullable String userId) {
         if (scriptPath == null || scriptPath.isBlank()) {
             throw new ToolException("button script path must not be empty");
         }
@@ -51,7 +51,7 @@ public class WorkbookScriptService {
                 .orElseThrow(() -> new ToolException("button script not found: " + scriptPath));
         String code = readContent(scriptDoc);
 
-        ToolInvocationContext scope = new ToolInvocationContext(tenantId, projectId, null, null, editorId);
+        ToolInvocationContext scope = new ToolInvocationContext(tenantId, projectId, null, null, userId);
         ContextToolsApi tools = new ContextToolsApi(toolDispatcher, scope);
         try {
             scriptExecutor.run(new ScriptRequest("js", code, "button:" + scriptPath, tools, TIMEOUT)

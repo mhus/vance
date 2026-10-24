@@ -91,7 +91,8 @@ public class WorkbookFormService {
             @Nullable List<String> schema,
             @Nullable String saveScript,
             boolean session,
-            String editorId) {
+            String userId,
+            DocumentService.WriterIdentity writer) {
         DocumentDocument docDoc = documentService
                 .findByPath(tenantId, projectId, docPath)
                 .orElseThrow(() -> new ToolException("form document '" + docPath + "' not found"));
@@ -101,10 +102,10 @@ public class WorkbookFormService {
         doc.put("items", rows);
         doc.put("schema", (schema != null && !schema.isEmpty()) ? schema : unionKeys(rows));
 
-        writeDoc(docDoc.getId(), tenantId, docPath, doc, editorId);
+        writeDoc(docDoc.getId(), tenantId, docPath, doc, userId, writer);
         log.info("WorkbookFormService.saveForm tenant='{}' doc='{}' records={}", tenantId, docPath, rows.size());
 
-        runOnSave(tenantId, projectId, docPath, saveScript, session, editorId);
+        runOnSave(tenantId, projectId, docPath, saveScript, session, userId);
     }
 
     /**
@@ -113,7 +114,7 @@ public class WorkbookFormService {
      * definition lives in the block's fence. Returns the created path.
      */
     public String createForm(
-            String tenantId, String projectId, String folder, String name, @Nullable String title, String editorId) {
+            String tenantId, String projectId, String folder, String name, @Nullable String title, String userId) {
         String slug = slugify(name);
         if (slug.isBlank()) {
             throw new ToolException("form name must not be empty");
@@ -141,8 +142,8 @@ public class WorkbookFormService {
                 displayTitle,
                 null,
                 serialize(docPath, doc),
-                editorId,
-                contextFactory.writeActor(tenantId, editorId, docPath));
+                userId,
+                contextFactory.writeActor(tenantId, userId, docPath));
         log.info("WorkbookFormService.createForm tenant='{}' doc='{}'", tenantId, docPath);
         return docPath;
     }
@@ -163,7 +164,7 @@ public class WorkbookFormService {
             String docPath,
             @Nullable String fenceScript,
             boolean session,
-            String editorId) {
+            String userId) {
         if (fenceScript == null || fenceScript.isBlank()) return;
         String scriptPath = resolveRelative(docPath, stripVanceScheme(fenceScript));
         if (!scriptPath.toLowerCase(Locale.ROOT).endsWith(".js")) {
@@ -175,8 +176,8 @@ public class WorkbookFormService {
                 .orElseThrow(() -> new ToolException("saveScript not found: " + scriptPath));
         String code = readContent(scriptDoc);
 
-        String sessionId = session ? resolveFormSession(tenantId, projectId, docPath, editorId) : null;
-        ToolInvocationContext scope = new ToolInvocationContext(tenantId, projectId, sessionId, null, editorId);
+        String sessionId = session ? resolveFormSession(tenantId, projectId, docPath, userId) : null;
+        ToolInvocationContext scope = new ToolInvocationContext(tenantId, projectId, sessionId, null, userId);
         ContextToolsApi tools = new ContextToolsApi(toolDispatcher, scope);
         try {
             scriptExecutor.run(new ScriptRequest("js", code, "form-saveScript:" + scriptPath, tools, ON_SAVE_TIMEOUT)
@@ -235,13 +236,19 @@ public class WorkbookFormService {
         return new ArrayList<>(keys);
     }
 
-    private void writeDoc(String docId, String tenantId, String docPath, Map<String, Object> doc, String editorId) {
+    private void writeDoc(
+            String docId,
+            String tenantId,
+            String docPath,
+            Map<String, Object> doc,
+            String userId,
+            DocumentService.WriterIdentity writer) {
         documentService.replaceContent(
                 docId,
                 new ByteArrayInputStream(serialize(docPath, doc).getBytes(StandardCharsets.UTF_8)),
                 DocumentService.mimeFromPath(docPath),
-                DocumentService.WriterIdentity.of(editorId, null, null),
-                contextFactory.writeActor(tenantId, editorId, docPath));
+                writer,
+                contextFactory.writeActor(tenantId, userId, docPath));
     }
 
     private Map<String, Object> readYamlMap(String tenantId, String projectId, String path, String missingMessage) {

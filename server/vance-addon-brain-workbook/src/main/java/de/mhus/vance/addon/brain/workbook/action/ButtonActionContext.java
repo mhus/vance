@@ -12,6 +12,6 @@ import org.jspecify.annotations.Nullable;
 public record ButtonActionContext(
         String tenantId,
         String projectId,
-        @Nullable String editorId,
+        @Nullable String userId,
         String pagePath,
         Map<String, Object> buttonConfig) {}

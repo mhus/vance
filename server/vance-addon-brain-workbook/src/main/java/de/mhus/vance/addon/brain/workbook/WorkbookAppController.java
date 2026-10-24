@@ -59,6 +59,9 @@ public class WorkbookAppController {
     private final de.mhus.vance.addon.brain.workbook.validate.WorkbookValidationService validationService;
     private final WorkbookButtonService buttonService;
 
+    /** Writer's WebSocket connection, sent by the Web-UI on every REST write. */
+    private static final String HEADER_EDITOR_ID = "X-Editor-Id";
+
     @GetMapping("/brain/{tenant}/addon/workbook/validate")
     public WorkbookValidationResponse validate(
             @PathVariable("tenant") String tenant,
@@ -177,6 +180,17 @@ public class WorkbookAppController {
         throw new ToolException("Could not find a free slug under '" + basePath + "'");
     }
 
+    /**
+     * Who the live broadcast attributes a write to: the editor's WebSocket
+     * connection ({@code X-Editor-Id}, from the welcome frame) plus the
+     * authenticated user. The connection id lets the broadcast skip the
+     * writing tab; the user drives the awareness badge for everyone else.
+     */
+    private static DocumentService.WriterIdentity writer(HttpServletRequest req) {
+        String user = currentUser(req);
+        return DocumentService.WriterIdentity.of(req.getHeader(HEADER_EDITOR_ID), user, user);
+    }
+
     private static @Nullable String currentUser(HttpServletRequest req) {
         // One spelling for "who is doing this". Reading the attribute by
         // hand is what put the wrong name here: nothing ever set
@@ -233,7 +247,7 @@ public class WorkbookAppController {
 
         boolean patchFrontMatter = request.title() != null || request.sortIndex() != null;
         if (patchFrontMatter) {
-            patchFrontMatter(doc, request, currentUser(httpRequest), actor(httpRequest));
+            patchFrontMatter(doc, request, writer(httpRequest), actor(httpRequest));
             // Reload to pick up the storageId / inlineText that the
             // content-write produced.
             doc = documentService.findById(id).orElse(doc);
@@ -250,17 +264,7 @@ public class WorkbookAppController {
                     throw new ToolException("Target path already exists: '" + newPath + "'");
                 }
                 documentService.update(
-                        id,
-                        null,
-                        null,
-                        null,
-                        newPath,
-                        null,
-                        null,
-                        null,
-                        null,
-                        DocumentService.WriterIdentity.of(currentUser(httpRequest), null, null),
-                        actor(httpRequest));
+                        id, null, null, null, newPath, null, null, null, null, writer(httpRequest), actor(httpRequest));
             }
         }
 
@@ -302,8 +306,7 @@ public class WorkbookAppController {
         if (!doc.getPath().startsWith(normalised + "/")) {
             throw new ToolException("Page is not inside workbook '" + normalised + "'");
         }
-        documentService.trash(
-                id, DocumentService.WriterIdentity.of(currentUser(httpRequest), null, null), actor(httpRequest));
+        documentService.trash(id, writer(httpRequest), actor(httpRequest));
         log.info(
                 "WorkbookAppController.deletePage tenant='{}' folder='{}' path='{}'",
                 tenant,
@@ -321,7 +324,7 @@ public class WorkbookAppController {
     private void patchFrontMatter(
             DocumentDocument doc,
             WorkbookUpdatePageRequest request,
-            @Nullable String editorId,
+            DocumentService.WriterIdentity writer,
             de.mhus.vance.shared.permission.WriteActor actor) {
         try (InputStream in = documentService.loadContent(doc)) {
             String body = new String(in.readAllBytes(), StandardCharsets.UTF_8);
@@ -363,7 +366,7 @@ public class WorkbookAppController {
                     doc.getId(),
                     new java.io.ByteArrayInputStream(newBody.getBytes(StandardCharsets.UTF_8)),
                     "text/markdown",
-                    DocumentService.WriterIdentity.of(editorId, null, null),
+                    writer,
                     actor);
         } catch (java.io.IOException e) {
             throw new ToolException("Could not patch front-matter: " + e.getMessage(), e);
@@ -393,14 +396,14 @@ public class WorkbookAppController {
             return;
         }
         String normalised = WorkbookFolderReader.normaliseFolder(folder);
-        String editorId = currentUser(httpRequest);
+        DocumentService.WriterIdentity writer = writer(httpRequest);
 
         double step = 10.0;
         double idx = step;
         for (String id : request.orderedIds()) {
             DocumentDocument doc = documentService.findById(id).orElse(null);
             if (doc == null || !doc.getPath().startsWith(normalised + "/")) continue;
-            patchFrontMatter(doc, new WorkbookUpdatePageRequest(null, null, idx), editorId, actor(httpRequest));
+            patchFrontMatter(doc, new WorkbookUpdatePageRequest(null, null, idx), writer, actor(httpRequest));
             idx += step;
         }
     }
@@ -538,7 +541,7 @@ public class WorkbookAppController {
                     manifest.getId(),
                     new java.io.ByteArrayInputStream(newBody.getBytes(StandardCharsets.UTF_8)),
                     "application/yaml",
-                    DocumentService.WriterIdentity.of(currentUser(httpRequest), null, null),
+                    writer(httpRequest),
                     actor(httpRequest));
         } catch (java.io.IOException e) {
             throw new ToolException("Could not update manifest: " + e.getMessage(), e);
@@ -581,7 +584,7 @@ public class WorkbookAppController {
         String toSection = sanitiseSegment(request.to());
         if (fromSection.equals(toSection)) return;
 
-        String editorId = currentUser(httpRequest);
+        DocumentService.WriterIdentity writer = writer(httpRequest);
         WorkbookFolderReader.Scan scan = folderReader.scan(tenant, projectId, normalised);
         for (WorkbookPage page : scan.pages()) {
             if (!fromSection.equals(page.section())) continue;
@@ -597,17 +600,7 @@ public class WorkbookAppController {
                 }
             });
             documentService.update(
-                    doc.getId(),
-                    null,
-                    null,
-                    null,
-                    newPath,
-                    null,
-                    null,
-                    null,
-                    null,
-                    DocumentService.WriterIdentity.of(editorId, null, null),
-                    actor(httpRequest));
+                    doc.getId(), null, null, null, newPath, null, null, null, null, writer, actor(httpRequest));
         }
     }
 
@@ -699,7 +692,8 @@ public class WorkbookAppController {
                 request != null ? request.schema() : null,
                 saveScript,
                 session,
-                currentUser(httpRequest));
+                currentUser(httpRequest),
+                writer(httpRequest));
         return ResponseEntity.noContent().build();
     }
 
@@ -763,7 +757,8 @@ public class WorkbookAppController {
                 request != null ? request.content() : null,
                 saveScript,
                 session,
-                currentUser(httpRequest));
+                currentUser(httpRequest),
+                writer(httpRequest));
         return ResponseEntity.noContent().build();
     }
 

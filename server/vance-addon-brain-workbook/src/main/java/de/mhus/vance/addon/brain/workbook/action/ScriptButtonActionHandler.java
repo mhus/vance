@@ -30,7 +30,7 @@ public class ScriptButtonActionHandler implements ButtonActionHandler {
         if (script == null || script.toString().isBlank()) {
             throw new ToolException("button type 'script' requires a `script` key (a .js document path).");
         }
-        scriptService.run(ctx.tenantId(), ctx.projectId(), script.toString(), ctx.editorId());
+        scriptService.run(ctx.tenantId(), ctx.projectId(), script.toString(), ctx.userId());
         return new ButtonActionResult(null);
     }
 }

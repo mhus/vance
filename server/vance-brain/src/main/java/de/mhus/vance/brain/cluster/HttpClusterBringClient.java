@@ -5,7 +5,6 @@ import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Primary;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
@@ -43,11 +42,10 @@ public class HttpClusterBringClient implements ClusterBringClient {
                 .build();
         JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
         factory.setReadTimeout(READ_TIMEOUT);
-        this.restClientBuilder = RestClient.builder()
-                .requestFactory(factory)
-                .defaultHeader(HEADER, internalToken);
+        this.restClientBuilder = RestClient.builder().requestFactory(factory).defaultHeader(HEADER, internalToken);
         if (internalToken == null || internalToken.isBlank()) {
-            log.warn("HttpClusterBringClient: vance.internal.token is empty — pod-to-pod calls will be rejected by peers");
+            log.warn(
+                    "HttpClusterBringClient: vance.internal.token is empty — pod-to-pod calls will be rejected by peers");
         }
     }
 
@@ -56,29 +54,56 @@ public class HttpClusterBringClient implements ClusterBringClient {
         String url = baseUrl(endpoint) + "/internal/cluster/bring";
         BringResponse resp;
         try {
-            resp = restClientBuilder.build()
+            resp = restClientBuilder
+                    .build()
                     .post()
                     .uri(url)
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(new BringRequest(tenantId, projectName))
                     .retrieve()
                     .onStatus(HttpStatusCode::isError, (req, response) -> {
-                        throw new ClusterBringException(
-                                "Remote bring rejected by '" + endpoint + "' for '"
-                                        + tenantId + "/" + projectName
-                                        + "': status=" + response.getStatusCode());
+                        throw new ClusterBringException("Remote bring rejected by '" + endpoint + "' for '"
+                                + tenantId + "/" + projectName
+                                + "': status=" + response.getStatusCode());
                     })
                     .body(BringResponse.class);
         } catch (RestClientException e) {
             throw new ClusterBringException(
-                    "Remote bring to '" + endpoint + "' for '"
-                            + tenantId + "/" + projectName + "' failed: " + e.getMessage(), e);
+                    "Remote bring to '" + endpoint + "' for '" + tenantId + "/" + projectName + "' failed: "
+                            + e.getMessage(),
+                    e);
         }
         if (resp == null || resp.homeNode == null) {
-            throw new ClusterBringException(
-                    "Remote bring to '" + endpoint + "' returned empty homeNode");
+            throw new ClusterBringException("Remote bring to '" + endpoint + "' returned empty homeNode");
         }
         return resp.homeNode;
+    }
+
+    @Override
+    public boolean requestRelease(String endpoint, String tenantId, String projectName, boolean suspendSessions) {
+        String url = baseUrl(endpoint) + "/internal/cluster/release";
+        try {
+            int status = restClientBuilder
+                    .build()
+                    .post()
+                    .uri(url)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(new ReleaseRequest(tenantId, projectName, suspendSessions))
+                    .exchange((req, response) -> response.getStatusCode().value());
+            if (status == 409) {
+                return false;
+            }
+            if (status >= 400) {
+                throw new ClusterBringException("Remote release rejected by '" + endpoint + "' for '" + tenantId + "/"
+                        + projectName + "': status=" + status);
+            }
+            return true;
+        } catch (RestClientException e) {
+            throw new ClusterBringException(
+                    "Remote release to '" + endpoint + "' for '" + tenantId + "/" + projectName + "' failed: "
+                            + e.getMessage(),
+                    e);
+        }
     }
 
     private static String baseUrl(String endpoint) {
@@ -92,8 +117,21 @@ public class HttpClusterBringClient implements ClusterBringClient {
     }
 
     /** Wire DTO for the bring endpoint — kept package-private. */
-    public record BringRequest(@JsonProperty("tenantId") String tenantId,
-                               @JsonProperty("projectName") String projectName) {}
+    public record BringRequest(
+            @JsonProperty("tenantId") String tenantId,
+            @JsonProperty("projectName") String projectName) {}
+
+    /**
+     * Wire DTO for the release endpoint. {@code suspendSessions} is optional —
+     * absent (an older pod, the admin shell's drain) means a plain hand-over
+     * that leaves the sessions alone.
+     */
+    public record ReleaseRequest(
+            @JsonProperty("tenantId") String tenantId,
+            @JsonProperty("projectName") String projectName,
+
+            @JsonProperty("suspendSessions") @org.jspecify.annotations.Nullable
+            Boolean suspendSessions) {}
 
     public record BringResponse(@JsonProperty("homeNode") String homeNode) {}
 
@@ -104,9 +142,11 @@ public class HttpClusterBringClient implements ClusterBringClient {
      * so the shapes live here next to the bring DTOs rather than moving into
      * the controller.
      */
-    public record SpawnRequest(@JsonProperty("tenantId") String tenantId,
-                               @JsonProperty("projectName") String projectName) {}
+    public record SpawnRequest(
+            @JsonProperty("tenantId") String tenantId,
+            @JsonProperty("projectName") String projectName) {}
 
-    public record SpawnResponse(@JsonProperty("nodeName") String nodeName,
-                                @JsonProperty("endpoint") String endpoint) {}
+    public record SpawnResponse(
+            @JsonProperty("nodeName") String nodeName,
+            @JsonProperty("endpoint") String endpoint) {}
 }

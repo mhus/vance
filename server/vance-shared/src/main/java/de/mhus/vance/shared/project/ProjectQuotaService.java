@@ -17,8 +17,9 @@ import org.springframework.stereotype.Service;
  * out of projects they already have.
  *
  * <p>Checked where a project <em>becomes</em> active — create and reopen in
- * {@code ProjectLifecycleService} — and nowhere else. The admin shell writes
- * through {@link ProjectService} directly and is deliberately not limited.
+ * {@code ProjectLifecycleService} — and in the admin shell's
+ * {@code project create} / {@code project reopen}, where the operator may
+ * step past it with {@code --ignore-quota}.
  *
  * <p>Count and insert are two steps, so two creates racing for the last slot
  * can both pass. That overshoot by one is accepted: this is an

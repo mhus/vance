@@ -614,6 +614,83 @@ class SessionLifecycleServiceTest {
         verify(chatBootstrapper).ensureChatProcess(any(), eq(null), eq(null));
     }
 
+    // ─── project archive: interrupt + suspend ───────────────────────────
+
+    private SessionDocument projectSession(String sessionId, SessionStatus status) {
+        SessionDocument doc = new SessionDocument();
+        doc.setSessionId(sessionId);
+        doc.setTenantId("acme");
+        doc.setProjectId("proj");
+        doc.setStatus(status);
+        when(sessionService.findBySessionId(sessionId)).thenReturn(Optional.of(doc));
+        return doc;
+    }
+
+    private static ThinkProcessDocument process(String id, String sessionId, ThinkProcessStatus status) {
+        return ThinkProcessDocument.builder()
+                .id(id)
+                .tenantId("acme")
+                .projectId("proj")
+                .sessionId(sessionId)
+                .status(status)
+                .build();
+    }
+
+    @Test
+    void suspendProjectSessions_interruptsRunningWorkAndSuspendsEveryOpenSession() {
+        SessionDocument busy = projectSession("s-busy", SessionStatus.RUNNING);
+        SessionDocument quiet = projectSession("s-quiet", SessionStatus.IDLE);
+        SessionDocument archived = projectSession("s-arch", SessionStatus.ARCHIVED);
+        when(sessionService.listForProject("acme", "proj")).thenReturn(List.of(busy, quiet, archived));
+        when(thinkProcessService.findBySession("acme", "s-busy"))
+                .thenReturn(List.of(process("p-run", "s-busy", ThinkProcessStatus.RUNNING)));
+        when(thinkProcessService.findBySession("acme", "s-quiet"))
+                .thenReturn(List.of(process("p-idle", "s-quiet", ThinkProcessStatus.IDLE)));
+
+        List<String> suspended = lifecycle.suspendProjectSessions("acme", "proj");
+
+        assertThat(suspended).containsExactly("s-busy", "s-quiet");
+        verify(thinkProcessService).requestHalt("p-run");
+        verify(thinkProcessService, never()).requestHalt("p-idle");
+        verify(sessionService).suspend(eq("s-busy"), eq(SuspendCause.FORCED), anyLong());
+        verify(sessionService).suspend(eq("s-quiet"), eq(SuspendCause.IDLE), anyLong());
+        verify(sessionService, never()).suspend(eq("s-arch"), any(), anyLong());
+        // The interrupt is cleared on the lane once the suspend landed.
+        verify(thinkProcessService, timeout(2000)).clearHalt("p-run");
+        verify(thinkProcessService, never()).clearHalt("p-idle");
+    }
+
+    @Test
+    void suspendProjectSessionsOffLane_haltsAndWritesStatusesWithoutTheEngine() {
+        SessionDocument busy = projectSession("s-busy", SessionStatus.RUNNING);
+        when(sessionService.listForProject("acme", "proj")).thenReturn(List.of(busy));
+        when(thinkProcessService.findBySession("acme", "s-busy"))
+                .thenReturn(List.of(
+                        process("p-run", "s-busy", ThinkProcessStatus.RUNNING),
+                        process("p-done", "s-busy", ThinkProcessStatus.CLOSED)));
+
+        lifecycle.suspendProjectSessionsOffLane("acme", "proj");
+
+        verify(thinkProcessService).requestHalt("p-run");
+        verify(thinkProcessService).updateStatus("p-run", ThinkProcessStatus.SUSPENDED);
+        verify(thinkProcessService, never()).updateStatus("p-done", ThinkProcessStatus.SUSPENDED);
+        verify(sessionService).suspend(eq("s-busy"), eq(SuspendCause.FORCED), anyLong());
+        verify(engineService, never()).suspend(any());
+        // Left set for the resume to clear — clearing here would let the turn run on.
+        verify(thinkProcessService, never()).clearHalt("p-run");
+    }
+
+    @Test
+    void resumeSessionCascade_clearsAStaleHalt() {
+        SessionDocument doc = projectSession("s-1", SessionStatus.SUSPENDED);
+        when(thinkProcessService.findBySession("acme", "s-1"))
+                .thenReturn(List.of(process("p-1", "s-1", ThinkProcessStatus.SUSPENDED)));
+
+        lifecycle.resumeSessionCascade(doc.getSessionId(), mock(ProcessEventEmitter.class));
+
+        verify(thinkProcessService).clearHalt("p-1");
+    }
+
     private void stubSession(String sessionId, SessionStatus status, DisconnectPolicy policy) {
         SessionDocument doc = new SessionDocument();
         doc.setSessionId(sessionId);

@@ -12,6 +12,9 @@ public enum EddieActivityKind {
     /** Vance archived a user project. */
     PROJECT_ARCHIVED,
 
+    /** Vance brought an archived user project back. */
+    PROJECT_UNARCHIVED,
+
     /** Vance switched the active-project context. */
     PROJECT_SWITCHED,
 

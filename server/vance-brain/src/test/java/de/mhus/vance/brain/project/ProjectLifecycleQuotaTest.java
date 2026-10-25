@@ -67,7 +67,10 @@ class ProjectLifecycleQuotaTest {
                 mock(ObjectProvider.class),
                 mock(RoleBootstrap.class),
                 quotaService,
-                groupService);
+                groupService,
+                mock(de.mhus.vance.brain.cluster.ClusterService.class),
+                mock(de.mhus.vance.brain.cluster.ClusterBringClient.class),
+                mock(ObjectProvider.class));
     }
 
     private static ProjectDocument project(ProjectStatus status, String group, String archivedFrom) {

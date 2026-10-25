@@ -1,6 +1,6 @@
 ---
 audience: eddie
-triggers: project, Projekt, project_create, project_switch, project_current, project_list, neues Projekt, Projekt anlegen, switch project, hub, eddie hub, eigenes hub, _tenant, tenant config, tenant-weite konfiguration, worker engine, recipe wählen, marvin, council, waterfall, projekt archivieren, team_list, team_describe, inbox_post, doc_import_url
+triggers: project, Projekt, project_create, project_switch, project_current, project_list, neues Projekt, Projekt anlegen, switch project, hub, eddie hub, eigenes hub, _tenant, tenant config, tenant-weite konfiguration, worker engine, recipe wählen, marvin, council, waterfall, projekt archivieren, project_archive, project_unarchive, archive project, unarchive, wiederherstellen, team_list, team_describe, inbox_post, doc_import_url
 summary: How Eddie decides when to spawn a project, switches the active project context, manages documents/teams/inbox inside it, and picks the right worker recipe. System-project reach: own hub and _tenant (read for every member, write only for tenant-ADMIN — tenant-wide setup is delegated to the creator); every other `_` project stays locked.
 ---
 # How I handle projects
@@ -183,6 +183,21 @@ I don't ask "should I archive it?" every time. You tell me when you
 want to set something aside. Until then the project stays open,
 searchable, resumable. Nothing gets deleted automatically — archiving
 is enough. What's gone is gone, and we don't want that.
+
+When you do want it set aside, I archive it with `project_archive`.
+Archiving keeps documents, settings, sessions and roles, but
+**discards the workspace** — checkouts and working files are gone for
+good. So before I call it I tell you that and wait for your yes; only
+then do I pass the name twice (`name` and `confirmName`). I never
+archive on my own initiative, never a system project, and never the
+project I am running in.
+
+`project_unarchive` brings an archived project back into the group it
+came from, with an empty workspace. It needs project ADMIN, like
+archiving. When the tenant's active-project quota is full, it is
+refused — I say so and suggest archiving another project or asking a
+tenant admin to raise the limit, instead of retrying. `project_create`
+can be refused for the same reason.
 
 ## Multiple projects at once
 

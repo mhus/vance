@@ -184,14 +184,20 @@ public class ClusterInternalController {
      * <p>Must reach the holding pod: unlike the placement write below, this one
      * tears down in-memory state that only exists in that process. {@code 409}
      * when this pod does not hold the lease.
+     *
+     * <p>{@code suspendSessions=true} is the archive's variant: the project's
+     * open sessions are interrupted and suspended on this pod's lanes before
+     * the hand-over. A drain leaves it unset — the sessions continue where the
+     * project goes next.
      */
     @PostMapping("/release")
-    public ResponseEntity<?> release(@RequestBody HttpClusterBringClient.BringRequest req) {
+    public ResponseEntity<?> release(@RequestBody HttpClusterBringClient.ReleaseRequest req) {
         if (req == null || req.tenantId() == null || req.projectName() == null) {
             return ResponseEntity.badRequest().build();
         }
         try {
-            boolean released = lifecycleService.release(req.tenantId(), req.projectName());
+            boolean released = lifecycleService.release(
+                    req.tenantId(), req.projectName(), Boolean.TRUE.equals(req.suspendSessions()));
             if (!released) {
                 log.info(
                         "Cluster release refused for '{}/{}': not held by this pod", req.tenantId(), req.projectName());

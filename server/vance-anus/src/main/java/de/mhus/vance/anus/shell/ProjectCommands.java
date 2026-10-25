@@ -6,7 +6,9 @@ import de.mhus.vance.anus.cluster.ProjectClusterService.DrainDecision;
 import de.mhus.vance.anus.cluster.ProjectClusterService.HomeLookup;
 import de.mhus.vance.anus.maintenance.ProjectMaintenanceService;
 import de.mhus.vance.shared.project.ProjectDocument;
+import de.mhus.vance.shared.project.ProjectQuotaService;
 import de.mhus.vance.shared.project.ProjectService;
+import de.mhus.vance.shared.project.ProjectStatus;
 import de.mhus.vance.shared.project.maintenance.ProjectDataHandler;
 import de.mhus.vance.shared.projectgroup.ProjectGroupService;
 import java.util.Arrays;
@@ -43,6 +45,7 @@ public class ProjectCommands {
     private final ProjectClusterService clusterService;
     private final ProjectMaintenanceService maintenanceService;
     private final ProjectGroupService projectGroupService;
+    private final ProjectQuotaService quotaService;
     // Lazy LineReader to avoid the Spring-Shell bean cycle — see AccessCommands.
     private final ObjectProvider<LineReader> lineReader;
 
@@ -51,11 +54,13 @@ public class ProjectCommands {
             ProjectClusterService clusterService,
             ProjectMaintenanceService maintenanceService,
             ProjectGroupService projectGroupService,
+            ProjectQuotaService quotaService,
             ObjectProvider<LineReader> lineReader) {
         this.projectService = projectService;
         this.clusterService = clusterService;
         this.maintenanceService = maintenanceService;
         this.projectGroupService = projectGroupService;
+        this.quotaService = quotaService;
         this.lineReader = lineReader;
     }
 
@@ -100,9 +105,18 @@ public class ProjectCommands {
             @Option(longName = "name", shortName = 'n', required = true) String name,
             @Option(longName = "title", shortName = 't') @Nullable String title,
             @Option(longName = "group", shortName = 'g') @Nullable String group,
-            @Option(longName = "teams", description = "Comma-separated team names") @Nullable String teams) {
+            @Option(longName = "teams", description = "Comma-separated team names") @Nullable String teams,
+            @Option(
+                            longName = "ignore-quota",
+                            description = "Create even when the tenant's active-project quota is reached.",
+                            defaultValue = "false")
+                    boolean ignoreQuota) {
+        String refused = quotaRefusal(tenant, ignoreQuota);
+        if (refused != null) {
+            return refused;
+        }
         ProjectDocument project = projectService.create(tenant, name, title, group, parseList(teams));
-        return "Created:\n" + renderOne(project);
+        return "Created:\n" + renderOne(project) + quotaLine(tenant);
     }
 
     @Command(
@@ -152,18 +166,61 @@ public class ProjectCommands {
             description = "Reopen a closed project (back to INIT, into the group it was closed from).")
     public String reopen(
             @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
-            @Option(longName = "name", shortName = 'n', required = true) String name) {
-        // Not subject to the active-project quota — that limit is for the
-        // product surfaces, and the operator's shell is how one gets past it.
+            @Option(longName = "name", shortName = 'n', required = true) String name,
+            @Option(
+                            longName = "ignore-quota",
+                            description = "Reopen even when the tenant's active-project quota is reached.",
+                            defaultValue = "false")
+                    boolean ignoreQuota) {
         // The project stays INIT; the next access brings it up on a pod.
         ProjectDocument current = projectService
                 .findByTenantAndName(tenant, name)
                 .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
                         "Project '" + name + "' not found in tenant '" + tenant + "'"));
+        if (current.getStatus() != ProjectStatus.CLOSED) {
+            return "Project '" + name + "' is " + current.getStatus() + " — only a closed project can be reopened.";
+        }
+        String refused = quotaRefusal(tenant, ignoreQuota);
+        if (refused != null) {
+            return refused;
+        }
         String origin = current.getArchivedFromGroupId();
         String group = origin != null && projectGroupService.existsByTenantAndName(tenant, origin) ? origin : null;
         ProjectDocument project = projectService.reopen(tenant, name, group);
-        return "Reopened:\n" + renderOne(project);
+        return "Reopened:\n" + renderOne(project) + quotaLine(tenant);
+    }
+
+    /**
+     * The shell checks the active-project quota like the product surfaces, but
+     * the operator may step past it with {@code --ignore-quota} — the shell is
+     * the way out when the limit itself is in the way, and it has to work
+     * without a brain. Refusing by default keeps an overshoot deliberate: a
+     * silent one would only surface as the next user's failed create.
+     *
+     * @return the refusal text, or {@code null} to go ahead
+     */
+    private @Nullable String quotaRefusal(String tenant, boolean ignoreQuota) {
+        if (ignoreQuota) {
+            return null;
+        }
+        try {
+            quotaService.checkOneMore(tenant);
+            return null;
+        } catch (ProjectQuotaService.ProjectQuotaExceededException e) {
+            return "Refused: active-project quota of tenant '" + tenant + "' reached (" + e.active() + "/"
+                    + e.limit() + "). Archive a project, raise " + ProjectQuotaService.KEY_MAX_ACTIVE
+                    + " on _tenant, or pass --ignore-quota.";
+        }
+    }
+
+    /** Current count after a change, flagged when over the limit; empty for an unlimited tenant. */
+    private String quotaLine(String tenant) {
+        ProjectQuotaService.Status status = quotaService.status(tenant);
+        if (status.limit() <= 0) {
+            return "";
+        }
+        return "\n  quota     : " + status.active() + "/" + status.limit() + " active"
+                + (status.active() > status.limit() ? " (over the limit)" : "");
     }
 
     // ─── Service tasks across every entity ─────────────────────────────────

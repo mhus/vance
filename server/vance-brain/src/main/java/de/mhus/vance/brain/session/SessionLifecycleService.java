@@ -17,7 +17,9 @@ import de.mhus.vance.shared.sessiongroup.SessionGroupService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -120,6 +122,91 @@ public class SessionLifecycleService {
      * {@code specification/session-lifecycle.md} §9.
      */
     public void suspendCascade(String sessionId, SuspendCause cause) {
+        suspendCascade(sessionId, cause, Set.of());
+    }
+
+    /**
+     * Interrupt and suspend every open session of a project — what an archive
+     * does to the work running in it ({@code project-archive-quota.md} §1).
+     * Must run on the project's home pod: the lanes the suspend lands on live
+     * there.
+     *
+     * <p>Interrupt first: every {@linkplain #isInterruptible interruptible}
+     * process gets the halt flag, so a turn in the middle of a model call
+     * bails out at its next check instead of making the suspend wait behind
+     * it. The flag is cleared on the lane once the suspend has landed, so the
+     * session resumes cleanly after an unarchive.
+     *
+     * <p>A session with an interrupted process is suspended {@link
+     * SuspendCause#FORCED} — work was in flight and was cut, which is what
+     * that cause records; a quiet one {@link SuspendCause#IDLE}.
+     *
+     * @return the ids of the sessions suspended
+     */
+    public List<String> suspendProjectSessions(String tenantId, String projectId) {
+        List<String> suspended = new ArrayList<>();
+        for (SessionDocument session : sessionService.listForProject(tenantId, projectId)) {
+            if (session.getStatus() == SessionStatus.CLOSED
+                    || session.getStatus() == SessionStatus.ARCHIVED
+                    || session.getStatus() == SessionStatus.SUSPENDED) {
+                continue;
+            }
+            Set<String> halted = new HashSet<>();
+            for (ThinkProcessDocument p : thinkProcessService.findBySession(tenantId, session.getSessionId())) {
+                if (isInterruptible(p)) {
+                    thinkProcessService.requestHalt(p.getId());
+                    halted.add(p.getId());
+                }
+            }
+            suspendCascade(session.getSessionId(), halted.isEmpty() ? SuspendCause.IDLE : SuspendCause.FORCED, halted);
+            suspended.add(session.getSessionId());
+        }
+        log.info("Suspended {} session(s) of project '{}/{}'", suspended.size(), tenantId, projectId);
+        return suspended;
+    }
+
+    /**
+     * The fallback of {@link #suspendProjectSessions} for an archive that
+     * cannot reach the home pod. The halt flag still goes out — it lives in
+     * Mongo, so a turn on that pod reads it at its next check — but the
+     * suspend cannot land on lanes this process does not have, so statuses are
+     * written off-lane, the way a force-stop writes CLOSED. Best effort: a turn
+     * that is already past its last halt check may still write a status of its
+     * own afterwards.
+     *
+     * <p>The flag stays set; {@link #resumeSessionCascade} clears it, so the
+     * first turn after a resume is not cut short.
+     *
+     * @return the ids of the sessions suspended
+     */
+    public List<String> suspendProjectSessionsOffLane(String tenantId, String projectId) {
+        List<String> suspended = new ArrayList<>();
+        for (SessionDocument session : sessionService.listForProject(tenantId, projectId)) {
+            if (session.getStatus() == SessionStatus.CLOSED
+                    || session.getStatus() == SessionStatus.ARCHIVED
+                    || session.getStatus() == SessionStatus.SUSPENDED) {
+                continue;
+            }
+            boolean interrupted = false;
+            for (ThinkProcessDocument p : thinkProcessService.findBySession(tenantId, session.getSessionId())) {
+                if (p.getStatus() == ThinkProcessStatus.CLOSED || p.getStatus() == ThinkProcessStatus.SUSPENDED) {
+                    continue;
+                }
+                if (isInterruptible(p)) {
+                    thinkProcessService.requestHalt(p.getId());
+                    interrupted = true;
+                }
+                thinkProcessService.updateStatus(p.getId(), ThinkProcessStatus.SUSPENDED);
+            }
+            sessionService.suspend(
+                    session.getSessionId(), interrupted ? SuspendCause.FORCED : SuspendCause.IDLE, forcedFloorMs);
+            suspended.add(session.getSessionId());
+        }
+        log.info("Suspended {} session(s) of project '{}/{}' off-lane", suspended.size(), tenantId, projectId);
+        return suspended;
+    }
+
+    private void suspendCascade(String sessionId, SuspendCause cause, Set<String> halted) {
         SessionDocument session = sessionService.findBySessionId(sessionId).orElse(null);
         if (session == null) return;
         if (session.getStatus() == SessionStatus.CLOSED
@@ -143,6 +230,11 @@ public class SessionLifecycleService {
                 } catch (RuntimeException e) {
                     log.warn("engine.suspend failed during cascade id='{}': {}", p.getId(), e.toString());
                     thinkProcessService.updateStatus(p.getId(), ThinkProcessStatus.SUSPENDED);
+                }
+                if (halted.contains(p.getId())) {
+                    // The interrupt served its purpose; left set, the first
+                    // turn after a resume would halt at once.
+                    thinkProcessService.clearHalt(p.getId());
                 }
                 return null;
             });
@@ -531,6 +623,10 @@ public class SessionLifecycleService {
                     // off SUSPENDED so the lane can run again.
                     thinkProcessService.updateStatus(p.getId(), ThinkProcessStatus.IDLE);
                 }
+                // A halt from before the suspend (an interrupt written off-lane,
+                // see suspendProjectSessionsOffLane) must not cut the first
+                // turn after the resume.
+                thinkProcessService.clearHalt(p.getId());
                 return null;
             }));
         }

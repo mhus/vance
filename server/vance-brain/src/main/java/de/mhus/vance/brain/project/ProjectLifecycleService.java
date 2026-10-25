@@ -1,13 +1,17 @@
 package de.mhus.vance.brain.project;
 
+import de.mhus.vance.brain.cluster.ClusterBringClient;
+import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.brain.cluster.placement.ClusterFullException;
 import de.mhus.vance.brain.cluster.placement.PlacementTrigger;
 import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
 import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.rag.ProjectRagService;
 import de.mhus.vance.brain.session.SessionChatBootstrapper;
+import de.mhus.vance.brain.session.SessionLifecycleService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectKind;
+import de.mhus.vance.shared.project.ProjectOwnership;
 import de.mhus.vance.shared.project.ProjectQuotaService;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.project.ProjectStatus;
@@ -20,6 +24,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 import lombok.RequiredArgsConstructor;
@@ -38,21 +43,22 @@ import org.springframework.stereotype.Service;
  *       (and request engines start).</li>
  *   <li>{@link #suspend} — request engines stop, suspend workspace,
  *       mark SUSPENDED.</li>
- *   <li>{@link #close} — dispose workspace, mark CLOSED, move to the
- *       archived group.</li>
+ *   <li>{@link #close} — mark CLOSED, move to the archived group, stop
+ *       engines on the home pod, dispose workspace.</li>
  *   <li>{@link #reopen} — CLOSED back to INIT in the group it was archived
  *       from, then {@link #bring} with a fresh workspace.</li>
  * </ul>
  *
  * <p>{@link #create} and {@link #reopen} are where a project becomes active,
  * so both check the tenant's active-project quota
- * ({@link ProjectQuotaService}). The admin shell bypasses this service and is
- * not limited.
+ * ({@link ProjectQuotaService}). The admin shell bypasses this service and
+ * checks the quota itself, with {@code --ignore-quota} as the way past it.
  *
  * <p>Engine start/stop is signalled via Spring events
  * ({@link ProjectEnginesStartRequested} / {@link ProjectEnginesStopRequested}).
- * V1 has no listeners — engine cleanup is operator-driven. Listeners
- * land with the session-lifecycle work.
+ * The stop listeners unload what a project keeps loaded on its pod —
+ * scheduler entries, hooks, server tools, caches. They do not halt a think
+ * process mid-turn; that is the session lifecycle's stop.
  *
  * <p>Crash recovery: every transition is idempotent. {@link #bring}
  * re-runs through RECOVERING from any non-CLOSED status; {@link #suspend}
@@ -103,6 +109,15 @@ public class ProjectLifecycleService {
 
     private final ProjectQuotaService quotaService;
     private final ProjectGroupService projectGroupService;
+    private final ClusterService clusterService;
+    /** Reaches the home pod when an archive lands elsewhere — see {@link #stopWhereRunning}. */
+    private final ClusterBringClient bringClient;
+    /**
+     * Lazy — {@code SessionLifecycleService} reaches {@code ThinkEngineService},
+     * whose tool graph leads back here. Used by the archive to interrupt and
+     * suspend the project's sessions.
+     */
+    private final ObjectProvider<SessionLifecycleService> sessionLifecycleProvider;
 
     /**
      * One lock per project key, serialising {@link #bring} on this pod. The
@@ -443,6 +458,17 @@ public class ProjectLifecycleService {
      *     can answer 409 rather than pretend something happened
      */
     public boolean release(String tenantId, String projectName) {
+        return release(tenantId, projectName, false);
+    }
+
+    /**
+     * {@link #release}, optionally interrupting and suspending the project's
+     * open sessions first ({@link SessionLifecycleService#suspendProjectSessions})
+     * — the archive's variant, reached through {@code /internal/cluster/release}
+     * when the archive lands on another pod. A drain passes {@code false}: the
+     * sessions are meant to continue wherever the project goes next.
+     */
+    public boolean release(String tenantId, String projectName, boolean suspendSessions) {
         if (ProjectService.isHomeless(projectName)) {
             throw new ProjectService.SystemProjectProtectedException(
                     "Project '" + projectName + "' is homeless — it holds no lease to release");
@@ -451,6 +477,9 @@ public class ProjectLifecycleService {
                 && !projectManager.isOwnedByLocalPod(tenantId, projectName)) {
             log.debug("Project '{}/{}' release: not held here", tenantId, projectName);
             return false;
+        }
+        if (suspendSessions) {
+            suspendSessionsHere(tenantId, projectName);
         }
         eventPublisher.publishEvent(new ProjectEnginesStopRequested(tenantId, projectName));
         activationRegistry.deactivate(tenantId, projectName);
@@ -571,31 +600,126 @@ public class ProjectLifecycleService {
     }
 
     /**
-     * Terminate a project: dispose the workspace (folder + snapshots
-     * gone), then mark CLOSED and move to {@code closedGroupId}.
-     * Refuses SYSTEM-kind projects (delegated check via
-     * {@link ProjectService#close}). Engine teardown is the caller's
-     * responsibility — close does not emit
-     * {@link ProjectEnginesStopRequested} (use {@link #suspend} first
-     * if needed).
+     * Terminate a project: mark CLOSED and move to {@code closedGroupId}, stop
+     * its engines wherever it runs, then dispose the workspace (folder +
+     * snapshots gone) and the project RAG.
+     *
+     * <p>Order is load-bearing. CLOSED comes first because a claim on a CLOSED
+     * project is refused: from that write on, no pod can bring the project up
+     * again while it is being torn down. The engines stop next — on this pod
+     * through {@link ProjectEnginesStopRequested}, on another pod through that
+     * pod's release ({@link #stopWhereRunning}). The workspace goes last, so a
+     * remote release that snapshots on its way out cannot write back what the
+     * dispose just removed.
+     *
+     * <p>Refuses SYSTEM-kind projects before anything is touched.
      */
     public ProjectDocument close(String tenantId, String projectName, String closedGroupId) {
         if (projectName.startsWith(ProjectService.SYSTEM_NAME_PREFIX)) {
-            // projectService.close refuses SYSTEM projects too, but only after
-            // the workspace below would already be gone — a hub's workspace
-            // must not be disposed by a close that is then refused.
             throw new ProjectService.SystemProjectProtectedException(
                     "Project '" + projectName + "' is a system project — cannot close");
         }
+        ProjectDocument doc = projectService.close(tenantId, projectName, closedGroupId);
+        stopWhereRunning(doc);
         workspaceService.dispose(tenantId, projectName);
         disposeProjectRag(tenantId, projectName);
-        // A closed project cannot be brought back, so leaving it in the
-        // registry would make the lease reconciler count a project that can
-        // never hold a lease again.
-        activationRegistry.deactivate(tenantId, projectName);
-        ProjectDocument doc = projectService.close(tenantId, projectName, closedGroupId);
         log.info("Project '{}/{}' closed → group '{}'", tenantId, projectName, closedGroupId);
         return doc;
+    }
+
+    /**
+     * Stops a just-closed project's engines on the pod that runs it. Only the
+     * holder can do that — engines, scheduler entries and hooks live in its
+     * process memory — so a close that lands elsewhere has to reach it.
+     *
+     * <ul>
+     *   <li><b>This pod</b> (live lease or locally activated): interrupt and
+     *       suspend the open sessions, stop event, deactivate, drop the
+     *       lease.</li>
+     *   <li><b>Another pod:</b> that pod's {@code /internal/cluster/release}
+     *       with {@code suspendSessions}, which does the same there and
+     *       removes the folder.</li>
+     *   <li><b>Holder not reachable:</b> the sessions are interrupted through
+     *       the halt flag (it lives in Mongo) and suspended off-lane, and its
+     *       lease is taken away. The
+     *       holder's next renewal finds one project fewer than it activated and
+     *       unloads it on its own ({@link ProjectLeaseService}) — later, but
+     *       without a network path. The folder it leaves is the orphan-storage
+     *       sweep's.</li>
+     * </ul>
+     *
+     * <p>Never throws: the project is already CLOSED, and a failed teardown
+     * must not stop the workspace from being disposed.
+     */
+    private void stopWhereRunning(ProjectDocument doc) {
+        String tenantId = doc.getTenantId();
+        String projectName = doc.getName();
+        String selfPodId = clusterService.selfPodId();
+        Optional<String> owner = ProjectOwnership.liveOwnerPodId(doc, Instant.now(), clusterService.leaseTtl());
+        if (activationRegistry.isActive(tenantId, projectName)
+                || owner.filter(selfPodId::equals).isPresent()) {
+            suspendSessionsHere(tenantId, projectName);
+            eventPublisher.publishEvent(new ProjectEnginesStopRequested(tenantId, projectName));
+            activationRegistry.deactivate(tenantId, projectName);
+            projectManager.releaseLocalLease(tenantId, projectName);
+            return;
+        }
+        if (owner.isEmpty()) {
+            return;
+        }
+        String ownerPodId = owner.get();
+        Optional<String> endpoint = clusterService.resolveEndpointByPodId(ownerPodId);
+        if (endpoint.isPresent()) {
+            try {
+                if (bringClient.requestRelease(endpoint.get(), tenantId, projectName, true)) {
+                    log.info(
+                            "Project '{}/{}' close: engines stopped on home pod '{}'",
+                            tenantId,
+                            projectName,
+                            doc.getHomeNode());
+                    return;
+                }
+                // 409: the pod says it does not hold the project although the
+                // lease we read names it. Taking the lease below is guarded on
+                // that pod, so it is harmless if the answer was right.
+                log.info(
+                        "Project '{}/{}' close: home pod '{}' does not hold it — taking the lease",
+                        tenantId,
+                        projectName,
+                        doc.getHomeNode());
+            } catch (ClusterBringClient.ClusterBringException e) {
+                log.warn(
+                        "Project '{}/{}' close: home pod '{}' not reachable ({}) — taking its lease instead",
+                        tenantId,
+                        projectName,
+                        doc.getHomeNode(),
+                        e.getMessage());
+            }
+        }
+        try {
+            sessionLifecycleProvider.getObject().suspendProjectSessionsOffLane(tenantId, projectName);
+        } catch (RuntimeException e) {
+            log.warn("Project '{}/{}' close: off-lane session suspend failed: {}", tenantId, projectName, e.toString());
+        }
+        projectService.releaseLease(
+                tenantId,
+                projectName,
+                ownerPodId,
+                doc.getHomeNode() == null ? ownerPodId : doc.getHomeNode(),
+                endpoint.orElse(""));
+    }
+
+    /**
+     * Interrupt and suspend the project's open sessions on this pod's lanes.
+     * Failure is logged, not thrown: the archive (or release) it belongs to
+     * must still stop the engines and move on.
+     */
+    private void suspendSessionsHere(String tenantId, String projectName) {
+        try {
+            sessionLifecycleProvider.getObject().suspendProjectSessions(tenantId, projectName);
+        } catch (RuntimeException e) {
+            log.warn("Project '{}/{}': session suspend failed: {}", tenantId, projectName, e.toString());
+        }
     }
 
     /**

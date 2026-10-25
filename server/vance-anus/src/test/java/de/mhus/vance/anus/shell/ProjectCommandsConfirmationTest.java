@@ -42,6 +42,7 @@ class ProjectCommandsConfirmationTest {
             new ProjectClusterService(mock(AnusBrainClient.class)),
             maintenanceService,
             mock(de.mhus.vance.shared.projectgroup.ProjectGroupService.class),
+            mock(de.mhus.vance.shared.project.ProjectQuotaService.class),
             lineReader);
 
     @Test

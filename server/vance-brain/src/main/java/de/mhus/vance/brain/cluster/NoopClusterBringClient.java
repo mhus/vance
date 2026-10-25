@@ -26,9 +26,15 @@ public class NoopClusterBringClient {
         return new ClusterBringClient() {
             @Override
             public String requestBring(String endpoint, String tenantId, String projectName) {
-                throw new ClusterBringException(
-                        "No HTTP cluster-bring client configured — remote bring to '"
-                                + endpoint + "' for '" + tenantId + "/" + projectName + "' refused");
+                throw new ClusterBringException("No HTTP cluster-bring client configured — remote bring to '" + endpoint
+                        + "' for '" + tenantId + "/" + projectName + "' refused");
+            }
+
+            @Override
+            public boolean requestRelease(
+                    String endpoint, String tenantId, String projectName, boolean suspendSessions) {
+                throw new ClusterBringException("No HTTP cluster-bring client configured — remote release to '"
+                        + endpoint + "' for '" + tenantId + "/" + projectName + "' refused");
             }
         };
     }

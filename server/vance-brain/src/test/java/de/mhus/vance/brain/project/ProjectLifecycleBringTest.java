@@ -78,7 +78,10 @@ class ProjectLifecycleBringTest {
                 router,
                 perms,
                 mock(de.mhus.vance.shared.project.ProjectQuotaService.class),
-                mock(de.mhus.vance.shared.projectgroup.ProjectGroupService.class));
+                mock(de.mhus.vance.shared.projectgroup.ProjectGroupService.class),
+                mock(de.mhus.vance.brain.cluster.ClusterService.class),
+                mock(de.mhus.vance.brain.cluster.ClusterBringClient.class),
+                mock(ObjectProvider.class));
     }
 
     private void givenClaimedWithStatus(ProjectStatus status) {

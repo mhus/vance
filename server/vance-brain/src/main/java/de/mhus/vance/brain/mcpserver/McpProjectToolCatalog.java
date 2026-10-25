@@ -32,9 +32,16 @@ import org.springframework.stereotype.Component;
  *       passes through untouched.</li>
  * </ul>
  *
- * <p>Deliberately absent: {@code doc_delete}, {@code doc_move},
- * {@code doc_copy} and friends — destructive or structural operations
- * are not part of v1 of this surface. Id-style addressing ({@code id}
+ * <p>{@code doc_move}, {@code doc_copy} and {@code doc_delete} are on
+ * the surface because none of them destroys anything: {@code doc_delete}
+ * is a soft delete into {@code _vance/trash/}. Both paths of a move or
+ * copy ({@code path} and {@code newPath}) are path params, so neither
+ * end can leave the configured prefixes — and since the trash lives
+ * under the reserved {@code _vance/} area, which no write tool here may
+ * touch, the trash itself is out of reach: no second delete, no move
+ * out of it, no copy into it. Deliberately absent: {@code doc_purge},
+ * {@code doc_restore} and {@code doc_list_trash} — emptying or working
+ * the trash stays with the owner's surfaces. Id-style addressing ({@code id}
  * / {@code documentId} params) is rejected by the surface, not by the
  * catalogue, because {@code doc_read} by id checks only the tenant —
  * path addressing is what makes path-prefix confinement meaningful.
@@ -54,7 +61,10 @@ public class McpProjectToolCatalog {
             new FixedTool("doc_grep_path", false, List.of("pathPrefix")),
             new FixedTool("doc_write", true, List.of("path")),
             new FixedTool("doc_edit", true, List.of("path")),
-            new FixedTool("doc_replace_lines", true, List.of("path")));
+            new FixedTool("doc_replace_lines", true, List.of("path")),
+            new FixedTool("doc_move", true, List.of("path", "newPath")),
+            new FixedTool("doc_copy", true, List.of("path", "newPath")),
+            new FixedTool("doc_delete", true, List.of("path")));
 
     /** Name lookup over the fixed surface, for the ambiguity check. */
     private static final Set<String> FIXED_NAMES =

@@ -74,7 +74,9 @@ class McpProjectServiceTest {
 
         McpProtocol.Outcome out = service.handle(toolsListBody(), TENANT, PROJECT, TOKEN);
 
-        assertThat(toolNamesOf(out)).hasSize(8).contains("doc_read", "doc_write");
+        assertThat(toolNamesOf(out))
+                .hasSize(11)
+                .contains("doc_read", "doc_write", "doc_move", "doc_copy", "doc_delete");
     }
 
     // ──────────────────── tools/call: access ────────────────────
@@ -95,7 +97,7 @@ class McpProjectServiceTest {
         entry(Mode.RW, List.of());
 
         McpProtocol.Outcome out =
-                service.handle(callBody("doc_delete", Map.of("path", "spec/x.md")), TENANT, PROJECT, TOKEN);
+                service.handle(callBody("doc_purge", Map.of("path", "spec/x.md")), TENANT, PROJECT, TOKEN);
 
         assertThat(isErrorOf(out)).isTrue();
         assertThat(textOf(out)).contains("Unknown tool");
@@ -228,6 +230,87 @@ class McpProjectServiceTest {
         assertThat(textOf(out)).contains("never writable");
     }
 
+    // ──────────────────── tools/call: move / copy / delete ────────────────────
+
+    @Test
+    void toolsCall_moveTargetOutsidePrefixes_isRejected() {
+        entry(Mode.RW, List.of("spec/"));
+
+        McpProtocol.Outcome out = service.handle(
+                callBody("doc_move", Map.of("path", "spec/x.md", "newPath", "readme/x.md")), TENANT, PROJECT, TOKEN);
+
+        assertThat(isErrorOf(out)).isTrue();
+        assertThat(textOf(out)).contains("outside the prefixes");
+        verify(tools.get("doc_move"), never()).invoke(anyMap(), any());
+    }
+
+    @Test
+    void toolsCall_copyIntoVanceArea_isRejected() {
+        entry(Mode.RW, List.of());
+
+        McpProtocol.Outcome out = service.handle(
+                callBody("doc_copy", Map.of("path", "spec/x.md", "newPath", "_vance/trash/x.md")),
+                TENANT,
+                PROJECT,
+                TOKEN);
+
+        assertThat(isErrorOf(out)).isTrue();
+        assertThat(textOf(out)).contains("never writable");
+        verify(tools.get("doc_copy"), never()).invoke(anyMap(), any());
+    }
+
+    @Test
+    void toolsCall_moveOutOfTrash_isRejected() {
+        entry(Mode.RW, List.of());
+
+        McpProtocol.Outcome out = service.handle(
+                callBody("doc_move", Map.of("path", "_vance/trash/1234_x.md", "newPath", "spec/x.md")),
+                TENANT,
+                PROJECT,
+                TOKEN);
+
+        assertThat(isErrorOf(out)).isTrue();
+        assertThat(textOf(out)).contains("never writable");
+        verify(tools.get("doc_move"), never()).invoke(anyMap(), any());
+    }
+
+    @Test
+    void toolsCall_deleteInsideTrash_isRejected() {
+        entry(Mode.RW, List.of());
+
+        McpProtocol.Outcome out = service.handle(
+                callBody("doc_delete", Map.of("path", "_vance/trash/1234_x.md")), TENANT, PROJECT, TOKEN);
+
+        assertThat(isErrorOf(out)).isTrue();
+        assertThat(textOf(out)).contains("never writable");
+        verify(tools.get("doc_delete"), never()).invoke(anyMap(), any());
+    }
+
+    @Test
+    void toolsCall_deleteUnderRoMode_isError() {
+        entry(Mode.RO, List.of());
+
+        McpProtocol.Outcome out =
+                service.handle(callBody("doc_delete", Map.of("path", "spec/x.md")), TENANT, PROJECT, TOKEN);
+
+        assertThat(isErrorOf(out)).isTrue();
+        assertThat(textOf(out)).contains("'ro'");
+        verify(tools.get("doc_delete"), never()).invoke(anyMap(), any());
+    }
+
+    @Test
+    void toolsCall_moveWithinPrefixes_invokesTool() {
+        entry(Mode.RW, List.of("spec/"));
+        Map<String, Object> args = Map.of("path", "spec/old.md", "newPath", "spec/new.md");
+        when(tools.get("doc_move").invoke(anyMap(), any(ToolInvocationContext.class)))
+                .thenReturn(Map.of("previousPath", "spec/old.md", "newPath", "spec/new.md"));
+
+        McpProtocol.Outcome out = service.handle(callBody("doc_move", args), TENANT, PROJECT, TOKEN);
+
+        assertThat(isErrorOf(out)).isFalse();
+        verify(tools.get("doc_move")).invoke(eq(args), any(ToolInvocationContext.class));
+    }
+
     // ──────────────────── tools/call: happy path & failures ────────────────────
 
     @Test
@@ -295,10 +378,13 @@ class McpProjectServiceTest {
                 "doc_grep_path",
                 "doc_write",
                 "doc_edit",
-                "doc_replace_lines")) {
+                "doc_replace_lines",
+                "doc_move",
+                "doc_copy",
+                "doc_delete")) {
             Tool tool = mock(Tool.class);
             // Shared fixture: every test uses a different subset of the
-            // eight tools, so the common stubbings are lenient.
+            // surface tools, so the common stubbings are lenient.
             lenient().when(tool.name()).thenReturn(name);
             lenient().when(tool.description()).thenReturn("stub " + name);
             lenient().when(tool.paramsSchema()).thenReturn(Map.of());

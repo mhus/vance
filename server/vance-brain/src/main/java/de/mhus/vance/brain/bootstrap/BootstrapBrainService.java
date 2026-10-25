@@ -366,9 +366,10 @@ public class BootstrapBrainService {
                 // out-of-band (Anus admin shell). The password hash is
                 // stored anyway so a future "promote to login-able" flow
                 // can flip the flag without password reset.
-                userService.createServiceAccount(tenantId, name, hash, title, email);
+                userService.createServiceAccount(tenantId, name, hash, title, email, false);
             } else {
-                userService.create(tenantId, name, hash, title, email);
+                // Seed data: never refused by a quota (user-quota.md §3).
+                userService.create(tenantId, name, hash, title, email, false);
             }
         });
     }
@@ -391,7 +392,7 @@ public class BootstrapBrainService {
         ensureOnce(
                 "team '" + name + "'",
                 () -> teamService.existsByTenantAndName(tenantId, name),
-                () -> teamService.create(tenantId, name, title, members));
+                () -> teamService.create(tenantId, name, title, members, false));
     }
 
     private void ensureDocument(

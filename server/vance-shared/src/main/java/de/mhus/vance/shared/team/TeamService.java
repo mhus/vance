@@ -42,6 +42,12 @@ public class TeamService implements TeamMembership {
     /** Name-keyed stores (role assignments) that must follow a team's lifecycle. */
     private final ObjectProvider<TeamLifecycleListener> lifecycleListeners;
 
+    /**
+     * The team quota, checked here on every write that makes a team counted —
+     * lazily, because the quota counts through {@link #countEnabled}.
+     */
+    private final ObjectProvider<TeamQuotaService> quotaServiceProvider;
+
     public Optional<TeamDocument> findByTenantAndName(String tenantId, String name) {
         return repository.findByTenantIdAndName(tenantId, name);
     }
@@ -75,8 +81,27 @@ public class TeamService implements TeamMembership {
      * {@code name} already lives in that tenant.
      */
     public TeamDocument create(String tenantId, String name, @Nullable String title, @Nullable List<String> members) {
+        return create(tenantId, name, title, members, true);
+    }
+
+    /**
+     * {@link #create}, with the team quota checked only when
+     * {@code enforceQuota} — {@code false} is for seeding and the admin
+     * shell's {@code --ignore-quota}.
+     *
+     * @throws TeamQuotaService.TeamQuotaExceededException when enforced and the tenant is at its limit
+     */
+    public TeamDocument create(
+            String tenantId,
+            String name,
+            @Nullable String title,
+            @Nullable List<String> members,
+            boolean enforceQuota) {
         if (repository.existsByTenantIdAndName(tenantId, name)) {
             throw new TeamAlreadyExistsException("Team '" + name + "' already exists in tenant '" + tenantId + "'");
+        }
+        if (enforceQuota) {
+            quotaServiceProvider.getObject().checkOneMore(tenantId);
         }
         TeamDocument team = TeamDocument.builder()
                 .tenantId(tenantId)
@@ -123,6 +148,29 @@ public class TeamService implements TeamMembership {
             @Nullable String title,
             @Nullable Boolean enabled,
             @Nullable List<String> members) {
+        return update(tenantId, name, title, enabled, members, true);
+    }
+
+    /**
+     * {@link #update}, with the team quota checked when a disabled team is
+     * enabled — only when {@code enforceQuota}.
+     *
+     * @throws TeamQuotaService.TeamQuotaExceededException when enforced and enabling exceeds the limit
+     */
+    public TeamDocument update(
+            String tenantId,
+            String name,
+            @Nullable String title,
+            @Nullable Boolean enabled,
+            @Nullable List<String> members,
+            boolean enforceQuota) {
+        if (enforceQuota && Boolean.TRUE.equals(enabled)) {
+            TeamDocument current = repository
+                    .findByTenantIdAndName(tenantId, name)
+                    .orElseThrow(() ->
+                            new TeamNotFoundException("Team '" + name + "' not found in tenant '" + tenantId + "'"));
+            quotaServiceProvider.getObject().checkEnabledChange(tenantId, current, true);
+        }
         Update update = new Update();
         if (title != null) {
             update.set(F_TITLE, title);

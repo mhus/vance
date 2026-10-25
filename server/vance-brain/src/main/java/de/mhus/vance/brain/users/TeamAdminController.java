@@ -7,7 +7,6 @@ import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.team.TeamDocument;
-import de.mhus.vance.shared.team.TeamQuotaService;
 import de.mhus.vance.shared.team.TeamService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -36,7 +35,8 @@ import org.springframework.web.server.ResponseStatusException;
  * {@link de.mhus.vance.brain.access.BrainAccessFilter}.
  *
  * <p>Creating a team and enabling a disabled one are subject to the tenant's
- * team quota; a refusal is answered 409 by {@link TeamQuotaExceptionAdvice}.
+ * team quota — checked by {@link TeamService}; a refusal is answered 409 by
+ * {@link TeamQuotaExceptionAdvice}.
  */
 @RestController
 @RequestMapping("/brain/{tenant}/admin/teams")
@@ -46,7 +46,6 @@ public class TeamAdminController {
 
     private final TeamService teamService;
     private final RequestAuthority authority;
-    private final TeamQuotaService quotaService;
 
     @GetMapping
     public List<TeamDto> list(@PathVariable("tenant") String tenant, HttpServletRequest httpRequest) {
@@ -73,7 +72,6 @@ public class TeamAdminController {
             @Valid @RequestBody TeamCreateRequest request,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.WRITE);
-        quotaService.checkOneMore(tenant);
         try {
             TeamDocument saved =
                     teamService.create(tenant, request.getName(), request.getTitle(), request.getMembers());
@@ -90,13 +88,6 @@ public class TeamAdminController {
             @Valid @RequestBody TeamUpdateRequest request,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Team(tenant, name), Action.ADMIN);
-        if (Boolean.TRUE.equals(request.getEnabled())) {
-            TeamDocument current = teamService
-                    .findByTenantAndName(tenant, name)
-                    .orElseThrow(
-                            () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Team '" + name + "' not found"));
-            quotaService.checkEnabledChange(tenant, current, true);
-        }
         try {
             TeamDocument saved =
                     teamService.update(tenant, name, request.getTitle(), request.getEnabled(), request.getMembers());

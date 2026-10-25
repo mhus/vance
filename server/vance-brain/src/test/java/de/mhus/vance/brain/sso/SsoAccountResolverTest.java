@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -26,7 +25,6 @@ class SsoAccountResolverTest {
     private static final String ISSUER = "https://accounts.google.com";
 
     private UserService users;
-    private UserQuotaService quota;
     private SsoAccountResolver resolver;
 
     @BeforeEach
@@ -34,8 +32,7 @@ class SsoAccountResolverTest {
         users = mock(UserService.class);
         when(users.findByExternalSubject(anyString(), anyString())).thenReturn(Optional.empty());
         when(users.findPreparedByEmail(anyString(), anyString())).thenReturn(Optional.empty());
-        quota = mock(UserQuotaService.class);
-        resolver = new SsoAccountResolver(users, mock(AuditService.class), quota);
+        resolver = new SsoAccountResolver(users, mock(AuditService.class));
     }
 
     private static SsoAccountResolver.SignIn signIn(String tenant, boolean autoCreate) {
@@ -134,24 +131,23 @@ class SsoAccountResolverTest {
     @Test
     void autoCreate_withoutFreeSeat_isRejected_withoutAnAccount() {
         when(users.existsByTenantAndName("acme", "wile")).thenReturn(false);
-        doThrow(new UserQuotaService.UserQuotaExceededException(UserQuotaKind.SEATS, 5, 5))
-                .when(quota)
-                .checkOneMore("acme", UserQuotaKind.SEATS);
+        // createExternal checks the seats before its one write.
+        when(users.createExternal(any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(new UserQuotaService.UserQuotaExceededException(UserQuotaKind.SEATS, 5, 5));
 
         SsoAccountResolver.Outcome outcome = resolver.resolve(signIn("acme", true));
 
         assertThat(outcome.user()).isNull();
         assertThat(outcome.rejection()).isEqualTo(SsoAccountResolver.REJECT_NO_SEATS);
-        verify(users, never()).createExternal(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
-    void boundSubject_isNotCheckedAgainstTheQuota() {
+    void boundSubject_createsNothing() {
         when(users.findByExternalSubject(ISSUER, "sub-1")).thenReturn(Optional.of(linked("acme")));
 
         resolver.resolve(signIn("acme", true));
 
-        verify(quota, never()).checkOneMore(anyString(), any());
+        verify(users, never()).createExternal(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test

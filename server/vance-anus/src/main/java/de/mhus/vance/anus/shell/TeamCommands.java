@@ -70,11 +70,12 @@ public class TeamCommands {
                             description = "Create even when the tenant's team quota is reached.",
                             defaultValue = "false")
                     boolean ignoreQuota) {
-        @Nullable String refused = ignoreQuota ? null : quotaRefusal(tenant, () -> quotaService.checkOneMore(tenant));
-        if (refused != null) {
-            return refused;
+        TeamDocument team;
+        try {
+            team = teamService.create(tenant, name, title, parseList(members), !ignoreQuota);
+        } catch (TeamQuotaService.TeamQuotaExceededException e) {
+            return quotaRefusal(tenant, e);
         }
-        TeamDocument team = teamService.create(tenant, name, title, parseList(members));
         return "Created:\n" + renderOne(team) + quotaLine(tenant);
     }
 
@@ -94,38 +95,25 @@ public class TeamCommands {
                             description = "Enable a disabled team even when the tenant's team quota is reached.",
                             defaultValue = "false")
                     boolean ignoreQuota) {
-        @Nullable
-        TeamDocument current = Boolean.TRUE.equals(enabled)
-                ? teamService.findByTenantAndName(tenant, name).orElse(null)
-                : null;
-        if (current != null && !ignoreQuota) {
-            @Nullable
-            String refused = quotaRefusal(tenant, () -> quotaService.checkEnabledChange(tenant, current, true));
-            if (refused != null) {
-                return refused;
-            }
+        TeamDocument team;
+        try {
+            team = teamService.update(tenant, name, title, enabled, parseList(members), !ignoreQuota);
+        } catch (TeamQuotaService.TeamQuotaExceededException e) {
+            return quotaRefusal(tenant, e);
         }
-        TeamDocument team = teamService.update(tenant, name, title, enabled, parseList(members));
-        return "Updated:\n" + renderOne(team) + (current == null ? "" : quotaLine(tenant));
+        return "Updated:\n" + renderOne(team) + (Boolean.TRUE.equals(enabled) ? quotaLine(tenant) : "");
     }
 
     /**
-     * The shell checks the team quota like the product surfaces, but the
+     * The service checks the team quota like for the product surfaces, but the
      * operator may step past it with {@code --ignore-quota} — the shell is the
      * way out when the limit itself is in the way, and it has to work without
      * a brain. Refusing by default keeps an overshoot deliberate.
-     *
-     * @return the refusal text, or {@code null} to go ahead
      */
-    private @Nullable String quotaRefusal(String tenant, Runnable check) {
-        try {
-            check.run();
-            return null;
-        } catch (TeamQuotaService.TeamQuotaExceededException e) {
-            return "Refused: team quota of tenant '" + tenant + "' reached (" + e.active() + "/" + e.limit()
-                    + "). Disable or delete a team, raise " + TeamQuotaService.KEY_MAX_ACTIVE
-                    + " on _tenant, or pass --ignore-quota.";
-        }
+    private static String quotaRefusal(String tenant, TeamQuotaService.TeamQuotaExceededException e) {
+        return "Refused: team quota of tenant '" + tenant + "' reached (" + e.active() + "/" + e.limit()
+                + "). Disable or delete a team, raise " + TeamQuotaService.KEY_MAX_ACTIVE
+                + " on _tenant, or pass --ignore-quota.";
     }
 
     /** Current count after a change, flagged when over the limit; empty for an unlimited tenant. */

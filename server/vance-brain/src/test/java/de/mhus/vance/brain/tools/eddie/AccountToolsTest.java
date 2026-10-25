@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -48,14 +47,12 @@ class AccountToolsTest {
     private static final SecurityContext ALICE = SecurityContext.user("alice", "acme", List.of());
 
     private UserService userService;
-    private UserQuotaService quotaService;
     private AdminToolSupport admin;
     private RoleChangeSupport roleChanges;
 
     @BeforeEach
     void setUp() {
         userService = mock(UserService.class);
-        quotaService = mock(UserQuotaService.class);
         admin = mock(AdminToolSupport.class);
         roleChanges = mock(RoleChangeSupport.class);
         when(admin.actor(any(), anyString())).thenReturn(ALICE);
@@ -73,7 +70,7 @@ class AccountToolsTest {
     // ─── account_create ────────────────────────────────────────────────────
 
     private AccountCreateTool createTool() {
-        return new AccountCreateTool(userService, quotaService, admin, roleChanges);
+        return new AccountCreateTool(userService, admin, roleChanges);
     }
 
     @Test
@@ -91,7 +88,6 @@ class AccountToolsTest {
                         CTX);
 
         verify(admin).enforce(ALICE, new Resource.Tenant("acme"), Action.WRITE);
-        verify(quotaService).checkOneMore("acme", UserQuotaKind.SEATS);
         verify(roleChanges)
                 .grant(
                         CTX,
@@ -132,14 +128,14 @@ class AccountToolsTest {
 
     @Test
     void create_atTheSeatLimitCreatesNothing() {
-        doThrow(new UserQuotaService.UserQuotaExceededException(UserQuotaKind.SEATS, 5, 5))
-                .when(quotaService)
-                .checkOneMore("acme", UserQuotaKind.SEATS);
+        // UserService.create checks the seats before its write.
+        when(userService.create("acme", "bob", null, null, null))
+                .thenThrow(new UserQuotaService.UserQuotaExceededException(UserQuotaKind.SEATS, 5, 5));
 
         assertThatThrownBy(() -> createTool().invoke(Map.of("name", "bob"), CTX))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("5 of 5");
-        verify(userService, never()).create(any(), any(), any(), any(), any());
+        verify(roleChanges, never()).grant(any(), anyString(), any(), any());
     }
 
     @Test
@@ -177,20 +173,21 @@ class AccountToolsTest {
 
     @Test
     void enable_checksTheQuota() {
-        AccountEnableTool tool = new AccountEnableTool(userService, quotaService, admin);
+        AccountEnableTool tool = new AccountEnableTool(userService, admin);
         UserDocument bob = user("bob", UserStatus.DISABLED);
         when(userService.findByTenantAndName("acme", "bob")).thenReturn(Optional.of(bob));
-        doThrow(new UserQuotaService.UserQuotaExceededException(UserQuotaKind.SEATS, 5, 5))
-                .when(quotaService)
-                .checkStatusChange("acme", bob, UserStatus.ACTIVE);
+        // UserService.update checks the status change before its write.
+        when(userService.update("acme", "bob", null, null, UserStatus.ACTIVE, null))
+                .thenThrow(new UserQuotaService.UserQuotaExceededException(UserQuotaKind.SEATS, 5, 5));
 
-        assertThatThrownBy(() -> tool.invoke(Map.of("name", "bob"), CTX)).isInstanceOf(ToolException.class);
-        verify(userService, never()).update(any(), any(), any(), any(), any(), any());
+        assertThatThrownBy(() -> tool.invoke(Map.of("name", "bob"), CTX))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("5 of 5");
     }
 
     @Test
     void enable_onlyADisabledAccount() {
-        AccountEnableTool tool = new AccountEnableTool(userService, quotaService, admin);
+        AccountEnableTool tool = new AccountEnableTool(userService, admin);
         when(userService.findByTenantAndName("acme", "bob")).thenReturn(Optional.of(user("bob", UserStatus.ACTIVE)));
 
         assertThatThrownBy(() -> tool.invoke(Map.of("name", "bob"), CTX))

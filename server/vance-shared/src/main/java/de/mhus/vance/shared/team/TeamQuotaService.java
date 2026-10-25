@@ -15,9 +15,10 @@ import org.springframework.stereotype.Service;
  * <p>What counts is {@link TeamService#countEnabled}: a disabled team frees
  * its place, the way a DISABLED account does for the user quota.
  *
- * <p>Checked where a team <em>becomes</em> counted — create, and enabling a
- * disabled team — and in the admin shell, where the operator may step past
- * it with {@code --ignore-quota}.
+ * <p>Enforced by {@link TeamService} itself where a team <em>becomes</em>
+ * counted — create, and enabling a disabled team. The overloads with
+ * {@code enforceQuota = false} are for seeding and the admin shell's
+ * {@code --ignore-quota}.
  *
  * <p>Count and insert are two steps, so two creates racing for the last place
  * can both pass. That overshoot by one is accepted: this is an administrative

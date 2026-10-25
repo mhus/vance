@@ -131,12 +131,15 @@ public class UserCommands {
                             description = "Create even when the tenant's seat (or service-account) quota is reached.",
                             defaultValue = "false")
                     boolean ignoreQuota) {
-        // Before the password prompt: a refusal must not cost the operator a typed password.
+        // Early look before the password prompt: a refusal must not cost the
+        // operator a typed password. The binding check is the service's below.
         UserQuotaKind kind = UserQuotaKind.forServiceAccount(serviceAccount);
-        @Nullable
-        String refused = ignoreQuota ? null : quotaRefusal(tenant, () -> quotaService.checkOneMore(tenant, kind));
-        if (refused != null) {
-            return refused;
+        if (!ignoreQuota) {
+            try {
+                quotaService.checkOneMore(tenant, kind);
+            } catch (UserQuotaService.UserQuotaExceededException e) {
+                return quotaRefusal(tenant, e);
+            }
         }
         @Nullable String hash = null;
         if (!noPassword) {
@@ -153,9 +156,14 @@ public class UserCommands {
             }
             hash = passwordService.hash(plain);
         }
-        UserDocument user = serviceAccount
-                ? userService.createServiceAccount(tenant, name, hash, title, email)
-                : userService.create(tenant, name, hash, title, email);
+        UserDocument user;
+        try {
+            user = serviceAccount
+                    ? userService.createServiceAccount(tenant, name, hash, title, email, !ignoreQuota)
+                    : userService.create(tenant, name, hash, title, email, !ignoreQuota);
+        } catch (UserQuotaService.UserQuotaExceededException e) {
+            return quotaRefusal(tenant, e);
+        }
         return "Created:\n" + renderOne(user) + quotaLine(tenant, kind);
     }
 
@@ -179,18 +187,13 @@ public class UserCommands {
                             description = "Re-enable a DISABLED account even when its quota is reached.",
                             defaultValue = "false")
                     boolean ignoreQuota) {
-        @Nullable
-        UserDocument current = status == null
-                ? null
-                : userService.findByTenantAndName(tenant, name).orElse(null);
-        if (current != null && !ignoreQuota) {
-            String refused = quotaRefusal(tenant, () -> quotaService.checkStatusChange(tenant, current, status));
-            if (refused != null) {
-                return refused;
-            }
+        UserDocument user;
+        try {
+            user = userService.update(tenant, name, title, email, status, loginEnabled, !ignoreQuota);
+        } catch (UserQuotaService.UserQuotaExceededException e) {
+            return quotaRefusal(tenant, e);
         }
-        UserDocument user = userService.update(tenant, name, title, email, status, loginEnabled);
-        return "Updated:\n" + renderOne(user) + (current == null ? "" : quotaLine(tenant, UserQuotaKind.of(user)));
+        return "Updated:\n" + renderOne(user) + (status == null ? "" : quotaLine(tenant, UserQuotaKind.of(user)));
     }
 
     @Command(
@@ -221,23 +224,16 @@ public class UserCommands {
     }
 
     /**
-     * The shell checks the account quotas like the product surfaces, but the
-     * operator may step past them with {@code --ignore-quota} — the shell is
-     * the way out when the limit itself is in the way, and it has to work
-     * without a brain. Refusing by default keeps an overshoot deliberate.
-     *
-     * @return the refusal text, or {@code null} to go ahead
+     * The service checks the account quotas like for the product surfaces,
+     * but the operator may step past them with {@code --ignore-quota} — the
+     * shell is the way out when the limit itself is in the way, and it has to
+     * work without a brain. Refusing by default keeps an overshoot deliberate.
      */
-    private @Nullable String quotaRefusal(String tenant, Runnable check) {
-        try {
-            check.run();
-            return null;
-        } catch (UserQuotaService.UserQuotaExceededException e) {
-            return "Refused: " + label(e.kind()) + " quota of tenant '" + tenant + "' reached (" + e.active() + "/"
-                    + e.limit() + "). Disable or delete an account, raise "
-                    + e.kind().settingKey()
-                    + " on _tenant, or pass --ignore-quota.";
-        }
+    private static String quotaRefusal(String tenant, UserQuotaService.UserQuotaExceededException e) {
+        return "Refused: " + label(e.kind()) + " quota of tenant '" + tenant + "' reached (" + e.active() + "/"
+                + e.limit() + "). Disable or delete an account, raise "
+                + e.kind().settingKey()
+                + " on _tenant, or pass --ignore-quota.";
     }
 
     /** Current count after a change, flagged when over the limit; empty for an unlimited quota. */
@@ -295,18 +291,15 @@ public class UserCommands {
                     + " not mapped to this tenant in " + SsoConfigService.CONFIG_PATH
                     + " (or, for Gmail, the tenant is not listed under consumerAccounts).";
         }
-        // Preparing a missing account creates it — that takes a seat. An existing
-        // one already holds its place.
+        // Preparing a missing account creates it — that takes a seat, which the
+        // service checks. An existing one already holds its place.
         boolean creates = !userService.existsByTenantAndName(tenant, name);
-        if (creates && !ignoreQuota) {
-            String refused = quotaRefusal(tenant, () -> quotaService.checkOneMore(tenant, UserQuotaKind.SEATS));
-            if (refused != null) {
-                return refused;
-            }
-        }
         UserDocument user;
         try {
-            user = userService.prepareExternalIdentity(tenant, name, provider.key(), provider.issuer(), normalized);
+            user = userService.prepareExternalIdentity(
+                    tenant, name, provider.key(), provider.issuer(), normalized, !ignoreQuota);
+        } catch (UserQuotaService.UserQuotaExceededException e) {
+            return quotaRefusal(tenant, e);
         } catch (UserService.ExternalIdentityException | UserService.ReservedNameException e) {
             return "Refused: " + e.getMessage();
         }

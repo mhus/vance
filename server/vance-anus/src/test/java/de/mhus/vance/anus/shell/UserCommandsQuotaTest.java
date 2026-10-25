@@ -2,7 +2,9 @@ package de.mhus.vance.anus.shell;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -28,8 +30,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 
 /**
- * The shell refuses at the account quotas like the product surfaces, and
- * steps past them only on {@code --ignore-quota} — so an overshoot is always
+ * The shell refuses at the account quotas like the product surfaces — the
+ * service enforces them — and steps past them only on {@code --ignore-quota},
+ * which it passes as {@code enforceQuota = false}. An overshoot is always
  * something the operator chose.
  */
 class UserCommandsQuotaTest {
@@ -57,12 +60,14 @@ class UserCommandsQuotaTest {
 
     @BeforeEach
     void setUp() {
-        when(userService.create(anyString(), anyString(), any(), any(), any())).thenReturn(alice);
-        when(userService.createServiceAccount(anyString(), anyString(), any(), any(), any()))
+        when(userService.create(anyString(), anyString(), any(), any(), any(), anyBoolean()))
                 .thenReturn(alice);
-        when(userService.update(anyString(), anyString(), any(), any(), any(), any()))
+        when(userService.createServiceAccount(anyString(), anyString(), any(), any(), any(), anyBoolean()))
                 .thenReturn(alice);
-        when(userService.prepareExternalIdentity(anyString(), anyString(), anyString(), anyString(), anyString()))
+        when(userService.update(anyString(), anyString(), any(), any(), any(), any(), anyBoolean()))
+                .thenReturn(alice);
+        when(userService.prepareExternalIdentity(
+                        anyString(), anyString(), anyString(), anyString(), anyString(), anyBoolean()))
                 .thenReturn(alice);
         when(userService.findByTenantAndName("acme", "alice")).thenReturn(Optional.of(alice));
         when(quotaService.status("acme", UserQuotaKind.SEATS)).thenReturn(new UserQuotaService.Usage(6, 5));
@@ -88,7 +93,17 @@ class UserCommandsQuotaTest {
                 .contains("5/5")
                 .contains("user.quota.seats")
                 .contains("--ignore-quota");
-        verify(userService, never()).create(anyString(), anyString(), any(), any(), any());
+        verify(userService, never()).create(anyString(), anyString(), any(), any(), any(), anyBoolean());
+    }
+
+    @Test
+    void create_refusalOfTheService_isRenderedTheSameWay() {
+        when(userService.create(anyString(), anyString(), any(), any(), any(), eq(true)))
+                .thenThrow(full(UserQuotaKind.SEATS));
+
+        String out = commands.create("acme", "alice", null, null, null, true, false, false);
+
+        assertThat(out).startsWith("Refused:").contains("user.quota.seats");
     }
 
     @Test
@@ -100,7 +115,7 @@ class UserCommandsQuotaTest {
         String out = commands.create("acme", "_bot", null, null, null, true, true, false);
 
         assertThat(out).startsWith("Refused:").contains("user.quota.serviceAccounts");
-        verify(userService, never()).createServiceAccount(anyString(), anyString(), any(), any(), any());
+        verify(userService, never()).createServiceAccount(anyString(), anyString(), any(), any(), any(), anyBoolean());
     }
 
     @Test
@@ -111,52 +126,47 @@ class UserCommandsQuotaTest {
 
         assertThat(out).startsWith("Created:").contains("6/5 seats (over the limit)");
         verify(quotaService, never()).checkOneMore(anyString(), any());
+        verify(userService).create("acme", "alice", null, null, null, false);
     }
 
     @Test
     void update_reEnablingAtTheLimit_isRefused() {
-        doThrow(full(UserQuotaKind.SEATS)).when(quotaService).checkStatusChange("acme", alice, UserStatus.ACTIVE);
+        when(userService.update("acme", "alice", null, null, UserStatus.ACTIVE, null, true))
+                .thenThrow(full(UserQuotaKind.SEATS));
 
         String out = commands.update("acme", "alice", null, null, UserStatus.ACTIVE, null, false);
 
-        assertThat(out).startsWith("Refused:");
-        verify(userService, never()).update(anyString(), anyString(), any(), any(), any(), any());
+        assertThat(out).startsWith("Refused:").contains("user.quota.seats");
     }
 
     @Test
-    void update_ignoreQuotaReEnables() {
+    void update_ignoreQuotaReEnablesWithoutEnforcement() {
         String out = commands.update("acme", "alice", null, null, UserStatus.ACTIVE, null, true);
 
         assertThat(out).startsWith("Updated:");
-        verify(quotaService, never()).checkStatusChange(anyString(), any(), any());
+        verify(userService).update("acme", "alice", null, null, UserStatus.ACTIVE, null, false);
     }
 
     @Test
-    void update_withoutStatus_isNotChecked() {
-        commands.update("acme", "alice", "Alice", null, null, null, false);
-
-        verify(quotaService, never()).checkStatusChange(anyString(), any(), any());
-    }
-
-    @Test
-    void ssoPrepare_ofAMissingAccount_takesASeat() {
+    void ssoPrepare_ofAMissingAccount_atTheLimit_isRefused() {
         when(userService.existsByTenantAndName("acme", "bob")).thenReturn(false);
-        doThrow(full(UserQuotaKind.SEATS)).when(quotaService).checkOneMore("acme", UserQuotaKind.SEATS);
+        when(userService.prepareExternalIdentity(
+                        eq("acme"), eq("bob"), anyString(), anyString(), anyString(), eq(true)))
+                .thenThrow(full(UserQuotaKind.SEATS));
 
         String out = commands.ssoPrepare("acme", "bob", "bob@acme.com", false);
 
-        assertThat(out).startsWith("Refused:");
-        verify(userService, never())
-                .prepareExternalIdentity(anyString(), anyString(), anyString(), anyString(), anyString());
+        assertThat(out).startsWith("Refused:").contains("user.quota.seats");
     }
 
     @Test
-    void ssoPrepare_ofAnExistingAccount_isNotChecked() {
-        when(userService.existsByTenantAndName("acme", "alice")).thenReturn(true);
+    void ssoPrepare_ignoreQuota_preparesWithoutEnforcement() {
+        when(userService.existsByTenantAndName("acme", "bob")).thenReturn(false);
 
-        String out = commands.ssoPrepare("acme", "alice", "alice@acme.com", false);
+        String out = commands.ssoPrepare("acme", "bob", "bob@acme.com", true);
 
         assertThat(out).startsWith("Prepared");
-        verify(quotaService, never()).checkOneMore(anyString(), any());
+        verify(userService)
+                .prepareExternalIdentity(eq("acme"), eq("bob"), anyString(), anyString(), anyString(), eq(false));
     }
 }

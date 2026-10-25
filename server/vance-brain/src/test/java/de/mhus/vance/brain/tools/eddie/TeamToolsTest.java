@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -42,14 +41,12 @@ class TeamToolsTest {
     private static final SecurityContext ALICE = SecurityContext.user("alice", "acme", List.of());
 
     private TeamService teamService;
-    private TeamQuotaService quotaService;
     private UserService userService;
     private AdminToolSupport admin;
 
     @BeforeEach
     void setUp() {
         teamService = mock(TeamService.class);
-        quotaService = mock(TeamQuotaService.class);
         userService = mock(UserService.class);
         admin = mock(AdminToolSupport.class);
         when(admin.actor(any(), anyString())).thenReturn(ALICE);
@@ -65,20 +62,19 @@ class TeamToolsTest {
 
     @Test
     void create_withExistingMembers() {
-        TeamCreateTool tool = new TeamCreateTool(teamService, quotaService, userService, admin);
+        TeamCreateTool tool = new TeamCreateTool(teamService, userService, admin);
         when(userService.existsByTenantAndName("acme", "bob")).thenReturn(true);
         when(teamService.create("acme", "infra", null, List.of("bob"))).thenReturn(team("infra", true));
 
         tool.invoke(Map.of("name", "infra", "members", List.of("bob", "bob")), CTX);
 
         verify(admin).enforce(ALICE, new Resource.Tenant("acme"), Action.WRITE);
-        verify(quotaService).checkOneMore("acme");
         verify(teamService).create("acme", "infra", null, List.of("bob"));
     }
 
     @Test
     void create_unknownMemberCreatesNothing() {
-        TeamCreateTool tool = new TeamCreateTool(teamService, quotaService, userService, admin);
+        TeamCreateTool tool = new TeamCreateTool(teamService, userService, admin);
 
         assertThatThrownBy(() -> tool.invoke(Map.of("name", "infra", "members", List.of("ghost")), CTX))
                 .isInstanceOf(ToolException.class)
@@ -88,34 +84,31 @@ class TeamToolsTest {
 
     @Test
     void create_atTheTeamLimitCreatesNothing() {
-        TeamCreateTool tool = new TeamCreateTool(teamService, quotaService, userService, admin);
-        doThrow(new TeamQuotaService.TeamQuotaExceededException(3, 3))
-                .when(quotaService)
-                .checkOneMore("acme");
+        TeamCreateTool tool = new TeamCreateTool(teamService, userService, admin);
+        // TeamService.create checks the quota before its write.
+        when(teamService.create("acme", "infra", null, List.of()))
+                .thenThrow(new TeamQuotaService.TeamQuotaExceededException(3, 3));
 
         assertThatThrownBy(() -> tool.invoke(Map.of("name", "infra"), CTX))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("3 of 3");
-        verify(teamService, never()).create(any(), any(), any(), any());
     }
 
     @Test
     void update_enablingChecksTheQuota() {
-        TeamUpdateTool tool = new TeamUpdateTool(teamService, quotaService, admin);
-        TeamDocument off = team("infra", false);
-        when(teamService.findByTenantAndName("acme", "infra")).thenReturn(Optional.of(off));
-        doThrow(new TeamQuotaService.TeamQuotaExceededException(3, 3))
-                .when(quotaService)
-                .checkEnabledChange("acme", off, true);
+        TeamUpdateTool tool = new TeamUpdateTool(teamService, admin);
+        // TeamService.update checks the quota before its write.
+        when(teamService.update("acme", "infra", null, true, null))
+                .thenThrow(new TeamQuotaService.TeamQuotaExceededException(3, 3));
 
         assertThatThrownBy(() -> tool.invoke(Map.of("name", "infra", "enabled", true), CTX))
-                .isInstanceOf(ToolException.class);
-        verify(teamService, never()).update(any(), any(), any(), any(), any());
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("3 of 3");
     }
 
     @Test
     void update_neverReplacesTheMemberList() {
-        TeamUpdateTool tool = new TeamUpdateTool(teamService, quotaService, admin);
+        TeamUpdateTool tool = new TeamUpdateTool(teamService, admin);
         when(teamService.findByTenantAndName("acme", "infra")).thenReturn(Optional.of(team("infra", true)));
         when(teamService.update("acme", "infra", "Infra", null, null)).thenReturn(team("infra", true));
 

@@ -3,7 +3,6 @@ package de.mhus.vance.brain.sso;
 import de.mhus.vance.shared.audit.AuditService;
 import de.mhus.vance.shared.user.ExternalEmails;
 import de.mhus.vance.shared.user.UserDocument;
-import de.mhus.vance.shared.user.UserQuotaKind;
 import de.mhus.vance.shared.user.UserQuotaService;
 import de.mhus.vance.shared.user.UserService;
 import de.mhus.vance.shared.user.UserStatus;
@@ -51,7 +50,6 @@ public class SsoAccountResolver {
 
     private final UserService userService;
     private final AuditService auditService;
-    private final UserQuotaService quotaService;
 
     /** A verified sign-in, already checked against the domain/consumer rules. */
     public record SignIn(
@@ -118,15 +116,13 @@ public class SsoAccountResolver {
         if (userService.existsByTenantAndName(in.tenant(), name)) {
             return Outcome.reject("name-taken");
         }
-        try {
-            quotaService.checkOneMore(in.tenant(), UserQuotaKind.SEATS);
-        } catch (UserQuotaService.UserQuotaExceededException e) {
-            return Outcome.reject(REJECT_NO_SEATS);
-        }
         UserDocument created;
         try {
             created = userService.createExternal(
                     in.tenant(), name, null, in.provider(), in.issuer(), in.subject(), in.email());
+        } catch (UserQuotaService.UserQuotaExceededException e) {
+            // Checked by createExternal before its one write — nothing is left behind.
+            return Outcome.reject(REJECT_NO_SEATS);
         } catch (UserService.UserAlreadyExistsException | UserService.ReservedNameException e) {
             return Outcome.reject("name-taken");
         } catch (UserService.ExternalIdentityException e) {

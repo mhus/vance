@@ -44,6 +44,7 @@ class UserServiceTest {
     private MongoTemplate mongoTemplate;
     private UserLifecycleListener listener;
     private ApplicationEventPublisher events;
+    private UserQuotaService quota;
     private UserService service;
 
     @BeforeEach
@@ -58,12 +59,16 @@ class UserServiceTest {
         // Fresh stream per call — the service iterates it more than once.
         when(listenerProvider.orderedStream()).thenAnswer(inv -> Stream.of(listener));
         events = mock(ApplicationEventPublisher.class);
+        quota = mock(UserQuotaService.class);
+        ObjectProvider<UserQuotaService> quotaProvider = mock(ObjectProvider.class);
+        when(quotaProvider.getObject()).thenReturn(quota);
         service = new UserService(
                 repo,
                 mongoTemplate,
                 listenerProvider,
                 mock(de.mhus.vance.shared.megadodo.MegadodoService.class),
-                events);
+                events,
+                quotaProvider);
         when(repo.save(any(UserDocument.class))).thenAnswer(inv -> inv.getArgument(0));
     }
 
@@ -667,5 +672,79 @@ class UserServiceTest {
         assertThat(q.get("tenantId")).isEqualTo(TENANT);
         assertThat(q.containsKey("status")).isFalse();
         assertThat(q.get("name")).asString().contains("^_vance-");
+    }
+
+    // ─── Quota: enforced here, bypassed only by the explicit overload ───────
+
+    private void seatsFull() {
+        doThrow(new UserQuotaService.UserQuotaExceededException(UserQuotaKind.SEATS, 5, 5))
+                .when(quota)
+                .checkOneMore(TENANT, UserQuotaKind.SEATS);
+    }
+
+    @Test
+    void create_atTheSeatLimit_isRefusedBeforeAnyWrite() {
+        seatsFull();
+
+        assertThatThrownBy(() -> service.create(TENANT, "alice", "hash", null, null))
+                .isInstanceOf(UserQuotaService.UserQuotaExceededException.class);
+        verify(repo, never()).save(any(UserDocument.class));
+    }
+
+    @Test
+    void create_withoutEnforcement_skipsTheQuota() {
+        seatsFull();
+
+        service.create(TENANT, "alice", "hash", null, null, false);
+
+        verify(quota, never()).checkOneMore(any(), any());
+        verify(repo).save(any(UserDocument.class));
+    }
+
+    @Test
+    void createServiceAccount_checksTheServiceAccountQuota() {
+        service.createServiceAccount(TENANT, "_daemon", null, null, null);
+
+        verify(quota).checkOneMore(TENANT, UserQuotaKind.SERVICE_ACCOUNTS);
+    }
+
+    @Test
+    void ensureVanceServiceAccount_isNeverChecked() {
+        when(repo.findByTenantIdAndName(TENANT, "_vance-admin")).thenReturn(Optional.empty());
+
+        service.ensureVanceServiceAccount(TENANT, "_vance-admin", null, null, null);
+
+        verify(quota, never()).checkOneMore(any(), any());
+    }
+
+    @Test
+    void update_withStatus_checksTheStatusChange_beforeSaving() {
+        UserDocument bob = UserDocument.builder()
+                .tenantId(TENANT)
+                .name("bob")
+                .status(UserStatus.DISABLED)
+                .build();
+        when(repo.findByTenantIdAndName(TENANT, "bob")).thenReturn(Optional.of(bob));
+        doThrow(new UserQuotaService.UserQuotaExceededException(UserQuotaKind.SEATS, 5, 5))
+                .when(quota)
+                .checkStatusChange(TENANT, bob, UserStatus.ACTIVE);
+
+        assertThatThrownBy(() -> service.update(TENANT, "bob", null, null, UserStatus.ACTIVE, null))
+                .isInstanceOf(UserQuotaService.UserQuotaExceededException.class);
+        verify(repo, never()).save(any(UserDocument.class));
+    }
+
+    @Test
+    void update_withoutStatus_isNotChecked() {
+        UserDocument bob = UserDocument.builder()
+                .tenantId(TENANT)
+                .name("bob")
+                .status(UserStatus.DISABLED)
+                .build();
+        when(repo.findByTenantIdAndName(TENANT, "bob")).thenReturn(Optional.of(bob));
+
+        service.update(TENANT, "bob", "Bob", null, null, null);
+
+        verify(quota, never()).checkStatusChange(any(), any(), any());
     }
 }

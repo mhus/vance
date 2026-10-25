@@ -99,6 +99,13 @@ public class UserService {
     /** Carries {@link UserPasswordChangedEvent} to whoever ends credentials on a password change. */
     private final ApplicationEventPublisher events;
 
+    /**
+     * The seat and service-account quota, checked here on every write that
+     * makes an account counted — lazily, because the quota counts through
+     * {@link #countCounted}.
+     */
+    private final ObjectProvider<UserQuotaService> quotaServiceProvider;
+
     public Optional<UserDocument> findByTenantAndName(String tenantId, String name) {
         return repository.findByTenantIdAndName(tenantId, name);
     }
@@ -190,11 +197,29 @@ public class UserService {
             @Nullable String passwordHash,
             @Nullable String title,
             @Nullable String email) {
+        return create(tenantId, name, passwordHash, title, email, true);
+    }
+
+    /**
+     * {@link #create}, with the seat quota checked only when
+     * {@code enforceQuota} — {@code false} is for seeding and the admin
+     * shell's {@code --ignore-quota}.
+     *
+     * @throws UserQuotaService.UserQuotaExceededException when enforced and the seats are full
+     */
+    public UserDocument create(
+            String tenantId,
+            String name,
+            @Nullable String passwordHash,
+            @Nullable String title,
+            @Nullable String email,
+            boolean enforceQuota) {
         if (name.startsWith(SERVICE_ACCOUNT_PREFIX)) {
             throw new ReservedNameException("User name '" + name + "' starts with the reserved '"
                     + SERVICE_ACCOUNT_PREFIX + "' prefix — service accounts "
                     + "must be created via createServiceAccount(...)");
         }
+        checkOneMore(enforceQuota, tenantId, UserQuotaKind.SEATS);
         return doCreate(
                 tenantId, name, passwordHash, title, email, /* loginEnabled */ true, /* serviceAccount */ false);
     }
@@ -216,6 +241,22 @@ public class UserService {
             @Nullable String passwordHash,
             @Nullable String title,
             @Nullable String email) {
+        return createServiceAccount(tenantId, name, passwordHash, title, email, true);
+    }
+
+    /**
+     * {@link #createServiceAccount}, with the service-account quota checked
+     * only when {@code enforceQuota}.
+     *
+     * @throws UserQuotaService.UserQuotaExceededException when enforced and the quota is full
+     */
+    public UserDocument createServiceAccount(
+            String tenantId,
+            String name,
+            @Nullable String passwordHash,
+            @Nullable String title,
+            @Nullable String email,
+            boolean enforceQuota) {
         if (!name.startsWith(SERVICE_ACCOUNT_PREFIX)) {
             throw new ReservedNameException(
                     "Service account name '" + name + "' must start with '" + SERVICE_ACCOUNT_PREFIX + "'");
@@ -225,6 +266,7 @@ public class UserService {
                     + "Vance-internal namespace ('" + RESERVED_VANCE_PREFIX
                     + "*') — use ensureVanceServiceAccount(...) instead");
         }
+        checkOneMore(enforceQuota, tenantId, UserQuotaKind.SERVICE_ACCOUNTS);
         return doCreate(
                 tenantId, name, passwordHash, title, email, /* loginEnabled */ false, /* serviceAccount */ true);
     }
@@ -282,6 +324,12 @@ public class UserService {
             boolean loginEnabled,
             boolean serviceAccount) {
         return doCreate(tenantId, name, passwordHash, title, email, loginEnabled, serviceAccount, null);
+    }
+
+    private void checkOneMore(boolean enforceQuota, String tenantId, UserQuotaKind kind) {
+        if (enforceQuota) {
+            quotaServiceProvider.getObject().checkOneMore(tenantId, kind);
+        }
     }
 
     /**
@@ -378,10 +426,31 @@ public class UserService {
             @Nullable String email,
             @Nullable UserStatus status,
             @Nullable Boolean loginEnabled) {
+        return update(tenantId, name, title, email, status, loginEnabled, true);
+    }
+
+    /**
+     * {@link #update}, with the quota of the account's kind checked on a
+     * status change out of {@link UserStatus#DISABLED} only when
+     * {@code enforceQuota}.
+     *
+     * @throws UserQuotaService.UserQuotaExceededException when enforced and reactivating exceeds the quota
+     */
+    public UserDocument update(
+            String tenantId,
+            String name,
+            @Nullable String title,
+            @Nullable String email,
+            @Nullable UserStatus status,
+            @Nullable Boolean loginEnabled,
+            boolean enforceQuota) {
         UserDocument user = repository
                 .findByTenantIdAndName(tenantId, name)
                 .orElseThrow(
                         () -> new UserNotFoundException("User '" + name + "' not found in tenant '" + tenantId + "'"));
+        if (status != null && enforceQuota) {
+            quotaServiceProvider.getObject().checkStatusChange(tenantId, user, status);
+        }
         if (title != null) {
             user.setTitle(title);
         }
@@ -508,6 +577,17 @@ public class UserService {
      */
     public UserDocument prepareExternalIdentity(
             String tenantId, String name, String provider, String issuer, String email) {
+        return prepareExternalIdentity(tenantId, name, provider, issuer, email, true);
+    }
+
+    /**
+     * {@link #prepareExternalIdentity}, with the seat quota checked — only
+     * when the account does not exist yet — only when {@code enforceQuota}.
+     *
+     * @throws UserQuotaService.UserQuotaExceededException when enforced and a new account exceeds the seats
+     */
+    public UserDocument prepareExternalIdentity(
+            String tenantId, String name, String provider, String issuer, String email, boolean enforceQuota) {
         String normalized = ExternalEmails.normalize(email);
         if (normalized == null || ExternalEmails.hasPlusTag(normalized)) {
             throw new ExternalIdentityException("'" + email + "' is not a usable address for an external sign-in");
@@ -531,6 +611,7 @@ public class UserService {
                 throw new ReservedNameException("User name '" + name + "' starts with the reserved '"
                         + SERVICE_ACCOUNT_PREFIX + "' prefix — service accounts cannot sign in externally");
             }
+            checkOneMore(enforceQuota, tenantId, UserQuotaKind.SEATS);
             UserDocument saved = doCreate(
                     tenantId,
                     name,
@@ -648,6 +729,25 @@ public class UserService {
             String issuer,
             String subject,
             String email) {
+        return createExternal(tenantId, name, title, provider, issuer, subject, email, true);
+    }
+
+    /**
+     * {@link #createExternal}, with the seat quota checked only when
+     * {@code enforceQuota}. The check comes before the first write, so a
+     * refusal leaves no account behind.
+     *
+     * @throws UserQuotaService.UserQuotaExceededException when enforced and the seats are full
+     */
+    public UserDocument createExternal(
+            String tenantId,
+            String name,
+            @Nullable String title,
+            String provider,
+            String issuer,
+            String subject,
+            String email,
+            boolean enforceQuota) {
         if (name.startsWith(SERVICE_ACCOUNT_PREFIX)) {
             throw new ReservedNameException("User name '" + name + "' starts with the reserved '"
                     + SERVICE_ACCOUNT_PREFIX + "' prefix — service accounts cannot sign in externally");
@@ -658,6 +758,7 @@ public class UserService {
             throw new ExternalIdentityException("The external subject is already bound to user '"
                     + bound.get().getName() + "' in tenant '" + bound.get().getTenantId() + "'");
         }
+        checkOneMore(enforceQuota, tenantId, UserQuotaKind.SEATS);
         Instant now = Instant.now();
         ExternalIdentity identity = ExternalIdentity.builder()
                 .provider(provider)

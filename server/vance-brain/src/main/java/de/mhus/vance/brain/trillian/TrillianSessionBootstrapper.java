@@ -23,7 +23,6 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.trillian.TrillianProcessKeys;
 import de.mhus.vance.shared.user.UserDocument;
-import de.mhus.vance.shared.user.UserQuotaKind;
 import de.mhus.vance.shared.user.UserQuotaService;
 import de.mhus.vance.shared.user.UserService;
 import java.security.SecureRandom;
@@ -232,8 +231,6 @@ public class TrillianSessionBootstrapper {
     private final TrillianActivationGate activationGate;
 
     private final RoleBootstrap roleBootstrap;
-    /** Service-account quota — a fresh Trillian account takes a place (planning/user-quota.md §4.3). */
-    private final UserQuotaService quotaService;
 
     private final SecureRandom random = new SecureRandom();
 
@@ -376,20 +373,6 @@ public class TrillianSessionBootstrapper {
             suppressLoop(controlSession, controlProcess, denied.getMessage());
             return;
         }
-        // Service-account quota: minting a fresh account takes a place, an
-        // adopted one already holds its own. Same shape as the gates above —
-        // before the mint, the control session stays usable, the chat says
-        // why once, and the next turn builds the loop when a place is free.
-        if (!adopted) {
-            try {
-                quotaService.checkOneMore(controlSession.getTenantId(), UserQuotaKind.SERVICE_ACCOUNTS);
-            } catch (UserQuotaService.UserQuotaExceededException full) {
-                suppressLoop(controlSession, controlProcess, full.getMessage());
-                return;
-            }
-        }
-        clearGateSuppression(controlProcess);
-
         ThinkEngine engine = thinkEngineService
                 .resolve(applied.engine())
                 .orElseThrow(() -> new IllegalStateException("Recipe '" + userRecipeNameFinal
@@ -411,12 +394,23 @@ public class TrillianSessionBootstrapper {
             // The account name never changes, so the two are independent
             // — which is the point of not deriving the display name from
             // the account on the fly.
-            UserDocument trillian = userService.createServiceAccount(
-                    controlSession.getTenantId(),
-                    trillianName,
-                    /*passwordHash*/ null,
-                    /*title*/ "Trillian " + accountSuffix(trillianName),
-                    /*email*/ null);
+            // Service-account quota: createServiceAccount checks it before its
+            // write, and a minted account takes a place (an adopted one already
+            // holds its own). Same shape as the gates above — nothing written,
+            // the control session stays usable, the chat says why once, and the
+            // next turn builds the loop when a place is free.
+            UserDocument trillian;
+            try {
+                trillian = userService.createServiceAccount(
+                        controlSession.getTenantId(),
+                        trillianName,
+                        /*passwordHash*/ null,
+                        /*title*/ "Trillian " + accountSuffix(trillianName),
+                        /*email*/ null);
+            } catch (UserQuotaService.UserQuotaExceededException full) {
+                suppressLoop(controlSession, controlProcess, full.getMessage());
+                return;
+            }
             recordAccount(controlProcess.getId(), trillianName);
             log.info(
                     "Minted Trillian service-account '{}' id='{}' for control session '{}'",
@@ -424,6 +418,7 @@ public class TrillianSessionBootstrapper {
                     trillian.getId(),
                     controlSession.getSessionId());
         }
+        clearGateSuppression(controlProcess);
 
         // 2c. The Trillian's own home. Every account has one
         //     (`_user_<login>`) — the hub is where the loop session lives,

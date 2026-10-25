@@ -11,7 +11,6 @@ import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.permission.SecurityContext;
 import de.mhus.vance.shared.role.request.RoleRequestService;
 import de.mhus.vance.shared.user.UserDocument;
-import de.mhus.vance.shared.user.UserQuotaKind;
 import de.mhus.vance.shared.user.UserQuotaService;
 import de.mhus.vance.shared.user.UserService;
 import de.mhus.vance.toolpack.Tool;
@@ -101,7 +100,6 @@ public class AccountCreateTool implements Tool {
             "required", List.of("name"));
 
     private final UserService userService;
-    private final UserQuotaService quotaService;
     private final AdminToolSupport admin;
     private final RoleChangeSupport roleChanges;
 
@@ -160,11 +158,6 @@ public class AccountCreateTool implements Tool {
         List<ProjectGrant> projectGrants = projectGrants(params);
 
         admin.enforce(actor, new Resource.Tenant(ctx.tenantId()), Action.WRITE);
-        try {
-            quotaService.checkOneMore(ctx.tenantId(), UserQuotaKind.SEATS);
-        } catch (UserQuotaService.UserQuotaExceededException e) {
-            throw new ToolException(e.getMessage(), e);
-        }
         UserDocument created;
         try {
             created = userService.create(
@@ -173,7 +166,9 @@ public class AccountCreateTool implements Tool {
                     null,
                     AdminToolSupport.str(params, "title"),
                     AdminToolSupport.str(params, "email"));
-        } catch (UserService.UserAlreadyExistsException | UserService.ReservedNameException e) {
+        } catch (UserService.UserAlreadyExistsException
+                | UserService.ReservedNameException
+                | UserQuotaService.UserQuotaExceededException e) {
             throw new ToolException(e.getMessage(), e);
         }
         log.info("account_create: tenant='{}' user='{}' by='{}'", ctx.tenantId(), name, ctx.userId());

@@ -21,8 +21,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * Re-enables a disabled account. Leaving DISABLED makes the account take a
- * seat again (a service account: its own quota), so the tenant's quota is
- * checked first. User ADMIN.
+ * seat again (a service account: its own quota); {@code UserService.update}
+ * checks the tenant's quota before it writes. User ADMIN.
  */
 @Component
 @RequiredArgsConstructor
@@ -34,7 +34,6 @@ public class AccountEnableTool implements Tool {
             "required", List.of("name"));
 
     private final UserService userService;
-    private final UserQuotaService quotaService;
     private final AdminToolSupport admin;
 
     @Override
@@ -84,12 +83,12 @@ public class AccountEnableTool implements Tool {
         if (current.getStatus() != UserStatus.DISABLED) {
             throw new ToolException("Account '" + name + "' is not disabled (status " + current.getStatus() + ")");
         }
+        UserDocument saved;
         try {
-            quotaService.checkStatusChange(ctx.tenantId(), current, UserStatus.ACTIVE);
+            saved = userService.update(ctx.tenantId(), name, null, null, UserStatus.ACTIVE, null);
         } catch (UserQuotaService.UserQuotaExceededException e) {
             throw new ToolException(e.getMessage(), e);
         }
-        UserDocument saved = userService.update(ctx.tenantId(), name, null, null, UserStatus.ACTIVE, null);
         admin.record(
                 ctx,
                 EddieActivityKind.ACCOUNT_CHANGED,

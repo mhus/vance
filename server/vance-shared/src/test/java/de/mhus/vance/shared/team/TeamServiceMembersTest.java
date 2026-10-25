@@ -3,8 +3,11 @@ package de.mhus.vance.shared.team;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -28,13 +31,21 @@ import org.springframework.data.mongodb.core.query.Update;
 class TeamServiceMembersTest {
 
     private MongoTemplate mongoTemplate;
+    private TeamRepository repository;
+    private TeamQuotaService quota;
     private TeamService service;
 
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
         mongoTemplate = mock(MongoTemplate.class);
-        service = new TeamService(mock(TeamRepository.class), mongoTemplate, mock(ObjectProvider.class));
+        repository = mock(TeamRepository.class);
+        quota = mock(TeamQuotaService.class);
+        ObjectProvider<TeamQuotaService> quotaProvider = mock(ObjectProvider.class);
+        when(quotaProvider.getObject()).thenReturn(quota);
+        ObjectProvider<TeamLifecycleListener> listeners = mock(ObjectProvider.class);
+        when(listeners.orderedStream()).thenAnswer(inv -> java.util.stream.Stream.empty());
+        service = new TeamService(repository, mongoTemplate, listeners, quotaProvider);
     }
 
     private void result(long matched, long modified) {
@@ -96,6 +107,7 @@ class TeamServiceMembersTest {
         when(mongoTemplate.findAndModify(
                         any(Query.class), any(Update.class), any(FindAndModifyOptions.class), eq(TeamDocument.class)))
                 .thenReturn(after);
+        when(repository.findByTenantIdAndName("acme", "infra")).thenReturn(java.util.Optional.of(after));
 
         assertThat(service.update("acme", "infra", null, true, null)).isSameAs(after);
 
@@ -114,5 +126,57 @@ class TeamServiceMembersTest {
     void update_unknownTeam_isNotFound() {
         assertThatThrownBy(() -> service.update("acme", "ghost", "T", null, null))
                 .isInstanceOf(TeamService.TeamNotFoundException.class);
+    }
+
+    // ─── Quota: enforced here, bypassed only by the explicit overload ───────
+
+    @Test
+    void create_atTheLimit_isRefusedBeforeAnyWrite() {
+        doThrow(new TeamQuotaService.TeamQuotaExceededException(3, 3))
+                .when(quota)
+                .checkOneMore("acme");
+
+        assertThatThrownBy(() -> service.create("acme", "ops", null, null))
+                .isInstanceOf(TeamQuotaService.TeamQuotaExceededException.class);
+        verify(repository, never()).save(any(TeamDocument.class));
+    }
+
+    @Test
+    void create_withoutEnforcement_skipsTheQuota() {
+        when(repository.save(any(TeamDocument.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.create("acme", "ops", null, null, false);
+
+        verify(quota, never()).checkOneMore(any());
+    }
+
+    @Test
+    void enabling_checksTheEnabledChange_beforeWriting() {
+        TeamDocument ops = TeamDocument.builder()
+                .tenantId("acme")
+                .name("ops")
+                .enabled(false)
+                .build();
+        when(repository.findByTenantIdAndName("acme", "ops")).thenReturn(java.util.Optional.of(ops));
+        doThrow(new TeamQuotaService.TeamQuotaExceededException(3, 3))
+                .when(quota)
+                .checkEnabledChange("acme", ops, true);
+
+        assertThatThrownBy(() -> service.update("acme", "ops", null, true, null))
+                .isInstanceOf(TeamQuotaService.TeamQuotaExceededException.class);
+        verify(mongoTemplate, never())
+                .findAndModify(
+                        any(Query.class), any(Update.class), any(FindAndModifyOptions.class), eq(TeamDocument.class));
+    }
+
+    @Test
+    void enabling_withoutEnforcement_skipsTheQuota() {
+        when(mongoTemplate.findAndModify(
+                        any(Query.class), any(Update.class), any(FindAndModifyOptions.class), eq(TeamDocument.class)))
+                .thenReturn(TeamDocument.builder().tenantId("acme").name("ops").build());
+
+        service.update("acme", "ops", null, true, null, false);
+
+        verify(quota, never()).checkEnabledChange(any(), any(), anyBoolean());
     }
 }

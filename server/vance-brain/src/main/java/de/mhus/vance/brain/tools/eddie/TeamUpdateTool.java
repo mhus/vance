@@ -44,7 +44,6 @@ public class TeamUpdateTool implements Tool {
             "required", List.of("name"));
 
     private final TeamService teamService;
-    private final TeamQuotaService quotaService;
     private final AdminToolSupport admin;
 
     @Override
@@ -93,20 +92,10 @@ public class TeamUpdateTool implements Tool {
             throw new ToolException("nothing to change — pass 'title' and/or 'enabled'");
         }
         admin.enforce(actor, new Resource.Team(ctx.tenantId(), name), Action.ADMIN);
-        TeamDocument current = teamService
-                .findByTenantAndName(ctx.tenantId(), name)
-                .orElseThrow(() -> new ToolException("Team '" + name + "' not found"));
-        if (Boolean.TRUE.equals(enabled)) {
-            try {
-                quotaService.checkEnabledChange(ctx.tenantId(), current, true);
-            } catch (TeamQuotaService.TeamQuotaExceededException e) {
-                throw new ToolException(e.getMessage(), e);
-            }
-        }
         TeamDocument saved;
         try {
             saved = teamService.update(ctx.tenantId(), name, title, enabled, null);
-        } catch (TeamService.TeamNotFoundException e) {
+        } catch (TeamService.TeamNotFoundException | TeamQuotaService.TeamQuotaExceededException e) {
             throw new ToolException(e.getMessage(), e);
         }
         admin.record(ctx, EddieActivityKind.TEAM_CHANGED, "Changed team `" + name + "`", List.of(EntityRef.team(name)));

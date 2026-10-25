@@ -105,9 +105,6 @@ class TrillianSessionBootstrapperTest {
     @Mock
     TrillianActivationGate activationGate;
 
-    @Mock
-    de.mhus.vance.shared.user.UserQuotaService quotaService;
-
     TrillianSessionBootstrapper bootstrapper;
 
     /** Real registry with the baseline Nature — the seeding path is real logic. */
@@ -135,8 +132,7 @@ class TrillianSessionBootstrapperTest {
                 lifecycleProvider,
                 modelGate,
                 activationGate,
-                roleBootstrap,
-                quotaService);
+                roleBootstrap);
 
         when(activationGate.loopsEnabled(anyString(), any(), any())).thenReturn(true);
         when(lifecycleProvider.getObject()).thenReturn(lifecycleService);
@@ -346,8 +342,7 @@ class TrillianSessionBootstrapperTest {
                 lifecycleProvider,
                 modelGate,
                 activationGate,
-                roleBootstrap,
-                quotaService);
+                roleBootstrap);
 
         bootstrap(controlSession(), controlProcess("adam"));
 
@@ -551,8 +546,7 @@ class TrillianSessionBootstrapperTest {
                 lifecycleProvider,
                 modelGate,
                 activationGate,
-                roleBootstrap,
-                quotaService);
+                roleBootstrap);
 
         bootstrap(controlSession(), controlProcess("adam"));
 
@@ -604,16 +598,15 @@ class TrillianSessionBootstrapperTest {
 
     @Test
     void aFullServiceAccountQuota_mintsNothing_andSaysWhyInTheControlChat() {
-        org.mockito.Mockito.doThrow(new de.mhus.vance.shared.user.UserQuotaService.UserQuotaExceededException(
-                        de.mhus.vance.shared.user.UserQuotaKind.SERVICE_ACCOUNTS, 3, 3))
-                .when(quotaService)
-                .checkOneMore(TENANT, de.mhus.vance.shared.user.UserQuotaKind.SERVICE_ACCOUNTS);
+        // createServiceAccount checks the quota before its write.
+        when(userService.createServiceAccount(anyString(), anyString(), any(), any(), any()))
+                .thenThrow(new de.mhus.vance.shared.user.UserQuotaService.UserQuotaExceededException(
+                        de.mhus.vance.shared.user.UserQuotaKind.SERVICE_ACCOUNTS, 3, 3));
 
         bootstrap(controlSession(), controlProcess());
 
         // Same state as a closed activation gate: the control session lives,
         // the loop is not built, nothing is left behind.
-        verify(userService, never()).createServiceAccount(anyString(), anyString(), any(), any(), any());
         verify(homeBootstrapService, never()).ensureHome(anyString(), anyString());
         verify(sessionService, never())
                 .create(anyString(), anyString(), anyString(), any(), anyString(), anyString(), any(), anyBoolean());
@@ -640,15 +633,13 @@ class TrillianSessionBootstrapperTest {
 
         bootstrap(controlSession(), controlProcess());
 
-        verify(quotaService, never()).checkOneMore(anyString(), any());
         verify(userService, never()).createServiceAccount(anyString(), anyString(), any(), any(), any());
     }
 
     @Test
-    void aFreshAccount_isCheckedAgainstTheServiceAccountQuota() {
+    void aFreshAccount_isMintedThroughTheEnforcingMethod() {
         bootstrap(controlSession(), controlProcess());
 
-        verify(quotaService).checkOneMore(TENANT, de.mhus.vance.shared.user.UserQuotaKind.SERVICE_ACCOUNTS);
         verify(userService).createServiceAccount(eq(TENANT), startsWith("_trillian-void-"), any(), any(), any());
     }
 

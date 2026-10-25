@@ -17,10 +17,11 @@ import org.springframework.stereotype.Service;
  * DISABLED one. Only DISABLED frees a place; {@code loginEnabled = false} does
  * not, so there is exactly one signal to turn.
  *
- * <p>Checked where an account <em>becomes</em> counted — creation, and a
- * status change out of DISABLED. The call sites are listed in
- * {@code specification/public/user-quota.md}; the admin shell checks as well
- * and may step past the limit with {@code --ignore-quota}.
+ * <p>Enforced by {@link UserService} itself on every write that makes an
+ * account counted — creation, and a status change out of DISABLED. Its plain
+ * methods always check; the overloads with {@code enforceQuota = false} are
+ * for seeding, the setup wizard and the admin shell's {@code --ignore-quota}
+ * ({@code specification/public/user-quota.md} §3).
  *
  * <p>Count and insert are two steps, so two creates racing for the last place
  * can both pass. That overshoot by one is accepted: this is an administrative

@@ -57,7 +57,6 @@ public class TeamCreateTool implements Tool {
             "required", List.of("name"));
 
     private final TeamService teamService;
-    private final TeamQuotaService quotaService;
     private final UserService userService;
     private final AdminToolSupport admin;
 
@@ -111,15 +110,10 @@ public class TeamCreateTool implements Tool {
                 throw new ToolException("no account '" + member + "' — nothing created");
             }
         }
-        try {
-            quotaService.checkOneMore(ctx.tenantId());
-        } catch (TeamQuotaService.TeamQuotaExceededException e) {
-            throw new ToolException(e.getMessage(), e);
-        }
         TeamDocument saved;
         try {
             saved = teamService.create(ctx.tenantId(), name, AdminToolSupport.str(params, "title"), members);
-        } catch (TeamService.TeamAlreadyExistsException e) {
+        } catch (TeamService.TeamAlreadyExistsException | TeamQuotaService.TeamQuotaExceededException e) {
             throw new ToolException(e.getMessage(), e);
         }
         admin.record(ctx, EddieActivityKind.TEAM_CREATED, "Created team `" + name + "`", List.of(EntityRef.team(name)));

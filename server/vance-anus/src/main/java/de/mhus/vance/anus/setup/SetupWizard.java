@@ -878,8 +878,9 @@ public class SetupWizard {
 
         if (state.isUserCreated()) {
             String hash = passwordService.hash(state.getUserPassword());
+            // The first admin of the tenant — the setup is not refused by a quota.
             userService.create(
-                    state.getTenantId(), state.getUserName(), hash, state.getUserTitle(), state.getUserEmail());
+                    state.getTenantId(), state.getUserName(), hash, state.getUserTitle(), state.getUserEmail(), false);
             out.println("  + user '" + state.getUserName() + "' created");
         } else if (state.isUserFieldsChanged()) {
             userService.update(

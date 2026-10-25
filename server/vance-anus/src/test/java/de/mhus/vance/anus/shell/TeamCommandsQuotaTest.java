@@ -2,23 +2,23 @@ package de.mhus.vance.anus.shell;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doThrow;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.shared.team.TeamDocument;
 import de.mhus.vance.shared.team.TeamQuotaService;
 import de.mhus.vance.shared.team.TeamService;
-import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * The shell refuses at the team quota like the product surfaces, and steps
- * past it only on {@code --ignore-quota}.
+ * The shell refuses at the team quota like the product surfaces — the
+ * service enforces it — and steps past it only on {@code --ignore-quota},
+ * which it passes as {@code enforceQuota = false}.
  */
 class TeamCommandsQuotaTest {
 
@@ -31,53 +31,49 @@ class TeamCommandsQuotaTest {
 
     @BeforeEach
     void setUp() {
-        when(teamService.create(anyString(), anyString(), any(), any())).thenReturn(ops);
-        when(teamService.update(anyString(), anyString(), any(), any(), any())).thenReturn(ops);
-        when(teamService.findByTenantAndName("acme", "ops")).thenReturn(Optional.of(ops));
+        when(teamService.create(anyString(), anyString(), any(), any(), anyBoolean()))
+                .thenReturn(ops);
+        when(teamService.update(anyString(), anyString(), any(), any(), any(), anyBoolean()))
+                .thenReturn(ops);
         when(quotaService.status("acme")).thenReturn(new TeamQuotaService.Status(4, 3));
     }
 
-    private void atLimit() {
-        doThrow(new TeamQuotaService.TeamQuotaExceededException(3, 3))
-                .when(quotaService)
-                .checkOneMore("acme");
+    private static TeamQuotaService.TeamQuotaExceededException full() {
+        return new TeamQuotaService.TeamQuotaExceededException(3, 3);
     }
 
     @Test
     void create_refusesAtTheLimit() {
-        atLimit();
+        when(teamService.create(eq("acme"), eq("ops"), any(), any(), eq(true))).thenThrow(full());
 
         String out = commands.create("acme", "ops", null, null, false);
 
         assertThat(out).startsWith("Refused:").contains("3/3").contains("team.quota.maxActive");
-        verify(teamService, never()).create(anyString(), anyString(), any(), any());
     }
 
     @Test
     void create_ignoreQuotaGoesThroughAndShowsTheOvershoot() {
-        atLimit();
-
         String out = commands.create("acme", "ops", null, null, true);
 
         assertThat(out).startsWith("Created:").contains("4/3 teams (over the limit)");
+        verify(teamService).create(eq("acme"), eq("ops"), any(), any(), eq(false));
     }
 
     @Test
     void enabling_atTheLimit_isRefused() {
-        doThrow(new TeamQuotaService.TeamQuotaExceededException(3, 3))
-                .when(quotaService)
-                .checkEnabledChange("acme", ops, true);
+        when(teamService.update(eq("acme"), eq("ops"), any(), eq(true), any(), eq(true)))
+                .thenThrow(full());
 
         String out = commands.update("acme", "ops", null, true, null, false);
 
         assertThat(out).startsWith("Refused:");
-        verify(teamService, never()).update(anyString(), anyString(), any(), any(), any());
     }
 
     @Test
-    void anUpdateThatDoesNotEnable_isNotChecked() {
-        commands.update("acme", "ops", "Ops", null, null, false);
+    void enabling_ignoreQuota_updatesWithoutEnforcement() {
+        String out = commands.update("acme", "ops", null, true, null, true);
 
-        verify(quotaService, never()).checkEnabledChange(anyString(), any(), org.mockito.ArgumentMatchers.anyBoolean());
+        assertThat(out).startsWith("Updated:");
+        verify(teamService).update(eq("acme"), eq("ops"), any(), eq(true), any(), eq(false));
     }
 }

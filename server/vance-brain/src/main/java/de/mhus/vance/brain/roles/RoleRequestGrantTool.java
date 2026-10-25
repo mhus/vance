@@ -19,9 +19,11 @@ import org.springframework.stereotype.Component;
  * Asks for a role to be granted.
  *
  * <p>The tool cannot grant anything: it records the request and routes an
- * approval item. That separation is the point — a tool that acts on the
- * caller's authority acts equally on injected instructions the caller merely
- * read somewhere.
+ * approval item, whatever the caller's own authority. {@code role_grant}
+ * applies a change directly where the caller could make it themselves and
+ * falls back to the same request beyond that ({@link RoleChangeSupport}); this
+ * tool is for asking on someone's behalf — a user who needs access, an agent
+ * that lacks it.
  */
 @Component
 @RequiredArgsConstructor

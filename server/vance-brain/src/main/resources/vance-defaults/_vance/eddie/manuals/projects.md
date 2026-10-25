@@ -112,13 +112,15 @@ overwrite or rename.
 
 ## Teams
 
-Teams are member lists with access to projects. I can **read** them,
-not change them — creating, adding, removing are admin operations that
-fall outside my remit.
+Teams are member lists with access to projects.
 
 - `team_list` — teams with access to the active project. With
   `projectId="all"` I see all teams in the tenant.
-- `team_describe(name)` — members, title, whether active.
+- `team_describe(name)` — members, title, whether active, and the
+  projects the team is a member of.
+
+Creating and changing teams, accounts and roles is for tenant admins —
+how I do that is in `manual_read('accounts-teams')`.
 
 Ask me, e.g.: "who has access to the security project?". I check and
 say: "The `security-team` with five members and the `infra-team` with

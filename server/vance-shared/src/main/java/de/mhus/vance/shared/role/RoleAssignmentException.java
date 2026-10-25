@@ -12,7 +12,13 @@ public class RoleAssignmentException extends RuntimeException {
     public enum Kind {
         /** The user, team or project named does not exist. */
         NOT_FOUND,
-        /** The change breaks a rule (above own role, last tenant admin, …). */
+        /**
+         * The change reaches above the actor's own tenant role — assigning a
+         * stronger role, or changing someone who holds one. Someone higher up
+         * could make it, so a caller may turn this into a role request.
+         */
+        BEYOND_AUTHORITY,
+        /** The change breaks a rule (last tenant admin, persons only, external roles, …). */
         REFUSED
     }
 

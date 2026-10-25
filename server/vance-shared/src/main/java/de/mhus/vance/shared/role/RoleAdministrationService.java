@@ -90,10 +90,10 @@ public class RoleAdministrationService {
         TenantRole actorRole = permissionService.tenantRoleOf(actor);
         TenantRole current = assignments.tenantRoleOf(tenantId, username);
         if (!Roles.atLeast(actorRole, role)) {
-            throw refused("cannot assign " + role + " — it is above your own role " + actorRole);
+            throw beyondAuthority("cannot assign " + role + " — it is above your own role " + actorRole);
         }
         if (!Roles.atLeast(actorRole, current)) {
-            throw refused("cannot change the role of '" + username + "' — they hold " + current
+            throw beyondAuthority("cannot change the role of '" + username + "' — they hold " + current
                     + ", above your own role " + actorRole);
         }
         if (current == TenantRole.TENANT_ADMIN
@@ -167,6 +167,10 @@ public class RoleAdministrationService {
                     "no " + subjectType.name().toLowerCase(Locale.ROOT) + " '" + subjectId + "' in tenant '" + tenantId
                             + "'");
         }
+    }
+
+    private static RoleAssignmentException beyondAuthority(String message) {
+        return new RoleAssignmentException(RoleAssignmentException.Kind.BEYOND_AUTHORITY, message);
     }
 
     private static RoleAssignmentException refused(String message) {

@@ -823,6 +823,9 @@ team tools automatically refer to the active project.
 - **Documents in the active project:** `doc_list`, `doc_find(query)`,
   `doc_read(path)`, `doc_write(kind="text", …)`, `doc_import_url(...)`.
 - **Teams:** `team_list`, `team_describe(name)`.
+- **Accounts, teams, roles (tenant admins):** `account_*`, `team_create`/
+  `_update`/`_delete`/`_member_add`/`_member_remove`, `role_grant`/
+  `role_revoke` — call `manual_read('accounts-teams')` first.
 
 These are read and write tools (not actions) — call them
 normally before the `eddie_action`.

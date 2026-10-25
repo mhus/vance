@@ -18,6 +18,24 @@ public enum EddieActivityKind {
     /** Vance switched the active-project context. */
     PROJECT_SWITCHED,
 
+    /** Vance created a user account. */
+    ACCOUNT_CREATED,
+
+    /** Vance changed, disabled or re-enabled a user account. */
+    ACCOUNT_CHANGED,
+
+    /** Vance created a team. */
+    TEAM_CREATED,
+
+    /** Vance changed a team — title, enabled flag or members. */
+    TEAM_CHANGED,
+
+    /** Vance deleted a team. */
+    TEAM_DELETED,
+
+    /** Vance granted or revoked a tenant role or project membership. */
+    ROLE_CHANGED,
+
     /** Vance sent a message to a worker project's chat. */
     PROCESS_STEERED,
 

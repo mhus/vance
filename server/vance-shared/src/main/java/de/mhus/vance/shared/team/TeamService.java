@@ -1,5 +1,6 @@
 package de.mhus.vance.shared.team;
 
+import com.mongodb.client.result.UpdateResult;
 import de.mhus.vance.shared.permission.TeamMembership;
 import java.util.ArrayList;
 import java.util.List;
@@ -8,6 +9,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
 /**
@@ -22,7 +27,14 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class TeamService implements TeamMembership {
 
+    private static final String F_TENANT_ID = "tenantId";
+    private static final String F_NAME = "name";
+    private static final String F_MEMBERS = "members";
+
     private final TeamRepository repository;
+
+    /** For the atomic member updates — a read-modify-write would lose concurrent joins. */
+    private final MongoTemplate mongoTemplate;
 
     /** Name-keyed stores (role assignments) that must follow a team's lifecycle. */
     private final ObjectProvider<TeamLifecycleListener> lifecycleListeners;
@@ -125,6 +137,51 @@ public class TeamService implements TeamMembership {
                 saved.isEnabled(),
                 saved.getMembers().size());
         return saved;
+    }
+
+    /**
+     * Adds {@code username} to the team's members in one atomic update
+     * ({@code $addToSet}). Returns {@code false} when they already were a
+     * member. The caller checks that the user exists.
+     *
+     * @throws TeamNotFoundException if the team does not exist
+     */
+    public boolean addMember(String tenantId, String name, String username) {
+        UpdateResult result = mongoTemplate.updateFirst(
+                byName(tenantId, name), new Update().addToSet(F_MEMBERS, username), TeamDocument.class);
+        requireMatched(result, tenantId, name);
+        boolean added = result.getModifiedCount() > 0;
+        if (added) {
+            log.info("Added member tenantId='{}' team='{}' user='{}'", tenantId, name, username);
+        }
+        return added;
+    }
+
+    /**
+     * Removes {@code username} from the team's members in one atomic update
+     * ({@code $pull}). Returns {@code false} when they were not a member.
+     *
+     * @throws TeamNotFoundException if the team does not exist
+     */
+    public boolean removeMember(String tenantId, String name, String username) {
+        UpdateResult result = mongoTemplate.updateFirst(
+                byName(tenantId, name), new Update().pull(F_MEMBERS, username), TeamDocument.class);
+        requireMatched(result, tenantId, name);
+        boolean removed = result.getModifiedCount() > 0;
+        if (removed) {
+            log.info("Removed member tenantId='{}' team='{}' user='{}'", tenantId, name, username);
+        }
+        return removed;
+    }
+
+    private static Query byName(String tenantId, String name) {
+        return new Query(Criteria.where(F_TENANT_ID).is(tenantId).and(F_NAME).is(name));
+    }
+
+    private static void requireMatched(UpdateResult result, String tenantId, String name) {
+        if (result.getMatchedCount() == 0) {
+            throw new TeamNotFoundException("Team '" + name + "' not found in tenant '" + tenantId + "'");
+        }
     }
 
     /**

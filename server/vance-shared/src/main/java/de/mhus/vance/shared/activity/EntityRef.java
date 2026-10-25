@@ -19,6 +19,8 @@ public record EntityRef(
         PROCESS,
         DOCUMENT,
         INBOX_ITEM,
+        USER,
+        TEAM,
         OTHER
     }
 
@@ -32,6 +34,14 @@ public record EntityRef(
 
     public static EntityRef document(String id, @Nullable String path) {
         return new EntityRef(Kind.DOCUMENT, id, path, null);
+    }
+
+    public static EntityRef user(String name) {
+        return new EntityRef(Kind.USER, null, name, null);
+    }
+
+    public static EntityRef team(String name) {
+        return new EntityRef(Kind.TEAM, null, name, null);
     }
 
     public static EntityRef inboxItem(String id, @Nullable String title) {

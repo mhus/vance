@@ -82,7 +82,7 @@ class RoleAdministrationServiceTest {
         assertThatThrownBy(() -> administration.assignTenantRole(ADMIN, "acme", "bob", TenantRole.TENANT_ADMIN))
                 .isInstanceOfSatisfying(
                         RoleAssignmentException.class,
-                        ex -> assertThat(ex.kind()).isEqualTo(RoleAssignmentException.Kind.REFUSED));
+                        ex -> assertThat(ex.kind()).isEqualTo(RoleAssignmentException.Kind.BEYOND_AUTHORITY));
         verify(assignments, never()).setTenantRole(any(), any(), any(), any());
     }
 
@@ -91,7 +91,9 @@ class RoleAdministrationServiceTest {
         when(assignments.tenantRoleOf("acme", "root")).thenReturn(TenantRole.TENANT_ADMIN);
 
         assertThatThrownBy(() -> administration.assignTenantRole(ADMIN, "acme", "root", TenantRole.USER))
-                .isInstanceOf(RoleAssignmentException.class);
+                .isInstanceOfSatisfying(
+                        RoleAssignmentException.class,
+                        ex -> assertThat(ex.kind()).isEqualTo(RoleAssignmentException.Kind.BEYOND_AUTHORITY));
     }
 
     @Test

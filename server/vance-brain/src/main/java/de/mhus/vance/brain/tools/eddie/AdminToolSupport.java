@@ -131,8 +131,8 @@ public class AdminToolSupport {
     /** Refuses a {@code confirmName} that does not repeat {@code name}. */
     public static void requireConfirmed(String name, String confirmName, String what) {
         if (!name.equals(confirmName)) {
-            throw new ToolException(
-                    "confirmName '" + confirmName + "' does not match name '" + name + "' — no " + what + " deleted");
+            throw new ToolException("confirmName '" + confirmName + "' does not match name '" + name + "' — the " + what
+                    + " was not touched");
         }
     }
 }

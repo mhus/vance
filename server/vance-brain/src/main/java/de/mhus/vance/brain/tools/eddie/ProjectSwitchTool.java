@@ -112,7 +112,7 @@ public class ProjectSwitchTool implements Tool {
                     ctx.sessionId(),
                     ctx.processId(),
                     EddieActivityKind.PROJECT_SWITCHED,
-                    "Aktives Projekt: `" + project.getName() + "`",
+                    "Active project: `" + project.getName() + "`",
                     List.of(EntityRef.project(project.getName())));
         }
 

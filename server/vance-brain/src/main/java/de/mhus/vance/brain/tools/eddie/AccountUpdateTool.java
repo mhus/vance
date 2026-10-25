@@ -92,7 +92,10 @@ public class AccountUpdateTool implements Tool {
             throw new ToolException("Account '" + name + "' not found", e);
         }
         admin.record(
-                ctx, EddieActivityKind.ACCOUNT_CHANGED, "Konto `" + name + "` geändert", List.of(EntityRef.user(name)));
+                ctx,
+                EddieActivityKind.ACCOUNT_CHANGED,
+                "Changed account `" + name + "`",
+                List.of(EntityRef.user(name)));
         Map<String, Object> out = AccountRows.summary(saved, admin.tenantRoleOf(ctx.tenantId(), name));
         if (saved.getEmail() != null) {
             out.put("email", saved.getEmail());

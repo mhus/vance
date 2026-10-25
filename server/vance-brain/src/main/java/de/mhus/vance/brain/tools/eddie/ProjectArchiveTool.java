@@ -1,13 +1,11 @@
 package de.mhus.vance.brain.tools.eddie;
 
-import de.mhus.vance.brain.eddie.activity.EddieActivityService;
-import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.shared.activity.EddieActivityKind;
 import de.mhus.vance.shared.activity.EntityRef;
 import de.mhus.vance.shared.permission.Action;
-import de.mhus.vance.shared.permission.PermissionService;
 import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.shared.permission.SecurityContext;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectKind;
 import de.mhus.vance.shared.project.ProjectService;
@@ -35,7 +33,9 @@ import org.springframework.stereotype.Component;
  *
  * <p>Because the workspace loss cannot be undone, the call is fenced:
  * <ul>
- *   <li>project ADMIN of the invoking user — the REST gate;</li>
+ *   <li>project ADMIN of the invoking user — the REST gate, checked before
+ *       the project is even looked up, so a caller without the right learns
+ *       nothing about which projects exist or how they stand;</li>
  *   <li>never a SYSTEM project, never the calling process's own project
  *       (a process would discard the workspace it runs in), and not from a
  *       process pinned to its own project (workers, confined engines);</li>
@@ -71,10 +71,7 @@ public class ProjectArchiveTool implements Tool {
 
     private final ProjectService projectService;
     private final ProjectGroupService projectGroupService;
-    private final EddieContext eddieContext;
-    private final EddieActivityService activityService;
-    private final PermissionService permissionService;
-    private final SecurityContextFactory contextFactory;
+    private final AdminToolSupport admin;
 
     @Override
     public String name() {
@@ -118,24 +115,14 @@ public class ProjectArchiveTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        if (ctx.userId() == null) {
-            throw new ToolException("project_archive requires a user identity");
-        }
-        if (eddieContext.isPinnedToOwnProject(ctx)) {
-            throw new ToolException("project_archive is not allowed in this process — its "
-                    + "project is fixed (a sub-process worker, or an engine confined to its "
-                    + "own project).");
-        }
-        String name = stringOrThrow(params, "name");
-        String confirmName = stringOrThrow(params, "confirmName");
-        if (!name.equals(confirmName)) {
-            throw new ToolException(
-                    "confirmName '" + confirmName + "' does not match name '" + name + "' — nothing archived");
-        }
+        SecurityContext actor = admin.actor(ctx, name());
+        String name = AdminToolSupport.req(params, "name");
+        AdminToolSupport.requireConfirmed(name, AdminToolSupport.req(params, "confirmName"), "project");
         if (name.equals(ctx.projectId())) {
             throw new ToolException(
-                    "Project '" + name + "' is the project this process runs in — " + "it cannot archive itself");
+                    "Project '" + name + "' is the project this process runs in — it cannot archive itself");
         }
+        admin.enforce(actor, new Resource.Project(ctx.tenantId(), name), Action.ADMIN);
         ProjectDocument project = projectService
                 .findByTenantAndName(ctx.tenantId(), name)
                 .orElseThrow(() -> new ToolException("Project '" + name + "' not found"));
@@ -145,10 +132,6 @@ public class ProjectArchiveTool implements Tool {
         if (project.getStatus() == ProjectStatus.CLOSED) {
             throw new ToolException("Project '" + name + "' is already archived");
         }
-        permissionService.enforce(
-                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
-                new Resource.Project(ctx.tenantId(), name),
-                Action.ADMIN);
 
         String archivedGroup =
                 projectGroupService.ensureArchivedGroup(ctx.tenantId()).getName();
@@ -160,16 +143,11 @@ public class ProjectArchiveTool implements Tool {
         }
         log.info("project_archive: tenant='{}' project='{}' user='{}'", ctx.tenantId(), name, ctx.userId());
 
-        if (ctx.processId() != null) {
-            activityService.append(
-                    ctx.tenantId(),
-                    ctx.userId(),
-                    ctx.sessionId(),
-                    ctx.processId(),
-                    EddieActivityKind.PROJECT_ARCHIVED,
-                    "Projekt `" + name + "` archiviert",
-                    List.of(EntityRef.project(name)));
-        }
+        admin.record(
+                ctx,
+                EddieActivityKind.PROJECT_ARCHIVED,
+                "Archived project `" + name + "`",
+                List.of(EntityRef.project(name)));
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("name", closed.getName());
@@ -180,13 +158,5 @@ public class ProjectArchiveTool implements Tool {
         }
         out.put("workspaceDiscarded", true);
         return out;
-    }
-
-    private static String stringOrThrow(Map<String, Object> params, String key) {
-        Object raw = params == null ? null : params.get(key);
-        if (!(raw instanceof String s) || s.isBlank()) {
-            throw new ToolException("'" + key + "' is required and must be a non-empty string");
-        }
-        return s.trim();
     }
 }

@@ -95,7 +95,7 @@ public class AccountDisableTool implements Tool {
         admin.record(
                 ctx,
                 EddieActivityKind.ACCOUNT_CHANGED,
-                "Konto `" + name + "` deaktiviert",
+                "Disabled account `" + name + "`",
                 List.of(EntityRef.user(name)));
         return AccountRows.summary(saved, admin.tenantRoleOf(ctx.tenantId(), name));
     }

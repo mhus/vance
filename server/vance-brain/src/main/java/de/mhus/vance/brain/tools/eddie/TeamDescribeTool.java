@@ -1,8 +1,6 @@
 package de.mhus.vance.brain.tools.eddie;
 
-import de.mhus.vance.api.roles.RoleScopeType;
 import de.mhus.vance.api.roles.RoleSubjectType;
-import de.mhus.vance.shared.role.RoleAssignmentDocument;
 import de.mhus.vance.shared.role.RoleAssignmentService;
 import de.mhus.vance.shared.team.TeamDocument;
 import de.mhus.vance.shared.team.TeamService;
@@ -10,8 +8,6 @@ import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.ToolLabels;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -97,17 +93,7 @@ public class TeamDescribeTool implements Tool {
         if (team.getTitle() != null) out.put("title", team.getTitle());
         out.put("members", team.getMembers() == null ? List.of() : team.getMembers());
         out.put("enabled", team.isEnabled());
-        List<Map<String, Object>> projectRoles = new ArrayList<>();
-        assignments.forSubject(ctx.tenantId(), RoleSubjectType.TEAM, name).stream()
-                .filter(a -> a.getScopeType() == RoleScopeType.PROJECT && a.getProjectRole() != null)
-                .sorted(Comparator.comparing(RoleAssignmentDocument::getScopeId))
-                .forEach(a -> {
-                    Map<String, Object> row = new LinkedHashMap<>();
-                    row.put("project", a.getScopeId());
-                    row.put("role", a.getProjectRole().name());
-                    projectRoles.add(row);
-                });
-        out.put("projectRoles", projectRoles);
+        out.put("projectRoles", RoleRows.projectRoles(assignments, ctx.tenantId(), RoleSubjectType.TEAM, name));
         return out;
     }
 }

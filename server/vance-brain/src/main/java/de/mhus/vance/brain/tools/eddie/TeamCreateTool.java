@@ -122,8 +122,7 @@ public class TeamCreateTool implements Tool {
         } catch (TeamService.TeamAlreadyExistsException e) {
             throw new ToolException(e.getMessage(), e);
         }
-        admin.record(
-                ctx, EddieActivityKind.TEAM_CREATED, "Team `" + name + "` angelegt", List.of(EntityRef.team(name)));
+        admin.record(ctx, EddieActivityKind.TEAM_CREATED, "Created team `" + name + "`", List.of(EntityRef.team(name)));
         return TeamCreateTool.row(saved);
     }
 

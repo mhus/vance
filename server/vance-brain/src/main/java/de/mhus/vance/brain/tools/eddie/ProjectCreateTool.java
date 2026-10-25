@@ -235,8 +235,8 @@ public class ProjectCreateTool implements Tool {
                 ctx.sessionId(),
                 ctx.processId(),
                 EddieActivityKind.PROJECT_CREATED,
-                "Projekt `" + bootstrap.project().getName() + "` angelegt"
-                        + (initialPrompt != null ? " mit initialer Aufgabe" : ""),
+                "Created project `" + bootstrap.project().getName() + "`"
+                        + (initialPrompt != null ? " with an initial task" : ""),
                 List.of(
                         EntityRef.project(bootstrap.project().getName()),
                         EntityRef.process(

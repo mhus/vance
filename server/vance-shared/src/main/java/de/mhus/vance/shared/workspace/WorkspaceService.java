@@ -189,6 +189,10 @@ public class WorkspaceService {
     public void dispose(String tenantId, String projectId) {
         requireTenant(tenantId);
         requireProject(projectId);
+        // Snapshots first and unconditionally: they live in Mongo, not in the
+        // folder, so a dispose on a pod that never held the folder (archive
+        // landing off the home pod) must still end them — dispose is terminal.
+        snapshotRepository.deleteByTenantAndProjectId(tenantId, projectId);
         Path root = projectFolder(tenantId, projectId);
         if (!Files.exists(root)) {
             return;
@@ -204,8 +208,6 @@ public class WorkspaceService {
         String prefix = creatorCachePrefix(tenantId, projectId);
         tempDirCache.keySet().removeIf(k -> k.startsWith(prefix));
         workingDirByCreator.keySet().removeIf(k -> k.startsWith(prefix));
-        // Snapshots (if any from prior suspends) are also gone — dispose is terminal.
-        snapshotRepository.deleteByTenantAndProjectId(tenantId, projectId);
         deleteRecursively(root);
         log.info("Workspace disposed: tenant={} projectId={}", tenantId, projectId);
     }

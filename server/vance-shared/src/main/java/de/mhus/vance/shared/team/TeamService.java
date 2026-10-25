@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.data.mongodb.core.FindAndModifyOptions;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
@@ -30,6 +31,8 @@ public class TeamService implements TeamMembership {
     private static final String F_TENANT_ID = "tenantId";
     private static final String F_NAME = "name";
     private static final String F_MEMBERS = "members";
+    private static final String F_TITLE = "title";
+    private static final String F_ENABLED = "enabled";
 
     private final TeamRepository repository;
 
@@ -109,6 +112,10 @@ public class TeamService implements TeamMembership {
      * Patches mutable fields. {@code name} and {@code tenantId} are
      * immutable. {@code null} fields mean "leave as is"; {@code members}
      * replaces the list wholesale when non-null.
+     *
+     * <p>One targeted {@code $set} of exactly the given fields — never a
+     * save of the whole document, which would overwrite a member that
+     * {@link #addMember}/{@link #removeMember} changed in the meantime.
      */
     public TeamDocument update(
             String tenantId,
@@ -116,20 +123,32 @@ public class TeamService implements TeamMembership {
             @Nullable String title,
             @Nullable Boolean enabled,
             @Nullable List<String> members) {
-        TeamDocument team = repository
-                .findByTenantIdAndName(tenantId, name)
-                .orElseThrow(
-                        () -> new TeamNotFoundException("Team '" + name + "' not found in tenant '" + tenantId + "'"));
+        Update update = new Update();
         if (title != null) {
-            team.setTitle(title);
+            update.set(F_TITLE, title);
         }
         if (enabled != null) {
-            team.setEnabled(enabled);
+            update.set(F_ENABLED, enabled);
         }
         if (members != null) {
-            team.setMembers(new ArrayList<>(members));
+            update.set(F_MEMBERS, new ArrayList<>(members));
         }
-        TeamDocument saved = repository.save(team);
+        TeamDocument saved;
+        if (update.getUpdateObject().isEmpty()) {
+            saved = repository
+                    .findByTenantIdAndName(tenantId, name)
+                    .orElseThrow(() ->
+                            new TeamNotFoundException("Team '" + name + "' not found in tenant '" + tenantId + "'"));
+        } else {
+            saved = mongoTemplate.findAndModify(
+                    byName(tenantId, name),
+                    update,
+                    FindAndModifyOptions.options().returnNew(true),
+                    TeamDocument.class);
+            if (saved == null) {
+                throw new TeamNotFoundException("Team '" + name + "' not found in tenant '" + tenantId + "'");
+            }
+        }
         log.info(
                 "Updated team tenantId='{}' name='{}' enabled={} members={}",
                 saved.getTenantId(),

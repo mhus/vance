@@ -155,10 +155,10 @@ public class RoleChangeSupport {
     private static String summary(
             RoleRequestOperation operation, RoleRequestService.Target target, @Nullable String role) {
         String scope =
-                target.scopeType() == RoleScopeType.TENANT ? "im Mandanten" : "auf Projekt `" + target.scopeId() + "`";
+                target.scopeType() == RoleScopeType.TENANT ? "in the tenant" : "on project `" + target.scopeId() + "`";
         return operation == RoleRequestOperation.GRANT
-                ? "Rolle " + role + " für `" + target.subjectId() + "` " + scope + " vergeben"
-                : "Rolle von `" + target.subjectId() + "` " + scope + " entzogen";
+                ? "Granted role " + role + " to `" + target.subjectId() + "` " + scope
+                : "Revoked the role of `" + target.subjectId() + "` " + scope;
     }
 
     private static List<EntityRef> refs(RoleRequestService.Target target) {

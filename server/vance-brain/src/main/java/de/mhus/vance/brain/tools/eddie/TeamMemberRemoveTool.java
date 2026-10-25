@@ -88,7 +88,7 @@ public class TeamMemberRemoveTool implements Tool {
             admin.record(
                     ctx,
                     EddieActivityKind.TEAM_CHANGED,
-                    "`" + user + "` aus Team `" + team + "` entfernt",
+                    "Removed `" + user + "` from team `" + team + "`",
                     List.of(EntityRef.team(team), EntityRef.user(user)));
         }
         Map<String, Object> out = new LinkedHashMap<>();

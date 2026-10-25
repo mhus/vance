@@ -177,7 +177,7 @@ public class ProjectChatSendTool implements Tool {
                 ctx.sessionId(),
                 ctx.processId(),
                 EddieActivityKind.PROCESS_STEERED,
-                "Arthur in `" + project.getName() + "` angesprochen",
+                "Messaged Arthur in `" + project.getName() + "`",
                 List.of(EntityRef.project(project.getName()), EntityRef.process(chat.getId(), chat.getName())));
 
         Map<String, Object> out = new LinkedHashMap<>();

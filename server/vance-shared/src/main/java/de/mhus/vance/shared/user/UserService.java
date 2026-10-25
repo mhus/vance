@@ -5,12 +5,14 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.FindAndModifyOptions;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -71,6 +73,8 @@ public class UserService {
     private static final String F_TENANT_ID = "tenantId";
     private static final String F_NAME = "name";
     private static final String F_STATUS = "status";
+    private static final String F_TITLE = "title";
+    private static final String F_EMAIL = "email";
     private static final String F_SERVICE_ACCOUNT = "serviceAccount";
     private static final String F_FAILED_ATTEMPTS = "failedLoginAttempts";
     private static final String F_LOCKED_UNTIL = "lockedUntil";
@@ -108,20 +112,60 @@ public class UserService {
     }
 
     /**
+     * One page of the tenant's accounts for an administrator's list, sorted
+     * by name, filtered in Mongo: optional {@code status}, optional
+     * {@code text} matched case-insensitively against name, title and email.
+     * Vance-internal {@code _vance-*} identities are never listed.
+     */
+    public List<UserDocument> search(String tenantId, @Nullable UserStatus status, @Nullable String text, int limit) {
+        Query query = new Query(searchCriteria(tenantId, status, text))
+                .with(Sort.by(F_NAME))
+                .limit(limit);
+        return mongoTemplate.find(query, UserDocument.class);
+    }
+
+    /** How many accounts {@link #search} would find without its limit. */
+    public long countSearch(String tenantId, @Nullable UserStatus status, @Nullable String text) {
+        return mongoTemplate.count(new Query(searchCriteria(tenantId, status, text)), UserDocument.class);
+    }
+
+    private static Criteria searchCriteria(String tenantId, @Nullable UserStatus status, @Nullable String text) {
+        Criteria criteria =
+                Criteria.where(F_TENANT_ID).is(tenantId).and(F_NAME).not().regex("^" + RESERVED_VANCE_PREFIX);
+        if (status != null) {
+            criteria = criteria.and(F_STATUS).is(status);
+        }
+        if (text != null && !text.isBlank()) {
+            String quoted = Pattern.quote(text.trim());
+            criteria = new Criteria()
+                    .andOperator(
+                            criteria,
+                            new Criteria()
+                                    .orOperator(
+                                            Criteria.where(F_NAME).regex(quoted, "i"),
+                                            Criteria.where(F_TITLE).regex(quoted, "i"),
+                                            Criteria.where(F_EMAIL).regex(quoted, "i")));
+        }
+        return criteria;
+    }
+
+    /**
      * Accounts of {@code tenantId} that occupy a place of {@code kind}: every
      * status except {@link UserStatus#DISABLED} — PENDING and prepared
      * accounts hold their place from creation on. Vance-internal
      * {@code _vance-*} identities never count.
      */
     public long countCounted(String tenantId, UserQuotaKind kind) {
-        Criteria criteria =
-                Criteria.where(F_TENANT_ID).is(tenantId).and(F_STATUS).ne(UserStatus.DISABLED);
+        // Both kinds: the prefix has no regex metacharacters.
+        Criteria criteria = Criteria.where(F_TENANT_ID)
+                .is(tenantId)
+                .and(F_STATUS)
+                .ne(UserStatus.DISABLED)
+                .and(F_NAME)
+                .not()
+                .regex("^" + RESERVED_VANCE_PREFIX);
         if (kind == UserQuotaKind.SERVICE_ACCOUNTS) {
-            criteria = criteria.and(F_SERVICE_ACCOUNT)
-                    .is(true)
-                    .and(F_NAME)
-                    .not()
-                    .regex("^" + RESERVED_VANCE_PREFIX); // prefix has no regex metacharacters
+            criteria = criteria.and(F_SERVICE_ACCOUNT).is(true);
         } else {
             // ne(true), not is(false): a row without the field is a person.
             criteria = criteria.and(F_SERVICE_ACCOUNT).ne(true);

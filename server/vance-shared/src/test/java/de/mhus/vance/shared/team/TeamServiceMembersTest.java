@@ -9,11 +9,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.mongodb.client.result.UpdateResult;
+import java.util.List;
 import org.bson.Document;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.data.mongodb.core.FindAndModifyOptions;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
@@ -80,6 +82,37 @@ class TeamServiceMembersTest {
         result(0, 0);
 
         assertThatThrownBy(() -> service.removeMember("acme", "ghost", "bob"))
+                .isInstanceOf(TeamService.TeamNotFoundException.class);
+    }
+
+    @Test
+    void update_setsOnlyTheGivenFields_neverTheMembers() {
+        TeamDocument after = TeamDocument.builder()
+                .tenantId("acme")
+                .name("infra")
+                .members(List.of("alice", "bob"))
+                .enabled(true)
+                .build();
+        when(mongoTemplate.findAndModify(
+                        any(Query.class), any(Update.class), any(FindAndModifyOptions.class), eq(TeamDocument.class)))
+                .thenReturn(after);
+
+        assertThat(service.update("acme", "infra", null, true, null)).isSameAs(after);
+
+        ArgumentCaptor<Update> update = ArgumentCaptor.forClass(Update.class);
+        verify(mongoTemplate)
+                .findAndModify(
+                        any(Query.class), update.capture(), any(FindAndModifyOptions.class), eq(TeamDocument.class));
+        Document set = update.getValue().getUpdateObject().get("$set", Document.class);
+        assertThat(set)
+                .containsEntry("enabled", true)
+                .doesNotContainKey("members")
+                .doesNotContainKey("title");
+    }
+
+    @Test
+    void update_unknownTeam_isNotFound() {
+        assertThatThrownBy(() -> service.update("acme", "ghost", "T", null, null))
                 .isInstanceOf(TeamService.TeamNotFoundException.class);
     }
 }

@@ -109,8 +109,7 @@ public class TeamUpdateTool implements Tool {
         } catch (TeamService.TeamNotFoundException e) {
             throw new ToolException(e.getMessage(), e);
         }
-        admin.record(
-                ctx, EddieActivityKind.TEAM_CHANGED, "Team `" + name + "` geändert", List.of(EntityRef.team(name)));
+        admin.record(ctx, EddieActivityKind.TEAM_CHANGED, "Changed team `" + name + "`", List.of(EntityRef.team(name)));
         return TeamCreateTool.row(saved);
     }
 }

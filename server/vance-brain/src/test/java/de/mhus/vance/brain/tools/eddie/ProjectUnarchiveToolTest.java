@@ -38,6 +38,7 @@ class ProjectUnarchiveToolTest {
     private ProjectLifecycleService lifecycle;
     private ProjectService projectService;
     private PermissionService permissionService;
+    private EddieContext eddieContext;
     private ProjectUnarchiveTool tool;
 
     @BeforeEach
@@ -50,8 +51,10 @@ class ProjectUnarchiveToolTest {
         permissionService = mock(PermissionService.class);
         SecurityContextFactory contextFactory = mock(SecurityContextFactory.class);
         when(contextFactory.forToolSubject(anyString(), any())).thenReturn(mock(SecurityContext.class));
-        tool = new ProjectUnarchiveTool(
-                provider, projectService, mock(EddieActivityService.class), permissionService, contextFactory);
+        eddieContext = mock(EddieContext.class);
+        AdminToolSupport admin =
+                new AdminToolSupport(eddieContext, mock(EddieActivityService.class), permissionService, contextFactory);
+        tool = new ProjectUnarchiveTool(provider, projectService, admin);
         ProjectDocument archived = new ProjectDocument();
         archived.setName("research");
         archived.setStatus(ProjectStatus.CLOSED);
@@ -107,6 +110,24 @@ class ProjectUnarchiveToolTest {
         doThrow(new IllegalStateException("denied")).when(permissionService).enforce(any(), any(), eq(Action.ADMIN));
 
         assertThatThrownBy(() -> tool.invoke(Map.of("name", "research"), CTX)).hasMessageContaining("denied");
+        verify(lifecycle, never()).reopen(anyString(), anyString());
+    }
+
+    @Test
+    void permissionIsCheckedBeforeTheLookup_soDenialRevealsNothing() {
+        doThrow(new IllegalStateException("denied")).when(permissionService).enforce(any(), any(), eq(Action.ADMIN));
+
+        assertThatThrownBy(() -> tool.invoke(Map.of("name", "ghost"), CTX)).hasMessageContaining("denied");
+        verify(projectService, never()).findByTenantAndName(anyString(), anyString());
+    }
+
+    @Test
+    void refusesFromAPinnedProcess() {
+        when(eddieContext.isPinnedToOwnProject(CTX)).thenReturn(true);
+
+        assertThatThrownBy(() -> tool.invoke(Map.of("name", "research"), CTX))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("not allowed in this process");
         verify(lifecycle, never()).reopen(anyString(), anyString());
     }
 }

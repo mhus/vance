@@ -614,7 +614,7 @@ class UserServiceTest {
     }
 
     @Test
-    void countCounted_seats_excludesDisabledAndServiceAccounts() {
+    void countCounted_seats_excludesDisabledServiceAccountsAndVanceInternal() {
         when(mongoTemplate.count(any(Query.class), eq(UserDocument.class))).thenReturn(4L);
 
         assertThat(service.countCounted(TENANT, UserQuotaKind.SEATS)).isEqualTo(4L);
@@ -626,7 +626,8 @@ class UserServiceTest {
         assertThat(q.get("status")).isEqualTo(new org.bson.Document("$ne", UserStatus.DISABLED));
         // ne(true): a row without the field is a person
         assertThat(q.get("serviceAccount")).isEqualTo(new org.bson.Document("$ne", true));
-        assertThat(q.containsKey("name")).isFalse();
+        // a _vance-* row without the serviceAccount field must not take a seat
+        assertThat(q.get("name")).asString().contains("$not").contains("^_vance-");
     }
 
     @Test
@@ -639,5 +640,32 @@ class UserServiceTest {
         assertThat(q.get("status")).isEqualTo(new org.bson.Document("$ne", UserStatus.DISABLED));
         assertThat(q.get("serviceAccount")).isEqualTo(true);
         assertThat(q.get("name")).asString().contains("$not").contains("^_vance-");
+    }
+
+    @Test
+    void search_filtersInMongoWithLimitAndQuotedText() {
+        service.search(TENANT, UserStatus.ACTIVE, "a.b", 20);
+
+        ArgumentCaptor<Query> query = ArgumentCaptor.forClass(Query.class);
+        verify(mongoTemplate).find(query.capture(), eq(UserDocument.class));
+        Query q = query.getValue();
+        assertThat(q.getLimit()).isEqualTo(20);
+        assertThat(q.getSortObject()).containsEntry("name", 1);
+        String filter = q.getQueryObject().toString();
+        assertThat(filter).contains(TENANT).contains("ACTIVE").contains("^_vance-");
+        // the text is quoted (\Q…\E), never a live pattern
+        assertThat(filter).contains("Qa.b");
+    }
+
+    @Test
+    void countSearch_withoutTextOrStatus_onlyExcludesVanceInternal() {
+        service.countSearch(TENANT, null, null);
+
+        ArgumentCaptor<Query> query = ArgumentCaptor.forClass(Query.class);
+        verify(mongoTemplate).count(query.capture(), eq(UserDocument.class));
+        org.bson.Document q = query.getValue().getQueryObject();
+        assertThat(q.get("tenantId")).isEqualTo(TENANT);
+        assertThat(q.containsKey("status")).isFalse();
+        assertThat(q.get("name")).asString().contains("^_vance-");
     }
 }

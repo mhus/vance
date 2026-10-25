@@ -7,13 +7,11 @@ import de.mhus.vance.shared.user.UserDocument;
 import de.mhus.vance.shared.user.UserQuotaService;
 import de.mhus.vance.shared.user.UserService;
 import de.mhus.vance.shared.user.UserStatus;
-import de.mhus.vance.shared.user.maintenance.UserTombstone;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.ToolLabels;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -110,41 +108,26 @@ public class AccountListTool implements Tool {
         admin.enforce(actor, new Resource.Tenant(ctx.tenantId()), Action.WRITE);
 
         String query = AdminToolSupport.str(params, "query");
-        String needle = query == null ? null : query.toLowerCase(Locale.ROOT);
         UserStatus status = parseStatus(AdminToolSupport.str(params, "status"));
         int limit = limit(params);
 
-        List<UserDocument> matching = userService.all(ctx.tenantId()).stream()
-                .filter(u -> !u.getName().startsWith(UserService.RESERVED_VANCE_PREFIX))
-                .filter(u -> !UserTombstone.isTombstone(u.getName()))
-                .filter(u -> status == null || u.getStatus() == status)
-                .filter(u -> needle == null || matches(u, needle))
-                .sorted(Comparator.comparing(UserDocument::getName))
-                .toList();
-
+        List<UserDocument> page = userService.search(ctx.tenantId(), status, query, limit);
+        long total = userService.countSearch(ctx.tenantId(), status, query);
         List<Map<String, Object>> rows = new ArrayList<>();
-        for (UserDocument u : matching.subList(0, Math.min(limit, matching.size()))) {
+        for (UserDocument u : page) {
             rows.add(AccountRows.summary(u, admin.tenantRoleOf(ctx.tenantId(), u.getName())));
         }
 
         UserQuotaService.Status quota = quotaService.status(ctx.tenantId());
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("accounts", rows);
-        out.put("total", matching.size());
-        if (matching.size() > rows.size()) {
+        out.put("total", total);
+        if (total > rows.size()) {
             out.put("truncated", true);
         }
         out.put("seats", AccountRows.usage(quota.seats()));
         out.put("serviceAccounts", AccountRows.usage(quota.serviceAccounts()));
         return out;
-    }
-
-    private static boolean matches(UserDocument u, String needle) {
-        return contains(u.getName(), needle) || contains(u.getTitle(), needle) || contains(u.getEmail(), needle);
-    }
-
-    private static boolean contains(@Nullable String value, String needle) {
-        return value != null && value.toLowerCase(Locale.ROOT).contains(needle);
     }
 
     private static @Nullable UserStatus parseStatus(@Nullable String raw) {

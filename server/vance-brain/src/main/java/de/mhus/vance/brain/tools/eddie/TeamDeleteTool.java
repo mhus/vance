@@ -105,8 +105,7 @@ public class TeamDeleteTool implements Tool {
         } catch (TeamService.TeamNotFoundException e) {
             throw new ToolException(e.getMessage(), e);
         }
-        admin.record(
-                ctx, EddieActivityKind.TEAM_DELETED, "Team `" + name + "` gelöscht", List.of(EntityRef.team(name)));
+        admin.record(ctx, EddieActivityKind.TEAM_DELETED, "Deleted team `" + name + "`", List.of(EntityRef.team(name)));
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("name", name);
         out.put("deleted", true);

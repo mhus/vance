@@ -178,7 +178,10 @@ public class AccountCreateTool implements Tool {
         }
         log.info("account_create: tenant='{}' user='{}' by='{}'", ctx.tenantId(), name, ctx.userId());
         admin.record(
-                ctx, EddieActivityKind.ACCOUNT_CREATED, "Konto `" + name + "` angelegt", List.of(EntityRef.user(name)));
+                ctx,
+                EddieActivityKind.ACCOUNT_CREATED,
+                "Created account `" + name + "`",
+                List.of(EntityRef.user(name)));
 
         List<Map<String, Object>> roles = new ArrayList<>();
         if (tenantRole != null && tenantRole != TenantRole.USER) {

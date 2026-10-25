@@ -483,6 +483,21 @@ public class ProjectLifecycleService {
         }
         eventPublisher.publishEvent(new ProjectEnginesStopRequested(tenantId, projectName));
         activationRegistry.deactivate(tenantId, projectName);
+        if (isClosed(tenantId, projectName)) {
+            // An archive is releasing: the archiving pod disposes the workspace,
+            // possibly before this release finishes (a timed-out request counts
+            // as "unreachable" there). A snapshot written now would outlive that
+            // dispose and come back on unarchive — so a CLOSED project's
+            // workspace ends here instead of being preserved.
+            workspaceService.dispose(tenantId, projectName);
+            boolean released = projectManager.releaseLocalLease(tenantId, projectName);
+            log.info(
+                    "Project '{}/{}' released by this pod (closed, workspace disposed, released={})",
+                    tenantId,
+                    projectName,
+                    released);
+            return released;
+        }
         try {
             workspaceService.suspendAll(tenantId, projectName);
         } catch (RuntimeException e) {
@@ -502,6 +517,13 @@ public class ProjectLifecycleService {
                 projectName,
                 released);
         return released;
+    }
+
+    private boolean isClosed(String tenantId, String projectName) {
+        return projectService
+                .findByTenantAndName(tenantId, projectName)
+                .map(d -> d.getStatus() == ProjectStatus.CLOSED)
+                .orElse(false);
     }
 
     /**
@@ -608,9 +630,10 @@ public class ProjectLifecycleService {
      * project is refused: from that write on, no pod can bring the project up
      * again while it is being torn down. The engines stop next — on this pod
      * through {@link ProjectEnginesStopRequested}, on another pod through that
-     * pod's release ({@link #stopWhereRunning}). The workspace goes last, so a
-     * remote release that snapshots on its way out cannot write back what the
-     * dispose just removed.
+     * pod's release ({@link #stopWhereRunning}). The workspace goes last; a remote
+     * release still running when this dispose happens (its request timed out
+     * here) sees the CLOSED status and disposes instead of snapshotting, so
+     * nothing it writes on its way out survives the archive.
      *
      * <p>Refuses SYSTEM-kind projects before anything is touched.
      */

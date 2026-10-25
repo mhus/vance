@@ -1,13 +1,11 @@
 package de.mhus.vance.brain.tools.eddie;
 
-import de.mhus.vance.brain.eddie.activity.EddieActivityService;
-import de.mhus.vance.brain.permission.SecurityContextFactory;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.shared.activity.EddieActivityKind;
 import de.mhus.vance.shared.activity.EntityRef;
 import de.mhus.vance.shared.permission.Action;
-import de.mhus.vance.shared.permission.PermissionService;
 import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.shared.permission.SecurityContext;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectQuotaService;
 import de.mhus.vance.shared.project.ProjectService;
@@ -28,7 +26,10 @@ import org.springframework.stereotype.Component;
  * Brings an archived project back — {@link ProjectLifecycleService#reopen},
  * the same path as {@code POST /admin/projects/{name}/unarchive}: active
  * project quota checked, group restored, placed like a new project with an
- * empty workspace. Gate is project ADMIN of the invoking user.
+ * empty workspace. Gate is project ADMIN of the invoking user, checked
+ * before the lookup so the answer reveals nothing to a caller without it;
+ * like every administering tool it is refused in a process pinned to its own
+ * project ({@link AdminToolSupport#actor}).
  */
 @Component
 @RequiredArgsConstructor
@@ -49,9 +50,7 @@ public class ProjectUnarchiveTool implements Tool {
     private final ObjectProvider<ProjectLifecycleService> lifecycleServiceProvider;
 
     private final ProjectService projectService;
-    private final EddieActivityService activityService;
-    private final PermissionService permissionService;
-    private final SecurityContextFactory contextFactory;
+    private final AdminToolSupport admin;
 
     @Override
     public String name() {
@@ -93,21 +92,12 @@ public class ProjectUnarchiveTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        if (ctx.userId() == null) {
-            throw new ToolException("project_unarchive requires a user identity");
-        }
-        Object raw = params == null ? null : params.get("name");
-        if (!(raw instanceof String s) || s.isBlank()) {
-            throw new ToolException("'name' is required and must be a non-empty string");
-        }
-        String name = s.trim();
+        SecurityContext actor = admin.actor(ctx, name());
+        String name = AdminToolSupport.req(params, "name");
+        admin.enforce(actor, new Resource.Project(ctx.tenantId(), name), Action.ADMIN);
         if (projectService.findByTenantAndName(ctx.tenantId(), name).isEmpty()) {
             throw new ToolException("Project '" + name + "' not found");
         }
-        permissionService.enforce(
-                contextFactory.forToolSubject(ctx.tenantId(), ctx.userId()),
-                new Resource.Project(ctx.tenantId(), name),
-                Action.ADMIN);
 
         ProjectDocument reopened;
         try {
@@ -119,16 +109,11 @@ public class ProjectUnarchiveTool implements Tool {
         }
         log.info("project_unarchive: tenant='{}' project='{}' user='{}'", ctx.tenantId(), name, ctx.userId());
 
-        if (ctx.processId() != null) {
-            activityService.append(
-                    ctx.tenantId(),
-                    ctx.userId(),
-                    ctx.sessionId(),
-                    ctx.processId(),
-                    EddieActivityKind.PROJECT_UNARCHIVED,
-                    "Projekt `" + name + "` wiederhergestellt",
-                    List.of(EntityRef.project(name)));
-        }
+        admin.record(
+                ctx,
+                EddieActivityKind.PROJECT_UNARCHIVED,
+                "Unarchived project `" + name + "`",
+                List.of(EntityRef.project(name)));
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("name", reopened.getName());

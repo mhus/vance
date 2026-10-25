@@ -95,7 +95,7 @@ public class TeamMemberAddTool implements Tool {
             admin.record(
                     ctx,
                     EddieActivityKind.TEAM_CHANGED,
-                    "`" + user + "` zu Team `" + team + "` hinzugefügt",
+                    "Added `" + user + "` to team `" + team + "`",
                     List.of(EntityRef.team(team), EntityRef.user(user)));
         }
         Map<String, Object> out = new LinkedHashMap<>();

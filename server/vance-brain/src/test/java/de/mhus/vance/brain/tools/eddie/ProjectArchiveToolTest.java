@@ -63,14 +63,9 @@ class ProjectArchiveToolTest {
         permissionService = mock(PermissionService.class);
         SecurityContextFactory contextFactory = mock(SecurityContextFactory.class);
         when(contextFactory.forToolSubject(anyString(), any())).thenReturn(mock(SecurityContext.class));
-        tool = new ProjectArchiveTool(
-                provider,
-                projectService,
-                groupService,
-                eddieContext,
-                mock(EddieActivityService.class),
-                permissionService,
-                contextFactory);
+        AdminToolSupport admin =
+                new AdminToolSupport(eddieContext, mock(EddieActivityService.class), permissionService, contextFactory);
+        tool = new ProjectArchiveTool(provider, projectService, groupService, admin);
     }
 
     private ProjectDocument arrange(String name, ProjectKind kind, ProjectStatus status) {
@@ -159,5 +154,14 @@ class ProjectArchiveToolTest {
         assertThatThrownBy(() -> tool.invoke(Map.of("name", "research", "confirmName", "research"), CTX))
                 .hasMessageContaining("denied");
         verify(lifecycle, never()).close(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void permissionIsCheckedBeforeTheLookup_soDenialRevealsNothing() {
+        doThrow(new IllegalStateException("denied")).when(permissionService).enforce(any(), any(), eq(Action.ADMIN));
+
+        assertThatThrownBy(() -> tool.invoke(Map.of("name", "ghost", "confirmName", "ghost"), CTX))
+                .hasMessageContaining("denied");
+        verify(projectService, never()).findByTenantAndName(anyString(), anyString());
     }
 }

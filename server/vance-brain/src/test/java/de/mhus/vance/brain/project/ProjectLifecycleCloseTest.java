@@ -199,4 +199,37 @@ class ProjectLifecycleCloseTest {
         verify(projectService, never()).close(anyString(), anyString(), anyString());
         verify(workspaceService, never()).dispose(anyString(), anyString());
     }
+
+    @Test
+    void releaseOfAClosedProject_disposesInsteadOfSnapshotting() {
+        registry.activate(TENANT, PROJECT);
+        when(projectService.findByTenantAndName(TENANT, PROJECT))
+                .thenReturn(Optional.of(ProjectDocument.builder()
+                        .tenantId(TENANT)
+                        .name(PROJECT)
+                        .status(ProjectStatus.CLOSED)
+                        .build()));
+
+        service.release(TENANT, PROJECT, true);
+
+        verify(workspaceService).dispose(TENANT, PROJECT);
+        verify(workspaceService, never()).suspendAll(anyString(), anyString());
+        verify(projectManager).releaseLocalLease(TENANT, PROJECT);
+    }
+
+    @Test
+    void releaseOfARunningProject_snapshotsTheWorkspace() {
+        registry.activate(TENANT, PROJECT);
+        when(projectService.findByTenantAndName(TENANT, PROJECT))
+                .thenReturn(Optional.of(ProjectDocument.builder()
+                        .tenantId(TENANT)
+                        .name(PROJECT)
+                        .status(ProjectStatus.RUNNING)
+                        .build()));
+
+        service.release(TENANT, PROJECT, false);
+
+        verify(workspaceService).suspendAll(TENANT, PROJECT);
+        verify(workspaceService, never()).dispose(anyString(), anyString());
+    }
 }

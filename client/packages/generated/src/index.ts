@@ -460,6 +460,8 @@ export * from './users/TeamUpdateRequest';
 export * from './users/UserCreateRequest';
 export * from './users/UserDto';
 export * from './users/UserPasswordRequest';
+export * from './users/UserQuotaDto';
+export * from './users/UserQuotaUsageDto';
 export * from './users/UserUpdateRequest';
 
 export * from './me/MeDto';

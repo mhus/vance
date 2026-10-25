@@ -41,6 +41,7 @@ import {
   refreshAccessCookie,
   canSignInViaApp,
   signInViaApp,
+  ssoFailure,
   ssoStartUrl,
 } from '@/platform';
 import { pushShareCredentials } from '@/platform/faceliftShareSetup';
@@ -165,7 +166,7 @@ onMounted(async () => {
   if (ssoError) {
     // The server redirects back here with a coarse code only; the reason is
     // in its audit log, never in the URL.
-    error.value = ssoError === 'rejected' ? t('login.sso.rejected') : t('login.sso.failed');
+    error.value = ssoMessage(ssoFailure(ssoError).kind);
   }
   if (requestedTenant && requestedTenant !== tenant.value) {
     tenant.value = requestedTenant;
@@ -319,7 +320,13 @@ async function startSso(email: string | null, boundTenant: string | null): Promi
     goOn();
     return;
   }
-  error.value = outcome.kind === 'rejected' ? t('login.sso.rejected') : t('login.sso.failed');
+  error.value = ssoMessage(outcome.kind);
+}
+
+function ssoMessage(kind: 'rejected' | 'no-seats' | 'failed'): string {
+  if (kind === 'rejected') return t('login.sso.rejected');
+  if (kind === 'no-seats') return t('login.sso.noSeats');
+  return t('login.sso.failed');
 }
 
 /** Leave for `next`, or for the launcher when there is none. */

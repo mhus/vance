@@ -6,9 +6,11 @@ import type {
   LlmBudgetWindowDto,
   ProjectQuotaDto,
   StorageCleanupResultDto,
+  UserQuotaDto,
 } from '@vance/generated';
 import { VAlert, VBadge, VButton, VCard, VEmptyState, VGroup, VGroupRow, VIcon, useConfirm } from '@/components';
 import { useAdminProjects } from '@/composables/useAdminProjects';
+import { useAdminUsers } from '@/composables/useAdminUsers';
 import { useMe } from '@/composables/useMe';
 import {
   INJECT_INSIGHTS_PROJECT_SCOPE,
@@ -19,7 +21,7 @@ import CleanupDialog from './CleanupDialog.vue';
 import {
   fmtCost,
   fmtTokens,
-  projectQuotaView,
+  countQuotaView,
   summariseProjectBuckets,
   type ProjectUsageRow,
   windowLabel as windowLabelOf,
@@ -35,6 +37,8 @@ import {
  *       (per planning/storage-quota.md, no per-project storage quota).</li>
  *   <li><b>Projects</b> — active projects against the tenant's
  *       {@code project.quota.maxActive}.</li>
+ *   <li><b>Users</b> — seats and service accounts against
+ *       {@code user.quota.seats} / {@code user.quota.serviceAccounts}.</li>
  *   <li><b>LLM</b> — the cost budget (limits) plus the most-loaded window
  *       as a percent. Tenant and every project side-by-side. LLM power
  *       switch surfaced here too: it is the third way to stop spend.</li>
@@ -55,6 +59,8 @@ import {
  *       section 3.</li>
  *   <li>{@code GET /brain/{tenant}/admin/projects/quota} — whoever may list
  *       projects; powers the projects section, hidden when refused.</li>
+ *   <li>{@code GET /brain/{tenant}/admin/user-quota} — whoever may list
+ *       users; powers the users section, hidden when refused.</li>
  * </ul>
  *
  * <p>A non-admin who lands here sees section 1 and a friendly
@@ -70,7 +76,38 @@ const adminProjects = useAdminProjects();
 
 /** {@code null} until loaded, and when the caller may not see the project list. */
 const projectQuota = ref<ProjectQuotaDto | null>(null);
-const projectQuotaState = computed(() => projectQuota.value ? projectQuotaView(projectQuota.value) : null);
+const projectQuotaState = computed(() => projectQuota.value ? countQuotaView(projectQuota.value) : null);
+
+const adminUsers = useAdminUsers();
+/** {@code null} until loaded, and when the caller may not see the user list. */
+const userQuota = ref<UserQuotaDto | null>(null);
+
+interface UserQuotaRow {
+  key: 'seats' | 'serviceAccounts';
+  active: number;
+  limit: number;
+  view: ReturnType<typeof countQuotaView>;
+}
+
+const userQuotaRows = computed<UserQuotaRow[]>(() => {
+  const q = userQuota.value;
+  if (!q) return [];
+  return (['seats', 'serviceAccounts'] as const).map((key) => ({
+    key,
+    active: q[key].active,
+    limit: q[key].limit,
+    view: countQuotaView(q[key]),
+  }));
+});
+
+async function loadUserQuota(): Promise<void> {
+  try {
+    userQuota.value = await adminUsers.quota();
+  } catch {
+    // Not allowed to list users → the section stays hidden.
+    userQuota.value = null;
+  }
+}
 
 async function loadProjectQuota(): Promise<void> {
   try {
@@ -171,6 +208,7 @@ async function refresh(): Promise<void> {
     usage.loadAll(buildParams()),
     cleanup.loadBreakdown(cleanupProjectId.value),
     loadProjectQuota(),
+    loadUserQuota(),
   ]);
 }
 
@@ -437,6 +475,43 @@ const projectTotalsByCurrency = computed<Map<string, number>>(() => costByCurren
             <span class="quotas-meter__fill" :style="{ width: `${Math.min(100, projectQuotaState.percent)}%` }" />
           </span>
         </p>
+      </VCard>
+    </section>
+
+    <!-- ─── Users ─── -->
+    <section v-if="userQuota" class="flex flex-col gap-2">
+      <h3 class="quotas-heading">{{ $t('insights.quotas.usersHeading') }}</h3>
+
+      <VCard :title="$t('insights.quotas.usersTitle')">
+        <div v-for="row in userQuotaRows" :key="row.key" class="flex flex-col">
+          <VGroup>
+            <VGroupRow
+              :label="$t(`insights.quotas.${row.key}Row`)"
+              :description="row.view.unlimited
+                ? $t('insights.quotas.usersUnlimitedHint')
+                : $t(`insights.quotas.${row.key}Hint`)"
+              :value="row.view.unlimited
+                ? $t('insights.quotas.projectsValueUnlimited', { active: row.active })
+                : $t('insights.quotas.projectsValue', { active: row.active, limit: row.limit })"
+            />
+          </VGroup>
+          <p
+            v-if="row.view.percent != null"
+            class="quotas-meter"
+            :data-severity="row.view.severity"
+          >
+            <span class="quotas-meter__label">
+              {{
+                row.view.severity === 'danger'
+                  ? $t(`insights.quotas.${row.key}Full`)
+                  : $t('insights.quotas.storagePercent', { percent: row.view.percent })
+              }}
+            </span>
+            <span class="quotas-meter__track" aria-hidden="true">
+              <span class="quotas-meter__fill" :style="{ width: `${Math.min(100, row.view.percent)}%` }" />
+            </span>
+          </p>
+        </div>
       </VCard>
     </section>
 

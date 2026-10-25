@@ -11,6 +11,8 @@ import de.mhus.vance.shared.sso.SsoConfigService;
 import de.mhus.vance.shared.user.ExternalEmails;
 import de.mhus.vance.shared.user.ExternalIdentity;
 import de.mhus.vance.shared.user.UserDocument;
+import de.mhus.vance.shared.user.UserQuotaKind;
+import de.mhus.vance.shared.user.UserQuotaService;
 import de.mhus.vance.shared.user.UserService;
 import de.mhus.vance.shared.user.UserStatus;
 import de.mhus.vance.shared.user.maintenance.UserDataHandler;
@@ -44,6 +46,7 @@ public class UserCommands {
     private final UserMaintenanceService maintenanceService;
     private final SsoConfigService ssoConfigService;
     private final AuditService auditService;
+    private final UserQuotaService quotaService;
     // Lazy LineReader to avoid the Spring-Shell bean cycle — see AccessCommands.
     private final ObjectProvider<LineReader> lineReader;
 
@@ -54,6 +57,7 @@ public class UserCommands {
             UserMaintenanceService maintenanceService,
             SsoConfigService ssoConfigService,
             AuditService auditService,
+            UserQuotaService quotaService,
             ObjectProvider<LineReader> lineReader) {
         this.userService = userService;
         this.passwordService = passwordService;
@@ -61,6 +65,7 @@ public class UserCommands {
         this.maintenanceService = maintenanceService;
         this.ssoConfigService = ssoConfigService;
         this.auditService = auditService;
+        this.quotaService = quotaService;
         this.lineReader = lineReader;
     }
 
@@ -120,7 +125,19 @@ public class UserCommands {
                             description = "Mark as service account. Name must start with '_' and not with '_vance-'. "
                                     + "Login is disabled by default; tokens must be minted out-of-band.",
                             defaultValue = "false")
-                    boolean serviceAccount) {
+                    boolean serviceAccount,
+            @Option(
+                            longName = "ignore-quota",
+                            description = "Create even when the tenant's seat (or service-account) quota is reached.",
+                            defaultValue = "false")
+                    boolean ignoreQuota) {
+        // Before the password prompt: a refusal must not cost the operator a typed password.
+        UserQuotaKind kind = UserQuotaKind.forServiceAccount(serviceAccount);
+        @Nullable
+        String refused = ignoreQuota ? null : quotaRefusal(tenant, () -> quotaService.checkOneMore(tenant, kind));
+        if (refused != null) {
+            return refused;
+        }
         @Nullable String hash = null;
         if (!noPassword) {
             String plain = StringUtils.isBlank(password)
@@ -139,7 +156,7 @@ public class UserCommands {
         UserDocument user = serviceAccount
                 ? userService.createServiceAccount(tenant, name, hash, title, email)
                 : userService.create(tenant, name, hash, title, email);
-        return "Created:\n" + renderOne(user);
+        return "Created:\n" + renderOne(user) + quotaLine(tenant, kind);
     }
 
     @Command(
@@ -156,9 +173,24 @@ public class UserCommands {
                             longName = "login-enabled",
                             description = "Toggle the password-login gate. Cannot be set to true on service accounts.")
                     @Nullable
-                    Boolean loginEnabled) {
+                    Boolean loginEnabled,
+            @Option(
+                            longName = "ignore-quota",
+                            description = "Re-enable a DISABLED account even when its quota is reached.",
+                            defaultValue = "false")
+                    boolean ignoreQuota) {
+        @Nullable
+        UserDocument current = status == null
+                ? null
+                : userService.findByTenantAndName(tenant, name).orElse(null);
+        if (current != null && !ignoreQuota) {
+            String refused = quotaRefusal(tenant, () -> quotaService.checkStatusChange(tenant, current, status));
+            if (refused != null) {
+                return refused;
+            }
+        }
         UserDocument user = userService.update(tenant, name, title, email, status, loginEnabled);
-        return "Updated:\n" + renderOne(user);
+        return "Updated:\n" + renderOne(user) + (current == null ? "" : quotaLine(tenant, UserQuotaKind.of(user)));
     }
 
     @Command(
@@ -188,6 +220,40 @@ public class UserCommands {
         return "Password reset for user '" + name + "' in tenant '" + tenant + "'.";
     }
 
+    /**
+     * The shell checks the account quotas like the product surfaces, but the
+     * operator may step past them with {@code --ignore-quota} — the shell is
+     * the way out when the limit itself is in the way, and it has to work
+     * without a brain. Refusing by default keeps an overshoot deliberate.
+     *
+     * @return the refusal text, or {@code null} to go ahead
+     */
+    private @Nullable String quotaRefusal(String tenant, Runnable check) {
+        try {
+            check.run();
+            return null;
+        } catch (UserQuotaService.UserQuotaExceededException e) {
+            return "Refused: " + label(e.kind()) + " quota of tenant '" + tenant + "' reached (" + e.active() + "/"
+                    + e.limit() + "). Disable or delete an account, raise "
+                    + e.kind().settingKey()
+                    + " on _tenant, or pass --ignore-quota.";
+        }
+    }
+
+    /** Current count after a change, flagged when over the limit; empty for an unlimited quota. */
+    private String quotaLine(String tenant, UserQuotaKind kind) {
+        UserQuotaService.Usage usage = quotaService.status(tenant, kind);
+        if (usage.limit() <= 0) {
+            return "";
+        }
+        return "\n  quota       : " + usage.active() + "/" + usage.limit() + " " + label(kind)
+                + (usage.overLimit() ? " (over the limit)" : "");
+    }
+
+    private static String label(UserQuotaKind kind) {
+        return kind == UserQuotaKind.SEATS ? "seats" : "service-accounts";
+    }
+
     // ─── External sign-in (SSO) ────────────────────────────────────────────
     //
     // planning/sso-login.md §6.3. Preparing is the only way an existing account
@@ -209,7 +275,13 @@ public class UserCommands {
                             description = "Full address the person signs in with. Its domain must be mapped to"
                                     + " this tenant in _vance/config/sso.yaml, or it is a Gmail address and the"
                                     + " tenant is open for private accounts.")
-                    String email) {
+                    String email,
+            @Option(
+                            longName = "ignore-quota",
+                            description = "Create the account even when the tenant's seat quota is reached"
+                                    + " (only relevant when the account does not exist yet).",
+                            defaultValue = "false")
+                    boolean ignoreQuota) {
         String normalized = ExternalEmails.normalize(email);
         if (normalized == null || ExternalEmails.hasPlusTag(normalized)) {
             return "Refused: '" + email + "' is not a usable address (plus addressing is not allowed).";
@@ -223,6 +295,15 @@ public class UserCommands {
                     + " not mapped to this tenant in " + SsoConfigService.CONFIG_PATH
                     + " (or, for Gmail, the tenant is not listed under consumerAccounts).";
         }
+        // Preparing a missing account creates it — that takes a seat. An existing
+        // one already holds its place.
+        boolean creates = !userService.existsByTenantAndName(tenant, name);
+        if (creates && !ignoreQuota) {
+            String refused = quotaRefusal(tenant, () -> quotaService.checkOneMore(tenant, UserQuotaKind.SEATS));
+            if (refused != null) {
+                return refused;
+            }
+        }
         UserDocument user;
         try {
             user = userService.prepareExternalIdentity(tenant, name, provider.key(), provider.issuer(), normalized);
@@ -230,7 +311,8 @@ public class UserCommands {
             return "Refused: " + e.getMessage();
         }
         auditService.authSsoIdentity(tenant, name, "prepared", "anus");
-        return "Prepared for sign-in as " + normalized + " via " + provider.key() + ":\n" + renderOne(user);
+        return "Prepared for sign-in as " + normalized + " via " + provider.key() + ":\n" + renderOne(user)
+                + (creates ? quotaLine(tenant, UserQuotaKind.SEATS) : "");
     }
 
     @Command(

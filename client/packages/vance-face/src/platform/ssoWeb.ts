@@ -78,10 +78,22 @@ export function canSignInViaApp(): boolean {
   return signInBridge() !== null;
 }
 
+/**
+ * The coarse failure code the server sends back ({@code SsoLoginService.FAIL_*}).
+ * {@code no-seats} is the one refusal named in its own words: the person
+ * cannot fix it, only an administrator can.
+ */
+export function ssoFailure(code: string): { kind: 'rejected' | 'no-seats' | 'failed' } {
+  if (code === 'rejected') return { kind: 'rejected' };
+  if (code === 'no-seats') return { kind: 'no-seats' };
+  return { kind: 'failed' };
+}
+
 /** Outcome of {@link signInViaApp}. */
 export type AppSignInOutcome =
   | { kind: 'ok'; response: AccessTokenResponse }
   | { kind: 'rejected' }
+  | { kind: 'no-seats' }
   | { kind: 'failed' };
 
 /**
@@ -105,7 +117,7 @@ export async function signInViaApp(params: {
     return { kind: 'failed' };
   }
   const error = returned.searchParams.get('error');
-  if (error) return { kind: error === 'rejected' ? 'rejected' : 'failed' };
+  if (error) return ssoFailure(error);
   const code = returned.searchParams.get('code');
   if (!code) return { kind: 'failed' };
   const body: SsoRedeemRequest = { code, verifier };

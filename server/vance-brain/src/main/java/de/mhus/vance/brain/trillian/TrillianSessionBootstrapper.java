@@ -23,6 +23,8 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.trillian.TrillianProcessKeys;
 import de.mhus.vance.shared.user.UserDocument;
+import de.mhus.vance.shared.user.UserQuotaKind;
+import de.mhus.vance.shared.user.UserQuotaService;
 import de.mhus.vance.shared.user.UserService;
 import java.security.SecureRandom;
 import java.util.LinkedHashMap;
@@ -230,6 +232,8 @@ public class TrillianSessionBootstrapper {
     private final TrillianActivationGate activationGate;
 
     private final RoleBootstrap roleBootstrap;
+    /** Service-account quota — a fresh Trillian account takes a place (planning/user-quota.md §4.3). */
+    private final UserQuotaService quotaService;
 
     private final SecureRandom random = new SecureRandom();
 
@@ -371,6 +375,18 @@ public class TrillianSessionBootstrapper {
         } catch (IllegalStateException denied) {
             suppressLoop(controlSession, controlProcess, denied.getMessage());
             return;
+        }
+        // Service-account quota: minting a fresh account takes a place, an
+        // adopted one already holds its own. Same shape as the gates above —
+        // before the mint, the control session stays usable, the chat says
+        // why once, and the next turn builds the loop when a place is free.
+        if (!adopted) {
+            try {
+                quotaService.checkOneMore(controlSession.getTenantId(), UserQuotaKind.SERVICE_ACCOUNTS);
+            } catch (UserQuotaService.UserQuotaExceededException full) {
+                suppressLoop(controlSession, controlProcess, full.getMessage());
+                return;
+            }
         }
         clearGateSuppression(controlProcess);
 

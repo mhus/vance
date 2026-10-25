@@ -43,7 +43,8 @@ import org.springframework.stereotype.Component;
  * the tenant's footprint, and an agent that could raise it would defeat the
  * operator's whole point of setting a limit. A human sets it through the
  * {@code storage-quota} setting form. {@code project.quota.*} likewise caps the
- * number of active projects ({@code project-quota} form).
+ * number of active projects ({@code project-quota} form), {@code user.quota.*}
+ * the number of accounts ({@code user-quota} form).
  *
  * <p>Grammar: comma-separated, each entry either an exact key or a prefix ending
  * in {@code *}. Deliberately not a full glob — this is security configuration and
@@ -58,7 +59,7 @@ public class AgentSettingKeyPolicy {
      * {@code application.yml} of the brain repeats it — keep both in step.
      */
     public static final String DEFAULT_DENY_KEYS =
-            "ai.provider.*,vault.*,store.*,kit.*,ai.llm.budget.*,storage.quota.*,project.quota.*";
+            "ai.provider.*,vault.*,store.*,kit.*,ai.llm.budget.*,storage.quota.*,project.quota.*,user.quota.*";
 
     private final List<String> denyPatterns;
 

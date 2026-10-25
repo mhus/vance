@@ -1,4 +1,4 @@
-import type { LlmBudgetStatusDto, LlmBudgetWindowDto, ProjectQuotaDto, UsageBucketDto } from '@vance/generated';
+import type { LlmBudgetStatusDto, LlmBudgetWindowDto, UsageBucketDto } from '@vance/generated';
 
 /**
  * Pure transforms behind the Quotas tab. Pulled out of {@link QuotasTab.vue}
@@ -79,22 +79,28 @@ export function summariseProjectBuckets(buckets: UsageBucketDto[]): ProjectUsage
   return [...byKey.values()].sort((a, b) => b.costTotal - a.costTotal);
 }
 
+/** A counted quota: how many occupy a place and the ceiling ({@code limit 0} = none). */
+export interface CountQuota {
+  active: number;
+  limit: number;
+}
+
 /**
- * What the "Active projects" meter shows. {@code percent} is {@code null} for
- * an unlimited tenant — there is nothing to fill. Severity follows the same
- * cut-offs as the storage meter (80 % warning, full = danger); "full" is the
- * point at which the next create is refused.
+ * What a count meter shows — active projects, seats, service accounts.
+ * {@code percent} is {@code null} for an unlimited quota — there is nothing to
+ * fill. Severity follows the same cut-offs as the storage meter (80 % warning,
+ * full = danger); "full" is the point at which the next create is refused.
  */
-export interface ProjectQuotaView {
+export interface CountQuotaView {
   unlimited: boolean;
   percent: number | null;
   severity: 'ok' | 'warning' | 'danger' | null;
 }
 
-export function projectQuotaView(quota: ProjectQuotaDto): ProjectQuotaView {
+export function countQuotaView(quota: CountQuota): CountQuotaView {
   if (quota.limit <= 0) return { unlimited: true, percent: null, severity: null };
   const percent = Math.round((quota.active / quota.limit) * 100);
-  let severity: ProjectQuotaView['severity'] = 'ok';
+  let severity: CountQuotaView['severity'] = 'ok';
   if (quota.active >= quota.limit) severity = 'danger';
   else if (percent >= 80) severity = 'warning';
   return { unlimited: false, percent, severity };

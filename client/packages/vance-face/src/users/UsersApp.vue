@@ -30,6 +30,7 @@ import {
   type SettingDto,
   type TeamDto,
   type UserDto,
+  type UserQuotaUsageDto,
 } from '@vance/generated';
 
 const { t } = useI18n();
@@ -127,6 +128,19 @@ const newUserTitle = ref('');
 const newUserEmail = ref('');
 const newUserPassword = ref('');
 const newUserError = ref<string | null>(null);
+/** Seat count shown in the create dialog; {@code null} until loaded or when unlimited. */
+const seatQuota = ref<UserQuotaUsageDto | null>(null);
+const seatsFull = computed(() => seatQuota.value !== null && seatQuota.value.active >= seatQuota.value.limit);
+
+async function loadSeatQuota(): Promise<void> {
+  seatQuota.value = null;
+  try {
+    const quota = await usersState.quota();
+    seatQuota.value = quota.seats.limit > 0 ? quota.seats : null;
+  } catch {
+    // The count is a hint; the server refuses at the limit either way.
+  }
+}
 
 const showCreateTeam = ref(false);
 const newTeamName = ref('');
@@ -400,6 +414,7 @@ function openCreateUser(): void {
   newUserPassword.value = '';
   newUserError.value = null;
   showCreateUser.value = true;
+  void loadSeatQuota();
 }
 
 async function submitCreateUser(): Promise<void> {
@@ -889,6 +904,12 @@ function fmt(value: unknown): string {
         <VAlert v-if="newUserError" variant="error">
           <span>{{ newUserError }}</span>
         </VAlert>
+        <VAlert v-else-if="seatQuota && seatsFull" variant="warning">
+          <span>{{ $t('users.createUser.seatsFull', { active: seatQuota.active, limit: seatQuota.limit }) }}</span>
+        </VAlert>
+        <p v-else-if="seatQuota" class="text-xs text-(--v-label-secondary)">
+          {{ $t('users.createUser.seats', { active: seatQuota.active, limit: seatQuota.limit }) }}
+        </p>
         <VInput
           v-model="newUserName"
           :label="$t('users.createUser.nameLabel')"

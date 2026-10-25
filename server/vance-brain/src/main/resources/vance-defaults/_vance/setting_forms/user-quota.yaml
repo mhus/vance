@@ -1,0 +1,55 @@
+title:
+  de: "Benutzer-Quota"
+  en: "User Quota"
+description:
+  de: "Begrenzt die Anzahl der Konten dieses Mandanten — getrennt nach
+       Personen (Plätze) und Service-Accounts. Es zählt jedes Konto, das
+       nicht deaktiviert ist, auch wartende (PENDING) und für SSO
+       vorbereitete. Vance-interne Konten (`_vance-*`) zählen nicht.
+       Geprüft wird beim Anlegen und beim Reaktivieren eines deaktivierten
+       Kontos; bestehende Konten bleiben bei einer Überschreitung nutzbar.
+       Leer oder `0` = unbegrenzt."
+  en: "Caps the number of accounts in this tenant — separately for people
+       (seats) and service accounts. Every account that is not disabled
+       counts, pending ones and accounts prepared for SSO too.
+       Vance-internal accounts (`_vance-*`) do not. Checked when an account
+       is created and when a disabled one is enabled again; existing
+       accounts keep working when the limit is exceeded. Empty or `0` =
+       unlimited."
+icon: users
+category: quotas
+defaultScope: project
+# Tenant-only: the quota is read from _tenant and nowhere else, so offering
+# the form in a regular project would write a setting nothing reads.
+availableIn: [ "_tenant" ]
+
+fields:
+
+  - name: seats
+    type: integer
+    integerMin: 0
+    label:
+      de: "Max. Plätze (Personen)"
+      en: "Max seats (people)"
+    help:
+      de: "Obergrenze für Personen-Konten, die nicht deaktiviert sind.
+           Leer oder `0` = unbegrenzt."
+      en: "Ceiling for accounts of people that are not disabled. Empty or
+           `0` = unlimited."
+    bindsTo:
+      key: "user.quota.seats"
+
+  - name: serviceAccounts
+    type: integer
+    integerMin: 0
+    label:
+      de: "Max. Service-Accounts"
+      en: "Max service accounts"
+    help:
+      de: "Obergrenze für Service-Accounts, die nicht deaktiviert sind —
+           auch die, die Trillian für sich anlegt. Leer oder `0` =
+           unbegrenzt."
+      en: "Ceiling for service accounts that are not disabled — including
+           the ones Trillian creates for itself. Empty or `0` = unlimited."
+    bindsTo:
+      key: "user.quota.serviceAccounts"

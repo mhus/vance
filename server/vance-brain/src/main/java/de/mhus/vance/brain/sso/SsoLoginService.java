@@ -80,6 +80,13 @@ public class SsoLoginService {
 
     public static final String FAIL_ERROR = "error";
 
+    /**
+     * The tenant has no free seat for a new account — the only refusal named
+     * to the browser, because the person can do nothing about it but ask an
+     * administrator.
+     */
+    public static final String FAIL_NO_SEATS = "no-seats";
+
     private final SsoConfigService configService;
     private final SecretResolver secretResolver;
     private final SsoOidcClient oidc;
@@ -492,7 +499,9 @@ public class SsoLoginService {
         if (outcome.user() == null) {
             log.info("SSO sign-in refused provider='{}' tenant='{}': {}", providerKey, tenant, outcome.rejection());
             audit.authSsoRejected(tenant, null, providerKey, String.valueOf(outcome.rejection()));
-            return new Callback.Failure(FAIL_REJECTED, tenantHint, request.getAppRedirect());
+            String failure =
+                    SsoAccountResolver.REJECT_NO_SEATS.equals(outcome.rejection()) ? FAIL_NO_SEATS : FAIL_REJECTED;
+            return new Callback.Failure(failure, tenantHint, request.getAppRedirect());
         }
         UserDocument user = outcome.user();
 

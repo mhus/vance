@@ -322,6 +322,19 @@ class SsoLoginServiceTest {
     }
 
     @Test
+    void noFreeSeat_isNamedToTheBrowser() throws Exception {
+        when(accounts.resolve(any()))
+                .thenReturn(new SsoAccountResolver.Outcome(null, SsoAccountResolver.REJECT_NO_SEATS));
+
+        SsoLoginService.Callback result =
+                signIn("wile@acme.com", null, null, "wile@acme.com", b -> b.claim("hd", "acme.com"));
+
+        assertThat(result).isInstanceOf(SsoLoginService.Callback.Failure.class);
+        assertThat(((SsoLoginService.Callback.Failure) result).code()).isEqualTo(SsoLoginService.FAIL_NO_SEATS);
+        verify(issuer, never()).issue(anyString(), anyString(), anyBoolean(), any());
+    }
+
+    @Test
     void safeNext_andTenantOf() {
         assertThat(SsoLoginService.safeNext("/a?b=c")).isEqualTo("/a?b=c");
         assertThat(SsoLoginService.safeNext("https://evil")).isNull();

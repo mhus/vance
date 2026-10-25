@@ -70,6 +70,8 @@ public class UserService {
 
     private static final String F_TENANT_ID = "tenantId";
     private static final String F_NAME = "name";
+    private static final String F_STATUS = "status";
+    private static final String F_SERVICE_ACCOUNT = "serviceAccount";
     private static final String F_FAILED_ATTEMPTS = "failedLoginAttempts";
     private static final String F_LOCKED_UNTIL = "lockedUntil";
     private static final String F_LAST_FAILED = "lastFailedLoginAt";
@@ -103,6 +105,28 @@ public class UserService {
 
     public List<UserDocument> all(String tenantId) {
         return repository.findByTenantId(tenantId);
+    }
+
+    /**
+     * Accounts of {@code tenantId} that occupy a place of {@code kind}: every
+     * status except {@link UserStatus#DISABLED} — PENDING and prepared
+     * accounts hold their place from creation on. Vance-internal
+     * {@code _vance-*} identities never count.
+     */
+    public long countCounted(String tenantId, UserQuotaKind kind) {
+        Criteria criteria =
+                Criteria.where(F_TENANT_ID).is(tenantId).and(F_STATUS).ne(UserStatus.DISABLED);
+        if (kind == UserQuotaKind.SERVICE_ACCOUNTS) {
+            criteria = criteria.and(F_SERVICE_ACCOUNT)
+                    .is(true)
+                    .and(F_NAME)
+                    .not()
+                    .regex("^" + RESERVED_VANCE_PREFIX); // prefix has no regex metacharacters
+        } else {
+            // ne(true), not is(false): a row without the field is a person.
+            criteria = criteria.and(F_SERVICE_ACCOUNT).ne(true);
+        }
+        return mongoTemplate.count(new Query(criteria), UserDocument.class);
     }
 
     /**

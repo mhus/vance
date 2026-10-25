@@ -31,6 +31,8 @@ class AgentSettingKeyPolicyTest {
         assertThat(policy.isDenied("storage.quota.maxBytes")).isTrue();
         assertThat(policy.isDenied("storage.quota.warnPercent")).isTrue();
         assertThat(policy.isDenied("project.quota.maxActive")).isTrue();
+        assertThat(policy.isDenied("user.quota.seats")).isTrue();
+        assertThat(policy.isDenied("user.quota.serviceAccounts")).isTrue();
     }
 
     @Test

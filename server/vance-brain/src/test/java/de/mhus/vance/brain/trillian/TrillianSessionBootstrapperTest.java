@@ -105,6 +105,9 @@ class TrillianSessionBootstrapperTest {
     @Mock
     TrillianActivationGate activationGate;
 
+    @Mock
+    de.mhus.vance.shared.user.UserQuotaService quotaService;
+
     TrillianSessionBootstrapper bootstrapper;
 
     /** Real registry with the baseline Nature — the seeding path is real logic. */
@@ -132,7 +135,8 @@ class TrillianSessionBootstrapperTest {
                 lifecycleProvider,
                 modelGate,
                 activationGate,
-                roleBootstrap);
+                roleBootstrap,
+                quotaService);
 
         when(activationGate.loopsEnabled(anyString(), any(), any())).thenReturn(true);
         when(lifecycleProvider.getObject()).thenReturn(lifecycleService);
@@ -342,7 +346,8 @@ class TrillianSessionBootstrapperTest {
                 lifecycleProvider,
                 modelGate,
                 activationGate,
-                roleBootstrap);
+                roleBootstrap,
+                quotaService);
 
         bootstrap(controlSession(), controlProcess("adam"));
 
@@ -546,7 +551,8 @@ class TrillianSessionBootstrapperTest {
                 lifecycleProvider,
                 modelGate,
                 activationGate,
-                roleBootstrap);
+                roleBootstrap,
+                quotaService);
 
         bootstrap(controlSession(), controlProcess("adam"));
 
@@ -594,6 +600,56 @@ class TrillianSessionBootstrapperTest {
         verify(userService, never()).createServiceAccount(anyString(), anyString(), any(), any(), any());
         verify(homeBootstrapService, never()).ensureHome(anyString(), anyString());
         verify(roleBootstrap, never()).grantProjectMember(any(), any(), any());
+    }
+
+    @Test
+    void aFullServiceAccountQuota_mintsNothing_andSaysWhyInTheControlChat() {
+        org.mockito.Mockito.doThrow(new de.mhus.vance.shared.user.UserQuotaService.UserQuotaExceededException(
+                        de.mhus.vance.shared.user.UserQuotaKind.SERVICE_ACCOUNTS, 3, 3))
+                .when(quotaService)
+                .checkOneMore(TENANT, de.mhus.vance.shared.user.UserQuotaKind.SERVICE_ACCOUNTS);
+
+        bootstrap(controlSession(), controlProcess());
+
+        // Same state as a closed activation gate: the control session lives,
+        // the loop is not built, nothing is left behind.
+        verify(userService, never()).createServiceAccount(anyString(), anyString(), any(), any(), any());
+        verify(homeBootstrapService, never()).ensureHome(anyString(), anyString());
+        verify(sessionService, never())
+                .create(anyString(), anyString(), anyString(), any(), anyString(), anyString(), any(), anyBoolean());
+        verify(thinkProcessService)
+                .setEngineParamOverride(
+                        eq("control-process-id"),
+                        eq(TrillianSessionBootstrapper.PARAM_GATE_DENIED),
+                        org.mockito.ArgumentMatchers.contains("Service-account quota reached: 3 of 3"));
+        ArgumentCaptor<ChatMessageDocument> message = ArgumentCaptor.forClass(ChatMessageDocument.class);
+        verify(chatMessageService).append(message.capture());
+        org.assertj.core.api.Assertions.assertThat(message.getValue().getContent())
+                .contains("Service-account quota reached");
+    }
+
+    @Test
+    void anAdoptedAccount_holdsItsOwnPlace_andIsNotChecked() {
+        ThinkProcessDocument previous = new ThinkProcessDocument();
+        previous.setId("previous-chat");
+        Map<String, Object> params = new java.util.LinkedHashMap<>();
+        params.put(TrillianSessionBootstrapper.PARAM_TRILLIAN_USER_NAME, "_trillian-void-0001");
+        previous.setEngineParams(params);
+        when(thinkProcessService.findBySession(TENANT, "sess_control")).thenReturn(List.of(previous));
+        when(userService.existsByTenantAndName(TENANT, "_trillian-void-0001")).thenReturn(true);
+
+        bootstrap(controlSession(), controlProcess());
+
+        verify(quotaService, never()).checkOneMore(anyString(), any());
+        verify(userService, never()).createServiceAccount(anyString(), anyString(), any(), any(), any());
+    }
+
+    @Test
+    void aFreshAccount_isCheckedAgainstTheServiceAccountQuota() {
+        bootstrap(controlSession(), controlProcess());
+
+        verify(quotaService).checkOneMore(TENANT, de.mhus.vance.shared.user.UserQuotaKind.SERVICE_ACCOUNTS);
+        verify(userService).createServiceAccount(eq(TENANT), startsWith("_trillian-void-"), any(), any(), any());
     }
 
     @Test

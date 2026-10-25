@@ -612,4 +612,32 @@ class UserServiceTest {
                 .isEqualTo(ExternalIdentity.GOOGLE_ISSUER);
         assertThat(ExternalIdentity.canonicalIssuer(" http://localhost:7777/ ")).isEqualTo("http://localhost:7777");
     }
+
+    @Test
+    void countCounted_seats_excludesDisabledAndServiceAccounts() {
+        when(mongoTemplate.count(any(Query.class), eq(UserDocument.class))).thenReturn(4L);
+
+        assertThat(service.countCounted(TENANT, UserQuotaKind.SEATS)).isEqualTo(4L);
+
+        ArgumentCaptor<Query> query = ArgumentCaptor.forClass(Query.class);
+        verify(mongoTemplate).count(query.capture(), eq(UserDocument.class));
+        org.bson.Document q = query.getValue().getQueryObject();
+        assertThat(q.get("tenantId")).isEqualTo(TENANT);
+        assertThat(q.get("status")).isEqualTo(new org.bson.Document("$ne", UserStatus.DISABLED));
+        // ne(true): a row without the field is a person
+        assertThat(q.get("serviceAccount")).isEqualTo(new org.bson.Document("$ne", true));
+        assertThat(q.containsKey("name")).isFalse();
+    }
+
+    @Test
+    void countCounted_serviceAccounts_excludesVanceInternal() {
+        service.countCounted(TENANT, UserQuotaKind.SERVICE_ACCOUNTS);
+
+        ArgumentCaptor<Query> query = ArgumentCaptor.forClass(Query.class);
+        verify(mongoTemplate).count(query.capture(), eq(UserDocument.class));
+        org.bson.Document q = query.getValue().getQueryObject();
+        assertThat(q.get("status")).isEqualTo(new org.bson.Document("$ne", UserStatus.DISABLED));
+        assertThat(q.get("serviceAccount")).isEqualTo(true);
+        assertThat(q.get("name")).asString().contains("$not").contains("^_vance-");
+    }
 }

@@ -12,6 +12,8 @@ import de.mhus.vance.shared.password.PasswordService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.user.UserDocument;
+import de.mhus.vance.shared.user.UserQuotaKind;
+import de.mhus.vance.shared.user.UserQuotaService;
 import de.mhus.vance.shared.user.UserService;
 import de.mhus.vance.shared.user.UserStatus;
 import jakarta.servlet.http.HttpServletRequest;
@@ -44,6 +46,10 @@ import org.springframework.web.server.ResponseStatusException;
  * rule: a user cannot delete or disable their own account — that prevents an
  * admin from accidentally locking themselves out.
  *
+ * <p>Creating a user and re-enabling a DISABLED one are subject to the
+ * tenant's seat quota (service accounts: their own quota); a refusal is
+ * answered 409 by {@link UserQuotaExceptionAdvice}.
+ *
  * <p>Passwords are sent as plaintext and hashed server-side via
  * {@link PasswordService#hash(String)}; the hash never leaves through
  * any read endpoint.
@@ -58,6 +64,7 @@ public class UserAdminController {
     private final PasswordService passwordService;
     private final PasswordPolicyService passwordPolicyService;
     private final RequestAuthority authority;
+    private final UserQuotaService quotaService;
 
     @GetMapping
     public List<UserDto> list(@PathVariable("tenant") String tenant, HttpServletRequest httpRequest) {
@@ -89,6 +96,7 @@ public class UserAdminController {
         if (withPassword) {
             validatePolicy(request.getPassword());
         }
+        quotaService.checkOneMore(tenant, UserQuotaKind.SEATS);
         try {
             String passwordHash = withPassword ? passwordService.hash(request.getPassword()) : null;
             UserDocument saved =
@@ -110,6 +118,13 @@ public class UserAdminController {
         // Self-protect: don't let the caller disable themselves.
         if (status == UserStatus.DISABLED && name.equals(currentUser(httpRequest))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Cannot disable your own account");
+        }
+        if (status != null) {
+            UserDocument current = userService
+                    .findByTenantAndName(tenant, name)
+                    .orElseThrow(
+                            () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User '" + name + "' not found"));
+            quotaService.checkStatusChange(tenant, current, status);
         }
         try {
             UserDocument saved = userService.update(

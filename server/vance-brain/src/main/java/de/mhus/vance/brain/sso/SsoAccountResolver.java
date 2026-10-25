@@ -3,6 +3,8 @@ package de.mhus.vance.brain.sso;
 import de.mhus.vance.shared.audit.AuditService;
 import de.mhus.vance.shared.user.ExternalEmails;
 import de.mhus.vance.shared.user.UserDocument;
+import de.mhus.vance.shared.user.UserQuotaKind;
+import de.mhus.vance.shared.user.UserQuotaService;
 import de.mhus.vance.shared.user.UserService;
 import de.mhus.vance.shared.user.UserStatus;
 import java.util.Optional;
@@ -24,7 +26,8 @@ import org.springframework.stereotype.Service;
  *       bind it. The name does not matter; the admin chose it.</li>
  *   <li>Only with {@code autoCreate} (Workspace domains, never private Gmail):
  *       derive the name from the local part and create the account — unless the
- *       name is taken, by anybody, in any state.</li>
+ *       name is taken, by anybody, in any state, or the tenant has no free
+ *       seat left ({@value #REJECT_NO_SEATS}).</li>
  * </ol>
  *
  * <p>Nothing here ever takes over an account that was not prepared for this
@@ -39,8 +42,16 @@ public class SsoAccountResolver {
     /** Same rule as the REST user-create DTO ({@code UserCreateRequest}). */
     static final Pattern USER_NAME = Pattern.compile("^[a-z0-9][a-z0-9_.-]*$");
 
+    /**
+     * Auto-create refused by the seat quota. The one rejection the browser is
+     * told about in its own words: the person did nothing wrong and cannot fix
+     * it, only an administrator can.
+     */
+    public static final String REJECT_NO_SEATS = "seats-exhausted";
+
     private final UserService userService;
     private final AuditService auditService;
+    private final UserQuotaService quotaService;
 
     /** A verified sign-in, already checked against the domain/consumer rules. */
     public record SignIn(
@@ -106,6 +117,11 @@ public class SsoAccountResolver {
         }
         if (userService.existsByTenantAndName(in.tenant(), name)) {
             return Outcome.reject("name-taken");
+        }
+        try {
+            quotaService.checkOneMore(in.tenant(), UserQuotaKind.SEATS);
+        } catch (UserQuotaService.UserQuotaExceededException e) {
+            return Outcome.reject(REJECT_NO_SEATS);
         }
         UserDocument created;
         try {

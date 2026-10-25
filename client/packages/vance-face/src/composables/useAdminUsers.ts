@@ -3,6 +3,7 @@ import type {
   UserCreateRequest,
   UserDto,
   UserPasswordRequest,
+  UserQuotaDto,
   UserUpdateRequest,
 } from '@vance/generated';
 import { brainFetch } from '@vance/shared';
@@ -18,6 +19,7 @@ export function useAdminUsers(): {
   update: (name: string, req: UserUpdateRequest) => Promise<UserDto>;
   setPassword: (name: string, password: string) => Promise<void>;
   remove: (name: string) => Promise<void>;
+  quota: () => Promise<UserQuotaDto>;
 } {
   const users = ref<UserDto[]>([]);
   const loading = ref(false);
@@ -97,5 +99,10 @@ export function useAdminUsers(): {
     }
   }
 
-  return { users, loading, busy, error, reload, create, update, setPassword, remove };
+  /** Seat and service-account counts and limits of the tenant ({@code limit 0} = none). */
+  async function quota(): Promise<UserQuotaDto> {
+    return brainFetch<UserQuotaDto>('GET', 'admin/user-quota');
+  }
+
+  return { users, loading, busy, error, reload, create, update, setPassword, remove, quota };
 }

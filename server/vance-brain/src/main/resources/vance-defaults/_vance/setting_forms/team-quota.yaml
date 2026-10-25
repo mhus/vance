@@ -1,0 +1,34 @@
+title:
+  de: "Team-Quota"
+  en: "Team Quota"
+description:
+  de: "Begrenzt die Anzahl der Teams dieses Mandanten. Es zählt jedes Team,
+       das nicht deaktiviert ist. Geprüft wird beim Anlegen und beim
+       Wieder-Einschalten eines deaktivierten Teams; bestehende Teams bleiben
+       bei einer Überschreitung nutzbar. Leer oder `0` = unbegrenzt."
+  en: "Caps the number of teams in this tenant. Every team that is not
+       disabled counts. Checked when a team is created and when a disabled
+       one is enabled again; existing teams keep working when the limit is
+       exceeded. Empty or `0` = unlimited."
+icon: users
+category: quotas
+defaultScope: project
+# Tenant-only: the quota is read from _tenant and nowhere else, so offering
+# the form in a regular project would write a setting nothing reads.
+availableIn: [ "_tenant" ]
+
+fields:
+
+  - name: maxActive
+    type: integer
+    integerMin: 0
+    label:
+      de: "Max. Teams"
+      en: "Max teams"
+    help:
+      de: "Obergrenze für Teams, die nicht deaktiviert sind. Leer oder `0` =
+           unbegrenzt."
+      en: "Ceiling for teams that are not disabled. Empty or `0` =
+           unlimited."
+    bindsTo:
+      key: "team.quota.maxActive"

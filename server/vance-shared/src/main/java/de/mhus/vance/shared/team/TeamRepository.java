@@ -17,4 +17,7 @@ interface TeamRepository extends MongoRepository<TeamDocument, String> {
     List<TeamDocument> findByTenantId(String tenantId);
 
     List<TeamDocument> findByTenantIdAndMembersContaining(String tenantId, String username);
+
+    /** {@code enabled != disabled} — a row without the field is an enabled team. */
+    long countByTenantIdAndEnabledNot(String tenantId, boolean disabled);
 }

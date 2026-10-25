@@ -1,5 +1,6 @@
 import { ref, type Ref } from 'vue';
 import type {
+  TeamQuotaDto,
   TeamCreateRequest,
   TeamDto,
   TeamUpdateRequest,
@@ -16,6 +17,7 @@ export function useAdminTeams(): {
   create: (req: TeamCreateRequest) => Promise<TeamDto>;
   update: (name: string, req: TeamUpdateRequest) => Promise<TeamDto>;
   remove: (name: string) => Promise<void>;
+  quota: () => Promise<TeamQuotaDto>;
 } {
   const teams = ref<TeamDto[]>([]);
   const loading = ref(false);
@@ -80,5 +82,10 @@ export function useAdminTeams(): {
     }
   }
 
-  return { teams, loading, busy, error, reload, create, update, remove };
+  /** Enabled-team count and limit of the tenant ({@code limit 0} = none). */
+  async function quota(): Promise<TeamQuotaDto> {
+    return brainFetch<TeamQuotaDto>('GET', 'admin/team-quota');
+  }
+
+  return { teams, loading, busy, error, reload, create, update, remove, quota };
 }

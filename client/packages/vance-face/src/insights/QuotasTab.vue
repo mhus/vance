@@ -6,10 +6,12 @@ import type {
   LlmBudgetWindowDto,
   ProjectQuotaDto,
   StorageCleanupResultDto,
+  TeamQuotaDto,
   UserQuotaDto,
 } from '@vance/generated';
 import { VAlert, VBadge, VButton, VCard, VEmptyState, VGroup, VGroupRow, VIcon, useConfirm } from '@/components';
 import { useAdminProjects } from '@/composables/useAdminProjects';
+import { useAdminTeams } from '@/composables/useAdminTeams';
 import { useAdminUsers } from '@/composables/useAdminUsers';
 import { useMe } from '@/composables/useMe';
 import {
@@ -38,7 +40,8 @@ import {
  *   <li><b>Projects</b> — active projects against the tenant's
  *       {@code project.quota.maxActive}.</li>
  *   <li><b>Users</b> — seats and service accounts against
- *       {@code user.quota.seats} / {@code user.quota.serviceAccounts}.</li>
+ *       {@code user.quota.seats} / {@code user.quota.serviceAccounts}, and
+ *       enabled teams against {@code team.quota.maxActive}.</li>
  *   <li><b>LLM</b> — the cost budget (limits) plus the most-loaded window
  *       as a percent. Tenant and every project side-by-side. LLM power
  *       switch surfaced here too: it is the third way to stop spend.</li>
@@ -59,8 +62,9 @@ import {
  *       section 3.</li>
  *   <li>{@code GET /brain/{tenant}/admin/projects/quota} — whoever may list
  *       projects; powers the projects section, hidden when refused.</li>
- *   <li>{@code GET /brain/{tenant}/admin/user-quota} — whoever may list
- *       users; powers the users section, hidden when refused.</li>
+ *   <li>{@code GET /brain/{tenant}/admin/user-quota} and
+ *       {@code GET /brain/{tenant}/admin/team-quota} — whoever may list users
+ *       and teams; power the users section, hidden when refused.</li>
  * </ul>
  *
  * <p>A non-admin who lands here sees section 1 and a friendly
@@ -82,22 +86,27 @@ const adminUsers = useAdminUsers();
 /** {@code null} until loaded, and when the caller may not see the user list. */
 const userQuota = ref<UserQuotaDto | null>(null);
 
+const adminTeams = useAdminTeams();
+/** {@code null} until loaded, and when the caller may not see the team list. */
+const teamQuota = ref<TeamQuotaDto | null>(null);
+
 interface UserQuotaRow {
-  key: 'seats' | 'serviceAccounts';
+  key: 'seats' | 'serviceAccounts' | 'teams';
   active: number;
   limit: number;
   view: ReturnType<typeof countQuotaView>;
 }
 
+function quotaRow(key: UserQuotaRow['key'], quota: { active: number; limit: number }): UserQuotaRow {
+  return { key, active: quota.active, limit: quota.limit, view: countQuotaView(quota) };
+}
+
 const userQuotaRows = computed<UserQuotaRow[]>(() => {
+  const rows: UserQuotaRow[] = [];
   const q = userQuota.value;
-  if (!q) return [];
-  return (['seats', 'serviceAccounts'] as const).map((key) => ({
-    key,
-    active: q[key].active,
-    limit: q[key].limit,
-    view: countQuotaView(q[key]),
-  }));
+  if (q) rows.push(quotaRow('seats', q.seats), quotaRow('serviceAccounts', q.serviceAccounts));
+  if (teamQuota.value) rows.push(quotaRow('teams', teamQuota.value));
+  return rows;
 });
 
 async function loadUserQuota(): Promise<void> {
@@ -106,6 +115,15 @@ async function loadUserQuota(): Promise<void> {
   } catch {
     // Not allowed to list users → the section stays hidden.
     userQuota.value = null;
+  }
+}
+
+async function loadTeamQuota(): Promise<void> {
+  try {
+    teamQuota.value = await adminTeams.quota();
+  } catch {
+    // Not allowed to list teams → the row stays hidden.
+    teamQuota.value = null;
   }
 }
 
@@ -209,6 +227,7 @@ async function refresh(): Promise<void> {
     cleanup.loadBreakdown(cleanupProjectId.value),
     loadProjectQuota(),
     loadUserQuota(),
+    loadTeamQuota(),
   ]);
 }
 
@@ -479,7 +498,7 @@ const projectTotalsByCurrency = computed<Map<string, number>>(() => costByCurren
     </section>
 
     <!-- ─── Users ─── -->
-    <section v-if="userQuota" class="flex flex-col gap-2">
+    <section v-if="userQuotaRows.length > 0" class="flex flex-col gap-2">
       <h3 class="quotas-heading">{{ $t('insights.quotas.usersHeading') }}</h3>
 
       <VCard :title="$t('insights.quotas.usersTitle')">
@@ -488,7 +507,7 @@ const projectTotalsByCurrency = computed<Map<string, number>>(() => costByCurren
             <VGroupRow
               :label="$t(`insights.quotas.${row.key}Row`)"
               :description="row.view.unlimited
-                ? $t('insights.quotas.usersUnlimitedHint')
+                ? $t(row.key === 'teams' ? 'insights.quotas.teamsUnlimitedHint' : 'insights.quotas.usersUnlimitedHint')
                 : $t(`insights.quotas.${row.key}Hint`)"
               :value="row.view.unlimited
                 ? $t('insights.quotas.projectsValueUnlimited', { active: row.active })

@@ -39,6 +39,11 @@ public class TeamService implements TeamMembership {
         return repository.findByTenantId(tenantId);
     }
 
+    /** Enabled teams of {@code tenantId} — what the team quota counts. */
+    public long countEnabled(String tenantId) {
+        return repository.countByTenantIdAndEnabledNot(tenantId, false);
+    }
+
     /** Teams that include the given username. */
     public List<TeamDocument> byMember(String tenantId, String username) {
         return repository.findByTenantIdAndMembersContaining(tenantId, username);

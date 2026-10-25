@@ -456,6 +456,7 @@ export * from './uistate/SidebarUiStateDto';
 
 export * from './users/TeamCreateRequest';
 export * from './users/TeamDto';
+export * from './users/TeamQuotaDto';
 export * from './users/TeamUpdateRequest';
 export * from './users/UserCreateRequest';
 export * from './users/UserDto';

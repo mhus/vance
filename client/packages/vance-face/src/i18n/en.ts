@@ -2114,6 +2114,15 @@ export default {
       storageUnknown: 'Quota state not yet available.',
       storageExhausted: 'Exhausted',
       storageWarning: 'Warning',
+      projectsHeading: 'Projects',
+      projectsTitle: 'Active projects',
+      projectsRow: 'Active projects',
+      projectsHint:
+        'Projects that are not archived, suspended ones included. Creating, copying and unarchiving a project is refused at the limit.',
+      projectsUnlimitedHint: 'No limit. Set one in the settings form "Project Quota" on the tenant.',
+      projectsValue: '{active} of {limit}',
+      projectsValueUnlimited: '{active} (unlimited)',
+      projectsFull: 'Limit reached — new projects are refused',
       llmHeading: 'LLM',
       powerTitle: 'LLM access',
       powerRow: 'Tenant LLM switch',
@@ -3495,10 +3504,12 @@ export default {
     project: {
       cardTitle: 'Project: {name}',
       archivedNote:
-        'This project is archived. It is read-only for runtime claims but its metadata can still be edited.',
+        'This project is archived. It does not run, but its documents and settings are kept and its metadata can still be edited. Unarchive brings it back with an empty workspace.',
+      archivedReturnsTo: 'Unarchive returns it to the group "{group}".',
       nameImmutable: 'Project name is immutable.',
       groupLabel: 'Group',
       archive: 'Archive',
+      unarchive: 'Unarchive',
       statusLabel: 'Status',
       podLabel: 'Pod',
       claimedLabel: 'Claimed',
@@ -3519,7 +3530,10 @@ export default {
         'Project "{name}" created — waiting for a matching pod before it can start.',
       createdWithKitError: 'Project "{name}" created, but kit "{kit}" install failed: {error}',
       archived: 'Project archived.',
-      confirmArchive: 'Archive project "{name}"? It will be moved to the "archived" group.',
+      unarchived: 'Project unarchived.',
+      confirmArchive:
+        'Archive project "{name}"? It will be moved to the "archived" group. Documents and settings are kept, '
+        + 'but its workspace (checkouts, working files) is deleted and does not come back on unarchive.',
       languagesCardTitle: 'Languages',
       languagesDescription:
         'Per-project language overrides. When unset, resolution falls through to user / tenant defaults.',

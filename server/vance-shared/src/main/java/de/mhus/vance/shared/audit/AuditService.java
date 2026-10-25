@@ -456,6 +456,20 @@ public class AuditService {
                 .build());
     }
 
+    public void projectReopen(String tenantId, String projectName, @Nullable String projectGroupId) {
+        // INFO, not CRITICAL like close: reopening destroys nothing — it brings
+        // a project back with an empty workspace.
+        record(AuditEventDto.builder()
+                .action("project.reopen")
+                .severity(AuditSeverity.INFO)
+                .outcome("success")
+                .tenantId(tenantId)
+                .projectId(projectName)
+                .target("project:" + projectName)
+                .details(orderedMap("projectGroupId", projectGroupId))
+                .build());
+    }
+
     public void projectRename(String tenantId, String projectName, String newProjectName) {
         // CRITICAL for the same reason as close: the name is the business key
         // every other entity points at, so this rewrites references across the

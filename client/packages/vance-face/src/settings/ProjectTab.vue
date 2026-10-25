@@ -64,7 +64,9 @@ const form = reactive({
 const project = computed<ProjectDto | null>(() =>
   projectsState.projects.value.find(p => p.name === props.projectName) ?? null);
 
-const isArchivedProject = computed(() => project.value?.status === 'ARCHIVED');
+// The server's status for an archived project is CLOSED — "archived" is the
+// UI's word for it, and the reserved group it moves into.
+const isArchivedProject = computed(() => project.value?.status === 'CLOSED');
 
 const lifecycleNote = computed(() => {
   switch (project.value?.lifecycleType) {
@@ -122,10 +124,20 @@ async function archiveProject(): Promise<void> {
   try {
     await projectsState.archive(props.projectName);
     banner.value = t('scopes.project.archived');
-    // Stay on the project — its data is still there, just status=ARCHIVED.
+    // Stay on the project — its documents are still there, just status=CLOSED.
     await projectsState.reload();
   } catch {
     /* projectsState.error surfaces via the card */
+  }
+}
+
+async function unarchiveProject(): Promise<void> {
+  banner.value = null;
+  try {
+    await projectsState.unarchive(props.projectName);
+    banner.value = t('scopes.project.unarchived');
+  } catch {
+    /* projectsState.error surfaces via the card — the quota refusal included */
   }
 }
 
@@ -340,6 +352,9 @@ function onProjectContentLanguageChanged(value: string | null): void {
     <VCard :title="t('scopes.project.cardTitle', { name: projectName })">
       <VAlert v-if="isArchivedProject" variant="warning" class="mb-3">
         <span>{{ t('scopes.project.archivedNote') }}</span>
+        <span v-if="project?.archivedFromGroupId">
+          {{ t('scopes.project.archivedReturnsTo', { group: project.archivedFromGroupId }) }}
+        </span>
       </VAlert>
       <div v-if="!project" class="text-(--v-label-secondary)">{{ t('scopes.loading') }}</div>
       <div v-else class="flex flex-col gap-3">
@@ -389,8 +404,14 @@ function onProjectContentLanguageChanged(value: string | null): void {
         </dl>
         <div class="flex justify-between">
           <VButton
+            v-if="isArchivedProject"
+            variant="secondary"
+            :loading="projectsState.busy.value"
+            @click="unarchiveProject"
+          >{{ t('scopes.project.unarchive') }}</VButton>
+          <VButton
+            v-else
             variant="danger"
-            :disabled="isArchivedProject"
             :loading="projectsState.busy.value"
             @click="archiveProject"
           >{{ t('scopes.project.archive') }}</VButton>

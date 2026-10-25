@@ -58,6 +58,16 @@ public class ProjectDocument {
     /** Optional group the project belongs to ({@code ProjectGroupDocument.name}). */
     private @Nullable String projectGroupId;
 
+    /**
+     * The group the project was in when it was archived — {@code close}
+     * replaces {@link #projectGroupId} with the reserved {@code archived}
+     * group, and this is the only record of where it came from. Read and
+     * cleared by {@code ProjectService.reopen}; {@code null} on projects that
+     * are not archived, were ungrouped, or were archived before the field
+     * existed.
+     */
+    private @Nullable String archivedFromGroupId;
+
     /** Teams that have access to this project ({@code TeamDocument.name}). */
     @Builder.Default
     private List<String> teamIds = new ArrayList<>();

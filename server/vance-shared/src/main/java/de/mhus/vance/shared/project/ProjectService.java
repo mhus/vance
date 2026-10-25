@@ -82,6 +82,9 @@ public class ProjectService {
     private static final String F_HOME_RESOURCE_SCORE = "homeResourceScore";
     private static final String F_PLACEMENT_SELECTOR = "placementSelector";
     private static final String F_PENDING_SINCE = "pendingSince";
+    private static final String F_PROJECT_GROUP = "projectGroupId";
+    private static final String F_ARCHIVED_FROM_GROUP = "archivedFromGroupId";
+    private static final String F_KIND = "kind";
 
     /**
      * The statuses that express the intent "should be live somewhere" — the
@@ -683,7 +686,12 @@ public class ProjectService {
         }
         Query query =
                 new Query(Criteria.where(F_TENANT).is(tenantId).and(F_NAME).is(name));
-        Update update = new Update().set(F_STATUS, ProjectStatus.CLOSED).set("projectGroupId", closedGroupId);
+        Update update = new Update().set(F_STATUS, ProjectStatus.CLOSED).set(F_PROJECT_GROUP, closedGroupId);
+        // Remember the origin only on the first close — a repeated close would
+        // otherwise record the archived group as where the project came from.
+        if (current.getStatus() != ProjectStatus.CLOSED) {
+            update.set(F_ARCHIVED_FROM_GROUP, current.getProjectGroupId());
+        }
         ProjectDocument updated = mongoTemplate.findAndModify(
                 query, update, FindAndModifyOptions.options().returnNew(true), ProjectDocument.class);
         if (updated == null) {
@@ -693,6 +701,69 @@ public class ProjectService {
         auditService.projectClose(tenantId, name, closedGroupId);
         megadodoService.projectClosed(tenantId, name, /*actor*/ null);
         return updated;
+    }
+
+    /**
+     * Reopens an archived project: {@link ProjectStatus#CLOSED} back to
+     * {@link ProjectStatus#INIT}, {@code projectGroupId} set to
+     * {@code projectGroupId} (the caller decides whether the remembered
+     * {@link ProjectDocument#getArchivedFromGroupId()} still exists),
+     * the remembered origin cleared.
+     *
+     * <p>Only the status flips here. The workspace {@link #close} disposed
+     * is not restored — the next {@code bring} initialises a fresh, empty
+     * one. Documents, settings and sessions were never touched by the close.
+     *
+     * <p>Atomic on {@code status == CLOSED}: two concurrent reopens produce
+     * one winner and one {@link ProjectStatusConflictException}.
+     *
+     * @throws ProjectNotFoundException if the project does not exist
+     * @throws ProjectStatusConflictException if the project is not CLOSED
+     */
+    public ProjectDocument reopen(String tenantId, String name, @Nullable String projectGroupId) {
+        Query query = new Query(Criteria.where(F_TENANT)
+                .is(tenantId)
+                .and(F_NAME)
+                .is(name)
+                .and(F_STATUS)
+                .is(ProjectStatus.CLOSED));
+        Update update = new Update()
+                .set(F_STATUS, ProjectStatus.INIT)
+                .set(F_PROJECT_GROUP, projectGroupId)
+                .unset(F_ARCHIVED_FROM_GROUP);
+        ProjectDocument updated = mongoTemplate.findAndModify(
+                query, update, FindAndModifyOptions.options().returnNew(true), ProjectDocument.class);
+        if (updated == null) {
+            ProjectDocument actual = repository
+                    .findByTenantIdAndName(tenantId, name)
+                    .orElseThrow(() -> new ProjectNotFoundException(
+                            "Project '" + name + "' not found in tenant '" + tenantId + "'"));
+            throw new ProjectStatusConflictException(
+                    "Project '" + name + "' is " + actual.getStatus() + " — only an archived project can be reopened");
+        }
+        log.info("Reopened project tenantId='{}' name='{}' → group='{}'", tenantId, name, projectGroupId);
+        auditService.projectReopen(tenantId, name, projectGroupId);
+        megadodoService.projectReopened(tenantId, name, /*actor*/ null);
+        return updated;
+    }
+
+    /**
+     * Number of active projects in {@code tenantId}: not
+     * {@link ProjectKind#SYSTEM} and not {@link ProjectStatus#CLOSED}. Suspended projects count — they
+     * still belong to somebody and come back on the next access. The tenant
+     * project and the personal hubs are SYSTEM and never count.
+     */
+    public long countActive(String tenantId) {
+        return mongoTemplate.count(
+                new Query(Criteria.where(F_TENANT)
+                        .is(tenantId)
+                        // ne, not is(NORMAL): a row written before the field existed
+                        // has no kind and is a NORMAL project.
+                        .and(F_KIND)
+                        .ne(ProjectKind.SYSTEM)
+                        .and(F_STATUS)
+                        .ne(ProjectStatus.CLOSED)),
+                ProjectDocument.class);
     }
 
     /**

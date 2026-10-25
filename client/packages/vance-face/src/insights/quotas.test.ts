@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LlmBudgetStatusDto, LlmBudgetWindowDto, UsageBucketDto } from '@vance/generated';
-import { highestWindowPercent, summariseProjectBuckets } from './quotas';
+import { highestWindowPercent, projectQuotaView, summariseProjectBuckets } from './quotas';
 
 /**
  * The Quotas tab turns two server responses into the view the admin sees.
@@ -158,5 +158,27 @@ describe('summariseProjectBuckets', () => {
       cacheWrite: 40,
       unpricedCalls: 4,
     });
+  });
+});
+
+describe('projectQuotaView', () => {
+  it('reads a zero limit as unlimited', () => {
+    expect(projectQuotaView({ active: 12, limit: 0 })).toEqual({ unlimited: true, percent: null, severity: null });
+  });
+
+  it('is ok below 80 %', () => {
+    expect(projectQuotaView({ active: 3, limit: 10 })).toEqual({ unlimited: false, percent: 30, severity: 'ok' });
+  });
+
+  it('warns from 80 %', () => {
+    expect(projectQuotaView({ active: 8, limit: 10 }).severity).toBe('warning');
+  });
+
+  it('is full at the limit — the next create is refused', () => {
+    expect(projectQuotaView({ active: 5, limit: 5 })).toEqual({ unlimited: false, percent: 100, severity: 'danger' });
+  });
+
+  it('stays full above the limit (set lower after the fact)', () => {
+    expect(projectQuotaView({ active: 7, limit: 5 }).severity).toBe('danger');
   });
 });

@@ -4,9 +4,11 @@ import { useI18n } from 'vue-i18n';
 import type {
   LlmBudgetStatusDto,
   LlmBudgetWindowDto,
+  ProjectQuotaDto,
   StorageCleanupResultDto,
 } from '@vance/generated';
 import { VAlert, VBadge, VButton, VCard, VEmptyState, VGroup, VGroupRow, VIcon, useConfirm } from '@/components';
+import { useAdminProjects } from '@/composables/useAdminProjects';
 import { useMe } from '@/composables/useMe';
 import {
   INJECT_INSIGHTS_PROJECT_SCOPE,
@@ -17,6 +19,7 @@ import CleanupDialog from './CleanupDialog.vue';
 import {
   fmtCost,
   fmtTokens,
+  projectQuotaView,
   summariseProjectBuckets,
   type ProjectUsageRow,
   windowLabel as windowLabelOf,
@@ -30,6 +33,8 @@ import {
  * <ol>
  *   <li><b>Documents</b> — storage quota + bytes used. Tenant-level only
  *       (per planning/storage-quota.md, no per-project storage quota).</li>
+ *   <li><b>Projects</b> — active projects against the tenant's
+ *       {@code project.quota.maxActive}.</li>
  *   <li><b>LLM</b> — the cost budget (limits) plus the most-loaded window
  *       as a percent. Tenant and every project side-by-side. LLM power
  *       switch surfaced here too: it is the third way to stop spend.</li>
@@ -48,6 +53,8 @@ import {
  *       tenant + project budget list in section 2.</li>
  *   <li>{@code GET /brain/{tenant}/usage/by-project} — admin; powers
  *       section 3.</li>
+ *   <li>{@code GET /brain/{tenant}/admin/projects/quota} — whoever may list
+ *       projects; powers the projects section, hidden when refused.</li>
  * </ul>
  *
  * <p>A non-admin who lands here sees section 1 and a friendly
@@ -59,6 +66,21 @@ const home = useMe();
 const usage = useUsageReport();
 const cleanup = useStorageCleanup();
 const confirmAction = useConfirm();
+const adminProjects = useAdminProjects();
+
+/** {@code null} until loaded, and when the caller may not see the project list. */
+const projectQuota = ref<ProjectQuotaDto | null>(null);
+const projectQuotaState = computed(() => projectQuota.value ? projectQuotaView(projectQuota.value) : null);
+
+async function loadProjectQuota(): Promise<void> {
+  try {
+    projectQuota.value = await adminProjects.quota();
+  } catch {
+    // Not allowed to list projects → the section stays hidden, like the
+    // admin-only parts of this tab.
+    projectQuota.value = null;
+  }
+}
 
 /**
  * Project scope comes from the sidebar (InsightsApp.filterProjectId), not
@@ -148,6 +170,7 @@ async function refresh(): Promise<void> {
     home.load(null),
     usage.loadAll(buildParams()),
     cleanup.loadBreakdown(cleanupProjectId.value),
+    loadProjectQuota(),
   ]);
 }
 
@@ -380,6 +403,41 @@ const projectTotalsByCurrency = computed<Map<string, number>>(() => costByCurren
         @close="cleanupDialogOpen = false"
         @done="onArchiveDone"
       />
+    </section>
+
+    <!-- ─── Projects ─── -->
+    <section v-if="projectQuota && projectQuotaState" class="flex flex-col gap-2">
+      <h3 class="quotas-heading">{{ $t('insights.quotas.projectsHeading') }}</h3>
+
+      <VCard :title="$t('insights.quotas.projectsTitle')">
+        <VGroup>
+          <VGroupRow
+            :label="$t('insights.quotas.projectsRow')"
+            :description="projectQuotaState.unlimited
+              ? $t('insights.quotas.projectsUnlimitedHint')
+              : $t('insights.quotas.projectsHint')"
+            :value="projectQuotaState.unlimited
+              ? $t('insights.quotas.projectsValueUnlimited', { active: projectQuota.active })
+              : $t('insights.quotas.projectsValue', { active: projectQuota.active, limit: projectQuota.limit })"
+          />
+        </VGroup>
+        <p
+          v-if="projectQuotaState.percent != null"
+          class="quotas-meter"
+          :data-severity="projectQuotaState.severity"
+        >
+          <span class="quotas-meter__label">
+            {{
+              projectQuotaState.severity === 'danger'
+                ? $t('insights.quotas.projectsFull')
+                : $t('insights.quotas.storagePercent', { percent: projectQuotaState.percent })
+            }}
+          </span>
+          <span class="quotas-meter__track" aria-hidden="true">
+            <span class="quotas-meter__fill" :style="{ width: `${Math.min(100, projectQuotaState.percent)}%` }" />
+          </span>
+        </p>
+      </VCard>
     </section>
 
     <!-- ─── LLM quota + budget ─── -->

@@ -4,6 +4,7 @@ import type {
   ProjectCopyRequest,
   ProjectCreateRequest,
   ProjectDto,
+  ProjectQuotaDto,
   ProjectUpdateRequest,
 } from '@vance/generated';
 import { brainFetch, brainFetchWithMeta } from '@vance/shared';
@@ -20,8 +21,9 @@ export interface ProjectCreateResult {
 }
 
 /**
- * CRUD on projects. {@code remove} archives — sets status to ARCHIVED and
- * moves the project into the reserved "archived" group.
+ * CRUD on projects. {@code archive} sets status to CLOSED, moves the project
+ * into the reserved "archived" group and disposes its workspace;
+ * {@code unarchive} brings it back into the group it came from.
  */
 export function useAdminProjects(): {
   projects: Ref<ProjectDto[]>;
@@ -32,6 +34,8 @@ export function useAdminProjects(): {
   create: (req: ProjectCreateRequest) => Promise<ProjectCreateResult>;
   update: (name: string, req: ProjectUpdateRequest) => Promise<ProjectDto>;
   archive: (name: string) => Promise<ProjectDto>;
+  unarchive: (name: string) => Promise<ProjectDto>;
+  quota: () => Promise<ProjectQuotaDto>;
   copy: (source: string, req: ProjectCopyRequest) => Promise<ProjectCopyReportDto>;
 } {
   const projects = ref<ProjectDto[]>([]);
@@ -100,6 +104,27 @@ export function useAdminProjects(): {
     }
   }
 
+  async function unarchive(name: string): Promise<ProjectDto> {
+    busy.value = true;
+    error.value = null;
+    try {
+      const saved = await brainFetch<ProjectDto>(
+        'POST', `admin/projects/${encodeURIComponent(name)}/unarchive`);
+      await reload();
+      return saved;
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to unarchive project.';
+      throw e;
+    } finally {
+      busy.value = false;
+    }
+  }
+
+  /** Active-project count and limit of the tenant ({@code limit 0} = none). */
+  async function quota(): Promise<ProjectQuotaDto> {
+    return brainFetch<ProjectQuotaDto>('GET', 'admin/projects/quota');
+  }
+
   /**
    * Creates a new project holding {@code source}'s documents and settings.
    *
@@ -124,5 +149,5 @@ export function useAdminProjects(): {
     }
   }
 
-  return { projects, loading, busy, error, reload, create, update, archive, copy };
+  return { projects, loading, busy, error, reload, create, update, archive, unarchive, quota, copy };
 }

@@ -297,6 +297,7 @@ export * from './projects/ProjectCreateRequest';
 export * from './projects/ProjectDto';
 export * from './projects/ProjectGroupCreateRequest';
 export * from './projects/ProjectGroupUpdateRequest';
+export * from './projects/ProjectQuotaDto';
 export * from './projects/ProjectUpdateRequest';
 export * from './projects/TenantProjectsResponse';
 export * from './projects/WorkspaceNodeType';

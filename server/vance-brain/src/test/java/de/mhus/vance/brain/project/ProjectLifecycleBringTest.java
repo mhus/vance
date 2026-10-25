@@ -76,7 +76,9 @@ class ProjectLifecycleBringTest {
                 rag,
                 chat,
                 router,
-                perms);
+                perms,
+                mock(de.mhus.vance.shared.project.ProjectQuotaService.class),
+                mock(de.mhus.vance.shared.projectgroup.ProjectGroupService.class));
     }
 
     private void givenClaimedWithStatus(ProjectStatus status) {

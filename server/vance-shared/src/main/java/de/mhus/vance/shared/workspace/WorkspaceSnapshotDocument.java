@@ -21,10 +21,14 @@ import org.springframework.data.mongodb.core.mapping.Document;
  */
 @Document(collection = "workspace_snapshots")
 @CompoundIndexes({
-        @CompoundIndex(
-                name = "project_dirname_idx",
-                def = "{ 'projectId': 1, 'dirName': 1 }",
-                unique = true)
+    // Tenant first: a project name is unique only inside its tenant. The
+    // predecessor project_dirname_idx left the tenant out, so two tenants'
+    // same-named projects could not both hold a snapshot of the same
+    // RootDir — retired by Migrator_2026_10_24_001_WorkspaceSnapshotTenantIndex.
+    @CompoundIndex(
+            name = "tenant_project_dirname_idx",
+            def = "{ 'tenant': 1, 'projectId': 1, 'dirName': 1 }",
+            unique = true)
 })
 @Data
 @Builder

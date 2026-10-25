@@ -42,7 +42,8 @@ import org.springframework.stereotype.Component;
  * <p>{@code storage.quota.*} is in the default for the same reason — it caps
  * the tenant's footprint, and an agent that could raise it would defeat the
  * operator's whole point of setting a limit. A human sets it through the
- * {@code storage-quota} setting form.
+ * {@code storage-quota} setting form. {@code project.quota.*} likewise caps the
+ * number of active projects ({@code project-quota} form).
  *
  * <p>Grammar: comma-separated, each entry either an exact key or a prefix ending
  * in {@code *}. Deliberately not a full glob — this is security configuration and
@@ -57,7 +58,7 @@ public class AgentSettingKeyPolicy {
      * {@code application.yml} of the brain repeats it — keep both in step.
      */
     public static final String DEFAULT_DENY_KEYS =
-            "ai.provider.*,vault.*,store.*,kit.*,ai.llm.budget.*,storage.quota.*";
+            "ai.provider.*,vault.*,store.*,kit.*,ai.llm.budget.*,storage.quota.*,project.quota.*";
 
     private final List<String> denyPatterns;
 
@@ -89,7 +90,7 @@ public class AgentSettingKeyPolicy {
                             + "written by an agent. "
                             + "Reason: '" + key + "' matches a pattern in the agent-write deny list "
                             + "(vance.settings.agent-write-deny-keys), which protects infrastructure keys "
-                            + "(LLM providers, vault, store, kit, cost budget, storage quota). "
+                            + "(LLM providers, vault, store, kit, cost budget, storage quota, project quota). "
                             + "Resolution: a human has to set this key through the settings editor, "
                             + "the matching setting form, or the anus admin shell.");
         }

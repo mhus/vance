@@ -8,8 +8,10 @@ import de.mhus.vance.brain.rag.ProjectRagService;
 import de.mhus.vance.brain.session.SessionChatBootstrapper;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectKind;
+import de.mhus.vance.shared.project.ProjectQuotaService;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.project.ProjectStatus;
+import de.mhus.vance.shared.projectgroup.ProjectGroupService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
@@ -38,7 +40,14 @@ import org.springframework.stereotype.Service;
  *       mark SUSPENDED.</li>
  *   <li>{@link #close} — dispose workspace, mark CLOSED, move to the
  *       archived group.</li>
+ *   <li>{@link #reopen} — CLOSED back to INIT in the group it was archived
+ *       from, then {@link #bring} with a fresh workspace.</li>
  * </ul>
+ *
+ * <p>{@link #create} and {@link #reopen} are where a project becomes active,
+ * so both check the tenant's active-project quota
+ * ({@link ProjectQuotaService}). The admin shell bypasses this service and is
+ * not limited.
  *
  * <p>Engine start/stop is signalled via Spring events
  * ({@link ProjectEnginesStartRequested} / {@link ProjectEnginesStopRequested}).
@@ -92,6 +101,9 @@ public class ProjectLifecycleService {
      */
     private final de.mhus.vance.shared.role.RoleBootstrap roleBootstrap;
 
+    private final ProjectQuotaService quotaService;
+    private final ProjectGroupService projectGroupService;
+
     /**
      * One lock per project key, serialising {@link #bring} on this pod. The
      * lease keeps other pods out; on this pod self-pull, the distributor and
@@ -122,6 +134,9 @@ public class ProjectLifecycleService {
      * @throws ProjectService.ReservedProjectNameException
      *     when {@code name} starts with the reserved system prefix and
      *     {@code kind != SYSTEM}.
+     * @throws ProjectQuotaService.ProjectQuotaExceededException
+     *     when a non-SYSTEM project would exceed the tenant's active-project
+     *     quota.
      */
     public ProjectDocument create(
             String tenantId,
@@ -131,6 +146,9 @@ public class ProjectLifecycleService {
             @Nullable List<String> teamIds,
             ProjectKind kind,
             @Nullable String createdBy) {
+        if (kind != ProjectKind.SYSTEM) {
+            quotaService.checkOneMore(tenantId);
+        }
         ProjectDocument created = projectService.create(tenantId, name, title, projectGroupId, teamIds, kind);
         // Where it runs is the placement service's call — local-first when this
         // pod has room, otherwise the least-loaded pod that does. The homeless
@@ -505,6 +523,51 @@ public class ProjectLifecycleService {
         doc = projectService.transitionStatus(tenantId, projectName, ProjectStatus.SUSPENDING, ProjectStatus.SUSPENDED);
         log.info("Project '{}/{}' suspended", tenantId, projectName);
         return doc;
+    }
+
+    /**
+     * Reopen an archived project — the way back from {@link #close}.
+     *
+     * <p>Checks the active-project quota, flips CLOSED → INIT, restores the
+     * group the project was archived from (ungrouped when that group no
+     * longer exists), then places it exactly like a fresh {@link #create}.
+     * The workspace close disposed stays gone: placement brings the project
+     * up with an empty one. Documents, settings, sessions and roles were never
+     * touched by the close and are all there.
+     *
+     * @throws ProjectService.ProjectNotFoundException if the project does not exist
+     * @throws ProjectService.ProjectStatusConflictException if it is not archived
+     * @throws ProjectQuotaService.ProjectQuotaExceededException if the tenant is at its limit
+     */
+    public ProjectDocument reopen(String tenantId, String projectName) {
+        ProjectDocument current = projectService
+                .findByTenantAndName(tenantId, projectName)
+                .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
+                        "Project '" + projectName + "' not found in tenant '" + tenantId + "'"));
+        if (current.getStatus() != ProjectStatus.CLOSED) {
+            throw new ProjectService.ProjectStatusConflictException("Project '" + projectName + "' is "
+                    + current.getStatus() + " — only an archived project can be reopened");
+        }
+        quotaService.checkOneMore(tenantId);
+        String origin = current.getArchivedFromGroupId();
+        String group = origin != null && projectGroupService.existsByTenantAndName(tenantId, origin) ? origin : null;
+        ProjectDocument reopened = projectService.reopen(tenantId, projectName, group);
+        try {
+            // CREATE, not a trigger of its own: a reopened project is in the
+            // same position as a new one — it wants to run, and the user who
+            // asked is talking to this pod.
+            placementService.place(reopened, PlacementTrigger.CREATE);
+        } catch (ClusterFullException e) {
+            log.info(
+                    "Project '{}/{}' reopened but not placed ({}) — waiting for a matching pod",
+                    tenantId,
+                    projectName,
+                    e.getGap());
+        }
+        return projectService
+                .findByTenantAndName(tenantId, projectName)
+                .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
+                        "Project '" + projectName + "' vanished during reopen"));
     }
 
     /**

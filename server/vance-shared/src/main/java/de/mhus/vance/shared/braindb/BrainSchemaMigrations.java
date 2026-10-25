@@ -132,7 +132,16 @@ public class BrainSchemaMigrations implements SchemaMigrationSource {
             // mechanism exists to prevent. Self-emptying filter (only rows
             // without `updatedAt` match), so on a genuinely new database the
             // updateMulti is a no-op.
-            new Registered("2026-10-21_001", Migrator_2026_10_21_001_DocumentUpdatedAt.class, /*runOnBaseline*/ true));
+            new Registered("2026-10-21_001", Migrator_2026_10_21_001_DocumentUpdatedAt.class, /*runOnBaseline*/ true),
+            // runOnBaseline: a database restored from before the anchor looks
+            // new here, and skipping would keep the old unique index next to the
+            // new one — still refusing a second tenant's snapshot of a
+            // same-named project, and nothing later drops it. On a genuinely
+            // new database it costs one collectionExists call.
+            new Registered(
+                    "2026-10-24_001",
+                    Migrator_2026_10_24_001_WorkspaceSnapshotTenantIndex.class,
+                    /*runOnBaseline*/ true));
 
     @Override
     public List<Registered> migrations() {

@@ -1,4 +1,4 @@
-import type { LlmBudgetStatusDto, LlmBudgetWindowDto, UsageBucketDto } from '@vance/generated';
+import type { LlmBudgetStatusDto, LlmBudgetWindowDto, ProjectQuotaDto, UsageBucketDto } from '@vance/generated';
 
 /**
  * Pure transforms behind the Quotas tab. Pulled out of {@link QuotasTab.vue}
@@ -77,6 +77,27 @@ export function summariseProjectBuckets(buckets: UsageBucketDto[]): ProjectUsage
     row.unpricedCalls += b.unpricedCalls ?? 0;
   }
   return [...byKey.values()].sort((a, b) => b.costTotal - a.costTotal);
+}
+
+/**
+ * What the "Active projects" meter shows. {@code percent} is {@code null} for
+ * an unlimited tenant — there is nothing to fill. Severity follows the same
+ * cut-offs as the storage meter (80 % warning, full = danger); "full" is the
+ * point at which the next create is refused.
+ */
+export interface ProjectQuotaView {
+  unlimited: boolean;
+  percent: number | null;
+  severity: 'ok' | 'warning' | 'danger' | null;
+}
+
+export function projectQuotaView(quota: ProjectQuotaDto): ProjectQuotaView {
+  if (quota.limit <= 0) return { unlimited: true, percent: null, severity: null };
+  const percent = Math.round((quota.active / quota.limit) * 100);
+  let severity: ProjectQuotaView['severity'] = 'ok';
+  if (quota.active >= quota.limit) severity = 'danger';
+  else if (percent >= 80) severity = 'warning';
+  return { unlimited: false, percent, severity };
 }
 
 /** Cheap, table-friendly integer count of tokens. */

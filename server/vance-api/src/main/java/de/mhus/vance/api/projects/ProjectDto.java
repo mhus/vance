@@ -34,8 +34,18 @@ public class ProjectDto {
 
     private boolean enabled;
 
-    /** {@code PENDING} / {@code ACTIVE} / {@code SUSPENDED} / {@code ARCHIVED}. */
+    /**
+     * Lifecycle status: {@code INIT} / {@code RECOVERING} / {@code RUNNING} /
+     * {@code SUSPENDING} / {@code SUSPENDED} / {@code CLOSED}. {@code CLOSED}
+     * is what the UI calls archived.
+     */
     private String status;
+
+    /**
+     * Group an archived project returns to on unarchive; {@code null} when
+     * it is not archived or was ungrouped.
+     */
+    private @Nullable String archivedFromGroupId;
 
     /**
      * Cluster node name of the pod owning the project — references

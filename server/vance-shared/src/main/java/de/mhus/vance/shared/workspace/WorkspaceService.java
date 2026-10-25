@@ -136,7 +136,7 @@ public class WorkspaceService {
     public Workspace init(String tenantId, String projectId) {
         requireTenant(tenantId);
         requireProject(projectId);
-        List<WorkspaceSnapshotDocument> snapshots = snapshotRepository.findByProjectId(projectId);
+        List<WorkspaceSnapshotDocument> snapshots = snapshotRepository.findByTenantAndProjectId(tenantId, projectId);
         if (!snapshots.isEmpty()) {
             return recoverFromSnapshots(tenantId, projectId, snapshots);
         }
@@ -205,7 +205,7 @@ public class WorkspaceService {
         tempDirCache.keySet().removeIf(k -> k.startsWith(prefix));
         workingDirByCreator.keySet().removeIf(k -> k.startsWith(prefix));
         // Snapshots (if any from prior suspends) are also gone — dispose is terminal.
-        snapshotRepository.deleteByProjectId(projectId);
+        snapshotRepository.deleteByTenantAndProjectId(tenantId, projectId);
         deleteRecursively(root);
         log.info("Workspace disposed: tenant={} projectId={}", tenantId, projectId);
     }
@@ -424,7 +424,7 @@ public class WorkspaceService {
     public void recoverAll(String tenantId, String projectId) {
         requireTenant(tenantId);
         requireProject(projectId);
-        List<WorkspaceSnapshotDocument> snapshots = snapshotRepository.findByProjectId(projectId);
+        List<WorkspaceSnapshotDocument> snapshots = snapshotRepository.findByTenantAndProjectId(tenantId, projectId);
         if (snapshots.isEmpty()) {
             return;
         }
@@ -511,7 +511,7 @@ public class WorkspaceService {
             }
             rewriteDescriptor(descriptorFile, handle.getDescriptor());
         }
-        snapshotRepository.deleteByProjectId(projectId);
+        snapshotRepository.deleteByTenantAndProjectId(tenantId, projectId);
         log.info(
                 "Workspace recovered from {} snapshot(s): tenant={} projectId={}",
                 snapshots.size(),
@@ -522,7 +522,7 @@ public class WorkspaceService {
 
     private void persistSnapshot(String tenant, String projectId, RootDirHandle handle, Instant now) {
         WorkspaceSnapshotDocument existing = snapshotRepository
-                .findByProjectIdAndDirName(projectId, handle.getDirName())
+                .findByTenantAndProjectIdAndDirName(tenant, projectId, handle.getDirName())
                 .orElseGet(WorkspaceSnapshotDocument::new);
         existing.setTenant(tenant);
         existing.setProjectId(projectId);

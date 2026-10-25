@@ -3,13 +3,12 @@ package de.mhus.vance.anus.shell;
 import de.mhus.vance.anus.access.RequiresAuth;
 import de.mhus.vance.anus.cluster.ProjectClusterService;
 import de.mhus.vance.anus.cluster.ProjectClusterService.DrainDecision;
-import de.mhus.vance.anus.cluster.ProjectClusterService.Holder;
 import de.mhus.vance.anus.cluster.ProjectClusterService.HomeLookup;
-import de.mhus.vance.shared.project.LifecycleType;
+import de.mhus.vance.anus.maintenance.ProjectMaintenanceService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.project.maintenance.ProjectDataHandler;
-import de.mhus.vance.anus.maintenance.ProjectMaintenanceService;
+import de.mhus.vance.shared.projectgroup.ProjectGroupService;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -43,20 +42,26 @@ public class ProjectCommands {
     private final ProjectService projectService;
     private final ProjectClusterService clusterService;
     private final ProjectMaintenanceService maintenanceService;
+    private final ProjectGroupService projectGroupService;
     // Lazy LineReader to avoid the Spring-Shell bean cycle — see AccessCommands.
     private final ObjectProvider<LineReader> lineReader;
+
     public ProjectCommands(
             ProjectService projectService,
             ProjectClusterService clusterService,
             ProjectMaintenanceService maintenanceService,
+            ProjectGroupService projectGroupService,
             ObjectProvider<LineReader> lineReader) {
         this.projectService = projectService;
         this.clusterService = clusterService;
         this.maintenanceService = maintenanceService;
+        this.projectGroupService = projectGroupService;
         this.lineReader = lineReader;
     }
 
-    @Command(name = {"project", "list"}, description = "List projects in a tenant.")
+    @Command(
+            name = {"project", "list"},
+            description = "List projects in a tenant.")
     public String list(@Option(longName = "tenant", shortName = 'T', required = true) String tenant) {
         List<ProjectDocument> all = projectService.all(tenant);
         if (all.isEmpty()) {
@@ -75,55 +80,64 @@ public class ProjectCommands {
                 all);
     }
 
-    @Command(name = {"project", "show"}, description = "Show a project.")
+    @Command(
+            name = {"project", "show"},
+            description = "Show a project.")
     public String show(
             @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
             @Option(longName = "name", shortName = 'n', required = true) String name) {
-        return projectService.findByTenantAndName(tenant, name)
+        return projectService
+                .findByTenantAndName(tenant, name)
                 .map(ProjectCommands::renderOne)
                 .orElse("Project '" + name + "' not found in tenant '" + tenant + "'.");
     }
 
-    @Command(name = {"project", "create"}, description = "Create a NORMAL project.")
+    @Command(
+            name = {"project", "create"},
+            description = "Create a NORMAL project.")
     public String create(
             @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
             @Option(longName = "name", shortName = 'n', required = true) String name,
             @Option(longName = "title", shortName = 't') @Nullable String title,
             @Option(longName = "group", shortName = 'g') @Nullable String group,
-            @Option(longName = "teams",
-                    description = "Comma-separated team names")
-            @Nullable String teams) {
+            @Option(longName = "teams", description = "Comma-separated team names") @Nullable String teams) {
         ProjectDocument project = projectService.create(tenant, name, title, group, parseList(teams));
         return "Created:\n" + renderOne(project);
     }
 
-    @Command(name = {"project", "update"}, description = "Update mutable fields of a project.")
+    @Command(
+            name = {"project", "update"},
+            description = "Update mutable fields of a project.")
     public String update(
             @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
             @Option(longName = "name", shortName = 'n', required = true) String name,
             @Option(longName = "title", shortName = 't') @Nullable String title,
             @Option(longName = "enabled") @Nullable Boolean enabled,
             @Option(longName = "group", shortName = 'g') @Nullable String group,
-            @Option(longName = "clear-group",
-                    description = "Detach the project from any project group.",
-                    defaultValue = "false")
-            boolean clearGroup,
-            @Option(longName = "teams",
-                    description = "Comma-separated team names — replaces the list wholesale")
-            @Nullable String teams) {
-        ProjectDocument project = projectService.update(
-                tenant, name, title, enabled, group, clearGroup, parseList(teams));
+            @Option(
+                            longName = "clear-group",
+                            description = "Detach the project from any project group.",
+                            defaultValue = "false")
+                    boolean clearGroup,
+            @Option(longName = "teams", description = "Comma-separated team names — replaces the list wholesale")
+                    @Nullable
+                    String teams) {
+        ProjectDocument project =
+                projectService.update(tenant, name, title, enabled, group, clearGroup, parseList(teams));
         return "Updated:\n" + renderOne(project);
     }
 
-    @Command(name = {"project", "close"}, description = "Close a project (soft-delete, lifecycle terminal).")
+    @Command(
+            name = {"project", "close"},
+            description = "Close a project (soft-delete, lifecycle terminal).")
     public String close(
             @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
             @Option(longName = "name", shortName = 'n', required = true) String name,
-            @Option(longName = "closed-group",
-                    description = "Project-group bucket the closed project moves into.",
-                    defaultValue = "_closed")
-            String closedGroup) {
+            @Option(
+                            longName = "closed-group",
+                            description = "Project-group bucket the closed project moves into.",
+                            defaultValue = "_closed")
+                    String closedGroup) {
         // Direct DB close — workspace disposition / engine teardown happens
         // out of band. For a fully-orchestrated close use the Brain's
         // 'DELETE /brain/{tenant}/admin/projects/{name}' (see project resume
@@ -131,6 +145,25 @@ public class ProjectCommands {
         // reachable. This local path is the operator's last resort.
         ProjectDocument project = projectService.close(tenant, name, closedGroup);
         return "Closed:\n" + renderOne(project);
+    }
+
+    @Command(
+            name = {"project", "reopen"},
+            description = "Reopen a closed project (back to INIT, into the group it was closed from).")
+    public String reopen(
+            @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
+            @Option(longName = "name", shortName = 'n', required = true) String name) {
+        // Not subject to the active-project quota — that limit is for the
+        // product surfaces, and the operator's shell is how one gets past it.
+        // The project stays INIT; the next access brings it up on a pod.
+        ProjectDocument current = projectService
+                .findByTenantAndName(tenant, name)
+                .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
+                        "Project '" + name + "' not found in tenant '" + tenant + "'"));
+        String origin = current.getArchivedFromGroupId();
+        String group = origin != null && projectGroupService.existsByTenantAndName(tenant, origin) ? origin : null;
+        ProjectDocument project = projectService.reopen(tenant, name, group);
+        return "Reopened:\n" + renderOne(project);
     }
 
     // ─── Service tasks across every entity ─────────────────────────────────
@@ -141,7 +174,8 @@ public class ProjectCommands {
     // collection without one shows up in the "unaccounted" section rather than
     // being silently left behind.
 
-    @Command(name = {"project", "inspect"},
+    @Command(
+            name = {"project", "inspect"},
             description = "Count everything a project owns, per entity. Writes nothing.")
     public String inspect(
             @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
@@ -152,7 +186,8 @@ public class ProjectCommands {
         return MaintenanceOutput.render(maintenanceService.inspect(tenant, name), "project");
     }
 
-    @Command(name = {"project", "handlers"},
+    @Command(
+            name = {"project", "handlers"},
             description = "List the entities this process can delete or rename.")
     public String handlers() {
         // The honest answer to "will a delete here be complete?". A handler is
@@ -162,31 +197,34 @@ public class ProjectCommands {
         return Tables.render(
                 List.of("ORDER", "ENTITY", "COLLECTIONS"),
                 List.<Function<ProjectDataHandler, @Nullable Object>>of(
-                        ProjectDataHandler::order,
-                        ProjectDataHandler::id,
-                        h -> String.join(",", h.collections())),
+                        ProjectDataHandler::order, ProjectDataHandler::id, h -> String.join(",", h.collections())),
                 maintenanceService.handlers());
     }
 
-    @Command(name = {"project", "delete"},
+    @Command(
+            name = {"project", "delete"},
             description = "Hard-delete a project and all its data. Irreversible.")
     public String delete(
             @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
             @Option(longName = "name", shortName = 'n', required = true) String name,
-            @Option(longName = "confirm",
-                    description = "Type the project name here to confirm. Required when there"
-                            + " is no terminal to ask on (--sudo).")
-            @Nullable String confirm,
-            @Option(longName = "force",
-                    description = "Proceed even though the project could not be drained off its"
-                            + " pod. Only when the holder is known to be gone.",
-                    defaultValue = "false")
-            boolean force,
-            @Option(longName = "no-drain",
-                    description = "Do not hand the project off its pod first. Leaves engines"
-                            + " running against data that is about to disappear.",
-                    defaultValue = "false")
-            boolean noDrain) {
+            @Option(
+                            longName = "confirm",
+                            description = "Type the project name here to confirm. Required when there"
+                                    + " is no terminal to ask on (--sudo).")
+                    @Nullable
+                    String confirm,
+            @Option(
+                            longName = "force",
+                            description = "Proceed even though the project could not be drained off its"
+                                    + " pod. Only when the holder is known to be gone.",
+                            defaultValue = "false")
+                    boolean force,
+            @Option(
+                            longName = "no-drain",
+                            description = "Do not hand the project off its pod first. Leaves engines"
+                                    + " running against data that is about to disappear.",
+                            defaultValue = "false")
+                    boolean noDrain) {
         String problem = confirmed(name, confirm, "delete");
         if (problem != null) {
             return problem;
@@ -200,35 +238,36 @@ public class ProjectCommands {
             return log;
         }
         try {
-            return log
-                    + MaintenanceOutput.render(
-                            maintenanceService.delete(tenant, name, force), "project");
+            return log + MaintenanceOutput.render(maintenanceService.delete(tenant, name, force), "project");
         } catch (RuntimeException e) {
             return log + "Delete FAILED — " + e.getMessage();
         }
     }
 
-    @Command(name = {"project", "rename"},
+    @Command(
+            name = {"project", "rename"},
             description = "Rename a project, carrying every structured reference with it.")
     public String rename(
             @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
             @Option(longName = "name", shortName = 'n', required = true) String name,
-            @Option(longName = "to", required = true,
-                    description = "The new project name.") String to,
-            @Option(longName = "confirm",
-                    description = "Type the current project name here to confirm. Required when"
-                            + " there is no terminal to ask on (--sudo).")
-            @Nullable String confirm,
-            @Option(longName = "force",
-                    description = "Proceed even though the project could not be drained off its"
-                            + " pod.",
-                    defaultValue = "false")
-            boolean force,
-            @Option(longName = "no-drain",
-                    description = "Do not hand the project off its pod first, and do not place it"
-                            + " again afterwards. The holding pod then keeps serving the old name.",
-                    defaultValue = "false")
-            boolean noDrain) {
+            @Option(longName = "to", required = true, description = "The new project name.") String to,
+            @Option(
+                            longName = "confirm",
+                            description = "Type the current project name here to confirm. Required when"
+                                    + " there is no terminal to ask on (--sudo).")
+                    @Nullable
+                    String confirm,
+            @Option(
+                            longName = "force",
+                            description = "Proceed even though the project could not be drained off its" + " pod.",
+                            defaultValue = "false")
+                    boolean force,
+            @Option(
+                            longName = "no-drain",
+                            description = "Do not hand the project off its pod first, and do not place it"
+                                    + " again afterwards. The holding pod then keeps serving the old name.",
+                            defaultValue = "false")
+                    boolean noDrain) {
         String problem = confirmed(name, confirm, "rename");
         if (problem != null) {
             return problem;
@@ -246,15 +285,12 @@ public class ProjectCommands {
                     + String.join("\n  ", e.blockers())
                     + replaceHint(tenant, name, drained);
         } catch (RuntimeException e) {
-            return log + "Rename FAILED — " + e.getMessage()
-                    + replaceHint(tenant, name, drained);
+            return log + "Rename FAILED — " + e.getMessage() + replaceHint(tenant, name, drained);
         }
         // Put it back where it was, under the new name. Only when it was
         // actually placed: a project that nobody held has no state to restore,
         // and placing it here would start something the rename did not ask for.
-        String replaced = drained.wasPlaced()
-                ? "\n\nPlacing '" + to + "' again:\n" + claim(tenant, to)
-                : "";
+        String replaced = drained.wasPlaced() ? "\n\nPlacing '" + to + "' again:\n" + claim(tenant, to) : "";
         return log + result
                 + "\n\nReferences inside document content (vance: URIs, recipes, prompts)"
                 + "\nare NOT rewritten — search for '" + name + "' if the project was linked to."
@@ -275,13 +311,15 @@ public class ProjectCommands {
         return switch (decision.verdict()) {
             case SKIPPED -> "(--no-drain: the project was not handed off its pod)\n\n";
             case RELEASED -> attempt(decision).message() + "\n\n";
-            case FORCED -> "Drain failed, continuing because --force was given:\n  "
-                    + attempt(decision).message() + "\n\n";
-            case BLOCKED -> "Refusing to " + operation
-                    + " — the project could not be handed off its pod:\n  "
-                    + attempt(decision).message()
-                    + "\n\nFix the pod, or pass --force if the holder is known to be gone,"
-                    + "\nor --no-drain to skip the hand-off entirely.";
+            case FORCED ->
+                "Drain failed, continuing because --force was given:\n  "
+                        + attempt(decision).message() + "\n\n";
+            case BLOCKED ->
+                "Refusing to " + operation
+                        + " — the project could not be handed off its pod:\n  "
+                        + attempt(decision).message()
+                        + "\n\nFix the pod, or pass --force if the holder is known to be gone,"
+                        + "\nor --no-drain to skip the hand-off entirely.";
         };
     }
 
@@ -300,8 +338,8 @@ public class ProjectCommands {
         if (!drained.wasPlaced()) {
             return "";
         }
-        return "\n\nThe project was drained off its pod and is still called '" + name
-                + "' — run 'project claim -T " + tenant + " -n " + name + "' to place it again.";
+        return "\n\nThe project was drained off its pod and is still called '" + name + "' — run 'project claim -T "
+                + tenant + " -n " + name + "' to place it again.";
     }
 
     /**
@@ -322,8 +360,7 @@ public class ProjectCommands {
                 return refuseWithoutConfirmation(operation, name);
             }
             try {
-                answer = reader.readLine(
-                        "Type the project name '" + name + "' to confirm the " + operation + ": ");
+                answer = reader.readLine("Type the project name '" + name + "' to confirm the " + operation + ": ");
             } catch (EndOfFileException | UserInterruptException e) {
                 // The null check above does not cover --sudo: the LineReader
                 // bean exists there, it just has no stdin behind it, so
@@ -349,7 +386,8 @@ public class ProjectCommands {
 
     // ─── Placement lifecycle: where / claim / drain ─────────────────
 
-    @Command(name = {"project", "where"},
+    @Command(
+            name = {"project", "where"},
             description = "Which pod currently holds the project, if any.")
     public String where(
             @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
@@ -367,7 +405,8 @@ public class ProjectCommands {
         };
     }
 
-    @Command(name = {"project", "claim"},
+    @Command(
+            name = {"project", "claim"},
             description = "Place the project on a suitable pod — full placement with pod "
                     + "search, NOT a local claim. Reports why if it cannot be placed.")
     public String claim(
@@ -380,9 +419,10 @@ public class ProjectCommands {
             return switch (attempt.outcome()) {
                 case PLACED -> "placed: " + attempt.detail();
                 case ALREADY_RUNNING -> "already running: " + attempt.detail();
-                case UNSCHEDULABLE -> "cannot be placed: " + attempt.detail()
-                        + "\n(NO_ELIGIBLE_POD → provide a pod with matching labels; "
-                        + "NO_CAPACITY → the matching pods are full)";
+                case UNSCHEDULABLE ->
+                    "cannot be placed: " + attempt.detail()
+                            + "\n(NO_ELIGIBLE_POD → provide a pod with matching labels; "
+                            + "NO_CAPACITY → the matching pods are full)";
                 case BRING_FAILED -> "a pod was chosen but the bring failed: " + attempt.detail();
                 case NOT_FOUND -> "no such project";
                 case ERROR -> "(HTTP " + attempt.statusCode() + " " + attempt.detail() + ")";
@@ -390,17 +430,19 @@ public class ProjectCommands {
         });
     }
 
-    @Command(name = {"project", "drain"},
+    @Command(
+            name = {"project", "drain"},
             description = "Hand the project off its current pod: stop engines, snapshot the "
                     + "workspace, drop the lease. Status stays RUNNING.")
     public String drain(
             @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
             @Option(longName = "name", shortName = 'n', required = true) String name,
-            @Option(longName = "place",
-                    description = "After draining, immediately place it again. Only useful "
-                            + "once this pod has been made ineligible — see the note below.",
-                    defaultValue = "false")
-            boolean place) {
+            @Option(
+                            longName = "place",
+                            description = "After draining, immediately place it again. Only useful "
+                                    + "once this pod has been made ineligible — see the note below.",
+                            defaultValue = "false")
+                    boolean place) {
         var outcome = clusterService.drain(tenant, name);
         if (!outcome.released()) {
             return outcome.message();
@@ -418,17 +460,21 @@ public class ProjectCommands {
         return outcome.message() + "\n" + claim(tenant, name);
     }
 
-    @Command(name = {"project", "lifecycle-type"},
+    @Command(
+            name = {"project", "lifecycle-type"},
             description = "Set whether a project is kept on a pod: AUTO (the derived "
                     + "ownerRequired decides), EPHEMERAL (never auto-start) or PERMANENT "
                     + "(always keep placed).")
     public String lifecycleType(
             @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
             @Option(longName = "name", shortName = 'n', required = true) String name,
-            @Option(longName = "value", shortName = 'v', required = true,
-                    description = "AUTO | EPHEMERAL | PERMANENT. HOMELESS is a property of "
-                            + "SYSTEM projects and is refused.")
-            String value) {
+            @Option(
+                            longName = "value",
+                            shortName = 'v',
+                            required = true,
+                            description = "AUTO | EPHEMERAL | PERMANENT. HOMELESS is a property of "
+                                    + "SYSTEM projects and is refused.")
+                    String value) {
         // Returned, not thrown — Spring Shell would wrap a throw into a
         // CommandExecutionException whose --sudo output names no reason.
         if (StringUtils.isBlank(value)) {
@@ -459,39 +505,40 @@ public class ProjectCommands {
     // credential for the whole cluster rather than one per tenant. anus is that
     // actor.
 
-    @Command(name = {"project", "placement"},
+    @Command(
+            name = {"project", "placement"},
             description = "Show or set what a project requires of a pod: its placement "
                     + "selector (matched against pod labels) and its resource score.")
     public String placement(
             @Option(longName = "tenant", shortName = 'T', required = true) String tenant,
             @Option(longName = "name", shortName = 'n', required = true) String name,
-            @Option(longName = "selector", shortName = 's',
-                    description = "Comma-separated k=v pairs. REPLACES the whole selector; "
-                            + "use --add / --rm to change single entries. Omit to show.")
-            @Nullable String selector,
-            @Option(longName = "add",
-                    description = "Comma-separated k=v pairs to set, keeping the rest.")
-            @Nullable String add,
-            @Option(longName = "rm",
-                    description = "Comma-separated keys to remove, keeping the rest.")
-            @Nullable String rm,
-            @Option(longName = "clear",
-                    description = "Remove the whole selector — the project fits any pod again.",
-                    defaultValue = "false")
-            boolean clear,
-            @Option(longName = "score",
-                    description = "New homeResourceScore, at least 0.")
-            @Nullable String score) {
+            @Option(
+                            longName = "selector",
+                            shortName = 's',
+                            description = "Comma-separated k=v pairs. REPLACES the whole selector; "
+                                    + "use --add / --rm to change single entries. Omit to show.")
+                    @Nullable
+                    String selector,
+            @Option(longName = "add", description = "Comma-separated k=v pairs to set, keeping the rest.") @Nullable
+                    String add,
+            @Option(longName = "rm", description = "Comma-separated keys to remove, keeping the rest.") @Nullable
+                    String rm,
+            @Option(
+                            longName = "clear",
+                            description = "Remove the whole selector — the project fits any pod again.",
+                            defaultValue = "false")
+                    boolean clear,
+            @Option(longName = "score", description = "New homeResourceScore, at least 0.") @Nullable String score) {
         // Returned, not thrown: Spring Shell wraps a thrown exception into a
         // CommandExecutionException whose --sudo output is "Unable to execute
         // command project placement" with the reason nowhere to be seen.
-        ProjectDocument current = projectService.findByTenantAndName(tenant, name).orElse(null);
+        ProjectDocument current =
+                projectService.findByTenantAndName(tenant, name).orElse(null);
         if (current == null) {
             return "(no project '" + name + "' in tenant '" + tenant + "')";
         }
 
-        int mutators = (selector != null ? 1 : 0) + (add != null ? 1 : 0)
-                + (rm != null ? 1 : 0) + (clear ? 1 : 0);
+        int mutators = (selector != null ? 1 : 0) + (add != null ? 1 : 0) + (rm != null ? 1 : 0) + (clear ? 1 : 0);
         if (mutators > 1) {
             return "(--selector, --add, --rm and --clear are mutually exclusive)";
         }
@@ -549,9 +596,9 @@ public class ProjectCommands {
             // Reported, not an error: removing a key that is not there reaches
             // the desired state, and failing would make the command
             // non-idempotent.
-            return notFound.isEmpty() ? out
-                    : out + "\n(no such selector key, nothing removed: "
-                            + String.join(", ", notFound) + ")";
+            return notFound.isEmpty()
+                    ? out
+                    : out + "\n(no such selector key, nothing removed: " + String.join(", ", notFound) + ")";
         });
     }
 
@@ -563,19 +610,27 @@ public class ProjectCommands {
     private static String renderPlacement(ProjectDocument project) {
         Map<String, String> selector = new TreeMap<>(ProjectClusterService.selectorOf(project));
         StringBuilder out = new StringBuilder();
-        out.append("project    ").append(project.getTenantId()).append('/')
-                .append(project.getName()).append('\n');
-        out.append("selector   ").append(selector.isEmpty()
-                ? "(none — fits any pod that is not exclusive)"
-                : selector.entrySet().stream()
-                        .map(e -> e.getKey() + "=" + e.getValue())
-                        .collect(java.util.stream.Collectors.joining(","))).append('\n');
+        out.append("project    ")
+                .append(project.getTenantId())
+                .append('/')
+                .append(project.getName())
+                .append('\n');
+        out.append("selector   ")
+                .append(
+                        selector.isEmpty()
+                                ? "(none — fits any pod that is not exclusive)"
+                                : selector.entrySet().stream()
+                                        .map(e -> e.getKey() + "=" + e.getValue())
+                                        .collect(java.util.stream.Collectors.joining(",")))
+                .append('\n');
         out.append("score      ").append(project.getHomeResourceScore()).append('\n');
         out.append("status     ").append(project.getStatus()).append('\n');
-        out.append("homeNode   ").append(project.getHomeNode() == null
-                ? "— (nobody owns it)" : project.getHomeNode()).append('\n');
+        out.append("homeNode   ")
+                .append(project.getHomeNode() == null ? "— (nobody owns it)" : project.getHomeNode())
+                .append('\n');
         if (project.getPendingSince() != null) {
-            out.append("WAITING    since ").append(project.getPendingSince())
+            out.append("WAITING    since ")
+                    .append(project.getPendingSince())
                     .append(" — no pod matched at the last attempt\n");
         }
         return out.toString();
@@ -621,6 +676,7 @@ public class ProjectCommands {
                 + "  kind      : " + p.getKind() + "\n"
                 + "  enabled   : " + p.isEnabled() + "\n"
                 + "  group     : " + (p.getProjectGroupId() == null ? "" : p.getProjectGroupId()) + "\n"
+                + (p.getArchivedFromGroupId() == null ? "" : "  closedFrom: " + p.getArchivedFromGroupId() + "\n")
                 + "  teams     : " + p.getTeamIds() + "\n"
                 + "  lifecycle : " + p.getLifecycleType()
                 + (p.isOwnerRequired() ? " (ownerRequired)" : "") + "\n"

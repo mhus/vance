@@ -107,6 +107,16 @@ public class MegadodoService {
                 .message("Project '" + projectName + "' closed"));
     }
 
+    public void projectReopened(String tenantId, String projectName, @Nullable String actor) {
+        record(builder(tenantId, /*projectId*/ null, "project.lifecycle", projectName)
+                .phase(MegadodoPhase.SINGLE)
+                .outcome("success")
+                .actor(actor)
+                .refType(MegadodoRefType.PROJECT)
+                .refId(projectName)
+                .message("Project '" + projectName + "' reopened"));
+    }
+
     public void projectRenamed(String tenantId, String projectName, String newProjectName, @Nullable String actor) {
         // projectId stays null like the other lifecycle rows — and here that is
         // load-bearing rather than convention: rows tagged with the project are

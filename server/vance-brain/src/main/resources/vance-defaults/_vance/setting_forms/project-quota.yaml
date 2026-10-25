@@ -1,0 +1,37 @@
+title:
+  de: "Projekt-Quota"
+  en: "Project Quota"
+description:
+  de: "Begrenzt die Anzahl aktiver Projekte dieses Mandanten. Aktiv ist
+       jedes Projekt, das nicht archiviert ist — auch schlafende. Persönliche
+       Hubs und das Mandanten-Projekt zählen nicht. Geprüft wird beim
+       Anlegen, Kopieren und Wiederherstellen eines Projekts; bestehende
+       Projekte bleiben bei einer Überschreitung nutzbar. Leer oder `0` =
+       unbegrenzt."
+  en: "Caps the number of active projects in this tenant. Every project
+       that is not archived counts — suspended ones too. Personal hubs and
+       the tenant project do not. Checked when a project is created, copied
+       or unarchived; existing projects keep working when the limit is
+       exceeded. Empty or `0` = unlimited."
+icon: folder
+category: quotas
+defaultScope: project
+# Tenant-only: the quota is read from _tenant and nowhere else, so offering
+# the form in a regular project would write a setting nothing reads.
+availableIn: [ "_tenant" ]
+
+fields:
+
+  - name: maxActive
+    type: integer
+    integerMin: 0
+    label:
+      de: "Max. aktive Projekte"
+      en: "Max active projects"
+    help:
+      de: "Obergrenze für nicht archivierte Projekte. Leer oder `0` =
+           unbegrenzt."
+      en: "Ceiling for projects that are not archived. Empty or `0` =
+           unlimited."
+    bindsTo:
+      key: "project.quota.maxActive"

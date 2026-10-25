@@ -177,7 +177,9 @@ public class ProjectCreateTool implements Tool {
                     /*teamIds*/ null,
                     ProjectKind.NORMAL,
                     /*createdBy*/ ctx.userId());
-        } catch (ProjectService.ProjectAlreadyExistsException | ProjectService.ReservedProjectNameException e) {
+        } catch (ProjectService.ProjectAlreadyExistsException
+                | ProjectService.ReservedProjectNameException
+                | de.mhus.vance.shared.project.ProjectQuotaService.ProjectQuotaExceededException e) {
             throw new ToolException(e.getMessage(), e);
         }
 

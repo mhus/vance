@@ -5,6 +5,7 @@ import de.mhus.vance.api.projects.ProjectCopyRequest;
 import de.mhus.vance.api.projects.ProjectCreateRequest;
 import de.mhus.vance.api.projects.ProjectDto;
 import de.mhus.vance.api.projects.ProjectPlacementRequest;
+import de.mhus.vance.api.projects.ProjectQuotaDto;
 import de.mhus.vance.api.projects.ProjectUpdateRequest;
 import de.mhus.vance.brain.kit.catalog.ProjectKitInstaller;
 import de.mhus.vance.brain.permission.RequestAuthority;
@@ -16,6 +17,7 @@ import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectKind;
+import de.mhus.vance.shared.project.ProjectQuotaService;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.projectgroup.ProjectGroupDocument;
 import de.mhus.vance.shared.projectgroup.ProjectGroupService;
@@ -41,9 +43,13 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * Admin CRUD for projects.
  *
- * <p>{@code DELETE} archives the project (status → ARCHIVED, group → reserved
- * "archived" group) instead of hard-deleting — orphan settings, documents and
- * sessions stay reachable.
+ * <p>{@code DELETE} archives the project (status → CLOSED, group → reserved
+ * "archived" group, workspace disposed) instead of hard-deleting — settings,
+ * documents and sessions stay reachable, and {@code POST /{name}/unarchive}
+ * brings the project back.
+ *
+ * <p>Create, copy and unarchive are subject to the tenant's active-project
+ * quota; a refusal is answered 409 by {@link ProjectQuotaExceptionAdvice}.
  *
  * <p>Tenant in the path is validated by
  * {@link de.mhus.vance.brain.access.BrainAccessFilter} against the JWT's
@@ -61,6 +67,7 @@ public class ProjectAdminController {
     private final ProjectKitInstaller projectKitInstaller;
     private final ProjectCopyService copyService;
     private final RequestAuthority authority;
+    private final ProjectQuotaService quotaService;
 
     @GetMapping
     public List<ProjectDto> list(@PathVariable("tenant") String tenant, HttpServletRequest httpRequest) {
@@ -71,6 +78,20 @@ public class ProjectAdminController {
                         .thenComparing(ProjectDocument::getName))
                 .map(ProjectAdminController::toDto)
                 .toList();
+    }
+
+    /**
+     * The tenant's active-project quota — count and limit. Same gate as
+     * {@link #list}: whoever may see the project list may see how full it is.
+     */
+    @GetMapping("/quota")
+    public ProjectQuotaDto quota(@PathVariable("tenant") String tenant, HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.WRITE);
+        ProjectQuotaService.Status status = quotaService.status(tenant);
+        return ProjectQuotaDto.builder()
+                .active(status.active())
+                .limit(status.limit())
+                .build();
     }
 
     @PostMapping
@@ -240,6 +261,25 @@ public class ProjectAdminController {
         }
     }
 
+    /**
+     * Reopens an archived project: back into the group it was archived from,
+     * placed like a new project, with a fresh workspace (the one the archive
+     * disposed is gone). Project ADMIN, like archiving. 409 when the project
+     * is not archived or the tenant is at its active-project quota.
+     */
+    @PostMapping("/{name}/unarchive")
+    public ProjectDto unarchive(
+            @PathVariable("tenant") String tenant, @PathVariable("name") String name, HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, name), Action.ADMIN);
+        try {
+            return toDto(lifecycleService.reopen(tenant, name));
+        } catch (ProjectService.ProjectNotFoundException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
+        } catch (ProjectService.ProjectStatusConflictException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage(), e);
+        }
+    }
+
     // The lifecycle override used to sit here, behind Project ADMIN. It moved to
     // POST /internal/cluster/projects/lifecycle-type, and the reasoning is on
     // that method: the knob changes capacity in the cluster, not content in the
@@ -325,6 +365,7 @@ public class ProjectAdminController {
                 .name(doc.getName())
                 .title(doc.getTitle())
                 .projectGroupId(doc.getProjectGroupId())
+                .archivedFromGroupId(doc.getArchivedFromGroupId())
                 .teamIds(doc.getTeamIds())
                 .enabled(doc.isEnabled())
                 .status(doc.getStatus() == null ? null : doc.getStatus().name())

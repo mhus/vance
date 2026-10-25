@@ -8,9 +8,9 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.anus.brain.AnusBrainClient;
 import de.mhus.vance.anus.cluster.ProjectClusterService;
-import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.anus.maintenance.MaintenanceReport;
 import de.mhus.vance.anus.maintenance.ProjectMaintenanceService;
+import de.mhus.vance.shared.project.ProjectService;
 import java.util.List;
 import org.jline.reader.LineReader;
 import org.junit.jupiter.api.Test;
@@ -25,8 +25,7 @@ import org.springframework.beans.factory.ObjectProvider;
 class ProjectCommandsConfirmationTest {
 
     private final ProjectService projectService = mock(ProjectService.class);
-    private final ProjectMaintenanceService maintenanceService =
-            mock(ProjectMaintenanceService.class);
+    private final ProjectMaintenanceService maintenanceService = mock(ProjectMaintenanceService.class);
 
     @SuppressWarnings("unchecked")
     private final ObjectProvider<LineReader> lineReader = mock(ObjectProvider.class);
@@ -39,8 +38,11 @@ class ProjectCommandsConfirmationTest {
     private static final boolean NO_DRAIN = true;
 
     private final ProjectCommands commands = new ProjectCommands(
-            projectService, new ProjectClusterService(mock(AnusBrainClient.class)),
-            maintenanceService, lineReader);
+            projectService,
+            new ProjectClusterService(mock(AnusBrainClient.class)),
+            maintenanceService,
+            mock(de.mhus.vance.shared.projectgroup.ProjectGroupService.class),
+            lineReader);
 
     @Test
     void delete_refuses_whenThereIsNoTerminalAndNoConfirmFlag() {
@@ -124,12 +126,10 @@ class ProjectCommandsConfirmationTest {
 
         String out = commands.rename("acme", "p1", "p2", "p1", false, NO_DRAIN);
 
-        assertThat(out).contains("nothing was written")
-                .contains("folder already exists");
+        assertThat(out).contains("nothing was written").contains("folder already exists");
     }
 
     private static MaintenanceReport report(String project) {
-        return new MaintenanceReport("acme", project,
-                MaintenanceReport.Operation.DELETE, List.of(), List.of(), true);
+        return new MaintenanceReport("acme", project, MaintenanceReport.Operation.DELETE, List.of(), List.of(), true);
     }
 }

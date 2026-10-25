@@ -678,7 +678,7 @@ const groupedForms = computed<[string, SettingFormSummaryDto[]][]>(() => {
               class="opacity-60 text-xs"
             >{{ t('scopes.common.disabled') }}</span>
             <span
-              v-else-if="kind === 'project' && (item as ProjectDto).status === 'ARCHIVED'"
+              v-else-if="kind === 'project' && (item as ProjectDto).status === 'CLOSED'"
               class="opacity-60 text-xs"
             >{{ t('scopes.common.archived') }}</span>
             <!-- Waiting for a pod. Below ARCHIVED on purpose: an archived

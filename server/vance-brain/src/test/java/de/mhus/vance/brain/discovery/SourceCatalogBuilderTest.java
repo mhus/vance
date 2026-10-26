@@ -9,8 +9,11 @@ import de.mhus.vance.api.skills.SkillScope;
 import de.mhus.vance.api.skills.SkillTriggerType;
 import de.mhus.vance.brain.skill.ResolvedSkill;
 import de.mhus.vance.brain.skill.SkillResolver;
+import de.mhus.vance.brain.tools.PodCapabilities;
+import de.mhus.vance.brain.tools.manual.ManualCapabilityGate;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
+import de.mhus.vance.shared.workspace.WorkspaceProperties;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.LinkedHashMap;
@@ -35,24 +38,31 @@ class SourceCatalogBuilderTest {
         when(skillResolver.listAvailable(any())).thenReturn(List.of());
 
         Map<String, LookupResult> manuals = new LinkedHashMap<>();
-        manuals.put("_vance/manuals/getting-started.md",
-                new LookupResult("_vance/manuals/getting-started.md",
+        manuals.put(
+                "_vance/manuals/getting-started.md",
+                new LookupResult(
+                        "_vance/manuals/getting-started.md",
                         "# Getting started\n\nWelcome to Vance.\n",
-                        LookupResult.Source.RESOURCE, null));
-        manuals.put("_vance/manuals/embed-images.md",
-                new LookupResult("_vance/manuals/embed-images.md",
+                        LookupResult.Source.RESOURCE,
+                        null));
+        manuals.put(
+                "_vance/manuals/embed-images.md",
+                new LookupResult(
+                        "_vance/manuals/embed-images.md",
                         "---\n"
-                        + "triggers: image, picture, screenshot, Bild\n"
-                        + "summary: How to show a picture in the chat.\n"
-                        + "---\n"
-                        + "# Embedding — Images\n\n"
-                        + "Long body lives below.\n",
-                        LookupResult.Source.RESOURCE, null));
-        when(documentService.listByPrefixCascade(any(), any(), any()))
-                .thenReturn(manuals);
+                                + "triggers: image, picture, screenshot, Bild\n"
+                                + "summary: How to show a picture in the chat.\n"
+                                + "---\n"
+                                + "# Embedding — Images\n\n"
+                                + "Long body lives below.\n",
+                        LookupResult.Source.RESOURCE,
+                        null));
+        when(documentService.listByPrefixCascade(any(), any(), any())).thenReturn(manuals);
 
         SourceCatalogBuilder builder = new SourceCatalogBuilder(
-                documentService, skillResolver);
+                documentService,
+                skillResolver,
+                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties())));
         CatalogSnapshot snapshot = builder.build(TENANT, null);
 
         assertThat(snapshot.markdown())
@@ -75,13 +85,18 @@ class SourceCatalogBuilderTest {
         when(skillResolver.listAvailable(any())).thenReturn(List.of());
 
         when(documentService.listByPrefixCascade(any(), any(), any()))
-                .thenReturn(Map.of("_vance/manuals/plain.md",
-                        new LookupResult("_vance/manuals/plain.md",
+                .thenReturn(Map.of(
+                        "_vance/manuals/plain.md",
+                        new LookupResult(
+                                "_vance/manuals/plain.md",
                                 "# Plain manual\n\nBody description.\n",
-                                LookupResult.Source.RESOURCE, null)));
+                                LookupResult.Source.RESOURCE,
+                                null)));
 
         SourceCatalogBuilder builder = new SourceCatalogBuilder(
-                documentService, skillResolver);
+                documentService,
+                skillResolver,
+                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties())));
         String md = builder.build(TENANT, null).markdown();
 
         assertThat(md)
@@ -99,15 +114,20 @@ class SourceCatalogBuilderTest {
         // Front-matter has triggers but no summary — the catalog card
         // should fall back to the first body paragraph.
         when(documentService.listByPrefixCascade(any(), any(), any()))
-                .thenReturn(Map.of("_vance/manuals/with-triggers.md",
-                        new LookupResult("_vance/manuals/with-triggers.md",
+                .thenReturn(Map.of(
+                        "_vance/manuals/with-triggers.md",
+                        new LookupResult(
+                                "_vance/manuals/with-triggers.md",
                                 "---\ntriggers: foo, bar\n---\n"
-                                + "# Title here\n\nFirst paragraph wins.\n\n"
-                                + "Second paragraph ignored.\n",
-                                LookupResult.Source.RESOURCE, null)));
+                                        + "# Title here\n\nFirst paragraph wins.\n\n"
+                                        + "Second paragraph ignored.\n",
+                                LookupResult.Source.RESOURCE,
+                                null)));
 
         SourceCatalogBuilder builder = new SourceCatalogBuilder(
-                documentService, skillResolver);
+                documentService,
+                skillResolver,
+                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties())));
         String md = builder.build(TENANT, null).markdown();
 
         assertThat(md)
@@ -126,12 +146,14 @@ class SourceCatalogBuilderTest {
                 + "## Section\n\nLots of detail here that should not "
                 + "appear in the catalog summary card.\n";
         when(documentService.listByPrefixCascade(any(), any(), any()))
-                .thenReturn(Map.of("_vance/manuals/big.md",
-                        new LookupResult("_vance/manuals/big.md", longBody,
-                                LookupResult.Source.RESOURCE, null)));
+                .thenReturn(Map.of(
+                        "_vance/manuals/big.md",
+                        new LookupResult("_vance/manuals/big.md", longBody, LookupResult.Source.RESOURCE, null)));
 
         SourceCatalogBuilder builder = new SourceCatalogBuilder(
-                documentService, skillResolver);
+                documentService,
+                skillResolver,
+                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties())));
         String md = builder.build(TENANT, null).markdown();
 
         assertThat(md)
@@ -147,14 +169,18 @@ class SourceCatalogBuilderTest {
         when(skillResolver.listAvailable(any())).thenReturn(List.of());
 
         Map<String, LookupResult> shuffled = new LinkedHashMap<>();
-        shuffled.put("_vance/manuals/zeta.md",
+        shuffled.put(
+                "_vance/manuals/zeta.md",
                 new LookupResult("_vance/manuals/zeta.md", "z", LookupResult.Source.RESOURCE, null));
-        shuffled.put("_vance/manuals/alpha.md",
+        shuffled.put(
+                "_vance/manuals/alpha.md",
                 new LookupResult("_vance/manuals/alpha.md", "a", LookupResult.Source.RESOURCE, null));
         when(documentService.listByPrefixCascade(any(), any(), any())).thenReturn(shuffled);
 
         SourceCatalogBuilder builder = new SourceCatalogBuilder(
-                documentService, skillResolver);
+                documentService,
+                skillResolver,
+                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties())));
         String md = builder.build(TENANT, null).markdown();
 
         int alphaIdx = md.indexOf("### alpha");
@@ -175,8 +201,7 @@ class SourceCatalogBuilderTest {
                 "Aggregate multiple sources into a coherent picture.",
                 "1.0.0",
                 List.of(new ResolvedSkill.Trigger(
-                        SkillTriggerType.KEYWORDS, null,
-                        List.of("synthesis", "synthese", "aggregate"))),
+                        SkillTriggerType.KEYWORDS, null, List.of("synthesis", "synthese", "aggregate"))),
                 "prompt extension",
                 List.of(),
                 List.of(),
@@ -188,7 +213,9 @@ class SourceCatalogBuilderTest {
         when(skillResolver.listAvailable(any())).thenReturn(List.of(skill));
 
         SourceCatalogBuilder builder = new SourceCatalogBuilder(
-                documentService, skillResolver);
+                documentService,
+                skillResolver,
+                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties())));
         String md = builder.build(TENANT, null).markdown();
 
         assertThat(md)
@@ -211,14 +238,20 @@ class SourceCatalogBuilderTest {
                 "desc",
                 "1",
                 List.of(),
-                null, List.of(), List.of(), List.of(), List.of(),
+                null,
                 List.of(),
-                false,           // enabled=false
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                false, // enabled=false
                 SkillScope.RESOURCE);
         when(skillResolver.listAvailable(any())).thenReturn(List.of(disabledSkill));
 
         SourceCatalogBuilder builder = new SourceCatalogBuilder(
-                documentService, skillResolver);
+                documentService,
+                skillResolver,
+                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties())));
         String md = builder.build(TENANT, null).markdown();
 
         assertThat(md).doesNotContain("## Skills");
@@ -235,13 +268,15 @@ class SourceCatalogBuilderTest {
         DocumentService documentService = mock(DocumentService.class);
         SkillResolver skillResolver = mock(SkillResolver.class);
         when(skillResolver.listAvailable(any())).thenReturn(List.of());
-        when(documentService.listByPrefixCascade(any(), any(), any())).thenReturn(
-                Map.of("_vance/manuals/x.md",
-                        new LookupResult("_vance/manuals/x.md", "body",
-                                LookupResult.Source.RESOURCE, null)));
+        when(documentService.listByPrefixCascade(any(), any(), any()))
+                .thenReturn(Map.of(
+                        "_vance/manuals/x.md",
+                        new LookupResult("_vance/manuals/x.md", "body", LookupResult.Source.RESOURCE, null)));
 
         SourceCatalogBuilder builder = new SourceCatalogBuilder(
-                documentService, skillResolver);
+                documentService,
+                skillResolver,
+                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties())));
         String hash1 = builder.build(TENANT, null).contentHash();
         String hash2 = builder.build(TENANT, null).contentHash();
 
@@ -257,7 +292,9 @@ class SourceCatalogBuilderTest {
         when(skillResolver.listAvailable(any())).thenReturn(List.of());
 
         SourceCatalogBuilder builder = new SourceCatalogBuilder(
-                documentService, skillResolver);
+                documentService,
+                skillResolver,
+                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties())));
         CatalogSnapshot snap = builder.build(TENANT, null);
 
         assertThat(snap.markdown()).isEmpty();
@@ -269,18 +306,32 @@ class SourceCatalogBuilderTest {
     private static Tool stubTool(String name, String description, boolean primary) {
         return new Tool() {
             @Override
-            public String name() { return name; }
+            public String name() {
+                return name;
+            }
+
             @Override
-            public String description() { return description; }
+            public String description() {
+                return description;
+            }
+
             @Override
-            public boolean primary() { return primary; }
+            public boolean primary() {
+                return primary;
+            }
+
             @Override
-            public Map<String, Object> paramsSchema() { return Map.of(); }
+            public Map<String, Object> paramsSchema() {
+                return Map.of();
+            }
+
             @Override
-            public Set<String> labels() { return Set.of(); }
+            public Set<String> labels() {
+                return Set.of();
+            }
+
             @Override
-            public Map<String, Object> invoke(
-                    Map<String, Object> params, ToolInvocationContext ctx) {
+            public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
                 return Map.of();
             }
         };

@@ -7,6 +7,10 @@ summary: How to pick between execute_javascript and execute_python for a scripti
 Default to JavaScript. Switch to Python only when you genuinely
 need a library Python has and JS doesn't.
 
+> `execute_work_javascript`, `execute_python` and the `python_*` tools need
+> this server's workspace. If they are missing from your tool list, the
+> server has no workspace — `execute_javascript` is then the runner.
+
 ## When to consult
 
 User says *"write a script and run it"*, *"loop over X and do Y"*,

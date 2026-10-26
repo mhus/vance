@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import de.mhus.vance.api.thinkprocess.ProcessMode;
 import de.mhus.vance.brain.ai.ModelSize;
+import de.mhus.vance.shared.workspace.WorkspaceMode;
+import de.mhus.vance.shared.workspace.WorkspaceProperties;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -33,17 +35,13 @@ class PromptTemplateRendererTest {
 
     @Test
     void render_passesLiteralStringsThrough() {
-        String out = renderer.render(
-                "You are a helpful assistant.",
-                Map.of("tier", "small"));
+        String out = renderer.render("You are a helpful assistant.", Map.of("tier", "small"));
         assertThat(out).isEqualTo("You are a helpful assistant.");
     }
 
     @Test
     void render_substitutesSimpleVariable() {
-        String out = renderer.render(
-                "Hello {{ name }}!",
-                Map.of("name", "Arthur"));
+        String out = renderer.render("Hello {{ name }}!", Map.of("name", "Arthur"));
         assertThat(out).isEqualTo("Hello Arthur!");
     }
 
@@ -57,10 +55,8 @@ class PromptTemplateRendererTest {
     @Test
     void render_jinjaCompatMatchingTestWorks() {
         String tpl = "{% if model is matching(\"gemini-.*flash.*\") %}flash{% else %}other{% endif %}";
-        assertThat(renderer.render(tpl, Map.of("model", "gemini-2.5-flash")))
-                .isEqualTo("flash");
-        assertThat(renderer.render(tpl, Map.of("model", "claude-opus-4-7")))
-                .isEqualTo("other");
+        assertThat(renderer.render(tpl, Map.of("model", "gemini-2.5-flash"))).isEqualTo("flash");
+        assertThat(renderer.render(tpl, Map.of("model", "claude-opus-4-7"))).isEqualTo("other");
     }
 
     @Test
@@ -71,9 +67,8 @@ class PromptTemplateRendererTest {
 
     @Test
     void render_combinedTierAndModeBranches() {
-        String tpl =
-                "{% if mode == \"EXPLORING\" %}exploring{% elseif tier == \"small\" %}"
-                        + "small-normal{% else %}large-normal{% endif %}";
+        String tpl = "{% if mode == \"EXPLORING\" %}exploring{% elseif tier == \"small\" %}"
+                + "small-normal{% else %}large-normal{% endif %}";
         assertThat(renderer.render(tpl, Map.of("mode", "EXPLORING", "tier", "small")))
                 .isEqualTo("exploring");
         assertThat(renderer.render(tpl, Map.of("mode", "NORMAL", "tier", "small")))
@@ -84,9 +79,7 @@ class PromptTemplateRendererTest {
 
     @Test
     void render_paramMapAccessWorks() {
-        String out = renderer.render(
-                "max={{ params.maxIterations }}",
-                Map.of("params", Map.of("maxIterations", 6)));
+        String out = renderer.render("max={{ params.maxIterations }}", Map.of("params", Map.of("maxIterations", 6)));
         assertThat(out).isEqualTo("max=6");
     }
 
@@ -109,10 +102,8 @@ class PromptTemplateRendererTest {
 
     @Test
     void render_propagatesInvalidRegexFromMatchingTest() {
-        assertThatThrownBy(() ->
-                renderer.render(
-                        "{% if model is matching(\"[invalid\") %}x{% endif %}",
-                        Map.of("model", "anything")))
+        assertThatThrownBy(() -> renderer.render(
+                        "{% if model is matching(\"[invalid\") %}x{% endif %}", Map.of("model", "anything")))
                 .isInstanceOf(PromptTemplateException.class)
                 .hasMessageContaining("invalid regex");
     }
@@ -125,8 +116,7 @@ class PromptTemplateRendererTest {
 
     @Test
     void compile_throwsOnSyntaxError() {
-        assertThatThrownBy(() -> renderer.compile("{% if %}"))
-                .isInstanceOf(PromptTemplateException.class);
+        assertThatThrownBy(() -> renderer.compile("{% if %}")).isInstanceOf(PromptTemplateException.class);
     }
 
     @Test
@@ -175,12 +165,10 @@ class PromptTemplateRendererTest {
 
     @Test
     void contextBuilder_renderRoundTripWithModelSizeEnum() {
-        Map<String, Object> ctx = PromptContextBuilder.create()
-                .tier(ModelSize.SMALL)
-                .build();
+        Map<String, Object> ctx =
+                PromptContextBuilder.create().tier(ModelSize.SMALL).build();
 
-        assertThat(renderer.render(
-                "{% if tier == \"small\" %}small{% endif %}", ctx))
+        assertThat(renderer.render("{% if tier == \"small\" %}small{% endif %}", ctx))
                 .isEqualTo("small");
     }
 
@@ -191,10 +179,8 @@ class PromptTemplateRendererTest {
 
     @Test
     void render_activeAppBlock_rendersWhenMapPresent() {
-        String tpl = "{% if activeApp is not null %}App: {{ activeApp.app }}"
-                + " @ {{ activeApp.folder }}{% endif %}";
-        Map<String, Object> ctx = Map.of(
-                "activeApp", Map.of("app", "calendar", "folder", "calendars/q3"));
+        String tpl = "{% if activeApp is not null %}App: {{ activeApp.app }}" + " @ {{ activeApp.folder }}{% endif %}";
+        Map<String, Object> ctx = Map.of("activeApp", Map.of("app", "calendar", "folder", "calendars/q3"));
 
         assertThat(renderer.render(tpl, ctx)).isEqualTo("App: calendar @ calendars/q3");
     }
@@ -210,8 +196,7 @@ class PromptTemplateRendererTest {
         // This is the shape that crashed in the prompt templates; kept as
         // an executable note so nobody "simplifies" the guard back.
         assertThatThrownBy(() -> renderer.render(
-                "{% if activeApp %}x{% endif %}",
-                Map.of("activeApp", Map.of("app", "calendar"))))
+                        "{% if activeApp %}x{% endif %}", Map.of("activeApp", Map.of("app", "calendar"))))
                 .isInstanceOf(PromptTemplateException.class);
     }
 
@@ -230,16 +215,14 @@ class PromptTemplateRendererTest {
     void render_deniesArbitraryBeanGetter() {
         // Deny-all method access: the getter getSecret() may not be invoked,
         // so a reachable bean cannot leak its state — fail closed.
-        assertThatThrownBy(() -> renderer.render(
-                "{{ probe.secret }}", Map.of("probe", new Probe())))
+        assertThatThrownBy(() -> renderer.render("{{ probe.secret }}", Map.of("probe", new Probe())))
                 .isInstanceOf(PromptTemplateException.class)
                 .hasMessageContaining("denied");
     }
 
     @Test
     void render_deniesExplicitBeanMethodCall() {
-        assertThatThrownBy(() -> renderer.render(
-                "{{ probe.compute() }}", Map.of("probe", new Probe())))
+        assertThatThrownBy(() -> renderer.render("{{ probe.compute() }}", Map.of("probe", new Probe())))
                 .isInstanceOf(PromptTemplateException.class)
                 .hasMessageContaining("denied");
     }
@@ -247,8 +230,7 @@ class PromptTemplateRendererTest {
     @Test
     void render_treatsVariableValuesAsDataNotTemplate() {
         // A value that looks like a template must NOT be re-evaluated.
-        assertThat(renderer.render("{{ v }}", Map.of("v", "{{ 7 * 7 }}")))
-                .isEqualTo("{{ 7 * 7 }}");
+        assertThat(renderer.render("{{ v }}", Map.of("v", "{{ 7 * 7 }}"))).isEqualTo("{{ 7 * 7 }}");
     }
 
     /** Public bean used to prove getter/method access is denied. */
@@ -260,5 +242,23 @@ class PromptTemplateRendererTest {
         public String compute() {
             return "computed";
         }
+    }
+
+    @Test
+    void workspaceMode_isAGlobalVariable_defaultLocal() {
+        assertThat(new PromptTemplateRenderer().render("{{ workspaceMode }}", java.util.Map.of()))
+                .isEqualTo("local");
+    }
+
+    @Test
+    void workspaceMode_off_gatesWorkspaceOnlyText() {
+        WorkspaceProperties props = new WorkspaceProperties();
+        props.setMode(WorkspaceMode.OFF);
+        PromptTemplateRenderer offRenderer = new PromptTemplateRenderer(props);
+
+        String rendered =
+                offRenderer.render("a{% if workspaceMode != \"off\" %}-python{% endif %}", java.util.Map.of());
+
+        assertThat(rendered).isEqualTo("a");
     }
 }

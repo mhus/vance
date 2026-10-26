@@ -11,8 +11,7 @@ import de.mhus.vance.api.skills.SkillScope;
 import de.mhus.vance.brain.skill.ResolvedSkill;
 import de.mhus.vance.brain.skill.SkillResolver;
 import de.mhus.vance.brain.skill.SkillScopeContext;
-import de.mhus.vance.toolpack.ToolException;
-import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.brain.tools.PodCapabilities;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
 import de.mhus.vance.shared.session.SessionDocument;
@@ -20,6 +19,9 @@ import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.shared.workspace.WorkspaceProperties;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -55,8 +57,12 @@ class ManualReadToolTest {
         thinkProcessService = mock(ThinkProcessService.class);
         skillResolver = mock(SkillResolver.class);
         sessionService = mock(SessionService.class);
-        tool = new ManualReadTool(documentService, thinkProcessService,
-                skillResolver, sessionService);
+        tool = new ManualReadTool(
+                documentService,
+                thinkProcessService,
+                skillResolver,
+                sessionService,
+                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties())));
         ctx = new ToolInvocationContext(TENANT, PROJECT, SESSION, PROCESS, "user-1");
 
         process = new ThinkProcessDocument();
@@ -77,8 +83,7 @@ class ManualReadToolTest {
     @Test
     void bareStemResolves() {
         Map<String, Object> out = tool.invoke(Map.of("name", "STYLE"), ctx);
-        assertThat(out).containsEntry("name", "STYLE")
-                .containsEntry("folder", FOLDER);
+        assertThat(out).containsEntry("name", "STYLE").containsEntry("folder", FOLDER);
     }
 
     @Test
@@ -109,8 +114,7 @@ class ManualReadToolTest {
 
     @Test
     void backslashesAreNormalised() {
-        Map<String, Object> out = tool.invoke(
-                Map.of("name", "manuals\\essay\\STYLE.md"), ctx);
+        Map<String, Object> out = tool.invoke(Map.of("name", "manuals\\essay\\STYLE.md"), ctx);
         assertThat(out).containsEntry("name", "STYLE");
     }
 
@@ -142,8 +146,8 @@ class ManualReadToolTest {
         // own manualPath does. The tool must find it via the skill
         // contribution.
         String skillFolder = "_vance/manuals/decision/";
-        process.setActiveSkills(List.of(
-                ActiveSkillRefEmbedded.builder().name("decision-frame").build()));
+        process.setActiveSkills(
+                List.of(ActiveSkillRefEmbedded.builder().name("decision-frame").build()));
 
         SessionDocument session = new SessionDocument();
         session.setSessionId(SESSION);
@@ -152,9 +156,19 @@ class ManualReadToolTest {
         when(sessionService.findBySessionId(SESSION)).thenReturn(Optional.of(session));
 
         ResolvedSkill skill = new ResolvedSkill(
-                "decision-frame", "Decision Frame", "desc", "1.0.0",
-                List.of(), null, List.of(), List.of(skillFolder),
-                List.of(), List.of(), List.of(), true, SkillScope.PROJECT);
+                "decision-frame",
+                "Decision Frame",
+                "desc",
+                "1.0.0",
+                List.of(),
+                null,
+                List.of(),
+                List.of(skillFolder),
+                List.of(),
+                List.of(),
+                List.of(),
+                true,
+                SkillScope.PROJECT);
         when(skillResolver.resolve(any(SkillScopeContext.class), eq("decision-frame")))
                 .thenReturn(Optional.of(skill));
 
@@ -165,8 +179,7 @@ class ManualReadToolTest {
                 .thenReturn(Optional.of(res));
 
         Map<String, Object> out = tool.invoke(Map.of("name", "PROTOCOL"), ctx);
-        assertThat(out).containsEntry("name", "PROTOCOL")
-                .containsEntry("folder", skillFolder);
+        assertThat(out).containsEntry("name", "PROTOCOL").containsEntry("folder", skillFolder);
     }
 
     @Test
@@ -174,8 +187,8 @@ class ManualReadToolTest {
         // Both recipe and skill point at the same stem — recipe folder
         // appears first in the effective list, so its hit wins.
         String skillFolder = "_vance/manuals/decision/";
-        process.setActiveSkills(List.of(
-                ActiveSkillRefEmbedded.builder().name("decision-frame").build()));
+        process.setActiveSkills(
+                List.of(ActiveSkillRefEmbedded.builder().name("decision-frame").build()));
 
         SessionDocument session = new SessionDocument();
         session.setSessionId(SESSION);
@@ -184,14 +197,45 @@ class ManualReadToolTest {
         when(sessionService.findBySessionId(SESSION)).thenReturn(Optional.of(session));
 
         ResolvedSkill skill = new ResolvedSkill(
-                "decision-frame", "Decision Frame", "desc", "1.0.0",
-                List.of(), null, List.of(), List.of(skillFolder),
-                List.of(), List.of(), List.of(), true, SkillScope.PROJECT);
+                "decision-frame",
+                "Decision Frame",
+                "desc",
+                "1.0.0",
+                List.of(),
+                null,
+                List.of(),
+                List.of(skillFolder),
+                List.of(),
+                List.of(),
+                List.of(),
+                true,
+                SkillScope.PROJECT);
         when(skillResolver.resolve(any(SkillScopeContext.class), eq("decision-frame")))
                 .thenReturn(Optional.of(skill));
 
         // Recipe folder (FOLDER from the parent setUp) wins for stem "STYLE".
         Map<String, Object> out = tool.invoke(Map.of("name", "STYLE"), ctx);
         assertThat(out).containsEntry("folder", FOLDER);
+    }
+
+    @Test
+    void manualNeedingWorkspace_onPodWithoutIt_isRefused() {
+        WorkspaceProperties off = new WorkspaceProperties();
+        off.setMode(de.mhus.vance.shared.workspace.WorkspaceMode.OFF);
+        ManualReadTool offTool = new ManualReadTool(
+                documentService,
+                thinkProcessService,
+                skillResolver,
+                sessionService,
+                new ManualCapabilityGate(new PodCapabilities(off)));
+        LookupResult python = mock(LookupResult.class);
+        when(python.content()).thenReturn("---\nrequires-capabilities: workspace\n---\n# Python\n");
+        when(python.source()).thenReturn(LookupResult.Source.PROJECT);
+        when(documentService.lookupCascade(TENANT, PROJECT, FOLDER + "python.md"))
+                .thenReturn(Optional.of(python));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> offTool.invoke(Map.of("name", "python"), ctx))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("does not offer");
     }
 }

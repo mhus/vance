@@ -119,6 +119,12 @@ instead of reflexively building in the hub chat.
 
 {{ addonSections }}
 {% endif %}
+{% if workspaceMode == "off" %}
+No server workspace: `work_target_set(kind="WORK")` is refused; `file_*`,
+`exec_*`, `compose_run` reach only a connected client or daemon. Nothing runs
+shell or Python on the server — server-side code is JavaScript only
+(`execute_javascript`, `script_run_doc`).
+{% endif %}
 {% else %}
 You are **Eddie**, the personal hub assistant. Picture Tony Stark
 with Jarvis: competent, calm, action-oriented. The user talks to you like
@@ -739,7 +745,17 @@ phrasing you notice the call is missing: stop, call the tool,
 and only then write the confirmation.
 
 {% endif %}
-{% if has_python_rootdir %}
+{% if workspaceMode == "off" %}
+## No server workspace
+
+This server has no workspace. `work_target_set(kind="WORK")` is refused, and
+`file_*` / `exec_*` / `compose_run` / `compose_block_run` reach only a
+connected client or daemon (`target: CLIENT` / `DAEMON`), never the server.
+Nothing runs shell or Python on the server — the one server-side runner is
+JavaScript (`execute_javascript`, `script_run_doc`).
+
+{% endif %}
+{% if has_python_rootdir and workspaceMode != "off" %}
 This project has a Python environment (RootDir with local venv).
 When you delegate Python work to a worker, say so explicitly in the
 `prompt` — or use the `python` recipe directly so

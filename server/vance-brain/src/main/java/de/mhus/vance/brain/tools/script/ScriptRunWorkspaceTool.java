@@ -9,11 +9,13 @@ import de.mhus.vance.brain.action.ScriptActionExecutor;
 import de.mhus.vance.brain.action.TriggerContext;
 import de.mhus.vance.toolpack.SpawnTool;
 import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolCapabilities;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.ToolLabels;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
@@ -67,6 +69,12 @@ public class ScriptRunWorkspaceTool implements Tool {
     @Override
     public String name() {
         return "script_run_work";
+    }
+
+    /** Reads the script from a workspace RootDir — workspace access. */
+    @Override
+    public Set<String> requiresCapabilities() {
+        return Set.of(ToolCapabilities.WORKSPACE);
     }
 
     @Override

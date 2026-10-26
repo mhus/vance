@@ -50,6 +50,7 @@ public class ManualReadTool implements Tool {
     private final ThinkProcessService thinkProcessService;
     private final SkillResolver skillResolver;
     private final SessionService sessionService;
+    private final ManualCapabilityGate capabilityGate;
 
     @Override
     public String name() {
@@ -119,6 +120,10 @@ public class ManualReadTool implements Tool {
             if (hit.isPresent()) {
                 LookupResult result = hit.get();
                 String content = result.content() == null ? "" : result.content();
+                if (!capabilityGate.available(content)) {
+                    throw new ToolException("Manual '" + candidate + "' describes tools this server does not"
+                            + " offer (no workspace access) — they are not in your tool list.");
+                }
                 Map<String, Object> out = new LinkedHashMap<>();
                 out.put("name", candidate);
                 out.put("folder", folder);

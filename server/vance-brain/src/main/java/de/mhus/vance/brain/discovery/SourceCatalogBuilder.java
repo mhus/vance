@@ -3,9 +3,9 @@ package de.mhus.vance.brain.discovery;
 import de.mhus.vance.brain.skill.ResolvedSkill;
 import de.mhus.vance.brain.skill.SkillResolver;
 import de.mhus.vance.brain.skill.SkillScopeContext;
+import de.mhus.vance.brain.tools.manual.ManualCapabilityGate;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
-import de.mhus.vance.toolpack.Tool;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -75,6 +75,7 @@ public class SourceCatalogBuilder {
 
     /** Public so the change-listener filters on the same prefix this reads from. */
     public static final String MANUALS_PREFIX = "_vance/manuals/";
+
     private static final String MD_SUFFIX = ".md";
 
     private static final java.util.regex.Pattern H1_LINE =
@@ -83,6 +84,7 @@ public class SourceCatalogBuilder {
 
     private final DocumentService documentService;
     private final SkillResolver skillResolver;
+    private final ManualCapabilityGate capabilityGate;
 
     /**
      * Build a snapshot for {@code tenantId} / {@code projectId}. Both
@@ -113,8 +115,8 @@ public class SourceCatalogBuilder {
             Map<String, CatalogSnapshot.EntrySpec> metaOut,
             String tenantId,
             @Nullable String projectId) {
-        Map<String, LookupResult> hits = documentService.listByPrefixCascade(
-                tenantId, projectId == null ? "" : projectId, MANUALS_PREFIX);
+        Map<String, LookupResult> hits =
+                documentService.listByPrefixCascade(tenantId, projectId == null ? "" : projectId, MANUALS_PREFIX);
         if (hits.isEmpty()) return;
         // Sort by path so successive builds with identical inputs produce
         // the same hash — Markdown order is stable, cache stays warm.
@@ -129,11 +131,15 @@ public class SourceCatalogBuilder {
             if (name.isBlank()) continue;
             String content = e.getValue().content();
             if (content == null || content.isBlank()) continue;
+            if (!capabilityGate.available(content)) continue;
             FrontMatter fm = parseFrontMatter(content);
-            md.append("### ").append(name).append("\n\n")
-                    .append(renderManualCard(fm)).append("\n");
-            metaOut.put(name, new CatalogSnapshot.EntrySpec(
-                    "manual", parseRequiresTools(fm.values.get("requires-tools"))));
+            md.append("### ")
+                    .append(name)
+                    .append("\n\n")
+                    .append(renderManualCard(fm))
+                    .append("\n");
+            metaOut.put(
+                    name, new CatalogSnapshot.EntrySpec("manual", parseRequiresTools(fm.values.get("requires-tools"))));
         }
     }
 
@@ -180,9 +186,7 @@ public class SourceCatalogBuilder {
         String triggers = stringOf(fm.values.get("triggers"));
         String summary = stringOf(fm.values.get("summary"));
 
-        String description = !summary.isEmpty()
-                ? summary
-                : extractFirstParagraph(fm.body);
+        String description = !summary.isEmpty() ? summary : extractFirstParagraph(fm.body);
 
         StringBuilder out = new StringBuilder();
         if (!title.isEmpty()) {
@@ -219,7 +223,10 @@ public class SourceCatalogBuilder {
         }
         int end = -1;
         for (int i = 1; i < lines.length; i++) {
-            if (FRONTMATTER_FENCE.equals(lines[i].trim())) { end = i; break; }
+            if (FRONTMATTER_FENCE.equals(lines[i].trim())) {
+                end = i;
+                break;
+            }
         }
         if (end < 0) {
             return new FrontMatter(Map.of(), trimmed);
@@ -303,9 +310,7 @@ public class SourceCatalogBuilder {
     }
 
     private static String manualName(String path) {
-        String stem = path.endsWith(MD_SUFFIX)
-                ? path.substring(0, path.length() - MD_SUFFIX.length())
-                : path;
+        String stem = path.endsWith(MD_SUFFIX) ? path.substring(0, path.length() - MD_SUFFIX.length()) : path;
         // Drop the manuals/ prefix; everything below it is the
         // logical manual name (sub-directories included for grouped
         // families like manuals/eddie/foo).
@@ -327,8 +332,7 @@ public class SourceCatalogBuilder {
         try {
             available = skillResolver.listAvailable(scope);
         } catch (RuntimeException e) {
-            log.warn("SourceCatalogBuilder: skill listing failed for tenant '{}': {}",
-                    tenantId, e.toString());
+            log.warn("SourceCatalogBuilder: skill listing failed for tenant '{}': {}", tenantId, e.toString());
             return;
         }
         if (available.isEmpty()) return;

@@ -113,6 +113,12 @@ body, a fenced diagram, the whole explanation. "Short, direct"
 below is about tone, never about leaving content out.
 
 Style: short, direct, German or English to match the user.
+{% if workspaceMode == "off" %}
+No server workspace: `work_target_set(kind="WORK")` is refused; `file_*`,
+`exec_*`, `compose_run` reach only a connected client or daemon. Nothing runs
+shell or Python on the server — server-side code is JavaScript only
+(`execute_javascript`, `script_run_doc`).
+{% endif %}
 {% else %}
 You are **Arthur**, the chat agent of a Vance interactive session.
 The user is talking to Vance — a "think tool" — and you are the
@@ -805,7 +811,7 @@ The catalog appears at the end of this prompt; `recipe_list` and
   the prompt.
 - `code-read` — explore a repo, answer code questions (read-only).
 - `coding` — source-code edits **on the workspace filesystem**
-  (Foot CLI or server RootDir). NOT for editing project documents
+  ({% if workspaceMode == "off" %}Foot CLI only — this server has no workspace{% else %}Foot CLI or server RootDir{% endif %}). NOT for editing project documents
   in `documents/...` — those are MongoDB-backed and `coding` only
   has `file_*` / `exec_*` tools, which can't see them. Use
   `analyze` or do the doc edit yourself with `doc_*` tools.
@@ -863,7 +869,17 @@ Marvin plans reached via Slartibartfast are a different case — those
 are one-shot deliverables, not standing automation, and stay a normal
 default delegation.
 
-{% if has_python_rootdir %}
+{% if workspaceMode == "off" %}
+## No server workspace
+
+This server has no workspace. `work_target_set(kind="WORK")` is refused, and
+`file_*` / `exec_*` / `compose_run` / `compose_block_run` reach only a
+connected client or daemon (`target: CLIENT` / `DAEMON`), never the server.
+Nothing runs shell or Python on the server — the one server-side runner is
+JavaScript (`execute_javascript`, `script_run_doc`).
+
+{% endif %}
+{% if has_python_rootdir and workspaceMode != "off" %}
 ## Python environment available
 
 This project has a Python scratch RootDir with a local venv. When

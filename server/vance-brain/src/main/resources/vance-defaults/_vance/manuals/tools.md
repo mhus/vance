@@ -6,6 +6,10 @@ summary: Tool catalogue overview — server vs. client tools, tool_list / tool_d
 
 Two universes of tools share the same dispatcher:
 
+> Server-side scratch and exec tools (`work_file_*`, `work_exec_*`) exist only
+> when this server offers a workspace. Missing from your tool list means it is
+> switched off here — use documents and client tools instead.
+
 - **Server tools** — run in the brain. Always available.
 - **Client tools** (prefix `client_*`) — run on the user's foot
   client when one is connected. Act on the user's machine.

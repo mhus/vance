@@ -1,12 +1,17 @@
 package de.mhus.vance.brain.prompt;
 
+import de.mhus.vance.shared.workspace.WorkspaceMode;
+import de.mhus.vance.shared.workspace.WorkspaceProperties;
 import io.pebbletemplates.pebble.PebbleEngine;
 import io.pebbletemplates.pebble.error.PebbleException;
+import io.pebbletemplates.pebble.extension.AbstractExtension;
 import io.pebbletemplates.pebble.loader.StringLoader;
 import io.pebbletemplates.pebble.template.PebbleTemplate;
 import java.io.IOException;
+import java.util.Locale;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 /**
@@ -38,6 +43,13 @@ import org.springframework.stereotype.Service;
  * if a template author writes one, they get a parse error. Conditions
  * use {@code elseif} (not Jinja2's {@code elif}); the Slartibartfast
  * teaching prompt summarises this for LLM-authored recipes.
+ *
+ * <p><b>Global variables</b> — values every template sees without a caller
+ * putting them into the context: {@code workspaceMode} ({@code local} /
+ * {@code off}, from {@code vance.workspace.mode}). It is a property of the pod,
+ * not of a process, so it lives here instead of in every engine's
+ * {@code PromptContextBuilder} call. A template gates workspace-only text with
+ * {@code {% if workspaceMode != "off" %}}.
  */
 @Service
 public class PromptTemplateRenderer {
@@ -45,12 +57,27 @@ public class PromptTemplateRenderer {
     private final PebbleEngine engine;
     private final PebbleEngine structuredEngine;
 
+    /** Renderer outside Spring (tests, tools): {@code workspaceMode} is {@code local}. */
     public PromptTemplateRenderer() {
-        this.engine = buildEngine(/*trimNewlineAfterTag*/ true);
-        this.structuredEngine = buildEngine(/*trimNewlineAfterTag*/ false);
+        this(WorkspaceMode.LOCAL);
     }
 
-    private static PebbleEngine buildEngine(boolean trimNewlineAfterTag) {
+    @Autowired
+    public PromptTemplateRenderer(WorkspaceProperties workspace) {
+        this(workspace.getMode());
+    }
+
+    private PromptTemplateRenderer(WorkspaceMode workspaceMode) {
+        Map<String, Object> globals =
+                Map.of(WORKSPACE_MODE, workspaceMode.name().toLowerCase(Locale.ROOT));
+        this.engine = buildEngine(/*trimNewlineAfterTag*/ true, globals);
+        this.structuredEngine = buildEngine(/*trimNewlineAfterTag*/ false, globals);
+    }
+
+    /** Name of the global template variable carrying {@code vance.workspace.mode}. */
+    public static final String WORKSPACE_MODE = "workspaceMode";
+
+    private static PebbleEngine buildEngine(boolean trimNewlineAfterTag, Map<String, Object> globals) {
         return new PebbleEngine.Builder()
                 .loader(new StringLoader())
                 .strictVariables(false)
@@ -70,6 +97,7 @@ public class PromptTemplateRenderer {
                 // and filters resolve through separate paths and keep working.
                 .methodAccessValidator(new DenyMethodAccessValidator())
                 .extension(new JinjaCompatExtension())
+                .extension(new GlobalsExtension(globals))
                 .build();
     }
 
@@ -102,13 +130,11 @@ public class PromptTemplateRenderer {
      * blank line for a syntax error is the right way round; prompts keep the
      * trimming default because there the trade goes the other way.
      */
-    public @Nullable String renderStructured(
-            @Nullable String template, Map<String, Object> context) {
+    public @Nullable String renderStructured(@Nullable String template, Map<String, Object> context) {
         return render(template, context, structuredEngine);
     }
 
-    private @Nullable String render(
-            @Nullable String template, Map<String, Object> context, PebbleEngine pebble) {
+    private @Nullable String render(@Nullable String template, Map<String, Object> context, PebbleEngine pebble) {
         if (template == null) return null;
         if (template.isEmpty()) return template;
         try {
@@ -123,8 +149,7 @@ public class PromptTemplateRenderer {
             compiled.evaluate(out, context);
             return out.result();
         } catch (PebbleException e) {
-            throw new PromptTemplateException(
-                    "Pebble render failed: " + collapseMessages(e), e);
+            throw new PromptTemplateException("Pebble render failed: " + collapseMessages(e), e);
         } catch (IOException e) {
             // Only the BoundedWriter's cap throws here now.
             throw new PromptTemplateException("Render aborted: " + e.getMessage(), e);
@@ -154,8 +179,7 @@ public class PromptTemplateRenderer {
         public void write(char[] cbuf, int off, int len) throws IOException {
             count += len;
             if (count > max) {
-                throw new IOException(
-                        "rendered output exceeds max of " + max + " characters");
+                throw new IOException("rendered output exceeds max of " + max + " characters");
             }
             sb.append(cbuf, off, len);
         }
@@ -188,8 +212,7 @@ public class PromptTemplateRenderer {
         try {
             engine.getTemplate(template);
         } catch (PebbleException e) {
-            throw new PromptTemplateException(
-                    "Pebble compile failed: " + collapseMessages(e), e);
+            throw new PromptTemplateException("Pebble compile failed: " + collapseMessages(e), e);
         }
     }
 
@@ -210,5 +233,20 @@ public class PromptTemplateRenderer {
             last = msg;
         }
         return sb.length() == 0 ? t.getClass().getSimpleName() : sb.toString();
+    }
+
+    /** Pod-level values every template sees; a caller's context of the same name wins. */
+    private static final class GlobalsExtension extends AbstractExtension {
+
+        private final Map<String, Object> globals;
+
+        GlobalsExtension(Map<String, Object> globals) {
+            this.globals = globals;
+        }
+
+        @Override
+        public Map<String, Object> getGlobalVariables() {
+            return globals;
+        }
     }
 }

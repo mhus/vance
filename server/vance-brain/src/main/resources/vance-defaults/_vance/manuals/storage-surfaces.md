@@ -9,6 +9,10 @@ undo: the file ends up where the user can't find it, or where it
 can't be processed. Choose by *who reads it next* and *how long it
 should live*.
 
+> The scratch store is this server's workspace. If no `work_file_*` tools are
+> in your tool list, the server has none — choose between Document and client
+> file.
+
 ## When to consult
 
 You are about to write something to disk / persist a file / save a

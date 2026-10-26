@@ -10,6 +10,10 @@ one fails loudly (no `/app/data` on a laptop, no brew in the container) or
 quietly (container rules on a workstation = wrong PATH advice, wrong
 persistence promises).
 
+> The container pattern applies only where this server runs your commands
+> (`work_exec_run`). If that tool is missing from your tool list, the server has
+> no workspace — only the workstation pattern (client `exec_run`) remains.
+
 ## Step 1 — where do you run?
 
 `work_target_get` tells you the active target:

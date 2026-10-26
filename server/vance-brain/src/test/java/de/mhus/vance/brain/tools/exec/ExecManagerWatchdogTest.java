@@ -12,6 +12,7 @@ import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.execution.ExecutionRegistryService;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.workspace.RootDirHandle;
+import de.mhus.vance.shared.workspace.WorkspaceMode;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -48,6 +49,7 @@ class ExecManagerWatchdogTest {
         when(router.dispatch(any(), any(), any())).thenReturn(true);
         ExecutionRegistryService registry = mock(ExecutionRegistryService.class);
         WorkspaceService workspace = mock(WorkspaceService.class);
+        when(workspace.mode()).thenReturn(WorkspaceMode.LOCAL);
 
         RootDirHandle handle = mock(RootDirHandle.class);
         when(handle.getPath()).thenReturn(workDir);

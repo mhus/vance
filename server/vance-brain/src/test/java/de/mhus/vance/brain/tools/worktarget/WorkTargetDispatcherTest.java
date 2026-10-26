@@ -13,9 +13,11 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.api.tools.ToolSpec;
 import de.mhus.vance.brain.daemon.DaemonRegistry;
 import de.mhus.vance.brain.daemon.DaemonToolInvoker;
+import de.mhus.vance.brain.tools.PodCapabilities;
 import de.mhus.vance.brain.tools.client.ClientToolRegistry;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.shared.workspace.WorkspaceProperties;
 import de.mhus.vance.shared.worktarget.WorkTarget;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolBus;
@@ -53,7 +55,8 @@ class WorkTargetDispatcherTest {
         clientToolRegistry = mock(ClientToolRegistry.class);
         daemonToolInvoker = mock(DaemonToolInvoker.class);
         toolDispatcher = mock(de.mhus.vance.brain.tools.ToolDispatcher.class);
-        workTargetService = new WorkTargetService(thinkProcessService, clientToolRegistry);
+        workTargetService = new WorkTargetService(
+                thinkProcessService, clientToolRegistry, new PodCapabilities(new WorkspaceProperties()));
         dispatcher =
                 new WorkTargetDispatcher(workTargetService, thinkProcessService, toolDispatcher, daemonToolInvoker);
         wrapper = stubTool("file_read", "path", "dirName", "maxChars");

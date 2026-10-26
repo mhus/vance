@@ -4,6 +4,7 @@ import de.mhus.vance.shared.workspace.WorkspaceException;
 import de.mhus.vance.shared.workspace.WorkspaceProperties;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolCapabilities;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.ToolLabels;
@@ -11,6 +12,7 @@ import de.mhus.vance.toolpack.core.ContentHashes;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -74,6 +76,11 @@ public class WorkspaceReadTool implements Tool {
     @Override
     public String name() {
         return "work_file_read";
+    }
+
+    @Override
+    public Set<String> requiresCapabilities() {
+        return Set.of(ToolCapabilities.WORKSPACE);
     }
 
     @Override

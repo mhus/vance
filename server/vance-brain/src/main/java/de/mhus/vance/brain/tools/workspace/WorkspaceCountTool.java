@@ -5,6 +5,7 @@ import de.mhus.vance.brain.tools.RegexGuard;
 import de.mhus.vance.shared.workspace.WorkspaceException;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolCapabilities;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.ToolLabels;
@@ -102,6 +103,11 @@ public class WorkspaceCountTool implements Tool {
     @Override
     public String name() {
         return "work_file_count";
+    }
+
+    @Override
+    public Set<String> requiresCapabilities() {
+        return Set.of(ToolCapabilities.WORKSPACE);
     }
 
     @Override

@@ -126,6 +126,24 @@ public class WorkspaceService {
     // Workspace lifecycle
     // ---------------------------------------------------------------------
 
+    /** Whether tenants get workspace access on this pod ({@code vance.workspace.mode}). */
+    public WorkspaceMode mode() {
+        return properties.getMode();
+    }
+
+    /**
+     * Throws unless this pod offers workspace access. For the access paths that are
+     * not tools — exec jobs, compose runs — so they fail with a clear message.
+     *
+     * @throws WorkspaceException when {@code vance.workspace.mode} is {@code off}
+     */
+    public void requireAccess(String what) {
+        if (!properties.getMode().accessible()) {
+            throw new WorkspaceException(
+                    what + " is not available: this server has no workspace access" + " (vance.workspace.mode=off)");
+        }
+    }
+
     /**
      * Initialize (or load) the workspace for a project. Creates the
      * folder lazily and writes {@code workspace.json} on first call.

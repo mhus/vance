@@ -6,6 +6,7 @@ import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolCapabilities;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.ToolLabels;
@@ -64,6 +65,11 @@ public class WorkFileToDocTool implements Tool {
     @Override
     public String name() {
         return "work_file_to_doc";
+    }
+
+    @Override
+    public Set<String> requiresCapabilities() {
+        return Set.of(ToolCapabilities.WORKSPACE);
     }
 
     @Override

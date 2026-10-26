@@ -116,6 +116,7 @@ public class WorkTargetDispatcher {
             return daemonToolInvoker.invoke(key, clientName, p, Duration.ofSeconds(daemonTimeoutSeconds));
         } else {
             // WorkTargetKind.WORK
+            workTargetService.requireWorkAvailable();
             rejectUnknownParams(ctx, wrapper, workName, p);
             if (!p.containsKey("dirName")
                     && target.targetName() != null

@@ -25,6 +25,10 @@ import org.springframework.stereotype.Component;
  * has to be able to suppress a built-in tool).
  *
  * <p>Duplicate tool names across beans fail fast at construction.
+ *
+ * <p>A bean that requires a capability this pod lacks ({@link PodCapabilities} —
+ * e.g. workspace access with {@code vance.workspace.mode=off}) is left out here,
+ * so it is in no inventory and no caller can resolve it.
  */
 @Component
 @Slf4j
@@ -34,7 +38,7 @@ public class BuiltInToolSource implements ServerToolService.BuiltInProvider {
     private final List<Tool> tools;
     private final ServerToolService serverToolService;
 
-    public BuiltInToolSource(List<Tool> beans, ServerToolService serverToolService) {
+    public BuiltInToolSource(List<Tool> beans, ServerToolService serverToolService, PodCapabilities capabilities) {
         Map<String, List<Tool>> grouped = beans.stream().collect(Collectors.groupingBy(Tool::name));
         grouped.forEach((name, dupes) -> {
             if (dupes.size() > 1) {
@@ -42,8 +46,19 @@ public class BuiltInToolSource implements ServerToolService.BuiltInProvider {
                         + dupes.stream().map(t -> t.getClass().getName()).toList());
             }
         });
-        this.tools = List.copyOf(beans);
-        this.byName = beans.stream().collect(Collectors.toUnmodifiableMap(Tool::name, t -> t));
+        List<Tool> offered = beans.stream().filter(capabilities::supports).toList();
+        List<String> withheld = beans.stream()
+                .filter(t -> !capabilities.supports(t))
+                .map(Tool::name)
+                .toList();
+        if (!withheld.isEmpty()) {
+            log.info(
+                    "BuiltInToolSource withholds {} tools this pod lacks a capability for: {}",
+                    withheld.size(),
+                    withheld);
+        }
+        this.tools = offered;
+        this.byName = offered.stream().collect(Collectors.toUnmodifiableMap(Tool::name, t -> t));
         this.serverToolService = serverToolService;
         log.info(
                 "BuiltInToolSource registered {} tools: {}",

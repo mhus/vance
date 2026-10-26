@@ -4,6 +4,7 @@ import de.mhus.vance.brain.oauth.OAuthDisconnectedEvent;
 import de.mhus.vance.brain.oauth.OAuthTokenOwner;
 import de.mhus.vance.brain.oauth.OAuthTokenRefresher;
 import de.mhus.vance.brain.oauth.OAuthTokenStore;
+import de.mhus.vance.brain.tools.PodCapabilities;
 import de.mhus.vance.brain.tools.mcp.oauth.McpOAuthSettings;
 import de.mhus.vance.brain.tools.rest.SettingsSecretResolver;
 import de.mhus.vance.brain.tools.types.ToolFactory;
@@ -14,6 +15,8 @@ import de.mhus.vance.shared.servertool.ServerToolConfig;
 import de.mhus.vance.shared.servertool.ServerToolDocument;
 import de.mhus.vance.shared.servertool.ServerToolLoader;
 import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolCapabilities;
+import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.core.PackHttpClient;
 import de.mhus.vance.toolpack.mcp.McpConfig;
@@ -94,12 +97,17 @@ public class McpToolPackFactory implements ToolFactory {
     private final ServerToolLoader serverToolLoader;
     private final OAuthTokenStore tokenStore;
 
+    /** stdio servers start a program on this pod — only with workspace access. */
+    private final PodCapabilities podCapabilities;
+
     public McpToolPackFactory(
             SettingsSecretResolver secretResolver,
             McpLeaseSupport leaseSupport,
             ServerToolLoader serverToolLoader,
             OAuthTokenStore tokenStore,
-            OAuthTokenRefresher tokenRefresher) {
+            OAuthTokenRefresher tokenRefresher,
+            PodCapabilities podCapabilities) {
+        this.podCapabilities = podCapabilities;
         this.pool = new McpConnectionPool(
                 // MCP server URLs are tenant config — guarded egress.
                 new PackHttpClient(Duration.ofSeconds(10), c -> SsrfGuard.guard(c, false)),
@@ -193,6 +201,13 @@ public class McpToolPackFactory implements ToolFactory {
                 ctx == null ? null : ctx.sessionId(),
                 ctx == null ? null : ctx.processId(),
                 ctx == null ? null : ctx.userId());
+        if (McpConfig.fromParameters(document.getParameters()).transport() == McpConfig.Transport.STDIO
+                && !podCapabilities.available().contains(ToolCapabilities.WORKSPACE)) {
+            // A stdio server is a program started on this pod with an argv from
+            // tenant config — the same as an exec job.
+            throw new ToolException("MCP server '" + document.getName() + "' uses transport stdio, which starts a"
+                    + " program on this server — not available here (vance.workspace.mode=off). Use transport http.");
+        }
         Optional<McpOAuthSettings> oauth = McpOAuthSettings.of(document.getParameters());
         if (oauth.isPresent()) {
             requireLogin(document, oauth.get(), bootstrap);

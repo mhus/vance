@@ -2,6 +2,7 @@ package de.mhus.vance.addon.brain.tex;
 
 import de.mhus.vance.shared.process.ProcessLauncher;
 import de.mhus.vance.shared.process.ProcessSpec;
+import de.mhus.vance.shared.workspace.WorkspaceProperties;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -35,6 +36,9 @@ public class Tex2PdfLocalExecutor implements Tex2PdfExecutor {
     /** Sealed child environment, scoped to the requesting project. */
     private final ProcessLauncher launcher;
 
+    /** latexmk is a program on this pod — refused without workspace access (O6: TeX reads files). */
+    private final WorkspaceProperties workspaceProperties;
+
     private static final long PROCESS_TIMEOUT_SECONDS = 150;
     private static final int LOG_EXCERPT_LINES = 50;
 
@@ -46,6 +50,13 @@ public class Tex2PdfLocalExecutor implements Tex2PdfExecutor {
     @Override
     public Result compile(Request request) {
         long start = System.currentTimeMillis();
+        if (!workspaceProperties.getMode().accessible()) {
+            return Result.failure(
+                    "Local LaTeX is not available on this server (vance.workspace.mode=off) — use the remote"
+                            + " executor (setting tex.executor=rbehzadan)",
+                    null,
+                    0);
+        }
         Path rootDir = request.workspaceRoot();
         String main = request.mainDocument();
 

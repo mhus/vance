@@ -152,6 +152,13 @@ public class ExecManager {
             SubmitOptions options) {
         requireTenant(tenantId);
         requireProject(projectId);
+        // Every exec job — agent tools, workflow shell tasks, compose, Python
+        // Cortex — funnels through here, so this is the one gate for running
+        // programs on a pod without workspace access.
+        if (!workspaceService.mode().accessible()) {
+            throw new ExecException("Running programs is not available: this server has no workspace access"
+                    + " (vance.workspace.mode=off)");
+        }
         Path cwd = resolveCwd(tenantId, projectId, dirName);
         String jobId = UUID.randomUUID().toString().substring(0, 8);
         String scopeKey = scopeKey(tenantId, projectId);

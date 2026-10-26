@@ -13,6 +13,7 @@ import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.execution.ExecutionRegistryService;
 import de.mhus.vance.brain.execution.ExecutionStatus;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
+import de.mhus.vance.shared.workspace.WorkspaceMode;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -50,6 +51,7 @@ class ExecManagerOrphanReconcileTest {
         when(router.dispatch(any(), any(), any())).thenReturn(true);
         registry = mock(ExecutionRegistryService.class);
         WorkspaceService workspace = mock(WorkspaceService.class);
+        when(workspace.mode()).thenReturn(WorkspaceMode.LOCAL);
 
         ExecProperties props = new ExecProperties();
         props.setOrphanReconcileTtl(TTL);

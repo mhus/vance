@@ -17,6 +17,7 @@ import de.mhus.vance.brain.tools.exec.ExecManager;
 import de.mhus.vance.brain.tools.worktarget.WorkTargetService;
 import de.mhus.vance.shared.workspace.RootDirHandle;
 import de.mhus.vance.shared.workspace.WorkspaceDescriptor;
+import de.mhus.vance.shared.workspace.WorkspaceMode;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import java.nio.file.Path;
 import java.util.List;
@@ -35,6 +36,7 @@ class DamogranComposeServiceTest {
     @BeforeEach
     void setUp() {
         workspaceService = mock(WorkspaceService.class);
+        when(workspaceService.mode()).thenReturn(WorkspaceMode.LOCAL);
         // provision() now runs its find-or-create under withLabelLock; make the
         // mock a pass-through so the supplier executes.
         when(workspaceService.withLabelLock(any(), any(), any(), any()))
@@ -42,9 +44,16 @@ class DamogranComposeServiceTest {
         workTargetService = mock(WorkTargetService.class);
         taskExecutor = mock(DamogranTaskExecutor.class);
         transport = mock(DamogranTransport.class);
-        service = new DamogranComposeService(new DamogranManifestParser(), new ComposeRunRegistry(), List.of(
-                new WorkspaceComposeRunner(workspaceService, workTargetService, taskExecutor, transport,
-                        mock(ExecManager.class), mock(GitService.class),
+        service = new DamogranComposeService(
+                new DamogranManifestParser(),
+                new ComposeRunRegistry(),
+                List.of(new WorkspaceComposeRunner(
+                        workspaceService,
+                        workTargetService,
+                        taskExecutor,
+                        transport,
+                        mock(ExecManager.class),
+                        mock(GitService.class),
                         mock(DamogranStateService.class),
                         new de.mhus.vance.brain.tools.ToolInterruptChecker(
                                 mock(de.mhus.vance.shared.thinkprocess.ThinkProcessService.class)))));
@@ -52,23 +61,40 @@ class DamogranComposeServiceTest {
 
     private RootDirHandle handle(String label, String type) {
         return RootDirHandle.builder()
-                .tenantId("t").projectId("p").dirName(label).type(type)
+                .tenantId("t")
+                .projectId("p")
+                .dirName(label)
+                .type(type)
                 .path(Path.of("/tmp/" + label))
-                .descriptor(WorkspaceDescriptor.builder().dirName(label).label(label).type(type).build())
+                .descriptor(WorkspaceDescriptor.builder()
+                        .dirName(label)
+                        .label(label)
+                        .type(type)
+                        .build())
                 .build();
     }
 
-    private DamogranManifest manifest(String target, List<TaskSpec> tasks,
-                                      List<ImportEntry> imports, List<ExportEntry> exports) {
+    private DamogranManifest manifest(
+            String target, List<TaskSpec> tasks, List<ImportEntry> imports, List<ExportEntry> exports) {
         return new DamogranManifest(
-                new WorkspaceSpec("ws", "temp", false, false, Map.of(), target), imports, tasks, exports, null, null,
+                new WorkspaceSpec("ws", "temp", false, false, Map.of(), target),
+                imports,
+                tasks,
+                exports,
+                null,
+                null,
                 DamogranManifest.SessionSpec.DISABLED);
     }
 
     private DamogranManifest deleteManifest() {
         return new DamogranManifest(
                 new WorkspaceSpec("ws", "temp", false, true, Map.of(), "WORK"),
-                List.of(), List.of(), List.of(), null, null, DamogranManifest.SessionSpec.DISABLED);
+                List.of(),
+                List.of(),
+                List.of(),
+                null,
+                null,
+                DamogranManifest.SessionSpec.DISABLED);
     }
 
     private static TaskSpec task(String type) {
@@ -81,7 +107,9 @@ class DamogranComposeServiceTest {
         when(workspaceService.createRootDir(any())).thenReturn(handle("ws", "temp"));
         when(taskExecutor.dispatch(any(), any())).thenReturn(DamogranTaskResult.success(List.of()));
 
-        DamogranManifest m = manifest("WORK", List.of(task("exec")),
+        DamogranManifest m = manifest(
+                "WORK",
+                List.of(task("exec")),
                 List.of(new ImportEntry("vance:a.txt", "a.txt", java.util.Map.of())),
                 List.of(new ExportEntry("out.txt", "vance:out.txt", java.util.Map.of())));
 
@@ -99,8 +127,12 @@ class DamogranComposeServiceTest {
         when(workspaceService.listRootDirs("t", "p")).thenReturn(List.of());
         when(workspaceService.createRootDir(any())).thenReturn(handle("ws", "temp"));
         WorkspaceComposeRunner runner = new WorkspaceComposeRunner(
-                workspaceService, workTargetService, taskExecutor, transport,
-                mock(ExecManager.class), mock(GitService.class),
+                workspaceService,
+                workTargetService,
+                taskExecutor,
+                transport,
+                mock(ExecManager.class),
+                mock(GitService.class),
                 mock(DamogranStateService.class),
                 new de.mhus.vance.brain.tools.ToolInterruptChecker(
                         mock(de.mhus.vance.shared.thinkprocess.ThinkProcessService.class)));
@@ -121,8 +153,11 @@ class DamogranComposeServiceTest {
         when(workspaceService.createRootDir(any())).thenReturn(handle("ws", "temp"));
         when(taskExecutor.dispatch(any(), any())).thenReturn(DamogranTaskResult.failure("boom"));
 
-        DamogranManifest m = manifest("WORK", List.of(task("exec"), task("llm")),
-                List.of(), List.of(new ExportEntry("out.txt", "vance:out.txt", java.util.Map.of())));
+        DamogranManifest m = manifest(
+                "WORK",
+                List.of(task("exec"), task("llm")),
+                List.of(),
+                List.of(new ExportEntry("out.txt", "vance:out.txt", java.util.Map.of())));
 
         DamogranComposeResult result = service.run("t", "p", "proc1", m);
 

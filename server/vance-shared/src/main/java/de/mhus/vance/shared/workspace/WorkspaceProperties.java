@@ -37,6 +37,12 @@ public class WorkspaceProperties {
      */
     private int hardLimitPercent = 95;
 
+    /**
+     * {@code local} (default) or {@code off} — whether tenants get access to the
+     * workspace on this pod ({@link WorkspaceMode}).
+     */
+    private WorkspaceMode mode = WorkspaceMode.LOCAL;
+
     /** {@code vance.workspace.node.*} — npm used for Node RootDirs (script libraries). */
     private Node node = new Node();
 

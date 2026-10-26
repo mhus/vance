@@ -9,12 +9,14 @@ import static org.mockito.Mockito.when;
 import com.sun.net.httpserver.HttpServer;
 import de.mhus.vance.brain.oauth.OAuthTokenRefresher;
 import de.mhus.vance.brain.oauth.OAuthTokenStore;
+import de.mhus.vance.brain.tools.PodCapabilities;
 import de.mhus.vance.brain.tools.rest.SettingsSecretResolver;
 import de.mhus.vance.shared.lease.LeaseHolderInfo;
 import de.mhus.vance.shared.net.SsrfGuard;
 import de.mhus.vance.shared.servertool.ServerToolConfig;
 import de.mhus.vance.shared.servertool.ServerToolDocument;
 import de.mhus.vance.shared.servertool.ServerToolLoader;
+import de.mhus.vance.shared.workspace.WorkspaceProperties;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.core.PackHttpClient;
 import de.mhus.vance.toolpack.core.SecretResolver;
@@ -124,7 +126,8 @@ class McpLeaseRevocationTest {
                 mock(McpLeaseSupport.class),
                 loader,
                 mock(OAuthTokenStore.class),
-                mock(OAuthTokenRefresher.class));
+                mock(OAuthTokenRefresher.class),
+                new PodCapabilities(new WorkspaceProperties()));
     }
 
     private LeaseHolderInfo deadHolder(String sessionEndpoint) {

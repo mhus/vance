@@ -262,6 +262,14 @@ vance:
     # profiles carry their own throwaway token).
     token: ${VANCE_INTERNAL_TOKEN:}
   workspace:
+    # Workspace access for tenants on this pod (planning/multi-tenant-isolation.md
+    # part 2). 'local' (default): workspace tools, exec jobs and compose as they
+    # are. 'off' (shared pods): those access paths are gone — file/exec tools leave
+    # the inventory, exec jobs / compose / stdio MCP / r_script / local LaTeX are
+    # refused, the WORK target is unavailable — while the mechanics (script library
+    # store, node_install) stay. With 'off' the script sandbox self-test must pass
+    # fully or the brain does not start. Env: VANCE_WORKSPACE_MODE.
+    mode: local
     access:
       bypass-proxy: false
       max-file-size: 10485760       # 10 MiB

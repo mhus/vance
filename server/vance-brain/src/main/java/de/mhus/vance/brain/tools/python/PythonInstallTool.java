@@ -9,6 +9,7 @@ import de.mhus.vance.shared.workspace.PythonHandler;
 import de.mhus.vance.shared.workspace.RootDirHandle;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolCapabilities;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.ToolLabels;
@@ -83,6 +84,11 @@ public class PythonInstallTool implements Tool {
     @Override
     public String name() {
         return "python_install";
+    }
+
+    @Override
+    public Set<String> requiresCapabilities() {
+        return Set.of(ToolCapabilities.WORKSPACE);
     }
 
     @Override

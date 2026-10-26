@@ -281,6 +281,15 @@ public interface Tool {
     }
 
     /**
+     * Host capabilities this tool needs to work at all ({@link ToolCapabilities}).
+     * A host that lacks one keeps the tool out of the inventory — the model, a
+     * script and every other caller simply do not see it. Default empty.
+     */
+    default Set<String> requiresCapabilities() {
+        return Set.of();
+    }
+
+    /**
      * Default projection to the wire-format DTO. Overriding is rarely
      * useful — the wire contract matches this interface one-to-one.
      */

@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.tools.exec;
 
 import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolCapabilities;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.ToolLabels;
@@ -73,6 +74,11 @@ public class ExecCheckTool implements Tool {
     @Override
     public String name() {
         return "work_exec_check";
+    }
+
+    @Override
+    public Set<String> requiresCapabilities() {
+        return Set.of(ToolCapabilities.WORKSPACE);
     }
 
     @Override

@@ -1,10 +1,13 @@
 package de.mhus.vance.brain.tools.worktarget;
 
+import de.mhus.vance.brain.tools.PodCapabilities;
 import de.mhus.vance.brain.tools.client.ClientToolRegistry;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.worktarget.WorkTarget;
 import de.mhus.vance.shared.worktarget.WorkTargetKind;
+import de.mhus.vance.toolpack.ToolCapabilities;
+import de.mhus.vance.toolpack.ToolException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -41,6 +44,21 @@ public class WorkTargetService {
 
     private final ThinkProcessService thinkProcessService;
     private final ClientToolRegistry clientToolRegistry;
+    private final PodCapabilities podCapabilities;
+
+    /**
+     * Throws unless the WORK target exists on this pod — it is the pod's own
+     * workspace, gone with {@code vance.workspace.mode=off}. CLIENT and DAEMON
+     * targets stay available.
+     *
+     * @throws ToolException when the pod has no workspace access
+     */
+    public void requireWorkAvailable() {
+        if (!podCapabilities.available().contains(ToolCapabilities.WORKSPACE)) {
+            throw new ToolException("This server has no workspace (vance.workspace.mode=off) — the WORK target"
+                    + " is not available. Use a CLIENT target (a connected foot) or a DAEMON target.");
+        }
+    }
 
     /**
      * Returns the current target for the process. Reads from
@@ -90,6 +108,9 @@ public class WorkTargetService {
     public void set(String processId, WorkTarget target) {
         if (target == null) {
             throw new IllegalArgumentException("target is required");
+        }
+        if (target.kind() == WorkTargetKind.WORK) {
+            requireWorkAvailable();
         }
         ThinkProcessDocument process = thinkProcessService
                 .findById(processId)

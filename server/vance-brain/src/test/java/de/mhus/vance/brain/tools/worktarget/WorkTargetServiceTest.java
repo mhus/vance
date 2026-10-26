@@ -8,11 +8,15 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.brain.tools.PodCapabilities;
 import de.mhus.vance.brain.tools.client.ClientToolRegistry;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.shared.workspace.WorkspaceMode;
+import de.mhus.vance.shared.workspace.WorkspaceProperties;
 import de.mhus.vance.shared.worktarget.WorkTarget;
 import de.mhus.vance.shared.worktarget.WorkTargetKind;
+import de.mhus.vance.toolpack.ToolException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -34,7 +38,8 @@ class WorkTargetServiceTest {
     void setUp() {
         thinkProcessService = mock(ThinkProcessService.class);
         clientToolRegistry = mock(ClientToolRegistry.class);
-        service = new WorkTargetService(thinkProcessService, clientToolRegistry);
+        service = new WorkTargetService(
+                thinkProcessService, clientToolRegistry, new PodCapabilities(new WorkspaceProperties()));
         process = new ThinkProcessDocument();
         process.setId(PROC_ID);
         process.setSessionId(SESSION_ID);
@@ -189,5 +194,17 @@ class WorkTargetServiceTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> wt = (Map<String, Object>) captor.getValue().get(WorkTarget.KEY);
         assertThat(wt).containsEntry("kind", "DAEMON").containsEntry("targetName", "build-box");
+    }
+
+    @Test
+    void set_workTargetWithWorkspaceOff_isRefused() {
+        WorkspaceProperties off = new WorkspaceProperties();
+        off.setMode(WorkspaceMode.OFF);
+        WorkTargetService offService =
+                new WorkTargetService(thinkProcessService, clientToolRegistry, new PodCapabilities(off));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> offService.set("p-1", WorkTarget.work(null)))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("vance.workspace.mode=off");
     }
 }

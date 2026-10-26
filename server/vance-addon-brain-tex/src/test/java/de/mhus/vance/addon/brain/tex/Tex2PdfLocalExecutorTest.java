@@ -2,6 +2,8 @@ package de.mhus.vance.addon.brain.tex;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import de.mhus.vance.shared.workspace.WorkspaceMode;
+import de.mhus.vance.shared.workspace.WorkspaceProperties;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -14,14 +16,16 @@ import org.junit.jupiter.api.io.TempDir;
 class Tex2PdfLocalExecutorTest {
 
     /** Plain start — the tests cover failure paths, not the sealed environment. */
-    private final Tex2PdfLocalExecutor executor = new Tex2PdfLocalExecutor(spec -> {
-        ProcessBuilder pb = new ProcessBuilder(spec.command()).redirectErrorStream(true);
-        if (spec.workingDir() != null) {
-            pb.directory(spec.workingDir().toFile());
-        }
-        pb.environment().putAll(spec.environment());
-        return pb.start();
-    });
+    private final Tex2PdfLocalExecutor executor = new Tex2PdfLocalExecutor(
+            spec -> {
+                ProcessBuilder pb = new ProcessBuilder(spec.command()).redirectErrorStream(true);
+                if (spec.workingDir() != null) {
+                    pb.directory(spec.workingDir().toFile());
+                }
+                pb.environment().putAll(spec.environment());
+                return pb.start();
+            },
+            new WorkspaceProperties());
 
     @TempDir
     Path tempDir;
@@ -97,5 +101,22 @@ class Tex2PdfLocalExecutorTest {
         assertThat(result.log()).isEqualTo("log");
         assertThat(result.elapsedMs()).isEqualTo(50);
         assertThat(result.pdf()).isNull();
+    }
+
+    @Test
+    void compile_withWorkspaceOff_isRefusedWithoutStartingLatexmk() {
+        WorkspaceProperties off = new WorkspaceProperties();
+        off.setMode(WorkspaceMode.OFF);
+        Tex2PdfLocalExecutor offExecutor = new Tex2PdfLocalExecutor(
+                spec -> {
+                    throw new AssertionError("latexmk must not start");
+                },
+                off);
+
+        Tex2PdfExecutor.Result result = offExecutor.compile(
+                new Tex2PdfExecutor.Request("thesis.tex", "pdflatex", tempDir, "acme", "proj", "proc-1"));
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.error()).contains("vance.workspace.mode=off");
     }
 }

@@ -75,9 +75,16 @@ public class WorkspaceComposeRunner implements ComposeRunner {
 
     @Override
     public DamogranComposeResult run(
-            String tenantId, String projectId, @Nullable String processId,
-            DamogranManifest manifest, @Nullable String baseDir, @Nullable ComposeRun run,
+            String tenantId,
+            String projectId,
+            @Nullable String processId,
+            DamogranManifest manifest,
+            @Nullable String baseDir,
+            @Nullable ComposeRun run,
             de.mhus.vance.shared.permission.@Nullable SecurityContext caller) {
+        // A compose run provisions a RootDir, clones, imports, runs tasks and
+        // exports — all workspace access, none of it on a pod without one.
+        workspaceService.requireAccess("A workspace compose run");
         WorkspaceSpec ws = manifest.workspace();
 
         // Terminal delete: dispose the named workspace (if any) and stop. No
@@ -90,19 +97,30 @@ public class WorkspaceComposeRunner implements ComposeRunner {
         if (processId != null) {
             workTargetService.set(processId, WorkTarget.work(handle.getDirName()));
         }
-        ComposeFileIo io = new WorkspaceFileIo(
-                workspaceService, tenantId, projectId, handle.getDirName());
-        ComposeExec exec = new WorkspaceComposeExec(
-                execManager, tenantId, projectId, handle.getDirName(), processId, run);
-        ComposeGit git = new WorkspaceComposeGit(
-                workspaceService, gitService, tenantId, projectId, handle.getDirName());
+        ComposeFileIo io = new WorkspaceFileIo(workspaceService, tenantId, projectId, handle.getDirName());
+        ComposeExec exec =
+                new WorkspaceComposeExec(execManager, tenantId, projectId, handle.getDirName(), processId, run);
+        ComposeGit git =
+                new WorkspaceComposeGit(workspaceService, gitService, tenantId, projectId, handle.getDirName());
         // The state store is keyed by the run's document identity (stateKey), which
         // is carried on the async ComposeRun; a synchronous/internal run has none.
         String stateKey = run != null ? run.stateKey() : null;
         DamogranContext ctx = new DamogranContext(
-                tenantId, projectId, processId,
-                ws.name(), handle.getDirName(), handle.getPath(),
-                ws.target(), null, baseDir, stateKey, io, run, exec, git, caller);
+                tenantId,
+                projectId,
+                processId,
+                ws.name(),
+                handle.getDirName(),
+                handle.getPath(),
+                ws.target(),
+                null,
+                baseDir,
+                stateKey,
+                io,
+                run,
+                exec,
+                git,
+                caller);
 
         // Apply state management ops (delete/init/header/footer) before anything runs.
         stateService.applyOps(ctx, manifest.state());
@@ -123,7 +141,9 @@ public class WorkspaceComposeRunner implements ComposeRunner {
             // clean stop like the cancel path, not a throw.
             if (interruptChecker.isHalted(processId)) {
                 return new DamogranComposeResult(
-                        DamogranStatus.FAILURE, ws.name(), List.copyOf(results),
+                        DamogranStatus.FAILURE,
+                        ws.name(),
+                        List.copyOf(results),
                         "cancelled — process paused (ESC / /pause)");
             }
             if (run != null) {
@@ -135,8 +155,7 @@ public class WorkspaceComposeRunner implements ComposeRunner {
                 run.taskDone(result);
             }
             if (!result.isSuccess()) {
-                log.debug("Damogran compose '{}' halted at task '{}': {}",
-                        ws.name(), task.type(), result.error());
+                log.debug("Damogran compose '{}' halted at task '{}': {}", ws.name(), task.type(), result.error());
                 return new DamogranComposeResult(
                         DamogranStatus.FAILURE, ws.name(), List.copyOf(results), result.error());
             }
@@ -147,8 +166,7 @@ public class WorkspaceComposeRunner implements ComposeRunner {
             transport.doExport(ctx, exp);
         }
 
-        return new DamogranComposeResult(
-                DamogranStatus.SUCCESS, ws.name(), List.copyOf(results), null);
+        return new DamogranComposeResult(DamogranStatus.SUCCESS, ws.name(), List.copyOf(results), null);
     }
 
     // ──────────────────── workspace provisioning ────────────────────
@@ -178,10 +196,9 @@ public class WorkspaceComposeRunner implements ComposeRunner {
         // with the same label, and clear=true let one dispose the other's
         // fresh dir. See WorkspaceService.withLabelLock.
         return workspaceService.withLabelLock(tenantId, projectId, ws.name(), () -> {
-            Optional<RootDirHandle> existing =
-                    workspaceService.listRootDirs(tenantId, projectId).stream()
-                            .filter(h -> ws.name().equals(h.getDescriptor().getLabel()))
-                            .findFirst();
+            Optional<RootDirHandle> existing = workspaceService.listRootDirs(tenantId, projectId).stream()
+                    .filter(h -> ws.name().equals(h.getDescriptor().getLabel()))
+                    .findFirst();
 
             if (existing.isPresent()) {
                 RootDirHandle handle = existing.get();

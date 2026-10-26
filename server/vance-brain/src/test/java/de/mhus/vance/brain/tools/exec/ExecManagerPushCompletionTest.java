@@ -15,6 +15,7 @@ import de.mhus.vance.brain.execution.ExecutionRegistryService;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.PendingMessageType;
 import de.mhus.vance.shared.workspace.RootDirHandle;
+import de.mhus.vance.shared.workspace.WorkspaceMode;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import java.nio.file.Path;
 import java.util.Map;
@@ -51,6 +52,7 @@ class ExecManagerPushCompletionTest {
         when(router.dispatch(any(), any(), any())).thenReturn(true);
         registry = mock(ExecutionRegistryService.class);
         workspace = mock(WorkspaceService.class);
+        when(workspace.mode()).thenReturn(WorkspaceMode.LOCAL);
 
         RootDirHandle handle = mock(RootDirHandle.class);
         when(handle.getPath()).thenReturn(workDir);

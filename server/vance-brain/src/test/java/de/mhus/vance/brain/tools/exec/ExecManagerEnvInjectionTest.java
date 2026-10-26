@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.execution.ExecutionRegistryService;
 import de.mhus.vance.shared.workspace.RootDirHandle;
+import de.mhus.vance.shared.workspace.WorkspaceMode;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.exec.ExecEnvPolicy;
 import java.nio.file.Path;
@@ -54,6 +55,7 @@ class ExecManagerEnvInjectionTest {
         when(router.dispatch(any(), any(), any())).thenReturn(true);
         ExecutionRegistryService registry = mock(ExecutionRegistryService.class);
         WorkspaceService workspace = mock(WorkspaceService.class);
+        when(workspace.mode()).thenReturn(WorkspaceMode.LOCAL);
 
         RootDirHandle handle = mock(RootDirHandle.class);
         when(handle.getPath()).thenReturn(workDir);

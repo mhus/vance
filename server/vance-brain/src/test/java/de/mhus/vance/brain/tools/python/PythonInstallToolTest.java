@@ -16,6 +16,7 @@ import de.mhus.vance.brain.tools.exec.ExecProperties;
 import de.mhus.vance.shared.workspace.PythonHandler;
 import de.mhus.vance.shared.workspace.RootDirHandle;
 import de.mhus.vance.shared.workspace.WorkspaceDescriptor;
+import de.mhus.vance.shared.workspace.WorkspaceMode;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -41,6 +42,7 @@ class PythonInstallToolTest {
     @BeforeEach
     void setUp() {
         workspace = mock(WorkspaceService.class);
+        when(workspace.mode()).thenReturn(WorkspaceMode.LOCAL);
         execManager = mock(ExecManager.class);
         properties = new ExecProperties();
         tool = new PythonInstallTool(workspace, execManager, properties);
@@ -51,8 +53,14 @@ class PythonInstallToolTest {
         when(workspace.getRootDir(eq("acme"), eq("instant-hole"), eq("python")))
                 .thenReturn(Optional.of(pythonHandle("python")));
         when(execManager.submitTrackedAndRender(
-                anyString(), anyString(), any(), any(), anyString(), anyString(), anyLong(),
-                any(de.mhus.vance.brain.tools.exec.SubmitOptions.class)))
+                        anyString(),
+                        anyString(),
+                        any(),
+                        any(),
+                        anyString(),
+                        anyString(),
+                        anyLong(),
+                        any(de.mhus.vance.brain.tools.exec.SubmitOptions.class)))
                 .thenReturn(Map.of("status", "COMPLETED", "exitCode", 0));
     }
 
@@ -68,14 +76,11 @@ class PythonInstallToolTest {
 
     @Test
     void invoke_multiplePackages_buildsSinglePipCallWithAll() {
-        tool.invoke(
-                Map.of("packages", List.of("flask==3.0", "requests>=2", "numpy")),
-                CTX);
+        tool.invoke(Map.of("packages", List.of("flask==3.0", "requests>=2", "numpy")), CTX);
 
         String cmd = capturedCommand();
         assertThat(cmd)
-                .contains(".venv/bin/python -m pip install "
-                        + "'flask==3.0' 'requests>=2' 'numpy'")
+                .contains(".venv/bin/python -m pip install " + "'flask==3.0' 'requests>=2' 'numpy'")
                 .contains("pip freeze > requirements.txt");
     }
 
@@ -108,14 +113,10 @@ class PythonInstallToolTest {
 
     @Test
     void invoke_flagsAppendedVerbatim() {
-        tool.invoke(
-                Map.of("package", "flask", "flags", "--upgrade --no-deps"),
-                CTX);
+        tool.invoke(Map.of("package", "flask", "flags", "--upgrade --no-deps"), CTX);
 
         String cmd = capturedCommand();
-        assertThat(cmd)
-                .contains("'flask' --upgrade --no-deps")
-                .contains("pip freeze");
+        assertThat(cmd).contains("'flask' --upgrade --no-deps").contains("pip freeze");
     }
 
     @Test
@@ -125,8 +126,7 @@ class PythonInstallToolTest {
         when(workspace.getRootDir(eq("acme"), eq("instant-hole"), eq("elsewhere")))
                 .thenReturn(Optional.of(gitHandle("elsewhere")));
 
-        assertThatThrownBy(() -> tool.invoke(
-                Map.of("package", "flask", "dirName", "elsewhere"), CTX))
+        assertThatThrownBy(() -> tool.invoke(Map.of("package", "flask", "dirName", "elsewhere"), CTX))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("expected 'python'");
     }
@@ -139,27 +139,37 @@ class PythonInstallToolTest {
         // provisioned instead. See TypedRootDirProvisioner.
         when(workspace.getRootDir(eq("acme"), eq("instant-hole"), eq("python")))
                 .thenReturn(Optional.of(gitHandle("python")));
-        when(workspace.listRootDirs(eq("acme"), eq("instant-hole")))
-                .thenReturn(java.util.List.of());
-        when(workspace.createRootDir(any()))
-                .thenReturn(pythonHandle(PythonHandler.DEFAULT_LABEL));
+        when(workspace.listRootDirs(eq("acme"), eq("instant-hole"))).thenReturn(java.util.List.of());
+        when(workspace.createRootDir(any())).thenReturn(pythonHandle(PythonHandler.DEFAULT_LABEL));
 
         tool.invoke(Map.of("package", "flask"), CTX);
 
         ArgumentCaptor<String> dir = ArgumentCaptor.forClass(String.class);
-        verify(execManager).submitTrackedAndRender(
-                anyString(), anyString(), any(), any(), dir.capture(), anyString(), anyLong(),
-                any(de.mhus.vance.brain.tools.exec.SubmitOptions.class));
+        verify(execManager)
+                .submitTrackedAndRender(
+                        anyString(),
+                        anyString(),
+                        any(),
+                        any(),
+                        dir.capture(),
+                        anyString(),
+                        anyLong(),
+                        any(de.mhus.vance.brain.tools.exec.SubmitOptions.class));
         assertThat(dir.getValue()).isEqualTo(PythonHandler.DEFAULT_LABEL);
     }
 
     private String capturedCommand() {
         ArgumentCaptor<String> cmd = ArgumentCaptor.forClass(String.class);
-        verify(execManager, times(1)).submitTrackedAndRender(
-                eq("acme"), eq("instant-hole"),
-                eq("sess"), eq("proc"),
-                eq("python"), cmd.capture(), anyLong(),
-                any(de.mhus.vance.brain.tools.exec.SubmitOptions.class));
+        verify(execManager, times(1))
+                .submitTrackedAndRender(
+                        eq("acme"),
+                        eq("instant-hole"),
+                        eq("sess"),
+                        eq("proc"),
+                        eq("python"),
+                        cmd.capture(),
+                        anyLong(),
+                        any(de.mhus.vance.brain.tools.exec.SubmitOptions.class));
         return cmd.getValue();
     }
 

@@ -8,6 +8,7 @@ import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolCapabilities;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.ToolLabels;
@@ -120,6 +121,12 @@ public class RScriptTool implements Tool {
     @Override
     public String name() {
         return "r_script";
+    }
+
+    /** R code runs on the pod's Rserve daemon — a program on this server. */
+    @Override
+    public Set<String> requiresCapabilities() {
+        return Set.of(ToolCapabilities.WORKSPACE);
     }
 
     @Override

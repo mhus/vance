@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.within;
 
 import de.mhus.vance.brain.ai.audio.AudioMimeTypeSniffer;
 import de.mhus.vance.brain.ai.audio.PcmWav;
+import de.mhus.vance.shared.process.ProcessLauncher;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -30,7 +31,12 @@ class FfmpegAudioEditorTest {
 
     private static final int SAMPLE_RATE = 24000;
 
-    private final FfmpegAudioEditor editor = new FfmpegAudioEditor("ffmpeg", "ffprobe", 120);
+    /** Plain start — these tests are about argv and output parsing, not the sealed environment. */
+    private static final ProcessLauncher DIRECT = spec -> new ProcessBuilder(spec.command())
+            .redirectErrorStream(spec.redirectErrorStream())
+            .start();
+
+    private final FfmpegAudioEditor editor = new FfmpegAudioEditor("ffmpeg", "ffprobe", 120, DIRECT);
 
     @Test
     void probe_reports_duration_and_format() {
@@ -189,7 +195,7 @@ class FfmpegAudioEditorTest {
         try {
             Files.writeString(hang, "#!/bin/sh\nexec sleep 30\n");
             Files.setPosixFilePermissions(hang, PosixFilePermissions.fromString("rwxr-xr-x"));
-            FfmpegAudioEditor hanging = new FfmpegAudioEditor("ffmpeg", hang.toString(), 1);
+            FfmpegAudioEditor hanging = new FfmpegAudioEditor("ffmpeg", hang.toString(), 1, DIRECT);
             long start = System.currentTimeMillis();
 
             assertThatThrownBy(() -> hanging.probe(new byte[0]))

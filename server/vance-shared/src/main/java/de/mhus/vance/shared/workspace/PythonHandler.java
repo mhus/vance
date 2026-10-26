@@ -1,5 +1,7 @@
 package de.mhus.vance.shared.workspace;
 
+import de.mhus.vance.shared.process.ProcessLauncher;
+import de.mhus.vance.shared.process.ProcessSpec;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -17,6 +19,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 /**
@@ -68,12 +71,20 @@ public class PythonHandler implements WorkspaceContentHandler {
     public static final String VENV_DIR = ".venv";
     public static final String REQUIREMENTS_FILE = "requirements.txt";
 
-    private static final String DEFAULT_GITIGNORE =
-            ".venv/\n__pycache__/\n*.pyc\n*.pyo\n.pytest_cache/\n";
+    private static final String DEFAULT_GITIGNORE = ".venv/\n__pycache__/\n*.pyc\n*.pyo\n.pytest_cache/\n";
     private static final long VENV_BUILD_TIMEOUT_SECONDS = 120;
     private static final long PIP_INSTALL_TIMEOUT_SECONDS = 600;
 
+    /**
+     * Wheels only: a source distribution runs its own build code at install time
+     * ({@code setup.py}), which {@code --ignore-scripts} cannot stop for pip
+     * ({@code planning/multi-tenant-isolation.md} P8).
+     */
+    private static final String ONLY_BINARY = "--only-binary=:all:";
+
     private final GitHandler gitHandler;
+    /** Provided by the brain; absent in the admin shell (see {@link NodeHandler}). */
+    private final ObjectProvider<ProcessLauncher> launcherProvider;
 
     @Override
     public String type() {
@@ -97,13 +108,12 @@ public class PythonHandler implements WorkspaceContentHandler {
                 Git.init().setDirectory(handle.getPath().toFile()).call().close();
             } catch (GitAPIException e) {
                 throw new WorkspaceException(
-                        "git init failed for python RootDir " + handle.getDirName()
-                                + ": " + e.getMessage(), e);
+                        "git init failed for python RootDir " + handle.getDirName() + ": " + e.getMessage(), e);
             }
         }
 
         writeDefaultGitignore(handle.getPath());
-        buildVenv(handle.getPath(), pythonPath);
+        buildVenv(handle, pythonPath);
 
         // Auto-install dependencies if the clone shipped a
         // requirements.txt. Mirrors the recover-path: "set up Python
@@ -111,20 +121,22 @@ public class PythonHandler implements WorkspaceContentHandler {
         // Skipped for non-repo inits (the file simply isn't there).
         Path requirements = handle.getPath().resolve(REQUIREMENTS_FILE);
         if (Files.isRegularFile(requirements)) {
-            pipInstallRequirements(handle.getPath(), pythonPath);
+            pipInstallRequirements(handle, pythonPath);
         }
 
         // Declarative package list from workspace options — installed once at
         // init (the reused-workspace path skips init and keeps them).
         List<String> packages = packageList(meta, META_PACKAGES);
         if (!packages.isEmpty()) {
-            pipInstallPackages(handle.getPath(), pythonPath, packages);
+            pipInstallPackages(handle, pythonPath, packages);
         }
 
         meta.put(META_PYTHON_PATH, pythonPath);
         handle.getDescriptor().setMetadata(meta);
-        log.info("python init: {} (pythonPath={}, repoUrl={}, requirements={}, packages={})",
-                handle.getDirName(), pythonPath,
+        log.info(
+                "python init: {} (pythonPath={}, repoUrl={}, requirements={}, packages={})",
+                handle.getDirName(),
+                pythonPath,
                 repoUrl == null ? "none" : repoUrl,
                 Files.isRegularFile(requirements) ? "installed" : "absent",
                 packages.size());
@@ -135,11 +147,10 @@ public class PythonHandler implements WorkspaceContentHandler {
         Map<String, Object> meta = mutableMetadata(handle.getDescriptor());
         String repoUrl = stringOr(meta, GitHandler.META_REPO_URL, null);
         if (StringUtils.isBlank(repoUrl)) {
-            throw new WorkspaceException(
-                    "python suspend requires a configured git remote on "
-                            + handle.getDirName() + " — set metadata."
-                            + GitHandler.META_REPO_URL + " or accept that this "
-                            + "RootDir is not suspendable");
+            throw new WorkspaceException("python suspend requires a configured git remote on "
+                    + handle.getDirName() + " — set metadata."
+                    + GitHandler.META_REPO_URL + " or accept that this "
+                    + "RootDir is not suspendable");
         }
         gitHandler.suspend(handle);
     }
@@ -151,14 +162,14 @@ public class PythonHandler implements WorkspaceContentHandler {
         // Use the recover pod's local interpreter, not the one from the descriptor —
         // the binary on disk is what counts, the descriptor field is informational.
         String pythonPath = DEFAULT_PYTHON_PATH;
-        buildVenv(handle.getPath(), pythonPath);
+        buildVenv(handle, pythonPath);
         meta.put(META_PYTHON_PATH, pythonPath);
         descriptor.setMetadata(meta);
         handle.getDescriptor().setMetadata(meta);
 
         Path requirements = handle.getPath().resolve(REQUIREMENTS_FILE);
         if (Files.isRegularFile(requirements)) {
-            pipInstallRequirements(handle.getPath(), pythonPath);
+            pipInstallRequirements(handle, pythonPath);
         }
         log.info("python recover: {} (pythonPath={})", handle.getDirName(), pythonPath);
     }
@@ -180,15 +191,15 @@ public class PythonHandler implements WorkspaceContentHandler {
         Path rootDirPath = handle.getPath();
         Path venv = rootDirPath.resolve(VENV_DIR);
         deleteRecursively(venv);
-        buildVenv(rootDirPath, pythonPath);
+        buildVenv(handle, pythonPath);
         Path requirements = rootDirPath.resolve(REQUIREMENTS_FILE);
         if (Files.isRegularFile(requirements)) {
-            pipInstallRequirements(rootDirPath, pythonPath);
+            pipInstallRequirements(handle, pythonPath);
         }
         Map<String, Object> meta = mutableMetadata(handle.getDescriptor());
         List<String> packages = packageList(meta, META_PACKAGES);
         if (!packages.isEmpty()) {
-            pipInstallPackages(rootDirPath, pythonPath, packages);
+            pipInstallPackages(handle, pythonPath, packages);
         }
         meta.put(META_PYTHON_PATH, pythonPath);
         handle.getDescriptor().setMetadata(meta);
@@ -204,45 +215,39 @@ public class PythonHandler implements WorkspaceContentHandler {
             return;
         }
         try {
-            Files.writeString(gitignore, DEFAULT_GITIGNORE, StandardCharsets.UTF_8,
-                    StandardOpenOption.CREATE_NEW);
+            Files.writeString(gitignore, DEFAULT_GITIGNORE, StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW);
         } catch (IOException e) {
             log.warn("Failed to write default .gitignore in {}: {}", rootDirPath, e.toString());
         }
     }
 
-    private void buildVenv(Path rootDirPath, String pythonPath) {
-        runProcess(rootDirPath,
-                new String[]{pythonPath, "-m", "venv", VENV_DIR},
+    private void buildVenv(RootDirHandle handle, String pythonPath) {
+        runProcess(
+                handle,
+                new String[] {pythonPath, "-m", "venv", VENV_DIR},
                 VENV_BUILD_TIMEOUT_SECONDS,
                 "venv build (" + pythonPath + ")");
     }
 
-    private void pipInstallRequirements(Path rootDirPath, String pythonPath) {
-        Path venvPython = rootDirPath.resolve(VENV_DIR).resolve("bin").resolve("python");
-        String pythonBinary = Files.isExecutable(venvPython)
-                ? venvPython.toString()
-                : pythonPath;
-        runProcess(rootDirPath,
-                new String[]{pythonBinary, "-m", "pip", "install", "-r", REQUIREMENTS_FILE},
+    private void pipInstallRequirements(RootDirHandle handle, String pythonPath) {
+        Path venvPython = handle.getPath().resolve(VENV_DIR).resolve("bin").resolve("python");
+        String pythonBinary = Files.isExecutable(venvPython) ? venvPython.toString() : pythonPath;
+        runProcess(
+                handle,
+                new String[] {pythonBinary, "-m", "pip", "install", ONLY_BINARY, "-r", REQUIREMENTS_FILE},
                 PIP_INSTALL_TIMEOUT_SECONDS,
                 "pip install -r " + REQUIREMENTS_FILE);
     }
 
-    private void pipInstallPackages(Path rootDirPath, String pythonPath, List<String> packages) {
-        Path venvPython = rootDirPath.resolve(VENV_DIR).resolve("bin").resolve("python");
-        String pythonBinary = Files.isExecutable(venvPython)
-                ? venvPython.toString()
-                : pythonPath;
-        String[] command = new String[4 + packages.size()];
-        command[0] = pythonBinary;
-        command[1] = "-m";
-        command[2] = "pip";
-        command[3] = "install";
-        for (int i = 0; i < packages.size(); i++) {
-            command[4 + i] = packages.get(i);
-        }
-        runProcess(rootDirPath, command, PIP_INSTALL_TIMEOUT_SECONDS,
+    private void pipInstallPackages(RootDirHandle handle, String pythonPath, List<String> packages) {
+        Path venvPython = handle.getPath().resolve(VENV_DIR).resolve("bin").resolve("python");
+        String pythonBinary = Files.isExecutable(venvPython) ? venvPython.toString() : pythonPath;
+        List<String> command = new ArrayList<>(List.of(pythonBinary, "-m", "pip", "install", ONLY_BINARY, "--"));
+        command.addAll(packages);
+        runProcess(
+                handle,
+                command.toArray(String[]::new),
+                PIP_INSTALL_TIMEOUT_SECONDS,
                 "pip install " + String.join(" ", packages));
     }
 
@@ -267,33 +272,35 @@ public class PythonHandler implements WorkspaceContentHandler {
                 continue;
             }
             if (s.startsWith("-")) {
-                throw new WorkspaceException(
-                        "invalid package spec '" + s + "' in workspace options."
-                                + key + " — must not start with '-' (option injection)");
+                throw new WorkspaceException("invalid package spec '" + s + "' in workspace options." + key
+                        + " — must not start with '-' (option injection)");
             }
             out.add(s);
         }
         return out;
     }
 
-    private static void runProcess(Path cwd, String[] command, long timeoutSeconds, String label) {
-        ProcessBuilder pb = new ProcessBuilder(command)
-                .directory(cwd.toFile())
-                .redirectErrorStream(true);
+    /** Runs the command in the RootDir through the {@link ProcessLauncher}, scoped to its project. */
+    private void runProcess(RootDirHandle handle, String[] command, long timeoutSeconds, String label) {
+        Path cwd = handle.getPath();
+        ProcessLauncher launcher = launcherProvider.getIfAvailable();
+        if (launcher == null) {
+            throw new WorkspaceException(
+                    "starting " + label + " is not available in this application (no ProcessLauncher)");
+        }
         Process p;
         try {
-            p = pb.start();
+            p = launcher.start(
+                    ProcessSpec.of(List.of(command), cwd).withScope(handle.getTenantId(), handle.getProjectId()));
         } catch (IOException e) {
-            throw new WorkspaceException(
-                    label + " failed to start: " + e.getMessage(), e);
+            throw new WorkspaceException(label + " failed to start: " + e.getMessage(), e);
         }
         String output;
         try {
             output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             if (!p.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
                 p.destroyForcibly();
-                throw new WorkspaceException(
-                        label + " timed out after " + timeoutSeconds + "s");
+                throw new WorkspaceException(label + " timed out after " + timeoutSeconds + "s");
             }
         } catch (IOException e) {
             throw new WorkspaceException(label + " I/O error: " + e.getMessage(), e);
@@ -304,8 +311,7 @@ public class PythonHandler implements WorkspaceContentHandler {
         int exit = p.exitValue();
         if (exit != 0) {
             throw new WorkspaceException(
-                    label + " exited with code " + exit
-                            + (output.isBlank() ? "" : ": " + output.strip()));
+                    label + " exited with code " + exit + (output.isBlank() ? "" : ": " + output.strip()));
         }
         log.debug("{} ok (cwd={})", label, cwd);
     }
@@ -317,13 +323,11 @@ public class PythonHandler implements WorkspaceContentHandler {
                 try {
                     Files.deleteIfExists(p);
                 } catch (IOException e) {
-                    throw new WorkspaceException(
-                            "Cannot delete " + p + ": " + e.getMessage(), e);
+                    throw new WorkspaceException("Cannot delete " + p + ": " + e.getMessage(), e);
                 }
             });
         } catch (IOException e) {
-            throw new WorkspaceException(
-                    "Cannot traverse " + dir + ": " + e.getMessage(), e);
+            throw new WorkspaceException("Cannot traverse " + dir + ": " + e.getMessage(), e);
         }
     }
 

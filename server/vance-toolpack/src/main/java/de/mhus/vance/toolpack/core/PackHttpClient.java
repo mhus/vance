@@ -3,8 +3,6 @@ package de.mhus.vance.toolpack.core;
 import java.io.ByteArrayInputStream;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.security.KeyStore;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
@@ -42,7 +40,7 @@ import org.jspecify.annotations.Nullable;
  * certificate including expired or hostname-mismatched ones. Only
  * use for local development against self-signed services. Production
  * setups should ship the API's CA via {@link TlsConfig#trustedCaPem()}
- * (PEM file path) instead.
+ * (the PEM text) instead.
  */
 public final class PackHttpClient {
 
@@ -115,14 +113,14 @@ public final class PackHttpClient {
     }
 
     /**
-     * Builds an {@link SSLContext} that trusts the JDK default CAs
-     * <i>plus</i> the certificate bundle at {@code pemPath}. Useful
-     * for hitting an internal API hosted on a private CA without
-     * disabling validation outright.
+     * Builds an {@link SSLContext} that trusts exactly the certificates in
+     * {@code pem} (the JDK default CAs are not added). Useful for hitting an
+     * internal API hosted on a private CA without disabling validation
+     * outright.
      */
-    private static SSLContext trustCustomCaSslContext(String pemPath) {
+    private static SSLContext trustCustomCaSslContext(String pemText) {
         try {
-            byte[] pem = Files.readAllBytes(Path.of(pemPath));
+            byte[] pem = pemText.getBytes(StandardCharsets.US_ASCII);
             CertificateFactory cf = CertificateFactory.getInstance("X.509");
             KeyStore ks = KeyStore.getInstance(KeyStore.getDefaultType());
             ks.load(null, null);
@@ -141,7 +139,7 @@ public final class PackHttpClient {
             ctx.init(null, tmf.getTrustManagers(), null);
             return ctx;
         } catch (Exception e) {
-            throw new IllegalStateException("Cannot load trusted-CA PEM '" + pemPath + "': " + e.getMessage(), e);
+            throw new IllegalStateException("Cannot load tls.trustedCaPem: " + e.getMessage(), e);
         }
     }
 
@@ -155,13 +153,39 @@ public final class PackHttpClient {
 
         public static final TlsConfig DEFAULT = new TlsConfig(false, null);
 
-        /** Builds a {@code TlsConfig} from a {@code parameters.tls} sub-map. */
+        /** Upper bound for {@code tls.trustedCaPem} — a CA chain is a few KB. */
+        public static final int MAX_PEM_CHARS = 64 * 1024;
+
+        /**
+         * Builds a {@code TlsConfig} from a {@code parameters.tls} sub-map.
+         * {@code trustedCaPem} carries the PEM text itself. The former
+         * {@code trustedCaPemPath} — a file path read on the host running the
+         * pack — is refused: whoever writes a pack config must not choose which
+         * file the server reads ({@code planning/multi-tenant-isolation.md} O9).
+         *
+         * @throws IllegalArgumentException on {@code trustedCaPemPath} or a PEM
+         *     that is too large or not a certificate
+         */
         public static TlsConfig fromMap(@Nullable Map<String, Object> tlsBlock) {
             if (tlsBlock == null || tlsBlock.isEmpty()) return DEFAULT;
+            if (tlsBlock.containsKey("trustedCaPemPath")) {
+                throw new IllegalArgumentException("tls.trustedCaPemPath is no longer supported — put the"
+                        + " certificate itself into tls.trustedCaPem (PEM text)");
+            }
             Object skip = tlsBlock.get("skipVerification");
-            Object pem = tlsBlock.get("trustedCaPemPath");
-            return new TlsConfig(
-                    skip instanceof Boolean b && b, pem instanceof String s && !s.isBlank() ? s.trim() : null);
+            Object pem = tlsBlock.get("trustedCaPem");
+            String pemText = pem instanceof String s && !s.isBlank() ? s.trim() : null;
+            if (pemText != null) {
+                if (pemText.length() > MAX_PEM_CHARS) {
+                    throw new IllegalArgumentException(
+                            "tls.trustedCaPem is larger than " + MAX_PEM_CHARS + " characters");
+                }
+                if (!pemText.contains("-----BEGIN CERTIFICATE-----")) {
+                    throw new IllegalArgumentException(
+                            "tls.trustedCaPem must contain a PEM certificate" + " (-----BEGIN CERTIFICATE-----)");
+                }
+            }
+            return new TlsConfig(skip instanceof Boolean b && b, pemText);
         }
     }
 

@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.tools.video;
 
+import de.mhus.vance.shared.process.ProcessLauncher;
+import de.mhus.vance.shared.process.ProcessSpec;
 import de.mhus.vance.toolpack.ToolException;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -8,6 +10,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -31,7 +34,11 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @Slf4j
+@RequiredArgsConstructor
 public class YtDlpAudioDownloader {
+
+    /** Sealed child environment — yt-dlp sees none of the brain's credentials. */
+    private final ProcessLauncher launcher;
 
     /**
      * Wall-clock cap for the download. Audio extraction is normally
@@ -76,13 +83,11 @@ public class YtDlpAudioDownloader {
                 outFile.toString(),
                 "https://www.youtube.com/watch?v=" + videoId);
 
-        ProcessBuilder pb = new ProcessBuilder(cmd).redirectErrorStream(true);
-
         log.info("yt-dlp download videoId='{}' target='{}'", videoId, outFile);
         long startMs = System.currentTimeMillis();
         Process process;
         try {
-            process = pb.start();
+            process = launcher.start(ProcessSpec.of(cmd, null));
         } catch (IOException e) {
             throw new ToolException(
                     "Failed to start yt-dlp — is it installed and on "

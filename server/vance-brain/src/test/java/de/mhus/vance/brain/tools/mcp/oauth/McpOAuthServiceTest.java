@@ -366,14 +366,23 @@ class McpOAuthServiceTest {
                 tool(
                         Map.of("type", "oauth"),
                         ServerToolConfig.Source.VANCE,
-                        Map.of("tls", Map.of("skipVerification", true, "trustedCaPemPath", "/ca.pem"))),
+                        Map.of(
+                                "tls",
+                                Map.of(
+                                        "skipVerification",
+                                        true,
+                                        "trustedCaPem",
+                                        "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----"))),
                 WriteActor.SYSTEM);
 
         ArgumentCaptor<String> yaml = ArgumentCaptor.forClass(String.class);
         verify(documentService)
                 .createText(
                         eq(TENANT), eq("_tenant"), anyString(), anyString(), isNull(), yaml.capture(), any(), any());
-        assertThat(yaml.getValue()).contains("skipVerification: true").contains("trustedCaPemPath: /ca.pem");
+        assertThat(yaml.getValue())
+                .contains("skipVerification: true")
+                .contains("trustedCaPem:")
+                .contains("BEGIN CERTIFICATE");
     }
 
     @Test

@@ -4,15 +4,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
+import de.mhus.vance.shared.process.ProcessLauncher;
+import de.mhus.vance.shared.process.ProcessSpec;
+import de.mhus.vance.shared.process.TestProcessLaunchers;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.beans.factory.ObjectProvider;
 
 /**
  * npm command lines and the size cap of {@link NodeHandler}. A shell script stands
@@ -40,7 +45,8 @@ class NodeHandlerTest {
         properties = new WorkspaceProperties();
         properties.getNode().setNpmPath(fakeNpm.toString());
         properties.getNode().setRegistry("https://registry.example.test/");
-        handler = new NodeHandler(mock(GitHandler.class), properties);
+        handler = new NodeHandler(
+                mock(GitHandler.class), properties, TestProcessLaunchers.provider(TestProcessLaunchers.direct()));
 
         WorkspaceDescriptor descriptor = new WorkspaceDescriptor();
         descriptor.setMetadata(Map.of("npmPath", "/tmp/attacker-binary"));
@@ -93,6 +99,34 @@ class NodeHandlerTest {
     @Test
     void uninstall_withVersion_isRejected() {
         assertThatThrownBy(() -> handler.uninstall(handle, "lodash@4")).isInstanceOf(WorkspaceException.class);
+    }
+
+    @Test
+    void install_runsThroughTheLauncherWithTheProjectScope() throws IOException {
+        List<ProcessSpec> started = new ArrayList<>();
+        ProcessLauncher direct = TestProcessLaunchers.direct();
+        NodeHandler recording =
+                new NodeHandler(mock(GitHandler.class), properties, TestProcessLaunchers.provider(spec -> {
+                    started.add(spec);
+                    return direct.start(spec);
+                }));
+
+        recording.install(handle, "lodash");
+
+        assertThat(started).hasSize(1);
+        assertThat(started.get(0).scope()).isEqualTo(new ProcessSpec.Scope("acme", "proj-1", null));
+        assertThat(started.get(0).workingDir()).isEqualTo(rootDir);
+    }
+
+    @Test
+    void install_withoutLauncher_failsInsteadOfStartingUnsealed() {
+        @SuppressWarnings("unchecked")
+        ObjectProvider<ProcessLauncher> none = mock(ObjectProvider.class);
+        NodeHandler shell = new NodeHandler(mock(GitHandler.class), properties, none);
+
+        assertThatThrownBy(() -> shell.install(handle, "lodash"))
+                .isInstanceOf(WorkspaceException.class)
+                .hasMessageContaining("no ProcessLauncher");
     }
 
     private List<String> calls() throws IOException {

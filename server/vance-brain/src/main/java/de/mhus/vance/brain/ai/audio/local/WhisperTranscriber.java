@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.ai.audio.local;
 
+import de.mhus.vance.shared.process.ProcessLauncher;
+import de.mhus.vance.shared.process.ProcessSpec;
 import de.mhus.vance.toolpack.ToolException;
 import jakarta.annotation.PostConstruct;
 import java.io.BufferedReader;
@@ -12,7 +14,9 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -61,6 +65,20 @@ public class WhisperTranscriber {
 
     private final JsonMapper objectMapper = JsonMapper.builder().build();
 
+    /** Sealed child environment — the wrapper sees none of the brain's credentials. */
+    private final ProcessLauncher launcher;
+
+    /**
+     * Model-cache locations passed through to the child: the image points them
+     * at {@code /app/.cache} so models survive between runs. Not secrets — and
+     * without them the sealed environment would re-download every model.
+     */
+    private static final List<String> CACHE_VARIABLES = List.of("HF_HOME", "XDG_CACHE_HOME");
+
+    public WhisperTranscriber(ProcessLauncher launcher) {
+        this.launcher = launcher;
+    }
+
     private Path scriptPath;
 
     @PostConstruct
@@ -100,11 +118,11 @@ public class WhisperTranscriber {
                 List.of(pythonExecutable, scriptPath.toString(), audioPath.toString(), effectiveModel, effectiveLang);
         log.info("Whisper transcribe model='{}' lang='{}' audio='{}'", effectiveModel, effectiveLang, audioPath);
 
-        ProcessBuilder pb = new ProcessBuilder(cmd);
         long startMs = System.currentTimeMillis();
         Process process;
         try {
-            process = pb.start();
+            process = launcher.start(
+                    ProcessSpec.of(cmd, null).withSeparateErrorStream().withEnvironment(cacheEnvironment()));
         } catch (IOException e) {
             throw new ToolException(
                     "Failed to start Python — is '" + pythonExecutable
@@ -273,4 +291,15 @@ public class WhisperTranscriber {
     }
 
     public record Fragment(double start, double end, String text) {}
+
+    private static Map<String, String> cacheEnvironment() {
+        Map<String, String> env = new LinkedHashMap<>();
+        for (String name : CACHE_VARIABLES) {
+            String value = System.getenv(name);
+            if (value != null) {
+                env.put(name, value);
+            }
+        }
+        return env;
+    }
 }

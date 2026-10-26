@@ -1,5 +1,7 @@
 package de.mhus.vance.addon.brain.rlang;
 
+import de.mhus.vance.shared.process.ProcessLauncher;
+import de.mhus.vance.shared.process.ProcessSpec;
 import de.mhus.vance.toolpack.ToolException;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -54,6 +56,11 @@ public class RserveDaemonManager {
 
     private final RserveProperties props;
     private final RserveHealth health;
+    /**
+     * Sealed child environment: the daemon evaluates tenant R code, and
+     * {@code Sys.getenv()} must not hand out the brain's credentials.
+     */
+    private final ProcessLauncher launcher;
 
     private final Object lock = new Object();
     private @Nullable Process process;
@@ -68,7 +75,8 @@ public class RserveDaemonManager {
      */
     private volatile @Nullable String lastError;
 
-    public RserveDaemonManager(RserveProperties props, RserveHealth health) {
+    public RserveDaemonManager(RserveProperties props, RserveHealth health, ProcessLauncher launcher) {
+        this.launcher = launcher;
         this.props = props;
         this.health = health;
     }
@@ -171,18 +179,17 @@ public class RserveDaemonManager {
 
     private void startDaemon() {
         log.info("Starting Rserve daemon on port {}…", props.getPort());
-        ProcessBuilder pb = new ProcessBuilder(List.of(
-                        "R",
-                        "CMD",
-                        "Rserve",
-                        "--no-save",
-                        "--RS-conf",
-                        "/dev/null",
-                        "--RS-port",
-                        String.valueOf(props.getPort())))
-                .redirectErrorStream(true);
+        List<String> cmd = List.of(
+                "R",
+                "CMD",
+                "Rserve",
+                "--no-save",
+                "--RS-conf",
+                "/dev/null",
+                "--RS-port",
+                String.valueOf(props.getPort()));
         try {
-            process = pb.start();
+            process = launcher.start(ProcessSpec.of(cmd, null));
         } catch (IOException e) {
             String msg = e.getMessage() == null ? "" : e.getMessage().toLowerCase();
             if (msg.contains("cannot run program") || msg.contains("no such file")) {

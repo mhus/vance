@@ -8,6 +8,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.shared.process.ProcessLauncher;
 import de.mhus.vance.toolpack.ToolException;
 import org.junit.jupiter.api.Test;
 
@@ -27,16 +28,18 @@ import org.junit.jupiter.api.Test;
  */
 class RserveDaemonManagerTest {
 
+    /** Plain start — the tests cover lifecycle and failure paths, not the sealed environment. */
+    private static final ProcessLauncher DIRECT =
+            spec -> new ProcessBuilder(spec.command()).redirectErrorStream(true).start();
+
     @Test
     void ensureRunning_disabled_throws() {
         RserveProperties props = newProps(false, true, "127.0.0.1");
         RserveHealth health = mock(RserveHealth.class);
 
-        RserveDaemonManager mgr = new RserveDaemonManager(props, health);
+        RserveDaemonManager mgr = new RserveDaemonManager(props, health, DIRECT);
 
-        assertThatThrownBy(mgr::ensureRunning)
-                .isInstanceOf(ToolException.class)
-                .hasMessageContaining("disabled");
+        assertThatThrownBy(mgr::ensureRunning).isInstanceOf(ToolException.class).hasMessageContaining("disabled");
         verify(health, never()).isReachable();
     }
 
@@ -46,7 +49,7 @@ class RserveDaemonManagerTest {
         RserveHealth health = mock(RserveHealth.class);
         when(health.isReachable()).thenReturn(true);
 
-        RserveDaemonManager mgr = new RserveDaemonManager(props, health);
+        RserveDaemonManager mgr = new RserveDaemonManager(props, health, DIRECT);
         mgr.ensureRunning();
 
         // Hot path: single probe, no spawn attempt.
@@ -59,7 +62,7 @@ class RserveDaemonManagerTest {
         RserveHealth health = mock(RserveHealth.class);
         when(health.isReachable()).thenReturn(false);
 
-        RserveDaemonManager mgr = new RserveDaemonManager(props, health);
+        RserveDaemonManager mgr = new RserveDaemonManager(props, health, DIRECT);
 
         assertThatThrownBy(mgr::ensureRunning)
                 .isInstanceOf(ToolException.class)
@@ -72,11 +75,9 @@ class RserveDaemonManagerTest {
         RserveHealth health = mock(RserveHealth.class);
         when(health.isReachable()).thenReturn(false);
 
-        RserveDaemonManager mgr = new RserveDaemonManager(props, health);
+        RserveDaemonManager mgr = new RserveDaemonManager(props, health, DIRECT);
 
-        assertThatThrownBy(mgr::ensureRunning)
-                .isInstanceOf(ToolException.class)
-                .hasMessageContaining("not loopback");
+        assertThatThrownBy(mgr::ensureRunning).isInstanceOf(ToolException.class).hasMessageContaining("not loopback");
     }
 
     @Test
@@ -87,7 +88,7 @@ class RserveDaemonManagerTest {
         RserveHealth health = mock(RserveHealth.class);
         when(health.isReachable()).thenReturn(false);
 
-        RserveDaemonManager mgr = new RserveDaemonManager(props, health);
+        RserveDaemonManager mgr = new RserveDaemonManager(props, health, DIRECT);
 
         // autostart=false here, so the failure should be about autostart,
         // not about the host. That proves "localhost" passed the loopback check.

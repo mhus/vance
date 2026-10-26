@@ -37,7 +37,8 @@ import org.springframework.stereotype.Component;
  *     managed: true
  *     tls:                                    # the tool's tls block, see #tlsFor
  *       skipVerification: false
- *       trustedCaPemPath: "/etc/ca.pem"
+ *       trustedCaPem: |                       # PEM text of a private CA
+ *         -----BEGIN CERTIFICATE-----…
  * </pre>
  */
 @Component
@@ -55,7 +56,7 @@ public class McpOAuthProvider extends GenericOAuth2Provider {
      */
     public static final String EXTRA_RESOURCE = "resource";
 
-    /** Extra key: the tool's {@code tls} block ({@code skipVerification}, {@code trustedCaPemPath}). */
+    /** Extra key: the tool's {@code tls} block ({@code skipVerification}, {@code trustedCaPem}). */
     public static final String EXTRA_TLS = "tls";
 
     /** Extra key: how the client id was obtained ({@code cimd}, {@code dcr}, {@code manual}). */
@@ -98,7 +99,7 @@ public class McpOAuthProvider extends GenericOAuth2Provider {
 
     /**
      * The tool's TLS settings, narrowed to what may apply to {@code url}:
-     * {@code trustedCaPemPath} carries over to the authorization server
+     * {@code trustedCaPem} carries over to the authorization server
      * (a private CA usually signs both), {@code skipVerification} only to
      * the MCP server's own origin — an authorization server on another
      * origin was named by a foreign response and is always verified.

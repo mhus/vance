@@ -10,6 +10,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
+import de.mhus.vance.shared.process.TestProcessLaunchers;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -31,7 +32,7 @@ class PythonHandlerTest {
     @BeforeEach
     void setUp() {
         gitHandler = mock(GitHandler.class);
-        handler = new PythonHandler(gitHandler);
+        handler = new PythonHandler(gitHandler, TestProcessLaunchers.provider(TestProcessLaunchers.direct()));
     }
 
     @Test
@@ -55,8 +56,7 @@ class PythonHandlerTest {
         assertThat(Files.readString(rootDir.resolve(".gitignore")))
                 .contains(".venv/")
                 .contains("__pycache__/");
-        assertThat(handle.getDescriptor().getMetadata())
-                .containsEntry(PythonHandler.META_PYTHON_PATH, "python3");
+        assertThat(handle.getDescriptor().getMetadata()).containsEntry(PythonHandler.META_PYTHON_PATH, "python3");
     }
 
     @Test
@@ -75,8 +75,7 @@ class PythonHandlerTest {
         // (the real handler would have populated the folder; the mock didn't).
         assertThat(rootDir.resolve(".venv")).isDirectory();
         assertThat(rootDir.resolve(".gitignore")).exists();
-        assertThat(handle.getDescriptor().getMetadata())
-                .containsEntry(PythonHandler.META_PYTHON_PATH, "python3");
+        assertThat(handle.getDescriptor().getMetadata()).containsEntry(PythonHandler.META_PYTHON_PATH, "python3");
     }
 
     @Test
@@ -90,8 +89,7 @@ class PythonHandlerTest {
 
         handler.init(handle, spec("custom"));
 
-        assertThat(handle.getDescriptor().getMetadata())
-                .containsEntry(PythonHandler.META_PYTHON_PATH, "python3");
+        assertThat(handle.getDescriptor().getMetadata()).containsEntry(PythonHandler.META_PYTHON_PATH, "python3");
     }
 
     @Test
@@ -147,8 +145,7 @@ class PythonHandlerTest {
 
         verify(gitHandler, times(1)).recover(handle, descriptor);
         assertThat(rootDir.resolve(".venv/bin/python")).exists();
-        assertThat(handle.getDescriptor().getMetadata())
-                .containsEntry(PythonHandler.META_PYTHON_PATH, "python3");
+        assertThat(handle.getDescriptor().getMetadata()).containsEntry(PythonHandler.META_PYTHON_PATH, "python3");
     }
 
     @Test
@@ -168,8 +165,7 @@ class PythonHandlerTest {
 
         assertThat(marker).doesNotExist();
         assertThat(rootDir.resolve(".venv/bin/python")).exists();
-        assertThat(handle.getDescriptor().getMetadata())
-                .containsEntry(PythonHandler.META_PYTHON_PATH, "python3");
+        assertThat(handle.getDescriptor().getMetadata()).containsEntry(PythonHandler.META_PYTHON_PATH, "python3");
     }
 
     @Test
@@ -183,8 +179,7 @@ class PythonHandlerTest {
         // Simulate the clone result: a cloned repo carries a
         // requirements.txt. The mocked GitHandler.init is a no-op, so
         // we drop the file ourselves before init runs.
-        Files.writeString(rootDir.resolve(PythonHandler.REQUIREMENTS_FILE),
-                "pip\n", StandardCharsets.UTF_8);
+        Files.writeString(rootDir.resolve(PythonHandler.REQUIREMENTS_FILE), "pip\n", StandardCharsets.UTF_8);
 
         handler.init(handle, spec("autoinstall"));
 
@@ -203,8 +198,7 @@ class PythonHandlerTest {
 
         // pip is a trivial dep that's already in the venv — listing it here
         // forces pip-install to run but does not need network access.
-        Files.writeString(rootDir.resolve(PythonHandler.REQUIREMENTS_FILE),
-                "pip\n", StandardCharsets.UTF_8);
+        Files.writeString(rootDir.resolve(PythonHandler.REQUIREMENTS_FILE), "pip\n", StandardCharsets.UTF_8);
 
         handler.rebuildVenv(handle, "python3");
 

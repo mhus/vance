@@ -2,8 +2,6 @@ package de.mhus.vance.addon.brain.tex;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -15,7 +13,15 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class Tex2PdfLocalExecutorTest {
 
-    private final Tex2PdfLocalExecutor executor = new Tex2PdfLocalExecutor();
+    /** Plain start — the tests cover failure paths, not the sealed environment. */
+    private final Tex2PdfLocalExecutor executor = new Tex2PdfLocalExecutor(spec -> {
+        ProcessBuilder pb = new ProcessBuilder(spec.command()).redirectErrorStream(true);
+        if (spec.workingDir() != null) {
+            pb.directory(spec.workingDir().toFile());
+        }
+        pb.environment().putAll(spec.environment());
+        return pb.start();
+    });
 
     @TempDir
     Path tempDir;
@@ -24,8 +30,8 @@ class Tex2PdfLocalExecutorTest {
     void compile_returnsFailure_whenLatexmkNotInstalled() {
         // Point workspace root to an empty temp dir — latexmk will not be found
         // (or will fail to start)
-        Tex2PdfExecutor.Request req = new Tex2PdfExecutor.Request(
-                "thesis.tex", "pdflatex", tempDir, "acme", "proj", "proc-1");
+        Tex2PdfExecutor.Request req =
+                new Tex2PdfExecutor.Request("thesis.tex", "pdflatex", tempDir, "acme", "proj", "proc-1");
 
         Tex2PdfExecutor.Result result = executor.compile(req);
 
@@ -36,8 +42,8 @@ class Tex2PdfLocalExecutorTest {
     @Test
     void compile_returnsFailure_whenMainTexNotFound() {
         // Even if latexmk runs, the main file doesn't exist
-        Tex2PdfExecutor.Request req = new Tex2PdfExecutor.Request(
-                "nonexistent.tex", "pdflatex", tempDir, "acme", "proj", "proc-1");
+        Tex2PdfExecutor.Request req =
+                new Tex2PdfExecutor.Request("nonexistent.tex", "pdflatex", tempDir, "acme", "proj", "proc-1");
 
         Tex2PdfExecutor.Result result = executor.compile(req);
 
@@ -52,22 +58,21 @@ class Tex2PdfLocalExecutorTest {
 
     @Test
     void request_effectiveEngine_defaultsToPdflatex() {
-        Tex2PdfExecutor.Request req = new Tex2PdfExecutor.Request(
-                "main.tex", null, tempDir, "acme", "proj", null);
+        Tex2PdfExecutor.Request req = new Tex2PdfExecutor.Request("main.tex", null, tempDir, "acme", "proj", null);
         assertThat(req.effectiveEngine()).isEqualTo("pdflatex");
     }
 
     @Test
     void request_effectiveEngine_returnsTrimmed() {
-        Tex2PdfExecutor.Request req = new Tex2PdfExecutor.Request(
-                "main.tex", " xelatex ", tempDir, "acme", "proj", null);
+        Tex2PdfExecutor.Request req =
+                new Tex2PdfExecutor.Request("main.tex", " xelatex ", tempDir, "acme", "proj", null);
         assertThat(req.effectiveEngine()).isEqualTo("xelatex");
     }
 
     @Test
     void request_carriesContext() {
-        Tex2PdfExecutor.Request req = new Tex2PdfExecutor.Request(
-                "main.tex", "pdflatex", tempDir, "acme", "proj-1", "proc-1");
+        Tex2PdfExecutor.Request req =
+                new Tex2PdfExecutor.Request("main.tex", "pdflatex", tempDir, "acme", "proj-1", "proc-1");
         assertThat(req.tenantId()).isEqualTo("acme");
         assertThat(req.projectId()).isEqualTo("proj-1");
         assertThat(req.processId()).isEqualTo("proc-1");

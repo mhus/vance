@@ -11,8 +11,7 @@ class RestApiConfigTest {
 
     @Test
     void minimalParameters_pickUpDefaults() {
-        RestApiConfig cfg = RestApiConfig.fromParameters(Map.of(
-                "specUrl", "https://api.example.com/openapi.json"));
+        RestApiConfig cfg = RestApiConfig.fromParameters(Map.of("specUrl", "https://api.example.com/openapi.json"));
 
         assertThat(cfg.specUrl()).isEqualTo("https://api.example.com/openapi.json");
         assertThat(cfg.specInline()).isNull();
@@ -35,8 +34,10 @@ class RestApiConfigTest {
     @Test
     void bearerAuth_carriesTokenReference() {
         RestApiConfig cfg = RestApiConfig.fromParameters(Map.of(
-                "specInline", "openapi: 3.0.0\ninfo:\n  title: t\n  version: '1'\npaths: {}\n",
-                "auth", Map.of(
+                "specInline",
+                "openapi: 3.0.0\ninfo:\n  title: t\n  version: '1'\npaths: {}\n",
+                "auth",
+                Map.of(
                         "type", "bearer",
                         "token", "{{secret:my.api.token}}")));
 
@@ -46,28 +47,40 @@ class RestApiConfigTest {
 
     @Test
     void tls_skipVerification_isPropagated() {
-        RestApiConfig cfg = RestApiConfig.fromParameters(Map.of(
-                "specUrl", "https://api.example.com/openapi.json",
-                "tls", Map.of("skipVerification", true)));
+        RestApiConfig cfg = RestApiConfig.fromParameters(
+                Map.of("specUrl", "https://api.example.com/openapi.json", "tls", Map.of("skipVerification", true)));
 
         assertThat(cfg.tls().skipVerification()).isTrue();
     }
 
     @Test
-    void tls_trustedCaPemPath_isPropagated() {
-        RestApiConfig cfg = RestApiConfig.fromParameters(Map.of(
-                "specUrl", "https://api.example.com/openapi.json",
-                "tls", Map.of("trustedCaPemPath", "/etc/vance/example-ca.pem")));
+    void tls_trustedCaPem_isPropagated() {
+        String pem = "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----";
+        RestApiConfig cfg = RestApiConfig.fromParameters(
+                Map.of("specUrl", "https://api.example.com/openapi.json", "tls", Map.of("trustedCaPem", pem)));
 
         assertThat(cfg.tls().skipVerification()).isFalse();
-        assertThat(cfg.tls().trustedCaPem()).isEqualTo("/etc/vance/example-ca.pem");
+        assertThat(cfg.tls().trustedCaPem()).isEqualTo(pem);
+    }
+
+    @Test
+    void tls_trustedCaPemPath_isRefused() {
+        assertThatThrownBy(() -> RestApiConfig.fromParameters(Map.of(
+                        "specUrl",
+                        "https://api.example.com/openapi.json",
+                        "tls",
+                        Map.of("trustedCaPemPath", "/etc/passwd"))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("trustedCaPem");
     }
 
     @Test
     void methodLabels_overrideDefault() {
         RestApiConfig cfg = RestApiConfig.fromParameters(Map.of(
-                "specUrl", "https://api.example.com/openapi.json",
-                "methodLabels", Map.of(
+                "specUrl",
+                "https://api.example.com/openapi.json",
+                "methodLabels",
+                Map.of(
                         "GET", List.of("read-only", "audit"),
                         "POST", List.of("write"))));
 
@@ -79,9 +92,8 @@ class RestApiConfigTest {
 
     @Test
     void unknownAuthType_throws() {
-        assertThatThrownBy(() -> RestApiConfig.fromParameters(Map.of(
-                "specUrl", "https://x",
-                "auth", Map.of("type", "oauth"))))
+        assertThatThrownBy(() ->
+                        RestApiConfig.fromParameters(Map.of("specUrl", "https://x", "auth", Map.of("type", "oauth"))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("oauth");
     }

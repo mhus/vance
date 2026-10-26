@@ -2,6 +2,7 @@ package de.mhus.vance.brain.tools.exec;
 
 import de.mhus.vance.shared.homes.HomesService;
 import de.mhus.vance.toolpack.exec.ExecEnvPolicy;
+import java.nio.file.Path;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
@@ -47,6 +48,22 @@ public class ExecEnvironmentBuilder {
         Map<String, String> env =
                 ExecEnvPolicy.seal(System.getenv(), properties.getEnv().getAllow());
         env.put("HOME", homes.ensure(tenantId, projectId, userId).toString());
+        if (extras != null) {
+            env.putAll(extras);
+        }
+        return env;
+    }
+
+    /**
+     * Child environment for a starter that runs for no particular project
+     * (ffmpeg, whisper, latexmk, …): the same sealed base, {@code HOME} set to
+     * {@code home} — the job's own directory — instead of a scope's home, then
+     * {@code extras}.
+     */
+    public Map<String, String> buildUnscoped(Path home, @Nullable Map<String, String> extras) {
+        Map<String, String> env =
+                ExecEnvPolicy.seal(System.getenv(), properties.getEnv().getAllow());
+        env.put("HOME", home.toString());
         if (extras != null) {
             env.putAll(extras);
         }

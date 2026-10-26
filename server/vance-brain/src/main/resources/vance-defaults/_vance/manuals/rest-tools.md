@@ -95,7 +95,10 @@ parameters:
   # TLS controls — only for non-public endpoints.
   tls:
     skipVerification: false                         # NEVER true in production
-    trustedCaPemPath: "/etc/vance/example-ca.pem"
+    trustedCaPem: |                                 # PEM text of the API's private CA
+      -----BEGIN CERTIFICATE-----
+      MIIDdzCCAl+gAwIBAgIU...
+      -----END CERTIFICATE-----
 
   # operationId filters. Globs work. Without include, all ops are exposed.
   include: ["search.*", "user/get*"]

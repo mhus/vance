@@ -358,7 +358,7 @@ public class McpOAuthService {
             Map<String, Object> tlsBlock = new LinkedHashMap<>();
             tlsBlock.put("skipVerification", tls.skipVerification());
             if (tls.trustedCaPem() != null) {
-                tlsBlock.put("trustedCaPemPath", tls.trustedCaPem());
+                tlsBlock.put("trustedCaPem", tls.trustedCaPem());
             }
             extra.put(McpOAuthProvider.EXTRA_TLS, tlsBlock);
         }

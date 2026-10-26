@@ -54,7 +54,7 @@ public class RestApiToolPackFactory implements ToolFactory {
                                     "type",
                                     "object",
                                     "description",
-                                    "TLS settings (skipVerification, trustedCaPemPath)."),
+                                    "TLS settings (skipVerification, trustedCaPem = PEM text of a private CA)."),
                     "include", Map.of("type", "array", "description", "operationId-glob whitelist."),
                     "exclude",
                             Map.of(

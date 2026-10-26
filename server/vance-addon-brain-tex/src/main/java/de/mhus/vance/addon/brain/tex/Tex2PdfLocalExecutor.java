@@ -1,12 +1,16 @@
 package de.mhus.vance.addon.brain.tex;
 
+import de.mhus.vance.shared.process.ProcessLauncher;
+import de.mhus.vance.shared.process.ProcessSpec;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
@@ -25,7 +29,11 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @Slf4j
+@RequiredArgsConstructor
 public class Tex2PdfLocalExecutor implements Tex2PdfExecutor {
+
+    /** Sealed child environment, scoped to the requesting project. */
+    private final ProcessLauncher launcher;
 
     private static final long PROCESS_TIMEOUT_SECONDS = 150;
     private static final int LOG_EXCERPT_LINES = 50;
@@ -41,32 +49,26 @@ public class Tex2PdfLocalExecutor implements Tex2PdfExecutor {
         Path rootDir = request.workspaceRoot();
         String main = request.mainDocument();
 
-        String engineFlag = switch (request.effectiveEngine()) {
-            case "xelatex" -> "-pdfxe";
-            case "lualatex" -> "-pdflua";
-            default -> "-pdf";
-        };
+        String engineFlag =
+                switch (request.effectiveEngine()) {
+                    case "xelatex" -> "-pdfxe";
+                    case "lualatex" -> "-pdflua";
+                    default -> "-pdf";
+                };
 
         String latexmkBin = resolveLatexmkBin();
-        List<String> cmd = List.of(
-                latexmkBin,
-                engineFlag,
-                "-interaction=nonstopmode",
-                "-halt-on-error",
-                main);
+        List<String> cmd = List.of(latexmkBin, engineFlag, "-interaction=nonstopmode", "-halt-on-error", main);
 
-        ProcessBuilder pb = new ProcessBuilder(cmd)
-                .directory(rootDir.toFile())
-                .redirectErrorStream(true);
-        augmentPath(pb);
+        ProcessSpec spec = ProcessSpec.of(cmd, rootDir).withEnvironment(Map.of("PATH", augmentedPath()));
+        if (request.projectId() != null) {
+            spec = spec.withScope(request.tenantId(), request.projectId());
+        }
         Process p;
         try {
-            p = pb.start();
+            p = launcher.start(spec);
         } catch (IOException e) {
             long elapsed = System.currentTimeMillis() - start;
-            return Result.failure(
-                    "Cannot start latexmk — is TeX Live installed? " + e.getMessage(),
-                    null, elapsed);
+            return Result.failure("Cannot start latexmk — is TeX Live installed? " + e.getMessage(), null, elapsed);
         }
 
         String output;
@@ -76,8 +78,7 @@ public class Tex2PdfLocalExecutor implements Tex2PdfExecutor {
                 p.destroyForcibly();
                 long elapsed = System.currentTimeMillis() - start;
                 return Result.failure(
-                        "TIMEOUT: latexmk did not finish within " + PROCESS_TIMEOUT_SECONDS + "s",
-                        null, elapsed);
+                        "TIMEOUT: latexmk did not finish within " + PROCESS_TIMEOUT_SECONDS + "s", null, elapsed);
             }
             output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         } catch (InterruptedException e) {
@@ -99,18 +100,14 @@ public class Tex2PdfLocalExecutor implements Tex2PdfExecutor {
             Path pdfPath = rootDir.resolve(pdfName);
             if (!Files.exists(pdfPath)) {
                 String logExcerpt = readLogExcerpt(rootDir, main);
-                return Result.failure(
-                        "latexmk exited 0 but output PDF not found: " + pdfName,
-                        logExcerpt, elapsed);
+                return Result.failure("latexmk exited 0 but output PDF not found: " + pdfName, logExcerpt, elapsed);
             }
             try {
                 byte[] pdfBytes = Files.readAllBytes(pdfPath);
                 String logExcerpt = readLogExcerpt(rootDir, main);
                 return Result.success(pdfBytes, logExcerpt, elapsed);
             } catch (IOException e) {
-                return Result.failure(
-                        "Could not read output PDF: " + e.getMessage(),
-                        null, elapsed);
+                return Result.failure("Could not read output PDF: " + e.getMessage(), null, elapsed);
             }
         }
 
@@ -132,14 +129,14 @@ public class Tex2PdfLocalExecutor implements Tex2PdfExecutor {
      */
     private String resolveLatexmkBin() {
         List<String> candidates = List.of(
-                "/Library/TeX/texbin/latexmk",                                   // macOS — MacTeX
-                "/usr/local/texlive/2024/bin/universal-darwin/latexmk",          // TeX Live 2024
+                "/Library/TeX/texbin/latexmk", // macOS — MacTeX
+                "/usr/local/texlive/2024/bin/universal-darwin/latexmk", // TeX Live 2024
                 "/usr/local/texlive/2024/bin/x86_64-darwin/latexmk",
-                "/usr/local/texlive/2023/bin/universal-darwin/latexmk",          // TeX Live 2023
+                "/usr/local/texlive/2023/bin/universal-darwin/latexmk", // TeX Live 2023
                 "/usr/local/texlive/2023/bin/x86_64-darwin/latexmk",
-                "/usr/local/bin/latexmk",                                        // Homebrew
-                "/opt/homebrew/bin/latexmk",                                     // Apple Silicon Homebrew
-                "/usr/bin/latexmk");                                             // Linux
+                "/usr/local/bin/latexmk", // Homebrew
+                "/opt/homebrew/bin/latexmk", // Apple Silicon Homebrew
+                "/usr/bin/latexmk"); // Linux
         for (String candidate : candidates) {
             if (Files.isExecutable(Path.of(candidate))) {
                 log.debug("tex2pdf: found latexmk at {}", candidate);
@@ -150,23 +147,25 @@ public class Tex2PdfLocalExecutor implements Tex2PdfExecutor {
         return "latexmk";
     }
 
-    private void augmentPath(ProcessBuilder pb) {
-        String path = pb.environment().get("PATH");
+    /** The brain's {@code PATH} plus the TeX Live locations it may lack. */
+    private static String augmentedPath() {
+        String path = System.getenv("PATH");
         if (path == null) path = "";
         List<String> extra = List.of(
-                "/Library/TeX/texbin",           // macOS — MacTeX
+                "/Library/TeX/texbin", // macOS — MacTeX
                 "/usr/local/texlive/2024/bin/universal-darwin",
                 "/usr/local/texlive/2023/bin/universal-darwin",
-                "/opt/homebrew/bin");             // Apple Silicon homebrew
+                "/opt/homebrew/bin"); // Apple Silicon homebrew
         List<String> toAdd = new ArrayList<>();
         for (String dir : extra) {
             if (!path.contains(dir)) toAdd.add(dir);
         }
-        if (!toAdd.isEmpty()) {
-            String newPath = String.join(":", toAdd) + (path.isEmpty() ? "" : ":" + path);
-            pb.environment().put("PATH", newPath);
-            log.debug("tex2pdf: augmented PATH to {}", newPath);
+        if (toAdd.isEmpty()) {
+            return path;
         }
+        String newPath = String.join(":", toAdd) + (path.isEmpty() ? "" : ":" + path);
+        log.debug("tex2pdf: augmented PATH to {}", newPath);
+        return newPath;
     }
 
     // ──────────────────── log reading ────────────────────

@@ -1,5 +1,7 @@
 package de.mhus.vance.shared.workspace;
 
+import de.mhus.vance.shared.process.ProcessLauncher;
+import de.mhus.vance.shared.process.ProcessSpec;
 import jakarta.annotation.PostConstruct;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -21,6 +23,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 /**
@@ -95,6 +98,12 @@ public class NodeHandler implements WorkspaceContentHandler {
 
     private final GitHandler gitHandler;
     private final WorkspaceProperties properties;
+    /**
+     * Provided by the brain. Absent in applications that never start npm (the
+     * admin shell loads this handler through the shared package scan) — there a
+     * start fails with a clear message instead of spawning an unsealed child.
+     */
+    private final ObjectProvider<ProcessLauncher> launcherProvider;
 
     /**
      * Boot-time presence check for npm. Logs warn (not error) if npm
@@ -105,9 +114,13 @@ public class NodeHandler implements WorkspaceContentHandler {
      */
     @PostConstruct
     void verifyNpmAvailable() {
+        ProcessLauncher launcher = launcherProvider.getIfAvailable();
+        if (launcher == null) {
+            log.debug("NodeHandler: no ProcessLauncher in this application — npm check skipped");
+            return;
+        }
         try {
-            ProcessBuilder pb = new ProcessBuilder(npmPath(), "--version").redirectErrorStream(true);
-            Process p = pb.start();
+            Process p = launcher.start(ProcessSpec.of(List.of(npmPath(), "--version"), null));
             String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
             if (!p.waitFor(10, TimeUnit.SECONDS)) {
                 p.destroyForcibly();
@@ -159,7 +172,7 @@ public class NodeHandler implements WorkspaceContentHandler {
         // run left one — npm install needs it to exist.
         Path packageJson = handle.getPath().resolve(PACKAGE_JSON);
         if (!Files.isRegularFile(packageJson)) {
-            npmInit(handle.getPath());
+            npmInit(handle);
         }
 
         // Restore node_modules from the lockfile when the clone shipped
@@ -167,14 +180,14 @@ public class NodeHandler implements WorkspaceContentHandler {
         // are present" rule.
         Path lockfile = handle.getPath().resolve(PACKAGE_LOCK_JSON);
         if (Files.isRegularFile(lockfile)) {
-            npmCi(handle.getPath());
+            npmCi(handle);
         }
 
         // Declarative package list from workspace options — installed once at
         // init (the reused-workspace path skips init and keeps them).
         List<String> packages = packageList(meta, META_PACKAGES);
         if (!packages.isEmpty()) {
-            npmInstallPackages(handle.getPath(), packages);
+            npmInstallPackages(handle, packages);
             enforceSizeLimit(handle);
         }
 
@@ -205,12 +218,12 @@ public class NodeHandler implements WorkspaceContentHandler {
         gitHandler.recover(handle, descriptor);
         Path lockfile = handle.getPath().resolve(PACKAGE_LOCK_JSON);
         if (Files.isRegularFile(lockfile)) {
-            npmCi(handle.getPath());
+            npmCi(handle);
         } else {
             // Pre-suspend dir might not have had a lockfile committed —
             // re-init package.json so install commands work.
             if (!Files.isRegularFile(handle.getPath().resolve(PACKAGE_JSON))) {
-                npmInit(handle.getPath());
+                npmInit(handle);
             }
         }
         log.info("node recover: {}", handle.getDirName());
@@ -234,7 +247,7 @@ public class NodeHandler implements WorkspaceContentHandler {
     public void install(RootDirHandle handle, String packageSpec) {
         NpmPackageSpec spec = NpmPackageSpec.parse(packageSpec);
         runProcess(
-                handle.getPath(),
+                handle,
                 new String[] {
                     npmPath(),
                     "install",
@@ -267,7 +280,7 @@ public class NodeHandler implements WorkspaceContentHandler {
             throw new WorkspaceException("npm uninstall takes a package name, not a version: '" + packageName + "'");
         }
         runProcess(
-                handle.getPath(),
+                handle,
                 new String[] {npmPath(), "uninstall", "--save", "--no-audit", "--no-fund", "--", spec.name()},
                 NPM_INSTALL_TIMEOUT_SECONDS,
                 "npm uninstall " + spec.name());
@@ -277,6 +290,14 @@ public class NodeHandler implements WorkspaceContentHandler {
     public static boolean isInstalled(Path rootDir, String packageName) {
         return Files.isRegularFile(
                 rootDir.resolve(NODE_MODULES_DIR).resolve(packageName).resolve(PACKAGE_JSON));
+    }
+
+    private ProcessLauncher launcher() {
+        ProcessLauncher launcher = launcherProvider.getIfAvailable();
+        if (launcher == null) {
+            throw new WorkspaceException("starting npm is not available in this application (no ProcessLauncher)");
+        }
+        return launcher;
     }
 
     private String npmPath() {
@@ -330,19 +351,19 @@ public class NodeHandler implements WorkspaceContentHandler {
         }
     }
 
-    private void npmInit(Path cwd) {
-        runProcess(cwd, new String[] {npmPath(), "init", "-y"}, NPM_INIT_TIMEOUT_SECONDS, "npm init -y");
+    private void npmInit(RootDirHandle handle) {
+        runProcess(handle, new String[] {npmPath(), "init", "-y"}, NPM_INIT_TIMEOUT_SECONDS, "npm init -y");
     }
 
-    private void npmCi(Path cwd) {
+    private void npmCi(RootDirHandle handle) {
         runProcess(
-                cwd,
+                handle,
                 new String[] {npmPath(), "ci", "--ignore-scripts", "--no-audit", "--no-fund", registryOption()},
                 NPM_INSTALL_TIMEOUT_SECONDS,
                 "npm ci");
     }
 
-    private void npmInstallPackages(Path cwd, List<String> packages) {
+    private void npmInstallPackages(RootDirHandle handle, List<String> packages) {
         String[] fixed = {
             npmPath(), "install", "--save", "--ignore-scripts", "--no-audit", "--no-fund", registryOption(), "--"
         };
@@ -351,7 +372,7 @@ public class NodeHandler implements WorkspaceContentHandler {
         for (int i = 0; i < packages.size(); i++) {
             command[fixed.length + i] = packages.get(i);
         }
-        runProcess(cwd, command, NPM_INSTALL_TIMEOUT_SECONDS, "npm install " + String.join(" ", packages));
+        runProcess(handle, command, NPM_INSTALL_TIMEOUT_SECONDS, "npm install " + String.join(" ", packages));
     }
 
     /**
@@ -378,11 +399,13 @@ public class NodeHandler implements WorkspaceContentHandler {
         return out;
     }
 
-    private static void runProcess(Path cwd, String[] command, long timeoutSeconds, String label) {
-        ProcessBuilder pb = new ProcessBuilder(command).directory(cwd.toFile()).redirectErrorStream(true);
+    /** Runs npm in the RootDir through the {@link ProcessLauncher}, scoped to its project. */
+    private void runProcess(RootDirHandle handle, String[] command, long timeoutSeconds, String label) {
+        Path cwd = handle.getPath();
+        ProcessSpec spec = ProcessSpec.of(List.of(command), cwd).withScope(handle.getTenantId(), handle.getProjectId());
         Process p;
         try {
-            p = pb.start();
+            p = launcher().start(spec);
         } catch (IOException e) {
             throw new WorkspaceException(label + " failed to start: " + e.getMessage(), e);
         }

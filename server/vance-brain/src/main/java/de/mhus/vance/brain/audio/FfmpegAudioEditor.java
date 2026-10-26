@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.audio;
 
+import de.mhus.vance.shared.process.ProcessLauncher;
+import de.mhus.vance.shared.process.ProcessSpec;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -50,11 +52,15 @@ public class FfmpegAudioEditor {
     private final String ffmpegBin;
     private final String ffprobeBin;
     private final long timeoutSeconds;
+    /** Sealed child environment — ffmpeg sees none of the brain's credentials. */
+    private final ProcessLauncher launcher;
 
     public FfmpegAudioEditor(
             @Value("${vance.audio.ffmpeg-bin:ffmpeg}") String ffmpegBin,
             @Value("${vance.audio.ffprobe-bin:ffprobe}") String ffprobeBin,
-            @Value("${vance.audio.edit-timeout-seconds:600}") long timeoutSeconds) {
+            @Value("${vance.audio.edit-timeout-seconds:600}") long timeoutSeconds,
+            ProcessLauncher launcher) {
+        this.launcher = launcher;
         this.ffmpegBin = ffmpegBin;
         this.ffprobeBin = ffprobeBin;
         this.timeoutSeconds = timeoutSeconds;
@@ -330,7 +336,7 @@ public class FfmpegAudioEditor {
      *  stderr tail. */
     private String run(List<String> cmd) {
         try {
-            Process process = new ProcessBuilder(cmd).redirectErrorStream(true).start();
+            Process process = launcher.start(ProcessSpec.of(cmd, null));
             // The drain runs on its own thread so the wall-clock timeout below
             // can fire: reading to EOF on the calling thread would block until
             // the process exits — and a hung ffmpeg never exits, so the

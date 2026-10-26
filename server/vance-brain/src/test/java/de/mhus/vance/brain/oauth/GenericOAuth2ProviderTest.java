@@ -32,6 +32,8 @@ import org.junit.jupiter.api.Test;
  */
 class GenericOAuth2ProviderTest {
 
+    private static final String CA_PEM = "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----";
+
     private HttpServer server;
     private int port;
     private AtomicReference<RecordedRequest> lastRequest;
@@ -417,14 +419,14 @@ class GenericOAuth2ProviderTest {
                         "mcpUrl",
                         "https://mcp.internal:8443/mcp",
                         "tls",
-                        Map.of("skipVerification", true, "trustedCaPemPath", "/ca.pem"))));
+                        Map.of("skipVerification", true, "trustedCaPem", CA_PEM))));
 
         // Same origin as the MCP server: the tool's TLS block as written.
         assertThat(provider.tlsFor(cfg, "https://mcp.internal:8443/token"))
-                .isEqualTo(new PackHttpClient.TlsConfig(true, "/ca.pem"));
+                .isEqualTo(new PackHttpClient.TlsConfig(true, CA_PEM));
         // A foreign authorization server: the CA carries over, never trust-all.
         assertThat(provider.tlsFor(cfg, "https://as.example/token"))
-                .isEqualTo(new PackHttpClient.TlsConfig(false, "/ca.pem"));
+                .isEqualTo(new PackHttpClient.TlsConfig(false, CA_PEM));
         // Generic providers keep the JDK trust store.
         assertThat(newProvider().tlsFor(cfg, "https://as.example/token")).isEqualTo(PackHttpClient.TlsConfig.DEFAULT);
     }

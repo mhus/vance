@@ -23,7 +23,10 @@ import org.jspecify.annotations.Nullable;
  *       token: "{{secret:example.token}}"
  *     tls:                                         # see PackHttpClient.TlsConfig
  *       skipVerification: false
- *       trustedCaPemPath: "/etc/vance/example-ca.pem"
+ *       trustedCaPem: |                           # PEM text of a private CA
+ *         -----BEGIN CERTIFICATE-----
+ *         ...
+ *         -----END CERTIFICATE-----
  *     include: ["issue.*", "search.*"]             # operationId glob, default: all
  *     exclude: ["admin_*"]
  *     methodLabels:                                # default mapping per HTTP verb

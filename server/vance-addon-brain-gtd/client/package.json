@@ -33,11 +33,11 @@
   },
   "devDependencies": {
     "@module-federation/vite": "^1.23.4",
-    "@tiptap/core": "^3.31.4",
-    "@tiptap/vue-3": "^3.31.4",
+    "@tiptap/core": "^3.32.0",
+    "@tiptap/vue-3": "^3.32.0",
     "@vitejs/plugin-vue": "^6.0.10",
-    "vite": "^8.3.4",
-    "vue": "^3.5.43",
+    "vite": "^8.3.5",
+    "vue": "^3.5.44",
     "vue-tsc": "^3.3.13"
   }
 }

@@ -17,9 +17,9 @@
     "@vance/shared": "workspace:*"
   },
   "devDependencies": {
-    "@types/chrome": "^0.3.5",
+    "@types/chrome": "^0.3.6",
     "typescript": "^5.9.2",
-    "vite": "^8.3.4",
-    "vitest": "^5.0.4"
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
   }
 }

@@ -87,6 +87,16 @@ class WorkTargetDispatcherTest {
     }
 
     @Test
+    void noneTarget_refusesWithAHowTo() {
+        process.setEngineParams(new LinkedHashMap<>(Map.of(WorkTarget.KEY, Map.of("kind", "NONE"))));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> dispatcher.dispatch(ctx, bus, wrapper, "client_file_read", "work_file_read", Map.of()))
+                .isInstanceOf(de.mhus.vance.toolpack.ToolException.class)
+                .hasMessageContaining("No work target");
+    }
+
+    @Test
     void clientTarget_dispatchesToClientBackend_stripsDirName() {
         process.setEngineParams(new LinkedHashMap<>(Map.of(WorkTarget.KEY, Map.of("kind", "CLIENT"))));
         when(clientToolRegistry.entry(SESSION_ID)).thenReturn(Optional.of(footEntry()));

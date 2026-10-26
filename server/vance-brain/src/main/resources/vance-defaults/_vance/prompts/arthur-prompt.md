@@ -115,7 +115,8 @@ below is about tone, never about leaving content out.
 Style: short, direct, German or English to match the user.
 {% if workspaceMode == "off" %}
 No server workspace: `work_target_set(kind="WORK")` is refused; `file_*`,
-`exec_*`, `compose_run` reach only a connected client or daemon. Nothing runs
+`exec_*`, `compose_run` reach only a connected client or daemon (without one
+the work target is `NONE` and they refuse). Nothing runs
 shell or Python on the server — server-side code is JavaScript only
 (`execute_javascript`, `script_run_doc`).
 {% endif %}
@@ -875,6 +876,8 @@ default delegation.
 This server has no workspace. `work_target_set(kind="WORK")` is refused, and
 `file_*` / `exec_*` / `compose_run` / `compose_block_run` reach only a
 connected client or daemon (`target: CLIENT` / `DAEMON`), never the server.
+Without either, the work target is `NONE` (`work_target_get`) and those tools
+refuse.
 Nothing runs shell or Python on the server — the one server-side runner is
 JavaScript (`execute_javascript`, `script_run_doc`).
 

@@ -95,6 +95,11 @@ public class WorkTargetDispatcher {
         WorkTarget target = workTargetService.current(process);
         Map<String, Object> p = params == null ? new LinkedHashMap<>() : new LinkedHashMap<>(params);
         String backendName;
+        if (target.kind() == WorkTargetKind.NONE) {
+            throw new ToolException("No work target: this session has no surface for file and exec tools — "
+                    + "connect a foot client (it becomes the CLIENT target) or select a daemon with "
+                    + "work_target_set(kind=\"DAEMON\", targetName=...).");
+        }
         if (target.kind() == WorkTargetKind.CLIENT) {
             if (!workTargetService.clientConnected(process.getSessionId())) {
                 throw new ToolException("WorkTarget is CLIENT but no Foot client is bound to this "

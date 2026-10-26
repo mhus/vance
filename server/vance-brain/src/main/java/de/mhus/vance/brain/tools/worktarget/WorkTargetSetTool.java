@@ -43,7 +43,7 @@ public class WorkTargetSetTool implements Tool {
                                             "type",
                                             "string",
                                             "enum",
-                                            List.of("CLIENT", "WORK", "DAEMON"),
+                                            List.of("CLIENT", "WORK", "DAEMON", "NONE"),
                                             "description",
                                             "Backend to dispatch generic file_* / "
                                                     + "exec_* tools to. CLIENT = the "
@@ -51,7 +51,8 @@ public class WorkTargetSetTool implements Tool {
                                                     + "user's host; WORK = Brain-server "
                                                     + "workspace RootDir; DAEMON = a "
                                                     + "named profile=daemon Foot in this "
-                                                    + "project."),
+                                                    + "project; NONE = no surface (file_* / "
+                                                    + "exec_* refuse until another target is set)."),
                             "targetName",
                                     Map.of(
                                             "type",
@@ -119,13 +120,13 @@ public class WorkTargetSetTool implements Tool {
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         Object rawKind = params == null ? null : params.get("kind");
         if (!(rawKind instanceof String kindStr) || kindStr.isBlank()) {
-            throw new ToolException("'kind' is required (CLIENT, WORK or DAEMON)");
+            throw new ToolException("'kind' is required (CLIENT, WORK, DAEMON or NONE)");
         }
         WorkTargetKind kind;
         try {
             kind = WorkTargetKind.valueOf(kindStr.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException ex) {
-            throw new ToolException("Unknown kind '" + kindStr + "' — expected CLIENT, WORK or DAEMON", ex);
+            throw new ToolException("Unknown kind '" + kindStr + "' — expected CLIENT, WORK, DAEMON or NONE", ex);
         }
         String targetName = null;
         Object rawName = params == null ? null : params.get("targetName");
@@ -136,6 +137,7 @@ public class WorkTargetSetTool implements Tool {
                 switch (kind) {
                     case WORK -> WorkTarget.work(targetName);
                     case CLIENT -> WorkTarget.client();
+                    case NONE -> WorkTarget.none();
                     case DAEMON -> {
                         if (targetName == null) {
                             throw new ToolException("'targetName' (the daemon name) is required when kind=DAEMON");

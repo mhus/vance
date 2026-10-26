@@ -48,8 +48,7 @@ public record WorkTarget(WorkTargetKind kind, @Nullable String targetName) {
             throw new IllegalArgumentException("WorkTarget.kind is required");
         }
         if (kind == WorkTargetKind.DAEMON && (targetName == null || targetName.isBlank())) {
-            throw new IllegalArgumentException(
-                    "WorkTarget.targetName (the daemon name) is required for kind=DAEMON");
+            throw new IllegalArgumentException("WorkTarget.targetName (the daemon name) is required for kind=DAEMON");
         }
     }
 
@@ -72,6 +71,11 @@ public record WorkTarget(WorkTargetKind kind, @Nullable String targetName) {
      */
     public static WorkTarget daemon(String daemonName) {
         return new WorkTarget(WorkTargetKind.DAEMON, daemonName);
+    }
+
+    /** No surface — see {@link WorkTargetKind#NONE}. */
+    public static WorkTarget none() {
+        return new WorkTarget(WorkTargetKind.NONE, null);
     }
 
     /** Round-trips into the form persisted on {@code engineParams[KEY]}. */
@@ -97,19 +101,16 @@ public record WorkTarget(WorkTargetKind kind, @Nullable String targetName) {
         }
         Object rawKind = raw.get(FIELD_KIND);
         if (!(rawKind instanceof String kindStr) || kindStr.isBlank()) {
-            throw new IllegalArgumentException(
-                    "WorkTarget map missing '" + FIELD_KIND + "'");
+            throw new IllegalArgumentException("WorkTarget map missing '" + FIELD_KIND + "'");
         }
         WorkTargetKind k;
         try {
             k = WorkTargetKind.valueOf(kindStr.trim().toUpperCase(java.util.Locale.ROOT));
         } catch (IllegalArgumentException ex) {
-            throw new IllegalArgumentException(
-                    "Unknown WorkTargetKind: '" + kindStr + "'", ex);
+            throw new IllegalArgumentException("Unknown WorkTargetKind: '" + kindStr + "'", ex);
         }
-        Object rawName = raw.containsKey(FIELD_TARGET_NAME)
-                ? raw.get(FIELD_TARGET_NAME)
-                : raw.get(LEGACY_FIELD_DIR_NAME);
+        Object rawName =
+                raw.containsKey(FIELD_TARGET_NAME) ? raw.get(FIELD_TARGET_NAME) : raw.get(LEGACY_FIELD_DIR_NAME);
         String name = rawName instanceof String s && !s.isBlank() ? s : null;
         return new WorkTarget(k, name);
     }

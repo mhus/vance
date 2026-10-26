@@ -203,8 +203,32 @@ class WorkTargetServiceTest {
         WorkTargetService offService =
                 new WorkTargetService(thinkProcessService, clientToolRegistry, new PodCapabilities(off));
 
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> offService.set("p-1", WorkTarget.work(null)))
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> offService.set(PROC_ID, WorkTarget.work(null)))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("vance.workspace.mode=off");
+    }
+
+    @Test
+    void defaultFor_workspaceOffWithoutClient_isNone() {
+        WorkspaceProperties off = new WorkspaceProperties();
+        off.setMode(WorkspaceMode.OFF);
+        WorkTargetService offService =
+                new WorkTargetService(thinkProcessService, clientToolRegistry, new PodCapabilities(off));
+
+        assertThat(offService.defaultFor(process).kind()).isEqualTo(WorkTargetKind.NONE);
+    }
+
+    @Test
+    void defaultFor_workspaceLocalWithoutClient_staysWork() {
+        assertThat(service.defaultFor(process).kind()).isEqualTo(WorkTargetKind.WORK);
+    }
+
+    @Test
+    void set_noneTarget_isAccepted() {
+        when(thinkProcessService.replaceEngineParams(eq(PROC_ID), any())).thenReturn(true);
+
+        service.set(PROC_ID, WorkTarget.none());
+
+        verify(thinkProcessService).replaceEngineParams(eq(PROC_ID), any());
     }
 }

@@ -101,16 +101,20 @@ public class WorkTargetGetTool implements Tool {
 
         Map<String, Object> available = new LinkedHashMap<>();
         available.put("clientConnected", workTargetService.clientConnected(process.getSessionId()));
-        List<String> rootDirNames = new ArrayList<>();
-        try {
-            for (RootDirHandle h : workspaceService.listRootDirs(process.getTenantId(), process.getProjectId())) {
-                rootDirNames.add(h.getDirName());
+        boolean workAvailable = workspaceService.mode().accessible();
+        available.put("work", workAvailable);
+        if (workAvailable) {
+            List<String> rootDirNames = new ArrayList<>();
+            try {
+                for (RootDirHandle h : workspaceService.listRootDirs(process.getTenantId(), process.getProjectId())) {
+                    rootDirNames.add(h.getDirName());
+                }
+            } catch (RuntimeException ex) {
+                // Listing failure isn't fatal — report what we know.
+                available.put("rootDirsError", ex.getMessage());
             }
-        } catch (RuntimeException ex) {
-            // Listing failure isn't fatal — report what we know.
-            available.put("rootDirsError", ex.getMessage());
+            available.put("rootDirs", rootDirNames);
         }
-        available.put("rootDirs", rootDirNames);
 
         // Online (non-stale) daemons the caller could target via
         // work_target_set(kind=DAEMON). Stale entries are reconnect

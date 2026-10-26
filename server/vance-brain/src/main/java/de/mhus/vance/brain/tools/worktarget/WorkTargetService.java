@@ -54,7 +54,7 @@ public class WorkTargetService {
      * @throws ToolException when the pod has no workspace access
      */
     public void requireWorkAvailable() {
-        if (!podCapabilities.available().contains(ToolCapabilities.WORKSPACE)) {
+        if (!workAvailable()) {
             throw new ToolException("This server has no workspace (vance.workspace.mode=off) — the WORK target"
                     + " is not available. Use a CLIENT target (a connected foot) or a DAEMON target.");
         }
@@ -130,13 +130,19 @@ public class WorkTargetService {
      * {@code workTarget}. Prefers {@link WorkTargetKind#CLIENT} when
      * a Foot client is bound to the session, otherwise
      * {@link WorkTargetKind#WORK} with {@code dirName=null} (lazy
-     * temp RootDir).
+     * temp RootDir) — or {@link WorkTargetKind#NONE} when the pod has
+     * no workspace ({@code vance.workspace.mode=off}): a WORK default
+     * there would name a surface that does not exist.
      */
     public WorkTarget defaultFor(ThinkProcessDocument process) {
         if (process != null && process.getSessionId() != null && footBound(process.getSessionId())) {
             return WorkTarget.client();
         }
-        return WorkTarget.work(null);
+        return workAvailable() ? WorkTarget.work(null) : WorkTarget.none();
+    }
+
+    private boolean workAvailable() {
+        return podCapabilities.available().contains(ToolCapabilities.WORKSPACE);
     }
 
     /**

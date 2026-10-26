@@ -887,6 +887,10 @@ public class WowbaggerPoolService {
      * Idempotent; safe to call from configure and start alike.
      */
     public String ensureWorkRoot(ThinkProcessDocument process, WowbaggerState state) {
+        // Wowbagger reads its source straight off the brain's filesystem, not
+        // through the file_* layer — so without workspace access it cannot run
+        // (planning/multi-tenant-isolation.md O11, §5.2).
+        workspaceService.requireAccess("A Wowbagger run");
         String tenantId = process.getTenantId();
         String projectId = process.getProjectId();
         String named = state.getWorkTargetName();

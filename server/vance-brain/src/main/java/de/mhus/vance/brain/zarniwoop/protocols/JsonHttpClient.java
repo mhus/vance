@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.zarniwoop.protocols;
 
+import de.mhus.vance.shared.net.SsrfGuard;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -88,10 +89,13 @@ public interface JsonHttpClient {
         private final HttpClient client;
 
         public JdkJsonHttpClient() {
-            this(HttpClient.newBuilder()
-                    .followRedirects(HttpClient.Redirect.NORMAL)
-                    .connectTimeout(Duration.ofSeconds(5))
-                    .build());
+            // Target URLs come from tenant config — every request and redirect
+            // hop passes the egress guard.
+            this(SsrfGuard.guard(
+                    HttpClient.newBuilder()
+                            .connectTimeout(Duration.ofSeconds(5))
+                            .build(),
+                    true));
         }
 
         JdkJsonHttpClient(HttpClient client) {

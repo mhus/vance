@@ -4,6 +4,7 @@ import de.mhus.vance.api.kit.KitSourceType;
 import de.mhus.vance.brain.kit.KitSourceRegistry;
 import de.mhus.vance.shared.kit.KitException;
 import de.mhus.vance.shared.net.SafeLink;
+import de.mhus.vance.shared.net.SsrfGuard;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -65,9 +66,9 @@ public class OdeKitProvisioningHandler implements KitProvisioningHandler {
     private final ObjectMapper objectMapper;
     private final KitSourceRegistry sources;
 
-    private final HttpClient http = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10))
-            .build();
+    /** Source URLs come from tenant kit-source config — guarded egress. */
+    private final HttpClient http = SsrfGuard.guard(
+            HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build(), false);
 
     @Override
     public String id() {
@@ -81,8 +82,9 @@ public class OdeKitProvisioningHandler implements KitProvisioningHandler {
         try {
             base = requireHttpEndpoint(SafeLink.require(base));
         } catch (SafeLink.UnsafeLinkException e) {
-            throw new KitException("provisioning entry " + entry
-                    + " has a url that is not usable as an endpoint: " + e.getMessage(), e);
+            throw new KitException(
+                    "provisioning entry " + entry + " has a url that is not usable as an endpoint: " + e.getMessage(),
+                    e);
         }
         requireOdeSource(context.tenantId(), entry, base);
 
@@ -97,8 +99,8 @@ public class OdeKitProvisioningHandler implements KitProvisioningHandler {
         } catch (IllegalArgumentException e) {
             // Hostless or otherwise unusable target — same reasoning as
             // endpoint() below: a named 400 beats an unhandled 500.
-            throw new KitException("provisioning url '" + base
-                    + "' is not a usable request target: " + e.getMessage(), e);
+            throw new KitException(
+                    "provisioning url '" + base + "' is not a usable request target: " + e.getMessage(), e);
         }
         if (StringUtils.isNotBlank(entry.token())) {
             request.header("Authorization", "Bearer " + entry.token());
@@ -129,8 +131,8 @@ public class OdeKitProvisioningHandler implements KitProvisioningHandler {
         try {
             root = objectMapper.readTree(body);
         } catch (RuntimeException e) {
-            throw new KitException("ode host at " + base + " answered something that is not"
-                    + " json when asked what it offers", e);
+            throw new KitException(
+                    "ode host at " + base + " answered something that is not" + " json when asked what it offers", e);
         }
 
         JsonNode kits = root.get("kits");
@@ -138,8 +140,8 @@ public class OdeKitProvisioningHandler implements KitProvisioningHandler {
             // Distinguished from an empty array on purpose: a missing field is
             // a contract the host is not keeping, an empty one is „nothing for
             // this project" and perfectly normal.
-            throw new KitException("ode host at " + base
-                    + " answered without a 'kits' array when asked what it offers");
+            throw new KitException(
+                    "ode host at " + base + " answered without a 'kits' array when asked what it offers");
         }
 
         List<DesiredKit> desired = new ArrayList<>();
@@ -154,17 +156,17 @@ public class OdeKitProvisioningHandler implements KitProvisioningHandler {
                 // Kept, not dropped: the kit can still be installed, it just
                 // cannot be checked cheaply. Saying so once beats a project
                 // that never sees this kit and no line explaining why.
-                log.warn("Ode host at {} declares kit '{}' without a revision —"
-                        + " change detection is off for it", base, kitId);
+                log.warn(
+                        "Ode host at {} declares kit '{}' without a revision —" + " change detection is off for it",
+                        base,
+                        kitId);
                 revision = null;
             }
-            desired.add(new DesiredKit(
-                    entry.url(), kitId, revision, entry.authority(), entry.params()));
+            desired.add(new DesiredKit(entry.url(), kitId, revision, entry.authority(), entry.params()));
         }
 
         if (desired.isEmpty()) {
-            log.debug("Ode host at {} offers nothing for {}/{}",
-                    base, context.tenantId(), context.projectId());
+            log.debug("Ode host at {} offers nothing for {}/{}", base, context.tenantId(), context.projectId());
         }
         return desired;
     }
@@ -179,15 +181,16 @@ public class OdeKitProvisioningHandler implements KitProvisioningHandler {
      */
     private static String describeFailure(int status, String base) {
         return switch (status) {
-            case 401, 403 -> "ode host at " + base + " rejected the credential when asked"
-                    + " what it offers — check the token in the provisioning entry against"
-                    + " the host's api key";
-            case 404 -> "ode host at " + base + " serves no kit endpoint (HTTP 404 on "
-                    + CAPABILITIES_PATH + ") — the host answers, so this is usually a kit"
-                    + " endpoint that is switched off or publishes no kit source, not a"
-                    + " wrong url";
-            default -> "ode host at " + base + " answered HTTP " + status
-                    + " when asked what it offers";
+            case 401, 403 ->
+                "ode host at " + base + " rejected the credential when asked"
+                        + " what it offers — check the token in the provisioning entry against"
+                        + " the host's api key";
+            case 404 ->
+                "ode host at " + base + " serves no kit endpoint (HTTP 404 on "
+                        + CAPABILITIES_PATH + ") — the host answers, so this is usually a kit"
+                        + " endpoint that is switched off or publishes no kit source, not a"
+                        + " wrong url";
+            default -> "ode host at " + base + " answered HTTP " + status + " when asked what it offers";
         };
     }
 
@@ -222,8 +225,8 @@ public class OdeKitProvisioningHandler implements KitProvisioningHandler {
         try {
             return URI.create(base + path);
         } catch (IllegalArgumentException e) {
-            throw new KitException("provisioning url '" + base
-                    + "' is not a usable request target: " + e.getMessage(), e);
+            throw new KitException(
+                    "provisioning url '" + base + "' is not a usable request target: " + e.getMessage(), e);
         }
     }
 

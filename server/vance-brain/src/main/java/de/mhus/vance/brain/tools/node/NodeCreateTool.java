@@ -38,13 +38,6 @@ public class NodeCreateTool implements Tool {
             "type", "object",
             "properties",
                     Map.of(
-                            "npmPath",
-                                    Map.of(
-                                            "type",
-                                            "string",
-                                            "description",
-                                            "Path to the npm binary. Default: 'npm' "
-                                                    + "(resolved via PATH on the brain pod)."),
                             "repoUrl",
                                     Map.of(
                                             "type",
@@ -131,7 +124,6 @@ public class NodeCreateTool implements Tool {
             throw new ToolException("node_create needs a process or session scope");
         }
 
-        String npmPath = stringOr(params, "npmPath", NodeHandler.DEFAULT_NPM_PATH);
         String repoUrl = stringOrNull(params, "repoUrl");
         String branch = stringOrNull(params, "branch");
         String label = stringOr(params, "label", NodeHandler.DEFAULT_LABEL);
@@ -143,11 +135,10 @@ public class NodeCreateTool implements Tool {
             if (asWorkingDir) {
                 workspaceService.setWorkingDir(tenantId, projectId, creator, existing.getDirName());
             }
-            return response(existing, npmPath, repoUrl, asWorkingDir, "exists");
+            return response(existing, repoUrl, asWorkingDir, "exists");
         }
 
         Map<String, Object> metadata = new LinkedHashMap<>();
-        metadata.put(NodeHandler.META_NPM_PATH, npmPath);
         if (repoUrl != null) metadata.put(GitHandler.META_REPO_URL, repoUrl);
         if (branch != null) metadata.put(GitHandler.META_BRANCH, branch);
         if (credentialAlias != null) metadata.put(GitHandler.META_CREDENTIAL_ALIAS, credentialAlias);
@@ -172,7 +163,7 @@ public class NodeCreateTool implements Tool {
         if (asWorkingDir) {
             workspaceService.setWorkingDir(tenantId, projectId, creator, handle.getDirName());
         }
-        return response(handle, npmPath, repoUrl, asWorkingDir, "created");
+        return response(handle, repoUrl, asWorkingDir, "created");
     }
 
     private @Nullable RootDirHandle findExistingNodeRootDir(String tenantId, String projectId, String label) {
@@ -188,11 +179,10 @@ public class NodeCreateTool implements Tool {
     }
 
     private static Map<String, Object> response(
-            RootDirHandle handle, String npmPath, @Nullable String repoUrl, boolean asWorkingDir, String status) {
+            RootDirHandle handle, @Nullable String repoUrl, boolean asWorkingDir, String status) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("dirName", handle.getDirName());
         out.put("path", handle.getPath().toString());
-        out.put("npmPath", npmPath);
         if (repoUrl != null) out.put("repoUrl", repoUrl);
         out.put("workingDir", asWorkingDir);
         out.put("status", status);

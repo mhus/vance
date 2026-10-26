@@ -11,6 +11,7 @@ import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.function.UnaryOperator;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
@@ -27,6 +28,9 @@ import org.jspecify.annotations.Nullable;
  *   <li>Per-pack trusted-CA PEM bundle as the safer alternative
  *       to {@code skipSslVerification}.</li>
  *   <li>Connect-/request-timeout defaults shared across pack types.</li>
+ *   <li>An optional client decorator — the brain uses it to put its egress
+ *       guard into every pack client (pack URLs are tenant config); the foot
+ *       talks to the user's own machine and passes none.</li>
  * </ul>
  *
  * <p>Pure Java — no Spring, no Vance internals. Caches built
@@ -44,9 +48,19 @@ public final class PackHttpClient {
 
     private final Map<TlsConfig, HttpClient> clients = new LinkedHashMap<>();
     private final Duration connectTimeout;
+    private final UnaryOperator<HttpClient> decorator;
+
+    /**
+     * @param decorator applied to every built client; receives a client that does
+     *     not follow redirects
+     */
+    public PackHttpClient(Duration connectTimeout, UnaryOperator<HttpClient> decorator) {
+        this.connectTimeout = connectTimeout == null ? Duration.ofSeconds(10) : connectTimeout;
+        this.decorator = decorator;
+    }
 
     public PackHttpClient(Duration connectTimeout) {
-        this.connectTimeout = connectTimeout == null ? Duration.ofSeconds(10) : connectTimeout;
+        this(connectTimeout, UnaryOperator.identity());
     }
 
     public PackHttpClient() {
@@ -69,10 +83,9 @@ public final class PackHttpClient {
             SSLContext ssl = buildSslContext(cfg);
             if (ssl != null) b.sslContext(ssl);
         } catch (RuntimeException e) {
-            throw new IllegalStateException(
-                    "Failed to build SSLContext for tool-pack: " + e.getMessage(), e);
+            throw new IllegalStateException("Failed to build SSLContext for tool-pack: " + e.getMessage(), e);
         }
-        return b.build();
+        return decorator.apply(b.build());
     }
 
     private static @Nullable SSLContext buildSslContext(TlsConfig cfg) {
@@ -93,7 +106,7 @@ public final class PackHttpClient {
     private static SSLContext trustAllSslContext() {
         try {
             SSLContext ctx = SSLContext.getInstance("TLS");
-            TrustManager[] trustAll = new TrustManager[] { new TrustAllManager() };
+            TrustManager[] trustAll = new TrustManager[] {new TrustAllManager()};
             ctx.init(null, trustAll, null);
             return ctx;
         } catch (RuntimeException | java.security.GeneralSecurityException e) {
@@ -122,15 +135,13 @@ public final class PackHttpClient {
                     }
                 }
             }
-            TrustManagerFactory tmf = TrustManagerFactory.getInstance(
-                    TrustManagerFactory.getDefaultAlgorithm());
+            TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
             tmf.init(ks);
             SSLContext ctx = SSLContext.getInstance("TLS");
             ctx.init(null, tmf.getTrustManagers(), null);
             return ctx;
         } catch (Exception e) {
-            throw new IllegalStateException(
-                    "Cannot load trusted-CA PEM '" + pemPath + "': " + e.getMessage(), e);
+            throw new IllegalStateException("Cannot load trusted-CA PEM '" + pemPath + "': " + e.getMessage(), e);
         }
     }
 
@@ -139,7 +150,8 @@ public final class PackHttpClient {
      * client cache shares connections across packs with identical
      * settings.
      */
-    public record TlsConfig(boolean skipVerification, @Nullable String trustedCaPem) {
+    public record TlsConfig(
+            boolean skipVerification, @Nullable String trustedCaPem) {
 
         public static final TlsConfig DEFAULT = new TlsConfig(false, null);
 
@@ -149,22 +161,27 @@ public final class PackHttpClient {
             Object skip = tlsBlock.get("skipVerification");
             Object pem = tlsBlock.get("trustedCaPemPath");
             return new TlsConfig(
-                    skip instanceof Boolean b && b,
-                    pem instanceof String s && !s.isBlank() ? s.trim() : null);
+                    skip instanceof Boolean b && b, pem instanceof String s && !s.isBlank() ? s.trim() : null);
         }
     }
 
     private static final class TrustAllManager implements X509TrustManager {
-        @Override public void checkClientTrusted(X509Certificate[] chain, String authType) { }
-        @Override public void checkServerTrusted(X509Certificate[] chain, String authType) { }
-        @Override public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
+        @Override
+        public void checkClientTrusted(X509Certificate[] chain, String authType) {}
+
+        @Override
+        public void checkServerTrusted(X509Certificate[] chain, String authType) {}
+
+        @Override
+        public X509Certificate[] getAcceptedIssuers() {
+            return new X509Certificate[0];
+        }
     }
 
     /** Convenience: HTTP Basic auth header value. */
     public static String basicAuthHeader(String user, String password) {
         String token = (user == null ? "" : user) + ":" + (password == null ? "" : password);
-        return "Basic " + java.util.Base64.getEncoder().encodeToString(
-                token.getBytes(StandardCharsets.UTF_8));
+        return "Basic " + java.util.Base64.getEncoder().encodeToString(token.getBytes(StandardCharsets.UTF_8));
     }
 
     /** Convenience: HTTP Bearer auth header value. */

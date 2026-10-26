@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.zarniwoop.protocols;
 
+import de.mhus.vance.shared.net.SsrfGuard;
 import de.mhus.vance.toolpack.research.ContentInline;
 import de.mhus.vance.toolpack.research.ContentReference;
 import de.mhus.vance.toolpack.research.ProviderAvailability;
@@ -110,10 +111,12 @@ public class WikipediaProtocol implements SearchProtocol {
 
         final class JdkWikipediaHttp implements WikipediaHttp {
 
-            private final HttpClient client = HttpClient.newBuilder()
-                    .followRedirects(HttpClient.Redirect.NORMAL)
-                    .connectTimeout(Duration.ofSeconds(5))
-                    .build();
+            // The API base is overridable per source — guard it like the others.
+            private final HttpClient client = SsrfGuard.guard(
+                    HttpClient.newBuilder()
+                            .connectTimeout(Duration.ofSeconds(5))
+                            .build(),
+                    true);
 
             @Override
             public Response get(URI url, Duration timeout) throws Exception {

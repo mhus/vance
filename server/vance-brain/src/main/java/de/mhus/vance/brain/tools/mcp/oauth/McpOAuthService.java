@@ -10,13 +10,13 @@ import de.mhus.vance.brain.oauth.OAuthProviderLoader;
 import de.mhus.vance.brain.oauth.OAuthTokenOwner;
 import de.mhus.vance.brain.oauth.OAuthTokenStore;
 import de.mhus.vance.brain.oauth.ResolvedOAuthProvider;
-import de.mhus.vance.brain.oauthserver.ClientMetadataDocumentResolver;
 import de.mhus.vance.brain.servertool.ServerToolService;
 import de.mhus.vance.brain.tools.mcp.McpToolPackFactory;
 import de.mhus.vance.brain.tools.rest.SettingsSecretResolver;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.home.HomeBootstrapService;
+import de.mhus.vance.shared.net.PublicAddresses;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.permission.WriteActor;
@@ -477,7 +477,7 @@ public class McpOAuthService {
         }
         try {
             for (InetAddress address : InetAddress.getAllByName(base.getHost())) {
-                if (!ClientMetadataDocumentResolver.isPublic(address)) return false;
+                if (!PublicAddresses.isPublic(address)) return false;
             }
             return true;
         } catch (UnknownHostException e) {

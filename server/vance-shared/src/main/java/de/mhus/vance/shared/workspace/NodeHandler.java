@@ -1,17 +1,20 @@
 package de.mhus.vance.shared.workspace;
 
+import jakarta.annotation.PostConstruct;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import jakarta.annotation.PostConstruct;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -45,9 +48,15 @@ import org.springframework.stereotype.Component;
  * permits reads under {@code <rootDir>/node_modules/} (see
  * {@code GraaljsScriptExecutor}).
  *
+ * <p>Every install path takes registry specs only ({@link NpmPackageSpec}),
+ * places them after {@code --} so npm never reads one as an option, pins the
+ * registry on the command line, and runs the operator-configured npm binary
+ * ({@code vance.workspace.node.npm-path}) — never one named in RootDir
+ * metadata. A single install that pushes {@code node_modules} past
+ * {@code vance.workspace.node.max-bytes} is rolled back.
+ *
  * <p>Metadata schema:
  * <ul>
- *   <li>{@code npmPath} — npm binary used at last install (informational, default {@code npm})</li>
  *   <li>{@code nodePath} — node binary (informational, default {@code node})</li>
  *   <li>{@code packages} — list of npm package specs (e.g. {@code lodash},
  *       {@code axios@1.6}) installed into {@code node_modules} at init.
@@ -65,9 +74,7 @@ public class NodeHandler implements WorkspaceContentHandler {
 
     public static final String TYPE = "node";
 
-    public static final String META_NPM_PATH = "npmPath";
     public static final String META_PACKAGES = "packages";
-    public static final String DEFAULT_NPM_PATH = "npm";
     public static final String META_NODE_PATH = "nodePath";
     public static final String DEFAULT_NODE_PATH = "node";
 
@@ -82,12 +89,12 @@ public class NodeHandler implements WorkspaceContentHandler {
      *  user-facing tooling won't list it alongside user content. */
     public static final String DEFAULT_LABEL = "_jsengine";
 
-    private static final String DEFAULT_GITIGNORE =
-            "node_modules/\n.npm/\n*.log\n";
+    private static final String DEFAULT_GITIGNORE = "node_modules/\n.npm/\n*.log\n";
     private static final long NPM_INIT_TIMEOUT_SECONDS = 60;
     private static final long NPM_INSTALL_TIMEOUT_SECONDS = 600;
 
     private final GitHandler gitHandler;
+    private final WorkspaceProperties properties;
 
     /**
      * Boot-time presence check for npm. Logs warn (not error) if npm
@@ -99,11 +106,9 @@ public class NodeHandler implements WorkspaceContentHandler {
     @PostConstruct
     void verifyNpmAvailable() {
         try {
-            ProcessBuilder pb = new ProcessBuilder(DEFAULT_NPM_PATH, "--version")
-                    .redirectErrorStream(true);
+            ProcessBuilder pb = new ProcessBuilder(npmPath(), "--version").redirectErrorStream(true);
             Process p = pb.start();
-            String output = new String(p.getInputStream().readAllBytes(),
-                    StandardCharsets.UTF_8).trim();
+            String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
             if (!p.waitFor(10, TimeUnit.SECONDS)) {
                 p.destroyForcibly();
                 log.warn("npm --version timed out — node workspaces will not work; "
@@ -111,13 +116,13 @@ public class NodeHandler implements WorkspaceContentHandler {
                 return;
             }
             if (p.exitValue() != 0) {
-                log.warn("npm --version exited {} — node workspaces will not work: {}",
-                        p.exitValue(), output);
+                log.warn("npm --version exited {} — node workspaces will not work: {}", p.exitValue(), output);
                 return;
             }
             log.info("NodeHandler ready: npm {} on PATH", output);
         } catch (IOException e) {
-            log.warn("npm not found on PATH ({}). Node workspaces and "
+            log.warn(
+                    "npm not found on PATH ({}). Node workspaces and "
                             + "script-engine require() will not work. Install "
                             + "nodejs+npm on the brain pod (Dockerfile or host).",
                     e.getMessage());
@@ -134,7 +139,6 @@ public class NodeHandler implements WorkspaceContentHandler {
     @Override
     public void init(RootDirHandle handle, RootDirSpec spec) {
         Map<String, Object> meta = mutableMetadata(handle.getDescriptor());
-        String npmPath = stringOr(meta, META_NPM_PATH, DEFAULT_NPM_PATH);
         String repoUrl = stringOr(meta, GitHandler.META_REPO_URL, null);
 
         if (StringUtils.isNotBlank(repoUrl)) {
@@ -145,8 +149,7 @@ public class NodeHandler implements WorkspaceContentHandler {
                 Git.init().setDirectory(handle.getPath().toFile()).call().close();
             } catch (GitAPIException e) {
                 throw new WorkspaceException(
-                        "git init failed for node RootDir " + handle.getDirName()
-                                + ": " + e.getMessage(), e);
+                        "git init failed for node RootDir " + handle.getDirName() + ": " + e.getMessage(), e);
             }
         }
 
@@ -156,7 +159,7 @@ public class NodeHandler implements WorkspaceContentHandler {
         // run left one — npm install needs it to exist.
         Path packageJson = handle.getPath().resolve(PACKAGE_JSON);
         if (!Files.isRegularFile(packageJson)) {
-            npmInit(handle.getPath(), npmPath);
+            npmInit(handle.getPath());
         }
 
         // Restore node_modules from the lockfile when the clone shipped
@@ -164,20 +167,21 @@ public class NodeHandler implements WorkspaceContentHandler {
         // are present" rule.
         Path lockfile = handle.getPath().resolve(PACKAGE_LOCK_JSON);
         if (Files.isRegularFile(lockfile)) {
-            npmCi(handle.getPath(), npmPath);
+            npmCi(handle.getPath());
         }
 
         // Declarative package list from workspace options — installed once at
         // init (the reused-workspace path skips init and keeps them).
         List<String> packages = packageList(meta, META_PACKAGES);
         if (!packages.isEmpty()) {
-            npmInstallPackages(handle.getPath(), npmPath, packages);
+            npmInstallPackages(handle.getPath(), packages);
+            enforceSizeLimit(handle);
         }
 
-        meta.put(META_NPM_PATH, npmPath);
         handle.getDescriptor().setMetadata(meta);
-        log.info("node init: {} (npmPath={}, repoUrl={}, lockfile={}, packages={})",
-                handle.getDirName(), npmPath,
+        log.info(
+                "node init: {} (repoUrl={}, lockfile={}, packages={})",
+                handle.getDirName(),
                 repoUrl == null ? "none" : repoUrl,
                 Files.isRegularFile(lockfile) ? "ci'd" : "absent",
                 packages.size());
@@ -188,11 +192,10 @@ public class NodeHandler implements WorkspaceContentHandler {
         Map<String, Object> meta = mutableMetadata(handle.getDescriptor());
         String repoUrl = stringOr(meta, GitHandler.META_REPO_URL, null);
         if (StringUtils.isBlank(repoUrl)) {
-            throw new WorkspaceException(
-                    "node suspend requires a configured git remote on "
-                            + handle.getDirName() + " — set metadata."
-                            + GitHandler.META_REPO_URL + " or accept that this "
-                            + "RootDir is not suspendable");
+            throw new WorkspaceException("node suspend requires a configured git remote on "
+                    + handle.getDirName() + " — set metadata."
+                    + GitHandler.META_REPO_URL + " or accept that this "
+                    + "RootDir is not suspendable");
         }
         gitHandler.suspend(handle);
     }
@@ -200,23 +203,17 @@ public class NodeHandler implements WorkspaceContentHandler {
     @Override
     public void recover(RootDirHandle handle, WorkspaceDescriptor descriptor) {
         gitHandler.recover(handle, descriptor);
-        Map<String, Object> meta = mutableMetadata(descriptor);
-        // Use the recover pod's local npm.
-        String npmPath = DEFAULT_NPM_PATH;
         Path lockfile = handle.getPath().resolve(PACKAGE_LOCK_JSON);
         if (Files.isRegularFile(lockfile)) {
-            npmCi(handle.getPath(), npmPath);
+            npmCi(handle.getPath());
         } else {
             // Pre-suspend dir might not have had a lockfile committed —
             // re-init package.json so install commands work.
             if (!Files.isRegularFile(handle.getPath().resolve(PACKAGE_JSON))) {
-                npmInit(handle.getPath(), npmPath);
+                npmInit(handle.getPath());
             }
         }
-        meta.put(META_NPM_PATH, npmPath);
-        descriptor.setMetadata(meta);
-        handle.getDescriptor().setMetadata(meta);
-        log.info("node recover: {} (npmPath={})", handle.getDirName(), npmPath);
+        log.info("node recover: {}", handle.getDirName());
     }
 
     @Override
@@ -226,34 +223,99 @@ public class NodeHandler implements WorkspaceContentHandler {
 
     // ──────────────────── public install hooks ────────────────────
 
-    /** Run {@code npm install <package> --save --ignore-scripts}. */
+    /**
+     * Run {@code npm install --save --ignore-scripts -- <spec>}. Only registry
+     * specs are accepted ({@link NpmPackageSpec}); an install that pushes
+     * {@code node_modules} past {@code vance.workspace.node.max-bytes} is
+     * uninstalled again and reported as {@link WorkspaceQuotaExceededException}.
+     *
+     * @throws WorkspaceException on an invalid spec or a failed npm run
+     */
     public void install(RootDirHandle handle, String packageSpec) {
-        runProcess(handle.getPath(),
-                new String[]{
-                        npmPath(handle), "install", "--save",
-                        "--ignore-scripts", "--no-audit", "--no-fund",
-                        packageSpec},
+        NpmPackageSpec spec = NpmPackageSpec.parse(packageSpec);
+        runProcess(
+                handle.getPath(),
+                new String[] {
+                    npmPath(),
+                    "install",
+                    "--save",
+                    "--ignore-scripts",
+                    "--no-audit",
+                    "--no-fund",
+                    registryOption(),
+                    "--",
+                    spec.toArgument()
+                },
                 NPM_INSTALL_TIMEOUT_SECONDS,
-                "npm install " + packageSpec);
+                "npm install " + spec.toArgument());
+        try {
+            enforceSizeLimit(handle);
+        } catch (WorkspaceQuotaExceededException e) {
+            uninstall(handle, spec.name());
+            throw e;
+        }
     }
 
-    /** Run {@code npm uninstall <name> --save}. */
+    /**
+     * Run {@code npm uninstall --save -- <name>}.
+     *
+     * @throws WorkspaceException when {@code packageName} is not a plain registry name
+     */
     public void uninstall(RootDirHandle handle, String packageName) {
-        runProcess(handle.getPath(),
-                new String[]{
-                        npmPath(handle), "uninstall", "--save",
-                        "--no-audit", "--no-fund",
-                        packageName},
+        NpmPackageSpec spec = NpmPackageSpec.parse(packageName);
+        if (spec.range() != null) {
+            throw new WorkspaceException("npm uninstall takes a package name, not a version: '" + packageName + "'");
+        }
+        runProcess(
+                handle.getPath(),
+                new String[] {npmPath(), "uninstall", "--save", "--no-audit", "--no-fund", "--", spec.name()},
                 NPM_INSTALL_TIMEOUT_SECONDS,
-                "npm uninstall " + packageName);
+                "npm uninstall " + spec.name());
     }
 
-    private String npmPath(RootDirHandle handle) {
-        Map<String, Object> meta = handle.getDescriptor() == null
-                ? Map.of() : (handle.getDescriptor().getMetadata() == null
-                        ? Map.of() : handle.getDescriptor().getMetadata());
-        Object raw = meta.get(META_NPM_PATH);
-        return raw instanceof String s && !s.isBlank() ? s : DEFAULT_NPM_PATH;
+    /** {@code true} when {@code node_modules/<name>/package.json} exists. */
+    public static boolean isInstalled(Path rootDir, String packageName) {
+        return Files.isRegularFile(
+                rootDir.resolve(NODE_MODULES_DIR).resolve(packageName).resolve(PACKAGE_JSON));
+    }
+
+    private String npmPath() {
+        return properties.getNode().getNpmPath();
+    }
+
+    private String registryOption() {
+        return "--registry=" + properties.getNode().getRegistry();
+    }
+
+    private void enforceSizeLimit(RootDirHandle handle) {
+        long max = properties.getNode().getMaxBytes();
+        long used = treeSize(handle.getPath().resolve(NODE_MODULES_DIR));
+        if (used > max) {
+            throw new WorkspaceQuotaExceededException("node_modules of " + handle.getDirName() + " would hold " + used
+                    + " bytes, above vance.workspace.node.max-bytes (" + max + ")");
+        }
+    }
+
+    /** Sum of regular-file sizes below {@code dir}; symlinks are not followed. */
+    private static long treeSize(Path dir) {
+        if (!Files.isDirectory(dir)) {
+            return 0L;
+        }
+        try (Stream<Path> files = Files.walk(dir)) {
+            return files.filter(f -> Files.isRegularFile(f, LinkOption.NOFOLLOW_LINKS))
+                    .mapToLong(NodeHandler::sizeOf)
+                    .sum();
+        } catch (IOException | UncheckedIOException e) {
+            throw new WorkspaceException("cannot measure " + dir + ": " + e.getMessage(), e);
+        }
+    }
+
+    private static long sizeOf(Path file) {
+        try {
+            return Files.size(file);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     // ──────────────────── Internals ────────────────────
@@ -262,45 +324,40 @@ public class NodeHandler implements WorkspaceContentHandler {
         Path gitignore = rootDirPath.resolve(".gitignore");
         if (Files.exists(gitignore)) return;
         try {
-            Files.writeString(gitignore, DEFAULT_GITIGNORE, StandardCharsets.UTF_8,
-                    StandardOpenOption.CREATE_NEW);
+            Files.writeString(gitignore, DEFAULT_GITIGNORE, StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW);
         } catch (IOException e) {
-            log.warn("Failed to write default .gitignore in {}: {}",
-                    rootDirPath, e.toString());
+            log.warn("Failed to write default .gitignore in {}: {}", rootDirPath, e.toString());
         }
     }
 
-    private void npmInit(Path cwd, String npmPath) {
-        runProcess(cwd,
-                new String[]{npmPath, "init", "-y"},
-                NPM_INIT_TIMEOUT_SECONDS,
-                "npm init -y (" + npmPath + ")");
+    private void npmInit(Path cwd) {
+        runProcess(cwd, new String[] {npmPath(), "init", "-y"}, NPM_INIT_TIMEOUT_SECONDS, "npm init -y");
     }
 
-    private void npmCi(Path cwd, String npmPath) {
-        runProcess(cwd,
-                new String[]{
-                        npmPath, "ci",
-                        "--ignore-scripts", "--no-audit", "--no-fund"},
+    private void npmCi(Path cwd) {
+        runProcess(
+                cwd,
+                new String[] {npmPath(), "ci", "--ignore-scripts", "--no-audit", "--no-fund", registryOption()},
                 NPM_INSTALL_TIMEOUT_SECONDS,
-                "npm ci (" + npmPath + ")");
+                "npm ci");
     }
 
-    private void npmInstallPackages(Path cwd, String npmPath, List<String> packages) {
-        String[] fixed = {npmPath, "install", "--save", "--ignore-scripts", "--no-audit", "--no-fund"};
+    private void npmInstallPackages(Path cwd, List<String> packages) {
+        String[] fixed = {
+            npmPath(), "install", "--save", "--ignore-scripts", "--no-audit", "--no-fund", registryOption(), "--"
+        };
         String[] command = new String[fixed.length + packages.size()];
         System.arraycopy(fixed, 0, command, 0, fixed.length);
         for (int i = 0; i < packages.size(); i++) {
             command[fixed.length + i] = packages.get(i);
         }
-        runProcess(cwd, command, NPM_INSTALL_TIMEOUT_SECONDS,
-                "npm install " + String.join(" ", packages));
+        runProcess(cwd, command, NPM_INSTALL_TIMEOUT_SECONDS, "npm install " + String.join(" ", packages));
     }
 
     /**
-     * Read a package list from metadata. Each entry is a plain package spec
-     * passed straight to npm as a separate argv token (no shell). A leading
-     * {@code -} is rejected so a list entry cannot smuggle an npm flag.
+     * Read a package list from metadata. Each entry must be a registry spec
+     * ({@link NpmPackageSpec}) and is passed to npm as a separate argv token
+     * after {@code --} (no shell).
      */
     private static List<String> packageList(Map<String, Object> meta, String key) {
         Object raw = meta.get(key);
@@ -316,35 +373,25 @@ public class NodeHandler implements WorkspaceContentHandler {
             if (s.isEmpty()) {
                 continue;
             }
-            if (s.startsWith("-")) {
-                throw new WorkspaceException(
-                        "invalid package spec '" + s + "' in workspace options."
-                                + key + " — must not start with '-' (option injection)");
-            }
-            out.add(s);
+            out.add(NpmPackageSpec.parse(s).toArgument());
         }
         return out;
     }
 
-    private static void runProcess(Path cwd, String[] command,
-            long timeoutSeconds, String label) {
-        ProcessBuilder pb = new ProcessBuilder(command)
-                .directory(cwd.toFile())
-                .redirectErrorStream(true);
+    private static void runProcess(Path cwd, String[] command, long timeoutSeconds, String label) {
+        ProcessBuilder pb = new ProcessBuilder(command).directory(cwd.toFile()).redirectErrorStream(true);
         Process p;
         try {
             p = pb.start();
         } catch (IOException e) {
-            throw new WorkspaceException(
-                    label + " failed to start: " + e.getMessage(), e);
+            throw new WorkspaceException(label + " failed to start: " + e.getMessage(), e);
         }
         String output;
         try {
             output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             if (!p.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
                 p.destroyForcibly();
-                throw new WorkspaceException(
-                        label + " timed out after " + timeoutSeconds + "s");
+                throw new WorkspaceException(label + " timed out after " + timeoutSeconds + "s");
             }
         } catch (IOException e) {
             throw new WorkspaceException(label + " I/O error: " + e.getMessage(), e);
@@ -355,8 +402,7 @@ public class NodeHandler implements WorkspaceContentHandler {
         int exit = p.exitValue();
         if (exit != 0) {
             throw new WorkspaceException(
-                    label + " exited with code " + exit
-                            + (output.isBlank() ? "" : ": " + output.strip()));
+                    label + " exited with code " + exit + (output.isBlank() ? "" : ": " + output.strip()));
         }
         log.debug("{} ok (cwd={})", label, cwd);
     }

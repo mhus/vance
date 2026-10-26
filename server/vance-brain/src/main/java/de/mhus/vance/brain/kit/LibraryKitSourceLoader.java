@@ -5,12 +5,13 @@ import de.mhus.vance.api.kit.KitInheritDto;
 import de.mhus.vance.api.kit.KitSourceDto;
 import de.mhus.vance.api.kit.KitSourceType;
 import de.mhus.vance.shared.kit.KitException;
+import de.mhus.vance.shared.net.SsrfGuard;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
-import java.net.URLEncoder;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -39,9 +40,9 @@ public class LibraryKitSourceLoader implements KitSourceLoader {
     /** Kits are small; a slow library should fail rather than hang an install. */
     private static final Duration TIMEOUT = Duration.ofMinutes(2);
 
-    private final HttpClient http = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10))
-            .build();
+    /** Source URLs come from tenant kit-source config — guarded egress. */
+    private final HttpClient http = SsrfGuard.guard(
+            HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build(), false);
 
     @Override
     public boolean supports(KitSourceType type) {
@@ -49,8 +50,7 @@ public class LibraryKitSourceLoader implements KitSourceLoader {
     }
 
     @Override
-    public KitRepoLoader.LoadedKit load(
-            KitInheritDto source, KitSourceDto config, KitAccess access, Path target) {
+    public KitRepoLoader.LoadedKit load(KitInheritDto source, KitSourceDto config, KitAccess access, Path target) {
 
         String token = access.token();
 
@@ -67,8 +67,8 @@ public class LibraryKitSourceLoader implements KitSourceLoader {
                     + " and without a credential there is no tenant");
         }
 
-        URI uri = URI.create(KitArchive.trimTrailingSlash(config.getUrl())
-                + "/library/kits/" + encodePath(kitId) + "/download");
+        URI uri = URI.create(
+                KitArchive.trimTrailingSlash(config.getUrl()) + "/library/kits/" + encodePath(kitId) + "/download");
         log.debug("LibraryKitSourceLoader: fetching {}", uri);
 
         HttpResponse<InputStream> response;
@@ -77,12 +77,12 @@ public class LibraryKitSourceLoader implements KitSourceLoader {
                     HttpRequest.newBuilder(uri)
                             .timeout(TIMEOUT)
                             .header("Authorization", "Bearer " + token)
-                            .GET().build(),
+                            .GET()
+                            .build(),
                     HttpResponse.BodyHandlers.ofInputStream());
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-            throw new KitException("library '" + config.getId() + "' is not reachable: "
-                    + e.getMessage(), e);
+            throw new KitException("library '" + config.getId() + "' is not reachable: " + e.getMessage(), e);
         }
 
         if (response.statusCode() != 200) {
@@ -92,14 +92,12 @@ public class LibraryKitSourceLoader implements KitSourceLoader {
         try (ZipInputStream zip = new ZipInputStream(response.body())) {
             KitArchive.unpack(zip, target);
         } catch (IOException e) {
-            throw new KitException("failed to unpack kit '" + kitId + "' from library '"
-                    + config.getId() + "'", e);
+            throw new KitException("failed to unpack kit '" + kitId + "' from library '" + config.getId() + "'", e);
         }
 
         Path descriptorFile = target.resolve("kit.yaml");
         if (!Files.isRegularFile(descriptorFile)) {
-            throw new KitException("library '" + config.getId() + "' delivered '" + kitId
-                    + "' without a kit.yaml");
+            throw new KitException("library '" + config.getId() + "' delivered '" + kitId + "' without a kit.yaml");
         }
         KitDescriptorDto descriptor;
         try {
@@ -111,8 +109,7 @@ public class LibraryKitSourceLoader implements KitSourceLoader {
         // The commit field records what was installed. A library has no
         // commits, so the version stands in — it is what an update compares
         // against, and "library:1.2.0" reads as what it is.
-        String stamp = "library:" + (descriptor.getVersion() == null
-                ? "unversioned" : descriptor.getVersion());
+        String stamp = "library:" + (descriptor.getVersion() == null ? "unversioned" : descriptor.getVersion());
         return new KitRepoLoader.LoadedKit(target, target, stamp, descriptor, false);
     }
 
@@ -125,8 +122,7 @@ public class LibraryKitSourceLoader implements KitSourceLoader {
             case 401, 403 -> "library '" + config.getId() + "' rejected the token";
             case 404 -> "kit '" + kitId + "' is not in your library at '" + config.getId() + "'";
             case 410 -> "your licence for '" + kitId + "' does not entitle any published version";
-            default -> "library '" + config.getId() + "' returned HTTP " + status
-                    + " for kit '" + kitId + "'";
+            default -> "library '" + config.getId() + "' returned HTTP " + status + " for kit '" + kitId + "'";
         };
     }
 
@@ -146,5 +142,4 @@ public class LibraryKitSourceLoader implements KitSourceLoader {
         }
         return out.toString();
     }
-
 }

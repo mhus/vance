@@ -5,6 +5,7 @@ import de.mhus.vance.api.kit.KitLibraryEntryDto;
 import de.mhus.vance.api.kit.KitSourceDto;
 import de.mhus.vance.api.kit.KitSourceType;
 import de.mhus.vance.shared.kit.KitException;
+import de.mhus.vance.shared.net.SsrfGuard;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -44,8 +45,9 @@ public class KitLibraryService {
     private final KitRecordStore recordStore;
     private final KitStoreCredentials storeCredentials;
     private final ObjectMapper json = JsonMapper.builder().build();
-    private final HttpClient http =
-            HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+    /** Library URLs come from tenant kit-source config — guarded egress. */
+    private final HttpClient http = SsrfGuard.guard(
+            HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build(), false);
 
     /**
      * Everything the tenant's libraries offer, marked up with what is

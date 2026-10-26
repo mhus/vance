@@ -7,6 +7,7 @@ import de.mhus.vance.shared.llmusage.CallAttribution;
 import de.mhus.vance.shared.llmusage.LlmUsageService;
 import de.mhus.vance.shared.llmusage.UsageKind;
 import de.mhus.vance.shared.llmusage.UsageOutcome;
+import de.mhus.vance.shared.net.SsrfGuard;
 import de.mhus.vance.shared.rag.RagBackend;
 import de.mhus.vance.shared.rag.RagBackend.SearchHit;
 import de.mhus.vance.shared.rag.RagCatalogService;
@@ -318,14 +319,12 @@ public class RagService {
         } else {
             apiKey = "";
         }
-        String baseUrl = settingService.getStringValueCascade(
-                rag.getTenantId(), /*projectId*/ null, /*processId*/ null, SETTING_EMBED_BASE_URL);
         return embeddingModelService.createEmbeddingModel(
                 new EmbeddingConfig(
                         rag.getEmbeddingProvider(),
                         rag.getEmbeddingModel(),
                         apiKey,
-                        StringUtils.isBlank(baseUrl) ? null : baseUrl),
+                        configuredEmbeddingBaseUrl(rag.getTenantId())),
                 CallAttribution.ofService(rag.getTenantId(), rag.getProjectId(), LlmUsageService.CALLER_RAG));
     }
 
@@ -355,9 +354,24 @@ public class RagService {
         } else {
             apiKey = "";
         }
+        return Optional.of(new EmbeddingConfig(provider, model, apiKey, configuredEmbeddingBaseUrl(tenantId)));
+    }
+
+    /**
+     * The tenant's embedding endpoint override, or {@code null} for the provider
+     * default. Tenant input, so it must pass the egress guard.
+     *
+     * @throws SsrfGuard.SsrfException when the URL targets a non-public address
+     */
+    private @Nullable String configuredEmbeddingBaseUrl(String tenantId) {
         String baseUrl = settingService.getStringValueCascade(
                 tenantId, /*projectId*/ null, /*processId*/ null, SETTING_EMBED_BASE_URL);
-        return Optional.of(new EmbeddingConfig(provider, model, apiKey, StringUtils.isBlank(baseUrl) ? null : baseUrl));
+        if (StringUtils.isBlank(baseUrl)) {
+            return null;
+        }
+        String trimmed = baseUrl.trim();
+        SsrfGuard.assertAllowed(trimmed);
+        return trimmed;
     }
 
     private String resolveProviderName(String tenantId, @Nullable String projectId) {

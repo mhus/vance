@@ -2,6 +2,7 @@ package de.mhus.vance.brain.script;
 
 import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.util.unit.DataSize;
 
 /**
  * Spring-binding for {@code vance.script.*} application properties.
@@ -21,25 +22,55 @@ public class ScriptEngineProperties {
     private ResultLimits result = new ResultLimits();
     private Capabilities capabilities = new Capabilities();
     private Require require = new Require();
+    private Limits limits = new Limits();
 
-    public TimeoutLimits getTimeout() { return timeout; }
-    public void setTimeout(TimeoutLimits timeout) { this.timeout = timeout; }
+    public TimeoutLimits getTimeout() {
+        return timeout;
+    }
 
-    public StatementLimits getStatements() { return statements; }
+    public void setTimeout(TimeoutLimits timeout) {
+        this.timeout = timeout;
+    }
+
+    public StatementLimits getStatements() {
+        return statements;
+    }
+
     public void setStatements(StatementLimits statements) {
         this.statements = statements;
     }
 
-    public ResultLimits getResult() { return result; }
-    public void setResult(ResultLimits result) { this.result = result; }
+    public ResultLimits getResult() {
+        return result;
+    }
 
-    public Capabilities getCapabilities() { return capabilities; }
+    public void setResult(ResultLimits result) {
+        this.result = result;
+    }
+
+    public Capabilities getCapabilities() {
+        return capabilities;
+    }
+
     public void setCapabilities(Capabilities capabilities) {
         this.capabilities = capabilities;
     }
 
-    public Require getRequire() { return require; }
-    public void setRequire(Require require) { this.require = require; }
+    public Require getRequire() {
+        return require;
+    }
+
+    public void setRequire(Require require) {
+        this.require = require;
+    }
+
+    public Limits getLimits() {
+        return limits;
+    }
+
+    public void setLimits(Limits limits) {
+        this.limits = limits;
+    }
 
     public static class TimeoutLimits {
         /** Default wall-clock for a script run when neither header
@@ -51,12 +82,29 @@ public class ScriptEngineProperties {
          *  warn-log. */
         private Duration max = Duration.ofHours(1);
 
-        public Duration getDefault() { return defaultValue; }
-        public void setDefault(Duration v) { this.defaultValue = v; }
-        public Duration getMin() { return min; }
-        public void setMin(Duration v) { this.min = v; }
-        public Duration getMax() { return max; }
-        public void setMax(Duration v) { this.max = v; }
+        public Duration getDefault() {
+            return defaultValue;
+        }
+
+        public void setDefault(Duration v) {
+            this.defaultValue = v;
+        }
+
+        public Duration getMin() {
+            return min;
+        }
+
+        public void setMin(Duration v) {
+            this.min = v;
+        }
+
+        public Duration getMax() {
+            return max;
+        }
+
+        public void setMax(Duration v) {
+            this.max = v;
+        }
     }
 
     public static class StatementLimits {
@@ -64,12 +112,29 @@ public class ScriptEngineProperties {
         private long min = 1_000L;
         private long max = 100_000_000L;
 
-        public long getDefault() { return defaultValue; }
-        public void setDefault(long v) { this.defaultValue = v; }
-        public long getMin() { return min; }
-        public void setMin(long v) { this.min = v; }
-        public long getMax() { return max; }
-        public void setMax(long v) { this.max = v; }
+        public long getDefault() {
+            return defaultValue;
+        }
+
+        public void setDefault(long v) {
+            this.defaultValue = v;
+        }
+
+        public long getMin() {
+            return min;
+        }
+
+        public void setMin(long v) {
+            this.min = v;
+        }
+
+        public long getMax() {
+            return max;
+        }
+
+        public void setMax(long v) {
+            this.max = v;
+        }
     }
 
     /**
@@ -85,11 +150,8 @@ public class ScriptEngineProperties {
      * which also stops a cyclic return value before it overflows the
      * stack.
      *
-     * <p><b>Note:</b> this does not bound memory allocated <em>during</em>
-     * script execution (e.g. {@code new Array(2**30)}). A true
-     * per-context heap cap needs the GraalVM Enterprise
-     * {@code sandbox.MaxHeapMemory} option or running scripts in an
-     * isolated worker process — tracked separately.
+     * <p>Memory allocated <em>during</em> execution is bounded separately
+     * by {@link Limits}.
      */
     public static class ResultLimits {
         private long defaultValue = 1_000_000L;
@@ -97,14 +159,37 @@ public class ScriptEngineProperties {
         private long max = 100_000_000L;
         private int maxDepth = 64;
 
-        public long getDefault() { return defaultValue; }
-        public void setDefault(long v) { this.defaultValue = v; }
-        public long getMin() { return min; }
-        public void setMin(long v) { this.min = v; }
-        public long getMax() { return max; }
-        public void setMax(long v) { this.max = v; }
-        public int getMaxDepth() { return maxDepth; }
-        public void setMaxDepth(int v) { this.maxDepth = v; }
+        public long getDefault() {
+            return defaultValue;
+        }
+
+        public void setDefault(long v) {
+            this.defaultValue = v;
+        }
+
+        public long getMin() {
+            return min;
+        }
+
+        public void setMin(long v) {
+            this.min = v;
+        }
+
+        public long getMax() {
+            return max;
+        }
+
+        public void setMax(long v) {
+            this.max = v;
+        }
+
+        public int getMaxDepth() {
+            return maxDepth;
+        }
+
+        public void setMaxDepth(int v) {
+            this.maxDepth = v;
+        }
     }
 
     /**
@@ -130,10 +215,70 @@ public class ScriptEngineProperties {
          *  matches {@link de.mhus.vance.shared.workspace.NodeHandler#DEFAULT_LABEL}. */
         private String defaultLabel = "_jsengine";
 
-        public boolean isEnabled() { return enabled; }
-        public void setEnabled(boolean v) { this.enabled = v; }
-        public String getDefaultLabel() { return defaultLabel; }
-        public void setDefaultLabel(String v) { this.defaultLabel = v; }
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean v) {
+            this.enabled = v;
+        }
+
+        public String getDefaultLabel() {
+            return defaultLabel;
+        }
+
+        public void setDefaultLabel(String v) {
+            this.defaultLabel = v;
+        }
+    }
+
+    /**
+     * Per-context sandbox limits for memory and CPU while the script runs
+     * ({@code planning/multi-tenant-isolation.md} §3.1). Operator config
+     * only — a script header ({@code @maxHeapMemory}, {@code @maxCpuTime})
+     * may narrow them, never widen.
+     *
+     * <ul>
+     *   <li>{@code maxHeapMemory} → {@code sandbox.MaxHeapMemory}. Checked
+     *       periodically by the runtime, so a short allocation burst can
+     *       overshoot before the context is cancelled. Supported on Oracle
+     *       GraalVM only; on other JDKs the option is rejected and the
+     *       executor runs without it ({@link ScriptSandboxLimits}).</li>
+     *   <li>{@code maxCpuTime} → {@code sandbox.MaxCPUTime}. Counts CPU, not
+     *       waiting on tool calls — the wall-clock timeout covers that.</li>
+     *   <li>{@code maxStringLength} → {@code js.string-length-limit}. Stops
+     *       a single huge string allocation before the periodic heap check
+     *       could see it.</li>
+     * </ul>
+     */
+    public static class Limits {
+        private DataSize maxHeapMemory = DataSize.ofMegabytes(256);
+        private Duration maxCpuTime = Duration.ofSeconds(60);
+        private int maxStringLength = 32 * 1024 * 1024;
+
+        public DataSize getMaxHeapMemory() {
+            return maxHeapMemory;
+        }
+
+        public void setMaxHeapMemory(DataSize v) {
+            this.maxHeapMemory = v;
+        }
+
+        public Duration getMaxCpuTime() {
+            return maxCpuTime;
+        }
+
+        public void setMaxCpuTime(Duration v) {
+            this.maxCpuTime = v;
+        }
+
+        public int getMaxStringLength() {
+            return maxStringLength;
+        }
+
+        public void setMaxStringLength(int v) {
+            this.maxStringLength = v;
+        }
     }
 
     public static class Capabilities {
@@ -145,7 +290,12 @@ public class ScriptEngineProperties {
          *  if the tool isn't in scope. */
         private boolean enforceRequires = true;
 
-        public boolean isEnforceRequires() { return enforceRequires; }
-        public void setEnforceRequires(boolean v) { this.enforceRequires = v; }
+        public boolean isEnforceRequires() {
+            return enforceRequires;
+        }
+
+        public void setEnforceRequires(boolean v) {
+            this.enforceRequires = v;
+        }
     }
 }

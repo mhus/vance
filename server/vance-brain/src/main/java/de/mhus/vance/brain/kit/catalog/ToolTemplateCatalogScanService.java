@@ -3,6 +3,7 @@ package de.mhus.vance.brain.kit.catalog;
 import de.mhus.vance.api.kit.KitInheritDto;
 import de.mhus.vance.api.kit.ToolTemplateCatalogDto;
 import de.mhus.vance.api.kit.ToolTemplateCatalogEntry;
+import de.mhus.vance.brain.kit.KitSourceUrlPolicy;
 import de.mhus.vance.brain.kit.KitWorkspace;
 import de.mhus.vance.shared.kit.KitException;
 import java.io.IOException;
@@ -63,17 +64,18 @@ public class ToolTemplateCatalogScanService {
     public static final String TEMPLATE_MARKER = "template.yaml";
 
     private final KitWorkspace workspace;
+    private final KitSourceUrlPolicy urlPolicy;
 
     /**
      * Clone {@code gitUrl} at {@code ref} and return the resulting
      * catalog. {@code token} (optional) is used as the HTTPS bearer for
      * private repos — never persisted.
      */
-    public ToolTemplateCatalogDto scan(
-            String gitUrl, @Nullable String ref, @Nullable String token) {
+    public ToolTemplateCatalogDto scan(String gitUrl, @Nullable String ref, @Nullable String token) {
         if (StringUtils.isBlank(gitUrl)) {
             throw new KitException("scan gitUrl must not be blank");
         }
+        urlPolicy.check(gitUrl);
         String effectiveRef = StringUtils.isBlank(ref) ? DEFAULT_REF : ref;
         Path tmp = workspace.allocate("tool-templates-scan");
         try {
@@ -95,13 +97,11 @@ public class ToolTemplateCatalogScanService {
                 .call()) {
             log.debug("Cloned {} at ref '{}' into {}", gitUrl, ref, target);
         } catch (GitAPIException e) {
-            throw new KitException(
-                    "git clone failed for " + gitUrl + " (ref=" + ref + "): " + e.getMessage(), e);
+            throw new KitException("git clone failed for " + gitUrl + " (ref=" + ref + "): " + e.getMessage(), e);
         }
     }
 
-    private static @Nullable UsernamePasswordCredentialsProvider credentials(
-            @Nullable String token) {
+    private static @Nullable UsernamePasswordCredentialsProvider credentials(@Nullable String token) {
         if (StringUtils.isBlank(token)) return null;
         return new UsernamePasswordCredentialsProvider("x-access-token", token);
     }
@@ -118,42 +118,36 @@ public class ToolTemplateCatalogScanService {
 
         List<ToolTemplateCatalogEntry> entries = new ArrayList<>();
         try (Stream<Path> children = Files.list(toolsDir)) {
-            children
-                    .filter(Files::isDirectory)
-                    .sorted()
-                    .forEach(subDir -> {
-                        Path templateFile = subDir.resolve(TEMPLATE_MARKER);
-                        if (!Files.isRegularFile(templateFile)) {
-                            log.debug("Skipping {} — no {}", subDir, TEMPLATE_MARKER);
-                            return;
-                        }
-                        String subName = subDir.getFileName().toString();
-                        TemplateHeader header = readTemplateHeader(templateFile, subName);
-                        OverrideEntry o = overrides.get(subName);
-                        String name = pickFirst(o == null ? null : o.name, header.name, subName);
-                        String title = pickFirst(o == null ? null : o.title, header.title, subName);
-                        String description = pickFirst(o == null ? null : o.description, header.description);
-                        String category = pickFirst(o == null ? null : o.category, header.category);
-                        entries.add(ToolTemplateCatalogEntry.builder()
-                                .name(name)
-                                .title(title)
-                                .description(description)
-                                .category(category)
-                                .source(KitInheritDto.builder()
-                                        .url(gitUrl)
-                                        .path(TOOLS_SUBDIR + "/" + subName)
-                                        .branch(ref)
-                                        .build())
-                                .build());
-                    });
+            children.filter(Files::isDirectory).sorted().forEach(subDir -> {
+                Path templateFile = subDir.resolve(TEMPLATE_MARKER);
+                if (!Files.isRegularFile(templateFile)) {
+                    log.debug("Skipping {} — no {}", subDir, TEMPLATE_MARKER);
+                    return;
+                }
+                String subName = subDir.getFileName().toString();
+                TemplateHeader header = readTemplateHeader(templateFile, subName);
+                OverrideEntry o = overrides.get(subName);
+                String name = pickFirst(o == null ? null : o.name, header.name, subName);
+                String title = pickFirst(o == null ? null : o.title, header.title, subName);
+                String description = pickFirst(o == null ? null : o.description, header.description);
+                String category = pickFirst(o == null ? null : o.category, header.category);
+                entries.add(ToolTemplateCatalogEntry.builder()
+                        .name(name)
+                        .title(title)
+                        .description(description)
+                        .category(category)
+                        .source(KitInheritDto.builder()
+                                .url(gitUrl)
+                                .path(TOOLS_SUBDIR + "/" + subName)
+                                .branch(ref)
+                                .build())
+                        .build());
+            });
         } catch (IOException e) {
             throw new KitException("failed to list tools directory: " + e.getMessage(), e);
         }
 
-        return ToolTemplateCatalogDto.builder()
-                .version(1)
-                .templates(entries)
-                .build();
+        return ToolTemplateCatalogDto.builder().version(1).templates(entries).build();
     }
 
     private TemplateHeader readTemplateHeader(Path templateFile, String fallbackName) {
@@ -171,8 +165,7 @@ public class ToolTemplateCatalogScanService {
             return h;
         } catch (IOException e) {
             throw new KitException(
-                    "failed to read " + TEMPLATE_MARKER + " in " + templateFile.getParent()
-                            + ": " + e.getMessage(), e);
+                    "failed to read " + TEMPLATE_MARKER + " in " + templateFile.getParent() + ": " + e.getMessage(), e);
         }
     }
 
@@ -205,8 +198,7 @@ public class ToolTemplateCatalogScanService {
             }
             return result;
         } catch (IOException e) {
-            throw new KitException(
-                    "failed to read " + CATALOG_OVERRIDES_FILE + ": " + e.getMessage(), e);
+            throw new KitException("failed to read " + CATALOG_OVERRIDES_FILE + ": " + e.getMessage(), e);
         }
     }
 
@@ -223,16 +215,30 @@ public class ToolTemplateCatalogScanService {
     }
 
     private static final class TemplateHeader {
-        @Nullable String name;
-        @Nullable String title;
-        @Nullable String description;
-        @Nullable String category;
+        @Nullable
+        String name;
+
+        @Nullable
+        String title;
+
+        @Nullable
+        String description;
+
+        @Nullable
+        String category;
     }
 
     private static final class OverrideEntry {
-        @Nullable String name;
-        @Nullable String title;
-        @Nullable String description;
-        @Nullable String category;
+        @Nullable
+        String name;
+
+        @Nullable
+        String title;
+
+        @Nullable
+        String description;
+
+        @Nullable
+        String category;
     }
 }

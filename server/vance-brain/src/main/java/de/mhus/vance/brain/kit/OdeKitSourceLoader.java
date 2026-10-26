@@ -8,6 +8,7 @@ import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
 import de.mhus.vance.shared.instance.InstanceProperties;
 import de.mhus.vance.shared.kit.KitException;
 import de.mhus.vance.shared.net.SafeLink;
+import de.mhus.vance.shared.net.SsrfGuard;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -95,9 +96,9 @@ public class OdeKitSourceLoader implements KitSourceLoader {
     private final ObjectMapper objectMapper;
     private final PromptTemplateRenderer renderer;
 
-    private final HttpClient http = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10))
-            .build();
+    /** Source URLs come from tenant kit-source config — guarded egress. */
+    private final HttpClient http = SsrfGuard.guard(
+            HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build(), false);
 
     /**
      * What an Ode host is told about the request.
@@ -139,8 +140,7 @@ public class OdeKitSourceLoader implements KitSourceLoader {
     }
 
     @Override
-    public KitRepoLoader.LoadedKit load(
-            KitInheritDto source, KitSourceDto config, KitAccess access, Path target) {
+    public KitRepoLoader.LoadedKit load(KitInheritDto source, KitSourceDto config, KitAccess access, Path target) {
 
         String kitId = source.getPath();
         if (StringUtils.isBlank(kitId)) {
@@ -157,8 +157,7 @@ public class OdeKitSourceLoader implements KitSourceLoader {
         // never talked to. The configuration keeps deciding type, policy and
         // key; the reference decides the address. Spec §12a.6: "the url we
         // reached it under".
-        String referenceUrl = StringUtils.isNotBlank(source.getUrl())
-                ? source.getUrl() : config.getUrl();
+        String referenceUrl = StringUtils.isNotBlank(source.getUrl()) ? source.getUrl() : config.getUrl();
         // Checked once, here, because the same string is both the request
         // target and a value substituted into files that become tool
         // definitions. A `javascript:` base url is nonsense in either role;
@@ -166,25 +165,27 @@ public class OdeKitSourceLoader implements KitSourceLoader {
         // not a request target, so http(s) is required on top.
         String accessUrl;
         try {
-            accessUrl = requireHttpEndpoint(
-                    SafeLink.require(KitArchive.trimTrailingSlash(referenceUrl)), config);
+            accessUrl = requireHttpEndpoint(SafeLink.require(KitArchive.trimTrailingSlash(referenceUrl)), config);
         } catch (SafeLink.UnsafeLinkException e) {
-            throw new KitException("ode source '" + config.getId()
-                    + "' has a url that is not usable as an endpoint: " + e.getMessage(), e);
+            throw new KitException(
+                    "ode source '" + config.getId() + "' has a url that is not usable as an endpoint: "
+                            + e.getMessage(),
+                    e);
         }
         URI uri = endpoint(accessUrl, BUILD_PATH, config);
-        String body = serialise(new BuildRequest(
-                kitId,
-                StringUtils.trimToNull(instance.getName()),
-                access.tenantId(),
-                access.projectId(),
-                accessUrl,
-                access.installId(),
-                access.params()),
+        String body = serialise(
+                new BuildRequest(
+                        kitId,
+                        StringUtils.trimToNull(instance.getName()),
+                        access.tenantId(),
+                        access.projectId(),
+                        accessUrl,
+                        access.installId(),
+                        access.params()),
                 config);
 
-        log.debug("OdeKitSourceLoader: building '{}' at {} for {}/{}",
-                kitId, uri, access.tenantId(), access.projectId());
+        log.debug(
+                "OdeKitSourceLoader: building '{}' at {} for {}/{}", kitId, uri, access.tenantId(), access.projectId());
 
         HttpRequest.Builder request;
         try {
@@ -195,8 +196,10 @@ public class OdeKitSourceLoader implements KitSourceLoader {
         } catch (IllegalArgumentException e) {
             // Hostless or otherwise unusable target — same reasoning as
             // endpoint(): a named KitException beats an unhandled 500.
-            throw new KitException("ode source '" + config.getId() + "' url '" + accessUrl
-                    + "' is not a usable request target: " + e.getMessage(), e);
+            throw new KitException(
+                    "ode source '" + config.getId() + "' url '" + accessUrl + "' is not a usable request target: "
+                            + e.getMessage(),
+                    e);
         }
         // Optional on purpose: a company host on an internal network is a
         // legitimate configuration, and a library's „no token, no tenant"
@@ -223,14 +226,13 @@ public class OdeKitSourceLoader implements KitSourceLoader {
         try (ZipInputStream zip = new ZipInputStream(response.body())) {
             KitArchive.unpack(zip, target);
         } catch (IOException e) {
-            throw new KitException("failed to unpack kit '" + kitId + "' from ode host '"
-                    + config.getId() + "'", e);
+            throw new KitException("failed to unpack kit '" + kitId + "' from ode host '" + config.getId() + "'", e);
         }
 
         Path descriptorFile = target.resolve(KIT_DESCRIPTOR);
         if (!Files.isRegularFile(descriptorFile)) {
-            throw new KitException("ode host '" + config.getId() + "' delivered '" + kitId
-                    + "' without a " + KIT_DESCRIPTOR);
+            throw new KitException(
+                    "ode host '" + config.getId() + "' delivered '" + kitId + "' without a " + KIT_DESCRIPTOR);
         }
         KitDescriptorDto descriptor;
         try {
@@ -244,8 +246,7 @@ public class OdeKitSourceLoader implements KitSourceLoader {
         // An ode host has no commits. The version stands in for now; once
         // the provisioning side reads the host's declared tree hash, that
         // is the better stamp and replaces this one.
-        String stamp = "ode:" + (descriptor.getVersion() == null
-                ? "unversioned" : descriptor.getVersion());
+        String stamp = "ode:" + (descriptor.getVersion() == null ? "unversioned" : descriptor.getVersion());
         return new KitRepoLoader.LoadedKit(target, target, stamp, descriptor, false);
     }
 
@@ -270,11 +271,7 @@ public class OdeKitSourceLoader implements KitSourceLoader {
      * author sees the empty value in their own file on the first install.
      */
     private void renderDeclared(
-            Path target,
-            KitDescriptorDto descriptor,
-            KitSourceDto config,
-            String accessUrl,
-            KitAccess access) {
+            Path target, KitDescriptorDto descriptor, KitSourceDto config, String accessUrl, KitAccess access) {
 
         List<String> declared = descriptor.getRender();
         if (declared == null || declared.isEmpty()) return;
@@ -304,19 +301,22 @@ public class OdeKitSourceLoader implements KitSourceLoader {
             try {
                 file = KitArchive.resolveInside(target, declaredPath);
             } catch (IOException e) {
-                throw new KitException("ode host '" + config.getId() + "' declared '"
-                        + declaredPath + "' for rendering, which escapes the kit directory", e);
+                throw new KitException(
+                        "ode host '" + config.getId() + "' declared '" + declaredPath
+                                + "' for rendering, which escapes the kit directory",
+                        e);
             }
             if (!Files.isRegularFile(file)) {
-                throw new KitException("ode host '" + config.getId() + "' declared '"
-                        + declaredPath + "' for rendering but did not deliver it");
+                throw new KitException("ode host '" + config.getId() + "' declared '" + declaredPath
+                        + "' for rendering but did not deliver it");
             }
             try {
                 String rendered = renderer.renderStructured(Files.readString(file), context);
                 Files.writeString(file, rendered == null ? "" : rendered);
             } catch (IOException e) {
-                throw new KitException("failed to render '" + declaredPath + "' of kit from ode"
-                        + " host '" + config.getId() + "'", e);
+                throw new KitException(
+                        "failed to render '" + declaredPath + "' of kit from ode" + " host '" + config.getId() + "'",
+                        e);
             }
         }
         log.debug("OdeKitSourceLoader: rendered {} declared file(s)", declared.size());
@@ -342,16 +342,17 @@ public class OdeKitSourceLoader implements KitSourceLoader {
         try {
             return URI.create(base + path);
         } catch (IllegalArgumentException e) {
-            throw new KitException("ode source '" + config.getId() + "' url '" + base
-                    + "' is not a usable request target: " + e.getMessage(), e);
+            throw new KitException(
+                    "ode source '" + config.getId() + "' url '" + base + "' is not a usable request target: "
+                            + e.getMessage(),
+                    e);
         }
     }
 
     private static String requireHttpEndpoint(String url, KitSourceDto config) {
         String lower = url.toLowerCase(java.util.Locale.ROOT);
         if (!lower.startsWith("http://") && !lower.startsWith("https://")) {
-            throw new KitException("ode source '" + config.getId() + "' url '" + url
-                    + "' is not an http(s) endpoint");
+            throw new KitException("ode source '" + config.getId() + "' url '" + url + "' is not an http(s) endpoint");
         }
         return url;
     }
@@ -362,8 +363,7 @@ public class OdeKitSourceLoader implements KitSourceLoader {
         } catch (JacksonException e) {
             // Five nullable strings. If this fails it is a server bug, and
             // saying so beats reporting it as an unreachable host.
-            throw new KitException("failed to build the request for ode host '"
-                    + config.getId() + "'", e);
+            throw new KitException("failed to build the request for ode host '" + config.getId() + "'", e);
         }
     }
 
@@ -375,8 +375,7 @@ public class OdeKitSourceLoader implements KitSourceLoader {
         return switch (status) {
             case 401, 403 -> "ode host '" + config.getId() + "' rejected the credential";
             case 404 -> "ode host '" + config.getId() + "' does not serve a kit '" + kitId + "'";
-            default -> "ode host '" + config.getId() + "' returned HTTP " + status
-                    + " for kit '" + kitId + "'";
+            default -> "ode host '" + config.getId() + "' returned HTTP " + status + " for kit '" + kitId + "'";
         };
     }
 }

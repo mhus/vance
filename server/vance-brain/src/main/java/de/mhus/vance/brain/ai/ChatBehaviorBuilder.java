@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.ai;
 
+import de.mhus.vance.shared.net.SsrfGuard;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.util.ArrayList;
@@ -71,6 +72,13 @@ public final class ChatBehaviorBuilder {
      * <em>instance</em> via the project cascade ({@code process → project →
      * _tenant}). Returns {@code null} when nothing is configured — the provider
      * then keeps its Spring boot-time default.
+     *
+     * <p>A configured value is tenant input, so it must pass the egress guard
+     * ({@link SsrfGuard#assertAllowed(String)}); an internal provider (LAN
+     * Ollama, in-cluster vLLM) needs {@code vance.net.ssrf.private-networks: allow}.
+     * The boot-time default is operator config and is not checked.
+     *
+     * @throws SsrfGuard.SsrfException when the configured URL targets a non-public address
      */
     public static @Nullable String resolveBaseUrl(
             String providerInstance,
@@ -80,7 +88,12 @@ public final class ChatBehaviorBuilder {
             SettingService settings) {
         String key = String.format(SETTING_PROVIDER_BASE_URL_FMT, providerInstance);
         String value = settings.getStringValueCascade(tenantId, projectId, processId, key);
-        return (value == null || value.isBlank()) ? null : value.trim();
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String baseUrl = value.trim();
+        SsrfGuard.assertAllowed(baseUrl);
+        return baseUrl;
     }
 
     /**

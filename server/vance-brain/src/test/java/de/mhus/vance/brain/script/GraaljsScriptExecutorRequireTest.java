@@ -3,7 +3,9 @@ package de.mhus.vance.brain.script;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.tools.ContextToolsApi;
@@ -13,6 +15,7 @@ import de.mhus.vance.shared.permission.RecordingPermissionProvider;
 import de.mhus.vance.shared.workspace.NodeHandler;
 import de.mhus.vance.shared.workspace.RootDirHandle;
 import de.mhus.vance.shared.workspace.WorkspaceDescriptor;
+import de.mhus.vance.shared.workspace.WorkspaceException;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -29,6 +32,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.test.util.ReflectionTestUtils;
 
 /**
  * End-to-end coverage for the CommonJS-require pathway:
@@ -134,6 +138,148 @@ class GraaljsScriptExecutorRequireTest {
         assertThat(executor.run(req).value()).isEqualTo("undefined");
     }
 
+    @Test
+    void require_fileBesideNodeModules_isNotReadable(@TempDir Path tmp) throws IOException {
+        Path workspaceRoot = installFakePackage(tmp, "greeter", "module.exports = {};");
+        Files.writeString(workspaceRoot.resolve("notmodules.js"), "module.exports = 'leaked';", StandardCharsets.UTF_8);
+        ScriptExecutor executor = newExecutor(workspaceRoot, true);
+
+        String code = """
+                /**
+                 * @workspaceRoot _jsengine
+                 */
+                require('./notmodules.js');
+                """;
+        ScriptRequest req = new ScriptRequest("js", code, "root-file", tools(workspaceRoot), Duration.ofSeconds(10));
+
+        assertThatThrownBy(() -> executor.run(req)).isInstanceOf(ScriptExecutionException.class);
+    }
+
+    @Test
+    void require_fileSymlinkLeavingWorkspace_isBlocked(@TempDir Path tmp) throws IOException {
+        Path workspaceRoot = installFakePackage(tmp, "greeter", "module.exports = {};");
+        Path outside = Files.createDirectories(tmp.resolve("outside"));
+        Files.writeString(outside.resolve("secret.js"), "module.exports = 'leaked';", StandardCharsets.UTF_8);
+        Files.createSymbolicLink(
+                workspaceRoot.resolve("node_modules").resolve("evil.js"), outside.resolve("secret.js"));
+        ScriptExecutor executor = newExecutor(workspaceRoot, true);
+
+        String code = """
+                /**
+                 * @workspaceRoot _jsengine
+                 */
+                require('./node_modules/evil.js');
+                """;
+        ScriptRequest req = new ScriptRequest("js", code, "symlink-file", tools(workspaceRoot), Duration.ofSeconds(10));
+
+        assertThatThrownBy(() -> executor.run(req)).isInstanceOf(ScriptExecutionException.class);
+    }
+
+    @Test
+    void require_directorySymlinkLeavingWorkspace_isBlocked(@TempDir Path tmp) throws IOException {
+        Path workspaceRoot = installFakePackage(tmp, "greeter", "module.exports = {};");
+        Path outside = Files.createDirectories(tmp.resolve("outside"));
+        Files.writeString(outside.resolve("secret.json"), "{\"v\":\"leaked\"}", StandardCharsets.UTF_8);
+        Files.createSymbolicLink(workspaceRoot.resolve("node_modules").resolve("evildir"), outside);
+        ScriptExecutor executor = newExecutor(workspaceRoot, true);
+
+        String code = """
+                /**
+                 * @workspaceRoot _jsengine
+                 */
+                require('./node_modules/evildir/secret.json').v;
+                """;
+        ScriptRequest req = new ScriptRequest("js", code, "symlink-dir", tools(workspaceRoot), Duration.ofSeconds(10));
+
+        assertThatThrownBy(() -> executor.run(req)).isInstanceOf(ScriptExecutionException.class);
+    }
+
+    @Test
+    void requires_versionedSpec_resolvesByPackageName(@TempDir Path tmp) throws IOException {
+        Path workspaceRoot = installFakePackage(tmp, "greeter", "module.exports = { v: 7 };");
+        ScriptExecutor executor = newExecutor(workspaceRoot, true);
+
+        String code = """
+                /**
+                 * @workspaceRoot _jsengine
+                 * @requires greeter@^1.0.0
+                 */
+                require('greeter').v;
+                """;
+        ScriptRequest req = new ScriptRequest("js", code, "versioned", tools(workspaceRoot), Duration.ofSeconds(10));
+
+        assertThat(executor.run(req).value()).isEqualTo(7L);
+    }
+
+    @Test
+    void requires_withProvisioner_installsBeforeRun(@TempDir Path tmp) throws IOException {
+        Path workspaceRoot = installFakePackage(tmp, "greeter", "module.exports = { v: 3 };");
+        GraaljsScriptExecutor executor = newExecutor(workspaceRoot, true);
+        ScriptLibraryProvisioner provisioner = mock(ScriptLibraryProvisioner.class);
+        when(provisioner.ensure(any(), eq(NodeHandler.DEFAULT_LABEL), eq(Set.of("greeter"))))
+                .thenReturn(workspaceRoot);
+        ReflectionTestUtils.setField(executor, "libraryProvisioner", provisioner);
+
+        String code = """
+                /**
+                 * @requires greeter
+                 */
+                require('greeter').v;
+                """;
+        ScriptRequest req = new ScriptRequest("js", code, "provisioned", tools(workspaceRoot), Duration.ofSeconds(10));
+
+        assertThat(executor.run(req).value()).isEqualTo(3L);
+        verify(provisioner).ensure(any(), eq(NodeHandler.DEFAULT_LABEL), eq(Set.of("greeter")));
+    }
+
+    @Test
+    void requires_provisionerFails_failsWithCapabilityError(@TempDir Path tmp) throws IOException {
+        Path workspaceRoot = installFakePackage(tmp, "greeter", "module.exports = {};");
+        GraaljsScriptExecutor executor = newExecutor(workspaceRoot, true);
+        ScriptLibraryProvisioner provisioner = mock(ScriptLibraryProvisioner.class);
+        when(provisioner.ensure(any(), any(), any())).thenThrow(new WorkspaceException("npm install failed"));
+        ReflectionTestUtils.setField(executor, "libraryProvisioner", provisioner);
+
+        String code = """
+                /**
+                 * @requires missing-lib
+                 */
+                1;
+                """;
+        ScriptRequest req = new ScriptRequest("js", code, "failing", tools(workspaceRoot), Duration.ofSeconds(10));
+
+        assertThatThrownBy(() -> executor.run(req))
+                .isInstanceOf(ScriptExecutionException.class)
+                .hasMessageContaining("npm install failed")
+                .satisfies(e -> assertThat(((ScriptExecutionException) e).errorClass())
+                        .isEqualTo(ScriptExecutionException.ErrorClass.MISSING_CAPABILITY));
+    }
+
+    @Test
+    void requires_installUsingWholeBudget_failsWithTimeout(@TempDir Path tmp) throws IOException {
+        Path workspaceRoot = installFakePackage(tmp, "greeter", "module.exports = {};");
+        GraaljsScriptExecutor executor = newExecutor(workspaceRoot, true);
+        ScriptLibraryProvisioner provisioner = mock(ScriptLibraryProvisioner.class);
+        when(provisioner.ensure(any(), any(), any())).thenAnswer(inv -> {
+            Thread.sleep(1_200);
+            return workspaceRoot;
+        });
+        ReflectionTestUtils.setField(executor, "libraryProvisioner", provisioner);
+
+        String code = """
+                /**
+                 * @requires greeter
+                 */
+                1;
+                """;
+        ScriptRequest req = new ScriptRequest("js", code, "slow", tools(workspaceRoot), Duration.ofSeconds(1));
+
+        assertThatThrownBy(() -> executor.run(req))
+                .isInstanceOf(ScriptExecutionException.class)
+                .satisfies(e -> assertThat(((ScriptExecutionException) e).errorClass())
+                        .isEqualTo(ScriptExecutionException.ErrorClass.TIMEOUT));
+    }
+
     // ──────────────────── helpers ────────────────────
 
     /** Lays out tmp/<workspace>/node_modules/<pkg>/{package.json,index.js}. */
@@ -151,7 +297,7 @@ class GraaljsScriptExecutorRequireTest {
 
     /** Builds the executor wired with a mock WorkspaceService that
      *  returns a single Node RootDir at the given path. */
-    private static ScriptExecutor newExecutor(Path workspaceRoot, boolean requireEnabled) {
+    private static GraaljsScriptExecutor newExecutor(Path workspaceRoot, boolean requireEnabled) {
         ScriptEngineProperties props = new ScriptEngineProperties();
         props.getRequire().setEnabled(requireEnabled);
 

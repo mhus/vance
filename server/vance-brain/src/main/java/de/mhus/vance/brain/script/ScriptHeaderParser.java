@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.script;
 
+import de.mhus.vance.shared.workspace.NpmPackageSpec;
+import de.mhus.vance.shared.workspace.WorkspaceException;
 import java.time.Duration;
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -51,7 +53,10 @@ public final class ScriptHeaderParser {
             // CommonJS require pathway (vance.script.require.enabled):
             "requires",
             "workspaceRoot",
-            "nodeBuiltins");
+            "nodeBuiltins",
+            // Sandbox limits — narrow vance.script.limits.*, never widen:
+            "maxHeapMemory",
+            "maxCpuTime");
 
     private ScriptHeaderParser() {}
 
@@ -84,6 +89,8 @@ public final class ScriptHeaderParser {
         Set<String> requires = new LinkedHashSet<>();
         String workspaceRoot = null;
         Set<String> nodeBuiltins = new LinkedHashSet<>();
+        Long maxHeapMemory = null;
+        Duration maxCpuTime = null;
         boolean anyTag = false;
         // Track which tags we've seen so we can warn on duplicates.
         Set<String> seen = new LinkedHashSet<>();
@@ -125,13 +132,15 @@ public final class ScriptHeaderParser {
                 case "version" -> version = value;
                 case "requires" -> {
                     requires.clear();
-                    requires.addAll(parseList(value));
+                    requires.addAll(parsePackageSpecs(value, sourceName, tag));
                 }
                 case "workspaceRoot" -> workspaceRoot = value;
                 case "nodeBuiltins" -> {
                     nodeBuiltins.clear();
                     nodeBuiltins.addAll(parseList(value));
                 }
+                case "maxHeapMemory" -> maxHeapMemory = parseSize(value, sourceName, tag);
+                case "maxCpuTime" -> maxCpuTime = parseDuration(value, sourceName, tag);
                 default -> {
                     /* unreachable due to KNOWN_TAGS check */
                 }
@@ -151,7 +160,9 @@ public final class ScriptHeaderParser {
                 version,
                 requires,
                 workspaceRoot,
-                nodeBuiltins);
+                nodeBuiltins,
+                maxHeapMemory,
+                maxCpuTime);
     }
 
     // ──────────────────── value parsers ────────────────────
@@ -219,6 +230,58 @@ public final class ScriptHeaderParser {
                             + "(expected formats: 100000 | 100k | 5M | 1_000_000)",
                     nfe);
         }
+    }
+
+    /**
+     * Byte size: bare integer = bytes, suffix {@code KB}/{@code MB}/{@code GB}
+     * (case-insensitive, binary multiples). Underscores stripped.
+     */
+    private static long parseSize(String raw, String sourceName, String tag) {
+        String normalized = raw.replace("_", "").trim().toUpperCase();
+        try {
+            long multiplier = 1L;
+            String digits = normalized;
+            if (normalized.endsWith("KB")) {
+                multiplier = 1024L;
+                digits = normalized.substring(0, normalized.length() - 2);
+            } else if (normalized.endsWith("MB")) {
+                multiplier = 1024L * 1024L;
+                digits = normalized.substring(0, normalized.length() - 2);
+            } else if (normalized.endsWith("GB")) {
+                multiplier = 1024L * 1024L * 1024L;
+                digits = normalized.substring(0, normalized.length() - 2);
+            }
+            long product = Math.multiplyExact(Long.parseLong(digits.trim()), multiplier);
+            requirePositive(product, raw, sourceName, tag);
+            return product;
+        } catch (NumberFormatException | ArithmeticException e) {
+            throw new ScriptExecutionException(
+                    ScriptExecutionException.ErrorClass.INVALID_HEADER,
+                    "[" + sourceName + "] @" + tag + ": cannot parse "
+                            + "size value '" + raw + "' "
+                            + "(expected formats: 64MB | 512KB | 1GB | 1048576)",
+                    e);
+        }
+    }
+
+    /**
+     * Package list for {@code @requires}: registry specs ({@code name} or
+     * {@code name@range}, no spaces inside a range). Anything npm would read as a
+     * path, URL or option is rejected here, before the script runs.
+     */
+    private static Set<String> parsePackageSpecs(String raw, String sourceName, String tag) {
+        Set<String> out = new LinkedHashSet<>();
+        for (String entry : parseList(raw)) {
+            try {
+                out.add(NpmPackageSpec.parse(entry).toArgument());
+            } catch (WorkspaceException e) {
+                throw new ScriptExecutionException(
+                        ScriptExecutionException.ErrorClass.INVALID_HEADER,
+                        "[" + sourceName + "] @" + tag + ": " + e.getMessage(),
+                        e);
+            }
+        }
+        return out;
     }
 
     /** Splits on comma OR whitespace; trims; drops empties; dedupes. */

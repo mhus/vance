@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.oauthserver;
 
+import de.mhus.vance.shared.net.PublicAddresses;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.InetAddress;
 import java.util.Enumeration;
@@ -31,7 +32,7 @@ public final class ClientAddresses {
     public static String of(HttpServletRequest request) {
         String current = request.getRemoteAddr();
         InetAddress hop = literal(current);
-        if (hop == null || ClientMetadataDocumentResolver.isPublic(hop)) {
+        if (hop == null || PublicAddresses.isPublic(hop)) {
             return current;
         }
         String[] chain = forwardedChain(request);
@@ -42,7 +43,7 @@ public final class ClientAddresses {
                 return current;
             }
             current = parsed.getHostAddress();
-            if (ClientMetadataDocumentResolver.isPublic(parsed)) {
+            if (PublicAddresses.isPublic(parsed)) {
                 return current;
             }
         }

@@ -8,8 +8,11 @@ import de.mhus.vance.brain.vault.SecretMasker;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.workspace.NodeHandler;
+import de.mhus.vance.shared.workspace.NpmPackageSpec;
 import de.mhus.vance.shared.workspace.RootDirHandle;
+import de.mhus.vance.shared.workspace.WorkspaceException;
 import de.mhus.vance.shared.workspace.WorkspaceService;
+import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.core.SecretResolver;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -66,6 +69,9 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
     private final Engine engine;
     private final HostAccess hostAccess;
     private final ScriptEngineProperties props;
+    /** Heap / CPU / string-length limits per context; heap support probed once. */
+    private final ScriptSandboxLimits sandboxLimits;
+
     private final @Nullable WorkspaceService workspaceService;
     private final @Nullable SpawnToolRegistry spawnToolRegistry;
     private final @Nullable DocumentService documentService;
@@ -103,6 +109,14 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
     @Autowired(required = false)
     private de.mhus.vance.brain.zem.@Nullable ZemService zemService;
 
+    /**
+     * Optional — installs missing {@code @requires} packages before the run.
+     * Field-injected for the same reason as {@link #secretResolver}; without it
+     * a missing package fails the run with MISSING_CAPABILITY as before.
+     */
+    @Autowired(required = false)
+    private @Nullable ScriptLibraryProvisioner libraryProvisioner;
+
     @Autowired
     public GraaljsScriptExecutor(
             Engine engine,
@@ -118,6 +132,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
         this.engine = engine;
         this.hostAccess = hostAccess;
         this.props = props;
+        this.sandboxLimits = ScriptSandboxLimits.detect(engine, hostAccess, props);
         this.workspaceService = workspaceService;
         this.spawnToolRegistry = spawnToolRegistry;
         this.documentService = documentService;
@@ -311,18 +326,18 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                 new ScriptWorkflowHost(workflowProjector, request.workflowRun()),
                 zemService,
                 request.callPolicy());
-        // Resource bounds enforceable on GraalVM CE / HotSpot:
-        //   - statementLimit bounds the *number* of statements executed, and
+        // Resource bounds:
+        //   - statementLimit bounds the *number* of statements executed,
         //   - the wall-clock watchdog below (ctx.close(true) on timeout) bounds
-        //     total *runtime* — together they kill a runaway loop.
-        // KNOWN RESIDUAL (allocation/heap): neither bounds the memory a single
-        // statement allocates, so `new Array(2**30)` / `'x'.repeat(2e9)` can OOM
-        // the shared JVM before either limit fires. A real heap cap needs
-        // GraalVM EE `sandbox.MaxHeapMemory` (which requires a non-TRUSTED
-        // SandboxPolicy — incompatible with the custom allowHostAccess the Vance
-        // script API relies on) or, the portable fix, running eval in an
-        // out-of-process worker with -Xmx. Tracked as an infra item, not a code
-        // tweak — see specification (script-engine §3.5.7).
+        //     total *runtime*, including time spent waiting on tool calls,
+        //   - sandboxLimits adds sandbox.MaxCPUTime (CPU spent in the script),
+        //     sandbox.MaxHeapMemory (memory retained by the context) and
+        //     js.string-length-limit. These run under the default TRUSTED
+        //     policy with this HostAccess — no stricter policy is needed.
+        // RESIDUAL: the heap limit is checked periodically, so a short burst can
+        // overshoot before the context is cancelled; and it exists only on the
+        // Oracle GraalVM runtime (ScriptSandboxLimits detects that).
+        Map<String, String> sandboxOptions = sandboxLimits.contextOptions(header, sourceName);
         ResourceLimits limits = ResourceLimits.newBuilder()
                 .statementLimit(effectiveStatements, null)
                 .build();
@@ -333,9 +348,14 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
         // packages, and configure the Context with a sandboxed
         // FileSystem that only allows reads under <root>/node_modules/.
         // Else: legacy IOAccess.NONE — require() is undefined.
+        // Installing missing @requires packages takes wall-clock time from
+        // the run's budget, so a slow npm cannot stretch the timeout.
+        Instant requireStart = Instant.now();
         @Nullable Path requireRoot = resolveRequireRoot(request, header, sourceName);
         if (requireRoot != null) {
             enforceRequires(requireRoot, header.requires(), sourceName);
+            effectiveTimeout = remainingAfterProvisioning(
+                    effectiveTimeout, Duration.between(requireStart, Instant.now()), sourceName);
         }
 
         // Console capture — without explicit out/err streams GraalJS
@@ -368,7 +388,8 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                 .allowEnvironmentAccess(EnvironmentAccess.NONE)
                 .out(console)
                 .err(console)
-                .resourceLimits(limits);
+                .resourceLimits(limits)
+                .options(sandboxOptions);
 
         if (requireRoot == null) {
             ctxBuilder
@@ -652,6 +673,17 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
         String label = header.workspaceRoot();
         if (label == null) label = props.getRequire().getDefaultLabel();
 
+        if (libraryProvisioner != null) {
+            try {
+                return libraryProvisioner.ensure(request.tools().scope(), label, header.requires());
+            } catch (WorkspaceException | ToolException e) {
+                throw new ScriptExecutionException(
+                        ScriptExecutionException.ErrorClass.MISSING_CAPABILITY,
+                        "[" + sourceName + "] @requires could not be installed into '" + label + "': " + e.getMessage(),
+                        e);
+            }
+        }
+
         RootDirHandle handle = findNodeRootDirByLabel(tenantId, projectId, label);
         if (handle == null) {
             throw new ScriptExecutionException(
@@ -694,14 +726,30 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                             + nodeModules + " does not exist — "
                             + "run node_install first");
         }
-        for (String pkg : requires) {
-            Path pkgJson = nodeModules.resolve(pkg).resolve("package.json");
-            if (!Files.isRegularFile(pkgJson)) {
+        for (String raw : requires) {
+            // The header parser already validated the spec; the name is the folder.
+            String pkg = NpmPackageSpec.parse(raw).name();
+            if (!NodeHandler.isInstalled(root, pkg)) {
                 throw new ScriptExecutionException(
                         ScriptExecutionException.ErrorClass.MISSING_CAPABILITY,
-                        "[" + sourceName + "] @requires '" + pkg + "' not installed (looked for " + pkgJson + ")");
+                        "[" + sourceName + "] @requires '" + pkg + "' not installed under " + nodeModules);
             }
         }
+    }
+
+    /**
+     * Wall-clock budget left after installing {@code @requires} packages. An
+     * install that used up the whole budget fails the run as TIMEOUT before eval.
+     */
+    private static Duration remainingAfterProvisioning(Duration timeout, Duration spent, String sourceName) {
+        Duration remaining = timeout.minus(spent);
+        if (remaining.isNegative() || remaining.isZero()) {
+            throw new ScriptExecutionException(
+                    ScriptExecutionException.ErrorClass.TIMEOUT,
+                    "[" + sourceName + "] installing @requires took " + spent.toMillis() + "ms of the "
+                            + timeout.toMillis() + "ms budget — nothing left to run the script");
+        }
+        return remaining;
     }
 
     /**
@@ -716,10 +764,23 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
     private static IOAccess buildSandboxedIo(Path workspaceRoot) {
         FileSystem readOnly = FileSystem.newReadOnlyFileSystem(FileSystem.newDefaultFileSystem());
         FileSystem deny = FileSystem.newDenyIOFileSystem();
+        // Only the installed packages are readable — not the rest of the
+        // RootDir (package.json, lockfile, anything else written there).
+        // The RootDir folder itself stays reachable because GraalJS checks
+        // access to its CommonJS root (js.commonjs-require-cwd); files
+        // directly in it are not.
         Path absRoot = workspaceRoot.toAbsolutePath().normalize();
+        Path nodeModules = absRoot.resolve(NodeHandler.NODE_MODULES_DIR);
         FileSystem composite = FileSystem.newCompositeFileSystem(
-                deny, FileSystem.Selector.of(readOnly, path -> isUnderRoot(path, absRoot)));
+                deny,
+                FileSystem.Selector.of(readOnly, path -> isSameDir(path, absRoot) || isUnderRoot(path, nodeModules)));
         return IOAccess.newBuilder().fileSystem(composite).build();
+    }
+
+    private static boolean isSameDir(@Nullable Path path, Path dir) {
+        if (path == null) return false;
+        return stripPrivatePrefix(path.toAbsolutePath().normalize().toString())
+                .equals(stripPrivatePrefix(dir.toString()));
     }
 
     /**

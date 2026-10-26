@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import de.mhus.vance.api.kit.ProjectKitEntry;
 import de.mhus.vance.api.kit.ProjectKitsCatalogDto;
+import de.mhus.vance.brain.kit.KitSourceUrlPolicy;
 import de.mhus.vance.brain.kit.KitWorkspace;
 import de.mhus.vance.shared.kit.KitException;
 import java.io.IOException;
@@ -29,7 +30,7 @@ class KitCatalogScanServiceTest {
     @BeforeEach
     void setUp() {
         workspace = new KitWorkspace(tmpRoot.resolve("ws").toString());
-        scanner = new KitCatalogScanService(workspace);
+        scanner = new KitCatalogScanService(workspace, new KitSourceUrlPolicy(true));
     }
 
     @Test
@@ -42,12 +43,11 @@ class KitCatalogScanServiceTest {
         ProjectKitsCatalogDto result = scanner.scan(repo.toUri().toString(), "main", null);
 
         assertThat(result.getVersion()).isEqualTo(1);
-        assertThat(result.getKits())
-                .extracting(ProjectKitEntry::getName)
-                .containsExactly("dev-java", "research");
+        assertThat(result.getKits()).extracting(ProjectKitEntry::getName).containsExactly("dev-java", "research");
         ProjectKitEntry research = result.getKits().stream()
                 .filter(e -> "research".equals(e.getName()))
-                .findFirst().orElseThrow();
+                .findFirst()
+                .orElseThrow();
         assertThat(research.getTitle()).isEqualTo("research");
         assertThat(research.getSource().getPath()).isEqualTo("kits/research");
         assertThat(research.getSource().getBranch()).isEqualTo("main");
@@ -58,8 +58,7 @@ class KitCatalogScanServiceTest {
         Path repo = setupLocalRepo();
         writeKit(repo, "research", "kit.yaml stub");
         writeKit(repo, "dev-java", "kit.yaml stub");
-        Files.writeString(repo.resolve("kits").resolve("catalog.yaml"),
-                """
+        Files.writeString(repo.resolve("kits").resolve("catalog.yaml"), """
                 overrides:
                   research:
                     name: base/research
@@ -75,14 +74,16 @@ class KitCatalogScanServiceTest {
 
         ProjectKitEntry research = result.getKits().stream()
                 .filter(e -> "base/research".equals(e.getName()))
-                .findFirst().orElseThrow();
+                .findFirst()
+                .orElseThrow();
         assertThat(research.getTitle()).isEqualTo("Research Base");
         assertThat(research.getDescription()).isEqualTo("Web-search research");
         assertThat(research.getSource().getPath()).isEqualTo("kits/research");
 
         ProjectKitEntry java = result.getKits().stream()
                 .filter(e -> "base/dev/java".equals(e.getName()))
-                .findFirst().orElseThrow();
+                .findFirst()
+                .orElseThrow();
         assertThat(java.getTitle()).isEqualTo("Java Development");
         assertThat(java.getDescription()).isNull();
     }
@@ -98,9 +99,7 @@ class KitCatalogScanServiceTest {
 
         ProjectKitsCatalogDto result = scanner.scan(repo.toUri().toString(), null, null);
 
-        assertThat(result.getKits())
-                .extracting(ProjectKitEntry::getName)
-                .containsExactly("real");
+        assertThat(result.getKits()).extracting(ProjectKitEntry::getName).containsExactly("real");
     }
 
     @Test
@@ -125,7 +124,8 @@ class KitCatalogScanServiceTest {
 
     private Path setupLocalRepo() throws IOException, GitAPIException {
         Path repo = Files.createDirectory(tmpRoot.resolve("source-" + System.nanoTime()));
-        try (Git git = Git.init().setDirectory(repo.toFile()).setInitialBranch("main").call()) {
+        try (Git git =
+                Git.init().setDirectory(repo.toFile()).setInitialBranch("main").call()) {
             // empty config
         }
         return repo;
@@ -134,7 +134,8 @@ class KitCatalogScanServiceTest {
     private void writeKit(Path repo, String subDirName, String content) throws IOException {
         Path subDir = repo.resolve("kits").resolve(subDirName);
         Files.createDirectories(subDir);
-        Files.writeString(subDir.resolve("kit.yaml"),
+        Files.writeString(
+                subDir.resolve("kit.yaml"),
                 "name: " + subDirName + "\ndescription: " + content + "\n",
                 StandardCharsets.UTF_8);
     }

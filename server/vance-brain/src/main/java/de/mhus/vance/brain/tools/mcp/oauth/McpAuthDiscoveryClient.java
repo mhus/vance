@@ -2,6 +2,7 @@ package de.mhus.vance.brain.tools.mcp.oauth;
 
 import de.mhus.vance.brain.oauth.McpOAuthProvider;
 import de.mhus.vance.brain.oauthserver.ClientMetadataDocumentResolver;
+import de.mhus.vance.shared.net.PublicAddresses;
 import de.mhus.vance.toolpack.core.PackHttpClient;
 import java.net.InetAddress;
 import java.net.URI;
@@ -40,7 +41,7 @@ import tools.jackson.databind.json.JsonMapper;
  * internal, like any server tool. Every other URL comes out of a response —
  * a foreign server chose it. Such a URL is fetched only when it is on the
  * origin of the MCP server, or is HTTPS and resolves to public addresses
- * only ({@link ClientMetadataDocumentResolver#isPublic}). Every exchange has
+ * only ({@link PublicAddresses#isPublic}). Every exchange has
  * one deadline for headers and body, a size cap while streaming, and follows
  * no redirect. The tool's TLS settings apply in full only to the MCP
  * server's origin; elsewhere only its trusted CA
@@ -367,7 +368,7 @@ public class McpAuthDiscoveryClient {
             throw new McpOAuthException("host '" + learned.getHost() + "' does not resolve", e);
         }
         for (InetAddress address : addresses) {
-            if (!ClientMetadataDocumentResolver.isPublic(address)) {
+            if (!PublicAddresses.isPublic(address)) {
                 throw new McpOAuthException("refusing to contact '" + learned.getHost()
                         + "' — it is outside the MCP server's origin and not a public address");
             }

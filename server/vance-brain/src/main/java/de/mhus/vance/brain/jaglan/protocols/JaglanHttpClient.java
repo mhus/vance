@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.jaglan.protocols;
 
+import de.mhus.vance.shared.net.SsrfGuard;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -34,8 +35,7 @@ public interface JaglanHttpClient {
      * status — there is nothing to stream and the caller must not have to
      * remember to close a stream it was never going to read.
      */
-    record StreamResponse(int statusCode, InputStream body, Map<String, String> headers)
-            implements AutoCloseable {
+    record StreamResponse(int statusCode, InputStream body, Map<String, String> headers) implements AutoCloseable {
 
         public boolean isSuccess() {
             return statusCode >= 200 && statusCode < 300;
@@ -58,12 +58,10 @@ public interface JaglanHttpClient {
      * including on the non-success path, where {@link StreamResponse#close()}
      * is a no-op.
      */
-    StreamResponse getStream(URI url, Map<String, String> headers, Duration timeout)
-            throws Exception;
+    StreamResponse getStream(URI url, Map<String, String> headers, Duration timeout) throws Exception;
 
     /** PUT a stream, expect a small JSON answer. */
-    Response put(URI url, InputStream body, Map<String, String> headers, Duration timeout)
-            throws Exception;
+    Response put(URI url, InputStream body, Map<String, String> headers, Duration timeout) throws Exception;
 
     Response delete(URI url, Map<String, String> headers, Duration timeout) throws Exception;
 
@@ -73,10 +71,13 @@ public interface JaglanHttpClient {
         private final HttpClient client;
 
         public JdkJaglanHttpClient() {
-            this(HttpClient.newBuilder()
-                    .followRedirects(HttpClient.Redirect.NORMAL)
-                    .connectTimeout(Duration.ofSeconds(5))
-                    .build());
+            // Target URLs come from tenant config — every request and redirect
+            // hop passes the egress guard.
+            this(SsrfGuard.guard(
+                    HttpClient.newBuilder()
+                            .connectTimeout(Duration.ofSeconds(5))
+                            .build(),
+                    true));
         }
 
         JdkJaglanHttpClient(HttpClient client) {
@@ -84,22 +85,19 @@ public interface JaglanHttpClient {
         }
 
         @Override
-        public Response get(URI url, Map<String, String> headers, Duration timeout)
-                throws Exception {
+        public Response get(URI url, Map<String, String> headers, Duration timeout) throws Exception {
             HttpRequest.Builder request = HttpRequest.newBuilder()
                     .uri(url)
                     .header("Accept", "application/json")
                     .timeout(timeout)
                     .GET();
             headers.forEach(request::header);
-            HttpResponse<String> response =
-                    client.send(request.build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = client.send(request.build(), HttpResponse.BodyHandlers.ofString());
             return new Response(response.statusCode(), response.body());
         }
 
         @Override
-        public StreamResponse getStream(URI url, Map<String, String> headers, Duration timeout)
-                throws Exception {
+        public StreamResponse getStream(URI url, Map<String, String> headers, Duration timeout) throws Exception {
             HttpRequest.Builder request = HttpRequest.newBuilder()
                     .uri(url)
                     // No Accept: the answer is whatever the file is.
@@ -123,8 +121,7 @@ public interface JaglanHttpClient {
         }
 
         @Override
-        public Response put(URI url, InputStream body, Map<String, String> headers,
-                Duration timeout) throws Exception {
+        public Response put(URI url, InputStream body, Map<String, String> headers, Duration timeout) throws Exception {
             HttpRequest.Builder request = HttpRequest.newBuilder()
                     .uri(url)
                     .header("Accept", "application/json")
@@ -134,22 +131,19 @@ public interface JaglanHttpClient {
                     // is that the content never sits in memory whole.
                     .PUT(HttpRequest.BodyPublishers.ofInputStream(() -> body));
             headers.forEach(request::header);
-            HttpResponse<String> response =
-                    client.send(request.build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = client.send(request.build(), HttpResponse.BodyHandlers.ofString());
             return new Response(response.statusCode(), response.body());
         }
 
         @Override
-        public Response delete(URI url, Map<String, String> headers, Duration timeout)
-                throws Exception {
+        public Response delete(URI url, Map<String, String> headers, Duration timeout) throws Exception {
             HttpRequest.Builder request = HttpRequest.newBuilder()
                     .uri(url)
                     .header("Accept", "application/json")
                     .timeout(timeout)
                     .DELETE();
             headers.forEach(request::header);
-            HttpResponse<String> response =
-                    client.send(request.build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = client.send(request.build(), HttpResponse.BodyHandlers.ofString());
             return new Response(response.statusCode(), response.body());
         }
 

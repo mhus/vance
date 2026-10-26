@@ -2,18 +2,18 @@ package de.mhus.vance.brain.kit.provisioning;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpServer;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
 import de.mhus.vance.api.kit.KitProvisioningAuthority;
 import de.mhus.vance.api.kit.KitSourceDto;
 import de.mhus.vance.api.kit.KitSourceType;
 import de.mhus.vance.brain.kit.KitSourceRegistry;
 import de.mhus.vance.shared.kit.KitException;
+import de.mhus.vance.shared.net.SsrfGuard;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -43,6 +43,7 @@ class OdeKitProvisioningHandlerTest {
     private final List<String> authHeaders = new ArrayList<>();
     /** Query strings the stub saw, so it can be asserted that none carried params. */
     private final List<String> queries = new ArrayList<>();
+
     private final AtomicInteger status = new AtomicInteger(200);
     private String body = """
             {"kits":[{"id":"acme-crm","version":"1.4.0","revision":"abc123",
@@ -50,17 +51,24 @@ class OdeKitProvisioningHandlerTest {
 
     @BeforeEach
     void startStub() throws IOException {
+        // The stub listens on loopback, which the guard refuses in every
+        // production mode — the dev escape hatch opens it.
+        SsrfGuard.setAllowPrivate(true);
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext(OdeKitProvisioningHandler.CAPABILITIES_PATH, this::handle);
         server.start();
         sources = mock(KitSourceRegistry.class);
-        when(sources.resolve(any(), any())).thenReturn(
-                KitSourceDto.builder().id("acme").type(KitSourceType.ODE).build());
+        when(sources.resolve(any(), any()))
+                .thenReturn(KitSourceDto.builder()
+                        .id("acme")
+                        .type(KitSourceType.ODE)
+                        .build());
         handler = new OdeKitProvisioningHandler(new ObjectMapper(), sources);
     }
 
     @AfterEach
     void stopStub() {
+        SsrfGuard.setAllowPrivate(false);
         server.stop(0);
     }
 
@@ -79,8 +87,8 @@ class OdeKitProvisioningHandlerTest {
     }
 
     private KitProvisioningContext context(KitProvisioningAuthority authority, String token) {
-        return new KitProvisioningContext("acme", "sales",
-                new KitProvisioningEntry("ode", baseUrl(), token, authority, Map.of()));
+        return new KitProvisioningContext(
+                "acme", "sales", new KitProvisioningEntry("ode", baseUrl(), token, authority, Map.of()));
     }
 
     @Test
@@ -90,8 +98,7 @@ class OdeKitProvisioningHandlerTest {
 
     @Test
     void discover_mapsDeclaredKitsToTheDesiredList() {
-        List<DesiredKit> desired = handler.discover(
-                context(KitProvisioningAuthority.UPDATE, null));
+        List<DesiredKit> desired = handler.discover(context(KitProvisioningAuthority.UPDATE, null));
 
         assertThat(desired).singleElement().satisfies(kit -> {
             assertThat(kit.sourceUrl()).isEqualTo(baseUrl());
@@ -122,7 +129,8 @@ class OdeKitProvisioningHandlerTest {
 
         // "Nothing for this project" has to stay distinguishable from
         // "this host is broken" — a caller backs off from the second.
-        assertThat(handler.discover(context(KitProvisioningAuthority.NOTIFY, null))).isEmpty();
+        assertThat(handler.discover(context(KitProvisioningAuthority.NOTIFY, null)))
+                .isEmpty();
     }
 
     @Test
@@ -182,8 +190,11 @@ class OdeKitProvisioningHandlerTest {
         // Without this the run gets further than it should: asking the host works,
         // and then the fetch resolves the same url, guesses GIT and hands an http
         // endpoint to JGit. What the operator saw was a clone stacktrace.
-        when(sources.resolve(any(), any())).thenReturn(
-                KitSourceDto.builder().id("guessed").type(KitSourceType.GIT).build());
+        when(sources.resolve(any(), any()))
+                .thenReturn(KitSourceDto.builder()
+                        .id("guessed")
+                        .type(KitSourceType.GIT)
+                        .build());
 
         assertThatThrownBy(() -> handler.discover(context(KitProvisioningAuthority.NOTIFY, null)))
                 .isInstanceOf(KitException.class)
@@ -198,7 +209,8 @@ class OdeKitProvisioningHandlerTest {
         // diagnostic lookup would be the wrong trade.
         when(sources.resolve(any(), any())).thenThrow(new IllegalStateException("nope"));
 
-        assertThat(handler.discover(context(KitProvisioningAuthority.NOTIFY, null))).hasSize(1);
+        assertThat(handler.discover(context(KitProvisioningAuthority.NOTIFY, null)))
+                .hasSize(1);
     }
 
     @Test
@@ -222,9 +234,11 @@ class OdeKitProvisioningHandlerTest {
 
     @Test
     void discover_unusableUrl_failsWithoutCalling() {
-        KitProvisioningContext ctx = new KitProvisioningContext("acme", "sales",
-                new KitProvisioningEntry("ode", "javascript:alert(1)", null,
-                        KitProvisioningAuthority.NOTIFY, Map.of()));
+        KitProvisioningContext ctx = new KitProvisioningContext(
+                "acme",
+                "sales",
+                new KitProvisioningEntry(
+                        "ode", "javascript:alert(1)", null, KitProvisioningAuthority.NOTIFY, Map.of()));
 
         assertThatThrownBy(() -> handler.discover(ctx))
                 .isInstanceOf(KitException.class)
@@ -238,9 +252,11 @@ class OdeKitProvisioningHandlerTest {
         // shown this". As a request target it would reach
         // HttpRequest.newBuilder and throw an IllegalArgumentException nobody
         // catches, i.e. a 500 instead of the explained 400.
-        KitProvisioningContext ctx = new KitProvisioningContext("acme", "sales",
-                new KitProvisioningEntry("ode", "mailto:ops@example.com", null,
-                        KitProvisioningAuthority.NOTIFY, Map.of()));
+        KitProvisioningContext ctx = new KitProvisioningContext(
+                "acme",
+                "sales",
+                new KitProvisioningEntry(
+                        "ode", "mailto:ops@example.com", null, KitProvisioningAuthority.NOTIFY, Map.of()));
 
         assertThatThrownBy(() -> handler.discover(ctx))
                 .isInstanceOf(KitException.class)
@@ -250,30 +266,36 @@ class OdeKitProvisioningHandlerTest {
 
     @Test
     void discover_trailingSlashInUrl_stillReachesTheEndpoint() {
-        KitProvisioningContext ctx = new KitProvisioningContext("acme", "sales",
-                new KitProvisioningEntry("ode", baseUrl() + "/", null,
-                        KitProvisioningAuthority.NOTIFY, Map.of()));
+        KitProvisioningContext ctx = new KitProvisioningContext(
+                "acme",
+                "sales",
+                new KitProvisioningEntry("ode", baseUrl() + "/", null, KitProvisioningAuthority.NOTIFY, Map.of()));
 
         assertThat(handler.discover(ctx)).hasSize(1);
     }
 
     @Test
     void discover_carriesTheEntryParamsIntoEachDesiredKit() {
-        KitProvisioningContext ctx = new KitProvisioningContext("acme", "sales",
-                new KitProvisioningEntry("ode", baseUrl(), null,
-                        KitProvisioningAuthority.UPDATE, Map.of("lang", "de")));
+        KitProvisioningContext ctx = new KitProvisioningContext(
+                "acme",
+                "sales",
+                new KitProvisioningEntry(
+                        "ode", baseUrl(), null, KitProvisioningAuthority.UPDATE, Map.of("lang", "de")));
 
         // Needed by the fetch, and load-bearing for the check: the revision
         // comes from a call that never saw these params.
-        assertThat(handler.discover(ctx)).singleElement()
+        assertThat(handler.discover(ctx))
+                .singleElement()
                 .satisfies(kit -> assertThat(kit.params()).containsEntry("lang", "de"));
     }
 
     @Test
     void discover_doesNotSendParamsToCapabilities() {
-        KitProvisioningContext ctx = new KitProvisioningContext("acme", "sales",
-                new KitProvisioningEntry("ode", baseUrl(), null,
-                        KitProvisioningAuthority.UPDATE, Map.of("lang", "de")));
+        KitProvisioningContext ctx = new KitProvisioningContext(
+                "acme",
+                "sales",
+                new KitProvisioningEntry(
+                        "ode", baseUrl(), null, KitProvisioningAuthority.UPDATE, Map.of("lang", "de")));
 
         handler.discover(ctx);
 
@@ -284,8 +306,9 @@ class OdeKitProvisioningHandlerTest {
 
     @Test
     void entry_toString_doesNotPrintTheToken() {
-        String printed = new KitProvisioningEntry("ode", "https://host", "s3cr3t",
-                KitProvisioningAuthority.MANAGE, Map.of("lang", "de")).toString();
+        String printed = new KitProvisioningEntry(
+                        "ode", "https://host", "s3cr3t", KitProvisioningAuthority.MANAGE, Map.of("lang", "de"))
+                .toString();
 
         // A record's generated toString would print it into whatever log first
         // mentions the entry.

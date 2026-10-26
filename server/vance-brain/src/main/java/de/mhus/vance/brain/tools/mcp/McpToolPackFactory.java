@@ -9,6 +9,7 @@ import de.mhus.vance.brain.tools.rest.SettingsSecretResolver;
 import de.mhus.vance.brain.tools.types.ToolFactory;
 import de.mhus.vance.brain.tools.types.ToolPackUnavailableException;
 import de.mhus.vance.shared.lease.LeaseHolderInfo;
+import de.mhus.vance.shared.net.SsrfGuard;
 import de.mhus.vance.shared.servertool.ServerToolConfig;
 import de.mhus.vance.shared.servertool.ServerToolDocument;
 import de.mhus.vance.shared.servertool.ServerToolLoader;
@@ -19,6 +20,7 @@ import de.mhus.vance.toolpack.mcp.McpConfig;
 import de.mhus.vance.toolpack.mcp.McpConnection;
 import de.mhus.vance.toolpack.mcp.McpPackBuilder;
 import jakarta.annotation.PreDestroy;
+import java.time.Duration;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -98,7 +100,12 @@ public class McpToolPackFactory implements ToolFactory {
             ServerToolLoader serverToolLoader,
             OAuthTokenStore tokenStore,
             OAuthTokenRefresher tokenRefresher) {
-        this.pool = new McpConnectionPool(new PackHttpClient(), secretResolver, leaseSupport, tokenRefresher);
+        this.pool = new McpConnectionPool(
+                // MCP server URLs are tenant config — guarded egress.
+                new PackHttpClient(Duration.ofSeconds(10), c -> SsrfGuard.guard(c, false)),
+                secretResolver,
+                leaseSupport,
+                tokenRefresher);
         this.serverToolLoader = serverToolLoader;
         this.tokenStore = tokenStore;
     }

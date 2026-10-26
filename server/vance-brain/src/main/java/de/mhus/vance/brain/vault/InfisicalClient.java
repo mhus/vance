@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.vault;
 
+import de.mhus.vance.shared.net.SsrfGuard;
 import de.mhus.vance.shared.vault.VaultBinding;
 import de.mhus.vance.shared.vault.VaultException;
 import java.io.IOException;
@@ -45,6 +46,7 @@ public class InfisicalClient {
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(15);
     /** Refresh the token this long before its declared expiry. */
     private static final long TOKEN_REFRESH_MARGIN_MS = 30_000;
+
     private static final String LOGIN_PATH = "/api/v1/auth/universal-auth/login";
     private static final String SECRETS_PATH = "/api/v4/secrets/";
 
@@ -56,17 +58,22 @@ public class InfisicalClient {
 
     @Autowired
     public InfisicalClient(ObjectMapper objectMapper) {
-        this(objectMapper,
+        this(
+                objectMapper,
                 // Pin HTTP/1.1: the JDK client defaults to HTTP/2, which over cleartext
                 // http:// attempts the h2c Upgrade handshake. Self-hosted Infisical (and
                 // many reverse proxies in front of it) mishandle that Upgrade and answer
                 // a 500 InternalServerError instead of negotiating down — so a working
                 // vault endpoint looks broken. A vault client talks to arbitrary operator
                 // endpoints; HTTP/1.1 is the safe, universally-supported floor.
-                HttpClient.newBuilder()
-                        .version(HttpClient.Version.HTTP_1_1)
-                        .connectTimeout(CONNECT_TIMEOUT)
-                        .build(),
+                // The endpoint comes from the vault binding config — guarded egress
+                // (an on-prem Infisical needs vance.net.ssrf.private-networks=allow).
+                SsrfGuard.guard(
+                        HttpClient.newBuilder()
+                                .version(HttpClient.Version.HTTP_1_1)
+                                .connectTimeout(CONNECT_TIMEOUT)
+                                .build(),
+                        false),
                 System::currentTimeMillis);
     }
 
@@ -81,7 +88,8 @@ public class InfisicalClient {
      * @throws VaultException on missing binding fields, auth failure, or any
      *         non-2xx/404 response
      */
-    @Nullable String readSecret(VaultBinding binding, String secretName) {
+    @Nullable
+    String readSecret(VaultBinding binding, String secretName) {
         Endpoint ep = endpoint(binding);
         String url = ep.base + SECRETS_PATH + encPath(secretName)
                 + "?projectId=" + enc(ep.projectId)
@@ -131,8 +139,7 @@ public class InfisicalClient {
 
     // ──────────────────── transport ────────────────────
 
-    private HttpResponse<String> sendAuthorized(
-            String method, String url, @Nullable String jsonBody, Endpoint ep) {
+    private HttpResponse<String> sendAuthorized(String method, String url, @Nullable String jsonBody, Endpoint ep) {
         boolean usedCachedToken = tokenCache.containsKey(cacheKey(ep));
         HttpResponse<String> resp = doSend(method, url, jsonBody, accessToken(ep, false));
         // Retry only when a *cached* token was used — it may have gone stale
@@ -145,8 +152,7 @@ public class InfisicalClient {
         return resp;
     }
 
-    private HttpResponse<String> doSend(
-            String method, String url, @Nullable String jsonBody, String token) {
+    private HttpResponse<String> doSend(String method, String url, @Nullable String jsonBody, String token) {
         HttpRequest.Builder rb = HttpRequest.newBuilder(URI.create(url))
                 .timeout(REQUEST_TIMEOUT)
                 .header("Accept", "application/json")
@@ -183,9 +189,8 @@ public class InfisicalClient {
 
     private CachedToken login(Endpoint ep) {
         if (ep.clientSecret == null || ep.clientSecret.isBlank()) {
-            throw new VaultException(
-                    "Infisical vault at " + ep.base + " has no machine-identity secret configured"
-                            + " (set the PASSWORD setting 'vault.clientSecret')");
+            throw new VaultException("Infisical vault at " + ep.base + " has no machine-identity secret configured"
+                    + " (set the PASSWORD setting 'vault.clientSecret')");
         }
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("clientId", ep.clientId);

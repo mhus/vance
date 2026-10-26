@@ -34,10 +34,15 @@ public final class ProviderListingHttp {
 
     private static final JsonMapper MAPPER = JsonMapper.builder().build();
 
-    private static final HttpClient CLIENT = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10))
-            .followRedirects(HttpClient.Redirect.NORMAL)
-            .build();
+    /**
+     * Does not follow redirects: a tenant-configured base URL is checked against
+     * the egress guard when it is read ({@code ChatBehaviorBuilder},
+     * {@code ModelDiscoveryService}); a redirect would lead past that check. The
+     * operator's boot-time default may well be local, so the client itself is
+     * not guarded.
+     */
+    private static final HttpClient CLIENT =
+            HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
 
     private static final class InsecureHolder {
         static final HttpClient INSTANCE = buildInsecure();
@@ -83,7 +88,6 @@ public final class ProviderListingHttp {
         SSLContext ctx = TlsInsecure.trustAllContext();
         return HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
-                .followRedirects(HttpClient.Redirect.NORMAL)
                 .sslContext(ctx)
                 .build();
     }

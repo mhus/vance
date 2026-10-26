@@ -9,7 +9,9 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Flow;
 import java.util.concurrent.atomic.AtomicLong;
@@ -20,13 +22,30 @@ import java.util.concurrent.atomic.AtomicLong;
  * pass through here so a request cannot be steered at internal services
  * or the cloud metadata endpoint.
  *
- * <p>{@link #assertAllowed(URI)} rejects any non-http(s) scheme and any
- * host that resolves to a loopback / link-local (incl.
- * {@code 169.254.169.254}) / site-local / unique-local / multicast /
- * wildcard address. {@link #sendGuarded} additionally re-checks every
- * redirect hop, so a public URL that 302-redirects to an internal target
- * is blocked too — pass it an {@link HttpClient} built with
- * {@link HttpClient.Redirect#NEVER}.
+ * <p>{@link #assertAllowed(URI)} rejects any non-http(s) scheme and any host
+ * that resolves to a refused address. The policy has three layers:
+ *
+ * <ol>
+ *   <li><b>Always refused</b>, not configurable: loopback (the brain itself,
+ *       incl. its management port), link-local incl. {@code 169.254.169.254}
+ *       (cloud metadata), the unspecified address, multicast and broadcast.</li>
+ *   <li><b>Operator deny-list</b> {@code vance.net.ssrf.denied}
+ *       ({@link EgressDenyList}): the ranges and hosts a tenant must never
+ *       reach — cluster networks, database hosts, nodes.</li>
+ *   <li><b>Private networks</b> {@code vance.net.ssrf.private-networks}:
+ *       {@code deny} (default) refuses every address that is not globally
+ *       reachable unicast ({@link PublicAddresses}); {@code allow} lets tenants
+ *       reach private ranges (RFC 1918, CGNAT, ULA) — for installs where the
+ *       customer's own network is a legitimate target and the operator lists
+ *       what is off limits instead.</li>
+ * </ol>
+ *
+ * <p>IPv6 forms that embed an IPv4 address (IPv4-mapped, IPv4-compatible,
+ * NAT64, 6to4) are checked against layers 1 and 2 with the embedded address
+ * too, so {@code ::ffff:169.254.169.254} is no way around them.
+ * {@link #sendGuarded} additionally re-checks every redirect hop, so a public
+ * URL that 302-redirects to an internal target is blocked too — pass it an
+ * {@link HttpClient} built with {@link HttpClient.Redirect#NEVER}.
  *
  * <p><b>Residual:</b> DNS rebinding between this check and the socket
  * connect is not fully closed (the JDK client re-resolves on connect and
@@ -43,8 +62,8 @@ public final class SsrfGuard {
 
     /**
      * Operator escape hatch for local development/testing ONLY. When set, the
-     * egress guard stops blocking loopback / private / link-local / unique-local
-     * addresses so a dev can point {@code web_fetch}/{@code doc_import_url} at
+     * egress guard stops blocking anything — including loopback and the
+     * deny-list — so a dev can point {@code web_fetch}/{@code doc_import_url} at
      * {@code localhost} / a LAN service. Default {@code false} — production must
      * never enable it (it re-opens SSRF). Wired from
      * {@code vance.net.ssrf.allow-private} by {@code SsrfGuardConfigurer} and set
@@ -61,6 +80,38 @@ public final class SsrfGuard {
     /** Current escape-hatch state (for diagnostics/tests). */
     public static boolean isAllowPrivate() {
         return allowPrivate;
+    }
+
+    /** Whether tenants may reach non-public (private) address ranges — {@code vance.net.ssrf.private-networks}. */
+    public enum PrivateNetworks {
+        /** Only globally reachable unicast addresses (the default). */
+        DENY,
+        /** Private ranges too; the operator's deny-list says what stays off limits. */
+        ALLOW;
+
+        /**
+         * Parses the property value, case-insensitively.
+         *
+         * @throws IllegalArgumentException on anything but {@code deny} / {@code allow}
+         */
+        public static PrivateNetworks parse(String value) {
+            return valueOf(value.trim().toUpperCase(Locale.ROOT));
+        }
+    }
+
+    private static volatile PrivateNetworks privateNetworks = PrivateNetworks.DENY;
+
+    /** Set by {@code SsrfGuardConfigurer} at boot from {@code vance.net.ssrf.private-networks}. */
+    public static void setPrivateNetworks(PrivateNetworks mode) {
+        privateNetworks = mode;
+    }
+
+    /** Operator deny-list ({@code vance.net.ssrf.denied}); applies in every mode. */
+    private static volatile EgressDenyList denyList = EgressDenyList.empty();
+
+    /** Set by {@code SsrfGuardConfigurer} at boot from {@code vance.net.ssrf.denied}. */
+    public static void setDenyList(EgressDenyList list) {
+        denyList = list;
     }
 
     /** Thrown when a URL is rejected by the egress policy. */
@@ -105,49 +156,85 @@ public final class SsrfGuard {
             throw new SsrfException("Host does not resolve: " + host, e);
         }
         for (InetAddress addr : addresses) {
-            if (isBlocked(addr)) {
-                throw new SsrfException(
-                        "Refusing to fetch a non-public address: " + host + " → " + addr.getHostAddress());
+            if (isBlocked(host, addr)) {
+                throw new SsrfException("Refusing to fetch a blocked address: " + host + " → " + addr.getHostAddress());
             }
         }
     }
 
-    /** {@code true} for any address a server must not be steered at. */
-    static boolean isBlocked(InetAddress addr) {
+    /** {@code true} for any address a server must not be steered at (see the class doc). */
+    static boolean isBlocked(String host, InetAddress addr) {
         // Dev/test escape hatch — operator opted into reaching local/private
         // targets (vance.net.ssrf.allow-private). Never true in production.
         if (allowPrivate) {
             return false;
         }
-        if (addr.isLoopbackAddress() // 127.0.0.0/8, ::1
-                || addr.isAnyLocalAddress() // 0.0.0.0, ::
-                || addr.isLinkLocalAddress() // 169.254.0.0/16 (incl. metadata), fe80::/10
-                || addr.isSiteLocalAddress() // 10/8, 172.16/12, 192.168/16
+        EgressDenyList denied = denyList;
+        if (denied.deniesHost(host)) {
+            return true;
+        }
+        for (InetAddress form : withEmbeddedIpv4(addr)) {
+            if (isAlwaysRefused(form) || denied.deniesAddress(form)) {
+                return true;
+            }
+        }
+        return privateNetworks == PrivateNetworks.DENY && !PublicAddresses.isPublic(addr);
+    }
+
+    /** Layer 1: targets that are the pod itself or the platform, whatever the mode. */
+    private static boolean isAlwaysRefused(InetAddress addr) {
+        if (addr.isLoopbackAddress()
+                || addr.isAnyLocalAddress()
+                || addr.isLinkLocalAddress()
                 || addr.isMulticastAddress()) {
             return true;
         }
         byte[] b = addr.getAddress();
-        // IPv6 unique-local fc00::/7 (isSiteLocalAddress does not cover it).
-        if (b.length == 16 && (b[0] & 0xfe) == 0xfc) {
-            return true;
-        }
-        // IPv4-mapped IPv6 (::ffff:a.b.c.d) — re-check the embedded v4.
-        if (b.length == 16 && isV4Mapped(b)) {
-            byte[] v4 = new byte[] {b[12], b[13], b[14], b[15]};
-            try {
-                return isBlocked(InetAddress.getByAddress(v4));
-            } catch (UnknownHostException e) {
-                return true;
-            }
-        }
-        return false;
+        return b.length == 4
+                && (b[0] & 0xFF) == 255
+                && (b[1] & 0xFF) == 255
+                && (b[2] & 0xFF) == 255
+                && (b[3] & 0xFF) == 255;
     }
 
-    private static boolean isV4Mapped(byte[] b) {
-        for (int i = 0; i < 10; i++) {
-            if (b[i] != 0) return false;
+    /**
+     * {@code addr} plus the IPv4 address embedded in it, if any: IPv4-mapped
+     * {@code ::ffff:a.b.c.d}, IPv4-compatible {@code ::a.b.c.d}, NAT64
+     * {@code 64:ff9b::a.b.c.d} and 6to4 {@code 2002:aabb:ccdd::}.
+     */
+    private static List<InetAddress> withEmbeddedIpv4(InetAddress addr) {
+        byte[] b = addr.getAddress();
+        if (b.length != 16) {
+            return List.of(addr);
         }
-        return (b[10] & 0xff) == 0xff && (b[11] & 0xff) == 0xff;
+        byte[] v4 = null;
+        if (isZero(b, 0, 10) && (b[10] & 0xFF) == 0xFF && (b[11] & 0xFF) == 0xFF) {
+            v4 = new byte[] {b[12], b[13], b[14], b[15]};
+        } else if (isZero(b, 0, 12) && !isZero(b, 12, 16)) {
+            v4 = new byte[] {b[12], b[13], b[14], b[15]};
+        } else if ((b[0] & 0xFF) == 0x00 && (b[1] & 0xFF) == 0x64 && (b[2] & 0xFF) == 0xFF && (b[3] & 0xFF) == 0x9B) {
+            v4 = new byte[] {b[12], b[13], b[14], b[15]};
+        } else if ((b[0] & 0xFF) == 0x20 && (b[1] & 0xFF) == 0x02) {
+            v4 = new byte[] {b[2], b[3], b[4], b[5]};
+        }
+        if (v4 == null) {
+            return List.of(addr);
+        }
+        try {
+            return List.of(addr, InetAddress.getByAddress(v4));
+        } catch (UnknownHostException e) {
+            // Four bytes always form a valid address.
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static boolean isZero(byte[] b, int from, int to) {
+        for (int i = from; i < to; i++) {
+            if (b[i] != 0) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -170,7 +257,7 @@ public final class SsrfGuard {
             if (location.isEmpty()) break;
             URI next = response.uri().resolve(location.get());
             assertAllowed(next);
-            request = HttpRequest.newBuilder(request, (n, v) -> true).uri(next).build();
+            request = redirectRequest(request, next);
             response = client.send(request, handler);
         }
         return response;
@@ -182,12 +269,58 @@ public final class SsrfGuard {
         return sendGuarded(client, request, handler, DEFAULT_MAX_REDIRECTS);
     }
 
+    /** Request headers that carry no credential and may follow a redirect to another origin. */
+    private static final Set<String> CROSS_ORIGIN_HEADERS = Set.of("accept", "accept-language", "user-agent");
+
+    /**
+     * The follow-up request for a redirect to {@code next}. Within the same
+     * origin (scheme, host, port) every header is kept; across origins only
+     * {@link #CROSS_ORIGIN_HEADERS} survive, so an {@code Authorization} or API-key
+     * header never reaches a host the other side picked.
+     */
+    static HttpRequest redirectRequest(HttpRequest request, URI next) {
+        boolean sameOrigin = sameOrigin(request.uri(), next);
+        return HttpRequest.newBuilder(
+                        request,
+                        (name, value) -> sameOrigin || CROSS_ORIGIN_HEADERS.contains(name.toLowerCase(Locale.ROOT)))
+                .uri(next)
+                .build();
+    }
+
+    private static boolean sameOrigin(URI a, URI b) {
+        return a.getScheme() != null
+                && a.getScheme().equalsIgnoreCase(b.getScheme())
+                && a.getHost() != null
+                && a.getHost().equalsIgnoreCase(b.getHost())
+                && effectivePort(a) == effectivePort(b);
+    }
+
+    private static int effectivePort(URI uri) {
+        if (uri.getPort() != -1) {
+            return uri.getPort();
+        }
+        return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
+    }
+
     private static boolean isRedirect(int status) {
         return status == 301 || status == 302 || status == 303 || status == 307 || status == 308;
     }
 
     private static boolean isRedirectableMethod(String method) {
         return "GET".equalsIgnoreCase(method) || "HEAD".equalsIgnoreCase(method);
+    }
+
+    /**
+     * Wraps {@code delegate} so every request and every redirect hop passes
+     * {@link #assertAllowed(URI)}. The delegate must be built with
+     * {@link HttpClient.Redirect#NEVER}; with {@code followRedirects} the wrapper
+     * follows {@code GET}/{@code HEAD} redirects itself (checking each target),
+     * otherwise the 3xx response is returned as is.
+     *
+     * @throws IllegalArgumentException when the delegate follows redirects itself
+     */
+    public static HttpClient guard(HttpClient delegate, boolean followRedirects) {
+        return new GuardedHttpClient(delegate, followRedirects, SsrfGuard::assertAllowed);
     }
 
     /** Convenience: a redirect-disabled client suitable for {@link #sendGuarded}. */

@@ -28,22 +28,20 @@ public record ScriptHeader(
         @Nullable String version,
         Set<String> requires,
         @Nullable String workspaceRoot,
-        Set<String> nodeBuiltins) {
+        Set<String> nodeBuiltins,
+        @Nullable Long maxHeapMemory,
+        @Nullable Duration maxCpuTime) {
 
     public ScriptHeader {
-        allowTools = allowTools == null
-                ? Set.of() : Collections.unmodifiableSet(new LinkedHashSet<>(allowTools));
-        requiresTools = requiresTools == null
-                ? Set.of() : Collections.unmodifiableSet(new LinkedHashSet<>(requiresTools));
-        requires = requires == null
-                ? Set.of() : Collections.unmodifiableSet(new LinkedHashSet<>(requires));
-        nodeBuiltins = nodeBuiltins == null
-                ? Set.of() : Collections.unmodifiableSet(new LinkedHashSet<>(nodeBuiltins));
+        allowTools = allowTools == null ? Set.of() : Collections.unmodifiableSet(new LinkedHashSet<>(allowTools));
+        requiresTools =
+                requiresTools == null ? Set.of() : Collections.unmodifiableSet(new LinkedHashSet<>(requiresTools));
+        requires = requires == null ? Set.of() : Collections.unmodifiableSet(new LinkedHashSet<>(requires));
+        nodeBuiltins = nodeBuiltins == null ? Set.of() : Collections.unmodifiableSet(new LinkedHashSet<>(nodeBuiltins));
     }
 
-    private static final ScriptHeader EMPTY = new ScriptHeader(
-            null, null, null, Set.of(), Set.of(), null, null,
-            Set.of(), null, Set.of());
+    private static final ScriptHeader EMPTY =
+            new ScriptHeader(null, null, null, Set.of(), Set.of(), null, null, Set.of(), null, Set.of(), null, null);
 
     /** No header present — every field defaults; executor uses
      *  the full Caller / Setting / Code-default fallback chain. */
@@ -64,6 +62,8 @@ public record ScriptHeader(
                 || version != null
                 || !requires.isEmpty()
                 || workspaceRoot != null
-                || !nodeBuiltins.isEmpty();
+                || !nodeBuiltins.isEmpty()
+                || maxHeapMemory != null
+                || maxCpuTime != null;
     }
 }

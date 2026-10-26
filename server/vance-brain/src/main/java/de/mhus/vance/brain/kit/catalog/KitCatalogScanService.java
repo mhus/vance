@@ -3,6 +3,7 @@ package de.mhus.vance.brain.kit.catalog;
 import de.mhus.vance.api.kit.KitInheritDto;
 import de.mhus.vance.api.kit.ProjectKitEntry;
 import de.mhus.vance.api.kit.ProjectKitsCatalogDto;
+import de.mhus.vance.brain.kit.KitSourceUrlPolicy;
 import de.mhus.vance.brain.kit.KitWorkspace;
 import de.mhus.vance.shared.kit.KitException;
 import java.io.IOException;
@@ -44,8 +45,7 @@ import org.yaml.snakeyaml.Yaml;
 public class KitCatalogScanService {
 
     /** Default kit-catalog repo URL (overridable per scan). */
-    public static final String DEFAULT_KIT_REPO =
-            "https://github.com/mhus/vance-kits.git";
+    public static final String DEFAULT_KIT_REPO = "https://github.com/mhus/vance-kits.git";
 
     /** Default branch used when the caller does not specify a ref. */
     public static final String DEFAULT_REF = "main";
@@ -57,17 +57,18 @@ public class KitCatalogScanService {
     public static final String CATALOG_OVERRIDES_FILE = "catalog.yaml";
 
     private final KitWorkspace workspace;
+    private final KitSourceUrlPolicy urlPolicy;
 
     /**
      * Scan {@code gitUrl} at {@code ref} and return the resulting
      * catalog. {@code token} (optional) is used as the HTTPS bearer
      * for private repos — never persisted.
      */
-    public ProjectKitsCatalogDto scan(
-            String gitUrl, @Nullable String ref, @Nullable String token) {
+    public ProjectKitsCatalogDto scan(String gitUrl, @Nullable String ref, @Nullable String token) {
         if (StringUtils.isBlank(gitUrl)) {
             throw new KitException("scan gitUrl must not be blank");
         }
+        urlPolicy.check(gitUrl);
         String effectiveRef = StringUtils.isBlank(ref) ? DEFAULT_REF : ref;
         Path tmp = workspace.allocate("catalog-scan");
         try {
@@ -89,13 +90,11 @@ public class KitCatalogScanService {
                 .call()) {
             log.debug("Cloned {} at ref '{}' into {}", gitUrl, ref, target);
         } catch (GitAPIException e) {
-            throw new KitException(
-                    "git clone failed for " + gitUrl + " (ref=" + ref + "): " + e.getMessage(), e);
+            throw new KitException("git clone failed for " + gitUrl + " (ref=" + ref + "): " + e.getMessage(), e);
         }
     }
 
-    private static @Nullable UsernamePasswordCredentialsProvider credentials(
-            @Nullable String token) {
+    private static @Nullable UsernamePasswordCredentialsProvider credentials(@Nullable String token) {
         if (StringUtils.isBlank(token)) return null;
         return new UsernamePasswordCredentialsProvider("x-access-token", token);
     }
@@ -112,38 +111,32 @@ public class KitCatalogScanService {
 
         List<ProjectKitEntry> entries = new ArrayList<>();
         try (Stream<Path> children = Files.list(kitsDir)) {
-            children
-                    .filter(Files::isDirectory)
-                    .sorted()
-                    .forEach(subDir -> {
-                        if (!Files.isRegularFile(subDir.resolve("kit.yaml"))) {
-                            log.debug("Skipping {} — no kit.yaml", subDir);
-                            return;
-                        }
-                        String subName = subDir.getFileName().toString();
-                        OverrideEntry o = overrides.get(subName);
-                        String name = o != null && !StringUtils.isBlank(o.name) ? o.name : subName;
-                        String title = o != null && !StringUtils.isBlank(o.title) ? o.title : subName;
-                        String description = o == null ? null : o.description;
-                        entries.add(ProjectKitEntry.builder()
-                                .name(name)
-                                .title(title)
-                                .description(description)
-                                .source(KitInheritDto.builder()
-                                        .url(gitUrl)
-                                        .path(KITS_SUBDIR + "/" + subName)
-                                        .branch(ref)
-                                        .build())
-                                .build());
-                    });
+            children.filter(Files::isDirectory).sorted().forEach(subDir -> {
+                if (!Files.isRegularFile(subDir.resolve("kit.yaml"))) {
+                    log.debug("Skipping {} — no kit.yaml", subDir);
+                    return;
+                }
+                String subName = subDir.getFileName().toString();
+                OverrideEntry o = overrides.get(subName);
+                String name = o != null && !StringUtils.isBlank(o.name) ? o.name : subName;
+                String title = o != null && !StringUtils.isBlank(o.title) ? o.title : subName;
+                String description = o == null ? null : o.description;
+                entries.add(ProjectKitEntry.builder()
+                        .name(name)
+                        .title(title)
+                        .description(description)
+                        .source(KitInheritDto.builder()
+                                .url(gitUrl)
+                                .path(KITS_SUBDIR + "/" + subName)
+                                .branch(ref)
+                                .build())
+                        .build());
+            });
         } catch (IOException e) {
             throw new KitException("failed to list kits directory: " + e.getMessage(), e);
         }
 
-        return ProjectKitsCatalogDto.builder()
-                .version(1)
-                .kits(entries)
-                .build();
+        return ProjectKitsCatalogDto.builder().version(1).kits(entries).build();
     }
 
     private Map<String, OverrideEntry> loadOverrides(Path kitsDir) {
@@ -174,8 +167,7 @@ public class KitCatalogScanService {
             }
             return result;
         } catch (IOException e) {
-            throw new KitException(
-                    "failed to read " + CATALOG_OVERRIDES_FILE + ": " + e.getMessage(), e);
+            throw new KitException("failed to read " + CATALOG_OVERRIDES_FILE + ": " + e.getMessage(), e);
         }
     }
 
@@ -185,8 +177,13 @@ public class KitCatalogScanService {
     }
 
     private static final class OverrideEntry {
-        @Nullable String name;
-        @Nullable String title;
-        @Nullable String description;
+        @Nullable
+        String name;
+
+        @Nullable
+        String title;
+
+        @Nullable
+        String description;
     }
 }

@@ -1,10 +1,12 @@
 package de.mhus.vance.brain.tools.rest;
 
+import de.mhus.vance.brain.tools.types.ToolFactory;
+import de.mhus.vance.shared.net.SsrfGuard;
+import de.mhus.vance.shared.servertool.ServerToolDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.core.PackHttpClient;
 import de.mhus.vance.toolpack.rest.RestApiPackBuilder;
-import de.mhus.vance.brain.tools.types.ToolFactory;
-import de.mhus.vance.shared.servertool.ServerToolDocument;
+import java.time.Duration;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -34,38 +36,55 @@ public class RestApiToolPackFactory implements ToolFactory {
     public static final String TYPE_ID = "rest_api";
 
     private static final Map<String, Object> PARAMETERS_SCHEMA = Map.of(
-            "type", "object",
-            "properties", Map.of(
-                    "specUrl", Map.of("type", "string",
-                            "description", "URL to the OpenAPI/Swagger spec (HTTP(S))."),
-                    "specInline", Map.of("type", "string",
-                            "description", "Inline OpenAPI/Swagger spec body (alternative to specUrl)."),
-                    "baseUrl", Map.of("type", "string",
-                            "description", "Override the spec's servers[].url."),
-                    "auth", Map.of("type", "object",
-                            "description", "Authentication block — bearer/basic/apiKey/none."),
-                    "tls", Map.of("type", "object",
-                            "description", "TLS settings (skipVerification, trustedCaPemPath)."),
-                    "include", Map.of("type", "array",
-                            "description", "operationId-glob whitelist."),
-                    "exclude", Map.of("type", "array",
-                            "description", "operationId-glob blacklist (applied after include).")));
+            "type",
+            "object",
+            "properties",
+            Map.of(
+                    "specUrl", Map.of("type", "string", "description", "URL to the OpenAPI/Swagger spec (HTTP(S))."),
+                    "specInline",
+                            Map.of(
+                                    "type",
+                                    "string",
+                                    "description",
+                                    "Inline OpenAPI/Swagger spec body (alternative to specUrl)."),
+                    "baseUrl", Map.of("type", "string", "description", "Override the spec's servers[].url."),
+                    "auth", Map.of("type", "object", "description", "Authentication block — bearer/basic/apiKey/none."),
+                    "tls",
+                            Map.of(
+                                    "type",
+                                    "object",
+                                    "description",
+                                    "TLS settings (skipVerification, trustedCaPemPath)."),
+                    "include", Map.of("type", "array", "description", "operationId-glob whitelist."),
+                    "exclude",
+                            Map.of(
+                                    "type",
+                                    "array",
+                                    "description",
+                                    "operationId-glob blacklist (applied after include).")));
 
     private final PackHttpClient httpClient;
     private final SettingsSecretResolver secretResolver;
 
     public RestApiToolPackFactory(SettingsSecretResolver secretResolver) {
-        this.httpClient = new PackHttpClient();
+        // REST pack base URLs are tenant config — guarded egress.
+        this.httpClient = new PackHttpClient(Duration.ofSeconds(10), c -> SsrfGuard.guard(c, false));
         this.secretResolver = secretResolver;
     }
 
-    @Override public String typeId() { return TYPE_ID; }
-    @Override public Map<String, Object> parametersSchema() { return PARAMETERS_SCHEMA; }
+    @Override
+    public String typeId() {
+        return TYPE_ID;
+    }
+
+    @Override
+    public Map<String, Object> parametersSchema() {
+        return PARAMETERS_SCHEMA;
+    }
 
     @Override
     public Collection<Tool> create(ServerToolDocument document) {
-        Set<String> labels = document.getLabels() == null
-                ? Set.of() : new LinkedHashSet<>(document.getLabels());
+        Set<String> labels = document.getLabels() == null ? Set.of() : new LinkedHashSet<>(document.getLabels());
         RestApiPackBuilder.PackInput input = new RestApiPackBuilder.PackInput(
                 document.getName(),
                 labels,
@@ -73,8 +92,12 @@ public class RestApiToolPackFactory implements ToolFactory {
                 document.isDefaultDeferred(),
                 document.getParameters());
         Collection<Tool> tools = RestApiPackBuilder.build(input, httpClient, secretResolver);
-        log.info("RestApiToolPackFactory pack='{}' tenant='{}' project='{}' produced {} tools",
-                document.getName(), document.getTenantId(), document.getProjectId(), tools.size());
+        log.info(
+                "RestApiToolPackFactory pack='{}' tenant='{}' project='{}' produced {} tools",
+                document.getName(),
+                document.getTenantId(),
+                document.getProjectId(),
+                tools.size());
         return List.copyOf(tools);
     }
 }

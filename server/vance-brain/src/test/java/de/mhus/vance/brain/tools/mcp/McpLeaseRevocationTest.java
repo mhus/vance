@@ -11,6 +11,7 @@ import de.mhus.vance.brain.oauth.OAuthTokenRefresher;
 import de.mhus.vance.brain.oauth.OAuthTokenStore;
 import de.mhus.vance.brain.tools.rest.SettingsSecretResolver;
 import de.mhus.vance.shared.lease.LeaseHolderInfo;
+import de.mhus.vance.shared.net.SsrfGuard;
 import de.mhus.vance.shared.servertool.ServerToolConfig;
 import de.mhus.vance.shared.servertool.ServerToolDocument;
 import de.mhus.vance.shared.servertool.ServerToolLoader;
@@ -46,6 +47,9 @@ class McpLeaseRevocationTest {
 
     @BeforeEach
     void start() throws IOException {
+        // The stub listens on loopback, which the guard refuses in every
+        // production mode — the dev escape hatch opens it.
+        SsrfGuard.setAllowPrivate(true);
         server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
         endpoint = "http://" + InetAddress.getLoopbackAddress().getHostAddress() + ":"
                 + server.getAddress().getPort() + "/mcp";
@@ -62,6 +66,7 @@ class McpLeaseRevocationTest {
 
     @AfterEach
     void stop() {
+        SsrfGuard.setAllowPrivate(false);
         server.stop(0);
     }
 

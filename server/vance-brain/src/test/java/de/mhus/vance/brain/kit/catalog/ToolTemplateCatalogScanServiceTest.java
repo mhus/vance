@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import de.mhus.vance.api.kit.ToolTemplateCatalogDto;
 import de.mhus.vance.api.kit.ToolTemplateCatalogEntry;
+import de.mhus.vance.brain.kit.KitSourceUrlPolicy;
 import de.mhus.vance.brain.kit.KitWorkspace;
 import de.mhus.vance.shared.kit.KitException;
 import java.io.IOException;
@@ -28,16 +29,17 @@ class ToolTemplateCatalogScanServiceTest {
     @BeforeEach
     void setUp() {
         KitWorkspace workspace = new KitWorkspace(tmpRoot.resolve("ws").toString());
-        scanner = new ToolTemplateCatalogScanService(workspace);
+        scanner = new ToolTemplateCatalogScanService(workspace, new KitSourceUrlPolicy(true));
     }
 
     @Test
     void scan_yieldsEntryPerToolsSubdirWithTemplateYaml() throws Exception {
         Path repo = setupLocalRepo();
-        writeTemplate(repo, "jira",
+        writeTemplate(
+                repo,
+                "jira",
                 "name: jira\ntitle: Atlassian Jira\ndescription: OAuth + REST\ncategory: developer-tools\n");
-        writeTemplate(repo, "smtp-sender",
-                "name: smtp-sender\ntitle: SMTP Sender\ncategory: communication\n");
+        writeTemplate(repo, "smtp-sender", "name: smtp-sender\ntitle: SMTP Sender\ncategory: communication\n");
         commitAll(repo, "initial");
 
         ToolTemplateCatalogDto result = scanner.scan(repo.toUri().toString(), "main", null);
@@ -49,7 +51,8 @@ class ToolTemplateCatalogScanServiceTest {
 
         ToolTemplateCatalogEntry jira = result.getTemplates().stream()
                 .filter(e -> "jira".equals(e.getName()))
-                .findFirst().orElseThrow();
+                .findFirst()
+                .orElseThrow();
         assertThat(jira.getTitle()).isEqualTo("Atlassian Jira");
         assertThat(jira.getDescription()).isEqualTo("OAuth + REST");
         assertThat(jira.getCategory()).isEqualTo("developer-tools");
@@ -77,8 +80,7 @@ class ToolTemplateCatalogScanServiceTest {
     void scan_appliesCatalogYamlOverrides() throws Exception {
         Path repo = setupLocalRepo();
         writeTemplate(repo, "jira", "name: jira\ntitle: Jira (template)\n");
-        Files.writeString(repo.resolve("tools").resolve("catalog.yaml"),
-                """
+        Files.writeString(repo.resolve("tools").resolve("catalog.yaml"), """
                 overrides:
                   jira:
                     name: atlassian/jira
@@ -138,7 +140,8 @@ class ToolTemplateCatalogScanServiceTest {
 
     private Path setupLocalRepo() throws IOException, GitAPIException {
         Path repo = Files.createDirectory(tmpRoot.resolve("source-" + System.nanoTime()));
-        try (Git git = Git.init().setDirectory(repo.toFile()).setInitialBranch("main").call()) {
+        try (Git git =
+                Git.init().setDirectory(repo.toFile()).setInitialBranch("main").call()) {
             // empty config
         }
         return repo;
@@ -150,8 +153,8 @@ class ToolTemplateCatalogScanServiceTest {
         Files.writeString(subDir.resolve("template.yaml"), templateYamlBody, StandardCharsets.UTF_8);
         // tool-templates kits also carry a kit.yaml — write a stub so the layout
         // matches the production convention.
-        Files.writeString(subDir.resolve("kit.yaml"),
-                "name: tools-" + subDirName + "\nartifact: true\n", StandardCharsets.UTF_8);
+        Files.writeString(
+                subDir.resolve("kit.yaml"), "name: tools-" + subDirName + "\nartifact: true\n", StandardCharsets.UTF_8);
     }
 
     private void commitAll(Path repo, String message) throws IOException, GitAPIException {

@@ -66,7 +66,10 @@ class HotblackServiceAnalyzeTest {
         // Every cascade string read (API key, timeout override, …) answers
         // "sk-test" — the key matters (buildConfig fails closed without
         // one), the rest tolerate a non-numeric string and fall back.
-        when(settingService.getStringValueCascade(any(), any(), any(), any())).thenReturn("sk-test");
+        // Every setting answers "sk-test" except the provider base URL, which stays
+        // unset so the provider default applies (a base URL must be a real URL).
+        when(settingService.getStringValueCascade(any(), any(), any(), any()))
+                .thenAnswer(inv -> inv.<String>getArgument(3).endsWith(".baseUrl") ? null : "sk-test");
         // The API key travels the password cascade (decrypted) — see
         // ChatBehaviorBuilder.resolveApiKey.
         when(settingService.getDecryptedPasswordCascade(any(), any(), any(), any()))

@@ -29,22 +29,27 @@ import org.springframework.stereotype.Service;
  * <p>Authentication for HTTPS repos uses GitHub-style token auth:
  * username {@code x-access-token}, password = the token. SSH URLs are
  * not supported in v1.
+ *
+ * <p>Every URL — source or export target — passes {@link KitSourceUrlPolicy}
+ * first: http(s) remotes on public hosts, local folders only when the operator
+ * allows them.
  */
 @Service
 @Slf4j
 public class KitRepoLoader {
+
+    private final KitSourceUrlPolicy urlPolicy;
+
+    public KitRepoLoader(KitSourceUrlPolicy urlPolicy) {
+        this.urlPolicy = urlPolicy;
+    }
 
     /**
      * Read-only handle on a materialized kit. {@link #root} is the
      * directory containing {@code kit.yaml} (i.e. {@code repoRoot} +
      * the optional sub-{@code path}).
      */
-    public record LoadedKit(
-            Path root,
-            Path repoRoot,
-            String commit,
-            KitDescriptorDto descriptor,
-            boolean fromFolder) {}
+    public record LoadedKit(Path root, Path repoRoot, String commit, KitDescriptorDto descriptor, boolean fromFolder) {}
 
     // WriteableTarget is the strategy interface; see GitWriteableTarget
     // and FolderWriteableTarget for the two implementations.
@@ -58,7 +63,8 @@ public class KitRepoLoader {
         if (source == null || source.getUrl() == null || source.getUrl().isBlank()) {
             throw new KitException("kit source url must not be blank");
         }
-        boolean fromFolder = isFolderUrl(source.getUrl());
+        urlPolicy.check(source.getUrl());
+        boolean fromFolder = KitSourceUrlPolicy.isFolderUrl(source.getUrl());
         String commit;
         Path repoRoot;
         if (fromFolder) {
@@ -76,8 +82,7 @@ public class KitRepoLoader {
 
         Path root = subPath(repoRoot, source.getPath());
         LoadedKit loaded = readTree(root, repoRoot, commit, fromFolder);
-        log.info("Loaded kit '{}' from {} (commit {})",
-                loaded.descriptor().getName(), source.getUrl(), commit);
+        log.info("Loaded kit '{}' from {} (commit {})", loaded.descriptor().getName(), source.getUrl(), commit);
         return loaded;
     }
 
@@ -95,8 +100,7 @@ public class KitRepoLoader {
      * @param fromFolder true when the tree is a local copy rather than a
      *     clone; callers use it to decide whether git operations apply
      */
-    public static LoadedKit readTree(
-            Path root, Path repoRoot, String commit, boolean fromFolder) {
+    public static LoadedKit readTree(Path root, Path repoRoot, String commit, boolean fromFolder) {
         Path descriptorFile = root.resolve("kit.yaml");
         if (!Files.isRegularFile(descriptorFile)) {
             throw new KitException("missing kit.yaml at " + descriptorFile);
@@ -126,7 +130,8 @@ public class KitRepoLoader {
         if (url == null || url.isBlank()) {
             throw new KitException("export url must not be blank");
         }
-        if (isFolderUrl(url)) {
+        urlPolicy.check(url);
+        if (KitSourceUrlPolicy.isFolderUrl(url)) {
             Path folder = resolveFolderUrl(url);
             return new FolderWriteableTarget(folder);
         }
@@ -146,8 +151,7 @@ public class KitRepoLoader {
     // ──────────────────── private ────────────────────
 
     private String cloneRepo(KitInheritDto source, @Nullable String token, Path target) {
-        String branch = source.getBranch() == null || source.getBranch().isBlank()
-                ? "main" : source.getBranch();
+        String branch = source.getBranch() == null || source.getBranch().isBlank() ? "main" : source.getBranch();
         try (Git git = Git.cloneRepository()
                 .setURI(source.getUrl())
                 .setDirectory(target.toFile())
@@ -176,17 +180,6 @@ public class KitRepoLoader {
             throw new KitException("kit path escapes repo root: " + path);
         }
         return resolved;
-    }
-
-    static boolean isFolderUrl(String url) {
-        if (url == null) return false;
-        String trimmed = url.trim();
-        if (trimmed.startsWith("file:")) return true;
-        if (trimmed.startsWith("/")) return true;
-        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")
-                || trimmed.startsWith("git@") || trimmed.startsWith("ssh://")) return false;
-        // Bare relative paths are not supported — only absolute or file://.
-        return false;
     }
 
     private static Path resolveFolderUrl(String url) {

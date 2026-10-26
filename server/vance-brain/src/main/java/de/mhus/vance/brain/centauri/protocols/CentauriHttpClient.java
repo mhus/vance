@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.centauri.protocols;
 
+import de.mhus.vance.shared.net.SsrfGuard;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -38,8 +39,7 @@ public interface CentauriHttpClient {
 
     Response get(URI url, Map<String, String> headers, Duration timeout) throws Exception;
 
-    Response postJson(URI url, String body, Map<String, String> headers, Duration timeout)
-            throws Exception;
+    Response postJson(URI url, String body, Map<String, String> headers, Duration timeout) throws Exception;
 
     /** Production wiring against the JDK client. */
     final class JdkCentauriHttpClient implements CentauriHttpClient {
@@ -47,10 +47,13 @@ public interface CentauriHttpClient {
         private final HttpClient client;
 
         public JdkCentauriHttpClient() {
-            this(HttpClient.newBuilder()
-                    .followRedirects(HttpClient.Redirect.NORMAL)
-                    .connectTimeout(Duration.ofSeconds(5))
-                    .build());
+            // Target URLs come from tenant config — every request and redirect
+            // hop passes the egress guard.
+            this(SsrfGuard.guard(
+                    HttpClient.newBuilder()
+                            .connectTimeout(Duration.ofSeconds(5))
+                            .build(),
+                    true));
         }
 
         JdkCentauriHttpClient(HttpClient client) {
@@ -58,8 +61,7 @@ public interface CentauriHttpClient {
         }
 
         @Override
-        public Response get(URI url, Map<String, String> headers, Duration timeout)
-                throws Exception {
+        public Response get(URI url, Map<String, String> headers, Duration timeout) throws Exception {
             HttpRequest.Builder request = HttpRequest.newBuilder()
                     .uri(url)
                     .header("Accept", "application/json")
@@ -70,9 +72,7 @@ public interface CentauriHttpClient {
         }
 
         @Override
-        public Response postJson(
-                URI url, String body, Map<String, String> headers, Duration timeout)
-                throws Exception {
+        public Response postJson(URI url, String body, Map<String, String> headers, Duration timeout) throws Exception {
             HttpRequest.Builder request = HttpRequest.newBuilder()
                     .uri(url)
                     .header("Accept", "application/json")
@@ -84,10 +84,8 @@ public interface CentauriHttpClient {
         }
 
         private Response send(HttpRequest request) throws Exception {
-            HttpResponse<String> response = client.send(
-                    request, HttpResponse.BodyHandlers.ofString());
-            return new Response(
-                    response.statusCode(), response.body() == null ? "" : response.body());
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            return new Response(response.statusCode(), response.body() == null ? "" : response.body());
         }
     }
 

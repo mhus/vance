@@ -36,4 +36,20 @@ public class WorkspaceProperties {
      * tool error so the LLM can react.
      */
     private int hardLimitPercent = 95;
+
+    /** {@code vance.workspace.node.*} — npm used for Node RootDirs (script libraries). */
+    private Node node = new Node();
+
+    @Data
+    public static class Node {
+
+        /** npm binary. Operator config only — never taken from RootDir metadata. */
+        private String npmPath = "npm";
+
+        /** Registry passed on every npm command line; a {@code .npmrc} in the RootDir cannot redirect it. */
+        private String registry = "https://registry.npmjs.org/";
+
+        /** Upper bound for one RootDir's {@code node_modules}; an install that exceeds it is rolled back. */
+        private long maxBytes = 512L * 1024 * 1024;
+    }
 }

@@ -72,6 +72,16 @@ vance:
       # localhost / a LAN service while testing — it re-opens SSRF and logs a
       # startup warning. Operator config only; never an LLM-controllable flag.
       allow-private: false
+      # Production policy for URLs that tenants control (server-tools.md §16).
+      # Loopback, link-local (cloud metadata), unspecified, multicast and
+      # broadcast are always refused. 'deny' (default): only public addresses.
+      # 'allow': private ranges (RFC 1918, CGNAT, ULA) are reachable too — then
+      # list in 'denied' what no tenant may reach (cluster networks, DB hosts).
+      private-networks: deny
+      # Comma-separated CIDR ranges or host names (a string, not a YAML list;
+      # env VANCE_NET_SSRF_DENIED). Applies in both modes. Only ranges really
+      # protect; a host name is bypassed by using the IP.
+      denied: ""
   settings:
     # Setting keys an agent may never write — through a kit install or a tool
     # template, the two LLM-reachable setting-write paths. Applies regardless of

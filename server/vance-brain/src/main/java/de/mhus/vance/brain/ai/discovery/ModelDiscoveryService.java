@@ -10,6 +10,7 @@ import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ai.TlsInsecure;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.net.SsrfGuard;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.settings.SettingDocument;
@@ -241,6 +242,16 @@ public class ModelDiscoveryService {
             log.debug("ModelDiscoveryService: no provider bean for type '{}' (instance '{}')", cfg.type(), instance);
             result.instanceFailed(tenantId, projectId, instance, "No provider bean registered for type " + cfg.type());
             return;
+        }
+        if (cfg.baseUrl() != null) {
+            // Tenant-configured endpoint — must pass the egress guard before
+            // the brain sends a credential-carrying request there.
+            try {
+                SsrfGuard.assertAllowed(cfg.baseUrl());
+            } catch (SsrfGuard.SsrfException e) {
+                result.instanceFailed(tenantId, projectId, instance, e.getMessage());
+                return;
+            }
         }
         ProviderListingRequest req =
                 new ProviderListingRequest(instance, cfg.apiKey(), cfg.baseUrl(), cfg.insecureTls());

@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.zarniwoop.protocols;
 
+import de.mhus.vance.shared.net.SsrfGuard;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -21,7 +22,7 @@ import java.util.Map;
  */
 public interface SimpleHttpClient {
 
-    record Response(int statusCode, String body) { }
+    record Response(int statusCode, String body) {}
 
     Response get(URI url, String userAgent, Duration timeout) throws Exception;
 
@@ -31,10 +32,13 @@ public interface SimpleHttpClient {
         private final HttpClient client;
 
         public JdkSimpleHttpClient() {
-            this(HttpClient.newBuilder()
-                    .followRedirects(HttpClient.Redirect.NORMAL)
-                    .connectTimeout(Duration.ofSeconds(5))
-                    .build());
+            // Target URLs come from tenant config — every request and redirect
+            // hop passes the egress guard.
+            this(SsrfGuard.guard(
+                    HttpClient.newBuilder()
+                            .connectTimeout(Duration.ofSeconds(5))
+                            .build(),
+                    true));
         }
 
         JdkSimpleHttpClient(HttpClient client) {
@@ -50,8 +54,7 @@ public interface SimpleHttpClient {
                     .timeout(timeout)
                     .GET()
                     .build();
-            HttpResponse<String> r = client.send(
-                    request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> r = client.send(request, HttpResponse.BodyHandlers.ofString());
             return new Response(r.statusCode(), r.body() == null ? "" : r.body());
         }
     }

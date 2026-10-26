@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.oauth;
 
+import de.mhus.vance.shared.net.SsrfGuard;
 import de.mhus.vance.toolpack.core.PackHttpClient;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -76,7 +77,8 @@ public class GenericOAuth2Provider implements OAuthProvider {
     protected final ObjectMapper json;
 
     public GenericOAuth2Provider() {
-        this(new PackHttpClient());
+        // Token/userinfo endpoints come from provider config (or MCP discovery) — guarded egress.
+        this(new PackHttpClient(Duration.ofSeconds(10), c -> SsrfGuard.guard(c, false)));
     }
 
     GenericOAuth2Provider(PackHttpClient httpClient) {

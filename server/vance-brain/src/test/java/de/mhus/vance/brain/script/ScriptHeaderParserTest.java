@@ -25,8 +25,7 @@ class ScriptHeaderParserTest {
 
     @Test
     void parse_maxResultNodes_uses_count_grammar() {
-        ScriptHeader h = ScriptHeaderParser.parse(
-                "/**\n * @maxResultNodes 5k\n */\n42", "test");
+        ScriptHeader h = ScriptHeaderParser.parse("/**\n * @maxResultNodes 5k\n */\n42", "test");
         assertThat(h.maxResultNodes()).isEqualTo(5_000L);
         assertThat(h.isPresent()).isTrue();
     }
@@ -71,16 +70,14 @@ class ScriptHeaderParserTest {
                  * @allowTools  doc_write, process_run, web_search
                  */
                 """, "test");
-        assertThat(commas.allowTools())
-                .containsExactly("doc_write", "process_run", "web_search");
+        assertThat(commas.allowTools()).containsExactly("doc_write", "process_run", "web_search");
 
         ScriptHeader spaces = ScriptHeaderParser.parse("""
                 /**
                  * @allowTools doc_write  process_run   web_search
                  */
                 """, "test");
-        assertThat(spaces.allowTools())
-                .containsExactly("doc_write", "process_run", "web_search");
+        assertThat(spaces.allowTools()).containsExactly("doc_write", "process_run", "web_search");
     }
 
     @Test
@@ -92,8 +89,7 @@ class ScriptHeaderParserTest {
                  */
                 """, "test");
         assertThat(h.requiresTools()).containsExactly("process_run");
-        assertThat(h.allowTools())
-                .containsExactly("process_run", "doc_write");
+        assertThat(h.allowTools()).containsExactly("process_run", "doc_write");
     }
 
     @Test
@@ -104,8 +100,7 @@ class ScriptHeaderParserTest {
                  * @version     1.2.0
                  */
                 """, "test");
-        assertThat(h.description())
-                .isEqualTo("School-essay chapter-loop orchestrator");
+        assertThat(h.description()).isEqualTo("School-essay chapter-loop orchestrator");
         assertThat(h.version()).isEqualTo("1.2.0");
     }
 
@@ -137,16 +132,14 @@ class ScriptHeaderParserTest {
     void parse_malformed_duration_throws_INVALID_HEADER() {
         assertThatThrownBy(() -> parseTimeout("abc"))
                 .isInstanceOf(ScriptExecutionException.class)
-                .satisfies(e -> assertThat(
-                        ((ScriptExecutionException) e).errorClass())
+                .satisfies(e -> assertThat(((ScriptExecutionException) e).errorClass())
                         .isEqualTo(ScriptExecutionException.ErrorClass.INVALID_HEADER))
                 .hasMessageContaining("@timeout");
     }
 
     @Test
     void parse_negative_duration_throws_INVALID_HEADER() {
-        assertThatThrownBy(() -> parseTimeout("-5s"))
-                .isInstanceOf(ScriptExecutionException.class);
+        assertThatThrownBy(() -> parseTimeout("-5s")).isInstanceOf(ScriptExecutionException.class);
     }
 
     @Test
@@ -169,8 +162,7 @@ class ScriptHeaderParserTest {
                  */
                 """, "test");
         assertThat(h.timeout()).isEqualTo(Duration.ofMinutes(5));
-        assertThat(h.description())
-                .isEqualTo("Has leading-star prefix");
+        assertThat(h.description()).isEqualTo("Has leading-star prefix");
     }
 
     @Test
@@ -225,17 +217,65 @@ class ScriptHeaderParserTest {
         assertThat(h.isPresent()).isFalse();
     }
 
+    @Test
+    void parse_maxHeapMemory_size_formats() {
+        assertThat(parseHeap("64MB")).isEqualTo(64L * 1024 * 1024);
+        assertThat(parseHeap("512kb")).isEqualTo(512L * 1024);
+        assertThat(parseHeap("1GB")).isEqualTo(1024L * 1024 * 1024);
+        assertThat(parseHeap("1_048_576")).isEqualTo(1_048_576L);
+    }
+
+    @Test
+    void parse_maxCpuTime_uses_duration_grammar() {
+        ScriptHeader h = ScriptHeaderParser.parse("/**\n * @maxCpuTime 10s\n */\n42", "test");
+        assertThat(h.maxCpuTime()).isEqualTo(Duration.ofSeconds(10));
+        assertThat(h.isPresent()).isTrue();
+    }
+
+    @Test
+    void parse_maxHeapMemory_malformed_raises_invalid_header() {
+        assertThatThrownBy(() -> parseHeap("lots"))
+                .isInstanceOf(ScriptExecutionException.class)
+                .satisfies(e -> assertThat(((ScriptExecutionException) e).errorClass())
+                        .isEqualTo(ScriptExecutionException.ErrorClass.INVALID_HEADER));
+    }
+
+    @Test
+    void parse_maxHeapMemory_overflow_raises_invalid_header() {
+        assertThatThrownBy(() -> parseHeap("9999999999999GB"))
+                .isInstanceOf(ScriptExecutionException.class)
+                .satisfies(e -> assertThat(((ScriptExecutionException) e).errorClass())
+                        .isEqualTo(ScriptExecutionException.ErrorClass.INVALID_HEADER));
+    }
+
+    @Test
+    void parse_requires_keepsRegistrySpecsWithVersion() {
+        ScriptHeader h = ScriptHeaderParser.parse("/**\n * @requires lodash@^4.17.0, @scope/pkg\n */\n", "test");
+        assertThat(h.requires()).containsExactly("lodash@^4.17.0", "@scope/pkg");
+    }
+
+    @Test
+    void parse_requires_fileSpec_raisesInvalidHeader() {
+        assertThatThrownBy(() -> ScriptHeaderParser.parse("/**\n * @requires file:/etc\n */\n", "test"))
+                .isInstanceOf(ScriptExecutionException.class)
+                .satisfies(e -> assertThat(((ScriptExecutionException) e).errorClass())
+                        .isEqualTo(ScriptExecutionException.ErrorClass.INVALID_HEADER));
+    }
+
     // ──────────────────── helpers ────────────────────
 
+    private static Long parseHeap(String value) {
+        ScriptHeader h = ScriptHeaderParser.parse("/**\n * @maxHeapMemory " + value + "\n */\n", "test");
+        return h.maxHeapMemory();
+    }
+
     private static Duration parseTimeout(String value) {
-        ScriptHeader h = ScriptHeaderParser.parse(
-                "/**\n * @timeout " + value + "\n */\n", "test");
+        ScriptHeader h = ScriptHeaderParser.parse("/**\n * @timeout " + value + "\n */\n", "test");
         return h.timeout();
     }
 
     private static long parseStatements(String value) {
-        ScriptHeader h = ScriptHeaderParser.parse(
-                "/**\n * @statements " + value + "\n */\n", "test");
+        ScriptHeader h = ScriptHeaderParser.parse("/**\n * @statements " + value + "\n */\n", "test");
         return h.statementLimit();
     }
 }

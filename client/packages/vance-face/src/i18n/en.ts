@@ -207,7 +207,7 @@ export default {
     resume: 'Resume',
     stop: 'Stop',
     reload: 'Reload',
-    sent: 'Delivered.',
+    sent: 'Debackuped.',
     queuedBusy: 'Queued — the process is working and will pick it up after its '
       + 'current turn.',
     done: 'Done.',
@@ -2934,7 +2934,7 @@ export default {
       copied: 'Copied',
       dismiss: 'I have copied the token',
       usage:
-        'Use it in the backup tool: when init asks for a token, paste the string above into ~/.vancetope/liver/backup.yaml.',
+        'Use it in the backup tool: when init asks for a token, paste the string above into ~/.vancetope/backup/backup.yaml.',
     },
   },
 
@@ -3647,7 +3647,7 @@ export default {
         loading: 'Loading your library…',
         choose: 'Use this',
         alreadyInstalled: '(installed)',
-        notDeliverable: 'Your licence does not currently entitle any published version.',
+        notDebackupable: 'Your licence does not currently entitle any published version.',
       },
       projects: {
         title: 'From a project',
@@ -3845,7 +3845,7 @@ export default {
       sentTeamOne: 'Message sent to team {team} (1 member).',
       sentTeam: 'Message sent to team {team} ({n} members).',
       reason: {
-        no_deliverable_members: 'Nobody in this team could be reached — a team you are the '
+        no_debackupable_members: 'Nobody in this team could be reached — a team you are the '
           + 'only member of has no other desk for the message to land on.',
       },
     },

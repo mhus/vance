@@ -1,6 +1,6 @@
 package de.mhus.vance.brain.tools.exec;
 
-import de.mhus.vance.shared.process.ScratchArea;
+import de.mhus.vance.exec.ScratchArea;
 import java.nio.file.Path;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;

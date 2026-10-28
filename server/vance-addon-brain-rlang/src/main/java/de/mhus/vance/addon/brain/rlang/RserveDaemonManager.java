@@ -1,7 +1,7 @@
 package de.mhus.vance.addon.brain.rlang;
 
-import de.mhus.vance.shared.process.ProcessLauncher;
-import de.mhus.vance.shared.process.ProcessSpec;
+import de.mhus.vance.exec.ProcessLauncher;
+import de.mhus.vance.exec.ProcessSpec;
 import de.mhus.vance.toolpack.ToolException;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;

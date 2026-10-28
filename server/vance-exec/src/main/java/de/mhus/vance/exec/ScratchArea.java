@@ -1,4 +1,4 @@
-package de.mhus.vance.shared.process;
+package de.mhus.vance.exec;
 
 import java.io.IOException;
 import java.nio.file.DirectoryStream;

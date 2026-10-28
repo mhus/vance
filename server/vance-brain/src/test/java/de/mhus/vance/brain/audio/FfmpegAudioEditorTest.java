@@ -6,8 +6,8 @@ import static org.assertj.core.api.Assertions.within;
 
 import de.mhus.vance.brain.ai.audio.AudioMimeTypeSniffer;
 import de.mhus.vance.brain.ai.audio.PcmWav;
-import de.mhus.vance.shared.process.ProcessLauncher;
-import de.mhus.vance.shared.process.ScratchArea;
+import de.mhus.vance.exec.ProcessLauncher;
+import de.mhus.vance.exec.ScratchArea;
 import de.mhus.vance.toolpack.ToolCapabilities;
 import java.nio.file.Files;
 import java.nio.file.Path;

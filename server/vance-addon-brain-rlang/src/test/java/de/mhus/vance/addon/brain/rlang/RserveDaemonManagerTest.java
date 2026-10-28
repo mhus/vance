@@ -8,7 +8,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import de.mhus.vance.shared.process.ProcessLauncher;
+import de.mhus.vance.exec.ProcessLauncher;
 import de.mhus.vance.toolpack.ToolException;
 import org.junit.jupiter.api.Test;
 

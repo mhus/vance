@@ -1,11 +1,11 @@
 package de.mhus.vance.brain.audio;
 
 import de.mhus.vance.brain.tools.PodCapabilityContributor;
-import de.mhus.vance.brain.tools.exec.ProgramProbe;
-import de.mhus.vance.shared.process.ProcessLauncher;
-import de.mhus.vance.shared.process.ProcessSpec;
-import de.mhus.vance.shared.process.ScratchArea;
-import de.mhus.vance.shared.process.ScratchArea.Scratch;
+import de.mhus.vance.exec.ProcessLauncher;
+import de.mhus.vance.exec.ProcessSpec;
+import de.mhus.vance.exec.ProgramProbe;
+import de.mhus.vance.exec.ScratchArea;
+import de.mhus.vance.exec.ScratchArea.Scratch;
 import de.mhus.vance.toolpack.ToolCapabilities;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

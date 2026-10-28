@@ -1,13 +1,15 @@
 package de.mhus.vance.brain.tools.exec;
 
-import de.mhus.vance.shared.process.ProcessLauncher;
-import de.mhus.vance.shared.process.ProcessSpec;
+import de.mhus.vance.exec.ProcessIsolation;
+import de.mhus.vance.exec.ProcessLauncher;
+import de.mhus.vance.exec.ProcessSpec;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Service;
+import org.springframework.util.unit.DataSize;
 
 /**
  * The brain's {@link ProcessLauncher}: every starter outside {@code ExecManager}
@@ -25,7 +27,7 @@ import org.springframework.stereotype.Service;
  * <p>With {@code vance.exec.isolation.mode=custom} and a
  * {@code process-wrapper} the argv runs inside that wrapper, seeing only what the
  * spec declares; {@code vance.exec.process-limits.*} caps it with {@code prlimit}
- * (phase 2c, see {@link ProcessIsolation}).
+ * (phase 2c, see {@link ProcessIsolation} in {@code vance-exec}).
  */
 @Service
 public class SealedProcessLauncher implements ProcessLauncher {
@@ -56,13 +58,33 @@ public class SealedProcessLauncher implements ProcessLauncher {
 
     /** Whether starters run inside the configured process wrapper. */
     public boolean isolated() {
-        return ProcessIsolation.enabled(properties.getIsolation());
+        return wrapper().enabled();
     }
 
     List<String> argv(ProcessSpec spec, Map<String, String> childEnv) {
         Path home = home(childEnv);
         Path workdir = spec.workingDir() != null ? spec.workingDir() : home;
-        return ProcessIsolation.argv(spec, home, workdir, properties.getIsolation(), properties.getProcessLimits());
+        return ProcessIsolation.argv(spec, home, workdir, wrapper(), limits());
+    }
+
+    /** {@code vance.exec.isolation.*}: the wrapper applies only with {@code mode: custom}. */
+    private ProcessIsolation.Wrapper wrapper() {
+        ExecProperties.Isolation iso = properties.getIsolation();
+        String template = "custom".equals(iso.getMode()) ? iso.getProcessWrapper() : null;
+        return new ProcessIsolation.Wrapper(
+                template, iso.getBindArgs(), iso.getReadOnlyBindArgs(), iso.getNoNetworkArgs());
+    }
+
+    /** {@code vance.exec.process-limits.*} in bytes and seconds. */
+    private ProcessIsolation.Limits limits() {
+        ExecProperties.ProcessLimits limits = properties.getProcessLimits();
+        DataSize addressSpace = limits.getAddressSpace();
+        DataSize fileSize = limits.getFileSize();
+        return new ProcessIsolation.Limits(
+                limits.getPrlimitPath(),
+                addressSpace == null ? null : addressSpace.toBytes(),
+                limits.getCpuSeconds(),
+                fileSize == null ? null : fileSize.toBytes());
     }
 
     Map<String, String> childEnvironment(ProcessSpec spec) {

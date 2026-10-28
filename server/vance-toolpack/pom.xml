@@ -19,6 +19,11 @@
             <artifactId>vance-api</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-exec</artifactId>
+            <version>${project.version}</version>
+        </dependency>
 
         <!-- OpenAPI / Swagger spec parsing for REST-API tool packs. -->
         <dependency>

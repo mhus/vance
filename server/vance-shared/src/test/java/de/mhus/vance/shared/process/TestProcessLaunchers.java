@@ -3,6 +3,7 @@ package de.mhus.vance.shared.process;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.exec.ProcessLauncher;
 import org.springframework.beans.factory.ObjectProvider;
 
 /**

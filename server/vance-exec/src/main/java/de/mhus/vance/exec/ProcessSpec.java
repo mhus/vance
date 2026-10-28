@@ -1,4 +1,4 @@
-package de.mhus.vance.shared.process;
+package de.mhus.vance.exec;
 
 import java.nio.file.Path;
 import java.util.List;

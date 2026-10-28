@@ -1,6 +1,6 @@
 package de.mhus.vance.brain.tools.exec;
 
-import de.mhus.vance.shared.process.ProcessSpec;
+import de.mhus.vance.exec.ProcessSpec;
 import de.mhus.vance.shared.workspace.WorkspaceProperties;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

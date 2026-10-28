@@ -1,7 +1,7 @@
 package de.mhus.vance.shared.workspace;
 
-import de.mhus.vance.shared.process.ProcessLauncher;
-import de.mhus.vance.shared.process.ProcessSpec;
+import de.mhus.vance.exec.ProcessLauncher;
+import de.mhus.vance.exec.ProcessSpec;
 import jakarta.annotation.PostConstruct;
 import java.io.IOException;
 import java.io.UncheckedIOException;

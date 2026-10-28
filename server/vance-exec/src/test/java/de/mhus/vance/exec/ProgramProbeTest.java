@@ -1,8 +1,7 @@
-package de.mhus.vance.brain.tools.exec;
+package de.mhus.vance.exec;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import de.mhus.vance.shared.process.ProcessLauncher;
 import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;

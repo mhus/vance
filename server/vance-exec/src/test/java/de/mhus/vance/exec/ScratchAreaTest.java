@@ -1,9 +1,9 @@
-package de.mhus.vance.shared.process;
+package de.mhus.vance.exec;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import de.mhus.vance.shared.process.ScratchArea.Scratch;
+import de.mhus.vance.exec.ScratchArea.Scratch;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

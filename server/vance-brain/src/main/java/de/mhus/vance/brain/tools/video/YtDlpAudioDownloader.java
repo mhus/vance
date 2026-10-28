@@ -1,8 +1,8 @@
 package de.mhus.vance.brain.tools.video;
 
-import de.mhus.vance.brain.tools.exec.ProgramProbe;
-import de.mhus.vance.shared.process.ProcessLauncher;
-import de.mhus.vance.shared.process.ProcessSpec;
+import de.mhus.vance.exec.ProcessLauncher;
+import de.mhus.vance.exec.ProcessSpec;
+import de.mhus.vance.exec.ProgramProbe;
 import de.mhus.vance.toolpack.ToolException;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

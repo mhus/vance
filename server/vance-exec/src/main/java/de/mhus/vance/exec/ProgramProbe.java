@@ -1,7 +1,5 @@
-package de.mhus.vance.brain.tools.exec;
+package de.mhus.vance.exec;
 
-import de.mhus.vance.shared.process.ProcessLauncher;
-import de.mhus.vance.shared.process.ProcessSpec;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;

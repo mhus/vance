@@ -2,8 +2,8 @@ package de.mhus.vance.brain.tools.exec;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import de.mhus.vance.shared.process.ProcessSpec;
-import de.mhus.vance.toolpack.exec.ExecEnvPolicy;
+import de.mhus.vance.exec.ExecEnvPolicy;
+import de.mhus.vance.exec.ProcessSpec;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;

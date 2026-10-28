@@ -24,6 +24,7 @@ import de.mhus.vance.toolpack.mcp.SessionGuard;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
@@ -127,7 +128,7 @@ class McpLeaseRevocationTest {
                 loader,
                 mock(OAuthTokenStore.class),
                 mock(OAuthTokenRefresher.class),
-                new PodCapabilities(new WorkspaceProperties()));
+                new PodCapabilities(new WorkspaceProperties(), List.of()));
     }
 
     private LeaseHolderInfo deadHolder(String sessionEndpoint) {

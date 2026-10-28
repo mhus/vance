@@ -17,14 +17,41 @@ class PodCapabilitiesTest {
 
     @Test
     void localMode_offersWorkspace() {
-        assertThat(new PodCapabilities(properties(WorkspaceMode.LOCAL)).available())
+        assertThat(new PodCapabilities(properties(WorkspaceMode.LOCAL), List.of()).available())
                 .containsExactly(ToolCapabilities.WORKSPACE);
     }
 
     @Test
     void offMode_offersNothing() {
-        assertThat(new PodCapabilities(properties(WorkspaceMode.OFF)).available())
+        assertThat(new PodCapabilities(properties(WorkspaceMode.OFF), List.of()).available())
                 .isEmpty();
+    }
+
+    @Test
+    void contributors_addTheirCapabilities() {
+        PodCapabilityContributor ffmpeg = () -> Set.of(ToolCapabilities.AUDIO_TOOLS);
+        PodCapabilityContributor none = Set::of;
+
+        assertThat(new PodCapabilities(properties(WorkspaceMode.OFF), List.of(ffmpeg, none)).available())
+                .containsExactly(ToolCapabilities.AUDIO_TOOLS);
+    }
+
+    @Test
+    void audioTool_withoutAudioCapability_isWithheld() {
+        Tool trim = tool("audio_trim", Set.of(ToolCapabilities.AUDIO_TOOLS));
+
+        BuiltInToolSource without = new BuiltInToolSource(
+                List.of(trim),
+                mock(ServerToolService.class),
+                new PodCapabilities(properties(WorkspaceMode.OFF), List.of()));
+        BuiltInToolSource with = new BuiltInToolSource(
+                List.of(trim),
+                mock(ServerToolService.class),
+                new PodCapabilities(
+                        properties(WorkspaceMode.OFF), List.of(() -> Set.of(ToolCapabilities.AUDIO_TOOLS))));
+
+        assertThat(without.find("audio_trim")).isEmpty();
+        assertThat(with.find("audio_trim")).contains(trim);
     }
 
     @Test
@@ -35,7 +62,7 @@ class PodCapabilitiesTest {
         BuiltInToolSource source = new BuiltInToolSource(
                 List.of(plain, workspace),
                 mock(ServerToolService.class),
-                new PodCapabilities(properties(WorkspaceMode.OFF)));
+                new PodCapabilities(properties(WorkspaceMode.OFF), List.of()));
 
         assertThat(source.list()).containsExactly(plain);
         assertThat(source.find("work_file_read")).isEmpty();
@@ -49,7 +76,7 @@ class PodCapabilitiesTest {
         BuiltInToolSource source = new BuiltInToolSource(
                 List.of(workspace),
                 mock(ServerToolService.class),
-                new PodCapabilities(properties(WorkspaceMode.LOCAL)));
+                new PodCapabilities(properties(WorkspaceMode.LOCAL), List.of()));
 
         assertThat(source.find("work_file_read")).contains(workspace);
     }

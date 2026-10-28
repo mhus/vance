@@ -1,17 +1,23 @@
 package de.mhus.vance.brain.audio;
 
+import de.mhus.vance.brain.tools.PodCapabilityContributor;
+import de.mhus.vance.brain.tools.exec.ProgramProbe;
 import de.mhus.vance.shared.process.ProcessLauncher;
 import de.mhus.vance.shared.process.ProcessSpec;
 import de.mhus.vance.shared.process.ScratchArea;
 import de.mhus.vance.shared.process.ScratchArea.Scratch;
+import de.mhus.vance.toolpack.ToolCapabilities;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -37,7 +43,8 @@ import tools.jackson.databind.json.JsonMapper;
  * consumer of these documents can play.
  */
 @Component
-public class FfmpegAudioEditor {
+@Slf4j
+public class FfmpegAudioEditor implements PodCapabilityContributor {
 
     /** Two containers, fixed. Anything else is a caller bug. */
     private static final List<String> OUTPUT_FORMATS = List.of("mp3", "wav");
@@ -51,6 +58,8 @@ public class FfmpegAudioEditor {
     /** ffprobe/ffmpeg is chatty on stderr even at error level; keep
      *  only the tail for exception messages. */
     private static final int STDERR_TAIL_LINES = 8;
+
+    private static final Duration PROBE_TIMEOUT = Duration.ofSeconds(10);
 
     private final String ffmpegBin;
     private final String ffprobeBin;
@@ -71,6 +80,25 @@ public class FfmpegAudioEditor {
         this.ffmpegBin = ffmpegBin;
         this.ffprobeBin = ffprobeBin;
         this.timeoutSeconds = timeoutSeconds;
+    }
+
+    /**
+     * {@link ToolCapabilities#AUDIO_TOOLS} when both ffmpeg and ffprobe run here —
+     * the cloud image ships without them, and then the audio edit tools stay out of
+     * the inventory instead of failing on every call.
+     */
+    @Override
+    public Set<String> capabilities() {
+        boolean ffmpeg = ProgramProbe.runs(launcher, List.of(ffmpegBin, "-version"), PROBE_TIMEOUT);
+        boolean ffprobe = ProgramProbe.runs(launcher, List.of(ffprobeBin, "-version"), PROBE_TIMEOUT);
+        if (ffmpeg && ffprobe) {
+            return Set.of(ToolCapabilities.AUDIO_TOOLS);
+        }
+        log.info(
+                "Audio edit tools unavailable: ffmpeg {}, ffprobe {}",
+                ffmpeg ? "runs" : "missing",
+                ffprobe ? "runs" : "missing");
+        return Set.of();
     }
 
     /** What ffprobe reports about one audio input. */

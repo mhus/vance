@@ -62,7 +62,7 @@ class SourceCatalogBuilderTest {
         SourceCatalogBuilder builder = new SourceCatalogBuilder(
                 documentService,
                 skillResolver,
-                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties())));
+                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties(), List.of())));
         CatalogSnapshot snapshot = builder.build(TENANT, null);
 
         assertThat(snapshot.markdown())
@@ -96,7 +96,7 @@ class SourceCatalogBuilderTest {
         SourceCatalogBuilder builder = new SourceCatalogBuilder(
                 documentService,
                 skillResolver,
-                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties())));
+                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties(), List.of())));
         String md = builder.build(TENANT, null).markdown();
 
         assertThat(md)
@@ -127,7 +127,7 @@ class SourceCatalogBuilderTest {
         SourceCatalogBuilder builder = new SourceCatalogBuilder(
                 documentService,
                 skillResolver,
-                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties())));
+                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties(), List.of())));
         String md = builder.build(TENANT, null).markdown();
 
         assertThat(md)
@@ -153,7 +153,7 @@ class SourceCatalogBuilderTest {
         SourceCatalogBuilder builder = new SourceCatalogBuilder(
                 documentService,
                 skillResolver,
-                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties())));
+                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties(), List.of())));
         String md = builder.build(TENANT, null).markdown();
 
         assertThat(md)
@@ -180,7 +180,7 @@ class SourceCatalogBuilderTest {
         SourceCatalogBuilder builder = new SourceCatalogBuilder(
                 documentService,
                 skillResolver,
-                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties())));
+                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties(), List.of())));
         String md = builder.build(TENANT, null).markdown();
 
         int alphaIdx = md.indexOf("### alpha");
@@ -215,7 +215,7 @@ class SourceCatalogBuilderTest {
         SourceCatalogBuilder builder = new SourceCatalogBuilder(
                 documentService,
                 skillResolver,
-                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties())));
+                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties(), List.of())));
         String md = builder.build(TENANT, null).markdown();
 
         assertThat(md)
@@ -251,7 +251,7 @@ class SourceCatalogBuilderTest {
         SourceCatalogBuilder builder = new SourceCatalogBuilder(
                 documentService,
                 skillResolver,
-                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties())));
+                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties(), List.of())));
         String md = builder.build(TENANT, null).markdown();
 
         assertThat(md).doesNotContain("## Skills");
@@ -276,7 +276,7 @@ class SourceCatalogBuilderTest {
         SourceCatalogBuilder builder = new SourceCatalogBuilder(
                 documentService,
                 skillResolver,
-                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties())));
+                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties(), List.of())));
         String hash1 = builder.build(TENANT, null).contentHash();
         String hash2 = builder.build(TENANT, null).contentHash();
 
@@ -294,7 +294,7 @@ class SourceCatalogBuilderTest {
         SourceCatalogBuilder builder = new SourceCatalogBuilder(
                 documentService,
                 skillResolver,
-                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties())));
+                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties(), List.of())));
         CatalogSnapshot snap = builder.build(TENANT, null);
 
         assertThat(snap.markdown()).isEmpty();

@@ -8,10 +8,17 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class ScriptEngineConfig {
 
+    /**
+     * The shared GraalJS engine. {@code engine.WarnInterpreterOnly} stays on: when
+     * the JDK's GraalVM version does not match the bundled polyglot version, Truffle
+     * silently falls back to an interpreter-only runtime — no JIT and no
+     * {@code sandbox.MaxHeapMemory} — and this warning is the only trace of it
+     * ({@code planning/multi-tenant-isolation.md} P19).
+     */
     @Bean(destroyMethod = "close")
     public Engine scriptEngine() {
         return Engine.newBuilder("js")
-                .option("engine.WarnInterpreterOnly", "false")
+                .option("engine.WarnInterpreterOnly", "true")
                 .build();
     }
 

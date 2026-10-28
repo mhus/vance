@@ -5,6 +5,7 @@ import de.mhus.vance.brain.audio.AudioManipulationService;
 import de.mhus.vance.brain.audio.AudioProbeResult;
 import de.mhus.vance.brain.audio.ProbeRequest;
 import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolCapabilities;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.ToolLabels;
@@ -48,6 +49,12 @@ public class AudioInfoTool implements Tool {
                             "Document id of the audio file. Use exactly one of `path` / " + "`documentId`.")),
             "required",
             List.of());
+
+    /** ffmpeg must run here — absent in the cloud image. */
+    @Override
+    public Set<String> requiresCapabilities() {
+        return Set.of(ToolCapabilities.AUDIO_TOOLS);
+    }
 
     @Override
     public String name() {

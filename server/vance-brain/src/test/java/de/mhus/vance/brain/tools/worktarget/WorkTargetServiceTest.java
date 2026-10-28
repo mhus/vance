@@ -18,6 +18,7 @@ import de.mhus.vance.shared.worktarget.WorkTarget;
 import de.mhus.vance.shared.worktarget.WorkTargetKind;
 import de.mhus.vance.toolpack.ToolException;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,7 +40,7 @@ class WorkTargetServiceTest {
         thinkProcessService = mock(ThinkProcessService.class);
         clientToolRegistry = mock(ClientToolRegistry.class);
         service = new WorkTargetService(
-                thinkProcessService, clientToolRegistry, new PodCapabilities(new WorkspaceProperties()));
+                thinkProcessService, clientToolRegistry, new PodCapabilities(new WorkspaceProperties(), List.of()));
         process = new ThinkProcessDocument();
         process.setId(PROC_ID);
         process.setSessionId(SESSION_ID);
@@ -201,7 +202,7 @@ class WorkTargetServiceTest {
         WorkspaceProperties off = new WorkspaceProperties();
         off.setMode(WorkspaceMode.OFF);
         WorkTargetService offService =
-                new WorkTargetService(thinkProcessService, clientToolRegistry, new PodCapabilities(off));
+                new WorkTargetService(thinkProcessService, clientToolRegistry, new PodCapabilities(off, List.of()));
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> offService.set(PROC_ID, WorkTarget.work(null)))
                 .isInstanceOf(ToolException.class)
@@ -213,7 +214,7 @@ class WorkTargetServiceTest {
         WorkspaceProperties off = new WorkspaceProperties();
         off.setMode(WorkspaceMode.OFF);
         WorkTargetService offService =
-                new WorkTargetService(thinkProcessService, clientToolRegistry, new PodCapabilities(off));
+                new WorkTargetService(thinkProcessService, clientToolRegistry, new PodCapabilities(off, List.of()));
 
         assertThat(offService.defaultFor(process).kind()).isEqualTo(WorkTargetKind.NONE);
     }

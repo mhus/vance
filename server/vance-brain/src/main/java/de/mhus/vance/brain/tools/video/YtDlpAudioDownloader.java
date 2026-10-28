@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.video;
 
+import de.mhus.vance.brain.tools.exec.ProgramProbe;
 import de.mhus.vance.shared.process.ProcessLauncher;
 import de.mhus.vance.shared.process.ProcessSpec;
 import de.mhus.vance.toolpack.ToolException;
@@ -12,6 +13,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
@@ -39,6 +41,24 @@ public class YtDlpAudioDownloader {
 
     /** Sealed child environment — yt-dlp sees none of the brain's credentials. */
     private final ProcessLauncher launcher;
+
+    private static final Duration PROBE_TIMEOUT = Duration.ofSeconds(15);
+
+    /** Probed once on first use — the image does not change under a running pod. */
+    private volatile @Nullable Boolean available;
+
+    /** Whether yt-dlp runs here; the cloud image ships without it. */
+    public boolean available() {
+        Boolean known = available;
+        if (known == null) {
+            known = ProgramProbe.runs(launcher, List.of("yt-dlp", "--version"), PROBE_TIMEOUT);
+            available = known;
+            if (!known) {
+                log.info("yt-dlp unavailable on this host");
+            }
+        }
+        return known;
+    }
 
     /**
      * Wall-clock cap for the download. Audio extraction is normally

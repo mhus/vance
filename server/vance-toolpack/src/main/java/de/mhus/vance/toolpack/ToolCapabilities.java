@@ -14,5 +14,12 @@ public final class ToolCapabilities {
      */
     public static final String WORKSPACE = "workspace";
 
+    /**
+     * Local audio editing (ffmpeg/ffprobe): {@code audio_info}, {@code audio_trim},
+     * {@code audio_mix}, {@code audio_concat}, {@code audio_convert}. Present when the
+     * programs run on this host; the cloud image ships without them.
+     */
+    public static final String AUDIO_TOOLS = "audio-tools";
+
     private ToolCapabilities() {}
 }

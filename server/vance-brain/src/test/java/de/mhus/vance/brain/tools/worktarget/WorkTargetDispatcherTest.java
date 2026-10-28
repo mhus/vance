@@ -25,6 +25,7 @@ import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -56,7 +57,7 @@ class WorkTargetDispatcherTest {
         daemonToolInvoker = mock(DaemonToolInvoker.class);
         toolDispatcher = mock(de.mhus.vance.brain.tools.ToolDispatcher.class);
         workTargetService = new WorkTargetService(
-                thinkProcessService, clientToolRegistry, new PodCapabilities(new WorkspaceProperties()));
+                thinkProcessService, clientToolRegistry, new PodCapabilities(new WorkspaceProperties(), List.of()));
         dispatcher =
                 new WorkTargetDispatcher(workTargetService, thinkProcessService, toolDispatcher, daemonToolInvoker);
         wrapper = stubTool("file_read", "path", "dirName", "maxChars");

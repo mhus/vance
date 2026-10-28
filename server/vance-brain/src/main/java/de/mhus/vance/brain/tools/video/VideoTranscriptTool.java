@@ -291,6 +291,11 @@ public class VideoTranscriptTool implements Tool {
             @Nullable String asrModel,
             ToolInvocationContext ctx,
             ThinkProcessDocument process) {
+        if (!audioDownloader.available() || !whisperTranscriber.available()) {
+            throw new ToolException("No usable captions for video '" + videoId
+                    + "', and local transcription (yt-dlp + Whisper) is not available on this server."
+                    + " Tell the user the video has no captions this tool can read.");
+        }
         String effectiveModel = (asrModel == null || asrModel.isBlank()) ? DEFAULT_ASR_MODEL : asrModel;
         // Use only the first explicit language hint (or null for auto).
         // Whisper takes one language, not a fallback list.

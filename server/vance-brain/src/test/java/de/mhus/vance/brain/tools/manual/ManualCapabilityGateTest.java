@@ -5,6 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import de.mhus.vance.brain.tools.PodCapabilities;
 import de.mhus.vance.shared.workspace.WorkspaceMode;
 import de.mhus.vance.shared.workspace.WorkspaceProperties;
+import de.mhus.vance.toolpack.ToolCapabilities;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class ManualCapabilityGateTest {
@@ -34,9 +40,26 @@ class ManualCapabilityGateTest {
         assertThat(gate(WorkspaceMode.LOCAL).available(WORKSPACE_MANUAL)).isTrue();
     }
 
+    @Test
+    void bundledAudioEditingManual_needsAudioTools() throws IOException {
+        String manual;
+        try (InputStream in = getClass().getResourceAsStream("/vance-defaults/_vance/manuals/audio-editing.md")) {
+            assertThat(in).as("bundled audio-editing manual").isNotNull();
+            manual = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        WorkspaceProperties props = new WorkspaceProperties();
+
+        assertThat(new ManualCapabilityGate(new PodCapabilities(props, List.of())).available(manual))
+                .isFalse();
+        assertThat(new ManualCapabilityGate(
+                                new PodCapabilities(props, List.of(() -> Set.of(ToolCapabilities.AUDIO_TOOLS))))
+                        .available(manual))
+                .isTrue();
+    }
+
     private static ManualCapabilityGate gate(WorkspaceMode mode) {
         WorkspaceProperties props = new WorkspaceProperties();
         props.setMode(mode);
-        return new ManualCapabilityGate(new PodCapabilities(props));
+        return new ManualCapabilityGate(new PodCapabilities(props, List.of()));
     }
 }

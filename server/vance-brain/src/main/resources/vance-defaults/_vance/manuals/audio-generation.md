@@ -19,36 +19,17 @@ with Markdown (`[listen](path)`), they are playable in the UI.
 | `audio_analyze` | audio document + question → description (genre, instruments, mood) | 2–15 s |
 | `audio_music` | prompt → music / sound clip | 30 s – a few min |
 | `audio_voices` | list the voices a TTS model offers | instant |
-| `audio_info` | probe duration / format of an audio document | instant |
-| `audio_trim` | cut a window out of an audio document | instant |
-| `audio_mix` | mix two documents (narration + music bed) | instant |
-| `audio_concat` | join clips in order, optional crossfade | instant |
-| `audio_convert` | re-encode to mp3/wav, resample, normalise | instant |
 
-The first five tools **generate** or **consume** audio through providers;
-the last five **edit** existing audio documents locally (ffmpeg) — instant,
-free, no quota. The generation tools are all **synchronous**: one call, one
-blocking wait, one document.
+These tools **generate** or **consume** audio through providers. They are
+all **synchronous**: one call, one blocking wait, one document.
 Do NOT loop to "improve" a result — every call costs money. For bulk
 voice-over, spawn one child per item (Marvin plan).
 
 ## Editing audio
 
-`audio_trim`, `audio_mix`, `audio_concat` and `audio_convert` edit existing
-audio documents with local ffmpeg — instant, free, no AI involved. Workflow:
-
-1. `audio_info` first: learn the duration before planning cuts.
-2. Plan with numbers: cut windows, fade lengths, music-bed placement.
-3. Without `targetPath` the source is overwritten (document versioning archives
-   the prior version). Prefer an explicit `targetPath` when the user may still
-   want the original.
-4. `audio_mix` closes the generation loop: `audio_speak` (narration, the base) +
-   `audio_music` (music bed, the overlay), `overlayGain` 0.2-0.5,
-   `duckOverlay=true` so the music ducks under the voice.
-5. `audio_concat` needs a `targetPath` and never overwrites its clips.
-
-Limits (per scope, configurable): 50 MB input, 4 h duration, 50 MB output.
-Errors carry `error` / `message` / `retryable` like the generation tools.
+Cutting, mixing, joining and converting existing audio documents is a
+separate manual, `audio-editing` — read it when `manual_list` shows it; a
+server without it has no audio editing.
 
 ## Working with audio the user provides
 

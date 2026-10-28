@@ -5,6 +5,7 @@ import de.mhus.vance.brain.audio.AudioManipulationService;
 import de.mhus.vance.brain.audio.AudioOpResult;
 import de.mhus.vance.brain.audio.MixRequest;
 import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolCapabilities;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.ToolLabels;
@@ -104,6 +105,12 @@ public class AudioMixTool implements Tool {
                             "Optional fade-out of the whole mix in seconds. Default 0.")),
             "required",
             List.of());
+
+    /** ffmpeg must run here — absent in the cloud image. */
+    @Override
+    public Set<String> requiresCapabilities() {
+        return Set.of(ToolCapabilities.AUDIO_TOOLS);
+    }
 
     @Override
     public String name() {

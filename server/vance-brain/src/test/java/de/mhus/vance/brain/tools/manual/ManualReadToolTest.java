@@ -62,7 +62,7 @@ class ManualReadToolTest {
                 thinkProcessService,
                 skillResolver,
                 sessionService,
-                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties())));
+                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties(), List.of())));
         ctx = new ToolInvocationContext(TENANT, PROJECT, SESSION, PROCESS, "user-1");
 
         process = new ThinkProcessDocument();
@@ -227,7 +227,7 @@ class ManualReadToolTest {
                 thinkProcessService,
                 skillResolver,
                 sessionService,
-                new ManualCapabilityGate(new PodCapabilities(off)));
+                new ManualCapabilityGate(new PodCapabilities(off, List.of())));
         LookupResult python = mock(LookupResult.class);
         when(python.content()).thenReturn("---\nrequires-capabilities: workspace\n---\n# Python\n");
         when(python.source()).thenReturn(LookupResult.Source.PROJECT);

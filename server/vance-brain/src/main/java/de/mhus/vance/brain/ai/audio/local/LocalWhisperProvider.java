@@ -58,6 +58,10 @@ public class LocalWhisperProvider implements AiAudioModelProvider {
 
     @Override
     public SttResult transcribe(AiAudioConfig config, AudioSource source, @Nullable String language) {
+        if (!whisperTranscriber.available()) {
+            throw new AiAudioException("Local transcription (Whisper) is not available on this server —"
+                    + " choose a provider-hosted transcription model instead of " + config.fullName());
+        }
         String whisperModel = config.modelName().startsWith(MODEL_PREFIX)
                 ? config.modelName().substring(MODEL_PREFIX.length())
                 : config.modelName();

@@ -5,6 +5,7 @@ import de.mhus.vance.brain.audio.AudioManipulationService;
 import de.mhus.vance.brain.audio.AudioOpResult;
 import de.mhus.vance.brain.audio.ConvertRequest;
 import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolCapabilities;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.ToolLabels;
@@ -93,6 +94,12 @@ public class AudioConvertTool implements Tool {
                                     + "Use for uneven narration or loud music. Default false.")),
             "required",
             List.of("format"));
+
+    /** ffmpeg must run here — absent in the cloud image. */
+    @Override
+    public Set<String> requiresCapabilities() {
+        return Set.of(ToolCapabilities.AUDIO_TOOLS);
+    }
 
     @Override
     public String name() {

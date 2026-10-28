@@ -8,6 +8,7 @@ import de.mhus.vance.brain.ai.audio.AudioMimeTypeSniffer;
 import de.mhus.vance.brain.ai.audio.PcmWav;
 import de.mhus.vance.shared.process.ProcessLauncher;
 import de.mhus.vance.shared.process.ScratchArea;
+import de.mhus.vance.toolpack.ToolCapabilities;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -47,6 +48,19 @@ class FfmpegAudioEditorTest {
     @BeforeEach
     void setUp() {
         editor = new FfmpegAudioEditor("ffmpeg", "ffprobe", 120, DIRECT, new ScratchArea(scratchRoot));
+    }
+
+    @Test
+    void capabilities_offer_audio_tools_when_ffmpeg_and_ffprobe_run() {
+        assertThat(editor.capabilities()).containsExactly(ToolCapabilities.AUDIO_TOOLS);
+    }
+
+    @Test
+    void capabilities_are_empty_without_ffprobe() {
+        FfmpegAudioEditor noProbe =
+                new FfmpegAudioEditor("ffmpeg", "/nonexistent/ffprobe", 120, DIRECT, new ScratchArea(scratchRoot));
+
+        assertThat(noProbe.capabilities()).isEmpty();
     }
 
     @Test

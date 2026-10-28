@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.ai.audio.local;
 
+import de.mhus.vance.brain.tools.exec.ProgramProbe;
 import de.mhus.vance.shared.process.ProcessLauncher;
 import de.mhus.vance.shared.process.ProcessSpec;
 import de.mhus.vance.toolpack.ToolException;
@@ -61,6 +62,8 @@ public class WhisperTranscriber {
     /** Default model when the caller doesn't specify. */
     private static final String DEFAULT_MODEL = "small";
 
+    private static final Duration PROBE_TIMEOUT = Duration.ofSeconds(15);
+
     @Value("${vance.transcription.python:python3}")
     private String pythonExecutable;
 
@@ -76,6 +79,9 @@ public class WhisperTranscriber {
      */
     private static final List<String> CACHE_VARIABLES = List.of("HF_HOME", "XDG_CACHE_HOME");
 
+    /** Probed once on first use — the image does not change under a running pod. */
+    private volatile @Nullable Boolean available;
+
     public WhisperTranscriber(ProcessLauncher launcher) {
         this.launcher = launcher;
     }
@@ -90,6 +96,31 @@ public class WhisperTranscriber {
         }
         scriptPath = target;
         log.info("WhisperTranscriber: wrapper script extracted to {}", scriptPath);
+    }
+
+    /**
+     * Whether local transcription can run here: Python with faster-whisper
+     * installed. The cloud image ships without it (whisper belongs to the runner
+     * there); callers then report a clear "not available on this server" instead
+     * of a failing start.
+     */
+    public boolean available() {
+        Boolean known = available;
+        if (known == null) {
+            known = ProgramProbe.runs(
+                    launcher,
+                    List.of(
+                            pythonExecutable,
+                            "-c",
+                            "import importlib.util,sys;"
+                                    + "sys.exit(0 if importlib.util.find_spec('faster_whisper') else 1)"),
+                    PROBE_TIMEOUT);
+            available = known;
+            if (!known) {
+                log.info("Local transcription unavailable: faster-whisper not found for '{}'", pythonExecutable);
+            }
+        }
+        return known;
     }
 
     /**

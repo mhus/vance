@@ -12,6 +12,8 @@ import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.execution.ExecutionRegistryService;
 import de.mhus.vance.brain.execution.ExecutionStatus;
+import de.mhus.vance.exec.ExecJob;
+import de.mhus.vance.exec.ExecJobs;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.workspace.WorkspaceMode;
 import de.mhus.vance.shared.workspace.WorkspaceService;
@@ -85,7 +87,7 @@ class ExecManagerOrphanReconcileTest {
         job.process(deadProcess());
         job.status(ExecJob.Status.COMPLETED);
 
-        assertThat(ExecManager.isStuckOrphan(job, farFuture(), TTL)).isFalse();
+        assertThat(ExecJobs.isStuckOrphan(job, farFuture(), TTL)).isFalse();
     }
 
     @Test
@@ -94,7 +96,7 @@ class ExecManagerOrphanReconcileTest {
         job.process(aliveProcess());
 
         // Even far past the TTL: an alive process is a genuinely running job.
-        assertThat(ExecManager.isStuckOrphan(job, farFuture(), TTL)).isFalse();
+        assertThat(ExecJobs.isStuckOrphan(job, farFuture(), TTL)).isFalse();
     }
 
     @Test
@@ -103,7 +105,7 @@ class ExecManagerOrphanReconcileTest {
         job.process(deadProcess());
 
         // now ~ lastOutputAt (construction time) → dwell below the TTL.
-        assertThat(ExecManager.isStuckOrphan(job, Instant.now(), TTL)).isFalse();
+        assertThat(ExecJobs.isStuckOrphan(job, Instant.now(), TTL)).isFalse();
     }
 
     @Test
@@ -111,7 +113,7 @@ class ExecManagerOrphanReconcileTest {
         ExecJob job = newJob(null);
         job.process(deadProcess());
 
-        assertThat(ExecManager.isStuckOrphan(job, farFuture(), TTL)).isTrue();
+        assertThat(ExecJobs.isStuckOrphan(job, farFuture(), TTL)).isTrue();
     }
 
     @Test
@@ -119,7 +121,7 @@ class ExecManagerOrphanReconcileTest {
         // Worker died before ever assigning a process.
         ExecJob job = newJob(null);
 
-        assertThat(ExecManager.isStuckOrphan(job, farFuture(), TTL)).isTrue();
+        assertThat(ExecJobs.isStuckOrphan(job, farFuture(), TTL)).isTrue();
     }
 
     // ──────────────────── markOrphanedIfRunning atomicity ────────────────────
@@ -205,8 +207,11 @@ class ExecManagerOrphanReconcileTest {
 
     @SuppressWarnings("unchecked")
     private void inject(String tenant, String project, ExecJob job) {
+        // A stuck job (worker died without its finally) cannot be produced for real,
+        // so the test places one in the engine's index directly.
+        Object engine = ReflectionTestUtils.getField(manager, "jobs");
         Map<String, Map<String, ExecJob>> jobs =
-                (Map<String, Map<String, ExecJob>>) ReflectionTestUtils.getField(manager, "jobs");
+                (Map<String, Map<String, ExecJob>>) ReflectionTestUtils.getField(engine, "jobs");
         Map<String, ExecJob> perProject = Collections.synchronizedMap(new LinkedHashMap<>());
         perProject.put(job.id(), job);
         jobs.put(tenant + "/" + project, perProject);

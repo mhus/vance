@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.tools.exec;
+package de.mhus.vance.exec;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -15,17 +15,19 @@ import org.jspecify.annotations.Nullable;
  * (the command, kept as a single argv element). It is passed to
  * {@code ProcessBuilder} as an argv list — never re-interpreted by a shell.
  */
-final class ExecIsolation {
+public final class ExecIsolation {
 
     private ExecIsolation() {}
 
     /** Usable only with {@code mode: custom} and a wrapper containing {@code {cmd}}. */
-    static boolean enabled(ExecProperties.@Nullable Isolation iso) {
-        return iso != null
-                && "custom".equals(iso.getMode())
-                && iso.getWrapper() != null
-                && !iso.getWrapper().isBlank()
-                && iso.getWrapper().contains("{cmd}");
+    public static boolean enabled(@Nullable String mode, @Nullable String wrapper) {
+        return "custom".equals(mode) && wrapper != null && !wrapper.isBlank() && wrapper.contains("{cmd}");
+    }
+
+    /** The command under the platform shell — what runs when isolation is off. */
+    public static List<String> shellArgv(String command) {
+        boolean windows = System.getProperty("os.name", "").toLowerCase().contains("win");
+        return windows ? List.of("cmd.exe", "/c", command) : List.of("/bin/sh", "-c", command);
     }
 
     /**
@@ -33,7 +35,7 @@ final class ExecIsolation {
      * substituted; a token equal to {@code {cmd}} becomes the command as a
      * single argv element.
      */
-    static List<String> wrap(String wrapper, String workdir, String command) {
+    public static List<String> wrap(String wrapper, String workdir, String command) {
         List<String> argv = new ArrayList<>();
         for (String token : wrapper.trim().split("\\s+")) {
             if (token.equals("{cmd}")) {

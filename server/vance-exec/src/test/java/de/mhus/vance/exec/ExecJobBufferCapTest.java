@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.tools.exec;
+package de.mhus.vance.exec;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -14,8 +14,7 @@ import org.junit.jupiter.api.Test;
 class ExecJobBufferCapTest {
 
     private ExecJob newJob() {
-        return new ExecJob("id-1", "proj-1", "noisy",
-                Path.of("stdout.log"), Path.of("stderr.log"));
+        return new ExecJob("id-1", "proj-1", "noisy", Path.of("stdout.log"), Path.of("stderr.log"));
     }
 
     @Test

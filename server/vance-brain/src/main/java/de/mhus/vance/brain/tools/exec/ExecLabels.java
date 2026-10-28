@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.tools.exec;
 
+import de.mhus.vance.exec.ExecJob;
+
 /**
  * Reserved label keys and well-known values for {@link ExecJob#labels()}
  * and {@link de.mhus.vance.brain.execution.ExecutionRegistryEntry#labels()}.

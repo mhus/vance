@@ -9,7 +9,7 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.api.magrathea.MagratheaTaskType;
 import de.mhus.vance.api.magrathea.MagratheaWorkflowSource;
 import de.mhus.vance.brain.tools.exec.ExecManager;
-import de.mhus.vance.brain.tools.exec.SubmitOptions;
+import de.mhus.vance.exec.SubmitOptions;
 import de.mhus.vance.shared.magrathea.MagratheaBoundsSpec;
 import de.mhus.vance.shared.magrathea.MagratheaRetrySpec;
 import de.mhus.vance.shared.magrathea.MagratheaStateSpec;
@@ -35,8 +35,14 @@ class ShellTaskExecutorTest {
     @Test
     void completed_exit_zero_yields_success() {
         when(execManager.submitTrackedAndRender(
-                eq("acme"), eq("proj"), any(), any(), any(), eq("ls -la"), eq(30_000L),
-                any(SubmitOptions.class)))
+                        eq("acme"),
+                        eq("proj"),
+                        any(),
+                        any(),
+                        any(),
+                        eq("ls -la"),
+                        eq(30_000L),
+                        any(SubmitOptions.class)))
                 .thenReturn(Map.of(
                         "id", "abc",
                         "status", "COMPLETED",
@@ -55,7 +61,8 @@ class ShellTaskExecutorTest {
 
     @Test
     void completed_nonzero_exit_yields_business_error() {
-        when(execManager.submitTrackedAndRender(any(), any(), any(), any(), any(), any(), any(Long.class), any(SubmitOptions.class)))
+        when(execManager.submitTrackedAndRender(
+                        any(), any(), any(), any(), any(), any(), any(Long.class), any(SubmitOptions.class)))
                 .thenReturn(Map.of(
                         "id", "abc",
                         "status", "COMPLETED",
@@ -72,7 +79,8 @@ class ShellTaskExecutorTest {
 
     @Test
     void killed_status_yields_timeout() {
-        when(execManager.submitTrackedAndRender(any(), any(), any(), any(), any(), any(), any(Long.class), any(SubmitOptions.class)))
+        when(execManager.submitTrackedAndRender(
+                        any(), any(), any(), any(), any(), any(), any(Long.class), any(SubmitOptions.class)))
                 .thenReturn(Map.of(
                         "id", "abc",
                         "status", "KILLED",
@@ -88,7 +96,8 @@ class ShellTaskExecutorTest {
 
     @Test
     void running_at_wait_exhaustion_yields_timeout() {
-        when(execManager.submitTrackedAndRender(any(), any(), any(), any(), any(), any(), any(Long.class), any(SubmitOptions.class)))
+        when(execManager.submitTrackedAndRender(
+                        any(), any(), any(), any(), any(), any(), any(Long.class), any(SubmitOptions.class)))
                 .thenReturn(Map.of(
                         "id", "abc",
                         "status", "RUNNING",
@@ -104,7 +113,8 @@ class ShellTaskExecutorTest {
 
     @Test
     void failed_status_yields_technical_error() {
-        when(execManager.submitTrackedAndRender(any(), any(), any(), any(), any(), any(), any(Long.class), any(SubmitOptions.class)))
+        when(execManager.submitTrackedAndRender(
+                        any(), any(), any(), any(), any(), any(), any(Long.class), any(SubmitOptions.class)))
                 .thenReturn(Map.of(
                         "id", "abc",
                         "status", "FAILED",
@@ -119,7 +129,8 @@ class ShellTaskExecutorTest {
 
     @Test
     void exec_manager_RuntimeException_yields_technical_error() {
-        when(execManager.submitTrackedAndRender(any(), any(), any(), any(), any(), any(), any(Long.class), any(SubmitOptions.class)))
+        when(execManager.submitTrackedAndRender(
+                        any(), any(), any(), any(), any(), any(), any(Long.class), any(SubmitOptions.class)))
                 .thenThrow(new RuntimeException("Unknown workspace RootDir"));
 
         Optional<TaskOutcome> outcome = executor.execute(ctx(scriptState("ls", "missing", null)));
@@ -138,11 +149,10 @@ class ShellTaskExecutorTest {
 
     @Test
     void timeoutSeconds_converted_to_waitMs() {
-        when(execManager.submitTrackedAndRender(any(), any(), any(), any(), any(), any(), eq(60_000L),
-                any(SubmitOptions.class)))
+        when(execManager.submitTrackedAndRender(
+                        any(), any(), any(), any(), any(), any(), eq(60_000L), any(SubmitOptions.class)))
                 .thenReturn(Map.of(
-                        "id", "x", "status", "COMPLETED", "exitCode", 0,
-                        "stdout", "", "stderr", "", "durationMs", 1L));
+                        "id", "x", "status", "COMPLETED", "exitCode", 0, "stdout", "", "stderr", "", "durationMs", 1L));
 
         Optional<TaskOutcome> outcome = executor.execute(ctx(scriptState("true", null, 60)));
 
@@ -160,7 +170,9 @@ class ShellTaskExecutorTest {
                 MagratheaTaskType.SHELL_TASK,
                 null,
                 timeoutSeconds,
-                null, null, java.util.List.of(),
+                null,
+                null,
+                java.util.List.of(),
                 Map.of(),
                 Map.of(),
                 List.of(),
@@ -170,11 +182,29 @@ class ShellTaskExecutorTest {
 
     private static MagratheaTaskContext ctx(MagratheaStateSpec state) {
         return new MagratheaTaskContext(
-                "acme", "proj", "r1", "task-1", "alice",
-                new ResolvedMagratheaWorkflow("noop", "", MagratheaWorkflowSource.PROJECT,
-                        null, null, null, null, "start",
-                        Map.of(), Map.of(), MagratheaBoundsSpec.empty(), List.of(), List.of()),
-                state, Map.of(), Map.of(),
-                null, null);
+                "acme",
+                "proj",
+                "r1",
+                "task-1",
+                "alice",
+                new ResolvedMagratheaWorkflow(
+                        "noop",
+                        "",
+                        MagratheaWorkflowSource.PROJECT,
+                        null,
+                        null,
+                        null,
+                        null,
+                        "start",
+                        Map.of(),
+                        Map.of(),
+                        MagratheaBoundsSpec.empty(),
+                        List.of(),
+                        List.of()),
+                state,
+                Map.of(),
+                Map.of(),
+                null,
+                null);
     }
 }

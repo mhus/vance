@@ -4,6 +4,7 @@ import de.mhus.vance.brain.tools.client.ClientToolChannel;
 import de.mhus.vance.brain.tools.client.ClientToolRegistry;
 import de.mhus.vance.brain.tools.exec.ExecManager;
 import de.mhus.vance.brain.tools.exec.ExecStatTool;
+import de.mhus.vance.exec.ExecJobs;
 import de.mhus.vance.toolpack.ToolException;
 import java.io.IOException;
 import java.util.LinkedHashMap;
@@ -68,8 +69,8 @@ public class ExecutionRouter {
                                 executionId,
                                 n,
                                 "stderr".equalsIgnoreCase(streamName)
-                                        ? ExecManager.Stream.STDERR
-                                        : ExecManager.Stream.STDOUT),
+                                        ? ExecJobs.Stream.STDERR
+                                        : ExecJobs.Stream.STDOUT),
                         streamName);
             case ExecutionOwner.Foot foot ->
                 invokeOnFoot(

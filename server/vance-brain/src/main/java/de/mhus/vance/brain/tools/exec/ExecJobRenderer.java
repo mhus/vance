@@ -2,6 +2,7 @@ package de.mhus.vance.brain.tools.exec;
 
 import de.mhus.vance.brain.vault.ScriptSecretAccumulator;
 import de.mhus.vance.brain.vault.SecretMasker;
+import de.mhus.vance.exec.ExecJob;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -47,7 +48,8 @@ final class ExecJobRenderer {
         out.put("stderr", truncate(stderr, inlineCap));
         if (stdout.length() > inlineCap || stderr.length() > inlineCap) {
             out.put("truncated", true);
-            out.put("hint",
+            out.put(
+                    "hint",
                     "Output truncated. Use another work_exec_run with bounded commands "
                             + "(head -N / tail -N / sed -n 'A,Bp' <path> / grep -m N) "
                             + "against stdoutPath/stderrPath to page through.");

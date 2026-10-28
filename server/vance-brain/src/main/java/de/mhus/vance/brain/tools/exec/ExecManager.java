@@ -5,43 +5,27 @@ import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.execution.ExecutionRegistryService;
 import de.mhus.vance.brain.execution.ExecutionStatus;
 import de.mhus.vance.brain.vault.ScriptSecretAccumulator;
+import de.mhus.vance.exec.ExecException;
+import de.mhus.vance.exec.ExecIsolation;
+import de.mhus.vance.exec.ExecJob;
+import de.mhus.vance.exec.ExecJobs;
+import de.mhus.vance.exec.ExecStat;
+import de.mhus.vance.exec.SubmitOptions;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.PendingMessageType;
 import de.mhus.vance.shared.workspace.RootDirHandle;
 import de.mhus.vance.shared.workspace.WorkspaceException;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import jakarta.annotation.PreDestroy;
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Comparator;
-import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
@@ -50,7 +34,7 @@ import org.springframework.stereotype.Service;
 /**
  * Runs shell commands in background virtual threads with live output
  * persistence. Jobs are scoped per <em>project</em>: the outer index
- * is {@code projectId}, the inner is {@code jobId}, so one project
+ * is {@code tenant/project}, the inner is {@code jobId}, so one project
  * cannot see another's jobs by stumbling on an id, while sessions in
  * the same project share their job view (a long build started in one
  * session is visible to the next session in the same project).
@@ -58,13 +42,14 @@ import org.springframework.stereotype.Service;
  * <p>Working directory is the caller project's workspace root, so
  * {@code git clone …} lands where {@code workspace_*} can read it.
  *
- * <p>Output flows two ways on purpose: line-by-line into a log file
- * (complete record, readable after truncation), and into an in-memory
- * {@link StringBuilder} (fast inline response). The inline buffer is
- * reset-free — we trim it later in the tool layer.
+ * <p>The job engine itself ({@link ExecJobs} in {@code vance-exec}: lifecycle,
+ * output files, process-tree kill, watchdog, eviction, orphan detection) is
+ * plain Java, shared with the runner. This bean is the brain around it: the
+ * workspace gate and RootDir lookup, the sealed per-scope environment, the
+ * execution registry that mirrors job state, and the {@code ProcessEvent} that
+ * wakes the owning think-process when a job ends.
  */
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class ExecManager {
 
@@ -81,19 +66,27 @@ public class ExecManager {
      */
     private final ObjectProvider<EngineMessageRouter> engineMessageRouterProvider;
 
-    private final Map<String, Map<String, ExecJob>> jobs = new ConcurrentHashMap<>();
-    private final ExecutorService workers = Executors.newVirtualThreadPerTaskExecutor();
-    /**
-     * Drives deadline-based kills. One scheduled task per job, keyed
-     * by jobId so {@link #extendDeadline} can cancel and reschedule
-     * cleanly. Single daemon thread is enough — the fire-callback
-     * dispatches the actual kill, which is a few sub-millisecond
-     * map lookups plus {@code Process.destroyForcibly()}.
-     */
-    private final ScheduledExecutorService watchdog =
-            Executors.newSingleThreadScheduledExecutor(watchdogThreadFactory());
+    private final ExecJobs jobs;
 
-    private final Map<String, ScheduledFuture<?>> watchdogFutures = new ConcurrentHashMap<>();
+    public ExecManager(
+            ExecProperties properties,
+            ExecEnvironmentBuilder environmentBuilder,
+            WorkspaceService workspaceService,
+            ExecutionRegistryService registry,
+            ObjectProvider<EngineMessageRouter> engineMessageRouterProvider) {
+        this.properties = properties;
+        this.environmentBuilder = environmentBuilder;
+        this.workspaceService = workspaceService;
+        this.registry = registry;
+        this.engineMessageRouterProvider = engineMessageRouterProvider;
+        this.jobs = new ExecJobs(
+                new ExecJobs.Config(
+                        Path.of(properties.getBaseDir()),
+                        properties.getKillGraceMs(),
+                        properties.getMaxJobsPerProject(),
+                        properties.getOrphanReconcileTtl()),
+                new JobListener());
+    }
 
     // ──────────────────── Public API ────────────────────
 
@@ -160,33 +153,16 @@ public class ExecManager {
                     + " (vance.workspace.mode=off)");
         }
         Path cwd = resolveCwd(tenantId, projectId, dirName);
-        String jobId = UUID.randomUUID().toString().substring(0, 8);
-        String scopeKey = scopeKey(tenantId, projectId);
-        Path jobDir = jobDir(scopeKey, jobId);
-        try {
-            Files.createDirectories(jobDir);
-        } catch (IOException e) {
-            throw new ExecException("Cannot create exec job dir: " + e.getMessage(), e);
-        }
-        ExecJob job = new ExecJob(
-                jobId,
+        return jobs.submit(new ExecJobs.Submission(
+                scopeKey(tenantId, projectId),
                 projectId,
                 ownerProcessId,
                 command,
-                jobDir.resolve("stdout.log"),
-                jobDir.resolve("stderr.log"),
+                buildArgv(command, cwd),
+                cwd,
                 environmentBuilder.build(tenantId, projectId, options.userId(), options.env()),
-                options.labels());
-        Instant deadline = options.deadline();
-        if (deadline != null) {
-            job.initialDeadline(deadline);
-        }
-        indexJob(scopeKey, job);
-        workers.submit(() -> runJob(job, cwd));
-        if (deadline != null) {
-            rearmWatchdog(job, deadline);
-        }
-        return job;
+                options.labels(),
+                options.deadline()));
     }
 
     /**
@@ -197,19 +173,7 @@ public class ExecManager {
      * the terminal status reflected on the next read).
      */
     public boolean extendDeadline(String tenantId, String projectId, String jobId, Duration extension) {
-        if (extension == null || extension.isNegative() || extension.isZero()) {
-            throw new ExecException("extension must be positive");
-        }
-        ExecJob job = get(tenantId, projectId, jobId).orElse(null);
-        if (job == null) {
-            return false;
-        }
-        Instant newDeadline = Instant.now().plus(extension);
-        if (!job.extendDeadline(newDeadline)) {
-            return false;
-        }
-        rearmWatchdog(job, newDeadline);
-        return true;
+        return jobs.extendDeadline(scopeKey(tenantId, projectId), jobId, extension);
     }
 
     private Path resolveCwd(String tenantId, String projectId, String dirName) {
@@ -222,10 +186,6 @@ public class ExecManager {
         } catch (WorkspaceException e) {
             throw new ExecException(e.getMessage(), e);
         }
-    }
-
-    private static String scopeKey(String tenantId, String projectId) {
-        return tenantId + "/" + projectId;
     }
 
     /**
@@ -364,54 +324,22 @@ public class ExecManager {
 
     /** Blocks up to {@code maxMillis} for a RUNNING job to finish. */
     public ExecJob waitFor(ExecJob job, long maxMillis) {
-        long deadline = System.currentTimeMillis() + maxMillis;
-        while (!job.isTerminal() && System.currentTimeMillis() < deadline) {
-            try {
-                Thread.sleep(100);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            }
-        }
-        return job;
+        return jobs.waitFor(job, maxMillis);
     }
 
     /** Look up a job by tenant + project + id. */
     public Optional<ExecJob> get(String tenantId, String projectId, String jobId) {
-        Map<String, ExecJob> perProject = jobs.get(scopeKey(tenantId, projectId));
-        if (perProject == null) return Optional.empty();
-        return Optional.ofNullable(perProject.get(jobId));
+        return jobs.get(scopeKey(tenantId, projectId), jobId);
     }
 
     /** All jobs for a project, insertion-ordered (oldest first). */
     public Collection<ExecJob> listByProject(String tenantId, String projectId) {
-        Map<String, ExecJob> perProject = jobs.get(scopeKey(tenantId, projectId));
-        return perProject == null ? java.util.List.of() : perProject.values();
+        return jobs.list(scopeKey(tenantId, projectId));
     }
 
     /** Compact status snapshot — no stdout/stderr bodies. */
     public Optional<ExecStat> stat(String tenantId, String projectId, String jobId) {
-        return get(tenantId, projectId, jobId).map(ExecManager::toStat);
-    }
-
-    static ExecStat toStat(ExecJob job) {
-        Instant end = job.finishedAt() != null ? job.finishedAt() : Instant.now();
-        return new ExecStat(
-                job.id(),
-                job.projectId(),
-                job.command(),
-                job.status(),
-                job.startedAt(),
-                job.lastOutputAt(),
-                job.finishedAt(),
-                job.exitCode(),
-                Duration.between(job.startedAt(), end).toMillis(),
-                fileSize(job.stdoutFile()),
-                fileSize(job.stderrFile()),
-                fileMtime(job.stdoutFile()),
-                fileMtime(job.stderrFile()),
-                job.stdoutFile().toString(),
-                job.stderrFile().toString());
+        return jobs.stat(scopeKey(tenantId, projectId), jobId);
     }
 
     /**
@@ -419,63 +347,13 @@ public class ExecManager {
      * persisted log file so callers see the same content {@code tail -n}
      * would on the host. Returns the lines oldest-first (chronological).
      */
-    public List<String> tail(String tenantId, String projectId, String jobId, int n, Stream stream) {
-        if (n <= 0) return List.of();
-        ExecJob job = get(tenantId, projectId, jobId)
-                .orElseThrow(() -> new ExecException("Unknown exec job: '" + jobId + "' (not in this project)"));
-        Path file = stream == Stream.STDERR ? job.stderrFile() : job.stdoutFile();
-        return tailFile(file, n);
-    }
-
-    static List<String> tailFile(Path file, int n) {
-        if (!Files.isReadable(file)) return List.of();
-        Deque<String> ring = new ArrayDeque<>(n);
-        try (BufferedReader r = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
-            String line;
-            while ((line = r.readLine()) != null) {
-                if (ring.size() == n) ring.removeFirst();
-                ring.addLast(line);
-            }
-        } catch (IOException e) {
-            return List.of();
-        }
-        return new ArrayList<>(ring);
-    }
-
-    private static long fileSize(Path file) {
-        try {
-            return Files.isRegularFile(file) ? Files.size(file) : 0L;
-        } catch (IOException e) {
-            return 0L;
-        }
-    }
-
-    private static long fileMtime(Path file) {
-        try {
-            return Files.isRegularFile(file) ? Files.getLastModifiedTime(file).toMillis() : 0L;
-        } catch (IOException e) {
-            return 0L;
-        }
-    }
-
-    /** Selector for {@link #tail}. */
-    public enum Stream {
-        STDOUT,
-        STDERR
+    public List<String> tail(String tenantId, String projectId, String jobId, int n, ExecJobs.Stream stream) {
+        return jobs.tail(scopeKey(tenantId, projectId), jobId, n, stream);
     }
 
     /** Force-kill a still-running job. Returns {@code false} if already terminal. */
     public boolean kill(String tenantId, String projectId, String jobId) {
-        ExecJob job = get(tenantId, projectId, jobId).orElse(null);
-        if (job == null || job.isTerminal()) return false;
-        Process p = job.process();
-        if (p == null) return false;
-        job.status(ExecJob.Status.KILLED);
-        job.finishedAt(Instant.now());
-        terminateTree(p);
-        cancelWatchdog(jobId);
-        notifyRegistry(job);
-        return true;
+        return jobs.kill(scopeKey(tenantId, projectId), jobId);
     }
 
     /**
@@ -483,167 +361,46 @@ public class ExecManager {
      * {@code ProjectManagerService.archive(...)} once that lands.
      */
     public int killAllForProject(String tenantId, String projectId) {
-        Map<String, ExecJob> perProject = jobs.get(scopeKey(tenantId, projectId));
-        if (perProject == null) return 0;
-        int killed = 0;
-        synchronized (perProject) {
-            for (ExecJob j : perProject.values()) {
-                if (!j.isTerminal() && j.process() != null) {
-                    j.status(ExecJob.Status.KILLED);
-                    j.finishedAt(Instant.now());
-                    terminateTree(j.process());
-                    cancelWatchdog(j.id());
-                    notifyRegistry(j);
-                    killed++;
-                }
-            }
-        }
-        return killed;
+        return jobs.killAll(scopeKey(tenantId, projectId));
     }
 
     /**
-     * Graceful process-<b>tree</b> termination. A job runs as {@code /bin/sh -c
-     * "<command>"}, so {@code destroyForcibly()} on that shell alone would leave
-     * its children (compiler, trainer, …) running orphaned. Instead: snapshot
-     * the process + all descendants, send SIGTERM ({@link ProcessHandle#destroy})
-     * to each so a clean shutdown / checkpoint can run, then SIGKILL
-     * ({@link ProcessHandle#destroyForcibly}) any survivor after
-     * {@code killGraceMs}. Snapshotting before signalling keeps reparented
-     * grandchildren targeted. Non-blocking — the escalation is scheduled on the
-     * watchdog executor.
+     * Reconciles jobs stuck in {@code RUNNING} because their worker thread died
+     * without running its {@code finally} — see {@link ExecJobs#reconcileOrphans}.
+     * Pod-local by design (never cluster-master-gated): the job index and the
+     * {@code Process} handles only exist in this JVM. A reconciled job is mirrored
+     * to the registry (status → terminal, session no longer pinned, so the
+     * IdleSweeper is not blocked) and its owner is notified.
+     *
+     * @return the number of jobs reconciled to ORPHANED this pass
      */
-    private void terminateTree(@Nullable Process p) {
-        if (p == null) {
-            return;
-        }
-        List<ProcessHandle> tree = new ArrayList<>();
-        p.descendants().forEach(tree::add);
-        tree.add(p.toHandle());
-        tree.forEach(ProcessHandle::destroy);
-        long graceMs = properties.getKillGraceMs();
-        if (graceMs <= 0) {
-            tree.forEach(ProcessHandle::destroyForcibly);
-            return;
-        }
-        watchdog.schedule(
-                () -> {
-                    for (ProcessHandle h : tree) {
-                        if (h.isAlive()) {
-                            h.destroyForcibly();
-                        }
-                    }
-                },
-                graceMs,
-                TimeUnit.MILLISECONDS);
+    public int reconcileOrphanedJobs(Instant now) {
+        return jobs.reconcileOrphans(now);
     }
 
-    // ──────────────────── Runner ────────────────────
+    /** What the engine reports back: registry mirror, completion event, eviction. */
+    private final class JobListener implements ExecJobs.Listener {
 
-    private void runJob(ExecJob job, Path cwd) {
-        try (BufferedWriter stdoutW = openLog(job.stdoutFile());
-                BufferedWriter stderrW = openLog(job.stderrFile())) {
-
-            ProcessBuilder pb = new ProcessBuilder(buildArgv(job.command(), cwd));
-            pb.directory(cwd.toFile());
-            pb.redirectErrorStream(false);
-            // Every job runs sealed: the map was built at submit time by
-            // ExecEnvironmentBuilder. The wipe is unconditional so a null map
-            // can never fall back to inheriting the Brain's environment.
-            Map<String, String> processEnv = pb.environment();
-            processEnv.clear();
-            Map<String, String> jobEnv = job.env();
-            if (jobEnv != null) {
-                processEnv.putAll(jobEnv);
-            }
-            Process p = pb.start();
-            job.process(p);
-
-            Thread out = pumpVirtual(p.getInputStream(), line -> {
-                job.appendStdout(line);
-                writeLine(stdoutW, line);
-            });
-            Thread err = pumpVirtual(p.getErrorStream(), line -> {
-                job.appendStderr(line);
-                writeLine(stderrW, line);
-            });
-            out.start();
-            err.start();
-
-            int code = p.waitFor();
-            out.join();
-            err.join();
-
-            job.exitCode(code);
-            if (job.status() != ExecJob.Status.KILLED) {
-                job.status(code == 0 ? ExecJob.Status.COMPLETED : ExecJob.Status.FAILED);
-            }
-        } catch (Exception e) {
-            log.warn("Exec job '{}' failed: {}", job.id(), e.toString());
-            job.appendStderr("ERROR: " + e.getClass().getSimpleName() + ": " + e.getMessage());
-            job.status(ExecJob.Status.FAILED);
-        } finally {
-            job.finishedAt(Instant.now());
+        @Override
+        public void stateChanged(ExecJob job) {
             notifyRegistry(job);
-            cancelWatchdog(job.id());
+        }
+
+        @Override
+        public void finished(ExecJob job) {
             pushCompletionIfTracked(job);
         }
-    }
 
-    // ──────────────────── Watchdog ────────────────────
-
-    /**
-     * Schedules (or reschedules) the watchdog kill for {@code job}.
-     * Cancels any previous scheduled future so {@code extendDeadline}
-     * can't accumulate parallel timers.
-     */
-    private void rearmWatchdog(ExecJob job, Instant deadline) {
-        long delayMs = Math.max(0, Duration.between(Instant.now(), deadline).toMillis());
-        ScheduledFuture<?> future = watchdog.schedule(() -> fireWatchdog(job), delayMs, TimeUnit.MILLISECONDS);
-        ScheduledFuture<?> prev = watchdogFutures.put(job.id(), future);
-        if (prev != null) {
-            prev.cancel(false);
+        @Override
+        public void evicted(ExecJob job) {
+            // Evict the mirrored registry entry too — otherwise the Brain-owned
+            // ExecutionRegistryEntry outlives the job and leaks for the pod's
+            // lifetime (code-review Phase 2).
+            registry.removeById(job.id());
+            // Drop any secret values this run pulled via vance.secret(...) so
+            // decrypted values don't linger past the job's lifetime.
+            ScriptSecretAccumulator.evict(job.labels().get(ExecLabels.KEY_RUN_ID));
         }
-    }
-
-    private void cancelWatchdog(String jobId) {
-        ScheduledFuture<?> future = watchdogFutures.remove(jobId);
-        if (future != null) {
-            future.cancel(false);
-        }
-    }
-
-    /**
-     * Watchdog scheduler callback. Re-checks the deadline because it
-     * might have been extended after we were scheduled — in that case
-     * we re-arm at the new deadline instead of killing. Otherwise we
-     * try to claim the kill atomically; the worker's {@code finally}
-     * picks up the KILLED status and pushes
-     * {@link ProcessEventType#EXEC_TIMEOUT}.
-     */
-    private void fireWatchdog(ExecJob job) {
-        try {
-            Instant currentDeadline = job.deadline();
-            if (currentDeadline != null && currentDeadline.isAfter(Instant.now())) {
-                rearmWatchdog(job, currentDeadline);
-                return;
-            }
-            if (!job.attemptWatchdogKill()) {
-                return;
-            }
-            terminateTree(job.process());
-            log.info("Watchdog killed job '{}' (tree) after deadline expired", job.id());
-        } catch (RuntimeException e) {
-            log.warn("Watchdog fire for job '{}' threw: {}", job.id(), e.toString(), e);
-        }
-    }
-
-    private static ThreadFactory watchdogThreadFactory() {
-        AtomicLong counter = new AtomicLong();
-        return r -> {
-            Thread t = new Thread(r, "exec-watchdog-" + counter.incrementAndGet());
-            t.setDaemon(true);
-            return t;
-        };
     }
 
     /**
@@ -682,8 +439,8 @@ public class ExecManager {
                 payload.put("finishedAt", finished.toString());
             }
             payload.put("projectId", job.projectId());
-            payload.put("stdoutTail", tailFile(job.stdoutFile(), properties.getCompletionTailLines()));
-            payload.put("stderrTail", tailFile(job.stderrFile(), properties.getCompletionTailLines()));
+            payload.put("stdoutTail", ExecJobs.tailFile(job.stdoutFile(), properties.getCompletionTailLines()));
+            payload.put("stderrTail", ExecJobs.tailFile(job.stderrFile(), properties.getCompletionTailLines()));
             long killedAfterSeconds = Duration.between(job.startedAt(), finished != null ? finished : Instant.now())
                     .toSeconds();
             if (timedOut) {
@@ -737,180 +494,8 @@ public class ExecManager {
         };
     }
 
-    // ──────────────────── Orphan reconciliation ────────────────────
-
-    /**
-     * Reconciles jobs stuck in {@code RUNNING} because their worker thread
-     * died without running its {@code finally} (a hard Error / thread-death
-     * that skipped the terminal transition + registry mirror). Such a job
-     * would otherwise stay RUNNING for the pod's lifetime, which pins its
-     * session alive via {@link
-     * ExecutionRegistryService#hasActiveJobsForSession} (blocking the
-     * IdleSweeper) and leaves an owning think-process waiting for a wakeup
-     * that never comes.
-     *
-     * <p>Pod-local by design: {@link #jobs} and the registry are in-memory
-     * per pod, and the {@code Process} liveness handle only exists in this
-     * JVM — so this runs on <em>every</em> pod (never cluster-master-gated).
-     * A stuck job is completed as {@link ExecJob.Status#ORPHANED}, then
-     * mirrored to the registry (status → terminal, session no longer pinned)
-     * and its owner is notified.
-     *
-     * <p>False-positive-safe: a job is only reconciled when its OS process
-     * is dead/absent <em>and</em> it has shown no output for longer than
-     * {@link ExecProperties#getOrphanReconcileTtl()}. A legitimately
-     * long-running but quiet job has a live process and is never touched.
-     *
-     * @return the number of jobs reconciled to ORPHANED this pass
-     */
-    public int reconcileOrphanedJobs(Instant now) {
-        Duration ttl = properties.getOrphanReconcileTtl();
-        // Collect candidates under each per-project monitor (required for
-        // safe iteration of the synchronizedMap), then act outside the lock
-        // so notifyRegistry / owner-push I/O never blocks submit/indexJob.
-        List<ExecJob> candidates = new ArrayList<>();
-        for (Map<String, ExecJob> perProject : jobs.values()) {
-            synchronized (perProject) {
-                for (ExecJob job : perProject.values()) {
-                    if (isStuckOrphan(job, now, ttl)) {
-                        candidates.add(job);
-                    }
-                }
-            }
-        }
-        int reconciled = 0;
-        for (ExecJob job : candidates) {
-            // Re-check atomically: a real finally may have terminated the
-            // job between collection and now — then this is a no-op.
-            if (!job.markOrphanedIfRunning()) {
-                continue;
-            }
-            log.warn(
-                    "Reconciled orphaned exec job '{}' (RUNNING with dead process, " + "no output for >{}) → ORPHANED",
-                    job.id(),
-                    ttl);
-            notifyRegistry(job);
-            cancelWatchdog(job.id());
-            pushCompletionIfTracked(job);
-            reconciled++;
-        }
-        return reconciled;
-    }
-
-    /**
-     * A job is a stuck orphan when it is still RUNNING, its OS process is
-     * dead or was never assigned (the worker never reached {@code
-     * pb.start()} or died right after the process exited), and it has been
-     * silent past the TTL. The silence dwell also covers the tiny window
-     * between {@code Process.waitFor()} returning and the worker setting the
-     * terminal status, so a normally-completing job is never misclassified.
-     */
-    static boolean isStuckOrphan(ExecJob job, Instant now, Duration ttl) {
-        if (job.isTerminal()) {
-            return false;
-        }
-        Process p = job.process();
-        boolean processDeadOrAbsent = (p == null) || !p.isAlive();
-        if (!processDeadOrAbsent) {
-            return false;
-        }
-        return Duration.between(job.lastOutputAt(), now).compareTo(ttl) > 0;
-    }
-
-    private static Thread pumpVirtual(InputStream in, Consumer<String> sink) {
-        return Thread.ofVirtual().unstarted(() -> {
-            try (BufferedReader r = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = r.readLine()) != null) {
-                    sink.accept(line);
-                }
-            } catch (IOException ignored) {
-                // stream closed — fine
-            }
-        });
-    }
-
-    private static void writeLine(BufferedWriter w, String line) {
-        synchronized (w) {
-            try {
-                w.write(line);
-                w.newLine();
-                w.flush();
-            } catch (IOException ignored) {
-                // disk trouble — keep the process running; inline buffer still holds output
-            }
-        }
-    }
-
-    private static BufferedWriter openLog(Path file) throws IOException {
-        return Files.newBufferedWriter(
-                file, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-    }
-
-    // ──────────────────── Indexing ────────────────────
-
-    private void indexJob(String scopeKey, ExecJob job) {
-        Map<String, ExecJob> perProject =
-                jobs.computeIfAbsent(scopeKey, k -> java.util.Collections.synchronizedMap(new LinkedHashMap<>()));
-        synchronized (perProject) {
-            perProject.put(job.id(), job);
-            int cap = properties.getMaxJobsPerProject();
-            if (perProject.size() > cap) {
-                // Drop the oldest terminal job to stay under cap.
-                String victim = null;
-                ExecJob victimJob = null;
-                for (Map.Entry<String, ExecJob> e : perProject.entrySet()) {
-                    if (e.getValue().isTerminal()) {
-                        victim = e.getKey();
-                        victimJob = e.getValue();
-                        break;
-                    }
-                }
-                if (victim != null) {
-                    perProject.remove(victim);
-                    // Evict the mirrored registry entry too — otherwise the
-                    // Brain-owned ExecutionRegistryEntry outlives the job and
-                    // leaks for the pod's lifetime (code-review Phase 2).
-                    registry.removeById(victim);
-                    // Drop any secret values this run pulled via vance.secret(...)
-                    // so decrypted values don't linger past the job's lifetime.
-                    ScriptSecretAccumulator.evict(victimJob.labels().get(ExecLabels.KEY_RUN_ID));
-                    // Reclaim the evicted job's on-disk log dir. Otherwise
-                    // <baseDir>/<scopeKey>/<jobId>/ accumulates unbounded for the
-                    // pod lifetime (nothing else deletes it — these dirs live
-                    // outside workspace RootDirs, so process/project teardown
-                    // never reaches them).
-                    deleteJobDirQuietly(scopeKey, victim);
-                }
-            }
-        }
-    }
-
-    private Path jobDir(String scopeKey, String jobId) {
-        return Path.of(properties.getBaseDir())
-                .toAbsolutePath()
-                .normalize()
-                .resolve(scopeKey)
-                .resolve(jobId);
-    }
-
-    /** Best-effort recursive delete of an evicted job's on-disk log directory. */
-    private void deleteJobDirQuietly(String scopeKey, String jobId) {
-        Path dir = jobDir(scopeKey, jobId);
-        try {
-            if (!Files.exists(dir)) return;
-            try (java.util.stream.Stream<Path> walk = Files.walk(dir)) {
-                walk.sorted(Comparator.reverseOrder()).forEach(p -> {
-                    try {
-                        Files.deleteIfExists(p);
-                    } catch (IOException ignore) {
-                        // best-effort per entry
-                    }
-                });
-            }
-        } catch (IOException | RuntimeException e) {
-            log.warn("ExecManager: failed to delete evicted job dir {}: {}", dir, e.toString());
-        }
+    private static String scopeKey(String tenantId, String projectId) {
+        return tenantId + "/" + projectId;
     }
 
     private static void requireTenant(@Nullable String tenantId) {
@@ -933,29 +518,16 @@ public class ExecManager {
      */
     private List<String> buildArgv(String command, Path cwd) {
         ExecProperties.Isolation iso = properties.getIsolation();
-        if (ExecIsolation.enabled(iso)) {
+        if (ExecIsolation.enabled(iso.getMode(), iso.getWrapper())) {
             List<String> argv = ExecIsolation.wrap(iso.getWrapper(), cwd.toString(), command);
             log.info("exec isolation: wrapping work_exec command in '{}'", argv.isEmpty() ? "?" : argv.get(0));
             return argv;
         }
-        return isWindows() ? List.of("cmd.exe", "/c", command) : List.of("/bin/sh", "-c", command);
-    }
-
-    private static boolean isWindows() {
-        return System.getProperty("os.name", "").toLowerCase().contains("win");
+        return ExecIsolation.shellArgv(command);
     }
 
     @PreDestroy
     void shutdown() {
-        for (Map<String, ExecJob> perProject : jobs.values()) {
-            for (ExecJob j : perProject.values()) {
-                if (!j.isTerminal() && j.process() != null) {
-                    j.process().destroyForcibly();
-                }
-            }
-        }
-        workers.shutdownNow();
-        watchdog.shutdownNow();
-        watchdogFutures.clear();
+        jobs.close();
     }
 }

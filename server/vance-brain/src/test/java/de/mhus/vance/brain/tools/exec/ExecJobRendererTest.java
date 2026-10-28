@@ -2,6 +2,7 @@ package de.mhus.vance.brain.tools.exec;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import de.mhus.vance.exec.ExecJob;
 import java.nio.file.Path;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -88,8 +89,6 @@ class ExecJobRendererTest {
     }
 
     private ExecJob newJob() {
-        return new ExecJob(
-                "id-1", "proj-1", "echo hi",
-                Path.of("stdout.log"), Path.of("stderr.log"));
+        return new ExecJob("id-1", "proj-1", "echo hi", Path.of("stdout.log"), Path.of("stderr.log"));
     }
 }

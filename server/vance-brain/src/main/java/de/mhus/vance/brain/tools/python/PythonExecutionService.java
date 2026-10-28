@@ -1,8 +1,8 @@
 package de.mhus.vance.brain.tools.python;
 
 import de.mhus.vance.brain.tools.exec.ExecManager;
-import de.mhus.vance.brain.tools.exec.SubmitOptions;
 import de.mhus.vance.brain.tools.workspace.TypedRootDirProvisioner;
+import de.mhus.vance.exec.SubmitOptions;
 import de.mhus.vance.shared.workspace.PythonHandler;
 import de.mhus.vance.shared.workspace.RootDirHandle;
 import de.mhus.vance.shared.workspace.WorkspaceService;
@@ -78,7 +78,7 @@ public class PythonExecutionService {
 
     /**
      * Variant that attaches {@code labels} to the spawned
-     * {@link de.mhus.vance.brain.tools.exec.ExecJob} — used by callers
+     * {@link de.mhus.vance.exec.ExecJob} — used by callers
      * that want to identify the run for cross-cutting filters (Cortex
      * doc linkage, language, source). See {@link
      * de.mhus.vance.brain.tools.exec.ExecLabels} for the convention.

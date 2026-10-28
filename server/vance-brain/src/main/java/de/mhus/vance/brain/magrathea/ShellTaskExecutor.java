@@ -4,7 +4,7 @@ import de.mhus.vance.api.magrathea.MagratheaErrorKind;
 import de.mhus.vance.api.magrathea.MagratheaTaskType;
 import de.mhus.vance.brain.tools.exec.ExecLabels;
 import de.mhus.vance.brain.tools.exec.ExecManager;
-import de.mhus.vance.brain.tools.exec.SubmitOptions;
+import de.mhus.vance.exec.SubmitOptions;
 import de.mhus.vance.shared.magrathea.MagratheaStateSpec;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -48,16 +48,13 @@ import tools.jackson.databind.ObjectMapper;
  * </table>
  */
 @Component
-@ConditionalOnProperty(
-        value = "vance.services.magrathea",
-        havingValue = "true",
-        matchIfMissing = false)
+@ConditionalOnProperty(value = "vance.services.magrathea", havingValue = "true", matchIfMissing = false)
 @RequiredArgsConstructor
 @Slf4j
 public class ShellTaskExecutor implements MagratheaTypeExecutor {
 
     private static final long DEFAULT_TIMEOUT_MS = 30_000L;
-    private static final String SPEC_RUN     = "run";
+    private static final String SPEC_RUN = "run";
     private static final String SPEC_DIRNAME = "dirName";
 
     private final ExecManager execManager;
@@ -73,13 +70,11 @@ public class ShellTaskExecutor implements MagratheaTypeExecutor {
         MagratheaStateSpec state = context.state();
         String command = state.specString(SPEC_RUN);
         if (command == null) {
-            return Optional.of(TaskOutcome.failure(
-                    "shell_task '" + state.name() + "' is missing required 'run:' field"));
+            return Optional.of(
+                    TaskOutcome.failure("shell_task '" + state.name() + "' is missing required 'run:' field"));
         }
         String dirName = state.specString(SPEC_DIRNAME);
-        long waitMs = state.timeoutSeconds() == null
-                ? DEFAULT_TIMEOUT_MS
-                : state.timeoutSeconds() * 1000L;
+        long waitMs = state.timeoutSeconds() == null ? DEFAULT_TIMEOUT_MS : state.timeoutSeconds() * 1000L;
 
         Map<String, String> labels = Map.of(
                 ExecLabels.KEY_SOURCE, ExecLabels.SOURCE_WORKFLOW,
@@ -101,11 +96,8 @@ public class ShellTaskExecutor implements MagratheaTypeExecutor {
             // catch covers it plus any infrastructure failure (e.g. workspace
             // dir missing). All map to technical_error.
             log.warn("Magrathea shell_task '{}' failed to submit: {}", state.name(), ex.getMessage());
-            return Optional.of(new TaskOutcome(
-                    errorKindName(MagratheaErrorKind.TECHNICAL_ERROR),
-                    null,
-                    ex.getMessage(),
-                    null));
+            return Optional.of(
+                    new TaskOutcome(errorKindName(MagratheaErrorKind.TECHNICAL_ERROR), null, ex.getMessage(), null));
         }
 
         return Optional.of(mapOutcome(state, result));
@@ -120,12 +112,12 @@ public class ShellTaskExecutor implements MagratheaTypeExecutor {
         // from this, the LLM consumes it elsewhere. We keep stdout +
         // stderr + exitCode + durationMs.
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("status",   status);
+        payload.put("status", status);
         if (exitCode != null) payload.put("exitCode", exitCode);
-        payload.put("stdout",   result.getOrDefault("stdout", ""));
-        payload.put("stderr",   result.getOrDefault("stderr", ""));
+        payload.put("stdout", result.getOrDefault("stdout", ""));
+        payload.put("stderr", result.getOrDefault("stderr", ""));
         payload.put("durationMs", result.getOrDefault("durationMs", 0));
-        payload.put("execJobId",  result.get("id"));
+        payload.put("execJobId", result.get("id"));
 
         switch (status) {
             case "COMPLETED":

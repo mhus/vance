@@ -9,6 +9,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.exec.ExecJob;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.nio.file.Path;
@@ -39,8 +40,7 @@ class ExecCheckToolTest {
 
     private ExecJob runningJob() {
         ExecJob job = new ExecJob(
-                JOB_ID, PROJECT, "proc-1", "sleep 100",
-                Path.of("/nowhere/stdout.log"), Path.of("/nowhere/stderr.log"));
+                JOB_ID, PROJECT, "proc-1", "sleep 100", Path.of("/nowhere/stdout.log"), Path.of("/nowhere/stderr.log"));
         job.initialDeadline(Instant.now().plusSeconds(30));
         return job;
     }
@@ -55,33 +55,26 @@ class ExecCheckToolTest {
 
     @Test
     void invoke_missingId_throws() {
-        assertThatThrownBy(() ->
-                tool.invoke(Map.of("ifRunning", "wait"), ctx))
-                .isInstanceOf(ToolException.class);
+        assertThatThrownBy(() -> tool.invoke(Map.of("ifRunning", "wait"), ctx)).isInstanceOf(ToolException.class);
     }
 
     @Test
     void invoke_missingIfRunning_throws() {
-        assertThatThrownBy(() ->
-                tool.invoke(Map.of("id", JOB_ID), ctx))
-                .isInstanceOf(ToolException.class);
+        assertThatThrownBy(() -> tool.invoke(Map.of("id", JOB_ID), ctx)).isInstanceOf(ToolException.class);
     }
 
     @Test
     void invoke_invalidIfRunning_throws() {
-        assertThatThrownBy(() ->
-                tool.invoke(Map.of("id", JOB_ID, "ifRunning", "bogus"), ctx))
+        assertThatThrownBy(() -> tool.invoke(Map.of("id", JOB_ID, "ifRunning", "bogus"), ctx))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("one of");
     }
 
     @Test
     void invoke_extendWithoutSeconds_throws() {
-        when(execManager.get(TENANT, PROJECT, JOB_ID))
-                .thenReturn(Optional.of(runningJob()));
+        when(execManager.get(TENANT, PROJECT, JOB_ID)).thenReturn(Optional.of(runningJob()));
 
-        assertThatThrownBy(() ->
-                tool.invoke(Map.of("id", JOB_ID, "ifRunning", "extend"), ctx))
+        assertThatThrownBy(() -> tool.invoke(Map.of("id", JOB_ID, "ifRunning", "extend"), ctx))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("extendSeconds");
     }
@@ -90,8 +83,7 @@ class ExecCheckToolTest {
     void invoke_unknownJob_throws() {
         when(execManager.get(TENANT, PROJECT, JOB_ID)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() ->
-                tool.invoke(Map.of("id", JOB_ID, "ifRunning", "wait"), ctx))
+        assertThatThrownBy(() -> tool.invoke(Map.of("id", JOB_ID, "ifRunning", "wait"), ctx))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("Unknown");
     }
@@ -106,16 +98,12 @@ class ExecCheckToolTest {
                     return true;
                 });
 
-        Map<String, Object> out = tool.invoke(Map.of(
-                "id", JOB_ID,
-                "ifRunning", "extend",
-                "extendSeconds", 60), ctx);
+        Map<String, Object> out = tool.invoke(Map.of("id", JOB_ID, "ifRunning", "extend", "extendSeconds", 60), ctx);
 
         assertThat(out).containsEntry("decision", "extend");
         assertThat(out).containsEntry("terminal", false);
         assertThat(out).containsKey("newDeadline");
-        verify(execManager).extendDeadline(
-                TENANT, PROJECT, JOB_ID, Duration.ofSeconds(60));
+        verify(execManager).extendDeadline(TENANT, PROJECT, JOB_ID, Duration.ofSeconds(60));
     }
 
     @Test
@@ -124,8 +112,7 @@ class ExecCheckToolTest {
         when(execManager.get(TENANT, PROJECT, JOB_ID)).thenReturn(Optional.of(job));
         when(execManager.kill(TENANT, PROJECT, JOB_ID)).thenReturn(true);
 
-        Map<String, Object> out = tool.invoke(Map.of(
-                "id", JOB_ID, "ifRunning", "kill"), ctx);
+        Map<String, Object> out = tool.invoke(Map.of("id", JOB_ID, "ifRunning", "kill"), ctx);
 
         assertThat(out).containsEntry("decision", "kill");
         assertThat(out).containsEntry("killApplied", true);
@@ -137,8 +124,7 @@ class ExecCheckToolTest {
         ExecJob job = runningJob();
         when(execManager.get(TENANT, PROJECT, JOB_ID)).thenReturn(Optional.of(job));
 
-        Map<String, Object> out = tool.invoke(Map.of(
-                "id", JOB_ID, "ifRunning", "wait"), ctx);
+        Map<String, Object> out = tool.invoke(Map.of("id", JOB_ID, "ifRunning", "wait"), ctx);
 
         assertThat(out).containsEntry("decision", "wait");
         assertThat(out).containsEntry("terminal", false);
@@ -152,9 +138,7 @@ class ExecCheckToolTest {
         ExecJob job = terminalJob();
         when(execManager.get(TENANT, PROJECT, JOB_ID)).thenReturn(Optional.of(job));
 
-        Map<String, Object> out = tool.invoke(Map.of(
-                "id", JOB_ID, "ifRunning", "extend",
-                "extendSeconds", 60), ctx);
+        Map<String, Object> out = tool.invoke(Map.of("id", JOB_ID, "ifRunning", "extend", "extendSeconds", 60), ctx);
 
         assertThat(out).containsEntry("status", "COMPLETED");
         assertThat(out).containsEntry("terminal", true);

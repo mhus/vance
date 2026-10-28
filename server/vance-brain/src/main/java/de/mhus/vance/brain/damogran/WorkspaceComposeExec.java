@@ -4,7 +4,7 @@ import static de.mhus.vance.brain.damogran.DamogranTaskSupport.EXEC_KILL_GRACE_S
 import static de.mhus.vance.brain.damogran.DamogranTaskSupport.NO_DEADLINE_WAIT_MS;
 
 import de.mhus.vance.brain.tools.exec.ExecManager;
-import de.mhus.vance.brain.tools.exec.SubmitOptions;
+import de.mhus.vance.exec.SubmitOptions;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -27,8 +27,13 @@ final class WorkspaceComposeExec implements ComposeExec {
     private final @Nullable String processId;
     private final @Nullable ComposeProgress progress;
 
-    WorkspaceComposeExec(ExecManager execManager, String tenantId, String projectId,
-                         String dirName, @Nullable String processId, @Nullable ComposeProgress progress) {
+    WorkspaceComposeExec(
+            ExecManager execManager,
+            String tenantId,
+            String projectId,
+            String dirName,
+            @Nullable String processId,
+            @Nullable ComposeProgress progress) {
         this.execManager = execManager;
         this.tenantId = tenantId;
         this.projectId = projectId;

@@ -3,6 +3,7 @@ package de.mhus.vance.brain.damogran;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.session.SessionAccess;
 import de.mhus.vance.brain.tools.exec.ExecManager;
+import de.mhus.vance.exec.ExecJobs;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -241,9 +242,9 @@ public class ComposeController {
         }
         try {
             List<String> out =
-                    execManager.tail(run.tenantId(), run.projectId(), jobId, TAIL_LINES, ExecManager.Stream.STDOUT);
+                    execManager.tail(run.tenantId(), run.projectId(), jobId, TAIL_LINES, ExecJobs.Stream.STDOUT);
             List<String> err =
-                    execManager.tail(run.tenantId(), run.projectId(), jobId, TAIL_LINES, ExecManager.Stream.STDERR);
+                    execManager.tail(run.tenantId(), run.projectId(), jobId, TAIL_LINES, ExecJobs.Stream.STDERR);
             if (err.isEmpty()) return out;
             if (out.isEmpty()) return err;
             List<String> both = new ArrayList<>(out.size() + err.size());

@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.exec;
 
+import de.mhus.vance.exec.ExecJob;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolCapabilities;
 import de.mhus.vance.toolpack.ToolException;

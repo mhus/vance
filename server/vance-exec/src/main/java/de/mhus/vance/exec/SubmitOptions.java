@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.tools.exec;
+package de.mhus.vance.exec;
 
 import java.time.Instant;
 import java.util.Map;

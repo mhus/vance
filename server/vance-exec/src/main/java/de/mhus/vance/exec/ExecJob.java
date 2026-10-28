@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.tools.exec;
+package de.mhus.vance.exec;
 
 import java.nio.file.Path;
 import java.time.Instant;
@@ -11,9 +11,9 @@ import org.jspecify.annotations.Nullable;
  * {@code volatile} on the flippable fields is enough — no method
  * reads two correlated fields at once.
  */
-final class ExecJob {
+public final class ExecJob {
 
-    enum Status {
+    public enum Status {
         RUNNING,
         COMPLETED,
         FAILED,
@@ -63,11 +63,11 @@ final class ExecJob {
     private volatile @Nullable Instant deadline;
     private volatile boolean killedByWatchdog;
 
-    ExecJob(String id, String projectId, String command, Path stdoutFile, Path stderrFile) {
+    public ExecJob(String id, String projectId, String command, Path stdoutFile, Path stderrFile) {
         this(id, projectId, null, command, stdoutFile, stderrFile, null, Map.of());
     }
 
-    ExecJob(
+    public ExecJob(
             String id,
             String projectId,
             @Nullable String ownerProcessId,
@@ -77,7 +77,7 @@ final class ExecJob {
         this(id, projectId, ownerProcessId, command, stdoutFile, stderrFile, null, Map.of());
     }
 
-    ExecJob(
+    public ExecJob(
             String id,
             String projectId,
             @Nullable String ownerProcessId,
@@ -98,80 +98,80 @@ final class ExecJob {
         this.lastOutputAt = this.startedAt;
     }
 
-    String id() {
+    public String id() {
         return id;
     }
 
-    String projectId() {
+    public String projectId() {
         return projectId;
     }
 
     @Nullable
-    String ownerProcessId() {
+    public String ownerProcessId() {
         return ownerProcessId;
     }
 
-    String command() {
+    public String command() {
         return command;
     }
 
-    Path stdoutFile() {
+    public Path stdoutFile() {
         return stdoutFile;
     }
 
-    Path stderrFile() {
+    public Path stderrFile() {
         return stderrFile;
     }
 
-    Instant startedAt() {
+    public Instant startedAt() {
         return startedAt;
     }
 
     @Nullable
-    Map<String, String> env() {
+    public Map<String, String> env() {
         return env;
     }
 
-    Map<String, String> labels() {
+    public Map<String, String> labels() {
         return labels;
     }
 
     @Nullable
-    Instant finishedAt() {
+    public Instant finishedAt() {
         return finishedAt;
     }
 
-    void finishedAt(Instant t) {
+    public void finishedAt(Instant t) {
         this.finishedAt = t;
     }
 
-    Status status() {
+    public Status status() {
         return status;
     }
 
-    void status(Status s) {
+    public void status(Status s) {
         this.status = s;
     }
 
     @Nullable
-    Integer exitCode() {
+    public Integer exitCode() {
         return exitCode;
     }
 
-    void exitCode(@Nullable Integer c) {
+    public void exitCode(@Nullable Integer c) {
         this.exitCode = c;
     }
 
     @Nullable
-    Process process() {
+    public Process process() {
         return process;
     }
 
-    void process(Process p) {
+    public void process(Process p) {
         this.process = p;
     }
 
-    void appendStdout(String line) {
+    public void appendStdout(String line) {
         synchronized (stdout) {
             stdout.append(line).append('\n');
             capBuffer(stdout);
@@ -179,7 +179,7 @@ final class ExecJob {
         lastOutputAt = Instant.now();
     }
 
-    void appendStderr(String line) {
+    public void appendStderr(String line) {
         synchronized (stderr) {
             stderr.append(line).append('\n');
             capBuffer(stderr);
@@ -199,28 +199,28 @@ final class ExecJob {
         }
     }
 
-    Instant lastOutputAt() {
+    public Instant lastOutputAt() {
         return lastOutputAt;
     }
 
-    String readStdout() {
+    public String readStdout() {
         synchronized (stdout) {
             return stdout.toString();
         }
     }
 
-    String readStderr() {
+    public String readStderr() {
         synchronized (stderr) {
             return stderr.toString();
         }
     }
 
-    boolean isTerminal() {
+    public boolean isTerminal() {
         return status != Status.RUNNING;
     }
 
     @Nullable
-    Instant deadline() {
+    public Instant deadline() {
         return deadline;
     }
 
@@ -230,7 +230,7 @@ final class ExecJob {
      * which guards against racing with a watchdog that has already
      * picked the job up.
      */
-    void initialDeadline(@Nullable Instant deadline) {
+    public void initialDeadline(@Nullable Instant deadline) {
         this.deadline = deadline;
     }
 
@@ -240,7 +240,7 @@ final class ExecJob {
      * either wins (kill) or loses (extension) — never both. Returns
      * {@code false} when the job is no longer RUNNING.
      */
-    synchronized boolean extendDeadline(Instant newDeadline) {
+    public synchronized boolean extendDeadline(Instant newDeadline) {
         if (status != Status.RUNNING) {
             return false;
         }
@@ -257,7 +257,7 @@ final class ExecJob {
      * the kill was claimed; {@code false} when the job already
      * terminated (natural completion / user-driven kill won the race).
      */
-    synchronized boolean attemptWatchdogKill() {
+    public synchronized boolean attemptWatchdogKill() {
         if (status != Status.RUNNING) {
             return false;
         }
@@ -267,7 +267,7 @@ final class ExecJob {
         return true;
     }
 
-    boolean killedByWatchdog() {
+    public boolean killedByWatchdog() {
         return killedByWatchdog;
     }
 
@@ -282,7 +282,7 @@ final class ExecJob {
      * false} when the job already terminated, so a real {@code finally}
      * that just set COMPLETED/FAILED/KILLED is never clobbered.
      */
-    synchronized boolean markOrphanedIfRunning() {
+    public synchronized boolean markOrphanedIfRunning() {
         if (status != Status.RUNNING) {
             return false;
         }

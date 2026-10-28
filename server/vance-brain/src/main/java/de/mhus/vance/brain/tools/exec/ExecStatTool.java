@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.tools.exec;
 
 import de.mhus.vance.brain.execution.ExecutionRouter;
+import de.mhus.vance.exec.ExecStat;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolCapabilities;
 import de.mhus.vance.toolpack.ToolException;

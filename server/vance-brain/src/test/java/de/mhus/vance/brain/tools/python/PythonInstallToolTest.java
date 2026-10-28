@@ -60,7 +60,7 @@ class PythonInstallToolTest {
                         anyString(),
                         anyString(),
                         anyLong(),
-                        any(de.mhus.vance.brain.tools.exec.SubmitOptions.class)))
+                        any(de.mhus.vance.exec.SubmitOptions.class)))
                 .thenReturn(Map.of("status", "COMPLETED", "exitCode", 0));
     }
 
@@ -154,7 +154,7 @@ class PythonInstallToolTest {
                         dir.capture(),
                         anyString(),
                         anyLong(),
-                        any(de.mhus.vance.brain.tools.exec.SubmitOptions.class));
+                        any(de.mhus.vance.exec.SubmitOptions.class));
         assertThat(dir.getValue()).isEqualTo(PythonHandler.DEFAULT_LABEL);
     }
 
@@ -169,7 +169,7 @@ class PythonInstallToolTest {
                         eq("python"),
                         cmd.capture(),
                         anyLong(),
-                        any(de.mhus.vance.brain.tools.exec.SubmitOptions.class));
+                        any(de.mhus.vance.exec.SubmitOptions.class));
         return cmd.getValue();
     }
 

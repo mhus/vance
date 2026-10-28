@@ -1,4 +1,4 @@
-package de.mhus.vance.api.tools;
+package de.mhus.vance.exec;
 
 import java.nio.file.Path;
 import java.util.Set;
@@ -10,16 +10,14 @@ import org.jspecify.annotations.Nullable;
  * <p>The family exists three times over: a generic wrapper ({@code file_grep})
  * that dispatches to a CLIENT backend on the user's machine
  * ({@code client_file_grep}, in {@code vance-foot}) or a WORK backend on a
- * server workspace ({@code work_file_grep}, in {@code vance-brain}). One tool
- * name, so one behaviour — a depth cap, result cap or noise filter that
+ * server workspace ({@code work_file_grep}, in {@code vance-brain}) or a runner
+ * ({@code runner_file_grep}). One tool name, so one behaviour — a depth cap, result cap or noise filter that
  * differs per target makes the wrapper a lie.
  *
  * <p>This class is the single source for those numbers and for the
- * generated-content filter. It lives in {@code vance-api} because that is the
- * only module both sides may depend on: {@code vance-foot} is restricted to
- * {@code vance-api} by design, so a helper in {@code vance-shared} could not
- * be reached from the CLIENT implementations. Pure Java, no Spring, no
- * Jackson — it fits the module's contract-only rule.
+ * generated-content filter. It lives in {@code vance-exec} because that is the
+ * module every side may depend on — brain, foot and the runner — and it is pure
+ * Java.
  */
 public final class FileWalkDefaults {
 
@@ -58,18 +56,38 @@ public final class FileWalkDefaults {
      * inside a dependency is the actual intent.
      */
     private static final Set<String> SKIPPED_DIRS = Set.of(
-            ".git", ".hg", ".svn",
-            "node_modules", ".pnpm-store", "bower_components",
-            "target", "build", "dist", "out",
-            ".next", ".nuxt", ".svelte-kit", ".turbo", ".parcel-cache",
-            ".gradle", ".m2",
-            "__pycache__", ".venv", "venv", ".tox", ".mypy_cache", ".pytest_cache", ".ruff_cache",
-            ".idea", ".vscode",
-            ".cache", "coverage", ".nyc_output");
+            ".git",
+            ".hg",
+            ".svn",
+            "node_modules",
+            ".pnpm-store",
+            "bower_components",
+            "target",
+            "build",
+            "dist",
+            "out",
+            ".next",
+            ".nuxt",
+            ".svelte-kit",
+            ".turbo",
+            ".parcel-cache",
+            ".gradle",
+            ".m2",
+            "__pycache__",
+            ".venv",
+            "venv",
+            ".tox",
+            ".mypy_cache",
+            ".pytest_cache",
+            ".ruff_cache",
+            ".idea",
+            ".vscode",
+            ".cache",
+            "coverage",
+            ".nyc_output");
 
     /** File names skipped anywhere in the tree — build state, not content. */
-    private static final Set<String> SKIPPED_FILES = Set.of(
-            "tsconfig.tsbuildinfo", ".DS_Store");
+    private static final Set<String> SKIPPED_FILES = Set.of("tsconfig.tsbuildinfo", ".DS_Store");
 
     /**
      * Whether a path <em>relative to the search root</em> points at generated

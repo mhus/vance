@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.exec.RootDirHandle;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -18,6 +19,7 @@ import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -51,6 +53,15 @@ class WorkspaceReadOnlyToolsTest {
         // resolve(tenant, project, dir, rel) returns root.resolve(rel).
         when(workspace.resolve(eq(TENANT), eq(PROJECT), eq(DIR), any()))
                 .thenAnswer(inv -> root.resolve((String) inv.getArgument(3)));
+        // The search tools hand the RootDir folder to RootDirSearch, which reads the disk.
+        when(workspace.getRootDir(TENANT, PROJECT, DIR))
+                .thenReturn(Optional.of(RootDirHandle.builder()
+                        .tenantId(TENANT)
+                        .projectId(PROJECT)
+                        .dirName(DIR)
+                        .type("temp")
+                        .path(root)
+                        .build()));
     }
 
     @AfterEach
@@ -73,8 +84,13 @@ class WorkspaceReadOnlyToolsTest {
         Files.writeString(p, content, StandardCharsets.UTF_8);
     }
 
-    private void mockList(String... files) {
-        when(workspace.list(TENANT, PROJECT, DIR)).thenReturn(List.of(files));
+    /** Makes sure each named file exists on disk; one already written keeps its content. */
+    private void mockList(String... files) throws IOException {
+        for (String file : files) {
+            if (!Files.exists(root.resolve(file))) {
+                writeFile(file, "x");
+            }
+        }
     }
 
     // ──────────────── scratch_grep ────────────────
@@ -120,7 +136,7 @@ class WorkspaceReadOnlyToolsTest {
     }
 
     @Test
-    void grep_invalidRegex_throws() {
+    void grep_invalidRegex_throws() throws IOException {
         mockList();
         WorkspaceGrepTool tool = new WorkspaceGrepTool(workspace);
         assertThatThrownBy(() -> tool.invoke(Map.of("pattern", "[unclosed", "dirName", DIR), CTX))
@@ -180,7 +196,7 @@ class WorkspaceReadOnlyToolsTest {
     }
 
     @Test
-    void find_invalidInstant_throws() {
+    void find_invalidInstant_throws() throws IOException {
         mockList();
         WorkspaceFindTool tool = new WorkspaceFindTool(workspace);
         assertThatThrownBy(() -> tool.invoke(Map.of("dirName", DIR, "modifiedAfter", "yesterday"), CTX))

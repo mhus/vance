@@ -1,7 +1,7 @@
 package de.mhus.vance.brain.tools.kinds;
 
 import de.mhus.vance.api.documents.AgeDocumentKind;
-import de.mhus.vance.brain.tools.RegexGuard;
+import de.mhus.vance.exec.RegexGuard;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.jaglan.JaglanPaths;
 import de.mhus.vance.shared.project.ProjectDocument;

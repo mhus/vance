@@ -1,21 +1,12 @@
 package de.mhus.vance.brain.tools.workspace;
 
-import de.mhus.vance.api.tools.FileWalkDefaults;
-import de.mhus.vance.shared.workspace.WorkspaceException;
+import de.mhus.vance.exec.FileWalkDefaults;
+import de.mhus.vance.exec.RootDirSearch;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolCapabilities;
-import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.ToolLabels;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.PathMatcher;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.time.Instant;
-import java.time.format.DateTimeParseException;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,9 +24,6 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class WorkspaceFindTool implements Tool {
-
-    private static final int DEFAULT_LIMIT = 200;
-    private static final int MAX_LIMIT = 2_000;
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
@@ -111,7 +99,8 @@ public class WorkspaceFindTool implements Tool {
                         "type",
                         "integer",
                         "description",
-                        "Cap on entries returned. Default: " + DEFAULT_LIMIT + ", max: " + MAX_LIMIT + "."));
+                        "Cap on entries returned. Default: " + FileWalkDefaults.DEFAULT_LIMIT + ", max: "
+                                + RootDirSearch.FIND_MAX_LIMIT + "."));
         p.put(
                 "includeGenerated",
                 Map.of(
@@ -170,131 +159,6 @@ public class WorkspaceFindTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        String dirName = WorkspaceDirResolver.resolve(workspace, ctx, stringOrNull(params, "dirName"));
-        String subPath = stringOrNull(params, "path");
-        String pathGlob = stringOrNull(params, "pathGlob");
-        Long minSize = longOrNull(params, "minSizeBytes");
-        Long maxSize = longOrNull(params, "maxSizeBytes");
-        Instant after = parseInstant(stringOrNull(params, "modifiedAfter"), "modifiedAfter");
-        Instant before = parseInstant(stringOrNull(params, "modifiedBefore"), "modifiedBefore");
-        String sortBy = stringOrNull(params, "sortBy");
-        int limit = clampLimit(intOrNull(params, "limit"));
-        int maxDepth = FileWalkDefaults.clampDepth(intOrNull(params, "maxDepth"));
-        boolean includeGenerated = Boolean.TRUE.equals(params == null ? null : params.get("includeGenerated"));
-
-        PathMatcher matcher = GlobMatchers.buildGlobMatcher(pathGlob);
-
-        List<String> all;
-        try {
-            all = workspace.list(ctx.tenantId(), ctx.projectId(), dirName);
-        } catch (WorkspaceException e) {
-            throw new ToolException(e.getMessage(), e);
-        }
-
-        // 'path' narrows the walk to a subtree; glob, depth and the
-        // generated-filter all judge the part *below* it — same contract the
-        // CLIENT backend documents, so file_find means one thing on both
-        // targets.
-        WorkspaceSubPath.requirePresent(workspace, ctx, dirName, subPath, /*requireDirectory*/ true);
-        String prefix = WorkspaceSubPath.prefix(subPath);
-        List<Entry> entries = new ArrayList<>();
-        int totalConsidered = 0;
-        int generatedSkipped = 0;
-        for (String relPath : all) {
-            String under = WorkspaceSubPath.under(relPath, prefix);
-            if (under == null) continue;
-            Path underPath = Path.of(under);
-            if (!includeGenerated && FileWalkDefaults.isGenerated(underPath)) {
-                generatedSkipped++;
-                continue;
-            }
-            if (FileWalkDefaults.depthOf(underPath) > maxDepth) continue;
-            totalConsidered++;
-            if (matcher != null && !matcher.matches(underPath)) continue;
-            Path abs;
-            try {
-                abs = workspace.resolve(ctx.tenantId(), ctx.projectId(), dirName, relPath);
-            } catch (WorkspaceException e) {
-                continue;
-            }
-            BasicFileAttributes attrs;
-            try {
-                attrs = Files.readAttributes(abs, BasicFileAttributes.class);
-            } catch (IOException e) {
-                continue;
-            }
-            long size = attrs.size();
-            Instant mtime = attrs.lastModifiedTime().toInstant();
-            if (minSize != null && size < minSize) continue;
-            if (maxSize != null && size > maxSize) continue;
-            if (after != null && !mtime.isAfter(after)) continue;
-            if (before != null && !mtime.isBefore(before)) continue;
-            entries.add(new Entry(relPath, size, mtime));
-        }
-
-        switch (sortBy == null ? "path" : sortBy) {
-            case "mtime" -> entries.sort((a, b) -> b.mtime.compareTo(a.mtime));
-            case "size" -> entries.sort((a, b) -> Long.compare(b.size, a.size));
-            default -> entries.sort((a, b) -> a.path.compareTo(b.path));
-        }
-
-        boolean truncated = entries.size() > limit;
-        List<Map<String, Object>> rows = new ArrayList<>();
-        for (Entry e : entries.subList(0, Math.min(limit, entries.size()))) {
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("path", e.path);
-            row.put("size", e.size);
-            row.put("modifiedAt", e.mtime.toString());
-            rows.add(row);
-        }
-
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("dirName", dirName);
-        out.put("path", subPath == null ? "." : subPath);
-        out.put("totalConsidered", totalConsidered);
-        // Report what the default filter removed rather than letting the
-        // caller read the result as a complete sweep.
-        if (generatedSkipped > 0) {
-            out.put("generatedFilesSkipped", generatedSkipped);
-            out.put(
-                    "generatedFilesHint",
-                    "Dependency/build directories were skipped — pass includeGenerated=true to walk them.");
-        }
-        out.put("matchCount", entries.size());
-        out.put("returned", rows.size());
-        out.put("truncated", truncated);
-        out.put("entries", rows);
-        return out;
-    }
-
-    private record Entry(String path, long size, Instant mtime) {}
-
-    private static int clampLimit(Integer raw) {
-        if (raw == null) return DEFAULT_LIMIT;
-        return Math.min(MAX_LIMIT, Math.max(1, raw));
-    }
-
-    private static String stringOrNull(Map<String, Object> params, String key) {
-        Object raw = params == null ? null : params.get(key);
-        return raw instanceof String s && !s.isBlank() ? s : null;
-    }
-
-    private static Integer intOrNull(Map<String, Object> params, String key) {
-        Object raw = params == null ? null : params.get(key);
-        return raw instanceof Number n ? n.intValue() : null;
-    }
-
-    private static Long longOrNull(Map<String, Object> params, String key) {
-        Object raw = params == null ? null : params.get(key);
-        return raw instanceof Number n ? n.longValue() : null;
-    }
-
-    private static Instant parseInstant(String raw, String paramName) {
-        if (raw == null) return null;
-        try {
-            return Instant.parse(raw);
-        } catch (DateTimeParseException e) {
-            throw new ToolException("'" + paramName + "' must be ISO-8601 (e.g. 2026-01-01T00:00:00Z); got: " + raw, e);
-        }
+        return WorkspaceSearch.run(workspace, ctx, params, RootDirSearch::find);
     }
 }

@@ -110,11 +110,15 @@ public final class BaseEngineTools {
             "work_exec_status",
             "work_exec_tail",
             "work_exec_kill",
-            // Runner-side backends (deferred) — the file/exec subset the runner offers
+            // Runner-side backends (deferred) — the runner's file and exec operations
             "runner_file_read",
             "runner_file_write",
             "runner_file_edit",
             "runner_file_list",
+            "runner_file_find",
+            "runner_file_grep",
+            "runner_file_count",
+            "runner_file_head_tail",
             "runner_file_delete",
             "runner_exec_run",
             "runner_exec_status",

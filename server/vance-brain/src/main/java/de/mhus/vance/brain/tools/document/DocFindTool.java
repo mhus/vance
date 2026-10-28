@@ -1,7 +1,7 @@
 package de.mhus.vance.brain.tools.document;
 
 import de.mhus.vance.brain.tools.eddie.EddieContext;
-import de.mhus.vance.brain.tools.workspace.GlobMatchers;
+import de.mhus.vance.exec.GlobMatchers;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.project.ProjectDocument;

@@ -6,16 +6,29 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
+import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /** Reads the arguments of an operation and settles which RootDir a call may touch. */
 final class OperationArgs {
+
+    private static final JsonMapper JSON = JsonMapper.builder().build();
 
     private final @Nullable JsonNode args;
 
     OperationArgs(@Nullable JsonNode args) {
         this.args = args;
+    }
+
+    /** The arguments as a plain map — the form {@code RootDirSearch} and the brain's tools share. */
+    Map<String, Object> asMap() {
+        if (args == null || !args.isObject()) {
+            return Map.of();
+        }
+        return JSON.convertValue(args, new TypeReference<Map<String, Object>>() {});
     }
 
     String text(String name) throws OperationException {

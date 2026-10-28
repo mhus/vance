@@ -1,42 +1,28 @@
 package de.mhus.vance.brain.tools.workspace;
 
-import de.mhus.vance.api.tools.FileWalkDefaults;
-import de.mhus.vance.brain.tools.RegexGuard;
-import de.mhus.vance.shared.workspace.WorkspaceException;
+import de.mhus.vance.exec.FileWalkDefaults;
+import de.mhus.vance.exec.RootDirSearch;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolCapabilities;
-import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.ToolLabels;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.PathMatcher;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Pattern;
-import java.util.regex.PatternSyntaxException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
  * Searches scratch RootDir files for lines matching a regex —
  * project-side equivalent of {@code grep -rn}. Files larger than
- * {@link #MAX_FILE_BYTES} or non-UTF-8 are skipped silently so the
+ * 2 MiB or non-UTF-8 are skipped silently so the
  * tool is safe across mixed binary/text trees.
  */
 @Component
 @RequiredArgsConstructor
 public class WorkspaceGrepTool implements Tool {
-
-    private static final int DEFAULT_LIMIT = 200;
-    private static final int MAX_LIMIT = 1_000;
-    private static final long MAX_FILE_BYTES = 2L * 1024 * 1024;
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
@@ -92,7 +78,8 @@ public class WorkspaceGrepTool implements Tool {
                         "type",
                         "integer",
                         "description",
-                        "Cap on total match rows returned. Default: " + DEFAULT_LIMIT + ", max: " + MAX_LIMIT + "."));
+                        "Cap on total match rows returned. Default: " + FileWalkDefaults.DEFAULT_LIMIT + ", max: "
+                                + RootDirSearch.GREP_MAX_LIMIT + "."));
         p.put(
                 "includeGenerated",
                 Map.of(
@@ -152,172 +139,6 @@ public class WorkspaceGrepTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        String patternStr = stringOrThrow(params, "pattern");
-        String dirName = WorkspaceDirResolver.resolve(workspace, ctx, stringOrNull(params, "dirName"));
-        String subPath = stringOrNull(params, "path");
-        String pathGlob = stringOrNull(params, "pathGlob");
-        boolean ci = Boolean.TRUE.equals(params == null ? null : params.get("caseInsensitive"));
-        int before = clampNonNeg(intOrNull(params, "contextBefore"));
-        int after = clampNonNeg(intOrNull(params, "contextAfter"));
-        int limit = clampLimit(intOrNull(params, "limit"));
-        int maxDepth = FileWalkDefaults.clampDepth(intOrNull(params, "maxDepth"));
-        boolean includeGenerated = Boolean.TRUE.equals(params == null ? null : params.get("includeGenerated"));
-
-        Pattern pattern;
-        try {
-            pattern = Pattern.compile(patternStr, ci ? Pattern.CASE_INSENSITIVE : 0);
-        } catch (PatternSyntaxException e) {
-            throw new ToolException("Invalid regex: " + e.getMessage(), e);
-        }
-
-        // Shared wall-clock budget for the whole grep — the (untrusted) regex
-        // is matched against every line of every scanned file, exactly like
-        // doc_grep_path; a catastrophic-backtracking pattern must not pin the
-        // lane thread.
-        long deadline = System.nanoTime() + REGEX_BUDGET_NANOS;
-
-        PathMatcher matcher = GlobMatchers.buildGlobMatcher(pathGlob);
-
-        List<String> files;
-        try {
-            files = workspace.list(ctx.tenantId(), ctx.projectId(), dirName);
-        } catch (WorkspaceException e) {
-            throw new ToolException(e.getMessage(), e);
-        }
-
-        // 'path' narrows the search to a subtree; glob, depth and the
-        // generated-filter judge the part below it — the same contract the
-        // CLIENT backend documents.
-        WorkspaceSubPath.requirePresent(workspace, ctx, dirName, subPath, /*requireDirectory*/ true);
-        String prefix = WorkspaceSubPath.prefix(subPath);
-        List<Map<String, Object>> matches = new ArrayList<>();
-        int filesScanned = 0;
-        int filesSkipped = 0;
-        int generatedSkipped = 0;
-        boolean truncated = false;
-        for (String relPath : files) {
-            if (matches.size() >= limit) {
-                truncated = true;
-                break;
-            }
-            String under = WorkspaceSubPath.under(relPath, prefix);
-            if (under == null) continue;
-            Path underPath = Path.of(under);
-            if (!includeGenerated && FileWalkDefaults.isGenerated(underPath)) {
-                generatedSkipped++;
-                continue;
-            }
-            if (FileWalkDefaults.depthOf(underPath) > maxDepth) continue;
-            if (matcher != null && !matcher.matches(underPath)) continue;
-
-            Path absolute;
-            try {
-                absolute = workspace.resolve(ctx.tenantId(), ctx.projectId(), dirName, relPath);
-            } catch (WorkspaceException e) {
-                filesSkipped++;
-                continue;
-            }
-            try {
-                if (Files.size(absolute) > MAX_FILE_BYTES) {
-                    filesSkipped++;
-                    continue;
-                }
-            } catch (IOException e) {
-                filesSkipped++;
-                continue;
-            }
-
-            String[] lines;
-            try {
-                lines = Files.readString(absolute, StandardCharsets.UTF_8).split("\\R", -1);
-            } catch (IOException e) {
-                // Likely binary / non-UTF8 — silently skip.
-                filesSkipped++;
-                continue;
-            }
-            filesScanned++;
-            for (int i = 0; i < lines.length; i++) {
-                if (!matchGuarded(pattern, lines[i], deadline)) continue;
-                if (matches.size() >= limit) {
-                    truncated = true;
-                    break;
-                }
-                Map<String, Object> m = new LinkedHashMap<>();
-                m.put("path", relPath);
-                m.put("lineNumber", i + 1);
-                m.put("line", lines[i]);
-                if (before > 0 || after > 0) {
-                    List<Map<String, Object>> ctxLines = new ArrayList<>();
-                    int from = Math.max(0, i - before);
-                    int to = Math.min(lines.length - 1, i + after);
-                    for (int j = from; j <= to; j++) {
-                        if (j == i) continue;
-                        ctxLines.add(Map.of("lineNumber", j + 1, "line", lines[j]));
-                    }
-                    if (!ctxLines.isEmpty()) m.put("context", ctxLines);
-                }
-                matches.add(m);
-            }
-        }
-
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("dirName", dirName);
-        out.put("path", subPath == null ? "." : subPath);
-        out.put("pattern", patternStr);
-        out.put("filesScanned", filesScanned);
-        out.put("filesSkipped", filesSkipped);
-        // Report what the default filter removed rather than letting the
-        // caller read the result as a complete sweep.
-        if (generatedSkipped > 0) {
-            out.put("generatedFilesSkipped", generatedSkipped);
-            out.put(
-                    "generatedFilesHint",
-                    "Dependency/build directories were skipped — pass includeGenerated=true to search them.");
-        }
-        out.put("matchCount", matches.size());
-        out.put("truncated", truncated);
-        out.put("matches", matches);
-        return out;
-    }
-
-    private static final long REGEX_BUDGET_NANOS = 2_000_000_000L; // 2s per grep call
-
-    /** {@link RegexGuard#find} but mapping a budget overrun to a clean ToolException. */
-    private static boolean matchGuarded(Pattern pattern, String line, long deadline) {
-        try {
-            return RegexGuard.find(pattern, line, deadline);
-        } catch (RegexGuard.RegexBudgetExceeded e) {
-            throw new ToolException(
-                    "regex too slow — possible catastrophic backtracking; "
-                            + "simplify the pattern (avoid nested quantifiers like (a+)+).",
-                    e);
-        }
-    }
-
-    private static int clampNonNeg(Integer raw) {
-        return raw == null ? 0 : Math.max(0, raw);
-    }
-
-    private static int clampLimit(Integer raw) {
-        if (raw == null) return DEFAULT_LIMIT;
-        return Math.min(MAX_LIMIT, Math.max(1, raw));
-    }
-
-    private static String stringOrThrow(Map<String, Object> params, String key) {
-        Object raw = params == null ? null : params.get(key);
-        if (!(raw instanceof String s) || s.isBlank()) {
-            throw new ToolException("'" + key + "' is required and must be a non-empty string");
-        }
-        return s;
-    }
-
-    private static String stringOrNull(Map<String, Object> params, String key) {
-        Object raw = params == null ? null : params.get(key);
-        return raw instanceof String s && !s.isBlank() ? s : null;
-    }
-
-    private static Integer intOrNull(Map<String, Object> params, String key) {
-        Object raw = params == null ? null : params.get(key);
-        return raw instanceof Number n ? n.intValue() : null;
+        return WorkspaceSearch.run(workspace, ctx, params, RootDirSearch::grep);
     }
 }

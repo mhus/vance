@@ -433,7 +433,7 @@ class WorkTargetDispatcherTest {
     }
 
     @Test
-    void runnerTarget_forAnOperationTheRunnerLacks_namesWhatItHas() {
+    void runnerTarget_forAnOperationWithoutATwin_pointsToWorkTargetSet() {
         registerRunner();
         process.setEngineParams(new LinkedHashMap<>(Map.of(WorkTarget.KEY, Map.of("kind", "RUNNER"))));
 
@@ -441,7 +441,7 @@ class WorkTargetDispatcherTest {
                         () -> dispatcher.dispatch(ctx, bus, wrapper, "client_file_grep", "work_file_grep", Map.of()))
                 .isInstanceOf(de.mhus.vance.toolpack.ToolException.class)
                 .hasMessageContaining("runner_file_grep does not exist")
-                .hasMessageContaining("exec run/status/tail/kill");
+                .hasMessageContaining("work_target_set");
         verify(bus, never()).invokeDelegate(any(), any());
     }
 }

@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.tools.workspace;
+package de.mhus.vance.exec;
 
 import java.nio.file.FileSystems;
 import java.nio.file.PathMatcher;
@@ -16,8 +16,8 @@ import org.jspecify.annotations.Nullable;
  * OR-ing in the root-level variant whenever the pattern starts with
  * {@code **\/}.
  *
- * <p>Used by {@link WorkspaceFindTool}, {@link WorkspaceGrepTool},
- * {@link WorkspaceCountTool}, and the document-side {@code doc_find}.
+ * <p>Used by the workspace and runner file searches ({@link RootDirSearch}) and the
+ * document-side {@code doc_find}.
  * The {@code client_file_*} family in {@code vance-foot} carries its own
  * copy because Foot cannot depend on {@code vance-shared} / {@code vance-brain}.
  */

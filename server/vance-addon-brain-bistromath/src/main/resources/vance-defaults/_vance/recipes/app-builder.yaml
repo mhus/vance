@@ -171,6 +171,10 @@ allowedToolsRemove:
   - runner_file_write
   - runner_file_edit
   - runner_file_list
+  - runner_file_find
+  - runner_file_grep
+  - runner_file_count
+  - runner_file_head_tail
   - runner_file_delete
   - runner_exec_run
   - runner_exec_status

@@ -175,15 +175,14 @@ public class WorkTargetDispatcher {
 
     /**
      * The {@code runner_*} twin of a {@code work_*} backend ({@code work_file_read} →
-     * {@code runner_file_read}). Operations the runner does not offer yet have no twin;
-     * saying so beats a "tool not found" the model cannot place.
+     * {@code runner_file_read}). An operation without a twin gets a message that places
+     * it, instead of a "tool not found" the model cannot place.
      */
     private String runnerBackend(String workName, ToolInvocationContext ctx) {
         String runnerName = workName.startsWith("work_") ? "runner_" + workName.substring("work_".length()) : workName;
         if (resolveBackend(runnerName, ctx) == null) {
             throw new ToolException("The RUNNER target does not offer this operation (" + runnerName
-                    + " does not exist). Switch to another target with work_target_set, or use the operations the"
-                    + " runner has: file read/write/edit/list/delete and exec run/status/tail/kill.");
+                    + " does not exist). Switch to another target with work_target_set.");
         }
         return runnerName;
     }

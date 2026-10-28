@@ -1,25 +1,16 @@
 package de.mhus.vance.brain.tools.workspace;
 
-import de.mhus.vance.api.tools.FileWalkDefaults;
-import de.mhus.vance.brain.tools.RegexGuard;
-import de.mhus.vance.shared.workspace.WorkspaceException;
+import de.mhus.vance.exec.FileWalkDefaults;
+import de.mhus.vance.exec.RootDirSearch;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolCapabilities;
-import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.ToolLabels;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.PathMatcher;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Pattern;
-import java.util.regex.PatternSyntaxException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -34,8 +25,6 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class WorkspaceCountTool implements Tool {
-
-    private static final long MAX_FILE_BYTES = 8L * 1024 * 1024;
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
@@ -144,192 +133,6 @@ public class WorkspaceCountTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        String dirName = WorkspaceDirResolver.resolve(workspace, ctx, stringOrNull(params, "dirName"));
-        String pathArg = stringOrNull(params, "path");
-        String pathGlob = stringOrNull(params, "pathGlob");
-        String patternStr = stringOrNull(params, "pattern");
-        boolean ci = Boolean.TRUE.equals(params == null ? null : params.get("caseInsensitive"));
-        int maxDepth = FileWalkDefaults.clampDepth(intOrNull(params, "maxDepth"));
-        boolean includeGenerated = Boolean.TRUE.equals(params == null ? null : params.get("includeGenerated"));
-
-        Pattern pattern;
-        try {
-            pattern = patternStr == null ? null : Pattern.compile(patternStr, ci ? Pattern.CASE_INSENSITIVE : 0);
-        } catch (PatternSyntaxException e) {
-            throw new ToolException("Invalid regex: " + e.getMessage(), e);
-        }
-
-        // Shared wall-clock budget for the whole count — the (untrusted)
-        // regex is matched against every line of every counted file, exactly
-        // like work_file_grep; a catastrophic-backtracking pattern must not
-        // pin the lane thread.
-        long deadline = System.nanoTime() + REGEX_BUDGET_NANOS;
-
-        // 'path' is a file *or* a directory, like the CLIENT backend: naming
-        // a file counts just that file, naming a directory walks its subtree,
-        // omitting it walks the whole RootDir.
-        boolean singleFile = false;
-        if (pathArg != null) {
-            try {
-                singleFile = Files.isRegularFile(workspace.resolve(ctx.tenantId(), ctx.projectId(), dirName, pathArg));
-            } catch (WorkspaceException e) {
-                throw new ToolException(e.getMessage(), e);
-            }
-        }
-        if (!singleFile) {
-            // Not a file: then it has to be an existing directory. Falling
-            // through with a mistyped path would answer "0 files", which
-            // reads as "the directory is empty".
-            WorkspaceSubPath.requirePresent(workspace, ctx, dirName, pathArg, /*requireDirectory*/ true);
-        }
-        String prefix = singleFile ? "" : WorkspaceSubPath.prefix(pathArg);
-        List<String> files;
-        if (singleFile) {
-            files = List.of(pathArg);
-        } else {
-            try {
-                files = workspace.list(ctx.tenantId(), ctx.projectId(), dirName);
-            } catch (WorkspaceException e) {
-                throw new ToolException(e.getMessage(), e);
-            }
-        }
-        PathMatcher matcher = singleFile ? null : GlobMatchers.buildGlobMatcher(pathGlob);
-
-        long totalLines = 0;
-        long totalMatchingLines = 0;
-        long totalChars = 0;
-        long totalBytes = 0;
-        int filesCounted = 0;
-        int filesSkipped = 0;
-        int generatedSkipped = 0;
-        for (String relPath : files) {
-            if (!singleFile) {
-                String under = WorkspaceSubPath.under(relPath, prefix);
-                if (under == null) continue;
-                Path underPath = Path.of(under);
-                if (!includeGenerated && FileWalkDefaults.isGenerated(underPath)) {
-                    generatedSkipped++;
-                    continue;
-                }
-                if (FileWalkDefaults.depthOf(underPath) > maxDepth) continue;
-                if (matcher != null && !matcher.matches(underPath)) continue;
-            }
-            Path abs;
-            try {
-                abs = workspace.resolve(ctx.tenantId(), ctx.projectId(), dirName, relPath);
-            } catch (WorkspaceException e) {
-                if (singleFile) throw new ToolException(e.getMessage(), e);
-                filesSkipped++;
-                continue;
-            }
-            if (!Files.exists(abs) || !Files.isRegularFile(abs)) {
-                if (singleFile) {
-                    throw new ToolException("Not a regular file: " + relPath);
-                }
-                filesSkipped++;
-                continue;
-            }
-            long bytes;
-            try {
-                bytes = Files.size(abs);
-            } catch (IOException e) {
-                if (singleFile) {
-                    throw new ToolException("Stat failed: " + e.getMessage(), e);
-                }
-                filesSkipped++;
-                continue;
-            }
-            if (bytes > MAX_FILE_BYTES && pattern == null) {
-                // Fast path: no pattern, fall back to line count via stream.
-                try (var stream = Files.lines(abs, StandardCharsets.UTF_8)) {
-                    long lineCount = stream.count();
-                    totalLines += lineCount;
-                    totalChars += bytes;
-                    totalBytes += bytes;
-                    filesCounted++;
-                    continue;
-                } catch (IOException e) {
-                    filesSkipped++;
-                    continue;
-                }
-            }
-            if (bytes > MAX_FILE_BYTES) {
-                filesSkipped++;
-                continue;
-            }
-            String content;
-            try {
-                content = Files.readString(abs, StandardCharsets.UTF_8);
-            } catch (IOException e) {
-                if (singleFile) {
-                    throw new ToolException("Read failed: " + e.getMessage(), e);
-                }
-                filesSkipped++;
-                continue;
-            }
-            // String.lines() matches Files.readAllLines / wc -l semantics:
-            // a trailing newline is a line terminator, not an empty line.
-            List<String> lines = content.lines().toList();
-            totalLines += lines.size();
-            totalBytes += bytes;
-            if (pattern == null) {
-                totalChars += content.length();
-            } else {
-                long matchedChars = 0;
-                long matchedLines = 0;
-                for (String line : lines) {
-                    if (matchGuarded(pattern, line, deadline)) {
-                        matchedLines++;
-                        matchedChars += line.length();
-                    }
-                }
-                totalMatchingLines += matchedLines;
-                totalChars += matchedChars;
-            }
-            filesCounted++;
-        }
-
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("dirName", dirName);
-        out.put("path", pathArg == null ? "." : pathArg);
-        if (pathGlob != null && !singleFile) out.put("pathGlob", pathGlob);
-        if (patternStr != null) out.put("pattern", patternStr);
-        out.put("filesCounted", filesCounted);
-        out.put("filesSkipped", filesSkipped);
-        if (generatedSkipped > 0) {
-            out.put("generatedFilesSkipped", generatedSkipped);
-            out.put(
-                    "generatedFilesHint",
-                    "Dependency/build directories were skipped — pass includeGenerated=true to count them.");
-        }
-        out.put("lines", pattern == null ? totalLines : totalMatchingLines);
-        if (pattern != null) out.put("totalLinesScanned", totalLines);
-        out.put("chars", totalChars);
-        out.put("bytes", totalBytes);
-        return out;
-    }
-
-    private static final long REGEX_BUDGET_NANOS = 2_000_000_000L; // 2s per count call
-
-    /** {@link RegexGuard#find} but mapping a budget overrun to a clean ToolException. */
-    private static boolean matchGuarded(Pattern pattern, String line, long deadline) {
-        try {
-            return RegexGuard.find(pattern, line, deadline);
-        } catch (RegexGuard.RegexBudgetExceeded e) {
-            throw new ToolException(
-                    "regex too slow — possible catastrophic backtracking; "
-                            + "simplify the pattern (avoid nested quantifiers like (a+)+).",
-                    e);
-        }
-    }
-
-    private static Integer intOrNull(Map<String, Object> params, String key) {
-        Object raw = params == null ? null : params.get(key);
-        return raw instanceof Number n ? n.intValue() : null;
-    }
-
-    private static String stringOrNull(Map<String, Object> params, String key) {
-        Object raw = params == null ? null : params.get(key);
-        return raw instanceof String s && !s.isBlank() ? s : null;
+        return WorkspaceSearch.run(workspace, ctx, params, RootDirSearch::count);
     }
 }

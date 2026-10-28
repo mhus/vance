@@ -1,6 +1,10 @@
 package de.mhus.vance.brain.tools.runner;
 
 import de.mhus.vance.brain.tools.runner.RunnerBackendTool.Effect;
+import de.mhus.vance.brain.tools.workspace.WorkspaceCountTool;
+import de.mhus.vance.brain.tools.workspace.WorkspaceFindTool;
+import de.mhus.vance.brain.tools.workspace.WorkspaceGrepTool;
+import de.mhus.vance.brain.tools.workspace.WorkspaceHeadTailTool;
 import de.mhus.vance.toolpack.Tool;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -90,6 +94,68 @@ class RunnerToolConfiguration {
                         prop("path", "string", "Directory below the RootDir; omit for its root."),
                         prop("dirName", "string", DIR_NAME)),
                 "file.list",
+                Effect.READ,
+                true,
+                false);
+    }
+
+    /*
+     * The four searches take the schema of their work_* twin as it stands: the code
+     * behind both is RootDirSearch, so one declaration serves both.
+     */
+
+    @Bean
+    Tool runnerFileFind(RunnerWork runner, WorkspaceFindTool twin) {
+        return new RunnerBackendTool(
+                runner,
+                "runner_file_find",
+                "Find files in a RootDir on the project's runner by path glob, size range and modification-time"
+                        + " range. Returns relative paths with size and mtime; sort by path (default), mtime or size.",
+                twin.paramsSchema(),
+                "file.find",
+                Effect.READ,
+                true,
+                false);
+    }
+
+    @Bean
+    Tool runnerFileGrep(RunnerWork runner, WorkspaceGrepTool twin) {
+        return new RunnerBackendTool(
+                runner,
+                "runner_file_grep",
+                "Recursively grep a regex across files in a RootDir on the project's runner. Returns matching lines"
+                        + " with path and 1-based line number, optionally with context. Binary and oversized files"
+                        + " are skipped.",
+                twin.paramsSchema(),
+                "file.grep",
+                Effect.READ,
+                true,
+                false);
+    }
+
+    @Bean
+    Tool runnerFileCount(RunnerWork runner, WorkspaceCountTool twin) {
+        return new RunnerBackendTool(
+                runner,
+                "runner_file_count",
+                "Count lines, characters and bytes of one file or of many files in a RootDir on the project's runner."
+                        + " An optional regex narrows the line count to matching lines.",
+                twin.paramsSchema(),
+                "file.count",
+                Effect.READ,
+                true,
+                false);
+    }
+
+    @Bean
+    Tool runnerFileHeadTail(RunnerWork runner, WorkspaceHeadTailTool twin) {
+        return new RunnerBackendTool(
+                runner,
+                "runner_file_head_tail",
+                "Return the first N and/or last N lines of a file on the project's runner, with 1-based line"
+                        + " numbers. At least one of head / tail must be > 0.",
+                twin.paramsSchema(),
+                "file.head_tail",
                 Effect.READ,
                 true,
                 false);

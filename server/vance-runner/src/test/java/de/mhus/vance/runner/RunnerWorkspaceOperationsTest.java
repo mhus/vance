@@ -315,7 +315,8 @@ class RunnerWorkspaceOperationsTest {
         assertThat(below.get("count").asInt()).isEqualTo(2);
         assertThatThrownBy(() -> call("file.list", c, Map.of("dirName", dir, "path", "missing")))
                 .isInstanceOfSatisfying(
-                        OperationException.class, e -> assertThat(e.code()).isEqualTo("not-found"));
+                        OperationException.class,
+                        e -> assertThat(e.getMessage()).contains("No such path"));
     }
 
     @Test
@@ -370,5 +371,108 @@ class RunnerWorkspaceOperationsTest {
                 .contains("truncated");
         assertThat(run.get("truncated").asBoolean()).isTrue();
         assertThat(run.has("stdoutPath")).isFalse();
+    }
+
+    private static java.util.List<String> strings(JsonNode array) {
+        return array.valueStream().map(JsonNode::asString).toList();
+    }
+
+    @Test
+    void findNarrowsByGlobAndSkipsGeneratedDirectories() throws Exception {
+        var c = claims("kunde-x", null);
+        String dir = newTempDir(c);
+        call("file.write", c, Map.of("dirName", dir, "path", "src/A.java", "content", "class A {}"));
+        call("file.write", c, Map.of("dirName", dir, "path", "src/b.txt", "content", "b"));
+        call("file.write", c, Map.of("dirName", dir, "path", "node_modules/x/C.java", "content", "c"));
+
+        JsonNode found = call("file.find", c, Map.of("dirName", dir, "pathGlob", "**/*.java"));
+
+        assertThat(found.get("entries").valueStream().map(e -> e.get("path").asString()))
+                .containsExactly("src/A.java");
+        assertThat(found.get("generatedFilesSkipped").asInt()).isEqualTo(1);
+        JsonNode all = call("file.find", c, Map.of("dirName", dir, "pathGlob", "**/*.java", "includeGenerated", true));
+        assertThat(all.get("matchCount").asInt()).isEqualTo(2);
+        assertThatThrownBy(() -> call("file.find", c, Map.of("dirName", dir, "path", "nope")))
+                .isInstanceOfSatisfying(
+                        OperationException.class,
+                        e -> assertThat(e.getMessage()).contains("No such path"));
+    }
+
+    @Test
+    void grepReturnsNumberedLinesWithContext_andRefusesABadOrSlowRegex() throws Exception {
+        var c = claims("kunde-x", null);
+        String dir = newTempDir(c);
+        call("file.write", c, Map.of("dirName", dir, "path", "f.txt", "content", "one\nTODO two\nthree"));
+
+        JsonNode grep = call(
+                "file.grep",
+                c,
+                Map.of(
+                        "dirName",
+                        dir,
+                        "pattern",
+                        "todo",
+                        "caseInsensitive",
+                        true,
+                        "contextBefore",
+                        1,
+                        "contextAfter",
+                        1));
+
+        JsonNode match = grep.get("matches").get(0);
+        assertThat(match.get("lineNumber").asInt()).isEqualTo(2);
+        assertThat(match.get("line").asString()).isEqualTo("TODO two");
+        assertThat(match.get("context")).hasSize(2);
+        assertThatThrownBy(() -> call("file.grep", c, Map.of("dirName", dir, "pattern", "(")))
+                .isInstanceOfSatisfying(
+                        OperationException.class,
+                        e -> assertThat(e.getMessage()).contains("Invalid regex"));
+        assertThatThrownBy(() -> call("file.grep", c, Map.of("dirName", dir)))
+                .isInstanceOfSatisfying(
+                        OperationException.class,
+                        e -> assertThat(e.getMessage()).contains("'pattern' is required"));
+    }
+
+    @Test
+    void countCountsOneFileOrASubtree_andOnlyMatchingLinesWithAPattern() throws Exception {
+        var c = claims("kunde-x", null);
+        String dir = newTempDir(c);
+        call("file.write", c, Map.of("dirName", dir, "path", "a.txt", "content", "x\nTODO\ny\n"));
+        call("file.write", c, Map.of("dirName", dir, "path", "d/b.txt", "content", "TODO\nTODO\n"));
+
+        JsonNode one = call("file.count", c, Map.of("dirName", dir, "path", "a.txt"));
+        assertThat(one.get("lines").asInt()).isEqualTo(3);
+        JsonNode tree = call("file.count", c, Map.of("dirName", dir));
+        assertThat(tree.get("filesCounted").asInt()).isEqualTo(2);
+        assertThat(tree.get("lines").asInt()).isEqualTo(5);
+        JsonNode todos = call("file.count", c, Map.of("dirName", dir, "pattern", "TODO"));
+        assertThat(todos.get("lines").asInt()).isEqualTo(3);
+        assertThat(todos.get("totalLinesScanned").asInt()).isEqualTo(5);
+        assertThatThrownBy(() -> call("file.count", c, Map.of("dirName", dir, "path", "missing")))
+                .isInstanceOfSatisfying(
+                        OperationException.class,
+                        e -> assertThat(e.getMessage()).contains("No such path"));
+    }
+
+    @Test
+    void headTailGivesNumberedSlices() throws Exception {
+        var c = claims("kunde-x", null);
+        String dir = newTempDir(c);
+        call("file.write", c, Map.of("dirName", dir, "path", "f.txt", "content", "1\n2\n3\n4\n5\n"));
+
+        JsonNode slices = call("file.head_tail", c, Map.of("dirName", dir, "path", "f.txt", "head", 2, "tail", 2));
+
+        assertThat(slices.get("totalLines").asInt()).isEqualTo(5);
+        assertThat(slices.get("head").valueStream().map(r -> r.get("line").asString()))
+                .containsExactly("1", "2");
+        assertThat(slices.get("tail").get(0).get("lineNumber").asInt()).isEqualTo(4);
+        assertThatThrownBy(() -> call("file.head_tail", c, Map.of("dirName", dir, "path", "f.txt")))
+                .isInstanceOfSatisfying(
+                        OperationException.class,
+                        e -> assertThat(e.getMessage()).contains("At least one"));
+        assertThatThrownBy(() -> call("file.head_tail", c, Map.of("dirName", dir, "path", "nope.txt", "head", 1)))
+                .isInstanceOfSatisfying(
+                        OperationException.class,
+                        e -> assertThat(e.getMessage()).contains("Not found"));
     }
 }

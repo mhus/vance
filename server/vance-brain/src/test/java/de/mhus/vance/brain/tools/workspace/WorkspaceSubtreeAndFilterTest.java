@@ -7,7 +7,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import de.mhus.vance.shared.workspace.WorkspaceProperties;
+import de.mhus.vance.exec.RootDirHandle;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -18,6 +18,7 @@ import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,8 +41,7 @@ class WorkspaceSubtreeAndFilterTest {
     private static final String TENANT = "acme";
     private static final String PROJECT = "instant-hole";
     private static final String DIR = "scratch";
-    private static final ToolInvocationContext CTX =
-            new ToolInvocationContext(TENANT, PROJECT, "sess", "proc", "user");
+    private static final ToolInvocationContext CTX = new ToolInvocationContext(TENANT, PROJECT, "sess", "proc", "user");
 
     private Path root;
     private WorkspaceService workspace;
@@ -52,14 +52,27 @@ class WorkspaceSubtreeAndFilterTest {
         workspace = mock(WorkspaceService.class);
         when(workspace.resolve(eq(TENANT), eq(PROJECT), eq(DIR), any()))
                 .thenAnswer(inv -> root.resolve((String) inv.getArgument(3)));
+        // The search tools hand the RootDir folder to RootDirSearch, which reads the disk.
+        when(workspace.getRootDir(TENANT, PROJECT, DIR))
+                .thenReturn(Optional.of(RootDirHandle.builder()
+                        .tenantId(TENANT)
+                        .projectId(PROJECT)
+                        .dirName(DIR)
+                        .type("temp")
+                        .path(root)
+                        .build()));
     }
 
     @AfterEach
     void tearDown() throws IOException {
         if (root != null && Files.exists(root)) {
             try (Stream<Path> walk = Files.walk(root)) {
-                walk.sorted(Comparator.reverseOrder())
-                        .forEach(p -> { try { Files.delete(p); } catch (IOException ignored) { } });
+                walk.sorted(Comparator.reverseOrder()).forEach(p -> {
+                    try {
+                        Files.delete(p);
+                    } catch (IOException ignored) {
+                    }
+                });
             }
         }
     }
@@ -70,18 +83,22 @@ class WorkspaceSubtreeAndFilterTest {
         Files.writeString(p, content, StandardCharsets.UTF_8);
     }
 
-    private void mockList(String... files) {
-        when(workspace.list(TENANT, PROJECT, DIR)).thenReturn(List.of(files));
+    /** Makes sure each named file exists on disk; one already written keeps its content. */
+    private void mockList(String... files) throws IOException {
+        for (String file : files) {
+            if (!Files.exists(root.resolve(file))) {
+                writeFile(file, "x");
+            }
+        }
     }
 
     // ──────────────── file_list: one level, entries, path ────────────────
 
     @Test
-    void list_returnsOneLevelWithDirectoryMarkers_notTheWholeTree() {
+    void list_returnsOneLevelWithDirectoryMarkers_notTheWholeTree() throws IOException {
         mockList("README.md", "src/Main.java", "src/util/Helper.java", "pom.xml");
 
-        Map<String, Object> out = new WorkspaceListTool(workspace)
-                .invoke(Map.of("dirName", DIR), CTX);
+        Map<String, Object> out = new WorkspaceListTool(workspace).invoke(Map.of("dirName", DIR), CTX);
 
         // Matches client_file_list: one level, directories marked. The old
         // behaviour returned all four paths under a 'files' key.
@@ -97,8 +114,7 @@ class WorkspaceSubtreeAndFilterTest {
         writeFile("other/x.txt", "x");
         mockList("src/Main.java", "src/util/Helper.java", "other/x.txt");
 
-        Map<String, Object> out = new WorkspaceListTool(workspace)
-                .invoke(Map.of("dirName", DIR, "path", "src"), CTX);
+        Map<String, Object> out = new WorkspaceListTool(workspace).invoke(Map.of("dirName", DIR, "path", "src"), CTX);
 
         assertThat(out.get("entries")).isEqualTo(List.of("Main.java", "util/"));
     }
@@ -109,8 +125,7 @@ class WorkspaceSubtreeAndFilterTest {
         writeFile("srcgen/Generated.java", "x");
         mockList("src/Main.java", "srcgen/Generated.java");
 
-        Map<String, Object> out = new WorkspaceListTool(workspace)
-                .invoke(Map.of("dirName", DIR, "path", "src"), CTX);
+        Map<String, Object> out = new WorkspaceListTool(workspace).invoke(Map.of("dirName", DIR, "path", "src"), CTX);
 
         // "src" must not swallow "srcgen/" — the prefix is slash-terminated.
         assertThat(out.get("entries")).isEqualTo(List.of("Main.java"));
@@ -126,8 +141,7 @@ class WorkspaceSubtreeAndFilterTest {
         writeFile("src/Main.java", "x");
         mockList("src/Main.java");
 
-        assertThatThrownBy(() -> new WorkspaceListTool(workspace)
-                .invoke(Map.of("dirName", DIR, "path", "scr"), CTX))
+        assertThatThrownBy(() -> new WorkspaceListTool(workspace).invoke(Map.of("dirName", DIR, "path", "scr"), CTX))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("No such path");
     }
@@ -137,8 +151,8 @@ class WorkspaceSubtreeAndFilterTest {
         writeFile("src/Main.java", "x");
         mockList("src/Main.java");
 
-        assertThatThrownBy(() -> new WorkspaceListTool(workspace)
-                .invoke(Map.of("dirName", DIR, "path", "src/Main.java"), CTX))
+        assertThatThrownBy(() ->
+                        new WorkspaceListTool(workspace).invoke(Map.of("dirName", DIR, "path", "src/Main.java"), CTX))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("Not a directory");
     }
@@ -149,8 +163,8 @@ class WorkspaceSubtreeAndFilterTest {
         writeFile("src/Main.java", "one\n");
         mockList("src/Main.java");
 
-        assertThatThrownBy(() -> new WorkspaceCountTool(workspace)
-                .invoke(Map.of("dirName", DIR, "path", "src/Mian.java"), CTX))
+        assertThatThrownBy(() ->
+                        new WorkspaceCountTool(workspace).invoke(Map.of("dirName", DIR, "path", "src/Mian.java"), CTX))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("No such path");
     }
@@ -161,7 +175,7 @@ class WorkspaceSubtreeAndFilterTest {
         mockList("src/Main.java");
 
         assertThatThrownBy(() -> new WorkspaceGrepTool(workspace)
-                .invoke(Map.of("pattern", "needle", "dirName", DIR, "path", "scr"), CTX))
+                        .invoke(Map.of("pattern", "needle", "dirName", DIR, "path", "scr"), CTX))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("No such path");
     }
@@ -190,8 +204,8 @@ class WorkspaceSubtreeAndFilterTest {
         writeFile("target/classes/Main.class", "needle\n");
         mockList("src/Main.java", "node_modules/dep/index.js", "target/classes/Main.class");
 
-        Map<String, Object> out = new WorkspaceGrepTool(workspace)
-                .invoke(Map.of("pattern", "needle", "dirName", DIR), CTX);
+        Map<String, Object> out =
+                new WorkspaceGrepTool(workspace).invoke(Map.of("pattern", "needle", "dirName", DIR), CTX);
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> matches = (List<Map<String, Object>>) out.get("matches");
@@ -201,8 +215,7 @@ class WorkspaceSubtreeAndFilterTest {
         assertThat(out).containsKey("generatedFilesHint");
 
         Map<String, Object> all = new WorkspaceGrepTool(workspace)
-                .invoke(Map.of("pattern", "needle", "dirName", DIR,
-                        "includeGenerated", true), CTX);
+                .invoke(Map.of("pattern", "needle", "dirName", DIR, "includeGenerated", true), CTX);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> allMatches = (List<Map<String, Object>>) all.get("matches");
         assertThat(allMatches).hasSize(3);
@@ -252,8 +265,7 @@ class WorkspaceSubtreeAndFilterTest {
         writeFile("dist/bundle.js", "x");
         mockList("src/Main.java", "dist/bundle.js");
 
-        Map<String, Object> out = new WorkspaceFindTool(workspace)
-                .invoke(Map.of("dirName", DIR), CTX);
+        Map<String, Object> out = new WorkspaceFindTool(workspace).invoke(Map.of("dirName", DIR), CTX);
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> entries = (List<Map<String, Object>>) out.get("entries");
@@ -270,8 +282,7 @@ class WorkspaceSubtreeAndFilterTest {
         writeFile("other/c.txt", "four\nfive\nsix\n");
         mockList("src/a.txt", "src/deep/b.txt", "other/c.txt");
 
-        Map<String, Object> out = new WorkspaceCountTool(workspace)
-                .invoke(Map.of("dirName", DIR, "path", "src"), CTX);
+        Map<String, Object> out = new WorkspaceCountTool(workspace).invoke(Map.of("dirName", DIR, "path", "src"), CTX);
 
         // Was file-only before: naming a directory counted nothing.
         assertThat(out).containsEntry("filesCounted", 2);
@@ -283,8 +294,8 @@ class WorkspaceSubtreeAndFilterTest {
         writeFile("src/a.txt", "one\ntwo\n");
         mockList("src/a.txt");
 
-        Map<String, Object> out = new WorkspaceCountTool(workspace)
-                .invoke(Map.of("dirName", DIR, "path", "src/a.txt"), CTX);
+        Map<String, Object> out =
+                new WorkspaceCountTool(workspace).invoke(Map.of("dirName", DIR, "path", "src/a.txt"), CTX);
 
         assertThat(out).containsEntry("filesCounted", 1);
         assertThat(out).containsEntry("lines", 2L);
@@ -296,8 +307,7 @@ class WorkspaceSubtreeAndFilterTest {
         writeFile("build/b.txt", "two\n");
         mockList("a.txt", "build/b.txt");
 
-        Map<String, Object> out = new WorkspaceCountTool(workspace)
-                .invoke(Map.of("dirName", DIR), CTX);
+        Map<String, Object> out = new WorkspaceCountTool(workspace).invoke(Map.of("dirName", DIR), CTX);
 
         assertThat(out).containsEntry("filesCounted", 1);
         assertThat(out).containsEntry("generatedFilesSkipped", 1);

@@ -5,12 +5,20 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.brain.tools.workspace.WorkspaceCountTool;
+import de.mhus.vance.brain.tools.workspace.WorkspaceFindTool;
+import de.mhus.vance.brain.tools.workspace.WorkspaceGrepTool;
+import de.mhus.vance.brain.tools.workspace.WorkspaceHeadTailTool;
 import de.mhus.vance.brain.tools.worktarget.ExecKillTool;
 import de.mhus.vance.brain.tools.worktarget.ExecRunTool;
 import de.mhus.vance.brain.tools.worktarget.ExecStatusTool;
 import de.mhus.vance.brain.tools.worktarget.ExecTailTool;
+import de.mhus.vance.brain.tools.worktarget.FileCountTool;
 import de.mhus.vance.brain.tools.worktarget.FileDeleteTool;
 import de.mhus.vance.brain.tools.worktarget.FileEditTool;
+import de.mhus.vance.brain.tools.worktarget.FileFindTool;
+import de.mhus.vance.brain.tools.worktarget.FileGrepTool;
+import de.mhus.vance.brain.tools.worktarget.FileHeadTailTool;
 import de.mhus.vance.brain.tools.worktarget.FileListTool;
 import de.mhus.vance.brain.tools.worktarget.FileReadTool;
 import de.mhus.vance.brain.tools.worktarget.FileWriteTool;
@@ -157,6 +165,31 @@ class RunnerToolsEndToEndTest {
     }
 
     @Test
+    void theSearchesRunOnTheRunner_withTheirWorkTwinsSchemas() {
+        var c = ctx("p1");
+        config.runnerFileWrite(work).invoke(Map.of("path", "src/A.java", "content", "one\nTODO two\nthree\n"), c);
+        config.runnerFileWrite(work).invoke(Map.of("path", "notes.txt", "content", "TODO later\n"), c);
+
+        Map<String, Object> found =
+                config.runnerFileFind(work, new WorkspaceFindTool(null)).invoke(Map.of("pathGlob", "**/*.java"), c);
+        Map<String, Object> grepped =
+                config.runnerFileGrep(work, new WorkspaceGrepTool(null)).invoke(Map.of("pattern", "TODO"), c);
+        Map<String, Object> counted =
+                config.runnerFileCount(work, new WorkspaceCountTool(null)).invoke(Map.of("path", "src/A.java"), c);
+        Map<String, Object> slices = config.runnerFileHeadTail(work, new WorkspaceHeadTailTool(null))
+                .invoke(Map.of("path", "src/A.java", "head", 1, "tail", 1), c);
+
+        assertThat(found.get("matchCount")).isEqualTo(1);
+        assertThat(grepped.get("matchCount")).isEqualTo(2);
+        assertThat(counted.get("lines")).isEqualTo(3);
+        assertThat(slices.get("totalLines")).isEqualTo(3);
+        assertThatThrownBy(() ->
+                        config.runnerFileGrep(work, new WorkspaceGrepTool(null)).invoke(Map.of("pattern", "("), c))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("Invalid regex");
+    }
+
+    @Test
     void aCommandRunsOnTheRunner_andItsOutputComesBack() {
         Tool run = config.runnerExecRun(work);
         Tool status = config.runnerExecStatus(work);
@@ -215,16 +248,21 @@ class RunnerToolsEndToEndTest {
     @Test
     void everyRunnerToolDeclaresExactlyTheParametersOfItsWrapper() {
         // The work-target wrappers reject a parameter the active backend does not declare.
-        Map<Tool, Tool> pairs = Map.of(
-                config.runnerFileRead(work), new FileReadTool(null),
-                config.runnerFileWrite(work), new FileWriteTool(null),
-                config.runnerFileEdit(work), new FileEditTool(null),
-                config.runnerFileList(work), new FileListTool(null),
-                config.runnerFileDelete(work), new FileDeleteTool(null),
-                config.runnerExecRun(work), new ExecRunTool(null),
-                config.runnerExecStatus(work), new ExecStatusTool(null),
-                config.runnerExecTail(work), new ExecTailTool(null),
-                config.runnerExecKill(work), new ExecKillTool(null));
+        Map<Tool, Tool> pairs = Map.ofEntries(
+                Map.entry(config.runnerFileRead(work), new FileReadTool(null)),
+                Map.entry(config.runnerFileWrite(work), new FileWriteTool(null)),
+                Map.entry(config.runnerFileEdit(work), new FileEditTool(null)),
+                Map.entry(config.runnerFileList(work), new FileListTool(null)),
+                Map.entry(config.runnerFileDelete(work), new FileDeleteTool(null)),
+                Map.entry(config.runnerExecRun(work), new ExecRunTool(null)),
+                Map.entry(config.runnerExecStatus(work), new ExecStatusTool(null)),
+                Map.entry(config.runnerExecTail(work), new ExecTailTool(null)),
+                Map.entry(config.runnerExecKill(work), new ExecKillTool(null)),
+                Map.entry(config.runnerFileFind(work, new WorkspaceFindTool(null)), new FileFindTool(null)),
+                Map.entry(config.runnerFileGrep(work, new WorkspaceGrepTool(null)), new FileGrepTool(null)),
+                Map.entry(config.runnerFileCount(work, new WorkspaceCountTool(null)), new FileCountTool(null)),
+                Map.entry(
+                        config.runnerFileHeadTail(work, new WorkspaceHeadTailTool(null)), new FileHeadTailTool(null)));
 
         pairs.forEach((runnerTool, wrapper) -> {
             assertThat(properties(runnerTool)).as(runnerTool.name()).isEqualTo(properties(wrapper));

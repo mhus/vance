@@ -2,6 +2,7 @@ package de.mhus.vance.runner;
 
 import de.mhus.vance.exec.RootDirFiles;
 import de.mhus.vance.exec.RootDirHandle;
+import de.mhus.vance.exec.RootDirSearch;
 import de.mhus.vance.exec.RootPaths;
 import de.mhus.vance.runner.RunnerOperation.Call;
 import de.mhus.vance.runner.RunnerOperation.OperationException;
@@ -11,12 +12,10 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.TreeSet;
-import org.jspecify.annotations.Nullable;
 
 /**
  * {@code file.read}, {@code file.write}, {@code file.edit}, {@code file.list},
+ * {@code file.find}, {@code file.grep}, {@code file.count}, {@code file.head_tail},
  * {@code file.delete} — text files inside a RootDir. Paths are resolved by
  * {@link RootPaths}, the same containment the brain's workspace uses; results carry
  * the field names of the {@code work_file_*} tools so the brain can hand them on.
@@ -28,7 +27,16 @@ final class FileOperations {
     private FileOperations() {}
 
     static List<RunnerOperation> all(RunnerWorkspace workspace) {
-        return List.of(read(workspace), write(workspace), edit(workspace), list(workspace), delete(workspace));
+        return List.of(
+                read(workspace),
+                write(workspace),
+                edit(workspace),
+                list(workspace),
+                find(workspace),
+                grep(workspace),
+                count(workspace),
+                headTail(workspace),
+                delete(workspace));
     }
 
     private static RunnerOperation read(RunnerWorkspace workspace) {
@@ -147,47 +155,39 @@ final class FileOperations {
     }
 
     private static RunnerOperation list(RunnerWorkspace workspace) {
-        return RootDirOperations.operation("file.list", call -> {
+        return search(workspace, "file.list", RootDirSearch::list);
+    }
+
+    private static RunnerOperation find(RunnerWorkspace workspace) {
+        return search(workspace, "file.find", RootDirSearch::find);
+    }
+
+    private static RunnerOperation grep(RunnerWorkspace workspace) {
+        return search(workspace, "file.grep", RootDirSearch::grep);
+    }
+
+    private static RunnerOperation count(RunnerWorkspace workspace) {
+        return search(workspace, "file.count", RootDirSearch::count);
+    }
+
+    private static RunnerOperation headTail(RunnerWorkspace workspace) {
+        return search(workspace, "file.head_tail", RootDirSearch::headTail);
+    }
+
+    /** A read-only search over one RootDir, answered by the code the brain's workspace runs. */
+    private static RunnerOperation search(RunnerWorkspace workspace, String name, Search search) {
+        return RootDirOperations.operation(name, call -> {
             OperationArgs args = new OperationArgs(call.args());
             String dirName = args.rootDir(call.claims());
-            String subPath = args.optionalText("path");
             Path base = handle(workspace, call, dirName).getPath();
-            String prefix = prefix(subPath);
-            if (!prefix.isEmpty() && !Files.isDirectory(RootPaths.resolveWithin(base, subPath))) {
-                throw new OperationException("not-found", "No such directory: " + subPath);
-            }
-            // RootDirFiles.list is recursive and file-only: fold it back to one level.
-            Set<String> entries = new TreeSet<>();
-            for (String relative : RootDirFiles.list(base)) {
-                if (!relative.startsWith(prefix)) {
-                    continue;
-                }
-                String under = relative.substring(prefix.length());
-                int slash = under.indexOf('/');
-                entries.add(slash < 0 ? under : under.substring(0, slash) + "/");
-            }
-            Map<String, Object> out = new LinkedHashMap<>();
-            out.put("dirName", dirName);
-            out.put("path", subPath == null || subPath.isBlank() ? "." : subPath);
-            out.put("entries", List.copyOf(entries));
-            out.put("count", entries.size());
-            return OperationResult.of(out);
+            return OperationResult.of(search.run(base, dirName, args.asMap()));
         });
     }
 
-    /** {@code "a/b"} → {@code "a/b/"}; blank, {@code "."} and {@code "/"} → the root. */
-    private static String prefix(@Nullable String path) {
-        if (path == null) {
-            return "";
-        }
-        String trimmed = path.strip();
-        while (trimmed.startsWith("./")) {
-            trimmed = trimmed.substring(2);
-        }
-        if (trimmed.isEmpty() || trimmed.equals(".") || trimmed.equals("/")) {
-            return "";
-        }
-        return trimmed.endsWith("/") ? trimmed : trimmed + "/";
+    /** One of {@link RootDirSearch}'s searches. */
+    @FunctionalInterface
+    private interface Search {
+        Map<String, Object> run(Path base, String dirName, Map<String, Object> params);
     }
 
     private static RunnerOperation delete(RunnerWorkspace workspace) {

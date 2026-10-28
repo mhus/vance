@@ -1,17 +1,14 @@
 package de.mhus.vance.brain.tools.workspace;
 
-import de.mhus.vance.shared.workspace.WorkspaceException;
+import de.mhus.vance.exec.RootDirSearch;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolCapabilities;
-import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.ToolLabels;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeSet;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -99,36 +96,6 @@ public class WorkspaceListTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        String dirName = WorkspaceDirResolver.resolve(workspace, ctx, stringOrNull(params, "dirName"));
-        String subPath = stringOrNull(params, "path");
-        WorkspaceSubPath.requirePresent(workspace, ctx, dirName, subPath, /*requireDirectory*/ true);
-        String prefix = WorkspaceSubPath.prefix(subPath);
-        List<String> all;
-        try {
-            all = workspace.list(ctx.tenantId(), ctx.projectId(), dirName);
-        } catch (WorkspaceException e) {
-            throw new ToolException(e.getMessage(), e);
-        }
-        // WorkspaceService.list is recursive and file-only; fold it back to a
-        // single level. The first segment below the prefix is the entry name,
-        // and anything with a further segment is a directory.
-        Set<String> entries = new TreeSet<>();
-        for (String relPath : all) {
-            String under = WorkspaceSubPath.under(relPath, prefix);
-            if (under == null) continue;
-            int slash = under.indexOf('/');
-            entries.add(slash < 0 ? under : under.substring(0, slash) + "/");
-        }
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("dirName", dirName);
-        out.put("path", subPath == null ? "." : subPath);
-        out.put("entries", List.copyOf(entries));
-        out.put("count", entries.size());
-        return out;
-    }
-
-    private static String stringOrNull(Map<String, Object> params, String key) {
-        Object raw = params == null ? null : params.get(key);
-        return raw instanceof String s && !s.isBlank() ? s : null;
+        return WorkspaceSearch.run(workspace, ctx, params, RootDirSearch::list);
     }
 }

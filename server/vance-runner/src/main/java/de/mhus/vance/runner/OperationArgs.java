@@ -1,0 +1,80 @@
+package de.mhus.vance.runner;
+
+import de.mhus.vance.runner.RunnerOperation.OperationException;
+import de.mhus.vance.runner.protocol.RunnerTokens;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+import org.jspecify.annotations.Nullable;
+import tools.jackson.databind.JsonNode;
+
+/** Reads the arguments of an operation and settles which RootDir a call may touch. */
+final class OperationArgs {
+
+    private final @Nullable JsonNode args;
+
+    OperationArgs(@Nullable JsonNode args) {
+        this.args = args;
+    }
+
+    String text(String name) throws OperationException {
+        String value = optionalText(name);
+        if (value == null || value.isBlank()) {
+            throw new OperationException("bad-args", "'" + name + "' is required");
+        }
+        return value;
+    }
+
+    /** The argument as given (blank is a value), or {@code null} when absent. */
+    @Nullable
+    String optionalText(String name) throws OperationException {
+        JsonNode node = args == null ? null : args.get(name);
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isString()) {
+            throw new OperationException("bad-args", "'" + name + "' must be a string");
+        }
+        return node.asString();
+    }
+
+    int integer(String name, int fallback) throws OperationException {
+        JsonNode node = args == null ? null : args.get(name);
+        if (node == null || node.isNull()) {
+            return fallback;
+        }
+        if (!node.isIntegralNumber()) {
+            throw new OperationException("bad-args", "'" + name + "' must be a whole number");
+        }
+        return node.asInt();
+    }
+
+    /**
+     * The RootDir a call works in. A token pinned to one RootDir ({@code root} claim)
+     * allows exactly that one — an argument naming another is refused, not
+     * overridden, so a mixed-up caller learns about it.
+     */
+    String rootDir(RunnerTokens.Claims claims) throws OperationException {
+        String requested = optionalText("dirName");
+        String pinned = claims.rootDir();
+        if (pinned != null) {
+            if (requested != null && !requested.isBlank() && !requested.equals(pinned)) {
+                throw new OperationException(
+                        "root-not-allowed",
+                        "This call is confined to RootDir '" + pinned + "', not '" + requested + "'");
+            }
+            return pinned;
+        }
+        return text("dirName");
+    }
+
+    static String sha256Hex(String content) {
+        try {
+            return HexFormat.of()
+                    .formatHex(MessageDigest.getInstance("SHA-256").digest(content.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is part of every JDK", e);
+        }
+    }
+}

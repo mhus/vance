@@ -10,6 +10,8 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.tools.PodCapabilities;
 import de.mhus.vance.brain.tools.client.ClientToolRegistry;
+import de.mhus.vance.shared.runner.RunnerBinding;
+import de.mhus.vance.shared.runner.RunnerBindingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.workspace.WorkspaceMode;
@@ -32,6 +34,7 @@ class WorkTargetServiceTest {
 
     private ThinkProcessService thinkProcessService;
     private ClientToolRegistry clientToolRegistry;
+    private final RunnerBindingService runnerBindings = mock(RunnerBindingService.class);
     private WorkTargetService service;
     private ThinkProcessDocument process;
 
@@ -40,7 +43,10 @@ class WorkTargetServiceTest {
         thinkProcessService = mock(ThinkProcessService.class);
         clientToolRegistry = mock(ClientToolRegistry.class);
         service = new WorkTargetService(
-                thinkProcessService, clientToolRegistry, new PodCapabilities(new WorkspaceProperties(), List.of()));
+                thinkProcessService,
+                clientToolRegistry,
+                new PodCapabilities(new WorkspaceProperties(), List.of()),
+                runnerBindings);
         process = new ThinkProcessDocument();
         process.setId(PROC_ID);
         process.setSessionId(SESSION_ID);
@@ -201,8 +207,8 @@ class WorkTargetServiceTest {
     void set_workTargetWithWorkspaceOff_isRefused() {
         WorkspaceProperties off = new WorkspaceProperties();
         off.setMode(WorkspaceMode.OFF);
-        WorkTargetService offService =
-                new WorkTargetService(thinkProcessService, clientToolRegistry, new PodCapabilities(off, List.of()));
+        WorkTargetService offService = new WorkTargetService(
+                thinkProcessService, clientToolRegistry, new PodCapabilities(off, List.of()), runnerBindings);
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> offService.set(PROC_ID, WorkTarget.work(null)))
                 .isInstanceOf(ToolException.class)
@@ -213,8 +219,8 @@ class WorkTargetServiceTest {
     void defaultFor_workspaceOffWithoutClient_isNone() {
         WorkspaceProperties off = new WorkspaceProperties();
         off.setMode(WorkspaceMode.OFF);
-        WorkTargetService offService =
-                new WorkTargetService(thinkProcessService, clientToolRegistry, new PodCapabilities(off, List.of()));
+        WorkTargetService offService = new WorkTargetService(
+                thinkProcessService, clientToolRegistry, new PodCapabilities(off, List.of()), runnerBindings);
 
         assertThat(offService.defaultFor(process).kind()).isEqualTo(WorkTargetKind.NONE);
     }
@@ -231,5 +237,57 @@ class WorkTargetServiceTest {
         service.set(PROC_ID, WorkTarget.none());
 
         verify(thinkProcessService).replaceEngineParams(eq(PROC_ID), any());
+    }
+
+    private void registerRunner() {
+        RunnerBinding binding = RunnerBinding.builder()
+                .runnerId("runner-acme")
+                .url("http://runner:9840")
+                .recipient("age1xyz")
+                .build();
+        when(runnerBindings.resolve(any(), any()))
+                .thenReturn(
+                        Optional.of(new RunnerBindingService.Effective(binding, RunnerBindingService.Source.TENANT)));
+    }
+
+    private WorkTargetService workspaceOffService() {
+        WorkspaceProperties off = new WorkspaceProperties();
+        off.setMode(WorkspaceMode.OFF);
+        return new WorkTargetService(
+                thinkProcessService, clientToolRegistry, new PodCapabilities(off, List.of()), runnerBindings);
+    }
+
+    @Test
+    void defaultFor_workspaceOffWithARunner_isTheRunner() {
+        registerRunner();
+
+        assertThat(workspaceOffService().defaultFor(process).kind()).isEqualTo(WorkTargetKind.RUNNER);
+    }
+
+    @Test
+    void defaultFor_workspaceLocalWithARunner_staysWork() {
+        registerRunner();
+
+        // Both surfaces exist; the agent picks the runner explicitly.
+        assertThat(service.defaultFor(process).kind()).isEqualTo(WorkTargetKind.WORK);
+    }
+
+    @Test
+    void set_runnerWithoutARegisteredRunner_isRefused() {
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.set(PROC_ID, WorkTarget.runner(null)))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("No runner is registered");
+    }
+
+    @Test
+    void set_runnerWithARunner_isStored_evenWithoutAWorkspace() {
+        registerRunner();
+        when(thinkProcessService.replaceEngineParams(any(), any())).thenReturn(true);
+
+        workspaceOffService().set(PROC_ID, WorkTarget.runner("build"));
+
+        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(thinkProcessService).replaceEngineParams(eq(PROC_ID), captor.capture());
+        assertThat(captor.getValue().get(WorkTarget.KEY)).isEqualTo(Map.of("kind", "RUNNER", "targetName", "build"));
     }
 }

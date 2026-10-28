@@ -21,6 +21,8 @@ import org.jspecify.annotations.Nullable;
  *       Brain-side RootDir.</li>
  *   <li>{@link WorkTargetKind#WORK} — the RootDir name; {@code null}
  *       resolves to the process's lazy temp RootDir at dispatch time.</li>
+ *   <li>{@link WorkTargetKind#RUNNER} — the RootDir name on the runner;
+ *       {@code null} resolves to the process's temp RootDir there.</li>
  *   <li>{@link WorkTargetKind#DAEMON} — the (required) name of a
  *       {@code profile=daemon} Foot registered in the same project.</li>
  * </ul>
@@ -71,6 +73,14 @@ public record WorkTarget(WorkTargetKind kind, @Nullable String targetName) {
      */
     public static WorkTarget daemon(String daemonName) {
         return new WorkTarget(WorkTargetKind.DAEMON, daemonName);
+    }
+
+    /**
+     * The registered runner's RootDir surface. {@code dirName == null} resolves to
+     * the process's temp RootDir on the runner at dispatch time.
+     */
+    public static WorkTarget runner(@Nullable String dirName) {
+        return new WorkTarget(WorkTargetKind.RUNNER, dirName);
     }
 
     /** No surface — see {@link WorkTargetKind#NONE}. */

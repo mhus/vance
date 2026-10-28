@@ -76,7 +76,9 @@ public class RunnerClient {
             /** The runner answered, but not with an HTTP success. */
             REJECTED,
             /** What came back is not an answer from the registered runner. */
-            UNTRUSTED
+            UNTRUSTED,
+            /** The stored registration cannot be used (e.g. its key is not an age recipient). */
+            BAD_REGISTRATION
         }
 
         private final Reason reason;
@@ -140,7 +142,16 @@ public class RunnerClient {
                 rootDir,
                 jti,
                 Instant.now().plus(TOKEN_LIFETIME));
-        SealedRequest sealed = RunnerEnvelope.sealRequest(runner.getRecipient(), token, jti, op, args, body);
+        SealedRequest sealed;
+        try {
+            sealed = RunnerEnvelope.sealRequest(runner.getRecipient(), token, jti, op, args, body);
+        } catch (RunnerProtocolException e) {
+            throw new RunnerCallException(
+                    RunnerCallException.Reason.BAD_REGISTRATION,
+                    "The registration of runner '" + runner.getRunnerId() + "' cannot be used (" + e.getMessage()
+                            + ") — register it again with 'runner set'",
+                    e);
+        }
 
         Instant started = Instant.now();
         HttpResponse<byte[]> response = send(runner, sealed.bytes(), timeout);

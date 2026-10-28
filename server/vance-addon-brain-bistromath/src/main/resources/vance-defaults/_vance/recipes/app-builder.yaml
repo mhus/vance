@@ -167,6 +167,15 @@ allowedToolsRemove:
   - work_exec_status
   - work_exec_tail
   - work_exec_kill
+  - runner_file_read
+  - runner_file_write
+  - runner_file_edit
+  - runner_file_list
+  - runner_file_delete
+  - runner_exec_run
+  - runner_exec_status
+  - runner_exec_tail
+  - runner_exec_kill
 
 promptPrefix: |
   ## Task domain — custom applications

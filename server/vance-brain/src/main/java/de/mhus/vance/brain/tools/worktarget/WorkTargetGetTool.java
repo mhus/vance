@@ -44,12 +44,14 @@ public class WorkTargetGetTool implements Tool {
     @Override
     public String description() {
         return "Report the current WorkTarget — i.e. where the generic "
-                + "file_* and exec_* tools currently dispatch to. Three "
+                + "file_* and exec_* tools currently dispatch to. Four "
                 + "kinds: CLIENT (session-bound Foot CLI on the user's "
                 + "host), WORK (Brain-server workspace RootDir; targetName "
                 + "picks which RootDir, null = process temp) and DAEMON "
                 + "(a named profile=daemon Foot in this project; "
-                + "targetName is the daemon name). The response also "
+                + "targetName is the daemon name) and RUNNER (the project's "
+                + "registered runner; targetName picks the RootDir there). "
+                + "The response also "
                 + "lists alternatives the caller can switch to via "
                 + "work_target_set: whether a foot client is connected, "
                 + "the existing workspace RootDir names, and the names of "
@@ -103,6 +105,8 @@ public class WorkTargetGetTool implements Tool {
         available.put("clientConnected", workTargetService.clientConnected(process.getSessionId()));
         boolean workAvailable = workspaceService.mode().accessible();
         available.put("work", workAvailable);
+        // Independent of "work": a runner needs no workspace on this pod.
+        available.put("runner", workTargetService.runnerAvailable(process));
         if (workAvailable) {
             List<String> rootDirNames = new ArrayList<>();
             try {

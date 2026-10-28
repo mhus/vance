@@ -33,7 +33,8 @@ public final class BaseEngineTools {
      *       {@code tool_list} when an exotic backend switch is
      *       needed.</li>
      *   <li>The dispatch backends themselves ({@code client_*},
-     *       {@code work_file_*}, {@code work_exec_*}). The wrappers
+     *       {@code work_file_*}, {@code work_exec_*}, {@code runner_file_*},
+     *       {@code runner_exec_*}). The wrappers
      *       route through these via {@code ContextToolsApi.invokeDelegate},
      *       which gates against the engine's allow-set — so the
      *       backends MUST be in the same set even though they're
@@ -108,5 +109,15 @@ public final class BaseEngineTools {
             "work_exec_run",
             "work_exec_status",
             "work_exec_tail",
-            "work_exec_kill");
+            "work_exec_kill",
+            // Runner-side backends (deferred) — the file/exec subset the runner offers
+            "runner_file_read",
+            "runner_file_write",
+            "runner_file_edit",
+            "runner_file_list",
+            "runner_file_delete",
+            "runner_exec_run",
+            "runner_exec_status",
+            "runner_exec_tail",
+            "runner_exec_kill");
 }

@@ -2,6 +2,7 @@ package de.mhus.vance.brain.tools.worktarget;
 
 import de.mhus.vance.brain.tools.PodCapabilities;
 import de.mhus.vance.brain.tools.client.ClientToolRegistry;
+import de.mhus.vance.shared.runner.RunnerBindingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.worktarget.WorkTarget;
@@ -45,6 +46,7 @@ public class WorkTargetService {
     private final ThinkProcessService thinkProcessService;
     private final ClientToolRegistry clientToolRegistry;
     private final PodCapabilities podCapabilities;
+    private final RunnerBindingService runnerBindings;
 
     /**
      * Throws unless the WORK target exists on this pod — it is the pod's own
@@ -57,6 +59,27 @@ public class WorkTargetService {
         if (!workAvailable()) {
             throw new ToolException("This server has no workspace (vance.workspace.mode=off) — the WORK target"
                     + " is not available. Use a CLIENT target (a connected foot) or a DAEMON target.");
+        }
+    }
+
+    /** Whether a runner serves the process's project (its own, else the tenant's). */
+    public boolean runnerAvailable(ThinkProcessDocument process) {
+        return runnerBindings
+                .resolve(process.getTenantId(), process.getProjectId())
+                .isPresent();
+    }
+
+    /**
+     * Throws unless a runner is registered for the process's project. The RUNNER
+     * target is independent of {@link #requireWorkAvailable()}: it needs no workspace
+     * on this pod, only an entry made by the operator.
+     *
+     * @throws ToolException when no runner is registered
+     */
+    public void requireRunnerAvailable(ThinkProcessDocument process) {
+        if (!runnerAvailable(process)) {
+            throw new ToolException("No runner is registered for project '" + process.getProjectId()
+                    + "' — the RUNNER target is not available. Use WORK, a CLIENT target or a DAEMON target.");
         }
     }
 
@@ -116,6 +139,9 @@ public class WorkTargetService {
                 .findById(processId)
                 .orElseThrow(
                         () -> new IllegalStateException("WorkTargetService.set: unknown process '" + processId + "'"));
+        if (target.kind() == WorkTargetKind.RUNNER) {
+            requireRunnerAvailable(process);
+        }
         Map<String, Object> existing = process.getEngineParams();
         Map<String, Object> merged = existing == null ? new LinkedHashMap<>() : new LinkedHashMap<>(existing);
         merged.put(WorkTarget.KEY, target.toMap());
@@ -130,15 +156,20 @@ public class WorkTargetService {
      * {@code workTarget}. Prefers {@link WorkTargetKind#CLIENT} when
      * a Foot client is bound to the session, otherwise
      * {@link WorkTargetKind#WORK} with {@code dirName=null} (lazy
-     * temp RootDir) — or {@link WorkTargetKind#NONE} when the pod has
-     * no workspace ({@code vance.workspace.mode=off}): a WORK default
-     * there would name a surface that does not exist.
+     * temp RootDir). Without a workspace on the pod
+     * ({@code vance.workspace.mode=off}) a WORK default would name a surface that
+     * does not exist: the project's {@link WorkTargetKind#RUNNER} takes over when it
+     * has one, {@link WorkTargetKind#NONE} otherwise. With a workspace, the runner is
+     * never the default — the agent selects it with {@code work_target_set}.
      */
     public WorkTarget defaultFor(ThinkProcessDocument process) {
         if (process != null && process.getSessionId() != null && footBound(process.getSessionId())) {
             return WorkTarget.client();
         }
-        return workAvailable() ? WorkTarget.work(null) : WorkTarget.none();
+        if (workAvailable()) {
+            return WorkTarget.work(null);
+        }
+        return process != null && runnerAvailable(process) ? WorkTarget.runner(null) : WorkTarget.none();
     }
 
     private boolean workAvailable() {

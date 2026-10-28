@@ -9,3 +9,6 @@ dist/
 # IntelliJ
 .idea/
 *.iml
+
+# Written by maven-shade-plugin next to the pom (regenerated on every build)
+dependency-reduced-pom.xml

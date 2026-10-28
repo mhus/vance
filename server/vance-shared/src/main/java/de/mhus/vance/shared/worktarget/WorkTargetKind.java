@@ -2,7 +2,7 @@ package de.mhus.vance.shared.worktarget;
 
 /**
  * Where the generic {@code file_*} / {@code exec_*} tools dispatch
- * to. Three surfaces today, plus {@link #NONE} for "nowhere":
+ * to. Four surfaces today, plus {@link #NONE} for "nowhere":
  *
  * <ul>
  *   <li>{@link #CLIENT} — the user's local host, accessed via the
@@ -22,6 +22,13 @@ package de.mhus.vance.shared.worktarget;
  *       {@code targetName} field carries the required daemon name;
  *       the dispatch fails with a clear error when no such daemon is
  *       online in the project.</li>
+ *   <li>{@link #RUNNER} — the tenant's or project's registered runner
+ *       ({@code planning/runner.md}): a separate process that holds its own
+ *       RootDirs and runs commands outside the brain. Backend tools:
+ *       {@code runner_file_*}, {@code runner_exec_*}. The {@code targetName}
+ *       picks the runner-side RootDir; {@code null} means a temp RootDir the
+ *       runner creates for the process on first use. Independent of
+ *       {@link #WORK}: both can exist at once.</li>
  *   <li>{@link #NONE} — no surface: the server has no workspace
  *       ({@code vance.workspace.mode=off}) and no client is bound. Every
  *       {@code file_*} / {@code exec_*} call fails with a clear error until
@@ -33,5 +40,6 @@ public enum WorkTargetKind {
     CLIENT,
     WORK,
     DAEMON,
+    RUNNER,
     NONE
 }

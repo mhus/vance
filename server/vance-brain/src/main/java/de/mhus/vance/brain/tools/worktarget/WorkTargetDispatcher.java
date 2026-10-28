@@ -119,6 +119,15 @@ public class WorkTargetDispatcher {
             p.remove("dirName");
             DaemonRegistry.DaemonKey key = daemonKey(process, target.targetName());
             return daemonToolInvoker.invoke(key, clientName, p, Duration.ofSeconds(daemonTimeoutSeconds));
+        } else if (target.kind() == WorkTargetKind.RUNNER) {
+            workTargetService.requireRunnerAvailable(process);
+            backendName = runnerBackend(workName, ctx);
+            rejectUnknownParams(ctx, wrapper, backendName, p);
+            if (!p.containsKey("dirName")
+                    && target.targetName() != null
+                    && !target.targetName().isBlank()) {
+                p.put("dirName", target.targetName());
+            }
         } else {
             // WorkTargetKind.WORK
             workTargetService.requireWorkAvailable();
@@ -162,6 +171,21 @@ public class WorkTargetDispatcher {
             }
             throw e;
         }
+    }
+
+    /**
+     * The {@code runner_*} twin of a {@code work_*} backend ({@code work_file_read} →
+     * {@code runner_file_read}). Operations the runner does not offer yet have no twin;
+     * saying so beats a "tool not found" the model cannot place.
+     */
+    private String runnerBackend(String workName, ToolInvocationContext ctx) {
+        String runnerName = workName.startsWith("work_") ? "runner_" + workName.substring("work_".length()) : workName;
+        if (resolveBackend(runnerName, ctx) == null) {
+            throw new ToolException("The RUNNER target does not offer this operation (" + runnerName
+                    + " does not exist). Switch to another target with work_target_set, or use the operations the"
+                    + " runner has: file read/write/edit/list/delete and exec run/status/tail/kill.");
+        }
+        return runnerName;
     }
 
     /**

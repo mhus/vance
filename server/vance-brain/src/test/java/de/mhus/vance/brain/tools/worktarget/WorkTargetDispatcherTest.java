@@ -15,6 +15,8 @@ import de.mhus.vance.brain.daemon.DaemonRegistry;
 import de.mhus.vance.brain.daemon.DaemonToolInvoker;
 import de.mhus.vance.brain.tools.PodCapabilities;
 import de.mhus.vance.brain.tools.client.ClientToolRegistry;
+import de.mhus.vance.shared.runner.RunnerBinding;
+import de.mhus.vance.shared.runner.RunnerBindingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.workspace.WorkspaceProperties;
@@ -41,6 +43,7 @@ class WorkTargetDispatcherTest {
 
     private ThinkProcessService thinkProcessService;
     private ClientToolRegistry clientToolRegistry;
+    private final RunnerBindingService runnerBindings = mock(RunnerBindingService.class);
     private WorkTargetService workTargetService;
     private DaemonToolInvoker daemonToolInvoker;
     private de.mhus.vance.brain.tools.ToolDispatcher toolDispatcher;
@@ -57,7 +60,10 @@ class WorkTargetDispatcherTest {
         daemonToolInvoker = mock(DaemonToolInvoker.class);
         toolDispatcher = mock(de.mhus.vance.brain.tools.ToolDispatcher.class);
         workTargetService = new WorkTargetService(
-                thinkProcessService, clientToolRegistry, new PodCapabilities(new WorkspaceProperties(), List.of()));
+                thinkProcessService,
+                clientToolRegistry,
+                new PodCapabilities(new WorkspaceProperties(), List.of()),
+                runnerBindings);
         dispatcher =
                 new WorkTargetDispatcher(workTargetService, thinkProcessService, toolDispatcher, daemonToolInvoker);
         wrapper = stubTool("file_read", "path", "dirName", "maxChars");
@@ -384,5 +390,58 @@ class WorkTargetDispatcherTest {
                 return Map.of();
             }
         };
+    }
+
+    private void registerRunner() {
+        RunnerBinding binding = RunnerBinding.builder()
+                .runnerId("runner-acme")
+                .url("http://runner:9840")
+                .recipient("age1xyz")
+                .build();
+        when(runnerBindings.resolve(any(), any()))
+                .thenReturn(
+                        Optional.of(new RunnerBindingService.Effective(binding, RunnerBindingService.Source.TENANT)));
+    }
+
+    @Test
+    void runnerTarget_dispatchesToTheRunnerTwin_andInjectsTheRootDir() {
+        registerRunner();
+        process.setEngineParams(
+                new LinkedHashMap<>(Map.of(WorkTarget.KEY, Map.of("kind", "RUNNER", "targetName", "build"))));
+        when(toolDispatcher.resolve(eq("runner_file_read"), any()))
+                .thenReturn(Optional.of(new de.mhus.vance.brain.tools.ToolDispatcher.Resolved(
+                        stubTool("runner_file_read", "path", "dirName", "maxChars"),
+                        mock(de.mhus.vance.brain.tools.ToolSource.class))));
+
+        dispatcher.dispatch(
+                ctx, bus, wrapper, "client_file_read", "work_file_read", new LinkedHashMap<>(Map.of("path", "a.txt")));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> params = ArgumentCaptor.forClass(Map.class);
+        verify(bus).invokeDelegate(eq("runner_file_read"), params.capture());
+        assertThat(params.getValue()).containsEntry("path", "a.txt").containsEntry("dirName", "build");
+    }
+
+    @Test
+    void runnerTarget_withoutARunner_saysSo() {
+        process.setEngineParams(new LinkedHashMap<>(Map.of(WorkTarget.KEY, Map.of("kind", "RUNNER"))));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> dispatcher.dispatch(ctx, bus, wrapper, "client_file_read", "work_file_read", Map.of()))
+                .isInstanceOf(de.mhus.vance.toolpack.ToolException.class)
+                .hasMessageContaining("No runner is registered");
+    }
+
+    @Test
+    void runnerTarget_forAnOperationTheRunnerLacks_namesWhatItHas() {
+        registerRunner();
+        process.setEngineParams(new LinkedHashMap<>(Map.of(WorkTarget.KEY, Map.of("kind", "RUNNER"))));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> dispatcher.dispatch(ctx, bus, wrapper, "client_file_grep", "work_file_grep", Map.of()))
+                .isInstanceOf(de.mhus.vance.toolpack.ToolException.class)
+                .hasMessageContaining("runner_file_grep does not exist")
+                .hasMessageContaining("exec run/status/tail/kill");
+        verify(bus, never()).invokeDelegate(any(), any());
     }
 }

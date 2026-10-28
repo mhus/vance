@@ -43,13 +43,14 @@ public class WorkTargetSetTool implements Tool {
                                             "type",
                                             "string",
                                             "enum",
-                                            List.of("CLIENT", "WORK", "DAEMON", "NONE"),
+                                            List.of("CLIENT", "WORK", "DAEMON", "RUNNER", "NONE"),
                                             "description",
                                             "Backend to dispatch generic file_* / "
                                                     + "exec_* tools to. CLIENT = the "
                                                     + "session-bound Foot CLI on the "
                                                     + "user's host; WORK = Brain-server "
-                                                    + "workspace RootDir; DAEMON = a "
+                                                    + "workspace RootDir; RUNNER = the "
+                                                    + "project's registered runner; DAEMON = a "
                                                     + "named profile=daemon Foot in this "
                                                     + "project; NONE = no surface (file_* / "
                                                     + "exec_* refuse until another target is set)."),
@@ -58,7 +59,7 @@ public class WorkTargetSetTool implements Tool {
                                             "type",
                                             "string",
                                             "description",
-                                            "Kind-dependent name. WORK: which RootDir "
+                                            "Kind-dependent name. WORK / RUNNER: which RootDir "
                                                     + "to use (omit for the process's "
                                                     + "temp RootDir, lazy-created on "
                                                     + "first use). DAEMON: the daemon "
@@ -120,13 +121,14 @@ public class WorkTargetSetTool implements Tool {
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         Object rawKind = params == null ? null : params.get("kind");
         if (!(rawKind instanceof String kindStr) || kindStr.isBlank()) {
-            throw new ToolException("'kind' is required (CLIENT, WORK, DAEMON or NONE)");
+            throw new ToolException("'kind' is required (CLIENT, WORK, DAEMON, RUNNER or NONE)");
         }
         WorkTargetKind kind;
         try {
             kind = WorkTargetKind.valueOf(kindStr.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException ex) {
-            throw new ToolException("Unknown kind '" + kindStr + "' — expected CLIENT, WORK, DAEMON or NONE", ex);
+            throw new ToolException(
+                    "Unknown kind '" + kindStr + "' — expected CLIENT, WORK, DAEMON, RUNNER or NONE", ex);
         }
         String targetName = null;
         Object rawName = params == null ? null : params.get("targetName");
@@ -136,6 +138,7 @@ public class WorkTargetSetTool implements Tool {
         WorkTarget next =
                 switch (kind) {
                     case WORK -> WorkTarget.work(targetName);
+                    case RUNNER -> WorkTarget.runner(targetName);
                     case CLIENT -> WorkTarget.client();
                     case NONE -> WorkTarget.none();
                     case DAEMON -> {

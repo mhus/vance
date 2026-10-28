@@ -208,4 +208,15 @@ class RunnerClientTest {
                     assertThat(e.getMessage()).contains("HTTP 400").contains("registered key");
                 });
     }
+
+    @Test
+    void aStoredKeyThatIsNotAnAgeRecipient_isABadRegistration_notAProtocolCrash() {
+        registerTenantRunner("http://localhost:" + server.port(), "not-a-key");
+
+        assertThatThrownBy(() -> client.call(TENANT, "kunde-x", "alice", null, "echo", null, new byte[0]))
+                .isInstanceOfSatisfying(RunnerCallException.class, e -> {
+                    assertThat(e.reason()).isEqualTo(Reason.BAD_REGISTRATION);
+                    assertThat(e.getMessage()).contains("runner set");
+                });
+    }
 }

@@ -1,5 +1,6 @@
 package de.mhus.vance.shared.jwt;
 
+import de.mhus.vance.runner.protocol.RunnerTokenClaims;
 import de.mhus.vance.shared.keystore.KeyPurpose;
 import de.mhus.vance.shared.keystore.KeyService;
 import io.jsonwebtoken.Claims;
@@ -226,6 +227,42 @@ public class JwtService {
         if (audience != null) {
             builder.audience().add(audience);
         }
+        return builder.signWith(privateKey).compact();
+    }
+
+    /**
+     * Mints the credential the brain presents to a runner
+     * ({@code planning/runner.md} §4.2): {@code tt=runner}, bound to one runner by
+     * {@code aud=runner:<id>}, to one project and optionally one RootDir, valid for
+     * a minute or so. The runner verifies it with the tenant's public key and
+     * remembers the {@code jti}, so the token works once.
+     *
+     * @param subject  the acting user, for audit; the runner does not rely on it
+     * @param rootDir  RootDir the call is confined to, or {@code null}
+     * @param jti      unique id of this call — the runner's answer must carry it
+     */
+    public String createRunnerToken(
+            String tenantId,
+            String subject,
+            String runnerId,
+            String projectId,
+            @Nullable String rootDir,
+            String jti,
+            Instant expiresAt) {
+        PrivateKey privateKey = signingKey(tenantId);
+
+        var builder = Jwts.builder()
+                .subject(subject)
+                .claim(RunnerTokenClaims.CLAIM_TENANT_ID, tenantId)
+                .claim(RunnerTokenClaims.CLAIM_TYPE, TokenType.RUNNER.wireValue())
+                .claim(RunnerTokenClaims.CLAIM_PROJECT_ID, projectId)
+                .id(jti)
+                .issuedAt(Date.from(Instant.now()))
+                .expiration(Date.from(expiresAt));
+        if (rootDir != null) {
+            builder.claim(RunnerTokenClaims.CLAIM_ROOT, rootDir);
+        }
+        builder.audience().add(RunnerTokenClaims.audience(runnerId));
         return builder.signWith(privateKey).compact();
     }
 

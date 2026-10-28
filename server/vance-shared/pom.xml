@@ -24,6 +24,20 @@
             <artifactId>vance-exec</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <!-- Runner registration (age recipient validation) and the runner-bound
+             token's claim names. Plain Java, brings vance-age along. -->
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-runner-protocol</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <!-- Test only: the brain's RunnerClient is exercised against a real runner. -->
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-runner</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
 
         <dependency>
             <groupId>org.springframework.boot</groupId>

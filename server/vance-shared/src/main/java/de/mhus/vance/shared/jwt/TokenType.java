@@ -61,6 +61,17 @@ package de.mhus.vance.shared.jwt;
  *       {@code account} scope, a full-account credential only first-party
  *       clients can obtain.
  *   </li>
+ *   <li>{@link #RUNNER} — very short-lived credential the brain presents to a
+ *       runner ({@code planning/runner.md}). Claims carry {@code tid}, {@code pid},
+ *       an optional {@code rdr} (RootDir) and an {@code aud} naming exactly one
+ *       runner ({@code runner:<id>}). It is <b>never</b> accepted by any access
+ *       filter: it exists only inside the age envelope on the way to the runner,
+ *       and the runner in turn accepts nothing but this type. Having its own
+ *       enum value is a security requirement, not tidiness —
+ *       {@link #fromWire(String)} reads an unknown {@code tt} as
+ *       {@link #ACCESS}, so a {@code tt=runner} token without this entry would be
+ *       a login token.
+ *   </li>
  * </ul>
  *
  * <p>The discriminator is carried in the {@code tt} claim. Tokens that
@@ -74,7 +85,8 @@ public enum TokenType {
     SCRIPT_RUN,
     INTEGRATION,
     DESIGN_PREVIEW,
-    OAUTH;
+    OAUTH,
+    RUNNER;
 
     /** JSON value for the {@code tt} claim — lower-case enum name. */
     public String wireValue() {

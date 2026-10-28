@@ -2,6 +2,7 @@ package de.mhus.vance.shared.tenant;
 
 import de.mhus.vance.shared.keystore.KeyPurpose;
 import de.mhus.vance.shared.keystore.KeyService;
+import de.mhus.vance.shared.runner.RunnerBinding;
 import jakarta.annotation.PostConstruct;
 import java.util.List;
 import java.util.Optional;
@@ -58,9 +59,9 @@ public class TenantService {
      * @throws TenantNotFoundException if the tenant does not exist
      */
     public TenantDocument update(String name, @Nullable String title, @Nullable Boolean enabled) {
-        TenantDocument tenant = repository.findByName(name)
-                .orElseThrow(() -> new TenantNotFoundException(
-                        "Tenant '" + name + "' not found"));
+        TenantDocument tenant = repository
+                .findByName(name)
+                .orElseThrow(() -> new TenantNotFoundException("Tenant '" + name + "' not found"));
         if (title != null) {
             tenant.setTitle(title);
         }
@@ -68,9 +69,23 @@ public class TenantService {
             tenant.setEnabled(enabled);
         }
         TenantDocument saved = repository.save(tenant);
-        log.info("Updated tenant name='{}' title='{}' enabled={}",
-                saved.getName(), saved.getTitle(), saved.isEnabled());
+        log.info(
+                "Updated tenant name='{}' title='{}' enabled={}", saved.getName(), saved.getTitle(), saved.isEnabled());
         return saved;
+    }
+
+    /**
+     * Sets or, with {@code null}, removes the tenant's runner binding. Called by
+     * {@link de.mhus.vance.shared.runner.RunnerBindingService}, which validates.
+     *
+     * @throws TenantNotFoundException if the tenant does not exist
+     */
+    public TenantDocument setRunner(String name, @Nullable RunnerBinding binding) {
+        TenantDocument tenant = repository
+                .findByName(name)
+                .orElseThrow(() -> new TenantNotFoundException("Tenant '" + name + "' not found"));
+        tenant.setRunner(binding);
+        return repository.save(tenant);
     }
 
     /**
@@ -100,11 +115,8 @@ public class TenantService {
      * exception.
      */
     private TenantDocument create(String name, @Nullable String title) {
-        TenantDocument created = TenantDocument.builder()
-                .name(name)
-                .title(title)
-                .enabled(true)
-                .build();
+        TenantDocument created =
+                TenantDocument.builder().name(name).title(title).enabled(true).build();
         try {
             TenantDocument saved = repository.save(created);
             log.info("Created tenant name='{}' id='{}'", saved.getName(), saved.getId());

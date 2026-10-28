@@ -1,5 +1,6 @@
 package de.mhus.vance.shared.project;
 
+import de.mhus.vance.shared.runner.RunnerBinding;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -226,4 +227,10 @@ public class ProjectDocument {
 
     @CreatedDate
     private @Nullable Instant createdAt;
+
+    /**
+     * This project's runner, overriding the tenant's. Operator-set only, see
+     * {@link de.mhus.vance.shared.runner.RunnerBinding}.
+     */
+    private @Nullable RunnerBinding runner;
 }

@@ -210,6 +210,19 @@ class RunnerTokensTest {
         assertThat(replay.size()).isZero();
     }
 
+    @Test
+    void theUnverifiedJti_isReadableEvenFromARefusedToken_andNeverFromJunk() throws Exception {
+        io.jsonwebtoken.JwtBuilder builder = minted("j-readable");
+        String wrongAudience = builder.signWith(tenantKey.getPrivate()).compact();
+
+        assertRefused(() -> verify(wrongAudience), "not addressed to this runner");
+        assertThat(RunnerTokens.unverifiedJti(wrongAudience)).contains("j-readable");
+        assertThat(RunnerTokens.unverifiedJti("garbage")).isEmpty();
+        assertThat(RunnerTokens.unverifiedJti("a.b.c")).isEmpty();
+        assertThat(RunnerTokens.unverifiedJti(b64("{}") + "." + b64("{\"x\":1}") + ".sig"))
+                .isEmpty();
+    }
+
     private static String b64(String s) {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(s.getBytes(StandardCharsets.UTF_8));
     }

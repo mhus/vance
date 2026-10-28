@@ -1,5 +1,6 @@
 package de.mhus.vance.shared.tenant;
 
+import de.mhus.vance.shared.runner.RunnerBinding;
 import java.time.Instant;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -38,4 +39,10 @@ public class TenantDocument {
 
     @CreatedDate
     private @Nullable Instant createdAt;
+
+    /**
+     * The runner serving this tenant's projects unless a project names its own.
+     * Operator-set only, see {@link de.mhus.vance.shared.runner.RunnerBinding}.
+     */
+    private @Nullable RunnerBinding runner;
 }

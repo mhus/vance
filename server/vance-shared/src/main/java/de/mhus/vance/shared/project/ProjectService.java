@@ -2,6 +2,7 @@ package de.mhus.vance.shared.project;
 
 import de.mhus.vance.shared.audit.AuditService;
 import de.mhus.vance.shared.cluster.PodSelector;
+import de.mhus.vance.shared.runner.RunnerBinding;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -78,6 +79,7 @@ public class ProjectService {
     private static final String F_HOME_NODE = "homeNode";
     private static final String F_CLAIMED_AT = "claimedAt";
     private static final String F_LIFECYCLE_TYPE = "lifecycleType";
+    private static final String F_RUNNER = "runner";
     private static final String F_OWNER_REQUIRED = "ownerRequired";
     private static final String F_HOME_RESOURCE_SCORE = "homeResourceScore";
     private static final String F_PLACEMENT_SELECTOR = "placementSelector";
@@ -960,6 +962,25 @@ public class ProjectService {
             throw new ProjectNotFoundException("Project '" + name + "' disappeared during setLifecycleType");
         }
         log.info("Project '{}/{}' lifecycleType {} → {}", tenantId, name, current.getLifecycleType(), value);
+        return updated;
+    }
+
+    /**
+     * Sets or, with {@code null}, removes the project's own runner binding — the one
+     * that overrides the tenant's. Called by
+     * {@link de.mhus.vance.shared.runner.RunnerBindingService}, which validates.
+     *
+     * @throws ProjectNotFoundException if the project does not exist
+     */
+    public ProjectDocument setRunner(String tenantId, String name, @Nullable RunnerBinding binding) {
+        Query query =
+                new Query(Criteria.where(F_TENANT).is(tenantId).and(F_NAME).is(name));
+        Update update = binding == null ? new Update().unset(F_RUNNER) : new Update().set(F_RUNNER, binding);
+        ProjectDocument updated = mongoTemplate.findAndModify(
+                query, update, FindAndModifyOptions.options().returnNew(true), ProjectDocument.class);
+        if (updated == null) {
+            throw new ProjectNotFoundException("Project '" + name + "' not found in tenant '" + tenantId + "'");
+        }
         return updated;
     }
 

@@ -23,6 +23,7 @@
         <module>vance-toolpack</module>
         <module>vance-age</module>
         <module>vance-runner-protocol</module>
+        <module>vance-runner</module>
         <module>vance-shared</module>
         <module>vance-brain</module>
         <module>vance-foot</module>

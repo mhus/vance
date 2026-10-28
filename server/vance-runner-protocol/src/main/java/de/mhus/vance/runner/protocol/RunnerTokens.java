@@ -10,6 +10,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -86,6 +87,25 @@ public final class RunnerTokens {
             throw refuse("already used");
         }
         return new Claims(tenantId, projectId, text(payload, RunnerTokenClaims.CLAIM_ROOT), jti, expiresAt);
+    }
+
+    /**
+     * The {@code jti} claimed by a token — <b>not verified</b>, so never a basis for any
+     * decision. It exists for one purpose: when a token is refused, the runner still
+     * answers (encrypted to the request's one-time key) and that answer must name the
+     * call it belongs to. Only the brain that holds the key can read it.
+     */
+    public static Optional<String> unverifiedJti(String token) {
+        String[] parts = token.split("\\.", -1);
+        if (parts.length != 3) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.ofNullable(
+                    text(Frames.MAPPER.readTree(Base64.getUrlDecoder().decode(parts[1])), RunnerTokenClaims.CLAIM_ID));
+        } catch (JacksonException | IllegalArgumentException e) {
+            return Optional.empty();
+        }
     }
 
     private static void verifySignature(String[] parts, List<PublicKey> keys) {

@@ -162,6 +162,13 @@ class BrainAccessFilterTest {
         assertThat(filter.isTokenTypeAcceptable(TokenType.OAUTH)).isTrue();
     }
 
+    @Test
+    void aRunnerToken_isNeverALoginCredential() {
+        // It is addressed to a runner and travels inside the age envelope; presented
+        // at the brain's door it must not open anything.
+        assertThat(filter.isTokenTypeAcceptable(TokenType.RUNNER)).isFalse();
+    }
+
     // ──────────────── isClaimsAcceptable: tenant mismatch + SCRIPT_RUN ────────────────
 
     @Test

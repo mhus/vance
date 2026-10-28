@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -103,19 +102,6 @@ class PythonHandlerTest {
         assertThatThrownBy(() -> handler.init(handle, spec("nopy")))
                 .isInstanceOf(WorkspaceException.class)
                 .hasMessageContaining("venv build");
-    }
-
-    @Test
-    void suspend_withoutRemote_throwsWithGuidance() {
-        Path rootDir = createRootDirFolder("local");
-        WorkspaceDescriptor descriptor = descriptor("local", null);
-        RootDirHandle handle = handle(rootDir, descriptor);
-
-        assertThatThrownBy(() -> handler.suspend(handle))
-                .isInstanceOf(WorkspaceException.class)
-                .hasMessageContaining("requires a configured git remote")
-                .hasMessageContaining(GitHandler.META_REPO_URL);
-        verify(gitHandler, never()).suspend(any());
     }
 
     @Test
@@ -295,5 +281,22 @@ class PythonHandlerTest {
                 .labelHint(labelHint)
                 .deleteOnCreatorClose(false)
                 .build();
+    }
+
+    @Test
+    void suspend_withoutGitRemote_keepsNothingAndDoesNotBlock() throws IOException {
+        Path rootDir = createRootDirFolder("pyenv-suspend");
+        RootDirHandle handle = RootDirHandle.builder()
+                .tenantId("acme")
+                .projectId("proj-1")
+                .dirName("pyenv-suspend")
+                .type(PythonHandler.TYPE)
+                .path(rootDir)
+                .descriptor(new WorkspaceDescriptor())
+                .build();
+
+        handler.suspend(handle);
+
+        verifyNoInteractions(gitHandler);
     }
 }

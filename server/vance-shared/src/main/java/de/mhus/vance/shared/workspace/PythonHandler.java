@@ -147,18 +147,32 @@ public class PythonHandler implements WorkspaceContentHandler {
         Map<String, Object> meta = mutableMetadata(handle.getDescriptor());
         String repoUrl = stringOr(meta, GitHandler.META_REPO_URL, null);
         if (StringUtils.isBlank(repoUrl)) {
-            throw new WorkspaceException("python suspend requires a configured git remote on "
-                    + handle.getDirName() + " — set metadata."
-                    + GitHandler.META_REPO_URL + " or accept that this "
-                    + "RootDir is not suspendable");
+            // No remote: like a temp RootDir, the content does not survive —
+            // only the descriptor does, and recover rebuilds a fresh venv
+            // from it. Must not block suspend/release (W5/E7).
+            log.info("python suspend: {} has no git remote — its content is not kept", handle.getDirName());
+            return;
         }
         gitHandler.suspend(handle);
     }
 
     @Override
     public void recover(RootDirHandle handle, WorkspaceDescriptor descriptor) {
-        gitHandler.recover(handle, descriptor);
         Map<String, Object> meta = mutableMetadata(descriptor);
+        boolean fromRemote = StringUtils.isNotBlank(stringOr(meta, GitHandler.META_REPO_URL, null));
+        if (fromRemote) {
+            gitHandler.recover(handle, descriptor);
+        } else {
+            // E7: nothing was kept — start empty, re-declare the git repo so a
+            // remote can be added later, then rebuild the environment below.
+            try {
+                Git.init().setDirectory(handle.getPath().toFile()).call().close();
+            } catch (GitAPIException e) {
+                throw new WorkspaceException(
+                        "git init failed for python RootDir " + handle.getDirName() + ": " + e.getMessage(), e);
+            }
+            writeDefaultGitignore(handle.getPath());
+        }
         // Use the recover pod's local interpreter, not the one from the descriptor —
         // the binary on disk is what counts, the descriptor field is informational.
         String pythonPath = DEFAULT_PYTHON_PATH;
@@ -171,7 +185,13 @@ public class PythonHandler implements WorkspaceContentHandler {
         if (Files.isRegularFile(requirements)) {
             pipInstallRequirements(handle, pythonPath);
         }
-        log.info("python recover: {} (pythonPath={})", handle.getDirName(), pythonPath);
+        if (!fromRemote) {
+            List<String> packages = packageList(meta, META_PACKAGES);
+            if (!packages.isEmpty()) {
+                pipInstallPackages(handle, pythonPath, packages);
+            }
+        }
+        log.info("python recover: {} (pythonPath={}, fromRemote={})", handle.getDirName(), pythonPath, fromRemote);
     }
 
     @Override

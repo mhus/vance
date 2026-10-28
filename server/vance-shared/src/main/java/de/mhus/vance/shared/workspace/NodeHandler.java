@@ -158,12 +158,7 @@ public class NodeHandler implements WorkspaceContentHandler {
             gitHandler.init(handle, spec);
             meta = mutableMetadata(handle.getDescriptor());
         } else {
-            try {
-                Git.init().setDirectory(handle.getPath().toFile()).call().close();
-            } catch (GitAPIException e) {
-                throw new WorkspaceException(
-                        "git init failed for node RootDir " + handle.getDirName() + ": " + e.getMessage(), e);
-            }
+            initGitRepository(handle);
         }
 
         writeDefaultGitignore(handle.getPath());
@@ -205,16 +200,23 @@ public class NodeHandler implements WorkspaceContentHandler {
         Map<String, Object> meta = mutableMetadata(handle.getDescriptor());
         String repoUrl = stringOr(meta, GitHandler.META_REPO_URL, null);
         if (StringUtils.isBlank(repoUrl)) {
-            throw new WorkspaceException("node suspend requires a configured git remote on "
-                    + handle.getDirName() + " — set metadata."
-                    + GitHandler.META_REPO_URL + " or accept that this "
-                    + "RootDir is not suspendable");
+            // No remote: like a temp RootDir, the content does not survive —
+            // only the descriptor does, and recover rebuilds a fresh
+            // environment from it. Must not block suspend/release
+            // (planning/multi-tenant-isolation.md W5/E7).
+            log.info("node suspend: {} has no git remote — its content is not kept", handle.getDirName());
+            return;
         }
         gitHandler.suspend(handle);
     }
 
     @Override
     public void recover(RootDirHandle handle, WorkspaceDescriptor descriptor) {
+        Map<String, Object> meta = mutableMetadata(descriptor);
+        if (StringUtils.isBlank(stringOr(meta, GitHandler.META_REPO_URL, null))) {
+            recoverFresh(handle, meta);
+            return;
+        }
         gitHandler.recover(handle, descriptor);
         Path lockfile = handle.getPath().resolve(PACKAGE_LOCK_JSON);
         if (Files.isRegularFile(lockfile)) {
@@ -227,6 +229,35 @@ public class NodeHandler implements WorkspaceContentHandler {
             }
         }
         log.info("node recover: {}", handle.getDirName());
+    }
+
+    /**
+     * Recover without a git remote (E7): nothing was kept, so the RootDir comes
+     * back empty with a fresh {@code package.json} and the declared
+     * {@code packages} from the descriptor installed again.
+     */
+    private void recoverFresh(RootDirHandle handle, Map<String, Object> meta) {
+        initGitRepository(handle);
+        writeDefaultGitignore(handle.getPath());
+        npmInit(handle);
+        List<String> packages = packageList(meta, META_PACKAGES);
+        if (!packages.isEmpty()) {
+            npmInstallPackages(handle, packages);
+            enforceSizeLimit(handle);
+        }
+        log.info(
+                "node recover: {} rebuilt empty (no git remote), {} declared package(s) reinstalled",
+                handle.getDirName(),
+                packages.size());
+    }
+
+    private static void initGitRepository(RootDirHandle handle) {
+        try {
+            Git.init().setDirectory(handle.getPath().toFile()).call().close();
+        } catch (GitAPIException e) {
+            throw new WorkspaceException(
+                    "git init failed for node RootDir " + handle.getDirName() + ": " + e.getMessage(), e);
+        }
     }
 
     @Override

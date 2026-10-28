@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.tools.runner;
 
 import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolCapabilities;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.ToolLabels;
@@ -102,6 +103,12 @@ final class RunnerRootCreateTool implements Tool {
                 + " project. Returns its dirName; use it as dirName in the runner_file_* / runner_exec_* tools or as"
                 + " targetName of work_target_set(kind=\"RUNNER\"). Python/node packages install with pip/npm"
                 + " through runner_exec_run afterwards, too.";
+    }
+
+    /** Listed for the projects that have a runner, and only for them. */
+    @Override
+    public Set<String> requiresCapabilities() {
+        return Set.of(ToolCapabilities.RUNNER);
     }
 
     @Override

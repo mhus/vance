@@ -4,11 +4,15 @@ import de.mhus.vance.exec.EphemeralHandler;
 import de.mhus.vance.exec.ExecEnvPolicy;
 import de.mhus.vance.exec.ExecJob;
 import de.mhus.vance.exec.ExecJobs;
+import de.mhus.vance.exec.FfmpegEngine;
 import de.mhus.vance.exec.GitHandler;
 import de.mhus.vance.exec.NodeHandler;
 import de.mhus.vance.exec.PythonHandler;
 import de.mhus.vance.exec.RootDirStore;
+import de.mhus.vance.exec.ScratchArea;
 import de.mhus.vance.exec.TempHandler;
+import de.mhus.vance.exec.WhisperEngine;
+import de.mhus.vance.exec.YtDlpEngine;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -37,11 +41,16 @@ public final class RunnerWorkspace implements AutoCloseable {
     private static final Duration ORPHAN_TTL = Duration.ofMinutes(10);
 
     static final int DEFAULT_DISK_HARD_PERCENT = 95;
+    private static final long FFMPEG_TIMEOUT_SECONDS = 600;
     static final String DEFAULT_NPM_REGISTRY = "https://registry.npmjs.org/";
     private static final long NODE_MODULES_MAX_BYTES = 512L * 1024 * 1024;
 
     private final Path dataDir;
     private final int hardLimitPercent;
+    private final FfmpegEngine ffmpeg;
+    private final YtDlpEngine ytdlp;
+    private final WhisperEngine whisper;
+    private final ScratchArea scratch;
     private final ProgramGitOperations git;
     private final RootDirStore store;
     private final ExecJobs jobs;
@@ -82,6 +91,14 @@ public final class RunnerWorkspace implements AutoCloseable {
         this.hardLimitPercent = hardLimitPercent;
         RunnerProcessLauncher launcher = new RunnerProcessLauncher(dataDir, processWrapper);
         this.git = new ProgramGitOperations(() -> launcher);
+        this.scratch = new ScratchArea(dataDir.resolve("scratch"));
+        this.ffmpeg = new FfmpegEngine("ffmpeg", "ffprobe", FFMPEG_TIMEOUT_SECONDS, launcher, scratch);
+        this.ytdlp = new YtDlpEngine(launcher);
+        try {
+            this.whisper = new WhisperEngine("python3", launcher);
+        } catch (IOException e) {
+            throw new java.io.UncheckedIOException("The whisper wrapper script cannot be put on disk", e);
+        }
         GitHandler gitHandler = new GitHandler(git);
         this.store = new RootDirStore(
                 () -> new RootDirStore.Settings(dataDir.resolve("workspaces"), SOFT_LIMIT_PERCENT, hardLimitPercent),
@@ -136,6 +153,24 @@ public final class RunnerWorkspace implements AutoCloseable {
     /** The scoped {@code HOME} of a project's jobs and starters. */
     Path home(String tenantId, String projectId) {
         return homes.resolve(tenantId).resolve(projectId);
+    }
+
+    YtDlpEngine ytdlp() {
+        return ytdlp;
+    }
+
+    WhisperEngine whisper() {
+        return whisper;
+    }
+
+    /** The call-scoped scratch directories of the mechanics. */
+    ScratchArea scratch() {
+        return scratch;
+    }
+
+    /** ffmpeg and ffprobe, for the audio operations. */
+    FfmpegEngine ffmpeg() {
+        return ffmpeg;
     }
 
     ProgramGitOperations git() {

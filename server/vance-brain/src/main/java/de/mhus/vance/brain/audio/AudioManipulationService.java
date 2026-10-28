@@ -66,7 +66,7 @@ public class AudioManipulationService {
     private final ThinkProcessService thinkProcessService;
     private final MetricService metricService;
     private final de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
-    private final FfmpegAudioEditor editor;
+    private final AudioEngines engines;
 
     // ─────────────────── Public op surface ───────────────────
 
@@ -74,12 +74,13 @@ public class AudioManipulationService {
     public AudioProbeResult probe(ProbeRequest req) {
         validateScope(req.getTenantId(), refOf("path", "documentId", req.getPath(), req.getDocumentId()));
         ensureEnabled(req.getTenantId(), req.getProjectId(), req.getProcessId());
+        AudioEngine editor = engines.engineFor(req.getTenantId(), req.getProjectId());
         Limits limits = readLimits(req.getTenantId(), req.getProjectId(), req.getProcessId());
         long startMs = System.currentTimeMillis();
 
         SourceDoc source =
                 loadSource(req.getTenantId(), req.getProjectId(), req.getPath(), req.getDocumentId(), limits);
-        FfmpegAudioEditor.ProbeData data = editor.probe(source.bytes());
+        AudioEngine.ProbeData data = editor.probe(source.bytes());
 
         recordOutcome("audio_info", "success", startMs);
         return new AudioProbeResult(
@@ -97,6 +98,7 @@ public class AudioManipulationService {
     public AudioOpResult trim(TrimRequest req) {
         validateScope(req.getTenantId(), refOf("path", "documentId", req.getPath(), req.getDocumentId()));
         ensureEnabled(req.getTenantId(), req.getProjectId(), req.getProcessId());
+        AudioEngine editor = engines.engineFor(req.getTenantId(), req.getProjectId());
         if (req.getStartSeconds() < 0) {
             throw parameterInvalid("startSeconds must be >= 0, got " + req.getStartSeconds());
         }
@@ -112,7 +114,7 @@ public class AudioManipulationService {
 
         SourceDoc source =
                 loadSource(req.getTenantId(), req.getProjectId(), req.getPath(), req.getDocumentId(), limits);
-        Double sourceDuration = ensureDurationWithinLimit("audio_trim", startMs, source, limits);
+        Double sourceDuration = ensureDurationWithinLimit(editor, "audio_trim", startMs, source, limits);
 
         double available = req.getEndSeconds() != null
                 ? req.getEndSeconds() - req.getStartSeconds()
@@ -140,6 +142,7 @@ public class AudioManipulationService {
                 outputFormat);
 
         return finish(
+                editor,
                 "audio_trim",
                 startMs,
                 req.getTenantId(),
@@ -156,6 +159,7 @@ public class AudioManipulationService {
     public AudioOpResult mix(MixRequest req) {
         validateScope(req.getTenantId(), refOf("path", "documentId", req.getPath(), req.getDocumentId()));
         ensureEnabled(req.getTenantId(), req.getProjectId(), req.getProcessId());
+        AudioEngine editor = engines.engineFor(req.getTenantId(), req.getProjectId());
         refOf("overlayPath", "overlayDocumentId", req.getOverlayPath(), req.getOverlayDocumentId());
         if (req.getBaseGain() < 0 || req.getOverlayGain() < 0) {
             throw parameterInvalid("baseGain/overlayGain must be >= 0");
@@ -172,8 +176,8 @@ public class AudioManipulationService {
         SourceDoc base = loadSource(req.getTenantId(), req.getProjectId(), req.getPath(), req.getDocumentId(), limits);
         SourceDoc overlay = loadSource(
                 req.getTenantId(), req.getProjectId(), req.getOverlayPath(), req.getOverlayDocumentId(), limits);
-        Double baseDuration = ensureDurationWithinLimit("audio_mix", startMs, base, limits);
-        ensureDurationWithinLimit("audio_mix", startMs, overlay, limits);
+        Double baseDuration = ensureDurationWithinLimit(editor, "audio_mix", startMs, base, limits);
+        ensureDurationWithinLimit(editor, "audio_mix", startMs, overlay, limits);
         // The mix follows the base length (amix duration=first), so a fade-out
         // is placed on the base timeline: it needs a probeable base duration
         // and must stay shorter than it — otherwise afade would start at 0 and
@@ -202,6 +206,7 @@ public class AudioManipulationService {
                 outputFormat);
 
         return finish(
+                editor,
                 "audio_mix",
                 startMs,
                 req.getTenantId(),
@@ -220,6 +225,7 @@ public class AudioManipulationService {
         validateScope(req.getTenantId(), refs.get(0));
         String targetPath = requireTargetPath(req.getTargetPath());
         ensureEnabled(req.getTenantId(), req.getProjectId(), req.getProcessId());
+        AudioEngine editor = engines.engineFor(req.getTenantId(), req.getProjectId());
         if (req.getCrossfadeSeconds() < 0) {
             throw parameterInvalid("crossfadeSeconds must be >= 0");
         }
@@ -235,7 +241,7 @@ public class AudioManipulationService {
                             : loadSource(req.getTenantId(), req.getProjectId(), null, ref, limits));
         }
         for (SourceDoc clip : clips) {
-            ensureDurationWithinLimit("audio_concat", startMs, clip, limits);
+            ensureDurationWithinLimit(editor, "audio_concat", startMs, clip, limits);
         }
 
         String outputFormat = outputFormatOf(clips.get(0).mime(), null);
@@ -246,6 +252,7 @@ public class AudioManipulationService {
 
         SourceDoc base = clips.get(0);
         return finish(
+                editor,
                 "audio_concat",
                 startMs,
                 req.getTenantId(),
@@ -262,6 +269,7 @@ public class AudioManipulationService {
     public AudioOpResult convert(ConvertRequest req) {
         validateScope(req.getTenantId(), refOf("path", "documentId", req.getPath(), req.getDocumentId()));
         ensureEnabled(req.getTenantId(), req.getProjectId(), req.getProcessId());
+        AudioEngine editor = engines.engineFor(req.getTenantId(), req.getProjectId());
         String format = req.getFormat() == null ? "" : req.getFormat().toLowerCase(Locale.ROOT);
         if (!"mp3".equals(format) && !"wav".equals(format)) {
             throw new AudioManipulationException(
@@ -285,7 +293,7 @@ public class AudioManipulationService {
 
         SourceDoc source =
                 loadSource(req.getTenantId(), req.getProjectId(), req.getPath(), req.getDocumentId(), limits);
-        ensureDurationWithinLimit("audio_convert", startMs, source, limits);
+        ensureDurationWithinLimit(editor, "audio_convert", startMs, source, limits);
 
         emitInitialStatus(req.getProcessId(), "audio_convert");
         byte[] out = editor.convert(
@@ -297,6 +305,7 @@ public class AudioManipulationService {
                 format);
 
         return finish(
+                editor,
                 "audio_convert",
                 startMs,
                 req.getTenantId(),
@@ -319,6 +328,7 @@ public class AudioManipulationService {
      * — no re-read with a narrowed scope.
      */
     private AudioOpResult finish(
+            AudioEngine editor,
             String opName,
             long startMs,
             String tenantId,
@@ -372,7 +382,8 @@ public class AudioManipulationService {
      * before the op runs; {@code null} duration (exotic container)
      * passes and is caught by the run timeout instead.
      */
-    private @Nullable Double ensureDurationWithinLimit(String opName, long startMs, SourceDoc source, Limits limits) {
+    private @Nullable Double ensureDurationWithinLimit(
+            AudioEngine editor, String opName, long startMs, SourceDoc source, Limits limits) {
         Double duration = editor.probe(source.bytes()).durationSeconds();
         if (duration != null && duration > limits.maxDurationSeconds()) {
             recordOutcome(opName, "limit_exceeded", startMs);

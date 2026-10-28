@@ -4,8 +4,11 @@ import de.mhus.vance.api.progress.StatusTag;
 import de.mhus.vance.brain.ai.audio.local.WhisperTranscriber;
 import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.brain.prompt.UntrustedContent;
+import de.mhus.vance.brain.tools.ProjectCapabilities;
+import de.mhus.vance.brain.tools.runner.RunnerWork;
 import de.mhus.vance.exec.ScratchArea;
 import de.mhus.vance.exec.ScratchArea.Scratch;
+import de.mhus.vance.exec.WhisperEngine;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
@@ -144,13 +147,22 @@ public class VideoTranscriptTool implements Tool {
     private final YtDlpAudioDownloader audioDownloader;
     private final WhisperTranscriber whisperTranscriber;
     private final ScratchArea scratchArea;
+    private final ProjectCapabilities projectCapabilities;
+    private final RunnerWork runner;
+
+    /** A transcription on the runner is one request; an hour of video on CPU takes a while. */
+    private static final java.time.Duration RUNNER_ASR_TIMEOUT = java.time.Duration.ofHours(1);
 
     public VideoTranscriptTool(
             ThinkProcessService thinkProcessService,
             ProgressEmitter progressEmitter,
             YtDlpAudioDownloader audioDownloader,
             WhisperTranscriber whisperTranscriber,
-            ScratchArea scratchArea) {
+            ScratchArea scratchArea,
+            ProjectCapabilities projectCapabilities,
+            RunnerWork runner) {
+        this.projectCapabilities = projectCapabilities;
+        this.runner = runner;
         this.thinkProcessService = thinkProcessService;
         this.progressEmitter = progressEmitter;
         this.audioDownloader = audioDownloader;
@@ -291,16 +303,66 @@ public class VideoTranscriptTool implements Tool {
             @Nullable String asrModel,
             ToolInvocationContext ctx,
             ThinkProcessDocument process) {
-        if (!audioDownloader.available() || !whisperTranscriber.available()) {
+        boolean local = audioDownloader.available() && whisperTranscriber.available();
+        if (!local && !runnerCanTranscribe(ctx)) {
             throw new ToolException("No usable captions for video '" + videoId
-                    + "', and local transcription (yt-dlp + Whisper) is not available on this server."
-                    + " Tell the user the video has no captions this tool can read.");
+                    + "', and transcription (yt-dlp + Whisper) is available neither on this server nor on the"
+                    + " project's runner. Tell the user the video has no captions this tool can read.");
         }
         String effectiveModel = (asrModel == null || asrModel.isBlank()) ? DEFAULT_ASR_MODEL : asrModel;
         // Use only the first explicit language hint (or null for auto).
         // Whisper takes one language, not a fallback list.
         String hint = langs.isEmpty() || "auto".equals(langs.get(0)) ? null : langs.get(0);
 
+        WhisperEngine.Result result = local
+                ? transcribeLocally(videoId, effectiveModel, hint, process)
+                : transcribeOnRunner(videoId, effectiveModel, hint, ctx, process);
+
+        String text = withTimestamps ? formatAsrWithTimestamps(result) : formatAsrPlain(result);
+        int fullLength = text.length();
+        boolean truncated = fullLength > MAX_TEXT_CHARS;
+        String body = truncated ? text.substring(0, MAX_TEXT_CHARS) : text;
+
+        emit(
+                process,
+                StatusTag.INFO,
+                String.format(
+                        Locale.ROOT,
+                        "Done — %d segments, %.1f s of audio, " + "%.1f s of compute.",
+                        result.segments().size(),
+                        result.durationSec(),
+                        result.elapsedSec()));
+
+        log.info(
+                "VideoTranscriptTool tenant='{}' videoId='{}' "
+                        + "stage=asr where='{}' model='{}' lang='{}' segments={} "
+                        + "audioSec={} elapsedSec={}",
+                ctx.tenantId(),
+                videoId,
+                local ? "server" : "runner",
+                effectiveModel,
+                result.language(),
+                result.segments().size(),
+                result.durationSec(),
+                result.elapsedSec());
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("videoId", videoId);
+        out.put("language", result.language());
+        out.put("languageCode", result.language());
+        out.put("source", "asr-whisper-" + effectiveModel);
+        out.put("segmentCount", result.segments().size());
+        out.put("durationSec", result.durationSec());
+        out.put("transcriptionSec", result.elapsedSec());
+        out.put("contentLength", fullLength);
+        out.put("truncated", truncated);
+        out.put("text", UntrustedContent.wrap("untrusted-video-transcript", body));
+        return out;
+    }
+
+    /** yt-dlp and Whisper on this server, step by step, with live progress. */
+    private WhisperEngine.Result transcribeLocally(
+            String videoId, String effectiveModel, @Nullable String hint, ThinkProcessDocument process) {
         emit(process, StatusTag.FETCH, "Downloading audio for video " + videoId + " " + "(yt-dlp)…");
         // One scratch directory for the download and every yt-dlp
         // intermediate; closing it removes them all.
@@ -325,7 +387,7 @@ public class VideoTranscriptTool implements Tool {
 
             // Throttled progress: one ping per ~30 audio-seconds.
             AtomicLong lastEmittedKey = new AtomicLong(-1);
-            WhisperTranscriber.ProgressSink sink = (chunkEnd, duration) -> {
+            WhisperEngine.ProgressSink sink = (chunkEnd, duration) -> {
                 long key = (long) (chunkEnd / ASR_PROGRESS_INTERVAL_SEC);
                 if (key != lastEmittedKey.get()) {
                     lastEmittedKey.set(key);
@@ -341,54 +403,45 @@ public class VideoTranscriptTool implements Tool {
                 }
             };
 
-            WhisperTranscriber.Result result;
             try {
-                result = whisperTranscriber.transcribe(audio, effectiveModel, hint, sink);
+                return whisperTranscriber.transcribe(audio, effectiveModel, hint, sink);
             } catch (ToolException e) {
                 emit(process, StatusTag.INFO, "Transcription failed: " + e.getMessage());
                 throw e;
             }
-
-            String text = withTimestamps ? formatAsrWithTimestamps(result) : formatAsrPlain(result);
-            int fullLength = text.length();
-            boolean truncated = fullLength > MAX_TEXT_CHARS;
-            String body = truncated ? text.substring(0, MAX_TEXT_CHARS) : text;
-
-            emit(
-                    process,
-                    StatusTag.INFO,
-                    String.format(
-                            Locale.ROOT,
-                            "Done — %d segments, %.1f s of audio, " + "%.1f s of compute.",
-                            result.segments().size(),
-                            result.durationSec(),
-                            result.elapsedSec()));
-
-            log.info(
-                    "VideoTranscriptTool tenant='{}' videoId='{}' "
-                            + "stage=asr model='{}' lang='{}' segments={} "
-                            + "audioSec={} elapsedSec={}",
-                    ctx.tenantId(),
-                    videoId,
-                    effectiveModel,
-                    result.language(),
-                    result.segments().size(),
-                    result.durationSec(),
-                    result.elapsedSec());
-
-            Map<String, Object> out = new LinkedHashMap<>();
-            out.put("videoId", videoId);
-            out.put("language", result.language());
-            out.put("languageCode", result.language());
-            out.put("source", "asr-whisper-" + effectiveModel);
-            out.put("segmentCount", result.segments().size());
-            out.put("durationSec", result.durationSec());
-            out.put("transcriptionSec", result.elapsedSec());
-            out.put("contentLength", fullLength);
-            out.put("truncated", truncated);
-            out.put("text", UntrustedContent.wrap("untrusted-video-transcript", body));
-            return out;
         }
+    }
+
+    /**
+     * Download and transcription in one call on the project's runner. The audio stays there: only
+     * the transcript comes back. The call is one request, so there is no live progress — the
+     * status line says where the work is running and for how long it may take.
+     */
+    private WhisperEngine.Result transcribeOnRunner(
+            String videoId,
+            String effectiveModel,
+            @Nullable String hint,
+            ToolInvocationContext ctx,
+            ThinkProcessDocument process) {
+        emit(
+                process,
+                StatusTag.FETCH,
+                "Downloading and transcribing video " + videoId + " on the project's runner (Whisper '" + effectiveModel
+                        + "') — there is no progress report for this; it can take a while…");
+        try {
+            return RunnerTranscript.fetch(runner, ctx, videoId, effectiveModel, hint, RUNNER_ASR_TIMEOUT);
+        } catch (ToolException e) {
+            emit(process, StatusTag.INFO, "Transcription on the runner failed: " + e.getMessage());
+            throw e;
+        }
+    }
+
+    private boolean runnerCanTranscribe(ToolInvocationContext ctx) {
+        if (ctx.projectId() == null) {
+            return false;
+        }
+        Set<String> reported = projectCapabilities.reportedByRunner(ctx.tenantId(), ctx.projectId());
+        return reported.contains("yt-dlp") && reported.contains("whisper");
     }
 
     private Scratch openScratch() {
@@ -497,9 +550,9 @@ public class VideoTranscriptTool implements Tool {
         return sb.toString();
     }
 
-    static String formatAsrPlain(WhisperTranscriber.Result result) {
+    static String formatAsrPlain(WhisperEngine.Result result) {
         StringBuilder sb = new StringBuilder();
-        for (WhisperTranscriber.Fragment f : result.segments()) {
+        for (WhisperEngine.Fragment f : result.segments()) {
             String t = f.text().trim();
             if (t.isEmpty()) continue;
             if (sb.length() > 0) sb.append('\n');
@@ -508,9 +561,9 @@ public class VideoTranscriptTool implements Tool {
         return sb.toString();
     }
 
-    static String formatAsrWithTimestamps(WhisperTranscriber.Result result) {
+    static String formatAsrWithTimestamps(WhisperEngine.Result result) {
         StringBuilder sb = new StringBuilder();
-        for (WhisperTranscriber.Fragment f : result.segments()) {
+        for (WhisperEngine.Fragment f : result.segments()) {
             String t = f.text().trim();
             if (t.isEmpty()) continue;
             if (sb.length() > 0) sb.append('\n');

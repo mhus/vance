@@ -40,6 +40,7 @@ class AudioManipulationServiceTest {
     private MetricService metricService;
     private de.mhus.vance.brain.permission.SecurityContextFactory contextFactory;
     private FfmpegAudioEditor editor;
+    private AudioEngines engines;
 
     private AudioManipulationService service;
 
@@ -63,6 +64,8 @@ class AudioManipulationServiceTest {
         when(settingService.getStringValueCascade(anyString(), any(), any(), anyString()))
                 .thenReturn(null);
 
+        engines = mock(AudioEngines.class);
+        when(engines.engineFor(any(), any())).thenReturn(editor);
         when(editor.probe(any())).thenReturn(new FfmpegAudioEditor.ProbeData(2.0, "wav", "pcm_s16le", 1, 24000));
         twoSecondWav = PcmWav.wrap(new byte[2 * 24000 * 2], 24000, 1);
 
@@ -73,7 +76,7 @@ class AudioManipulationServiceTest {
                 thinkProcessService,
                 metricService,
                 contextFactory,
-                editor);
+                engines);
     }
 
     // ─────────────────── probe ───────────────────

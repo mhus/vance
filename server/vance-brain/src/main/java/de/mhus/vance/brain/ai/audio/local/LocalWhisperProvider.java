@@ -8,6 +8,7 @@ import de.mhus.vance.brain.ai.audio.AudioSource;
 import de.mhus.vance.brain.ai.audio.SttResult;
 import de.mhus.vance.exec.ScratchArea;
 import de.mhus.vance.exec.ScratchArea.Scratch;
+import de.mhus.vance.exec.WhisperEngine;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Optional;
@@ -67,9 +68,9 @@ public class LocalWhisperProvider implements AiAudioModelProvider {
                 : config.modelName();
         try (Scratch scratch = scratchArea.open("whisper")) {
             Path audio = scratch.write("audio." + source.format(), source.data());
-            WhisperTranscriber.Result result = whisperTranscriber.transcribe(audio, whisperModel, language, null);
+            WhisperEngine.Result result = whisperTranscriber.transcribe(audio, whisperModel, language, null);
             StringBuilder text = new StringBuilder();
-            for (WhisperTranscriber.Fragment fragment : result.segments()) {
+            for (WhisperEngine.Fragment fragment : result.segments()) {
                 text.append(fragment.text().trim()).append('\n');
             }
             return new SttResult(

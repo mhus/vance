@@ -17,6 +17,9 @@ public final class RunnerMain {
 
     private static final Logger log = LoggerFactory.getLogger(RunnerMain.class);
 
+    /** The brain's name for local audio editing; what a runner with ffmpeg reports. */
+    private static final String AUDIO_TOOLS = "audio-tools";
+
     private RunnerMain() {}
 
     /** {@code VANCE_RUNNER_NPM_REGISTRY}: the registry every npm install is pinned to. */
@@ -49,7 +52,21 @@ public final class RunnerMain {
         operations.addAll(FileOperations.all(workspace));
         operations.addAll(ExecOperations.all(workspace));
         operations.addAll(ProjectOperations.all(workspace));
-        List<String> capabilities = List.of("rootdir", "file", "exec", "git", "node", "python");
+        operations.addAll(AudioOperations.all(workspace));
+        operations.addAll(VideoOperations.all(workspace.ytdlp(), workspace.whisper(), workspace.scratch()));
+        List<String> capabilities = new ArrayList<>(List.of("rootdir", "file", "exec", "git", "node", "python"));
+        // Reported only when the programs run here: the brain offers audio tools to a project whose
+        // runner says so (ProjectCapabilities), and to none whose runner cannot.
+        if (workspace.ffmpeg().available()) {
+            capabilities.add(AUDIO_TOOLS);
+        }
+        // Mechanics the brain's video transcript tool looks for; not tool capabilities, just what is here.
+        if (workspace.ytdlp().available()) {
+            capabilities.add("yt-dlp");
+        }
+        if (workspace.whisper().available()) {
+            capabilities.add("whisper");
+        }
         operations.add(BasicOperations.ping(config));
         operations.add(BasicOperations.info(config, capabilities));
         return operations;

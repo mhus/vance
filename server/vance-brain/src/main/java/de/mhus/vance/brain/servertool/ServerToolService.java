@@ -74,7 +74,7 @@ public class ServerToolService {
         if (cfg.isPresent()) {
             return registry.lookup(tenantId, projectId, name, ctx);
         }
-        return builtInProvider.find(name);
+        return builtInProvider.find(name, tenantId, projectId);
     }
 
     /**
@@ -93,7 +93,7 @@ public class ServerToolService {
     public List<Tool> listAll(String tenantId, String projectId, @Nullable ToolInvocationContext ctx) {
         ensureBootstrapped(tenantId, projectId);
         Map<String, Tool> acc = new LinkedHashMap<>();
-        for (Tool t : builtInProvider.list()) {
+        for (Tool t : builtInProvider.list(tenantId, projectId)) {
             acc.put(t.name(), t);
         }
         for (ServerToolConfig cfg : registry.listConfigs(tenantId, projectId)) {
@@ -306,5 +306,18 @@ public class ServerToolService {
         List<Tool> list();
 
         Optional<Tool> find(String name);
+
+        /**
+         * The tools visible to one project. Defaults to the pod-wide view; a provider whose
+         * tools depend on what the project has (its runner) narrows or widens it.
+         */
+        default List<Tool> list(String tenantId, String projectId) {
+            return list();
+        }
+
+        /** As {@link #find(String)}, for one project. */
+        default Optional<Tool> find(String name, String tenantId, String projectId) {
+            return find(name);
+        }
     }
 }

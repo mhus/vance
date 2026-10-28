@@ -120,9 +120,10 @@ public class ManualReadTool implements Tool {
             if (hit.isPresent()) {
                 LookupResult result = hit.get();
                 String content = result.content() == null ? "" : result.content();
-                if (!capabilityGate.available(content)) {
-                    throw new ToolException("Manual '" + candidate + "' describes tools this server does not"
-                            + " offer (no workspace access) — they are not in your tool list.");
+                if (!capabilityGate.available(content, ctx.tenantId(), ctx.projectId())) {
+                    throw new ToolException(
+                            "Manual '" + candidate + "' describes tools this server does not"
+                                    + " offer to this project (no workspace access, or no runner that has them) — they are not in your tool list.");
                 }
                 Map<String, Object> out = new LinkedHashMap<>();
                 out.put("name", candidate);

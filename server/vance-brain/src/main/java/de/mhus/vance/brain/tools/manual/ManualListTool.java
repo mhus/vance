@@ -111,7 +111,7 @@ public class ManualListTool implements Tool {
                 String filename = path.substring(folder.length());
                 String stem = filename.substring(0, filename.length() - MD_SUFFIX.length());
                 if (stem.isBlank()) continue;
-                if (!capabilityGate.available(e.getValue().content())) continue;
+                if (!capabilityGate.available(e.getValue().content(), ctx.tenantId(), ctx.projectId())) continue;
                 if (!seen.add(stem)) continue;
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("name", stem);

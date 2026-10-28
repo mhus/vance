@@ -131,7 +131,7 @@ public class SourceCatalogBuilder {
             if (name.isBlank()) continue;
             String content = e.getValue().content();
             if (content == null || content.isBlank()) continue;
-            if (!capabilityGate.available(content)) continue;
+            if (!capabilityGate.available(content, tenantId, projectId)) continue;
             FrontMatter fm = parseFrontMatter(content);
             md.append("### ")
                     .append(name)

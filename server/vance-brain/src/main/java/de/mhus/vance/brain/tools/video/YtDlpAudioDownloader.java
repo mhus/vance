@@ -1,173 +1,43 @@
 package de.mhus.vance.brain.tools.video;
 
+import de.mhus.vance.exec.MechException;
 import de.mhus.vance.exec.ProcessLauncher;
-import de.mhus.vance.exec.ProcessSpec;
-import de.mhus.vance.exec.ProgramProbe;
+import de.mhus.vance.exec.YtDlpEngine;
 import de.mhus.vance.toolpack.ToolException;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
- * Downloads the audio track of a YouTube video via the {@code yt-dlp}
- * binary on the host PATH. Output is an mp3 in the system temp dir
- * named {@code yt-<videoId>.mp3}; the caller is responsible for
- * deleting it after transcription.
- *
- * <p>Requires {@code yt-dlp} and {@code ffmpeg} to be installed:
- * <ul>
- *   <li>macOS: {@code brew install yt-dlp ffmpeg}</li>
- *   <li>Debian/Ubuntu container: {@code apt-get install -y yt-dlp ffmpeg}
- *       (the Dockerfile in {@code deployment/docker/brain/} does this).</li>
- * </ul>
- *
- * <p>Network access is required at runtime — yt-dlp talks to YouTube
- * directly. YouTube blocks many cloud-provider IPs; on a blocked
- * host you'll see a 403 / "Sign in to confirm you're not a bot"
- * error surfacing as a {@link ToolException}.
+ * Downloads the audio track of a YouTube video with the {@code yt-dlp} on this pod:
+ * {@link YtDlpEngine}'s work — the same code a runner uses — behind the pod's sealed child
+ * environment, with failures as {@link ToolException}s. The cloud image ships without it;
+ * {@link #available()} is then {@code false}.
  */
 @Component
-@Slf4j
-@RequiredArgsConstructor
 public class YtDlpAudioDownloader {
 
-    /** Sealed child environment — yt-dlp sees none of the brain's credentials. */
-    private final ProcessLauncher launcher;
+    private final YtDlpEngine engine;
 
-    private static final Duration PROBE_TIMEOUT = Duration.ofSeconds(15);
+    public YtDlpAudioDownloader(ProcessLauncher launcher) {
+        this.engine = new YtDlpEngine(launcher);
+    }
 
-    /** Probed once on first use — the image does not change under a running pod. */
-    private volatile @Nullable Boolean available;
-
-    /** Whether yt-dlp runs here; the cloud image ships without it. */
+    /** Whether yt-dlp runs here. */
     public boolean available() {
-        Boolean known = available;
-        if (known == null) {
-            known = ProgramProbe.runs(launcher, List.of("yt-dlp", "--version"), PROBE_TIMEOUT);
-            available = known;
-            if (!known) {
-                log.info("yt-dlp unavailable on this host");
-            }
-        }
-        return known;
+        return engine.available();
     }
 
     /**
-     * Wall-clock cap for the download. Audio extraction is normally
-     * sub-minute even for hour-long videos; anything beyond this is
-     * almost certainly a stalled connection or rate-limited host.
-     */
-    private static final Duration DOWNLOAD_TIMEOUT = Duration.ofMinutes(5);
-
-    /**
-     * Pulls the audio of {@code videoId} as a mono mp3 into
-     * {@code outDir} — the caller's scratch directory, which it removes
-     * afterwards with everything yt-dlp left there. Returns the path to
-     * the freshly created file.
+     * Pulls the audio of {@code videoId} as a mono mp3 into {@code outDir} — the caller's scratch
+     * directory, which it removes afterwards — and returns the path of the new file.
      *
-     * @param videoId an 11-char YouTube video id
-     * @param outDir  an existing, empty directory the child may write
-     * @return the local mp3 path
-     * @throws ToolException if yt-dlp is missing, returns non-zero, or
-     *                       times out
+     * @throws ToolException if yt-dlp is missing, fails or times out
      */
     public Path download(String videoId, Path outDir) {
-        // An isolated yt-dlp sees only this directory, and its output —
-        // which does not exist before the run — lands inside.
-        Path outFile = outDir.resolve("yt-" + videoId + ".mp3");
-
-        // -x: extract audio, --audio-format mp3 picks the encoder.
-        // --audio-quality 5: VBR ~64-96 kbps — plenty for ASR, fast
-        // download. --no-playlist: do not follow playlist params on
-        // the URL. -o: explicit output path so we know where the
-        // file lands without scraping yt-dlp's stdout.
-        List<String> cmd = List.of(
-                "yt-dlp",
-                "-x",
-                "--audio-format",
-                "mp3",
-                "--audio-quality",
-                "5",
-                "--no-playlist",
-                "--no-warnings",
-                "--quiet",
-                "-o",
-                outFile.toString(),
-                "https://www.youtube.com/watch?v=" + videoId);
-
-        log.info("yt-dlp download videoId='{}' target='{}'", videoId, outFile);
-        long startMs = System.currentTimeMillis();
-        Process process;
         try {
-            process = launcher.start(ProcessSpec.of(cmd, outDir).withNetwork().withWritable(List.of(outDir)));
-        } catch (IOException e) {
-            throw new ToolException(
-                    "Failed to start yt-dlp — is it installed and on "
-                            + "the host PATH? (macOS: brew install yt-dlp; "
-                            + "container: apt-get install yt-dlp). "
-                            + "Underlying error: " + e.getMessage(),
-                    e);
+            return engine.download(videoId, outDir);
+        } catch (MechException e) {
+            throw new ToolException(e.getMessage(), e);
         }
-
-        String stderr;
-        try {
-            stderr = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            boolean finished = process.waitFor(DOWNLOAD_TIMEOUT.toMinutes(), TimeUnit.MINUTES);
-            if (!finished) {
-                process.destroyForcibly();
-                throw new ToolException(
-                        "yt-dlp timed out after " + DOWNLOAD_TIMEOUT.toMinutes() + " minutes for video " + videoId);
-            }
-        } catch (InterruptedException e) {
-            process.destroyForcibly();
-            Thread.currentThread().interrupt();
-            throw new ToolException("Interrupted while downloading audio for " + videoId, e);
-        } catch (IOException e) {
-            throw new ToolException("yt-dlp output stream failed: " + e.getMessage(), e);
-        }
-
-        int exit = process.exitValue();
-        long elapsedMs = System.currentTimeMillis() - startMs;
-        if (exit != 0) {
-            throw new ToolException("yt-dlp failed (exit " + exit + ") for video " + videoId + ": " + lastLine(stderr));
-        }
-
-        if (!Files.isRegularFile(outFile)) {
-            throw new ToolException("yt-dlp claimed success but output file is missing: " + outFile);
-        }
-
-        long sizeBytes;
-        try {
-            sizeBytes = Files.size(outFile);
-        } catch (IOException e) {
-            sizeBytes = -1;
-        }
-        log.info("yt-dlp download videoId='{}' done elapsedMs={} bytes={}", videoId, elapsedMs, sizeBytes);
-        return outFile;
-    }
-
-    /**
-     * yt-dlp's last non-blank stderr line is usually the most relevant
-     * for diagnosis (e.g. "ERROR: [youtube] Sign in to confirm…").
-     * Truncated to keep the tool result terse.
-     */
-    private static String lastLine(String stderr) {
-        if (stderr == null) return "(no output)";
-        String[] lines = stderr.trim().split("\\r?\\n");
-        for (int i = lines.length - 1; i >= 0; i--) {
-            String l = lines[i].trim();
-            if (!l.isEmpty()) {
-                return l.length() > 300 ? l.substring(0, 300) + "…" : l;
-            }
-        }
-        return "(no output)";
     }
 }

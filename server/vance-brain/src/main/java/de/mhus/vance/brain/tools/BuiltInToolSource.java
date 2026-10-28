@@ -28,7 +28,9 @@ import org.springframework.stereotype.Component;
  *
  * <p>A bean that requires a capability this pod lacks ({@link PodCapabilities} —
  * e.g. workspace access with {@code vance.workspace.mode=off}) is left out here,
- * so it is in no inventory and no caller can resolve it.
+ * so it is in no inventory and no caller can resolve it — unless a runner can provide
+ * what it needs ({@link ProjectCapabilities#RUNNER_PROVIDED}): then it is offered to the
+ * projects that have such a runner, and to no other.
  */
 @Component
 @Slf4j
@@ -36,9 +38,18 @@ public class BuiltInToolSource implements ServerToolService.BuiltInProvider {
 
     private final Map<String, Tool> byName;
     private final List<Tool> tools;
-    private final ServerToolService serverToolService;
+    /** Tools the pod cannot offer but a project's runner can — offered per project. */
+    private final List<Tool> viaRunner;
 
-    public BuiltInToolSource(List<Tool> beans, ServerToolService serverToolService, PodCapabilities capabilities) {
+    private final Map<String, Tool> viaRunnerByName;
+    private final ServerToolService serverToolService;
+    private final ProjectCapabilities projectCapabilities;
+
+    public BuiltInToolSource(
+            List<Tool> beans,
+            ServerToolService serverToolService,
+            PodCapabilities capabilities,
+            ProjectCapabilities projectCapabilities) {
         Map<String, List<Tool>> grouped = beans.stream().collect(Collectors.groupingBy(Tool::name));
         grouped.forEach((name, dupes) -> {
             if (dupes.size() > 1) {
@@ -46,9 +57,14 @@ public class BuiltInToolSource implements ServerToolService.BuiltInProvider {
                         + dupes.stream().map(t -> t.getClass().getName()).toList());
             }
         });
+        this.projectCapabilities = projectCapabilities;
         List<Tool> offered = beans.stream().filter(capabilities::supports).toList();
+        this.viaRunner =
+                beans.stream().filter(projectCapabilities::dependsOnRunner).toList();
+        this.viaRunnerByName = viaRunner.stream().collect(Collectors.toUnmodifiableMap(Tool::name, t -> t));
         List<String> withheld = beans.stream()
                 .filter(t -> !capabilities.supports(t))
+                .filter(t -> !viaRunnerByName.containsKey(t.name()))
                 .map(Tool::name)
                 .toList();
         if (!withheld.isEmpty()) {
@@ -56,6 +72,12 @@ public class BuiltInToolSource implements ServerToolService.BuiltInProvider {
                     "BuiltInToolSource withholds {} tools this pod lacks a capability for: {}",
                     withheld.size(),
                     withheld);
+        }
+        if (!viaRunner.isEmpty()) {
+            log.info(
+                    "BuiltInToolSource offers {} tools only to projects whose runner provides them: {}",
+                    viaRunner.size(),
+                    viaRunner.stream().map(Tool::name).toList());
         }
         this.tools = offered;
         this.byName = offered.stream().collect(Collectors.toUnmodifiableMap(Tool::name, t -> t));
@@ -79,5 +101,32 @@ public class BuiltInToolSource implements ServerToolService.BuiltInProvider {
     @Override
     public Optional<Tool> find(String name) {
         return Optional.ofNullable(byName.get(name));
+    }
+
+    /** The pod's tools plus those the project's runner makes possible. */
+    @Override
+    public List<Tool> list(String tenantId, String projectId) {
+        if (viaRunner.isEmpty()) {
+            return tools;
+        }
+        List<Tool> visible = new java.util.ArrayList<>(tools);
+        for (Tool tool : viaRunner) {
+            if (projectCapabilities.supports(tool, tenantId, projectId)) {
+                visible.add(tool);
+            }
+        }
+        return visible;
+    }
+
+    @Override
+    public Optional<Tool> find(String name, String tenantId, String projectId) {
+        Tool pod = byName.get(name);
+        if (pod != null) {
+            return Optional.of(pod);
+        }
+        Tool tool = viaRunnerByName.get(name);
+        return tool != null && projectCapabilities.supports(tool, tenantId, projectId)
+                ? Optional.of(tool)
+                : Optional.empty();
     }
 }

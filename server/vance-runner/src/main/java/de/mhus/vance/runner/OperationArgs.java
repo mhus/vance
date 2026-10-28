@@ -78,6 +78,56 @@ final class OperationArgs {
         return node.asBoolean();
     }
 
+    /** A decimal argument, or {@code fallback} when absent. */
+    double decimal(String name, double fallback) throws OperationException {
+        Double value = decimalOrNull(name);
+        return value == null ? fallback : value;
+    }
+
+    @Nullable
+    Double decimalOrNull(String name) throws OperationException {
+        JsonNode node = args == null ? null : args.get(name);
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isNumber()) {
+            throw new OperationException("bad-args", "'" + name + "' must be a number");
+        }
+        return node.asDouble();
+    }
+
+    @Nullable
+    Integer integerOrNull(String name) throws OperationException {
+        JsonNode node = args == null ? null : args.get(name);
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isIntegralNumber()) {
+            throw new OperationException("bad-args", "'" + name + "' must be a whole number");
+        }
+        return node.asInt();
+    }
+
+    /** A list of whole numbers; empty when absent. */
+    java.util.List<Integer> integers(String name) throws OperationException {
+        JsonNode node = args == null ? null : args.get(name);
+        if (node == null || node.isNull()) {
+            return java.util.List.of();
+        }
+        if (!node.isArray()) {
+            throw new OperationException("bad-args", "'" + name + "' must be a list of whole numbers");
+        }
+        java.util.List<Integer> out = new java.util.ArrayList<>();
+        for (JsonNode element : node) {
+            if (!element.isIntegralNumber() || element.asInt() < 0) {
+                throw new OperationException(
+                        "bad-args", "'" + name + "' must hold sizes (whole numbers, not negative)");
+            }
+            out.add(element.asInt());
+        }
+        return out;
+    }
+
     int integer(String name, int fallback) throws OperationException {
         JsonNode node = args == null ? null : args.get(name);
         if (node == null || node.isNull()) {

@@ -54,9 +54,19 @@ There are no `python_run` / `execute_python` / `node_*` tools on the runner: run
 `exec_run`, e.g. `.venv/bin/python script.py`, and install more with
 `.venv/bin/python -m pip install …` or `npm install …` in a RootDir of that type.
 
+## Audio and video
+
+When the server itself has no ffmpeg, a runner that has it brings the five audio tools (`audio_info`,
+`audio_trim`, `audio_mix`, `audio_concat`, `audio_convert`): they appear in your tool list for that
+project, work on documents as always, and the editing happens on the runner. Read `manual_read('audio-editing')`.
+They are simply absent for a project whose runner cannot do audio.
+
+`video_transcript` also uses the runner when the server has no yt-dlp/Whisper: download and
+transcription run there in one step and only the transcript comes back. There is no progress report for
+that — it can take minutes for a long video.
+
 ## What it does not have (yet)
 
-- No `ffmpeg`, `whisper` or `yt-dlp` — the audio tools do not use the runner yet.
 - RootDirs live on the runner's volume, not in the server's workspace snapshots: nothing of them is
   suspended with your session. A git RootDir keeps what you commit and push.
 

@@ -62,4 +62,21 @@ class ManualCapabilityGateTest {
         props.setMode(mode);
         return new ManualCapabilityGate(new PodCapabilities(props, List.of()));
     }
+
+    @Test
+    void aManualAboutRunnerToolsIsShownToTheProjectsWhoseRunnerHasThem() {
+        de.mhus.vance.brain.tools.ProjectCapabilities project =
+                org.mockito.Mockito.mock(de.mhus.vance.brain.tools.ProjectCapabilities.class);
+        org.mockito.Mockito.when(project.available("acme", "with-runner"))
+                .thenReturn(Set.of(ToolCapabilities.AUDIO_TOOLS));
+        org.mockito.Mockito.when(project.available("acme", "without-runner")).thenReturn(Set.of());
+        ManualCapabilityGate gate =
+                new ManualCapabilityGate(new PodCapabilities(new WorkspaceProperties(), List.of()), project);
+        String manual = "---\nrequires-capabilities: audio-tools\n---\n# Audio";
+
+        assertThat(gate.available(manual)).isFalse(); // this pod has no ffmpeg
+        assertThat(gate.available(manual, "acme", "with-runner")).isTrue();
+        assertThat(gate.available(manual, "acme", "without-runner")).isFalse();
+        assertThat(gate.available("# No header", "acme", "without-runner")).isTrue();
+    }
 }

@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.tools.runner;
 
 import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolCapabilities;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.ToolLabels;
@@ -99,6 +100,12 @@ final class RunnerBackendTool implements Tool {
     @Override
     public String description() {
         return description;
+    }
+
+    /** Listed for the projects that have a runner, and only for them. */
+    @Override
+    public Set<String> requiresCapabilities() {
+        return Set.of(ToolCapabilities.RUNNER);
     }
 
     @Override

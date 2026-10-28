@@ -52,6 +52,18 @@ final class OperationArgs {
         return node.asString();
     }
 
+    /** A boolean argument; absent or {@code null} is {@code false}. */
+    boolean flag(String name) throws OperationException {
+        JsonNode node = args == null ? null : args.get(name);
+        if (node == null || node.isNull()) {
+            return false;
+        }
+        if (!node.isBoolean()) {
+            throw new OperationException("bad-args", "'" + name + "' must be true or false");
+        }
+        return node.asBoolean();
+    }
+
     int integer(String name, int fallback) throws OperationException {
         JsonNode node = args == null ? null : args.get(name);
         if (node == null || node.isNull()) {

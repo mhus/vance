@@ -496,4 +496,51 @@ class RunnerWorkspaceOperationsTest {
                         .asString())
                 .endsWith("/homes/acme/kunde-x");
     }
+
+    private RunnerOperation.OperationResult callWithBody(
+            String op, RunnerTokens.Claims claims, Map<String, Object> args, byte[] body) throws OperationException {
+        return ops.get(op).execute(new Call(claims, JSON.valueToTree(args), new ByteArrayInputStream(body)));
+    }
+
+    @Test
+    void aFileTravelsAsTheBody_beyondTheHeaderCap_inBothDirections() throws Exception {
+        var c = claims("kunde-x", null);
+        String dir = newTempDir(c);
+        String big = ("0123456789abcdef".repeat(64) + "\n").repeat(3 * 1024); // 3 MiB, over the 1 MiB header cap
+
+        var written = callWithBody(
+                "file.write",
+                c,
+                Map.of("dirName", dir, "path", "big.txt", "contentInBody", true),
+                big.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        assertThat(written.result().get("chars").asInt()).isEqualTo(big.length());
+
+        var read = callWithBody(
+                "file.read",
+                c,
+                Map.of("dirName", dir, "path", "big.txt", "contentInBody", true, "maxChars", 10_000_000),
+                new byte[0]);
+        // The answer's header carries no content; the body does.
+        assertThat(read.result().has("content")).isFalse();
+        assertThat(read.result().get("contentHash").asString())
+                .isEqualTo(written.result().get("contentHash").asString());
+        assertThat(new String(read.body().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8))
+                .isEqualTo(big);
+    }
+
+    @Test
+    void anEmptyBodyWritesAnEmptyFile_andNoContentAtAllIsRefused() throws Exception {
+        var c = claims("kunde-x", null);
+        String dir = newTempDir(c);
+
+        callWithBody("file.write", c, Map.of("dirName", dir, "path", "empty.txt", "contentInBody", true), new byte[0]);
+        assertThat(call("file.read", c, Map.of("dirName", dir, "path", "empty.txt"))
+                        .get("content")
+                        .asString())
+                .isEmpty();
+        assertThatThrownBy(() -> call("file.write", c, Map.of("dirName", dir, "path", "none.txt")))
+                .isInstanceOfSatisfying(
+                        OperationException.class,
+                        e -> assertThat(e.getMessage()).contains("'content' is required"));
+    }
 }

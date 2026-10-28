@@ -6,6 +6,7 @@ import de.mhus.vance.shared.runner.RunnerClient.Reply;
 import de.mhus.vance.shared.runner.RunnerClient.RunnerCallException;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -43,6 +44,21 @@ public class RunnerWork {
      * @throws ToolException when there is no runner, it cannot be reached, or it refused the call
      */
     public Map<String, Object> call(ToolInvocationContext ctx, String op, Map<String, Object> args) {
+        return call(ctx, op, args, new byte[0], null);
+    }
+
+    /**
+     * As {@link #call(ToolInvocationContext, String, Map)} for an operation that carries
+     * text in the body: {@code requestBody} goes out as the request body, and when
+     * {@code responseBodyField} is set the answer's body is read as UTF-8 text into that
+     * field of the result — file content never rides in the capped JSON header.
+     */
+    public Map<String, Object> call(
+            ToolInvocationContext ctx,
+            String op,
+            Map<String, Object> args,
+            byte[] requestBody,
+            @Nullable String responseBodyField) {
         String projectId = requireProject(ctx);
         Reply reply;
         try {
@@ -53,7 +69,7 @@ public class RunnerWork {
                     null,
                     op,
                     args,
-                    new byte[0]);
+                    requestBody);
         } catch (RunnerCallException e) {
             throw new ToolException(e.getMessage(), e);
         }
@@ -61,12 +77,14 @@ public class RunnerWork {
             throw new ToolException(reply.header().error().message());
         }
         JsonNode result = reply.header().result();
-        if (result == null || !result.isObject()) {
-            return new LinkedHashMap<>();
-        }
         Map<String, Object> out = new LinkedHashMap<>();
-        result.properties()
-                .forEach(entry -> out.put(entry.getKey(), JSON.convertValue(entry.getValue(), Object.class)));
+        if (result != null && result.isObject()) {
+            result.properties()
+                    .forEach(entry -> out.put(entry.getKey(), JSON.convertValue(entry.getValue(), Object.class)));
+        }
+        if (responseBodyField != null) {
+            out.put(responseBodyField, new String(reply.body(), StandardCharsets.UTF_8));
+        }
         return out;
     }
 

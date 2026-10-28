@@ -7,6 +7,9 @@ import de.mhus.vance.exec.RootPaths;
 import de.mhus.vance.runner.RunnerOperation.Call;
 import de.mhus.vance.runner.RunnerOperation.OperationException;
 import de.mhus.vance.runner.RunnerOperation.OperationResult;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -53,14 +56,31 @@ final class FileOperations {
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("path", path);
             out.put("dirName", dirName);
-            out.put("content", result.text());
+            // The JSON header is capped (1 MiB); a file travels as the answer's body, so the size of
+            // what can be read is the runner's choice (maxChars), not the frame's.
+            boolean inBody = args.flag("contentInBody");
+            if (!inBody) {
+                out.put("content", result.text());
+            }
             out.put("truncated", result.truncated());
             out.put("totalChars", result.totalChars());
             if (!result.truncated() && startLine <= 0) {
                 out.put("contentHash", OperationArgs.sha256Hex(result.text()));
             }
-            return OperationResult.of(out);
+            return inBody
+                    ? OperationResult.of(
+                            out, new ByteArrayInputStream(result.text().getBytes(StandardCharsets.UTF_8)))
+                    : OperationResult.of(out);
         });
+    }
+
+    /** The request body as text — read whole before anything is written. */
+    private static String readBody(Call call) throws OperationException {
+        try {
+            return new String(call.body().readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new OperationException("corrupt-body", "The request body is corrupt: " + e.getMessage(), e);
+        }
     }
 
     private static RunnerOperation write(RunnerWorkspace workspace) {
@@ -68,7 +88,9 @@ final class FileOperations {
             OperationArgs args = new OperationArgs(call.args());
             String dirName = args.rootDir(call.claims());
             String path = args.text("path");
-            String content = args.optionalText("content");
+            // 'contentInBody': the file is the request body (no size limit but the request's);
+            // otherwise it is the 'content' argument in the capped JSON header.
+            String content = args.flag("contentInBody") ? readBody(call) : args.optionalText("content");
             if (content == null) {
                 throw new OperationException("bad-args", "'content' is required");
             }

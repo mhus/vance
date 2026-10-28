@@ -40,7 +40,8 @@ class RunnerToolConfiguration {
                 "file.read",
                 Effect.READ,
                 true,
-                false);
+                false,
+                RunnerBackendTool.Body.CONTENT_IN_RESPONSE);
     }
 
     @Bean
@@ -60,7 +61,8 @@ class RunnerToolConfiguration {
                 "file.write",
                 Effect.WRITE,
                 true,
-                false);
+                false,
+                RunnerBackendTool.Body.CONTENT_IN_REQUEST);
     }
 
     @Bean
@@ -80,7 +82,8 @@ class RunnerToolConfiguration {
                 "file.edit",
                 Effect.WRITE,
                 true,
-                false);
+                false,
+                RunnerBackendTool.Body.NONE);
     }
 
     @Bean
@@ -96,7 +99,8 @@ class RunnerToolConfiguration {
                 "file.list",
                 Effect.READ,
                 true,
-                false);
+                false,
+                RunnerBackendTool.Body.NONE);
     }
 
     /*
@@ -115,7 +119,8 @@ class RunnerToolConfiguration {
                 "file.find",
                 Effect.READ,
                 true,
-                false);
+                false,
+                RunnerBackendTool.Body.NONE);
     }
 
     @Bean
@@ -130,7 +135,8 @@ class RunnerToolConfiguration {
                 "file.grep",
                 Effect.READ,
                 true,
-                false);
+                false,
+                RunnerBackendTool.Body.NONE);
     }
 
     @Bean
@@ -144,7 +150,8 @@ class RunnerToolConfiguration {
                 "file.count",
                 Effect.READ,
                 true,
-                false);
+                false,
+                RunnerBackendTool.Body.NONE);
     }
 
     @Bean
@@ -158,7 +165,8 @@ class RunnerToolConfiguration {
                 "file.head_tail",
                 Effect.READ,
                 true,
-                false);
+                false,
+                RunnerBackendTool.Body.NONE);
     }
 
     @Bean
@@ -174,7 +182,8 @@ class RunnerToolConfiguration {
                 "file.delete",
                 Effect.WRITE,
                 true,
-                false);
+                false,
+                RunnerBackendTool.Body.NONE);
     }
 
     @Bean
@@ -194,7 +203,8 @@ class RunnerToolConfiguration {
                 "exec.start",
                 Effect.EXEC,
                 true,
-                true);
+                true,
+                RunnerBackendTool.Body.NONE);
     }
 
     @Bean
@@ -207,7 +217,8 @@ class RunnerToolConfiguration {
                 "exec.status",
                 Effect.READ,
                 false,
-                false);
+                false,
+                RunnerBackendTool.Body.NONE);
     }
 
     @Bean
@@ -224,7 +235,8 @@ class RunnerToolConfiguration {
                 "exec.tail",
                 Effect.READ,
                 false,
-                false);
+                false,
+                RunnerBackendTool.Body.NONE);
     }
 
     @Bean
@@ -237,7 +249,8 @@ class RunnerToolConfiguration {
                 "exec.kill",
                 Effect.EXEC,
                 false,
-                false);
+                false,
+                RunnerBackendTool.Body.NONE);
     }
 
     private static Map.Entry<String, Object> prop(String name, String type, String description) {

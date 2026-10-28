@@ -207,6 +207,20 @@ class RunnerToolsEndToEndTest {
     }
 
     @Test
+    void aFileOverTheHeaderCap_goesThroughTheTools_asBody() {
+        var c = ctx("p1");
+        String big = ("0123456789abcdef".repeat(64) + "\n").repeat(3 * 1024); // 3 MiB
+
+        config.runnerFileWrite(work).invoke(Map.of("path", "big.txt", "content", big), c);
+        Map<String, Object> read =
+                config.runnerFileRead(work).invoke(Map.of("path", "big.txt", "maxChars", 10_000_000), c);
+
+        assertThat((String) read.get("content")).isEqualTo(big);
+        assertThat(read.get("truncated")).isEqualTo(false);
+        assertThat(read).containsKey("contentHash");
+    }
+
+    @Test
     void aRunnerRefusal_becomesAToolErrorTheModelCanActOn() {
         Tool read = config.runnerFileRead(work);
 

@@ -71,7 +71,7 @@ class RunnerClientTest {
                 tmp.resolve("data"),
                 tmp.resolve("runner.identity"),
                 tmp.resolve("keys.pem"),
-                1024 * 1024);
+                16L * 1024 * 1024);
         server = new RunnerServer(
                 config,
                 runnerIdentity,
@@ -218,5 +218,28 @@ class RunnerClientTest {
                     assertThat(e.reason()).isEqualTo(Reason.BAD_REGISTRATION);
                     assertThat(e.getMessage()).contains("runner set");
                 });
+    }
+
+    @Test
+    void aHeaderOverItsCap_isARejectedRequest_notABadRegistration() {
+        // 2 MiB of arguments does not fit the 1 MiB header; the stored key is fine.
+        Map<String, Object> args = Map.of("blob", "x".repeat(2 * 1024 * 1024));
+
+        assertThatThrownBy(() -> client.call(TENANT, "kunde-x", "alice", null, "echo", args, new byte[0]))
+                .isInstanceOfSatisfying(RunnerCallException.class, e -> {
+                    assertThat(e.reason()).isEqualTo(Reason.REJECTED);
+                    assertThat(e.getMessage()).contains("cannot be sent").contains("Header too large");
+                });
+    }
+
+    @Test
+    void aBodyIsDeliveredWhole_whatEverItsSize() {
+        byte[] big = new byte[5 * 1024 * 1024];
+        java.util.Arrays.fill(big, (byte) 'z');
+
+        RunnerClient.Reply reply = client.call(TENANT, "kunde-x", "alice", null, "echo", null, big);
+
+        assertThat(reply.ok()).isTrue();
+        assertThat(reply.body()).hasSize(big.length);
     }
 }

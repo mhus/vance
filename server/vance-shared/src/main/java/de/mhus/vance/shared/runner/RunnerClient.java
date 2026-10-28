@@ -1,5 +1,6 @@
 package de.mhus.vance.shared.runner;
 
+import de.mhus.vance.age.AgeKeys;
 import de.mhus.vance.runner.protocol.RunnerEnvelope;
 import de.mhus.vance.runner.protocol.RunnerEnvelope.OpenedBytes;
 import de.mhus.vance.runner.protocol.RunnerEnvelope.SealedRequest;
@@ -146,6 +147,13 @@ public class RunnerClient {
         try {
             sealed = RunnerEnvelope.sealRequest(runner.getRecipient(), token, jti, op, args, body);
         } catch (RunnerProtocolException e) {
+            if (AgeKeys.isRecipient(runner.getRecipient())) {
+                // The registration is fine; the request itself cannot be framed (e.g. a header over its cap).
+                throw new RunnerCallException(
+                        RunnerCallException.Reason.REJECTED,
+                        "The request to runner '" + runner.getRunnerId() + "' cannot be sent: " + e.getMessage(),
+                        e);
+            }
             throw new RunnerCallException(
                     RunnerCallException.Reason.BAD_REGISTRATION,
                     "The registration of runner '" + runner.getRunnerId() + "' cannot be used (" + e.getMessage()

@@ -1,8 +1,10 @@
 package de.mhus.vance.brain.tools.runner;
 
 import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.ToolLabels;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -42,11 +44,26 @@ final class RunnerBackendTool implements Tool {
     private final Effect effect;
     private final boolean needsRootDir;
     private final boolean ownedByProcess;
+    private final Body body;
+
+    /**
+     * Where the text of a file travels. The JSON header of a call is capped (1 MiB), so a
+     * file is the request's or the answer's <em>body</em>, never a header field.
+     */
+    enum Body {
+        /** Nothing in the body. */
+        NONE,
+        /** The {@code content} parameter is sent as the request body. */
+        CONTENT_IN_REQUEST,
+        /** The answer's body is returned as {@code content}. */
+        CONTENT_IN_RESPONSE
+    }
 
     /**
      * @param needsRootDir   the operation works inside a RootDir, so {@code dirName} is
      *     resolved (named, or the process's temp RootDir)
      * @param ownedByProcess the operation takes the calling process as owner of what it starts
+     * @param body           whether file content travels as request or response body
      */
     RunnerBackendTool(
             RunnerWork runner,
@@ -56,7 +73,8 @@ final class RunnerBackendTool implements Tool {
             String op,
             Effect effect,
             boolean needsRootDir,
-            boolean ownedByProcess) {
+            boolean ownedByProcess,
+            Body body) {
         this.runner = runner;
         this.name = name;
         this.description = description;
@@ -65,6 +83,7 @@ final class RunnerBackendTool implements Tool {
         this.effect = effect;
         this.needsRootDir = needsRootDir;
         this.ownedByProcess = ownedByProcess;
+        this.body = body;
     }
 
     @Override
@@ -112,7 +131,23 @@ final class RunnerBackendTool implements Tool {
         if (ownedByProcess && ctx.processId() != null) {
             args.put("ownerProcessId", ctx.processId());
         }
-        return runner.call(ctx, op, args);
+        switch (body) {
+            case CONTENT_IN_REQUEST -> {
+                Object content = args.remove("content");
+                if (!(content instanceof String text)) {
+                    throw new ToolException("'content' is required and must be a string");
+                }
+                args.put("contentInBody", true);
+                return runner.call(ctx, op, args, text.getBytes(StandardCharsets.UTF_8), null);
+            }
+            case CONTENT_IN_RESPONSE -> {
+                args.put("contentInBody", true);
+                return runner.call(ctx, op, args, new byte[0], "content");
+            }
+            default -> {
+                return runner.call(ctx, op, args);
+            }
+        }
     }
 
     private static @Nullable String stringOrNull(@Nullable Object value) {

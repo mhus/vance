@@ -1,9 +1,11 @@
 package de.mhus.vance.brain.script;
 
 import de.mhus.vance.brain.tools.workspace.TypedRootDirProvisioner;
+import de.mhus.vance.exec.NodeHandler;
+import de.mhus.vance.exec.NpmPackageSpec;
+import de.mhus.vance.exec.RootDirException;
 import de.mhus.vance.exec.RootDirHandle;
-import de.mhus.vance.shared.workspace.NodeHandler;
-import de.mhus.vance.shared.workspace.NpmPackageSpec;
+import de.mhus.vance.shared.workspace.WorkspaceException;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -52,17 +54,22 @@ public class ScriptLibraryProvisioner {
         return workspaceService.withLabelLock(ctx.tenantId(), projectId, label, () -> {
             RootDirHandle handle =
                     TypedRootDirProvisioner.ensure(workspaceService, ctx, NodeHandler.TYPE, label, Map.of());
-            for (String raw : requires) {
-                NpmPackageSpec spec = NpmPackageSpec.parse(raw);
-                if (!NodeHandler.isInstalled(handle.getPath(), spec.name())) {
-                    log.info(
-                            "Installing script library {} into {}/{} ({})",
-                            spec.toArgument(),
-                            ctx.tenantId(),
-                            projectId,
-                            handle.getDirName());
-                    nodeHandler.install(handle, spec.toArgument());
+            try {
+                for (String raw : requires) {
+                    NpmPackageSpec spec = NpmPackageSpec.parse(raw);
+                    if (!NodeHandler.isInstalled(handle.getPath(), spec.name())) {
+                        log.info(
+                                "Installing script library {} into {}/{} ({})",
+                                spec.toArgument(),
+                                ctx.tenantId(),
+                                projectId,
+                                handle.getDirName());
+                        nodeHandler.install(handle, spec.toArgument());
+                    }
                 }
+            } catch (RootDirException e) {
+                // The handler is plain Java; this class' contract is the brain's exception.
+                throw new WorkspaceException(e.getMessage(), e);
             }
             return handle.getPath().toAbsolutePath().normalize();
         });

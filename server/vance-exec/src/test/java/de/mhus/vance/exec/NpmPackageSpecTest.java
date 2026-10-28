@@ -1,4 +1,4 @@
-package de.mhus.vance.shared.workspace;
+package de.mhus.vance.exec;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -61,11 +61,11 @@ class NpmPackageSpecTest {
                 "lodash@"
             })
     void parse_nonRegistrySpec_isRejected(String raw) {
-        assertThatThrownBy(() -> NpmPackageSpec.parse(raw)).isInstanceOf(WorkspaceException.class);
+        assertThatThrownBy(() -> NpmPackageSpec.parse(raw)).isInstanceOf(RootDirException.class);
     }
 
     @Test
     void parse_nameLongerThanNpmLimit_isRejected() {
-        assertThatThrownBy(() -> NpmPackageSpec.parse("a".repeat(215))).isInstanceOf(WorkspaceException.class);
+        assertThatThrownBy(() -> NpmPackageSpec.parse("a".repeat(215))).isInstanceOf(RootDirException.class);
     }
 }

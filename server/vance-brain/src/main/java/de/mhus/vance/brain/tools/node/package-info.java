@@ -1,9 +1,9 @@
 /**
  * Node tooling for the brain — creates and manages workspace RootDirs
- * of type {@link de.mhus.vance.shared.workspace.NodeHandler#TYPE} (a
+ * of type {@link de.mhus.vance.exec.NodeHandler#TYPE} (a
  * local {@code node_modules} plus optional git-persisted package.json
  * + lockfile), runs {@code npm install} / {@code npm uninstall}
- * synchronously through {@link de.mhus.vance.shared.workspace.NodeHandler}.
+ * synchronously through {@link de.mhus.vance.exec.NodeHandler}.
  *
  * <p>Sister to {@code python}. Same shape, same idempotency rules.
  * Workspaces created here power Hactar-generated scripts that

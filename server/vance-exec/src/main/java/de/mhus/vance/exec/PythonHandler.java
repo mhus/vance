@@ -1,30 +1,14 @@
-package de.mhus.vance.shared.workspace;
+package de.mhus.vance.exec;
 
-import de.mhus.vance.exec.ProcessLauncher;
-import de.mhus.vance.exec.ProcessSpec;
-import de.mhus.vance.exec.RootDirHandle;
-import de.mhus.vance.exec.RootDirSpec;
-import de.mhus.vance.exec.WorkspaceContentHandler;
-import de.mhus.vance.exec.WorkspaceDescriptor;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
-import lombok.RequiredArgsConstructor;
+import java.util.function.Supplier;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
-import org.eclipse.jgit.api.Git;
-import org.eclipse.jgit.api.errors.GitAPIException;
 import org.jspecify.annotations.Nullable;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.stereotype.Component;
 
 /**
  * Python-backed RootDir — local venv plus optional git-persisted sources.
@@ -54,8 +38,6 @@ import org.springframework.stereotype.Component;
  *       {@code suspendBranch}, {@code suspendCommit} — same keys as {@link GitHandler}</li>
  * </ul>
  */
-@Component
-@RequiredArgsConstructor
 @Slf4j
 public class PythonHandler implements WorkspaceContentHandler {
 
@@ -87,8 +69,16 @@ public class PythonHandler implements WorkspaceContentHandler {
     private static final String ONLY_BINARY = "--only-binary=:all:";
 
     private final GitHandler gitHandler;
+    private final GitOperations git;
     /** Provided by the brain; absent in the admin shell (see {@link NodeHandler}). */
-    private final ObjectProvider<ProcessLauncher> launcherProvider;
+    private final Supplier<@Nullable ProcessLauncher> launcherSupplier;
+
+    public PythonHandler(
+            GitHandler gitHandler, GitOperations git, Supplier<@Nullable ProcessLauncher> launcherSupplier) {
+        this.gitHandler = gitHandler;
+        this.git = git;
+        this.launcherSupplier = launcherSupplier;
+    }
 
     @Override
     public String type() {
@@ -97,26 +87,26 @@ public class PythonHandler implements WorkspaceContentHandler {
 
     @Override
     public void init(RootDirHandle handle, RootDirSpec spec) {
-        Map<String, Object> meta = mutableMetadata(handle.getDescriptor());
-        String pythonPath = stringOr(meta, META_PYTHON_PATH, DEFAULT_PYTHON_PATH);
-        String repoUrl = stringOr(meta, GitHandler.META_REPO_URL, null);
+        Map<String, Object> meta = HandlerSupport.mutableMetadata(handle.getDescriptor());
+        String pythonPath = HandlerSupport.stringOr(meta, META_PYTHON_PATH, DEFAULT_PYTHON_PATH);
+        String repoUrl = HandlerSupport.stringOr(meta, GitHandler.META_REPO_URL, null);
 
-        if (StringUtils.isNotBlank(repoUrl)) {
+        if (!repoUrl.isBlank()) {
             // Delegate clone + commit-pinning to GitHandler.
             gitHandler.init(handle, spec);
-            meta = mutableMetadata(handle.getDescriptor());
+            meta = HandlerSupport.mutableMetadata(handle.getDescriptor());
         } else {
             // No remote yet — initialise an empty local repo so the worker
             // can later set origin and call suspend.
             try {
-                Git.init().setDirectory(handle.getPath().toFile()).call().close();
-            } catch (GitAPIException e) {
-                throw new WorkspaceException(
+                git.init(handle.getPath());
+            } catch (GitOperationException e) {
+                throw new RootDirException(
                         "git init failed for python RootDir " + handle.getDirName() + ": " + e.getMessage(), e);
             }
         }
 
-        writeDefaultGitignore(handle.getPath());
+        HandlerSupport.writeDefaultGitignore(handle.getPath(), DEFAULT_GITIGNORE);
         buildVenv(handle, pythonPath);
 
         // Auto-install dependencies if the clone shipped a
@@ -148,9 +138,9 @@ public class PythonHandler implements WorkspaceContentHandler {
 
     @Override
     public void suspend(RootDirHandle handle) {
-        Map<String, Object> meta = mutableMetadata(handle.getDescriptor());
-        String repoUrl = stringOr(meta, GitHandler.META_REPO_URL, null);
-        if (StringUtils.isBlank(repoUrl)) {
+        Map<String, Object> meta = HandlerSupport.mutableMetadata(handle.getDescriptor());
+        String repoUrl = HandlerSupport.stringOr(meta, GitHandler.META_REPO_URL, null);
+        if (repoUrl.isBlank()) {
             // No remote: like a temp RootDir, the content does not survive —
             // only the descriptor does, and recover rebuilds a fresh venv
             // from it. Must not block suspend/release (W5/E7).
@@ -162,20 +152,21 @@ public class PythonHandler implements WorkspaceContentHandler {
 
     @Override
     public void recover(RootDirHandle handle, WorkspaceDescriptor descriptor) {
-        Map<String, Object> meta = mutableMetadata(descriptor);
-        boolean fromRemote = StringUtils.isNotBlank(stringOr(meta, GitHandler.META_REPO_URL, null));
+        Map<String, Object> meta = HandlerSupport.mutableMetadata(descriptor);
+        boolean fromRemote =
+                !HandlerSupport.stringOr(meta, GitHandler.META_REPO_URL, null).isBlank();
         if (fromRemote) {
             gitHandler.recover(handle, descriptor);
         } else {
             // E7: nothing was kept — start empty, re-declare the git repo so a
             // remote can be added later, then rebuild the environment below.
             try {
-                Git.init().setDirectory(handle.getPath().toFile()).call().close();
-            } catch (GitAPIException e) {
-                throw new WorkspaceException(
+                git.init(handle.getPath());
+            } catch (GitOperationException e) {
+                throw new RootDirException(
                         "git init failed for python RootDir " + handle.getDirName() + ": " + e.getMessage(), e);
             }
-            writeDefaultGitignore(handle.getPath());
+            HandlerSupport.writeDefaultGitignore(handle.getPath(), DEFAULT_GITIGNORE);
         }
         // Use the recover pod's local interpreter, not the one from the descriptor —
         // the binary on disk is what counts, the descriptor field is informational.
@@ -209,7 +200,7 @@ public class PythonHandler implements WorkspaceContentHandler {
      * reinstalls from {@code requirements.txt} if present. Sources
      * are untouched. Updates the handle's descriptor metadata with
      * the new {@code pythonPath}; the caller persists the descriptor
-     * (typically via {@link WorkspaceService#rebuildPythonVenv}).
+     * (typically via {@code WorkspaceService#rebuildPythonVenv}).
      */
     public void rebuildVenv(RootDirHandle handle, String pythonPath) {
         Path rootDirPath = handle.getPath();
@@ -220,7 +211,7 @@ public class PythonHandler implements WorkspaceContentHandler {
         if (Files.isRegularFile(requirements)) {
             pipInstallRequirements(handle, pythonPath);
         }
-        Map<String, Object> meta = mutableMetadata(handle.getDescriptor());
+        Map<String, Object> meta = HandlerSupport.mutableMetadata(handle.getDescriptor());
         List<String> packages = packageList(meta, META_PACKAGES);
         if (!packages.isEmpty()) {
             pipInstallPackages(handle, pythonPath, packages);
@@ -232,18 +223,6 @@ public class PythonHandler implements WorkspaceContentHandler {
     // ---------------------------------------------------------------------
     // Internals
     // ---------------------------------------------------------------------
-
-    private void writeDefaultGitignore(Path rootDirPath) {
-        Path gitignore = rootDirPath.resolve(".gitignore");
-        if (Files.exists(gitignore)) {
-            return;
-        }
-        try {
-            Files.writeString(gitignore, DEFAULT_GITIGNORE, StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW);
-        } catch (IOException e) {
-            log.warn("Failed to write default .gitignore in {}: {}", rootDirPath, e.toString());
-        }
-    }
 
     private void buildVenv(RootDirHandle handle, String pythonPath) {
         runProcess(
@@ -299,7 +278,7 @@ public class PythonHandler implements WorkspaceContentHandler {
                 continue;
             }
             if (s.startsWith("-")) {
-                throw new WorkspaceException("invalid package spec '" + s + "' in workspace options." + key
+                throw new RootDirException("invalid package spec '" + s + "' in workspace options." + key
                         + " — must not start with '-' (option injection)");
             }
             out.add(s);
@@ -310,39 +289,7 @@ public class PythonHandler implements WorkspaceContentHandler {
     /** Runs the command in the RootDir through the {@link ProcessLauncher}, scoped to its project. */
     private void runProcess(
             RootDirHandle handle, String[] command, long timeoutSeconds, String label, boolean network) {
-        Path cwd = handle.getPath();
-        ProcessLauncher launcher = launcherProvider.getIfAvailable();
-        if (launcher == null) {
-            throw new WorkspaceException(
-                    "starting " + label + " is not available in this application (no ProcessLauncher)");
-        }
-        Process p;
-        try {
-            ProcessSpec spec =
-                    ProcessSpec.of(List.of(command), cwd).withScope(handle.getTenantId(), handle.getProjectId());
-            p = launcher.start(network ? spec.withNetwork() : spec);
-        } catch (IOException e) {
-            throw new WorkspaceException(label + " failed to start: " + e.getMessage(), e);
-        }
-        String output;
-        try {
-            output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            if (!p.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
-                p.destroyForcibly();
-                throw new WorkspaceException(label + " timed out after " + timeoutSeconds + "s");
-            }
-        } catch (IOException e) {
-            throw new WorkspaceException(label + " I/O error: " + e.getMessage(), e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new WorkspaceException(label + " interrupted", e);
-        }
-        int exit = p.exitValue();
-        if (exit != 0) {
-            throw new WorkspaceException(
-                    label + " exited with code " + exit + (output.isBlank() ? "" : ": " + output.strip()));
-        }
-        log.debug("{} ok (cwd={})", label, cwd);
+        HandlerSupport.runProcess(launcherSupplier, handle, command, timeoutSeconds, label, network);
     }
 
     private static void deleteRecursively(Path dir) {
@@ -352,31 +299,11 @@ public class PythonHandler implements WorkspaceContentHandler {
                 try {
                     Files.deleteIfExists(p);
                 } catch (IOException e) {
-                    throw new WorkspaceException("Cannot delete " + p + ": " + e.getMessage(), e);
+                    throw new RootDirException("Cannot delete " + p + ": " + e.getMessage(), e);
                 }
             });
         } catch (IOException e) {
-            throw new WorkspaceException("Cannot traverse " + dir + ": " + e.getMessage(), e);
+            throw new RootDirException("Cannot traverse " + dir + ": " + e.getMessage(), e);
         }
-    }
-
-    private static Map<String, Object> mutableMetadata(WorkspaceDescriptor d) {
-        Map<String, Object> meta = d.getMetadata();
-        if (meta == null) {
-            return new LinkedHashMap<>();
-        }
-        if (meta instanceof HashMap<?, ?> || meta instanceof LinkedHashMap<?, ?>) {
-            return meta;
-        }
-        return new LinkedHashMap<>(meta);
-    }
-
-    @SuppressWarnings("SameParameterValue")
-    private static String stringOr(Map<String, Object> meta, String key, @Nullable String fallback) {
-        Object v = meta.get(key);
-        if (v instanceof String s && !s.isBlank()) {
-            return s;
-        }
-        return fallback == null ? "" : fallback;
     }
 }

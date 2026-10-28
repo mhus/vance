@@ -1,4 +1,4 @@
-package de.mhus.vance.shared.workspace;
+package de.mhus.vance.exec;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -9,10 +9,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
-import de.mhus.vance.exec.RootDirHandle;
-import de.mhus.vance.exec.RootDirSpec;
-import de.mhus.vance.exec.WorkspaceDescriptor;
-import de.mhus.vance.shared.process.TestProcessLaunchers;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -34,7 +30,8 @@ class PythonHandlerTest {
     @BeforeEach
     void setUp() {
         gitHandler = mock(GitHandler.class);
-        handler = new PythonHandler(gitHandler, TestProcessLaunchers.provider(TestProcessLaunchers.direct()));
+        handler = new PythonHandler(
+                gitHandler, new FakeGitOperations(), TestProcessLaunchers.provider(TestProcessLaunchers.direct()));
     }
 
     @Test
@@ -95,7 +92,7 @@ class PythonHandlerTest {
     }
 
     @Test
-    void init_withMissingInterpreter_throwsWorkspaceException() {
+    void init_withMissingInterpreter_throwsRootDirException() {
         Path rootDir = createRootDirFolder("nopy");
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put(PythonHandler.META_PYTHON_PATH, "/definitely/not/a/python/binary");
@@ -103,7 +100,7 @@ class PythonHandlerTest {
         RootDirHandle handle = handle(rootDir, descriptor);
 
         assertThatThrownBy(() -> handler.init(handle, spec("nopy")))
-                .isInstanceOf(WorkspaceException.class)
+                .isInstanceOf(RootDirException.class)
                 .hasMessageContaining("venv build");
     }
 
@@ -219,7 +216,7 @@ class PythonHandlerTest {
         RootDirHandle handle = handle(rootDir, descriptor);
 
         assertThatThrownBy(() -> handler.init(handle, spec("inject")))
-                .isInstanceOf(WorkspaceException.class)
+                .isInstanceOf(RootDirException.class)
                 .hasMessageContaining("option injection");
     }
 

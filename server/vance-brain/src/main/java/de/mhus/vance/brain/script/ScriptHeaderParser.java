@@ -1,7 +1,7 @@
 package de.mhus.vance.brain.script;
 
-import de.mhus.vance.shared.workspace.NpmPackageSpec;
-import de.mhus.vance.shared.workspace.WorkspaceException;
+import de.mhus.vance.exec.NpmPackageSpec;
+import de.mhus.vance.exec.RootDirException;
 import java.time.Duration;
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -274,7 +274,7 @@ public final class ScriptHeaderParser {
         for (String entry : parseList(raw)) {
             try {
                 out.add(NpmPackageSpec.parse(entry).toArgument());
-            } catch (WorkspaceException e) {
+            } catch (RootDirException e) {
                 throw new ScriptExecutionException(
                         ScriptExecutionException.ErrorClass.INVALID_HEADER,
                         "[" + sourceName + "] @" + tag + ": " + e.getMessage(),

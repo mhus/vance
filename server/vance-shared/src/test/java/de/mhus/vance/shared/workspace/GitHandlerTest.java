@@ -3,6 +3,8 @@ package de.mhus.vance.shared.workspace;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import de.mhus.vance.exec.GitHandler;
+import de.mhus.vance.exec.RootDirException;
 import de.mhus.vance.exec.RootDirHandle;
 import de.mhus.vance.exec.WorkspaceDescriptor;
 import java.io.IOException;
@@ -34,7 +36,7 @@ class GitHandlerTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        handler = new GitHandler((tenantId, projectId, alias) -> null);
+        handler = new GitHandler(new JGitOperations((tenantId, projectId, alias) -> null));
         sourceRepo = createSourceRepoWithTwoCommits();
     }
 
@@ -87,7 +89,7 @@ class GitHandlerTest {
         RootDirHandle handle = handle("broken", meta("deadbeef"));
 
         assertThatThrownBy(() -> handler.init(handle, null))
-                .isInstanceOf(WorkspaceException.class)
+                .isInstanceOf(RootDirException.class)
                 .hasMessageContaining("deadbeef");
     }
 

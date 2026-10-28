@@ -1,13 +1,9 @@
-package de.mhus.vance.shared.process;
+package de.mhus.vance.exec;
 
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-
-import de.mhus.vance.exec.ProcessLauncher;
-import org.springframework.beans.factory.ObjectProvider;
+import java.util.function.Supplier;
 
 /**
- * Launchers for unit tests of the shared starters. The production launcher (sealed
+ * Launchers for unit tests of the starters. The production launcher (sealed
  * environment) lives in the brain; these tests are about argv and exit handling, so
  * a plain {@link ProcessBuilder} is enough.
  */
@@ -27,11 +23,8 @@ public final class TestProcessLaunchers {
         };
     }
 
-    /** An {@link ObjectProvider} handing out {@code launcher}. */
-    @SuppressWarnings("unchecked")
-    public static ObjectProvider<ProcessLauncher> provider(ProcessLauncher launcher) {
-        ObjectProvider<ProcessLauncher> provider = mock(ObjectProvider.class);
-        when(provider.getIfAvailable()).thenReturn(launcher);
-        return provider;
+    /** A supplier handing out {@code launcher}. */
+    public static Supplier<ProcessLauncher> provider(ProcessLauncher launcher) {
+        return () -> launcher;
     }
 }

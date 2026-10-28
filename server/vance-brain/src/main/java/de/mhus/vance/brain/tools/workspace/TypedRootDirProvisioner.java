@@ -25,8 +25,8 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>The canonical dir is identified by type plus a reserved,
  * underscore-prefixed label ({@link
- * de.mhus.vance.shared.workspace.PythonHandler#DEFAULT_LABEL},
- * {@link de.mhus.vance.shared.workspace.NodeHandler#DEFAULT_LABEL}), so
+ * de.mhus.vance.exec.PythonHandler#DEFAULT_LABEL},
+ * {@link de.mhus.vance.exec.NodeHandler#DEFAULT_LABEL}), so
  * it stays distinguishable from user-created workspaces and is not
  * listed as user content.
  *

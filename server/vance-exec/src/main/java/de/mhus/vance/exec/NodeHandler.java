@@ -1,34 +1,19 @@
-package de.mhus.vance.shared.workspace;
+package de.mhus.vance.exec;
 
-import de.mhus.vance.exec.ProcessLauncher;
-import de.mhus.vance.exec.ProcessSpec;
-import de.mhus.vance.exec.RootDirHandle;
-import de.mhus.vance.exec.RootDirSpec;
-import de.mhus.vance.exec.WorkspaceContentHandler;
-import de.mhus.vance.exec.WorkspaceDescriptor;
-import jakarta.annotation.PostConstruct;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
-import org.eclipse.jgit.api.Git;
-import org.eclipse.jgit.api.errors.GitAPIException;
 import org.jspecify.annotations.Nullable;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.stereotype.Component;
 
 /**
  * Node-backed RootDir — local {@code node_modules} plus optional
@@ -74,8 +59,6 @@ import org.springframework.stereotype.Component;
  *       {@code suspendBranch}, {@code suspendCommit} — same keys as {@link GitHandler}</li>
  * </ul>
  */
-@Component
-@RequiredArgsConstructor
 @Slf4j
 public class NodeHandler implements WorkspaceContentHandler {
 
@@ -90,7 +73,7 @@ public class NodeHandler implements WorkspaceContentHandler {
     public static final String PACKAGE_LOCK_JSON = "package-lock.json";
 
     /** Default label that Brain-side tools (and the {@code @workspaceRoot}
-     *  header tag) pass to {@link WorkspaceService#createRootDir} when
+     *  header tag) pass to {@link RootDirStore#createRootDir} when
      *  the caller wants the canonical per-project Node workspace.
      *  Underscore-prefix marks the folder as system-managed, so
      *  user-facing tooling won't list it alongside user content. */
@@ -100,14 +83,35 @@ public class NodeHandler implements WorkspaceContentHandler {
     private static final long NPM_INIT_TIMEOUT_SECONDS = 60;
     private static final long NPM_INSTALL_TIMEOUT_SECONDS = 600;
 
+    /**
+     * npm settings, read per use: a caller keeps them in mutable configuration.
+     *
+     * @param npmPath  the {@code npm} binary
+     * @param registry the registry every install is pinned to
+     * @param maxBytes cap on {@code node_modules} after an install
+     */
+    public record Config(String npmPath, String registry, long maxBytes) {}
+
     private final GitHandler gitHandler;
-    private final WorkspaceProperties properties;
+    private final GitOperations git;
+    private final Supplier<Config> config;
     /**
      * Provided by the brain. Absent in applications that never start npm (the
-     * admin shell loads this handler through the shared package scan) — there a
-     * start fails with a clear message instead of spawning an unsealed child.
+     * admin shell) — there a start fails with a clear message instead of spawning
+     * an unsealed child.
      */
-    private final ObjectProvider<ProcessLauncher> launcherProvider;
+    private final Supplier<@Nullable ProcessLauncher> launcherSupplier;
+
+    public NodeHandler(
+            GitHandler gitHandler,
+            GitOperations git,
+            Supplier<Config> config,
+            Supplier<@Nullable ProcessLauncher> launcherSupplier) {
+        this.gitHandler = gitHandler;
+        this.git = git;
+        this.config = config;
+        this.launcherSupplier = launcherSupplier;
+    }
 
     /**
      * Boot-time presence check for npm. Logs warn (not error) if npm
@@ -116,9 +120,8 @@ public class NodeHandler implements WorkspaceContentHandler {
      * is still loadable by Spring (other code may instantiate it
      * without ever calling install).
      */
-    @PostConstruct
-    void verifyNpmAvailable() {
-        ProcessLauncher launcher = launcherProvider.getIfAvailable();
+    public void verifyNpmAvailable() {
+        ProcessLauncher launcher = launcherSupplier.get();
         if (launcher == null) {
             log.debug("NodeHandler: no ProcessLauncher in this application — npm check skipped");
             return;
@@ -155,17 +158,17 @@ public class NodeHandler implements WorkspaceContentHandler {
 
     @Override
     public void init(RootDirHandle handle, RootDirSpec spec) {
-        Map<String, Object> meta = mutableMetadata(handle.getDescriptor());
-        String repoUrl = stringOr(meta, GitHandler.META_REPO_URL, null);
+        Map<String, Object> meta = HandlerSupport.mutableMetadata(handle.getDescriptor());
+        String repoUrl = HandlerSupport.stringOr(meta, GitHandler.META_REPO_URL, null);
 
-        if (StringUtils.isNotBlank(repoUrl)) {
+        if (!repoUrl.isBlank()) {
             gitHandler.init(handle, spec);
-            meta = mutableMetadata(handle.getDescriptor());
+            meta = HandlerSupport.mutableMetadata(handle.getDescriptor());
         } else {
             initGitRepository(handle);
         }
 
-        writeDefaultGitignore(handle.getPath());
+        HandlerSupport.writeDefaultGitignore(handle.getPath(), DEFAULT_GITIGNORE);
 
         // Initialise package.json if neither the clone nor a previous
         // run left one — npm install needs it to exist.
@@ -201,9 +204,9 @@ public class NodeHandler implements WorkspaceContentHandler {
 
     @Override
     public void suspend(RootDirHandle handle) {
-        Map<String, Object> meta = mutableMetadata(handle.getDescriptor());
-        String repoUrl = stringOr(meta, GitHandler.META_REPO_URL, null);
-        if (StringUtils.isBlank(repoUrl)) {
+        Map<String, Object> meta = HandlerSupport.mutableMetadata(handle.getDescriptor());
+        String repoUrl = HandlerSupport.stringOr(meta, GitHandler.META_REPO_URL, null);
+        if (repoUrl.isBlank()) {
             // No remote: like a temp RootDir, the content does not survive —
             // only the descriptor does, and recover rebuilds a fresh
             // environment from it. Must not block suspend/release
@@ -216,8 +219,8 @@ public class NodeHandler implements WorkspaceContentHandler {
 
     @Override
     public void recover(RootDirHandle handle, WorkspaceDescriptor descriptor) {
-        Map<String, Object> meta = mutableMetadata(descriptor);
-        if (StringUtils.isBlank(stringOr(meta, GitHandler.META_REPO_URL, null))) {
+        Map<String, Object> meta = HandlerSupport.mutableMetadata(descriptor);
+        if (HandlerSupport.stringOr(meta, GitHandler.META_REPO_URL, null).isBlank()) {
             recoverFresh(handle, meta);
             return;
         }
@@ -242,7 +245,7 @@ public class NodeHandler implements WorkspaceContentHandler {
      */
     private void recoverFresh(RootDirHandle handle, Map<String, Object> meta) {
         initGitRepository(handle);
-        writeDefaultGitignore(handle.getPath());
+        HandlerSupport.writeDefaultGitignore(handle.getPath(), DEFAULT_GITIGNORE);
         npmInit(handle);
         List<String> packages = packageList(meta, META_PACKAGES);
         if (!packages.isEmpty()) {
@@ -255,11 +258,11 @@ public class NodeHandler implements WorkspaceContentHandler {
                 packages.size());
     }
 
-    private static void initGitRepository(RootDirHandle handle) {
+    private void initGitRepository(RootDirHandle handle) {
         try {
-            Git.init().setDirectory(handle.getPath().toFile()).call().close();
-        } catch (GitAPIException e) {
-            throw new WorkspaceException(
+            git.init(handle.getPath());
+        } catch (GitOperationException e) {
+            throw new RootDirException(
                     "git init failed for node RootDir " + handle.getDirName() + ": " + e.getMessage(), e);
         }
     }
@@ -275,9 +278,9 @@ public class NodeHandler implements WorkspaceContentHandler {
      * Run {@code npm install --save --ignore-scripts -- <spec>}. Only registry
      * specs are accepted ({@link NpmPackageSpec}); an install that pushes
      * {@code node_modules} past {@code vance.workspace.node.max-bytes} is
-     * uninstalled again and reported as {@link WorkspaceQuotaExceededException}.
+     * uninstalled again and reported as {@link RootDirQuotaExceededException}.
      *
-     * @throws WorkspaceException on an invalid spec or a failed npm run
+     * @throws RootDirException on an invalid spec or a failed npm run
      */
     public void install(RootDirHandle handle, String packageSpec) {
         NpmPackageSpec spec = NpmPackageSpec.parse(packageSpec);
@@ -299,7 +302,7 @@ public class NodeHandler implements WorkspaceContentHandler {
                 true);
         try {
             enforceSizeLimit(handle);
-        } catch (WorkspaceQuotaExceededException e) {
+        } catch (RootDirQuotaExceededException e) {
             uninstall(handle, spec.name());
             throw e;
         }
@@ -308,12 +311,12 @@ public class NodeHandler implements WorkspaceContentHandler {
     /**
      * Run {@code npm uninstall --save -- <name>}.
      *
-     * @throws WorkspaceException when {@code packageName} is not a plain registry name
+     * @throws RootDirException when {@code packageName} is not a plain registry name
      */
     public void uninstall(RootDirHandle handle, String packageName) {
         NpmPackageSpec spec = NpmPackageSpec.parse(packageName);
         if (spec.range() != null) {
-            throw new WorkspaceException("npm uninstall takes a package name, not a version: '" + packageName + "'");
+            throw new RootDirException("npm uninstall takes a package name, not a version: '" + packageName + "'");
         }
         runProcess(
                 handle,
@@ -329,27 +332,19 @@ public class NodeHandler implements WorkspaceContentHandler {
                 rootDir.resolve(NODE_MODULES_DIR).resolve(packageName).resolve(PACKAGE_JSON));
     }
 
-    private ProcessLauncher launcher() {
-        ProcessLauncher launcher = launcherProvider.getIfAvailable();
-        if (launcher == null) {
-            throw new WorkspaceException("starting npm is not available in this application (no ProcessLauncher)");
-        }
-        return launcher;
-    }
-
     private String npmPath() {
-        return properties.getNode().getNpmPath();
+        return config.get().npmPath();
     }
 
     private String registryOption() {
-        return "--registry=" + properties.getNode().getRegistry();
+        return "--registry=" + config.get().registry();
     }
 
     private void enforceSizeLimit(RootDirHandle handle) {
-        long max = properties.getNode().getMaxBytes();
+        long max = config.get().maxBytes();
         long used = treeSize(handle.getPath().resolve(NODE_MODULES_DIR));
         if (used > max) {
-            throw new WorkspaceQuotaExceededException("node_modules of " + handle.getDirName() + " would hold " + used
+            throw new RootDirQuotaExceededException("node_modules of " + handle.getDirName() + " would hold " + used
                     + " bytes, above vance.workspace.node.max-bytes (" + max + ")");
         }
     }
@@ -364,7 +359,7 @@ public class NodeHandler implements WorkspaceContentHandler {
                     .mapToLong(NodeHandler::sizeOf)
                     .sum();
         } catch (IOException | UncheckedIOException e) {
-            throw new WorkspaceException("cannot measure " + dir + ": " + e.getMessage(), e);
+            throw new RootDirException("cannot measure " + dir + ": " + e.getMessage(), e);
         }
     }
 
@@ -377,16 +372,6 @@ public class NodeHandler implements WorkspaceContentHandler {
     }
 
     // ──────────────────── Internals ────────────────────
-
-    private void writeDefaultGitignore(Path rootDirPath) {
-        Path gitignore = rootDirPath.resolve(".gitignore");
-        if (Files.exists(gitignore)) return;
-        try {
-            Files.writeString(gitignore, DEFAULT_GITIGNORE, StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW);
-        } catch (IOException e) {
-            log.warn("Failed to write default .gitignore in {}: {}", rootDirPath, e.toString());
-        }
-    }
 
     private void npmInit(RootDirHandle handle) {
         runProcess(handle, new String[] {npmPath(), "init", "-y"}, NPM_INIT_TIMEOUT_SECONDS, "npm init -y", false);
@@ -437,57 +422,8 @@ public class NodeHandler implements WorkspaceContentHandler {
         return out;
     }
 
-    /**
-     * Runs npm in the RootDir through the {@link ProcessLauncher}, scoped to its
-     * project. {@code network}: only installs reach the registry.
-     */
     private void runProcess(
             RootDirHandle handle, String[] command, long timeoutSeconds, String label, boolean network) {
-        Path cwd = handle.getPath();
-        ProcessSpec spec = ProcessSpec.of(List.of(command), cwd).withScope(handle.getTenantId(), handle.getProjectId());
-        if (network) {
-            spec = spec.withNetwork();
-        }
-        Process p;
-        try {
-            p = launcher().start(spec);
-        } catch (IOException e) {
-            throw new WorkspaceException(label + " failed to start: " + e.getMessage(), e);
-        }
-        String output;
-        try {
-            output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            if (!p.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
-                p.destroyForcibly();
-                throw new WorkspaceException(label + " timed out after " + timeoutSeconds + "s");
-            }
-        } catch (IOException e) {
-            throw new WorkspaceException(label + " I/O error: " + e.getMessage(), e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new WorkspaceException(label + " interrupted", e);
-        }
-        int exit = p.exitValue();
-        if (exit != 0) {
-            throw new WorkspaceException(
-                    label + " exited with code " + exit + (output.isBlank() ? "" : ": " + output.strip()));
-        }
-        log.debug("{} ok (cwd={})", label, cwd);
-    }
-
-    private static Map<String, Object> mutableMetadata(WorkspaceDescriptor d) {
-        Map<String, Object> meta = d.getMetadata();
-        if (meta == null) return new LinkedHashMap<>();
-        if (meta instanceof HashMap<?, ?> || meta instanceof LinkedHashMap<?, ?>) {
-            return meta;
-        }
-        return new LinkedHashMap<>(meta);
-    }
-
-    @SuppressWarnings("SameParameterValue")
-    private static String stringOr(Map<String, Object> meta, String key, @Nullable String fallback) {
-        Object v = meta.get(key);
-        if (v instanceof String s && !s.isBlank()) return s;
-        return fallback == null ? "" : fallback;
+        HandlerSupport.runProcess(launcherSupplier, handle, command, timeoutSeconds, label, network);
     }
 }

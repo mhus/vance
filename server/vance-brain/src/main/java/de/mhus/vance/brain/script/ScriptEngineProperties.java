@@ -212,7 +212,7 @@ public class ScriptEngineProperties {
         /** Default workspace label that resolves to a Node RootDir
          *  when a script omits {@code @workspaceRoot} but the require
          *  pathway is otherwise active. Default {@code "_jsengine"}
-         *  matches {@link de.mhus.vance.shared.workspace.NodeHandler#DEFAULT_LABEL}. */
+         *  matches {@link de.mhus.vance.exec.NodeHandler#DEFAULT_LABEL}. */
         private String defaultLabel = "_jsengine";
 
         public boolean isEnabled() {

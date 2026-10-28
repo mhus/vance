@@ -1,6 +1,6 @@
 /**
  * Python tooling for the brain — creates and manages workspace RootDirs
- * of type {@link de.mhus.vance.shared.workspace.PythonHandler#TYPE}
+ * of type {@link de.mhus.vance.exec.PythonHandler#TYPE}
  * (local venv plus optional git-persisted sources), runs pip and python
  * inside them through {@link de.mhus.vance.brain.tools.exec.ExecManager}.
  *

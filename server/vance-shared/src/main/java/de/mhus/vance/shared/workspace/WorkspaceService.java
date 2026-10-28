@@ -2,6 +2,7 @@ package de.mhus.vance.shared.workspace;
 
 import de.mhus.vance.api.projects.WorkspaceNodeType;
 import de.mhus.vance.api.projects.WorkspaceTreeNodeDto;
+import de.mhus.vance.exec.PythonHandler;
 import de.mhus.vance.exec.RootDirException;
 import de.mhus.vance.exec.RootDirFileSizeExceededException;
 import de.mhus.vance.exec.RootDirFiles;
@@ -366,7 +367,7 @@ public class WorkspaceService {
         if (!(handler instanceof PythonHandler python)) {
             throw new WorkspaceException("PythonHandler is not registered — cannot rebuild venv for " + dirName);
         }
-        python.rebuildVenv(handle, pythonPath);
+        translated(() -> python.rebuildVenv(handle, pythonPath));
         translated(() -> store.saveDescriptor(handle));
         log.info(
                 "python rebuildVenv: tenant={} projectId={} dirName={} pythonPath={}",

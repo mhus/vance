@@ -1,4 +1,4 @@
-package de.mhus.vance.shared.workspace;
+package de.mhus.vance.exec;
 
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -25,7 +25,7 @@ public record NpmPackageSpec(String name, @Nullable String range) {
     /**
      * Parses and validates {@code raw}.
      *
-     * @throws WorkspaceException when {@code raw} is not a registry spec
+     * @throws RootDirException when {@code raw} is not a registry spec
      */
     public static NpmPackageSpec parse(String raw) {
         String spec = raw.trim();
@@ -34,12 +34,12 @@ public record NpmPackageSpec(String name, @Nullable String range) {
         String name = at < 0 ? spec : spec.substring(0, at);
         String range = at < 0 ? null : spec.substring(at + 1).trim();
         if (name.length() > MAX_NAME_LENGTH || !NAME.matcher(name).matches()) {
-            throw new WorkspaceException("invalid npm package spec '" + raw
+            throw new RootDirException("invalid npm package spec '" + raw
                     + "' — only registry packages are allowed: name or name@range"
                     + " (no file:, git, URL, path or npm: alias)");
         }
         if (range != null && (range.isEmpty() || !RANGE.matcher(range).matches())) {
-            throw new WorkspaceException(
+            throw new RootDirException(
                     "invalid version range in npm package spec '" + raw + "' — expected a semver range or dist-tag");
         }
         return new NpmPackageSpec(name, range);

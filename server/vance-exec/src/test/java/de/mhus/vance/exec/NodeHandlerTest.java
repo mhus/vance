@@ -1,14 +1,9 @@
-package de.mhus.vance.shared.workspace;
+package de.mhus.vance.exec;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
-import de.mhus.vance.exec.ProcessLauncher;
-import de.mhus.vance.exec.ProcessSpec;
-import de.mhus.vance.exec.RootDirHandle;
-import de.mhus.vance.exec.WorkspaceDescriptor;
-import de.mhus.vance.shared.process.TestProcessLaunchers;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -16,10 +11,11 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.springframework.beans.factory.ObjectProvider;
 
 /**
  * npm command lines and the size cap of {@link NodeHandler}. A shell script stands
@@ -32,7 +28,7 @@ class NodeHandlerTest {
 
     private Path rootDir;
     private Path argLog;
-    private WorkspaceProperties properties;
+    private NodeHandler.Config nodeConfig;
     private NodeHandler handler;
     private RootDirHandle handle;
 
@@ -44,11 +40,8 @@ class NodeHandlerTest {
         Files.writeString(fakeNpm, "#!/bin/sh\necho \"$@\" >> '" + argLog + "'\n");
         Files.setPosixFilePermissions(fakeNpm, PosixFilePermissions.fromString("rwx------"));
 
-        properties = new WorkspaceProperties();
-        properties.getNode().setNpmPath(fakeNpm.toString());
-        properties.getNode().setRegistry("https://registry.example.test/");
-        handler = new NodeHandler(
-                mock(GitHandler.class), properties, TestProcessLaunchers.provider(TestProcessLaunchers.direct()));
+        nodeConfig = new NodeHandler.Config(fakeNpm.toString(), "https://registry.example.test/", 512L * 1024 * 1024);
+        handler = handlerWith(mock(GitHandler.class), TestProcessLaunchers.provider(TestProcessLaunchers.direct()));
 
         WorkspaceDescriptor descriptor = new WorkspaceDescriptor();
         descriptor.setMetadata(Map.of("npmPath", "/tmp/attacker-binary"));
@@ -60,6 +53,10 @@ class NodeHandlerTest {
                 .path(rootDir)
                 .descriptor(descriptor)
                 .build();
+    }
+
+    private NodeHandler handlerWith(GitHandler gitHandler, Supplier<@Nullable ProcessLauncher> launcher) {
+        return new NodeHandler(gitHandler, new FakeGitOperations(), () -> nodeConfig, launcher);
     }
 
     @Test
@@ -75,43 +72,42 @@ class NodeHandlerTest {
     void install_usesConfiguredNpmNotDescriptorMetadata() throws IOException {
         handler.install(handle, "lodash");
 
-        // The fake npm (from properties) recorded the call; the metadata path was never run.
+        // The fake npm (from the config) recorded the call; the metadata path was never run.
         assertThat(calls()).hasSize(1);
     }
 
     @Test
     void install_fileSpec_isRejectedBeforeNpmRuns() {
-        assertThatThrownBy(() -> handler.install(handle, "file:/etc")).isInstanceOf(WorkspaceException.class);
+        assertThatThrownBy(() -> handler.install(handle, "file:/etc")).isInstanceOf(RootDirException.class);
 
         assertThat(Files.exists(argLog)).isFalse();
     }
 
     @Test
     void install_pastSizeLimit_isRolledBack() throws IOException {
-        properties.getNode().setMaxBytes(1_000);
+        nodeConfig = new NodeHandler.Config(nodeConfig.npmPath(), nodeConfig.registry(), 1_000);
         Path pkg = Files.createDirectories(rootDir.resolve("node_modules").resolve("big"));
         Files.write(pkg.resolve("blob.bin"), new byte[2_000]);
 
         assertThatThrownBy(() -> handler.install(handle, "big@1.0.0"))
-                .isInstanceOf(WorkspaceQuotaExceededException.class);
+                .isInstanceOf(RootDirQuotaExceededException.class);
 
         assertThat(calls()).last().isEqualTo("uninstall --save --no-audit --no-fund -- big");
     }
 
     @Test
     void uninstall_withVersion_isRejected() {
-        assertThatThrownBy(() -> handler.uninstall(handle, "lodash@4")).isInstanceOf(WorkspaceException.class);
+        assertThatThrownBy(() -> handler.uninstall(handle, "lodash@4")).isInstanceOf(RootDirException.class);
     }
 
     @Test
     void install_runsThroughTheLauncherWithTheProjectScope() throws IOException {
         List<ProcessSpec> started = new ArrayList<>();
         ProcessLauncher direct = TestProcessLaunchers.direct();
-        NodeHandler recording =
-                new NodeHandler(mock(GitHandler.class), properties, TestProcessLaunchers.provider(spec -> {
-                    started.add(spec);
-                    return direct.start(spec);
-                }));
+        NodeHandler recording = handlerWith(mock(GitHandler.class), TestProcessLaunchers.provider(spec -> {
+            started.add(spec);
+            return direct.start(spec);
+        }));
 
         recording.install(handle, "lodash");
 
@@ -122,20 +118,17 @@ class NodeHandlerTest {
 
     @Test
     void install_withoutLauncher_failsInsteadOfStartingUnsealed() {
-        @SuppressWarnings("unchecked")
-        ObjectProvider<ProcessLauncher> none = mock(ObjectProvider.class);
-        NodeHandler shell = new NodeHandler(mock(GitHandler.class), properties, none);
+        NodeHandler shell = handlerWith(mock(GitHandler.class), () -> null);
 
         assertThatThrownBy(() -> shell.install(handle, "lodash"))
-                .isInstanceOf(WorkspaceException.class)
+                .isInstanceOf(RootDirException.class)
                 .hasMessageContaining("no ProcessLauncher");
     }
 
     @Test
     void suspend_withoutGitRemote_keepsNothingAndDoesNotBlock() {
         GitHandler git = mock(GitHandler.class);
-        NodeHandler withGit =
-                new NodeHandler(git, properties, TestProcessLaunchers.provider(TestProcessLaunchers.direct()));
+        NodeHandler withGit = handlerWith(git, TestProcessLaunchers.provider(TestProcessLaunchers.direct()));
 
         withGit.suspend(handle);
 

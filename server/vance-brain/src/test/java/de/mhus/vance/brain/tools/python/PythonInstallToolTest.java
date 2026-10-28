@@ -13,9 +13,9 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.tools.exec.ExecManager;
 import de.mhus.vance.brain.tools.exec.ExecProperties;
+import de.mhus.vance.exec.PythonHandler;
 import de.mhus.vance.exec.RootDirHandle;
 import de.mhus.vance.exec.WorkspaceDescriptor;
-import de.mhus.vance.shared.workspace.PythonHandler;
 import de.mhus.vance.shared.workspace.WorkspaceMode;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.ToolException;

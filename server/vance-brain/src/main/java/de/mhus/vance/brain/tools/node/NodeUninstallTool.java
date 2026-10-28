@@ -1,8 +1,9 @@
 package de.mhus.vance.brain.tools.node;
 
 import de.mhus.vance.brain.tools.workspace.TypedRootDirProvisioner;
+import de.mhus.vance.exec.NodeHandler;
+import de.mhus.vance.exec.RootDirException;
 import de.mhus.vance.exec.RootDirHandle;
-import de.mhus.vance.shared.workspace.NodeHandler;
 import de.mhus.vance.shared.workspace.WorkspaceException;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.Tool;
@@ -110,7 +111,7 @@ public class NodeUninstallTool implements Tool {
             for (String name : names) {
                 nodeHandler.uninstall(handle, name);
             }
-        } catch (WorkspaceException e) {
+        } catch (WorkspaceException | RootDirException e) {
             throw new ToolException(e.getMessage(), e);
         }
 

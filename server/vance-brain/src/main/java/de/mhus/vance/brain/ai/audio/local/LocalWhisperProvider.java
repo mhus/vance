@@ -6,12 +6,12 @@ import de.mhus.vance.brain.ai.audio.AiAudioException;
 import de.mhus.vance.brain.ai.audio.AiAudioModelProvider;
 import de.mhus.vance.brain.ai.audio.AudioSource;
 import de.mhus.vance.brain.ai.audio.SttResult;
+import de.mhus.vance.shared.process.ScratchArea;
+import de.mhus.vance.shared.process.ScratchArea.Scratch;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
@@ -34,7 +34,6 @@ import org.springframework.stereotype.Component;
  * on their default fail-closed.
  */
 @Component
-@Slf4j
 @RequiredArgsConstructor
 public class LocalWhisperProvider implements AiAudioModelProvider {
 
@@ -45,6 +44,7 @@ public class LocalWhisperProvider implements AiAudioModelProvider {
     static final String MODEL_PREFIX = "faster-whisper-";
 
     private final WhisperTranscriber whisperTranscriber;
+    private final ScratchArea scratchArea;
 
     @Override
     public ProviderType getType() {
@@ -61,12 +61,9 @@ public class LocalWhisperProvider implements AiAudioModelProvider {
         String whisperModel = config.modelName().startsWith(MODEL_PREFIX)
                 ? config.modelName().substring(MODEL_PREFIX.length())
                 : config.modelName();
-        Path tempFile = null;
-        try {
-            String suffix = "." + source.format();
-            tempFile = Files.createTempFile("vance-stt-", suffix);
-            Files.write(tempFile, source.data());
-            WhisperTranscriber.Result result = whisperTranscriber.transcribe(tempFile, whisperModel, language, null);
+        try (Scratch scratch = scratchArea.open("whisper")) {
+            Path audio = scratch.write("audio." + source.format(), source.data());
+            WhisperTranscriber.Result result = whisperTranscriber.transcribe(audio, whisperModel, language, null);
             StringBuilder text = new StringBuilder();
             for (WhisperTranscriber.Fragment fragment : result.segments()) {
                 text.append(fragment.text().trim()).append('\n');
@@ -78,14 +75,6 @@ public class LocalWhisperProvider implements AiAudioModelProvider {
                     /* reportedCostUsd */ null);
         } catch (IOException e) {
             throw new AiAudioException("Local whisper failed for " + config.fullName() + ": " + e.getMessage(), e);
-        } finally {
-            if (tempFile != null) {
-                try {
-                    Files.deleteIfExists(tempFile);
-                } catch (IOException e) {
-                    log.debug("LocalWhisperProvider: could not delete temp file {}: {}", tempFile, e.toString());
-                }
-            }
         }
     }
 }

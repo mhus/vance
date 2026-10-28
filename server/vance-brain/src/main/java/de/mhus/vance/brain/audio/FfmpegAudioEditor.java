@@ -2,6 +2,8 @@ package de.mhus.vance.brain.audio;
 
 import de.mhus.vance.shared.process.ProcessLauncher;
 import de.mhus.vance.shared.process.ProcessSpec;
+import de.mhus.vance.shared.process.ScratchArea;
+import de.mhus.vance.shared.process.ScratchArea.Scratch;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -24,8 +26,9 @@ import tools.jackson.databind.json.JsonMapper;
  * builds argument lists, runs the binaries and parses their output.
  *
  * <p>Every invocation runs with an explicit argument list (never a
- * shell string), a wall-clock timeout and temp files that are cleaned
- * up in a {@code finally} block. ffmpeg writes its diagnostics to
+ * shell string), a wall-clock timeout and a scratch directory of its
+ * own ({@link ScratchArea}) that holds input and output and is removed
+ * afterwards; an isolated child sees only that directory. ffmpeg writes its diagnostics to
  * stderr only on failure ({@code -loglevel error}); the last lines of
  * that output become the {@code PROCESSING_ERROR} message.
  *
@@ -55,12 +58,16 @@ public class FfmpegAudioEditor {
     /** Sealed child environment — ffmpeg sees none of the brain's credentials. */
     private final ProcessLauncher launcher;
 
+    private final ScratchArea scratchArea;
+
     public FfmpegAudioEditor(
             @Value("${vance.audio.ffmpeg-bin:ffmpeg}") String ffmpegBin,
             @Value("${vance.audio.ffprobe-bin:ffprobe}") String ffprobeBin,
             @Value("${vance.audio.edit-timeout-seconds:600}") long timeoutSeconds,
-            ProcessLauncher launcher) {
+            ProcessLauncher launcher,
+            ScratchArea scratchArea) {
         this.launcher = launcher;
+        this.scratchArea = scratchArea;
         this.ffmpegBin = ffmpegBin;
         this.ffprobeBin = ffprobeBin;
         this.timeoutSeconds = timeoutSeconds;
@@ -78,9 +85,8 @@ public class FfmpegAudioEditor {
 
     /** Probe container/stream metadata of the given audio bytes. */
     public ProbeData probe(byte[] audio) {
-        Path in = null;
-        try {
-            in = writeTemp(audio, ".bin");
+        try (Scratch scratch = openScratch()) {
+            Path in = write(scratch, "in.bin", audio);
             String json = run(
                     List.of(
                             ffprobeBin,
@@ -93,10 +99,8 @@ public class FfmpegAudioEditor {
                             "-of",
                             "json",
                             in.toString()),
-                    List.of(in));
+                    scratch);
             return parseProbeJson(json);
-        } finally {
-            deleteQuietly(in);
         }
     }
 
@@ -115,11 +119,9 @@ public class FfmpegAudioEditor {
             double fadeOutSeconds,
             String outputFormat) {
         ensureOutputFormat(outputFormat);
-        Path in = null;
-        Path out = null;
-        try {
-            in = writeTemp(audio, ".bin");
-            out = writeTemp(new byte[0], "." + outputFormat);
+        try (Scratch scratch = openScratch()) {
+            Path in = write(scratch, "in.bin", audio);
+            Path out = scratch.file("out." + outputFormat);
             List<String> args = new ArrayList<>(List.of("-i", in.toString()));
             if (startSeconds > 0) {
                 args.addAll(List.of("-ss", num(startSeconds)));
@@ -133,11 +135,8 @@ public class FfmpegAudioEditor {
             }
             args.addAll(codecArgs(outputFormat));
             args.add(out.toString());
-            runFfmpeg(args, List.of(in, out));
+            runFfmpeg(args, scratch);
             return readOut(out);
-        } finally {
-            deleteQuietly(in);
-            deleteQuietly(out);
         }
     }
 
@@ -158,13 +157,10 @@ public class FfmpegAudioEditor {
             double fadeOutSeconds,
             String outputFormat) {
         ensureOutputFormat(outputFormat);
-        Path inBase = null;
-        Path inOverlay = null;
-        Path out = null;
-        try {
-            inBase = writeTemp(base, ".bin");
-            inOverlay = writeTemp(overlay, ".bin");
-            out = writeTemp(new byte[0], "." + outputFormat);
+        try (Scratch scratch = openScratch()) {
+            Path inBase = write(scratch, "base.bin", base);
+            Path inOverlay = write(scratch, "overlay.bin", overlay);
+            Path out = scratch.file("out." + outputFormat);
 
             StringBuilder filter = new StringBuilder();
             filter.append("[0:a]volume=").append(num(baseGain)).append("[a0];");
@@ -213,12 +209,8 @@ public class FfmpegAudioEditor {
                     "[out]"));
             args.addAll(codecArgs(outputFormat));
             args.add(out.toString());
-            runFfmpeg(args, List.of(inBase, inOverlay, out));
+            runFfmpeg(args, scratch);
             return readOut(out);
-        } finally {
-            deleteQuietly(inBase);
-            deleteQuietly(inOverlay);
-            deleteQuietly(out);
         }
     }
 
@@ -234,13 +226,10 @@ public class FfmpegAudioEditor {
             throw new AudioManipulationException(
                     AudioManipulationException.Reason.PARAMETER_INVALID, "concat needs at least 2 clips");
         }
-        List<Path> ins = new ArrayList<>();
-        Path out = null;
-        try {
+        try (Scratch scratch = openScratch()) {
             List<String> args = new ArrayList<>();
-            for (byte[] clip : clips) {
-                Path in = writeTemp(clip, ".bin");
-                ins.add(in);
+            for (int i = 0; i < clips.size(); i++) {
+                Path in = write(scratch, "in-" + i + ".bin", clips.get(i));
                 args.addAll(List.of("-i", in.toString()));
             }
             StringBuilder filter = new StringBuilder();
@@ -273,19 +262,12 @@ public class FfmpegAudioEditor {
                 }
                 filter.append("concat=n=").append(clips.size()).append(":v=0:a=1[out]");
             }
-            out = writeTemp(new byte[0], "." + outputFormat);
+            Path out = scratch.file("out." + outputFormat);
             args.addAll(List.of("-filter_complex", filter.toString(), "-map", "[out]"));
             args.addAll(codecArgs(outputFormat));
             args.add(out.toString());
-            List<Path> files = new ArrayList<>(ins);
-            files.add(out);
-            runFfmpeg(args, files);
+            runFfmpeg(args, scratch);
             return readOut(out);
-        } finally {
-            for (Path in : ins) {
-                deleteQuietly(in);
-            }
-            deleteQuietly(out);
         }
     }
 
@@ -302,11 +284,9 @@ public class FfmpegAudioEditor {
             boolean normalize,
             String outputFormat) {
         ensureOutputFormat(outputFormat);
-        Path in = null;
-        Path out = null;
-        try {
-            in = writeTemp(audio, ".bin");
-            out = writeTemp(new byte[0], "." + outputFormat);
+        try (Scratch scratch = openScratch()) {
+            Path in = write(scratch, "in.bin", audio);
+            Path out = scratch.file("out." + outputFormat);
             List<String> args = new ArrayList<>(List.of("-i", in.toString()));
             if (sampleRate != null) {
                 args.addAll(List.of("-ar", Integer.toString(sampleRate)));
@@ -319,30 +299,26 @@ public class FfmpegAudioEditor {
             }
             args.addAll(codecArgs(outputFormat, bitrateKbps));
             args.add(out.toString());
-            runFfmpeg(args, List.of(in, out));
+            runFfmpeg(args, scratch);
             return readOut(out);
-        } finally {
-            deleteQuietly(in);
-            deleteQuietly(out);
         }
     }
 
     // ─────────────────── ffmpeg plumbing ───────────────────
 
-    private void runFfmpeg(List<String> args, List<Path> files) {
+    private void runFfmpeg(List<String> args, Scratch scratch) {
         List<String> cmd = new ArrayList<>(List.of(ffmpegBin, "-hide_banner", "-loglevel", "error", "-y"));
         cmd.addAll(args);
-        run(cmd, files);
+        run(cmd, scratch);
     }
 
     /** Run a command as an explicit argument list; return combined
      *  output. Non-zero exit or timeout ⇒ PROCESSING_ERROR with the
-     *  stderr tail. {@code files} are the call's temp files — all created
-     *  before the run (the output as an empty file), so an isolated child
-     *  gets exactly these and no network. */
-    private String run(List<String> cmd, List<Path> files) {
+     *  stderr tail. The child works in the call's scratch directory — an
+     *  isolated child gets exactly that directory and no network. */
+    private String run(List<String> cmd, Scratch scratch) {
         try {
-            Process process = launcher.start(ProcessSpec.of(cmd, null).withWritable(files));
+            Process process = launcher.start(ProcessSpec.of(cmd, scratch.dir()).withWritable(List.of(scratch.dir())));
             // The drain runs on its own thread so the wall-clock timeout below
             // can fire: reading to EOF on the calling thread would block until
             // the process exits — and a hung ffmpeg never exits, so the
@@ -510,13 +486,19 @@ public class FfmpegAudioEditor {
         return String.format(Locale.ROOT, "%.3f", value);
     }
 
-    private static Path writeTemp(byte[] content, String suffix) {
+    private Scratch openScratch() {
         try {
-            Path file = Files.createTempFile("vance-audio-", suffix);
-            Files.write(file, content);
-            return file;
+            return scratchArea.open("ffmpeg");
         } catch (IOException e) {
-            throw processingError("failed to create temp file: " + e.getMessage(), e);
+            throw processingError("failed to create scratch directory: " + e.getMessage(), e);
+        }
+    }
+
+    private static Path write(Scratch scratch, String name, byte[] content) {
+        try {
+            return scratch.write(name, content);
+        } catch (IOException e) {
+            throw processingError("failed to write scratch file: " + e.getMessage(), e);
         }
     }
 
@@ -525,17 +507,6 @@ public class FfmpegAudioEditor {
             return Files.readAllBytes(out);
         } catch (IOException e) {
             throw processingError("failed to read ffmpeg output: " + e.getMessage(), e);
-        }
-    }
-
-    private static void deleteQuietly(@Nullable Path path) {
-        if (path == null) {
-            return;
-        }
-        try {
-            Files.deleteIfExists(path);
-        } catch (IOException ignored) {
-            // temp file cleanup is best-effort
         }
     }
 

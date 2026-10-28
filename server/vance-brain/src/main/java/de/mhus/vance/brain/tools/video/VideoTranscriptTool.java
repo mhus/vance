@@ -4,6 +4,8 @@ import de.mhus.vance.api.progress.StatusTag;
 import de.mhus.vance.brain.ai.audio.local.WhisperTranscriber;
 import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.brain.prompt.UntrustedContent;
+import de.mhus.vance.shared.process.ScratchArea;
+import de.mhus.vance.shared.process.ScratchArea.Scratch;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
@@ -141,16 +143,19 @@ public class VideoTranscriptTool implements Tool {
     private final ProgressEmitter progressEmitter;
     private final YtDlpAudioDownloader audioDownloader;
     private final WhisperTranscriber whisperTranscriber;
+    private final ScratchArea scratchArea;
 
     public VideoTranscriptTool(
             ThinkProcessService thinkProcessService,
             ProgressEmitter progressEmitter,
             YtDlpAudioDownloader audioDownloader,
-            WhisperTranscriber whisperTranscriber) {
+            WhisperTranscriber whisperTranscriber,
+            ScratchArea scratchArea) {
         this.thinkProcessService = thinkProcessService;
         this.progressEmitter = progressEmitter;
         this.audioDownloader = audioDownloader;
         this.whisperTranscriber = whisperTranscriber;
+        this.scratchArea = scratchArea;
     }
 
     @Override
@@ -292,15 +297,17 @@ public class VideoTranscriptTool implements Tool {
         String hint = langs.isEmpty() || "auto".equals(langs.get(0)) ? null : langs.get(0);
 
         emit(process, StatusTag.FETCH, "Downloading audio for video " + videoId + " " + "(yt-dlp)…");
-        Path audio;
-        try {
-            audio = audioDownloader.download(videoId);
-        } catch (ToolException e) {
-            emit(process, StatusTag.INFO, "Audio download failed: " + e.getMessage());
-            throw e;
-        }
+        // One scratch directory for the download and every yt-dlp
+        // intermediate; closing it removes them all.
+        try (Scratch scratch = openScratch()) {
+            Path audio;
+            try {
+                audio = audioDownloader.download(videoId, scratch.dir());
+            } catch (ToolException e) {
+                emit(process, StatusTag.INFO, "Audio download failed: " + e.getMessage());
+                throw e;
+            }
 
-        try {
             long sizeBytes = sizeQuiet(audio);
             emit(
                     process,
@@ -376,34 +383,14 @@ public class VideoTranscriptTool implements Tool {
             out.put("truncated", truncated);
             out.put("text", UntrustedContent.wrap("untrusted-video-transcript", body));
             return out;
-        } finally {
-            cleanupTempAudio(audio);
         }
     }
 
-    /**
-     * Delete the download directory of this call — the mp3 plus any
-     * yt-dlp intermediates ({@code .part}, pre-conversion files) a
-     * crash mid-download or mid-convert can strand. The directory
-     * belongs to this video id alone (see
-     * {@link YtDlpAudioDownloader#download}).
-     */
-    private static void cleanupTempAudio(Path mp3Path) {
-        Path dir = mp3Path.getParent();
-        if (dir == null) {
-            return;
-        }
-        try (var stream = Files.newDirectoryStream(dir)) {
-            for (Path leftover : stream) {
-                try {
-                    Files.deleteIfExists(leftover);
-                } catch (IOException e) {
-                    log.warn("Could not delete yt-dlp leftover {}: {}", leftover, e.getMessage());
-                }
-            }
-            Files.deleteIfExists(dir);
+    private Scratch openScratch() {
+        try {
+            return scratchArea.open("ytdlp");
         } catch (IOException e) {
-            log.warn("Could not clean the yt-dlp directory {}: {}", dir, e.getMessage());
+            throw new ToolException("Cannot prepare the download directory: " + e.getMessage(), e);
         }
     }
 

@@ -21,6 +21,21 @@ public class ExecProperties {
      */
     private String baseDir = "data/exec";
 
+    /**
+     * Root for the short-lived files of ffmpeg, whisper and yt-dlp — one directory
+     * per call, removed afterwards ({@code ScratchArea}). Blank: {@code vance-scratch}
+     * under the JVM temp directory. In k8s an {@code emptyDir} with a
+     * {@code sizeLimit}, apart from {@code /app/data}.
+     */
+    private @Nullable String scratchDir;
+
+    /**
+     * Startup sweep: scratch entries older than this are left over from a crashed
+     * call and get removed. Long enough that a second brain sharing the directory
+     * (local dev) keeps its calls in flight.
+     */
+    private Duration scratchSweepAge = Duration.ofHours(6);
+
     /** Milliseconds {@code work_exec_run} blocks before handing back the id. */
     private long defaultWaitMs = 15_000;
 

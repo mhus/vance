@@ -48,26 +48,21 @@ public class YtDlpAudioDownloader {
     private static final Duration DOWNLOAD_TIMEOUT = Duration.ofMinutes(5);
 
     /**
-     * Pulls the audio of {@code videoId} as a mono mp3 into a directory
-     * of its own under the system temp dir. Returns the path to the
-     * freshly created file; the caller removes the directory.
+     * Pulls the audio of {@code videoId} as a mono mp3 into
+     * {@code outDir} — the caller's scratch directory, which it removes
+     * afterwards with everything yt-dlp left there. Returns the path to
+     * the freshly created file.
      *
      * @param videoId an 11-char YouTube video id
+     * @param outDir  an existing, empty directory the child may write
      * @return the local mp3 path
      * @throws ToolException if yt-dlp is missing, returns non-zero, or
      *                       times out
      */
-    public Path download(String videoId) {
-        // A directory of its own: an isolated yt-dlp sees only this one, and
-        // its output — which does not exist before the run — lands inside.
-        Path outDir = Path.of(System.getProperty("java.io.tmpdir"), "vance-ytdlp-" + videoId);
+    public Path download(String videoId, Path outDir) {
+        // An isolated yt-dlp sees only this directory, and its output —
+        // which does not exist before the run — lands inside.
         Path outFile = outDir.resolve("yt-" + videoId + ".mp3");
-        try {
-            Files.createDirectories(outDir);
-            Files.deleteIfExists(outFile);
-        } catch (IOException e) {
-            throw new ToolException("Cannot prepare the download directory " + outDir + ": " + e.getMessage(), e);
-        }
 
         // -x: extract audio, --audio-format mp3 picks the encoder.
         // --audio-quality 5: VBR ~64-96 kbps — plenty for ASR, fast

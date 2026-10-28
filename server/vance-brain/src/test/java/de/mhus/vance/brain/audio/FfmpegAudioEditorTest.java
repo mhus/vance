@@ -7,13 +7,16 @@ import static org.assertj.core.api.Assertions.within;
 import de.mhus.vance.brain.ai.audio.AudioMimeTypeSniffer;
 import de.mhus.vance.brain.ai.audio.PcmWav;
 import de.mhus.vance.shared.process.ProcessLauncher;
+import de.mhus.vance.shared.process.ScratchArea;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Golden tests for {@link FfmpegAudioEditor} against real ffmpeg:
@@ -36,7 +39,28 @@ class FfmpegAudioEditorTest {
             .redirectErrorStream(spec.redirectErrorStream())
             .start();
 
-    private final FfmpegAudioEditor editor = new FfmpegAudioEditor("ffmpeg", "ffprobe", 120, DIRECT);
+    @TempDir
+    Path scratchRoot;
+
+    private FfmpegAudioEditor editor;
+
+    @BeforeEach
+    void setUp() {
+        editor = new FfmpegAudioEditor("ffmpeg", "ffprobe", 120, DIRECT, new ScratchArea(scratchRoot));
+    }
+
+    @Test
+    void every_op_leaves_the_scratch_area_empty() throws Exception {
+        byte[] wav = sineWav(1.0, 440);
+
+        editor.probe(wav);
+        editor.trim(wav, 0.2, 0.8, 0, 0, "mp3");
+        editor.concat(List.of(wav, wav), 0, "wav");
+
+        try (var entries = Files.list(scratchRoot)) {
+            assertThat(entries).isEmpty();
+        }
+    }
 
     @Test
     void probe_reports_duration_and_format() {
@@ -195,7 +219,8 @@ class FfmpegAudioEditorTest {
         try {
             Files.writeString(hang, "#!/bin/sh\nexec sleep 30\n");
             Files.setPosixFilePermissions(hang, PosixFilePermissions.fromString("rwxr-xr-x"));
-            FfmpegAudioEditor hanging = new FfmpegAudioEditor("ffmpeg", hang.toString(), 1, DIRECT);
+            FfmpegAudioEditor hanging =
+                    new FfmpegAudioEditor("ffmpeg", hang.toString(), 1, DIRECT, new ScratchArea(scratchRoot));
             long start = System.currentTimeMillis();
 
             assertThatThrownBy(() -> hanging.probe(new byte[0]))

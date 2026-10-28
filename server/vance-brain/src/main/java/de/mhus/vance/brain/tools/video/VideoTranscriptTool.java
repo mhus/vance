@@ -377,38 +377,33 @@ public class VideoTranscriptTool implements Tool {
             out.put("text", UntrustedContent.wrap("untrusted-video-transcript", body));
             return out;
         } finally {
-            cleanupTempAudio(audio, videoId);
+            cleanupTempAudio(audio);
         }
     }
 
     /**
-     * Delete the primary mp3 and any yt-dlp intermediates left in
-     * {@code /tmp}. yt-dlp normally cleans up its own {@code .part}
-     * and pre-conversion files, but a crash mid-download or
-     * mid-ffmpeg-convert can strand them. The video-id-prefix glob
-     * is safe because the id alphabet is constrained to
-     * {@code [A-Za-z0-9_-]} by {@link #VIDEO_ID}.
+     * Delete the download directory of this call — the mp3 plus any
+     * yt-dlp intermediates ({@code .part}, pre-conversion files) a
+     * crash mid-download or mid-convert can strand. The directory
+     * belongs to this video id alone (see
+     * {@link YtDlpAudioDownloader#download}).
      */
-    private static void cleanupTempAudio(Path mp3Path, String videoId) {
-        try {
-            Files.deleteIfExists(mp3Path);
-        } catch (IOException e) {
-            log.warn("Could not delete temp audio {}: {}", mp3Path, e.getMessage());
+    private static void cleanupTempAudio(Path mp3Path) {
+        Path dir = mp3Path.getParent();
+        if (dir == null) {
+            return;
         }
-        Path tmpDir = Path.of(System.getProperty("java.io.tmpdir"));
-        String prefix = "yt-" + videoId + ".";
-        try (var stream =
-                Files.newDirectoryStream(tmpDir, p -> p.getFileName().toString().startsWith(prefix))) {
+        try (var stream = Files.newDirectoryStream(dir)) {
             for (Path leftover : stream) {
                 try {
                     Files.deleteIfExists(leftover);
-                    log.debug("Cleaned up yt-dlp leftover {}", leftover);
                 } catch (IOException e) {
                     log.warn("Could not delete yt-dlp leftover {}: {}", leftover, e.getMessage());
                 }
             }
+            Files.deleteIfExists(dir);
         } catch (IOException e) {
-            log.warn("Could not scan for yt-dlp leftovers in {}: {}", tmpDir, e.getMessage());
+            log.warn("Could not clean the yt-dlp directory {}: {}", dir, e.getMessage());
         }
     }
 

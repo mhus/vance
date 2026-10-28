@@ -189,7 +189,9 @@ public class RserveDaemonManager {
                 "--RS-port",
                 String.valueOf(props.getPort()));
         try {
-            process = launcher.start(ProcessSpec.of(cmd, null));
+            // Network: the brain talks to Rserve over its TCP port, so the
+            // daemon cannot live in a namespace of its own.
+            process = launcher.start(ProcessSpec.of(cmd, null).withNetwork());
         } catch (IOException e) {
             String msg = e.getMessage() == null ? "" : e.getMessage().toLowerCase();
             if (msg.contains("cannot run program") || msg.contains("no such file")) {

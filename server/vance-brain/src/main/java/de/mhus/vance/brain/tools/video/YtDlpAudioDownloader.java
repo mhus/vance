@@ -48,8 +48,9 @@ public class YtDlpAudioDownloader {
     private static final Duration DOWNLOAD_TIMEOUT = Duration.ofMinutes(5);
 
     /**
-     * Pulls the audio of {@code videoId} as a mono mp3 into the system
-     * temp dir. Returns the path to the freshly created file.
+     * Pulls the audio of {@code videoId} as a mono mp3 into a directory
+     * of its own under the system temp dir. Returns the path to the
+     * freshly created file; the caller removes the directory.
      *
      * @param videoId an 11-char YouTube video id
      * @return the local mp3 path
@@ -57,11 +58,15 @@ public class YtDlpAudioDownloader {
      *                       times out
      */
     public Path download(String videoId) {
-        Path outFile = Path.of(System.getProperty("java.io.tmpdir"), "yt-" + videoId + ".mp3");
+        // A directory of its own: an isolated yt-dlp sees only this one, and
+        // its output — which does not exist before the run — lands inside.
+        Path outDir = Path.of(System.getProperty("java.io.tmpdir"), "vance-ytdlp-" + videoId);
+        Path outFile = outDir.resolve("yt-" + videoId + ".mp3");
         try {
+            Files.createDirectories(outDir);
             Files.deleteIfExists(outFile);
         } catch (IOException e) {
-            log.warn("Could not clean stale audio file {}: {}", outFile, e.getMessage());
+            throw new ToolException("Cannot prepare the download directory " + outDir + ": " + e.getMessage(), e);
         }
 
         // -x: extract audio, --audio-format mp3 picks the encoder.
@@ -87,7 +92,7 @@ public class YtDlpAudioDownloader {
         long startMs = System.currentTimeMillis();
         Process process;
         try {
-            process = launcher.start(ProcessSpec.of(cmd, null));
+            process = launcher.start(ProcessSpec.of(cmd, outDir).withNetwork().withWritable(List.of(outDir)));
         } catch (IOException e) {
             throw new ToolException(
                     "Failed to start yt-dlp — is it installed and on "

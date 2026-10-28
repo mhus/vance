@@ -291,7 +291,8 @@ public class NodeHandler implements WorkspaceContentHandler {
                     spec.toArgument()
                 },
                 NPM_INSTALL_TIMEOUT_SECONDS,
-                "npm install " + spec.toArgument());
+                "npm install " + spec.toArgument(),
+                true);
         try {
             enforceSizeLimit(handle);
         } catch (WorkspaceQuotaExceededException e) {
@@ -314,7 +315,8 @@ public class NodeHandler implements WorkspaceContentHandler {
                 handle,
                 new String[] {npmPath(), "uninstall", "--save", "--no-audit", "--no-fund", "--", spec.name()},
                 NPM_INSTALL_TIMEOUT_SECONDS,
-                "npm uninstall " + spec.name());
+                "npm uninstall " + spec.name(),
+                false);
     }
 
     /** {@code true} when {@code node_modules/<name>/package.json} exists. */
@@ -383,7 +385,7 @@ public class NodeHandler implements WorkspaceContentHandler {
     }
 
     private void npmInit(RootDirHandle handle) {
-        runProcess(handle, new String[] {npmPath(), "init", "-y"}, NPM_INIT_TIMEOUT_SECONDS, "npm init -y");
+        runProcess(handle, new String[] {npmPath(), "init", "-y"}, NPM_INIT_TIMEOUT_SECONDS, "npm init -y", false);
     }
 
     private void npmCi(RootDirHandle handle) {
@@ -391,7 +393,8 @@ public class NodeHandler implements WorkspaceContentHandler {
                 handle,
                 new String[] {npmPath(), "ci", "--ignore-scripts", "--no-audit", "--no-fund", registryOption()},
                 NPM_INSTALL_TIMEOUT_SECONDS,
-                "npm ci");
+                "npm ci",
+                true);
     }
 
     private void npmInstallPackages(RootDirHandle handle, List<String> packages) {
@@ -403,7 +406,7 @@ public class NodeHandler implements WorkspaceContentHandler {
         for (int i = 0; i < packages.size(); i++) {
             command[fixed.length + i] = packages.get(i);
         }
-        runProcess(handle, command, NPM_INSTALL_TIMEOUT_SECONDS, "npm install " + String.join(" ", packages));
+        runProcess(handle, command, NPM_INSTALL_TIMEOUT_SECONDS, "npm install " + String.join(" ", packages), true);
     }
 
     /**
@@ -430,10 +433,17 @@ public class NodeHandler implements WorkspaceContentHandler {
         return out;
     }
 
-    /** Runs npm in the RootDir through the {@link ProcessLauncher}, scoped to its project. */
-    private void runProcess(RootDirHandle handle, String[] command, long timeoutSeconds, String label) {
+    /**
+     * Runs npm in the RootDir through the {@link ProcessLauncher}, scoped to its
+     * project. {@code network}: only installs reach the registry.
+     */
+    private void runProcess(
+            RootDirHandle handle, String[] command, long timeoutSeconds, String label, boolean network) {
         Path cwd = handle.getPath();
         ProcessSpec spec = ProcessSpec.of(List.of(command), cwd).withScope(handle.getTenantId(), handle.getProjectId());
+        if (network) {
+            spec = spec.withNetwork();
+        }
         Process p;
         try {
             p = launcher().start(spec);

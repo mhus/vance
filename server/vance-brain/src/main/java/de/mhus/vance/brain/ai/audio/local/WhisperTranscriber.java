@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -121,8 +122,15 @@ public class WhisperTranscriber {
         long startMs = System.currentTimeMillis();
         Process process;
         try {
-            process = launcher.start(
-                    ProcessSpec.of(cmd, null).withSeparateErrorStream().withEnvironment(cacheEnvironment()));
+            // Network for the first model download; the model cache is the
+            // only place it writes.
+            Map<String, String> cache = cacheEnvironment();
+            process = launcher.start(ProcessSpec.of(cmd, null)
+                    .withSeparateErrorStream()
+                    .withEnvironment(cache)
+                    .withNetwork()
+                    .withReadable(List.of(scriptPath, audioPath))
+                    .withWritable(cacheDirectories(cache.values())));
         } catch (IOException e) {
             throw new ToolException(
                     "Failed to start Python — is '" + pythonExecutable
@@ -291,6 +299,24 @@ public class WhisperTranscriber {
     }
 
     public record Fragment(double start, double end, String text) {}
+
+    /**
+     * The configured cache directories, created when missing — an isolated child
+     * can only write into a directory that exists before it starts.
+     */
+    private static List<Path> cacheDirectories(Collection<String> paths) {
+        List<Path> out = new ArrayList<>();
+        for (String path : paths) {
+            Path dir = Path.of(path);
+            try {
+                Files.createDirectories(dir);
+                out.add(dir);
+            } catch (IOException e) {
+                log.warn("Whisper cache directory {} is not usable: {}", dir, e.getMessage());
+            }
+        }
+        return out;
+    }
 
     private static Map<String, String> cacheEnvironment() {
         Map<String, String> env = new LinkedHashMap<>();

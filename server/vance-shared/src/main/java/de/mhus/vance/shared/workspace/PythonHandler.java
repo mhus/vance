@@ -246,7 +246,8 @@ public class PythonHandler implements WorkspaceContentHandler {
                 handle,
                 new String[] {pythonPath, "-m", "venv", VENV_DIR},
                 VENV_BUILD_TIMEOUT_SECONDS,
-                "venv build (" + pythonPath + ")");
+                "venv build (" + pythonPath + ")",
+                false);
     }
 
     private void pipInstallRequirements(RootDirHandle handle, String pythonPath) {
@@ -256,7 +257,8 @@ public class PythonHandler implements WorkspaceContentHandler {
                 handle,
                 new String[] {pythonBinary, "-m", "pip", "install", ONLY_BINARY, "-r", REQUIREMENTS_FILE},
                 PIP_INSTALL_TIMEOUT_SECONDS,
-                "pip install -r " + REQUIREMENTS_FILE);
+                "pip install -r " + REQUIREMENTS_FILE,
+                true);
     }
 
     private void pipInstallPackages(RootDirHandle handle, String pythonPath, List<String> packages) {
@@ -268,7 +270,8 @@ public class PythonHandler implements WorkspaceContentHandler {
                 handle,
                 command.toArray(String[]::new),
                 PIP_INSTALL_TIMEOUT_SECONDS,
-                "pip install " + String.join(" ", packages));
+                "pip install " + String.join(" ", packages),
+                true);
     }
 
     /**
@@ -301,7 +304,8 @@ public class PythonHandler implements WorkspaceContentHandler {
     }
 
     /** Runs the command in the RootDir through the {@link ProcessLauncher}, scoped to its project. */
-    private void runProcess(RootDirHandle handle, String[] command, long timeoutSeconds, String label) {
+    private void runProcess(
+            RootDirHandle handle, String[] command, long timeoutSeconds, String label, boolean network) {
         Path cwd = handle.getPath();
         ProcessLauncher launcher = launcherProvider.getIfAvailable();
         if (launcher == null) {
@@ -310,8 +314,9 @@ public class PythonHandler implements WorkspaceContentHandler {
         }
         Process p;
         try {
-            p = launcher.start(
-                    ProcessSpec.of(List.of(command), cwd).withScope(handle.getTenantId(), handle.getProjectId()));
+            ProcessSpec spec =
+                    ProcessSpec.of(List.of(command), cwd).withScope(handle.getTenantId(), handle.getProjectId());
+            p = launcher.start(network ? spec.withNetwork() : spec);
         } catch (IOException e) {
             throw new WorkspaceException(label + " failed to start: " + e.getMessage(), e);
         }

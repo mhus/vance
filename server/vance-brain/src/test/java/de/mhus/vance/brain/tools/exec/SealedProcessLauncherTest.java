@@ -23,13 +23,14 @@ class SealedProcessLauncherTest {
     @TempDir
     Path workDir;
 
+    private ExecProperties props;
     private SealedProcessLauncher launcher;
 
     @BeforeEach
     void setUp() {
-        ExecProperties props = new ExecProperties();
+        props = new ExecProperties();
         props.getEnv().setAllow(List.of("JAVA_HOME"));
-        launcher = new SealedProcessLauncher(new ExecEnvironmentBuilder(props, ExecTestHomes.homes(homesRoot)));
+        launcher = new SealedProcessLauncher(new ExecEnvironmentBuilder(props, ExecTestHomes.homes(homesRoot)), props);
     }
 
     @Test
@@ -48,6 +49,42 @@ class SealedProcessLauncherTest {
         Map<String, String> env = launcher.childEnvironment(ProcessSpec.of(List.of("true"), workDir));
 
         assertThat(env).containsEntry("HOME", workDir.toString());
+    }
+
+    @Test
+    void childEnvironment_withoutScopeAndWorkingDir_usesAPrivateHomeNotTheTempDir() {
+        Map<String, String> env = launcher.childEnvironment(ProcessSpec.of(List.of("true"), null));
+
+        assertThat(Path.of(env.get("HOME")))
+                .isEqualTo(Path.of(System.getProperty("java.io.tmpdir"), SealedProcessLauncher.UNSCOPED_HOME));
+    }
+
+    @Test
+    void argv_withoutWorkingDir_bindsTheHomeAsWorkdir() {
+        props.getIsolation().setMode("custom");
+        props.getIsolation().setProcessWrapper("wrap {home} {workdir}");
+        ProcessSpec spec = ProcessSpec.of(List.of("true"), null);
+
+        List<String> argv = launcher.argv(spec, launcher.childEnvironment(spec));
+
+        String home = Path.of(System.getProperty("java.io.tmpdir"), SealedProcessLauncher.UNSCOPED_HOME)
+                .toString();
+        assertThat(argv).containsExactly("wrap", home, home, "true");
+    }
+
+    @Test
+    void start_runsInsideTheProcessWrapper() throws Exception {
+        // `env` as the wrapper: it runs the appended argv, so the child's output
+        // proves the argv went through the template.
+        props.getIsolation().setMode("custom");
+        props.getIsolation().setProcessWrapper("env WRAPPED={workdir}");
+
+        Process p = launcher.start(ProcessSpec.of(List.of("env"), workDir));
+        String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        p.waitFor();
+
+        assertThat(out).contains("WRAPPED=" + workDir);
+        assertThat(launcher.isolated()).isTrue();
     }
 
     @Test

@@ -81,17 +81,19 @@ public class FfmpegAudioEditor {
         Path in = null;
         try {
             in = writeTemp(audio, ".bin");
-            String json = run(List.of(
-                    ffprobeBin,
-                    "-v",
-                    "error",
-                    "-show_entries",
-                    "format=duration,format_name",
-                    "-show_entries",
-                    "stream=codec_type,codec_name,sample_rate,channels",
-                    "-of",
-                    "json",
-                    in.toString()));
+            String json = run(
+                    List.of(
+                            ffprobeBin,
+                            "-v",
+                            "error",
+                            "-show_entries",
+                            "format=duration,format_name",
+                            "-show_entries",
+                            "stream=codec_type,codec_name,sample_rate,channels",
+                            "-of",
+                            "json",
+                            in.toString()),
+                    List.of(in));
             return parseProbeJson(json);
         } finally {
             deleteQuietly(in);
@@ -131,7 +133,7 @@ public class FfmpegAudioEditor {
             }
             args.addAll(codecArgs(outputFormat));
             args.add(out.toString());
-            runFfmpeg(args);
+            runFfmpeg(args, List.of(in, out));
             return readOut(out);
         } finally {
             deleteQuietly(in);
@@ -211,7 +213,7 @@ public class FfmpegAudioEditor {
                     "[out]"));
             args.addAll(codecArgs(outputFormat));
             args.add(out.toString());
-            runFfmpeg(args);
+            runFfmpeg(args, List.of(inBase, inOverlay, out));
             return readOut(out);
         } finally {
             deleteQuietly(inBase);
@@ -275,7 +277,9 @@ public class FfmpegAudioEditor {
             args.addAll(List.of("-filter_complex", filter.toString(), "-map", "[out]"));
             args.addAll(codecArgs(outputFormat));
             args.add(out.toString());
-            runFfmpeg(args);
+            List<Path> files = new ArrayList<>(ins);
+            files.add(out);
+            runFfmpeg(args, files);
             return readOut(out);
         } finally {
             for (Path in : ins) {
@@ -315,7 +319,7 @@ public class FfmpegAudioEditor {
             }
             args.addAll(codecArgs(outputFormat, bitrateKbps));
             args.add(out.toString());
-            runFfmpeg(args);
+            runFfmpeg(args, List.of(in, out));
             return readOut(out);
         } finally {
             deleteQuietly(in);
@@ -325,18 +329,20 @@ public class FfmpegAudioEditor {
 
     // ─────────────────── ffmpeg plumbing ───────────────────
 
-    private void runFfmpeg(List<String> args) {
+    private void runFfmpeg(List<String> args, List<Path> files) {
         List<String> cmd = new ArrayList<>(List.of(ffmpegBin, "-hide_banner", "-loglevel", "error", "-y"));
         cmd.addAll(args);
-        run(cmd);
+        run(cmd, files);
     }
 
     /** Run a command as an explicit argument list; return combined
      *  output. Non-zero exit or timeout ⇒ PROCESSING_ERROR with the
-     *  stderr tail. */
-    private String run(List<String> cmd) {
+     *  stderr tail. {@code files} are the call's temp files — all created
+     *  before the run (the output as an empty file), so an isolated child
+     *  gets exactly these and no network. */
+    private String run(List<String> cmd, List<Path> files) {
         try {
-            Process process = launcher.start(ProcessSpec.of(cmd, null));
+            Process process = launcher.start(ProcessSpec.of(cmd, null).withWritable(files));
             // The drain runs on its own thread so the wall-clock timeout below
             // can fire: reading to EOF on the calling thread would block until
             // the process exits — and a hung ffmpeg never exits, so the

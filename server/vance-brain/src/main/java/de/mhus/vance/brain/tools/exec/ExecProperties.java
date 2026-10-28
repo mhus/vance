@@ -6,6 +6,7 @@ import java.util.List;
 import lombok.Data;
 import org.jspecify.annotations.Nullable;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.util.unit.DataSize;
 
 /**
  * {@code vance.exec.*} — tunables for the shell exec tool.
@@ -83,6 +84,52 @@ public class ExecProperties {
     public static class Isolation {
         private String mode = "none";
         private @Nullable String wrapper;
+
+        /**
+         * Argv template for every other starter (npm, pip, ffmpeg, whisper, yt-dlp,
+         * latexmk, Rserve) under {@code mode: custom}; the starter's argv is appended.
+         * Whitespace-separated tokens, never re-interpreted by a shell. {@code {home}}
+         * and {@code {workdir}} are substituted inside a token; a token
+         * {@code {binds}} expands to {@link #bindArgs} per writable path,
+         * {@code {ro-binds}} to {@link #readOnlyBindArgs} per readable path, and
+         * {@code {net}} to {@link #noNetworkArgs} unless the starter needs the
+         * network. Blank: the starters run unwrapped.
+         */
+        private @Nullable String processWrapper;
+
+        /** Tokens for one writable path ({@code {path}}); default is bubblewrap's. */
+        private String bindArgs = "--bind {path} {path}";
+
+        /** Tokens for one readable path ({@code {path}}); default is bubblewrap's. */
+        private String readOnlyBindArgs = "--ro-bind {path} {path}";
+
+        /** Tokens that cut a starter off the network; default is bubblewrap's. */
+        private String noNetworkArgs = "--unshare-net";
+    }
+
+    /**
+     * {@code vance.exec.process-limits.*} — resource caps for every starter run
+     * through the {@code ProcessLauncher}, applied with {@code prlimit} around the
+     * (possibly wrapped) argv. No defaults: the values depend on what the pod runs
+     * (a whisper model needs gigabytes of address space). The number of processes is
+     * deliberately not capped here — {@code RLIMIT_NPROC} counts every thread of the
+     * UID, the brain's included; that belongs to the pod's cgroup.
+     */
+    private ProcessLimits processLimits = new ProcessLimits();
+
+    @Data
+    public static class ProcessLimits {
+        /** {@code prlimit} binary. */
+        private String prlimitPath = "prlimit";
+
+        /** Address space ({@code --as}); unset = no cap. */
+        private @Nullable DataSize addressSpace;
+
+        /** CPU time in seconds ({@code --cpu}); unset = no cap. */
+        private @Nullable Long cpuSeconds;
+
+        /** Largest file the child may write ({@code --fsize}); unset = no cap. */
+        private @Nullable DataSize fileSize;
     }
 
     /**

@@ -293,6 +293,7 @@ vance:
       wrapper: >-
         bwrap --ro-bind /usr /usr --ro-bind /bin /bin --ro-bind /lib /lib
         --ro-bind-try /lib64 /lib64 --ro-bind-try /etc/ssl /etc/ssl
+        --ro-bind-try /etc/pki /etc/pki --ro-bind-try /etc/crypto-policies /etc/crypto-policies
         --bind {workdir} {workdir} --chdir {workdir}
         --proc /proc --dev /dev --tmpfs /tmp --unshare-net --die-with-parent
         /bin/sh -c {cmd}
@@ -302,21 +303,25 @@ vance:
       # {ro-binds}/{binds} expand to the paths the starter declares (read /
       # write), {net} to --unshare-net unless it needs the network (registries,
       # downloads, the Rserve port). /tmp is a fresh tmpfs and comes BEFORE the
-      # binds, so a declared path under the real /tmp stays visible. /etc/pki
-      # and /etc/alternatives: the CA bundle and the python3 link on Oracle Linux.
+      # binds, so a declared path under the real /tmp stays visible. On Oracle
+      # Linux: /etc/pki holds the CA bundle, /etc/crypto-policies the OpenSSL
+      # config node refuses to start without, /etc/alternatives the python3 link.
+      # Tested on mickey with the brain image (planning/multi-tenant-isolation.md P18).
       process-wrapper: >-
         bwrap --ro-bind /usr /usr --ro-bind /bin /bin --ro-bind /lib /lib
         --ro-bind-try /lib64 /lib64 --ro-bind-try /etc/ssl /etc/ssl
-        --ro-bind-try /etc/pki /etc/pki --ro-bind-try /etc/alternatives /etc/alternatives
+        --ro-bind-try /etc/pki /etc/pki --ro-bind-try /etc/crypto-policies /etc/crypto-policies
+        --ro-bind-try /etc/alternatives /etc/alternatives
         --ro-bind-try /etc/resolv.conf /etc/resolv.conf --ro-bind-try /etc/hosts /etc/hosts
         --ro-bind-try /etc/nsswitch.conf /etc/nsswitch.conf
         --proc /proc --dev /dev --tmpfs /tmp
         {ro-binds} --bind {home} {home} --bind {workdir} {workdir} {binds}
         --chdir {workdir} {net} --die-with-parent
-    # Resource caps (prlimit) for the same starters. No defaults — a whisper
-    # model needs gigabytes of address space; set per deployment, e.g.
-    # VANCE_EXEC_PROCESS_LIMITS_ADDRESS_SPACE=4GB, ..._CPU_SECONDS=1800,
-    # ..._FILE_SIZE=1GB. No process-count cap: RLIMIT_NPROC counts the brain's
+    # Resource caps (prlimit) for the same starters. No defaults. Address space
+    # is virtual, not RAM — measured on mickey: npm install needs 2GB, whisper
+    # tiny 4GB, whisper small (the default model) 8GB. So e.g.
+    # VANCE_EXEC_PROCESS_LIMITS_ADDRESS_SPACE=8GB, ..._CPU_SECONDS=1800,
+    # ..._FILE_SIZE=1GB; real memory is bounded by the pod limit. No process-count cap: RLIMIT_NPROC counts the brain's
     # own threads (P16) — use the pod's pids limit.
     process-limits:
       prlimit-path: prlimit

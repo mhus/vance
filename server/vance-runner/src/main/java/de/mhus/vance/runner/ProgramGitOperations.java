@@ -3,6 +3,7 @@ package de.mhus.vance.runner;
 import de.mhus.vance.exec.GitOperationException;
 import de.mhus.vance.exec.GitOperations;
 import de.mhus.vance.exec.ProcessLauncher;
+import de.mhus.vance.exec.ProcessOutput;
 import de.mhus.vance.exec.ProcessSpec;
 import java.io.IOException;
 import java.net.URI;
@@ -14,7 +15,7 @@ import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
@@ -34,12 +35,37 @@ final class ProgramGitOperations implements GitOperations {
     private static final long LOCAL_TIMEOUT_SECONDS = 120;
     private static final int OUTPUT_TAIL_CHARS = 2_000;
 
+    /**
+     * Config forced on every invocation. A RootDir is the agent's: its {@code .git/config} and hooks
+     * can name programs, and this process runs git outside the exec wrapper. Command-line
+     * {@code -c} beats repository config, so none of these can be turned back on from there.
+     */
+    private static final List<String> HARDENING = List.of(
+            "-c", "core.hooksPath=/dev/null",
+            "-c", "core.fsmonitor=false",
+            "-c", "core.pager=cat",
+            "-c", "core.askPass=",
+            "-c", "credential.helper=",
+            "-c", "commit.gpgsign=false",
+            "-c", "tag.gpgsign=false",
+            "-c", "protocol.allow=never",
+            "-c", "protocol.https.allow=always",
+            "-c", "protocol.http.allow=always");
+
+    private static final List<String> LOCAL_PROTOCOL = List.of("-c", "protocol.file.allow=always");
+
     private static final ThreadLocal<@Nullable GitCredentials> CREDENTIALS = new ThreadLocal<>();
 
     private final Supplier<ProcessLauncher> launcher;
+    private final boolean allowLocalRepos;
 
-    ProgramGitOperations(Supplier<ProcessLauncher> launcher) {
+    /**
+     * @param allowLocalRepos clone from local paths and {@code file://} too — for development; a
+     *     production runner takes http(s) only
+     */
+    ProgramGitOperations(Supplier<ProcessLauncher> launcher, boolean allowLocalRepos) {
         this.launcher = launcher;
+        this.allowLocalRepos = allowLocalRepos;
     }
 
     /** Runs {@code action} with {@code credentials} (or none) bound to this thread. */
@@ -62,6 +88,9 @@ final class ProgramGitOperations implements GitOperations {
         List<String> args = new ArrayList<>(List.of("clone", "--branch", branch));
         if (depth != null) {
             args.addAll(List.of("--depth", String.valueOf(depth)));
+        }
+        if (!allowLocalRepos) {
+            requireHttpUrl(repoUrl);
         }
         // "--" ends the options: a URL is data, even when it starts with a dash.
         args.addAll(List.of("--", repoUrl, "."));
@@ -127,6 +156,10 @@ final class ProgramGitOperations implements GitOperations {
     private String run(Path dir, List<String> args, @Nullable String remoteUrl, long timeoutSeconds, boolean network) {
         List<String> command = new ArrayList<>();
         command.add("git");
+        command.addAll(HARDENING);
+        if (allowLocalRepos) {
+            command.addAll(LOCAL_PROTOCOL);
+        }
         command.addAll(args);
         ProcessSpec spec = ProcessSpec.of(command, dir).withEnvironment(environment(remoteUrl));
         if (network) {
@@ -141,22 +174,19 @@ final class ProgramGitOperations implements GitOperations {
         }
         try {
             // Output is small (git is quiet when it is not a terminal) and merged with stderr.
-            byte[] bytes = process.getInputStream().readAllBytes();
-            if (!process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
-                process.destroyForcibly();
-                throw new GitOperationException("git " + subcommand + " timed out after " + timeoutSeconds + " s");
-            }
-            String output = new String(bytes, StandardCharsets.UTF_8);
-            if (process.exitValue() != 0) {
+            ProcessOutput.Result result = ProcessOutput.await(process, timeoutSeconds);
+            String output = result.text();
+            if (result.exitValue() != 0) {
                 throw new GitOperationException(
-                        "git " + subcommand + " failed (exit " + process.exitValue() + "): " + tail(output));
+                        "git " + subcommand + " failed (exit " + result.exitValue() + "): " + tail(output));
             }
             return output;
+        } catch (TimeoutException e) {
+            throw new GitOperationException("git " + subcommand + " timed out after " + timeoutSeconds + " s", e);
         } catch (IOException e) {
             throw new GitOperationException("git " + subcommand + " failed: " + e.getMessage(), e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            process.destroyForcibly();
             throw new GitOperationException("git " + subcommand + " was interrupted", e);
         }
     }
@@ -173,9 +203,12 @@ final class ProgramGitOperations implements GitOperations {
         return args.getFirst();
     }
 
-    private static Map<String, String> environment(@Nullable String remoteUrl) {
+    private Map<String, String> environment(@Nullable String remoteUrl) {
         Map<String, String> env = new LinkedHashMap<>();
         env.put("GIT_TERMINAL_PROMPT", "0");
+        // No system-wide config, and no transport but http(s).
+        env.put("GIT_CONFIG_NOSYSTEM", "1");
+        env.put("GIT_ALLOW_PROTOCOL", allowLocalRepos ? "https:http:file" : "https:http");
         GitCredentials credentials = CREDENTIALS.get();
         String hostPrefix = remoteUrl == null ? null : httpsPrefix(remoteUrl);
         if (credentials != null && hostPrefix != null) {
@@ -187,6 +220,23 @@ final class ProgramGitOperations implements GitOperations {
             env.put("GIT_CONFIG_VALUE_0", "Authorization: Basic " + basic);
         }
         return env;
+    }
+
+    /**
+     * Clone sources are http(s) URLs. Local paths, {@code file://} and {@code ext::} would read another
+     * project's repository off the runner's disk or run a program.
+     */
+    private static void requireHttpUrl(String url) {
+        try {
+            URI uri = new URI(url.strip());
+            String scheme = uri.getScheme();
+            if (("https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme)) && uri.getHost() != null) {
+                return;
+            }
+        } catch (URISyntaxException e) {
+            // falls through
+        }
+        throw new GitOperationException("Only http(s) repository URLs are cloned on a runner: " + url);
     }
 
     /** {@code https://host/} for an https URL, {@code null} for anything else (ssh, file, plain http). */

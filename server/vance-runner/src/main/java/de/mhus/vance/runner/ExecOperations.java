@@ -31,6 +31,9 @@ final class ExecOperations {
     private static final int DEFAULT_INLINE_CHARS = 20_000;
     private static final int MAX_TAIL_LINES = 500;
 
+    /** Job label naming the RootDir the job was started in; a pinned token only sees its own. */
+    private static final String ROOT_LABEL = "rootDir";
+
     private ExecOperations() {}
 
     static List<RunnerOperation> all(RunnerWorkspace workspace) {
@@ -64,6 +67,14 @@ final class ExecOperations {
                 throw new OperationException("exec-env", "Cannot prepare the job's home: " + e.getMessage(), e);
             }
             String wrapper = workspace.execWrapper();
+            if (wrapper == null && !workspace.allowUnsandboxedExec()) {
+                throw new OperationException(
+                        "exec-unsandboxed",
+                        "This runner has no exec wrapper (VANCE_RUNNER_EXEC_WRAPPER), so commands would share "
+                                + "its user, data directory and identity with every project. Ask the operator "
+                                + "to configure a wrapper, or to set VANCE_RUNNER_ALLOW_UNSANDBOXED_EXEC=true "
+                                + "when the runner pod itself is the boundary.");
+            }
             ExecJob job;
             try {
                 job = workspace
@@ -78,7 +89,7 @@ final class ExecOperations {
                                         : ExecIsolation.wrap(wrapper, cwd.toString(), env.get("HOME"), command),
                                 cwd,
                                 env,
-                                Map.of(),
+                                Map.of(ROOT_LABEL, dirName),
                                 deadlineSeconds > 0 ? Instant.now().plusSeconds(deadlineSeconds) : null));
             } catch (ExecException e) {
                 throw new OperationException("exec", e.getMessage(), e);
@@ -93,7 +104,7 @@ final class ExecOperations {
     private static RunnerOperation status(RunnerWorkspace workspace) {
         return RootDirOperations.operation("exec.status", call -> {
             String id = new OperationArgs(call.args()).text("id");
-            ExecJob job = workspace.jobs().get(scope(call), id).orElseThrow(() -> unknown(id));
+            ExecJob job = visible(workspace, call, id);
             return OperationResult.of(
                     render(job, new OperationArgs(call.args()).integer("inlineChars", DEFAULT_INLINE_CHARS)));
         });
@@ -106,7 +117,7 @@ final class ExecOperations {
     private static RunnerOperation stat(RunnerWorkspace workspace) {
         return RootDirOperations.operation("exec.stat", call -> {
             String id = new OperationArgs(call.args()).text("id");
-            ExecJob job = workspace.jobs().get(scope(call), id).orElseThrow(() -> unknown(id));
+            ExecJob job = visible(workspace, call, id);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("id", job.id());
             out.put("status", job.status().name());
@@ -125,6 +136,7 @@ final class ExecOperations {
     private static RunnerOperation list(RunnerWorkspace workspace) {
         return RootDirOperations.operation("exec.list", call -> {
             List<ExecStat> stats = workspace.jobs().list(scope(call)).stream()
+                    .filter(job -> inPinnedRoot(call, job))
                     .map(ExecJobs::toStat)
                     .toList();
             return OperationResult.of(Map.of("jobs", stats));
@@ -138,6 +150,7 @@ final class ExecOperations {
             int lines = Math.min(Math.max(args.integer("n", DEFAULT_TAIL_LINES), 1), MAX_TAIL_LINES);
             String stream = args.optionalText("stream");
             ExecJobs.Stream which = "stderr".equalsIgnoreCase(stream) ? ExecJobs.Stream.STDERR : ExecJobs.Stream.STDOUT;
+            visible(workspace, call, id);
             try {
                 Map<String, Object> out = new LinkedHashMap<>();
                 out.put("id", id);
@@ -155,9 +168,7 @@ final class ExecOperations {
     private static RunnerOperation kill(RunnerWorkspace workspace) {
         return RootDirOperations.operation("exec.kill", call -> {
             String id = new OperationArgs(call.args()).text("id");
-            if (workspace.jobs().get(scope(call), id).isEmpty()) {
-                throw unknown(id);
-            }
+            visible(workspace, call, id);
             return OperationResult.of(
                     Map.of("id", id, "killed", workspace.jobs().kill(scope(call), id)));
         });
@@ -212,6 +223,20 @@ final class ExecOperations {
     /** Jobs belong to the project a token names; one project never sees another's. */
     private static String scope(Call call) {
         return call.claims().tenantId() + "/" + call.claims().projectId();
+    }
+
+    /** The job {@code id} of this project — and, for a pinned token, of its RootDir only. */
+    private static ExecJob visible(RunnerWorkspace workspace, Call call, String id) throws OperationException {
+        ExecJob job = workspace.jobs().get(scope(call), id).orElseThrow(() -> unknown(id));
+        if (!inPinnedRoot(call, job)) {
+            throw unknown(id);
+        }
+        return job;
+    }
+
+    private static boolean inPinnedRoot(Call call, ExecJob job) {
+        String pinned = call.claims().rootDir();
+        return pinned == null || pinned.equals(job.labels().get(ROOT_LABEL));
     }
 
     private static OperationException unknown(String id) {

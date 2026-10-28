@@ -40,8 +40,8 @@ class RunnerToolConfiguration {
     }
 
     @Bean
-    Tool runnerRootCreate(RunnerWork runner, GitCredentialResolver credentials) {
-        return new RunnerRootCreateTool(runner, credentials);
+    Tool runnerRootCreate(RunnerWork runner, GitCredentialResolver credentials, RunnerRepoUrl repoUrls) {
+        return new RunnerRootCreateTool(runner, credentials, repoUrls);
     }
 
     @Bean

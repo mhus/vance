@@ -74,6 +74,21 @@ final class FileOperations {
         });
     }
 
+    /**
+     * The runner starts {@code git} itself in RootDirs (status, commit, checkout, push), outside the
+     * exec wrapper. A {@code .git/config} or hook written by the agent would run with the runner's
+     * privileges there, so the file operations leave git's own directory alone — git does its
+     * bookkeeping through {@code git}, not through file edits.
+     */
+    private static void rejectGitInternals(String path) throws OperationException {
+        for (String segment : path.replace('\\', '/').split("/")) {
+            if (".git".equalsIgnoreCase(segment.strip())) {
+                throw new OperationException(
+                        "git-internals", "'" + path + "' is inside .git — git's own files are not editable here");
+            }
+        }
+    }
+
     /** The request body as text — read whole before anything is written. */
     private static String readBody(Call call) throws OperationException {
         try {
@@ -88,6 +103,7 @@ final class FileOperations {
             OperationArgs args = new OperationArgs(call.args());
             String dirName = args.rootDir(call.claims());
             String path = args.text("path");
+            rejectGitInternals(path);
             workspace.requireDiskSpace("writing '" + path + "'");
             // 'contentInBody': the file is the request body (no size limit but the request's);
             // otherwise it is the 'content' argument in the capped JSON header.
@@ -132,6 +148,7 @@ final class FileOperations {
             OperationArgs args = new OperationArgs(call.args());
             String dirName = args.rootDir(call.claims());
             String path = args.text("path");
+            rejectGitInternals(path);
             String oldText = args.text("oldText");
             String newText = args.optionalText("newText");
             if (newText == null) {
@@ -218,6 +235,7 @@ final class FileOperations {
             OperationArgs args = new OperationArgs(call.args());
             String dirName = args.rootDir(call.claims());
             String path = args.text("path");
+            rejectGitInternals(path);
             boolean deleted = RootDirFiles.delete(resolve(workspace, call, dirName, path), path);
             return OperationResult.of(Map.of("path", path, "dirName", dirName, "deleted", deleted));
         });

@@ -1,12 +1,11 @@
 package de.mhus.vance.exec;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 
@@ -115,18 +114,15 @@ public final class YtDlpEngine {
                     e);
         }
 
-        String stderr;
+        ProcessOutput.Result result;
         try {
-            stderr = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            boolean finished = process.waitFor(DOWNLOAD_TIMEOUT.toMinutes(), TimeUnit.MINUTES);
-            if (!finished) {
-                process.destroyForcibly();
-                throw new MechException(
-                        MechException.Reason.PROCESSING_ERROR,
-                        "yt-dlp timed out after " + DOWNLOAD_TIMEOUT.toMinutes() + " minutes for video " + videoId);
-            }
+            result = ProcessOutput.await(process, DOWNLOAD_TIMEOUT.toSeconds());
+        } catch (TimeoutException e) {
+            throw new MechException(
+                    MechException.Reason.PROCESSING_ERROR,
+                    "yt-dlp timed out after " + DOWNLOAD_TIMEOUT.toMinutes() + " minutes for video " + videoId,
+                    e);
         } catch (InterruptedException e) {
-            process.destroyForcibly();
             Thread.currentThread().interrupt();
             throw new MechException(
                     MechException.Reason.PROCESSING_ERROR, "Interrupted while downloading audio for " + videoId, e);
@@ -134,8 +130,9 @@ public final class YtDlpEngine {
             throw new MechException(
                     MechException.Reason.PROCESSING_ERROR, "yt-dlp output stream failed: " + e.getMessage(), e);
         }
+        String stderr = result.text();
 
-        int exit = process.exitValue();
+        int exit = result.exitValue();
         long elapsedMs = System.currentTimeMillis() - startMs;
         if (exit != 0) {
             throw new MechException(

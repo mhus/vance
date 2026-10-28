@@ -28,6 +28,19 @@ public final class RunnerMain {
         return configured == null || configured.isBlank() ? RunnerWorkspace.DEFAULT_NPM_REGISTRY : configured.trim();
     }
 
+    /**
+     * {@code VANCE_RUNNER_ALLOW_UNSANDBOXED_EXEC=true}: commands may run without
+     * {@code VANCE_RUNNER_EXEC_WRAPPER}. Off by default — the runner then refuses {@code exec.start}
+     * instead of letting every project's commands share its uid, data directory and identity.
+     */
+    private static boolean unsandboxedExecAllowed() {
+        return flag("VANCE_RUNNER_ALLOW_UNSANDBOXED_EXEC");
+    }
+
+    private static boolean flag(String name) {
+        return "true".equalsIgnoreCase(String.valueOf(System.getenv(name)).trim());
+    }
+
     /** {@code VANCE_RUNNER_DISK_HARD_PERCENT}: how full the volume may get before writes are refused (0 = off). */
     private static int diskLimit() {
         String configured = System.getenv("VANCE_RUNNER_DISK_HARD_PERCENT");
@@ -90,7 +103,9 @@ public final class RunnerMain {
                         System.getenv("VANCE_RUNNER_EXEC_WRAPPER"),
                         System.getenv("VANCE_RUNNER_PROCESS_WRAPPER"),
                         registry(),
-                        diskLimit());
+                        diskLimit(),
+                        unsandboxedExecAllowed(),
+                        flag("VANCE_RUNNER_ALLOW_LOCAL_REPOS"));
                 RunnerServer server = new RunnerServer(
                         config, identity, tenantKeys, operations(config, workspace), Clock.systemUTC())) {
             // SIGTERM runs hooks without unwinding main: stop the listener there too.

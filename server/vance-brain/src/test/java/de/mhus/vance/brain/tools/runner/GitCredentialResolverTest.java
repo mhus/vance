@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.shared.workspace.GitAuthProvider;
 import de.mhus.vance.toolpack.ToolException;
+import java.util.List;
 import org.eclipse.jgit.transport.CredentialsProvider;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
 import org.junit.jupiter.api.Test;
@@ -14,7 +15,8 @@ import org.junit.jupiter.api.Test;
 class GitCredentialResolverTest {
 
     private final GitAuthProvider provider = mock(GitAuthProvider.class);
-    private final GitCredentialResolver resolver = new GitCredentialResolver(provider);
+    private final GitCredentialResolver resolver =
+            new GitCredentialResolver(provider, List.of(), new RunnerRepoUrl(false, url -> {}));
 
     @Test
     void noAliasMeansNoCredentials() {
@@ -66,5 +68,25 @@ class GitCredentialResolverTest {
         assertThatThrownBy(() -> resolver.resolve("acme", "p", "odd", "https://git.example.com/r.git"))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("no username and token");
+    }
+
+    @Test
+    void aCredentialIsNotSentToAHostOutsideTheAllowList() {
+        when(provider.provide("acme", "p", "ci")).thenReturn(new UsernamePasswordCredentialsProvider("bot", "s3cret"));
+        GitCredentialResolver pinned =
+                new GitCredentialResolver(provider, List.of("GitHub.com"), new RunnerRepoUrl(false, url -> {}));
+
+        assertThat(pinned.resolve("acme", "p", "ci", "https://github.com/o/r.git"))
+                .containsEntry("token", "s3cret");
+        assertThatThrownBy(() -> pinned.resolve("acme", "p", "ci", "https://attacker.example/x.git"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("attacker.example");
+    }
+
+    @Test
+    void aCredentialIsNeverSentOverPlainHttp() {
+        assertThatThrownBy(() -> resolver.resolve("acme", "p", "ci", "http://git.example.com/r.git"))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("https");
     }
 }

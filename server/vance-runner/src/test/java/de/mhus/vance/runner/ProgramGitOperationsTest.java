@@ -26,7 +26,7 @@ class ProgramGitOperationsTest {
 
     private ProgramGitOperations realGit() {
         RunnerProcessLauncher launcher = new RunnerProcessLauncher(tmp.resolve("data"), null);
-        return new ProgramGitOperations(() -> launcher);
+        return new ProgramGitOperations(() -> launcher, true);
     }
 
     /** A repository with one commit on main, as a clone source. */
@@ -118,7 +118,7 @@ class ProgramGitOperationsTest {
     @Test
     void aTokenReachesGitAsAHeaderScopedToTheHost_neverInArgv() throws Exception {
         Recording launcher = new Recording();
-        ProgramGitOperations git = new ProgramGitOperations(() -> launcher);
+        ProgramGitOperations git = new ProgramGitOperations(() -> launcher, true);
         Path target = Files.createDirectories(tmp.resolve("t1"));
 
         ProgramGitOperations.withCredentials(new GitCredentials("bot", "s3cret-token"), () -> {
@@ -138,9 +138,35 @@ class ProgramGitOperationsTest {
     }
 
     @Test
+    void everyGitCallCarriesTheHardening_andAProductionRunnerClonesOverHttpOnly() throws Exception {
+        Recording launcher = new Recording();
+        ProgramGitOperations git = new ProgramGitOperations(() -> launcher, false);
+        Path target = Files.createDirectories(tmp.resolve("t0"));
+
+        git.clone("https://git.example.com/org/repo.git", target, "main", null, SCOPE);
+        git.isClean(target);
+
+        for (ProcessSpec spec : launcher.specs) {
+            assertThat(spec.command())
+                    .containsSequence("-c", "core.hooksPath=/dev/null")
+                    .containsSequence("-c", "core.fsmonitor=false")
+                    .containsSequence("-c", "credential.helper=")
+                    .doesNotContain("protocol.file.allow=always");
+            assertThat(spec.environment()).containsEntry("GIT_ALLOW_PROTOCOL", "https:http");
+        }
+        for (String url : List.of(tmp.toString(), "file:///etc", "ext::sh -c id", "git@example.com:o/r.git")) {
+            assertThatThrownBy(() -> git.clone(url, target, "main", null, SCOPE))
+                    .as(url)
+                    .isInstanceOf(GitOperationException.class)
+                    .hasMessageContaining("http(s)");
+        }
+        assertThat(launcher.specs).hasSize(2);
+    }
+
+    @Test
     void aTokenIsOfferedOnlyToHttpsHosts_andOnlyWhileTheCallRuns() throws Exception {
         Recording launcher = new Recording();
-        ProgramGitOperations git = new ProgramGitOperations(() -> launcher);
+        ProgramGitOperations git = new ProgramGitOperations(() -> launcher, true);
         Path target = Files.createDirectories(tmp.resolve("t2"));
         GitCredentials token = new GitCredentials("bot", "tok");
 

@@ -9,7 +9,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -88,20 +88,19 @@ final class HandlerSupport {
         } catch (IOException e) {
             throw new RootDirException(label + " failed to start: " + e.getMessage(), e);
         }
-        String output;
+        ProcessOutput.Result result;
         try {
-            output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            if (!p.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
-                p.destroyForcibly();
-                throw new RootDirException(label + " timed out after " + timeoutSeconds + "s");
-            }
+            result = ProcessOutput.await(p, timeoutSeconds);
+        } catch (TimeoutException e) {
+            throw new RootDirException(label + " timed out after " + timeoutSeconds + "s", e);
         } catch (IOException e) {
             throw new RootDirException(label + " I/O error: " + e.getMessage(), e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new RootDirException(label + " interrupted", e);
         }
-        int exit = p.exitValue();
+        String output = result.text();
+        int exit = result.exitValue();
         if (exit != 0) {
             throw new RootDirException(
                     label + " exited with code " + exit + (output.isBlank() ? "" : ": " + output.strip()));

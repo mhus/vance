@@ -103,6 +103,8 @@ public final class FfmpegEngine {
             String json = run(
                     List.of(
                             ffprobeBin,
+                            "-protocol_whitelist",
+                            "file",
                             "-v",
                             "error",
                             "-show_entries",
@@ -135,7 +137,7 @@ public final class FfmpegEngine {
         try (Scratch scratch = openScratch()) {
             Path in = write(scratch, "in.bin", audio);
             Path out = scratch.file("out." + outputFormat);
-            List<String> args = new ArrayList<>(List.of("-i", in.toString()));
+            List<String> args = new ArrayList<>(input(in));
             if (startSeconds > 0) {
                 args.addAll(List.of("-ss", num(startSeconds)));
             }
@@ -211,15 +213,9 @@ public final class FfmpegEngine {
                 filter.append("[mix]anull[out]");
             }
 
-            List<String> args = new ArrayList<>(List.of(
-                    "-i",
-                    inBase.toString(),
-                    "-i",
-                    inOverlay.toString(),
-                    "-filter_complex",
-                    filter.toString(),
-                    "-map",
-                    "[out]"));
+            List<String> args = new ArrayList<>(input(inBase));
+            args.addAll(input(inOverlay));
+            args.addAll(List.of("-filter_complex", filter.toString(), "-map", "[out]"));
             args.addAll(codecArgs(outputFormat));
             args.add(out.toString());
             runFfmpeg(args, scratch);
@@ -242,7 +238,7 @@ public final class FfmpegEngine {
             List<String> args = new ArrayList<>();
             for (int i = 0; i < clips.size(); i++) {
                 Path in = write(scratch, "in-" + i + ".bin", clips.get(i));
-                args.addAll(List.of("-i", in.toString()));
+                args.addAll(input(in));
             }
             StringBuilder filter = new StringBuilder();
             for (int i = 0; i < clips.size(); i++) {
@@ -299,7 +295,7 @@ public final class FfmpegEngine {
         try (Scratch scratch = openScratch()) {
             Path in = write(scratch, "in.bin", audio);
             Path out = scratch.file("out." + outputFormat);
-            List<String> args = new ArrayList<>(List.of("-i", in.toString()));
+            List<String> args = new ArrayList<>(input(in));
             if (sampleRate != null) {
                 args.addAll(List.of("-ar", Integer.toString(sampleRate)));
             }
@@ -317,6 +313,15 @@ public final class FfmpegEngine {
     }
 
     // ─────────────────── ffmpeg plumbing ───────────────────
+
+    /**
+     * One input file. The bytes come from an untrusted caller and ffmpeg sniffs the container, so
+     * a playlist-style file could name URLs; only the {@code file} protocol is allowed, which keeps
+     * a crafted "audio" file from making ffmpeg fetch anything over the network.
+     */
+    private static List<String> input(Path file) {
+        return List.of("-protocol_whitelist", "file", "-i", file.toString());
+    }
 
     private void runFfmpeg(List<String> args, Scratch scratch) {
         List<String> cmd = new ArrayList<>(List.of(ffmpegBin, "-hide_banner", "-loglevel", "error", "-y"));

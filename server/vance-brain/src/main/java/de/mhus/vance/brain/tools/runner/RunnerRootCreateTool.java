@@ -32,8 +32,10 @@ final class RunnerRootCreateTool implements Tool {
 
     private final RunnerWork runner;
     private final GitCredentialResolver credentials;
+    private final RunnerRepoUrl repoUrls;
 
-    RunnerRootCreateTool(RunnerWork runner, GitCredentialResolver credentials) {
+    RunnerRootCreateTool(RunnerWork runner, GitCredentialResolver credentials, RunnerRepoUrl repoUrls) {
+        this.repoUrls = repoUrls;
         this.runner = runner;
         this.credentials = credentials;
     }
@@ -146,6 +148,9 @@ final class RunnerRootCreateTool implements Tool {
         String repoUrl = string(params, "repoUrl");
         if ("git".equals(type) && repoUrl == null) {
             throw new ToolException("'repoUrl' is required for a git RootDir");
+        }
+        if (repoUrl != null) {
+            repoUrls.check(repoUrl);
         }
         if (repoUrl == null
                 && (params.get("branch") != null || params.get("commit") != null || params.get("depth") != null)) {

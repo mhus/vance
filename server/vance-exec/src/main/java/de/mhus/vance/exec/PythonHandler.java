@@ -89,6 +89,7 @@ public class PythonHandler implements WorkspaceContentHandler {
     public void init(RootDirHandle handle, RootDirSpec spec) {
         Map<String, Object> meta = HandlerSupport.mutableMetadata(handle.getDescriptor());
         String pythonPath = HandlerSupport.stringOr(meta, META_PYTHON_PATH, DEFAULT_PYTHON_PATH);
+        requireInterpreter(pythonPath);
         String repoUrl = HandlerSupport.stringOr(meta, GitHandler.META_REPO_URL, null);
 
         if (!repoUrl.isBlank()) {
@@ -203,6 +204,7 @@ public class PythonHandler implements WorkspaceContentHandler {
      * (typically via {@code WorkspaceService#rebuildPythonVenv}).
      */
     public void rebuildVenv(RootDirHandle handle, String pythonPath) {
+        requireInterpreter(pythonPath);
         Path rootDirPath = handle.getPath();
         Path venv = rootDirPath.resolve(VENV_DIR);
         deleteRecursively(venv);
@@ -223,6 +225,28 @@ public class PythonHandler implements WorkspaceContentHandler {
     // ---------------------------------------------------------------------
     // Internals
     // ---------------------------------------------------------------------
+
+    private static final java.util.regex.Pattern INTERPRETER_NAME =
+            java.util.regex.Pattern.compile("python[0-9]*(\\.[0-9]+)*");
+
+    /** Directories the agent cannot write to, where a system interpreter may live. */
+    private static final List<String> SYSTEM_PREFIXES = List.of("/usr/", "/opt/", "/bin/");
+
+    /**
+     * The interpreter is started as a program, outside any command isolation, so it must be one the
+     * system provides: a bare {@code python3.12} found on PATH, or an absolute path of that name
+     * under a system directory. A path into a RootDir would run whatever the agent put there.
+     */
+    static void requireInterpreter(String pythonPath) {
+        String name = pythonPath.substring(pythonPath.lastIndexOf('/') + 1);
+        boolean bare = pythonPath.indexOf('/') < 0;
+        boolean system =
+                !bare && !pythonPath.contains("..") && SYSTEM_PREFIXES.stream().anyMatch(pythonPath::startsWith);
+        if (!INTERPRETER_NAME.matcher(name).matches() || !(bare || system)) {
+            throw new RootDirException("pythonPath '" + pythonPath
+                    + "' is not a system interpreter — use e.g. 'python3' or '/usr/bin/python3.12'");
+        }
+    }
 
     private void buildVenv(RootDirHandle handle, String pythonPath) {
         runProcess(

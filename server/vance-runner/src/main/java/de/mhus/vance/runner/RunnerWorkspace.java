@@ -56,6 +56,7 @@ public final class RunnerWorkspace implements AutoCloseable {
     private final ExecJobs jobs;
     private final Path homes;
     private final @Nullable String execWrapper;
+    private final boolean allowUnsandboxedExec;
 
     /**
      * @param execWrapper an isolation template for exec commands ({@code {workdir}} and
@@ -87,10 +88,31 @@ public final class RunnerWorkspace implements AutoCloseable {
             @Nullable String processWrapper,
             String npmRegistry,
             int hardLimitPercent) {
+        this(dataDir, execWrapper, processWrapper, npmRegistry, hardLimitPercent, true, true);
+    }
+
+    /**
+     * @param allowUnsandboxedExec whether {@code exec.start} may run under the plain shell when
+     *     no {@code execWrapper} is set. Without a wrapper every project's commands share the
+     *     runner's uid, data directory and age identity — the production entry point therefore
+     *     passes {@code false} unless the operator opts in explicitly.
+     * @param allowLocalRepos whether a git RootDir may be cloned from a local path or
+     *     {@code file://} URL; the production entry point passes {@code false} (http(s) only),
+     *     since a local source is another project's repository on the same disk
+     */
+    public RunnerWorkspace(
+            Path dataDir,
+            @Nullable String execWrapper,
+            @Nullable String processWrapper,
+            String npmRegistry,
+            int hardLimitPercent,
+            boolean allowUnsandboxedExec,
+            boolean allowLocalRepos) {
+        this.allowUnsandboxedExec = allowUnsandboxedExec;
         this.dataDir = dataDir;
         this.hardLimitPercent = hardLimitPercent;
         RunnerProcessLauncher launcher = new RunnerProcessLauncher(dataDir, processWrapper);
-        this.git = new ProgramGitOperations(() -> launcher);
+        this.git = new ProgramGitOperations(() -> launcher, allowLocalRepos);
         this.scratch = new ScratchArea(dataDir.resolve("scratch"));
         this.ffmpeg = new FfmpegEngine("ffmpeg", "ffprobe", FFMPEG_TIMEOUT_SECONDS, launcher, scratch);
         this.ytdlp = new YtDlpEngine(launcher);
@@ -188,6 +210,11 @@ public final class RunnerWorkspace implements AutoCloseable {
     @Nullable
     String execWrapper() {
         return execWrapper;
+    }
+
+    /** Whether commands may run without an exec wrapper. */
+    boolean allowUnsandboxedExec() {
+        return allowUnsandboxedExec;
     }
 
     /** The sealed child environment of a job: the inheritable base and a per-project {@code HOME}. */

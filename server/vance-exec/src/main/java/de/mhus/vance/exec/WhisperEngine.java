@@ -54,6 +54,9 @@ public final class WhisperEngine {
     /** Default model when the caller doesn't specify. */
     private static final String DEFAULT_MODEL = "small";
 
+    private static final java.util.regex.Pattern MODEL_NAME =
+            java.util.regex.Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,63}");
+
     private static final Duration PROBE_TIMEOUT = Duration.ofSeconds(15);
 
     private final String pythonExecutable;
@@ -82,7 +85,9 @@ public final class WhisperEngine {
     public WhisperEngine(String pythonExecutable, ProcessLauncher launcher) throws IOException {
         this.pythonExecutable = pythonExecutable;
         this.launcher = launcher;
-        Path target = Path.of(System.getProperty("java.io.tmpdir"), "vance-whisper-transcribe.py");
+        // A private, unpredictable directory (mode 0700): the script is executed with network access,
+        // so nobody else may be able to replace it between extraction and use.
+        Path target = Files.createTempDirectory("vance-whisper").resolve("transcribe.py");
         try (InputStream in = WhisperEngine.class.getResourceAsStream("/scripts/transcribe.py")) {
             if (in == null) {
                 throw new IOException("The whisper wrapper script is not on the classpath");
@@ -135,7 +140,13 @@ public final class WhisperEngine {
      */
     public Result transcribe(
             Path audioPath, @Nullable String model, @Nullable String language, @Nullable ProgressSink onProgress) {
-        String effectiveModel = (model == null || model.isBlank()) ? DEFAULT_MODEL : model;
+        String effectiveModel = (model == null || model.isBlank()) ? DEFAULT_MODEL : model.strip();
+        // The name goes to faster-whisper, which also loads a model from a path or a hub repo id.
+        if (!MODEL_NAME.matcher(effectiveModel).matches()) {
+            throw new MechException(
+                    MechException.Reason.PARAMETER_INVALID,
+                    "model must be a plain whisper model name such as 'small' or 'large-v3': " + effectiveModel);
+        }
         String effectiveLang = (language == null || language.isBlank()) ? "auto" : language;
 
         List<String> cmd =
@@ -174,18 +185,13 @@ public final class WhisperEngine {
         stderrThread.setDaemon(true);
         stderrThread.start();
 
+        // stdout drains on its own thread: reading it to EOF here would make the
+        // wall-clock timeout dead code for a hung child.
         StringBuilder stdout = new StringBuilder();
-        try (BufferedReader r =
-                new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = r.readLine()) != null) {
-                stdout.append(line).append('\n');
-            }
-        } catch (IOException e) {
-            process.destroyForcibly();
-            throw new MechException(
-                    MechException.Reason.PROCESSING_ERROR, "Whisper stdout read failed: " + e.getMessage(), e);
-        }
+        Thread stdoutThread = new Thread(
+                () -> readStdout(process.getInputStream(), stdout), "whisper-stdout-" + audioPath.getFileName());
+        stdoutThread.setDaemon(true);
+        stdoutThread.start();
 
         boolean finished;
         try {
@@ -206,6 +212,11 @@ public final class WhisperEngine {
         }
 
         try {
+            stdoutThread.join(5_000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        try {
             stderrThread.join(2_000);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -219,7 +230,10 @@ public final class WhisperEngine {
                     "Whisper transcription failed (exit " + exit + "): " + lastNonBlankLine(stderrLines));
         }
 
-        String json = stdout.toString().trim();
+        String json;
+        synchronized (stdout) {
+            json = stdout.toString().trim();
+        }
         if (json.isEmpty()) {
             throw new MechException(MechException.Reason.PROCESSING_ERROR, "Whisper transcription produced no output");
         }
@@ -243,6 +257,19 @@ public final class WhisperEngine {
                 root.path("segments").size(),
                 root.path("language").asText());
         return Result.from(root, elapsedMs);
+    }
+
+    private static void readStdout(InputStream stream, StringBuilder sink) {
+        try (BufferedReader r = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = r.readLine()) != null) {
+                synchronized (sink) {
+                    sink.append(line).append('\n');
+                }
+            }
+        } catch (IOException e) {
+            // The child process exited or was killed; what was read so far stands.
+        }
     }
 
     private static void readStderr(InputStream stream, List<String> sink, @Nullable ProgressSink onProgress) {

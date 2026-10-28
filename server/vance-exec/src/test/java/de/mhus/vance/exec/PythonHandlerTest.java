@@ -95,13 +95,25 @@ class PythonHandlerTest {
     void init_withMissingInterpreter_throwsRootDirException() {
         Path rootDir = createRootDirFolder("nopy");
         Map<String, Object> meta = new LinkedHashMap<>();
-        meta.put(PythonHandler.META_PYTHON_PATH, "/definitely/not/a/python/binary");
+        meta.put(PythonHandler.META_PYTHON_PATH, "python9.99");
         WorkspaceDescriptor descriptor = descriptor("nopy", meta);
         RootDirHandle handle = handle(rootDir, descriptor);
 
         assertThatThrownBy(() -> handler.init(handle, spec("nopy")))
                 .isInstanceOf(RootDirException.class)
                 .hasMessageContaining("venv build");
+    }
+
+    @Test
+    void init_withAnInterpreterOutsideTheSystem_isRefusedBeforeAnythingRuns() {
+        Path rootDir = createRootDirFolder("evilpy");
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put(PythonHandler.META_PYTHON_PATH, rootDir.resolve("python3").toString());
+        RootDirHandle handle = handle(rootDir, descriptor("evilpy", meta));
+
+        assertThatThrownBy(() -> handler.init(handle, spec("evilpy")))
+                .isInstanceOf(RootDirException.class)
+                .hasMessageContaining("system interpreter");
     }
 
     @Test

@@ -1,5 +1,6 @@
 package de.mhus.vance.runner;
 
+import de.mhus.vance.exec.RootDirException;
 import de.mhus.vance.runner.RunnerOperation.OperationException;
 import de.mhus.vance.runner.RunnerOperation.OperationResult;
 import java.io.IOException;
@@ -81,15 +82,31 @@ final class ProjectOperations {
                         "Project '" + claims.projectId()
                                 + "' has running jobs on this runner — stop them before a rename");
             }
+            // The store validates the name; it must be checked before the name becomes a path.
+            boolean taken;
+            try {
+                taken = workspace.store().exists(claims.tenantId(), newProject);
+            } catch (RootDirException e) {
+                throw new OperationException("bad-name", e.getMessage(), e);
+            }
             Path newHome = workspace.home(claims.tenantId(), newProject);
-            if (Files.exists(newHome) || workspace.store().exists(claims.tenantId(), newProject)) {
+            if (taken || Files.exists(newHome)) {
                 throw new OperationException(
                         "name-taken",
                         "This runner already holds data for project '" + newProject + "' — merging is not a rename");
             }
-            long rewritten = workspace.store().rename(claims.tenantId(), claims.projectId(), newProject);
+            // HOME moves first and moves back when the workspace move fails, so a failed
+            // rename leaves the project whole under its old name and a retry can succeed.
+            Path oldHome = workspace.home(claims.tenantId(), claims.projectId());
+            moveTree(oldHome, newHome);
+            long rewritten;
+            try {
+                rewritten = workspace.store().rename(claims.tenantId(), claims.projectId(), newProject);
+            } catch (RootDirException e) {
+                moveTree(newHome, oldHome);
+                throw new OperationException("rename-failed", e.getMessage(), e);
+            }
             workspace.jobs().forgetScope(scope(call));
-            moveTree(workspace.home(claims.tenantId(), claims.projectId()), newHome);
             return OperationResult.of(Map.of("rewritten", rewritten));
         });
     }

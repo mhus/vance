@@ -55,6 +55,7 @@ public final class RootDirStore {
     public static final String DESCRIPTOR_SUFFIX = ".json";
 
     private static final Pattern SAFE_LABEL = Pattern.compile("[a-zA-Z0-9._-]+");
+    private static final Pattern SAFE_SEGMENT = Pattern.compile("[a-zA-Z0-9_][a-zA-Z0-9._-]*");
     private static final int MAX_COLLISION_RETRIES = 50;
     /** Fixed set of stripe monitors for {@link #withLabelLock} — bounded, no map growth. */
     private static final int LABEL_LOCK_STRIPES = 64;
@@ -960,11 +961,20 @@ public final class RootDirStore {
         if (isBlank(tenantId)) {
             throw new RootDirException("tenantId is required");
         }
+        requirePathSegment("tenantId", tenantId);
     }
 
     private static void requireProject(String projectId) {
         if (isBlank(projectId)) {
             throw new RootDirException("projectId is required");
+        }
+        requirePathSegment("projectId", projectId);
+    }
+
+    /** Both ids become directory names under the workspace root, so they must stay one path segment. */
+    private static void requirePathSegment(String what, String value) {
+        if (!SAFE_SEGMENT.matcher(value).matches()) {
+            throw new RootDirException(what + " is not a plain name (letters, digits, '.', '_', '-'): " + value);
         }
     }
 }

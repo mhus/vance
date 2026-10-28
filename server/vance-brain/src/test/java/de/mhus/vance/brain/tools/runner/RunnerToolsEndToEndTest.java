@@ -73,6 +73,7 @@ class RunnerToolsEndToEndTest {
     private RunnerWork work;
     private GitAuthProvider authProvider;
     private GitCredentialResolver credentials;
+    private RunnerRepoUrl repoUrls;
     private RunnerJobs jobs;
     private de.mhus.vance.brain.execution.ExecutionRegistryService registry;
     private de.mhus.vance.brain.enginemessage.EngineMessageRouter router;
@@ -113,7 +114,8 @@ class RunnerToolsEndToEndTest {
         work = new RunnerWork(new RunnerClient(bindings, new JwtService(keys)), bindings);
         config = new RunnerToolConfiguration();
         authProvider = mock(GitAuthProvider.class);
-        credentials = new GitCredentialResolver(authProvider);
+        repoUrls = new RunnerRepoUrl(true, url -> {});
+        credentials = new GitCredentialResolver(authProvider, List.of(), repoUrls);
         registry = new de.mhus.vance.brain.execution.ExecutionRegistryService();
         router = mock(de.mhus.vance.brain.enginemessage.EngineMessageRouter.class);
         when(router.dispatch(
@@ -352,7 +354,7 @@ class RunnerToolsEndToEndTest {
             throws Exception {
         assumeProgram("git");
         var c = ctx("p-roots");
-        Tool create = config.runnerRootCreate(work, credentials);
+        Tool create = config.runnerRootCreate(work, credentials, repoUrls);
         java.nio.file.Path repo = sourceRepo(repoDir);
 
         Map<String, Object> scratch = create.invoke(Map.of("type", "temp", "label", "scratch"), c);
@@ -386,11 +388,11 @@ class RunnerToolsEndToEndTest {
                 .thenReturn(new org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider("bot", "s3cret-token"));
         java.nio.file.Path repo = sourceRepo(repoDir);
 
-        Map<String, Object> created = config.runnerRootCreate(work, credentials)
+        Map<String, Object> created = config.runnerRootCreate(work, credentials, repoUrls)
                 .invoke(Map.of("type", "git", "repoUrl", repo.toString(), "credentialAlias", "ci"), c);
 
         assertThat(created.toString()).doesNotContain("s3cret-token");
-        assertThatThrownBy(() -> config.runnerRootCreate(work, credentials)
+        assertThatThrownBy(() -> config.runnerRootCreate(work, credentials, repoUrls)
                         .invoke(Map.of("type", "git", "repoUrl", repo.toString(), "credentialAlias", "unknown"), c))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("Unknown git credential alias");
@@ -401,8 +403,8 @@ class RunnerToolsEndToEndTest {
         assumeProgram("python3");
         var c = ctx("p-python");
 
-        Map<String, Object> created =
-                config.runnerRootCreate(work, credentials).invoke(Map.of("type", "python", "label", "_python"), c);
+        Map<String, Object> created = config.runnerRootCreate(work, credentials, repoUrls)
+                .invoke(Map.of("type", "python", "label", "_python"), c);
 
         assertThat(created.get("type")).isEqualTo("python");
         assertThat(((Map<?, ?>) created.get("metadata")).get("pythonPath")).isEqualTo("python3");
@@ -411,7 +413,7 @@ class RunnerToolsEndToEndTest {
     @Test
     void theCreateToolRefusesWhatDoesNotAddUp() {
         var c = ctx("p-invalid");
-        Tool create = config.runnerRootCreate(work, credentials);
+        Tool create = config.runnerRootCreate(work, credentials, repoUrls);
 
         assertThatThrownBy(() -> create.invoke(Map.of("type", "svn"), c))
                 .isInstanceOf(ToolException.class)

@@ -1,4 +1,4 @@
-package de.mhus.vance.shared.workspace;
+package de.mhus.vance.exec;
 
 import java.util.Map;
 import lombok.Builder;
@@ -7,7 +7,7 @@ import lombok.ToString;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Input to {@link WorkspaceService#createRootDir(RootDirSpec)}. Service
+ * Input to {@link RootDirStore#createRootDir(RootDirSpec)}. Service
  * adds {@code dirName}, {@code createdAt}, {@code tenant}, normalizes
  * the descriptor, and returns a {@link RootDirHandle}.
  */
@@ -37,7 +37,7 @@ public class RootDirSpec {
     /** Worker-supplied hint for the {@code dirName}. Service falls back to a UUID on collision or absence. */
     private final @Nullable String labelHint;
 
-    /** When {@code true}, RootDir is removed on {@link WorkspaceService#disposeByCreator}. */
+    /** When {@code true}, RootDir is removed on {@link RootDirStore#disposeByCreator}. */
     private final boolean deleteOnCreatorClose;
 
     /** Handler-specific payload, copied verbatim into {@link WorkspaceDescriptor#getMetadata()}. */

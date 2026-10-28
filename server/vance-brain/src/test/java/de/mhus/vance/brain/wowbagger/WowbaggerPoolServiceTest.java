@@ -114,10 +114,10 @@ class WowbaggerPoolServiceTest {
                         "openai", "cortecs", "deepseek-v4-flash-0731", false));
         lenient()
                 .when(workspaceService.createRootDir(
-                        org.mockito.ArgumentMatchers.any(de.mhus.vance.shared.workspace.RootDirSpec.class)))
+                        org.mockito.ArgumentMatchers.any(de.mhus.vance.exec.RootDirSpec.class)))
                 .thenAnswer(inv -> {
-                    de.mhus.vance.shared.workspace.RootDirSpec spec = inv.getArgument(0);
-                    var handle = mock(de.mhus.vance.shared.workspace.RootDirHandle.class);
+                    de.mhus.vance.exec.RootDirSpec spec = inv.getArgument(0);
+                    var handle = mock(de.mhus.vance.exec.RootDirHandle.class);
                     lenient().when(handle.getDirName()).thenReturn(spec.getLabelHint());
                     return handle;
                 });

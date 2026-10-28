@@ -1,16 +1,14 @@
 package de.mhus.vance.brain.tools.workspace;
 
-import java.util.Map;
-
-import org.apache.commons.lang3.StringUtils;
-import org.jspecify.annotations.Nullable;
-
-import de.mhus.vance.shared.workspace.RootDirHandle;
-import de.mhus.vance.shared.workspace.RootDirSpec;
+import de.mhus.vance.exec.RootDirHandle;
+import de.mhus.vance.exec.RootDirSpec;
 import de.mhus.vance.shared.workspace.WorkspaceException;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import java.util.Map;
+import org.apache.commons.lang3.StringUtils;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Ensures the canonical per-project RootDir of a given type exists, and
@@ -39,8 +37,7 @@ import de.mhus.vance.toolpack.ToolInvocationContext;
  */
 public final class TypedRootDirProvisioner {
 
-    private TypedRootDirProvisioner() {
-    }
+    private TypedRootDirProvisioner() {}
 
     /**
      * Returns the canonical RootDir of {@code type} labelled
@@ -55,9 +52,15 @@ public final class TypedRootDirProvisioner {
             String type,
             String label,
             Map<String, Object> metadata) {
-        return ensure(workspace, ctx.tenantId(), ctx.projectId(),
+        return ensure(
+                workspace,
+                ctx.tenantId(),
+                ctx.projectId(),
                 StringUtils.defaultIfBlank(ctx.processId(), ctx.sessionId()),
-                ctx.sessionId(), type, label, metadata);
+                ctx.sessionId(),
+                type,
+                label,
+                metadata);
     }
 
     /**
@@ -89,8 +92,7 @@ public final class TypedRootDirProvisioner {
         }
 
         if (StringUtils.isBlank(creator)) {
-            throw new ToolException(
-                    "Workspace tool needs a process or session scope to provision a RootDir");
+            throw new ToolException("Workspace tool needs a process or session scope to provision a RootDir");
         }
 
         RootDirSpec spec = RootDirSpec.builder()
@@ -150,17 +152,13 @@ public final class TypedRootDirProvisioner {
 
     /** The canonical dir of this type, or {@code null} when absent. */
     public static @Nullable RootDirHandle find(
-            WorkspaceService workspace,
-            String tenantId,
-            String projectId,
-            String type,
-            String label) {
+            WorkspaceService workspace, String tenantId, String projectId, String type, String label) {
         for (RootDirHandle h : workspace.listRootDirs(tenantId, projectId)) {
             if (!type.equals(h.getType())) {
                 continue;
             }
-            String existingLabel = h.getDescriptor() == null
-                    ? null : h.getDescriptor().getLabel();
+            String existingLabel =
+                    h.getDescriptor() == null ? null : h.getDescriptor().getLabel();
             if (label.equals(existingLabel)) {
                 return h;
             }

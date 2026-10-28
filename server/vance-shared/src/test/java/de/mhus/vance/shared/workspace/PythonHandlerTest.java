@@ -9,6 +9,9 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
+import de.mhus.vance.exec.RootDirHandle;
+import de.mhus.vance.exec.RootDirSpec;
+import de.mhus.vance.exec.WorkspaceDescriptor;
 import de.mhus.vance.shared.process.TestProcessLaunchers;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

@@ -911,11 +911,11 @@ public class WowbaggerPoolService {
             state.setWorkTargetName(wanted);
             return wanted; // adopt: previous run with this id or the pinned root
         }
-        de.mhus.vance.shared.workspace.RootDirHandle handle =
-                workspaceService.createRootDir(de.mhus.vance.shared.workspace.RootDirSpec.builder()
+        de.mhus.vance.exec.RootDirHandle handle =
+                workspaceService.createRootDir(de.mhus.vance.exec.RootDirSpec.builder()
                         .tenantId(tenantId)
                         .projectId(projectId)
-                        .type(de.mhus.vance.shared.workspace.EphemeralHandler.TYPE)
+                        .type(de.mhus.vance.exec.EphemeralHandler.TYPE)
                         .creatorProcessId(process.getId())
                         .creatorEngine("wowbagger")
                         .labelHint(wanted)

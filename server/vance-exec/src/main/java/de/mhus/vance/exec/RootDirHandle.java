@@ -1,4 +1,4 @@
-package de.mhus.vance.shared.workspace;
+package de.mhus.vance.exec;
 
 import java.nio.file.Path;
 import lombok.Builder;
@@ -7,7 +7,7 @@ import lombok.ToString;
 
 /**
  * Handle to a single RootDir on disk. Returned by
- * {@link WorkspaceService#createRootDir(RootDirSpec)} and friends.
+ * {@link RootDirStore#createRootDir(RootDirSpec)} and friends.
  *
  * <p>Handles are <em>not</em> refcounted. Sharing means passing the
  * handle to other workers — when the original creator's process ends

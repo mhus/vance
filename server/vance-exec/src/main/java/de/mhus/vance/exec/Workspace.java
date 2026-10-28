@@ -1,4 +1,4 @@
-package de.mhus.vance.shared.workspace;
+package de.mhus.vance.exec;
 
 import java.nio.file.Path;
 import lombok.AllArgsConstructor;

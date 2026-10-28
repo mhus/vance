@@ -3,6 +3,8 @@ package de.mhus.vance.shared.workspace;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import de.mhus.vance.exec.RootDirHandle;
+import de.mhus.vance.exec.WorkspaceDescriptor;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

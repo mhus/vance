@@ -8,10 +8,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.exec.RootDirHandle;
+import de.mhus.vance.exec.RootDirSpec;
+import de.mhus.vance.exec.WorkspaceDescriptor;
 import de.mhus.vance.shared.workspace.GitHandler;
-import de.mhus.vance.shared.workspace.RootDirHandle;
-import de.mhus.vance.shared.workspace.RootDirSpec;
-import de.mhus.vance.shared.workspace.WorkspaceDescriptor;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;

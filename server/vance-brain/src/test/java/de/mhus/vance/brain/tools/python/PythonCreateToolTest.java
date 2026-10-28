@@ -9,10 +9,10 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.exec.RootDirHandle;
+import de.mhus.vance.exec.RootDirSpec;
+import de.mhus.vance.exec.WorkspaceDescriptor;
 import de.mhus.vance.shared.workspace.PythonHandler;
-import de.mhus.vance.shared.workspace.RootDirHandle;
-import de.mhus.vance.shared.workspace.RootDirSpec;
-import de.mhus.vance.shared.workspace.WorkspaceDescriptor;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.nio.file.Path;
@@ -38,8 +38,7 @@ class PythonCreateToolTest {
     @Test
     void invoke_returnsExistingRootDir_whenLabelMatches() {
         RootDirHandle existing = handle("python", "python");
-        when(workspace.listRootDirs(eq("acme"), eq("instant-hole")))
-                .thenReturn(List.of(existing));
+        when(workspace.listRootDirs(eq("acme"), eq("instant-hole"))).thenReturn(List.of(existing));
 
         Map<String, Object> out = tool.invoke(Map.of(), CTX);
 
@@ -50,8 +49,7 @@ class PythonCreateToolTest {
 
     @Test
     void invoke_createsFreshRootDir_whenNoneMatches() {
-        when(workspace.listRootDirs(eq("acme"), eq("instant-hole")))
-                .thenReturn(List.of());
+        when(workspace.listRootDirs(eq("acme"), eq("instant-hole"))).thenReturn(List.of());
         RootDirHandle fresh = handle("python", "python");
         when(workspace.createRootDir(any(RootDirSpec.class))).thenReturn(fresh);
 
@@ -65,11 +63,9 @@ class PythonCreateToolTest {
     @Test
     void invoke_customLabel_findsExistingByLabel() {
         RootDirHandle other = handle("analysis-env", "analysis-env");
-        when(workspace.listRootDirs(eq("acme"), eq("instant-hole")))
-                .thenReturn(List.of(other));
+        when(workspace.listRootDirs(eq("acme"), eq("instant-hole"))).thenReturn(List.of(other));
 
-        Map<String, Object> out = tool.invoke(
-                Map.of("label", "analysis-env"), CTX);
+        Map<String, Object> out = tool.invoke(Map.of("label", "analysis-env"), CTX);
 
         assertThat(out).containsEntry("status", "exists");
         assertThat(out).containsEntry("dirName", "analysis-env");
@@ -79,13 +75,11 @@ class PythonCreateToolTest {
     @Test
     void invoke_customLabel_createsWhenOnlyOtherLabelsExist() {
         RootDirHandle differentLabel = handle("python", "python");
-        when(workspace.listRootDirs(eq("acme"), eq("instant-hole")))
-                .thenReturn(List.of(differentLabel));
+        when(workspace.listRootDirs(eq("acme"), eq("instant-hole"))).thenReturn(List.of(differentLabel));
         RootDirHandle fresh = handle("analysis-env", "analysis-env");
         when(workspace.createRootDir(any(RootDirSpec.class))).thenReturn(fresh);
 
-        Map<String, Object> out = tool.invoke(
-                Map.of("label", "analysis-env"), CTX);
+        Map<String, Object> out = tool.invoke(Map.of("label", "analysis-env"), CTX);
 
         assertThat(out).containsEntry("status", "created");
         assertThat(out).containsEntry("dirName", "analysis-env");
@@ -96,8 +90,7 @@ class PythonCreateToolTest {
         // A git-type RootDir with label "python" should not satisfy the
         // python_create idempotency check — different handler.
         RootDirHandle gitMisleading = handleOfType("python", "python", "git");
-        when(workspace.listRootDirs(eq("acme"), eq("instant-hole")))
-                .thenReturn(List.of(gitMisleading));
+        when(workspace.listRootDirs(eq("acme"), eq("instant-hole"))).thenReturn(List.of(gitMisleading));
         RootDirHandle fresh = handle("python", "python");
         when(workspace.createRootDir(any(RootDirSpec.class))).thenReturn(fresh);
 
@@ -110,13 +103,11 @@ class PythonCreateToolTest {
     @Test
     void invoke_existingRootDir_promotesToWorkingDirWhenRequested() {
         RootDirHandle existing = handle("python", "python");
-        when(workspace.listRootDirs(eq("acme"), eq("instant-hole")))
-                .thenReturn(List.of(existing));
+        when(workspace.listRootDirs(eq("acme"), eq("instant-hole"))).thenReturn(List.of(existing));
 
         tool.invoke(Map.of("asWorkingDir", true), CTX);
 
-        verify(workspace, times(1))
-                .setWorkingDir("acme", "instant-hole", "proc", "python");
+        verify(workspace, times(1)).setWorkingDir("acme", "instant-hole", "proc", "python");
         verify(workspace, never()).createRootDir(any());
     }
 

@@ -1,9 +1,9 @@
 package de.mhus.vance.brain.script;
 
 import de.mhus.vance.brain.tools.workspace.TypedRootDirProvisioner;
+import de.mhus.vance.exec.RootDirHandle;
 import de.mhus.vance.shared.workspace.NodeHandler;
 import de.mhus.vance.shared.workspace.NpmPackageSpec;
-import de.mhus.vance.shared.workspace.RootDirHandle;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;

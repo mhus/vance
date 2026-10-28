@@ -1,5 +1,6 @@
 package de.mhus.vance.shared.workspace;
 
+import de.mhus.vance.exec.WorkspaceDescriptor;
 import java.time.Instant;
 import lombok.AllArgsConstructor;
 import lombok.Builder;

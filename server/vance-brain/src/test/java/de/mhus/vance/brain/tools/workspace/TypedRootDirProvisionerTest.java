@@ -8,20 +8,18 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.util.List;
-import java.util.Map;
-
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
-
+import de.mhus.vance.exec.RootDirHandle;
+import de.mhus.vance.exec.RootDirSpec;
+import de.mhus.vance.exec.WorkspaceDescriptor;
 import de.mhus.vance.shared.workspace.PythonHandler;
-import de.mhus.vance.shared.workspace.RootDirHandle;
-import de.mhus.vance.shared.workspace.RootDirSpec;
-import de.mhus.vance.shared.workspace.WorkspaceDescriptor;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import java.util.List;
+import java.util.Map;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 class TypedRootDirProvisionerTest {
 
@@ -67,7 +65,10 @@ class TypedRootDirProvisionerTest {
         when(workspace.createRootDir(any())).thenReturn(created);
 
         RootDirHandle result = TypedRootDirProvisioner.ensure(
-                workspace, ctx, PythonHandler.TYPE, PythonHandler.DEFAULT_LABEL,
+                workspace,
+                ctx,
+                PythonHandler.TYPE,
+                PythonHandler.DEFAULT_LABEL,
                 Map.of(PythonHandler.META_PYTHON_PATH, "python3"));
 
         assertThat(result).isSameAs(created);
@@ -78,8 +79,7 @@ class TypedRootDirProvisionerTest {
         // A venv is expensive to rebuild — the canonical workspace is per
         // project, not per turn.
         assertThat(spec.getValue().isDeleteOnCreatorClose()).isFalse();
-        assertThat(spec.getValue().getMetadata())
-                .containsEntry(PythonHandler.META_PYTHON_PATH, "python3");
+        assertThat(spec.getValue().getMetadata()).containsEntry(PythonHandler.META_PYTHON_PATH, "python3");
     }
 
     @Test
@@ -118,7 +118,7 @@ class TypedRootDirProvisionerTest {
         when(ctx.projectId()).thenReturn("");
 
         assertThatThrownBy(() -> TypedRootDirProvisioner.ensure(
-                workspace, ctx, PythonHandler.TYPE, PythonHandler.DEFAULT_LABEL, Map.of()))
+                        workspace, ctx, PythonHandler.TYPE, PythonHandler.DEFAULT_LABEL, Map.of()))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("tenant and project scope");
     }
@@ -132,7 +132,7 @@ class TypedRootDirProvisionerTest {
         when(workspace.listRootDirs("acme", "proj")).thenReturn(List.of(temp, other));
 
         assertThat(TypedRootDirProvisioner.find(
-                workspace, "acme", "proj", PythonHandler.TYPE, PythonHandler.DEFAULT_LABEL))
+                        workspace, "acme", "proj", PythonHandler.TYPE, PythonHandler.DEFAULT_LABEL))
                 .isNull();
     }
 }

@@ -2,6 +2,10 @@ package de.mhus.vance.shared.workspace;
 
 import de.mhus.vance.exec.ProcessLauncher;
 import de.mhus.vance.exec.ProcessSpec;
+import de.mhus.vance.exec.RootDirHandle;
+import de.mhus.vance.exec.RootDirSpec;
+import de.mhus.vance.exec.WorkspaceContentHandler;
+import de.mhus.vance.exec.WorkspaceDescriptor;
 import jakarta.annotation.PostConstruct;
 import java.io.IOException;
 import java.io.UncheckedIOException;

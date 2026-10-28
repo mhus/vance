@@ -1,5 +1,9 @@
 package de.mhus.vance.shared.workspace;
 
+import de.mhus.vance.exec.RootDirHandle;
+import de.mhus.vance.exec.RootDirSpec;
+import de.mhus.vance.exec.WorkspaceContentHandler;
+import de.mhus.vance.exec.WorkspaceDescriptor;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.LinkedHashMap;

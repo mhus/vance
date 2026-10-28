@@ -10,10 +10,16 @@
 
     <artifactId>vance-exec</artifactId>
     <name>vance-exec</name>
-    <description>Vance Exec — the plain-Java core of running programs for a tenant: process specs and the launcher contract, the sealed child environment, isolation argv (bwrap template) and prlimit caps, per-call scratch directories, program probes. Shared by vance-brain (workspace mode local) and the runner (planning/runner.md), consumed by vance-toolpack and vance-foot for the environment policy. No Spring, no MongoDB — the runner must build as a native image.</description>
+    <description>Vance Exec — the plain-Java core of running programs for a tenant: process specs and the launcher contract, the sealed child environment, isolation argv (bwrap template) and prlimit caps, per-call scratch directories, program probes. Shared by vance-brain (workspace mode local) and the runner (planning/runner.md), consumed by vance-toolpack and vance-foot for the environment policy. No Spring, no MongoDB — the runner must build as a native image. Also the RootDir model of a workspace on disk (descriptors, handlers, the store).</description>
     <packaging>jar</packaging>
 
     <dependencies>
+        <!-- Descriptor files (<dirName>.json, workspace.json) are Jackson 3 JSON,
+             the format existing workspaces on disk already have. -->
+        <dependency>
+            <groupId>tools.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>

@@ -6,13 +6,13 @@
  * <p>Results that should outlive the workspace are persisted as
  * {@link de.mhus.vance.shared.document.DocumentDocument}s, not here.
  *
- * <p>Model: one {@link de.mhus.vance.shared.workspace.Workspace} per
- * project, holding N {@link de.mhus.vance.shared.workspace.RootDirHandle}s.
+ * <p>Model: one {@link de.mhus.vance.exec.Workspace} per
+ * project, holding N {@link de.mhus.vance.exec.RootDirHandle}s.
  * Each RootDir is a folder with a sibling JSON
- * {@link de.mhus.vance.shared.workspace.WorkspaceDescriptor}. Type-specific
+ * {@link de.mhus.vance.exec.WorkspaceDescriptor}. Type-specific
  * behaviour lives in a
- * {@link de.mhus.vance.shared.workspace.WorkspaceContentHandler}
- * implementation (initially {@link de.mhus.vance.shared.workspace.TempHandler}).
+ * {@link de.mhus.vance.exec.WorkspaceContentHandler}
+ * implementation (initially {@link de.mhus.vance.exec.TempHandler}).
  *
  * <p>Spec: {@code specification/workspace-management.md}.
  */

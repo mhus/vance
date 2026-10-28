@@ -1,8 +1,8 @@
-package de.mhus.vance.shared.workspace;
+package de.mhus.vance.exec;
 
 /**
  * Type-specific behaviour for a RootDir. Implementations are Spring
- * beans, registered with the {@link WorkspaceService} by the
+ * beans, registered with the {@link RootDirStore} by the
  * {@link #type()} key.
  *
  * <p>The service handles folder creation/deletion and descriptor I/O —
@@ -39,7 +39,7 @@ public interface WorkspaceContentHandler {
     void recover(RootDirHandle handle, WorkspaceDescriptor descriptor);
 
     /**
-     * Called during {@link WorkspaceService#disposeRootDir} before the
+     * Called during {@link RootDirStore#disposeRootDir} before the
      * service removes folder + descriptor. Handlers can perform final
      * actions here (e.g. commit-on-close for git, if configured).
      */

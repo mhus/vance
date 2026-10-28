@@ -10,9 +10,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.exec.RootDirHandle;
+import de.mhus.vance.exec.WorkspaceDescriptor;
 import de.mhus.vance.shared.workspace.NodeHandler;
-import de.mhus.vance.shared.workspace.RootDirHandle;
-import de.mhus.vance.shared.workspace.WorkspaceDescriptor;
 import de.mhus.vance.shared.workspace.WorkspaceException;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.ToolInvocationContext;

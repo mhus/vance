@@ -1,6 +1,6 @@
 package de.mhus.vance.brain.zarniwoop;
 
-import de.mhus.vance.shared.workspace.RootDirHandle;
+import de.mhus.vance.exec.RootDirHandle;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.research.SearchScope;
 import java.io.IOException;
@@ -56,11 +56,9 @@ public class ZarniwoopContentStore {
             throw new ZarniwoopException("stash bytes must not be null");
         }
 
-        String creatorProcess = StringUtils.isBlank(scope.processId())
-                ? FALLBACK_PROCESS_ID
-                : scope.processId();
-        RootDirHandle tempRoot = workspaceService.getOrCreateTempRootDir(
-                scope.tenantId(), scope.projectId(), creatorProcess);
+        String creatorProcess = StringUtils.isBlank(scope.processId()) ? FALLBACK_PROCESS_ID : scope.processId();
+        RootDirHandle tempRoot =
+                workspaceService.getOrCreateTempRootDir(scope.tenantId(), scope.projectId(), creatorProcess);
         Path dir = tempRoot.getPath().resolve(STASH_SUBDIR);
         String safeName = sanitize(filename);
         Path target = dir.resolve(Instant.now().toEpochMilli() + "-" + safeName);
@@ -68,11 +66,9 @@ public class ZarniwoopContentStore {
             Files.createDirectories(dir);
             Files.write(target, bytes);
         } catch (IOException e) {
-            throw new ZarniwoopException(
-                    "stash write failed for '" + target + "': " + e.getMessage(), e);
+            throw new ZarniwoopException("stash write failed for '" + target + "': " + e.getMessage(), e);
         }
-        log.debug("Zarniwoop: stashed {} bytes ({}) at '{}'",
-                bytes.length, mimeType, target);
+        log.debug("Zarniwoop: stashed {} bytes ({}) at '{}'", bytes.length, mimeType, target);
         return target;
     }
 

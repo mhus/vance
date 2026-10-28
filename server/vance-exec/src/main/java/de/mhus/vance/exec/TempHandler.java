@@ -1,16 +1,13 @@
-package de.mhus.vance.shared.workspace;
-
-import org.springframework.stereotype.Component;
+package de.mhus.vance.exec;
 
 /**
  * Temp RootDir — content is not persisted across suspend/recover.
  * After a pod migration the folder comes back empty, by design: this
  * keeps "results live as Documents" honest. Workers that need to keep
  * something across a suspend must import it as a
- * {@link de.mhus.vance.shared.document.DocumentDocument} before the
+ * {@code DocumentDocument} before the
  * suspend.
  */
-@Component
 public class TempHandler implements WorkspaceContentHandler {
 
     public static final String TYPE = "temp";

@@ -17,8 +17,8 @@ import de.mhus.vance.api.transfer.TransferInitResponse;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.ws.WebSocketSender;
-import de.mhus.vance.shared.workspace.RootDirHandle;
-import de.mhus.vance.shared.workspace.WorkspaceDescriptor;
+import de.mhus.vance.exec.RootDirHandle;
+import de.mhus.vance.exec.WorkspaceDescriptor;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -67,11 +67,13 @@ class BrainTransferServiceTest {
 
         // Capture every outbound frame so tests can inspect or react.
         doAnswer(inv -> {
-            String type = inv.getArgument(1);
-            Object data = inv.getArgument(2);
-            captured.add(new CapturedFrame(type, data));
-            return null;
-        }).when(sender).sendNotification(any(), anyString(), any());
+                    String type = inv.getArgument(1);
+                    Object data = inv.getArgument(2);
+                    captured.add(new CapturedFrame(type, data));
+                    return null;
+                })
+                .when(sender)
+                .sendNotification(any(), anyString(), any());
 
         service = new BrainTransferService(workspace, sender, connections, properties);
         service.start();
@@ -89,8 +91,7 @@ class BrainTransferServiceTest {
         Files.write(source, payload);
         when(workspace.resolve("t1", "p1", "outbox", "out.bin")).thenReturn(source);
 
-        var future = service.startDownload(
-                "s1", "t1", "p1", "outbox", "out.bin", "client/local.bin", null);
+        var future = service.startDownload("s1", "t1", "p1", "outbox", "out.bin", "client/local.bin", null);
 
         // First frame: TransferInit with totalSize + hash
         TransferInit init = waitForFrame(MessageType.TRANSFER_INIT, TransferInit.class);
@@ -99,8 +100,8 @@ class BrainTransferServiceTest {
         String transferId = init.getTransferId();
 
         // Foot replies ok=true
-        service.onTransferInitResponse(TransferInitResponse.builder()
-                .transferId(transferId).ok(true).build());
+        service.onTransferInitResponse(
+                TransferInitResponse.builder().transferId(transferId).ok(true).build());
 
         // Service streams chunks asynchronously — wait until 'last' chunk
         TransferChunk lastChunk = waitForLastChunk(transferId);
@@ -112,8 +113,11 @@ class BrainTransferServiceTest {
 
         // Foot sends Complete
         service.onTransferComplete(TransferComplete.builder()
-                .transferId(transferId).ok(true)
-                .bytesWritten(payload.length).hashCheck("ok").build());
+                .transferId(transferId)
+                .ok(true)
+                .bytesWritten(payload.length)
+                .hashCheck("ok")
+                .build());
 
         // Brain sends Finish
         TransferFinish finish = waitForFrame(MessageType.TRANSFER_FINISH, TransferFinish.class);
@@ -129,15 +133,17 @@ class BrainTransferServiceTest {
     @Test
     void downloadInitDeclined() throws Exception {
         Path source = brainRoot.resolve("source.bin");
-        Files.write(source, new byte[]{1, 2, 3});
+        Files.write(source, new byte[] {1, 2, 3});
         when(workspace.resolve("t1", "p1", "outbox", "out.bin")).thenReturn(source);
 
-        var future = service.startDownload(
-                "s1", "t1", "p1", "outbox", "out.bin", "client/local.bin", null);
+        var future = service.startDownload("s1", "t1", "p1", "outbox", "out.bin", "client/local.bin", null);
         TransferInit init = waitForFrame(MessageType.TRANSFER_INIT, TransferInit.class);
 
         service.onTransferInitResponse(TransferInitResponse.builder()
-                .transferId(init.getTransferId()).ok(false).error("path invalid").build());
+                .transferId(init.getTransferId())
+                .ok(false)
+                .error("path invalid")
+                .build());
 
         TransferResult result = future.get(2, TimeUnit.SECONDS);
         assertThat(result.ok()).isFalse();
@@ -150,8 +156,7 @@ class BrainTransferServiceTest {
         when(workspace.getRootDir("t1", "p1", "uploads")).thenReturn(Optional.of(stubHandle(brainRoot)));
         when(workspace.resolve("t1", "p1", "uploads", "u.bin")).thenReturn(target);
 
-        var future = service.startUpload(
-                "s1", "t1", "p1", "uploads", "u.bin", "client/source.bin", null);
+        var future = service.startUpload("s1", "t1", "p1", "uploads", "u.bin", "client/source.bin", null);
 
         // Brain triggers foot via ClientFileUploadRequest
         waitForFrame(MessageType.CLIENT_FILE_UPLOAD_REQUEST, Object.class);
@@ -159,16 +164,17 @@ class BrainTransferServiceTest {
         // Foot answers with TransferInit
         byte[] payload = "uploaded-payload-content".getBytes();
         String transferId = lastTransferIdFromUploadRequest();
-        service.onTransferInit(wsSession, TransferInit.builder()
-                .transferId(transferId)
-                .source("client/source.bin")
-                .target("u.bin")
-                .totalSize(payload.length)
-                .hash(sha256Hex(payload))
-                .build());
+        service.onTransferInit(
+                wsSession,
+                TransferInit.builder()
+                        .transferId(transferId)
+                        .source("client/source.bin")
+                        .target("u.bin")
+                        .totalSize(payload.length)
+                        .hash(sha256Hex(payload))
+                        .build());
 
-        TransferInitResponse rsp = waitForFrame(
-                MessageType.TRANSFER_INIT_RESPONSE, TransferInitResponse.class);
+        TransferInitResponse rsp = waitForFrame(MessageType.TRANSFER_INIT_RESPONSE, TransferInitResponse.class);
         assertThat(rsp.isOk()).isTrue();
 
         // Foot sends single chunk with last=true
@@ -176,7 +182,8 @@ class BrainTransferServiceTest {
                 .transferId(transferId)
                 .seq(0)
                 .bytes(Base64.getEncoder().encodeToString(payload))
-                .last(true).build());
+                .last(true)
+                .build());
 
         // Brain sends Complete
         TransferComplete complete = waitForFrame(MessageType.TRANSFER_COMPLETE, TransferComplete.class);
@@ -191,8 +198,8 @@ class BrainTransferServiceTest {
         assertThat(Files.readAllBytes(target)).isEqualTo(payload);
 
         // Foot sends Finish — triggers cleanup
-        service.onTransferFinish(TransferFinish.builder()
-                .transferId(transferId).ok(true).build());
+        service.onTransferFinish(
+                TransferFinish.builder().transferId(transferId).ok(true).build());
     }
 
     @Test
@@ -201,25 +208,28 @@ class BrainTransferServiceTest {
         when(workspace.getRootDir("t1", "p1", "uploads")).thenReturn(Optional.of(stubHandle(brainRoot)));
         when(workspace.resolve("t1", "p1", "uploads", "bad.bin")).thenReturn(target);
 
-        var future = service.startUpload(
-                "s1", "t1", "p1", "uploads", "bad.bin", "client/source.bin", null);
+        var future = service.startUpload("s1", "t1", "p1", "uploads", "bad.bin", "client/source.bin", null);
         waitForFrame(MessageType.CLIENT_FILE_UPLOAD_REQUEST, Object.class);
         String transferId = lastTransferIdFromUploadRequest();
 
         byte[] real = "real-bytes".getBytes();
-        service.onTransferInit(wsSession, TransferInit.builder()
-                .transferId(transferId)
-                .source("client/source.bin")
-                .target("bad.bin")
-                .totalSize(real.length)
-                .hash("0000000000000000000000000000000000000000000000000000000000000000")
-                .build());
+        service.onTransferInit(
+                wsSession,
+                TransferInit.builder()
+                        .transferId(transferId)
+                        .source("client/source.bin")
+                        .target("bad.bin")
+                        .totalSize(real.length)
+                        .hash("0000000000000000000000000000000000000000000000000000000000000000")
+                        .build());
         waitForFrame(MessageType.TRANSFER_INIT_RESPONSE, TransferInitResponse.class);
 
         service.onTransferChunk(TransferChunk.builder()
-                .transferId(transferId).seq(0)
+                .transferId(transferId)
+                .seq(0)
                 .bytes(Base64.getEncoder().encodeToString(real))
-                .last(true).build());
+                .last(true)
+                .build());
 
         TransferComplete complete = waitForFrame(MessageType.TRANSFER_COMPLETE, TransferComplete.class);
         assertThat(complete.isOk()).isFalse();
@@ -236,13 +246,14 @@ class BrainTransferServiceTest {
         Files.createFile(source);
         when(workspace.resolve("t1", "p1", "outbox", "empty.bin")).thenReturn(source);
 
-        var future = service.startDownload(
-                "s1", "t1", "p1", "outbox", "empty.bin", "client/empty.bin", null);
+        var future = service.startDownload("s1", "t1", "p1", "outbox", "empty.bin", "client/empty.bin", null);
         TransferInit init = waitForFrame(MessageType.TRANSFER_INIT, TransferInit.class);
         assertThat(init.getTotalSize()).isZero();
 
         service.onTransferInitResponse(TransferInitResponse.builder()
-                .transferId(init.getTransferId()).ok(true).build());
+                .transferId(init.getTransferId())
+                .ok(true)
+                .build());
 
         TransferChunk only = waitForLastChunk(init.getTransferId());
         assertThat(only.getSeq()).isZero();
@@ -250,18 +261,19 @@ class BrainTransferServiceTest {
         assertThat(only.getBytes()).isEmpty();
 
         service.onTransferComplete(TransferComplete.builder()
-                .transferId(init.getTransferId()).ok(true).hashCheck("ok").build());
+                .transferId(init.getTransferId())
+                .ok(true)
+                .hashCheck("ok")
+                .build());
 
         future.get(2, TimeUnit.SECONDS);
     }
 
     @Test
     void downloadMissingSourceFails() throws Exception {
-        when(workspace.resolve("t1", "p1", "outbox", "missing.bin"))
-                .thenReturn(brainRoot.resolve("missing.bin"));
+        when(workspace.resolve("t1", "p1", "outbox", "missing.bin")).thenReturn(brainRoot.resolve("missing.bin"));
 
-        TransferResult result = service.startDownload(
-                "s1", "t1", "p1", "outbox", "missing.bin", "client/x.bin", null)
+        TransferResult result = service.startDownload("s1", "t1", "p1", "outbox", "missing.bin", "client/x.bin", null)
                 .get(2, TimeUnit.SECONDS);
         assertThat(result.ok()).isFalse();
         assertThat(result.error()).contains("not found");
@@ -271,8 +283,7 @@ class BrainTransferServiceTest {
     void uploadUnknownDirNameFails() throws Exception {
         when(workspace.getRootDir("t1", "p1", "ghost")).thenReturn(Optional.empty());
 
-        TransferResult result = service.startUpload(
-                "s1", "t1", "p1", "ghost", "x.bin", "client/x.bin", null)
+        TransferResult result = service.startUpload("s1", "t1", "p1", "ghost", "x.bin", "client/x.bin", null)
                 .get(2, TimeUnit.SECONDS);
         assertThat(result.ok()).isFalse();
         assertThat(result.error()).contains("unknown RootDir");
@@ -282,8 +293,7 @@ class BrainTransferServiceTest {
     void downloadWithoutConnectionFails() throws Exception {
         when(connections.find("s2")).thenReturn(Optional.empty());
 
-        TransferResult result = service.startDownload(
-                "s2", "t1", "p1", "outbox", "x.bin", "client/x.bin", null)
+        TransferResult result = service.startDownload("s2", "t1", "p1", "outbox", "x.bin", "client/x.bin", null)
                 .get(2, TimeUnit.SECONDS);
         assertThat(result.ok()).isFalse();
         assertThat(result.error()).contains("no active connection");
@@ -302,8 +312,8 @@ class BrainTransferServiceTest {
             }
             Thread.sleep(10);
         }
-        throw new AssertionError("Timed out waiting for frame: " + type
-                + " (have: " + captured.stream().map(f -> f.type).toList() + ")");
+        throw new AssertionError("Timed out waiting for frame: " + type + " (have: "
+                + captured.stream().map(f -> f.type).toList() + ")");
     }
 
     private TransferChunk waitForLastChunk(String transferId) throws InterruptedException {
@@ -330,7 +340,8 @@ class BrainTransferServiceTest {
                     && c.getTransferId().equals(transferId)) {
                 try {
                     out.write(Base64.getDecoder().decode(c.getBytes()));
-                } catch (java.io.IOException ignored) {}
+                } catch (java.io.IOException ignored) {
+                }
             }
         }
         return out.toByteArray();

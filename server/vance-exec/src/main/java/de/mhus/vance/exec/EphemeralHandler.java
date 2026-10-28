@@ -1,6 +1,4 @@
-package de.mhus.vance.shared.workspace;
-
-import org.springframework.stereotype.Component;
+package de.mhus.vance.exec;
 
 /**
  * Ephemeral RootDir — short-lived container for one-shot purposes such
@@ -12,9 +10,8 @@ import org.springframework.stereotype.Component;
  * keep the lazy temp-cache (§7.3) separate from explicit per-purpose
  * folders. A worker that wants a dedicated drop folder for a single
  * upload chooses {@code ephemeral}; ad-hoc tempfiles via
- * {@link WorkspaceService#createTempFile} stay on {@code temp}.
+ * {@link RootDirStore#createTempFile} stay on {@code temp}.
  */
-@Component
 public class EphemeralHandler implements WorkspaceContentHandler {
 
     public static final String TYPE = "ephemeral";

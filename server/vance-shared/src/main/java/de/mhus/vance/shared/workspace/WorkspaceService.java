@@ -2,16 +2,17 @@ package de.mhus.vance.shared.workspace;
 
 import de.mhus.vance.api.projects.WorkspaceNodeType;
 import de.mhus.vance.api.projects.WorkspaceTreeNodeDto;
+import de.mhus.vance.exec.RootDirException;
+import de.mhus.vance.exec.RootDirFileSizeExceededException;
+import de.mhus.vance.exec.RootDirFiles;
+import de.mhus.vance.exec.TreeNode;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileStore;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -21,8 +22,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -831,20 +832,7 @@ public class WorkspaceService {
     public Path write(
             String tenantId, String projectId, String dirName, String relativePath, @Nullable String content) {
         Path resolved = resolve(tenantId, projectId, dirName, relativePath);
-        try {
-            if (resolved.getParent() != null) {
-                Files.createDirectories(resolved.getParent());
-            }
-            Files.writeString(
-                    resolved,
-                    content == null ? "" : content,
-                    StandardCharsets.UTF_8,
-                    StandardOpenOption.CREATE,
-                    StandardOpenOption.TRUNCATE_EXISTING);
-            return resolved;
-        } catch (IOException e) {
-            throw new WorkspaceException("Write failed: " + e.getMessage(), e);
-        }
+        return translated(() -> RootDirFiles.write(resolved, content));
     }
 
     /**
@@ -855,15 +843,7 @@ public class WorkspaceService {
      */
     public Path writeStream(String tenantId, String projectId, String dirName, String relativePath, InputStream in) {
         Path resolved = resolve(tenantId, projectId, dirName, relativePath);
-        try {
-            if (resolved.getParent() != null) {
-                Files.createDirectories(resolved.getParent());
-            }
-            Files.copy(in, resolved, StandardCopyOption.REPLACE_EXISTING);
-            return resolved;
-        } catch (IOException e) {
-            throw new WorkspaceException("Write failed: " + e.getMessage(), e);
-        }
+        return translated(() -> RootDirFiles.writeStream(resolved, in));
     }
 
     /**
@@ -872,44 +852,14 @@ public class WorkspaceService {
      */
     public ReadResult read(String tenantId, String projectId, String dirName, String relativePath, int maxChars) {
         Path resolved = resolve(tenantId, projectId, dirName, relativePath);
-        if (!Files.exists(resolved)) {
-            throw new WorkspaceException("Not found: " + relativePath);
-        }
-        if (!Files.isRegularFile(resolved)) {
-            throw new WorkspaceException("Not a regular file: " + relativePath);
-        }
-        try {
-            String full = Files.readString(resolved, StandardCharsets.UTF_8);
-            if (maxChars > 0 && full.length() > maxChars) {
-                return new ReadResult(full.substring(0, maxChars), true, full.length());
-            }
-            return new ReadResult(full, false, full.length());
-        } catch (IOException e) {
-            throw new WorkspaceException("Read failed: " + e.getMessage(), e);
-        }
+        return readResult(translated(() -> RootDirFiles.read(resolved, relativePath, maxChars)));
     }
 
     /**
-     * Line-window variant of {@link #read}: returns the lines from
-     * {@code startLine} (1-based, inclusive) up to {@code maxLines} of
-     * them, then applies the {@code maxChars} cap to that window.
-     * {@code startLine <= 0} starts at the beginning, {@code maxLines <= 0}
-     * runs to the end of the file.
-     *
-     * <p>Exists so a caller can page through a file that is larger than
-     * any sane character cap. Without it the only way to see the middle of
-     * a big file is to shell out — which is what an agent will do, at the
-     * cost of several wasted turns spent discovering that.
-     *
-     * <p>{@link ReadResult#totalChars()} counts the selected window, not
-     * the whole file: the caller asked for a window, so that is what the
-     * {@code truncated} flag refers to.
-     *
-     * <p>{@code UncheckedIOException} is caught alongside {@code IOException}
-     * because {@link Files#lines} reports a decoding failure while the stream
-     * is being <em>consumed</em>, wrapped — a Latin-1 or binary file would
-     * otherwise leave through a different exception type than the same file
-     * read through {@link #read}, for the same reason.
+     * Line-window variant of {@link #read}: the lines from {@code startLine}
+     * (1-based, inclusive) up to {@code maxLines} of them, then the
+     * {@code maxChars} cap on that window — see {@link RootDirFiles#readLines}.
+     * {@link ReadResult#totalChars()} counts the selected window, not the whole file.
      */
     public ReadResult readLines(
             String tenantId,
@@ -920,26 +870,8 @@ public class WorkspaceService {
             int startLine,
             int maxLines) {
         Path resolved = resolve(tenantId, projectId, dirName, relativePath);
-        if (!Files.exists(resolved)) {
-            throw new WorkspaceException("Not found: " + relativePath);
-        }
-        if (!Files.isRegularFile(resolved)) {
-            throw new WorkspaceException("Not a regular file: " + relativePath);
-        }
-        long skip = startLine > 1 ? startLine - 1 : 0;
-        long limit = maxLines > 0 ? maxLines : Long.MAX_VALUE;
-        try (Stream<String> lines = Files.lines(resolved, StandardCharsets.UTF_8)) {
-            String window = lines.skip(skip).limit(limit).collect(Collectors.joining("\n"));
-            if (maxChars > 0 && window.length() > maxChars) {
-                return new ReadResult(window.substring(0, maxChars), true, window.length());
-            }
-            return new ReadResult(window, false, window.length());
-        } catch (IOException e) {
-            throw new WorkspaceException("Read failed: " + e.getMessage(), e);
-        } catch (UncheckedIOException e) {
-            IOException cause = e.getCause();
-            throw new WorkspaceException("Read failed: " + (cause == null ? e.getMessage() : cause.getMessage()), e);
-        }
+        return readResult(
+                translated(() -> RootDirFiles.readLines(resolved, relativePath, maxChars, startLine, maxLines)));
     }
 
     /** Recursive file list inside a RootDir, paths relative to it, sorted. */
@@ -947,29 +879,13 @@ public class WorkspaceService {
         RootDirHandle handle = getRootDir(tenantId, projectId, dirName)
                 .orElseThrow(
                         () -> new WorkspaceException("Unknown RootDir: " + tenantId + "/" + projectId + "/" + dirName));
-        Path base = handle.getPath();
-        try (Stream<Path> s = Files.walk(base)) {
-            return s.filter(Files::isRegularFile)
-                    .map(base::relativize)
-                    .map(Path::toString)
-                    .sorted()
-                    .toList();
-        } catch (IOException e) {
-            throw new WorkspaceException("List failed: " + e.getMessage(), e);
-        }
+        return translated(() -> RootDirFiles.list(handle.getPath()));
     }
 
     /** Delete a single file. Returns false if it wasn't there. */
     public boolean delete(String tenantId, String projectId, String dirName, String relativePath) {
         Path resolved = resolve(tenantId, projectId, dirName, relativePath);
-        try {
-            if (Files.isDirectory(resolved)) {
-                throw new WorkspaceException("Refusing to delete a directory: " + relativePath);
-            }
-            return Files.deleteIfExists(resolved);
-        } catch (IOException e) {
-            throw new WorkspaceException("Delete failed: " + e.getMessage(), e);
-        }
+        return translated(() -> RootDirFiles.delete(resolved, relativePath));
     }
 
     /**
@@ -979,10 +895,7 @@ public class WorkspaceService {
      */
     public Path readablePath(String tenantId, String projectId, String dirName, String relativePath) {
         Path resolved = resolve(tenantId, projectId, dirName, relativePath);
-        if (!Files.isRegularFile(resolved)) {
-            throw new WorkspaceException("Not a regular file: " + relativePath);
-        }
-        return resolved;
+        return translated(() -> RootDirFiles.requireRegularFile(resolved, relativePath));
     }
 
     // ---------------------------------------------------------------------
@@ -1003,7 +916,8 @@ public class WorkspaceService {
         int depth = Math.max(1, maxDepth);
         List<WorkspaceTreeNodeDto> children = new ArrayList<>();
         for (RootDirHandle handle : listRootDirs(tenantId, projectId)) {
-            children.add(buildDirNode(handle.getDirName(), handle.getDirName(), handle.getPath(), depth - 1));
+            children.add(toDto(translated(() ->
+                    RootDirFiles.dirNode(handle.getDirName(), handle.getDirName(), handle.getPath(), depth - 1))));
         }
         return WorkspaceTreeNodeDto.builder()
                 .name("")
@@ -1045,9 +959,10 @@ public class WorkspaceService {
         String displayPath =
                 StringUtils.isBlank(relativePath) ? dirName : dirName + "/" + relativePath.replace('\\', '/');
         if (Files.isDirectory(target)) {
-            return buildDirNode(displayName, displayPath, target, Math.max(0, maxDepth));
+            return toDto(
+                    translated(() -> RootDirFiles.dirNode(displayName, displayPath, target, Math.max(0, maxDepth))));
         }
-        return buildFileNode(displayName, displayPath, target);
+        return toDto(translated(() -> RootDirFiles.fileNode(displayName, displayPath, target)));
     }
 
     /**
@@ -1057,95 +972,42 @@ public class WorkspaceService {
      */
     public byte[] readBytes(String tenantId, String projectId, String dirName, String relativePath, long maxBytes) {
         Path resolved = resolve(tenantId, projectId, dirName, relativePath);
-        if (!Files.isRegularFile(resolved)) {
-            throw new WorkspaceException("Not a regular file: " + relativePath);
-        }
-        long size;
-        try {
-            size = Files.size(resolved);
-        } catch (IOException e) {
-            throw new WorkspaceException("Stat failed: " + e.getMessage(), e);
-        }
-        if (maxBytes > 0 && size > maxBytes) {
-            throw new WorkspaceFileSizeExceededException(
-                    "File '" + relativePath + "' is " + size + " bytes; exceeds limit of " + maxBytes, size, maxBytes);
-        }
-        try {
-            return Files.readAllBytes(resolved);
-        } catch (IOException e) {
-            throw new WorkspaceException("Read failed: " + e.getMessage(), e);
-        }
+        return translated(() -> RootDirFiles.readBytes(resolved, relativePath, maxBytes));
     }
 
-    private WorkspaceTreeNodeDto buildDirNode(String name, String path, Path dir, int remainingDepth) {
-        Instant mtime = readMtime(dir);
-        List<WorkspaceTreeNodeDto> children;
-        if (remainingDepth <= 0) {
-            children = null;
-        } else {
-            children = new ArrayList<>();
-            try (Stream<Path> entries = Files.list(dir)) {
-                List<Path> sorted = entries.sorted(
-                                Comparator.comparing(p -> p.getFileName().toString()))
-                        .toList();
-                for (Path entry : sorted) {
-                    // Skip symlinks entirely: Files.isDirectory/isRegularFile below
-                    // FOLLOW links, so a symlink inside the RootDir pointing at an
-                    // external directory would be classified DIR and recursed —
-                    // leaking the host tree's structure, names, sizes and mtimes
-                    // (file *content* is separately protected by WorkspaceRootService,
-                    // but the projection must not expose external metadata either).
-                    // Sockets/FIFOs also fall through the DIR/FILE tests below.
-                    if (Files.isSymbolicLink(entry)) {
-                        continue;
-                    }
-                    String childName = entry.getFileName().toString();
-                    String childPath = path.isEmpty() ? childName : path + "/" + childName;
-                    if (Files.isDirectory(entry)) {
-                        children.add(buildDirNode(childName, childPath, entry, remainingDepth - 1));
-                    } else if (Files.isRegularFile(entry)) {
-                        children.add(buildFileNode(childName, childPath, entry));
-                    }
-                }
-            } catch (IOException e) {
-                throw new WorkspaceException("List failed for " + path + ": " + e.getMessage(), e);
-            }
-        }
+    private static WorkspaceTreeNodeDto toDto(TreeNode node) {
+        List<TreeNode> children = node.children();
         return WorkspaceTreeNodeDto.builder()
-                .name(name)
-                .path(path)
-                .type(WorkspaceNodeType.DIR)
-                .size(0L)
-                .lastModified(mtime)
-                .children(children)
+                .name(node.name())
+                .path(node.path())
+                .type(node.directory() ? WorkspaceNodeType.DIR : WorkspaceNodeType.FILE)
+                .size(node.size())
+                .lastModified(node.lastModified())
+                .children(
+                        children == null
+                                ? null
+                                : children.stream().map(WorkspaceService::toDto).toList())
                 .build();
     }
 
-    private WorkspaceTreeNodeDto buildFileNode(String name, String path, Path file) {
-        long size;
-        Instant mtime;
-        try {
-            BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
-            size = attrs.size();
-            mtime = attrs.lastModifiedTime().toInstant();
-        } catch (IOException e) {
-            throw new WorkspaceException("Stat failed for " + path + ": " + e.getMessage(), e);
-        }
-        return WorkspaceTreeNodeDto.builder()
-                .name(name)
-                .path(path)
-                .type(WorkspaceNodeType.FILE)
-                .size(size)
-                .lastModified(mtime)
-                .children(null)
-                .build();
+    private static ReadResult readResult(RootDirFiles.ReadResult result) {
+        return new ReadResult(result.text(), result.truncated(), result.totalChars());
     }
 
-    private static @Nullable Instant readMtime(Path path) {
+    /**
+     * Runs a {@code vance-exec} file operation and turns its plain-Java exceptions
+     * into the workspace ones the rest of the brain catches.
+     */
+    private static <T> T translated(Supplier<T> operation) {
         try {
-            return Files.getLastModifiedTime(path).toInstant();
-        } catch (IOException e) {
-            return null;
+            return operation.get();
+        } catch (RootDirFileSizeExceededException e) {
+            WorkspaceFileSizeExceededException translated =
+                    new WorkspaceFileSizeExceededException(e.getMessage(), e.getFileSize(), e.getLimit());
+            translated.initCause(e);
+            throw translated;
+        } catch (RootDirException e) {
+            throw new WorkspaceException(e.getMessage(), e);
         }
     }
 

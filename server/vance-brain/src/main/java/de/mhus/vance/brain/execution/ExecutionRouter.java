@@ -4,6 +4,7 @@ import de.mhus.vance.brain.tools.client.ClientToolChannel;
 import de.mhus.vance.brain.tools.client.ClientToolRegistry;
 import de.mhus.vance.brain.tools.exec.ExecManager;
 import de.mhus.vance.brain.tools.exec.ExecStatTool;
+import de.mhus.vance.brain.tools.runner.RunnerJobs;
 import de.mhus.vance.exec.ExecJobs;
 import de.mhus.vance.toolpack.ToolException;
 import java.io.IOException;
@@ -38,6 +39,7 @@ public class ExecutionRouter {
     private final ExecManager execManager;
     private final ClientToolRegistry clientToolRegistry;
     private final ClientToolChannel clientToolChannel;
+    private final RunnerJobs runnerJobs;
 
     public Map<String, Object> stat(
             String executionId, String tenantId, @org.jspecify.annotations.Nullable String projectId) {
@@ -49,6 +51,7 @@ public class ExecutionRouter {
                         .orElseThrow(() -> new ToolException("Brain-side job vanished: '" + executionId + "'")));
             case ExecutionOwner.Foot foot ->
                 invokeOnFoot(foot.clientId(), "client_exec_stat", Map.of("id", executionId));
+            case ExecutionOwner.Runner _ -> runnerJobs.status(tenantId, entry.projectId(), executionId);
         };
     }
 
@@ -83,6 +86,7 @@ public class ExecutionRouter {
                                 n,
                                 "stream",
                                 "stderr".equalsIgnoreCase(streamName) ? "stderr" : "stdout"));
+            case ExecutionOwner.Runner _ -> runnerJobs.tail(tenantId, entry.projectId(), executionId, n, streamName);
         };
     }
 
@@ -99,6 +103,7 @@ public class ExecutionRouter {
             }
             case ExecutionOwner.Foot foot ->
                 invokeOnFoot(foot.clientId(), "client_exec_kill", Map.of("id", executionId));
+            case ExecutionOwner.Runner _ -> runnerJobs.kill(tenantId, entry.projectId(), executionId);
         };
     }
 

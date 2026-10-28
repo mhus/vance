@@ -88,6 +88,7 @@ final class FileOperations {
             OperationArgs args = new OperationArgs(call.args());
             String dirName = args.rootDir(call.claims());
             String path = args.text("path");
+            workspace.requireDiskSpace("writing '" + path + "'");
             // 'contentInBody': the file is the request body (no size limit but the request's);
             // otherwise it is the 'content' argument in the capped JSON header.
             String content = args.flag("contentInBody") ? readBody(call) : args.optionalText("content");

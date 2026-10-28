@@ -38,6 +38,12 @@ public class RunnerWork {
         return bindings.resolve(tenantId, projectId).isPresent();
     }
 
+    /** The id of the runner serving the project (its own, else the tenant's). */
+    public java.util.Optional<String> runnerId(String tenantId, @Nullable String projectId) {
+        return bindings.resolve(tenantId, projectId)
+                .map(effective -> effective.binding().getRunnerId());
+    }
+
     /**
      * Runs {@code op} on the runner of the context's project.
      *

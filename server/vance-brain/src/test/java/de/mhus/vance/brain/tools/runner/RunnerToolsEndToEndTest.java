@@ -37,6 +37,7 @@ import de.mhus.vance.shared.runner.RunnerBindingService;
 import de.mhus.vance.shared.runner.RunnerClient;
 import de.mhus.vance.shared.tenant.TenantDocument;
 import de.mhus.vance.shared.tenant.TenantService;
+import de.mhus.vance.shared.workspace.GitAuthProvider;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -70,6 +71,11 @@ class RunnerToolsEndToEndTest {
     private TenantService tenants;
     private RunnerToolConfiguration config;
     private RunnerWork work;
+    private GitAuthProvider authProvider;
+    private GitCredentialResolver credentials;
+    private RunnerJobs jobs;
+    private de.mhus.vance.brain.execution.ExecutionRegistryService registry;
+    private de.mhus.vance.brain.enginemessage.EngineMessageRouter router;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -106,6 +112,27 @@ class RunnerToolsEndToEndTest {
         RunnerBindingService bindings = new RunnerBindingService(tenants, projects);
         work = new RunnerWork(new RunnerClient(bindings, new JwtService(keys)), bindings);
         config = new RunnerToolConfiguration();
+        authProvider = mock(GitAuthProvider.class);
+        credentials = new GitCredentialResolver(authProvider);
+        registry = new de.mhus.vance.brain.execution.ExecutionRegistryService();
+        router = mock(de.mhus.vance.brain.enginemessage.EngineMessageRouter.class);
+        when(router.dispatch(
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any()))
+                .thenReturn(true);
+        @SuppressWarnings("unchecked")
+        org.springframework.beans.factory.ObjectProvider<de.mhus.vance.brain.enginemessage.EngineMessageRouter>
+                provider = mock(org.springframework.beans.factory.ObjectProvider.class);
+        when(provider.getObject()).thenReturn(router);
+        jobs = new RunnerJobs(
+                work,
+                registry,
+                provider,
+                new de.mhus.vance.brain.tools.exec.ExecProperties(),
+                java.time.Duration.ofMillis(50),
+                java.time.Duration.ofMillis(100),
+                5);
     }
 
     @AfterEach
@@ -191,7 +218,7 @@ class RunnerToolsEndToEndTest {
 
     @Test
     void aCommandRunsOnTheRunner_andItsOutputComesBack() {
-        Tool run = config.runnerExecRun(work);
+        Tool run = config.runnerExecRun(work, jobs);
         Tool status = config.runnerExecStatus(work);
         Tool tail = config.runnerExecTail(work);
         var c = ctx("p1");
@@ -234,7 +261,7 @@ class RunnerToolsEndToEndTest {
         when(tenants.findByName(TENANT))
                 .thenReturn(Optional.of(TenantDocument.builder().name(TENANT).build()));
 
-        assertThatThrownBy(() -> config.runnerExecRun(work).invoke(Map.of("command", "ls"), ctx("p1")))
+        assertThatThrownBy(() -> config.runnerExecRun(work, jobs).invoke(Map.of("command", "ls"), ctx("p1")))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("No runner is registered");
         assertThat(work.available(TENANT, PROJECT)).isFalse();
@@ -268,7 +295,7 @@ class RunnerToolsEndToEndTest {
                 Map.entry(config.runnerFileEdit(work), new FileEditTool(null)),
                 Map.entry(config.runnerFileList(work), new FileListTool(null)),
                 Map.entry(config.runnerFileDelete(work), new FileDeleteTool(null)),
-                Map.entry(config.runnerExecRun(work), new ExecRunTool(null)),
+                Map.entry(config.runnerExecRun(work, jobs), new ExecRunTool(null)),
                 Map.entry(config.runnerExecStatus(work), new ExecStatusTool(null)),
                 Map.entry(config.runnerExecTail(work), new ExecTailTool(null)),
                 Map.entry(config.runnerExecKill(work), new ExecKillTool(null)),
@@ -289,5 +316,169 @@ class RunnerToolsEndToEndTest {
     private static java.util.Set<String> properties(Tool tool) {
         return ((Map<?, ?>) tool.paramsSchema().get("properties"))
                 .keySet().stream().map(String::valueOf).collect(java.util.stream.Collectors.toSet());
+    }
+
+    // ───────────────────────── RootDirs through the tools ─────────────────────────
+
+    private static void assumeProgram(String program) {
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+                java.util.stream.Stream.of(System.getenv("PATH").split(java.io.File.pathSeparator))
+                        .anyMatch(dir -> java.nio.file.Files.isExecutable(java.nio.file.Path.of(dir, program))),
+                program + " is not on this machine's PATH");
+    }
+
+    private java.nio.file.Path sourceRepo(java.nio.file.Path dir) throws Exception {
+        java.nio.file.Path repo = java.nio.file.Files.createDirectories(dir.resolve("source"));
+        for (String[] command : new String[][] {
+            {"git", "init", "--initial-branch=main"},
+            {"git", "add", "-A"},
+            {"git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-m", "init"}
+        }) {
+            if (command[1].equals("add")) {
+                java.nio.file.Files.writeString(repo.resolve("hello.txt"), "from the repo\n");
+            }
+            Process p = new ProcessBuilder(command)
+                    .directory(repo.toFile())
+                    .redirectErrorStream(true)
+                    .start();
+            String out = new String(p.getInputStream().readAllBytes());
+            assertThat(p.waitFor()).as(out).isZero();
+        }
+        return repo;
+    }
+
+    @Test
+    void rootDirsAreCreatedListedAndDeletedThroughTheTools(@org.junit.jupiter.api.io.TempDir java.nio.file.Path repoDir)
+            throws Exception {
+        assumeProgram("git");
+        var c = ctx("p-roots");
+        Tool create = config.runnerRootCreate(work, credentials);
+        java.nio.file.Path repo = sourceRepo(repoDir);
+
+        Map<String, Object> scratch = create.invoke(Map.of("type", "temp", "label", "scratch"), c);
+        Map<String, Object> clone = create.invoke(Map.of("type", "git", "repoUrl", repo.toString(), "label", "src"), c);
+        String cloneDir = (String) clone.get("dirName");
+
+        assertThat(clone.get("type")).isEqualTo("git");
+        assertThat(((Map<?, ?>) clone.get("metadata")).get("commit").toString()).hasSize(40);
+        assertThat(config.runnerFileRead(work)
+                        .invoke(Map.of("path", "hello.txt", "dirName", cloneDir), c)
+                        .get("content"))
+                .isEqualTo("from the repo\n");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> listed = (List<Map<String, Object>>)
+                config.runnerRootList(work).invoke(Map.of(), c).get("rootDirs");
+        assertThat(listed.stream().map(d -> d.get("dirName"))).contains(scratch.get("dirName"), cloneDir);
+
+        config.runnerRootDelete(work).invoke(Map.of("dirName", cloneDir), c);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> after = (List<Map<String, Object>>)
+                config.runnerRootList(work).invoke(Map.of(), c).get("rootDirs");
+        assertThat(after.stream().map(d -> d.get("dirName"))).doesNotContain(cloneDir);
+    }
+
+    @Test
+    void aCredentialAliasIsResolvedHere_andTheTokenNeverComesBack(
+            @org.junit.jupiter.api.io.TempDir java.nio.file.Path repoDir) throws Exception {
+        assumeProgram("git");
+        var c = ctx("p-cred");
+        org.mockito.Mockito.when(authProvider.provide(TENANT, PROJECT, "ci"))
+                .thenReturn(new org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider("bot", "s3cret-token"));
+        java.nio.file.Path repo = sourceRepo(repoDir);
+
+        Map<String, Object> created = config.runnerRootCreate(work, credentials)
+                .invoke(Map.of("type", "git", "repoUrl", repo.toString(), "credentialAlias", "ci"), c);
+
+        assertThat(created.toString()).doesNotContain("s3cret-token");
+        assertThatThrownBy(() -> config.runnerRootCreate(work, credentials)
+                        .invoke(Map.of("type", "git", "repoUrl", repo.toString(), "credentialAlias", "unknown"), c))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("Unknown git credential alias");
+    }
+
+    @Test
+    void aPythonRootDirIsCreatedThroughTheTool() {
+        assumeProgram("python3");
+        var c = ctx("p-python");
+
+        Map<String, Object> created =
+                config.runnerRootCreate(work, credentials).invoke(Map.of("type", "python", "label", "_python"), c);
+
+        assertThat(created.get("type")).isEqualTo("python");
+        assertThat(((Map<?, ?>) created.get("metadata")).get("pythonPath")).isEqualTo("python3");
+    }
+
+    @Test
+    void theCreateToolRefusesWhatDoesNotAddUp() {
+        var c = ctx("p-invalid");
+        Tool create = config.runnerRootCreate(work, credentials);
+
+        assertThatThrownBy(() -> create.invoke(Map.of("type", "svn"), c))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("'type' must be one of");
+        assertThatThrownBy(() -> create.invoke(Map.of("type", "git"), c))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("'repoUrl' is required");
+        assertThatThrownBy(() -> create.invoke(Map.of("type", "temp", "branch", "x"), c))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("need a 'repoUrl'");
+        assertThatThrownBy(() -> create.invoke(Map.of("type", "temp", "credentialAlias", "ci"), c))
+                .isInstanceOf(ToolException.class)
+                .hasMessageContaining("needs a 'repoUrl'");
+    }
+
+    @Test
+    void aJobThatOutlastsItsWait_isRegistered_watched_andItsOwnerGetsTheEvent() throws Exception {
+        var c = new ToolInvocationContext(TENANT, PROJECT, "session-1", "proc-owner", "alice");
+
+        Map<String, Object> started = config.runnerExecRun(work, jobs)
+                .invoke(Map.of("command", "sleep 1; echo finished-late", "waitMs", 100), c);
+        String id = (String) started.get("id");
+        assertThat(started.get("status")).isEqualTo("RUNNING");
+
+        var entry = registry.find(id).orElseThrow();
+        assertThat(entry.owner()).isEqualTo(new de.mhus.vance.brain.execution.ExecutionOwner.Runner("runner-acme"));
+        assertThat(entry.processId()).isEqualTo("proc-owner");
+
+        org.mockito.ArgumentCaptor<de.mhus.vance.shared.thinkprocess.PendingMessageDocument> message =
+                org.mockito.ArgumentCaptor.forClass(de.mhus.vance.shared.thinkprocess.PendingMessageDocument.class);
+        org.mockito.Mockito.verify(router, org.mockito.Mockito.timeout(20_000))
+                .dispatch(
+                        org.mockito.ArgumentMatchers.eq("proc-owner"),
+                        org.mockito.ArgumentMatchers.eq("proc-owner"),
+                        message.capture());
+        assertThat(message.getValue().getEventType())
+                .isEqualTo(de.mhus.vance.api.thinkprocess.ProcessEventType.EXEC_FINISHED);
+        assertThat(message.getValue().getPayload().get("stdoutTail").toString()).contains("finished-late");
+        assertThat(registry.find(id).orElseThrow().status())
+                .isEqualTo(de.mhus.vance.brain.execution.ExecutionStatus.COMPLETED);
+    }
+
+    @Test
+    void aJobThatFinishesWithinItsWaitIsNotWatched() {
+        var c = new ToolInvocationContext(TENANT, PROJECT, "session-1", "proc-quick", "alice");
+
+        Map<String, Object> done =
+                config.runnerExecRun(work, jobs).invoke(Map.of("command", "echo quick", "waitMs", 20_000), c);
+
+        assertThat(done.get("status")).isEqualTo("COMPLETED");
+        assertThat(registry.find((String) done.get("id"))).isEmpty();
+    }
+
+    @Test
+    void aDeadlineKillIsAnExecTimeout() throws Exception {
+        var c = new ToolInvocationContext(TENANT, PROJECT, "session-1", "proc-deadline", "alice");
+
+        config.runnerExecRun(work, jobs).invoke(Map.of("command", "sleep 60", "deadlineSeconds", 1), c);
+
+        org.mockito.ArgumentCaptor<de.mhus.vance.shared.thinkprocess.PendingMessageDocument> message =
+                org.mockito.ArgumentCaptor.forClass(de.mhus.vance.shared.thinkprocess.PendingMessageDocument.class);
+        org.mockito.Mockito.verify(router, org.mockito.Mockito.timeout(20_000))
+                .dispatch(
+                        org.mockito.ArgumentMatchers.eq("proc-deadline"),
+                        org.mockito.ArgumentMatchers.eq("proc-deadline"),
+                        message.capture());
+        assertThat(message.getValue().getEventType())
+                .isEqualTo(de.mhus.vance.api.thinkprocess.ProcessEventType.EXEC_TIMEOUT);
     }
 }

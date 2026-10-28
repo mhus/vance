@@ -279,6 +279,24 @@ public final class ExecJobs implements AutoCloseable {
         return true;
     }
 
+    /**
+     * Drops a scope from the table and deletes its job logs: what a project delete or rename
+     * leaves of the jobs. Running jobs must have been killed first ({@link #killAll}).
+     *
+     * @return how many jobs were forgotten
+     */
+    public int forgetScope(String scopeKey) {
+        Map<String, ExecJob> perScope = jobs.remove(scopeKey);
+        if (perScope == null) {
+            return 0;
+        }
+        for (String jobId : List.copyOf(perScope.keySet())) {
+            deleteJobDirQuietly(scopeKey, jobId);
+            cancelWatchdog(jobId);
+        }
+        return perScope.size();
+    }
+
     /** Force-kills every running job of a scope. Returns how many were killed. */
     public int killAll(String scopeKey) {
         Map<String, ExecJob> perScope = jobs.get(scopeKey);

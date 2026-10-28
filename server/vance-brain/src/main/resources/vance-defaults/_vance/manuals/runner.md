@@ -30,16 +30,35 @@ tools by name unless you need one target regardless of the work target.
 |---|---|
 | `file_read`, `file_write`, `file_edit`, `file_list`, `file_delete` | the same, inside a RootDir on the runner (`contentHash` / `expectedContentHash` work as usual) |
 | `file_find`, `file_grep`, `file_count`, `file_head_tail` | the same searches, with the same parameters as on the server workspace |
+| `runner_root_list`, `runner_root_create`, `runner_root_delete` | RootDirs of this project on the runner (no generic twin): list them, create a scratch folder, a git clone, a Python venv or a Node project, delete one |
 | `exec_run`, `exec_status`, `exec_tail`, `exec_kill` | shell commands in the RootDir; `exec_run` waits up to `waitMs` (at most 90 s), longer jobs keep running — poll `exec_status` / `exec_tail` |
 
 Job ids belong to the project: another project's runner jobs are invisible to you.
 
+**A job that outlasts its `waitMs` tells you when it ends.** You get the same `EXEC_FINISHED` event (or
+`EXEC_TIMEOUT` when it hit its `deadlineSeconds` and was killed) as for a job on the server — with the
+exit code and the end of stdout/stderr — so you do not have to poll. Such a job also shows up in
+`exec_list`, and `exec_status` / `exec_tail` / `exec_kill` find it by id whatever the work target is.
+If the runner becomes unreachable for good, you get the event with status `ORPHANED`. A job you kill
+yourself sends no event. Events are tracked in the server's memory: after a server restart a running
+job keeps running on the runner, ask `runner_exec_status` for it.
+
+## RootDir types
+
+`runner_root_create` makes: `temp` / `ephemeral` (scratch), `git` (a clone — `repoUrl`, optional
+`branch`, `commit`, `depth`, and `credentialAlias` for a private repository: the server resolves the
+alias, the runner only gets the token for that clone), `python` (a venv at `.venv`, optionally cloned,
+optional `packages`) and `node` (a `package.json` project, optional `packages`).
+
+There are no `python_run` / `execute_python` / `node_*` tools on the runner: run your code with
+`exec_run`, e.g. `.venv/bin/python script.py`, and install more with
+`.venv/bin/python -m pip install …` or `npm install …` in a RootDir of that type.
+
 ## What it does not have (yet)
 
-- Only plain scratch RootDirs. No `git`, `node` or `python` RootDirs there, so
-  `git_checkout`, `node_create` and Python environments do not apply.
 - No `ffmpeg`, `whisper` or `yt-dlp` — the audio tools do not use the runner yet.
-- No push notification when a job ends: ask `exec_status` while you wait.
+- RootDirs live on the runner's volume, not in the server's workspace snapshots: nothing of them is
+  suspended with your session. A git RootDir keeps what you commit and push.
 
 ## Errors you may see
 

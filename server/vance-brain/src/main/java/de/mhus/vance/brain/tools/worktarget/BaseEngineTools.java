@@ -111,6 +111,9 @@ public final class BaseEngineTools {
             "work_exec_tail",
             "work_exec_kill",
             // Runner-side backends (deferred) — the runner's file and exec operations
+            "runner_root_list",
+            "runner_root_create",
+            "runner_root_delete",
             "runner_file_read",
             "runner_file_write",
             "runner_file_edit",

@@ -6,12 +6,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.tools.ToolSpec;
 import de.mhus.vance.brain.tools.client.ClientToolChannel;
 import de.mhus.vance.brain.tools.client.ClientToolRegistry;
 import de.mhus.vance.brain.tools.exec.ExecManager;
+import de.mhus.vance.brain.tools.runner.RunnerJobs;
 import de.mhus.vance.toolpack.ToolException;
 import java.time.Instant;
 import java.util.List;
@@ -26,6 +26,7 @@ class ExecutionRouterTest {
     private ExecManager execManager;
     private ClientToolRegistry clientToolRegistry;
     private ClientToolChannel clientToolChannel;
+    private RunnerJobs runnerJobs;
     private ExecutionRouter router;
 
     @BeforeEach
@@ -34,8 +35,8 @@ class ExecutionRouterTest {
         execManager = mock(ExecManager.class);
         clientToolRegistry = new ClientToolRegistry();
         clientToolChannel = mock(ClientToolChannel.class);
-        router = new ExecutionRouter(
-                registry, execManager, clientToolRegistry, clientToolChannel);
+        runnerJobs = mock(RunnerJobs.class);
+        router = new ExecutionRouter(registry, execManager, clientToolRegistry, clientToolChannel, runnerJobs);
     }
 
     @Test
@@ -68,7 +69,9 @@ class ExecutionRouterTest {
         // Connect a foot client and pretend it has client_exec_stat available.
         WebSocketSession ws = mock(WebSocketSession.class);
         clientToolRegistry.register(
-                "sess-1", "conn-foo", ws,
+                "sess-1",
+                "conn-foo",
+                ws,
                 List.of(ToolSpec.builder().name("client_exec_stat").build()));
 
         registry.register(footEntry("e1", "conn-foo", "acme", "proj"));
@@ -76,19 +79,25 @@ class ExecutionRouterTest {
         // The router will call channel.sendInvoke and then block on the
         // pending future. Complete it from another thread.
         doAnswer(inv -> {
-            String correlationId = inv.getArgument(1);
-            // simulate foot reply on a worker thread
-            new Thread(() -> {
-                try { Thread.sleep(50); } catch (InterruptedException ignored) {}
-                clientToolRegistry.completeInvocation(
-                        correlationId,
-                        "sess-1",
-                        "conn-foo",
-                        Map.of("id", "e1", "status", "RUNNING"),
-                        null);
-            }).start();
-            return null;
-        }).when(clientToolChannel).sendInvoke(eq(ws), any(), eq("client_exec_stat"), any());
+                    String correlationId = inv.getArgument(1);
+                    // simulate foot reply on a worker thread
+                    new Thread(() -> {
+                                try {
+                                    Thread.sleep(50);
+                                } catch (InterruptedException ignored) {
+                                }
+                                clientToolRegistry.completeInvocation(
+                                        correlationId,
+                                        "sess-1",
+                                        "conn-foo",
+                                        Map.of("id", "e1", "status", "RUNNING"),
+                                        null);
+                            })
+                            .start();
+                    return null;
+                })
+                .when(clientToolChannel)
+                .sendInvoke(eq(ws), any(), eq("client_exec_stat"), any());
 
         Map<String, Object> result = router.stat("e1", "acme", null);
 
@@ -107,21 +116,85 @@ class ExecutionRouterTest {
     private ExecutionRegistryEntry brainEntry(String id, String tenantId, String projectId) {
         Instant now = Instant.now();
         return new ExecutionRegistryEntry(
-                id, ExecutionOwner.Brain.INSTANCE,
-                tenantId, projectId, "sess", null,
-                "true", null,
-                now, now, null,
-                ExecutionStatus.RUNNING, null, null, null);
+                id,
+                ExecutionOwner.Brain.INSTANCE,
+                tenantId,
+                projectId,
+                "sess",
+                null,
+                "true",
+                null,
+                now,
+                now,
+                null,
+                ExecutionStatus.RUNNING,
+                null,
+                null,
+                null);
     }
 
-    private ExecutionRegistryEntry footEntry(
-            String id, String clientId, String tenantId, String projectId) {
+    private ExecutionRegistryEntry footEntry(String id, String clientId, String tenantId, String projectId) {
         Instant now = Instant.now();
         return new ExecutionRegistryEntry(
-                id, new ExecutionOwner.Foot(clientId),
-                tenantId, projectId, "sess", null,
-                "true", null,
-                now, now, null,
-                ExecutionStatus.RUNNING, null, null, null);
+                id,
+                new ExecutionOwner.Foot(clientId),
+                tenantId,
+                projectId,
+                "sess",
+                null,
+                "true",
+                null,
+                now,
+                now,
+                null,
+                ExecutionStatus.RUNNING,
+                null,
+                null,
+                null);
+    }
+
+    private void registerRunnerJob(String id) {
+        registry.register(new ExecutionRegistryEntry(
+                id,
+                new ExecutionOwner.Runner("runner-acme"),
+                "acme",
+                "p1",
+                "s1",
+                "proc-1",
+                "make",
+                "src",
+                java.time.Instant.now(),
+                java.time.Instant.now(),
+                null,
+                ExecutionStatus.RUNNING,
+                null,
+                null,
+                null));
+    }
+
+    @Test
+    void runnerRoute_statTailAndKillGoToTheRunnerJobs() {
+        registerRunnerJob("rj1");
+        org.mockito.Mockito.when(runnerJobs.status("acme", "p1", "rj1")).thenReturn(Map.of("status", "RUNNING"));
+        org.mockito.Mockito.when(runnerJobs.tail("acme", "p1", "rj1", 7, "stderr"))
+                .thenReturn(Map.of("returned", 0));
+        org.mockito.Mockito.when(runnerJobs.kill("acme", "p1", "rj1")).thenReturn(Map.of("killed", true));
+
+        assertThat(router.stat("rj1", "acme", "p1")).containsEntry("status", "RUNNING");
+        assertThat(router.tail("rj1", "acme", "p1", 7, "stderr")).containsEntry("returned", 0);
+        assertThat(router.kill("rj1", "acme", "p1")).containsEntry("killed", true);
+    }
+
+    @Test
+    void runnerRoute_isScopedToItsProjectLikeTheOthers() {
+        registerRunnerJob("rj2");
+
+        assertThatThrownBy(() -> router.stat("rj2", "acme", "other-project")).isInstanceOf(ToolException.class);
+        assertThatThrownBy(() -> router.stat("rj2", "globex", "p1")).isInstanceOf(ToolException.class);
+    }
+
+    @Test
+    void theRunnerOwnerLabelNamesTheRunner() {
+        assertThat(new ExecutionOwner.Runner("runner-acme").label()).isEqualTo("runner:runner-acme");
     }
 }

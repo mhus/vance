@@ -1,7 +1,7 @@
 package de.mhus.vance.brain.tools.exec;
 
-import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
+import de.mhus.vance.brain.execution.ExecCompletionEvent;
 import de.mhus.vance.brain.execution.ExecutionRegistryService;
 import de.mhus.vance.brain.execution.ExecutionStatus;
 import de.mhus.vance.brain.vault.ScriptSecretAccumulator;
@@ -12,8 +12,6 @@ import de.mhus.vance.exec.ExecJobs;
 import de.mhus.vance.exec.ExecStat;
 import de.mhus.vance.exec.RootDirHandle;
 import de.mhus.vance.exec.SubmitOptions;
-import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
-import de.mhus.vance.shared.thinkprocess.PendingMessageType;
 import de.mhus.vance.shared.workspace.WorkspaceException;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import jakarta.annotation.PreDestroy;
@@ -21,7 +19,6 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -425,56 +422,31 @@ public class ExecManager {
         if (ownerProcessId == null || ownerProcessId.isBlank()) {
             return;
         }
-        boolean timedOut = job.killedByWatchdog();
-        ProcessEventType eventType = timedOut ? ProcessEventType.EXEC_TIMEOUT : ProcessEventType.EXEC_FINISHED;
+        ExecCompletionEvent event = new ExecCompletionEvent(
+                job.id(),
+                job.projectId(),
+                job.status().name(),
+                job.exitCode(),
+                job.startedAt(),
+                job.finishedAt(),
+                job.killedByWatchdog(),
+                ExecJobs.tailFile(job.stdoutFile(), properties.getCompletionTailLines()),
+                ExecJobs.tailFile(job.stderrFile(), properties.getCompletionTailLines()));
         try {
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("jobId", job.id());
-            payload.put("status", job.status().name());
-            if (job.exitCode() != null) {
-                payload.put("exitCode", job.exitCode());
-            }
-            Instant finished = job.finishedAt();
-            if (finished != null) {
-                payload.put("finishedAt", finished.toString());
-            }
-            payload.put("projectId", job.projectId());
-            payload.put("stdoutTail", ExecJobs.tailFile(job.stdoutFile(), properties.getCompletionTailLines()));
-            payload.put("stderrTail", ExecJobs.tailFile(job.stderrFile(), properties.getCompletionTailLines()));
-            long killedAfterSeconds = Duration.between(job.startedAt(), finished != null ? finished : Instant.now())
-                    .toSeconds();
-            if (timedOut) {
-                payload.put("killedAfterSeconds", killedAfterSeconds);
-            }
-
-            // The LLM only sees this summary (the payload is not rendered into
-            // the <process-event> tag); spell out that a timeout is a KILL, so
-            // the model doesn't treat partial output as a completed run.
-            String summary = timedOut
-                    ? "Exec " + job.id() + " was KILLED — it timed out after "
-                            + "hitting its deadline (ran ~" + killedAfterSeconds + "s"
-                            + (job.exitCode() != null ? ", exit " + job.exitCode() : "")
-                            + "). The command did NOT finish; it was terminated, "
-                            + "so any output is partial. Re-run with a larger "
-                            + "timeout if it needs more time."
-                    : "Exec " + job.id() + " " + job.status().name().toLowerCase()
-                            + (job.exitCode() != null ? " (exit " + job.exitCode() + ")" : "");
-            PendingMessageDocument doc = PendingMessageDocument.builder()
-                    .type(PendingMessageType.PROCESS_EVENT)
-                    .at(Instant.now())
-                    .sourceProcessId(ownerProcessId)
-                    .eventType(eventType)
-                    .content(summary)
-                    .payload(payload)
-                    .eventId(java.util.UUID.randomUUID().toString())
-                    .build();
-            boolean ok = engineMessageRouterProvider.getObject().dispatch(ownerProcessId, ownerProcessId, doc);
+            boolean ok = engineMessageRouterProvider
+                    .getObject()
+                    .dispatch(ownerProcessId, ownerProcessId, event.toMessage(ownerProcessId));
             if (!ok) {
-                log.warn("{} dispatch dropped owner='{}' job='{}'", eventType, ownerProcessId, job.id());
+                log.warn("{} dispatch dropped owner='{}' job='{}'", event.eventType(), ownerProcessId, job.id());
             }
         } catch (RuntimeException e) {
             log.warn(
-                    "{} dispatch failed owner='{}' job='{}': {}", eventType, ownerProcessId, job.id(), e.toString(), e);
+                    "{} dispatch failed owner='{}' job='{}': {}",
+                    event.eventType(),
+                    ownerProcessId,
+                    job.id(),
+                    e.toString(),
+                    e);
         }
     }
 

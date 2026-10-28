@@ -167,6 +167,9 @@ allowedToolsRemove:
   - work_exec_status
   - work_exec_tail
   - work_exec_kill
+  - runner_root_list
+  - runner_root_create
+  - runner_root_delete
   - runner_file_read
   - runner_file_write
   - runner_file_edit

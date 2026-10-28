@@ -24,6 +24,42 @@ class RunnerToolConfiguration {
             "RootDir on the runner; omit for this process's temp RootDir " + "(created on first use).";
 
     @Bean
+    Tool runnerRootList(RunnerWork runner) {
+        return new RunnerBackendTool(
+                runner,
+                "runner_root_list",
+                "List the RootDirs of this project on its runner: dirName, type, label and, for git/python/node, what"
+                        + " the runner recorded (repository, commit, interpreter).",
+                schema(List.of()),
+                "root.list",
+                Effect.READ,
+                false,
+                false,
+                RunnerBackendTool.Body.NONE,
+                null);
+    }
+
+    @Bean
+    Tool runnerRootCreate(RunnerWork runner, GitCredentialResolver credentials) {
+        return new RunnerRootCreateTool(runner, credentials);
+    }
+
+    @Bean
+    Tool runnerRootDelete(RunnerWork runner) {
+        return new RunnerBackendTool(
+                runner,
+                "runner_root_delete",
+                "Delete a RootDir of this project on its runner, with everything in it.",
+                schema(List.of("dirName"), prop("dirName", "string", "The RootDir to delete.")),
+                "root.delete",
+                Effect.WRITE,
+                false,
+                false,
+                RunnerBackendTool.Body.NONE,
+                null);
+    }
+
+    @Bean
     Tool runnerFileRead(RunnerWork runner) {
         return new RunnerBackendTool(
                 runner,
@@ -41,7 +77,8 @@ class RunnerToolConfiguration {
                 Effect.READ,
                 true,
                 false,
-                RunnerBackendTool.Body.CONTENT_IN_RESPONSE);
+                RunnerBackendTool.Body.CONTENT_IN_RESPONSE,
+                null);
     }
 
     @Bean
@@ -62,7 +99,8 @@ class RunnerToolConfiguration {
                 Effect.WRITE,
                 true,
                 false,
-                RunnerBackendTool.Body.CONTENT_IN_REQUEST);
+                RunnerBackendTool.Body.CONTENT_IN_REQUEST,
+                null);
     }
 
     @Bean
@@ -83,7 +121,8 @@ class RunnerToolConfiguration {
                 Effect.WRITE,
                 true,
                 false,
-                RunnerBackendTool.Body.NONE);
+                RunnerBackendTool.Body.NONE,
+                null);
     }
 
     @Bean
@@ -100,7 +139,8 @@ class RunnerToolConfiguration {
                 Effect.READ,
                 true,
                 false,
-                RunnerBackendTool.Body.NONE);
+                RunnerBackendTool.Body.NONE,
+                null);
     }
 
     /*
@@ -120,7 +160,8 @@ class RunnerToolConfiguration {
                 Effect.READ,
                 true,
                 false,
-                RunnerBackendTool.Body.NONE);
+                RunnerBackendTool.Body.NONE,
+                null);
     }
 
     @Bean
@@ -136,7 +177,8 @@ class RunnerToolConfiguration {
                 Effect.READ,
                 true,
                 false,
-                RunnerBackendTool.Body.NONE);
+                RunnerBackendTool.Body.NONE,
+                null);
     }
 
     @Bean
@@ -151,7 +193,8 @@ class RunnerToolConfiguration {
                 Effect.READ,
                 true,
                 false,
-                RunnerBackendTool.Body.NONE);
+                RunnerBackendTool.Body.NONE,
+                null);
     }
 
     @Bean
@@ -166,7 +209,8 @@ class RunnerToolConfiguration {
                 Effect.READ,
                 true,
                 false,
-                RunnerBackendTool.Body.NONE);
+                RunnerBackendTool.Body.NONE,
+                null);
     }
 
     @Bean
@@ -183,11 +227,12 @@ class RunnerToolConfiguration {
                 Effect.WRITE,
                 true,
                 false,
-                RunnerBackendTool.Body.NONE);
+                RunnerBackendTool.Body.NONE,
+                null);
     }
 
     @Bean
-    Tool runnerExecRun(RunnerWork runner) {
+    Tool runnerExecRun(RunnerWork runner, RunnerJobs jobs) {
         return new RunnerBackendTool(
                 runner,
                 "runner_exec_run",
@@ -204,7 +249,8 @@ class RunnerToolConfiguration {
                 Effect.EXEC,
                 true,
                 true,
-                RunnerBackendTool.Body.NONE);
+                RunnerBackendTool.Body.NONE,
+                jobs);
     }
 
     @Bean
@@ -218,7 +264,8 @@ class RunnerToolConfiguration {
                 Effect.READ,
                 false,
                 false,
-                RunnerBackendTool.Body.NONE);
+                RunnerBackendTool.Body.NONE,
+                null);
     }
 
     @Bean
@@ -236,7 +283,8 @@ class RunnerToolConfiguration {
                 Effect.READ,
                 false,
                 false,
-                RunnerBackendTool.Body.NONE);
+                RunnerBackendTool.Body.NONE,
+                null);
     }
 
     @Bean
@@ -250,7 +298,8 @@ class RunnerToolConfiguration {
                 Effect.EXEC,
                 false,
                 false,
-                RunnerBackendTool.Body.NONE);
+                RunnerBackendTool.Body.NONE,
+                null);
     }
 
     private static Map.Entry<String, Object> prop(String name, String type, String description) {

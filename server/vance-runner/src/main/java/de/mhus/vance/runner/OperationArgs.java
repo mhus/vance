@@ -31,6 +31,20 @@ final class OperationArgs {
         return JSON.convertValue(args, new TypeReference<Map<String, Object>>() {});
     }
 
+    /** A nested object argument as a plain map; empty when absent. */
+    Map<String, Object> object(String name) throws OperationException {
+        Object value = asMap().get(name);
+        if (value == null) {
+            return Map.of();
+        }
+        if (!(value instanceof Map<?, ?> map)) {
+            throw new OperationException("bad-args", "'" + name + "' must be an object");
+        }
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        map.forEach((k, v) -> out.put(String.valueOf(k), v));
+        return out;
+    }
+
     String text(String name) throws OperationException {
         String value = optionalText(name);
         if (value == null || value.isBlank()) {

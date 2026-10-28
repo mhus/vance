@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * {@code exec.start}, {@code exec.status}, {@code exec.list}, {@code exec.tail},
+ * {@code exec.start}, {@code exec.status}, {@code exec.stat}, {@code exec.list}, {@code exec.tail},
  * {@code exec.kill} — shell commands in a RootDir, run by {@link ExecJobs}, the job
  * table the brain's own exec runs on. Nothing is pushed: the brain asks while it
  * cares about a job (planning/runner.md §7).
@@ -34,13 +34,20 @@ final class ExecOperations {
     private ExecOperations() {}
 
     static List<RunnerOperation> all(RunnerWorkspace workspace) {
-        return List.of(start(workspace), status(workspace), list(workspace), tail(workspace), kill(workspace));
+        return List.of(
+                start(workspace),
+                status(workspace),
+                stat(workspace),
+                list(workspace),
+                tail(workspace),
+                kill(workspace));
     }
 
     private static RunnerOperation start(RunnerWorkspace workspace) {
         return RootDirOperations.operation("exec.start", call -> {
             OperationArgs args = new OperationArgs(call.args());
             String command = args.text("command");
+            workspace.requireDiskSpace("starting a command");
             String dirName = args.rootDir(call.claims());
             var claims = call.claims();
             Path cwd = workspace
@@ -89,6 +96,29 @@ final class ExecOperations {
             ExecJob job = workspace.jobs().get(scope(call), id).orElseThrow(() -> unknown(id));
             return OperationResult.of(
                     render(job, new OperationArgs(call.args()).integer("inlineChars", DEFAULT_INLINE_CHARS)));
+        });
+    }
+
+    /**
+     * Where a job stands, without its output: what the brain's watcher asks of a running job
+     * every few seconds. {@code exec.status} reads the logs to inline them; this does not.
+     */
+    private static RunnerOperation stat(RunnerWorkspace workspace) {
+        return RootDirOperations.operation("exec.stat", call -> {
+            String id = new OperationArgs(call.args()).text("id");
+            ExecJob job = workspace.jobs().get(scope(call), id).orElseThrow(() -> unknown(id));
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("id", job.id());
+            out.put("status", job.status().name());
+            if (job.exitCode() != null) {
+                out.put("exitCode", job.exitCode());
+            }
+            if (job.finishedAt() != null) {
+                out.put("finishedAt", job.finishedAt().toString());
+            }
+            out.put("lastOutputAt", job.lastOutputAt().toString());
+            out.put("timedOut", job.killedByWatchdog());
+            return OperationResult.of(out);
         });
     }
 
@@ -148,6 +178,13 @@ final class ExecOperations {
         out.put("lastOutputAt", job.lastOutputAt().toString());
         if (job.exitCode() != null) {
             out.put("exitCode", job.exitCode());
+        }
+        if (job.finishedAt() != null) {
+            out.put("finishedAt", job.finishedAt().toString());
+        }
+        // Reached its deadline and was killed for it — the brain tells that apart from a kill by the user.
+        if (job.killedByWatchdog()) {
+            out.put("timedOut", true);
         }
         String stdout = job.readStdout();
         String stderr = job.readStderr();

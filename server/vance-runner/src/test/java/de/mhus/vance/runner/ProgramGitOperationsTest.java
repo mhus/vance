@@ -1,0 +1,178 @@
+package de.mhus.vance.runner;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import de.mhus.vance.exec.GitOperationException;
+import de.mhus.vance.exec.GitOperations;
+import de.mhus.vance.exec.ProcessLauncher;
+import de.mhus.vance.exec.ProcessSpec;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+/** {@code git} through the runner's launcher: real repositories, and what a token may and may not touch. */
+class ProgramGitOperationsTest {
+
+    private static final GitOperations.Scope SCOPE = new GitOperations.Scope("acme", "p", null);
+
+    @TempDir
+    Path tmp;
+
+    private ProgramGitOperations realGit() {
+        RunnerProcessLauncher launcher = new RunnerProcessLauncher(tmp.resolve("data"), null);
+        return new ProgramGitOperations(() -> launcher);
+    }
+
+    /** A repository with one commit on main, as a clone source. */
+    private Path remote() throws IOException {
+        Path remote = Files.createDirectories(tmp.resolve("remote"));
+        ProgramGitOperations git = realGit();
+        git.init(remote);
+        Files.writeString(remote.resolve("README.md"), "hello\n");
+        git.commitAll(remote, "first");
+        return remote;
+    }
+
+    @Test
+    void aRepositoryIsClonedAndItsHeadRead() throws Exception {
+        Path remote = remote();
+        ProgramGitOperations git = realGit();
+        Path target = Files.createDirectories(tmp.resolve("clone"));
+
+        git.clone(remote.toString(), target, "main", null, SCOPE);
+
+        assertThat(Files.readString(target.resolve("README.md"))).isEqualTo("hello\n");
+        assertThat(git.head(target)).isEqualTo(git.head(remote)).hasSize(40);
+        assertThat(git.isClean(target)).isTrue();
+    }
+
+    @Test
+    void aShallowCloneHasOneCommit() throws Exception {
+        Path remote = remote();
+        ProgramGitOperations git = realGit();
+        Files.writeString(remote.resolve("two.txt"), "2");
+        git.commitAll(remote, "second");
+        Path target = Files.createDirectories(tmp.resolve("shallow"));
+
+        // A local path ignores --depth with a warning; a file:// URL honours it.
+        git.clone(remote.toUri().toString(), target, "main", 1, SCOPE);
+
+        assertThat(Files.exists(target.resolve("two.txt"))).isTrue();
+        assertThat(Files.exists(target.resolve(".git/shallow"))).isTrue();
+    }
+
+    @Test
+    void branchesCommitsAndPushWork() throws Exception {
+        Path remote = remote();
+        // A push needs a non-checked-out branch on the other side: use a bare mirror.
+        Path bare = tmp.resolve("bare.git");
+        ProgramGitOperations git = realGit();
+        runGit(tmp, "clone", "--bare", remote.toString(), bare.toString());
+        Path target = Files.createDirectories(tmp.resolve("work"));
+        git.clone(bare.toString(), target, "main", null, SCOPE);
+
+        git.checkoutNewBranch(target, "vance/suspend/x");
+        Files.writeString(target.resolve("note.txt"), "dirty");
+        assertThat(git.isClean(target)).isFalse();
+        git.commitAll(target, "vance suspend");
+        git.push(target, "origin", "vance/suspend/x", SCOPE);
+
+        assertThat(runGit(bare, "branch", "--list", "vance/suspend/x")).contains("vance/suspend/x");
+        git.checkout(target, "main");
+        assertThat(Files.exists(target.resolve("note.txt"))).isFalse();
+    }
+
+    @Test
+    void failuresCarryGitsOwnMessage() throws Exception {
+        ProgramGitOperations git = realGit();
+        Path target = Files.createDirectories(tmp.resolve("nowhere"));
+
+        assertThatThrownBy(() -> git.clone(tmp.resolve("does-not-exist").toString(), target, "main", null, SCOPE))
+                .isInstanceOf(GitOperationException.class)
+                .hasMessageContaining("git clone failed");
+        assertThatThrownBy(() -> git.commitAll(remote(), "nothing to commit"))
+                .isInstanceOf(GitOperationException.class)
+                .hasMessageContaining("git commit failed");
+        assertThat(git.head(Files.createDirectories(tmp.resolve("empty")))).isNull();
+    }
+
+    // ───────────────────────── credentials ─────────────────────────
+
+    /** Records what would be started and starts {@code true} instead. */
+    private static final class Recording implements ProcessLauncher {
+        final List<ProcessSpec> specs = new ArrayList<>();
+
+        @Override
+        public Process start(ProcessSpec spec) throws IOException {
+            specs.add(spec);
+            return new ProcessBuilder("true").start();
+        }
+    }
+
+    @Test
+    void aTokenReachesGitAsAHeaderScopedToTheHost_neverInArgv() throws Exception {
+        Recording launcher = new Recording();
+        ProgramGitOperations git = new ProgramGitOperations(() -> launcher);
+        Path target = Files.createDirectories(tmp.resolve("t1"));
+
+        ProgramGitOperations.withCredentials(new GitCredentials("bot", "s3cret-token"), () -> {
+            git.clone("https://git.example.com/org/repo.git", target, "main", null, SCOPE);
+            return null;
+        });
+
+        ProcessSpec spec = launcher.specs.getFirst();
+        assertThat(String.join(" ", spec.command()))
+                .doesNotContain("s3cret-token")
+                .doesNotContain("Basic");
+        assertThat(spec.environment()).containsEntry("GIT_CONFIG_KEY_0", "http.https://git.example.com/.extraHeader");
+        String expected = Base64.getEncoder().encodeToString("bot:s3cret-token".getBytes());
+        assertThat(spec.environment()).containsEntry("GIT_CONFIG_VALUE_0", "Authorization: Basic " + expected);
+        assertThat(spec.environment()).containsEntry("GIT_TERMINAL_PROMPT", "0");
+        assertThat(spec.network()).isTrue();
+    }
+
+    @Test
+    void aTokenIsOfferedOnlyToHttpsHosts_andOnlyWhileTheCallRuns() throws Exception {
+        Recording launcher = new Recording();
+        ProgramGitOperations git = new ProgramGitOperations(() -> launcher);
+        Path target = Files.createDirectories(tmp.resolve("t2"));
+        GitCredentials token = new GitCredentials("bot", "tok");
+
+        ProgramGitOperations.withCredentials(token, () -> {
+            git.clone("git@example.com:org/repo.git", target, "main", null, SCOPE);
+            git.clone("http://insecure.example.com/r.git", target, "main", null, SCOPE);
+            git.clone(tmp.resolve("local").toString(), target, "main", null, SCOPE);
+            return null;
+        });
+        // After the call nothing is bound any more.
+        git.clone("https://git.example.com/org/repo.git", target, "main", null, SCOPE);
+
+        for (ProcessSpec spec : launcher.specs) {
+            assertThat(spec.environment()).doesNotContainKey("GIT_CONFIG_VALUE_0");
+        }
+        assertThat(launcher.specs).hasSize(4);
+    }
+
+    @Test
+    void theCredentialsRecordNeverPrintsItsToken() {
+        assertThat(new GitCredentials("bot", "s3cret-token").toString()).doesNotContain("s3cret-token");
+    }
+
+    private static String runGit(Path dir, String... args) throws Exception {
+        List<String> command = new ArrayList<>(List.of("git"));
+        command.addAll(List.of(args));
+        Process process = new ProcessBuilder(command)
+                .directory(dir.toFile())
+                .redirectErrorStream(true)
+                .start();
+        String out = new String(process.getInputStream().readAllBytes());
+        assertThat(process.waitFor()).as(out).isZero();
+        return out;
+    }
+}

@@ -15,8 +15,11 @@ import java.util.Set;
 /** {@code root.list}, {@code root.create}, {@code root.delete} — the project's RootDirs on the runner. */
 final class RootDirOperations {
 
-    /** Types the runner provides. {@code git}, {@code node} and {@code python} follow with their programs. */
-    static final Set<String> TYPES = Set.of("temp", "ephemeral");
+    /**
+     * Types the runner provides. {@code git}, {@code node} and {@code python} run their
+     * programs through the runner's own process launcher.
+     */
+    static final Set<String> TYPES = Set.of("temp", "ephemeral", "git", "node", "python");
 
     private RootDirOperations() {}
 
@@ -51,19 +54,36 @@ final class RootDirOperations {
                         "This runner provides RootDir types "
                                 + TYPES.stream().sorted().toList() + ", not '" + type + "'");
             }
-            RootDirHandle handle = workspace
-                    .store()
-                    .createRootDir(RootDirSpec.builder()
-                            .tenantId(call.claims().tenantId())
-                            .projectId(call.claims().projectId())
-                            .type(type)
-                            .creatorProcessId(args.text("creatorProcessId"))
-                            .creatorEngine(args.optionalText("creatorEngine"))
-                            .labelHint(args.optionalText("label"))
-                            .deleteOnCreatorClose(false)
-                            .build());
+            Map<String, Object> metadata = args.object("metadata");
+            GitCredentials credentials = credentials(args.object("gitCredential"));
+            RootDirSpec spec = RootDirSpec.builder()
+                    .tenantId(call.claims().tenantId())
+                    .projectId(call.claims().projectId())
+                    .type(type)
+                    .creatorProcessId(args.text("creatorProcessId"))
+                    .creatorEngine(args.optionalText("creatorEngine"))
+                    .labelHint(args.optionalText("label"))
+                    .deleteOnCreatorClose(false)
+                    .metadata(metadata.isEmpty() ? null : metadata)
+                    .build();
+            // Clone, venv and npm install happen inside createRootDir; a token lives only for that call.
+            RootDirHandle handle = ProgramGitOperations.withCredentials(
+                    credentials, () -> workspace.store().createRootDir(spec));
             return OperationResult.of(describe(handle));
         });
+    }
+
+    /** {@code {username, token}} from the call, or {@code null} for an anonymous clone. */
+    private static GitCredentials credentials(Map<String, Object> raw) throws OperationException {
+        if (raw.isEmpty()) {
+            return null;
+        }
+        Object user = raw.get("username");
+        Object token = raw.get("token");
+        if (!(user instanceof String u) || u.isBlank() || !(token instanceof String t) || t.isBlank()) {
+            throw new OperationException("bad-args", "'gitCredential' needs 'username' and 'token'");
+        }
+        return new GitCredentials(u, t);
     }
 
     private static RunnerOperation delete(RunnerWorkspace workspace) {
@@ -83,6 +103,11 @@ final class RootDirOperations {
         out.put("type", handle.getType());
         out.put("label", descriptor.getLabel());
         out.put("createdAt", descriptor.getCreatedAt());
+        // What the handler recorded about the RootDir (repository, commit, interpreter …).
+        // Credentials never get this far: they are not part of the metadata.
+        if (descriptor.getMetadata() != null && !descriptor.getMetadata().isEmpty()) {
+            out.put("metadata", descriptor.getMetadata());
+        }
         return out;
     }
 

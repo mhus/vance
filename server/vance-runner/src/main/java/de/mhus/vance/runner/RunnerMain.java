@@ -19,13 +19,37 @@ public final class RunnerMain {
 
     private RunnerMain() {}
 
+    /** {@code VANCE_RUNNER_NPM_REGISTRY}: the registry every npm install is pinned to. */
+    private static String registry() {
+        String configured = System.getenv("VANCE_RUNNER_NPM_REGISTRY");
+        return configured == null || configured.isBlank() ? RunnerWorkspace.DEFAULT_NPM_REGISTRY : configured.trim();
+    }
+
+    /** {@code VANCE_RUNNER_DISK_HARD_PERCENT}: how full the volume may get before writes are refused (0 = off). */
+    private static int diskLimit() {
+        String configured = System.getenv("VANCE_RUNNER_DISK_HARD_PERCENT");
+        if (configured == null || configured.isBlank()) {
+            return RunnerWorkspace.DEFAULT_DISK_HARD_PERCENT;
+        }
+        try {
+            int percent = Integer.parseInt(configured.trim());
+            if (percent < 0 || percent > 100) {
+                throw new NumberFormatException("out of range");
+            }
+            return percent;
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("VANCE_RUNNER_DISK_HARD_PERCENT must be 0-100: " + configured, e);
+        }
+    }
+
     /** Everything this runner answers to — public so a test can stand up a real one. */
     public static List<RunnerOperation> operations(RunnerConfig config, RunnerWorkspace workspace) {
         List<RunnerOperation> operations = new ArrayList<>();
         operations.addAll(RootDirOperations.all(workspace));
         operations.addAll(FileOperations.all(workspace));
         operations.addAll(ExecOperations.all(workspace));
-        List<String> capabilities = List.of("rootdir", "file", "exec");
+        operations.addAll(ProjectOperations.all(workspace));
+        List<String> capabilities = List.of("rootdir", "file", "exec", "git", "node", "python");
         operations.add(BasicOperations.ping(config));
         operations.add(BasicOperations.info(config, capabilities));
         return operations;
@@ -44,8 +68,12 @@ public final class RunnerMain {
             System.exit(2);
             return;
         }
-        try (RunnerWorkspace workspace =
-                        new RunnerWorkspace(config.dataDir(), System.getenv("VANCE_RUNNER_EXEC_WRAPPER"));
+        try (RunnerWorkspace workspace = new RunnerWorkspace(
+                        config.dataDir(),
+                        System.getenv("VANCE_RUNNER_EXEC_WRAPPER"),
+                        System.getenv("VANCE_RUNNER_PROCESS_WRAPPER"),
+                        registry(),
+                        diskLimit());
                 RunnerServer server = new RunnerServer(
                         config, identity, tenantKeys, operations(config, workspace), Clock.systemUTC())) {
             // SIGTERM runs hooks without unwinding main: stop the listener there too.

@@ -34,7 +34,10 @@ class RunnerWorkspaceOperationsTest {
         workspace = new RunnerWorkspace(tmp, null);
         ops = new java.util.HashMap<>();
         for (List<RunnerOperation> group : List.of(
-                RootDirOperations.all(workspace), FileOperations.all(workspace), ExecOperations.all(workspace))) {
+                RootDirOperations.all(workspace),
+                FileOperations.all(workspace),
+                ExecOperations.all(workspace),
+                ProjectOperations.all(workspace))) {
             group.forEach(op -> ops.put(op.name(), op));
         }
     }
@@ -81,7 +84,7 @@ class RunnerWorkspaceOperationsTest {
     @Test
     void anUnprovidedRootDirType_isRefusedWithTheTypesThatExist() {
         assertThatThrownBy(() ->
-                        call("root.create", claims("kunde-x", null), Map.of("type", "git", "creatorProcessId", "p1")))
+                        call("root.create", claims("kunde-x", null), Map.of("type", "svn", "creatorProcessId", "p1")))
                 .isInstanceOfSatisfying(OperationException.class, e -> {
                     assertThat(e.code()).isEqualTo("unsupported-type");
                     assertThat(e.getMessage()).contains("ephemeral").contains("temp");
@@ -283,7 +286,10 @@ class RunnerWorkspaceOperationsTest {
         workspace = new RunnerWorkspace(tmp.resolve("wrapped"), "/bin/sh -c {cmd}");
         ops.clear();
         for (List<RunnerOperation> group : List.of(
-                RootDirOperations.all(workspace), FileOperations.all(workspace), ExecOperations.all(workspace))) {
+                RootDirOperations.all(workspace),
+                FileOperations.all(workspace),
+                ExecOperations.all(workspace),
+                ProjectOperations.all(workspace))) {
             group.forEach(op -> ops.put(op.name(), op));
         }
         var c = claims("kunde-x", null);
@@ -482,7 +488,10 @@ class RunnerWorkspaceOperationsTest {
         workspace = new RunnerWorkspace(tmp.resolve("homed"), "/usr/bin/env HOMEARG={home} /bin/sh -c {cmd}");
         ops.clear();
         for (List<RunnerOperation> group : List.of(
-                RootDirOperations.all(workspace), FileOperations.all(workspace), ExecOperations.all(workspace))) {
+                RootDirOperations.all(workspace),
+                FileOperations.all(workspace),
+                ExecOperations.all(workspace),
+                ProjectOperations.all(workspace))) {
             group.forEach(op -> ops.put(op.name(), op));
         }
         var c = claims("kunde-x", null);
@@ -542,5 +551,327 @@ class RunnerWorkspaceOperationsTest {
                 .isInstanceOfSatisfying(
                         OperationException.class,
                         e -> assertThat(e.getMessage()).contains("'content' is required"));
+    }
+
+    // ───────────────────────── typed RootDirs ─────────────────────────
+
+    private static void assumeProgram(String program) {
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+                java.util.stream.Stream.of(System.getenv("PATH").split(java.io.File.pathSeparator))
+                        .anyMatch(dir -> java.nio.file.Files.isExecutable(Path.of(dir, program))),
+                program + " is not on this machine's PATH");
+    }
+
+    private Path sourceRepo() throws Exception {
+        Path repo = java.nio.file.Files.createDirectories(tmp.resolve("source"));
+        git(repo, "init", "--initial-branch=main");
+        java.nio.file.Files.writeString(repo.resolve("hello.txt"), "from the repo\n");
+        git(repo, "add", "-A");
+        git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "init");
+        return repo;
+    }
+
+    private static void git(Path dir, String... args) throws Exception {
+        java.util.List<String> command = new java.util.ArrayList<>(java.util.List.of("git"));
+        command.addAll(java.util.List.of(args));
+        Process p = new ProcessBuilder(command)
+                .directory(dir.toFile())
+                .redirectErrorStream(true)
+                .start();
+        String out = new String(p.getInputStream().readAllBytes());
+        assertThat(p.waitFor()).as(out).isZero();
+    }
+
+    @Test
+    void aGitRootDirIsClonedFromAnyRepository_andRecordsItsCommit() throws Exception {
+        assumeProgram("git");
+        var c = claims("kunde-x", null);
+        Path repo = sourceRepo();
+
+        JsonNode created = call(
+                "root.create",
+                c,
+                Map.of(
+                        "type",
+                        "git",
+                        "creatorProcessId",
+                        "p1",
+                        "label",
+                        "src",
+                        "metadata",
+                        Map.of("repoUrl", repo.toString(), "branch", "main")));
+
+        String dir = created.get("dirName").asString();
+        assertThat(created.get("type").asString()).isEqualTo("git");
+        assertThat(created.get("metadata").get("commit").asString()).hasSize(40);
+        assertThat(call("file.read", c, Map.of("dirName", dir, "path", "hello.txt"))
+                        .get("content")
+                        .asString())
+                .isEqualTo("from the repo\n");
+        // A command in that RootDir sees the repository.
+        JsonNode started =
+                call("exec.start", c, Map.of("dirName", dir, "command", "git log --oneline | wc -l", "waitMs", 10_000));
+        assertThat(call("exec.tail", c, Map.of("id", started.get("id").asString()))
+                        .get("lines")
+                        .get(0)
+                        .asString()
+                        .strip())
+                .isEqualTo("1");
+    }
+
+    @Test
+    void aGitRootDirWithoutARepoUrlOrWithABrokenOne_isRefusedWithTheCause() throws Exception {
+        assumeProgram("git");
+        var c = claims("kunde-x", null);
+
+        assertThatThrownBy(() -> call("root.create", c, Map.of("type", "git", "creatorProcessId", "p1")))
+                .isInstanceOfSatisfying(
+                        OperationException.class,
+                        e -> assertThat(e.getMessage()).contains("repoUrl"));
+        assertThatThrownBy(() -> call(
+                        "root.create",
+                        c,
+                        Map.of(
+                                "type",
+                                "git",
+                                "creatorProcessId",
+                                "p1",
+                                "metadata",
+                                Map.of("repoUrl", tmp.resolve("nope").toString()))))
+                .isInstanceOfSatisfying(
+                        OperationException.class,
+                        e -> assertThat(e.getMessage()).contains("git clone failed"));
+        // Nothing half-made is left behind.
+        assertThat(call("root.list", c, Map.of()).get("rootDirs")).isEmpty();
+    }
+
+    @Test
+    void aGitCredentialMustBeCompleteAndNeverComesBackInTheAnswer() throws Exception {
+        assumeProgram("git");
+        var c = claims("kunde-x", null);
+        Path repo = sourceRepo();
+
+        assertThatThrownBy(() -> call(
+                        "root.create",
+                        c,
+                        Map.of(
+                                "type",
+                                "git",
+                                "creatorProcessId",
+                                "p1",
+                                "metadata",
+                                Map.of("repoUrl", repo.toString()),
+                                "gitCredential",
+                                Map.of("username", "bot"))))
+                .isInstanceOfSatisfying(
+                        OperationException.class, e -> assertThat(e.code()).isEqualTo("bad-args"));
+
+        JsonNode created = call(
+                "root.create",
+                c,
+                Map.of(
+                        "type",
+                        "git",
+                        "creatorProcessId",
+                        "p1",
+                        "metadata",
+                        Map.of("repoUrl", repo.toString()),
+                        "gitCredential",
+                        Map.of("username", "bot", "token", "s3cret-token")));
+        assertThat(created.toString()).doesNotContain("s3cret-token");
+        // And the RootDir's descriptor on disk does not carry it either.
+        try (var files = java.nio.file.Files.walk(tmp.resolve("workspaces"))) {
+            for (Path file : files.filter(java.nio.file.Files::isRegularFile)
+                    .filter(f -> f.toString().endsWith(".json"))
+                    .toList()) {
+                assertThat(java.nio.file.Files.readString(file)).doesNotContain("s3cret-token");
+            }
+        }
+    }
+
+    @Test
+    void aPythonRootDirGetsAVenv_andRunsScriptsInIt() throws Exception {
+        assumeProgram("python3");
+        var c = claims("kunde-x", null);
+
+        JsonNode created =
+                call("root.create", c, Map.of("type", "python", "creatorProcessId", "p1", "label", "_python"));
+
+        String dir = created.get("dirName").asString();
+        assertThat(created.get("metadata").get("pythonPath").asString()).isEqualTo("python3");
+        assertThat(strings(call("file.list", c, Map.of("dirName", dir, "path", ".venv/bin"))
+                        .get("entries")))
+                .anyMatch(name -> name.startsWith("python"));
+        call("file.write", c, Map.of("dirName", dir, "path", "hello.py", "content", "print('hi from venv')\n"));
+        JsonNode started =
+                call("exec.start", c, Map.of("dirName", dir, "command", ".venv/bin/python hello.py", "waitMs", 20_000));
+        assertThat(started.get("stdout").asString()).contains("hi from venv");
+    }
+
+    @Test
+    void aNodeRootDirIsCreated() throws Exception {
+        assumeProgram("npm");
+        var c = claims("kunde-x", null);
+
+        JsonNode created =
+                call("root.create", c, Map.of("type", "node", "creatorProcessId", "p1", "label", "_jsengine"));
+
+        assertThat(created.get("type").asString()).isEqualTo("node");
+        assertThat(strings(call(
+                                "file.list",
+                                c,
+                                Map.of("dirName", created.get("dirName").asString()))
+                        .get("entries")))
+                .contains("package.json");
+    }
+
+    // ───────────────────────── project maintenance ─────────────────────────
+
+    private String waitForJobStart(RunnerTokens.Claims c, String dir, String command) throws Exception {
+        return call("exec.start", c, Map.of("dirName", dir, "command", command))
+                .get("id")
+                .asString();
+    }
+
+    @Test
+    void projectInfoCountsRootDirsAndRunningJobs() throws Exception {
+        var c = claims("proj-info", null);
+        String dir = newTempDir(c);
+        newTempDir(c);
+        waitForJobStart(c, dir, "sleep 30");
+
+        JsonNode info = call("project.info", c, Map.of());
+
+        assertThat(info.get("rootDirs").asInt()).isEqualTo(2);
+        assertThat(info.get("runningJobs").asInt()).isEqualTo(1);
+        assertThat(call("project.info", claims("proj-empty", null), Map.of())
+                        .get("rootDirs")
+                        .asInt())
+                .isZero();
+        call("project.delete", c, Map.of());
+    }
+
+    @Test
+    void projectDeleteRemovesEverythingTheRunnerHolds_killsJobs_andIsRepeatable() throws Exception {
+        var c = claims("proj-delete", null);
+        String dir = newTempDir(c);
+        call("file.write", c, Map.of("dirName", dir, "path", "a.txt", "content", "x"));
+        String jobId = waitForJobStart(c, dir, "sleep 60");
+        call("exec.start", c, Map.of("dirName", dir, "command", "echo hi", "waitMs", 10_000));
+        Path home = tmp.resolve("homes/acme/proj-delete");
+        assertThat(home).isDirectory();
+        var other = claims("proj-keep", null);
+        String keptDir = newTempDir(other);
+
+        JsonNode deleted = call("project.delete", c, Map.of());
+
+        assertThat(deleted.get("rootDirs").asInt()).isEqualTo(1);
+        assertThat(deleted.get("killedJobs").asInt()).isEqualTo(1);
+        assertThat(deleted.get("jobs").asInt()).isEqualTo(2);
+        assertThat(call("root.list", c, Map.of()).get("rootDirs")).isEmpty();
+        assertThat(home).doesNotExist();
+        assertThatThrownBy(() -> call("exec.status", c, Map.of("id", jobId)))
+                .isInstanceOfSatisfying(
+                        OperationException.class, e -> assertThat(e.code()).isEqualTo("unknown-job"));
+        // Another project is untouched, and a second delete is a no-op, not an error.
+        assertThat(call("root.list", other, Map.of())
+                        .get("rootDirs")
+                        .get(0)
+                        .get("dirName")
+                        .asString())
+                .isEqualTo(keptDir);
+        assertThat(call("project.delete", c, Map.of()).get("rootDirs").asInt()).isZero();
+    }
+
+    @Test
+    void projectRenameMovesRootDirsAndHome_butNotUnderRunningJobsOrOntoDataOfAnotherProject() throws Exception {
+        var c = claims("proj-old", null);
+        String dir = newTempDir(c);
+        call("file.write", c, Map.of("dirName", dir, "path", "keep.txt", "content", "kept"));
+        call(
+                "exec.start",
+                c,
+                Map.of("dirName", dir, "command", "echo hi", "waitMs", 10_000)); // creates the project's HOME
+        String running = waitForJobStart(c, dir, "sleep 60");
+
+        assertThatThrownBy(() -> call("project.rename", c, Map.of("newProjectId", "proj-new")))
+                .isInstanceOfSatisfying(
+                        OperationException.class, e -> assertThat(e.code()).isEqualTo("jobs-running"));
+        // The worker attaches the process a moment after the start; a kill before that does nothing.
+        long until = System.nanoTime() + java.time.Duration.ofSeconds(10).toNanos();
+        while (call("project.info", c, Map.of()).get("runningJobs").asInt() > 0 && System.nanoTime() < until) {
+            call("exec.kill", c, Map.of("id", running));
+            Thread.sleep(50);
+        }
+
+        var taken = claims("proj-taken", null);
+        newTempDir(taken);
+        assertThatThrownBy(() -> call("project.rename", c, Map.of("newProjectId", "proj-taken")))
+                .isInstanceOfSatisfying(
+                        OperationException.class, e -> assertThat(e.code()).isEqualTo("name-taken"));
+
+        call("project.rename", c, Map.of("newProjectId", "proj-new"));
+
+        var renamed = claims("proj-new", null);
+        assertThat(call("file.read", renamed, Map.of("dirName", dir, "path", "keep.txt"))
+                        .get("content")
+                        .asString())
+                .isEqualTo("kept");
+        assertThat(call("root.list", c, Map.of()).get("rootDirs")).isEmpty();
+        assertThat(tmp.resolve("homes/acme/proj-new")).isDirectory();
+        assertThat(tmp.resolve("homes/acme/proj-old")).doesNotExist();
+        call("project.delete", renamed, Map.of());
+        call("project.delete", taken, Map.of());
+    }
+
+    @Test
+    void projectOperationsRefuseATokenPinnedToOneRootDir() throws Exception {
+        var open = claims("proj-pinned", null);
+        String dir = newTempDir(open);
+        var pinned = claims("proj-pinned", dir);
+
+        for (String op : List.of("project.info", "project.delete", "project.rename")) {
+            assertThatThrownBy(() -> call(op, pinned, Map.of("newProjectId", "x")))
+                    .isInstanceOfSatisfying(
+                            OperationException.class, e -> assertThat(e.code()).isEqualTo("root-not-allowed"));
+        }
+        call("project.delete", open, Map.of());
+    }
+
+    @Test
+    void aFullVolumeRefusesWritesAndCommands_butStillAnswersReadsAndKills() throws Exception {
+        var c = claims("kunde-x", null);
+        String dir = newTempDir(c);
+        call("file.write", c, Map.of("dirName", dir, "path", "keep.txt", "content", "x"));
+        workspace.close();
+        // A limit of 1 % is exceeded by any disk that holds anything.
+        workspace = new RunnerWorkspace(tmp, null, null, RunnerWorkspace.DEFAULT_NPM_REGISTRY, 1);
+        ops.clear();
+        for (List<RunnerOperation> group : List.of(
+                RootDirOperations.all(workspace),
+                FileOperations.all(workspace),
+                ExecOperations.all(workspace),
+                ProjectOperations.all(workspace))) {
+            group.forEach(op -> ops.put(op.name(), op));
+        }
+
+        assertThatThrownBy(() -> call("file.write", c, Map.of("dirName", dir, "path", "more.txt", "content", "y")))
+                .isInstanceOfSatisfying(OperationException.class, e -> {
+                    assertThat(e.code()).isEqualTo("disk-full");
+                    assertThat(e.getMessage()).contains("% full").contains("more.txt");
+                });
+        assertThatThrownBy(() -> call("exec.start", c, Map.of("dirName", dir, "command", "echo hi")))
+                .isInstanceOfSatisfying(
+                        OperationException.class, e -> assertThat(e.code()).isEqualTo("disk-full"));
+        // What frees space or only looks stays possible.
+        assertThat(call("file.read", c, Map.of("dirName", dir, "path", "keep.txt"))
+                        .get("content")
+                        .asString())
+                .isEqualTo("x");
+        assertThat(call("file.delete", c, Map.of("dirName", dir, "path", "keep.txt"))
+                        .get("deleted")
+                        .asBoolean())
+                .isTrue();
+        call("root.delete", c, Map.of("dirName", dir));
     }
 }

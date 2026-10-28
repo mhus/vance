@@ -45,6 +45,7 @@ final class RunnerBackendTool implements Tool {
     private final boolean needsRootDir;
     private final boolean ownedByProcess;
     private final Body body;
+    private final @Nullable RunnerJobs jobs;
 
     /**
      * Where the text of a file travels. The JSON header of a call is capped (1 MiB), so a
@@ -64,6 +65,8 @@ final class RunnerBackendTool implements Tool {
      *     resolved (named, or the process's temp RootDir)
      * @param ownedByProcess the operation takes the calling process as owner of what it starts
      * @param body           whether file content travels as request or response body
+     * @param jobs           for a command start: enters the job into the registry and watches it,
+     *     or {@code null} for every other operation
      */
     RunnerBackendTool(
             RunnerWork runner,
@@ -74,7 +77,8 @@ final class RunnerBackendTool implements Tool {
             Effect effect,
             boolean needsRootDir,
             boolean ownedByProcess,
-            Body body) {
+            Body body,
+            @Nullable RunnerJobs jobs) {
         this.runner = runner;
         this.name = name;
         this.description = description;
@@ -84,6 +88,7 @@ final class RunnerBackendTool implements Tool {
         this.needsRootDir = needsRootDir;
         this.ownedByProcess = ownedByProcess;
         this.body = body;
+        this.jobs = jobs;
     }
 
     @Override
@@ -145,7 +150,11 @@ final class RunnerBackendTool implements Tool {
                 return runner.call(ctx, op, args, new byte[0], "content");
             }
             default -> {
-                return runner.call(ctx, op, args);
+                Map<String, Object> result = runner.call(ctx, op, args);
+                if (jobs != null && "RUNNING".equals(result.get("status"))) {
+                    jobs.watch(ctx, result, String.valueOf(args.get("command")), stringOrNull(args.get("dirName")));
+                }
+                return result;
             }
         }
     }

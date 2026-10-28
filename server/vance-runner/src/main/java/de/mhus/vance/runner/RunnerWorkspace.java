@@ -4,6 +4,9 @@ import de.mhus.vance.exec.EphemeralHandler;
 import de.mhus.vance.exec.ExecEnvPolicy;
 import de.mhus.vance.exec.ExecJob;
 import de.mhus.vance.exec.ExecJobs;
+import de.mhus.vance.exec.GitHandler;
+import de.mhus.vance.exec.NodeHandler;
+import de.mhus.vance.exec.PythonHandler;
 import de.mhus.vance.exec.RootDirStore;
 import de.mhus.vance.exec.TempHandler;
 import java.io.IOException;
@@ -29,11 +32,17 @@ public final class RunnerWorkspace implements AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(RunnerWorkspace.class);
 
     private static final int SOFT_LIMIT_PERCENT = 85;
-    private static final int HARD_LIMIT_PERCENT = 95;
     private static final long KILL_GRACE_MS = 2_000;
     private static final int MAX_JOBS_PER_SCOPE = 100;
     private static final Duration ORPHAN_TTL = Duration.ofMinutes(10);
 
+    static final int DEFAULT_DISK_HARD_PERCENT = 95;
+    static final String DEFAULT_NPM_REGISTRY = "https://registry.npmjs.org/";
+    private static final long NODE_MODULES_MAX_BYTES = 512L * 1024 * 1024;
+
+    private final Path dataDir;
+    private final int hardLimitPercent;
+    private final ProgramGitOperations git;
     private final RootDirStore store;
     private final ExecJobs jobs;
     private final Path homes;
@@ -45,14 +54,92 @@ public final class RunnerWorkspace implements AutoCloseable {
      *     under the plain shell — the runner process itself is then the boundary
      */
     public RunnerWorkspace(Path dataDir, @Nullable String execWrapper) {
+        this(dataDir, execWrapper, null, DEFAULT_NPM_REGISTRY);
+    }
+
+    /**
+     * @param processWrapper the wrapper for the programs the runner starts itself (git, npm,
+     *     pip — see {@link RunnerProcessLauncher}), or {@code null} for none
+     * @param npmRegistry    the registry every {@code npm install} is pinned to
+     */
+    public RunnerWorkspace(
+            Path dataDir, @Nullable String execWrapper, @Nullable String processWrapper, String npmRegistry) {
+        this(dataDir, execWrapper, processWrapper, npmRegistry, DEFAULT_DISK_HARD_PERCENT);
+    }
+
+    /**
+     * @param hardLimitPercent how full the data volume may be before the runner refuses to
+     *     write more or start commands ({@code 0} = no check); new RootDirs are refused at the
+     *     same limit by the store
+     */
+    public RunnerWorkspace(
+            Path dataDir,
+            @Nullable String execWrapper,
+            @Nullable String processWrapper,
+            String npmRegistry,
+            int hardLimitPercent) {
+        this.dataDir = dataDir;
+        this.hardLimitPercent = hardLimitPercent;
+        RunnerProcessLauncher launcher = new RunnerProcessLauncher(dataDir, processWrapper);
+        this.git = new ProgramGitOperations(() -> launcher);
+        GitHandler gitHandler = new GitHandler(git);
         this.store = new RootDirStore(
-                () -> new RootDirStore.Settings(dataDir.resolve("workspaces"), SOFT_LIMIT_PERCENT, HARD_LIMIT_PERCENT),
-                List.of(new TempHandler(), new EphemeralHandler()));
+                () -> new RootDirStore.Settings(dataDir.resolve("workspaces"), SOFT_LIMIT_PERCENT, hardLimitPercent),
+                List.of(
+                        new TempHandler(),
+                        new EphemeralHandler(),
+                        gitHandler,
+                        new NodeHandler(
+                                gitHandler,
+                                git,
+                                () -> new NodeHandler.Config("npm", npmRegistry, NODE_MODULES_MAX_BYTES),
+                                () -> launcher),
+                        new PythonHandler(gitHandler, git, () -> launcher)));
         this.jobs = new ExecJobs(
                 new ExecJobs.Config(dataDir.resolve("exec"), KILL_GRACE_MS, MAX_JOBS_PER_SCOPE, ORPHAN_TTL),
                 new LoggingListener());
         this.homes = dataDir.resolve("homes");
         this.execWrapper = execWrapper == null || execWrapper.isBlank() ? null : execWrapper.trim();
+    }
+
+    /**
+     * Refuses {@code what} when the volume is fuller than the limit: a file or a command that
+     * grows the data would only run the volume out, and every project on it with it.
+     *
+     * @throws RunnerOperation.OperationException {@code disk-full}
+     */
+    void requireDiskSpace(String what) throws RunnerOperation.OperationException {
+        if (hardLimitPercent <= 0) {
+            return;
+        }
+        int used = usedPercent();
+        if (used >= hardLimitPercent) {
+            throw new RunnerOperation.OperationException(
+                    "disk-full",
+                    "The runner's volume is " + used + " % full (limit " + hardLimitPercent + " %) — " + what
+                            + " is refused. Delete RootDirs or files you no longer need first.");
+        }
+    }
+
+    /** How full the data volume is, in percent of its capacity. */
+    int usedPercent() {
+        try {
+            Files.createDirectories(dataDir);
+            var store = Files.getFileStore(dataDir);
+            long total = store.getTotalSpace();
+            return total <= 0 ? 0 : (int) (100 - (store.getUsableSpace() * 100 / total));
+        } catch (IOException e) {
+            return 0; // not measurable: do not refuse on a guess
+        }
+    }
+
+    /** The scoped {@code HOME} of a project's jobs and starters. */
+    Path home(String tenantId, String projectId) {
+        return homes.resolve(tenantId).resolve(projectId);
+    }
+
+    ProgramGitOperations git() {
+        return git;
     }
 
     RootDirStore store() {
@@ -71,7 +158,7 @@ public final class RunnerWorkspace implements AutoCloseable {
     /** The sealed child environment of a job: the inheritable base and a per-project {@code HOME}. */
     Map<String, String> execEnv(String tenantId, String projectId) throws IOException {
         Map<String, String> env = ExecEnvPolicy.seal(System.getenv(), List.of());
-        Path home = homes.resolve(tenantId).resolve(projectId);
+        Path home = home(tenantId, projectId);
         Files.createDirectories(home);
         env.put("HOME", home.toString());
         return env;

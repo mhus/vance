@@ -60,7 +60,12 @@ final class BasicOperations {
         try {
             Files.createDirectories(dir);
             var store = Files.getFileStore(dir);
-            return Map.of("freeBytes", store.getUsableSpace(), "totalBytes", store.getTotalSpace());
+            long total = store.getTotalSpace();
+            long free = store.getUsableSpace();
+            return Map.of(
+                    "freeBytes", free,
+                    "totalBytes", total,
+                    "usedPercent", total <= 0 ? 0 : (int) (100 - (free * 100 / total)));
         } catch (IOException e) {
             throw new RunnerOperation.OperationException(
                     "volume-unavailable", "Cannot read the data volume: " + e.getMessage(), e);

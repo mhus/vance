@@ -2450,6 +2450,7 @@ public class EddieEngine extends StructuredActionEngine {
         client.applyTo(ctxBuilder);
         ctxBuilder
                 .withRootDirTypes(workspaceService.getRootDirTypes(process.getTenantId(), process.getProjectId()))
+                .withRunner(workspaceService.runnerAvailable(process.getTenantId(), process.getProjectId()))
                 // This turn's manifest, so the template can gate
                 // tool-specific text on the tool being callable.
                 .withAvailableTools(engineCtx.tools().primary());

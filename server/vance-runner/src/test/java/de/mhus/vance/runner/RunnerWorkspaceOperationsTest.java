@@ -475,4 +475,25 @@ class RunnerWorkspaceOperationsTest {
                         OperationException.class,
                         e -> assertThat(e.getMessage()).contains("Not found"));
     }
+
+    @Test
+    void theWrapperTemplateGetsTheProjectsHome() throws Exception {
+        workspace.close();
+        workspace = new RunnerWorkspace(tmp.resolve("homed"), "/usr/bin/env HOMEARG={home} /bin/sh -c {cmd}");
+        ops.clear();
+        for (List<RunnerOperation> group : List.of(
+                RootDirOperations.all(workspace), FileOperations.all(workspace), ExecOperations.all(workspace))) {
+            group.forEach(op -> ops.put(op.name(), op));
+        }
+        var c = claims("kunde-x", null);
+        String dir = newTempDir(c);
+
+        JsonNode started = call("exec.start", c, Map.of("dirName", dir, "command", "echo $HOMEARG", "waitMs", 10_000));
+
+        assertThat(call("exec.tail", c, Map.of("id", started.get("id").asString()))
+                        .get("lines")
+                        .get(0)
+                        .asString())
+                .endsWith("/homes/acme/kunde-x");
+    }
 }

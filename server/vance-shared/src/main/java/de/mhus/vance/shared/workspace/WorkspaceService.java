@@ -14,6 +14,7 @@ import de.mhus.vance.exec.TreeNode;
 import de.mhus.vance.exec.Workspace;
 import de.mhus.vance.exec.WorkspaceContentHandler;
 import de.mhus.vance.exec.WorkspaceDescriptor;
+import de.mhus.vance.shared.runner.RunnerBindingService;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -49,13 +50,16 @@ public class WorkspaceService {
     private final RootDirStore store;
     private final WorkspaceSnapshotRepository snapshotRepository;
     private final WorkspaceRootService rootService;
+    private final RunnerBindingService runnerBindings;
 
     public WorkspaceService(
             WorkspaceProperties properties,
             List<WorkspaceContentHandler> handlers,
             WorkspaceSnapshotRepository snapshotRepository,
-            WorkspaceRootService rootService) {
+            WorkspaceRootService rootService,
+            RunnerBindingService runnerBindings) {
         this.properties = properties;
+        this.runnerBindings = runnerBindings;
         this.snapshotRepository = snapshotRepository;
         this.rootService = rootService;
         // Settings are read per operation: the properties stay mutable configuration.
@@ -82,6 +86,15 @@ public class WorkspaceService {
     // ---------------------------------------------------------------------
     // Workspace lifecycle
     // ---------------------------------------------------------------------
+
+    /**
+     * Whether a runner serves the project (its own, else the tenant's). A runner is a
+     * second place work can run, independent of {@link #mode()}; prompts read both to
+     * tell the model where {@code file_*} / {@code exec_*} can land.
+     */
+    public boolean runnerAvailable(String tenantId, String projectId) {
+        return runnerBindings.resolve(tenantId, projectId).isPresent();
+    }
 
     /** Whether tenants get workspace access on this pod ({@code vance.workspace.mode}). */
     public WorkspaceMode mode() {

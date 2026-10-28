@@ -1334,6 +1334,7 @@ public abstract class AbstractNutrimat implements ThinkEngine {
         clientTurnContextResolver.resolve(process, inboxExtras).applyTo(ctxBuilder);
         ctxBuilder
                 .withRootDirTypes(workspaceService.getRootDirTypes(process.getTenantId(), process.getProjectId()))
+                .withRunner(workspaceService.runnerAvailable(process.getTenantId(), process.getProjectId()))
                 .withAvailableTools(tools.primary());
         String base = composer.compose(process, engineDefaultPrompt(process), ctxBuilder);
         String memoryBlock = memoryContextLoader.composeBlock(process);

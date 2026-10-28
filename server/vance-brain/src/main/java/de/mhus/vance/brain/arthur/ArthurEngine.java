@@ -2349,6 +2349,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         client.applyTo(ctxBuilder);
         ctxBuilder
                 .withRootDirTypes(workspaceService.getRootDirTypes(process.getTenantId(), process.getProjectId()))
+                .withRunner(workspaceService.runnerAvailable(process.getTenantId(), process.getProjectId()))
                 // This turn's manifest, so the template can gate
                 // tool-specific text on the tool being callable.
                 .withAvailableTools(ctx.tools().primary());

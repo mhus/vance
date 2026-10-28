@@ -6,7 +6,7 @@ summary: How file_*/exec_* dispatch via the per-process WorkTarget — when to l
 # WorkTarget — where your file_* and exec_* calls land
 
 The generic `file_*` / `exec_*` tools don't know any filesystem
-paths or hosts directly. They dispatch to one of three backends
+paths or hosts directly. They dispatch to one of four backends
 based on the active **WorkTarget** of your process:
 
 | `kind`  | Backend                            | When |
@@ -14,6 +14,7 @@ based on the active **WorkTarget** of your process:
 | CLIENT  | the user's local host via the session-bound Foot CLI | a `vance-foot` client is connected and the user wants you to touch their files |
 | WORK    | a workspace RootDir on the Brain server | ephemeral scratch — build outputs, generated artefacts, isolated experiments |
 | DAEMON  | a named `profile=daemon` Foot in the project | a long-lived worker host (build box, CI runner) the project registered under a name |
+| RUNNER  | the project's runner — a separate, isolated process with its own RootDirs | the operator registered a runner for this project; `manual_read('runner')` says what it offers |
 
 ## You almost never need to switch
 

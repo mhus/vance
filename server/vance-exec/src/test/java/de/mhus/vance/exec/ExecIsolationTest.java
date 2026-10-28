@@ -53,6 +53,16 @@ class ExecIsolationTest {
     }
 
     @Test
+    void wrap_substitutesTheHome_andFallsBackToTheWorkdirWithoutOne() {
+        String template = "bwrap --bind {home} {home} --chdir {workdir} sh -c {cmd}";
+
+        assertThat(ExecIsolation.wrap(template, "/ws/job1", "/homes/p1", "ls"))
+                .containsExactly("bwrap", "--bind", "/homes/p1", "/homes/p1", "--chdir", "/ws/job1", "sh", "-c", "ls");
+        assertThat(ExecIsolation.wrap(template, "/ws/job1", "ls"))
+                .containsExactly("bwrap", "--bind", "/ws/job1", "/ws/job1", "--chdir", "/ws/job1", "sh", "-c", "ls");
+    }
+
+    @Test
     void shellArgv_runsTheCommandAsOneArgumentUnderTheShell() {
         List<String> argv = ExecIsolation.shellArgv("echo a; echo b");
 

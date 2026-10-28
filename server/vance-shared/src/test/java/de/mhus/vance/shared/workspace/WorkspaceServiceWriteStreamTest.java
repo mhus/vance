@@ -6,6 +6,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 
+import de.mhus.vance.shared.runner.RunnerBindingService;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -35,7 +36,8 @@ class WorkspaceServiceWriteStreamTest {
                 mock(WorkspaceProperties.class),
                 List.of(),
                 mock(WorkspaceSnapshotRepository.class),
-                mock(WorkspaceRootService.class)));
+                mock(WorkspaceRootService.class),
+                mock(RunnerBindingService.class)));
         doReturn(file)
                 .when(service)
                 .resolve(TENANT, PROJECT, DIR, file.getFileName().toString());
@@ -60,7 +62,8 @@ class WorkspaceServiceWriteStreamTest {
                 mock(WorkspaceProperties.class),
                 List.of(),
                 mock(WorkspaceSnapshotRepository.class),
-                mock(WorkspaceRootService.class)));
+                mock(WorkspaceRootService.class),
+                mock(RunnerBindingService.class)));
         doReturn(file).when(service).resolve(TENANT, PROJECT, DIR, "nested/deep/data.bin");
 
         service.writeStream(TENANT, PROJECT, DIR, "nested/deep/data.bin", new ByteArrayInputStream(BINARY));

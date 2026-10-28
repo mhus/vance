@@ -1408,6 +1408,7 @@ public class MarvinEngine implements ThinkEngine {
                         .engine(NAME)
                         .withRootDirTypes(
                                 workspaceService.getRootDirTypes(process.getTenantId(), process.getProjectId()))
+                        .withRunner(workspaceService.runnerAvailable(process.getTenantId(), process.getProjectId()))
                         // This turn's manifest, so the template can gate
                         // tool-specific text on the tool being callable.
                         .withAvailableTools(ctx.tools().primary());

@@ -4,6 +4,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.shared.runner.RunnerBindingService;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -21,8 +22,8 @@ class WorkspaceServiceDisposeTest {
         WorkspaceProperties properties = mock(WorkspaceProperties.class);
         when(properties.getRoot()).thenReturn(tmp.toString());
         WorkspaceSnapshotRepository snapshots = mock(WorkspaceSnapshotRepository.class);
-        WorkspaceService service =
-                new WorkspaceService(properties, List.of(), snapshots, mock(WorkspaceRootService.class));
+        WorkspaceService service = new WorkspaceService(
+                properties, List.of(), snapshots, mock(WorkspaceRootService.class), mock(RunnerBindingService.class));
 
         service.dispose("acme", "kunde-x");
 

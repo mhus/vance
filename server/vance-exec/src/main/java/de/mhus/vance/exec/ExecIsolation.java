@@ -10,9 +10,10 @@ import org.jspecify.annotations.Nullable;
  * so it physically sees only its RootDir, instead of running straight
  * under {@code /bin/sh -c}.
  *
- * <p>The wrapper template is whitespace-separated argv with two
- * placeholders: {@code {workdir}} (the job's RootDir cwd) and {@code {cmd}}
- * (the command, kept as a single argv element). It is passed to
+ * <p>The wrapper template is whitespace-separated argv with three
+ * placeholders: {@code {workdir}} (the job's RootDir cwd), {@code {home}} (the
+ * job's {@code HOME}, which the sandbox has to bind or tools that write there
+ * fail) and {@code {cmd}} (the command, kept as a single argv element). It is passed to
  * {@code ProcessBuilder} as an argv list — never re-interpreted by a shell.
  */
 public final class ExecIsolation {
@@ -31,17 +32,27 @@ public final class ExecIsolation {
     }
 
     /**
-     * Builds the wrapped argv. Each whitespace token has {@code {workdir}}
-     * substituted; a token equal to {@code {cmd}} becomes the command as a
-     * single argv element.
+     * Builds the wrapped argv for a job that has no home of its own: {@code {home}}
+     * resolves to the working directory.
      */
     public static List<String> wrap(String wrapper, String workdir, String command) {
+        return wrap(wrapper, workdir, workdir, command);
+    }
+
+    /**
+     * Builds the wrapped argv. Each whitespace token has {@code {workdir}} and
+     * {@code {home}} substituted; a token equal to {@code {cmd}} becomes the command
+     * as a single argv element.
+     */
+    public static List<String> wrap(String wrapper, String workdir, String home, String command) {
         List<String> argv = new ArrayList<>();
         for (String token : wrapper.trim().split("\\s+")) {
             if (token.equals("{cmd}")) {
                 argv.add(command);
             } else {
-                argv.add(token.replace("{workdir}", workdir).replace("{cmd}", command));
+                argv.add(token.replace("{workdir}", workdir)
+                        .replace("{home}", home)
+                        .replace("{cmd}", command));
             }
         }
         return argv;

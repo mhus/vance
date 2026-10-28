@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
+import de.mhus.vance.shared.runner.RunnerBindingService;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -21,7 +22,8 @@ class WorkspaceServiceLabelLockTest {
             mock(WorkspaceProperties.class),
             List.of(),
             mock(WorkspaceSnapshotRepository.class),
-            mock(WorkspaceRootService.class));
+            mock(WorkspaceRootService.class),
+            mock(RunnerBindingService.class));
 
     @Test
     void withLabelLock_returnsActionResult() {
@@ -32,8 +34,10 @@ class WorkspaceServiceLabelLockTest {
     @Test
     void withLabelLock_propagatesException() {
         assertThatThrownBy(() -> service.withLabelLock("acme", "p-1", "ws", () -> {
-            throw new IllegalStateException("boom");
-        })).isInstanceOf(IllegalStateException.class).hasMessage("boom");
+                    throw new IllegalStateException("boom");
+                }))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("boom");
     }
 
     @Test

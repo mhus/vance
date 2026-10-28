@@ -68,7 +68,7 @@ final class ExecOperations {
                                 command,
                                 wrapper == null
                                         ? ExecIsolation.shellArgv(command)
-                                        : ExecIsolation.wrap(wrapper, cwd.toString(), command),
+                                        : ExecIsolation.wrap(wrapper, cwd.toString(), env.get("HOME"), command),
                                 cwd,
                                 env,
                                 Map.of(),

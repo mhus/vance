@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 
 import de.mhus.vance.exec.RootDirException;
+import de.mhus.vance.shared.runner.RunnerBindingService;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -29,7 +30,8 @@ class WorkspaceServiceFileOpsTest {
                 mock(WorkspaceProperties.class),
                 List.of(),
                 mock(WorkspaceSnapshotRepository.class),
-                mock(WorkspaceRootService.class)));
+                mock(WorkspaceRootService.class),
+                mock(RunnerBindingService.class)));
         doReturn(file).when(service).resolve(TENANT, PROJECT, DIR, relativePath);
         return service;
     }

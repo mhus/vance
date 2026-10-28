@@ -6,6 +6,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 
+import de.mhus.vance.shared.runner.RunnerBindingService;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -33,8 +34,11 @@ class WorkspaceServiceReadLinesTest {
                 mock(WorkspaceProperties.class),
                 List.of(),
                 mock(WorkspaceSnapshotRepository.class),
-                mock(WorkspaceRootService.class)));
-        doReturn(file).when(service).resolve(TENANT, PROJECT, DIR, file.getFileName().toString());
+                mock(WorkspaceRootService.class),
+                mock(RunnerBindingService.class)));
+        doReturn(file)
+                .when(service)
+                .resolve(TENANT, PROJECT, DIR, file.getFileName().toString());
         return service;
     }
 
@@ -43,11 +47,10 @@ class WorkspaceServiceReadLinesTest {
         Path file = tmp.resolve("latin1.txt");
         // 0xFF 0xFE is not valid UTF-8 — a Latin-1 or binary file in the
         // workspace looks exactly like this.
-        Files.write(file, new byte[]{'h', 'i', '\n', (byte) 0xFF, (byte) 0xFE, '\n'});
+        Files.write(file, new byte[] {'h', 'i', '\n', (byte) 0xFF, (byte) 0xFE, '\n'});
         WorkspaceService service = serviceResolvingTo(file);
 
-        assertThatThrownBy(() ->
-                service.readLines(TENANT, PROJECT, DIR, "latin1.txt", 0, 1, 10))
+        assertThatThrownBy(() -> service.readLines(TENANT, PROJECT, DIR, "latin1.txt", 0, 1, 10))
                 .isInstanceOf(WorkspaceException.class)
                 .hasMessageStartingWith("Read failed:");
     }
@@ -55,13 +58,11 @@ class WorkspaceServiceReadLinesTest {
     @Test
     void readLines_undecodableFile_failsLikeTheWholeFileRead(@TempDir Path tmp) throws Exception {
         Path file = tmp.resolve("latin1.txt");
-        Files.write(file, new byte[]{'h', 'i', '\n', (byte) 0xFF, (byte) 0xFE, '\n'});
+        Files.write(file, new byte[] {'h', 'i', '\n', (byte) 0xFF, (byte) 0xFE, '\n'});
         WorkspaceService service = serviceResolvingTo(file);
 
-        String windowed = catchMessage(() ->
-                service.readLines(TENANT, PROJECT, DIR, "latin1.txt", 0, 1, 10));
-        String whole = catchMessage(() ->
-                service.read(TENANT, PROJECT, DIR, "latin1.txt", 0));
+        String windowed = catchMessage(() -> service.readLines(TENANT, PROJECT, DIR, "latin1.txt", 0, 1, 10));
+        String whole = catchMessage(() -> service.read(TENANT, PROJECT, DIR, "latin1.txt", 0));
 
         assertThat(windowed).isEqualTo(whole);
     }
@@ -72,8 +73,7 @@ class WorkspaceServiceReadLinesTest {
         Files.writeString(file, "one\ntwo\nthree\nfour\n", StandardCharsets.UTF_8);
         WorkspaceService service = serviceResolvingTo(file);
 
-        WorkspaceService.ReadResult r =
-                service.readLines(TENANT, PROJECT, DIR, "plain.txt", 0, 2, 2);
+        WorkspaceService.ReadResult r = service.readLines(TENANT, PROJECT, DIR, "plain.txt", 0, 2, 2);
 
         assertThat(r.text()).isEqualTo("two\nthree");
         assertThat(r.truncated()).isFalse();

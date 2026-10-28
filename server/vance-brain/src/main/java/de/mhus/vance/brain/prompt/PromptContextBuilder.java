@@ -46,6 +46,9 @@ import org.jspecify.annotations.Nullable;
  *       {@code has_python_rootdir}, {@code has_git_rootdir}. Set by
  *       {@link #withRootDirTypes}; unset entries are falsy in lenient
  *       mode. Templates use these to gate type-specific tool hints.</li>
+ *   <li>{@code runnerAvailable} — {@code true} when the project has a runner.
+ *       Set by {@link #withRunner}; a property of the project, whereas
+ *       {@code workspaceMode} (a global) is one of the pod.</li>
  *   <li>{@code has_tool} — map of the tool names in this turn's manifest,
  *       e.g. {@code {% if has_tool.doc_write %}}. Set by
  *       {@link #withAvailableTools}. Gates tool-specific prompt text on
@@ -66,8 +69,7 @@ import org.jspecify.annotations.Nullable;
  */
 public final class PromptContextBuilder {
 
-    private static final System.Logger log =
-            System.getLogger(PromptContextBuilder.class.getName());
+    private static final System.Logger log = System.getLogger(PromptContextBuilder.class.getName());
 
     /**
      * What an identifier the brain issued looks like: a Mongo ObjectId, a UUID,
@@ -97,8 +99,7 @@ public final class PromptContextBuilder {
      * fields then stay unset and templates that reference them render
      * empty in lenient mode.
      */
-    public static PromptContextBuilder forProcess(
-            ThinkProcessDocument process, @Nullable ModelInfo modelInfo) {
+    public static PromptContextBuilder forProcess(ThinkProcessDocument process, @Nullable ModelInfo modelInfo) {
         PromptContextBuilder b = new PromptContextBuilder();
         if (process != null) {
             b.recipe(process.getRecipeName());
@@ -237,12 +238,10 @@ public final class PromptContextBuilder {
      * and one that cannot be a thread id is not a reference we should resolve.
      * Absent is a state the templates already handle.
      */
-    public PromptContextBuilder activeInbox(
-            @Nullable ActiveInboxContext activeInbox) {
+    public PromptContextBuilder activeInbox(@Nullable ActiveInboxContext activeInbox) {
         if (activeInbox == null || !isIdShaped(activeInbox.getThreadId())) {
             if (activeInbox != null) {
-                log.log(System.Logger.Level.TRACE,
-                        "activeInbox dropped — threadId is not id-shaped");
+                log.log(System.Logger.Level.TRACE, "activeInbox dropped — threadId is not id-shaped");
             }
             return this;
         }
@@ -255,8 +254,7 @@ public final class PromptContextBuilder {
             if (isIdShaped(messageId)) {
                 view.put("messageId", messageId);
             } else {
-                log.log(System.Logger.Level.TRACE,
-                        "activeInbox.messageId dropped — not id-shaped");
+                log.log(System.Logger.Level.TRACE, "activeInbox.messageId dropped — not id-shaped");
             }
         }
         map.put("activeInbox", view);
@@ -429,6 +427,17 @@ public final class PromptContextBuilder {
             if (!SAFE_TYPE.matcher(normalised).matches()) continue;
             map.put("has_" + normalised + "_rootdir", Boolean.TRUE);
         }
+        return this;
+    }
+
+    /**
+     * Exposes {@code runnerAvailable}: the project has a runner, a second place
+     * {@code file_*} / {@code exec_*} can run (select it with
+     * {@code work_target_set(kind="RUNNER")}). Independent of the pod-wide
+     * {@code workspaceMode}. Set only when {@code true}; unset is falsy in templates.
+     */
+    public PromptContextBuilder withRunner(boolean runnerAvailable) {
+        if (runnerAvailable) map.put("runnerAvailable", Boolean.TRUE);
         return this;
     }
 

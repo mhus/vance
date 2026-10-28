@@ -965,6 +965,7 @@ public class Ford implements ThinkEngine {
         clientTurnContextResolver.resolve(process, inboxExtras).applyTo(ctxBuilder);
         ctxBuilder
                 .withRootDirTypes(workspaceService.getRootDirTypes(process.getTenantId(), process.getProjectId()))
+                .withRunner(workspaceService.runnerAvailable(process.getTenantId(), process.getProjectId()))
                 // This turn's manifest, so the template can gate
                 // tool-specific text on the tool being callable.
                 // Ford already has the classified surface as a

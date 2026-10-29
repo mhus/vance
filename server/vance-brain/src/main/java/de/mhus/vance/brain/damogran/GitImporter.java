@@ -23,6 +23,10 @@ class GitImporter implements DamogranImporter {
         if (entry.to() == null || entry.to().isBlank()) {
             throw new DamogranException("git import requires a 'to' target directory");
         }
+        if (entry.option("credentialAlias") != null) {
+            throw new DamogranException(
+                    "git import: 'credentialAlias' is gone — stored credentials are chosen by the repository's host; use 'public: true' to go anonymously");
+        }
         ctx.requireGit("git import")
                 .importRepo(
                         DamogranUri.stripGit(entry.from()), entry.to(),

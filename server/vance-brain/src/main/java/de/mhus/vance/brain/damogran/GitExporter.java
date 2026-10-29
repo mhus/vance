@@ -30,6 +30,10 @@ class GitExporter implements DamogranExporter {
         if (entry.from() == null || entry.from().isBlank()) {
             throw new DamogranException("git export requires a 'from' working-tree directory");
         }
+        if (entry.option("credentialAlias") != null) {
+            throw new DamogranException(
+                    "git export: 'credentialAlias' is gone — stored credentials are chosen by the repository's host; use 'public: true' to go anonymously");
+        }
         String message = entry.option("message");
         ctx.requireGit("git export")
                 .exportRepo(

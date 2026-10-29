@@ -36,7 +36,8 @@ public class GitLogoutTool implements Tool {
     @Override
     public String description() {
         return "Revoke the stored git credential of <user> on <host> for this project (setting key"
-                + " credential.git.<user>@<host>). Git goes to that host anonymously afterwards.";
+                + " credential.git.<user>@<host>). A tenant-wide credential for the same account stays in effect;"
+                + " the result says so. Otherwise git goes to that host anonymously.";
     }
 
     @Override
@@ -79,6 +80,9 @@ public class GitLogoutTool implements Tool {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("key", key.storageKey());
         out.put("revoked", true);
+        out.put(
+                "tenantCredentialRemains",
+                store.locate(ctx.tenantId(), project, key).isPresent());
         return out;
     }
 }

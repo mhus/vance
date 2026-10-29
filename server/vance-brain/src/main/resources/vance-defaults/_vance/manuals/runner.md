@@ -47,7 +47,7 @@ job keeps running on the runner, ask `runner_exec_status` for it.
 
 `runner_root_create` makes: `temp` / `ephemeral` (scratch), `git` (a clone — `repoUrl`, optional
 `branch`, `commit`, `depth`, and `public`: stored credentials for the repository's host are used automatically — name nothing; put the
-account into the URL (`https://user@host/…`) if the host has several; `public: true` goes anonymously.
+account into the URL (`https://user@host/…`) if the host has several; `public: true` goes anonymously. A stored credential is only sent over https: for an http or ssh URL on such a host, use an https URL or `public: true`.
 The server resolves them, the runner only gets the token for that clone. Credentials are settings
 under `credential.git.<user>@<host>`; `git_login` checks one is stored — if not, store it first, never put a
 token into a tool argument other than `vault_secret_set`), `python` (a venv at `.venv`, optionally cloned,

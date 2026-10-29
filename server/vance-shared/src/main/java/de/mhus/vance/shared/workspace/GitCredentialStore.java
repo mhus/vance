@@ -14,9 +14,8 @@ import org.springframework.stereotype.Component;
 /**
  * The git credentials kept as encrypted settings, one per account and host under
  * {@link GitCredentialKey#storageKey()}. Project scope wins over the tenant-wide default, per
- * account. Only server code reads a token ({@link SettingService#getDecryptedPassword}); the
- * {@code credential.*} namespace is closed to secret references, so neither a script nor the model
- * can resolve one.
+ * account. Server code reads a token with {@link SettingService#getDecryptedPassword}; the tools
+ * store it as a {@code HIDDEN} setting, so like any vault secret it stays resolvable by reference.
  */
 @Component
 public class GitCredentialStore {

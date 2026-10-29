@@ -84,12 +84,26 @@ class GitCredentialToolsTest {
 
     @Test
     void logoutRevokesTheProjectsCredential() {
-        when(store.locate("t", "p", KEY)).thenReturn(Optional.of(new GitCredentialStore.Located(KEY, "p")));
+        when(store.locate("t", "p", KEY))
+                .thenReturn(Optional.of(new GitCredentialStore.Located(KEY, "p")))
+                .thenReturn(Optional.empty());
         when(store.revoke("t", "p", KEY)).thenReturn(true);
 
-        assertThat(logout.invoke(PARAMS, CTX)).containsEntry("revoked", true);
+        assertThat(logout.invoke(PARAMS, CTX))
+                .containsEntry("revoked", true)
+                .containsEntry("tenantCredentialRemains", false);
 
         verify(support).enforce(CTX, Action.WRITE);
+    }
+
+    @Test
+    void logoutReportsATenantWideCredentialThatTakesOver() {
+        when(store.locate("t", "p", KEY))
+                .thenReturn(Optional.of(new GitCredentialStore.Located(KEY, "p")))
+                .thenReturn(Optional.of(new GitCredentialStore.Located(KEY, "_tenant")));
+        when(store.revoke("t", "p", KEY)).thenReturn(true);
+
+        assertThat(logout.invoke(PARAMS, CTX)).containsEntry("tenantCredentialRemains", true);
     }
 
     @Test

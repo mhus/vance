@@ -42,7 +42,7 @@ public class SecretReferenceKeyPolicy {
     private final List<String> denyPatterns;
 
     public SecretReferenceKeyPolicy(
-            @Value("${vance.settings.secret-reference-deny-keys:ai.provider.*,vault.*,credential.*}") String raw) {
+            @Value("${vance.settings.secret-reference-deny-keys:ai.provider.*,vault.*}") String raw) {
         this.denyPatterns = SettingKeyPatterns.parse(raw);
         log.debug("SecretReferenceKeyPolicy: {} deny pattern(s): {}", denyPatterns.size(), denyPatterns);
     }

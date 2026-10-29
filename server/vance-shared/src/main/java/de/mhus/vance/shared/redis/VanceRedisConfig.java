@@ -1,5 +1,7 @@
 package de.mhus.vance.shared.redis;
 
+import io.lettuce.core.ClientOptions;
+import io.lettuce.core.SocketOptions;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -45,10 +47,25 @@ public class VanceRedisConfig {
         if (props.getPassword() != null && !props.getPassword().isBlank()) {
             standalone.setPassword(props.getPassword());
         }
+        return new LettuceConnectionFactory(standalone, clientConfiguration(props));
+    }
+
+    /**
+     * Lettuce client settings. Both timeouts are explicit: left alone, a command issued while Redis
+     * is unreachable waits for Lettuce's default of 60 s, and a request thread that publishes a
+     * live-feature event (a document write) would hang for that long.
+     */
+    static LettuceClientConfiguration clientConfiguration(VanceRedisProperties props) {
         LettuceClientConfiguration.LettuceClientConfigurationBuilder clientBuilder =
-                LettuceClientConfiguration.builder();
+                LettuceClientConfiguration.builder()
+                        .commandTimeout(props.getCommandTimeout())
+                        .clientOptions(ClientOptions.builder()
+                                .socketOptions(SocketOptions.builder()
+                                        .connectTimeout(props.getConnectTimeout())
+                                        .build())
+                                .build());
         if (props.isSsl()) clientBuilder.useSsl();
-        return new LettuceConnectionFactory(standalone, clientBuilder.build());
+        return clientBuilder.build();
     }
 
     @Bean(name = "vanceRedisTemplate")

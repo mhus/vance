@@ -2,6 +2,7 @@ package de.mhus.vance.shared.redis;
 
 import jakarta.annotation.PostConstruct;
 import java.net.URI;
+import java.time.Duration;
 import lombok.Data;
 import org.jspecify.annotations.Nullable;
 import org.springframework.aot.hint.annotation.Reflective;
@@ -43,6 +44,18 @@ public class VanceRedisProperties {
     private @Nullable String password;
 
     private boolean ssl = false;
+
+    /**
+     * How long one Redis command may take before it fails. Redis is only used for live features
+     * (pub/sub, ephemeral presence state), never as a store, and some callers sit in a request
+     * thread (the {@code documents.changed} publish after a document write) — so a lost Redis must
+     * cost seconds, not the Lettuce default of 60 s. The failed command is logged by its caller and
+     * the live feature degrades to pod-local.
+     */
+    private Duration commandTimeout = Duration.ofSeconds(2);
+
+    /** How long opening a connection to Redis may take. Same reasoning as {@link #commandTimeout}. */
+    private Duration connectTimeout = Duration.ofSeconds(2);
 
     /**
      * Convenience: a full Redis URL that overrides {@link #host},

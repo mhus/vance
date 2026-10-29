@@ -20,8 +20,12 @@ class GitServiceTest {
     @Test
     void cloneOrPull_rejectsFileScheme() {
         assertThatThrownBy(() -> git.cloneOrPull(
-                Path.of("/tmp/vance-gitservice-test-x"), "file:///var/lib/vance/other/.git",
-                null, "acme", "projA", null))
+                        Path.of("/tmp/vance-gitservice-test-x"),
+                        "file:///var/lib/vance/other/.git",
+                        null,
+                        "acme",
+                        "projA",
+                        false))
                 .isInstanceOf(DamogranException.class)
                 .hasMessageContaining("not allowed");
     }
@@ -29,8 +33,12 @@ class GitServiceTest {
     @Test
     void cloneOrPull_rejectsGitProtocol() {
         assertThatThrownBy(() -> git.cloneOrPull(
-                Path.of("/tmp/vance-gitservice-test-y"), "git://internal-service:9418/repo",
-                null, "acme", "projA", null))
+                        Path.of("/tmp/vance-gitservice-test-y"),
+                        "git://internal-service:9418/repo",
+                        null,
+                        "acme",
+                        "projA",
+                        false))
                 .isInstanceOf(DamogranException.class)
                 .hasMessageContaining("not allowed");
     }

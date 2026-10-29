@@ -89,7 +89,7 @@ import:
     to: data.csv           # workspace-relative (the import target is ALWAYS local)
   - from: git:https://github.com/acme/repo.git   # clone (pull on re-run)
     to: repo               # folder in the workspace
-    branch: main           # optional; credentialAlias optional
+    branch: main           # optional; public optional
 tasks:
   - type: exec
     command: sort data.csv > sorted.csv
@@ -103,7 +103,7 @@ export:
     to: vance:summary.md
   - from: repo             # git working tree (cloned via git import)
     to: git:https://github.com/acme/repo.git
-    message: "Update from Damogran"   # branch/push/credentialAlias optional
+    message: "Update from Damogran"   # branch/push/public optional
 ```
 
 ## Task-Typen
@@ -174,8 +174,8 @@ export:
   python/tex/js). **`import`/`export` work**: `vance:`/`http:` **text-based**
   (import) and `vance:` (export), and **`git:*`** via the remote host's `git`
   through exec (import = clone/pull, export = commit/push; if `git` is missing
-  there → error). Only **binary** copy is WORK-only, and `credentialAlias`
-  (Vault) does not apply remotely — there the host's git credentials count
+  there → error). Only **binary** copy is WORK-only, and the server-stored git credentials
+  (and `public`) do not apply remotely — there the host's git credentials count
   (ssh key / credential helper). For "several shell steps in sequence on a
   remote machine". Default stays `WORK`.
 - **Deps (`node`/`python`):** `workspace.options.packages: [numpy, pandas==2.0]`

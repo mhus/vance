@@ -74,13 +74,13 @@ public class GitCheckoutTool implements Tool {
                                                     + "process's working RootDir. Subsequent "
                                                     + "workspace_* calls without 'dirName' "
                                                     + "default to it."),
-                            "credentialAlias",
+                            "public",
                                     Map.of(
                                             "type",
-                                            "string",
+                                            "boolean",
                                             "description",
-                                            "Alias resolved by the credential store for "
-                                                    + "authenticated clones. Optional.")),
+                                            "Go to the repository anonymously, without the stored credentials. Credentials for "
+                                                    + "the repository's host are used automatically otherwise. Optional.")),
             "required", List.of("repoUrl"));
 
     private final WorkspaceService workspaceService;
@@ -153,7 +153,7 @@ public class GitCheckoutTool implements Tool {
         String requestedCommit = stringOrNull(params, "commit");
         Integer depth = positiveIntOrNull(params, "depth");
         String label = stringOrNull(params, "label");
-        String credentialAlias = stringOrNull(params, "credentialAlias");
+        boolean publicAccess = Boolean.TRUE.equals(params.get("public"));
         boolean asWorkingDir = params != null && Boolean.TRUE.equals(params.get("asWorkingDir"));
 
         Map<String, Object> metadata = new LinkedHashMap<>();
@@ -161,7 +161,7 @@ public class GitCheckoutTool implements Tool {
         if (branch != null) metadata.put(GitHandler.META_BRANCH, branch);
         if (requestedCommit != null) metadata.put(GitHandler.META_CHECKOUT_COMMIT, requestedCommit);
         if (depth != null) metadata.put(GitHandler.META_DEPTH, depth);
-        if (credentialAlias != null) metadata.put(GitHandler.META_CREDENTIAL_ALIAS, credentialAlias);
+        if (publicAccess) metadata.put(GitHandler.META_PUBLIC, true);
 
         RootDirSpec spec = RootDirSpec.builder()
                 .tenantId(tenantId)

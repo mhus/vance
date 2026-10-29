@@ -1,6 +1,8 @@
 package de.mhus.vance.brain.damogran;
 
 import de.mhus.vance.shared.workspace.GitAuthProvider;
+import de.mhus.vance.shared.workspace.GitCredentialException;
+import de.mhus.vance.shared.workspace.GitCredentialKey;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -32,10 +34,15 @@ public class GitService {
     }
 
     /** Clone {@code url} into {@code dir}, or pull if {@code dir} is already a repo. */
-    public void cloneOrPull(Path dir, String url, @Nullable String branch,
-                            String tenantId, @Nullable String projectId, @Nullable String alias) {
+    public void cloneOrPull(
+            Path dir,
+            String url,
+            @Nullable String branch,
+            String tenantId,
+            @Nullable String projectId,
+            boolean publicAccess) {
         assertRemoteAllowed(url);
-        CredentialsProvider creds = authProvider.provide(tenantId, projectId, alias);
+        CredentialsProvider creds = credentials(tenantId, projectId, publicAccess, url);
         if (isGitRepo(dir)) {
             try (Git git = Git.open(dir.toFile())) {
                 git.pull().setCredentialsProvider(creds).call();
@@ -46,10 +53,8 @@ public class GitService {
         }
         try {
             Files.createDirectories(dir);
-            var clone = Git.cloneRepository()
-                    .setURI(url)
-                    .setDirectory(dir.toFile())
-                    .setCredentialsProvider(creds);
+            var clone =
+                    Git.cloneRepository().setURI(url).setDirectory(dir.toFile()).setCredentialsProvider(creds);
             if (StringUtils.isNotBlank(branch)) {
                 clone.setBranch(branch);
             }
@@ -63,14 +68,20 @@ public class GitService {
      * Stage all changes in {@code dir}, commit (if dirty), and — when
      * {@code push} — push {@code HEAD} to {@code branch} on {@code url}.
      */
-    public void commitAndPush(Path dir, String url, @Nullable String branch, String message,
-                              boolean push, String tenantId, @Nullable String projectId,
-                              @Nullable String alias) {
+    public void commitAndPush(
+            Path dir,
+            String url,
+            @Nullable String branch,
+            String message,
+            boolean push,
+            String tenantId,
+            @Nullable String projectId,
+            boolean publicAccess) {
         if (!isGitRepo(dir)) {
             throw new DamogranException("git export source '" + dir.getFileName()
                     + "' is not a git working tree (clone it first via a git import)");
         }
-        CredentialsProvider creds = authProvider.provide(tenantId, projectId, alias);
+        CredentialsProvider creds = credentials(tenantId, projectId, publicAccess, url);
         try (Git git = Git.open(dir.toFile())) {
             git.add().addFilepattern(".").call();
             git.add().setUpdate(true).addFilepattern(".").call(); // stage deletions too
@@ -79,7 +90,9 @@ public class GitService {
             }
             if (push) {
                 assertRemoteAllowed(url);
-                String target = StringUtils.isNotBlank(branch) ? branch : git.getRepository().getBranch();
+                String target = StringUtils.isNotBlank(branch)
+                        ? branch
+                        : git.getRepository().getBranch();
                 git.push()
                         .setRemote(url)
                         .setRefSpecs(new RefSpec("HEAD:refs/heads/" + target))
@@ -88,6 +101,20 @@ public class GitService {
             }
         } catch (IOException | GitAPIException e) {
             throw new DamogranException("git commit/push failed for " + url + ": " + e.getMessage(), e);
+        }
+    }
+
+    /** The credentials stored for the host of {@code url} — none for a public or local repository. */
+    private @Nullable CredentialsProvider credentials(
+            String tenantId, @Nullable String projectId, boolean publicAccess, String url) {
+        String host = GitCredentialKey.hostOf(url);
+        if (publicAccess || host == null) {
+            return null;
+        }
+        try {
+            return authProvider.provide(tenantId, projectId, host, GitCredentialKey.userOf(url));
+        } catch (GitCredentialException e) {
+            throw new DamogranException(e.getMessage(), e);
         }
     }
 

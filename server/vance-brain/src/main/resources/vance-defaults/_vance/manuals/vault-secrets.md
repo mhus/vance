@@ -124,6 +124,16 @@ A credential you install this way lands as **PASSWORD**: the connector installed
 alongside it resolves the value, you cannot. That is intended and needs no action
 from you.
 
+## Git tokens
+
+A git token is a secret stored under the fixed key `credential.git.<user>@<host>` (e.g.
+`credential.git.mhus@github.com`). You never pass it to a git tool: `git_checkout`, `runner_root_create` and the
+others pick it by the host of the `repoUrl` on their own, and go anonymous when there is none (`public: true` forces
+that). To set one up: store the token with `vault_secret_set` under exactly that key (or ask the human to add it as a
+PASSWORD setting), then call `git_login` with `host` and `user` — it confirms the key is there without showing the
+token, and says what is missing otherwise. Storing a new value under the same key re-authenticates; `git_logout`
+revokes the project's credential. The `credential.*` keys cannot be read back through `{{secret:…}}`.
+
 Nothing here can be worked around by choosing a different type or scope: you
 cannot set a setting's type, and the deny-list is server configuration, not a
 setting. A vault secret (`vault_secret_generate`) is the alternative when you need

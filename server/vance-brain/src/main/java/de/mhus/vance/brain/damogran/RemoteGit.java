@@ -8,8 +8,7 @@ import org.jspecify.annotations.Nullable;
  * the remote host's own {@code git} reached via {@code exec_run}. Paths are
  * relative to the remote's working directory (same as every other remote exec
  * task); credentials come from the remote host's own git setup (ssh keys,
- * credential helper) — a {@code credentialAlias} (WORK-only, vault-backed) is
- * rejected upstream.
+ * credential helper), never the ones stored on the server.
  *
  * <p>Pure command construction only (POSIX {@code sh}); the runner runs the
  * string via {@code exec_run} and turns a non-zero exit into a failure. Kept
@@ -43,17 +42,27 @@ final class RemoteGit {
      * false — point {@code origin} at {@code url} and push {@code HEAD} (to
      * {@code branch} when given).
      */
-    static String commitPushCommand(
-            String dir, String url, @Nullable String branch, String message, boolean push) {
+    static String commitPushCommand(String dir, String url, @Nullable String branch, String message, boolean push) {
         String qDir = sh(dir);
         StringBuilder sb = new StringBuilder();
         sb.append("git -C ").append(qDir).append(" add -A && ");
         sb.append("if ! git -C ").append(qDir).append(" diff --cached --quiet; then ");
-        sb.append("git -C ").append(qDir).append(" commit -m ").append(sh(message)).append("; fi");
+        sb.append("git -C ")
+                .append(qDir)
+                .append(" commit -m ")
+                .append(sh(message))
+                .append("; fi");
         if (push) {
             // Re-point origin idempotently (set-url fails if origin is absent → add).
-            sb.append(" && (git -C ").append(qDir).append(" remote set-url origin ").append(sh(url));
-            sb.append(" || git -C ").append(qDir).append(" remote add origin ").append(sh(url)).append(")");
+            sb.append(" && (git -C ")
+                    .append(qDir)
+                    .append(" remote set-url origin ")
+                    .append(sh(url));
+            sb.append(" || git -C ")
+                    .append(qDir)
+                    .append(" remote add origin ")
+                    .append(sh(url))
+                    .append(")");
             String refspec = isBlank(branch) ? "HEAD" : "HEAD:" + branch;
             sb.append(" && git -C ").append(qDir).append(" push origin ").append(sh(refspec));
         }

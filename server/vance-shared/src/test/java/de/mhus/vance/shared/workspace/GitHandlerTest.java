@@ -36,7 +36,7 @@ class GitHandlerTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        handler = new GitHandler(new JGitOperations((tenantId, projectId, alias) -> null));
+        handler = new GitHandler(new JGitOperations((tenantId, projectId, host, user) -> null));
         sourceRepo = createSourceRepoWithTwoCommits();
     }
 

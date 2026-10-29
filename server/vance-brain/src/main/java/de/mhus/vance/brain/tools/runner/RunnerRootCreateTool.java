@@ -18,8 +18,8 @@ import org.jspecify.annotations.Nullable;
  * environment ({@code python}) or a Node project ({@code node}).
  *
  * <p>The tool builds the RootDir's metadata from named parameters only; nothing else the
- * model passes reaches the runner. A {@code credentialAlias} is resolved here into a token
- * that travels with this one call and is never stored.
+ * model passes reaches the runner. The credentials stored for the repository's host are resolved
+ * here into a token that travels with this one call and is never stored.
  */
 final class RunnerRootCreateTool implements Tool {
 
@@ -70,13 +70,14 @@ final class RunnerRootCreateTool implements Tool {
                         "Commit to detach to after cloning; wins over the branch tip."));
         p.put("depth", Map.of("type", "integer", "description", "Shallow clone depth. Default: full history."));
         p.put(
-                "credentialAlias",
+                "public",
                 Map.of(
                         "type",
-                        "string",
+                        "boolean",
                         "description",
-                        "Alias of a stored git credential, for a private repository. Resolved by the server;"
-                                + " the runner only gets the token for this clone."));
+                        "Go to the repository anonymously. Without it the server uses the stored credentials"
+                                + " of the repository's host, if there are any; the runner only gets the token"
+                                + " for this clone."));
         p.put(
                 "pythonPath",
                 Map.of(
@@ -182,12 +183,14 @@ final class RunnerRootCreateTool implements Tool {
         if (!metadata.isEmpty()) {
             args.put("metadata", metadata);
         }
-        String alias = string(params, "credentialAlias");
-        if (alias != null) {
-            if (repoUrl == null) {
-                throw new ToolException("'credentialAlias' needs a 'repoUrl'");
+        if (repoUrl != null) {
+            Map<String, Object> credential = credentials.resolve(
+                    ctx.tenantId(), ctx.projectId(), repoUrl, Boolean.TRUE.equals(params.get("public")));
+            if (credential != null) {
+                args.put("gitCredential", credential);
             }
-            args.put("gitCredential", credentials.resolve(ctx.tenantId(), ctx.projectId(), alias, repoUrl));
+        } else if (params.get("public") != null) {
+            throw new ToolException("'public' needs a 'repoUrl'");
         }
         return runner.call(ctx, "root.create", args);
     }

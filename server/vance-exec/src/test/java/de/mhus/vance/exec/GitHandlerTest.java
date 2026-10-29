@@ -38,8 +38,8 @@ class GitHandlerTest {
 
             @Override
             public void clone(String repoUrl, Path dir, String branch, @Nullable Integer depth, Scope scope) {
-                calls.add("clone " + repoUrl + " branch=" + branch + " depth=" + depth + " alias="
-                        + scope.credentialAlias() + " tenant=" + scope.tenantId());
+                calls.add("clone " + repoUrl + " branch=" + branch + " depth=" + depth + " public="
+                        + scope.publicAccess() + " tenant=" + scope.tenantId());
                 maybeFail("clone");
             }
 
@@ -71,7 +71,7 @@ class GitHandlerTest {
 
             @Override
             public void push(Path repo, String remote, String branch, Scope scope) {
-                calls.add("push " + remote + " " + branch + " alias=" + scope.credentialAlias());
+                calls.add("push " + remote + " " + branch + " public=" + scope.publicAccess());
                 maybeFail("push");
             }
         });
@@ -115,12 +115,12 @@ class GitHandlerTest {
 
         handler.init(handle, null);
 
-        assertThat(calls).containsExactly("clone https://x.test/r.git branch=main depth=null alias=null tenant=acme");
+        assertThat(calls).containsExactly("clone https://x.test/r.git branch=main depth=null public=false tenant=acme");
         assertThat(handle.getDescriptor().getMetadata()).containsEntry(GitHandler.META_COMMIT, "abc123");
     }
 
     @Test
-    void init_passesBranchAliasAndOnlyAPositiveDepth() {
+    void init_passesBranchPublicFlagAndOnlyAPositiveDepth() {
         for (Object depth : new Object[] {3, "5", " 7 "}) {
             calls.clear();
             handler.init(
@@ -129,13 +129,13 @@ class GitHandlerTest {
                             "u",
                             GitHandler.META_BRANCH,
                             "dev",
-                            GitHandler.META_CREDENTIAL_ALIAS,
-                            "gh",
+                            GitHandler.META_PUBLIC,
+                            true,
                             GitHandler.META_DEPTH,
                             depth)),
                     null);
             assertThat(calls).hasSize(1);
-            assertThat(calls.get(0)).contains("branch=dev").contains("alias=gh");
+            assertThat(calls.get(0)).contains("branch=dev").contains("public=true");
             assertThat(calls.get(0)).contains("depth=" + depth.toString().trim());
         }
         for (Object depth : new Object[] {0, -2, "", "soon", null}) {
@@ -181,13 +181,15 @@ class GitHandlerTest {
     @Test
     void suspend_dirtyTree_branchesCommitsAndPushesTheSuspendBranch() {
         dirty = true;
-        RootDirHandle handle = handle(meta(GitHandler.META_REPO_URL, "u", GitHandler.META_CREDENTIAL_ALIAS, "gh"));
+        RootDirHandle handle = handle(meta(GitHandler.META_REPO_URL, "u", GitHandler.META_PUBLIC, true));
 
         handler.suspend(handle);
 
         assertThat(calls)
                 .containsExactly(
-                        "branch vance/suspend/repo", "commit vance suspend", "push origin vance/suspend/repo alias=gh");
+                        "branch vance/suspend/repo",
+                        "commit vance suspend",
+                        "push origin vance/suspend/repo public=true");
         assertThat(handle.getDescriptor().getMetadata())
                 .containsEntry(GitHandler.META_SUSPEND_BRANCH, "vance/suspend/repo")
                 .containsEntry(GitHandler.META_SUSPEND_COMMIT, "abc123");
@@ -197,7 +199,7 @@ class GitHandlerTest {
     void suspend_cleanTree_skipsTheCommit() {
         handler.suspend(handle(meta(GitHandler.META_REPO_URL, "u")));
 
-        assertThat(calls).containsExactly("branch vance/suspend/repo", "push origin vance/suspend/repo alias=null");
+        assertThat(calls).containsExactly("branch vance/suspend/repo", "push origin vance/suspend/repo public=false");
     }
 
     @Test

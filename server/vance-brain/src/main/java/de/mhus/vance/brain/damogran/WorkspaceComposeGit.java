@@ -7,8 +7,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * WORK {@link ComposeGit}: jgit ({@link GitService}) against the server-side
  * RootDir. The working tree is a real filesystem path, so clone/pull and
- * commit/push happen locally and a vault-backed {@code credentialAlias} resolves
- * through {@code GitAuthProvider}.
+ * commit/push happen locally and the credentials stored for the host resolve
+ * through {@code GitAuthProvider} (unless {@code public}).
  */
 final class WorkspaceComposeGit implements ComposeGit {
 
@@ -18,8 +18,12 @@ final class WorkspaceComposeGit implements ComposeGit {
     private final String projectId;
     private final String dirName;
 
-    WorkspaceComposeGit(WorkspaceService workspaceService, GitService gitService,
-                        String tenantId, String projectId, String dirName) {
+    WorkspaceComposeGit(
+            WorkspaceService workspaceService,
+            GitService gitService,
+            String tenantId,
+            String projectId,
+            String dirName) {
         this.workspaceService = workspaceService;
         this.gitService = gitService;
         this.tenantId = tenantId;
@@ -28,15 +32,15 @@ final class WorkspaceComposeGit implements ComposeGit {
     }
 
     @Override
-    public void importRepo(String url, String toDir, @Nullable String branch, @Nullable String credentialAlias) {
+    public void importRepo(String url, String toDir, @Nullable String branch, boolean publicAccess) {
         Path dir = workspaceService.resolve(tenantId, projectId, dirName, toDir);
-        gitService.cloneOrPull(dir, url, branch, tenantId, projectId, credentialAlias);
+        gitService.cloneOrPull(dir, url, branch, tenantId, projectId, publicAccess);
     }
 
     @Override
-    public void exportRepo(String fromDir, String url, @Nullable String branch,
-                           String message, boolean push, @Nullable String credentialAlias) {
+    public void exportRepo(
+            String fromDir, String url, @Nullable String branch, String message, boolean push, boolean publicAccess) {
         Path dir = workspaceService.resolve(tenantId, projectId, dirName, fromDir);
-        gitService.commitAndPush(dir, url, branch, message, push, tenantId, projectId, credentialAlias);
+        gitService.commitAndPush(dir, url, branch, message, push, tenantId, projectId, publicAccess);
     }
 }

@@ -19,12 +19,10 @@ public interface GitOperations {
     /**
      * Who is asking, for credential lookup.
      *
-     * @param credentialAlias key into the credential store; {@code null}/blank = anonymous
+     * @param publicAccess {@code true} = go to the repository anonymously; otherwise the stored
+     *     credentials for the repository's host are used when there are any
      */
-    record Scope(
-            @Nullable String tenantId,
-            @Nullable String projectId,
-            @Nullable String credentialAlias) {}
+    record Scope(@Nullable String tenantId, @Nullable String projectId, boolean publicAccess) {}
 
     /** {@code git init} in an existing directory. */
     void init(Path dir);

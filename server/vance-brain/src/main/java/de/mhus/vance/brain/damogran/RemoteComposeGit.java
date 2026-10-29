@@ -8,8 +8,8 @@ import org.jspecify.annotations.Nullable;
  * workspace here. {@link RemoteGit} builds the shell (idempotent clone-or-pull
  * on import; add-all + commit-if-changed + push {@code HEAD[:branch]} on
  * export); a non-zero exit (e.g. no {@code git} on the host) fails the run.
- * A vault-backed {@code credentialAlias} has no meaning remotely and is
- * rejected — the host's own git credentials (ssh key / credential helper) apply.
+ * The credentials stored on the server (and {@code public}) have no meaning remotely —
+ * the host's own git credentials (ssh key / credential helper) apply.
  */
 final class RemoteComposeGit implements ComposeGit {
 
@@ -24,15 +24,13 @@ final class RemoteComposeGit implements ComposeGit {
     }
 
     @Override
-    public void importRepo(String url, String toDir, @Nullable String branch, @Nullable String credentialAlias) {
-        rejectCredentialAlias(credentialAlias, "git import");
+    public void importRepo(String url, String toDir, @Nullable String branch, boolean publicAccess) {
         runGit(RemoteGit.cloneOrPullCommand(url, toDir, branch), "git import " + url);
     }
 
     @Override
-    public void exportRepo(String fromDir, String url, @Nullable String branch,
-                           String message, boolean push, @Nullable String credentialAlias) {
-        rejectCredentialAlias(credentialAlias, "git export");
+    public void exportRepo(
+            String fromDir, String url, @Nullable String branch, String message, boolean push, boolean publicAccess) {
         runGit(RemoteGit.commitPushCommand(fromDir, url, branch, message, push), "git export " + url);
     }
 
@@ -44,15 +42,7 @@ final class RemoteComposeGit implements ComposeGit {
         ComposeExec.Result r = exec.run(command, DEFAULT_GIT_DEADLINE_SECONDS);
         if (!r.ok()) {
             String detail = r.stderr().isBlank() ? r.stdout() : r.stderr();
-            throw new DamogranException(label + " exit code " + r.exitCode() + ": " + detail.strip());
-        }
-    }
-
-    private void rejectCredentialAlias(@Nullable String alias, String op) {
-        if (alias != null && !alias.isBlank()) {
-            throw new DamogranException(op + " on " + target + " target does not support "
-                    + "'credentialAlias' (vault-backed, WORK-only) — the remote host's own git "
-                    + "credentials (ssh key / credential helper) are used");
+            throw new DamogranException(label + " on " + target + " exit code " + r.exitCode() + ": " + detail.strip());
         }
     }
 }

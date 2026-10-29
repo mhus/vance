@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 /**
  * Imports a git repository into the workspace: {@code from: git:<url>},
  * {@code to: <workspace-dir>}. Clones on first use, pulls on re-run. Options:
- * {@code branch}, {@code credentialAlias}. Target-agnostic — delegates to the
+ * {@code branch}, {@code public}. Target-agnostic — delegates to the
  * run's {@link ComposeGit} backend (WORK jgit vs. remote host git via exec).
  */
 @Component
@@ -23,8 +23,9 @@ class GitImporter implements DamogranImporter {
         if (entry.to() == null || entry.to().isBlank()) {
             throw new DamogranException("git import requires a 'to' target directory");
         }
-        ctx.requireGit("git import").importRepo(
-                DamogranUri.stripGit(entry.from()), entry.to(),
-                entry.option("branch"), entry.option("credentialAlias"));
+        ctx.requireGit("git import")
+                .importRepo(
+                        DamogranUri.stripGit(entry.from()), entry.to(),
+                        entry.option("branch"), entry.boolOption("public", false));
     }
 }

@@ -19,7 +19,7 @@ import org.junit.jupiter.api.io.TempDir;
 /** {@code git} through the runner's launcher: real repositories, and what a token may and may not touch. */
 class ProgramGitOperationsTest {
 
-    private static final GitOperations.Scope SCOPE = new GitOperations.Scope("acme", "p", null);
+    private static final GitOperations.Scope SCOPE = new GitOperations.Scope("acme", "p", false);
 
     @TempDir
     Path tmp;

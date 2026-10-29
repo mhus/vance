@@ -10,7 +10,7 @@ import org.jspecify.annotations.Nullable;
  * through {@link GitOperations} (JGit in the brain, the {@code git} program in the
  * runner); this class owns what is the same for both: the metadata keys, the
  * suspend branch, the depth and commit rules. The descriptor stores
- * {@code credentialAlias} (not the token) so suspended descriptors carry no secrets.
+ * {@code public} flag (never a token) so suspended descriptors carry no secrets.
  *
  * <p>Metadata schema:
  * <ul>
@@ -21,7 +21,8 @@ import org.jspecify.annotations.Nullable;
  *       when the caller wants an exact source match (e.g. the commit the
  *       running brain was built from) instead of "whatever main is today"</li>
  *   <li>{@code commit} — populated by the handler with HEAD after init</li>
- *   <li>{@code credentialAlias} — alias resolved by {@link GitAuthProvider}</li>
+ *   <li>{@code public} — {@code true}: access the repository anonymously; otherwise the credentials
+ *       {@link GitAuthProvider} holds for the repository's host are used</li>
  *   <li>{@code suspendBranch} — set during suspend; recover prefers it over {@code branch}</li>
  *   <li>{@code suspendCommit} — set during suspend</li>
  * </ul>
@@ -36,7 +37,7 @@ public class GitHandler implements WorkspaceContentHandler {
     public static final String META_CHECKOUT_COMMIT = "checkoutCommit";
     public static final String META_DEPTH = "depth";
     public static final String META_COMMIT = "commit";
-    public static final String META_CREDENTIAL_ALIAS = "credentialAlias";
+    public static final String META_PUBLIC = "public";
     public static final String META_SUSPEND_BRANCH = "suspendBranch";
     public static final String META_SUSPEND_COMMIT = "suspendCommit";
 
@@ -171,10 +172,12 @@ public class GitHandler implements WorkspaceContentHandler {
         // workers explicitly call suspend if they need persistence.
     }
 
-    /** Credential context for remote calls — the alias, never a token. */
+    /** Credential context for remote calls — whether to go anonymous, never a token. */
     private static GitOperations.Scope scope(
             @Nullable String tenantId, @Nullable String projectId, Map<String, Object> meta) {
-        String alias = HandlerSupport.stringOr(meta, META_CREDENTIAL_ALIAS, null);
-        return new GitOperations.Scope(tenantId, projectId, alias.isBlank() ? null : alias);
+        Object raw = meta.get(META_PUBLIC);
+        boolean publicAccess =
+                raw instanceof Boolean b ? b : raw instanceof String s && Boolean.parseBoolean(s.strip());
+        return new GitOperations.Scope(tenantId, projectId, publicAccess);
     }
 }

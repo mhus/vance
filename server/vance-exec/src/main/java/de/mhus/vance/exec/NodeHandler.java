@@ -55,7 +55,7 @@ import org.jspecify.annotations.Nullable;
  *       Declarative alternative to shipping a {@code package.json} +
  *       lockfile, which for a compose arrive via a later import. Installed
  *       once on create/clear; a reused workspace keeps them.</li>
- *   <li>{@code repoUrl}, {@code branch}, {@code commit}, {@code credentialAlias},
+ *   <li>{@code repoUrl}, {@code branch}, {@code commit}, {@code public},
  *       {@code suspendBranch}, {@code suspendCommit} — same keys as {@link GitHandler}</li>
  * </ul>
  */

@@ -34,7 +34,7 @@ import org.jspecify.annotations.Nullable;
  *       alternative to shipping a {@code requirements.txt} — the file arrives
  *       via a later import, so it is not present at provision time. Installed
  *       once on create/clear; a reused workspace keeps them.</li>
- *   <li>{@code repoUrl}, {@code branch}, {@code commit}, {@code credentialAlias},
+ *   <li>{@code repoUrl}, {@code branch}, {@code commit}, {@code public},
  *       {@code suspendBranch}, {@code suspendCommit} — same keys as {@link GitHandler}</li>
  * </ul>
  */

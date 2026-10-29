@@ -74,8 +74,12 @@ public record DamogranManifest(
      * keeps existing callers/tests that build a manifest directly compiling.
      */
     public DamogranManifest(
-            WorkspaceSpec workspace, List<ImportEntry> imports, List<TaskSpec> tasks,
-            List<ExportEntry> exports, @Nullable String title, @Nullable String description,
+            WorkspaceSpec workspace,
+            List<ImportEntry> imports,
+            List<TaskSpec> tasks,
+            List<ExportEntry> exports,
+            @Nullable String title,
+            @Nullable String description,
             SessionSpec session) {
         this(workspace, imports, tasks, exports, title, description, session, List.of());
     }
@@ -100,7 +104,10 @@ public record DamogranManifest(
      *                conversation) — a fresh start on an otherwise stable name
      */
     public record SessionSpec(
-            boolean enabled, @Nullable String name, @Nullable String recipe, boolean clean) {
+            boolean enabled,
+            @Nullable String name,
+            @Nullable String recipe,
+            boolean clean) {
 
         /** No session process — the compose runs process-less. */
         public static final SessionSpec DISABLED = new SessionSpec(false, null, null, false);
@@ -120,12 +127,7 @@ public record DamogranManifest(
      *                {@code DAEMON} (default {@code WORK})
      */
     public record WorkspaceSpec(
-            String name,
-            String type,
-            boolean clear,
-            boolean delete,
-            Map<String, Object> options,
-            String target) {
+            String name, String type, boolean clear, boolean delete, Map<String, Object> options, String target) {
 
         public static final String DEFAULT_TYPE = "temp";
         public static final String DEFAULT_TARGET = "WORK";
@@ -142,6 +144,11 @@ public record DamogranManifest(
         public @Nullable String option(String key) {
             return DamogranManifest.stringOption(options, key);
         }
+
+        public boolean boolOption(String key, boolean fallback) {
+            Object raw = options.get(key);
+            return raw instanceof Boolean b ? b : fallback;
+        }
     }
 
     /**
@@ -149,7 +156,7 @@ public record DamogranManifest(
      * source ({@code from}) is <em>always</em> workspace-local; {@code to}
      * carries the target scheme (e.g. {@code vance:<path>} document, or
      * {@code git:<url>} for commit/push). {@code options} holds scheme-specific
-     * fields (branch, message, push, credentialAlias, …).
+     * fields (branch, message, push, public, …).
      *
      * @param from    workspace-relative source path
      * @param to      destination URI ({@code vance:<path>} / {@code git:<url>})
@@ -186,10 +193,7 @@ public record DamogranManifest(
      * keeping the value out of the manifest, the state store and the logs.
      */
     public record TaskSpec(
-            String type,
-            Map<String, Object> params,
-            List<OutputSpec> declaredOutputs,
-            Map<String, String> secrets) {
+            String type, Map<String, Object> params, List<OutputSpec> declaredOutputs, Map<String, String> secrets) {
 
         public TaskSpec {
             secrets = secrets == null ? Map.of() : Map.copyOf(secrets);
@@ -211,7 +215,8 @@ public record DamogranManifest(
      * @param kind  optional kind override for rendering
      * @param title optional display title
      */
-    public record OutputSpec(String path, @Nullable String kind, @Nullable String title) {}
+    public record OutputSpec(
+            String path, @Nullable String kind, @Nullable String title) {}
 
     /**
      * One entry of the top-level {@code state:} section — a management operation

@@ -115,7 +115,7 @@ class RunnerToolsEndToEndTest {
         config = new RunnerToolConfiguration();
         authProvider = mock(GitAuthProvider.class);
         repoUrls = new RunnerRepoUrl(true, url -> {});
-        credentials = new GitCredentialResolver(authProvider, List.of(), repoUrls);
+        credentials = new GitCredentialResolver(authProvider, repoUrls);
         registry = new de.mhus.vance.brain.execution.ExecutionRegistryService();
         router = mock(de.mhus.vance.brain.enginemessage.EngineMessageRouter.class);
         when(router.dispatch(
@@ -380,22 +380,20 @@ class RunnerToolsEndToEndTest {
     }
 
     @Test
-    void aCredentialAliasIsResolvedHere_andTheTokenNeverComesBack(
+    void aLocalSourceNeverAsksTheCredentialStore_andPublicIsAccepted(
             @org.junit.jupiter.api.io.TempDir java.nio.file.Path repoDir) throws Exception {
         assumeProgram("git");
         var c = ctx("p-cred");
-        org.mockito.Mockito.when(authProvider.provide(TENANT, PROJECT, "ci"))
-                .thenReturn(new org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider("bot", "s3cret-token"));
         java.nio.file.Path repo = sourceRepo(repoDir);
 
         Map<String, Object> created = config.runnerRootCreate(work, credentials, repoUrls)
-                .invoke(Map.of("type", "git", "repoUrl", repo.toString(), "credentialAlias", "ci"), c);
+                .invoke(Map.of("type", "git", "repoUrl", repo.toString()), c);
+        Map<String, Object> anonymous = config.runnerRootCreate(work, credentials, repoUrls)
+                .invoke(Map.of("type", "git", "repoUrl", repo.toString(), "public", true), c);
 
-        assertThat(created.toString()).doesNotContain("s3cret-token");
-        assertThatThrownBy(() -> config.runnerRootCreate(work, credentials, repoUrls)
-                        .invoke(Map.of("type", "git", "repoUrl", repo.toString(), "credentialAlias", "unknown"), c))
-                .isInstanceOf(ToolException.class)
-                .hasMessageContaining("Unknown git credential alias");
+        assertThat(created.get("type")).isEqualTo("git");
+        assertThat(anonymous.get("type")).isEqualTo("git");
+        org.mockito.Mockito.verifyNoInteractions(authProvider);
     }
 
     @Test
@@ -424,7 +422,7 @@ class RunnerToolsEndToEndTest {
         assertThatThrownBy(() -> create.invoke(Map.of("type", "temp", "branch", "x"), c))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("need a 'repoUrl'");
-        assertThatThrownBy(() -> create.invoke(Map.of("type", "temp", "credentialAlias", "ci"), c))
+        assertThatThrownBy(() -> create.invoke(Map.of("type", "temp", "public", true), c))
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("needs a 'repoUrl'");
     }

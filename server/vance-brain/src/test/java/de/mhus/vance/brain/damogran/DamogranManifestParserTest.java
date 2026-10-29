@@ -12,8 +12,7 @@ class DamogranManifestParserTest {
 
     @Test
     void parse_fullManifest_mapsAllSections() {
-        String yaml =
-                """
+        String yaml = """
                 title: My Compose
                 description: Builds a thing
                 workspace:
@@ -72,8 +71,7 @@ class DamogranManifestParserTest {
 
     @Test
     void parse_minimalManifest_appliesDefaults() {
-        String yaml =
-                """
+        String yaml = """
                 workspace:
                   name: scratch
                 """;
@@ -93,8 +91,7 @@ class DamogranManifestParserTest {
 
     @Test
     void parse_sessionSection_mapsFields() {
-        String yaml =
-                """
+        String yaml = """
                 session:
                   enabled: true
                   name: my-agent
@@ -113,8 +110,7 @@ class DamogranManifestParserTest {
 
     @Test
     void parse_sessionSection_defaultsEnabledTrueWhenPresent() {
-        String yaml =
-                """
+        String yaml = """
                 session:
                   name: my-agent
                 workspace:
@@ -126,8 +122,7 @@ class DamogranManifestParserTest {
 
     @Test
     void parse_sessionSection_enabledFalseDisables() {
-        String yaml =
-                """
+        String yaml = """
                 session:
                   enabled: false
                 workspace:
@@ -139,8 +134,7 @@ class DamogranManifestParserTest {
 
     @Test
     void parse_sessionScalar_isRejected() {
-        String yaml =
-                """
+        String yaml = """
                 session: true
                 workspace:
                   name: scratch
@@ -153,8 +147,7 @@ class DamogranManifestParserTest {
 
     @Test
     void parse_outputsListWithKindOverride_isParsed() {
-        String yaml =
-                """
+        String yaml = """
                 workspace:
                   name: scratch
                 tasks:
@@ -180,8 +173,7 @@ class DamogranManifestParserTest {
 
     @Test
     void parse_secretsMap_isParsedAndStrippedFromParams() {
-        String yaml =
-                """
+        String yaml = """
                 workspace:
                   name: scratch
                 tasks:
@@ -203,8 +195,7 @@ class DamogranManifestParserTest {
 
     @Test
     void parse_secretsWithInvalidEnvName_throws() {
-        String yaml =
-                """
+        String yaml = """
                 workspace:
                   name: scratch
                 tasks:
@@ -221,8 +212,7 @@ class DamogranManifestParserTest {
 
     @Test
     void parse_secretsWithEmptyReference_throws() {
-        String yaml =
-                """
+        String yaml = """
                 workspace:
                   name: scratch
                 tasks:
@@ -239,8 +229,7 @@ class DamogranManifestParserTest {
 
     @Test
     void parse_secretsNotAMap_throws() {
-        String yaml =
-                """
+        String yaml = """
                 workspace:
                   name: scratch
                 tasks:
@@ -257,8 +246,9 @@ class DamogranManifestParserTest {
 
     @Test
     void parse_taskWithoutSecrets_hasEmptyMap() {
-        TaskSpec task = parser.parse(
-                "workspace:\n  name: s\ntasks:\n  - type: exec\n    command: x\n").tasks().get(0);
+        TaskSpec task = parser.parse("workspace:\n  name: s\ntasks:\n  - type: exec\n    command: x\n")
+                .tasks()
+                .get(0);
         assertThat(task.secrets()).isEmpty();
     }
 
@@ -300,8 +290,8 @@ class DamogranManifestParserTest {
 
     @Test
     void parse_deleteWithTasks_throws() {
-        assertThatThrownBy(() ->
-                parser.parse("workspace:\n  name: x\n  delete: true\ntasks:\n  - type: exec\n    command: ls\n"))
+        assertThatThrownBy(() -> parser.parse(
+                        "workspace:\n  name: x\n  delete: true\ntasks:\n  - type: exec\n    command: ls\n"))
                 .isInstanceOf(DamogranException.class)
                 .hasMessageContaining("terminal");
     }
@@ -315,8 +305,7 @@ class DamogranManifestParserTest {
 
     @Test
     void parse_importEntryMissingTo_throws() {
-        String yaml =
-                """
+        String yaml = """
                 workspace:
                   name: x
                 import:
@@ -329,15 +318,14 @@ class DamogranManifestParserTest {
 
     @Test
     void parse_importExportExtraKeys_capturedAsOptions() {
-        String yaml =
-                """
+        String yaml = """
                 workspace:
                   name: paper
                 import:
                   - from: git:https://example.com/repo.git
                     to: repo
                     branch: main
-                    credentialAlias: gh
+                    public: true
                 export:
                   - from: repo
                     to: git:https://example.com/repo.git
@@ -351,7 +339,7 @@ class DamogranManifestParserTest {
         assertThat(imp.from()).isEqualTo("git:https://example.com/repo.git");
         assertThat(imp.to()).isEqualTo("repo");
         assertThat(imp.option("branch")).isEqualTo("main");
-        assertThat(imp.option("credentialAlias")).isEqualTo("gh");
+        assertThat(imp.boolOption("public", false)).isTrue();
 
         DamogranManifest.ExportEntry exp = m.exports().get(0);
         assertThat(exp.option("message")).isEqualTo("Update from Damogran");
@@ -362,8 +350,7 @@ class DamogranManifestParserTest {
 
     @Test
     void parse_stateSection_keepsOperationOrder() {
-        String yaml =
-                """
+        String yaml = """
                 workspace:
                   name: ws
                 state:
@@ -404,8 +391,7 @@ class DamogranManifestParserTest {
 
     @Test
     void parse_stateHeaderPresentButEmpty_writesEmptyHeader() {
-        String yaml =
-                """
+        String yaml = """
                 workspace:
                   name: ws
                 state:
@@ -423,8 +409,7 @@ class DamogranManifestParserTest {
 
     @Test
     void parse_stateDeleteWithType_rejected() {
-        String yaml =
-                """
+        String yaml = """
                 workspace:
                   name: ws
                 state:
@@ -439,8 +424,7 @@ class DamogranManifestParserTest {
 
     @Test
     void parse_stateInitWithoutType_rejected() {
-        String yaml =
-                """
+        String yaml = """
                 workspace:
                   name: ws
                 state:
@@ -454,8 +438,7 @@ class DamogranManifestParserTest {
 
     @Test
     void parse_stateEmptyOperation_rejected() {
-        String yaml =
-                """
+        String yaml = """
                 workspace:
                   name: ws
                 state:
@@ -469,8 +452,7 @@ class DamogranManifestParserTest {
 
     @Test
     void parse_workspaceDeleteWithState_rejected() {
-        String yaml =
-                """
+        String yaml = """
                 workspace:
                   name: ws
                   delete: true

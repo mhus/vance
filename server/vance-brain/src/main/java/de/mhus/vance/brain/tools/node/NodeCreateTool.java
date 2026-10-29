@@ -64,13 +64,13 @@ public class NodeCreateTool implements Tool {
                                             "description",
                                             "If true, register this RootDir as the current process's "
                                                     + "working RootDir."),
-                            "credentialAlias",
+                            "public",
                                     Map.of(
                                             "type",
-                                            "string",
+                                            "boolean",
                                             "description",
-                                            "Alias resolved by the credential store for authenticated "
-                                                    + "clones. Optional.")),
+                                            "Go to the repository anonymously, without the stored credentials. Credentials for "
+                                                    + "the repository's host are used automatically otherwise. Optional.")),
             "required", List.of());
 
     private final WorkspaceService workspaceService;
@@ -133,7 +133,7 @@ public class NodeCreateTool implements Tool {
         String repoUrl = stringOrNull(params, "repoUrl");
         String branch = stringOrNull(params, "branch");
         String label = stringOr(params, "label", NodeHandler.DEFAULT_LABEL);
-        String credentialAlias = stringOrNull(params, "credentialAlias");
+        boolean publicAccess = Boolean.TRUE.equals(params.get("public"));
         boolean asWorkingDir = params != null && Boolean.TRUE.equals(params.get("asWorkingDir"));
 
         RootDirHandle existing = findExistingNodeRootDir(tenantId, projectId, label);
@@ -147,7 +147,7 @@ public class NodeCreateTool implements Tool {
         Map<String, Object> metadata = new LinkedHashMap<>();
         if (repoUrl != null) metadata.put(GitHandler.META_REPO_URL, repoUrl);
         if (branch != null) metadata.put(GitHandler.META_BRANCH, branch);
-        if (credentialAlias != null) metadata.put(GitHandler.META_CREDENTIAL_ALIAS, credentialAlias);
+        if (publicAccess) metadata.put(GitHandler.META_PUBLIC, true);
 
         RootDirSpec spec = RootDirSpec.builder()
                 .tenantId(tenantId)

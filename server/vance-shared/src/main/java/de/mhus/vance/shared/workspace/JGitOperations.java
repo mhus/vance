@@ -38,7 +38,7 @@ public class JGitOperations implements GitOperations {
                 .setURI(repoUrl)
                 .setDirectory(dir.toFile())
                 .setBranch(branch)
-                .setCredentialsProvider(credentials(scope));
+                .setCredentialsProvider(credentials(scope, repoUrl));
         // CloneCommand.setDepth(int) is primitive — an absent depth must
         // skip the call, not unbox null into an NPE.
         if (depth != null) {
@@ -104,14 +104,32 @@ public class JGitOperations implements GitOperations {
             git.push()
                     .setRemote(remote)
                     .add(branch)
-                    .setCredentialsProvider(credentials(scope))
+                    .setCredentialsProvider(credentials(scope, remoteUrl(git, remote)))
                     .call();
         } catch (GitAPIException | IOException e) {
             throw new GitOperationException(e.getMessage(), e);
         }
     }
 
-    private @Nullable CredentialsProvider credentials(Scope scope) {
-        return authProvider.provide(scope.tenantId(), scope.projectId(), scope.credentialAlias());
+    /** The URL {@code remote} points at — a remote name, or already a URL. */
+    private static String remoteUrl(Git git, String remote) {
+        String configured = git.getRepository().getConfig().getString("remote", remote, "url");
+        return configured != null ? configured : remote;
+    }
+
+    /**
+     * The credentials for {@code repoUrl}: none for an anonymous scope or a local source, otherwise
+     * what the store holds for the URL's host (and account, when the URL names one).
+     */
+    private @Nullable CredentialsProvider credentials(Scope scope, String repoUrl) {
+        String host = GitCredentialKey.hostOf(repoUrl);
+        if (scope.publicAccess() || host == null) {
+            return null;
+        }
+        try {
+            return authProvider.provide(scope.tenantId(), scope.projectId(), host, GitCredentialKey.userOf(repoUrl));
+        } catch (GitCredentialException e) {
+            throw new GitOperationException(e.getMessage(), e);
+        }
     }
 }

@@ -46,8 +46,11 @@ job keeps running on the runner, ask `runner_exec_status` for it.
 ## RootDir types
 
 `runner_root_create` makes: `temp` / `ephemeral` (scratch), `git` (a clone — `repoUrl`, optional
-`branch`, `commit`, `depth`, and `credentialAlias` for a private repository: the server resolves the
-alias, the runner only gets the token for that clone), `python` (a venv at `.venv`, optionally cloned,
+`branch`, `commit`, `depth`, and `public`: stored credentials for the repository's host are used automatically — name nothing; put the
+account into the URL (`https://user@host/…`) if the host has several; `public: true` goes anonymously.
+The server resolves them, the runner only gets the token for that clone. Credentials are settings
+under `credential.git.<user>@<host>`; `git_login` checks one is stored — if not, store it first, never put a
+token into a tool argument other than `vault_secret_set`), `python` (a venv at `.venv`, optionally cloned,
 optional `packages`) and `node` (a `package.json` project, optional `packages`).
 
 There are no `python_run` / `execute_python` / `node_*` tools on the runner: run your code with

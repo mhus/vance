@@ -2,6 +2,7 @@ package de.mhus.vance.api.addon;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
+import de.mhus.vance.api.roles.TenantRole;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -28,6 +29,9 @@ public class AddonTileDto {
     /** Optional sub-line. */
     private @Nullable String description;
 
-    /** Minimum {@code WebUiLevel} to show the tile: {@code standard|expert|admin}. */
-    private @Nullable String minLevel;
+    /**
+     * Minimum tenant role to show the tile. Unset means every member sees it.
+     * A clutter filter — the brain still decides what the account may do.
+     */
+    private @Nullable TenantRole minRole;
 }

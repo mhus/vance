@@ -3900,10 +3900,9 @@ export default {
       themeSaved: 'Theme updated.',
       uiLevel: 'Surface',
       uiLevelDescription:
-        'Which tiles appear on the home page. Server permissions still apply independently.',
+        'Which tiles appear on the home page. Admin tiles follow your role, and server permissions apply independently.',
       uiLevelStandard: 'Standard (chat, documents, inbox)',
-      uiLevelExpert: 'Expert (adds scopes, tools, insights)',
-      uiLevelAdmin: 'Admin (adds user management)',
+      uiLevelExpert: 'Expert (adds settings and runs)',
       uiLevelSaved: 'Surface updated.',
       openDocsNewTab: 'Open documents in a new browser tab',
       openDocsNewTabDescription:

@@ -3,6 +3,7 @@ package de.mhus.vance.brain.addon;
 import de.mhus.vance.api.addon.AddonMenuItemDto;
 import de.mhus.vance.api.addon.AddonProfileTabDto;
 import de.mhus.vance.api.addon.AddonTileDto;
+import de.mhus.vance.api.roles.TenantRole;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -67,12 +68,14 @@ public class AddonManifestRegistry {
                     if (m.get("profile") instanceof Map<?, ?> profile) {
                         String tabLabel = str(profile.get("label"));
                         if (tabLabel != null && !tabLabel.isBlank()) {
-                            profiles.put(id, AddonProfileTabDto.builder()
-                                    .label(tabLabel)
-                                    .expose(str(profile.get("expose")))
-                                    .sortIndex(intOrNull(profile.get("sortIndex")))
-                                    .minLevel(str(profile.get("minLevel")))
-                                    .build());
+                            profiles.put(
+                                    id,
+                                    AddonProfileTabDto.builder()
+                                            .label(tabLabel)
+                                            .expose(str(profile.get("expose")))
+                                            .sortIndex(intOrNull(profile.get("sortIndex")))
+                                            .minRole(role(id, "profile", profile.get("minRole")))
+                                            .build());
                         }
                     }
                     // Cortex menu entries. Same placement rule as `kinds:`
@@ -108,11 +111,13 @@ public class AddonManifestRegistry {
                     if (label == null || label.isBlank()) {
                         continue; // a tile without a label is not renderable
                     }
-                    map.put(id, AddonTileDto.builder()
-                            .label(label)
-                            .description(str(tile.get("description")))
-                            .minLevel(str(tile.get("minLevel")))
-                            .build());
+                    map.put(
+                            id,
+                            AddonTileDto.builder()
+                                    .label(label)
+                                    .description(str(tile.get("description")))
+                                    .minRole(role(id, "tile", tile.get("minRole")))
+                                    .build());
                 } catch (RuntimeException | java.io.IOException e) {
                     log.warn("AddonManifestRegistry: cannot read {}: {}", manifest, e.toString());
                 }
@@ -125,9 +130,13 @@ public class AddonManifestRegistry {
         this.menusById = Map.copyOf(menus);
         this.kindsById = Map.copyOf(kinds);
         this.eagerIds = java.util.Set.copyOf(eager);
-        log.info("AddonManifestRegistry: {} addon tile(s), {} profile tab(s), {} menu-contributing addon(s), "
+        log.info(
+                "AddonManifestRegistry: {} addon tile(s), {} profile tab(s), {} menu-contributing addon(s), "
                         + "{} kind-contributing addon(s), {} eager addon(s) discovered",
-                tilesById.size(), profileTabsById.size(), menusById.size(), kindsById.size(),
+                tilesById.size(),
+                profileTabsById.size(),
+                menusById.size(),
+                kindsById.size(),
                 eagerIds.size());
     }
 
@@ -198,14 +207,19 @@ public class AddonManifestRegistry {
             String label = trimmed(e.get("label"));
             String slot = trimmed(e.get("slot"));
             if (id == null || label == null) {
-                log.warn("AddonManifestRegistry: addon '{}' declares a menu entry without id or label — dropped",
+                log.warn(
+                        "AddonManifestRegistry: addon '{}' declares a menu entry without id or label — dropped",
                         addonId);
                 continue;
             }
             if (slot == null || !MENU_SLOTS.contains(slot.toLowerCase(java.util.Locale.ROOT))) {
-                log.warn("AddonManifestRegistry: addon '{}' menu entry '{}' names slot '{}' — expected one of {};"
+                log.warn(
+                        "AddonManifestRegistry: addon '{}' menu entry '{}' names slot '{}' — expected one of {};"
                                 + " entry dropped",
-                        addonId, id, slot, MENU_SLOTS);
+                        addonId,
+                        id,
+                        slot,
+                        MENU_SLOTS);
                 continue;
             }
             items.add(AddonMenuItemDto.builder()
@@ -216,7 +230,7 @@ public class AddonManifestRegistry {
                     .handler(trimmed(e.get("handler")))
                     .kinds(listOrNull(e.get("kinds")))
                     .mimes(listOrNull(e.get("mimes")))
-                    .minLevel(trimmed(e.get("minLevel")))
+                    .minRole(role(addonId, "menu entry", e.get("minRole")))
                     .sortIndex(intOrNull(e.get("sortIndex")))
                     .build());
         }
@@ -261,6 +275,30 @@ public class AddonManifestRegistry {
             }
         }
         return ids;
+    }
+
+    /**
+     * A declared tenant role ({@code user|creator|admin|tenant_admin}, any
+     * case), or {@code null} when absent. A name that is no role is dropped
+     * with a warning — a typo must not raise the bar it was meant to set, so
+     * it reads as "no restriction", not "admin only".
+     */
+    private static @Nullable TenantRole role(String addonId, String where, @Nullable Object node) {
+        String name = trimmed(node);
+        if (name == null) {
+            return null;
+        }
+        try {
+            return TenantRole.valueOf(name.toUpperCase(java.util.Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            log.warn(
+                    "AddonManifestRegistry: addon '{}' {} names minRole '{}' — expected one of {}; ignored",
+                    addonId,
+                    where,
+                    name,
+                    java.util.Arrays.toString(TenantRole.values()));
+            return null;
+        }
     }
 
     private static @Nullable String str(@Nullable Object v) {

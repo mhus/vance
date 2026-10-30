@@ -19,11 +19,14 @@
  * catch.
  */
 
+import type { TenantRole } from '@vance/generated';
+
 /** The landing-page tile an addon declares in `vance-addon.yaml` `tile:`. */
 export interface AddonTile {
   label?: string;
   description?: string;
-  minLevel?: string;
+  /** Lowest tenant role that sees the tile; unset means every member. */
+  minRole?: TenantRole;
 }
 
 /** The profile-page tab an addon declares in `vance-addon.yaml` `profile:`. */
@@ -31,8 +34,8 @@ export interface AddonProfile {
   label?: string;
   expose?: string;
   sortIndex?: number;
-  /** Same meaning as `AddonTile.minLevel`; unset means every level. */
-  minLevel?: string;
+  /** Same meaning as `AddonTile.minRole`. */
+  minRole?: TenantRole;
 }
 
 /**
@@ -60,8 +63,8 @@ export interface AddonMenuItem {
   kinds?: string[];
   /** MIME prefixes the entry applies to; absent means "does not depend". */
   mimes?: string[];
-  /** Same knob as `AddonTile.minLevel`; unset means every level. */
-  minLevel?: string;
+  /** Same knob as `AddonTile.minRole`. */
+  minRole?: TenantRole;
   sortIndex?: number;
 }
 

@@ -15,7 +15,7 @@
  */
 import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { asUiLevel, getActiveUiLevel, loadAddonManifest, rankOf, type WebUiLevel } from '@/platform';
+import { getActiveUiLevel, loadAddonManifest, type WebUiLevel } from '@/platform';
 import { EditorShell, StarredTile, VAlert } from '@/components';
 import { useStarredStore } from '@/starred/starredStore';
 import { editorHref } from '@/platform/editorHref';
@@ -26,40 +26,37 @@ import { TenantRole } from '@vance/generated';
 
 const { t } = useI18n();
 
-// Active UI level for tile filtering, read straight from the data cookie.
+// Two independent filters decide which tiles show:
 //
-//   * standard — chat / documents / inbox  (everyday)
-//   * expert   — + settings / insights / runs  (power user)
-//   * admin    — + users  (needs the tenant role ADMIN as well)
+//   * UI level (the reader's own preference, from `/me`): standard — chat /
+//     documents / inbox; expert — + settings / runs.
+//   * Tenant role (from the same `/me` answer): insights and users are
+//     tenant-administration surfaces and show for ADMIN and up, whatever the
+//     level.
 //
 // Server-side authorization remains the authoritative gate; this just keeps
-// the page tidy for accounts that never need the power tiles.
+// the page tidy. An unknown role (no answer yet) reads as no admin: a tile
+// that answers 403 is worse than a missing one.
 const uiLevel = ref<WebUiLevel>(getActiveUiLevel());
-
-// The reader's tenant role — an admin tile shows only when the role allows
-// what it leads to *and* the UI level asks for it. Unknown (no answer yet)
-// reads as no admin: a tile that answers 403 is worse than a missing one.
-// Same `/me` answer as the status hints below.
 const homeStatus = useMe();
 const myTenantRole = computed<TenantRole | null>(() => homeStatus.me.value?.tenantRole ?? null);
 
-const showExpertTiles = computed(() => rankOf(uiLevel.value) >= rankOf('expert'));
-const showAdminTiles = computed(() =>
-  rankOf(uiLevel.value) >= rankOf('admin') && tenantRoleAtLeast(myTenantRole.value, TenantRole.ADMIN));
+const showExpertTiles = computed(() => uiLevel.value === 'expert');
+const showAdminTiles = computed(() => tenantRoleAtLeast(myTenantRole.value, TenantRole.ADMIN));
 
 // Landing tiles contributed by installed addons (declarative, from
 // /face/addons — no federation remote loaded here). Each is gated by the
-// user's UI level just like the built-in tiles, and only appears when the
+// user's tenant role (`minRole`), and only appears when the
 // addon is actually present.
 interface AddonTileEntry {
   name: string;
   label: string;
   description?: string;
-  minLevel: WebUiLevel;
+  minRole?: TenantRole;
 }
 const addonTiles = ref<AddonTileEntry[]>([]);
 const visibleAddonTiles = computed(() =>
-  addonTiles.value.filter((tile) => rankOf(uiLevel.value) >= rankOf(tile.minLevel)),
+  addonTiles.value.filter((tile) => !tile.minRole || tenantRoleAtLeast(myTenantRole.value, tile.minRole)),
 );
 
 // Starred documents — the user's own tiles, above the fixed editor rows. Not
@@ -135,7 +132,7 @@ onMounted(async () => {
       name: e.name,
       label: e.tile!.label as string,
       description: e.tile!.description,
-      minLevel: asUiLevel(e.tile!.minLevel),
+      minRole: e.tile!.minRole,
     }));
   await starred.load(/* all */ false, /* force */ true);
 });
@@ -225,14 +222,15 @@ onMounted(async () => {
             </RouterLink>
           </li>
 
-          <!-- Expert tier — power-user surfaces (settings / insights / runs). -->
+          <!-- Expert tier — power-user surfaces (settings / runs). -->
           <li v-if="showExpertTiles">
             <a class="tile-row" :href="editorHref('settings')">
                 <div class="font-semibold">{{ $t('index.settings.title') }}</div>
                 <div class="text-sm opacity-70">{{ $t('index.settings.description') }}</div>
             </a>
           </li>
-          <li v-if="showExpertTiles">
+          <!-- Insights is an operations view: tenant role ADMIN and up. -->
+          <li v-if="showAdminTiles">
             <a class="tile-row" :href="editorHref('insights')">
                 <div class="font-semibold">{{ $t('index.insights.title') }}</div>
                 <div class="text-sm opacity-70">{{ $t('index.insights.description') }}</div>
@@ -257,7 +255,7 @@ onMounted(async () => {
           </li>
 
           <!-- Addon-contributed tiles. Present only when the addon is
-               installed; gated by UI level. -->
+               installed; gated by tenant role. -->
           <li v-for="tile in visibleAddonTiles" :key="tile.name">
             <a class="tile-row" :href="editorHref('addon', { addon: tile.name })">
                 <div class="font-semibold">{{ tile.label }}</div>

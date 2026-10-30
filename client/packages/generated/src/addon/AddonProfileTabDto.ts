@@ -3,9 +3,11 @@
  Source: de.mhus.vance.api.addon.AddonProfileTabDto
 */
 
+import { TenantRole } from '../roles/TenantRole';
+
 export interface AddonProfileTabDto {
   label: string;
   expose?: string;
   sortIndex?: number;
-  minLevel?: string;
+  minRole?: TenantRole;
 }

@@ -1,6 +1,7 @@
 package de.mhus.vance.api.addon;
 
 import de.mhus.vance.api.annotations.GenerateTypeScript;
+import de.mhus.vance.api.roles.TenantRole;
 import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -82,12 +83,11 @@ public class AddonMenuItemDto {
     private @Nullable List<String> mimes;
 
     /**
-     * Minimum {@code WebUiLevel} to show the entry:
-     * {@code standard|expert|admin}. Unset means every level sees it. Same
-     * knob and same meaning as on the tile and the profile tab — a clutter
-     * filter, not an authorisation.
+     * Minimum tenant role to show the entry. Unset means every member sees
+     * it. Same knob and same meaning as on the tile and the profile tab — a
+     * clutter filter, not an authorisation.
      */
-    private @Nullable String minLevel;
+    private @Nullable TenantRole minRole;
 
     /**
      * Where the entry sits among the contributed ones. Lower comes first;

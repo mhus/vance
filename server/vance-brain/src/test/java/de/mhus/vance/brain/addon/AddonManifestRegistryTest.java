@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.api.roles.TenantRole;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
@@ -41,8 +42,7 @@ class AddonManifestRegistryTest {
                   - "application:calendar"
                 """);
 
-        assertThat(registry.kindsFor("calendar"))
-                .containsExactly("calendar", "timeline", "application:calendar");
+        assertThat(registry.kindsFor("calendar")).containsExactly("calendar", "timeline", "application:calendar");
     }
 
     @Test
@@ -136,8 +136,7 @@ class AddonManifestRegistryTest {
     @Test
     void eager_absentOrFalse_staysOffTheWire() throws IOException {
         AddonManifestRegistry registry = registryOf(
-                "id: calendar\nkinds: [\"calendar\"]\n",
-                "id: kanban\neager: false\nkinds: [\"application:kanban\"]\n");
+                "id: calendar\nkinds: [\"calendar\"]\n", "id: kanban\neager: false\nkinds: [\"application:kanban\"]\n");
 
         assertThat(registry.eagerFor("calendar")).isNull();
         assertThat(registry.eagerFor("kanban")).isNull();
@@ -191,7 +190,8 @@ class AddonManifestRegistryTest {
                     label: Archive
                 """);
 
-        assertThat(registry.menuFor("kanban")).singleElement()
+        assertThat(registry.menuFor("kanban"))
+                .singleElement()
                 .satisfies((item) -> assertThat(item.getId()).isEqualTo("archive"));
     }
 
@@ -236,14 +236,41 @@ class AddonManifestRegistryTest {
 
     @Test
     void manifests_thatAreNotMaps_areSkippedRatherThanFatal() throws IOException {
-        AddonManifestRegistry registry = registryOf(
-                "just a string",
-                """
+        AddonManifestRegistry registry = registryOf("just a string", """
                 id: calendar
                 kinds:
                   - "calendar"
                 """);
 
         assertThat(registry.kindsFor("calendar")).containsExactly("calendar");
+    }
+
+    @Test
+    void minRole_isReadOnTileAndProfile_anyCase() throws IOException {
+        AddonManifestRegistry registry = registryOf("""
+                id: store
+                tile:
+                  label: Store
+                  minRole: creator
+                profile:
+                  label: Store
+                  minRole: ADMIN
+                """);
+
+        assertThat(registry.tileFor("store").getMinRole()).isEqualTo(TenantRole.CREATOR);
+        assertThat(registry.profileTabFor("store").getMinRole()).isEqualTo(TenantRole.ADMIN);
+    }
+
+    @Test
+    void minRole_unknownName_readsAsNoRestriction() throws IOException {
+        // A typo must not raise the bar it was meant to set.
+        AddonManifestRegistry registry = registryOf("""
+                id: store
+                tile:
+                  label: Store
+                  minRole: boss
+                """);
+
+        assertThat(registry.tileFor("store").getMinRole()).isNull();
     }
 }

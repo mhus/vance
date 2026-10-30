@@ -1,6 +1,7 @@
 package de.mhus.vance.api.addon;
 
 import de.mhus.vance.api.annotations.GenerateTypeScript;
+import de.mhus.vance.api.roles.TenantRole;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -45,14 +46,13 @@ public class AddonProfileTabDto {
     private @Nullable Integer sortIndex;
 
     /**
-     * Minimum {@code WebUiLevel} to show the tab: {@code standard|expert|admin}.
-     * Unset means every level sees it.
+     * Minimum tenant role to show the tab. Unset means every member sees it.
      *
-     * <p>Same knob and same meaning as {@link AddonTileDto#getMinLevel()},
+     * <p>Same knob and same meaning as {@link AddonTileDto#getMinRole()},
      * because the two surfaces are two doors to the same addon: gating only
      * the landing tile would leave the addon's name on a screen the reader
      * has no way into. Like there, this is a clutter filter — the brain still
      * decides what the account may actually do.
      */
-    private @Nullable String minLevel;
+    private @Nullable TenantRole minRole;
 }

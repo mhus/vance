@@ -3,8 +3,10 @@
  Source: de.mhus.vance.api.addon.AddonTileDto
 */
 
+import { TenantRole } from '../roles/TenantRole';
+
 export interface AddonTileDto {
   label: string;
   description?: string;
-  minLevel?: string;
+  minRole?: TenantRole;
 }

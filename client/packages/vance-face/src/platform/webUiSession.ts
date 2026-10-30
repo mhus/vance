@@ -21,7 +21,9 @@
 
 import type { WebUiSessionData } from '@vance/generated';
 import { StorageKeys, getStorage } from '@vance/shared';
-import { meSetting } from './me';
+import type { TenantRole } from '@vance/generated';
+import { tenantRoleAtLeast } from '../composables/useRoles';
+import { getMe, meSetting } from './me';
 
 const DATA_COOKIE_NAME = 'vance_data';
 
@@ -111,45 +113,28 @@ export function hydrateIdentity(): void {
 // fresh answer of this page load is in, then the fresh one.
 
 export type WebUiTheme = 'auto' | 'light' | 'dark';
-export type WebUiLevel = 'standard' | 'expert' | 'admin';
+/**
+ * How much of the power-user surface the reader wants on the landing page.
+ * A clutter preference only — what a person may do is decided by the tenant
+ * role (see {@link meetsTenantRole}).
+ */
+export type WebUiLevel = 'standard' | 'expert';
 
 const VALID_THEMES: ReadonlyArray<WebUiTheme> = ['auto', 'light', 'dark'];
-const VALID_LEVELS: ReadonlyArray<WebUiLevel> = ['standard', 'expert', 'admin'];
 
 function isWebUiTheme(value: string | null | undefined): value is WebUiTheme {
   return value != null && (VALID_THEMES as ReadonlyArray<string>).includes(value);
 }
 
-function isWebUiLevel(value: string | null | undefined): value is WebUiLevel {
-  return value != null && (VALID_LEVELS as ReadonlyArray<string>).includes(value);
-}
-
 /**
- * Numeric rank of a {@link WebUiLevel}. Higher = more visible. Used by
- * tile filters: `level >= rankOf('expert')` reveals the power-user
- * tiles, `level >= rankOf('admin')` adds the admin ones on top.
+ * Whether the signed-in user holds at least {@code minRole} as tenant role.
+ * Unset means "everyone". Display filter only — the brain enforces every
+ * request on its own. While the role is unknown a set bar reads as not met:
+ * a tile that answers 403 is worse than a missing one.
  */
-const LEVEL_RANK: Readonly<Record<WebUiLevel, number>> = {
-  standard: 0,
-  expert: 1,
-  admin: 2,
-};
-
-export function rankOf(level: WebUiLevel): number {
-  return LEVEL_RANK[level];
-}
-
-/**
- * Read an arbitrary string as a {@link WebUiLevel}, falling back to
- * {@code 'standard'}.
- *
- * <p>The callers are the level gates on declared metadata — an addon's
- * `tile.minLevel` and `profile.minLevel` are free-form strings from a
- * YAML file. A typo there must not raise the bar it was meant to set, so
- * an unreadable value means "no restriction", not "admin only".
- */
-export function asUiLevel(value: string | null | undefined): WebUiLevel {
-  return isWebUiLevel(value) ? value : 'standard';
+export function meetsTenantRole(minRole: TenantRole | null | undefined): boolean {
+  if (!minRole) return true;
+  return tenantRoleAtLeast(getMe()?.tenantRole, minRole);
 }
 
 /**
@@ -178,8 +163,9 @@ export function getActiveTheme(): WebUiTheme {
  * that is not part of everyday use.
  */
 export function getActiveUiLevel(): WebUiLevel {
+  // `admin` was a third level once; it now reads as expert, the role decides the rest.
   const value = meSetting('webui.uiLevel');
-  return isWebUiLevel(value) ? value : 'standard';
+  return value === 'expert' || value === 'admin' ? 'expert' : 'standard';
 }
 
 /**

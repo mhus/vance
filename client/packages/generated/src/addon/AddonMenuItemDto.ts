@@ -3,6 +3,8 @@
  Source: de.mhus.vance.api.addon.AddonMenuItemDto
 */
 
+import { TenantRole } from '../roles/TenantRole';
+
 export interface AddonMenuItemDto {
   id: string;
   slot: string;
@@ -11,6 +13,6 @@ export interface AddonMenuItemDto {
   handler?: string;
   kinds?: string[];
   mimes?: string[];
-  minLevel?: string;
+  minRole?: TenantRole;
   sortIndex?: number;
 }

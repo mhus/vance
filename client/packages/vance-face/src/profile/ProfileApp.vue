@@ -257,7 +257,7 @@ function asTheme(value: string | undefined | null): WebUiTheme {
 }
 
 function asUiLevel(value: string | undefined | null): WebUiLevel {
-  return value === 'expert' || value === 'admin' ? value : 'standard';
+  return value === 'expert' || value === 'admin' ? 'expert' : 'standard';
 }
 
 // "Browser default" is the only label that needs translating; the
@@ -292,7 +292,6 @@ const themeOptions = computed(() => [
 const uiLevelOptions = computed(() => [
   { value: 'standard', label: t('profile.preferences.uiLevelStandard') },
   { value: 'expert', label: t('profile.preferences.uiLevelExpert') },
-  { value: 'admin', label: t('profile.preferences.uiLevelAdmin') },
 ]);
 
 // Full IANA zone list from the browser when available; keeps the

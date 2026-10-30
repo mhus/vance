@@ -9,6 +9,26 @@ breaking changes; a patch bump (`0.1.0` → `0.1.1`) is fixes only.
 
 ## [Unreleased]
 
+### Added
+
+- **Sign-in with a code by e-mail** — an alternative to the password. A twelve-digit
+  code goes to the account's address and trades for the same session as the
+  password login. Off unless `vance.auth.email-token.enabled=true`; independent of
+  the cloud and of SSO. The password can still be set and keeps serving WebDAV, but
+  no longer signs in at `POST /brain/{tenant}/access/{user}` (foot signs in with
+  `/login --browser`). Mails go through a Mongo outbox; the sender is an enterprise
+  Anus addon (`vance-ee-anus-cloud`), settings under `vance.ee.mail.*`. In this mode
+  a user changes the address only through a code sent to the new one. The login page
+  asks `GET /brain/{tenant}/login-methods` and shows what the installation offers.
+  Spec: `specification/public/email-login.md`.
+
+### Changed
+
+- **Breaking: SSO is now off by default.** The `/brain/_sso/` endpoints and the
+  Google button exist only with `vance.auth.sso.enabled=true`
+  (`VANCE_AUTH_SSO_ENABLED`). An installation that signs in through SSO has to set
+  it when it updates; `_vance/config/sso.yaml` is still needed as before.
+
 ## [0.6.0] - 2026-10-16
 
 ### Changed

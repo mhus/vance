@@ -8,7 +8,9 @@ import {
 } from '../folderTree';
 import { brainFetch, brainFetchText, brainSendRaw, readKindFromBody } from '@vance/shared';
 import { AGE_MIME_TYPE } from '@vance/age';
+import { getActiveUiLevel } from '@/platform';
 import { ensureKindsForDocument } from '@/platform/addonRegistry';
+import { isHiddenFolder } from '@/util/hiddenFolders';
 import { encryptTabBody, transformAgeTab } from '../ageDocument';
 import { useAgeKeyStore } from './ageKeyStore';
 import type {
@@ -906,13 +908,19 @@ export const useCortexStore = defineStore('cortex', () => {
    * folder listings, not from aggregating document paths — see
    * {@code folderTree.ts} for why that distinction is the whole refactor.
    */
-  const fileTree = computed<FolderNode>(() =>
-    buildFolderTree({
+  const fileTree = computed<FolderNode>(() => {
+    const tree = buildFolderTree({
       folderStates: folderStates.value,
       files: files.value,
       virtualFolders: virtualFolders.value,
-    }),
-  );
+    });
+    // The standard surface does not list the system folder at the root.
+    const level = getActiveUiLevel();
+    return {
+      ...tree,
+      children: tree.children.filter((child) => !isHiddenFolder(tree.path, child.name, level)),
+    };
+  });
 
   return {
     projectId,

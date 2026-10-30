@@ -39,7 +39,9 @@ import type { DocumentFoldersResponse, DocumentSummary, MountDto } from '@vance/
 import { MountSearchOutcome } from '@vance/generated';
 import DocumentIcon from './DocumentIcon.vue';
 import { navigateTo, pushUrl } from '@/platform/navigate';
+import { getActiveUiLevel } from '@/platform';
 import { recallProject, rememberProject } from '@/platform/lastProject';
+import { isHiddenFolder } from '@/util/hiddenFolders';
 
 const { t } = useI18n();
 const projectsState = useTenantProjects();
@@ -260,7 +262,7 @@ function fileBasename(path: string): string {
 }
 
 const isEmpty = computed(() =>
-  docsState.subFolders.value.length === 0 && docsState.items.value.length === 0,
+  visibleSubFolders.value.length === 0 && docsState.items.value.length === 0,
 );
 
 /**
@@ -394,6 +396,17 @@ function toggleDoc(id: string): void {
   selectedIds.value = next;
 }
 
+/**
+ * The subfolders of the current folder as listed: the standard surface leaves
+ * the system folder at the project root out. Everything that selects or counts
+ * folders goes through this, so a hidden row is never selected by "select all".
+ */
+const visibleSubFolders = computed<string[]>(() =>
+  docsState.subFolders.value.filter(
+    (f) => !isHiddenFolder(docsState.pathPrefix.value, f, getActiveUiLevel()),
+  ),
+);
+
 /** Full path prefix of a visible subfolder (matches navigateIntoFolder). */
 function folderPrefixOf(folder: string): string {
   const base = docsState.pathPrefix.value.replace(/\/+$/, '');
@@ -414,7 +427,7 @@ function toggleFolder(folder: string): void {
 
 const allSelected = computed<boolean>(() => {
   const docs = docsState.items.value;
-  const folders = docsState.subFolders.value;
+  const folders = visibleSubFolders.value;
   if (docs.length === 0 && folders.length === 0) return false;
   return docs.every((d) => selectedIds.value.has(d.id))
     && folders.every((f) => selectedFolders.value.has(folderPrefixOf(f)));
@@ -430,7 +443,7 @@ function toggleAll(): void {
     selectedFolders.value = new Set();
   } else {
     selectedIds.value = new Set(docsState.items.value.map((d) => d.id));
-    selectedFolders.value = new Set(docsState.subFolders.value.map((f) => folderPrefixOf(f)));
+    selectedFolders.value = new Set(visibleSubFolders.value.map((f) => folderPrefixOf(f)));
   }
 }
 
@@ -1150,7 +1163,7 @@ function confirmNewFolder(): void {
                 <VCheckbox
                   :model-value="allSelected"
                   :indeterminate="someSelected"
-                  :disabled="docsState.items.value.length === 0 && docsState.subFolders.value.length === 0"
+                  :disabled="docsState.items.value.length === 0 && visibleSubFolders.length === 0"
                   @update:model-value="toggleAll"
                 />
               </th>
@@ -1167,7 +1180,7 @@ function confirmNewFolder(): void {
           </thead>
           <tbody>
             <tr
-              v-for="folder in docsState.subFolders.value"
+              v-for="folder in visibleSubFolders"
               :key="`f:${folder}`"
               class="doc-row"
               :class="{ 'doc-row-selected': isFolderSelected(folder) }"

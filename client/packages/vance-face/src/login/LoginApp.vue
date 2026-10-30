@@ -576,6 +576,9 @@ function readNextParam(): string | null {
           <template v-if="emailTokenMode && openCode !== null">
             <VAlert v-if="codeNotice" variant="info">
               <span>{{ codeNotice }}</span>
+              <span class="mt-1 block font-mono text-xs break-all">
+                {{ $t('login.emailToken.reference', { id: openCode.transactionId }) }}
+              </span>
             </VAlert>
             <VInput
               v-model="code"

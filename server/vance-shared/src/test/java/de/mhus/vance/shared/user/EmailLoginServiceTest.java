@@ -12,8 +12,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.shared.mail.MailOutboxService;
-import java.time.Duration;
 import java.time.Instant;
+import java.util.EnumMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -23,9 +24,8 @@ import org.mockito.ArgumentCaptor;
 
 /**
  * The code logic of {@link EmailLoginService} against an in-memory stand-in for
- * the user's stored transaction. The atomic Mongo operations behind it
- * ({@code countEmailLoginAttempt}, {@code consumeEmailLogin}) are the E2E
- * lane's concern.
+ * the stored codes. The atomic Mongo operations behind it
+ * ({@link EmailLoginCodeService}) are the E2E lane's concern.
  */
 class EmailLoginServiceTest {
 
@@ -34,41 +34,47 @@ class EmailLoginServiceTest {
     private static final EmailLoginPurpose PURPOSE = EmailLoginPurpose.LOGIN;
 
     private UserService users;
+    private EmailLoginCodeService codes;
     private MailOutboxService outbox;
     private UserDocument user;
     private EmailLoginService service;
+    /** The stored codes, one per purpose, like the collection. */
+    private final Map<EmailLoginPurpose, EmailLoginCodeDocument> stored = new EnumMap<>(EmailLoginPurpose.class);
 
     @BeforeEach
     void setUp() {
         users = mock(UserService.class);
+        codes = mock(EmailLoginCodeService.class);
         outbox = mock(MailOutboxService.class);
         user = account().email("alice@example.com").build();
         when(users.findByTenantAndName(TENANT, NAME)).thenAnswer(inv -> Optional.of(user));
         when(users.isLocked(any())).thenReturn(false);
-        // The stored transaction lives on `user`, like in Mongo.
         org.mockito.Mockito.doAnswer(inv -> {
-                    user.setEmailLogin(inv.getArgument(2));
+                    EmailLoginCodeDocument code = inv.getArgument(0);
+                    stored.put(code.getPurpose(), code);
                     return null;
                 })
-                .when(users)
-                .setEmailLogin(eq(TENANT), eq(NAME), any());
-        when(users.countEmailLoginAttempt(eq(TENANT), eq(NAME), anyString())).thenAnswer(inv -> {
-            EmailLoginTransaction open = user.getEmailLogin();
-            if (open == null || !open.getTransactionId().equals(inv.getArgument(2))) {
+                .when(codes)
+                .replace(any());
+        when(codes.find(eq(TENANT), eq(NAME), any()))
+                .thenAnswer(inv -> Optional.ofNullable(stored.get(inv.<EmailLoginPurpose>getArgument(2))));
+        when(codes.countAttempt(eq(TENANT), eq(NAME), any(), anyString())).thenAnswer(inv -> {
+            EmailLoginCodeDocument open = stored.get(inv.<EmailLoginPurpose>getArgument(2));
+            if (open == null || !open.getTransactionId().equals(inv.getArgument(3))) {
                 return Optional.empty();
             }
             open.setAttempts(open.getAttempts() + 1);
             return Optional.of(open);
         });
-        when(users.consumeEmailLogin(eq(TENANT), eq(NAME), anyString())).thenAnswer(inv -> {
-            EmailLoginTransaction open = user.getEmailLogin();
-            if (open == null || !open.getTransactionId().equals(inv.getArgument(2))) {
+        when(codes.consume(eq(TENANT), eq(NAME), any(), anyString())).thenAnswer(inv -> {
+            EmailLoginCodeDocument open = stored.get(inv.<EmailLoginPurpose>getArgument(2));
+            if (open == null || !open.getTransactionId().equals(inv.getArgument(3))) {
                 return false;
             }
-            user.setEmailLogin(null);
+            stored.remove(open.getPurpose());
             return true;
         });
-        service = new EmailLoginService(users, outbox, "test-secret", 10, 60);
+        service = new EmailLoginService(users, codes, outbox, "test-secret", 10);
     }
 
     @Test
@@ -89,7 +95,7 @@ class EmailLoginServiceTest {
     void theCodeIsStoredHashedNotInTheClear() {
         service.startLogin(TENANT, NAME);
 
-        assertThat(user.getEmailLogin().getTokenHash()).hasSize(64).doesNotContain(mailedCode());
+        assertThat(stored.get(PURPOSE).getTokenHash()).hasSize(64).doesNotContain(mailedCode());
     }
 
     @Test
@@ -114,7 +120,7 @@ class EmailLoginServiceTest {
                 .isFalse();
 
         verify(users).recordFailedLogin(TENANT, NAME);
-        assertThat(user.getEmailLogin()).isNotNull();
+        assertThat(stored.get(PURPOSE)).isNotNull();
     }
 
     @Test
@@ -127,7 +133,7 @@ class EmailLoginServiceTest {
             service.verify(TENANT, NAME, PURPOSE, started.transactionId(), wrong);
         }
 
-        assertThat(user.getEmailLogin()).isNull();
+        assertThat(stored.get(PURPOSE)).isNull();
         assertThat(service.verify(TENANT, NAME, PURPOSE, started.transactionId(), code)
                         .success())
                 .isFalse();
@@ -140,19 +146,19 @@ class EmailLoginServiceTest {
         assertThat(service.verify(TENANT, NAME, PURPOSE, "someone-elses", mailedCode())
                         .success())
                 .isFalse();
-        verify(users, never()).countEmailLoginAttempt(anyString(), anyString(), anyString());
+        verify(codes, never()).countAttempt(anyString(), anyString(), any(), anyString());
     }
 
     @Test
     void anExpiredCodeFailsAndIsRemoved() {
         EmailLoginService.Started started = service.startLogin(TENANT, NAME);
         String code = mailedCode();
-        user.getEmailLogin().setExpiresAt(Instant.now().minusSeconds(1));
+        stored.get(PURPOSE).setExpiresAt(Instant.now().minusSeconds(1));
 
         assertThat(service.verify(TENANT, NAME, PURPOSE, started.transactionId(), code)
                         .success())
                 .isFalse();
-        assertThat(user.getEmailLogin()).isNull();
+        assertThat(stored.get(PURPOSE)).isNull();
     }
 
     @Test
@@ -165,7 +171,7 @@ class EmailLoginServiceTest {
         assertThat(service.verify(TENANT, NAME, PURPOSE, started.transactionId(), "12345678901x")
                         .success())
                 .isFalse();
-        verify(users, never()).countEmailLoginAttempt(anyString(), anyString(), anyString());
+        verify(codes, never()).countAttempt(anyString(), anyString(), any(), anyString());
     }
 
     @Test
@@ -180,19 +186,9 @@ class EmailLoginServiceTest {
     }
 
     @Test
-    void askingAgainWithinThePauseSendsNoSecondMail() {
-        EmailLoginService.Started first = service.startLogin(TENANT, NAME);
-        EmailLoginService.Started second = service.startLogin(TENANT, NAME);
-
-        assertThat(second.transactionId()).isEqualTo(first.transactionId());
-        verify(outbox, times(1)).enqueue(anyString(), anyString(), anyString(), anyString());
-    }
-
-    @Test
-    void askingAgainAfterThePauseReplacesTheCode() {
+    void askingAgainIssuesANewCodeAndVoidsTheOldOne() {
         EmailLoginService.Started first = service.startLogin(TENANT, NAME);
         String oldCode = mailedCode();
-        user.getEmailLogin().setRequestedAt(Instant.now().minus(Duration.ofSeconds(61)));
 
         EmailLoginService.Started second = service.startLogin(TENANT, NAME);
 
@@ -201,6 +197,15 @@ class EmailLoginServiceTest {
         assertThat(service.verify(TENANT, NAME, PURPOSE, first.transactionId(), oldCode)
                         .success())
                 .isFalse();
+    }
+
+    @Test
+    void theMailNamesTheTransactionIdSoTheUserCanMatchIt() {
+        EmailLoginService.Started started = service.startLogin(TENANT, NAME);
+
+        ArgumentCaptor<String> body = ArgumentCaptor.forClass(String.class);
+        verify(outbox).enqueue(anyString(), anyString(), anyString(), body.capture());
+        assertThat(body.getValue()).contains("Reference: " + started.transactionId());
     }
 
     @Test
@@ -255,6 +260,18 @@ class EmailLoginServiceTest {
     }
 
     @Test
+    void aLoginRequestDoesNotDisturbAPendingEmailChange() {
+        EmailLoginService.Started change = service.startEmailChange(TENANT, NAME, "new@example.com");
+        String changeCode = mailedCode();
+
+        service.startLogin(TENANT, NAME);
+
+        assertThat(service.verify(TENANT, NAME, EmailLoginPurpose.EMAIL_CHANGE, change.transactionId(), changeCode)
+                        .success())
+                .isTrue();
+    }
+
+    @Test
     void aCodeIssuedForAnotherPurposeIsNeitherCountedNorConsumed() {
         EmailLoginService.Started started = service.startEmailChange(TENANT, NAME, "new@example.com");
         String code = mailedCode();
@@ -263,8 +280,8 @@ class EmailLoginServiceTest {
                         .success())
                 .isFalse();
 
-        verify(users, never()).countEmailLoginAttempt(anyString(), anyString(), anyString());
-        assertThat(user.getEmailLogin()).isNotNull();
+        verify(codes, never()).countAttempt(anyString(), anyString(), any(), anyString());
+        assertThat(stored.get(EmailLoginPurpose.EMAIL_CHANGE)).isNotNull();
         assertThat(service.verify(TENANT, NAME, EmailLoginPurpose.EMAIL_CHANGE, started.transactionId(), code)
                         .success())
                 .isTrue();

@@ -8,15 +8,18 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.mongodb.client.result.UpdateResult;
 import de.mhus.vance.shared.crypto.AesEncryptionService;
 import java.time.Instant;
 import java.util.Optional;
+import org.bson.Document;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.data.mongodb.core.FindAndModifyOptions;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.data.mongodb.core.query.UpdateDefinition;
 
 /**
@@ -96,53 +99,81 @@ class MailOutboxServiceTest {
     }
 
     @Test
-    void markSentDropsTheBody() {
-        MailOutboxDocument doc = entry("mail-1", 1, "cipher");
-        doc.setStatus(MailOutboxStatus.SENDING);
-        when(repository.findById("mail-1")).thenReturn(Optional.of(doc));
+    void markSentDropsTheBodyOfTheRunningAttempt() {
+        stubUpdate(1);
 
-        service.markSent("mail-1", NOW);
+        service.markSent("mail-1", 1, NOW);
 
-        assertThat(doc.getStatus()).isEqualTo(MailOutboxStatus.SENT);
-        assertThat(doc.getBodyEncrypted()).isNull();
-        assertThat(doc.getSentAt()).isEqualTo(NOW);
-        verify(repository).save(doc);
+        Document set = captureUpdate().getUpdateObject().get("$set", Document.class);
+        assertThat(set.get("status")).isEqualTo(MailOutboxStatus.SENT);
+        assertThat(set.get("sentAt")).isEqualTo(NOW);
+        assertThat(captureUpdate().getUpdateObject().get("$unset", Document.class))
+                .containsKey("bodyEncrypted");
+    }
+
+    @Test
+    void theOutcomeIsBoundToTheStatusAndAttemptThatOwnTheEntry() {
+        stubUpdate(1);
+
+        service.markSent("mail-1", 3, NOW);
+
+        Document query = captureQuery().getQueryObject();
+        assertThat(query.get("_id")).isEqualTo("mail-1");
+        assertThat(query.get("status")).isEqualTo(MailOutboxStatus.SENDING);
+        assertThat(query.get("attempts")).isEqualTo(3);
     }
 
     @Test
     void markFailedSchedulesTheNextAttemptFromTheBackoff() {
-        MailOutboxDocument doc = entry("mail-1", 2, "cipher");
-        doc.setStatus(MailOutboxStatus.SENDING);
-        when(repository.findById("mail-1")).thenReturn(Optional.of(doc));
+        stubUpdate(1);
 
-        service.markFailed("mail-1", "smtp down", NOW);
+        service.markFailed("mail-1", 2, "smtp down", NOW);
 
-        assertThat(doc.getStatus()).isEqualTo(MailOutboxStatus.PENDING);
-        assertThat(doc.getNextAttemptAt()).isEqualTo(NOW.plusSeconds(20));
-        assertThat(doc.getLastError()).isEqualTo("smtp down");
-        assertThat(doc.getBodyEncrypted()).isEqualTo("cipher");
+        Document set = captureUpdate().getUpdateObject().get("$set", Document.class);
+        assertThat(set.get("status")).isEqualTo(MailOutboxStatus.PENDING);
+        assertThat(set.get("nextAttemptAt")).isEqualTo(NOW.plusSeconds(20));
+        assertThat(set.get("lastError")).isEqualTo("smtp down");
+        assertThat(captureUpdate().getUpdateObject().get("$unset", Document.class))
+                .doesNotContainKey("bodyEncrypted");
     }
 
     @Test
     void markFailedGivesUpAfterTheLastRetry() {
-        MailOutboxDocument doc = entry("mail-1", 4, "cipher");
-        doc.setStatus(MailOutboxStatus.SENDING);
-        when(repository.findById("mail-1")).thenReturn(Optional.of(doc));
+        stubUpdate(1);
 
-        service.markFailed("mail-1", "smtp down", NOW);
+        service.markFailed("mail-1", 4, "smtp down", NOW);
 
-        assertThat(doc.getStatus()).isEqualTo(MailOutboxStatus.FAILED);
-        assertThat(doc.getBodyEncrypted()).isNull();
-        assertThat(doc.getLastError()).isEqualTo("smtp down");
+        Document set = captureUpdate().getUpdateObject().get("$set", Document.class);
+        assertThat(set.get("status")).isEqualTo(MailOutboxStatus.FAILED);
+        assertThat(set.get("lastError")).isEqualTo("smtp down");
+        assertThat(captureUpdate().getUpdateObject().get("$unset", Document.class))
+                .containsKey("bodyEncrypted");
     }
 
     @Test
-    void markSentOnAnEvictedEntryIsANoOp() {
-        when(repository.findById("gone")).thenReturn(Optional.empty());
+    void anOutcomeFromASenderThatLostTheEntryChangesNothingElse() {
+        stubUpdate(0);
 
-        service.markSent("gone", NOW);
+        service.markFailed("mail-1", 1, "smtp down", NOW);
 
         verify(repository, never()).save(any());
+    }
+
+    private void stubUpdate(long modified) {
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class), eq(MailOutboxDocument.class)))
+                .thenReturn(UpdateResult.acknowledged(modified, modified, null));
+    }
+
+    private Query captureQuery() {
+        ArgumentCaptor<Query> query = ArgumentCaptor.forClass(Query.class);
+        verify(mongoTemplate).updateFirst(query.capture(), any(Update.class), eq(MailOutboxDocument.class));
+        return query.getValue();
+    }
+
+    private Update captureUpdate() {
+        ArgumentCaptor<Update> update = ArgumentCaptor.forClass(Update.class);
+        verify(mongoTemplate).updateFirst(any(Query.class), update.capture(), eq(MailOutboxDocument.class));
+        return update.getValue();
     }
 
     private void stubClaim(MailOutboxDocument result) {

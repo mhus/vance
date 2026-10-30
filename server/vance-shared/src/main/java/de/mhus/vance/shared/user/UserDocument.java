@@ -145,12 +145,6 @@ public class UserDocument {
      */
     private @Nullable ExternalIdentity externalIdentity;
 
-    /**
-     * The open e-mail code (login or address confirmation), {@code null} when
-     * none. At most one per account. Written only through {@link UserService}.
-     */
-    private @Nullable EmailLoginTransaction emailLogin;
-
     @CreatedDate
     private @Nullable Instant createdAt;
 

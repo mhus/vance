@@ -20,15 +20,17 @@ import org.springframework.stereotype.Service;
 
 /**
  * E-mail codes: a twelve-digit code mailed to the account's address stands in
- * for a password, and the same mechanism confirms a changed address.
+ * for a password, and the same mechanism confirms a changed address. Every request issues a new
+ * code and voids the one before; the {@code transactionId} is shown in the mail
+ * and on the page, so the user can tell which code belongs to which request.
  *
  * <p>The address is not unique in Vance, so a request is addressed by
  * {@code (tenant, username)} and answered with a random {@code transactionId}
- * that the verification must send back. One open code per account, stored on
- * the user ({@link UserDocument#getEmailLogin()}); only an HMAC of it is kept.
+ * that the verification must send back. One open code per account and purpose, kept in
+ * {@link EmailLoginCodeDocument} (evicted by a TTL index); only an HMAC of it is kept.
  *
  * <p>What the code is protected by: a lifetime, {@link #MAX_ATTEMPTS} attempts
- * per code, a pause between two requests, the account lockout (failed codes
+ * per code, the account lockout (failed codes
  * count like failed passwords), and single use — a verified code is consumed
  * atomically. A request for an unknown or ineligible login answers like a real
  * one and mails nothing, so the answer does not tell whether an account exists.
@@ -45,23 +47,23 @@ public class EmailLoginService {
     private static final String HMAC = "HmacSHA256";
 
     private final UserService users;
+    private final EmailLoginCodeService codes;
     private final MailOutboxService outbox;
     private final SecretKeySpec hmacKey;
     private final Duration lifetime;
-    private final Duration resendCooldown;
     private final SecureRandom random = new SecureRandom();
 
     public EmailLoginService(
             UserService users,
+            EmailLoginCodeService codes,
             MailOutboxService outbox,
             @Value("${vance.encryption.password}") String secret,
-            @Value("${vance.auth.email-token.lifetime-minutes:10}") long lifetimeMinutes,
-            @Value("${vance.auth.email-token.resend-cooldown-seconds:60}") long resendCooldownSeconds) {
+            @Value("${vance.auth.email-token.lifetime-minutes:10}") long lifetimeMinutes) {
         this.users = users;
+        this.codes = codes;
         this.outbox = outbox;
         this.hmacKey = new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), HMAC);
         this.lifetime = Duration.ofMinutes(lifetimeMinutes);
-        this.resendCooldown = Duration.ofSeconds(resendCooldownSeconds);
     }
 
     /** The answer to a request: where to send the code back to, and until when it is good. */
@@ -124,31 +126,31 @@ public class EmailLoginService {
             return Verification.failed();
         }
         UserDocument user = found.get();
-        EmailLoginTransaction open = user.getEmailLogin();
-        if (open == null || open.getPurpose() != purpose || !sameBytes(open.getTransactionId(), transactionId)) {
+        EmailLoginCodeDocument open = codes.find(tenantId, name, purpose).orElse(null);
+        if (open == null || !sameBytes(open.getTransactionId(), transactionId)) {
             return Verification.failed();
         }
         if (Instant.now().isAfter(open.getExpiresAt())) {
-            users.consumeEmailLogin(tenantId, name, open.getTransactionId());
+            codes.consume(tenantId, name, purpose, open.getTransactionId());
             return Verification.failed();
         }
         if (users.isLocked(user)) {
             return Verification.failed();
         }
-        EmailLoginTransaction counted = users.countEmailLoginAttempt(tenantId, name, open.getTransactionId())
+        EmailLoginCodeDocument counted = codes.countAttempt(tenantId, name, purpose, open.getTransactionId())
                 .orElse(null);
         if (counted == null || counted.getAttempts() > MAX_ATTEMPTS) {
-            users.consumeEmailLogin(tenantId, name, open.getTransactionId());
+            codes.consume(tenantId, name, purpose, open.getTransactionId());
             return Verification.failed();
         }
         if (!sameBytes(counted.getTokenHash(), hash(counted.getTransactionId(), code))) {
             users.recordFailedLogin(tenantId, name);
             if (counted.getAttempts() >= MAX_ATTEMPTS) {
-                users.consumeEmailLogin(tenantId, name, counted.getTransactionId());
+                codes.consume(tenantId, name, purpose, counted.getTransactionId());
             }
             return Verification.failed();
         }
-        if (!users.consumeEmailLogin(tenantId, name, counted.getTransactionId())) {
+        if (!codes.consume(tenantId, name, purpose, counted.getTransactionId())) {
             return Verification.failed();
         }
         return new Verification(true, counted.getAddress());
@@ -191,29 +193,20 @@ public class EmailLoginService {
 
     private Started issue(UserDocument user, EmailLoginPurpose purpose, String address) {
         Instant now = Instant.now();
-        EmailLoginTransaction open = user.getEmailLogin();
-        if (open != null
-                && open.getPurpose() == purpose
-                && now.isBefore(open.getExpiresAt())
-                && now.isBefore(open.getRequestedAt().plus(resendCooldown))) {
-            // Asked again within the pause: no second mail, the first code still counts.
-            return new Started(open.getTransactionId(), open.getExpiresAt());
-        }
         String code = newCode();
         String transactionId = newTransactionId();
         Instant expiresAt = now.plus(lifetime);
-        users.setEmailLogin(
-                user.getTenantId(),
-                user.getName(),
-                EmailLoginTransaction.builder()
-                        .transactionId(transactionId)
-                        .tokenHash(hash(transactionId, code))
-                        .purpose(purpose)
-                        .address(address)
-                        .requestedAt(now)
-                        .expiresAt(expiresAt)
-                        .build());
-        outbox.enqueue(user.getTenantId(), address, subject(purpose), body(purpose, code));
+        codes.replace(EmailLoginCodeDocument.builder()
+                .tenantId(user.getTenantId())
+                .userId(user.getName())
+                .transactionId(transactionId)
+                .tokenHash(hash(transactionId, code))
+                .purpose(purpose)
+                .address(address)
+                .requestedAt(now)
+                .expiresAt(expiresAt)
+                .build());
+        outbox.enqueue(user.getTenantId(), address, subject(purpose), body(purpose, code, transactionId));
         log.info("E-mail code issued tenantId='{}' name='{}' purpose={}", user.getTenantId(), user.getName(), purpose);
         return new Started(transactionId, expiresAt);
     }
@@ -235,14 +228,17 @@ public class EmailLoginService {
         };
     }
 
-    private String body(EmailLoginPurpose purpose, String code) {
+    private String body(EmailLoginPurpose purpose, String code, String transactionId) {
         String intro =
                 switch (purpose) {
                     case LOGIN -> "Your sign-in code:";
                     case EMAIL_CHANGE -> "Your confirmation code for the new e-mail address:";
                 };
-        return intro + "\n\n    " + group(code) + "\n\nIt is valid for " + lifetime.toMinutes()
-                + " minutes and works once. If you did not ask for it, ignore this mail.";
+        return intro + "\n\n    " + group(code) + "\n\nReference: " + transactionId
+                + "\n(the sign-in page shows the same reference; use the code only if they match)"
+                + "\n\nIt is valid for " + lifetime.toMinutes()
+                + " minutes and works once. A newer code makes this one void."
+                + " If you did not ask for it, ignore this mail.";
     }
 
     /** Twelve digits in groups of three, easier to read and to copy. */

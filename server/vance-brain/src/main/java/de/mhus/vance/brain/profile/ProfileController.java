@@ -107,8 +107,10 @@ public class ProfileController {
         String email = request.getEmail();
         if (loginModes.emailTokenEnabled() && email != null) {
             // The address is the sign-in credential in this mode: it changes
-            // only through the confirmed flow below, never by a plain write —
-            // a hijacked session could otherwise repoint it at its own mailbox.
+            // only through the confirmed flow below, never by a plain write.
+            // The code proves that the new mailbox is reachable, not that it
+            // belongs to the user — that cannot be proven. The logged-in
+            // session is the authority; the old address gets a notice.
             UserDocument current = userService
                     .findByTenantAndName(tenant, username)
                     .orElseThrow(() ->

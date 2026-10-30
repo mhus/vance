@@ -999,8 +999,14 @@ async function onResetTalkCommands(): Promise<void> {
               autocapitalize="none"
               :disabled="emailBusy"
             />
+            <p
+              v-if="emailDialogStep === 'code'"
+              class="font-mono text-xs break-all"
+            >
+              {{ $t('profile.identity.emailChange.reference', { id: emailTransactionId }) }}
+            </p>
             <VInput
-              v-else
+              v-if="emailDialogStep === 'code'"
               v-model="emailCode"
               :label="$t('profile.identity.emailChange.code')"
               required

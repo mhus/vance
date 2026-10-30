@@ -107,31 +107,67 @@ public class MailOutboxService {
                 claimed.getAttempts()));
     }
 
-    /** The mail was handed to SMTP: drop the body and keep the entry until it expires. */
-    public void markSent(String id, Instant now) {
-        repository.findById(id).ifPresent(doc -> {
-            doc.setStatus(MailOutboxStatus.SENT);
-            doc.setBodyEncrypted(null);
-            doc.setLeaseUntil(null);
-            doc.setLastError(null);
-            doc.setSentAt(now);
-            repository.save(doc);
-        });
+    /**
+     * The mail was handed to SMTP: drop the body and keep the entry until it expires.
+     * Applies only while {@code attempt} is still the running attempt — a sender
+     * whose lease ran out and whose entry was claimed again changes nothing.
+     */
+    public void markSent(String id, int attempt, Instant now) {
+        finishAttempt(
+                id,
+                attempt,
+                new Update()
+                        .set("status", MailOutboxStatus.SENT)
+                        .set("sentAt", now)
+                        .unset("bodyEncrypted")
+                        .unset("leaseUntil")
+                        .unset("lastError"));
     }
 
-    /** The attempt failed: schedule the next one, or give up when the schedule is used up. */
-    public void markFailed(String id, String error, Instant now) {
-        repository.findById(id).ifPresent(doc -> {
-            if (retryPolicy.exhausted(doc.getAttempts())) {
-                giveUp(doc, error, now);
-                return;
-            }
-            doc.setStatus(MailOutboxStatus.PENDING);
-            doc.setNextAttemptAt(retryPolicy.nextAttemptAt(doc.getAttempts(), now));
-            doc.setLeaseUntil(null);
-            doc.setLastError(error);
-            repository.save(doc);
-        });
+    /**
+     * The attempt failed: schedule the next one, or give up when the schedule is
+     * used up. Like {@link #markSent}, bound to the attempt that is still running.
+     */
+    public void markFailed(String id, int attempt, String error, Instant now) {
+        if (retryPolicy.exhausted(attempt)) {
+            log.warn("Mail outbox entry '{}' failed for good after {} attempts: {}", id, attempt, error);
+            finishAttempt(
+                    id,
+                    attempt,
+                    new Update()
+                            .set("status", MailOutboxStatus.FAILED)
+                            .set("lastError", error)
+                            .set("expiresAt", now.plus(retention))
+                            .unset("bodyEncrypted")
+                            .unset("leaseUntil"));
+            return;
+        }
+        finishAttempt(
+                id,
+                attempt,
+                new Update()
+                        .set("status", MailOutboxStatus.PENDING)
+                        .set("nextAttemptAt", retryPolicy.nextAttemptAt(attempt, now))
+                        .set("lastError", error)
+                        .unset("leaseUntil"));
+    }
+
+    /** Writes the outcome of an attempt only if that attempt still owns the entry. */
+    private void finishAttempt(String id, int attempt, Update update) {
+        long changed = mongoTemplate
+                .updateFirst(
+                        new Query(Criteria.where("_id")
+                                .is(id)
+                                .and("status")
+                                .is(MailOutboxStatus.SENDING)
+                                .and("attempts")
+                                .is(attempt)),
+                        update,
+                        MailOutboxDocument.class)
+                .getModifiedCount();
+        if (changed == 0) {
+            log.debug("Mail outbox entry '{}' attempt {} no longer owns the entry; outcome dropped", id, attempt);
+        }
     }
 
     private void giveUp(MailOutboxDocument doc, String error, Instant now) {

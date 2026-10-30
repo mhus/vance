@@ -35,6 +35,14 @@ class SettingsCascadeControllerTest {
     }
 
     @Test
+    void resolve_uiTitle_isReadFromTheTenant() {
+        when(settings.getStringValueCascade("acme", null, null, "ui.title")).thenReturn("Acme Think Tank");
+
+        assertThat(controller.resolve("acme", null, List.of("ui.title")))
+                .containsExactly(Map.entry("ui.title", "Acme Think Tank"));
+    }
+
+    @Test
     void resolve_keyOutsideTheAllowlist_isRejected() {
         assertThatThrownBy(() -> controller.resolve("acme", null, List.of("ai.provider.openrouter.apiKey")))
                 .isInstanceOf(ResponseStatusException.class);

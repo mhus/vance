@@ -22,6 +22,7 @@ import WorkingProjectBadge from './WorkingProjectBadge.vue';
 import FookSupportModal from './FookSupportModal.vue';
 import TenantLogo from './TenantLogo.vue';
 import { loadRuntimeConfig, type RuntimeConfig } from '@/platform/runtimeConfig';
+import { loadTenantTitle } from '@/platform/tenantTitle';
 import { handleShellLinkClick } from '@/platform/navigate';
 
 /**
@@ -156,9 +157,12 @@ const showSettingsEntry = computed<boolean>(() => getActiveUiLevel() === 'expert
 // /config.json. Both are optional; the title is rendered next to the
 // "vance" wordmark when set, the backlink as a small link below it.
 const runtimeCfg = ref<RuntimeConfig | null>(null);
-const serverTitle = computed<string>(() => runtimeCfg.value?.title?.trim() ?? '');
+const tenantTitle = ref<string | null>(null);
+/** The tenant's own title (setting `ui.title` in `_tenant`) wins over the instance title. */
+const serverTitle = computed<string>(() => tenantTitle.value ?? runtimeCfg.value?.title?.trim() ?? '');
 const serverBacklink = computed<string>(() => runtimeCfg.value?.backlink?.trim() ?? '');
 void loadRuntimeConfig().then((cfg) => { runtimeCfg.value = cfg; });
+void loadTenantTitle().then((title) => { tenantTitle.value = title; });
 
 function onSwitchAccount(): void {
   requestSwitchAccount();
@@ -205,7 +209,7 @@ function openFook(): void {
       <TenantLogo />
       <span class="v-wordmark">vancetope</span>
     </a>
-    <!-- Server identity from the pod-written /config.json. The title
+    <!-- Server identity: the tenant's `ui.title` setting, else the title from the pod-written /config.json. The title
          renders as a clickable link to the backlink URL when both are
          set; otherwise it falls back to plain text (title-only) or a
          link with the URL as its label (backlink-only). Vanilla

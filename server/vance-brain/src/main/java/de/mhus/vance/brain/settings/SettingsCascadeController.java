@@ -51,9 +51,13 @@ public class SettingsCascadeController {
      * <p>{@code ai.default.provider}/{@code ai.default.model} let the
      * landing page warn when a fresh tenant has no LLM configured yet
      * — a provider instance name and a model id, no credential.
+     *
+     * <p>{@code ui.title} is the tenant's own label for the header of the
+     * Web-UI, replacing the instance title from the pod's {@code config.json}.
+     * Read without a project, so it is the {@code _tenant} value.
      */
     private static final Set<String> PUBLIC_CASCADE_KEYS =
-            Set.of("maps.tile.url", "maps.tile.attribution", "ai.default.provider", "ai.default.model");
+            Set.of("maps.tile.url", "maps.tile.attribution", "ai.default.provider", "ai.default.model", "ui.title");
 
     private final SettingService settingService;
 

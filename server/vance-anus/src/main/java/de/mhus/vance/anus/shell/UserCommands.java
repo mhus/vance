@@ -24,6 +24,7 @@ import org.jline.reader.LineReader;
 import org.jline.reader.UserInterruptException;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.shell.core.command.annotation.Command;
 import org.springframework.shell.core.command.annotation.Option;
 import org.springframework.stereotype.Component;
@@ -49,6 +50,11 @@ public class UserCommands {
     private final UserQuotaService quotaService;
     // Lazy LineReader to avoid the Spring-Shell bean cycle — see AccessCommands.
     private final ObjectProvider<LineReader> lineReader;
+    /** {@code vance.auth.email-token.enabled}: accounts sign in with a code sent to their address. */
+    private final boolean emailTokenMode;
+
+    private static final String EMAIL_REQUIRED =
+            "Refused: an e-mail address is required — accounts sign in with a code sent to it.";
 
     public UserCommands(
             UserService userService,
@@ -58,7 +64,8 @@ public class UserCommands {
             SsoConfigService ssoConfigService,
             AuditService auditService,
             UserQuotaService quotaService,
-            ObjectProvider<LineReader> lineReader) {
+            ObjectProvider<LineReader> lineReader,
+            @Value("${vance.auth.email-token.enabled:false}") boolean emailTokenMode) {
         this.userService = userService;
         this.passwordService = passwordService;
         this.passwordPolicyService = passwordPolicyService;
@@ -67,6 +74,7 @@ public class UserCommands {
         this.auditService = auditService;
         this.quotaService = quotaService;
         this.lineReader = lineReader;
+        this.emailTokenMode = emailTokenMode;
     }
 
     @Command(
@@ -131,6 +139,9 @@ public class UserCommands {
                             description = "Create even when the tenant's seat (or service-account) quota is reached.",
                             defaultValue = "false")
                     boolean ignoreQuota) {
+        if (emailTokenMode && !serviceAccount && StringUtils.isBlank(email)) {
+            return EMAIL_REQUIRED;
+        }
         // Early look before the password prompt: a refusal must not cost the
         // operator a typed password. The binding check is the service's below.
         UserQuotaKind kind = UserQuotaKind.forServiceAccount(serviceAccount);
@@ -187,6 +198,9 @@ public class UserCommands {
                             description = "Re-enable a DISABLED account even when its quota is reached.",
                             defaultValue = "false")
                     boolean ignoreQuota) {
+        if (emailTokenMode && email != null && email.isBlank()) {
+            return EMAIL_REQUIRED;
+        }
         UserDocument user;
         try {
             user = userService.update(tenant, name, title, email, status, loginEnabled, !ignoreQuota);

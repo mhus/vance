@@ -154,6 +154,41 @@ public class EmailLoginService {
         return new Verification(true, counted.getAddress());
     }
 
+    /**
+     * Confirms an address change: checks the code that went to the new address
+     * and, if it is good, makes that address the account's. The old address, if
+     * there was one, gets a notice — it is the one thing that lets a legitimate
+     * owner notice that somebody else changed the sign-in address.
+     *
+     * @return the new address, empty if the code did not verify
+     */
+    public Optional<String> confirmEmailChange(String tenantId, String name, String transactionId, String token) {
+        Verification verification = verify(tenantId, name, EmailLoginPurpose.EMAIL_CHANGE, transactionId, token);
+        String newAddress = verification.address();
+        if (!verification.success() || newAddress == null) {
+            return Optional.empty();
+        }
+        String oldAddress = users.findByTenantAndName(tenantId, name)
+                .map(UserDocument::getEmail)
+                .orElse(null);
+        try {
+            users.update(tenantId, name, null, newAddress, null, null);
+        } catch (UserService.UserNotFoundException e) {
+            return Optional.empty();
+        }
+        if (StringUtils.isNotBlank(oldAddress) && !oldAddress.equalsIgnoreCase(newAddress)) {
+            outbox.enqueue(
+                    tenantId,
+                    oldAddress,
+                    "Your e-mail address was changed",
+                    "The e-mail address of your account '" + name + "' was just changed."
+                            + " Sign-in codes now go to the new address.\n\n"
+                            + "If you did not do this, tell your administrator right away.");
+        }
+        log.info("E-mail address confirmed tenantId='{}' name='{}'", tenantId, name);
+        return Optional.of(newAddress);
+    }
+
     private Started issue(UserDocument user, EmailLoginPurpose purpose, String address) {
         Instant now = Instant.now();
         EmailLoginTransaction open = user.getEmailLogin();

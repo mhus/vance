@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.users.UserCreateRequest;
 import de.mhus.vance.api.users.UserUpdateRequest;
+import de.mhus.vance.brain.access.LoginModes;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.password.PasswordPolicyService;
@@ -33,7 +34,11 @@ class UserAdminControllerQuotaTest {
     void setUp() {
         users = mock(UserService.class);
         controller = new UserAdminController(
-                users, mock(PasswordService.class), mock(PasswordPolicyService.class), mock(RequestAuthority.class));
+                users,
+                mock(PasswordService.class),
+                mock(PasswordPolicyService.class),
+                mock(RequestAuthority.class),
+                new LoginModes(false, false));
         http = mock(HttpServletRequest.class);
         when(http.getAttribute(AccessFilterBase.ATTR_USERNAME)).thenReturn("admin");
     }

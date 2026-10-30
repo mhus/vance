@@ -67,7 +67,7 @@ import org.springframework.web.util.HtmlUtils;
  * the provider.
  */
 @RestController
-@ConditionalOnProperty(prefix = "vance.auth.sso", name = "enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "vance.auth.sso", name = "enabled", havingValue = "true")
 public class SsoController {
 
     /** Browser cookie binding the callback to the browser that started the sign-in. */

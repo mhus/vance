@@ -50,7 +50,49 @@ class UserCommandsQuotaTest {
             ssoConfigService,
             mock(AuditService.class),
             quotaService,
-            mock(ObjectProvider.class));
+            mock(ObjectProvider.class),
+            false);
+
+    private UserCommands emailTokenCommands() {
+        return new UserCommands(
+                userService,
+                mock(PasswordService.class),
+                mock(PasswordPolicyService.class),
+                mock(UserMaintenanceService.class),
+                ssoConfigService,
+                mock(AuditService.class),
+                quotaService,
+                mock(ObjectProvider.class),
+                true);
+    }
+
+    @Test
+    void create_withoutAnAddressIsRefusedInEmailCodeMode() {
+        String result =
+                emailTokenCommands().create("acme", "alice", null, null, "Secret-password-1", false, false, false);
+
+        assertThat(result).contains("e-mail address is required");
+        verify(userService, never()).create(anyString(), anyString(), any(), any(), any(), anyBoolean());
+    }
+
+    @Test
+    void create_aServiceAccountNeedsNoAddressInEmailCodeMode() {
+        when(userService.createServiceAccount(anyString(), anyString(), any(), any(), any(), anyBoolean()))
+                .thenReturn(alice);
+        when(quotaService.status("acme", UserQuotaKind.SERVICE_ACCOUNTS)).thenReturn(new UserQuotaService.Usage(1, 5));
+
+        String result = emailTokenCommands().create("acme", "_bot", null, null, null, true, true, false);
+
+        assertThat(result).doesNotContain("e-mail address is required");
+    }
+
+    @Test
+    void update_clearingTheAddressIsRefusedInEmailCodeMode() {
+        String result = emailTokenCommands().update("acme", "alice", null, " ", null, null, false);
+
+        assertThat(result).contains("e-mail address is required");
+        verify(userService, never()).update(anyString(), anyString(), any(), any(), any(), any(), anyBoolean());
+    }
 
     private final UserDocument alice = UserDocument.builder()
             .tenantId("acme")

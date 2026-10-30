@@ -1,10 +1,14 @@
 package de.mhus.vance.brain.profile;
 
+import de.mhus.vance.api.access.EmailTokenStartResponse;
 import de.mhus.vance.api.profile.ProfileDto;
+import de.mhus.vance.api.profile.ProfileEmailChangeConfirmRequest;
+import de.mhus.vance.api.profile.ProfileEmailChangeRequest;
 import de.mhus.vance.api.profile.ProfileSettingWriteRequest;
 import de.mhus.vance.api.profile.ProfileUpdateRequest;
 import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.api.teams.TeamSummary;
+import de.mhus.vance.brain.access.LoginModes;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.access.WebUiCookies;
 import de.mhus.vance.shared.home.HomeBootstrapService;
@@ -12,6 +16,7 @@ import de.mhus.vance.shared.settings.LanguageResolver;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.team.TeamDocument;
 import de.mhus.vance.shared.team.TeamService;
+import de.mhus.vance.shared.user.EmailLoginService;
 import de.mhus.vance.shared.user.UserDocument;
 import de.mhus.vance.shared.user.UserService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -22,12 +27,14 @@ import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -71,6 +78,8 @@ public class ProfileController {
     private final UiSettingsService uiSettingsService;
     private final de.mhus.vance.shared.password.PasswordService passwordService;
     private final de.mhus.vance.shared.password.PasswordPolicyService passwordPolicyService;
+    private final EmailLoginService emailLoginService;
+    private final LoginModes loginModes;
 
     /** Build stamp injected from Maven (see application.yml vance.build.*). */
     @Value("${vance.build.version:dev}")
@@ -95,18 +104,83 @@ public class ProfileController {
             @Valid @RequestBody ProfileUpdateRequest request,
             HttpServletRequest httpRequest) {
         String username = currentUser(httpRequest);
+        String email = request.getEmail();
+        if (loginModes.emailTokenEnabled() && email != null) {
+            // The address is the sign-in credential in this mode: it changes
+            // only through the confirmed flow below, never by a plain write —
+            // a hijacked session could otherwise repoint it at its own mailbox.
+            UserDocument current = userService
+                    .findByTenantAndName(tenant, username)
+                    .orElseThrow(() ->
+                            new ResponseStatusException(HttpStatus.NOT_FOUND, "Profile not found for current user"));
+            if (!email.trim().equalsIgnoreCase(StringUtils.trimToEmpty(current.getEmail()))) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "The e-mail address changes only through POST /profile/email-change.");
+            }
+            email = null;
+        }
         try {
             // Pass the existing status as null so it stays unchanged —
             // the caller cannot escalate / lock themselves out via
             // this endpoint. Title and email are the only mutable
             // fields exposed here.
-            UserDocument saved =
-                    userService.update(tenant, username, request.getTitle(), request.getEmail(), null, null);
+            UserDocument saved = userService.update(tenant, username, request.getTitle(), email, null, null);
             log.info("Profile updated tenant='{}' user='{}'", tenant, username);
             return ResponseEntity.ok(toDto(saved, loadTeams(tenant, username), loadSettings(tenant, username)));
         } catch (UserService.UserNotFoundException e) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         }
+    }
+
+    /**
+     * Starts an address change: mails a confirmation code to the new address.
+     * Only in e-mail code mode — elsewhere the address is plain contact data
+     * and {@code PUT /profile} writes it.
+     */
+    @PostMapping("/email-change")
+    public ResponseEntity<EmailTokenStartResponse> startEmailChange(
+            @PathVariable("tenant") String tenant,
+            @Valid @RequestBody ProfileEmailChangeRequest request,
+            HttpServletRequest httpRequest) {
+        if (!loginModes.emailTokenEnabled()) {
+            return ResponseEntity.notFound().build();
+        }
+        String username = currentUser(httpRequest);
+        UserDocument user = userService
+                .findByTenantAndName(tenant, username)
+                .orElseThrow(
+                        () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Profile not found for current user"));
+        String newAddress = request.getEmail().trim();
+        if (newAddress.equalsIgnoreCase(StringUtils.trimToEmpty(user.getEmail()))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "That is already your e-mail address.");
+        }
+        EmailLoginService.Started started = emailLoginService.startEmailChange(tenant, username, newAddress);
+        return ResponseEntity.ok(EmailTokenStartResponse.builder()
+                .transactionId(started.transactionId())
+                .expiresAtTimestamp(started.expiresAt().toEpochMilli())
+                .build());
+    }
+
+    /** Finishes an address change with the code from the mail to the new address. */
+    @PostMapping("/email-change/confirm")
+    public ResponseEntity<ProfileDto> confirmEmailChange(
+            @PathVariable("tenant") String tenant,
+            @Valid @RequestBody ProfileEmailChangeConfirmRequest request,
+            HttpServletRequest httpRequest) {
+        if (!loginModes.emailTokenEnabled()) {
+            return ResponseEntity.notFound().build();
+        }
+        String username = currentUser(httpRequest);
+        if (emailLoginService
+                .confirmEmailChange(tenant, username, request.getTransactionId(), request.getToken())
+                .isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The code is wrong or has expired.");
+        }
+        UserDocument saved = userService
+                .findByTenantAndName(tenant, username)
+                .orElseThrow(
+                        () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Profile not found for current user"));
+        return ResponseEntity.ok(toDto(saved, loadTeams(tenant, username), loadSettings(tenant, username)));
     }
 
     /**

@@ -285,6 +285,49 @@ class EmailLoginServiceTest {
     }
 
     @Test
+    void confirmingAnEmailChangeSwitchesTheAddressAndNotifiesTheOldOne() {
+        EmailLoginService.Started started = service.startEmailChange(TENANT, NAME, "new@example.com");
+        String code = mailedCode();
+
+        Optional<String> confirmed = service.confirmEmailChange(TENANT, NAME, started.transactionId(), code);
+
+        assertThat(confirmed).contains("new@example.com");
+        verify(users).update(TENANT, NAME, null, "new@example.com", null, null);
+        verify(outbox).enqueue(eq(TENANT), eq("alice@example.com"), eq("Your e-mail address was changed"), anyString());
+    }
+
+    @Test
+    void aWrongCodeLeavesTheAddressAlone() {
+        EmailLoginService.Started started = service.startEmailChange(TENANT, NAME, "new@example.com");
+        String wrong = otherCode(mailedCode());
+
+        assertThat(service.confirmEmailChange(TENANT, NAME, started.transactionId(), wrong))
+                .isEmpty();
+
+        verify(users, never()).update(anyString(), anyString(), any(), any(), any(), any());
+    }
+
+    @Test
+    void aLoginCodeDoesNotConfirmAnEmailChange() {
+        EmailLoginService.Started started = service.startLogin(TENANT, NAME);
+
+        assertThat(service.confirmEmailChange(TENANT, NAME, started.transactionId(), mailedCode()))
+                .isEmpty();
+
+        verify(users, never()).update(anyString(), anyString(), any(), any(), any(), any());
+    }
+
+    @Test
+    void anAccountWithoutAnOldAddressGetsNoNotice() {
+        user = account().build();
+        EmailLoginService.Started started = service.startEmailChange(TENANT, NAME, "new@example.com");
+
+        service.confirmEmailChange(TENANT, NAME, started.transactionId(), mailedCode());
+
+        verify(outbox, times(1)).enqueue(anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
     void anEmailChangeNeedsAnAddress() {
         assertThatThrownBy(() -> service.startEmailChange(TENANT, NAME, " "))
                 .isInstanceOf(IllegalArgumentException.class);

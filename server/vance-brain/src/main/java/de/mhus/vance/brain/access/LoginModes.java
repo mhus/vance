@@ -12,8 +12,9 @@ import org.springframework.stereotype.Component;
  *   <li>{@code vance.auth.email-token.enabled} (default off): sign in with a
  *       code sent by e-mail. The password can still be set, and still serves
  *       WebDAV, but no longer signs in at {@code POST …/access/{username}}.</li>
- *   <li>{@code vance.auth.sso.enabled} (default on, which is how SSO behaved
- *       before the switch existed): the {@code /brain/_sso/} endpoints.</li>
+ *   <li>{@code vance.auth.sso.enabled} (default off): the
+ *       {@code /brain/_sso/} endpoints. An installation that signs in through
+ *       SSO has to set it.</li>
  * </ul>
  */
 @Component
@@ -24,7 +25,7 @@ public class LoginModes {
 
     public LoginModes(
             @Value("${vance.auth.email-token.enabled:false}") boolean emailToken,
-            @Value("${vance.auth.sso.enabled:true}") boolean sso) {
+            @Value("${vance.auth.sso.enabled:false}") boolean sso) {
         this.emailToken = emailToken;
         this.sso = sso;
     }

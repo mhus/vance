@@ -4,6 +4,7 @@ import de.mhus.vance.api.users.UserCreateRequest;
 import de.mhus.vance.api.users.UserDto;
 import de.mhus.vance.api.users.UserPasswordRequest;
 import de.mhus.vance.api.users.UserUpdateRequest;
+import de.mhus.vance.brain.access.LoginModes;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.password.PasswordPolicyException;
@@ -20,6 +21,7 @@ import java.util.Comparator;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -59,10 +61,14 @@ import org.springframework.web.server.ResponseStatusException;
 @Slf4j
 public class UserAdminController {
 
+    private static final String EMAIL_REQUIRED =
+            "An e-mail address is required: accounts sign in with a code sent to it.";
+
     private final UserService userService;
     private final PasswordService passwordService;
     private final PasswordPolicyService passwordPolicyService;
     private final RequestAuthority authority;
+    private final LoginModes loginModes;
 
     @GetMapping
     public List<UserDto> list(@PathVariable("tenant") String tenant, HttpServletRequest httpRequest) {
@@ -89,6 +95,9 @@ public class UserAdminController {
             @Valid @RequestBody UserCreateRequest request,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.WRITE);
+        if (loginModes.emailTokenEnabled() && StringUtils.isBlank(request.getEmail())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, EMAIL_REQUIRED);
+        }
         boolean withPassword =
                 request.getPassword() != null && !request.getPassword().isBlank();
         if (withPassword) {
@@ -111,6 +120,11 @@ public class UserAdminController {
             @Valid @RequestBody UserUpdateRequest request,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.User(tenant, name), Action.ADMIN);
+        if (loginModes.emailTokenEnabled()
+                && request.getEmail() != null
+                && request.getEmail().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, EMAIL_REQUIRED);
+        }
         UserStatus status = parseStatus(request.getStatus());
         // Self-protect: don't let the caller disable themselves.
         if (status == UserStatus.DISABLED && name.equals(currentUser(httpRequest))) {

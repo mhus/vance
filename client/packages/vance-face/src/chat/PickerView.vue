@@ -91,7 +91,7 @@ const selectedProjectName = defineModel<string | null>('selectedProject', {
 const teleportReady = ref(false);
 
 const { groups, projects, loading: projectsLoading, error: projectsError, reload: loadProjects } =
-  useTenantProjects();
+  useTenantProjects({ hideSystemProject: true });
 
 const sessions = ref<SessionSummaryRichDto[]>([]);
 const sessionsLoading = ref(false);

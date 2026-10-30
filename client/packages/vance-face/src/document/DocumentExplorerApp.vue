@@ -44,7 +44,7 @@ import { recallProject, rememberProject } from '@/platform/lastProject';
 import { isHiddenFolder } from '@/util/hiddenFolders';
 
 const { t } = useI18n();
-const projectsState = useTenantProjects();
+const projectsState = useTenantProjects({ hideSystemProject: true });
 const PAGE_SIZE = 50;
 const docsState = useDocuments(PAGE_SIZE);
 

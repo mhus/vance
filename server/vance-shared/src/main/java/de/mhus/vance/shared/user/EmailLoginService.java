@@ -67,14 +67,11 @@ public class EmailLoginService {
     /** The answer to a request: where to send the code back to, and until when it is good. */
     public record Started(String transactionId, Instant expiresAt) {}
 
-    /** Outcome of {@link #verify}; {@code purpose} and {@code address} are set on success only. */
-    public record Verification(
-            boolean success,
-            @Nullable EmailLoginPurpose purpose,
-            @Nullable String address) {
+    /** Outcome of {@link #verify}; {@code address} is the one the code went to, set on success only. */
+    public record Verification(boolean success, @Nullable String address) {
 
         static Verification failed() {
-            return new Verification(false, null, null);
+            return new Verification(false, null);
         }
     }
 
@@ -110,11 +107,14 @@ public class EmailLoginService {
     }
 
     /**
-     * Checks a code. On success the code is consumed and the caller acts on
-     * {@link Verification#purpose()} / {@link Verification#address()}; on any
+     * Checks a code that was issued for {@code purpose}. A code issued for
+     * something else fails untouched — it is neither counted nor consumed, so a
+     * confirmation code cannot be spent as a login. On success the code is
+     * consumed and the caller acts on {@link Verification#address()}; on any
      * failure there is no reason in the answer.
      */
-    public Verification verify(String tenantId, String name, String transactionId, String token) {
+    public Verification verify(
+            String tenantId, String name, EmailLoginPurpose purpose, String transactionId, String token) {
         String code = StringUtils.deleteWhitespace(StringUtils.defaultString(token));
         if (code.length() != TOKEN_LENGTH || !StringUtils.isNumeric(code)) {
             return Verification.failed();
@@ -125,7 +125,7 @@ public class EmailLoginService {
         }
         UserDocument user = found.get();
         EmailLoginTransaction open = user.getEmailLogin();
-        if (open == null || !sameBytes(open.getTransactionId(), transactionId)) {
+        if (open == null || open.getPurpose() != purpose || !sameBytes(open.getTransactionId(), transactionId)) {
             return Verification.failed();
         }
         if (Instant.now().isAfter(open.getExpiresAt())) {
@@ -151,7 +151,7 @@ public class EmailLoginService {
         if (!users.consumeEmailLogin(tenantId, name, counted.getTransactionId())) {
             return Verification.failed();
         }
-        return new Verification(true, counted.getPurpose(), counted.getAddress());
+        return new Verification(true, counted.getAddress());
     }
 
     private Started issue(UserDocument user, EmailLoginPurpose purpose, String address) {
@@ -187,6 +187,8 @@ public class EmailLoginService {
         return user.getStatus() == UserStatus.ACTIVE
                 && user.isLoginEnabled()
                 && !user.isServiceAccount()
+                // An SSO account signs in through its identity provider, not by mail.
+                && user.getExternalIdentity() == null
                 && !users.isLocked(user)
                 && StringUtils.isNotBlank(user.getEmail());
     }

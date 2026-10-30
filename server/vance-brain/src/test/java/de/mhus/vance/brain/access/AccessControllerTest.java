@@ -66,13 +66,7 @@ class AccessControllerTest {
         settingService = mock(SettingService.class);
         auditService = mock(AuditService.class);
 
-        controller = new AccessController(
-                jwtService,
-                userService,
-                passwordService,
-                new LoginTokenIssuer(jwtService, homeBootstrapService),
-                auditService,
-                new WebUiCookieService(/* cookieSecure */ true));
+        controller = controllerWith(/* cookieSecure */ true, new LoginModes(false, true));
 
         // Default wiring — an active user exists in the tenant with a
         // password hash. Individual tests override what they need.
@@ -93,6 +87,35 @@ class AccessControllerTest {
                         eqType(TokenType.REFRESH),
                         org.mockito.ArgumentMatchers.any()))
                 .thenReturn("refresh-jwt");
+    }
+
+    // ──────────────── E-mail code mode ────────────────
+
+    @Test
+    void passwordLogin_isRefused_whenTheEmailCodeReplacesIt() {
+        AccessController emailMode = controllerWith(true, new LoginModes(true, true));
+        AccessTokenRequest req =
+                AccessTokenRequest.builder().password("right-password").build();
+
+        ResponseEntity<AccessTokenResponse> resp = emailMode.createToken(TENANT, USERNAME, req, emptyRequest());
+
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        verify(passwordService, never())
+                .verify(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString());
+        verify(passwordService).verifyDecoy("right-password");
+        verify(auditService).authLoginFailure(TENANT, USERNAME, "password-login-disabled");
+    }
+
+    @Test
+    void refreshTokenLogin_stillWorks_whenTheEmailCodeReplacesThePassword() {
+        AccessController emailMode = controllerWith(true, new LoginModes(true, true));
+        when(jwtService.validateToken("good-refresh")).thenReturn(Optional.of(refreshClaims(TENANT, USERNAME)));
+        AccessTokenRequest req =
+                AccessTokenRequest.builder().refreshToken("good-refresh").build();
+
+        ResponseEntity<AccessTokenResponse> resp = emailMode.createToken(TENANT, USERNAME, req, emptyRequest());
+
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
     }
 
     // ──────────────── Credential XOR ────────────────
@@ -621,13 +644,7 @@ class AccessControllerTest {
     void cookies_canBeFlaggedNotSecure_forLocalDev() {
         // Override the cookie-secure flag — this is the dev-mode HTTP
         // path. Production must keep it true.
-        AccessController insecure = new AccessController(
-                jwtService,
-                userService,
-                passwordService,
-                new LoginTokenIssuer(jwtService, homeBootstrapService),
-                auditService,
-                new WebUiCookieService(/* cookieSecure */ false));
+        AccessController insecure = controllerWith(/* cookieSecure */ false, new LoginModes(false, true));
 
         AccessTokenRequest req = AccessTokenRequest.builder()
                 .password("right-password")
@@ -755,6 +772,20 @@ class AccessControllerTest {
         ResponseEntity<RefreshTokenResponse> resp = controller.refreshToken(TENANT, req);
 
         assertThat(resp.getStatusCode().value()).isEqualTo(200);
+    }
+
+    private AccessController controllerWith(boolean cookieSecure, LoginModes modes) {
+        WebUiCookieService cookies = new WebUiCookieService(cookieSecure);
+        LoginTokenIssuer issuer = new LoginTokenIssuer(jwtService, homeBootstrapService);
+        return new AccessController(
+                jwtService,
+                userService,
+                passwordService,
+                issuer,
+                auditService,
+                cookies,
+                new LoginSuccessResponder(issuer, auditService, cookies),
+                modes);
     }
 
     private static HttpServletRequest emptyRequest() {

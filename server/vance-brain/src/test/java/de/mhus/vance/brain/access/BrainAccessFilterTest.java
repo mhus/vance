@@ -62,6 +62,10 @@ class BrainAccessFilterTest {
                 "/face/addons",
                 "/brain/acme/access/bob", // token mint — client has no token yet
                 "/brain/acme/access/bob/", // trailing slash tolerated
+                "/brain/acme/access/bob/email-token", // e-mail code request — no token yet
+                "/brain/acme/access/bob/email-token/verify",
+                "/brain/acme/access/bob/email-token/verify/",
+                "/brain/acme/login-methods", // the login page asks before it has a token
                 "/brain/acme/logout",
                 "/brain/acme/logout/",
                 "/brain/acme/event/proj/deploy", // external event trigger (own bearer check)
@@ -100,6 +104,11 @@ class BrainAccessFilterTest {
                 "/brain/acme/sessions", // ordinary API path
                 "/brain/acme/documents/doc1/content", // content route requires auth (query-token is a separate gate)
                 "/brain/acme/access/bob/extra", // mint + extra segment → not the mint shape
+                "/brain/acme/access/bob/email-token/extra", // e-mail code path + extra segment
+                "/brain/acme/access/bob/email-token/verifyx", // typo must NOT open the bypass
+                "/brain/acme/access/bob/email-tokenx",
+                "/brain/acme/login-methodsx",
+                "/brain/acme/login-methods/extra",
                 "/brain/acme/event/proj", // event trigger missing the event name
                 "/brain/acme/event/proj/deploy/extra", // event trigger with an extra segment
                 "/brain/acme/office/download", // office callback missing the file segment

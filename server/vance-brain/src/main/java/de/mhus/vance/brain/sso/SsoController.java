@@ -21,6 +21,7 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -66,6 +67,7 @@ import org.springframework.web.util.HtmlUtils;
  * the provider.
  */
 @RestController
+@ConditionalOnProperty(prefix = "vance.auth.sso", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class SsoController {
 
     /** Browser cookie binding the callback to the browser that started the sign-in. */

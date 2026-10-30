@@ -39,6 +39,17 @@ public class BrainAccessFilter extends AccessFilterBase {
     private static final Pattern TOKEN_MINT_PATH = Pattern.compile("^/brain/[^/]+/access/[^/]+/?$");
 
     /**
+     * {@code POST /brain/{tenant}/access/{username}/email-token[/verify]} — open
+     * (the sign-in by e-mail code; the client has no token yet). Budgeted per
+     * client address inside {@code EmailTokenController}.
+     */
+    private static final Pattern EMAIL_TOKEN_PATH =
+            Pattern.compile("^/brain/[^/]+/access/[^/]+/email-token(?:/verify)?/?$");
+
+    /** {@code GET /brain/{tenant}/login-methods} — open; the login page asks before it has a token. */
+    private static final Pattern LOGIN_METHODS_PATH = Pattern.compile("^/brain/[^/]+/login-methods/?$");
+
+    /**
      * {@code POST /brain/{tenant}/logout} — open. Logout must succeed
      * even when the access cookie has already expired, otherwise users
      * get stuck in a state where the browser still has stale cookies
@@ -219,6 +230,10 @@ public class BrainAccessFilter extends AccessFilterBase {
             return false;
         }
         if (LOGOUT_PATH.matcher(requestUri).matches()) {
+            return false;
+        }
+        if (EMAIL_TOKEN_PATH.matcher(requestUri).matches()
+                || LOGIN_METHODS_PATH.matcher(requestUri).matches()) {
             return false;
         }
         if (EVENT_TRIGGER_PATH.matcher(requestUri).matches()) {

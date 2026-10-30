@@ -31,6 +31,7 @@ class EmailLoginServiceTest {
 
     private static final String TENANT = "acme";
     private static final String NAME = "alice";
+    private static final EmailLoginPurpose PURPOSE = EmailLoginPurpose.LOGIN;
 
     private UserService users;
     private MailOutboxService outbox;
@@ -75,12 +76,11 @@ class EmailLoginServiceTest {
         EmailLoginService.Started started = service.startLogin(TENANT, NAME);
         String code = mailedCode();
 
-        EmailLoginService.Verification first = service.verify(TENANT, NAME, started.transactionId(), code);
-        EmailLoginService.Verification second = service.verify(TENANT, NAME, started.transactionId(), code);
+        EmailLoginService.Verification first = service.verify(TENANT, NAME, PURPOSE, started.transactionId(), code);
+        EmailLoginService.Verification second = service.verify(TENANT, NAME, PURPOSE, started.transactionId(), code);
 
         assertThat(code).matches("\\d{12}");
         assertThat(first.success()).isTrue();
-        assertThat(first.purpose()).isEqualTo(EmailLoginPurpose.LOGIN);
         assertThat(first.address()).isEqualTo("alice@example.com");
         assertThat(second.success()).isFalse();
     }
@@ -99,7 +99,8 @@ class EmailLoginServiceTest {
         String spaced = code.substring(0, 3) + " " + code.substring(3, 6) + " " + code.substring(6, 9) + " "
                 + code.substring(9);
 
-        assertThat(service.verify(TENANT, NAME, started.transactionId(), spaced).success())
+        assertThat(service.verify(TENANT, NAME, PURPOSE, started.transactionId(), spaced)
+                        .success())
                 .isTrue();
     }
 
@@ -108,7 +109,8 @@ class EmailLoginServiceTest {
         EmailLoginService.Started started = service.startLogin(TENANT, NAME);
         String wrong = otherCode(mailedCode());
 
-        assertThat(service.verify(TENANT, NAME, started.transactionId(), wrong).success())
+        assertThat(service.verify(TENANT, NAME, PURPOSE, started.transactionId(), wrong)
+                        .success())
                 .isFalse();
 
         verify(users).recordFailedLogin(TENANT, NAME);
@@ -122,11 +124,12 @@ class EmailLoginServiceTest {
         String wrong = otherCode(code);
 
         for (int i = 0; i < EmailLoginService.MAX_ATTEMPTS; i++) {
-            service.verify(TENANT, NAME, started.transactionId(), wrong);
+            service.verify(TENANT, NAME, PURPOSE, started.transactionId(), wrong);
         }
 
         assertThat(user.getEmailLogin()).isNull();
-        assertThat(service.verify(TENANT, NAME, started.transactionId(), code).success())
+        assertThat(service.verify(TENANT, NAME, PURPOSE, started.transactionId(), code)
+                        .success())
                 .isFalse();
     }
 
@@ -134,7 +137,8 @@ class EmailLoginServiceTest {
     void anotherTransactionIdDoesNotVerify() {
         service.startLogin(TENANT, NAME);
 
-        assertThat(service.verify(TENANT, NAME, "someone-elses", mailedCode()).success())
+        assertThat(service.verify(TENANT, NAME, PURPOSE, "someone-elses", mailedCode())
+                        .success())
                 .isFalse();
         verify(users, never()).countEmailLoginAttempt(anyString(), anyString(), anyString());
     }
@@ -145,7 +149,8 @@ class EmailLoginServiceTest {
         String code = mailedCode();
         user.getEmailLogin().setExpiresAt(Instant.now().minusSeconds(1));
 
-        assertThat(service.verify(TENANT, NAME, started.transactionId(), code).success())
+        assertThat(service.verify(TENANT, NAME, PURPOSE, started.transactionId(), code)
+                        .success())
                 .isFalse();
         assertThat(user.getEmailLogin()).isNull();
     }
@@ -154,10 +159,10 @@ class EmailLoginServiceTest {
     void aMalformedCodeFailsWithoutCostingAnAttempt() {
         EmailLoginService.Started started = service.startLogin(TENANT, NAME);
 
-        assertThat(service.verify(TENANT, NAME, started.transactionId(), "12345")
+        assertThat(service.verify(TENANT, NAME, PURPOSE, started.transactionId(), "12345")
                         .success())
                 .isFalse();
-        assertThat(service.verify(TENANT, NAME, started.transactionId(), "12345678901x")
+        assertThat(service.verify(TENANT, NAME, PURPOSE, started.transactionId(), "12345678901x")
                         .success())
                 .isFalse();
         verify(users, never()).countEmailLoginAttempt(anyString(), anyString(), anyString());
@@ -169,7 +174,8 @@ class EmailLoginServiceTest {
         String code = mailedCode();
         when(users.isLocked(any())).thenReturn(true);
 
-        assertThat(service.verify(TENANT, NAME, started.transactionId(), code).success())
+        assertThat(service.verify(TENANT, NAME, PURPOSE, started.transactionId(), code)
+                        .success())
                 .isFalse();
     }
 
@@ -192,7 +198,8 @@ class EmailLoginServiceTest {
 
         assertThat(second.transactionId()).isNotEqualTo(first.transactionId());
         verify(outbox, times(2)).enqueue(anyString(), anyString(), anyString(), anyString());
-        assertThat(service.verify(TENANT, NAME, first.transactionId(), oldCode).success())
+        assertThat(service.verify(TENANT, NAME, PURPOSE, first.transactionId(), oldCode)
+                        .success())
                 .isFalse();
     }
 
@@ -240,12 +247,41 @@ class EmailLoginServiceTest {
         ArgumentCaptor<String> to = ArgumentCaptor.forClass(String.class);
         verify(outbox).enqueue(eq(TENANT), to.capture(), anyString(), anyString());
         EmailLoginService.Verification verification =
-                service.verify(TENANT, NAME, started.transactionId(), mailedCode());
+                service.verify(TENANT, NAME, EmailLoginPurpose.EMAIL_CHANGE, started.transactionId(), mailedCode());
 
         assertThat(to.getValue()).isEqualTo("new@example.com");
         assertThat(verification.success()).isTrue();
-        assertThat(verification.purpose()).isEqualTo(EmailLoginPurpose.EMAIL_CHANGE);
         assertThat(verification.address()).isEqualTo("new@example.com");
+    }
+
+    @Test
+    void aCodeIssuedForAnotherPurposeIsNeitherCountedNorConsumed() {
+        EmailLoginService.Started started = service.startEmailChange(TENANT, NAME, "new@example.com");
+        String code = mailedCode();
+
+        assertThat(service.verify(TENANT, NAME, PURPOSE, started.transactionId(), code)
+                        .success())
+                .isFalse();
+
+        verify(users, never()).countEmailLoginAttempt(anyString(), anyString(), anyString());
+        assertThat(user.getEmailLogin()).isNotNull();
+        assertThat(service.verify(TENANT, NAME, EmailLoginPurpose.EMAIL_CHANGE, started.transactionId(), code)
+                        .success())
+                .isTrue();
+    }
+
+    @Test
+    void anSsoAccountGetsNoLoginMail() {
+        user = account()
+                .email("a@b.de")
+                .externalIdentity(ExternalIdentity.builder()
+                        .issuer(ExternalIdentity.GOOGLE_ISSUER)
+                        .build())
+                .build();
+
+        service.startLogin(TENANT, NAME);
+
+        verify(outbox, never()).enqueue(anyString(), anyString(), anyString(), anyString());
     }
 
     @Test

@@ -57,6 +57,8 @@ public class AccessController {
     private final LoginTokenIssuer loginTokenIssuer;
     private final AuditService auditService;
     private final WebUiCookieService webUiCookieService;
+    private final LoginSuccessResponder loginSuccessResponder;
+    private final LoginModes loginModes;
 
     public AccessController(
             JwtService jwtService,
@@ -64,13 +66,17 @@ public class AccessController {
             PasswordService passwordService,
             LoginTokenIssuer loginTokenIssuer,
             AuditService auditService,
-            WebUiCookieService webUiCookieService) {
+            WebUiCookieService webUiCookieService,
+            LoginSuccessResponder loginSuccessResponder,
+            LoginModes loginModes) {
         this.jwtService = jwtService;
         this.userService = userService;
         this.passwordService = passwordService;
         this.loginTokenIssuer = loginTokenIssuer;
         this.auditService = auditService;
         this.webUiCookieService = webUiCookieService;
+        this.loginSuccessResponder = loginSuccessResponder;
+        this.loginModes = loginModes;
     }
 
     @PostMapping("/brain/{tenant}/access/{username}")
@@ -105,6 +111,14 @@ public class AccessController {
                     tenant,
                     username);
             return rejectLogin(tenant, username, "missing-credentials");
+        }
+
+        // With the e-mail code as the way in, the password stays valid for
+        // WebDAV but signs in nowhere else. Same decoy cost and uniform 401.
+        if (hasPassword && !loginModes.passwordLoginEnabled()) {
+            log.debug("Login rejected: password login is off tenant='{}' name='{}'", tenant, username);
+            passwordService.verifyDecoy(request.getPassword());
+            return rejectLogin(tenant, username, "password-login-disabled");
         }
 
         Optional<UserDocument> userOpt = userService.findByTenantAndName(tenant, username);
@@ -225,30 +239,8 @@ public class AccessController {
             userService.resetLoginFailures(tenant, username);
         }
 
-        LoginTokenIssuer.Issued issued =
-                loginTokenIssuer.issue(tenant, username, request.isRequestRefreshToken(), sessionExpiresAt);
-
-        AccessTokenResponse.AccessTokenResponseBuilder responseBuilder = AccessTokenResponse.builder()
-                .token(issued.accessToken())
-                .expiresAtTimestamp(issued.accessExpiresAt().toEpochMilli());
-        if (issued.refreshToken() != null && issued.refreshExpiresAt() != null) {
-            responseBuilder
-                    .refreshToken(issued.refreshToken())
-                    .refreshTokenExpiresAtTimestamp(issued.refreshExpiresAt().toEpochMilli());
-        }
-        auditService.authLoginSuccess(tenant, username);
-
-        ResponseEntity.BodyBuilder responseEntityBuilder = ResponseEntity.ok();
-        if (request.isRequestCookies()) {
-            webUiCookieService.attachLoginCookies(
-                    responseEntityBuilder,
-                    user,
-                    issued.accessToken(),
-                    issued.accessExpiresAt(),
-                    issued.refreshToken(),
-                    issued.refreshExpiresAt());
-        }
-        return responseEntityBuilder.body(responseBuilder.build());
+        return loginSuccessResponder.respond(
+                user, tenant, username, request.isRequestRefreshToken(), request.isRequestCookies(), sessionExpiresAt);
     }
 
     /**

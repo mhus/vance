@@ -604,7 +604,6 @@ export default {
       switchAccount: 'Switch account',
       manageAccounts: 'Manage accounts',
       addAccount: 'Add account',
-      sourceCode: 'Source code (AGPLv3)',
     },
     help: {
       toggle: 'Toggle help',
@@ -667,11 +666,6 @@ export default {
       title: 'Inbox',
       description:
         "Read items from your personal inbox and the team-inbox of every team you're in. Reply, archive, delegate.",
-    },
-    settings: {
-      title: 'Settings',
-      description:
-        'Everything configurable per scope: setting forms, areas, project and tenant administration, kits.',
     },
     insights: {
       title: 'Insights',

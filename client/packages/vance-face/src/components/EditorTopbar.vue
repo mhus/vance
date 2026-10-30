@@ -10,10 +10,10 @@ import {
   requestSwitchAccount,
 } from '@vance/shared';
 import {
+  getActiveUiLevel,
   logout as serverLogout,
 } from '@/platform';
 import { editorHref } from '@/platform/editorHref';
-import { SOURCE_CODE_URL } from '@/platform/sourceCode';
 import { VIcon, VIconButton, type IconName } from '@vance/components';
 import { setUiLocale, UI_LOCALES, type Locale } from '@/i18n';
 import InboxBadge from './InboxBadge.vue';
@@ -149,6 +149,8 @@ function onHomeClick(event: MouseEvent): void {
 // (see @vance/shared/facelift). The menu only renders these entries
 // when `isFacelift()` is true.
 const inFacelift = computed<boolean>(() => isFacelift());
+/** Settings is a power-user surface: the menu entry shows on the expert surface only. */
+const showSettingsEntry = computed<boolean>(() => getActiveUiLevel() === 'expert');
 
 // Server-declared title / backlink from the pod-written
 // /config.json. Both are optional; the title is rendered next to the
@@ -348,12 +350,9 @@ function openFook(): void {
             <li class="divider-row"><div class="divider my-1" /></li>
           </template>
           <li><a href="/profile.html"><VIcon name="user" />{{ $t('common.profile') }}</a></li>
-          <li><a :href="editorHref('settings', { scope: 'user' })"><VIcon name="settings" />{{ $t('common.settings') }}</a></li>
+          <li v-if="showSettingsEntry"><a :href="editorHref('settings', { scope: 'user' })"><VIcon name="settings" />{{ $t('common.settings') }}</a></li>
           <li><a :href="editorHref('connected-accounts')"><VIcon name="key" />{{ $t('common.connectedApps') }}</a></li>
           <li><a @click="openFook"><VIcon name="report-bug" />{{ $t('fook.menuLabel') }}</a></li>
-          <li>
-            <a :href="SOURCE_CODE_URL" target="_blank" rel="noopener noreferrer"><VIcon name="code" />{{ $t('header.menu.sourceCode') }}</a>
-          </li>
           <li class="divider-row"><div class="divider my-1" /></li>
           <li><a @click="logout"><VIcon name="sign-out" />{{ $t('common.signOut') }}</a></li>
         </ul>

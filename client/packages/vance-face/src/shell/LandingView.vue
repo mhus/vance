@@ -222,13 +222,8 @@ onMounted(async () => {
             </RouterLink>
           </li>
 
-          <!-- Expert tier — power-user surfaces (settings / runs). -->
-          <li v-if="showExpertTiles">
-            <a class="tile-row" :href="editorHref('settings')">
-                <div class="font-semibold">{{ $t('index.settings.title') }}</div>
-                <div class="text-sm opacity-70">{{ $t('index.settings.description') }}</div>
-            </a>
-          </li>
+          <!-- Expert tier — power-user surfaces (runs). Settings is reached
+               from the user menu, not from a tile. -->
           <!-- Insights is an operations view: tenant role ADMIN and up. -->
           <li v-if="showAdminTiles">
             <a class="tile-row" :href="editorHref('insights')">

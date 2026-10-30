@@ -3,6 +3,8 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   applyTheme,
+  fetchLoginMethods,
+  getSessionData,
   type WebUiLevel,
   type WebUiTheme,
 } from '@/platform';
@@ -35,6 +37,7 @@ import {
   VCard,
   VCheckbox,
   VInput,
+  VModal,
   VRange,
   VSelect,
   VSideTabs,
@@ -45,7 +48,58 @@ import { loadProfileTabs, type ProfileTab } from '@/platform/loadProfileTabs';
 const { t } = useI18n();
 const {
   profile, loading, error, load, saveIdentity, saveSetting, deleteSetting, changePassword,
+  startEmailChange, confirmEmailChange,
 } = useProfile();
+
+// Where the e-mail code is the way in, the address is the sign-in credential:
+// the server takes a new one only through a code mailed to it, never from the
+// plain save below. So the field turns read-only and a dialog does the change.
+const emailTokenMode = ref(false);
+const emailDialogOpen = ref(false);
+const emailDialogStep = ref<'address' | 'code'>('address');
+const newEmail = ref('');
+const emailCode = ref('');
+const emailTransactionId = ref('');
+const emailBusy = ref(false);
+const emailDialogError = ref<string | null>(null);
+
+function openEmailDialog(): void {
+  newEmail.value = '';
+  emailCode.value = '';
+  emailTransactionId.value = '';
+  emailDialogError.value = null;
+  emailDialogStep.value = 'address';
+  emailDialogOpen.value = true;
+}
+
+async function onSendEmailCode(): Promise<void> {
+  emailDialogError.value = null;
+  emailBusy.value = true;
+  try {
+    const started = await startEmailChange(newEmail.value.trim());
+    emailTransactionId.value = started.transactionId;
+    emailCode.value = '';
+    emailDialogStep.value = 'code';
+  } catch {
+    emailDialogError.value = t('profile.identity.emailChange.startFailed');
+  } finally {
+    emailBusy.value = false;
+  }
+}
+
+async function onConfirmEmailCode(): Promise<void> {
+  emailDialogError.value = null;
+  emailBusy.value = true;
+  try {
+    await confirmEmailChange(emailTransactionId.value, emailCode.value.trim());
+    emailDialogOpen.value = false;
+    identitySaved.value = t('profile.identity.emailChange.done');
+  } catch {
+    emailDialogError.value = t('profile.identity.emailChange.invalidCode');
+  } finally {
+    emailBusy.value = false;
+  }
+}
 
 // Left-rail tabs. Ids double as the URL hash fragment (deep-linkable:
 // profile.html#speech) and the VSideTabs slot names.
@@ -320,6 +374,9 @@ onMounted(() => {
     refreshVoiceOptions();
   }
   void load();
+  void fetchLoginMethods(getSessionData()?.tenantId ?? null).then((methods) => {
+    emailTokenMode.value = methods?.emailToken === true;
+  });
   // Not awaited: the built-in tabs are what somebody came for, and a
   // federation remote must never keep them waiting.
   void loadProfileTabs().then((contributed) => {
@@ -385,9 +442,11 @@ function parseSpeechVolume(raw: string | undefined): number {
 
 async function onSaveIdentity(): Promise<void> {
   identitySaved.value = null;
+  // In e-mail code mode the address is not part of this save — the server
+  // would refuse a different one — it changes through the dialog.
   await saveIdentity({
     title: titleDraft.value.trim(),
-    email: emailDraft.value.trim(),
+    ...(emailTokenMode.value ? {} : { email: emailDraft.value.trim() }),
   }).catch(() => undefined);
   if (!error.value) {
     identitySaved.value = t('profile.identity.saved');
@@ -581,12 +640,27 @@ async function onResetTalkCommands(): Promise<void> {
               :placeholder="$t('profile.identity.displayNamePlaceholder')"
             />
             <VInput
+              v-if="!emailTokenMode"
               v-model="emailDraft"
               :label="$t('profile.identity.email')"
               type="email"
               :disabled="loading"
               autocomplete="email"
             />
+            <div v-else class="flex items-end gap-3">
+              <div class="flex-1">
+                <VInput
+                  :model-value="profile.email ?? ''"
+                  :label="$t('profile.identity.email')"
+                  type="email"
+                  disabled
+                  autocomplete="email"
+                />
+              </div>
+              <VButton variant="secondary" :disabled="loading" @click="openEmailDialog">
+                {{ $t('profile.identity.emailChange.action') }}
+              </VButton>
+            </div>
             <div class="flex items-center gap-3">
               <VButton
                 variant="primary"
@@ -900,6 +974,52 @@ async function onResetTalkCommands(): Promise<void> {
           <component :is="tab.component" />
         </template>
         </VSideTabs>
+
+        <VModal
+          v-model="emailDialogOpen"
+          size="sm"
+          :title="$t('profile.identity.emailChange.title')"
+          :description="emailDialogStep === 'address'
+            ? $t('profile.identity.emailChange.addressHelp')
+            : $t('profile.identity.emailChange.codeHelp', { email: newEmail.trim() })"
+          :close-on-backdrop="false"
+        >
+          <form
+            id="email-change-form"
+            class="flex flex-col gap-4"
+            @submit.prevent="emailDialogStep === 'address' ? onSendEmailCode() : onConfirmEmailCode()"
+          >
+            <VInput
+              v-if="emailDialogStep === 'address'"
+              v-model="newEmail"
+              type="email"
+              :label="$t('profile.identity.emailChange.newAddress')"
+              required
+              autocomplete="email"
+              autocapitalize="none"
+              :disabled="emailBusy"
+            />
+            <VInput
+              v-else
+              v-model="emailCode"
+              :label="$t('profile.identity.emailChange.code')"
+              required
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              autocapitalize="none"
+              :disabled="emailBusy"
+            />
+            <VAlert v-if="emailDialogError" variant="error">{{ emailDialogError }}</VAlert>
+          </form>
+          <template #actions>
+            <VButton variant="secondary" :disabled="emailBusy" @click="emailDialogOpen = false">
+              {{ $t('common.cancel') }}
+            </VButton>
+            <VButton type="submit" form="email-change-form" variant="primary" :loading="emailBusy">
+              {{ emailDialogStep === 'address' ? $t('profile.identity.emailChange.sendCode') : $t('profile.identity.emailChange.confirm') }}
+            </VButton>
+          </template>
+        </VModal>
       </template>
     </div>
   </EditorShell>

@@ -1,6 +1,9 @@
 import { ref, type Ref } from 'vue';
 import type {
+  EmailTokenStartResponse,
   ProfileDto,
+  ProfileEmailChangeConfirmRequest,
+  ProfileEmailChangeRequest,
   ProfilePasswordRequest,
   ProfileSettingWriteRequest,
   ProfileUpdateRequest,
@@ -26,6 +29,8 @@ export function useProfile(): {
   saveSetting: (key: string, value: string | null) => Promise<void>;
   deleteSetting: (key: string) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  startEmailChange: (email: string) => Promise<EmailTokenStartResponse>;
+  confirmEmailChange: (transactionId: string, token: string) => Promise<void>;
 } {
   const profile = ref<ProfileDto | null>(null);
   const loading = ref(false);
@@ -113,6 +118,23 @@ export function useProfile(): {
     await brainFetch<void>('PUT', 'profile/password', { body });
   }
 
+  /**
+   * Starts an address change (only offered where the e-mail code is the way
+   * in): the server mails a code to the NEW address and answers with the handle
+   * to send back. Does not touch {@link profile} — the address has not changed.
+   * Rejects with the server's refusal; the dialog shows its own message.
+   */
+  async function startEmailChange(email: string): Promise<EmailTokenStartResponse> {
+    const body: ProfileEmailChangeRequest = { email };
+    return brainFetch<EmailTokenStartResponse>('POST', 'profile/email-change', { body });
+  }
+
+  /** Finishes the change with the code from that mail; the fresh profile replaces {@link profile}. */
+  async function confirmEmailChange(transactionId: string, token: string): Promise<void> {
+    const body: ProfileEmailChangeConfirmRequest = { transactionId, token };
+    profile.value = await brainFetch<ProfileDto>('POST', 'profile/email-change/confirm', { body });
+  }
+
   return {
     profile,
     loading,
@@ -122,5 +144,7 @@ export function useProfile(): {
     saveSetting,
     deleteSetting,
     changePassword,
+    startEmailChange,
+    confirmEmailChange,
   };
 }

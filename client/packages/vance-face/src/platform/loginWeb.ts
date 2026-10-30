@@ -1,5 +1,11 @@
 import { clearMe } from './me';
-import type { AccessTokenRequest, AccessTokenResponse } from '@vance/generated';
+import type {
+  AccessTokenRequest,
+  AccessTokenResponse,
+  EmailTokenStartResponse,
+  EmailTokenVerifyRequest,
+  LoginMethodsResponse,
+} from '@vance/generated';
 import { brainBaseUrl } from '@vance/shared';
 import { pushShareCredentials } from './faceliftShareSetup';
 
@@ -68,6 +74,89 @@ export async function login(params: {
       refreshToken: parsed.refreshToken,
     });
   }
+}
+
+/**
+ * `GET /brain/{tenant}/login-methods` — which sign-in ways the installation
+ * offers. The answer is the same for every tenant name, so a page that does not
+ * know its tenant yet asks with a placeholder. `null` when the server cannot be
+ * reached or predates the endpoint: the caller then keeps the classic password
+ * form, which is what such a server accepts anyway.
+ */
+export async function fetchLoginMethods(tenant: string | null): Promise<LoginMethodsResponse | null> {
+  try {
+    const response = await fetch(
+      `${brainBaseUrl()}/brain/${encodeURIComponent(tenant ?? '_')}/login-methods`,
+      { credentials: 'include' },
+    );
+    if (!response.ok) return null;
+    return (await response.json()) as LoginMethodsResponse;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `POST /brain/{tenant}/access/{username}/email-token` — ask for a sign-in code
+ * by e-mail. The server answers the same for every username, so success here
+ * says nothing about the account. Throws {@link LoginError} on a refusal: 429
+ * when this address asked too often, 404 when the mode is off.
+ */
+export async function startEmailToken(params: {
+  tenant: string;
+  username: string;
+}): Promise<EmailTokenStartResponse> {
+  const response = await fetch(`${emailTokenUrl(params)}`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    throw new LoginError(response.status, `Requesting the code failed with status ${response.status}.`);
+  }
+  return (await response.json()) as EmailTokenStartResponse;
+}
+
+/**
+ * `POST …/email-token/verify` — trade the code for the same cookies the password
+ * login sets. Throws {@link LoginError}; 401 means a wrong, spent or expired code.
+ */
+export async function verifyEmailToken(params: {
+  tenant: string;
+  username: string;
+  transactionId: string;
+  token: string;
+}): Promise<void> {
+  const body: EmailTokenVerifyRequest = {
+    transactionId: params.transactionId,
+    token: params.token,
+    requestRefreshToken: true,
+    requestCookies: true,
+  };
+  const response = await fetch(`${emailTokenUrl(params)}/verify`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new LoginError(
+      response.status,
+      response.status === 401 ? 'Invalid code.' : `Verification failed with status ${response.status}.`,
+    );
+  }
+  const parsed = (await response.json().catch(() => undefined)) as AccessTokenResponse | undefined;
+  if (parsed !== undefined && typeof parsed.token === 'string') {
+    pushShareCredentials({
+      tenant: params.tenant,
+      username: params.username,
+      token: parsed.token,
+      refreshToken: parsed.refreshToken,
+    });
+  }
+}
+
+function emailTokenUrl(params: { tenant: string; username: string }): string {
+  return `${brainBaseUrl()}/brain/${encodeURIComponent(params.tenant)}/access/${encodeURIComponent(params.username)}/email-token`;
 }
 
 /**

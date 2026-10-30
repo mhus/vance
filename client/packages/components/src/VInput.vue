@@ -25,6 +25,12 @@ interface Props {
    * quieter contract than binding it where it belongs.
    */
   autocapitalize?: 'off' | 'none' | 'on' | 'sentences' | 'words' | 'characters';
+  /**
+   * Which on-screen keyboard to offer — `numeric` for a code made of digits.
+   * Like {@link autocapitalize} a prop, not a `$attrs` pass-through, because
+   * attributes land on the wrapping `<label>`.
+   */
+  inputmode?: 'none' | 'text' | 'decimal' | 'numeric' | 'tel' | 'search' | 'email' | 'url';
   size?: 'xs' | 'sm' | 'md';
   /** Optional autocomplete suggestions rendered via a native <datalist>. */
   suggestions?: string[];
@@ -81,6 +87,7 @@ defineExpose({ input });
       :disabled="disabled"
       :autocomplete="autocomplete"
       :autocapitalize="autocapitalize"
+      :inputmode="inputmode"
       :step="step"
       :list="suggestions.length ? datalistId : undefined"
       :class="['input', 'w-full', sizeClass, { 'input-error': !!error }]"

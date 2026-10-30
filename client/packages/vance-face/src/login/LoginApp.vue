@@ -18,7 +18,7 @@
  * workspace shell is another bundle, and it wants a clean boot with the
  * cookies that were just set.
  */
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   clearLegacyAuth,
@@ -27,6 +27,7 @@ import {
   isFacelift,
   setRememberedLogin,
 } from '@vance/shared';
+import type { LoginMethodsResponse } from '@vance/generated';
 import {
   getActiveLanguage,
   getSessionData,
@@ -36,8 +37,11 @@ import {
   isRefreshAlive,
   discoverSso,
   fetchSsoOptions,
+  fetchLoginMethods,
   login,
   LoginError,
+  startEmailToken,
+  verifyEmailToken,
   refreshAccessCookie,
   canSignInViaApp,
   signInViaApp,
@@ -86,6 +90,47 @@ const runtimeCfg = ref<RuntimeConfig | null>(null);
 const serverTitle = computed<string>(() => runtimeCfg.value?.title?.trim() ?? '');
 const serverBacklink = computed<string>(() => runtimeCfg.value?.backlink?.trim() ?? '');
 
+// Which ways in this installation offers (`GET …/login-methods`). `null` until
+// answered, and when the server cannot say: the classic password form then.
+const methods = ref<LoginMethodsResponse | null>(null);
+const emailTokenMode = computed<boolean>(() => methods.value?.emailToken === true);
+const passwordShown = computed<boolean>(() => methods.value?.password !== false);
+
+/**
+ * The open e-mail code, once one was asked for: the handle the server wants back
+ * and when the code stops being good. `null` while the form still asks for
+ * tenant and username.
+ */
+interface OpenCode {
+  transactionId: string;
+  expiresAt: number;
+}
+const openCode = ref<OpenCode | null>(null);
+const code = ref('');
+const codeNotice = ref<string | null>(null);
+
+// "Send a new code" is held back for a minute — the server refuses a second
+// mail inside its own pause anyway, and a button that does nothing is worse.
+const RESEND_PAUSE_SECONDS = 60;
+const resendIn = ref(0);
+let resendTimer: ReturnType<typeof setInterval> | undefined;
+
+function startResendPause(): void {
+  resendIn.value = RESEND_PAUSE_SECONDS;
+  if (resendTimer !== undefined) clearInterval(resendTimer);
+  resendTimer = setInterval(() => {
+    resendIn.value -= 1;
+    if (resendIn.value <= 0 && resendTimer !== undefined) {
+      clearInterval(resendTimer);
+      resendTimer = undefined;
+    }
+  }, 1000);
+}
+
+onBeforeUnmount(() => {
+  if (resendTimer !== undefined) clearInterval(resendTimer);
+});
+
 const tenant = ref('');
 const username = ref('');
 const password = ref('');
@@ -109,7 +154,9 @@ const ssoDomains = ref(false);
 const ssoConsumer = ref(false);
 const ssoEmail = ref('');
 const ssoBusy = ref(false);
-const showSso = computed<boolean>(() => ssoDomains.value || ssoConsumer.value);
+const showSso = computed<boolean>(
+  () => (ssoDomains.value || ssoConsumer.value) && methods.value?.sso !== false,
+);
 
 /**
  * The tenant a private-Google sign-in would go to: the one the page is bound
@@ -162,6 +209,9 @@ onMounted(async () => {
     rememberUser.value = true;
   }
   const requestedTenant = readTenantParam();
+  void fetchLoginMethods(requestedTenant ?? (tenant.value.trim() || null)).then((answer) => {
+    methods.value = answer;
+  });
   const ssoError = new URLSearchParams(window.location.search).get('sso_error');
   if (ssoError) {
     // The server redirects back here with a coarse code only; the reason is
@@ -219,16 +269,29 @@ async function syncUiLocaleFromSession(): Promise<void> {
 }
 
 async function onSubmit(): Promise<void> {
+  if (emailTokenMode.value && openCode.value === null) {
+    await requestCode();
+    return;
+  }
   error.value = null;
   submitting.value = true;
   const trimmedTenant = tenant.value.trim();
   const trimmedUsername = username.value.trim();
   try {
-    await login({
-      tenant: trimmedTenant,
-      username: trimmedUsername,
-      password: password.value,
-    });
+    if (emailTokenMode.value && openCode.value !== null) {
+      await verifyEmailToken({
+        tenant: trimmedTenant,
+        username: trimmedUsername,
+        transactionId: openCode.value.transactionId,
+        token: code.value.trim(),
+      });
+    } else {
+      await login({
+        tenant: trimmedTenant,
+        username: trimmedUsername,
+        password: password.value,
+      });
+    }
     // Cookies are now set. Mirror the fresh tenantId/username into the
     // prefsStore before we leave — the workspace boots from scratch and reads
     // them again, but the auto-login notice and any error rendered here
@@ -246,15 +309,61 @@ async function onSubmit(): Promise<void> {
     goOn();
   } catch (e) {
     if (e instanceof LoginError) {
-      error.value = e.status === 401
-        ? t('login.invalidCredentials')
-        : t('login.loginFailedWithStatus', { status: e.status });
+      if (emailTokenMode.value) {
+        // A wrong code is spent after a few tries; there is nothing to correct
+        // in place, only to ask again.
+        error.value = e.status === 401
+          ? t('login.emailToken.invalidCode')
+          : e.status === 429
+            ? t('login.emailToken.tooMany')
+            : t('login.loginFailedWithStatus', { status: e.status });
+      } else {
+        error.value = e.status === 401
+          ? t('login.invalidCredentials')
+          : t('login.loginFailedWithStatus', { status: e.status });
+      }
     } else {
       error.value = t('login.loginFailed');
     }
   } finally {
     submitting.value = false;
   }
+}
+
+/**
+ * Asks the server to mail a sign-in code. The answer is the same for every
+ * username, so the page says "if this account can sign in by e-mail" and goes
+ * on to the code step either way.
+ */
+async function requestCode(): Promise<void> {
+  error.value = null;
+  submitting.value = true;
+  try {
+    const started = await startEmailToken({
+      tenant: tenant.value.trim(),
+      username: username.value.trim(),
+    });
+    openCode.value = { transactionId: started.transactionId, expiresAt: started.expiresAtTimestamp };
+    code.value = '';
+    codeNotice.value = t('login.emailToken.sent', {
+      minutes: Math.max(1, Math.round((started.expiresAtTimestamp - Date.now()) / 60_000)),
+    });
+    startResendPause();
+  } catch (e) {
+    error.value = e instanceof LoginError && e.status === 429
+      ? t('login.emailToken.tooMany')
+      : t('login.emailToken.startFailed');
+  } finally {
+    submitting.value = false;
+  }
+}
+
+/** Back to tenant and username, e.g. after a typo in the username. */
+function backToUsername(): void {
+  openCode.value = null;
+  code.value = '';
+  codeNotice.value = null;
+  error.value = null;
 }
 
 /**
@@ -445,7 +554,7 @@ function readNextParam(): string | null {
             required
             autocomplete="organization"
             autocapitalize="none"
-            :disabled="submitting"
+            :disabled="submitting || openCode !== null"
           />
           <VInput
             v-model="username"
@@ -453,9 +562,10 @@ function readNextParam(): string | null {
             required
             autocomplete="username"
             autocapitalize="none"
-            :disabled="submitting"
+            :disabled="submitting || openCode !== null"
           />
           <VInput
+            v-if="passwordShown"
             v-model="password"
             type="password"
             :label="$t('login.password')"
@@ -463,6 +573,20 @@ function readNextParam(): string | null {
             autocomplete="current-password"
             :disabled="submitting"
           />
+          <template v-if="emailTokenMode && openCode !== null">
+            <VAlert v-if="codeNotice" variant="info">
+              <span>{{ codeNotice }}</span>
+            </VAlert>
+            <VInput
+              v-model="code"
+              :label="$t('login.emailToken.code')"
+              required
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              autocapitalize="none"
+              :disabled="submitting"
+            />
+          </template>
           <VCheckbox
             v-model="rememberUser"
             :label="$t('login.rememberUser')"
@@ -475,8 +599,16 @@ function readNextParam(): string | null {
             class="mt-2"
             block
           >
-            {{ $t('common.signIn') }}
+            {{ emailTokenMode && openCode === null ? $t('login.emailToken.sendCode') : $t('common.signIn') }}
           </VButton>
+          <div v-if="emailTokenMode && openCode !== null" class="flex items-center justify-between gap-3">
+            <VButton variant="plain" :disabled="submitting" @click="backToUsername">
+              {{ $t('login.emailToken.back') }}
+            </VButton>
+            <VButton variant="plain" :disabled="submitting || resendIn > 0" @click="requestCode">
+              {{ resendIn > 0 ? $t('login.emailToken.resendIn', { seconds: resendIn }) : $t('login.emailToken.resend') }}
+            </VButton>
+          </div>
         </form>
         <form v-if="showSso" class="mt-3 flex flex-col gap-3" @submit.prevent="onSso">
           <div class="flex items-center gap-3 text-xs opacity-60">

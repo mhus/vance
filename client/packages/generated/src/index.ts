@@ -5,9 +5,12 @@ export * from './common/AccentColor';
 
 export * from './access/AccessTokenRequest';
 export * from './access/AccessTokenResponse';
+export * from './access/EmailTokenStartResponse';
+export * from './access/EmailTokenVerifyRequest';
 export * from './access/IntegrationScopeProfileDto';
 export * from './access/IntegrationTokenCreateRequest';
 export * from './access/IntegrationTokenDto';
+export * from './access/LoginMethodsResponse';
 export * from './access/RefreshTokenResponse';
 export * from './access/WebUiSessionData';
 
@@ -43,6 +46,8 @@ export * from './command/ProcessCommandResponse';
 export * from './geocode/GeocodeResult';
 
 export * from './profile/ProfileDto';
+export * from './profile/ProfileEmailChangeConfirmRequest';
+export * from './profile/ProfileEmailChangeRequest';
 export * from './profile/ProfilePasswordRequest';
 export * from './profile/ProfileSettingWriteRequest';
 export * from './profile/ProfileUpdateRequest';

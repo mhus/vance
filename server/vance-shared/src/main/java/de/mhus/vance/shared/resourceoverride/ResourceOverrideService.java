@@ -65,7 +65,7 @@ public class ResourceOverrideService {
      * Append a new enabled version. {@code overwrite=false} records "use the
      * bundled resources" and carries no files.
      *
-     * @throws IllegalArgumentException for an unregistered type
+     * @throws IllegalArgumentException for an unregistered type, or {@code overwrite=true} without files
      */
     public ResourceOverrideDocument publish(
             String type,
@@ -74,6 +74,9 @@ public class ResourceOverrideService {
             @Nullable String createdBy,
             @Nullable String note) {
         requireRegistered(type);
+        if (overwrite && files.isEmpty()) {
+            throw new IllegalArgumentException("A version with overwrite=true needs at least one file");
+        }
         List<ResourceOverrideFile> stored = overwrite ? List.copyOf(files) : List.of();
         String digest = ResourceOverrideDigest.of(stored);
         DuplicateKeyException lastClash = null;
@@ -119,6 +122,9 @@ public class ResourceOverrideService {
      * @return number of deleted versions
      */
     public int prune(String type, int keep) {
+        if (keep < 0) {
+            throw new IllegalArgumentException("keep must not be negative: " + keep);
+        }
         long validVersion = effective(type).map(ResourceOverrideRef::version).orElse(-1L);
         int deleted = 0;
         List<ResourceOverrideDocument> all = history(type);

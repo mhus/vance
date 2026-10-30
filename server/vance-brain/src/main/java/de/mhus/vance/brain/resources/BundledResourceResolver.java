@@ -31,6 +31,9 @@ import org.springframework.stereotype.Component;
 @Component
 public class BundledResourceResolver {
 
+    /** {@link #appliedKey} value while no version is enabled. */
+    static final String NONE = "none";
+
     private final ClasspathResourceSource classpath = new ClasspathResourceSource();
     private final @Nullable ResourceOverrideService overrides;
     private final boolean enabled;
@@ -119,8 +122,6 @@ public class BundledResourceResolver {
                 .map(f -> new BundledResourceFile(f.getPath(), f.getContent()))
                 .toList();
     }
-
-    static final String NONE = "none";
 
     private record Applied(String key, BundledResources resources) {}
 }

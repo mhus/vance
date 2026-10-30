@@ -175,9 +175,10 @@ public class ModelCatalog implements ResourceOverrideConsumer {
     /**
      * Build a fresh snapshot from classpath + Mongo and publish it
      * atomically. Returns counters that the admin REST endpoint
-     * surfaces to operators.
+     * surfaces to operators. Synchronized so the scheduled refresh and the
+     * override watcher cannot publish snapshot and origin out of order.
      */
-    public RefreshResult refresh() {
+    public synchronized RefreshResult refresh() {
         Instant start = Instant.now();
         BundledResources bundledFiles = bundledResolver.load(ResourceOverrideSections.MODEL);
         Layer bundled = readBundledLayer(bundledFiles);

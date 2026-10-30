@@ -62,8 +62,20 @@ class ResourceOverrideServiceTest {
         when(mongo.findOne(any(Query.class), eq(ResourceOverrideDocument.class)))
                 .thenReturn(version(7));
 
-        assertThat(service.publish("model", List.of(), true, null, null).getVersion())
+        assertThat(service.publish("model", List.of(new ResourceOverrideFile("a.yaml", "x")), true, null, null)
+                        .getVersion())
                 .isEqualTo(8);
+    }
+
+    @Test
+    void publish_overwriteWithoutFiles_isRejected() {
+        assertThatThrownBy(() -> service.publish("model", List.of(), true, null, null))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void prune_negativeKeep_isRejected() {
+        assertThatThrownBy(() -> service.prune("model", -1)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -82,7 +94,7 @@ class ResourceOverrideServiceTest {
                 .thenThrow(new DuplicateKeyException("taken"))
                 .thenAnswer(inv -> inv.getArgument(0));
 
-        service.publish("model", List.of(), true, null, null);
+        service.publish("model", List.of(new ResourceOverrideFile("a.yaml", "x")), true, null, null);
 
         verify(repository, times(2)).insert(any(ResourceOverrideDocument.class));
     }
@@ -91,7 +103,8 @@ class ResourceOverrideServiceTest {
     void publish_alwaysClashing_givesUp() {
         when(repository.insert(any(ResourceOverrideDocument.class))).thenThrow(new DuplicateKeyException("taken"));
 
-        assertThatThrownBy(() -> service.publish("model", List.of(), true, null, null))
+        assertThatThrownBy(() ->
+                        service.publish("model", List.of(new ResourceOverrideFile("a.yaml", "x")), true, null, null))
                 .isInstanceOf(IllegalStateException.class);
     }
 

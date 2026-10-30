@@ -71,6 +71,9 @@ class UserDataCoverageTest {
         NOT_A_USER_REFERENCE.put("StoreSessionDocument.userId", "the marketplace's own account, not a Vance login");
         NOT_A_USER_REFERENCE.put("StoreLinkDocument.userId", "the marketplace's own account, not a Vance login");
         NOT_A_USER_REFERENCE.put("OrderDocument.userId", "the marketplace's own account, not a Vance login");
+        NOT_A_USER_REFERENCE.put(
+                "ResourceOverrideDocument.createdBy",
+                "the operator label of the Anus session that wrote the version (anus:<os-user>), not a Vance login");
     }
 
     /** Field names that do refer to a Vance login. */

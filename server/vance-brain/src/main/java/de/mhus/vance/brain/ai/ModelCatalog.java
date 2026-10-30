@@ -7,12 +7,14 @@ import de.mhus.vance.brain.ai.audio.SttModelInfo;
 import de.mhus.vance.brain.ai.audio.TtsModelInfo;
 import de.mhus.vance.brain.ai.decision.DecisionModelInfo;
 import de.mhus.vance.brain.ai.image.ImageModelInfo;
+import de.mhus.vance.brain.resources.BundledResourceFile;
+import de.mhus.vance.brain.resources.BundledResourceResolver;
+import de.mhus.vance.brain.resources.BundledResources;
+import de.mhus.vance.brain.resources.ResourceOverrideConsumer;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.home.HomeBootstrapService;
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
+import de.mhus.vance.shared.resourceoverride.ResourceOverrideSections;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -30,9 +32,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
-import org.springframework.core.io.Resource;
-import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
-import org.springframework.core.io.support.ResourcePatternResolver;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.yaml.snakeyaml.Yaml;
@@ -84,7 +84,7 @@ import org.yaml.snakeyaml.Yaml;
  */
 @Service
 @Slf4j
-public class ModelCatalog {
+public class ModelCatalog implements ResourceOverrideConsumer {
 
     /** Document path prefix every <b>manual</b> (operator-managed) model + provider YAML sits under. */
     public static final String MODEL_PATH_PREFIX = "_vance/model/";
@@ -97,9 +97,6 @@ public class ModelCatalog {
      * discovery owns the inventory.
      */
     public static final String AUTO_MODEL_PATH_PREFIX = "_vance/model-auto/";
-
-    /** Classpath prefix mirroring {@link DocumentService#RESOURCE_PREFIX}. */
-    private static final String BUNDLED_CLASSPATH_PREFIX = DocumentService.RESOURCE_PREFIX + MODEL_PATH_PREFIX;
 
     /** Reserved tenant id whose {@code _tenant} project is the global override layer. */
     static final String SYSTEM_TENANT = "_vance";
@@ -132,14 +129,25 @@ public class ModelCatalog {
 
     private final DocumentService documentService;
     private final ModelQuirks modelQuirks;
-    private final ResourcePatternResolver resourcePatternResolver = new PathMatchingResourcePatternResolver();
+    private final BundledResourceResolver bundledResolver;
+
+    /** Where the bundled layer of the current snapshot came from; see {@link BundledResources#origin()}. */
+    private volatile String bundledOrigin = BundledResources.CLASSPATH;
 
     /** Atomic-swap target — readers see a fully-built snapshot or the previous one. */
     private volatile Snapshot snapshot = Snapshot.empty();
 
+    /** Reads the bundled layer from the classpath only. */
     public ModelCatalog(DocumentService documentService, ModelQuirks modelQuirks) {
+        this(documentService, modelQuirks, BundledResourceResolver.classpathOnly());
+    }
+
+    @Autowired
+    public ModelCatalog(
+            DocumentService documentService, ModelQuirks modelQuirks, BundledResourceResolver bundledResolver) {
         this.documentService = documentService;
         this.modelQuirks = modelQuirks;
+        this.bundledResolver = bundledResolver;
         try {
             // Eager initial load — covers both Spring-managed boot and
             // direct test construction. A Mongo glitch can't keep the
@@ -171,15 +179,34 @@ public class ModelCatalog {
      */
     public RefreshResult refresh() {
         Instant start = Instant.now();
-        Snapshot built = buildSnapshot();
+        BundledResources bundledFiles = bundledResolver.load(ResourceOverrideSections.MODEL);
+        Layer bundled = readBundledLayer(bundledFiles);
+        if (bundledFiles.isCentral() && countModels(bundled) == 0) {
+            // A central version without a single usable model would leave every
+            // lookup on the fallback — keep what runs until a usable one is set.
+            log.error(
+                    "ModelCatalog: {} yields no model — keeping the current catalog ({})",
+                    bundledFiles.origin(),
+                    bundledOrigin);
+            Snapshot current = snapshot;
+            return new RefreshResult(
+                    Instant.now(),
+                    countModels(current.bundled),
+                    countProviders(current.bundled),
+                    current.uniqueScopeCount(),
+                    Duration.between(start, Instant.now()).toMillis());
+        }
+        Snapshot built = buildSnapshot(bundled);
         snapshot = built;
+        bundledOrigin = bundledFiles.origin();
         Duration elapsed = Duration.between(start, Instant.now());
         int overrideScopes = built.uniqueScopeCount();
         log.info(
-                "ModelCatalog: refreshed in {} ms — {} bundled, {} override scopes "
+                "ModelCatalog: refreshed in {} ms — {} bundled ({}), {} override scopes "
                         + "({} manual + {} auto), {} providers",
                 elapsed.toMillis(),
                 countModels(built.bundled),
+                bundledFiles.origin(),
                 overrideScopes,
                 built.perScopeManual.size(),
                 built.perScopeAuto.size(),
@@ -190,6 +217,21 @@ public class ModelCatalog {
                 countProviders(built.bundled),
                 overrideScopes,
                 elapsed.toMillis());
+    }
+
+    @Override
+    public String section() {
+        return ResourceOverrideSections.MODEL;
+    }
+
+    @Override
+    public void reload() {
+        refresh();
+    }
+
+    /** Where the bundled layer of the running catalog comes from: {@code classpath} or {@code central v<N>}. */
+    public String bundledOrigin() {
+        return bundledOrigin;
     }
 
     // ──────────────────── Scoped lookups (preferred) ────────────────────
@@ -515,36 +557,17 @@ public class ModelCatalog {
 
     // ──────────────────── Snapshot build ────────────────────
 
-    private Snapshot buildSnapshot() {
-        Layer bundled = readClasspathLayer();
+    private Snapshot buildSnapshot(Layer bundled) {
         Map<TenantProject, Layer> manual = readOverrideLayers(MODEL_PATH_PREFIX);
         Map<TenantProject, Layer> auto = readOverrideLayers(AUTO_MODEL_PATH_PREFIX);
         return new Snapshot(bundled, manual, auto);
     }
 
-    private Layer readClasspathLayer() {
+    private Layer readBundledLayer(BundledResources bundled) {
         Map<String, Map<String, Map<String, Object>>> models = new LinkedHashMap<>();
         Map<String, Map<String, Object>> providers = new LinkedHashMap<>();
-
-        Resource[] resources;
-        try {
-            resources = resourcePatternResolver.getResources("classpath*:" + BUNDLED_CLASSPATH_PREFIX + "**/*.yaml");
-        } catch (IOException e) {
-            log.warn("ModelCatalog: classpath scan failed for {}: {}", BUNDLED_CLASSPATH_PREFIX, e.toString());
-            return Layer.empty();
-        }
-        for (Resource resource : resources) {
-            String uri = resource.toString();
-            int idx = uri.indexOf(BUNDLED_CLASSPATH_PREFIX);
-            if (idx < 0) continue;
-            String relPath = uri.substring(idx + BUNDLED_CLASSPATH_PREFIX.length());
-            // strip trailing ']' from "URL [...]" toString forms.
-            int closing = relPath.indexOf(']');
-            if (closing >= 0) relPath = relPath.substring(0, closing);
-            relPath = relPath.replace('\\', '/');
-            String content = readResourceContent(resource);
-            if (content == null) continue;
-            ingestFile(relPath, content, models, providers, "bundled");
+        for (BundledResourceFile file : bundled.files()) {
+            ingestFile(file.path(), file.content(), models, providers, "bundled");
         }
         return new Layer(deepImmutable(models), deepImmutableProviders(providers));
     }
@@ -688,15 +711,6 @@ public class ModelCatalog {
             return new LinkedHashMap<>((Map<String, Object>) m);
         } catch (RuntimeException e) {
             log.warn("ModelCatalog: failed to parse {}: {}", origin, e.toString());
-            return null;
-        }
-    }
-
-    private static @Nullable String readResourceContent(Resource resource) {
-        try (InputStream in = resource.getInputStream()) {
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            log.warn("ModelCatalog: failed to read classpath resource '{}': {}", resource, e.toString());
             return null;
         }
     }

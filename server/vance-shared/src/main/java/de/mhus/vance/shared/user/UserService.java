@@ -79,6 +79,9 @@ public class UserService {
     private static final String F_FAILED_ATTEMPTS = "failedLoginAttempts";
     private static final String F_LOCKED_UNTIL = "lockedUntil";
     private static final String F_LAST_FAILED = "lastFailedLoginAt";
+    private static final String F_EMAIL_LOGIN = "emailLogin";
+    private static final String F_EMAIL_LOGIN_TRANSACTION_ID = "emailLogin.transactionId";
+    private static final String F_EMAIL_LOGIN_ATTEMPTS = "emailLogin.attempts";
     private static final String F_EXT_ISSUER = "externalIdentity.issuer";
     private static final String F_EXT_SUBJECT = "externalIdentity.subject";
     private static final String F_EXT_EXPECTED_EMAIL = "externalIdentity.expectedEmail";
@@ -815,6 +818,51 @@ public class UserService {
         repository.save(user);
         log.info("Unlinked external identity tenantId='{}' name='{}'", tenantId, name);
         return true;
+    }
+
+    // ──────────────────── E-mail login transaction ────────────────────
+
+    /** Stores {@code transaction} as the account's open e-mail code, replacing any earlier one. */
+    public void setEmailLogin(String tenantId, String name, EmailLoginTransaction transaction) {
+        mongoTemplate.updateFirst(
+                new Query(Criteria.where(F_TENANT_ID).is(tenantId).and(F_NAME).is(name)),
+                new Update().set(F_EMAIL_LOGIN, transaction),
+                UserDocument.class);
+    }
+
+    /**
+     * Atomically counts one verification attempt on the open code, but only if
+     * it is still the transaction {@code transactionId}.
+     *
+     * @return the transaction with the new count, empty if it is gone or was replaced
+     */
+    public Optional<EmailLoginTransaction> countEmailLoginAttempt(String tenantId, String name, String transactionId) {
+        UserDocument updated = mongoTemplate.findAndModify(
+                emailLoginQuery(tenantId, name, transactionId),
+                new Update().inc(F_EMAIL_LOGIN_ATTEMPTS, 1),
+                FindAndModifyOptions.options().returnNew(true),
+                UserDocument.class);
+        return Optional.ofNullable(updated).map(UserDocument::getEmailLogin);
+    }
+
+    /**
+     * Atomically removes the open code if it is still {@code transactionId}.
+     * Two concurrent callers cannot both get {@code true}, which makes a code
+     * single-use.
+     */
+    public boolean consumeEmailLogin(String tenantId, String name, String transactionId) {
+        UserDocument before = mongoTemplate.findAndModify(
+                emailLoginQuery(tenantId, name, transactionId), new Update().unset(F_EMAIL_LOGIN), UserDocument.class);
+        return before != null;
+    }
+
+    private static Query emailLoginQuery(String tenantId, String name, String transactionId) {
+        return new Query(Criteria.where(F_TENANT_ID)
+                .is(tenantId)
+                .and(F_NAME)
+                .is(name)
+                .and(F_EMAIL_LOGIN_TRANSACTION_ID)
+                .is(transactionId));
     }
 
     // ──────────────────── Brute-force lockout ────────────────────

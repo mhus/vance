@@ -15,6 +15,7 @@
 
 title: "Creator — Automation Setup"
 listed: true
+surface: expert
 category: workers
 description: |
   Sets up persistent project configuration on explicit user request:

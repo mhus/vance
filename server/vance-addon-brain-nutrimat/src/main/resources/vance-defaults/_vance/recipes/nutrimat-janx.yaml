@@ -3,6 +3,7 @@
 # loop entirely. See specification/public/nutrimat-engine.md.
 title: "Nutrimat janx — the Ford worker loop (reference)"
 listed: true
+surface: expert
 category: experimental
 description: |
   Experimental loop-lab worker. Nature `janx` is the reference loop of the

@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.recipe;
 
+import de.mhus.vance.api.recipe.RecipeSurface;
 import de.mhus.vance.api.thinkprocess.PromptMode;
 import java.util.List;
 import java.util.Map;
@@ -179,6 +180,15 @@ public record ResolvedRecipe(
          * {@code ChatThemeResolver}.
          */
         @Nullable String webTheme,
+        /**
+         * Which surface level the recipe belongs to ({@code surface:} in the
+         * recipe YAML). Pure picker metadata: an {@link RecipeSurface#EXPERT}
+         * recipe is left out of the new-chat picker for readers on the
+         * standard surface. Never read by spawn or engine logic — a recipe
+         * named explicitly (a project's {@code chatRecipe}, a tool call)
+         * spawns regardless. Default {@link RecipeSurface#STANDARD}.
+         */
+        RecipeSurface surface,
         List<String> tags,
         /**
          * Completion guards (recipe {@code guard:} block). Engine-agnostic:
@@ -204,6 +214,13 @@ public record ResolvedRecipe(
          */
         List<String> tenants,
         RecipeSource source) {
+
+    /** A builder call site that never heard of {@code surface} means the default. */
+    public ResolvedRecipe {
+        if (surface == null) {
+            surface = RecipeSurface.STANDARD;
+        }
+    }
 
     /**
      * Whether this recipe may be used by {@code tenantId}.
@@ -283,6 +300,7 @@ public record ResolvedRecipe(
                 title,
                 category,
                 webTheme,
+                RecipeSurface.STANDARD,
                 tags,
                 guards,
                 tenants,

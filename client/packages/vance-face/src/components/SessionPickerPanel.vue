@@ -37,7 +37,8 @@ import {
 } from '@/components';
 import { useSessionGroups } from '@/composables/useSessionGroups';
 import { useSessionGroupCollapse } from '@/composables/useSessionGroupCollapse';
-import { filterListedRecipes, groupListedRecipes } from '@/recipes/recipePickerGroups';
+import { getActiveUiLevel } from '@/platform';
+import { filterListedRecipes, groupListedRecipes, visibleForLevel } from '@/recipes/recipePickerGroups';
 import { markBound, sendSessionBootstrap, useWsConnection } from '@/ws/wsConnectionStore';
 import { navigateTo } from '@/platform/navigate';
 import { useI18n } from 'vue-i18n';
@@ -78,12 +79,13 @@ const bootstrapping = ref(false);
 const bootstrapError = ref<string | null>(null);
 
 /**
- * Recipe entries filtered by the modal's search field, then grouped:
+ * Recipe entries of the reader's surface, filtered by the modal's search
+ * field, then grouped:
  * category groups with resolved labels, "no category" entries trailing.
  * See {@link filterListedRecipes} / {@link groupListedRecipes}.
  */
 const recipeGroups = computed(() => groupListedRecipes(
-  filterListedRecipes(recipeOptions.value, recipeFilter.value),
+  filterListedRecipes(visibleForLevel(recipeOptions.value, getActiveUiLevel()), recipeFilter.value),
   recipeCategories.value,
   locale.value,
   t('chat.picker.recipeCategoryOther'),

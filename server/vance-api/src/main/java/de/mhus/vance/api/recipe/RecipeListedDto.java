@@ -53,4 +53,11 @@ public class RecipeListedDto {
      * list ({@code chatTheme} on the session DTOs).
      */
     private @Nullable String webTheme;
+
+    /**
+     * Surface level of the recipe ({@code surface:} in the recipe YAML).
+     * Clients on the standard surface leave {@code EXPERT} recipes out of
+     * their picker; the server lists both.
+     */
+    private RecipeSurface surface;
 }

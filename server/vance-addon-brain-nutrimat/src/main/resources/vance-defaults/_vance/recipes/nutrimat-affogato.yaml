@@ -3,6 +3,7 @@
 # specification/public/nutrimat-engine.md.
 title: "Nutrimat affogato — an external critic attacks the answer"
 listed: true
+surface: expert
 category: experimental
 description: |
   Experimental loop-lab worker. Nature `affogato` lets the model call

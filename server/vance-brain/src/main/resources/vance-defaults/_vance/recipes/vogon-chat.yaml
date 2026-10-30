@@ -11,6 +11,7 @@
 
 title: "Vogon Chat — Plan Operator"
 listed: true
+surface: expert
 category: workers
 description: |
   The operator of written plans: start a plan ("run the waterfall

@@ -3,6 +3,7 @@
 # and the elapsed time. See specification/public/nutrimat-engine.md.
 title: "Nutrimat cappuccino — hard budget, visible every round"
 listed: true
+surface: expert
 category: experimental
 description: |
   Experimental loop-lab worker. Nature `cappuccino` runs the same loop

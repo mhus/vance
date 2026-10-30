@@ -4,6 +4,7 @@
 # See specification/public/nutrimat-engine.md.
 title: "Nutrimat filter — fresh context per round, running notes"
 listed: true
+surface: expert
 category: experimental
 description: |
   Experimental loop-lab worker. Nature `filter` runs the natural-stop

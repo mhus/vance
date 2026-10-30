@@ -21,6 +21,7 @@ description: |
 engine: trillian-control
 
 listed: true
+surface: expert
 category: agents
 title: Trillian colin (conversation heads)
 

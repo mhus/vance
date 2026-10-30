@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.recipe;
 
+import de.mhus.vance.api.recipe.RecipeSurface;
 import de.mhus.vance.api.session.DisconnectPolicy;
 import de.mhus.vance.api.session.IdlePolicy;
 import de.mhus.vance.api.session.SessionLifecycleConfig;
@@ -271,6 +272,7 @@ public class RecipeLoader {
         String title = stringOrNull(spec.get("title"));
         String category = parseCategory(spec.get("category"));
         String webTheme = parseWebTheme(spec.get("webTheme"));
+        RecipeSurface surface = parseSurface(spec.get("surface"));
         List<String> tags = stringList(spec.get("tags"), "tags");
         List<String> tenants = stringList(spec.get("tenants"), "tenants");
         List<GuardConfig> guards = parseGuards(spec.get("guard"));
@@ -307,6 +309,7 @@ public class RecipeLoader {
                 title,
                 category,
                 webTheme,
+                surface,
                 tags,
                 guards,
                 tenants,
@@ -736,6 +739,23 @@ public class RecipeLoader {
         }
         String normalized = s.trim().toLowerCase(java.util.Locale.ROOT);
         return normalized.isEmpty() ? null : normalized;
+    }
+
+    /**
+     * Parses the optional {@code surface:} field. Absent means
+     * {@link RecipeSurface#STANDARD}. An unknown value fails the recipe load:
+     * a typo would otherwise leave an expert recipe in every picker.
+     */
+    private static RecipeSurface parseSurface(Object raw) {
+        if (raw == null) return RecipeSurface.STANDARD;
+        if (!(raw instanceof String s)) {
+            throw new IllegalStateException("'surface' must be a string");
+        }
+        try {
+            return RecipeSurface.valueOf(s.trim().toUpperCase(java.util.Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new IllegalStateException("unknown surface '" + s + "' — expected standard or expert", e);
+        }
     }
 
     /**

@@ -4,6 +4,7 @@
 # from `janx`. See specification/public/nutrimat-engine.md.
 title: "Nutrimat redbull — hard budget, exhausted is an error"
 listed: true
+surface: expert
 category: experimental
 description: |
   Experimental loop-lab worker. Nature `redbull` runs the same

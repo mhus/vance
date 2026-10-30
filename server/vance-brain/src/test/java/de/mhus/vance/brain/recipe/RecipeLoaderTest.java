@@ -7,6 +7,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.api.recipe.RecipeSurface;
 import de.mhus.vance.brain.prompt.PromptTemplateException;
 import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
 import de.mhus.vance.shared.document.DocumentService;
@@ -58,6 +59,41 @@ class RecipeLoaderTest {
         assertThat(recipe.name()).isEqualTo("analyze");
         assertThat(recipe.engine()).isEqualTo("eddie");
         assertThat(recipe.description()).isEqualTo("Analyse a topic");
+    }
+
+    @Test
+    void load_surfaceAbsent_isStandard() {
+        stubRecipe("""
+                description: Analyse a topic
+                engine: eddie
+                """);
+
+        assertThat(loader.load("acme", "p-1", "analyze").orElseThrow().surface())
+                .isEqualTo(RecipeSurface.STANDARD);
+    }
+
+    @Test
+    void load_surfaceExpert_isRead_anyCase() {
+        stubRecipe("""
+                description: Analyse a topic
+                engine: eddie
+                surface: Expert
+                """);
+
+        assertThat(loader.load("acme", "p-1", "analyze").orElseThrow().surface())
+                .isEqualTo(RecipeSurface.EXPERT);
+    }
+
+    @Test
+    void load_surfaceUnknown_failsTheLoad() {
+        stubRecipe("""
+                description: Analyse a topic
+                engine: eddie
+                surface: wizard
+                """);
+
+        assertThatThrownBy(() -> loader.load("acme", "p-1", "analyze"))
+                .hasMessageContaining("unknown surface 'wizard'");
     }
 
     @Test

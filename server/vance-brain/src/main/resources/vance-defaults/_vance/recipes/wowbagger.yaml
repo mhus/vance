@@ -14,6 +14,7 @@
 
 title: "Wowbagger — Bulk Record Processor"
 listed: true
+surface: expert
 category: workers
 description: |
   Bulk processor for large, uniform record sets (lines or JSONL in the

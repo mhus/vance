@@ -15,6 +15,7 @@
 # specification/public/nutrimat-engine.md.
 title: "Nutrimat macchiato — a cheap worker, a strong answer"
 listed: true
+surface: expert
 category: experimental
 description: |
   Experimental loop-lab worker. Nature `macchiato` drives two models in

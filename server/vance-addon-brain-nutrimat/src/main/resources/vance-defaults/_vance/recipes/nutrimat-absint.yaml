@@ -3,6 +3,7 @@
 # See specification/public/nutrimat-engine.md.
 title: "Nutrimat absint — the loop reports what it did"
 listed: true
+surface: expert
 category: experimental
 description: |
   Experimental loop-lab worker. Nature `absint` lets the model call tools

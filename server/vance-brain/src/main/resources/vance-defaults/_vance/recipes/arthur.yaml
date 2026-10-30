@@ -5,6 +5,7 @@
 
 title: "Arthur — Reactive Chat"
 listed: true
+surface: expert
 category: chat
 description: |
   Reactive session-chat orchestrator. Talks to the user, delegates

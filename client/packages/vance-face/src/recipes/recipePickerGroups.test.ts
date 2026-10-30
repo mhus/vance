@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { RecipeCategoryDto, RecipeListedDto } from '@vance/generated';
-import { filterListedRecipes, groupListedRecipes } from './recipePickerGroups';
+import { RecipeSurface, type RecipeCategoryDto, type RecipeListedDto } from '@vance/generated';
+import { filterListedRecipes, groupListedRecipes, visibleForLevel } from './recipePickerGroups';
 
 function recipe(name: string, category: string | null): RecipeListedDto {
-  return { name, category: category ?? undefined };
+  return { name, category: category ?? undefined, surface: RecipeSurface.STANDARD };
 }
 
 function category(id: string, title?: Record<string, string>): RecipeCategoryDto {
@@ -89,5 +89,23 @@ describe('groupListedRecipes', () => {
     const recipes = [recipe('arthur', 'chat')];
 
     expect(filterListedRecipes(recipes, '   ')).toBe(recipes);
+  });
+});
+
+describe('visibleForLevel', () => {
+  const standard = recipe('arthur', null);
+  const expert = { ...recipe('slart', null), surface: RecipeSurface.EXPERT };
+
+  it('leaves expert recipes out on the standard surface', () => {
+    expect(visibleForLevel([standard, expert], 'standard')).toEqual([standard]);
+  });
+
+  it('offers everything on the expert surface', () => {
+    expect(visibleForLevel([standard, expert], 'expert')).toEqual([standard, expert]);
+  });
+
+  it('reads a recipe without a surface as standard', () => {
+    const legacy = { name: 'old' } as RecipeListedDto;
+    expect(visibleForLevel([legacy], 'standard')).toEqual([legacy]);
   });
 });

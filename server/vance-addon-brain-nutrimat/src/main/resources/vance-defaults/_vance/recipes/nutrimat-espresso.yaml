@@ -3,6 +3,7 @@
 # See specification/public/nutrimat-engine.md.
 title: "Nutrimat espresso — plan first, then execute"
 listed: true
+surface: expert
 category: experimental
 description: |
   Experimental loop-lab worker. Nature `espresso` makes the model plan

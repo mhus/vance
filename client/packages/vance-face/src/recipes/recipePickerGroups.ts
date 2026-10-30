@@ -1,4 +1,5 @@
-import type { RecipeCategoryDto, RecipeListedDto } from '@vance/generated';
+import { RecipeSurface, type RecipeCategoryDto, type RecipeListedDto } from '@vance/generated';
+import type { WebUiLevel } from '@/platform';
 import { groupCategorized } from '@/util/categoryGroups';
 
 /**
@@ -29,6 +30,16 @@ export function groupListedRecipes(
 ): RecipePickerGroup[] {
   return groupCategorized(recipes, (recipe) => recipe.category, categories, locale, otherLabel)
     .map((group) => ({ key: group.key, label: group.label, recipes: group.items }));
+}
+
+/**
+ * Drops the recipes of a higher surface than the reader chose: an `expert`
+ * recipe is not offered on the standard surface. A recipe without a
+ * `surface` reads as standard.
+ */
+export function visibleForLevel(recipes: RecipeListedDto[], level: WebUiLevel): RecipeListedDto[] {
+  if (level === 'expert') return recipes;
+  return recipes.filter((recipe) => recipe.surface !== RecipeSurface.EXPERT);
 }
 
 /**

@@ -9,6 +9,7 @@
 
 title: "Frankie — Focused Worker"
 listed: true
+surface: expert
 category: workers
 description: |
   Generic Frankie worker — Pi-style loop, drains inbox, calls the LLM,

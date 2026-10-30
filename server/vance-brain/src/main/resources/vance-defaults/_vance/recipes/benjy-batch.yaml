@@ -24,6 +24,7 @@
 
 title: "Benjy Batch (Mechanical)"
 listed: true
+surface: expert
 category: workers
 description: |
   Mechanical iterative batch worker for small/local models: Benjy

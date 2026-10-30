@@ -4,6 +4,7 @@
 # from `redbull`. See specification/public/nutrimat-engine.md.
 title: "Nutrimat clubmate — exhausted loop with judge"
 listed: true
+surface: expert
 category: experimental
 description: |
   Experimental loop-lab worker. Nature `clubmate` runs the same natural-stop

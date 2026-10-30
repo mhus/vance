@@ -3,10 +3,13 @@
  Source: de.mhus.vance.api.recipe.RecipeListedDto
 */
 
+import { RecipeSurface } from './RecipeSurface';
+
 export interface RecipeListedDto {
   name: string;
   title?: string;
   description?: string;
   category?: string;
   webTheme?: string;
+  surface: RecipeSurface;
 }

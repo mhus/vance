@@ -115,7 +115,7 @@ public class AccessController {
 
         // With the e-mail code as the way in, the password stays valid for
         // WebDAV but signs in nowhere else. Same decoy cost and uniform 401.
-        if (hasPassword && !loginModes.passwordLoginEnabled()) {
+        if (hasPassword && !loginModes.passwordLoginEnabled(tenant)) {
             log.debug("Login rejected: password login is off tenant='{}' name='{}'", tenant, username);
             passwordService.verifyDecoy(request.getPassword());
             return rejectLogin(tenant, username, "password-login-disabled");

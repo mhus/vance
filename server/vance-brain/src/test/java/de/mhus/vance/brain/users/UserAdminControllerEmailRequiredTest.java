@@ -11,7 +11,7 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.users.UserCreateRequest;
 import de.mhus.vance.api.users.UserUpdateRequest;
-import de.mhus.vance.brain.access.LoginModes;
+import de.mhus.vance.brain.access.TestLoginModes;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.password.PasswordPolicyService;
@@ -94,6 +94,6 @@ class UserAdminControllerEmailRequiredTest {
                 mock(PasswordService.class),
                 mock(PasswordPolicyService.class),
                 mock(RequestAuthority.class),
-                new LoginModes(emailToken, false));
+                TestLoginModes.of(emailToken, false));
     }
 }

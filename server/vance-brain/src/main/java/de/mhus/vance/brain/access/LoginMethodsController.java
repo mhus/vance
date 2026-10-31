@@ -8,8 +8,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * {@code GET /brain/{tenant}/login-methods} — which sign-in ways the
- * installation offers. Open: the login page asks before there is a token. The
- * answer is the same for every tenant name and says nothing about any account.
+ * tenant offers. Open: the login page asks before there is a token. Whether the
+ * tenant signs in with a code is a tenant fact; the answer says nothing about any account.
  */
 @RestController
 public class LoginMethodsController {
@@ -23,8 +23,8 @@ public class LoginMethodsController {
     @GetMapping("/brain/{tenant}/login-methods")
     public ResponseEntity<LoginMethodsResponse> methods(@PathVariable("tenant") String tenant) {
         return ResponseEntity.ok(LoginMethodsResponse.builder()
-                .password(loginModes.passwordLoginEnabled())
-                .emailToken(loginModes.emailTokenEnabled())
+                .password(loginModes.passwordLoginEnabled(tenant))
+                .emailToken(loginModes.emailTokenEnabled(tenant))
                 .sso(loginModes.ssoEnabled())
                 .build());
     }

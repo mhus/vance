@@ -66,7 +66,7 @@ class AccessControllerTest {
         settingService = mock(SettingService.class);
         auditService = mock(AuditService.class);
 
-        controller = controllerWith(/* cookieSecure */ true, new LoginModes(false, true));
+        controller = controllerWith(/* cookieSecure */ true, TestLoginModes.of(false, true));
 
         // Default wiring — an active user exists in the tenant with a
         // password hash. Individual tests override what they need.
@@ -93,7 +93,7 @@ class AccessControllerTest {
 
     @Test
     void passwordLogin_isRefused_whenTheEmailCodeReplacesIt() {
-        AccessController emailMode = controllerWith(true, new LoginModes(true, true));
+        AccessController emailMode = controllerWith(true, TestLoginModes.of(true, true));
         AccessTokenRequest req =
                 AccessTokenRequest.builder().password("right-password").build();
 
@@ -108,7 +108,7 @@ class AccessControllerTest {
 
     @Test
     void refreshTokenLogin_stillWorks_whenTheEmailCodeReplacesThePassword() {
-        AccessController emailMode = controllerWith(true, new LoginModes(true, true));
+        AccessController emailMode = controllerWith(true, TestLoginModes.of(true, true));
         when(jwtService.validateToken("good-refresh")).thenReturn(Optional.of(refreshClaims(TENANT, USERNAME)));
         AccessTokenRequest req =
                 AccessTokenRequest.builder().refreshToken("good-refresh").build();
@@ -644,7 +644,7 @@ class AccessControllerTest {
     void cookies_canBeFlaggedNotSecure_forLocalDev() {
         // Override the cookie-secure flag — this is the dev-mode HTTP
         // path. Production must keep it true.
-        AccessController insecure = controllerWith(/* cookieSecure */ false, new LoginModes(false, true));
+        AccessController insecure = controllerWith(/* cookieSecure */ false, TestLoginModes.of(false, true));
 
         AccessTokenRequest req = AccessTokenRequest.builder()
                 .password("right-password")

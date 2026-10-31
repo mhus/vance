@@ -14,7 +14,7 @@ import de.mhus.vance.api.profile.ProfileDto;
 import de.mhus.vance.api.profile.ProfileEmailChangeConfirmRequest;
 import de.mhus.vance.api.profile.ProfileEmailChangeRequest;
 import de.mhus.vance.api.profile.ProfileUpdateRequest;
-import de.mhus.vance.brain.access.LoginModes;
+import de.mhus.vance.brain.access.TestLoginModes;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.password.PasswordPolicyService;
 import de.mhus.vance.shared.password.PasswordService;
@@ -202,6 +202,6 @@ class ProfileControllerEmailChangeTest {
                 mock(PasswordService.class),
                 mock(PasswordPolicyService.class),
                 emailLogin,
-                new LoginModes(emailToken, false));
+                TestLoginModes.of(emailToken, false));
     }
 }

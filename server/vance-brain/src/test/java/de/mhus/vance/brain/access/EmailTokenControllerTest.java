@@ -48,7 +48,7 @@ class EmailTokenControllerTest {
         userService = mock(UserService.class);
         jwtService = mock(JwtService.class);
         auditService = mock(AuditService.class);
-        controller = controllerWith(new LoginModes(true, true), 20, 60);
+        controller = controllerWith(TestLoginModes.of(true, true), 20, 60);
         user = activeUser();
         when(userService.findByTenantAndName(TENANT, USERNAME)).thenAnswer(inv -> Optional.of(user));
         when(jwtService.createToken(anyString(), anyString(), any(Instant.class), eq(TokenType.ACCESS), any()))
@@ -71,7 +71,7 @@ class EmailTokenControllerTest {
 
     @Test
     void bothEndpointsAreNotFoundWhileTheModeIsOff() {
-        EmailTokenController off = controllerWith(new LoginModes(false, true), 20, 60);
+        EmailTokenController off = controllerWith(TestLoginModes.of(false, true), 20, 60);
 
         assertThat(off.start(TENANT, USERNAME, from("203.0.113.5")).getStatusCode())
                 .isEqualTo(HttpStatus.NOT_FOUND);
@@ -83,7 +83,7 @@ class EmailTokenControllerTest {
 
     @Test
     void startIsBudgetedPerAddress() {
-        EmailTokenController tight = controllerWith(new LoginModes(true, true), 1, 60);
+        EmailTokenController tight = controllerWith(TestLoginModes.of(true, true), 1, 60);
         when(emailLoginService.startLogin(TENANT, USERNAME))
                 .thenReturn(new EmailLoginService.Started("tx-1", Instant.now()));
 
@@ -170,7 +170,7 @@ class EmailTokenControllerTest {
 
     @Test
     void verifyIsBudgetedPerAddress() {
-        EmailTokenController tight = controllerWith(new LoginModes(true, true), 20, 1);
+        EmailTokenController tight = controllerWith(TestLoginModes.of(true, true), 20, 1);
         when(emailLoginService.verify(anyString(), anyString(), any(), anyString(), anyString()))
                 .thenReturn(new EmailLoginService.Verification(false, null));
 

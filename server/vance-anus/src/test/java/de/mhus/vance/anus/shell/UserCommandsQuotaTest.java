@@ -17,6 +17,7 @@ import de.mhus.vance.shared.password.PasswordPolicyService;
 import de.mhus.vance.shared.password.PasswordService;
 import de.mhus.vance.shared.sso.SsoConfig;
 import de.mhus.vance.shared.sso.SsoConfigService;
+import de.mhus.vance.shared.user.EmailTokenMode;
 import de.mhus.vance.shared.user.UserDocument;
 import de.mhus.vance.shared.user.UserQuotaKind;
 import de.mhus.vance.shared.user.UserQuotaService;
@@ -51,7 +52,13 @@ class UserCommandsQuotaTest {
             mock(AuditService.class),
             quotaService,
             mock(ObjectProvider.class),
-            false);
+            emailTokenMode(false));
+
+    private static EmailTokenMode emailTokenMode(boolean on) {
+        EmailTokenMode mode = mock(EmailTokenMode.class);
+        when(mode.enabledFor(anyString())).thenReturn(on);
+        return mode;
+    }
 
     private UserCommands emailTokenCommands() {
         return new UserCommands(
@@ -63,7 +70,7 @@ class UserCommandsQuotaTest {
                 mock(AuditService.class),
                 quotaService,
                 mock(ObjectProvider.class),
-                true);
+                emailTokenMode(true));
     }
 
     @Test

@@ -95,7 +95,7 @@ public class UserAdminController {
             @Valid @RequestBody UserCreateRequest request,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.WRITE);
-        if (loginModes.emailTokenEnabled() && StringUtils.isBlank(request.getEmail())) {
+        if (loginModes.emailTokenEnabled(tenant) && StringUtils.isBlank(request.getEmail())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, EMAIL_REQUIRED);
         }
         boolean withPassword =
@@ -120,7 +120,7 @@ public class UserAdminController {
             @Valid @RequestBody UserUpdateRequest request,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.User(tenant, name), Action.ADMIN);
-        if (loginModes.emailTokenEnabled()
+        if (loginModes.emailTokenEnabled(tenant)
                 && request.getEmail() != null
                 && request.getEmail().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, EMAIL_REQUIRED);

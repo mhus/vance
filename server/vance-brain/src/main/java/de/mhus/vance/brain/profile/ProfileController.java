@@ -105,7 +105,7 @@ public class ProfileController {
             HttpServletRequest httpRequest) {
         String username = currentUser(httpRequest);
         String email = request.getEmail();
-        if (loginModes.emailTokenEnabled() && email != null) {
+        if (loginModes.emailTokenEnabled(tenant) && email != null) {
             // The address is the sign-in credential in this mode: it changes
             // only through the confirmed flow below, never by a plain write.
             // The code proves that the new mailbox is reachable, not that it
@@ -144,7 +144,7 @@ public class ProfileController {
             @PathVariable("tenant") String tenant,
             @Valid @RequestBody ProfileEmailChangeRequest request,
             HttpServletRequest httpRequest) {
-        if (!loginModes.emailTokenEnabled()) {
+        if (!loginModes.emailTokenEnabled(tenant)) {
             return ResponseEntity.notFound().build();
         }
         String username = currentUser(httpRequest);
@@ -169,7 +169,7 @@ public class ProfileController {
             @PathVariable("tenant") String tenant,
             @Valid @RequestBody ProfileEmailChangeConfirmRequest request,
             HttpServletRequest httpRequest) {
-        if (!loginModes.emailTokenEnabled()) {
+        if (!loginModes.emailTokenEnabled(tenant)) {
             return ResponseEntity.notFound().build();
         }
         String username = currentUser(httpRequest);

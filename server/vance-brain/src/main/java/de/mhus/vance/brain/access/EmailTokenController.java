@@ -74,7 +74,7 @@ public class EmailTokenController {
             @PathVariable("tenant") String tenant,
             @PathVariable("username") String username,
             HttpServletRequest request) {
-        if (!loginModes.emailTokenEnabled()) {
+        if (!loginModes.emailTokenEnabled(tenant)) {
             return ResponseEntity.notFound().build();
         }
         if (!startBudget.allow(request)) {
@@ -93,7 +93,7 @@ public class EmailTokenController {
             @PathVariable("username") String username,
             @Valid @RequestBody EmailTokenVerifyRequest body,
             HttpServletRequest request) {
-        if (!loginModes.emailTokenEnabled()) {
+        if (!loginModes.emailTokenEnabled(tenant)) {
             return ResponseEntity.notFound().build();
         }
         if (!verifyBudget.allow(request)) {

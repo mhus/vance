@@ -52,8 +52,7 @@ class LoginSlashCommandTest {
 
     @Test
     void computeDefaults_noBinding_leavesUsernameNullForPrompt() {
-        LoginSlashCommand.Defaults d = LoginSlashCommand.computeDefaults(
-                List.of(), null, config());
+        LoginSlashCommand.Defaults d = LoginSlashCommand.computeDefaults(List.of(), null, config());
 
         assertThat(d.hadBinding()).isFalse();
         assertThat(d.username()).isNull(); // config username is NOT a silent default
@@ -65,11 +64,9 @@ class LoginSlashCommandTest {
 
     @Test
     void computeDefaults_withBinding_usesBindingValues() {
-        ProjectBinding b = binding("https://b.example.com", "wss://b.example.com",
-                "globex", "hank", "proj-1");
+        ProjectBinding b = binding("https://b.example.com", "wss://b.example.com", "globex", "hank", "proj-1");
 
-        LoginSlashCommand.Defaults d = LoginSlashCommand.computeDefaults(
-                List.of(), b, config());
+        LoginSlashCommand.Defaults d = LoginSlashCommand.computeDefaults(List.of(), b, config());
 
         assertThat(d.hadBinding()).isTrue();
         assertThat(d.httpBase()).isEqualTo("https://b.example.com");
@@ -81,11 +78,10 @@ class LoginSlashCommandTest {
 
     @Test
     void computeDefaults_argsOverrideBinding() {
-        ProjectBinding b = binding("https://b.example.com", "wss://b.example.com",
-                "globex", "hank", "proj-1");
+        ProjectBinding b = binding("https://b.example.com", "wss://b.example.com", "globex", "hank", "proj-1");
 
-        LoginSlashCommand.Defaults d = LoginSlashCommand.computeDefaults(
-                List.of("alice", "proj-2", "secret"), b, config());
+        LoginSlashCommand.Defaults d =
+                LoginSlashCommand.computeDefaults(List.of("alice", "proj-2", "secret"), b, config());
 
         assertThat(d.username()).isEqualTo("alice");
         assertThat(d.project()).isEqualTo("proj-2");
@@ -94,8 +90,7 @@ class LoginSlashCommandTest {
 
     @Test
     void computeDefaults_oneArg_isUsernameOnly() {
-        LoginSlashCommand.Defaults d = LoginSlashCommand.computeDefaults(
-                List.of("alice"), null, config());
+        LoginSlashCommand.Defaults d = LoginSlashCommand.computeDefaults(List.of("alice"), null, config());
 
         assertThat(d.username()).isEqualTo("alice");
         assertThat(d.project()).isNull();
@@ -119,8 +114,7 @@ class LoginSlashCommandTest {
      */
     @Test
     void runLogin_withBinding_promptsAllFieldsWithBindingDefaults() throws Exception {
-        ProjectBinding binding = binding("https://b.example.com", "wss://b.example.com",
-                "globex", "hank", "proj-1");
+        ProjectBinding binding = binding("https://b.example.com", "wss://b.example.com", "globex", "hank", "proj-1");
         FootConfig config = config();
 
         ProjectBindingStore bindingStore = mock(ProjectBindingStore.class);
@@ -134,21 +128,24 @@ class LoginSlashCommandTest {
         Path vanceDir = Path.of("/tmp/.vancetope");
         when(paths.loginTargetDir()).thenReturn(vanceDir);
         when(bindingStore.load(vanceDir)).thenReturn(Optional.of(binding));
-        when(gitignore.ensureAccessIgnored(any())).thenReturn(
-                new GitignoreGuard.Result(GitignoreGuard.Kind.NO_GIT, null, null));
-        when(auth.login(any())).thenReturn(new LoginResult(
-                vanceDir,
-                AccessTokenResponse.builder().token("tok").expiresAtTimestamp(1L).build(),
-                binding));
+        when(gitignore.ensureAccessIgnored(any()))
+                .thenReturn(new GitignoreGuard.Result(GitignoreGuard.Kind.NO_GIT, null, null));
+        when(auth.login(any()))
+                .thenReturn(new LoginResult(
+                        vanceDir,
+                        AccessTokenResponse.builder()
+                                .token("tok")
+                                .expiresAtTimestamp(1L)
+                                .build(),
+                        binding));
         when(connection.isOpen()).thenReturn(false);
 
         // Accept the default (empty answer) for username, brain URL, tenant,
         // project; enter an explicit password.
-        when(prompt.ask(anyString(), anyBoolean(), anyLong()))
-                .thenReturn("", "", "", "", "pw");
+        when(prompt.ask(anyString(), anyBoolean(), anyLong())).thenReturn("", "", "", "", "pw");
 
-        LoginSlashCommand cmd = new LoginSlashCommand(
-                auth, bindingStore, paths, prompt, gitignore, connection, terminal, config);
+        LoginSlashCommand cmd =
+                new LoginSlashCommand(auth, bindingStore, paths, prompt, gitignore, connection, terminal, config);
         cmd.runLogin(List.of());
 
         ArgumentCaptor<LoginRequest> captor = ArgumentCaptor.forClass(LoginRequest.class);
@@ -169,8 +166,7 @@ class LoginSlashCommandTest {
      */
     @Test
     void runLogin_withBinding_typedValuesOverrideBindingDefaults() throws Exception {
-        ProjectBinding binding = binding("https://b.example.com", "wss://b.example.com",
-                "globex", "hank", "proj-1");
+        ProjectBinding binding = binding("https://b.example.com", "wss://b.example.com", "globex", "hank", "proj-1");
         FootConfig config = config();
 
         ProjectBindingStore bindingStore = mock(ProjectBindingStore.class);
@@ -184,12 +180,16 @@ class LoginSlashCommandTest {
         Path vanceDir = Path.of("/tmp/.vancetope");
         when(paths.loginTargetDir()).thenReturn(vanceDir);
         when(bindingStore.load(vanceDir)).thenReturn(Optional.of(binding));
-        when(gitignore.ensureAccessIgnored(any())).thenReturn(
-                new GitignoreGuard.Result(GitignoreGuard.Kind.NO_GIT, null, null));
-        when(auth.login(any())).thenReturn(new LoginResult(
-                vanceDir,
-                AccessTokenResponse.builder().token("tok").expiresAtTimestamp(1L).build(),
-                binding));
+        when(gitignore.ensureAccessIgnored(any()))
+                .thenReturn(new GitignoreGuard.Result(GitignoreGuard.Kind.NO_GIT, null, null));
+        when(auth.login(any()))
+                .thenReturn(new LoginResult(
+                        vanceDir,
+                        AccessTokenResponse.builder()
+                                .token("tok")
+                                .expiresAtTimestamp(1L)
+                                .build(),
+                        binding));
         when(connection.isOpen()).thenReturn(false);
 
         // Override username, brain URL, tenant; blank project (drop binding);
@@ -197,8 +197,8 @@ class LoginSlashCommandTest {
         when(prompt.ask(anyString(), anyBoolean(), anyLong()))
                 .thenReturn("alice", "https://other.example.com", "acme", "", "secret");
 
-        LoginSlashCommand cmd = new LoginSlashCommand(
-                auth, bindingStore, paths, prompt, gitignore, connection, terminal, config);
+        LoginSlashCommand cmd =
+                new LoginSlashCommand(auth, bindingStore, paths, prompt, gitignore, connection, terminal, config);
         cmd.runLogin(List.of());
 
         ArgumentCaptor<LoginRequest> captor = ArgumentCaptor.forClass(LoginRequest.class);
@@ -212,5 +212,53 @@ class LoginSlashCommandTest {
         // returned, not null (optionalField returns def on empty).
         assertThat(sent.project()).isEqualTo("proj-1");
         assertThat(sent.password()).isEqualTo("secret");
+    }
+
+    /** A tenant that signs in with the e-mail code: the code is asked for instead of the password. */
+    @Test
+    void runLogin_inEmailCodeTenant_asksForTheCodeNotThePassword() throws Exception {
+        ProjectBinding binding = binding("https://b.example.com", "wss://b.example.com", "mhus", "hank", "proj-1");
+        FootConfig config = config();
+        ProjectBindingStore bindingStore = mock(ProjectBindingStore.class);
+        VancePaths paths = mock(VancePaths.class);
+        PendingLinePrompt prompt = mock(PendingLinePrompt.class);
+        FootAuthService auth = mock(FootAuthService.class);
+        GitignoreGuard gitignore = mock(GitignoreGuard.class);
+        ConnectionService connection = mock(ConnectionService.class);
+        ChatTerminal terminal = mock(ChatTerminal.class);
+
+        Path vanceDir = Path.of("/tmp/.vancetope");
+        when(paths.loginTargetDir()).thenReturn(vanceDir);
+        when(bindingStore.load(vanceDir)).thenReturn(Optional.of(binding));
+        when(gitignore.ensureAccessIgnored(any()))
+                .thenReturn(new GitignoreGuard.Result(GitignoreGuard.Kind.NO_GIT, null, null));
+        when(auth.loginMethods("https://b.example.com", "mhus"))
+                .thenReturn(de.mhus.vance.api.access.LoginMethodsResponse.builder()
+                        .emailToken(true)
+                        .build());
+        when(auth.startEmailCode(any()))
+                .thenReturn(de.mhus.vance.api.access.EmailTokenStartResponse.builder()
+                        .transactionId("tx-1")
+                        .expiresAtTimestamp(System.currentTimeMillis() + 600_000L)
+                        .build());
+        when(auth.loginWithEmailCode(any(), anyString(), anyString()))
+                .thenReturn(new LoginResult(
+                        vanceDir,
+                        AccessTokenResponse.builder()
+                                .token("tok")
+                                .expiresAtTimestamp(1L)
+                                .build(),
+                        binding));
+        // username, url, tenant, project accept defaults; then a blank code (new code), then the code.
+        when(prompt.ask(anyString(), anyBoolean(), anyLong())).thenReturn("", "", "", "", "", "123456");
+
+        new LoginSlashCommand(auth, bindingStore, paths, prompt, gitignore, connection, terminal, config)
+                .runLogin(List.of());
+
+        verify(auth, org.mockito.Mockito.times(2)).startEmailCode(any());
+        verify(auth)
+                .loginWithEmailCode(
+                        any(), org.mockito.ArgumentMatchers.eq("tx-1"), org.mockito.ArgumentMatchers.eq("123456"));
+        verify(auth, org.mockito.Mockito.never()).login(any());
     }
 }

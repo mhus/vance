@@ -39,6 +39,34 @@ class FootAuthServiceTest {
             calls.add(new Call(httpBase, tenant, username, request));
             return next;
         }
+
+        de.mhus.vance.api.access.LoginMethodsResponse methods;
+        final List<String> verified = new ArrayList<>();
+
+        @Override
+        public de.mhus.vance.api.access.LoginMethodsResponse loginMethods(String httpBase, String tenant) {
+            return methods;
+        }
+
+        @Override
+        public de.mhus.vance.api.access.EmailTokenStartResponse startEmailToken(
+                String httpBase, String tenant, String username) {
+            return de.mhus.vance.api.access.EmailTokenStartResponse.builder()
+                    .transactionId("tx-1")
+                    .expiresAtTimestamp(600_000L)
+                    .build();
+        }
+
+        @Override
+        public AccessTokenResponse verifyEmailToken(
+                String httpBase,
+                String tenant,
+                String username,
+                de.mhus.vance.api.access.EmailTokenVerifyRequest request) {
+            verified.add(username + ":" + request.getTransactionId() + ":" + request.getToken() + ":"
+                    + request.isRequestRefreshToken());
+            return next;
+        }
     }
 
     /** Scripted OAuth token endpoint. */
@@ -220,6 +248,30 @@ class FootAuthServiceTest {
         assertThat(binding.get().getProject()).isEqualTo("my-project");
         assertThat(binding.get().getBrain().getWsBase()).isEqualTo("wss://brain.example.com");
         // binding applied to running config → arms auto-bootstrap
+        assertThat(config.getBootstrap().getProjectId()).isEqualTo("my-project");
+        assertThat(result.dir()).isEqualTo(dir);
+    }
+
+    @Test
+    void loginWithEmailCode_redeemsTheCodeAndStoresTokensLikeAPasswordLogin(@TempDir Path dir) throws Exception {
+        FootConfig config = config();
+        FakeClient client = new FakeClient();
+        client.next = AccessTokenResponse.builder()
+                .token("acc")
+                .expiresAtTimestamp(now.get() + 3_600_000L)
+                .refreshToken("ref")
+                .refreshTokenExpiresAtTimestamp(now.get() + 99_999L)
+                .build();
+        LoginRequest request = new LoginRequest(
+                "https://brain.example.com", "wss://brain.example.com", "mhus", "mike", "my-project", "");
+
+        LoginResult result = service(config, localPaths(dir), client).loginWithEmailCode(request, "tx-1", "123456");
+
+        assertThat(client.verified).containsExactly("mike:tx-1:123456:true");
+        assertThat(client.calls).isEmpty(); // no password mint
+        assertThat(new AccessStore().load(dir).orElseThrow().getRefreshToken()).isEqualTo("ref");
+        assertThat(new ProjectBindingStore().load(dir).orElseThrow().getTenant())
+                .isEqualTo("mhus");
         assertThat(config.getBootstrap().getProjectId()).isEqualTo("my-project");
         assertThat(result.dir()).isEqualTo(dir);
     }

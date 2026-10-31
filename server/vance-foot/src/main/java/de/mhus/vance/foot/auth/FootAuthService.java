@@ -2,6 +2,9 @@ package de.mhus.vance.foot.auth;
 
 import de.mhus.vance.api.access.AccessTokenRequest;
 import de.mhus.vance.api.access.AccessTokenResponse;
+import de.mhus.vance.api.access.EmailTokenStartResponse;
+import de.mhus.vance.api.access.EmailTokenVerifyRequest;
+import de.mhus.vance.api.access.LoginMethodsResponse;
 import de.mhus.vance.foot.config.FootConfig;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -200,12 +203,7 @@ public class FootAuthService {
      * directory, and overlays the binding onto the running config.
      */
     public LoginResult login(LoginRequest request) throws Exception {
-        TransportGuard.assertAllowed(
-                request.httpBase(),
-                request.wsBase(),
-                config.getBrain().isAllowInsecureTransport(),
-                true,
-                msg -> log.warn("{}", msg));
+        assertTransportAllowed(request);
 
         AccessTokenResponse minted = client.mint(
                 request.httpBase(),
@@ -215,7 +213,55 @@ public class FootAuthService {
                         .password(request.password())
                         .requestRefreshToken(true)
                         .build());
+        return persistLogin(request, minted);
+    }
 
+    /**
+     * How the tenant signs in ({@code GET …/login-methods}); {@code null} when the
+     * brain cannot say, in which case the password login is the way.
+     */
+    public @Nullable LoginMethodsResponse loginMethods(String httpBase, String tenant) {
+        return client.loginMethods(httpBase, tenant);
+    }
+
+    /**
+     * First step of the e-mail code login: the brain mails a code to the address on
+     * file. Its answer is the same for every username.
+     */
+    public EmailTokenStartResponse startEmailCode(LoginRequest request) throws Exception {
+        assertTransportAllowed(request);
+        return client.startEmailToken(request.httpBase(), request.tenant(), request.username());
+    }
+
+    /**
+     * Second step of the e-mail code login: redeems the code and stores the tokens
+     * like {@link #login(LoginRequest)} does. {@code request.password()} is unused.
+     */
+    public LoginResult loginWithEmailCode(LoginRequest request, String transactionId, String code) throws Exception {
+        assertTransportAllowed(request);
+        AccessTokenResponse minted = client.verifyEmailToken(
+                request.httpBase(),
+                request.tenant(),
+                request.username(),
+                EmailTokenVerifyRequest.builder()
+                        .transactionId(transactionId)
+                        .token(code)
+                        .requestRefreshToken(true)
+                        .build());
+        return persistLogin(request, minted);
+    }
+
+    private void assertTransportAllowed(LoginRequest request) {
+        TransportGuard.assertAllowed(
+                request.httpBase(),
+                request.wsBase(),
+                config.getBrain().isAllowInsecureTransport(),
+                true,
+                msg -> log.warn("{}", msg));
+    }
+
+    /** Writes the tokens and the binding of a successful login and applies the binding. */
+    private LoginResult persistLogin(LoginRequest request, AccessTokenResponse minted) throws Exception {
         Path dir = paths.loginTargetDir();
         AccessData data = new AccessData();
         data.setUsername(request.username());

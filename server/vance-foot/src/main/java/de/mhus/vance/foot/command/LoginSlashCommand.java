@@ -1,6 +1,8 @@
 package de.mhus.vance.foot.command;
 
 import de.mhus.vance.api.access.AccessTokenResponse;
+import de.mhus.vance.api.access.EmailTokenStartResponse;
+import de.mhus.vance.api.access.LoginMethodsResponse;
 import de.mhus.vance.foot.auth.FootAuthService;
 import de.mhus.vance.foot.auth.GitignoreGuard;
 import de.mhus.vance.foot.auth.LoginRequest;
@@ -163,23 +165,67 @@ public class LoginSlashCommand implements SlashCommand {
             project = optionalField("Project (blank for none)", def.project());
         }
 
-        String password;
-        if (args.size() >= 3 && args.get(2) != null && !args.get(2).isEmpty()) {
-            password = args.get(2);
-        } else {
-            password = requireField("Password", null, true);
-            if (password == null) {
+        LoginMethodsResponse methods = auth.loginMethods(httpBase, tenant);
+        LoginResult result;
+        if (methods != null && methods.isEmailToken()) {
+            // The tenant signs in with a code sent by e-mail; the password does not work there.
+            result = runEmailCodeLogin(new LoginRequest(httpBase, wsBase, tenant, username, project, ""));
+            if (result == null) {
                 return;
             }
+        } else {
+            String password;
+            if (args.size() >= 3 && args.get(2) != null && !args.get(2).isEmpty()) {
+                password = args.get(2);
+            } else {
+                password = requireField("Password", null, true);
+                if (password == null) {
+                    return;
+                }
+            }
+            terminal.info("Logging in as " + username + " @ " + httpBase + " …");
+            result = auth.login(new LoginRequest(httpBase, wsBase, tenant, username, project, password));
         }
-
-        terminal.info("Logging in as " + username + " @ " + httpBase + " …");
-        LoginResult result = auth.login(new LoginRequest(httpBase, wsBase, tenant, username, project, password));
 
         reportGitignore(result.dir());
         reportSuccess(result);
 
         reconnect();
+    }
+
+    /**
+     * Terminal-only sign-in for a tenant that uses the e-mail code: the brain mails a
+     * code, the user types it here. A blank answer asks for a new code; a wrong or
+     * expired code ends the login (the code is spent after a few tries anyway).
+     *
+     * @return the stored login, or {@code null} when cancelled or refused
+     */
+    private @Nullable LoginResult runEmailCodeLogin(LoginRequest request) throws Exception {
+        EmailTokenStartResponse started = auth.startEmailCode(request);
+        while (true) {
+            terminal.info("If this account can sign in by e-mail, a code was sent to the address on file. "
+                    + "It is valid for "
+                    + Math.max(1, Math.round((started.getExpiresAtTimestamp() - System.currentTimeMillis()) / 60_000.0))
+                    + " minutes. Reference: " + started.getTransactionId());
+            String answer = prompt.ask("Code (blank to send a new one): ", false, PROMPT_TIMEOUT_MS);
+            if (answer == null) {
+                terminal.warn("Code prompt cancelled — login aborted.");
+                return null;
+            }
+            String code = answer.trim();
+            if (code.isEmpty()) {
+                started = auth.startEmailCode(request);
+                continue;
+            }
+            terminal.info("Logging in as " + request.username() + " @ " + request.httpBase() + " …");
+            try {
+                return auth.loginWithEmailCode(request, started.getTransactionId(), code);
+            } catch (IllegalStateException e) {
+                terminal.error("The code is wrong or has expired — run /login again to get a new one.");
+                log.debug("e-mail code login refused", e);
+                return null;
+            }
+        }
     }
 
     /**

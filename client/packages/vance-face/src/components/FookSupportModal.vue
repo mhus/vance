@@ -6,7 +6,7 @@ import type {
   FookSubmissionRequestDto,
   FookSubmissionResponseDto,
 } from '@vance/generated';
-import { VAlert, VButton, VModal, VTextarea } from '@vance/components';
+import { VAlert, VButton, VCheckbox, VModal, VTextarea } from '@vance/components';
 
 /**
  * Free-form bug / feature / feedback report dialog. Lives in the
@@ -31,6 +31,10 @@ const emit = defineEmits<{
 const { t } = useI18n();
 
 const text = ref<string>('');
+// Consent for Fook to read the current session. Off by default, asked
+// per report; only offered when the page is bound to a session.
+const sessionAccess = ref<boolean>(false);
+const currentSessionId = ref<string | undefined>(undefined);
 const loading = ref<boolean>(false);
 const error = ref<string | null>(null);
 const submissionId = ref<string | null>(null);
@@ -41,6 +45,8 @@ const submissionId = ref<string | null>(null);
 watch(() => props.modelValue, (open) => {
   if (open) {
     text.value = '';
+    sessionAccess.value = false;
+    currentSessionId.value = urlParam('sessionId');
     error.value = null;
     submissionId.value = null;
     loading.value = false;
@@ -69,7 +75,8 @@ async function onSubmit(): Promise<void> {
     const body: FookSubmissionRequestDto = {
       text: trimmed,
       projectId: urlParam('project'),
-      sessionId: urlParam('sessionId'),
+      sessionId: sessionAccess.value ? currentSessionId.value : undefined,
+      sessionAccess: sessionAccess.value,
     };
     const res = await brainFetch<FookSubmissionResponseDto>(
       'POST', 'fook/submit', { body });
@@ -96,6 +103,13 @@ async function onSubmit(): Promise<void> {
         v-model="text"
         :placeholder="t('fook.placeholder')"
         :rows="8"
+        :disabled="loading"
+      />
+
+      <VCheckbox
+        v-if="!submissionId && currentSessionId"
+        v-model="sessionAccess"
+        :label="t('fook.sessionAccess')"
         :disabled="loading"
       />
 

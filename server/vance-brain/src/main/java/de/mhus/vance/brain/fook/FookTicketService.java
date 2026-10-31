@@ -70,6 +70,7 @@ public class FookTicketService {
      *  model judged the session unhelpful); {@code failed} = the
      *  analysis attempt errored. Absent = never requested. */
     public static final String ANALYSIS_WRITTEN = "written";
+
     public static final String ANALYSIS_SKIPPED = "skipped";
     public static final String ANALYSIS_FAILED = "failed";
 
@@ -77,6 +78,7 @@ public class FookTicketService {
      *  on a successful upstream push; {@code failed} after the sender
      *  has given up retrying. */
     public static final String STATUS_NEW = "new";
+
     public static final String STATUS_TRANSFERRED = "transferred";
     public static final String STATUS_FAILED = "failed";
 
@@ -84,6 +86,7 @@ public class FookTicketService {
      *  when this is {@link #TRANSPORT_AUTO} or
      *  {@link #TRANSPORT_APPROVED}. */
     public static final String TRANSPORT_AUTO = "auto";
+
     public static final String TRANSPORT_PENDING = "pending";
     public static final String TRANSPORT_APPROVED = "approved";
     public static final String TRANSPORT_NONE = "none";
@@ -100,6 +103,7 @@ public class FookTicketService {
     /** Body-field name for the human-readable description (literal
      *  string in the YAML). */
     private static final String FIELD_DESCRIPTION = "description";
+
     private static final String FIELD_TRIAGE_NOTE = "triageNote";
     private static final String FIELD_CONTEXT = "context";
     private static final String FIELD_RELATIONS = "relations";
@@ -122,8 +126,7 @@ public class FookTicketService {
         if (queryTokens.isEmpty()) return List.of();
 
         Page<DocumentDocument> page = documentService.listByProjectPaged(
-                TENANT_ID, PROJECT_ID, 0, MAX_CANDIDATES_SCAN,
-                PATH_PREFIX, DOC_KIND);
+                TENANT_ID, PROJECT_ID, 0, MAX_CANDIDATES_SCAN, PATH_PREFIX, DOC_KIND);
         if (page.isEmpty()) return List.of();
 
         List<Scored> scored = new ArrayList<>(page.getNumberOfElements());
@@ -138,17 +141,13 @@ public class FookTicketService {
             }
         }
         scored.sort((a, b) -> Double.compare(b.score, a.score));
-        return scored.stream()
-                .limit(limit)
-                .map(s -> s.candidate)
-                .toList();
+        return scored.stream().limit(limit).map(s -> s.candidate).toList();
     }
 
     // ─── Read ───────────────────────────────────────────────────────
 
     public Optional<TicketDocument> readTicket(String uuid) {
-        Optional<DocumentDocument> doc = documentService.findByPath(
-                TENANT_ID, PROJECT_ID, pathFor(uuid));
+        Optional<DocumentDocument> doc = documentService.findByPath(TENANT_ID, PROJECT_ID, pathFor(uuid));
         return doc.flatMap(this::parse).map(this::toDocument);
     }
 
@@ -171,8 +170,7 @@ public class FookTicketService {
         meta.put("type", nonBlank(payload.getType(), "other"));
         meta.put("severity", nonBlank(payload.getSeverity(), "medium"));
         meta.put("status", STATUS_NEW);
-        meta.put("transportApproval",
-                nonBlank(payload.getTransportApproval(), TRANSPORT_NONE));
+        meta.put("transportApproval", nonBlank(payload.getTransportApproval(), TRANSPORT_NONE));
         meta.put("inboxItemId", payload.getInboxItemId());
         meta.put("duplicateOf", null);
         putReporter(meta, payload.getReporter());
@@ -185,11 +183,14 @@ public class FookTicketService {
         // Scrub secret-shaped tokens at rest — the reporter's verbatim text lands
         // in the globally-readable _vance fook pool, so a pasted API key must not
         // sit there in cleartext (it's already redacted before GitHub egress).
-        root.put(FIELD_DESCRIPTION, de.mhus.vance.brain.fook.upstream.FookTicketAnonymizer
-                .scrubSecretsAtRest(nonBlank(payload.getDescription(), "")));
+        root.put(
+                FIELD_DESCRIPTION,
+                de.mhus.vance.brain.fook.upstream.FookTicketAnonymizer.scrubSecretsAtRest(
+                        nonBlank(payload.getDescription(), "")));
         if (payload.getTriageNote() != null && !payload.getTriageNote().isBlank()) {
-            root.put(FIELD_TRIAGE_NOTE, de.mhus.vance.brain.fook.upstream.FookTicketAnonymizer
-                    .scrubSecretsAtRest(payload.getTriageNote()));
+            root.put(
+                    FIELD_TRIAGE_NOTE,
+                    de.mhus.vance.brain.fook.upstream.FookTicketAnonymizer.scrubSecretsAtRest(payload.getTriageNote()));
         }
         if (payload.getContext() != null) {
             root.put(FIELD_CONTEXT, contextToMap(payload.getContext()));
@@ -200,15 +201,19 @@ public class FookTicketService {
         root.put(FIELD_RELATIONS, relations);
 
         documentService.upsertText(
-                TENANT_ID, PROJECT_ID, pathFor(uuid),
+                TENANT_ID,
+                PROJECT_ID,
+                pathFor(uuid),
                 payload.getTitle(),
                 List.of("fook"),
                 dumpYaml(root),
                 TRIAGED_BY,
                 de.mhus.vance.shared.permission.WriteActor.SYSTEM);
-        log.info("Fook: created ticket id='{}' type='{}' severity='{}' " +
-                        "reporter={}/{}",
-                uuid, meta.get("type"), meta.get("severity"),
+        log.info(
+                "Fook: created ticket id='{}' type='{}' severity='{}' " + "reporter={}/{}",
+                uuid,
+                meta.get("type"),
+                meta.get("severity"),
                 payload.getReporter().getKind(),
                 payload.getReporter().getUserId());
         return uuid;
@@ -224,19 +229,16 @@ public class FookTicketService {
      * planning doc §1 (race-duplikate akzeptiert).
      */
     public void updateRelations(String uuid, RelationsPatch patch) {
-        Optional<DocumentDocument> existing = documentService.findByPath(
-                TENANT_ID, PROJECT_ID, pathFor(uuid));
+        Optional<DocumentDocument> existing = documentService.findByPath(TENANT_ID, PROJECT_ID, pathFor(uuid));
         if (existing.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "Fook: cannot patch relations — ticket not found: " + uuid);
+            throw new IllegalArgumentException("Fook: cannot patch relations — ticket not found: " + uuid);
         }
         DocumentDocument doc = existing.get();
         String body = documentService.readContent(doc);
         Map<String, Object> root = parseRoot(body);
         Map<String, Object> meta = asMap(root.get("$meta"));
         if (meta == null) {
-            throw new IllegalStateException(
-                    "Fook: ticket '" + uuid + "' is missing $meta block");
+            throw new IllegalStateException("Fook: ticket '" + uuid + "' is missing $meta block");
         }
         if (patch.getDuplicateOf() != null && !patch.getDuplicateOf().isBlank()) {
             meta.put("duplicateOf", patch.getDuplicateOf());
@@ -252,15 +254,18 @@ public class FookTicketService {
         mergeList(relations, "relatedTo", patch.getAddRelatedTo());
 
         documentService.upsertText(
-                TENANT_ID, PROJECT_ID, pathFor(uuid),
+                TENANT_ID,
+                PROJECT_ID,
+                pathFor(uuid),
                 doc.getTitle(),
                 doc.getTags(),
                 dumpYaml(root),
                 TRIAGED_BY,
                 de.mhus.vance.shared.permission.WriteActor.SYSTEM);
-        log.info("Fook: updated relations on ticket id='{}' duplicateOf='{}' " +
-                        "+rootCauseOf={} +relatedTo={}",
-                uuid, patch.getDuplicateOf(),
+        log.info(
+                "Fook: updated relations on ticket id='{}' duplicateOf='{}' " + "+rootCauseOf={} +relatedTo={}",
+                uuid,
+                patch.getDuplicateOf(),
                 normaliseList(patch.getAddRootCauseOf()).size(),
                 normaliseList(patch.getAddRelatedTo()).size());
     }
@@ -274,11 +279,7 @@ public class FookTicketService {
      * and fills the {@code upstream*} fields.
      */
     public void markTransferred(
-            String uuid,
-            String provider,
-            String externalId,
-            String displayId,
-            @Nullable String url) {
+            String uuid, String provider, String externalId, String displayId, @Nullable String url) {
         patchMeta(uuid, meta -> {
             meta.put("status", STATUS_TRANSFERRED);
             meta.put("transferredAt", Instant.now().toString());
@@ -292,8 +293,7 @@ public class FookTicketService {
         });
         // displayId, never externalId — for the collector that is a
         // capability handle, and this line goes to the log aggregation.
-        log.info("Fook: ticket id='{}' transferred to {} as {}",
-                uuid, provider, displayId);
+        log.info("Fook: ticket id='{}' transferred to {} as {}", uuid, provider, displayId);
     }
 
     /**
@@ -337,8 +337,7 @@ public class FookTicketService {
      * past it. That is the difference between a cap and a rotation.
      */
     public void markUpstreamSynced(String uuid) {
-        patchMeta(uuid, meta ->
-                meta.put("upstreamLastSyncedAt", Instant.now().toString()));
+        patchMeta(uuid, meta -> meta.put("upstreamLastSyncedAt", Instant.now().toString()));
     }
 
     /** Write the back-pointer from the ticket to its tracker inbox-item. */
@@ -364,8 +363,8 @@ public class FookTicketService {
      * than a dangling {@code analysisRef}.
      */
     public void writeAnalysis(String uuid, String reportMarkdown) {
-        String scrubbed = de.mhus.vance.brain.fook.upstream.FookTicketAnonymizer
-                .scrubSecretsAtRest(nonBlank(reportMarkdown, ""));
+        String scrubbed =
+                de.mhus.vance.brain.fook.upstream.FookTicketAnonymizer.scrubSecretsAtRest(nonBlank(reportMarkdown, ""));
         String body = "---\n"
                 + "kind: " + ANALYSIS_DOC_KIND + "\n"
                 + "ticket: " + uuid + "\n"
@@ -374,7 +373,9 @@ public class FookTicketService {
                 + scrubbed
                 + (scrubbed.endsWith("\n") ? "" : "\n");
         documentService.upsertText(
-                TENANT_ID, PROJECT_ID, analysisPathFor(uuid),
+                TENANT_ID,
+                PROJECT_ID,
+                analysisPathFor(uuid),
                 "Session analysis for ticket " + uuid,
                 List.of("fook", "fook-analysis"),
                 body,
@@ -384,8 +385,7 @@ public class FookTicketService {
             meta.put("analysisRef", analysisPathFor(uuid));
             meta.put("analysisStatus", ANALYSIS_WRITTEN);
         });
-        log.info("Fook: wrote session analysis for ticket id='{}' ({} chars)",
-                uuid, scrubbed.length());
+        log.info("Fook: wrote session analysis for ticket id='{}' ({} chars)", uuid, scrubbed.length());
     }
 
     /**
@@ -408,7 +408,8 @@ public class FookTicketService {
      * transport to fold the report into the external ticket (§11).
      */
     public Optional<String> readAnalysis(String uuid) {
-        return documentService.findByPath(TENANT_ID, PROJECT_ID, analysisPathFor(uuid))
+        return documentService
+                .findByPath(TENANT_ID, PROJECT_ID, analysisPathFor(uuid))
                 .map(documentService::readContent)
                 .map(FookTicketService::stripFrontMatter)
                 .filter(s -> !s.isBlank());
@@ -462,8 +463,7 @@ public class FookTicketService {
     public List<TicketDocument> listTransferredForPolling() {
         return listAllTickets().stream()
                 .filter(t -> STATUS_TRANSFERRED.equals(t.getStatus()))
-                .filter(t -> t.getUpstreamProvider() != null
-                        && t.getUpstreamExternalId() != null)
+                .filter(t -> t.getUpstreamProvider() != null && t.getUpstreamExternalId() != null)
                 .toList();
     }
 
@@ -477,8 +477,7 @@ public class FookTicketService {
         Page<DocumentDocument> page;
         do {
             page = documentService.listByProjectPaged(
-                    TENANT_ID, PROJECT_ID, pageNum, TRANSPORT_PAGE_SIZE,
-                    PATH_PREFIX, DOC_KIND);
+                    TENANT_ID, PROJECT_ID, pageNum, TRANSPORT_PAGE_SIZE, PATH_PREFIX, DOC_KIND);
             for (DocumentDocument doc : page.getContent()) {
                 parse(doc).ifPresent(p -> out.add(toDocument(p)));
             }
@@ -489,23 +488,22 @@ public class FookTicketService {
 
     /** Read-modify-write helper for $meta scalar patches. */
     private void patchMeta(String uuid, java.util.function.Consumer<Map<String, Object>> mutator) {
-        Optional<DocumentDocument> existing = documentService.findByPath(
-                TENANT_ID, PROJECT_ID, pathFor(uuid));
+        Optional<DocumentDocument> existing = documentService.findByPath(TENANT_ID, PROJECT_ID, pathFor(uuid));
         if (existing.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "Fook: cannot patch — ticket not found: " + uuid);
+            throw new IllegalArgumentException("Fook: cannot patch — ticket not found: " + uuid);
         }
         DocumentDocument doc = existing.get();
         String body = documentService.readContent(doc);
         Map<String, Object> root = parseRoot(body);
         Map<String, Object> meta = asMap(root.get("$meta"));
         if (meta == null) {
-            throw new IllegalStateException(
-                    "Fook: ticket '" + uuid + "' is missing $meta block");
+            throw new IllegalStateException("Fook: ticket '" + uuid + "' is missing $meta block");
         }
         mutator.accept(meta);
         documentService.upsertText(
-                TENANT_ID, PROJECT_ID, pathFor(uuid),
+                TENANT_ID,
+                PROJECT_ID,
+                pathFor(uuid),
                 doc.getTitle(),
                 doc.getTags(),
                 dumpYaml(root),
@@ -525,8 +523,7 @@ public class FookTicketService {
             Map<String, Object> root = parseRoot(body);
             return Optional.of(toParsed(root, doc.getPath()));
         } catch (RuntimeException e) {
-            log.warn("Fook: skipping malformed ticket document path='{}': {}",
-                    doc.getPath(), e.getMessage());
+            log.warn("Fook: skipping malformed ticket document path='{}': {}", doc.getPath(), e.getMessage());
             return Optional.empty();
         }
     }
@@ -538,8 +535,7 @@ public class FookTicketService {
         Yaml yaml = new Yaml(new SafeConstructor(opts));
         Object loaded = yaml.load(body);
         if (!(loaded instanceof Map<?, ?> m)) {
-            throw new IllegalStateException(
-                    "ticket YAML root is not a mapping");
+            throw new IllegalStateException("ticket YAML root is not a mapping");
         }
         @SuppressWarnings("unchecked")
         Map<String, Object> root = (Map<String, Object>) m;
@@ -671,6 +667,7 @@ public class FookTicketService {
         if (ctx.getProcessId() != null) m.put("processId", ctx.getProcessId());
         if (ctx.getRecipe() != null) m.put("recipe", ctx.getRecipe());
         if (ctx.getEngine() != null) m.put("engine", ctx.getEngine());
+        m.put("sessionAccess", ctx.isSessionAccess());
         return m;
     }
 
@@ -682,11 +679,11 @@ public class FookTicketService {
                 .processId(stringOrNull(m.get("processId")))
                 .recipe(stringOrNull(m.get("recipe")))
                 .engine(stringOrNull(m.get("engine")))
+                .sessionAccess(Boolean.TRUE.equals(m.get("sessionAccess")))
                 .build();
     }
 
-    private static void mergeList(
-            Map<String, Object> relations, String key, List<String> add) {
+    private static void mergeList(Map<String, Object> relations, String key, List<String> add) {
         if (add == null || add.isEmpty()) return;
         List<String> current = readStringList(relations, key);
         LinkedHashSet<String> merged = new LinkedHashSet<>(current);
@@ -694,8 +691,7 @@ public class FookTicketService {
         relations.put(key, new ArrayList<>(merged));
     }
 
-    private static List<String> readStringList(
-            @Nullable Map<String, Object> map, String key) {
+    private static List<String> readStringList(@Nullable Map<String, Object> map, String key) {
         if (map == null) return List.of();
         Object raw = map.get(key);
         if (!(raw instanceof List<?> list)) return List.of();
@@ -777,24 +773,56 @@ public class FookTicketService {
         String type;
         String severity;
         String status;
-        @Nullable String transportApproval;
-        @Nullable String inboxItemId;
-        @Nullable String duplicateOf;
-        @Nullable Instant createdAt;
-        @Nullable Instant triagedAt;
-        @Nullable String triagedBy;
-        @Nullable Instant transferredAt;
-        @Nullable String upstreamProvider;
-        @Nullable String upstreamExternalId;
-        @Nullable String upstreamDisplayId;
-        @Nullable String upstreamUrl;
-        @Nullable String upstreamState;
-        @Nullable Instant upstreamLastSyncedAt;
+
+        @Nullable
+        String transportApproval;
+
+        @Nullable
+        String inboxItemId;
+
+        @Nullable
+        String duplicateOf;
+
+        @Nullable
+        Instant createdAt;
+
+        @Nullable
+        Instant triagedAt;
+
+        @Nullable
+        String triagedBy;
+
+        @Nullable
+        Instant transferredAt;
+
+        @Nullable
+        String upstreamProvider;
+
+        @Nullable
+        String upstreamExternalId;
+
+        @Nullable
+        String upstreamDisplayId;
+
+        @Nullable
+        String upstreamUrl;
+
+        @Nullable
+        String upstreamState;
+
+        @Nullable
+        Instant upstreamLastSyncedAt;
+
         List<String> syncedCommentExternalIds;
         TicketReporter reporter;
         String description;
-        @Nullable String triageNote;
-        @Nullable TicketContext context;
+
+        @Nullable
+        String triageNote;
+
+        @Nullable
+        TicketContext context;
+
         List<String> rootCauseOf;
         List<String> relatedTo;
     }

@@ -90,11 +90,15 @@ public class FookController {
 
     private static TicketContext buildContext(FookSubmissionRequestDto body) {
         boolean hasProject = body.getProjectId() != null && !body.getProjectId().isBlank();
-        boolean hasSession = body.getSessionId() != null && !body.getSessionId().isBlank();
+        // The session reference only travels with explicit consent.
+        boolean hasSession = body.isSessionAccess()
+                && body.getSessionId() != null
+                && !body.getSessionId().isBlank();
         if (!hasProject && !hasSession) return null;
         return TicketContext.builder()
                 .projectId(hasProject ? body.getProjectId() : null)
                 .sessionId(hasSession ? body.getSessionId() : null)
+                .sessionAccess(hasSession)
                 .build();
     }
 }

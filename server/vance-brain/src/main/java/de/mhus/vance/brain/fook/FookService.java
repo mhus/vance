@@ -290,7 +290,9 @@ public class FookService {
      * Hand the ticket off to {@link FookSessionAnalysisService} when the
      * triage LLM flagged {@code needSessionReport} <b>and</b> the
      * report carries a session/process context to analyse (the ENGINE
-     * report path — user-direct reports without a process are v2). When
+     * report path — user-direct reports without a process are v2) <b>and</b>
+     * the context grants session access ({@link TicketContext#isSessionAccess()}).
+     * The access flag is a hard gate: without it nothing reads the session. When
      * flagged but un-analysable, stamp {@code analysisStatus=skipped}
      * so Lunkwill can tell "asked, but nothing to analyse" apart from
      * "never asked". Never fatal to ticket creation.
@@ -302,6 +304,7 @@ public class FookService {
         TicketContext ctx = sub.request().getContext();
         String tenantId = sub.request().getReporter().getTenantId();
         boolean analysable = ctx != null
+                && ctx.isSessionAccess()
                 && ctx.getSessionId() != null
                 && !ctx.getSessionId().isBlank()
                 && ctx.getProcessId() != null

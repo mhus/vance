@@ -157,6 +157,8 @@ export default {
       + 'Fook takes type, severity and title from your text and sends the outcome to your inbox.',
     placeholder:
       'What went wrong, or what would you want to change? Steps to reproduce help.',
+    sessionAccess:
+      'Allow Fook to read this session (adds the session id to the ticket and lets Fook analyse it)',
     submit: 'Submit',
     submitted: 'Submitted — Fook is triaging. Submission id:',
     errorEmpty: 'Please describe the issue or request before submitting.',

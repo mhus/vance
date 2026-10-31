@@ -7,4 +7,5 @@ export interface FookSubmissionRequestDto {
   text: string;
   projectId?: string;
   sessionId?: string;
+  sessionAccess: boolean;
 }

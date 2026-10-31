@@ -249,6 +249,7 @@ public class EmptyResponseDiagnosticService {
                                     .sessionId(call.sessionId())
                                     .processId(call.processId())
                                     .engine(call.engineName())
+                                    .sessionAccess(true)
                                     .build())
                             .build());
                 }

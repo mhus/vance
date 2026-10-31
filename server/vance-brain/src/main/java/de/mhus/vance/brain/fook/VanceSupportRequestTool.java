@@ -242,6 +242,7 @@ public class VanceSupportRequestTool implements Tool {
                 .processId(ctx.processId())
                 .recipe(recipe)
                 .engine(engine)
+                .sessionAccess(true)
                 .build();
     }
 

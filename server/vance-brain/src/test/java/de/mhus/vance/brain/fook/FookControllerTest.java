@@ -76,6 +76,7 @@ class FookControllerTest {
                 .text("Add a dark-mode toggle on the settings page.")
                 .projectId("web-redesign")
                 .sessionId("sess-42")
+                .sessionAccess(true)
                 .build();
 
         controller.submit(TENANT, body, request);
@@ -86,9 +87,29 @@ class FookControllerTest {
         assertThat(ctx).isNotNull();
         assertThat(ctx.getProjectId()).isEqualTo("web-redesign");
         assertThat(ctx.getSessionId()).isEqualTo("sess-42");
+        assertThat(ctx.isSessionAccess()).isTrue();
         assertThat(ctx.getProcessId()).isNull();
         assertThat(ctx.getRecipe()).isNull();
         assertThat(ctx.getEngine()).isNull();
+    }
+
+    @Test
+    void submit_drops_sessionId_without_session_access_consent() {
+        FookSubmissionRequestDto body = FookSubmissionRequestDto.builder()
+                .text("Something broke.")
+                .projectId("web-redesign")
+                .sessionId("sess-42")
+                .build();
+
+        controller.submit(TENANT, body, request);
+
+        ArgumentCaptor<SubmissionRequest> cap = ArgumentCaptor.forClass(SubmissionRequest.class);
+        verify(fookService).submit(cap.capture());
+        TicketContext ctx = cap.getValue().getContext();
+        assertThat(ctx).isNotNull();
+        assertThat(ctx.getProjectId()).isEqualTo("web-redesign");
+        assertThat(ctx.getSessionId()).isNull();
+        assertThat(ctx.isSessionAccess()).isFalse();
     }
 
     @Test

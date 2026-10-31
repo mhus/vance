@@ -48,4 +48,10 @@ public class FookSubmissionRequestDto {
     /** Optional session context, same rationale as
      *  {@link #projectId}. */
     private @Nullable String sessionId;
+
+    /** Reporter's consent that Fook may access {@link #sessionId}.
+     *  Without it the session id is dropped server-side and never
+     *  reaches the ticket; clients omitting the field (older ones)
+     *  count as "no". */
+    private boolean sessionAccess;
 }

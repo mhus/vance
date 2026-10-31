@@ -54,15 +54,11 @@ class FookServiceTest {
         // Default: upstream off — every existing test sees "never" so
         // their assertions stay valid. Tests that exercise the
         // transport-mode logic override this individually.
-        when(settingService.getStringValueCascade(any(), any(), any(),
-                eq("fook.upstream.mode")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("fook.upstream.mode")))
                 .thenReturn("never");
-        when(inboxItemService.create(any())).thenAnswer(inv ->
-                inv.<MaximegalonDocument>getArgument(0));
+        when(inboxItemService.create(any())).thenAnswer(inv -> inv.<MaximegalonDocument>getArgument(0));
         sessionAnalysisService = mock(FookSessionAnalysisService.class);
-        service = new FookService(
-                ticketService, lightLlm, inboxItemService, settingService,
-                sessionAnalysisService);
+        service = new FookService(ticketService, lightLlm, inboxItemService, settingService, sessionAnalysisService);
 
         when(ticketService.searchSimilar(any(), anyInt())).thenReturn(List.of());
     }
@@ -78,14 +74,13 @@ class FookServiceTest {
 
     @Test
     void submit_rejects_null_request() {
-        assertThatThrownBy(() -> service.submit(null))
-                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.submit(null)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void submit_rejects_missing_reporter() {
-        SubmissionRequest req = SubmissionRequest.builder()
-                .text("Brain crashed.").build();
+        SubmissionRequest req =
+                SubmissionRequest.builder().text("Brain crashed.").build();
         assertThatThrownBy(() -> service.submit(req))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("reporter");
@@ -113,8 +108,7 @@ class FookServiceTest {
 
     @Test
     void submit_throws_when_disabled() {
-        org.springframework.test.util.ReflectionTestUtils.setField(
-                service, "enabled", false);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "enabled", false);
         assertThatThrownBy(() -> service.submit(engineSubmission("anything")))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("disabled");
@@ -125,8 +119,7 @@ class FookServiceTest {
         // Enqueued while enabled, then disabled before the tick fires —
         // the drain must not triage anything.
         service.submit(engineSubmission("queued while enabled"));
-        org.springframework.test.util.ReflectionTestUtils.setField(
-                service, "enabled", false);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "enabled", false);
         service.drainQueue();
         verifyNoInteractions(lightLlm);
         verifyNoInteractions(inboxItemService);
@@ -147,21 +140,17 @@ class FookServiceTest {
                         "relatedTickets", List.of("uuid-related")));
         when(ticketService.createTicket(any())).thenReturn("uuid-new");
 
-        service.submit(engineSubmission(
-                "Brain crashes on boot — NPE in the recipes loader."));
+        service.submit(engineSubmission("Brain crashes on boot — NPE in the recipes loader."));
         service.drainQueue();
 
-        ArgumentCaptor<NewTicketPayload> payload =
-                ArgumentCaptor.forClass(NewTicketPayload.class);
+        ArgumentCaptor<NewTicketPayload> payload = ArgumentCaptor.forClass(NewTicketPayload.class);
         verify(ticketService).createTicket(payload.capture());
         assertThat(payload.getValue().getTitle()).isEqualTo("Brain crash on boot");
-        assertThat(payload.getValue().getDescription())
-                .isEqualTo("Brain crashes on boot — NPE in the recipes loader.");
+        assertThat(payload.getValue().getDescription()).isEqualTo("Brain crashes on boot — NPE in the recipes loader.");
         assertThat(payload.getValue().getType()).isEqualTo("bug");
         assertThat(payload.getValue().getSeverity()).isEqualTo("high");
         assertThat(payload.getValue().getTriageNote()).isEqualTo("Looks novel.");
-        assertThat(payload.getValue().getRelatedTickets())
-                .containsExactly("uuid-related");
+        assertThat(payload.getValue().getRelatedTickets()).containsExactly("uuid-related");
 
         MaximegalonDocument item = captureInbox();
         assertThat(item.getTenantId()).isEqualTo("acme");
@@ -171,9 +160,7 @@ class FookServiceTest {
         assertThat(item.getCriticality()).isEqualTo(Criticality.LOW);
         assertThat(item.isRequiresAction()).isFalse();
         assertThat(item.getTags()).containsExactly("fook");
-        assertThat(item.getPayload())
-                .containsEntry("decision", "new_ticket")
-                .containsEntry("ticketId", "uuid-new");
+        assertThat(item.getPayload()).containsEntry("decision", "new_ticket").containsEntry("ticketId", "uuid-new");
     }
 
     @Test
@@ -182,15 +169,12 @@ class FookServiceTest {
                 .thenReturn(Map.of("decision", "new_ticket", "reason", "ok"));
         when(ticketService.createTicket(any())).thenReturn("uuid-new");
 
-        service.submit(engineSubmission(
-                "First sentence is the fallback title.\nSecond sentence is body."));
+        service.submit(engineSubmission("First sentence is the fallback title.\nSecond sentence is body."));
         service.drainQueue();
 
-        ArgumentCaptor<NewTicketPayload> p =
-                ArgumentCaptor.forClass(NewTicketPayload.class);
+        ArgumentCaptor<NewTicketPayload> p = ArgumentCaptor.forClass(NewTicketPayload.class);
         verify(ticketService).createTicket(p.capture());
-        assertThat(p.getValue().getTitle())
-                .isEqualTo("First sentence is the fallback title.");
+        assertThat(p.getValue().getTitle()).isEqualTo("First sentence is the fallback title.");
         assertThat(p.getValue().getType()).isEqualTo("other");
         assertThat(p.getValue().getSeverity()).isEqualTo("medium");
         // Description always carries the original raw text.
@@ -213,24 +197,19 @@ class FookServiceTest {
         service.drainQueue();
 
         ArgumentCaptor<String> targetCap = ArgumentCaptor.forClass(String.class);
-        ArgumentCaptor<RelationsPatch> patchCap =
-                ArgumentCaptor.forClass(RelationsPatch.class);
-        verify(ticketService).updateRelations(
-                targetCap.capture(), patchCap.capture());
+        ArgumentCaptor<RelationsPatch> patchCap = ArgumentCaptor.forClass(RelationsPatch.class);
+        verify(ticketService).updateRelations(targetCap.capture(), patchCap.capture());
         assertThat(targetCap.getValue()).isEqualTo("uuid-target");
-        assertThat(patchCap.getValue().getAddRootCauseOf())
-                .containsExactly("uuid-extra-1");
+        assertThat(patchCap.getValue().getAddRootCauseOf()).containsExactly("uuid-extra-1");
 
         MaximegalonDocument item = captureInbox();
-        assertThat(item.getPayload())
-                .containsEntry("decision", "merge_into")
-                .containsEntry("ticketId", "uuid-target");
+        assertThat(item.getPayload()).containsEntry("decision", "merge_into").containsEntry("ticketId", "uuid-target");
     }
 
     @Test
     void merge_into_without_target_writes_failure_inbox() {
         when(lightLlm.callForJson(any(LightLlmRequest.class)))
-                .thenReturn(Map.of("decision", "merge_into"));   // no target!
+                .thenReturn(Map.of("decision", "merge_into")); // no target!
 
         service.submit(engineSubmission("Some text."));
         service.drainQueue();
@@ -259,9 +238,7 @@ class FookServiceTest {
         verify(ticketService, never()).updateRelations(any(), any());
         MaximegalonDocument item = captureInbox();
         assertThat(item.getTitle()).contains("not opened");
-        assertThat(item.getPayload())
-                .containsEntry("decision", "discard")
-                .containsEntry("category", "project_data");
+        assertThat(item.getPayload()).containsEntry("decision", "discard").containsEntry("category", "project_data");
     }
 
     @Test
@@ -281,8 +258,7 @@ class FookServiceTest {
 
     @Test
     void light_llm_exception_writes_failure_inbox() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class)))
-                .thenThrow(new LightLlmException("provider down", null));
+        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenThrow(new LightLlmException("provider down", null));
 
         service.submit(engineSubmission("anything"));
         service.drainQueue();
@@ -290,15 +266,12 @@ class FookServiceTest {
         verify(ticketService, never()).createTicket(any());
         MaximegalonDocument item = captureInbox();
         assertThat(item.getTitle()).contains("could not be triaged");
-        assertThat(item.getPayload())
-                .containsEntry("decision", "failed")
-                .containsEntry("error", "LightLlmException");
+        assertThat(item.getPayload()).containsEntry("decision", "failed").containsEntry("error", "LightLlmException");
     }
 
     @Test
     void missing_decision_field_writes_failure_inbox() {
-        when(lightLlm.callForJson(any(LightLlmRequest.class)))
-                .thenReturn(Map.of("reason", "no decision"));
+        when(lightLlm.callForJson(any(LightLlmRequest.class))).thenReturn(Map.of("reason", "no decision"));
 
         service.submit(engineSubmission("anything"));
         service.drainQueue();
@@ -310,7 +283,7 @@ class FookServiceTest {
     @Test
     void unknown_decision_value_writes_failure_inbox() {
         when(lightLlm.callForJson(any(LightLlmRequest.class)))
-                .thenReturn(Map.of("decision", "create_ticket"));  // not in enum
+                .thenReturn(Map.of("decision", "create_ticket")); // not in enum
 
         service.submit(engineSubmission("anything"));
         service.drainQueue();
@@ -324,10 +297,17 @@ class FookServiceTest {
     @Test
     void service_account_skips_inbox_but_still_processes_ticket() {
         when(lightLlm.callForJson(any(LightLlmRequest.class)))
-                .thenReturn(Map.of("decision", "new_ticket",
-                        "derivedTitle", "T", "derivedType", "bug",
-                        "derivedSeverity", "low",
-                        "reason", "ok"));
+                .thenReturn(Map.of(
+                        "decision",
+                        "new_ticket",
+                        "derivedTitle",
+                        "T",
+                        "derivedType",
+                        "bug",
+                        "derivedSeverity",
+                        "low",
+                        "reason",
+                        "ok"));
         when(ticketService.createTicket(any())).thenReturn("uuid-new");
 
         SubmissionRequest req = SubmissionRequest.builder()
@@ -347,8 +327,7 @@ class FookServiceTest {
     @Test
     void reporter_missing_userId_skips_inbox() {
         when(lightLlm.callForJson(any(LightLlmRequest.class)))
-                .thenReturn(Map.of("decision", "discard",
-                        "category", "vague", "reason", "ok"));
+                .thenReturn(Map.of("decision", "discard", "category", "vague", "reason", "ok"));
 
         SubmissionRequest req = SubmissionRequest.builder()
                 .text("anything")
@@ -368,14 +347,12 @@ class FookServiceTest {
     @Test
     void light_llm_request_carries_recipe_pebble_vars_and_tenant() {
         when(lightLlm.callForJson(any(LightLlmRequest.class)))
-                .thenReturn(Map.of("decision", "discard",
-                        "category", "vague", "reason", "ok"));
+                .thenReturn(Map.of("decision", "discard", "category", "vague", "reason", "ok"));
 
         service.submit(engineSubmission("My report text here."));
         service.drainQueue();
 
-        ArgumentCaptor<LightLlmRequest> reqCap =
-                ArgumentCaptor.forClass(LightLlmRequest.class);
+        ArgumentCaptor<LightLlmRequest> reqCap = ArgumentCaptor.forClass(LightLlmRequest.class);
         verify(lightLlm).callForJson(reqCap.capture());
         LightLlmRequest req = reqCap.getValue();
         assertThat(req.getRecipeName()).isEqualTo("fook");
@@ -386,8 +363,7 @@ class FookServiceTest {
         assertThat(req.getPebbleVars()).containsKey("text");
         assertThat(req.getPebbleVars()).containsKey("candidates");
         // text is the raw report verbatim — NOT JSON-wrapped.
-        assertThat(req.getPebbleVars().get("text"))
-                .isEqualTo("My report text here.");
+        assertThat(req.getPebbleVars().get("text")).isEqualTo("My report text here.");
     }
 
     @Test
@@ -405,17 +381,14 @@ class FookServiceTest {
                         .relatedTo(List.of())
                         .build())
                 .build();
-        when(ticketService.searchSimilar(any(), anyInt()))
-                .thenReturn(List.of(c));
+        when(ticketService.searchSimilar(any(), anyInt())).thenReturn(List.of(c));
         when(lightLlm.callForJson(any(LightLlmRequest.class)))
-                .thenReturn(Map.of("decision", "discard",
-                        "category", "vague", "reason", "ok"));
+                .thenReturn(Map.of("decision", "discard", "category", "vague", "reason", "ok"));
 
         service.submit(engineSubmission("Some report."));
         service.drainQueue();
 
-        ArgumentCaptor<LightLlmRequest> cap =
-                ArgumentCaptor.forClass(LightLlmRequest.class);
+        ArgumentCaptor<LightLlmRequest> cap = ArgumentCaptor.forClass(LightLlmRequest.class);
         verify(lightLlm).callForJson(cap.capture());
         Object candidates = cap.getValue().getPebbleVars().get("candidates");
         assertThat(candidates).isInstanceOf(List.class);
@@ -432,42 +405,52 @@ class FookServiceTest {
 
     @Test
     void mode_automatic_creates_ticket_with_transport_auto_approval() {
-        when(settingService.getStringValueCascade(any(), any(), any(),
-                eq("fook.upstream.mode")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("fook.upstream.mode")))
                 .thenReturn("automatic");
         when(lightLlm.callForJson(any(LightLlmRequest.class)))
-                .thenReturn(Map.of("decision", "new_ticket",
-                        "derivedTitle", "T", "derivedType", "bug",
-                        "derivedSeverity", "low",
-                        "reason", "ok"));
+                .thenReturn(Map.of(
+                        "decision",
+                        "new_ticket",
+                        "derivedTitle",
+                        "T",
+                        "derivedType",
+                        "bug",
+                        "derivedSeverity",
+                        "low",
+                        "reason",
+                        "ok"));
         when(ticketService.createTicket(any())).thenReturn("uuid-new");
 
         service.submit(engineSubmission("report text"));
         service.drainQueue();
 
-        ArgumentCaptor<NewTicketPayload> cap =
-                ArgumentCaptor.forClass(NewTicketPayload.class);
+        ArgumentCaptor<NewTicketPayload> cap = ArgumentCaptor.forClass(NewTicketPayload.class);
         verify(ticketService).createTicket(cap.capture());
         assertThat(cap.getValue().getTransportApproval()).isEqualTo("auto");
     }
 
     @Test
     void mode_manual_creates_ticket_with_pending_approval() {
-        when(settingService.getStringValueCascade(any(), any(), any(),
-                eq("fook.upstream.mode")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("fook.upstream.mode")))
                 .thenReturn("manual");
         when(lightLlm.callForJson(any(LightLlmRequest.class)))
-                .thenReturn(Map.of("decision", "new_ticket",
-                        "derivedTitle", "T", "derivedType", "bug",
-                        "derivedSeverity", "low",
-                        "reason", "ok"));
+                .thenReturn(Map.of(
+                        "decision",
+                        "new_ticket",
+                        "derivedTitle",
+                        "T",
+                        "derivedType",
+                        "bug",
+                        "derivedSeverity",
+                        "low",
+                        "reason",
+                        "ok"));
         when(ticketService.createTicket(any())).thenReturn("uuid-new");
 
         service.submit(engineSubmission("text"));
         service.drainQueue();
 
-        ArgumentCaptor<NewTicketPayload> cap =
-                ArgumentCaptor.forClass(NewTicketPayload.class);
+        ArgumentCaptor<NewTicketPayload> cap = ArgumentCaptor.forClass(NewTicketPayload.class);
         verify(ticketService).createTicket(cap.capture());
         assertThat(cap.getValue().getTransportApproval()).isEqualTo("pending");
 
@@ -478,21 +461,26 @@ class FookServiceTest {
 
     @Test
     void mode_never_creates_ticket_with_none_approval() {
-        when(settingService.getStringValueCascade(any(), any(), any(),
-                eq("fook.upstream.mode")))
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("fook.upstream.mode")))
                 .thenReturn("never");
         when(lightLlm.callForJson(any(LightLlmRequest.class)))
-                .thenReturn(Map.of("decision", "new_ticket",
-                        "derivedTitle", "T", "derivedType", "bug",
-                        "derivedSeverity", "low",
-                        "reason", "ok"));
+                .thenReturn(Map.of(
+                        "decision",
+                        "new_ticket",
+                        "derivedTitle",
+                        "T",
+                        "derivedType",
+                        "bug",
+                        "derivedSeverity",
+                        "low",
+                        "reason",
+                        "ok"));
         when(ticketService.createTicket(any())).thenReturn("uuid-new");
 
         service.submit(engineSubmission("text"));
         service.drainQueue();
 
-        ArgumentCaptor<NewTicketPayload> cap =
-                ArgumentCaptor.forClass(NewTicketPayload.class);
+        ArgumentCaptor<NewTicketPayload> cap = ArgumentCaptor.forClass(NewTicketPayload.class);
         verify(ticketService).createTicket(cap.capture());
         assertThat(cap.getValue().getTransportApproval()).isEqualTo("none");
         MaximegalonDocument item = captureInbox();
@@ -502,15 +490,21 @@ class FookServiceTest {
     @Test
     void inboxItemId_back_pointer_is_stamped_on_ticket() {
         when(lightLlm.callForJson(any(LightLlmRequest.class)))
-                .thenReturn(Map.of("decision", "new_ticket",
-                        "derivedTitle", "T", "derivedType", "bug",
-                        "derivedSeverity", "low",
-                        "reason", "ok"));
+                .thenReturn(Map.of(
+                        "decision",
+                        "new_ticket",
+                        "derivedTitle",
+                        "T",
+                        "derivedType",
+                        "bug",
+                        "derivedSeverity",
+                        "low",
+                        "reason",
+                        "ok"));
         when(ticketService.createTicket(any())).thenReturn("uuid-new");
         // create() returns the saved document with an id set.
-        MaximegalonDocument withId = MaximegalonDocument.builder()
-                .id("inbox-42")
-                .build();
+        MaximegalonDocument withId =
+                MaximegalonDocument.builder().id("inbox-42").build();
         when(inboxItemService.create(any())).thenReturn(withId);
 
         service.submit(engineSubmission("text"));
@@ -524,13 +518,21 @@ class FookServiceTest {
     @Test
     void new_ticket_with_needSessionReport_enqueues_analysis_job() {
         when(lightLlm.callForJson(any(LightLlmRequest.class)))
-                .thenReturn(Map.of("decision", "new_ticket",
-                        "derivedTitle", "Crash on save",
-                        "derivedType", "bug",
-                        "derivedSeverity", "high",
-                        "needSessionReport", true,
-                        "triageNote", "Repro in session.",
-                        "reason", "ok"));
+                .thenReturn(Map.of(
+                        "decision",
+                        "new_ticket",
+                        "derivedTitle",
+                        "Crash on save",
+                        "derivedType",
+                        "bug",
+                        "derivedSeverity",
+                        "high",
+                        "needSessionReport",
+                        true,
+                        "triageNote",
+                        "Repro in session.",
+                        "reason",
+                        "ok"));
         when(ticketService.createTicket(any())).thenReturn("uuid-new");
 
         service.submit(engineSubmission("It crashed while I was saving."));
@@ -553,10 +555,17 @@ class FookServiceTest {
     @Test
     void new_ticket_without_needSessionReport_does_not_enqueue_analysis() {
         when(lightLlm.callForJson(any(LightLlmRequest.class)))
-                .thenReturn(Map.of("decision", "new_ticket",
-                        "derivedTitle", "T", "derivedType", "bug",
-                        "derivedSeverity", "low",
-                        "reason", "ok"));   // needSessionReport absent → false
+                .thenReturn(Map.of(
+                        "decision",
+                        "new_ticket",
+                        "derivedTitle",
+                        "T",
+                        "derivedType",
+                        "bug",
+                        "derivedSeverity",
+                        "low",
+                        "reason",
+                        "ok")); // needSessionReport absent → false
         when(ticketService.createTicket(any())).thenReturn("uuid-new");
 
         service.submit(engineSubmission("text"));
@@ -569,11 +578,19 @@ class FookServiceTest {
     @Test
     void needSessionReport_without_process_context_stamps_skipped() {
         when(lightLlm.callForJson(any(LightLlmRequest.class)))
-                .thenReturn(Map.of("decision", "new_ticket",
-                        "derivedTitle", "T", "derivedType", "bug",
-                        "derivedSeverity", "low",
-                        "needSessionReport", true,
-                        "reason", "ok"));
+                .thenReturn(Map.of(
+                        "decision",
+                        "new_ticket",
+                        "derivedTitle",
+                        "T",
+                        "derivedType",
+                        "bug",
+                        "derivedSeverity",
+                        "low",
+                        "needSessionReport",
+                        true,
+                        "reason",
+                        "ok"));
         when(ticketService.createTicket(any())).thenReturn("uuid-new");
 
         // user_direct-style: sessionId but no processId → not analysable.
@@ -582,29 +599,28 @@ class FookServiceTest {
                 .reporter(reporterEngine())
                 .context(TicketContext.builder()
                         .projectId("p1")
-                        .sessionId("s1")   // no processId
+                        .sessionId("s1") // no processId
                         .build())
                 .build();
         service.submit(req);
         service.drainQueue();
 
         verify(sessionAnalysisService, never()).enqueue(any());
-        verify(ticketService).setAnalysisStatus(
-                "uuid-new", FookTicketService.ANALYSIS_SKIPPED);
+        verify(ticketService).setAnalysisStatus("uuid-new", FookTicketService.ANALYSIS_SKIPPED);
     }
 
     @Test
     void parse_reads_needSessionReport_flag() {
-        assertThat(FookService.parseTriageResult(Map.of(
-                "decision", "new_ticket",
-                "needSessionReport", true)).isNeedSessionReport())
+        assertThat(FookService.parseTriageResult(Map.of("decision", "new_ticket", "needSessionReport", true))
+                        .isNeedSessionReport())
                 .isTrue();
-        assertThat(FookService.parseTriageResult(Map.of(
-                "decision", "new_ticket")).isNeedSessionReport())
+        assertThat(FookService.parseTriageResult(Map.of("decision", "new_ticket"))
+                        .isNeedSessionReport())
                 .isFalse();
         assertThat(FookService.parseTriageResult(Map.of(
-                "decision", "new_ticket",
-                "needSessionReport", "true")).isNeedSessionReport())
+                                "decision", "new_ticket",
+                                "needSessionReport", "true"))
+                        .isNeedSessionReport())
                 .isTrue();
     }
 
@@ -618,19 +634,16 @@ class FookServiceTest {
         when(lightLlm.callForJson(any(LightLlmRequest.class))).thenAnswer(inv -> {
             LightLlmRequest req = inv.getArgument(0);
             if ("_vance".equals(req.getTenantId())) {
-                throw new AiModelResolver.UnknownModelException(
-                        "Cannot resolve 'default:analyze': tenant '_vance' has "
-                                + "no 'ai.default.provider' / 'ai.default.model' settings");
+                throw new AiModelResolver.UnknownModelException("Cannot resolve 'default:analyze': tenant '_vance' has "
+                        + "no 'ai.default.provider' / 'ai.default.model' settings");
             }
-            return Map.of("decision", "discard",
-                    "category", "vague", "reason", "ok");
+            return Map.of("decision", "discard", "category", "vague", "reason", "ok");
         });
 
         service.submit(engineSubmission("any report"));
         service.drainQueue();
 
-        ArgumentCaptor<LightLlmRequest> cap =
-                ArgumentCaptor.forClass(LightLlmRequest.class);
+        ArgumentCaptor<LightLlmRequest> cap = ArgumentCaptor.forClass(LightLlmRequest.class);
         verify(lightLlm, times(2)).callForJson(cap.capture());
         // First attempt: _vance, no projectId.
         assertThat(cap.getAllValues().get(0).getTenantId()).isEqualTo("_vance");
@@ -693,15 +706,15 @@ class FookServiceTest {
 
     @Test
     void parse_recognises_all_three_decisions() {
-        assertThat(FookService.parseTriageResult(Map.of(
-                "decision", "new_ticket")).getDecision())
+        assertThat(FookService.parseTriageResult(Map.of("decision", "new_ticket"))
+                        .getDecision())
                 .isEqualTo(TriageResult.Decision.NEW_TICKET);
         assertThat(FookService.parseTriageResult(Map.of(
-                "decision", "merge_into",
-                "targetTicketId", "x")).getDecision())
+                                "decision", "merge_into",
+                                "targetTicketId", "x"))
+                        .getDecision())
                 .isEqualTo(TriageResult.Decision.MERGE_INTO);
-        assertThat(FookService.parseTriageResult(Map.of(
-                "decision", "discard")).getDecision())
+        assertThat(FookService.parseTriageResult(Map.of("decision", "discard")).getDecision())
                 .isEqualTo(TriageResult.Decision.DISCARD);
     }
 
@@ -719,8 +732,8 @@ class FookServiceTest {
 
     @Test
     void parse_is_case_insensitive_on_decision() {
-        assertThat(FookService.parseTriageResult(Map.of(
-                "decision", "NEW_TICKET")).getDecision())
+        assertThat(FookService.parseTriageResult(Map.of("decision", "NEW_TICKET"))
+                        .getDecision())
                 .isEqualTo(TriageResult.Decision.NEW_TICKET);
     }
 
@@ -733,8 +746,7 @@ class FookServiceTest {
 
     @Test
     void parse_throws_on_unknown_decision() {
-        assertThatThrownBy(() -> FookService.parseTriageResult(Map.of(
-                "decision", "open_ticket")))
+        assertThatThrownBy(() -> FookService.parseTriageResult(Map.of("decision", "open_ticket")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("open_ticket");
     }
@@ -749,21 +761,18 @@ class FookServiceTest {
                         "derivedTitle", "Brain crash on boot",
                         "derivedType", "bug",
                         "derivedSeverity", "high",
-                        "englishTranslation", "",   // already English
+                        "englishTranslation", "", // already English
                         "reason", "ok"));
         when(ticketService.createTicket(any())).thenReturn("uuid-new");
 
-        service.submit(engineSubmission(
-                "Brain crashes on boot when recipes.yaml is missing."));
+        service.submit(engineSubmission("Brain crashes on boot when recipes.yaml is missing."));
         service.drainQueue();
 
-        ArgumentCaptor<NewTicketPayload> cap =
-                ArgumentCaptor.forClass(NewTicketPayload.class);
+        ArgumentCaptor<NewTicketPayload> cap = ArgumentCaptor.forClass(NewTicketPayload.class);
         verify(ticketService).createTicket(cap.capture());
         // Description is the original verbatim — no divider, no
         // duplicated text.
-        assertThat(cap.getValue().getDescription())
-                .isEqualTo("Brain crashes on boot when recipes.yaml is missing.");
+        assertThat(cap.getValue().getDescription()).isEqualTo("Brain crashes on boot when recipes.yaml is missing.");
         assertThat(cap.getValue().getDescription()).doesNotContain("--- Original:");
     }
 
@@ -775,17 +784,14 @@ class FookServiceTest {
                         "derivedTitle", "Brain crashes on boot",
                         "derivedType", "bug",
                         "derivedSeverity", "high",
-                        "englishTranslation",
-                            "Brain crashes on boot when recipes.yaml is missing.",
+                        "englishTranslation", "Brain crashes on boot when recipes.yaml is missing.",
                         "reason", "ok"));
         when(ticketService.createTicket(any())).thenReturn("uuid-new");
 
-        service.submit(engineSubmission(
-                "Brain stürzt beim Boot ab, wenn die recipes.yaml fehlt."));
+        service.submit(engineSubmission("Brain stürzt beim Boot ab, wenn die recipes.yaml fehlt."));
         service.drainQueue();
 
-        ArgumentCaptor<NewTicketPayload> cap =
-                ArgumentCaptor.forClass(NewTicketPayload.class);
+        ArgumentCaptor<NewTicketPayload> cap = ArgumentCaptor.forClass(NewTicketPayload.class);
         verify(ticketService).createTicket(cap.capture());
         String body = cap.getValue().getDescription();
         // English first, then divider, then original.
@@ -803,18 +809,14 @@ class FookServiceTest {
         assertThat(FookService.bilingualDescription("hi", null)).isEqualTo("hi");
         assertThat(FookService.bilingualDescription("hi", "")).isEqualTo("hi");
         assertThat(FookService.bilingualDescription("hi", "  ")).isEqualTo("hi");
-        assertThat(FookService.bilingualDescription("orig", "english"))
-                .isEqualTo("english\n\n--- Original:\n\norig");
+        assertThat(FookService.bilingualDescription("orig", "english")).isEqualTo("english\n\n--- Original:\n\norig");
     }
 
     @Test
     void fallbackTitle_picks_first_non_blank_line_and_caps_length() {
-        assertThat(FookService.fallbackTitle("\n  \nFirst real line\nsecond"))
-                .isEqualTo("First real line");
+        assertThat(FookService.fallbackTitle("\n  \nFirst real line\nsecond")).isEqualTo("First real line");
         String huge = "x".repeat(200);
-        assertThat(FookService.fallbackTitle(huge))
-                .hasSize(120)
-                .endsWith("...");
+        assertThat(FookService.fallbackTitle(huge)).hasSize(120).endsWith("...");
         assertThat(FookService.fallbackTitle("")).isEqualTo("(untitled)");
         assertThat(FookService.fallbackTitle(null)).isEqualTo("(untitled)");
     }
@@ -828,6 +830,7 @@ class FookServiceTest {
                 .context(TicketContext.builder()
                         .projectId("p1")
                         .sessionId("s1")
+                        .sessionAccess(true)
                         .processId("proc-1")
                         .recipe("arthur")
                         .engine("arthur")
@@ -844,8 +847,7 @@ class FookServiceTest {
     }
 
     private MaximegalonDocument captureInbox() {
-        ArgumentCaptor<MaximegalonDocument> cap =
-                ArgumentCaptor.forClass(MaximegalonDocument.class);
+        ArgumentCaptor<MaximegalonDocument> cap = ArgumentCaptor.forClass(MaximegalonDocument.class);
         verify(inboxItemService, times(1)).create(cap.capture());
         return cap.getValue();
     }

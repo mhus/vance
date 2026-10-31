@@ -610,6 +610,29 @@ class FookServiceTest {
     }
 
     @Test
+    void admin_policy_never_strips_session_reference_and_skips_analysis() {
+        when(settingService.getStringValueCascade(any(), any(), any(), eq("fook.session-access")))
+                .thenReturn("never");
+        when(lightLlm.callForJson(any(LightLlmRequest.class)))
+                .thenReturn(Map.of(
+                        "decision", "new_ticket",
+                        "derivedTitle", "T",
+                        "derivedType", "bug",
+                        "derivedSeverity", "low",
+                        "needSessionReport", true,
+                        "reason", "ok"));
+        when(ticketService.createTicket(any())).thenReturn("uuid-new");
+
+        service.submit(engineSubmission("Engine broke."));
+        service.drainQueue();
+
+        verify(sessionAnalysisService, never()).enqueue(any());
+        org.mockito.ArgumentCaptor<NewTicketPayload> cap = org.mockito.ArgumentCaptor.forClass(NewTicketPayload.class);
+        verify(ticketService).createTicket(cap.capture());
+        assertThat(cap.getValue().getContext().getSessionId()).isNull();
+    }
+
+    @Test
     void parse_reads_needSessionReport_flag() {
         assertThat(FookService.parseTriageResult(Map.of("decision", "new_ticket", "needSessionReport", true))
                         .isNeedSessionReport())

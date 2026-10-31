@@ -1,0 +1,40 @@
+title:
+  de: "Fook — Session-Zugriff"
+  en: "Fook — Session Access"
+description:
+  de: "Legt fest, ob Fook Sessions von Reportern ansehen darf. `ask`
+       (Default): der Reporter entscheidet pro Report im Dialog; Reports aus
+       Engines und Diagnostik gelten als freigegeben. `never`: Fook liest nie
+       eine Session, die Session-Id gelangt nicht ins Ticket und es entsteht
+       keine Session-Analyse — unabhängig vom Reporter."
+  en: "Controls whether Fook may look at reporters' sessions. `ask`
+       (default): the reporter decides per report in the dialog; engine and
+       diagnostic reports count as granted. `never`: Fook never reads a
+       session, the session id stays off the ticket and no session analysis
+       runs — regardless of the reporter."
+icon: shield-check
+category: integrations
+defaultScope: tenant
+availableIn: [ "_tenant" ]
+
+fields:
+
+  - name: mode
+    type: select
+    required: true
+    defaultValue: "ask"
+    label:
+      de: "Session-Zugriff"
+      en: "Session access"
+    help:
+      de: "`ask` = Reporter entscheidet pro Report (Default). `never` = Fook
+           greift nie auf Sessions zu."
+      en: "`ask` = the reporter decides per report (default). `never` = Fook
+           never accesses sessions."
+    bindsTo:
+      key: "fook.session-access"
+    choices:
+      - value: "ask"
+        label: { de: "Reporter fragen", en: "Ask the reporter" }
+      - value: "never"
+        label: { de: "Niemals", en: "Never" }

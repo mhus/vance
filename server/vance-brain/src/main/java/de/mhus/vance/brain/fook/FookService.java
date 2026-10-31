@@ -85,6 +85,13 @@ public class FookService {
      *  stamped with the right {@code transportApproval} value. */
     static final String SETTING_UPSTREAM_MODE = "fook.upstream.mode";
 
+    /** Tenant-admin policy for session access ({@code ask} = the
+     *  reporter decides per report, default; {@code never} = Fook never
+     *  touches a session, whatever the reporter or engine says). */
+    static final String SETTING_SESSION_ACCESS = "fook.session-access";
+
+    static final String SESSION_ACCESS_NEVER = "never";
+
     static final String MODE_NEVER = "never";
     static final String MODE_AUTOMATIC = "automatic";
     static final String MODE_MANUAL = "manual";
@@ -148,17 +155,18 @@ public class FookService {
         if (request.getText() == null || request.getText().isBlank()) {
             throw new IllegalArgumentException("submission text is null or blank");
         }
+        SubmissionRequest effective = applySessionAccessPolicy(request);
         String submissionId = UUID.randomUUID().toString();
-        Submission sub = new Submission(submissionId, request, Instant.now());
+        Submission sub = new Submission(submissionId, effective, Instant.now());
         queue.add(sub);
         inFlight.incrementAndGet();
         log.info(
                 "Fook: queued submissionId={} reporter={}/{}/{} textChars={}",
                 submissionId,
-                request.getReporter().getKind(),
-                request.getReporter().getTenantId(),
-                request.getReporter().getUserId(),
-                request.getText().length());
+                effective.getReporter().getKind(),
+                effective.getReporter().getTenantId(),
+                effective.getReporter().getUserId(),
+                effective.getText().length());
         return submissionId;
     }
 
@@ -345,6 +353,35 @@ public class FookService {
         } catch (RuntimeException e) {
             log.warn("Fook: could not stamp analysisStatus on ticket {}: {}", ticketId, e.getMessage());
         }
+    }
+
+    /**
+     * Enforce the admin policy {@link #SETTING_SESSION_ACCESS}: under
+     * {@code never} the session reference is stripped from the report
+     * context, so it reaches neither ticket, inbox item nor analysis.
+     */
+    private SubmissionRequest applySessionAccessPolicy(SubmissionRequest request) {
+        TicketContext ctx = request.getContext();
+        if (ctx == null || (ctx.getSessionId() == null && !ctx.isSessionAccess())) {
+            return request;
+        }
+        String policy =
+                settingService.getStringValueCascade(TenantService.SYSTEM_TENANT, null, null, SETTING_SESSION_ACCESS);
+        if (!SESSION_ACCESS_NEVER.equalsIgnoreCase(policy == null ? "" : policy.trim())) {
+            return request;
+        }
+        TicketContext stripped = TicketContext.builder()
+                .projectId(ctx.getProjectId())
+                .processId(ctx.getProcessId())
+                .recipe(ctx.getRecipe())
+                .engine(ctx.getEngine())
+                .sessionAccess(false)
+                .build();
+        return SubmissionRequest.builder()
+                .text(request.getText())
+                .reporter(request.getReporter())
+                .context(stripped)
+                .build();
     }
 
     private String currentUpstreamMode() {

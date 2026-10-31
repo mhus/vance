@@ -90,11 +90,13 @@ const runtimeCfg = ref<RuntimeConfig | null>(null);
 const serverTitle = computed<string>(() => runtimeCfg.value?.title?.trim() ?? '');
 const serverBacklink = computed<string>(() => runtimeCfg.value?.backlink?.trim() ?? '');
 
-// Which ways in this installation offers (`GET …/login-methods`). `null` until
-// answered, and when the server cannot say: the classic password form then.
+// Which ways in the tenant offers (`GET …/login-methods`). `null` until
+// answered, and when the server cannot say: the classic password step then.
+// The form is two steps: tenant + username first, then — as the tenant decides —
+// the password or the code from the e-mail.
 const methods = ref<LoginMethodsResponse | null>(null);
-const emailTokenMode = computed<boolean>(() => methods.value?.emailToken === true);
-const passwordShown = computed<boolean>(() => methods.value?.password !== false);
+/** Step two with the password field open (the tenant signs in with the password). */
+const passwordStep = ref(false);
 
 /**
  * The open e-mail code, once one was asked for: the handle the server wants back
@@ -269,8 +271,8 @@ async function syncUiLocaleFromSession(): Promise<void> {
 }
 
 async function onSubmit(): Promise<void> {
-  if (emailTokenMode.value && openCode.value === null) {
-    await requestCode();
+  if (openCode.value === null && !passwordStep.value) {
+    await identify();
     return;
   }
   error.value = null;
@@ -278,7 +280,7 @@ async function onSubmit(): Promise<void> {
   const trimmedTenant = tenant.value.trim();
   const trimmedUsername = username.value.trim();
   try {
-    if (emailTokenMode.value && openCode.value !== null) {
+    if (openCode.value !== null) {
       await verifyEmailToken({
         tenant: trimmedTenant,
         username: trimmedUsername,
@@ -309,7 +311,7 @@ async function onSubmit(): Promise<void> {
     goOn();
   } catch (e) {
     if (e instanceof LoginError) {
-      if (emailTokenMode.value) {
+      if (openCode.value !== null) {
         // A wrong code is spent after a few tries; there is nothing to correct
         // in place, only to ask again.
         error.value = e.status === 401
@@ -325,6 +327,27 @@ async function onSubmit(): Promise<void> {
     } else {
       error.value = t('login.loginFailed');
     }
+  } finally {
+    submitting.value = false;
+  }
+}
+
+/**
+ * Step one: asks the tenant how it signs in and moves on to the password or the
+ * code step. When the server cannot say, the password step is the classic way.
+ */
+async function identify(): Promise<void> {
+  error.value = null;
+  submitting.value = true;
+  try {
+    const answer = await fetchLoginMethods(tenant.value.trim());
+    if (answer !== null) methods.value = answer;
+    if (answer?.emailToken === true) {
+      submitting.value = false;
+      await requestCode();
+      return;
+    }
+    passwordStep.value = true;
   } finally {
     submitting.value = false;
   }
@@ -361,6 +384,8 @@ async function requestCode(): Promise<void> {
 /** Back to tenant and username, e.g. after a typo in the username. */
 function backToUsername(): void {
   openCode.value = null;
+  passwordStep.value = false;
+  password.value = '';
   code.value = '';
   codeNotice.value = null;
   error.value = null;
@@ -554,7 +579,7 @@ function readNextParam(): string | null {
             required
             autocomplete="organization"
             autocapitalize="none"
-            :disabled="submitting || openCode !== null"
+            :disabled="submitting || openCode !== null || passwordStep"
           />
           <VInput
             v-model="username"
@@ -562,10 +587,10 @@ function readNextParam(): string | null {
             required
             autocomplete="username"
             autocapitalize="none"
-            :disabled="submitting || openCode !== null"
+            :disabled="submitting || openCode !== null || passwordStep"
           />
           <VInput
-            v-if="passwordShown"
+            v-if="passwordStep"
             v-model="password"
             type="password"
             :label="$t('login.password')"
@@ -573,7 +598,7 @@ function readNextParam(): string | null {
             autocomplete="current-password"
             :disabled="submitting"
           />
-          <template v-if="emailTokenMode && openCode !== null">
+          <template v-if="openCode !== null">
             <VAlert v-if="codeNotice" variant="info">
               <span>{{ codeNotice }}</span>
               <span class="mt-1 block font-mono text-xs break-all">
@@ -602,13 +627,13 @@ function readNextParam(): string | null {
             class="mt-2"
             block
           >
-            {{ emailTokenMode && openCode === null ? $t('login.emailToken.sendCode') : $t('common.signIn') }}
+            {{ openCode === null && !passwordStep ? $t('login.continue') : $t('common.signIn') }}
           </VButton>
-          <div v-if="emailTokenMode && openCode !== null" class="flex items-center justify-between gap-3">
+          <div v-if="openCode !== null || passwordStep" class="flex items-center justify-between gap-3">
             <VButton variant="plain" :disabled="submitting" @click="backToUsername">
               {{ $t('login.emailToken.back') }}
             </VButton>
-            <VButton variant="plain" :disabled="submitting || resendIn > 0" @click="requestCode">
+            <VButton v-if="openCode !== null" variant="plain" :disabled="submitting || resendIn > 0" @click="requestCode">
               {{ resendIn > 0 ? $t('login.emailToken.resendIn', { seconds: resendIn }) : $t('login.emailToken.resend') }}
             </VButton>
           </div>

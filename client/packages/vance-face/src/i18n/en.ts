@@ -631,6 +631,7 @@ export default {
     username: 'Username',
     password: 'Password',
     rememberUser: 'Remember user',
+    continue: 'Continue',
     emailToken: {
       sendCode: 'Send code',
       sent: 'If this account can sign in by e-mail, a code was sent to the address on file. It is valid for {minutes} minutes.',

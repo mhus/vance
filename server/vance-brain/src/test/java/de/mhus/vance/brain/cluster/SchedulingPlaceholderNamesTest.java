@@ -17,7 +17,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.util.ClassUtils;
 
 /**
- * The eleven tick cadences of this package, pinned by name.
+ * The seven tick cadences of this package, pinned by name.
  *
  * <p>The general rule — no upper-case letter in any placeholder anywhere — is
  * enforced tree-wide by {@code ConfigPlaceholderNamingTest} in
@@ -56,18 +56,15 @@ class SchedulingPlaceholderNamesTest {
             keys.addAll(placeholderKeys(bean));
         }
 
-        assertThat(keys).contains(
-                "vance.cluster.heartbeat-interval",
-                "vance.cluster.master.distributor-interval",
-                "vance.cluster.master.distributor-initial-delay",
-                "vance.cluster.master.election-interval",
-                "vance.cluster.master.election-initial-delay",
-                "vance.cluster.cleanup.interval",
-                "vance.cluster.cleanup.initial-delay",
-                "vance.storage.orphan-sweep.interval",
-                "vance.storage.orphan-sweep.initial-delay",
-                "vance.session.stale-bind-sweep.interval",
-                "vance.session.stale-bind-sweep.initial-delay");
+        assertThat(keys)
+                .contains(
+                        "vance.cluster.heartbeat-interval",
+                        "vance.cluster.cleanup.interval",
+                        "vance.cluster.cleanup.initial-delay",
+                        "vance.storage.orphan-sweep.interval",
+                        "vance.storage.orphan-sweep.initial-delay",
+                        "vance.session.stale-bind-sweep.interval",
+                        "vance.session.stale-bind-sweep.initial-delay");
     }
 
     private static Set<String> placeholderKeys(Class<?> bean) {
@@ -106,9 +103,8 @@ class SchedulingPlaceholderNamesTest {
     }
 
     private static List<Class<?>> scanBeans() {
-        ClassPathScanningCandidateComponentProvider scanner =
-                new ClassPathScanningCandidateComponentProvider(true);
-        // Conditional beans (ClusterMasterService and the ticks) are candidates
+        ClassPathScanningCandidateComponentProvider scanner = new ClassPathScanningCandidateComponentProvider(true);
+        // Conditional beans (the ticks) are candidates
         // for this scan regardless of their @ConditionalOnProperty — the
         // scanner reads annotations, it does not evaluate conditions.
         scanner.addIncludeFilter(new RegexPatternTypeFilter(Pattern.compile(".*")));

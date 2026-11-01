@@ -21,13 +21,13 @@ import org.junit.jupiter.api.Test;
  */
 class SessionStaleBindSweepTickTest {
 
-    private ClusterMasterService masterService;
+    private ClusterCoordinator masterService;
     private SessionService sessionService;
     private SessionStaleBindSweepTick tick;
 
     @BeforeEach
     void setUp() {
-        masterService = mock(ClusterMasterService.class);
+        masterService = mock(ClusterCoordinator.class);
         sessionService = mock(SessionService.class);
         lenient().when(sessionService.bindStaleAfter()).thenReturn(Duration.ofMinutes(2));
         tick = new SessionStaleBindSweepTick(masterService, sessionService);
@@ -77,8 +77,7 @@ class SessionStaleBindSweepTickTest {
     @Test
     void tick_swallowsSweepFailure() {
         when(masterService.isLocalPodMaster()).thenReturn(true);
-        when(sessionService.unbindStaleConnections(any(Instant.class)))
-                .thenThrow(new RuntimeException("mongo down"));
+        when(sessionService.unbindStaleConnections(any(Instant.class))).thenThrow(new RuntimeException("mongo down"));
 
         // Must not propagate — the scheduler thread would otherwise be killed.
         tick.tick();

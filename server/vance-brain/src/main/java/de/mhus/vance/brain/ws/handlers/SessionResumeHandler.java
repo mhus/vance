@@ -7,7 +7,7 @@ import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.SessionResumeRequest;
 import de.mhus.vance.api.ws.SessionResumeResponse;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
-import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
+import de.mhus.vance.brain.cluster.placement.ProjectPlacement;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.inbox.InboxPendingSummaryPusher;
 import de.mhus.vance.brain.permission.RequestAuthority;
@@ -50,7 +50,7 @@ public class SessionResumeHandler implements WsHandler {
     private final WebSocketSender sender;
     private final SessionService sessionService;
     private final ProjectManagerService projectManager;
-    private final ProjectPlacementService placementService;
+    private final ProjectPlacement placementService;
     private final ProjectLifecycleService lifecycleService;
     private final SessionConnectionRegistry connectionRegistry;
     private final de.mhus.vance.brain.events.SessionRosterBroadcaster rosterBroadcaster;

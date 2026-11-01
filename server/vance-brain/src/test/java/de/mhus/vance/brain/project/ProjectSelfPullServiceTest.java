@@ -12,7 +12,7 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.cluster.ClusterProperties;
 import de.mhus.vance.brain.cluster.ClusterService;
-import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
+import de.mhus.vance.brain.cluster.placement.ProjectPlacement;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import java.time.Duration;
@@ -30,7 +30,7 @@ class ProjectSelfPullServiceTest {
     private ProjectLifecycleService lifecycleService;
     private ClusterService clusterService;
     private ClusterProperties properties;
-    private ProjectPlacementService placementService;
+    private ProjectPlacement placementService;
     private ProjectSelfPullService service;
 
     @BeforeEach
@@ -38,14 +38,16 @@ class ProjectSelfPullServiceTest {
         projectService = mock(ProjectService.class);
         lifecycleService = mock(ProjectLifecycleService.class);
         clusterService = mock(ClusterService.class);
-        placementService = mock(ProjectPlacementService.class);
+        placementService = mock(ProjectPlacement.class);
         properties = new ClusterProperties();
         lenient().when(clusterService.leaseTtl()).thenReturn(Duration.ofMinutes(5));
         lenient().when(clusterService.isRegistered()).thenReturn(true);
         lenient().when(placementService.localHeadroom()).thenReturn(1000);
-        lenient().when(placementService.isEligibleHere(any(ProjectDocument.class)))
+        lenient()
+                .when(placementService.isEligibleHere(any(ProjectDocument.class)))
                 .thenReturn(true);
-        lenient().when(projectService.findProjectsNeedingOwner(any(), anyInt(), anyInt()))
+        lenient()
+                .when(projectService.findProjectsNeedingOwner(any(), anyInt(), anyInt(), any()))
                 .thenReturn(List.of());
         service = new ProjectSelfPullService(
                 projectService, lifecycleService, clusterService, properties, placementService);
@@ -53,11 +55,14 @@ class ProjectSelfPullServiceTest {
 
     private static ProjectDocument candidate(String name, int score) {
         return ProjectDocument.builder()
-                .tenantId("acme").name(name).homeResourceScore(score).build();
+                .tenantId("acme")
+                .name(name)
+                .homeResourceScore(score)
+                .build();
     }
 
     private void givenCandidates(ProjectDocument... docs) {
-        when(projectService.findProjectsNeedingOwner(any(), anyInt(), anyInt()))
+        when(projectService.findProjectsNeedingOwner(any(), anyInt(), anyInt(), any()))
                 .thenReturn(List.of(docs), List.of());
     }
 
@@ -71,7 +76,7 @@ class ProjectSelfPullServiceTest {
 
         service.tick();
 
-        verify(projectService, never()).findProjectsNeedingOwner(any(), anyInt(), anyInt());
+        verify(projectService, never()).findProjectsNeedingOwner(any(), anyInt(), anyInt(), any());
         verify(lifecycleService, never()).bring(anyString(), anyString());
     }
 
@@ -88,10 +93,10 @@ class ProjectSelfPullServiceTest {
     @Test
     void tick_scheduledOn_survivesAFailingRound() {
         properties.getSelfPull().setScheduled(true);
-        when(projectService.findProjectsNeedingOwner(any(), anyInt(), anyInt()))
+        when(projectService.findProjectsNeedingOwner(any(), anyInt(), anyInt(), any()))
                 .thenThrow(new IllegalStateException("mongo hiccup"));
 
-        service.tick();  // must not propagate — a scheduler thread dies on a throw
+        service.tick(); // must not propagate — a scheduler thread dies on a throw
     }
 
     // ─── readyToPull ────────────────────────────────────────────────
@@ -176,7 +181,7 @@ class ProjectSelfPullServiceTest {
                 .thenThrow(new ProjectManagerService.ClaimRejectedException("beaten to it"));
         givenCandidates(candidate("p1", 1));
 
-        service.pullOnce("test");  // the CAS doing its job, not a failure
+        service.pullOnce("test"); // the CAS doing its job, not a failure
     }
 
     @Test
@@ -188,11 +193,34 @@ class ProjectSelfPullServiceTest {
             firstPage[i] = candidate("foreign-" + i, 1);
             when(placementService.isEligibleHere(firstPage[i])).thenReturn(false);
         }
-        when(projectService.findProjectsNeedingOwner(any(), anyInt(), anyInt()))
+        when(projectService.findProjectsNeedingOwner(any(), anyInt(), anyInt(), any()))
                 .thenReturn(List.of(firstPage), List.of(candidate("mine", 1)), List.of());
 
         service.pullOnce("test");
 
         verify(lifecycleService).bring("acme", "mine");
+    }
+
+    @Test
+    void pullOnce_inASingleNodeInstallation_treatsOtherPodsLeasesAsStranded() {
+        // The restart: the previous instance's leases are still inside their time.
+        when(clusterService.soleLeaseHolder()).thenReturn(java.util.Optional.of("pod-me"));
+        givenCandidates(candidate("p1", 1));
+
+        service.pullOnce("test");
+
+        verify(projectService)
+                .findProjectsNeedingOwner(any(), anyInt(), anyInt(), org.mockito.ArgumentMatchers.eq("pod-me"));
+    }
+
+    @Test
+    void pullOnce_inACluster_trustsEveryLeaseUntilItExpires() {
+        when(clusterService.soleLeaseHolder()).thenReturn(java.util.Optional.empty());
+        givenCandidates(candidate("p1", 1));
+
+        service.pullOnce("test");
+
+        verify(projectService)
+                .findProjectsNeedingOwner(any(), anyInt(), anyInt(), org.mockito.ArgumentMatchers.isNull());
     }
 }

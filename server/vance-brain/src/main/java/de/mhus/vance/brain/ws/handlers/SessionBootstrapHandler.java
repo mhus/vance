@@ -14,7 +14,7 @@ import de.mhus.vance.brain.action.ActionExecutorRegistry;
 import de.mhus.vance.brain.action.ActionResult;
 import de.mhus.vance.brain.action.TriggerContext;
 import de.mhus.vance.brain.cluster.placement.PlacementTrigger;
-import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
+import de.mhus.vance.brain.cluster.placement.ProjectPlacement;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.inbox.InboxPendingSummaryPusher;
 import de.mhus.vance.brain.permission.RequestAuthority;
@@ -99,7 +99,7 @@ public class SessionBootstrapHandler implements WsHandler {
     private final ActionExecutorRegistry actionRegistry;
     private final LaneScheduler laneScheduler;
     private final SessionBootstrapTargets bootstrapTargets;
-    private final ProjectPlacementService placementService;
+    private final ProjectPlacement placementService;
     private final ProjectService projectService;
 
     @Override

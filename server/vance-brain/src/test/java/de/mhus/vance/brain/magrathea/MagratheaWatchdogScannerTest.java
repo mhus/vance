@@ -12,7 +12,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.magrathea.MagratheaTaskStatus;
-import de.mhus.vance.brain.cluster.ClusterMasterService;
+import de.mhus.vance.brain.cluster.FakeCoordinator;
 import de.mhus.vance.shared.magrathea.MagratheaJournalService;
 import de.mhus.vance.shared.magrathea.MagratheaTaskDocument;
 import de.mhus.vance.shared.magrathea.MagratheaTaskService;
@@ -23,7 +23,6 @@ import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.beans.factory.ObjectProvider;
 
 class MagratheaWatchdogScannerTest {
 
@@ -32,13 +31,11 @@ class MagratheaWatchdogScannerTest {
     private final MagratheaProperties properties = new MagratheaProperties();
     private final MagratheaJournalService journalService = mock(MagratheaJournalService.class);
     private final MagratheaWorkflowLoader workflowLoader = mock(MagratheaWorkflowLoader.class);
-    private final ClusterMasterService masterService = mock(ClusterMasterService.class);
+    private final FakeCoordinator coordinator = FakeCoordinator.master();
     private final MagratheaWatchdogScanner scanner = new MagratheaWatchdogScanner(
-            taskService, workflowService, properties,
-            journalService, workflowLoader, provider(masterService));
+            taskService, workflowService, properties, journalService, workflowLoader, coordinator);
 
     {
-        when(masterService.isLocalPodMaster()).thenReturn(true);
     }
 
     @Test
@@ -52,7 +49,8 @@ class MagratheaWatchdogScannerTest {
         // The reason has to name what was stuck — the run view shows it and
         // it is the only clue left about a defect nobody witnessed.
         org.assertj.core.api.Assertions.assertThat(reason.getValue())
-                .contains("watchdog").contains("work");
+                .contains("watchdog")
+                .contains("work");
     }
 
     @Test
@@ -101,7 +99,7 @@ class MagratheaWatchdogScannerTest {
     void aNonMasterPod_doesNotSweep() {
         // The unwind is a chain of side effects with no compare-and-set in
         // it — two pods would end the same run twice.
-        when(masterService.isLocalPodMaster()).thenReturn(false);
+        coordinator.setMaster(false);
 
         scanner.scan();
 
@@ -109,12 +107,16 @@ class MagratheaWatchdogScannerTest {
     }
 
     @Test
-    void withoutAMasterService_theLonePodSweeps() {
-        // Cluster-master switched off means single-pod; refusing there
-        // would disable the net where nobody can take over.
+    void withCoordinationSwitchedOff_everyPodSweeps() {
+        // Coordination switched off means nobody can take over; refusing
+        // there would disable the net.
         MagratheaWatchdogScanner lone = new MagratheaWatchdogScanner(
-                taskService, workflowService, properties,
-                journalService, workflowLoader, provider(null));
+                taskService,
+                workflowService,
+                properties,
+                journalService,
+                workflowLoader,
+                FakeCoordinator.uncoordinated());
         when(taskService.findStalledBefore(any(), anyInt())).thenReturn(List.of(task("run-1", "work")));
 
         lone.scan();
@@ -143,13 +145,11 @@ class MagratheaWatchdogScannerTest {
                     type: terminal
                     outcome: success
                 """);
-        when(taskService.findStalledBefore(any(), anyInt()))
-                .thenReturn(List.of(task("run-1", "ask")));
+        when(taskService.findStalledBefore(any(), anyInt())).thenReturn(List.of(task("run-1", "ask")));
 
         scanner.scan();
 
-        verify(workflowService, never())
-                .failStalledRun(anyString(), anyString(), anyString(), anyString());
+        verify(workflowService, never()).failStalledRun(anyString(), anyString(), anyString(), anyString());
     }
 
     @Test
@@ -166,8 +166,7 @@ class MagratheaWatchdogScannerTest {
                     type: terminal
                     outcome: success
                 """);
-        when(taskService.findStalledBefore(any(), anyInt()))
-                .thenReturn(List.of(task("run-1", "ask")));
+        when(taskService.findStalledBefore(any(), anyInt())).thenReturn(List.of(task("run-1", "ask")));
 
         scanner.scan();
 
@@ -181,11 +180,11 @@ class MagratheaWatchdogScannerTest {
         // would make the last net vanish where it is needed most.
         when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
                 .thenReturn(java.util.Optional.of(StartRecord.builder()
-                        .workflowName("demo").definitionYaml("not: [a plan").build()));
-        when(workflowLoader.validateYaml(any(), any()))
-                .thenThrow(new IllegalStateException("unparseable"));
-        when(taskService.findStalledBefore(any(), anyInt()))
-                .thenReturn(List.of(task("run-1", "ask")));
+                        .workflowName("demo")
+                        .definitionYaml("not: [a plan")
+                        .build()));
+        when(workflowLoader.validateYaml(any(), any())).thenThrow(new IllegalStateException("unparseable"));
+        when(taskService.findStalledBefore(any(), anyInt())).thenReturn(List.of(task("run-1", "ask")));
 
         scanner.scan();
 
@@ -195,17 +194,10 @@ class MagratheaWatchdogScannerTest {
     private void givenFrozenPlan(String yaml) {
         when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
                 .thenReturn(java.util.Optional.of(StartRecord.builder()
-                        .workflowName("demo").definitionYaml(yaml).build()));
-        when(workflowLoader.validateYaml(any(), any()))
-                .thenReturn(MagratheaWorkflowLoader.parseYaml("demo", yaml));
-    }
-
-    @SuppressWarnings("unchecked")
-    private static ObjectProvider<ClusterMasterService> provider(
-            @org.jspecify.annotations.Nullable ClusterMasterService service) {
-        ObjectProvider<ClusterMasterService> provider = mock(ObjectProvider.class);
-        when(provider.getIfAvailable()).thenReturn(service);
-        return provider;
+                        .workflowName("demo")
+                        .definitionYaml(yaml)
+                        .build()));
+        when(workflowLoader.validateYaml(any(), any())).thenReturn(MagratheaWorkflowLoader.parseYaml("demo", yaml));
     }
 
     private static MagratheaTaskDocument task(String runId, String stateName) {

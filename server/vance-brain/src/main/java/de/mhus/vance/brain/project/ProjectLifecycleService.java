@@ -5,7 +5,7 @@ import de.mhus.vance.brain.cluster.ClusterBringClient;
 import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.brain.cluster.placement.ClusterFullException;
 import de.mhus.vance.brain.cluster.placement.PlacementTrigger;
-import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
+import de.mhus.vance.brain.cluster.placement.ProjectPlacement;
 import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.rag.ProjectRagService;
 import de.mhus.vance.brain.session.SessionChatBootstrapper;
@@ -85,7 +85,7 @@ public class ProjectLifecycleService {
 
     private final ProjectService projectService;
     private final ProjectManagerService projectManager;
-    private final ProjectPlacementService placementService;
+    private final ProjectPlacement placementService;
     private final WorkspaceService workspaceService;
     private final SessionService sessionService;
     private final ApplicationEventPublisher eventPublisher;

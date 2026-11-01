@@ -14,7 +14,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.cluster.placement.PlacementTrigger;
-import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
+import de.mhus.vance.brain.cluster.placement.ProjectPlacement;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectKind;
 import de.mhus.vance.shared.project.ProjectQuotaService;
@@ -42,7 +42,7 @@ class ProjectLifecycleQuotaTest {
     private static final String PROJECT = "kunde-x";
 
     private ProjectService projectService;
-    private ProjectPlacementService placementService;
+    private ProjectPlacement placementService;
     private ProjectQuotaService quotaService;
     private ProjectGroupService groupService;
     private ProjectLifecycleService service;
@@ -51,7 +51,7 @@ class ProjectLifecycleQuotaTest {
     @BeforeEach
     void setUp() {
         projectService = mock(ProjectService.class);
-        placementService = mock(ProjectPlacementService.class);
+        placementService = mock(ProjectPlacement.class);
         quotaService = mock(ProjectQuotaService.class);
         groupService = mock(ProjectGroupService.class);
         service = new ProjectLifecycleService(

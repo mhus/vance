@@ -20,7 +20,7 @@ import org.junit.jupiter.api.Test;
 /**
  * Drives {@link ClusterCleanupTick#sweep(Instant)} directly so all branches
  * are reachable without the scheduler — same pattern as
- * {@link ClusterMasterServiceTest}.
+ * {@code ClusterMasterServiceTest}.
  */
 class ClusterCleanupTickTest {
 
@@ -28,7 +28,7 @@ class ClusterCleanupTickTest {
     private static final String SELF_POD = "self-pod-id";
     private static final String SELF_NODE = "self-node";
 
-    private ClusterMasterService masterService;
+    private ClusterCoordinator masterService;
     private ClusterService clusterService;
     private BrainPodService brainPodService;
     private ClusterProperties properties;
@@ -36,7 +36,7 @@ class ClusterCleanupTickTest {
 
     @BeforeEach
     void setUp() {
-        masterService = mock(ClusterMasterService.class);
+        masterService = mock(ClusterCoordinator.class);
         clusterService = mock(ClusterService.class);
         brainPodService = mock(BrainPodService.class);
         properties = new ClusterProperties();
@@ -53,8 +53,7 @@ class ClusterCleanupTickTest {
     @Test
     void sweep_deletesStaleRow() {
         Instant now = Instant.parse("2026-06-09T11:00:00Z");
-        BrainPodDocument stale = pod("old-pod", "shannon-curie", PodStatus.STOPPED,
-                now.minus(Duration.ofHours(2)));
+        BrainPodDocument stale = pod("old-pod", "shannon-curie", PodStatus.STOPPED, now.minus(Duration.ofHours(2)));
         when(brainPodService.listCluster(CLUSTER_ID)).thenReturn(List.of(stale));
 
         int deleted = tick.sweep(now);
@@ -66,8 +65,7 @@ class ClusterCleanupTickTest {
     @Test
     void sweep_keepsFreshRow() {
         Instant now = Instant.parse("2026-06-09T11:00:00Z");
-        BrainPodDocument fresh = pod("fresh-pod", "mira-narwhal", PodStatus.RUNNING,
-                now.minus(Duration.ofMinutes(2)));
+        BrainPodDocument fresh = pod("fresh-pod", "mira-narwhal", PodStatus.RUNNING, now.minus(Duration.ofMinutes(2)));
         when(brainPodService.listCluster(CLUSTER_ID)).thenReturn(List.of(fresh));
 
         int deleted = tick.sweep(now);
@@ -80,8 +78,7 @@ class ClusterCleanupTickTest {
     void sweep_neverDeletesSelf() {
         Instant now = Instant.parse("2026-06-09T11:00:00Z");
         // Self has an absurdly old heartbeat (e.g. JVM was paused under debugger).
-        BrainPodDocument self = pod(SELF_POD, SELF_NODE, PodStatus.RUNNING,
-                now.minus(Duration.ofDays(7)));
+        BrainPodDocument self = pod(SELF_POD, SELF_NODE, PodStatus.RUNNING, now.minus(Duration.ofDays(7)));
         when(brainPodService.listCluster(CLUSTER_ID)).thenReturn(List.of(self));
 
         int deleted = tick.sweep(now);
@@ -94,8 +91,7 @@ class ClusterCleanupTickTest {
     void sweep_ignoresStatus_deletesStaleRunning() {
         // A crashed pod stays at RUNNING but stops beating — must still be purged.
         Instant now = Instant.parse("2026-06-09T11:00:00Z");
-        BrainPodDocument crashed = pod("crashed-pod", "zombie-pod", PodStatus.RUNNING,
-                now.minus(Duration.ofHours(2)));
+        BrainPodDocument crashed = pod("crashed-pod", "zombie-pod", PodStatus.RUNNING, now.minus(Duration.ofHours(2)));
         when(brainPodService.listCluster(CLUSTER_ID)).thenReturn(List.of(crashed));
 
         int deleted = tick.sweep(now);
@@ -120,16 +116,11 @@ class ClusterCleanupTickTest {
     @Test
     void sweep_mixedBatch_deletesOnlyStaleOthers() {
         Instant now = Instant.parse("2026-06-09T11:00:00Z");
-        BrainPodDocument self = pod(SELF_POD, SELF_NODE, PodStatus.RUNNING,
-                now.minus(Duration.ofSeconds(30)));
-        BrainPodDocument fresh = pod("fresh-pod", "fresh-name", PodStatus.RUNNING,
-                now.minus(Duration.ofMinutes(2)));
-        BrainPodDocument stale1 = pod("stale-1", "stale-name-1", PodStatus.STOPPED,
-                now.minus(Duration.ofHours(3)));
-        BrainPodDocument stale2 = pod("stale-2", "stale-name-2", PodStatus.RUNNING,
-                now.minus(Duration.ofHours(5)));
-        when(brainPodService.listCluster(CLUSTER_ID))
-                .thenReturn(List.of(self, fresh, stale1, stale2));
+        BrainPodDocument self = pod(SELF_POD, SELF_NODE, PodStatus.RUNNING, now.minus(Duration.ofSeconds(30)));
+        BrainPodDocument fresh = pod("fresh-pod", "fresh-name", PodStatus.RUNNING, now.minus(Duration.ofMinutes(2)));
+        BrainPodDocument stale1 = pod("stale-1", "stale-name-1", PodStatus.STOPPED, now.minus(Duration.ofHours(3)));
+        BrainPodDocument stale2 = pod("stale-2", "stale-name-2", PodStatus.RUNNING, now.minus(Duration.ofHours(5)));
+        when(brainPodService.listCluster(CLUSTER_ID)).thenReturn(List.of(self, fresh, stale1, stale2));
 
         int deleted = tick.sweep(now);
 
@@ -160,8 +151,8 @@ class ClusterCleanupTickTest {
         verify(brainPodService).listCluster(CLUSTER_ID);
     }
 
-    private BrainPodDocument pod(String podId, String nodeName, PodStatus status,
-                                 @org.jspecify.annotations.Nullable Instant beat) {
+    private BrainPodDocument pod(
+            String podId, String nodeName, PodStatus status, @org.jspecify.annotations.Nullable Instant beat) {
         return BrainPodDocument.builder()
                 .clusterId(CLUSTER_ID)
                 .podId(podId)

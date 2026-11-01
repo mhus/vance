@@ -1,6 +1,6 @@
 package de.mhus.vance.brain.magrathea;
 
-import de.mhus.vance.brain.cluster.ClusterMasterService;
+import de.mhus.vance.brain.cluster.ClusterCoordinator;
 import de.mhus.vance.shared.magrathea.MagratheaJournalService;
 import de.mhus.vance.shared.magrathea.MagratheaStateSpec;
 import de.mhus.vance.shared.magrathea.MagratheaTaskDocument;
@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -58,10 +57,7 @@ import org.springframework.stereotype.Component;
  * a master service the pod is alone and runs it.
  */
 @Component
-@ConditionalOnProperty(
-        value = "vance.services.magrathea",
-        havingValue = "true",
-        matchIfMissing = false)
+@ConditionalOnProperty(value = "vance.services.magrathea", havingValue = "true", matchIfMissing = false)
 @RequiredArgsConstructor
 @Slf4j
 public class MagratheaWatchdogScanner {
@@ -74,7 +70,7 @@ public class MagratheaWatchdogScanner {
     private final MagratheaJournalService journalService;
     private final MagratheaWorkflowLoader workflowLoader;
     /** Absent when the cluster-master feature is off — then this pod is alone. */
-    private final ObjectProvider<ClusterMasterService> masterServiceProvider;
+    private final ClusterCoordinator coordinator;
 
     /**
      * The cadence is unrelated to the ceiling: it decides how late a
@@ -104,24 +100,24 @@ public class MagratheaWatchdogScanner {
             String runId = task.getWorkflowRunId();
             if (runId == null) continue;
             if (waitsForever(task)) {
-                log.debug("Magrathea watchdog: run {} state '{}' declared timeoutSeconds: 0 "
-                        + "— left standing", runId, task.getStateName());
+                log.debug(
+                        "Magrathea watchdog: run {} state '{}' declared timeoutSeconds: 0 " + "— left standing",
+                        runId,
+                        task.getStateName());
                 continue;
             }
             if (!seen.add(runId)) continue;
-            String reason = "watchdog: no progress for " + ceiling
-                    + " (task '" + task.getStateName() + "' " + task.getStatus() + ")";
+            String reason = "watchdog: no progress for " + ceiling + " (task '" + task.getStateName() + "' "
+                    + task.getStatus() + ")";
             try {
-                if (workflowService.failStalledRun(
-                        task.getTenantId(), task.getProjectId(), runId, reason)) {
+                if (workflowService.failStalledRun(task.getTenantId(), task.getProjectId(), runId, reason)) {
                     log.warn("Magrathea watchdog: run {} failed — {}", runId, reason);
                 }
             } catch (RuntimeException ex) {
                 // A wedged lane is one of the things this scanner is for, so
                 // it must not take the scan down with it — the next pass
                 // tries again.
-                log.warn("Magrathea watchdog: could not fail stalled run {}: {}",
-                        runId, ex.toString());
+                log.warn("Magrathea watchdog: could not fail stalled run {}: {}", runId, ex.toString());
             }
         }
     }
@@ -145,32 +141,30 @@ public class MagratheaWatchdogScanner {
      */
     private boolean waitsForever(MagratheaTaskDocument task) {
         try {
-            StartRecord start = journalService.readLast(
-                    task.getTenantId(), task.getProjectId(),
-                    task.getWorkflowRunId(), StartRecord.class).orElse(null);
+            StartRecord start = journalService
+                    .readLast(task.getTenantId(), task.getProjectId(), task.getWorkflowRunId(), StartRecord.class)
+                    .orElse(null);
             if (start == null) return false;
             MagratheaStateSpec state = workflowLoader
                     .validateYaml(start.getWorkflowName(), start.getDefinitionYaml())
                     .states()
                     .get(task.getStateName());
-            return state != null
-                    && state.timeoutSeconds() != null
-                    && state.timeoutSeconds() <= 0;
+            return state != null && state.timeoutSeconds() != null && state.timeoutSeconds() <= 0;
         } catch (RuntimeException ex) {
-            log.debug("Magrathea watchdog: could not read the frozen plan of run {}: {}",
-                    task.getWorkflowRunId(), ex.toString());
+            log.debug(
+                    "Magrathea watchdog: could not read the frozen plan of run {}: {}",
+                    task.getWorkflowRunId(),
+                    ex.toString());
             return false;
         }
     }
 
     /**
-     * One pod sweeps. A missing {@link ClusterMasterService} means the
-     * feature is switched off, which only happens in a single-pod
-     * deployment — refusing to sweep there would disable the net exactly
+     * One pod sweeps. When the cluster has switched coordination off, every
+     * pod sweeps — refusing to sweep there would disable the net exactly
      * where nobody else can take over.
      */
     private boolean isResponsiblePod() {
-        ClusterMasterService masterService = masterServiceProvider.getIfAvailable();
-        return masterService == null || masterService.isLocalPodMaster();
+        return coordinator.runsIdempotentSweeps();
     }
 }

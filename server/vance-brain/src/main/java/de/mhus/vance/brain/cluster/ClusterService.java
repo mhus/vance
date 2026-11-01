@@ -17,6 +17,7 @@ import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -71,6 +72,12 @@ public class ClusterService {
      * would be a constructor cycle.
      */
     private final ApplicationEventPublisher eventPublisher;
+    /**
+     * Whether pods other than this one count as alive. The single-node edition
+     * says no, which is the whole of its "all other nodes are stale" rule —
+     * every judgement about a foreign pod below goes through it.
+     */
+    private final ClusterPeerPolicy peerPolicy;
 
     @Value("${vance.build.version:dev}")
     private String buildVersion;
@@ -149,6 +156,7 @@ public class ClusterService {
                     properties.getResources().getStartupScore(),
                     properties.getResources().getMaxScore());
             registered = true;
+            warnOnLivePeers(Instant.now());
             log.info(
                     "ClusterService registered: cluster='{}' nodeName='{}' podId='{}' endpoint='{}'",
                     properties.getId(),
@@ -246,6 +254,9 @@ public class ClusterService {
      * surface a {@code 409}.
      */
     public Optional<String> resolveEndpointByPodId(String podId) {
+        if (isIgnoredPeer(podId)) {
+            return Optional.empty();
+        }
         Instant now = Instant.now();
         return brainPodService
                 .findByPodId(podId)
@@ -285,7 +296,12 @@ public class ClusterService {
      * completed — a fresh pod must not race itself out of its own claim.
      */
     public Set<String> liveClusterNodeNames() {
-        return brainPodService.listLiveClusterNodeNames(properties.getId(), timeWindows.podLiveness());
+        Set<String> live = brainPodService.listLiveClusterNodeNames(properties.getId(), timeWindows.podLiveness());
+        if (peerPolicy.countsPeers()) {
+            return live;
+        }
+        String self = selfNodeName();
+        return live.contains(self) ? Set.of(self) : Set.of();
     }
 
     /**
@@ -368,11 +384,53 @@ public class ClusterService {
         return timeWindows.routingAnswerMaxAge();
     }
 
+    /**
+     * The one pod whose project leases are real, when there is exactly one:
+     * this pod in the single-node edition, empty in a cluster. Lets the
+     * background pull treat the leases of a previous instance as stranded
+     * instead of waiting out their time — see
+     * {@code ProjectService.findProjectsNeedingOwner}.
+     */
+    public Optional<String> soleLeaseHolder() {
+        return peerPolicy.countsPeers() ? Optional.empty() : Optional.of(podId);
+    }
+
     public boolean isStale(BrainPodDocument doc, Instant now) {
+        if (isIgnoredPeer(doc.getPodId())) {
+            return true;
+        }
         return brainPodService.isStale(doc, now, timeWindows.podLiveness());
     }
 
     // ─── internals ──────────────────────────────────────────────────
+
+    /** A pod that is not this one while the policy says peers do not count. */
+    private boolean isIgnoredPeer(@Nullable String otherPodId) {
+        return !peerPolicy.countsPeers() && !podId.equals(otherPodId);
+    }
+
+    /**
+     * Single-node edition only: a heads-up when another pod's row still beats.
+     * Nothing is blocked or changed — the other row is read as stale — but two
+     * community brains on one database are unsupported, and this is the line
+     * that explains the strange behaviour that follows.
+     */
+    private void warnOnLivePeers(Instant now) {
+        if (peerPolicy.countsPeers()) {
+            return;
+        }
+        long others = brainPodService.listCluster(properties.getId()).stream()
+                .filter(p -> !podId.equals(p.getPodId()))
+                .filter(p -> p.getStatus() != PodStatus.STOPPED)
+                .filter(p -> !brainPodService.isStale(p, now, timeWindows.podLiveness()))
+                .count();
+        if (others > 0) {
+            log.warn(
+                    "single-node edition: {} other live node(s) found, treating them as stale — "
+                            + "running more than one community brain on one database is not supported",
+                    others);
+        }
+    }
 
     /**
      * Picks the node name once, on whichever thread asks first.

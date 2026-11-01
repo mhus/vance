@@ -8,7 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
+import de.mhus.vance.brain.cluster.placement.ProjectPlacement;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.shared.cluster.BrainPodService;
 import de.mhus.vance.shared.project.ProjectService;
@@ -34,7 +34,7 @@ class ClusterInternalControllerReleaseTest {
                 mock(BrainPodService.class),
                 mock(ProjectService.class),
                 mock(ClusterService.class),
-                mock(ProjectPlacementService.class),
+                mock(ProjectPlacement.class),
                 mock(ApplicationEventPublisher.class));
     }
 

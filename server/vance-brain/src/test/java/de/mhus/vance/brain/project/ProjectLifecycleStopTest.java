@@ -14,7 +14,7 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.cluster.ClusterBringClient;
 import de.mhus.vance.brain.cluster.ClusterService;
-import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
+import de.mhus.vance.brain.cluster.placement.ProjectPlacement;
 import de.mhus.vance.brain.session.SessionLifecycleService;
 import de.mhus.vance.shared.project.ProjectActualState;
 import de.mhus.vance.shared.project.ProjectDocument;
@@ -77,7 +77,7 @@ class ProjectLifecycleStopTest {
         service = new ProjectLifecycleService(
                 projectService,
                 projectManager,
-                mock(ProjectPlacementService.class),
+                mock(ProjectPlacement.class),
                 workspaceService,
                 mock(SessionService.class),
                 eventPublisher,

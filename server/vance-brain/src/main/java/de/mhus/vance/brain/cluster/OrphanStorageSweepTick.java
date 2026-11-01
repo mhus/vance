@@ -7,7 +7,6 @@ import java.time.Instant;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -26,13 +25,11 @@ import org.springframework.stereotype.Component;
  * create/update completes well within an hour.
  */
 @Component
-@ConditionalOnProperty(name = "vance.cluster.master.enabled", havingValue = "true",
-        matchIfMissing = true)
 @RequiredArgsConstructor
 @Slf4j
 public class OrphanStorageSweepTick {
 
-    private final ClusterMasterService masterService;
+    private final ClusterCoordinator coordinator;
     private final StorageOrphanCleanupService cleanupService;
     private final OrphanArchiveCleanupService archiveCleanupService;
 
@@ -42,10 +39,11 @@ public class OrphanStorageSweepTick {
     @Value("${vance.storage.orphan-sweep.batch-size:500}")
     private int batchSize = 500;
 
-    @Scheduled(fixedDelayString = "${vance.storage.orphan-sweep.interval:PT1H}",
+    @Scheduled(
+            fixedDelayString = "${vance.storage.orphan-sweep.interval:PT1H}",
             initialDelayString = "${vance.storage.orphan-sweep.initial-delay:PT5M}")
     public void tick() {
-        if (!masterService.isLocalPodMaster()) {
+        if (!coordinator.isLocalPodMaster()) {
             return;
         }
         try {
@@ -53,9 +51,10 @@ public class OrphanStorageSweepTick {
             // bad round never takes the scheduler thread with it.
             CleanupResult result = sweep(Instant.now());
             if (!result.isClean()) {
-                log.info("OrphanStorageSweepTick: removed {} orphan archive(s) and "
-                                + "{} orphan blob(s)",
-                        result.orphanArchivesDeleted(), result.orphanStorageDeleted());
+                log.info(
+                        "OrphanStorageSweepTick: removed {} orphan archive(s) and " + "{} orphan blob(s)",
+                        result.orphanArchivesDeleted(),
+                        result.orphanStorageDeleted());
             }
         } catch (RuntimeException e) {
             log.warn("OrphanStorageSweepTick: sweep failed: {}", e.toString());

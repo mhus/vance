@@ -6,7 +6,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import de.mhus.vance.brain.cluster.ClusterMasterService;
+import de.mhus.vance.brain.cluster.ClusterCoordinator;
 import de.mhus.vance.shared.tenant.TenantDocument;
 import de.mhus.vance.shared.tenant.TenantService;
 import java.util.List;
@@ -21,7 +21,7 @@ import org.springframework.test.util.ReflectionTestUtils;
  */
 class ModelDiscoveryTickTest {
 
-    private final ClusterMasterService masterService = mock(ClusterMasterService.class);
+    private final ClusterCoordinator masterService = mock(ClusterCoordinator.class);
     private final TenantService tenantService = mock(TenantService.class);
     private final ModelDiscoveryService discoveryService = mock(ModelDiscoveryService.class);
 

@@ -1,7 +1,7 @@
 package de.mhus.vance.brain.thinkengine;
 
 import de.mhus.vance.api.thinkprocess.CloseReason;
-import de.mhus.vance.brain.cluster.ClusterMasterService;
+import de.mhus.vance.brain.cluster.ClusterCoordinator;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.time.Duration;
@@ -10,7 +10,6 @@ import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -64,19 +63,15 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class DelegationDeadlockWatchdog {
 
-    /**
-     * Absent when the cluster-master feature is off — a hard dependency on a
-     * conditional bean failed the whole boot in that configuration.
-     */
-    private final ObjectProvider<ClusterMasterService> masterServiceProvider;
+    private final ClusterCoordinator coordinator;
     private final ThinkProcessService thinkProcessService;
     private final Duration staleAfter;
 
     public DelegationDeadlockWatchdog(
-            ObjectProvider<ClusterMasterService> masterServiceProvider,
+            ClusterCoordinator coordinator,
             ThinkProcessService thinkProcessService,
             @Value("${vance.thinkengine.deadlock-watchdog.stale-after:PT10M}") Duration staleAfter) {
-        this.masterServiceProvider = masterServiceProvider;
+        this.coordinator = coordinator;
         this.thinkProcessService = thinkProcessService;
         this.staleAfter = staleAfter;
     }
@@ -101,8 +96,7 @@ public class DelegationDeadlockWatchdog {
      */
     int sweep(Instant now) {
         Instant cutoff = now.minus(staleAfter);
-        List<ThinkProcessDocument> stalled =
-                thinkProcessService.findStalledDelegatedWorkers(cutoff);
+        List<ThinkProcessDocument> stalled = thinkProcessService.findStalledDelegatedWorkers(cutoff);
         if (stalled.isEmpty()) {
             return 0;
         }
@@ -121,12 +115,11 @@ public class DelegationDeadlockWatchdog {
                 closed++;
             }
         }
-        log.info("DelegationDeadlockWatchdog swept {} stalled worker(s) (cutoff={})",
-                closed, cutoff);
+        log.info("DelegationDeadlockWatchdog swept {} stalled worker(s) (cutoff={})", closed, cutoff);
         return closed;
     }
     /**
-     * Whether this pod runs the sweep. With no {@code ClusterMasterService} the
+     * Whether this pod runs the sweep. With coordination switched off the
      * answer is <b>yes</b>: the sweep is internal and idempotent (closing an
      * already-closed worker changes nothing), so the cost of two pods doing it
      * is nil while the cost of nobody doing it is stalled workers that never
@@ -135,7 +128,6 @@ public class DelegationDeadlockWatchdog {
      * tracker where a duplicate cannot be taken back.
      */
     private boolean isResponsiblePod() {
-        ClusterMasterService masterService = masterServiceProvider.getIfAvailable();
-        return masterService == null || masterService.isLocalPodMaster();
+        return coordinator.runsIdempotentSweeps();
     }
 }

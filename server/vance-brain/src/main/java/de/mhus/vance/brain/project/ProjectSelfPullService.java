@@ -2,7 +2,7 @@ package de.mhus.vance.brain.project;
 
 import de.mhus.vance.brain.cluster.ClusterProperties;
 import de.mhus.vance.brain.cluster.ClusterService;
-import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
+import de.mhus.vance.brain.cluster.placement.ProjectPlacement;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import java.util.List;
@@ -58,7 +58,7 @@ public class ProjectSelfPullService {
     private final ProjectLifecycleService lifecycleService;
     private final ClusterService clusterService;
     private final ClusterProperties clusterProperties;
-    private final ProjectPlacementService placementService;
+    private final ProjectPlacement placementService;
 
     /**
      * Periodic self-pull. The tick fires on the configured interval regardless
@@ -74,7 +74,8 @@ public class ProjectSelfPullService {
      * time, but there is no jitter. Fine for an experiment, worth revisiting
      * before it becomes a default.
      */
-    @Scheduled(fixedDelayString = "${vance.cluster.self-pull.interval:PT5M}",
+    @Scheduled(
+            fixedDelayString = "${vance.cluster.self-pull.interval:PT5M}",
             initialDelayString = "${vance.cluster.self-pull.interval:PT5M}")
     public void tick() {
         if (!clusterProperties.getSelfPull().isScheduled()) {
@@ -126,8 +127,7 @@ public class ProjectSelfPullService {
         int buffer = budget / 2;
         int headroom = placementService.localHeadroom();
         if (headroom <= 0) {
-            log.info("Self-pull ({}) skipped — no local headroom "
-                    + "(pod is at or above its maxScore)", reason);
+            log.info("Self-pull ({}) skipped — no local headroom " + "(pod is at or above its maxScore)", reason);
             return;
         }
         int cap = (int) Math.min((long) budget + buffer, (long) headroom);
@@ -145,7 +145,10 @@ public class ProjectSelfPullService {
         int skip = 0;
         while (pulled < cap) {
             List<ProjectDocument> candidates = projectService.findProjectsNeedingOwner(
-                    clusterService.leaseTtl(), PAGE_SIZE, skip);
+                    clusterService.leaseTtl(),
+                    PAGE_SIZE,
+                    skip,
+                    clusterService.soleLeaseHolder().orElse(null));
             if (candidates.isEmpty()) break;
             for (ProjectDocument p : candidates) {
                 if (!placementService.isEligibleHere(p)) {
@@ -166,8 +169,12 @@ public class ProjectSelfPullService {
                     // Another pod beat us to it — that is the CAS doing its job.
                     skipped++;
                 } catch (RuntimeException e) {
-                    log.warn("Self-pull ({}) bring failed for '{}/{}': {}",
-                            reason, p.getTenantId(), p.getName(), e.toString());
+                    log.warn(
+                            "Self-pull ({}) bring failed for '{}/{}': {}",
+                            reason,
+                            p.getTenantId(),
+                            p.getName(),
+                            e.toString());
                     skipped++;
                 }
             }
@@ -175,9 +182,18 @@ public class ProjectSelfPullService {
             skip += candidates.size();
         }
         if (brought > 0 || skipped > 0 || ineligible > 0) {
-            log.info("Self-pull ({}): brought={} skipped={} ineligible={} score={}/{} "
+            log.info(
+                    "Self-pull ({}): brought={} skipped={} ineligible={} score={}/{} "
                             + "(buffer={}, headroom={}, cap={})",
-                    reason, brought, skipped, ineligible, pulled, budget, buffer, headroom, cap);
+                    reason,
+                    brought,
+                    skipped,
+                    ineligible,
+                    pulled,
+                    budget,
+                    buffer,
+                    headroom,
+                    cap);
         } else {
             // A periodic pull finds nothing most of the time. INFO on every tick
             // would drown the log and train the reader to ignore the line that

@@ -4,7 +4,6 @@ import de.mhus.vance.shared.session.SessionService;
 import java.time.Instant;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -29,19 +28,18 @@ import org.springframework.stereotype.Component;
  * cleans those only when a project is actively brought online.
  */
 @Component
-@ConditionalOnProperty(name = "vance.cluster.master.enabled", havingValue = "true",
-        matchIfMissing = true)
 @RequiredArgsConstructor
 @Slf4j
 public class SessionStaleBindSweepTick {
 
-    private final ClusterMasterService masterService;
+    private final ClusterCoordinator coordinator;
     private final SessionService sessionService;
 
-    @Scheduled(fixedDelayString = "${vance.session.stale-bind-sweep.interval:PT60S}",
+    @Scheduled(
+            fixedDelayString = "${vance.session.stale-bind-sweep.interval:PT60S}",
             initialDelayString = "${vance.session.stale-bind-sweep.initial-delay:PT2M}")
     public void tick() {
-        if (!masterService.isLocalPodMaster()) {
+        if (!coordinator.isLocalPodMaster()) {
             return;
         }
         try {

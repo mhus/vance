@@ -73,7 +73,7 @@ class ProjectLifecycleBringTest {
         service = new ProjectLifecycleService(
                 projectService,
                 projectManager,
-                mock(de.mhus.vance.brain.cluster.placement.ProjectPlacementService.class),
+                mock(de.mhus.vance.brain.cluster.placement.ProjectPlacement.class),
                 workspaceService,
                 sessionService,
                 eventPublisher,

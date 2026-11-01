@@ -2,7 +2,7 @@ package de.mhus.vance.brain.project;
 
 import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.brain.cluster.placement.PlacementTrigger;
-import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
+import de.mhus.vance.brain.cluster.placement.ProjectPlacement;
 import de.mhus.vance.shared.project.LifecycleType;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectOwnership;
@@ -58,7 +58,7 @@ public class ProjectLocator {
      * HTTP read-timeout of {@code HttpClusterBringClient} inside the dispatch
      * — v1 has no extra wrapper around it.
      */
-    private final ProjectPlacementService placementService;
+    private final ProjectPlacement placementService;
 
     /**
      * Resolves the project's current owning endpoint. With

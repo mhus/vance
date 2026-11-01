@@ -17,7 +17,7 @@ import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.action.ActionExecutorRegistry;
 import de.mhus.vance.brain.cluster.placement.PlacementTrigger;
-import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
+import de.mhus.vance.brain.cluster.placement.ProjectPlacement;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.events.SessionRosterBroadcaster;
 import de.mhus.vance.brain.inbox.InboxPendingSummaryPusher;
@@ -138,7 +138,7 @@ class SessionBootstrapHandlerActivationTest {
     private LaneScheduler laneScheduler;
 
     @Mock
-    private ProjectPlacementService placementService;
+    private ProjectPlacement placementService;
 
     @Mock
     private ProjectService projectService;

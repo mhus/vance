@@ -2,12 +2,12 @@ package de.mhus.vance.brain.fook.upstream;
 
 import de.mhus.vance.api.inbox.Criticality;
 import de.mhus.vance.api.inbox.MaximegalonType;
-import de.mhus.vance.brain.cluster.ClusterMasterService;
+import de.mhus.vance.api.settings.SettingType;
+import de.mhus.vance.brain.cluster.ClusterCoordinator;
 import de.mhus.vance.brain.fook.FookTicketService;
 import de.mhus.vance.brain.fook.TicketDocument;
 import de.mhus.vance.shared.inbox.MaximegalonDocument;
 import de.mhus.vance.shared.inbox.MaximegalonService;
-import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.tenant.TenantService;
 import java.time.Instant;
@@ -19,7 +19,6 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -87,14 +86,7 @@ public class FookUpstreamService {
     private final FookTicketAnonymizer anonymizer;
     private final MaximegalonService inboxItemService;
     private final SettingService settingService;
-    /**
-     * Absent when the cluster-master feature is off ({@code
-     * vance.cluster.master.enabled=false}) — injected through a provider
-     * because a hard dependency on a conditional bean failed the whole boot
-     * in that configuration, which the spec describes as supported
-     * ({@code specification/cluster-project-management.md} §8).
-     */
-    private final ObjectProvider<ClusterMasterService> masterServiceProvider;
+    private final ClusterCoordinator coordinator;
     private final List<TicketProvider> providers;
 
     /** Mirrors {@code vance.fook.enabled} (default {@code true}). Part
@@ -128,8 +120,8 @@ public class FookUpstreamService {
         if (pending.isEmpty()) return;
 
         UpstreamConfig cfg = loadConfig();
-        log.info("Fook upstream: sender tick — {} pending ticket(s) for provider '{}'",
-                pending.size(), provider.name());
+        log.info(
+                "Fook upstream: sender tick — {} pending ticket(s) for provider '{}'", pending.size(), provider.name());
 
         for (TicketDocument ticket : pending) {
             try {
@@ -142,32 +134,31 @@ public class FookUpstreamService {
                     // cap, continuing here would also cost four fifths of the
                     // allowed throughput: one ticket per tick instead of one
                     // per minute.
-                    log.info("Fook upstream: provider '{}' rate-limited (retry after {}) — "
+                    log.info(
+                            "Fook upstream: provider '{}' rate-limited (retry after {}) — "
                                     + "ending this pass with {} ticket(s) still pending",
-                            provider.name(), e.getRetryAfter(), pending.size());
+                            provider.name(),
+                            e.getRetryAfter(),
+                            pending.size());
                     return;
                 }
                 if (e.isRetryable()) {
-                    log.info("Fook upstream: transient transfer failure for {} " +
-                                    "({}), will retry on next tick",
-                            ticket.getId(), e.getMessage());
+                    log.info(
+                            "Fook upstream: transient transfer failure for {} " + "({}), will retry on next tick",
+                            ticket.getId(),
+                            e.getMessage());
                 } else {
-                    log.warn("Fook upstream: permanent transfer failure for {}: {}",
-                            ticket.getId(), e.getMessage());
+                    log.warn("Fook upstream: permanent transfer failure for {}: {}", ticket.getId(), e.getMessage());
                     ticketService.markTransferFailed(ticket.getId(), e.getMessage());
                     updateInboxOnFailure(ticket, e);
                 }
             } catch (RuntimeException e) {
-                log.warn("Fook upstream: unexpected error transferring {}: {}",
-                        ticket.getId(), e.getMessage());
+                log.warn("Fook upstream: unexpected error transferring {}: {}", ticket.getId(), e.getMessage());
             }
         }
     }
 
-    private void transferOne(
-            TicketDocument ticket,
-            TicketProvider provider,
-            UpstreamConfig cfg) {
+    private void transferOne(TicketDocument ticket, TicketProvider provider, UpstreamConfig cfg) {
         // Fold the session-analysis report (if any) into the upstream body so
         // the fixer — who has no access to the original session — gets the
         // distilled context. Scrubbed inside buildDraft with the same patterns.
@@ -191,19 +182,23 @@ public class FookUpstreamService {
         // logged so an operator can reconcile the already-created upstream issue.
         try {
             ticketService.markTransferred(
-                    ticket.getId(), provider.name(),
-                    ref.getExternalId(), ref.getDisplayId(), ref.getUrl());
+                    ticket.getId(), provider.name(), ref.getExternalId(), ref.getDisplayId(), ref.getUrl());
         } catch (RuntimeException e) {
             // displayId, not externalId: this line reaches the log
             // aggregation, and for the collector the externalId is a
             // capability handle.
-            log.error("Fook upstream: issue {} was created for ticket {} but "
+            log.error(
+                    "Fook upstream: issue {} was created for ticket {} but "
                             + "markTransferred failed — marking ticket failed to prevent a "
                             + "duplicate re-send (reconcile the upstream issue manually): {}",
-                    ref.getDisplayId(), ticket.getId(), e.toString(), e);
-            ticketService.markTransferFailed(ticket.getId(),
-                    "upstream issue " + ref.getDisplayId() + " was created but transfer "
-                            + "bookkeeping failed: " + e.getMessage());
+                    ref.getDisplayId(),
+                    ticket.getId(),
+                    e.toString(),
+                    e);
+            ticketService.markTransferFailed(
+                    ticket.getId(),
+                    "upstream issue " + ref.getDisplayId() + " was created but transfer " + "bookkeeping failed: "
+                            + e.getMessage());
             return;
         }
 
@@ -219,8 +214,8 @@ public class FookUpstreamService {
                 ? "Your submission was transferred to the upstream ticket system. "
                         + "Track it at " + ref.getUrl() + " — anyone with that link "
                         + "can read and answer the ticket, so share it accordingly."
-                : "Your submission was transferred to the upstream ticket system "
-                        + "as " + ref.getDisplayId() + ". Status updates arrive here.";
+                : "Your submission was transferred to the upstream ticket system " + "as " + ref.getDisplayId()
+                        + ". Status updates arrive here.";
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("decision", "new_ticket");
         payload.put("ticketId", ticket.getId());
@@ -232,15 +227,13 @@ public class FookUpstreamService {
         if (ref.getUrl() != null) payload.put("upstreamUrl", ref.getUrl());
         try {
             inboxItemService.updateContent(
-                    inboxTenantId(ticket),
-                    ticket.getInboxItemId(),
-                    "Ticket transferred",
-                    body,
-                    payload,
-                    ORIGINATOR);
+                    inboxTenantId(ticket), ticket.getInboxItemId(), "Ticket transferred", body, payload, ORIGINATOR);
         } catch (RuntimeException e) {
-            log.warn("Fook upstream: could not update inbox item {} for ticket {}: {}",
-                    ticket.getInboxItemId(), ticket.getId(), e.getMessage());
+            log.warn(
+                    "Fook upstream: could not update inbox item {} for ticket {}: {}",
+                    ticket.getInboxItemId(),
+                    ticket.getId(),
+                    e.getMessage());
         }
     }
 
@@ -255,15 +248,22 @@ public class FookUpstreamService {
                     ticket.getInboxItemId(),
                     "Ticket transfer failed",
                     body,
-                    Map.of("decision", "new_ticket",
-                            "ticketId", ticket.getId(),
-                            "status", "failed",
-                            "error", cause.getClass().getSimpleName()),
+                    Map.of(
+                            "decision",
+                            "new_ticket",
+                            "ticketId",
+                            ticket.getId(),
+                            "status",
+                            "failed",
+                            "error",
+                            cause.getClass().getSimpleName()),
                     ORIGINATOR);
         } catch (RuntimeException e) {
-            log.warn("Fook upstream: could not update inbox item {} for ticket {} " +
-                            "(failure path): {}",
-                    ticket.getInboxItemId(), ticket.getId(), e.getMessage());
+            log.warn(
+                    "Fook upstream: could not update inbox item {} for ticket {} " + "(failure path): {}",
+                    ticket.getInboxItemId(),
+                    ticket.getId(),
+                    e.getMessage());
         }
     }
 
@@ -313,9 +313,11 @@ public class FookUpstreamService {
                 java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder())));
         int batchSize = Math.max(1, provider.pollBatchSize());
         if (mine.size() > batchSize) {
-            log.info("Fook upstream: polling {} of {} tracked ticket(s) this pass — "
+            log.info(
+                    "Fook upstream: polling {} of {} tracked ticket(s) this pass — "
                             + "the least recently checked first; the rest follow next tick",
-                    batchSize, mine.size());
+                    batchSize,
+                    mine.size());
             mine = new ArrayList<>(mine.subList(0, batchSize));
         }
 
@@ -327,9 +329,7 @@ public class FookUpstreamService {
                     // Tickets transferred before upstreamDisplayId existed
                     // have none; for GitHub — the only provider back then —
                     // the two ids are the same value.
-                    .displayId(t.getUpstreamDisplayId() != null
-                            ? t.getUpstreamDisplayId()
-                            : t.getUpstreamExternalId())
+                    .displayId(t.getUpstreamDisplayId() != null ? t.getUpstreamDisplayId() : t.getUpstreamExternalId())
                     .url(t.getUpstreamUrl())
                     .build());
         }
@@ -344,15 +344,13 @@ public class FookUpstreamService {
                         .min(java.util.Comparator.naturalOrder())
                         .orElse(Instant.EPOCH));
 
-        log.info("Fook upstream: poll tick — checking {} transferred ticket(s) since {}",
-                mine.size(), since);
+        log.info("Fook upstream: poll tick — checking {} transferred ticket(s) since {}", mine.size(), since);
 
         List<ProviderTicketUpdate> updates;
         try {
             updates = provider.pollUpdates(refs, since);
         } catch (ProviderException e) {
-            log.info("Fook upstream: poll failed ({}) — will retry next tick",
-                    e.getMessage());
+            log.info("Fook upstream: poll failed ({}) — will retry next tick", e.getMessage());
             return;
         }
 
@@ -383,15 +381,14 @@ public class FookUpstreamService {
 
     private void applyUpdate(TicketDocument local, ProviderTicketUpdate update) {
         // Mirror state change.
-        if (update.getState() != null
-                && !update.getState().equals(local.getUpstreamState())) {
+        if (update.getState() != null && !update.getState().equals(local.getUpstreamState())) {
             ticketService.markUpstreamState(local.getId(), update.getState());
             postStatusInbox(local, update);
         } else {
             // Even without a state change, keep lastSyncedAt fresh so the
             // next tick's `since` advances.
-            ticketService.markUpstreamState(local.getId(),
-                    update.getState() == null ? local.getUpstreamState() : update.getState());
+            ticketService.markUpstreamState(
+                    local.getId(), update.getState() == null ? local.getUpstreamState() : update.getState());
         }
 
         // Fan out new comments as separate FEEDBACK inbox items — but dedup
@@ -427,8 +424,7 @@ public class FookUpstreamService {
                 .criticality(Criticality.LOW)
                 .tags(List.of(INBOX_TAG, INBOX_TAG_STATUS))
                 .title("Ticket status: " + update.getState())
-                .body("Your ticket " + reference(local)
-                        + " is now `" + update.getState() + "`.")
+                .body("Your ticket " + reference(local) + " is now `" + update.getState() + "`.")
                 .payload(upstreamPayload(local, Map.of("state", update.getState())))
                 .requiresAction(false)
                 .build();
@@ -441,9 +437,7 @@ public class FookUpstreamService {
      */
     private String reference(TicketDocument local) {
         if (local.getUpstreamUrl() != null) return "at " + local.getUpstreamUrl();
-        String id = local.getUpstreamDisplayId() != null
-                ? local.getUpstreamDisplayId()
-                : local.getUpstreamExternalId();
+        String id = local.getUpstreamDisplayId() != null ? local.getUpstreamDisplayId() : local.getUpstreamExternalId();
         return id == null ? "" : "(" + id + ")";
     }
 
@@ -455,16 +449,14 @@ public class FookUpstreamService {
      * Carries the display id only: an inbox item can be delegated and
      * shared, and the externalId may be a capability handle.
      */
-    private Map<String, Object> upstreamPayload(
-            TicketDocument local, Map<String, Object> extra) {
+    private Map<String, Object> upstreamPayload(TicketDocument local, Map<String, Object> extra) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("ticketId", local.getId());
         if (local.getUpstreamProvider() != null) {
             payload.put("upstreamProvider", local.getUpstreamProvider());
         }
-        String displayId = local.getUpstreamDisplayId() != null
-                ? local.getUpstreamDisplayId()
-                : local.getUpstreamExternalId();
+        String displayId =
+                local.getUpstreamDisplayId() != null ? local.getUpstreamDisplayId() : local.getUpstreamExternalId();
         if (displayId != null) payload.put("upstreamDisplayId", displayId);
         if (local.getUpstreamUrl() != null) {
             payload.put("upstreamUrl", local.getUpstreamUrl());
@@ -473,8 +465,7 @@ public class FookUpstreamService {
         return payload;
     }
 
-    private void postCommentInbox(
-            TicketDocument local, ProviderTicketUpdate.ProviderComment c) {
+    private void postCommentInbox(TicketDocument local, ProviderTicketUpdate.ProviderComment c) {
         if (local.getReporter() == null
                 || local.getReporter().getUserId() == null
                 || local.getReporter().getTenantId() == null) return;
@@ -506,8 +497,7 @@ public class FookUpstreamService {
      * time; cascade-read picks that up.
      */
     private String readString(String key, String defaultValue) {
-        String v = settingService.getStringValueCascade(
-                TenantService.SYSTEM_TENANT, null, null, key);
+        String v = settingService.getStringValueCascade(TenantService.SYSTEM_TENANT, null, null, key);
         return (v == null || v.isBlank()) ? defaultValue : v;
     }
 
@@ -522,14 +512,10 @@ public class FookUpstreamService {
 
     private @Nullable TicketProvider currentProvider() {
         String type = readString(SETTING_PROVIDER_TYPE, DEFAULT_PROVIDER);
-        return providers.stream()
-                .filter(p -> p.name().equals(type))
-                .findFirst()
-                .orElseGet(() -> {
-                    log.warn("Fook upstream: no provider bean registered for type '{}' — " +
-                            "skipping tick", type);
-                    return null;
-                });
+        return providers.stream().filter(p -> p.name().equals(type)).findFirst().orElseGet(() -> {
+            log.warn("Fook upstream: no provider bean registered for type '{}' — " + "skipping tick", type);
+            return null;
+        });
     }
 
     /** Reads the per-call upstream configuration. Generates and
@@ -537,27 +523,24 @@ public class FookUpstreamService {
      *  use so the upstream side sees stable correlation across
      *  brain restarts. */
     private UpstreamConfig loadConfig() {
-        String fingerprint = ensureSetting(SETTING_FINGERPRINT,
+        String fingerprint = ensureSetting(
+                SETTING_FINGERPRINT,
                 () -> "vance-" + UUID.randomUUID().toString().substring(0, 8),
                 "Opaque identifier for this brain instance, sent to the upstream "
                         + "ticket system so it can group submissions per source.");
-        String secret = ensureSetting(SETTING_INSTANCE_SECRET,
+        String secret = ensureSetting(
+                SETTING_INSTANCE_SECRET,
                 () -> UUID.randomUUID().toString(),
                 "Salt for reporter-identity hashing — keep stable so upstream "
                         + "can correlate same-reporter submissions across time.");
-        boolean anonymize = settingService.getBooleanValueCascade(
-                TenantService.SYSTEM_TENANT, null, null, SETTING_ANONYMIZE, true);
+        boolean anonymize =
+                settingService.getBooleanValueCascade(TenantService.SYSTEM_TENANT, null, null, SETTING_ANONYMIZE, true);
         String patternsCsv = readString(SETTING_SCRUB_PATTERNS, "email,ipv4,apiKey,guid");
         String extraLabelsCsv = readString(SETTING_EXTRA_LABELS, "");
-        return new UpstreamConfig(
-                fingerprint, secret, anonymize,
-                splitCsv(patternsCsv), splitCsv(extraLabelsCsv));
+        return new UpstreamConfig(fingerprint, secret, anonymize, splitCsv(patternsCsv), splitCsv(extraLabelsCsv));
     }
 
-    private String ensureSetting(
-            String key,
-            java.util.function.Supplier<String> generator,
-            String description) {
+    private String ensureSetting(String key, java.util.function.Supplier<String> generator, String description) {
         String current = readString(key, "");
         if (!current.isBlank()) return current;
         String generated = generator.get();
@@ -566,7 +549,10 @@ public class FookUpstreamService {
                 TenantService.SYSTEM_TENANT,
                 SettingService.SCOPE_PROJECT,
                 de.mhus.vance.shared.home.HomeBootstrapService.TENANT_PROJECT_NAME,
-                key, generated, SettingType.STRING, description);
+                key,
+                generated,
+                SettingType.STRING,
+                description);
         // Never log the value — SETTING_INSTANCE_SECRET is the salt that
         // protects reporter-identity hashes from reversal (code-review F4).
         log.info("Fook upstream: generated and persisted {}", key);
@@ -601,7 +587,7 @@ public class FookUpstreamService {
     /**
      * Whether this pod is the one allowed to talk to the upstream tracker.
      *
-     * <p>With no {@code ClusterMasterService} the answer is <b>no</b>, and that
+     * <p>With coordination switched off the answer is <b>no</b>, and that
      * is the opposite of what {@code MagratheaWatchdogScanner} decides in the
      * same situation. The difference is the direction of the write: Magratheas
      * sweep is internal and idempotent, so refusing it would disable a safety
@@ -612,7 +598,6 @@ public class FookUpstreamService {
      * mastering is off.
      */
     private boolean isSendingPod() {
-        ClusterMasterService masterService = masterServiceProvider.getIfAvailable();
-        return masterService != null && masterService.isLocalPodMaster();
+        return coordinator.runsForeignWrites();
     }
 }

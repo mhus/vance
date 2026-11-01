@@ -11,7 +11,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.projects.WorkspaceTreeNodeDto;
-import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
+import de.mhus.vance.brain.cluster.placement.ProjectPlacement;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.shared.location.LocationService;
@@ -76,7 +76,7 @@ class WorkspaceControllerAdoptTest {
     private ProjectService projectService;
 
     @Mock
-    private ProjectPlacementService placementService;
+    private ProjectPlacement placementService;
 
     @Mock
     private RequestAuthority authority;

@@ -7,7 +7,6 @@ import java.time.Instant;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -29,21 +28,20 @@ import org.springframework.stereotype.Component;
  * truth.
  */
 @Component
-@ConditionalOnProperty(name = "vance.cluster.master.enabled", havingValue = "true",
-        matchIfMissing = true)
 @RequiredArgsConstructor
 @Slf4j
 public class ClusterCleanupTick {
 
-    private final ClusterMasterService masterService;
+    private final ClusterCoordinator coordinator;
     private final ClusterService clusterService;
     private final ClusterProperties properties;
     private final BrainPodService brainPodService;
 
-    @Scheduled(fixedDelayString = "${vance.cluster.cleanup.interval:PT10M}",
+    @Scheduled(
+            fixedDelayString = "${vance.cluster.cleanup.interval:PT10M}",
             initialDelayString = "${vance.cluster.cleanup.initial-delay:PT2M}")
     public void tick() {
-        if (!masterService.isLocalPodMaster()) {
+        if (!coordinator.isLocalPodMaster()) {
             return;
         }
         try {
@@ -78,18 +76,18 @@ public class ClusterCleanupTick {
                     long removed = brainPodService.deleteByPodId(doc.getPodId());
                     if (removed > 0) {
                         deleted++;
-                        log.info("ClusterCleanupTick: removed stale pod '{}' (lastHeartbeatAt={})",
-                                doc.getNodeName(), beat);
+                        log.info(
+                                "ClusterCleanupTick: removed stale pod '{}' (lastHeartbeatAt={})",
+                                doc.getNodeName(),
+                                beat);
                     }
                 } catch (RuntimeException e) {
-                    log.warn("ClusterCleanupTick: delete failed for pod '{}': {}",
-                            doc.getNodeName(), e.toString());
+                    log.warn("ClusterCleanupTick: delete failed for pod '{}': {}", doc.getNodeName(), e.toString());
                 }
             }
         }
         if (deleted > 0) {
-            log.info("ClusterCleanupTick: swept {} stale pod row(s) older than {}",
-                    deleted, after);
+            log.info("ClusterCleanupTick: swept {} stale pod row(s) older than {}", deleted, after);
         }
         return deleted;
     }

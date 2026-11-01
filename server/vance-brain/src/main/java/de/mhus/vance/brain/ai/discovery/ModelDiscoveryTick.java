@@ -1,6 +1,6 @@
 package de.mhus.vance.brain.ai.discovery;
 
-import de.mhus.vance.brain.cluster.ClusterMasterService;
+import de.mhus.vance.brain.cluster.ClusterCoordinator;
 import de.mhus.vance.shared.tenant.TenantDocument;
 import de.mhus.vance.shared.tenant.TenantService;
 import java.util.List;
@@ -42,7 +42,7 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class ModelDiscoveryTick {
 
-    private final ClusterMasterService masterService;
+    private final ClusterCoordinator coordinator;
     private final TenantService tenantService;
     private final ModelDiscoveryService discoveryService;
 
@@ -64,7 +64,7 @@ public class ModelDiscoveryTick {
         if (!enabled) {
             return;
         }
-        if (!masterService.isLocalPodMaster()) {
+        if (!coordinator.isLocalPodMaster()) {
             return;
         }
         List<TenantDocument> tenants = tenantService.all();

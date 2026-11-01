@@ -2,7 +2,7 @@ package de.mhus.vance.brain.workspace.access;
 
 import de.mhus.vance.api.projects.WorkspaceNodeType;
 import de.mhus.vance.api.projects.WorkspaceTreeNodeDto;
-import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
+import de.mhus.vance.brain.cluster.placement.ProjectPlacement;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.brain.project.ProjectManagerService;
@@ -73,7 +73,7 @@ public class WorkspaceController {
     private final LocationService locationService;
     private final ProjectLifecycleService lifecycleService;
     private final ProjectService projectService;
-    private final ProjectPlacementService placementService;
+    private final ProjectPlacement placementService;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
     private final RequestAuthority authority;
@@ -86,7 +86,7 @@ public class WorkspaceController {
             LocationService locationService,
             ProjectLifecycleService lifecycleService,
             ProjectService projectService,
-            ProjectPlacementService placementService,
+            ProjectPlacement placementService,
             ObjectMapper objectMapper,
             RequestAuthority authority,
             @Value("${vance.internal.token:}") String internalToken) {

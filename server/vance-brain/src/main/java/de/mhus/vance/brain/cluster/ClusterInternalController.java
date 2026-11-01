@@ -3,7 +3,7 @@ package de.mhus.vance.brain.cluster;
 import de.mhus.vance.brain.cluster.placement.ClusterFullException;
 import de.mhus.vance.brain.cluster.placement.PlacementDecision;
 import de.mhus.vance.brain.cluster.placement.PlacementTrigger;
-import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
+import de.mhus.vance.brain.cluster.placement.ProjectPlacement;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.shared.cluster.BrainPodCapacity;
@@ -47,7 +47,7 @@ public class ClusterInternalController {
     private final BrainPodService brainPodService;
     private final ProjectService projectService;
     private final ClusterService clusterService;
-    private final ProjectPlacementService placementService;
+    private final ProjectPlacement placementService;
     private final ApplicationEventPublisher eventPublisher;
 
     /**

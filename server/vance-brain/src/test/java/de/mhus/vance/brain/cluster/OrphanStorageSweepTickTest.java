@@ -24,14 +24,14 @@ import org.junit.jupiter.api.Test;
  */
 class OrphanStorageSweepTickTest {
 
-    private ClusterMasterService masterService;
+    private ClusterCoordinator masterService;
     private StorageOrphanCleanupService cleanupService;
     private OrphanArchiveCleanupService archiveCleanupService;
     private OrphanStorageSweepTick tick;
 
     @BeforeEach
     void setUp() throws Exception {
-        masterService = mock(ClusterMasterService.class);
+        masterService = mock(ClusterCoordinator.class);
         cleanupService = mock(StorageOrphanCleanupService.class);
         archiveCleanupService = mock(OrphanArchiveCleanupService.class);
         tick = new OrphanStorageSweepTick(masterService, cleanupService, archiveCleanupService);
@@ -77,8 +77,7 @@ class OrphanStorageSweepTickTest {
         // The two phases are independent — running archives first is only an
         // optimisation. A Mongo hiccup while walking the archives used to skip
         // the blob sweep for a whole hour.
-        when(archiveCleanupService.sweepOnce(anyInt()))
-                .thenThrow(new RuntimeException("mongo hiccup"));
+        when(archiveCleanupService.sweepOnce(anyInt())).thenThrow(new RuntimeException("mongo hiccup"));
         when(cleanupService.sweepOnce(any(), any(), anyInt())).thenReturn(4L);
 
         OrphanStorageSweepTick.CleanupResult r = tick.sweep(Instant.parse("2026-06-12T08:00:00Z"));
@@ -91,8 +90,7 @@ class OrphanStorageSweepTickTest {
     @Test
     void tick_swallowsSweepFailure() {
         when(masterService.isLocalPodMaster()).thenReturn(true);
-        when(cleanupService.sweepOnce(any(), any(), anyInt()))
-                .thenThrow(new RuntimeException("mongo down"));
+        when(cleanupService.sweepOnce(any(), any(), anyInt())).thenThrow(new RuntimeException("mongo down"));
 
         // Must not propagate — the scheduler thread would otherwise die.
         tick.tick();

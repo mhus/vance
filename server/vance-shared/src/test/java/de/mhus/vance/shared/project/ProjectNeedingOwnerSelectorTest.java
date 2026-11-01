@@ -55,6 +55,31 @@ class ProjectNeedingOwnerSelectorTest {
     }
 
     @Test
+    void findProjectsNeedingOwner_withASoleHolder_countsAnotherPodsLeaseAsStranded() {
+        // The restart of a single-node installation: the previous instance's
+        // lease is still inside its time, but that pod is not coming back.
+        when(mongoTemplate.find(any(Query.class), eq(ProjectDocument.class))).thenReturn(List.of());
+
+        service.findProjectsNeedingOwner(Duration.ofMinutes(5), 20, 0, "pod-me");
+
+        ArgumentCaptor<Query> captor = ArgumentCaptor.forClass(Query.class);
+        verify(mongoTemplate).find(captor.capture(), eq(ProjectDocument.class));
+        String json = captor.getValue().getQueryObject().toString();
+        assertThat(json).contains("$ne").contains("pod-me");
+    }
+
+    @Test
+    void findProjectsNeedingOwner_withoutASoleHolder_trustsEveryLeaseUntilItExpires() {
+        when(mongoTemplate.find(any(Query.class), eq(ProjectDocument.class))).thenReturn(List.of());
+
+        service.findProjectsNeedingOwner(Duration.ofMinutes(5), 20, 0, null);
+
+        ArgumentCaptor<Query> captor = ArgumentCaptor.forClass(Query.class);
+        verify(mongoTemplate).find(captor.capture(), eq(ProjectDocument.class));
+        assertThat(captor.getValue().getQueryObject().toString()).doesNotContain("pod-me");
+    }
+
+    @Test
     void findPendingPlacement_excludesHomelessRows() {
         // The demand report evaluates every pending row, and the placement
         // evaluation refuses a homeless one — a stale mark must not reach it.

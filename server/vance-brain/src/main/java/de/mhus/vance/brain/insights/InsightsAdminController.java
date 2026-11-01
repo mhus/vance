@@ -33,7 +33,7 @@ import de.mhus.vance.api.toolhealth.ToolHealthScope;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.ModelInsightsService;
-import de.mhus.vance.brain.cluster.ClusterMasterService;
+import de.mhus.vance.brain.cluster.ClusterCoordinator;
 import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.recipe.RecipeLoader;
@@ -151,7 +151,7 @@ public class InsightsAdminController {
     private final WorkspaceRoutingCache workspaceRoutingCache;
     private final WorkspaceAccessProperties workspaceAccessProperties;
     private final ClusterService clusterService;
-    private final Optional<ClusterMasterService> clusterMasterService;
+    private final ClusterCoordinator clusterCoordinator;
     private final ProjectService projectService;
     private final PrakRunService prakRunService;
     private final AddonInsightsService addonInsightsService;
@@ -1127,7 +1127,7 @@ public class InsightsAdminController {
         String selfPodId = clusterService.selfPodId();
         String tenantPrefix = tenant + "/";
 
-        Optional<ClusterMasterDocument> leaseOpt = clusterMasterService.flatMap(ClusterMasterService::currentLease);
+        Optional<ClusterMasterDocument> leaseOpt = clusterCoordinator.currentLease();
         String masterPodId =
                 leaseOpt.map(ClusterMasterDocument::getCurrentPodId).orElse(null);
 

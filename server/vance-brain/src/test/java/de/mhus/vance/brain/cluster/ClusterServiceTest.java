@@ -40,6 +40,7 @@ class ClusterServiceTest {
     private ClusterProperties properties;
     private ApplicationEventPublisher eventPublisher;
     private ClusterService service;
+    private ClusterService singleNodeService;
 
     @BeforeEach
     void setUp() {
@@ -67,8 +68,19 @@ class ClusterServiceTest {
                 nameGenerator,
                 properties,
                 new ClusterTimeWindows(properties),
-                eventPublisher);
+                eventPublisher,
+                () -> true);
         ReflectionTestUtils.setField(service, "buildVersion", "1.0.0-test");
+        singleNodeService = new ClusterService(
+                brainPodService,
+                projectService,
+                locationService,
+                nameGenerator,
+                properties,
+                new ClusterTimeWindows(properties),
+                eventPublisher,
+                new SingleNodePeerPolicy());
+        ReflectionTestUtils.setField(singleNodeService, "buildVersion", "1.0.0-test");
     }
 
     @Test
@@ -296,5 +308,95 @@ class ClusterServiceTest {
         when(brainPodService.findByPodId("pod-other")).thenReturn(java.util.Optional.empty());
 
         assertThat(service.isHolderGone("pod-other")).isFalse();
+    }
+
+    // ─── single-node edition: every pod but this one is stale ────────────────
+
+    @Test
+    void singleNode_aPeerThatBeatsRecently_resolvesToNoEndpoint() {
+        singleNodeService.onApplicationReady();
+        givenPodRow("pod-peer", PodStatus.RUNNING, Instant.now());
+
+        assertThat(singleNodeService.resolveEndpointByPodId("pod-peer")).isEmpty();
+    }
+
+    @Test
+    void singleNode_aPeerThatBeatsRecently_isGone() {
+        // The restart case: the previous instance's row is still inside its
+        // heartbeat window, and its projects must be takeable right away.
+        singleNodeService.onApplicationReady();
+        givenPodRow("pod-previous-instance", PodStatus.RUNNING, Instant.now());
+
+        assertThat(singleNodeService.isHolderGone("pod-previous-instance")).isTrue();
+    }
+
+    @Test
+    void singleNode_aPeerThatBeatsRecently_isStale() {
+        BrainPodDocument peer = BrainPodDocument.builder()
+                .podId("pod-peer")
+                .status(PodStatus.RUNNING)
+                .lastHeartbeatAt(Instant.now())
+                .build();
+
+        assertThat(singleNodeService.isStale(peer, Instant.now())).isTrue();
+    }
+
+    @Test
+    void singleNode_thePodItself_isNotIgnored() {
+        singleNodeService.onApplicationReady();
+        givenPodRow(singleNodeService.selfPodId(), PodStatus.RUNNING, Instant.now());
+
+        assertThat(singleNodeService.isHolderGone(singleNodeService.selfPodId()))
+                .isFalse();
+        assertThat(singleNodeService.resolveEndpointByPodId(singleNodeService.selfPodId()))
+                .isPresent();
+    }
+
+    @Test
+    void singleNode_onlyThePodItselfIsLive() {
+        singleNodeService.onApplicationReady();
+        String self = singleNodeService.selfNodeName();
+        BrainPodDocument selfRow = BrainPodDocument.builder()
+                .podId(singleNodeService.selfPodId())
+                .nodeName(self)
+                .status(PodStatus.RUNNING)
+                .build();
+        BrainPodDocument peerRow = BrainPodDocument.builder()
+                .podId("pod-peer")
+                .nodeName("other-node")
+                .status(PodStatus.RUNNING)
+                .build();
+        when(brainPodService.listLiveClusterNodeNames(any(), any(Duration.class)))
+                .thenReturn(java.util.Set.of(self, "other-node"));
+        when(brainPodService.listCluster(CLUSTER)).thenReturn(List.of(selfRow, peerRow));
+
+        assertThat(singleNodeService.liveClusterNodeNames()).containsExactly(self);
+        assertThat(singleNodeService.liveClusterPods()).containsExactly(selfRow);
+    }
+
+    @Test
+    void singleNode_aLivePeerAtRegistration_doesNotBlockTheBoot() {
+        BrainPodDocument peer = BrainPodDocument.builder()
+                .podId("pod-peer")
+                .nodeName("other-node")
+                .status(PodStatus.RUNNING)
+                .lastHeartbeatAt(Instant.now())
+                .build();
+        when(brainPodService.listCluster(CLUSTER)).thenReturn(List.of(peer));
+        when(brainPodService.isStale(any(BrainPodDocument.class), any(Instant.class), any(Duration.class)))
+                .thenReturn(false);
+
+        singleNodeService.onApplicationReady();
+
+        assertThat(singleNodeService.isRegistered()).isTrue();
+    }
+
+    @Test
+    void multiNode_aPeerThatBeatsRecently_stillCounts() {
+        service.onApplicationReady();
+        givenPodRow("pod-peer", PodStatus.RUNNING, Instant.now());
+
+        assertThat(service.isHolderGone("pod-peer")).isFalse();
+        assertThat(service.resolveEndpointByPodId("pod-peer")).isPresent();
     }
 }

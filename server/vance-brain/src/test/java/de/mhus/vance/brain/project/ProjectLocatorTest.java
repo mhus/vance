@@ -12,7 +12,7 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.brain.cluster.placement.PlacementTrigger;
-import de.mhus.vance.brain.cluster.placement.ProjectPlacementService;
+import de.mhus.vance.brain.cluster.placement.ProjectPlacement;
 import de.mhus.vance.shared.project.LifecycleType;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
@@ -35,14 +35,14 @@ class ProjectLocatorTest {
 
     private ProjectService projectService;
     private ClusterService clusterService;
-    private ProjectPlacementService placementService;
+    private ProjectPlacement placementService;
     private ProjectLocator locator;
 
     @BeforeEach
     void setUp() {
         projectService = mock(ProjectService.class);
         clusterService = mock(ClusterService.class);
-        placementService = mock(ProjectPlacementService.class);
+        placementService = mock(ProjectPlacement.class);
         when(clusterService.leaseTtl()).thenReturn(Duration.ofMinutes(5));
         locator = new ProjectLocator(projectService, clusterService, placementService);
     }

@@ -975,6 +975,25 @@ public class ProjectService {
      * stable cursor over a set that is defined by "nobody owns this right now".
      */
     public List<ProjectDocument> findProjectsNeedingOwner(Duration leaseTtl, int limit, int skip) {
+        return findProjectsNeedingOwner(leaseTtl, limit, skip, null);
+    }
+
+    /**
+     * As above, for an installation that has exactly one pod that may hold a
+     * lease: when {@code soleHolderPodId} is set, a lease held by <em>any other
+     * pod</em> counts as stranded even while its time has not run out.
+     *
+     * <p>That is the restart of a single-node installation. The new instance has
+     * a new pod id, the previous one's leases are valid for up to the lease TTL,
+     * and waiting that out would leave the projects unowned until then. Read
+     * only: the claim that follows still goes through the compare-and-set, which
+     * is what makes taking over a lease of a pod that is gone safe.
+     *
+     * @param soleHolderPodId the only pod whose leases are real, or {@code null}
+     *     when every pod counts (a cluster)
+     */
+    public List<ProjectDocument> findProjectsNeedingOwner(
+            Duration leaseTtl, int limit, int skip, @Nullable String soleHolderPodId) {
         Criteria needsOwner = new Criteria()
                 .orOperator(
                         Criteria.where(F_LIFECYCLE_TYPE).is(LifecycleType.PERMANENT),
@@ -982,8 +1001,13 @@ public class ProjectService {
                                 .is(LifecycleType.AUTO)
                                 .and(F_OWNER_REQUIRED)
                                 .is(true));
-        Criteria stranded =
-                new Criteria().orOperator(Criteria.where(F_HOME_POD).is(null), expiredLease(Instant.now(), leaseTtl));
+        List<Criteria> strandedAlternatives = new ArrayList<>();
+        strandedAlternatives.add(Criteria.where(F_HOME_POD).is(null));
+        strandedAlternatives.add(expiredLease(Instant.now(), leaseTtl));
+        if (soleHolderPodId != null) {
+            strandedAlternatives.add(Criteria.where(F_HOME_POD).ne(soleHolderPodId));
+        }
+        Criteria stranded = new Criteria().orOperator(strandedAlternatives);
         Query query = new Query(
                         new Criteria().andOperator(Criteria.where(F_STATUS).in(WANTS_TO_RUN), needsOwner, stranded))
                 .limit(Math.max(1, limit))

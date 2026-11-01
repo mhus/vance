@@ -5,6 +5,7 @@ import de.mhus.vance.api.action.TriggerKind;
 import de.mhus.vance.api.inbox.Criticality;
 import de.mhus.vance.api.inbox.MaximegalonType;
 import de.mhus.vance.api.ursascheduler.OverlapPolicy;
+import de.mhus.vance.api.ursascheduler.SchedulerGranularity;
 import de.mhus.vance.brain.action.ActionExecutorRegistry;
 import de.mhus.vance.brain.action.ActionOutcome;
 import de.mhus.vance.brain.action.ActionResult;
@@ -97,21 +98,18 @@ public class UrsaSchedulerService {
     private final MaximegalonService inboxItemService;
 
     /**
-     * When {@code false}, the seconds-field of a 6-field cron expression
-     * is clamped to {@code "0"} at registration time — see
-     * {@link #clampCronSecondsIfDisallowed}. Default {@code false}, so
-     * sub-minute crons (e.g. every-five-seconds expressions) get
-     * normalised to once-per-minute. Operators can opt back in via the
-     * {@code vance.scheduler.allow-seconds} property in
-     * {@code application.yml}.
+     * Finest cadence cron schedulers keep, see {@link SchedulerGranularity}.
+     * Default {@code minutes}: the seconds field is clamped to {@code 0}.
+     * {@code hours} additionally replaces the minute with a stable
+     * per-scheduler offset (cloud: load protection); {@code seconds} keeps
+     * the cron as written. Operators set {@code vance.scheduler.granularity}.
      *
      * <p>Field injection (not constructor) so the Lombok-generated
-     * required-args constructor stays untouched; the flag is read on
-     * every {@link #registerCron} call which always runs after Spring's
-     * field-injection completes.
+     * required-args constructor stays untouched; read on every cron
+     * registration, which always runs after Spring's field injection.
      */
-    @Value("${vance.scheduler.allow-seconds:false}")
-    private boolean allowSeconds;
+    @Value("${vance.scheduler.granularity:minutes}")
+    private String granularityRaw;
 
     /** Counter for scheduler fires. Tags: {@code scheduler}, {@code outcome}. */
     private static final String METRIC_FIRES = "vance.ursascheduler.fires";
@@ -300,10 +298,9 @@ public class UrsaSchedulerService {
         String cron = cfg.cron();
         if (cron == null) return null;
         try {
-            CronExpression expr = CronExpression.parse(cron);
-            return expr.next(java.time.ZonedDateTime.now(reg.zoneId)) == null
-                    ? null
-                    : expr.next(java.time.ZonedDateTime.now(reg.zoneId)).toInstant();
+            CronExpression expr = CronExpression.parse(effectiveCron(tenantId, projectId, name, cron));
+            java.time.ZonedDateTime next = expr.next(java.time.ZonedDateTime.now(reg.zoneId));
+            return next == null ? null : next.toInstant();
         } catch (RuntimeException ex) {
             return null;
         }
@@ -359,14 +356,15 @@ public class UrsaSchedulerService {
                     cron);
             return false;
         }
-        String effectiveCron = clampCronSecondsIfDisallowed(cron, allowSeconds);
+        String effectiveCron = effectiveCron(tenantId, projectId, config.name(), cron);
         if (!effectiveCron.equals(cron)) {
-            log.warn(
-                    "Scheduler '{}/{}/{}' seconds-field clamped to 0 — cron '{}' → '{}' "
-                            + "(set 'vance.scheduler.allow-seconds: true' to keep sub-minute precision)",
+            log.info(
+                    "Scheduler '{}/{}/{}' normalised to granularity {} — cron '{}' → '{}' "
+                            + "(vance.scheduler.granularity)",
                     tenantId,
                     projectId,
                     config.name(),
+                    granularity(),
                     cron,
                     effectiveCron);
         }
@@ -386,21 +384,17 @@ public class UrsaSchedulerService {
         return true;
     }
 
+    /** The granularity this brain lets cron schedulers keep. */
+    public SchedulerGranularity granularity() {
+        return CronGranularityPolicy.parse(granularityRaw);
+    }
+
     /**
-     * Optionally clamp the seconds field of a 6-field cron to {@code "0"}.
-     * Input is assumed valid (the loader auto-upgrades 5-field to
-     * 6-field). Returns the input unchanged when {@code allowSeconds} is
-     * true, when the cron isn't 6-field, or when the seconds field is
-     * already {@code "0"}. The original cron stays in the YAML; only the
-     * runtime trigger sees the clamped value.
+     * The cron the trigger really runs: {@code cron} as written, normalised to
+     * {@link #granularity()}. The YAML keeps the original.
      */
-    static String clampCronSecondsIfDisallowed(String cron, boolean allowSeconds) {
-        if (allowSeconds) return cron;
-        String[] fields = cron.trim().split("\\s+");
-        if (fields.length != 6) return cron;
-        if ("0".equals(fields[0])) return cron;
-        fields[0] = "0";
-        return String.join(" ", fields);
+    String effectiveCron(String tenantId, String projectId, String name, String cron) {
+        return CronGranularityPolicy.apply(cron, granularity(), registryKey(tenantId, projectId, name));
     }
 
     /**

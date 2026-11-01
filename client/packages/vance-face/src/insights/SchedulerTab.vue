@@ -10,6 +10,7 @@ import {
   VInput,
   VModal,
 } from '@/components';
+import { useSchedulerPolicy } from '@/composables/useSchedulerPolicy';
 import { useSchedulers } from '@/composables/useSchedulers';
 import type { SchedulerSummary } from '@vance/generated';
 
@@ -29,6 +30,7 @@ const props = defineProps<{ projectId: string | null }>();
 
 const { t } = useI18n();
 const state = useSchedulers();
+const { granularity } = useSchedulerPolicy(() => props.projectId);
 
 const selectedName = ref<string | null>(null);
 const yamlDraft = ref<string>('');
@@ -176,6 +178,10 @@ function formatTimestamp(value?: Date | string | null): string {
 
       <VAlert v-if="state.error.value" variant="error">{{ state.error.value }}</VAlert>
       <VAlert v-if="banner" variant="success">{{ banner }}</VAlert>
+
+      <VAlert v-if="granularity === 'HOURS'" variant="info">
+        {{ t('scheduler.policyHours') }}
+      </VAlert>
 
       <!-- 3-column body: list / editor / events -->
       <div class="grid grid-cols-12 gap-3">

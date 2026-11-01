@@ -5,6 +5,7 @@ import de.mhus.vance.api.megadodo.MegadodoRefType;
 import de.mhus.vance.api.ursascheduler.LockMode;
 import de.mhus.vance.api.ursascheduler.OverlapPolicy;
 import de.mhus.vance.api.ursascheduler.SchedulerDto;
+import de.mhus.vance.api.ursascheduler.SchedulerPolicyDto;
 import de.mhus.vance.api.ursascheduler.SchedulerSaveRequest;
 import de.mhus.vance.api.ursascheduler.SchedulerSource;
 import de.mhus.vance.api.ursascheduler.SchedulerSummary;
@@ -78,6 +79,24 @@ public class UrsaSchedulerController {
         }
         out.sort(Comparator.comparing(SchedulerSummary::getName));
         return out;
+    }
+
+    // ─── Policy ───────────────────────────────────────────────────────────
+
+    /**
+     * What this brain lets cron schedulers do ({@code vance.scheduler.granularity}).
+     * The Web-UI shows it next to the cron inputs so the user knows, before
+     * saving, that a finer expression is normalised at registration.
+     */
+    @GetMapping("/scheduler-policy")
+    public SchedulerPolicyDto policy(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("project") String project,
+            HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
+        return SchedulerPolicyDto.builder()
+                .granularity(schedulerService.granularity())
+                .build();
     }
 
     // ─── Get ──────────────────────────────────────────────────────────────

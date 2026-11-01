@@ -60,44 +60,6 @@ class UrsaSchedulerServiceAutoDisableTest {
         assertThat(out).contains("recipe: \"ford\"\nenabled: false\n");
     }
 
-    // ──── clampCronSecondsIfDisallowed ───────────────────────────────
-
-    @Test
-    void clampCron_allowSecondsTrue_keepsCronUntouched() {
-        assertThat(UrsaSchedulerService.clampCronSecondsIfDisallowed("*/5 * * * * *", true))
-                .isEqualTo("*/5 * * * * *");
-    }
-
-    @Test
-    void clampCron_disallowed_clampsNonZeroSecondsToZero() {
-        // Six-field with seconds=*/5 → clamped to seconds=0 (still hourly).
-        assertThat(UrsaSchedulerService.clampCronSecondsIfDisallowed("*/5 * * * * *", false))
-                .isEqualTo("0 * * * * *");
-    }
-
-    @Test
-    void clampCron_disallowed_leavesAlreadyZeroSecondsAlone() {
-        // Already once-per-minute, no clamp needed.
-        assertThat(UrsaSchedulerService.clampCronSecondsIfDisallowed("0 0 * * * *", false))
-                .isEqualTo("0 0 * * * *");
-    }
-
-    @Test
-    void clampCron_disallowed_leavesFiveFieldCronAlone() {
-        // The loader normally upgrades 5-field to 6-field, but defensively
-        // handle the case where a 5-field expression slips through.
-        assertThat(UrsaSchedulerService.clampCronSecondsIfDisallowed("0 * * * *", false))
-                .isEqualTo("0 * * * *");
-    }
-
-    @Test
-    void clampCron_disallowed_normalisesInternalWhitespace() {
-        // Multiple spaces between fields are squashed by the split+join
-        // — the resulting trigger value is canonical-form.
-        assertThat(UrsaSchedulerService.clampCronSecondsIfDisallowed("*/5   *   *   *   *   *", false))
-                .isEqualTo("0 * * * * *");
-    }
-
     @Test
     void disableInYaml_preservesCommentsAndIndentation() {
         // The contract is "edit in place, preserve author intent" — no

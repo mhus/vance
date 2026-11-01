@@ -3341,6 +3341,8 @@ export default {
     tenantWide: '_vance (tenant defaults)',
     projectLabel: 'Project',
     listLabel: 'Schedulers',
+    policyHours:
+      'Cron schedulers on this server run at most once per hour, at a minute the server picks per scheduler to spread the load — not at an exact minute.',
     refresh: 'Refresh',
     new: 'New scheduler…',
     create: 'Create',
@@ -3407,6 +3409,10 @@ export default {
       onceAtHelp: 'Fires once, then the document moves to the trash.',
       cron: 'Cron expression',
       cronHelp: 'Quartz 6-field: <sec> <min> <hour> <day-of-month> <month> <day-of-week>.',
+      policyHours:
+        'This server runs schedulers at most once per hour, and not at an exact minute: it picks a fixed minute per scheduler to spread the load. The minute and seconds you enter here are not honoured; the hour, day and weekday are.',
+      policyMinutes:
+        'This server runs schedulers at most once per minute: the seconds field is ignored and treated as 0.',
       timezone: 'Timezone',
       timezoneHelp: 'IANA zone (e.g. Europe/Berlin). When empty, UTC applies.',
       enabled: 'Enabled',

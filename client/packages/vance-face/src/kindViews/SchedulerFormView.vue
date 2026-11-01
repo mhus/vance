@@ -20,6 +20,7 @@
 import { computed, nextTick, reactive, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { VAlert, VCheckbox, VInput, VSelect, VTextarea } from '@/components';
+import { useSchedulerPolicy } from '@/composables/useSchedulerPolicy';
 import {
   WEEKDAYS,
   applySchedule,
@@ -51,6 +52,7 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const { granularity } = useSchedulerPolicy(() => props.projectId);
 
 // ── Form state, re-derived whenever the shell hands us a new model ──────
 
@@ -178,6 +180,20 @@ function toggleWeekday(day: string, on: boolean): void {
 const cronPreview = computed<string>(() =>
   schedule.mode === 'once' ? schedule.at : cronFromSchedule(schedule),
 );
+
+/**
+ * What the installation does to the cron before it fires. One-shots (`at:`)
+ * are never touched; MINUTES only matters for a hand-written expression
+ * (the form's own modes never use the seconds field).
+ */
+const policyHint = computed<string>(() => {
+  if (schedule.mode === 'once') return '';
+  if (granularity.value === 'HOURS') return t('scheduler.form.policyHours');
+  if (granularity.value === 'MINUTES' && schedule.mode === 'other') {
+    return t('scheduler.form.policyMinutes');
+  }
+  return '';
+});
 
 // ── Target inputs ───────────────────────────────────────────────────────
 
@@ -394,6 +410,10 @@ function pad2(n: number): string {
           :disabled="disabled"
         />
       </div>
+
+      <VAlert v-if="policyHint" variant="info">
+        {{ policyHint }}
+      </VAlert>
 
       <p class="text-xs text-base-content/60 font-mono break-all">
         {{ schedule.mode === 'once' ? 'at:' : 'cron:' }} {{ cronPreview }}

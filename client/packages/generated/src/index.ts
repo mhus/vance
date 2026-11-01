@@ -364,6 +364,8 @@ export * from './thinkprocess/TodosUpdatedNotification';
 
 export * from './scheduler/OverlapPolicy';
 export * from './scheduler/SchedulerDto';
+export * from './scheduler/SchedulerGranularity';
+export * from './scheduler/SchedulerPolicyDto';
 export * from './scheduler/SchedulerSaveRequest';
 export * from './scheduler/SchedulerSource';
 export * from './scheduler/SchedulerSummary';

@@ -68,6 +68,15 @@ initialMessage: |
 Important:
 - **Cron format is 6-field Quartz**, NOT 5-field Unix:
   `<sec> <min> <hour> <day> <month> <weekday>`. Seconds are mandatory.
+- **The installation caps how fine a cron may tick.** By default a cron
+  fires at most once per minute (the seconds field is treated as `0`).
+  On a server configured for hourly granularity (typically the cloud) it
+  fires at most once per hour, and **not at a predictable minute**: the
+  server picks a fixed minute per scheduler to spread load. Hour, day
+  and weekday of the cron are kept, so "every weekday at 8" becomes
+  "every weekday during the 8 o'clock hour". I never promise the user an
+  exact minute or sub-hour repetition there; if they need an exact time
+  I say so. The YAML is accepted as written either way.
 - **Timezone** is an IANA zone (`Europe/Berlin`, `America/New_York`, …),
   not an offset. If it is missing, UTC applies — for "local" times from
   the user always set it explicitly.

@@ -1,7 +1,12 @@
 package de.mhus.vance.brain.project;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.cluster.ClusterService;
@@ -37,6 +42,8 @@ class ProjectManagerServiceTest {
     void stubCluster() {
         when(clusterService.leaseTtl()).thenReturn(TTL);
         when(clusterService.selfPodId()).thenReturn(SELF_POD);
+        when(clusterService.selfNodeName()).thenReturn("self-node");
+        when(clusterService.selfEndpoint()).thenReturn("self:9990");
     }
 
     private void givenLease(String podId, Instant claimedAt) {
@@ -109,5 +116,133 @@ class ProjectManagerServiceTest {
         when(clusterService.resolveEndpointByPodId("pod-holder")).thenReturn(Optional.of("192.168.1.113:9991"));
 
         assertThat(manager.findProjectEndpoint("acme", "_user_marvin")).contains("192.168.1.113:9991");
+    }
+
+    // ─── claiming from a holder that is gone ─────────────────────────────────
+
+    private void givenClaimRejectedBecauseOf(String holderPod, Instant claimedAt) {
+        givenLease(holderPod, claimedAt);
+        when(projectService.claim(anyString(), anyString(), anyString(), anyString(), anyString(), any(Duration.class)))
+                .thenReturn(Optional.empty());
+    }
+
+    @Test
+    void aLeaseOfAPodThatIsGone_isTakenOverInsteadOfWaitingOutTheTtl() {
+        Instant claimed = Instant.now().minusSeconds(150);
+        givenClaimRejectedBecauseOf("pod-dead", claimed);
+        when(clusterService.isHolderGone("pod-dead")).thenReturn(true);
+        ProjectDocument taken = ProjectDocument.builder()
+                .tenantId("acme")
+                .name("test1")
+                .homePodId(SELF_POD)
+                .build();
+        when(projectService.claimFromGoneHolder(any(ProjectDocument.class), anyString(), any(), any()))
+                .thenReturn(Optional.of(taken));
+
+        assertThat(manager.claimForLocalPod("acme", "test1")).isSameAs(taken);
+
+        verify(projectService).claimFromGoneHolder(any(ProjectDocument.class), anyString(), any(), any());
+    }
+
+    @Test
+    void aLeaseOfALivePod_isNeverTaken() {
+        givenClaimRejectedBecauseOf("pod-alive", Instant.now());
+        when(clusterService.isHolderGone("pod-alive")).thenReturn(false);
+
+        assertThatThrownBy(() -> manager.claimForLocalPod("acme", "test1"))
+                .isInstanceOf(ProjectManagerService.ClaimRejectedException.class);
+
+        verify(projectService, never()).claimFromGoneHolder(any(), any(), any(), any());
+    }
+
+    @Test
+    void aTakeoverThatLosesTheCompareAndSet_isARejection() {
+        // The holder renewed between the read and the write: it was alive after all.
+        givenClaimRejectedBecauseOf("pod-dead", Instant.now().minusSeconds(150));
+        when(clusterService.isHolderGone("pod-dead")).thenReturn(true);
+        when(projectService.claimFromGoneHolder(any(ProjectDocument.class), anyString(), any(), any()))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> manager.claimForLocalPod("acme", "test1"))
+                .isInstanceOf(ProjectManagerService.ClaimRejectedException.class);
+    }
+
+    @Test
+    void theRedirectingClaim_takesOverFromAGoneHolderToo() {
+        givenClaimRejectedBecauseOf("pod-dead", Instant.now().minusSeconds(150));
+        when(clusterService.isHolderGone("pod-dead")).thenReturn(true);
+        ProjectDocument taken =
+                ProjectDocument.builder().tenantId("acme").name("test1").build();
+        when(projectService.claimFromGoneHolder(any(ProjectDocument.class), anyString(), any(), any()))
+                .thenReturn(Optional.of(taken));
+
+        ProjectManagerService.ClaimResult result = manager.claimForLocalPodOrRedirect("acme", "test1");
+
+        assertThat(result).isInstanceOf(ProjectManagerService.ClaimResult.Local.class);
+    }
+
+    // ─── the pod's score follows the leases right away ───────────────────────
+
+    @Test
+    void aClaim_addsTheProjectsScoreToThisPod_beforeTheNextHeartbeat() {
+        givenLease(null, null);
+        ProjectDocument claimed = ProjectDocument.builder()
+                .tenantId("acme")
+                .name("test1")
+                .homePodId(SELF_POD)
+                .homeResourceScore(3)
+                .build();
+        when(projectService.claim(anyString(), anyString(), anyString(), anyString(), anyString(), any(Duration.class)))
+                .thenReturn(Optional.of(claimed));
+
+        manager.claimForLocalPod("acme", "test1");
+
+        verify(clusterService).reserveScore(SELF_POD, 3);
+    }
+
+    @Test
+    void renewingALeaseWeAlreadyHold_addsNothing() {
+        givenLease(SELF_POD, Instant.now());
+        ProjectDocument claimed = ProjectDocument.builder()
+                .tenantId("acme")
+                .name("test1")
+                .homePodId(SELF_POD)
+                .homeResourceScore(3)
+                .build();
+        when(projectService.claim(anyString(), anyString(), anyString(), anyString(), anyString(), any(Duration.class)))
+                .thenReturn(Optional.of(claimed));
+
+        manager.claimForLocalPod("acme", "test1");
+
+        verify(clusterService, never()).reserveScore(anyString(), org.mockito.ArgumentMatchers.anyInt());
+    }
+
+    @Test
+    void releasingTheLease_takesTheScoreOffThisPod() {
+        when(projectService.findByTenantAndName("acme", "test1"))
+                .thenReturn(Optional.of(ProjectDocument.builder()
+                        .tenantId("acme")
+                        .name("test1")
+                        .homeResourceScore(2)
+                        .build()));
+        when(projectService.releaseLease(anyString(), anyString(), anyString(), any(), any()))
+                .thenReturn(true);
+
+        assertThat(manager.releaseLocalLease("acme", "test1")).isTrue();
+
+        verify(clusterService).reserveScore(SELF_POD, -2);
+    }
+
+    @Test
+    void aReleaseThatDidNotHappen_changesNoScore() {
+        when(projectService.findByTenantAndName("acme", "test1"))
+                .thenReturn(Optional.of(
+                        ProjectDocument.builder().tenantId("acme").name("test1").build()));
+        when(projectService.releaseLease(anyString(), anyString(), anyString(), any(), any()))
+                .thenReturn(false);
+
+        assertThat(manager.releaseLocalLease("acme", "test1")).isFalse();
+
+        verify(clusterService, never()).reserveScore(anyString(), org.mockito.ArgumentMatchers.anyInt());
     }
 }

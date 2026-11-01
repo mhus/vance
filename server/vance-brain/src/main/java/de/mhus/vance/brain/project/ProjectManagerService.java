@@ -83,26 +83,74 @@ public class ProjectManagerService {
             throw new ClaimRejectedException(
                     "Project '" + tenantId + "/" + projectName + "' is homeless — it is never placed");
         }
-        ProjectDocument doc = projectService
-                .claim(
-                        tenantId,
-                        projectName,
-                        clusterService.selfPodId(),
-                        clusterService.selfNodeName(),
-                        clusterService.selfEndpoint(),
-                        clusterService.leaseTtl())
-                .orElseThrow(() -> {
-                    String holder = projectService
-                            .findByTenantAndName(tenantId, projectName)
-                            .map(ProjectDocument::getHomeNode)
-                            .orElse("<gone>");
-                    return new ClaimRejectedException("Project '" + tenantId + "/" + projectName
-                            + "' is leased by pod '" + holder
-                            + "', refusing to steal from this pod ('"
-                            + clusterService.selfNodeName() + "')");
-                });
+        ProjectDocument doc = claimOrTakeOver(tenantId, projectName).orElseThrow(() -> {
+            String holder = projectService
+                    .findByTenantAndName(tenantId, projectName)
+                    .map(ProjectDocument::getHomeNode)
+                    .orElse("<gone>");
+            return new ClaimRejectedException("Project '" + tenantId + "/" + projectName
+                    + "' is leased by pod '" + holder
+                    + "', refusing to steal from this pod ('"
+                    + clusterService.selfNodeName() + "')");
+        });
         log.debug("Project '{}/{}' leased by this pod", tenantId, projectName);
         return doc;
+    }
+
+    /**
+     * Claims the project for this pod; when another pod holds a still-valid lease but is gone
+     * (killed, evicted, its node lost), takes the lease from it instead of waiting out the TTL.
+     *
+     * <p>A lease and a pod are two clocks ({@link ClusterService#resolveEndpointByPodId}): a pod that
+     * died without releasing keeps a valid lease for up to {@code leaseTtl}, but its registry row
+     * stops beating after the shorter liveness window. In between nobody could claim the project and
+     * nothing would route to it — a user opening it simply failed. The takeover closes that gap, and
+     * only when the registry says the holder is gone <em>and</em> the lease is still exactly the one
+     * observed ({@link ProjectService#claimFromGoneHolder}); a live holder is never taken from.
+     */
+    private Optional<ProjectDocument> claimOrTakeOver(String tenantId, String projectName) {
+        Optional<ProjectDocument> claimed = claimAndBook(tenantId, projectName);
+        if (claimed.isPresent()) {
+            return claimed;
+        }
+        ProjectDocument current =
+                projectService.findByTenantAndName(tenantId, projectName).orElse(null);
+        if (current == null) {
+            return Optional.empty();
+        }
+        String holder = current.getHomePodId();
+        if (holder == null || holder.equals(clusterService.selfPodId()) || !clusterService.isHolderGone(holder)) {
+            return Optional.empty();
+        }
+        Optional<ProjectDocument> taken = projectService.claimFromGoneHolder(
+                current, clusterService.selfPodId(), clusterService.selfNodeName(), clusterService.selfEndpoint());
+        taken.ifPresent(doc -> clusterService.reserveScore(clusterService.selfPodId(), doc.getHomeResourceScore()));
+        return taken;
+    }
+
+    /**
+     * The claim, plus the load it adds to this pod: when the lease was not already ours, the pod's
+     * score goes up by the project's score right away instead of at the next heartbeat. Placements
+     * that follow one another within that minute then see each other — without it a run of logins
+     * all picks the same "least loaded" pod.
+     */
+    private Optional<ProjectDocument> claimAndBook(String tenantId, String projectName) {
+        String self = clusterService.selfPodId();
+        boolean alreadyOurs = projectService
+                .findByTenantAndName(tenantId, projectName)
+                .map(project -> ProjectOwnership.isOwnedBy(project, self, Instant.now(), clusterService.leaseTtl()))
+                .orElse(false);
+        Optional<ProjectDocument> claimed = projectService.claim(
+                tenantId,
+                projectName,
+                self,
+                clusterService.selfNodeName(),
+                clusterService.selfEndpoint(),
+                clusterService.leaseTtl());
+        if (claimed.isPresent() && !alreadyOurs) {
+            clusterService.reserveScore(self, claimed.get().getHomeResourceScore());
+        }
+        return claimed;
     }
 
     /** Whether this pod currently holds a valid lease on the project. */
@@ -128,12 +176,23 @@ public class ProjectManagerService {
      * a project running on a pod that no longer owns it.
      */
     public boolean releaseLocalLease(String tenantId, String projectName) {
-        return projectService.releaseLease(
+        int score = projectService
+                .findByTenantAndName(tenantId, projectName)
+                .map(ProjectDocument::getHomeResourceScore)
+                .orElse(0);
+        boolean released = projectService.releaseLease(
                 tenantId,
                 projectName,
                 clusterService.selfPodId(),
                 clusterService.selfNodeName(),
                 clusterService.selfEndpoint());
+        if (released) {
+            // The pod's score is recomputed once per heartbeat. Taking the project off it now keeps the
+            // number honest in the meantime, so a placement right after a release does not pass this
+            // pod over for load it no longer carries.
+            clusterService.reserveScore(clusterService.selfPodId(), -score);
+        }
+        return released;
     }
 
     /** All RUNNING projects this pod currently holds a lease on. */
@@ -224,13 +283,7 @@ public class ProjectManagerService {
             throw new ClaimRejectedException(
                     "Project '" + tenantId + "/" + projectName + "' is homeless — it is never placed");
         }
-        Optional<ProjectDocument> claimed = projectService.claim(
-                tenantId,
-                projectName,
-                clusterService.selfPodId(),
-                clusterService.selfNodeName(),
-                clusterService.selfEndpoint(),
-                clusterService.leaseTtl());
+        Optional<ProjectDocument> claimed = claimOrTakeOver(tenantId, projectName);
         if (claimed.isPresent()) {
             return new ClaimResult.Local(claimed.get());
         }

@@ -9,6 +9,8 @@ import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.rag.ProjectRagService;
 import de.mhus.vance.brain.session.SessionChatBootstrapper;
 import de.mhus.vance.brain.session.SessionLifecycleService;
+import de.mhus.vance.exec.EphemeralHandler;
+import de.mhus.vance.exec.TempHandler;
 import de.mhus.vance.shared.project.ProjectActualState;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectKind;
@@ -26,6 +28,7 @@ import de.mhus.vance.shared.workspace.WorkspaceService;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 import lombok.RequiredArgsConstructor;
@@ -482,6 +485,22 @@ public class ProjectLifecycleService {
     public boolean release(String tenantId, String projectName) {
         return release(tenantId, projectName, false);
     }
+
+    /**
+     * Whether this pod keeps something in the project's workspace that would be lost by moving the
+     * project: a RootDir that is more than scratch. A workspace never moves between pods.
+     *
+     * <p>The bare folder does not count. {@link #bring} creates an empty workspace for every project
+     * it starts, also on pods that offer no workspace access at all, and a guard that took that for
+     * "has a workspace" would pin every project. Temp and ephemeral RootDirs are scratch by
+     * definition (results live as documents); git, python and node RootDirs hold work.
+     */
+    public boolean holdsWorkspace(String tenantId, String projectName) {
+        return workspaceService.listRootDirs(tenantId, projectName).stream()
+                .anyMatch(dir -> !SCRATCH_ROOT_DIR_TYPES.contains(dir.getType()));
+    }
+
+    private static final Set<String> SCRATCH_ROOT_DIR_TYPES = Set.of(TempHandler.TYPE, EphemeralHandler.TYPE);
 
     /**
      * {@link #release}, optionally interrupting and suspending the project's

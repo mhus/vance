@@ -139,24 +139,29 @@ public class ClusterService {
         try {
             registerWithRetry(doc);
             // Two-phase write: STARTING is now persisted; flip to RUNNING.
-            brainPodService.heartbeat(podId, Instant.now(), PodStatus.RUNNING,
+            brainPodService.heartbeat(
+                    podId,
+                    Instant.now(),
+                    PodStatus.RUNNING,
                     doc.getEndpoint(),
                     snapshotActiveProjects(),
                     snapshotCurrentScore(),
                     properties.getResources().getStartupScore(),
                     properties.getResources().getMaxScore());
             registered = true;
-            log.info("ClusterService registered: cluster='{}' nodeName='{}' podId='{}' endpoint='{}'",
-                    properties.getId(), nodeName, podId, doc.getEndpoint());
+            log.info(
+                    "ClusterService registered: cluster='{}' nodeName='{}' podId='{}' endpoint='{}'",
+                    properties.getId(),
+                    nodeName,
+                    podId,
+                    doc.getEndpoint());
             // A candidate appeared. Published after `registered = true` and
             // after the row is RUNNING, because the round this triggers reads
             // the registry — announcing a pod that is not yet selectable would
             // spend the round and change nothing.
-            eventPublisher.publishEvent(new PlacementInputChangedEvent(
-                    "pod registered: " + nodeName));
+            eventPublisher.publishEvent(new PlacementInputChangedEvent("pod registered: " + nodeName));
         } catch (RuntimeException e) {
-            log.error("ClusterService registration failed; will retry on next heartbeat: {}",
-                    e.toString());
+            log.error("ClusterService registration failed; will retry on next heartbeat: {}", e.toString());
         }
     }
 
@@ -172,7 +177,10 @@ public class ClusterService {
             // changed under a live process, republish the current endpoint so
             // routing (and our own workspace self-proxy) stops hitting a dead
             // address. No-op when the address is still valid.
-            brainPodService.heartbeat(podId, Instant.now(), PodStatus.RUNNING,
+            brainPodService.heartbeat(
+                    podId,
+                    Instant.now(),
+                    PodStatus.RUNNING,
                     locationService.refreshPodAddress(),
                     snapshotActiveProjects(),
                     snapshotCurrentScore(),
@@ -239,11 +247,32 @@ public class ClusterService {
      */
     public Optional<String> resolveEndpointByPodId(String podId) {
         Instant now = Instant.now();
-        return brainPodService.findByPodId(podId)
+        return brainPodService
+                .findByPodId(podId)
                 .filter(pod -> pod.getStatus() != PodStatus.STOPPED)
                 .filter(pod -> !brainPodService.isStale(pod, now, timeWindows.podLiveness()))
                 .map(BrainPodDocument::getEndpoint)
                 .filter(endpoint -> !endpoint.isBlank());
+    }
+
+    /** Reserves {@code score} on a pod ahead of its next heartbeat; see {@link BrainPodService#reserveScore}. */
+    public void reserveScore(String podId, int score) {
+        brainPodService.reserveScore(podId, score);
+    }
+
+    /**
+     * Whether the pod that holds a lease is provably gone: its registry row is missing, stopped or
+     * stale ({@link #resolveEndpointByPodId} finds no live endpoint for it).
+     *
+     * <p>Never {@code true} while this pod has not registered itself. A pod that cannot yet see its
+     * own row must not judge the others — an empty registry read on a booting pod would otherwise
+     * read as "everybody is gone", and the one thing this answer is used for is taking a lease away.
+     */
+    public boolean isHolderGone(String podId) {
+        if (!registered) {
+            return false;
+        }
+        return resolveEndpointByPodId(podId).isEmpty();
     }
 
     /**
@@ -256,8 +285,7 @@ public class ClusterService {
      * completed — a fresh pod must not race itself out of its own claim.
      */
     public Set<String> liveClusterNodeNames() {
-        return brainPodService.listLiveClusterNodeNames(
-                properties.getId(), timeWindows.podLiveness());
+        return brainPodService.listLiveClusterNodeNames(properties.getId(), timeWindows.podLiveness());
     }
 
     /**
@@ -270,19 +298,18 @@ public class ClusterService {
         Set<String> liveNames = liveClusterNodeNames();
         return brainPodService.listCluster(properties.getId()).stream()
                 .filter(p -> p.getNodeName() != null && liveNames.contains(p.getNodeName()))
-                .sorted((a, b) -> Double.compare(
-                        BrainPodCapacity.loadFraction(a), BrainPodCapacity.loadFraction(b)))
+                .sorted((a, b) -> Double.compare(BrainPodCapacity.loadFraction(a), BrainPodCapacity.loadFraction(b)))
                 .toList();
     }
-
-
 
     /** This pod's own row, or empty if registration hasn't happened yet. */
     public Optional<BrainPodDocument> selfPod() {
         return brainPodService.findByPodId(podId);
     }
 
-    public String selfPodId() { return podId; }
+    public String selfPodId() {
+        return podId;
+    }
 
     /**
      * Whether this pod's row exists in {@code brain_pods} yet.
@@ -293,16 +320,22 @@ public class ClusterService {
      * blocked". Opportunistic work has to be able to tell that apart from
      * "checked, and allowed".
      */
-    public boolean isRegistered() { return registered; }
+    public boolean isRegistered() {
+        return registered;
+    }
 
     /**
      * This pod's node name. Resolved on first use rather than returned raw so
      * callers that log or denormalise it (the lease writes it for display) get
      * a name even before registration completed.
      */
-    public String selfNodeName() { return resolveNodeName(); }
+    public String selfNodeName() {
+        return resolveNodeName();
+    }
 
-    public String selfClusterId() { return properties.getId(); }
+    public String selfClusterId() {
+        return properties.getId();
+    }
 
     /**
      * This pod's {@code ip:port} — the address it advertises to the cluster.
@@ -312,14 +345,18 @@ public class ClusterService {
      * registration has happened and cannot be stale. Same source the
      * registration itself uses.
      */
-    public String selfEndpoint() { return locationService.getPodAddress(); }
+    public String selfEndpoint() {
+        return locationService.getPodAddress();
+    }
 
     /**
      * How long a project ownership lease stays valid without renewal — the
      * single place brain code reads this from, so the claim path, the renewal
      * tick and every {@code ProjectOwnership} caller cannot drift apart.
      */
-    public Duration leaseTtl() { return timeWindows.leaseTtl(); }
+    public Duration leaseTtl() {
+        return timeWindows.leaseTtl();
+    }
 
     /**
      * How long a derived routing answer may be cached before it has to be
@@ -327,7 +364,9 @@ public class ClusterService {
      * the shorter of the two gates {@link #resolveEndpointByPodId} applies, so
      * a cache in front of that call cannot outlive either of them.
      */
-    public Duration routingAnswerMaxAge() { return timeWindows.routingAnswerMaxAge(); }
+    public Duration routingAnswerMaxAge() {
+        return timeWindows.routingAnswerMaxAge();
+    }
 
     public boolean isStale(BrainPodDocument doc, Instant now) {
         return brainPodService.isStale(doc, now, timeWindows.podLiveness());
@@ -348,9 +387,7 @@ public class ClusterService {
     private synchronized String resolveNodeName() {
         if (nodeName.isEmpty()) {
             String configured = properties.getNodeName();
-            nodeName = (configured != null && !configured.isBlank())
-                    ? configured.trim()
-                    : nameGenerator.generate();
+            nodeName = (configured != null && !configured.isBlank()) ? configured.trim() : nameGenerator.generate();
         }
         return nodeName;
     }
@@ -369,20 +406,24 @@ public class ClusterService {
                 return;
             } catch (BrainPodService.NodeNameTakenException e) {
                 last = e;
-                if (properties.getNodeName() != null && !properties.getNodeName().isBlank()) {
+                if (properties.getNodeName() != null
+                        && !properties.getNodeName().isBlank()) {
                     // Explicit config: do not silently rename — the operator wanted this name.
                     throw e;
                 }
                 String fresh = nameGenerator.generate();
-                log.warn("ClusterService: nodeName '{}' taken — retrying as '{}' (attempt {}/{})",
-                        nodeName, fresh, attempt, retries);
+                log.warn(
+                        "ClusterService: nodeName '{}' taken — retrying as '{}' (attempt {}/{})",
+                        nodeName,
+                        fresh,
+                        attempt,
+                        retries);
                 replaceNodeName(fresh);
                 doc.setNodeName(fresh);
             }
         }
         throw new IllegalStateException(
-                "ClusterService could not pick a free node-name after "
-                        + retries + " attempts", last);
+                "ClusterService could not pick a free node-name after " + retries + " attempts", last);
     }
 
     /**

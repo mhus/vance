@@ -15,6 +15,7 @@ import de.mhus.vance.anus.brain.AnusBrainClient.BrainCallException;
 import de.mhus.vance.anus.brain.AnusBrainClient.Response;
 import de.mhus.vance.anus.cluster.ProjectClusterService.DrainVerdict;
 import de.mhus.vance.anus.cluster.ProjectClusterService.Holder;
+import de.mhus.vance.anus.cluster.ProjectClusterService.MoveOutcome;
 import de.mhus.vance.anus.cluster.ProjectClusterService.Placement;
 import de.mhus.vance.anus.cluster.ProjectClusterService.PlacementOutcome;
 import de.mhus.vance.shared.project.ProjectDocument;
@@ -334,5 +335,82 @@ class ProjectClusterServiceTest {
 
     private void givenHeld() {
         when(client.internal(contains(HOME), eq("GET"), any())).thenReturn(new Response(200, HELD_BODY));
+    }
+
+    // ─── move ───────────────────────────────────────────────────────────────
+
+    private static final String RELEASE = "/internal/cluster/release";
+    private static final String PLACE = "/internal/cluster/place";
+    private static final String OTHER_BODY =
+            "{\"podId\":\"p-2\",\"endpoint\":\"10.0.0.8:9990\",\"nodeName\":\"pod-b\"}";
+
+    private void givenHeldBy(String body) {
+        when(client.internal(contains(HOME), eq("GET"), any())).thenReturn(new Response(200, body));
+    }
+
+    @Test
+    void move_releasesWithTheWorkspacePrecondition_thenPlacesByLoad() {
+        when(client.internal(contains(HOME), eq("GET"), any()))
+                .thenReturn(new Response(200, HELD_BODY), new Response(200, OTHER_BODY));
+        when(client.internalAt(any(), eq(RELEASE), eq("POST"), any())).thenReturn(new Response(200, ""));
+        when(client.internal(eq(PLACE), eq("POST"), any())).thenReturn(new Response(200, ""));
+
+        var move = service.move("acme", "p1");
+
+        assertThat(move.outcome()).isEqualTo(MoveOutcome.MOVED);
+        assertThat(move.from()).isEqualTo("pod-a");
+        assertThat(move.to()).isEqualTo("pod-b");
+        ArgumentCaptor<String> body = ArgumentCaptor.forClass(String.class);
+        verify(client).internalAt(contains("10.0.0.7:9990"), eq(RELEASE), eq("POST"), body.capture());
+        assertThat(body.getValue()).contains("\"requireNoWorkspace\":true");
+    }
+
+    @Test
+    void move_aPodThatKeepsAWorkspace_releasesNothingAndPlacesNothing() {
+        givenHeldBy(HELD_BODY);
+        when(client.internalAt(any(), eq(RELEASE), eq("POST"), any()))
+                .thenReturn(new Response(412, "this pod keeps a workspace for the project"));
+
+        var move = service.move("acme", "p1");
+
+        assertThat(move.outcome()).isEqualTo(MoveOutcome.KEPT_WORKSPACE);
+        verify(client, never()).internal(eq(PLACE), any(), any());
+    }
+
+    @Test
+    void move_placedOnTheSamePodAgain_isReportedAsSuch() {
+        givenHeldBy(HELD_BODY);
+        when(client.internalAt(any(), eq(RELEASE), eq("POST"), any())).thenReturn(new Response(200, ""));
+        when(client.internal(eq(PLACE), eq("POST"), any())).thenReturn(new Response(200, ""));
+
+        assertThat(service.move("acme", "p1").outcome()).isEqualTo(MoveOutcome.SAME_POD);
+    }
+
+    @Test
+    void move_aProjectNobodyHolds_isNotHeld() {
+        when(client.internal(contains(HOME), eq("GET"), any())).thenReturn(new Response(404, "no live lease"));
+
+        assertThat(service.move("acme", "p1").outcome()).isEqualTo(MoveOutcome.NOT_HELD);
+        verify(client, never()).internalAt(any(), any(), any(), any());
+    }
+
+    @Test
+    void move_aLeaseThatMovedInTheMeantime_isNotHeldEither() {
+        givenHeldBy(HELD_BODY);
+        when(client.internalAt(any(), eq(RELEASE), eq("POST"), any())).thenReturn(new Response(409, ""));
+
+        assertThat(service.move("acme", "p1").outcome()).isEqualTo(MoveOutcome.NOT_HELD);
+    }
+
+    @Test
+    void move_releasedButNotPlaced_isAFailureThatNamesTheStateTheProjectIsIn() {
+        givenHeldBy(HELD_BODY);
+        when(client.internalAt(any(), eq(RELEASE), eq("POST"), any())).thenReturn(new Response(200, ""));
+        when(client.internal(eq(PLACE), eq("POST"), any())).thenReturn(new Response(503, "no capacity"));
+
+        var move = service.move("acme", "p1");
+
+        assertThat(move.outcome()).isEqualTo(MoveOutcome.FAILED);
+        assertThat(move.detail()).contains("released, but not placed again");
     }
 }

@@ -247,4 +247,81 @@ class ProjectIdleDetectorTest {
                         .verdict())
                 .isEqualTo(Verdict.STALE);
     }
+
+    // ─── a user's hub belongs to the user it is named after ──────────────────
+
+    private ProjectDocument hub(String login) {
+        return ProjectDocument.builder()
+                .tenantId(TENANT)
+                .name("_user_" + login)
+                .status(ProjectStatus.RUNNING)
+                .build();
+    }
+
+    private void givenUser(String name, boolean serviceAccount, Instant lastLogin) {
+        UserDocument user = new UserDocument();
+        user.setTenantId(TENANT);
+        user.setName(name);
+        user.setServiceAccount(serviceAccount);
+        user.setLastLoginAt(lastLogin);
+        user.setCreatedAt(NOW.minus(Duration.ofDays(900)));
+        when(users.findByTenantAndName(TENANT, name)).thenReturn(Optional.of(user));
+    }
+
+    @Test
+    void aHubHasNoRoleAssignmentForItsOwner_theNameIsTheAssignment() {
+        String hubName = "_user_mike";
+        when(sessions.listForProject(TENANT, hubName)).thenReturn(List.of());
+        when(processes.findByProject(eq(TENANT), eq(hubName), anyInt())).thenReturn(List.of());
+        givenUser("mike", false, NOW.minus(Duration.ofDays(60)));
+
+        assertThat(detector.assess(hub("mike"), DEFAULT_DAYS, NOW).verdict())
+                .as("the hub of a user who stayed away goes idle with the Trillian in it")
+                .isEqualTo(Verdict.STALE);
+    }
+
+    @Test
+    void aHubOfAUserWhoWasHereRecently_staysActive() {
+        String hubName = "_user_mike";
+        when(sessions.listForProject(TENANT, hubName)).thenReturn(List.of());
+        when(processes.findByProject(eq(TENANT), eq(hubName), anyInt())).thenReturn(List.of());
+        givenUser("mike", false, NOW.minus(Duration.ofDays(2)));
+
+        assertThat(detector.assess(hub("mike"), DEFAULT_DAYS, NOW).verdict()).isEqualTo(Verdict.ACTIVE);
+    }
+
+    @Test
+    void theHubOfAServiceAccount_hasNobodyToWaitFor() {
+        String hubName = "_user__bot";
+        when(sessions.listForProject(TENANT, hubName)).thenReturn(List.of());
+        when(processes.findByProject(eq(TENANT), eq(hubName), anyInt())).thenReturn(List.of());
+        givenUser("_bot", true, NOW.minus(Duration.ofDays(900)));
+
+        assertThat(detector.assess(hub("_bot"), DEFAULT_DAYS, NOW).verdict()).isEqualTo(Verdict.NO_HUMAN_USER);
+    }
+
+    // ─── in use right now — also the question a rebalance asks ───────────────
+
+    @Test
+    void inUse_aConnectedClient() {
+        SessionDocument session = new SessionDocument();
+        session.setBoundConnectionId("editor-1");
+        when(sessions.listForProject(TENANT, PROJECT)).thenReturn(List.of(session));
+
+        assertThat(detector.inUse(TENANT, PROJECT)).isTrue();
+    }
+
+    @Test
+    void inUse_aProcessInTheMiddleOfATurn() {
+        ThinkProcessDocument busy = new ThinkProcessDocument();
+        busy.setStatus(ThinkProcessStatus.RUNNING);
+        when(processes.findByProject(eq(TENANT), eq(PROJECT), anyInt())).thenReturn(List.of(busy));
+
+        assertThat(detector.inUse(TENANT, PROJECT)).isTrue();
+    }
+
+    @Test
+    void inUse_nothingGoingOn_isNotInUse() {
+        assertThat(detector.inUse(TENANT, PROJECT)).isFalse();
+    }
 }

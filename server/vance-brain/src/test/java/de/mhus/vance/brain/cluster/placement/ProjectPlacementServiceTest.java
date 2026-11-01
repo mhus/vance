@@ -143,6 +143,19 @@ class ProjectPlacementServiceTest {
     }
 
     @Test
+    void decide_wakeTrigger_spreadsInsteadOfPreferringThisPod() {
+        // A project that stopped running is the chance to place it by load: a login arriving on
+        // whichever pod must not pile every wake onto that pod.
+        givenSelfPod(10, 100);
+        when(clusterService.liveClusterPods()).thenReturn(List.of(pod("cold-other", 0, 100), pod(SELF_NODE, 10, 100)));
+
+        PlacementDecision decision = placement.decide(project("p1", 1), PlacementTrigger.WAKE);
+
+        assertThat(decision).isInstanceOf(PlacementDecision.On.class);
+        assertThat(((PlacementDecision.On) decision).pod().getNodeName()).isEqualTo("cold-other");
+    }
+
+    @Test
     void decide_unregisteredPod_staysHereBecauseUnknownIsNotFull() {
         // selfPod() is empty until registration completes. The boot path must
         // still be able to place, exactly as the two deleted haveLocalRoom()

@@ -248,4 +248,37 @@ class ProjectLifecycleStopTest {
 
         verify(projectService).transitionStatus(TENANT, PROJECT, ProjectStatus.INIT, ProjectStatus.IDLE);
     }
+
+    // ─── what a move would strand ────────────────────────────────────────────
+
+    private static de.mhus.vance.exec.RootDirHandle rootDir(String type) {
+        return de.mhus.vance.exec.RootDirHandle.builder()
+                .type(type)
+                .dirName(type + "-1")
+                .build();
+    }
+
+    @Test
+    void holdsWorkspace_aBareFolderIsNothingToLose() {
+        // bring() creates an empty workspace for every project, also where no workspace access is offered.
+        when(workspaceService.listRootDirs(TENANT, PROJECT)).thenReturn(java.util.List.of());
+
+        assertThat(service.holdsWorkspace(TENANT, PROJECT)).isFalse();
+    }
+
+    @Test
+    void holdsWorkspace_scratchRootDirsAreNotWork() {
+        when(workspaceService.listRootDirs(TENANT, PROJECT))
+                .thenReturn(java.util.List.of(rootDir("temp"), rootDir("ephemeral")));
+
+        assertThat(service.holdsWorkspace(TENANT, PROJECT)).isFalse();
+    }
+
+    @Test
+    void holdsWorkspace_aGitOrPythonRootDirIsWork() {
+        when(workspaceService.listRootDirs(TENANT, PROJECT))
+                .thenReturn(java.util.List.of(rootDir("temp"), rootDir("git")));
+
+        assertThat(service.holdsWorkspace(TENANT, PROJECT)).isTrue();
+    }
 }

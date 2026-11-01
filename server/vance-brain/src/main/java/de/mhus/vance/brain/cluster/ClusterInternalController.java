@@ -184,6 +184,10 @@ public class ClusterInternalController {
      * tears down in-memory state that only exists in that process. {@code 409}
      * when this pod does not hold the lease.
      *
+     * <p>{@code requireNoWorkspace=true} is the rebalance's precondition: {@code 412} while this pod
+     * keeps a workspace folder for the project, because a workspace never moves between pods and
+     * the project would start empty on its next pod.
+     *
      * <p>{@code suspendSessions=true} is the archive's variant: the project's
      * open sessions are interrupted and suspended on this pod's lanes before
      * the hand-over. A drain leaves it unset — the sessions continue where the
@@ -193,6 +197,14 @@ public class ClusterInternalController {
     public ResponseEntity<?> release(@RequestBody HttpClusterBringClient.ReleaseRequest req) {
         if (req == null || req.tenantId() == null || req.projectName() == null) {
             return ResponseEntity.badRequest().build();
+        }
+        if (Boolean.TRUE.equals(req.requireNoWorkspace())
+                && lifecycleService.holdsWorkspace(req.tenantId(), req.projectName())) {
+            log.info(
+                    "Cluster release refused for '{}/{}': this pod keeps a workspace for it",
+                    req.tenantId(),
+                    req.projectName());
+            return ResponseEntity.status(412).body("this pod keeps a workspace for the project, which does not move");
         }
         try {
             boolean released = lifecycleService.release(

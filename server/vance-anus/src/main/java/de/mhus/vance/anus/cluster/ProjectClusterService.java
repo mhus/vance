@@ -290,6 +290,83 @@ public class ProjectClusterService {
                 Placement.PLACED, true, "drained from '" + nodeName + "' — status unchanged, nobody owns it now");
     }
 
+    // ─── move ───────────────────────────────────────────────────────────────
+
+    /** How moving a project off its pod ended. */
+    public enum MoveOutcome {
+        /** Released, and the cluster placed it on another pod. */
+        MOVED,
+        /** Released, but the placement chose the same pod again — it is the only one that fits. */
+        SAME_POD,
+        /** The pod keeps a workspace for the project, which does not move; nothing was released. */
+        KEPT_WORKSPACE,
+        /** Nobody holds the project, or the lease moved away in the meantime. */
+        NOT_HELD,
+        /** The release or the placement failed; {@code detail} says which. */
+        FAILED
+    }
+
+    /** Result of {@link #move}. */
+    public record MoveAttempt(
+            MoveOutcome outcome,
+            @Nullable String from,
+            @Nullable String to,
+            String detail) {}
+
+    /**
+     * Moves a running project to another pod: the holder releases it (its desired state stays
+     * RUNNING), then the cluster places it again by load.
+     *
+     * <p>The holder refuses while it keeps a workspace folder for the project — a workspace never
+     * moves between pods, and the project would start empty on the next one. The target is not
+     * chosen here: the placement knows the labels and the load, and the pod just left is the most
+     * loaded one, so it does not win the project back unless nothing else fits.
+     *
+     * <p>A release that works and a placement that does not leaves the project wanting to run
+     * without a pod; the distributor picks it up on its next round, and a user opening it places it.
+     */
+    public MoveAttempt move(String tenant, String name) {
+        HomeLookup home = home(tenant, name);
+        if (home.holder() != Holder.HELD) {
+            return new MoveAttempt(MoveOutcome.NOT_HELD, null, null, home.detail());
+        }
+        String from = home.nodeName() == null ? String.valueOf(home.endpoint()) : home.nodeName();
+        Response released;
+        try {
+            released = brainClient.internalAt(
+                    normaliseBase(String.valueOf(home.endpoint())),
+                    "/internal/cluster/release",
+                    "POST",
+                    json(tenant, name, Map.of("requireNoWorkspace", true)));
+        } catch (BrainCallException e) {
+            return new MoveAttempt(MoveOutcome.FAILED, from, null, "release failed: " + e.getMessage());
+        }
+        if (released.statusCode() == 412) {
+            return new MoveAttempt(MoveOutcome.KEPT_WORKSPACE, from, null, released.body());
+        }
+        if (released.statusCode() == 409) {
+            return new MoveAttempt(MoveOutcome.NOT_HELD, from, null, "the lease moved in the meantime");
+        }
+        if (!released.isSuccess()) {
+            return new MoveAttempt(
+                    MoveOutcome.FAILED,
+                    from,
+                    null,
+                    "release failed: HTTP " + released.statusCode() + " " + released.body());
+        }
+        PlacementAttempt placed = place(tenant, name);
+        if (placed.outcome() != PlacementOutcome.PLACED) {
+            return new MoveAttempt(
+                    MoveOutcome.FAILED,
+                    from,
+                    null,
+                    "released, but not placed again (" + placed.outcome() + "): " + placed.detail());
+        }
+        HomeLookup now = home(tenant, name);
+        String to = now.holder() == Holder.HELD ? now.nodeName() : null;
+        return new MoveAttempt(from.equals(to) ? MoveOutcome.SAME_POD : MoveOutcome.MOVED, from, to, "");
+    }
+
     // ─── drain as a precondition ────────────────────────────────────────────
 
     /** What the pre-maintenance hand-off decided. */
@@ -452,9 +529,14 @@ public class ProjectClusterService {
     // ─── shared plumbing ────────────────────────────────────────────────────
 
     private String json(String tenant, String name) {
+        return json(tenant, name, Map.of());
+    }
+
+    private String json(String tenant, String name, Map<String, Object> extra) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("tenantId", tenant);
         payload.put("projectName", name);
+        payload.putAll(extra);
         return objectMapper.writeValueAsString(payload);
     }
 

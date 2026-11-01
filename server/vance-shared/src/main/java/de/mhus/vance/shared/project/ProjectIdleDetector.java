@@ -3,6 +3,7 @@ package de.mhus.vance.shared.project;
 import de.mhus.vance.api.roles.RoleScopeType;
 import de.mhus.vance.api.roles.RoleSubjectType;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
+import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.role.RoleAssignmentDocument;
 import de.mhus.vance.shared.role.RoleAssignmentService;
 import de.mhus.vance.shared.session.SessionDocument;
@@ -29,7 +30,7 @@ import org.springframework.stereotype.Service;
  *
  * The criterion is about <em>people</em>, not about the project: the people who hold a
  * role in it, directly (a team in between does not count — teams are organisational,
- * not a source of rights). For each of them the last sign-in counts, and so does the
+ * not a source of rights), and the owner of a user's hub. For each of them the last sign-in counts, and so does the
  * newest session activity in the project. A user who never signed in since the field
  * existed is not "never seen": the creation date of the account stands in, so the first
  * scan after the field was introduced does not stop everything at once.
@@ -129,13 +130,9 @@ public class ProjectIdleDetector {
         }
 
         List<SessionDocument> sessions = sessionService.listForProject(tenantId, name);
-        if (sessions.stream().anyMatch(s -> s.getBoundConnectionId() != null)) {
-            return verdict(project, Verdict.IN_USE, null, afterDays, "a client is connected");
-        }
-        boolean midTurn = thinkProcessService.findByProject(tenantId, name, PROCESS_WINDOW).stream()
-                .anyMatch(p -> p.getStatus() == ThinkProcessStatus.RUNNING);
-        if (midTurn) {
-            return verdict(project, Verdict.IN_USE, null, afterDays, "a process is running");
+        String inUse = inUseReason(tenantId, name, sessions);
+        if (inUse != null) {
+            return verdict(project, Verdict.IN_USE, null, afterDays, inUse);
         }
 
         List<UserDocument> people = people(tenantId, name);
@@ -148,6 +145,24 @@ public class ProjectIdleDetector {
             return verdict(project, Verdict.STALE, lastSeen, afterDays, quiet.toDays() + " days without a user");
         }
         return verdict(project, Verdict.ACTIVE, lastSeen, afterDays, quiet.toDays() + " days since a user was here");
+    }
+
+    /**
+     * Whether somebody or something is using the project <em>right now</em>: a client is connected
+     * to one of its sessions, or a think process is in the middle of a turn. A project in use must
+     * not be stopped or moved, whatever the dates say — both would cut the user off mid-sentence.
+     */
+    public boolean inUse(String tenantId, String projectName) {
+        return inUseReason(tenantId, projectName, sessionService.listForProject(tenantId, projectName)) != null;
+    }
+
+    private @Nullable String inUseReason(String tenantId, String projectName, List<SessionDocument> sessions) {
+        if (sessions.stream().anyMatch(s -> s.getBoundConnectionId() != null)) {
+            return "a client is connected";
+        }
+        boolean midTurn = thinkProcessService.findByProject(tenantId, projectName, PROCESS_WINDOW).stream()
+                .anyMatch(p -> p.getStatus() == ThinkProcessStatus.RUNNING);
+        return midTurn ? "a process is running" : null;
     }
 
     private Assessment verdict(
@@ -175,16 +190,26 @@ public class ProjectIdleDetector {
         }
     }
 
-    /** The people with a role in the project: users, not teams; no service accounts. */
+    /**
+     * The people the project belongs to: users, not teams; no service accounts. Those with a role in
+     * it, and — for a user's hub — the user the hub is named after: a hub carries no role assignment
+     * for its owner, the name {@code _user_<login>} is the assignment.
+     */
     private List<UserDocument> people(String tenantId, String projectName) {
         List<UserDocument> out = new ArrayList<>();
+        List<String> names = new ArrayList<>();
+        if (projectName.startsWith(HomeBootstrapService.HUB_PROJECT_NAME_PREFIX)) {
+            names.add(projectName.substring(HomeBootstrapService.HUB_PROJECT_NAME_PREFIX.length()));
+        }
         for (RoleAssignmentDocument assignment :
                 roleAssignmentService.forScope(tenantId, RoleScopeType.PROJECT, projectName)) {
-            if (assignment.getSubjectType() != RoleSubjectType.USER) {
-                continue;
+            if (assignment.getSubjectType() == RoleSubjectType.USER && !names.contains(assignment.getSubjectId())) {
+                names.add(assignment.getSubjectId());
             }
+        }
+        for (String name : names) {
             userService
-                    .findByTenantAndName(tenantId, assignment.getSubjectId())
+                    .findByTenantAndName(tenantId, name)
                     .filter(user -> !user.isServiceAccount())
                     .ifPresent(out::add);
         }

@@ -125,13 +125,26 @@ public class HttpClusterBringClient implements ClusterBringClient {
      * Wire DTO for the release endpoint. {@code suspendSessions} is optional —
      * absent (an older pod, the admin shell's drain) means a plain hand-over
      * that leaves the sessions alone.
+     *
+     * <p>{@code requireNoWorkspace}, when {@code true}, makes the holder refuse ({@code 412}) while
+     * it keeps a workspace folder for the project: a workspace never moves between pods, so a
+     * hand-over whose only purpose is to move the project (a rebalance) must not strand it.
      */
     public record ReleaseRequest(
             @JsonProperty("tenantId") String tenantId,
             @JsonProperty("projectName") String projectName,
 
             @JsonProperty("suspendSessions") @org.jspecify.annotations.Nullable
-            Boolean suspendSessions) {}
+            Boolean suspendSessions,
+
+            @JsonProperty("requireNoWorkspace") @org.jspecify.annotations.Nullable
+            Boolean requireNoWorkspace) {
+
+        public ReleaseRequest(
+                String tenantId, String projectName, @org.jspecify.annotations.Nullable Boolean suspendSessions) {
+            this(tenantId, projectName, suspendSessions, null);
+        }
+    }
 
     public record BringResponse(@JsonProperty("homeNode") String homeNode) {}
 

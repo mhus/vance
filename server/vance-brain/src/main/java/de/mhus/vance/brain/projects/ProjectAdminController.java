@@ -16,6 +16,7 @@ import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.kit.KitException;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.shared.project.ProjectActualState;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectKind;
 import de.mhus.vance.shared.project.ProjectOwnership;
@@ -382,6 +383,20 @@ public class ProjectAdminController {
         }
     }
 
+    /**
+     * What the project is doing right now: the holder's statement while its lease lives <em>and</em>
+     * the holder is alive. A killed pod keeps a valid lease for a few minutes, but nothing runs on it.
+     */
+    private ProjectActualState actualStateOf(ProjectDocument doc) {
+        ProjectActualState actual =
+                ProjectOwnership.effectiveActualState(doc, Instant.now(), clusterService.leaseTtl());
+        String holder = doc.getHomePodId();
+        if (actual != ProjectActualState.STOPPED && holder != null && clusterService.isHolderGone(holder)) {
+            return ProjectActualState.STOPPED;
+        }
+        return actual;
+    }
+
     private ProjectDto toDto(ProjectDocument doc) {
         return ProjectDto.builder()
                 .name(doc.getName())
@@ -391,8 +406,7 @@ public class ProjectAdminController {
                 .teamIds(doc.getTeamIds())
                 .enabled(doc.isEnabled())
                 .status(doc.getStatus() == null ? null : doc.getStatus().name())
-                .actualState(ProjectOwnership.effectiveActualState(doc, Instant.now(), clusterService.leaseTtl())
-                        .name())
+                .actualState(actualStateOf(doc).name())
                 .homeNode(doc.getHomeNode())
                 .claimedAt(doc.getClaimedAt())
                 .lifecycleType(

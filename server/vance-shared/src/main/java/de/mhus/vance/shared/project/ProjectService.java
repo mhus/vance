@@ -346,6 +346,69 @@ public class ProjectService {
     }
 
     /**
+     * Takes the lease from a holder the caller has established to be gone — a pod that was
+     * killed, evicted or lost its node cannot release anything, and its lease would otherwise
+     * stay valid until {@code leaseTtl} lapses (minutes), during which nobody can claim the
+     * project.
+     *
+     * <p>The caller decides that the holder is gone (the cluster registry knows, this service does
+     * not). What this method adds is the compare-and-set: the write applies only if the lease is
+     * <em>still exactly the one that was observed</em> — same holder, same renewal timestamp. A
+     * holder that was in fact alive renews its lease and the write misses, so a wrong "gone" costs
+     * a refused claim and not a second owner. A closed project is never taken.
+     *
+     * <p>The previous holder's stored actual state is void with its lease and is reset to STOPPED;
+     * the bring that follows writes the new one.
+     *
+     * @return the claimed project, or empty when the lease changed in the meantime
+     */
+    public Optional<ProjectDocument> claimFromGoneHolder(
+            ProjectDocument observed, String selfPodId, String selfNodeName, String selfAddress) {
+        String holder = observed.getHomePodId();
+        Instant observedClaim = observed.getClaimedAt();
+        if (holder == null || holder.equals(selfPodId) || observedClaim == null) {
+            return Optional.empty();
+        }
+        Query query = new Query(Criteria.where(F_TENANT)
+                .is(observed.getTenantId())
+                .and(F_NAME)
+                .is(observed.getName())
+                .and(F_HOME_POD)
+                .is(holder)
+                .and(F_CLAIMED_AT)
+                .is(observedClaim)
+                .and(F_STATUS)
+                .ne(ProjectStatus.CLOSED));
+        Update update = new Update()
+                .set(F_HOME_POD, selfPodId)
+                .set(F_HOME_NODE, selfNodeName)
+                .set(F_CLAIMED_AT, Instant.now())
+                .set(F_ACTUAL_STATE, ProjectActualState.STOPPED)
+                .unset(F_PENDING_SINCE);
+        ProjectDocument updated = mongoTemplate.findAndModify(
+                query, update, FindAndModifyOptions.options().returnNew(true), ProjectDocument.class);
+        if (updated == null) {
+            return Optional.empty();
+        }
+        log.warn(
+                "Project '{}/{}' taken over from pod '{}' ({}), which is gone — its lease was still valid until {}",
+                observed.getTenantId(),
+                observed.getName(),
+                observed.getHomeNode(),
+                holder,
+                observedClaim);
+        megadodoService.projectHomeClaimed(
+                observed.getTenantId(),
+                observed.getName(),
+                selfNodeName,
+                selfPodId,
+                selfAddress,
+                observed.getHomeNode(),
+                observedClaim);
+        return Optional.of(updated);
+    }
+
+    /**
      * "The lease is not being renewed any more" as a Mongo predicate. A
      * missing {@code claimedAt} counts as expired for the same reason
      * {@code ProjectOwnership.isExpired} says so: a holder without a renewal

@@ -44,8 +44,7 @@ public class BrainPodService {
             return repository.save(doc);
         } catch (DuplicateKeyException e) {
             throw new NodeNameTakenException(
-                    "Cluster '" + doc.getClusterId() + "' already has a pod named '"
-                            + doc.getNodeName() + "'", e);
+                    "Cluster '" + doc.getClusterId() + "' already has a pod named '" + doc.getNodeName() + "'", e);
         }
     }
 
@@ -103,14 +102,39 @@ public class BrainPodService {
                 .set("resourcesStartupScore", startupScore)
                 .set("resourcesMaxScore", maxScore);
         BrainPodDocument updated = mongoTemplate.findAndModify(
-                new Query(Criteria.where("podId").is(podId)), update,
+                new Query(Criteria.where("podId").is(podId)),
+                update,
                 FindAndModifyOptions.options().returnNew(true),
                 BrainPodDocument.class);
         if (updated == null) {
-            throw new IllegalStateException(
-                    "Brain pod row missing for podId='" + podId + "' — was it purged?");
+            throw new IllegalStateException("Brain pod row missing for podId='" + podId + "' — was it purged?");
         }
         return updated;
+    }
+
+    /**
+     * Adds {@code delta} to a pod's {@code resourcesCurrentScore} right away, ahead of the next
+     * heartbeat — a <em>reservation</em>.
+     *
+     * <p>The score is otherwise recomputed once per heartbeat. Placements that follow each other
+     * within that interval (a few logins, a batch of wakes) would all see the same stale number
+     * and all pick the same "least loaded" pod. The pod's next beat overwrites the value with the
+     * real sum of its projects, so a reservation that is never followed by a claim heals itself
+     * within the beat; nothing needs to be handed back.
+     *
+     * @return {@code true} when the pod row exists
+     */
+    public boolean reserveScore(String podId, int delta) {
+        if (delta == 0) {
+            return true;
+        }
+        return mongoTemplate
+                        .updateFirst(
+                                new Query(Criteria.where("podId").is(podId)),
+                                new Update().inc("resourcesCurrentScore", delta),
+                                BrainPodDocument.class)
+                        .getMatchedCount()
+                > 0;
     }
 
     /**
@@ -143,9 +167,8 @@ public class BrainPodService {
             boolean clearMaxScoreOverride) {
         PodSelector.validate(labels);
         if (maxScoreOverride != null && maxScoreOverride < 1) {
-            throw new IllegalArgumentException(
-                    "resourcesMaxScoreOverride must be at least 1 (was " + maxScoreOverride
-                            + ") — a cap of zero would read as a permanently full pod");
+            throw new IllegalArgumentException("resourcesMaxScoreOverride must be at least 1 (was " + maxScoreOverride
+                    + ") — a cap of zero would read as a permanently full pod");
         }
         Update update = new Update();
         if (labels != null) {
@@ -167,7 +190,8 @@ public class BrainPodService {
             return findByPodId(podId);
         }
         return Optional.ofNullable(mongoTemplate.findAndModify(
-                new Query(Criteria.where("podId").is(podId)), update,
+                new Query(Criteria.where("podId").is(podId)),
+                update,
                 FindAndModifyOptions.options().returnNew(true),
                 BrainPodDocument.class));
     }
@@ -273,8 +297,7 @@ public class BrainPodService {
      * be liveness-checked by node-name, so it is trusted as-is; only the
      * node-name form is gated against status + heartbeat.
      */
-    public Optional<String> resolveLiveEndpoint(String clusterId, String nodeNameOrEndpoint,
-                                                Duration staleAfter) {
+    public Optional<String> resolveLiveEndpoint(String clusterId, String nodeNameOrEndpoint, Duration staleAfter) {
         if (nodeNameOrEndpoint == null || nodeNameOrEndpoint.isBlank()) return Optional.empty();
         if (nodeNameOrEndpoint.contains(":")) {
             return Optional.of(nodeNameOrEndpoint);

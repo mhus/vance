@@ -61,8 +61,13 @@ class ClusterServiceTest {
         when(nameGenerator.generate()).thenReturn(NODE_NAME);
 
         service = new ClusterService(
-                brainPodService, projectService, locationService, nameGenerator, properties,
-                new ClusterTimeWindows(properties), eventPublisher);
+                brainPodService,
+                projectService,
+                locationService,
+                nameGenerator,
+                properties,
+                new ClusterTimeWindows(properties),
+                eventPublisher);
         ReflectionTestUtils.setField(service, "buildVersion", "1.0.0-test");
     }
 
@@ -72,8 +77,15 @@ class ClusterServiceTest {
 
         verify(brainPodService, times(1)).register(any(BrainPodDocument.class));
         verify(brainPodService, times(1))
-                .heartbeat(eq(service.selfPodId()), any(Instant.class),
-                        eq(PodStatus.RUNNING), eq(ENDPOINT), anyList(), anyInt(), anyInt(), anyInt());
+                .heartbeat(
+                        eq(service.selfPodId()),
+                        any(Instant.class),
+                        eq(PodStatus.RUNNING),
+                        eq(ENDPOINT),
+                        anyList(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt());
         assertThat(service.selfNodeName()).isEqualTo("maya-prosser");
         assertThat(service.selfClusterId()).isEqualTo(CLUSTER);
     }
@@ -81,12 +93,11 @@ class ClusterServiceTest {
     @Test
     void onApplicationReady_collisionRetriesWithFreshGeneratedName() {
         when(nameGenerator.generate())
-                .thenReturn("first-name")     // initial pick
-                .thenReturn("second-name");   // retry pick
+                .thenReturn("first-name") // initial pick
+                .thenReturn("second-name"); // retry pick
 
         // First register call throws taken-name; second succeeds.
-        BrainPodService.NodeNameTakenException taken =
-                new BrainPodService.NodeNameTakenException("taken", null);
+        BrainPodService.NodeNameTakenException taken = new BrainPodService.NodeNameTakenException("taken", null);
         when(brainPodService.register(any(BrainPodDocument.class)))
                 .thenThrow(taken)
                 .thenAnswer(inv -> inv.getArgument(0));
@@ -113,8 +124,7 @@ class ClusterServiceTest {
         // Registered flag stays off → next heartbeat is a no-op.
         service.heartbeat();
         verify(brainPodService, never())
-                .heartbeat(any(), any(), eq(PodStatus.RUNNING), anyString(), anyList(),
-                        anyInt(), anyInt(), anyInt());
+                .heartbeat(any(), any(), eq(PodStatus.RUNNING), anyString(), anyList(), anyInt(), anyInt(), anyInt());
     }
 
     @Test
@@ -128,8 +138,7 @@ class ClusterServiceTest {
     void failedRegistration_announcesNothing() {
         // A pod that is not in the registry cannot be selected, so a round
         // triggered by it would spend itself and change nothing.
-        when(brainPodService.register(any(BrainPodDocument.class)))
-                .thenThrow(new IllegalStateException("mongo down"));
+        when(brainPodService.register(any(BrainPodDocument.class))).thenThrow(new IllegalStateException("mongo down"));
 
         service.onApplicationReady();
 
@@ -139,8 +148,7 @@ class ClusterServiceTest {
     @Test
     void heartbeat_skippedWhenNotYetRegistered() {
         service.heartbeat();
-        verify(brainPodService, never())
-                .heartbeat(any(), any(), any(), any(), anyList(), anyInt(), anyInt(), anyInt());
+        verify(brainPodService, never()).heartbeat(any(), any(), any(), any(), anyList(), anyInt(), anyInt(), anyInt());
     }
 
     @Test
@@ -148,18 +156,29 @@ class ClusterServiceTest {
         service.onApplicationReady();
 
         ProjectDocument p1 = ProjectDocument.builder()
-                .tenantId("acme").name("instant-hole").homePodId(service.selfPodId()).build();
+                .tenantId("acme")
+                .name("instant-hole")
+                .homePodId(service.selfPodId())
+                .build();
         ProjectDocument p2 = ProjectDocument.builder()
-                .tenantId("acme").name("rocket-skates").homePodId(service.selfPodId()).build();
+                .tenantId("acme")
+                .name("rocket-skates")
+                .homePodId(service.selfPodId())
+                .build();
         when(projectService.findByHomePodId(service.selfPodId())).thenReturn(List.of(p1, p2));
 
         service.heartbeat();
 
         verify(brainPodService, atLeastOnce())
-                .heartbeat(eq(service.selfPodId()), any(Instant.class),
-                        eq(PodStatus.RUNNING), eq(ENDPOINT),
+                .heartbeat(
+                        eq(service.selfPodId()),
+                        any(Instant.class),
+                        eq(PodStatus.RUNNING),
+                        eq(ENDPOINT),
                         eq(List.of("acme/instant-hole", "acme/rocket-skates")),
-                        anyInt(), anyInt(), anyInt());
+                        anyInt(),
+                        anyInt(),
+                        anyInt());
     }
 
     // ─── routing: ownership and liveness are two gates ──────────────
@@ -218,5 +237,64 @@ class ClusterServiceTest {
 
         // The recovery path re-runs onApplicationReady, which calls register again.
         verify(brainPodService, atLeastOnce()).register(any(BrainPodDocument.class));
+    }
+
+    // ─── is the holder of a lease gone? ──────────────────────────────────────
+
+    private void givenPodRow(String podId, PodStatus status, Instant lastHeartbeat) {
+        BrainPodDocument row = BrainPodDocument.builder()
+                .podId(podId)
+                .status(status)
+                .endpoint("10.0.0.7:9990")
+                .lastHeartbeatAt(lastHeartbeat)
+                .build();
+        when(brainPodService.findByPodId(podId)).thenReturn(java.util.Optional.of(row));
+        when(brainPodService.isStale(any(BrainPodDocument.class), any(Instant.class), any(Duration.class)))
+                .thenAnswer(inv -> {
+                    BrainPodDocument doc = inv.getArgument(0);
+                    Duration staleAfter = inv.getArgument(2);
+                    return doc.getLastHeartbeatAt() != null
+                            && doc.getLastHeartbeatAt().isBefore(Instant.now().minus(staleAfter));
+                });
+    }
+
+    @Test
+    void aHolderWhoseRowStoppedBeating_isGone() {
+        service.onApplicationReady();
+        givenPodRow("pod-dead", PodStatus.RUNNING, Instant.now().minus(Duration.ofMinutes(10)));
+
+        assertThat(service.isHolderGone("pod-dead")).isTrue();
+    }
+
+    @Test
+    void aHolderWhoseRowIsMissing_isGone() {
+        service.onApplicationReady();
+        when(brainPodService.findByPodId("pod-purged")).thenReturn(java.util.Optional.empty());
+
+        assertThat(service.isHolderGone("pod-purged")).isTrue();
+    }
+
+    @Test
+    void aStoppedHolder_isGone() {
+        service.onApplicationReady();
+        givenPodRow("pod-stopped", PodStatus.STOPPED, Instant.now());
+
+        assertThat(service.isHolderGone("pod-stopped")).isTrue();
+    }
+
+    @Test
+    void aHolderThatBeatsRecently_isNotGone() {
+        service.onApplicationReady();
+        givenPodRow("pod-alive", PodStatus.RUNNING, Instant.now());
+
+        assertThat(service.isHolderGone("pod-alive")).isFalse();
+    }
+
+    @Test
+    void aPodThatHasNotRegisteredItself_doesNotJudgeTheOthers() {
+        // Not onApplicationReady(): an empty registry read on a booting pod must not read as "everybody is gone".
+        when(brainPodService.findByPodId("pod-other")).thenReturn(java.util.Optional.empty());
+
+        assertThat(service.isHolderGone("pod-other")).isFalse();
     }
 }

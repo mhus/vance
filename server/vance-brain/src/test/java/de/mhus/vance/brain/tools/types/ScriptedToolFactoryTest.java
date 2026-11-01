@@ -282,11 +282,16 @@ class ScriptedToolFactoryTest {
     // ──────────────────── helpers ────────────────────
 
     private static ServerToolDocument serverTool(String name, Map<String, Object> parameters) {
+        // The first script of a JVM pays the GraalJS context start-up, which on a
+        // loaded build machine can exceed the tool's 5 s default — a timeout that
+        // says nothing about what these tests check. Tests that care set their own.
+        Map<String, Object> withTimeout = new LinkedHashMap<>(parameters);
+        withTimeout.putIfAbsent("timeoutMs", 30_000);
         return ServerToolDocument.builder()
                 .name(name)
                 .type(ScriptedToolFactory.TYPE_ID)
                 .description("test tool")
-                .parameters(new LinkedHashMap<>(parameters))
+                .parameters(withTimeout)
                 .enabled(true)
                 .primary(false)
                 .labels(List.of())

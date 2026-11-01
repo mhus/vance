@@ -414,7 +414,9 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
         // and recovering on the second wasted a full LLM round-trip.
         ctxBuilder.option("js.top-level-await", "true");
 
-        Context ctx = ctxBuilder.build();
+        // Building a context that carries the CPU limit already reads the calling
+        // thread's CPU time, which a virtual thread does not have (PlatformThread).
+        Context ctx = PlatformThread.get(ctxBuilder::build);
 
         ExecutorService watchdog = Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "vance-script-eval");
@@ -441,17 +443,22 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
             installedLogTee = true;
         }
         try {
-            ctx.getBindings("js").putMember("vance", api);
-            // Tool-supplied bindings become top-level variables in the
-            // script's global scope. ScriptRequest validates that
-            // 'vance' is not reused as a binding name.
-            for (Map.Entry<String, @Nullable Object> entry : request.bindings().entrySet()) {
-                ctx.getBindings("js").putMember(entry.getKey(), entry.getValue());
-            }
             Source source = Source.newBuilder("js", request.code(), sourceName).buildLiteral();
 
-            Future<@Nullable Object> future =
-                    watchdog.submit(() -> resolveResult(ctx.eval(source), effectiveMaxResultNodes, resultMaxDepth));
+            // Binding the globals enters the context just like eval does, so it
+            // happens on the same platform thread (see PlatformThread): the caller
+            // is usually a virtual thread, which the sandbox CPU limit cannot track.
+            Future<@Nullable Object> future = watchdog.submit(() -> {
+                ctx.getBindings("js").putMember("vance", api);
+                // Tool-supplied bindings become top-level variables in the
+                // script's global scope. ScriptRequest validates that
+                // 'vance' is not reused as a binding name.
+                for (Map.Entry<String, @Nullable Object> entry :
+                        request.bindings().entrySet()) {
+                    ctx.getBindings("js").putMember(entry.getKey(), entry.getValue());
+                }
+                return resolveResult(ctx.eval(source), effectiveMaxResultNodes, resultMaxDepth);
+            });
             try {
                 Object value = future.get(effectiveTimeout.toMillis(), TimeUnit.MILLISECONDS);
                 if (value instanceof String s) {
@@ -463,7 +470,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                         value, Duration.between(start, Instant.now()), maskedTail(console, pulledSecrets));
             } catch (TimeoutException e) {
                 future.cancel(true);
-                ctx.close(true);
+                PlatformThread.run(() -> ctx.close(true));
                 throw new ScriptExecutionException(
                         ScriptExecutionException.ErrorClass.TIMEOUT,
                         "Script timed out after " + effectiveTimeout.toMillis() + "ms",
@@ -472,7 +479,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 future.cancel(true);
-                ctx.close(true);
+                PlatformThread.run(() -> ctx.close(true));
                 throw new ScriptExecutionException(
                         ScriptExecutionException.ErrorClass.CANCELLED,
                         "Script execution interrupted",
@@ -489,7 +496,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
             VanceScriptApi.clearActiveSecretTee();
             watchdog.shutdownNow();
             try {
-                ctx.close();
+                PlatformThread.run(ctx::close);
             } catch (Exception e) {
                 log.debug("ctx.close() raised after run: {}", e.toString());
             }

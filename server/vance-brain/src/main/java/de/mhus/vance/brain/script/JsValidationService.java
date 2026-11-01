@@ -76,6 +76,18 @@ public class JsValidationService {
      *                    name); pass null/empty to use "{@code <validate>}"
      */
     public JsValidationResult validate(@Nullable String code, @Nullable String sourceName) {
+        // Entering a context from a virtual thread breaks the sandbox CPU limit's
+        // thread sampling on the shared engine (PlatformThread).
+        try {
+            return PlatformThread.call(() -> validateOnPlatformThread(code, sourceName));
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private JsValidationResult validateOnPlatformThread(@Nullable String code, @Nullable String sourceName) {
         String name = sourceName == null || sourceName.isBlank() ? "<validate>" : sourceName;
         if (code == null || code.isBlank()) {
             return new JsValidationResult(

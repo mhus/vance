@@ -108,7 +108,13 @@ public final class ScriptHarness {
         try (Engine engine = Engine.newBuilder("js")
                 .option("engine.WarnInterpreterOnly", "false")
                 .build()) {
-            ScriptExecutor executor = new GraaljsScriptExecutor(engine);
+            // The harness builds a fresh engine per run, and the scripts under test carry
+            // their own short @timeout headers. On a loaded build machine a cold engine
+            // eats those few seconds before the script starts, which says nothing about
+            // the script. Raising the floor makes every header at least a minute here.
+            ScriptEngineProperties props = new ScriptEngineProperties();
+            props.getTimeout().setMin(Duration.ofSeconds(60));
+            ScriptExecutor executor = new GraaljsScriptExecutor(engine, props);
             ContextToolsApi tools = buildRecordingTools();
             Map<String, Object> bindings = new LinkedHashMap<>();
             bindings.put("args", args);

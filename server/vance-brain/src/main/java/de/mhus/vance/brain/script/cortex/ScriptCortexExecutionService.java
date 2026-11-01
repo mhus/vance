@@ -122,46 +122,43 @@ public class ScriptCortexExecutionService {
         };
         ScriptCortexConsole console = new ScriptCortexConsole(sink);
 
-        Map<String, @Nullable Object> bindings = new LinkedHashMap<>();
-        bindings.put("console", console);
-        bindings.put("args", req.args == null ? Map.of() : req.args);
-
-        // Tool surface: every tool the dispatcher resolves for this
-        // scope. Symmetric with Hactar-generate, which receives the
-        // same list via engineParams.scriptAllowedTools so the LLM's
-        // prompt-inventory matches what the runtime will actually accept.
-        // Per-tool permission checks still apply at invoke-time.
-        ToolInvocationContext scope = new ToolInvocationContext(
-                req.tenantId,
-                req.projectId,
-                /*sessionId*/ null,
-                /*processId*/ null,
-                req.userId);
-        java.util.Set<String> allowed = toolPolicy == null
-                ? java.util.Set.of()
-                : new java.util.LinkedHashSet<>(toolPolicy.availableTools(scope));
-        ContextToolsApi tools = new ContextToolsApi(toolDispatcher, scope, allowed);
-
-        Duration timeout = req.timeoutMs == null
-                ? Duration.ofSeconds(30)
-                : Duration.ofMillis(Math.max(1, req.timeoutMs));
-
-        de.mhus.vance.brain.script.ScriptRequest scriptReq =
-                new de.mhus.vance.brain.script.ScriptRequest(
-                        "js",
-                        req.code,
-                        req.sourceName == null ? "cortex-execution.js" : req.sourceName,
-                        tools,
-                        timeout,
-                        bindings,
-                        /*recipeName*/ null);
-
         // Tee `vance.log.*` into the same sink as `console.*` so the
         // Execute dialog surfaces both channels. InheritableThreadLocal
         // propagates into the GraalJS watchdog thread when it's spun up.
         de.mhus.vance.brain.script.VanceScriptApi.setActiveLogTee(sink::accept);
 
+        // The whole preparation sits inside the try: a cancel can interrupt the worker
+        // while it is still resolving the tool surface, and an exception there must
+        // end the execution (as cancelled) instead of leaving it 'running' forever.
         try {
+            Map<String, @Nullable Object> bindings = new LinkedHashMap<>();
+            bindings.put("console", console);
+            bindings.put("args", req.args == null ? Map.of() : req.args);
+
+            // Tool surface: every tool the dispatcher resolves for this
+            // scope. Symmetric with Hactar-generate, which receives the
+            // same list via engineParams.scriptAllowedTools so the LLM's
+            // prompt-inventory matches what the runtime will actually accept.
+            // Per-tool permission checks still apply at invoke-time.
+            ToolInvocationContext scope = new ToolInvocationContext(
+                    req.tenantId, req.projectId, /*sessionId*/ null, /*processId*/ null, req.userId);
+            java.util.Set<String> allowed = toolPolicy == null
+                    ? java.util.Set.of()
+                    : new java.util.LinkedHashSet<>(toolPolicy.availableTools(scope));
+            ContextToolsApi tools = new ContextToolsApi(toolDispatcher, scope, allowed);
+
+            Duration timeout =
+                    req.timeoutMs == null ? Duration.ofSeconds(30) : Duration.ofMillis(Math.max(1, req.timeoutMs));
+
+            de.mhus.vance.brain.script.ScriptRequest scriptReq = new de.mhus.vance.brain.script.ScriptRequest(
+                    "js",
+                    req.code,
+                    req.sourceName == null ? "cortex-execution.js" : req.sourceName,
+                    tools,
+                    timeout,
+                    bindings,
+                    /*recipeName*/ null);
+
             de.mhus.vance.brain.script.ScriptResult result = executor.run(scriptReq);
             ex.complete(result.value(), null, "finished");
             wsRegistry.pushFinished(
@@ -173,8 +170,7 @@ public class ScriptCortexExecutionService {
             boolean cancelled = e.errorClass() == ScriptExecutionException.ErrorClass.CANCELLED;
             String state = cancelled ? "cancelled" : "failed";
             ex.complete(null, e.getMessage(), state);
-            long endedAtMs = ex.endedAt == null
-                    ? System.currentTimeMillis() : ex.endedAt.toEpochMilli();
+            long endedAtMs = ex.endedAt == null ? System.currentTimeMillis() : ex.endedAt.toEpochMilli();
             long durationMs = ex.durationMs();
             if (cancelled) {
                 wsRegistry.pushCancelled(executionId, endedAtMs, durationMs);
@@ -182,15 +178,33 @@ public class ScriptCortexExecutionService {
                 wsRegistry.pushFailed(executionId, e.getMessage(), endedAtMs, durationMs);
             }
         } catch (RuntimeException e) {
-            log.warn("Cortex script execution '{}' raised unexpected: {}",
-                    executionId, e.toString(), e);
-            ex.complete(null, e.toString(), "failed");
-            wsRegistry.pushFailed(
-                    executionId,
-                    e.toString(),
-                    ex.endedAt == null ? System.currentTimeMillis() : ex.endedAt.toEpochMilli(),
-                    ex.durationMs());
+            long endedAtMs = System.currentTimeMillis();
+            if (ex.cancelRequested) {
+                // Interrupted before the script even started — still a cancel.
+                ex.complete(null, "Cancelled before the script started", "cancelled");
+                wsRegistry.pushCancelled(
+                        executionId, ex.endedAt == null ? endedAtMs : ex.endedAt.toEpochMilli(), ex.durationMs());
+            } else {
+                log.warn("Cortex script execution '{}' raised unexpected: {}", executionId, e.toString(), e);
+                ex.complete(null, e.toString(), "failed");
+                wsRegistry.pushFailed(
+                        executionId,
+                        e.toString(),
+                        ex.endedAt == null ? endedAtMs : ex.endedAt.toEpochMilli(),
+                        ex.durationMs());
+            }
         } finally {
+            if ("running".equals(ex.state)) {
+                // Whatever ended the worker, it must not leave the execution
+                // 'running': nobody would ever see it finish.
+                String reason = ex.cancelRequested ? "cancelled" : "failed";
+                ex.complete(null, ex.cancelRequested ? "Cancelled" : "Execution ended without a result", reason);
+                if (ex.cancelRequested) {
+                    wsRegistry.pushCancelled(executionId, ex.endedAt.toEpochMilli(), ex.durationMs());
+                } else {
+                    wsRegistry.pushFailed(executionId, ex.errorMessage, ex.endedAt.toEpochMilli(), ex.durationMs());
+                }
+            }
             de.mhus.vance.brain.script.VanceScriptApi.clearActiveLogTee();
             scheduleEviction(executionId);
         }
@@ -206,6 +220,7 @@ public class ScriptCortexExecutionService {
         if (ex == null) return false;
         if (ex.future == null) return false;
         if (!"running".equals(ex.state)) return false;
+        ex.cancelRequested = true;
         boolean cancelled = ex.future.cancel(true);
         if (cancelled) {
             // The actual state transition happens on the worker thread
@@ -242,15 +257,17 @@ public class ScriptCortexExecutionService {
         // the entry. We expect at most a few hundred concurrent ids; a
         // ScheduledExecutorService would be cleaner but it's overkill
         // for the throughput.
-        Thread t = new Thread(() -> {
-            try {
-                Thread.sleep(RETENTION.toMillis());
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return;
-            }
-            executions.remove(executionId);
-        }, "cortex-eviction-" + executionId.substring(0, 8));
+        Thread t = new Thread(
+                () -> {
+                    try {
+                        Thread.sleep(RETENTION.toMillis());
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                    executions.remove(executionId);
+                },
+                "cortex-eviction-" + executionId.substring(0, 8));
         t.setDaemon(true);
         t.start();
     }
@@ -289,8 +306,14 @@ public class ScriptCortexExecutionService {
     private static final class Execution {
         final String executionId;
         final Instant startedAt;
-        @Nullable Future<?> future;
+
+        @Nullable
+        Future<?> future;
+
         volatile String state = "running";
+        /** Set by {@link #cancel}; tells the worker that a failure is the cancel's doing. */
+        volatile boolean cancelRequested;
+
         volatile @Nullable Instant endedAt;
         volatile @Nullable Object resultValue;
         volatile @Nullable String errorMessage;

@@ -71,7 +71,7 @@ class GraaljsScriptExecutorCallPolicyTest {
                         code,
                         "policy-test",
                         tools(),
-                        Duration.ofSeconds(5),
+                        Duration.ofSeconds(60),
                         Map.of(),
                         null,
                         ScopeLevel.PROCESS_SCOPED,

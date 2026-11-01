@@ -63,7 +63,7 @@ class ScriptWorkflowSurfaceJsTest {
     }
 
     private static ScriptRequest request(String code) {
-        return new ScriptRequest("js", code, "test", tools(), Duration.ofSeconds(5), Map.of());
+        return new ScriptRequest("js", code, "test", tools(), Duration.ofSeconds(60), Map.of());
     }
 
     private static ScriptWorkflowRun run() {

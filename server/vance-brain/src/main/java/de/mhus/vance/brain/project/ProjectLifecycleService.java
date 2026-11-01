@@ -9,6 +9,7 @@ import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.rag.ProjectRagService;
 import de.mhus.vance.brain.session.SessionChatBootstrapper;
 import de.mhus.vance.brain.session.SessionLifecycleService;
+import de.mhus.vance.shared.project.ProjectActualState;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectKind;
 import de.mhus.vance.shared.project.ProjectOwnership;
@@ -43,6 +44,8 @@ import org.springframework.stereotype.Service;
  *       RUNNING (and request engines start).</li>
  *   <li>{@link #suspend} — request engines stop, mark SUSPENDED. The
  *       workspace folder stays where it is.</li>
+ *   <li>{@link #idle} — the same teardown, desired state IDLE: the system
+ *       stopped the project and any access wakes it again.</li>
  *   <li>{@link #close} — mark CLOSED, move to the archived group, stop
  *       engines on the home pod, dispose workspace.</li>
  *   <li>{@link #reopen} — CLOSED back to INIT in the group it was archived
@@ -60,9 +63,16 @@ import org.springframework.stereotype.Service;
  * scheduler entries, hooks, server tools, caches. They do not halt a think
  * process mid-turn; that is the session lifecycle's stop.
  *
- * <p>Crash recovery: every transition is idempotent. {@link #bring}
- * re-runs through RECOVERING from any non-CLOSED status; {@link #suspend}
- * picks up from SUSPENDING.
+ * <p><b>Desired and actual state.</b> {@code ProjectDocument.status} is what
+ * somebody wants ({@link ProjectStatus}); {@code actualState} is what the lease
+ * holder is doing ({@link ProjectActualState}) and only means something while
+ * that lease lives. The desired state is written first and never by a
+ * shutdown; the actual state follows as the pod brings the project up or takes
+ * it down.
+ *
+ * <p>Crash recovery: every transition is idempotent. {@link #bring} re-runs
+ * from any non-CLOSED desired state; a crash mid-start or mid-stop leaves a
+ * stored actual state that no live lease backs, which reads as STOPPED.
  */
 @Service
 @RequiredArgsConstructor
@@ -286,15 +296,19 @@ public class ProjectLifecycleService {
     public record BootstrapResult(ProjectDocument project, SessionDocument session, ThinkProcessDocument chatProcess) {}
 
     /**
-     * Move a project onto this pod: take the lease, transition to RECOVERING,
-     * initialise the workspace (an existing folder is kept as it is), publish
-     * {@link ProjectEnginesStartRequested}, transition to RUNNING.
+     * Move a project onto this pod: take the lease, set the desired state to
+     * RUNNING and the actual state to STARTING, initialise the workspace (an
+     * existing folder is kept as it is), publish
+     * {@link ProjectEnginesStartRequested}, record the actual state as RUNNING.
+     * An explicit bring wakes a project from any non-CLOSED desired state,
+     * IDLE and SUSPENDED alike.
      *
      * <p><b>Idempotence keys on this pod's activation registry, not on
      * {@code status}.</b> The short-circuit needs "already running
-     * <em>here</em>", and {@code status} cannot answer that — it is shared,
-     * and after a crash it still says {@code RUNNING} because the only thing
-     * that ever writes it back is an explicit admin {@link #suspend}. Reading
+     * <em>here</em>", and {@code status} cannot answer that — it is the
+     * shared, desired state, and after a crash it still says {@code RUNNING}
+     * because the only thing that ever writes it back is an explicit
+     * {@link #suspend} or {@link #idle}. Reading
      * it as "nothing to do" meant the new lease holder owned the project
      * without ever starting anything for it: no workspace, no session unbind,
      * and no {@link ProjectEnginesStartRequested}, so scheduler, hooks, tool
@@ -303,8 +317,7 @@ public class ProjectLifecycleService {
      * ({@code planning/project-ownership-lease-design.md} §1.2).
      *
      * <p>Consequence, intended: a {@code RUNNING} project whose lease expired
-     * is the <em>normal</em> recovery case and runs the full pass, including
-     * the RUNNING → RECOVERING → RUNNING round trip.
+     * is the <em>normal</em> recovery case and runs the full pass.
      *
      * <p>The homeless tenant project (see {@link ProjectService#isHomeless})
      * is refused: nothing runs there — no workspace, no engines, no
@@ -346,16 +359,36 @@ public class ProjectLifecycleService {
             log.info("Project '{}/{}' bring: cleared {} stale session binding(s)", tenantId, projectName, unbound);
         }
         ProjectStatus from = doc.getStatus();
-        projectService.transitionStatus(tenantId, projectName, from, ProjectStatus.RECOVERING);
+        // The desired state moves first, and as a strict CAS: an explicit
+        // suspend or close that landed between the read and this write must win
+        // over an implicit bring — "ignore an operator's suspend" is a much
+        // worse outcome than "retry the bring on the next tick".
+        projectService.transitionStatus(tenantId, projectName, from, ProjectStatus.RUNNING);
+        recordActualState(tenantId, projectName, ProjectActualState.STARTING);
+        boolean folderExisted = workspaceService.existsForProject(tenantId, projectName);
         try {
             workspaceService.init(tenantId, projectName);
         } catch (RuntimeException e) {
             log.error(
-                    "Workspace init failed for '{}/{}' (status remains RECOVERING): {}",
+                    "Workspace init failed for '{}/{}' (actual state remains STARTING): {}",
                     tenantId,
                     projectName,
                     e.toString());
             throw e;
+        }
+        if (!folderExisted
+                && from != ProjectStatus.INIT
+                && workspaceService.mode().accessible()) {
+            // A workspace never moves between pods. A project that was brought
+            // before but has no folder here ran on another pod (or lost its
+            // disk) — it starts empty, which is correct but should be loud: in
+            // a local-workspace install it means the deployment is wrong.
+            log.warn(
+                    "Project '{}/{}' brought from {} but this pod holds no workspace folder for it — "
+                            + "starting with an empty workspace (workspaces do not move between pods)",
+                    tenantId,
+                    projectName,
+                    from);
         }
         ensureProjectRag(tenantId, projectName);
         eventPublisher.publishEvent(new ProjectEnginesStartRequested(tenantId, projectName));
@@ -363,65 +396,54 @@ public class ProjectLifecycleService {
         // the project un-activated and the next bring retries the whole pass
         // rather than short-circuiting on a half-started project.
         activationRegistry.activate(tenantId, projectName);
-        doc = finishBringTransition(tenantId, projectName);
+        doc = finishBring(tenantId, projectName);
         log.info("Project '{}/{}' brought to RUNNING (was {})", tenantId, projectName, from);
         return doc;
     }
 
     /**
-     * Write the second half of {@link #bring}'s status round-trip
-     * (RECOVERING → RUNNING), tolerating an already-RUNNING project as long
-     * as this pod still holds the lease.
+     * Closes {@link #bring}: re-checks that the world still agrees with what
+     * this pass did, then records the project as RUNNING.
      *
-     * <p>Why this is not the same CAS as the first one. The first CAS
-     * ({@code from → RECOVERING}) is <em>strict</em>: it must reject an
-     * explicit SUSPEND or CLOSE that landed between the read and the write,
-     * because "ignore an operator's suspend" is a much worse outcome than
-     * "retry the bring on the next tick". The second CAS
-     * ({@code RECOVERING → RUNNING}) is the "I'm done" marker of this pass.
-     *
-     * <p>Losing it to RUNNING is success only while the lease is ours: the
-     * engines started here belong to the lease holder, so the project runs
-     * exactly once. If the lease went to another pod meanwhile (it expired
-     * during a slow workspace restore), that pod runs the project and this
-     * bring surfaces the conflict. The local start it already made is an
-     * "active here, lease elsewhere" project — exactly what
-     * {@link ProjectLeaseService}'s drift reconcile unloads (with the
-     * home-lost witness row), so it is not torn down a second way here. Any status other than
-     * RUNNING (e.g. SUSPENDING from a racing operator) is a real conflict
-     * as well — the operator's intent wins over the implicit bring.
+     * <p>Two things can have changed since the strict CAS at the start. The
+     * desired state may no longer be RUNNING — an operator suspended or closed
+     * the project while it was starting — and the operator's intent wins over
+     * the implicit bring, so this surfaces a conflict. Or the lease may have
+     * moved to another pod (it expired during a slow start): that pod runs the
+     * project, this bring surfaces the conflict, and the local start it already
+     * made is an "active here, lease elsewhere" project that
+     * {@link ProjectLeaseService}'s drift reconcile unloads.
      */
-    private ProjectDocument finishBringTransition(String tenantId, String projectName) {
-        try {
-            return projectService.transitionStatus(
-                    tenantId, projectName, ProjectStatus.RECOVERING, ProjectStatus.RUNNING);
-        } catch (ProjectService.ProjectStatusConflictException e) {
-            ProjectDocument refreshed = projectService
-                    .findByTenantAndName(tenantId, projectName)
-                    .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
-                            "Project '" + projectName + "' not found in tenant '" + tenantId + "'"));
-            if (refreshed.getStatus() != ProjectStatus.RUNNING) {
-                log.warn(
-                        "Project '{}/{}' bring: RECOVERING → RUNNING lost the CAS to status {} — surfacing conflict",
-                        tenantId,
-                        projectName,
-                        refreshed.getStatus());
-                throw e;
-            }
-            if (!projectManager.isOwnedByLocalPod(tenantId, projectName)) {
-                log.warn(
-                        "Project '{}/{}' bring: project is RUNNING but the lease moved to another pod — "
-                                + "surfacing conflict, the lease reconcile unloads the local start",
-                        tenantId,
-                        projectName);
-                throw e;
-            }
-            log.info(
-                    "Project '{}/{}' bring: RECOVERING → RUNNING already done, lease still here — finishing idempotently",
+    private ProjectDocument finishBring(String tenantId, String projectName) {
+        ProjectDocument refreshed = projectService
+                .findByTenantAndName(tenantId, projectName)
+                .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
+                        "Project '" + projectName + "' not found in tenant '" + tenantId + "'"));
+        if (refreshed.getStatus() != ProjectStatus.RUNNING) {
+            log.warn(
+                    "Project '{}/{}' bring: desired state changed to {} while starting — surfacing conflict",
+                    tenantId,
+                    projectName,
+                    refreshed.getStatus());
+            throw new ProjectService.ProjectStatusConflictException(
+                    "Project '" + projectName + "' became " + refreshed.getStatus() + " while it was starting");
+        }
+        if (!projectManager.isOwnedByLocalPod(tenantId, projectName)) {
+            log.warn(
+                    "Project '{}/{}' bring: the lease moved to another pod — "
+                            + "surfacing conflict, the lease reconcile unloads the local start",
                     tenantId,
                     projectName);
-            return refreshed;
+            throw new ProjectService.ProjectStatusConflictException(
+                    "Project '" + projectName + "' is owned by another pod");
         }
+        recordActualState(tenantId, projectName, ProjectActualState.RUNNING);
+        return projectService.findByTenantAndName(tenantId, projectName).orElse(refreshed);
+    }
+
+    /** Records what this pod is doing with the project; ignored if the lease is no longer ours. */
+    private void recordActualState(String tenantId, String projectName, ProjectActualState state) {
+        projectService.setActualState(tenantId, projectName, clusterService.selfPodId(), state);
     }
 
     /**
@@ -481,6 +503,7 @@ public class ProjectLifecycleService {
         if (suspendSessions) {
             suspendSessionsHere(tenantId, projectName);
         }
+        recordActualState(tenantId, projectName, ProjectActualState.STOPPING);
         eventPublisher.publishEvent(new ProjectEnginesStopRequested(tenantId, projectName));
         activationRegistry.deactivate(tenantId, projectName);
         if (isClosed(tenantId, projectName)) {
@@ -514,43 +537,63 @@ public class ProjectLifecycleService {
     }
 
     /**
-     * Move a RUNNING project to SUSPENDED: transition to SUSPENDING,
-     * publish {@link ProjectEnginesStopRequested}, transition to SUSPENDED.
-     * The workspace folder is left untouched. Picks up from SUSPENDING if a
-     * previous attempt crashed mid-flow.
-     * Idempotent on already-SUSPENDED projects.
+     * Stops a project on purpose: desired state SUSPENDED, engines down. The
+     * workspace folder is left untouched. Only an explicit start
+     * ({@link #bring} from a session create or an admin resume) brings it
+     * back — implicit access does not.
+     *
+     * <p>Idempotent on an already-SUSPENDED project that is not running here.
      */
     public ProjectDocument suspend(String tenantId, String projectName) {
+        return stopWithIntent(tenantId, projectName, ProjectStatus.SUSPENDED);
+    }
+
+    /**
+     * Stops a project because nobody needs it right now: desired state IDLE,
+     * the same teardown as {@link #suspend}. The difference is who may undo it
+     * — any access wakes an idle project, see {@link ProjectService#wakesOnAccess}.
+     */
+    public ProjectDocument idle(String tenantId, String projectName) {
+        return stopWithIntent(tenantId, projectName, ProjectStatus.IDLE);
+    }
+
+    /**
+     * Shared teardown of {@link #suspend} and {@link #idle}. The desired state
+     * is written first — it is the part that must survive a crash — and the
+     * actual state follows: STOPPING while the engines unload, STOPPED after.
+     * A crash in between leaves a stored STOPPING that no live lease backs,
+     * which reads as STOPPED, so nothing needs repairing.
+     */
+    private ProjectDocument stopWithIntent(String tenantId, String projectName, ProjectStatus intent) {
         ProjectDocument doc = projectService
                 .findByTenantAndName(tenantId, projectName)
                 .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
                         "Project '" + projectName + "' not found in tenant '" + tenantId + "'"));
         if (ProjectService.isHomeless(projectName)) {
             // Never brought, so there is nothing to stop.
-            log.debug("Homeless project '{}/{}' — suspend is a no-op", tenantId, projectName);
+            log.debug("Homeless project '{}/{}' — {} is a no-op", tenantId, projectName, intent);
             return doc;
         }
-        switch (doc.getStatus()) {
-            case SUSPENDED -> {
-                log.debug("Project '{}/{}' already SUSPENDED", tenantId, projectName);
-                return doc;
-            }
-            case CLOSED ->
-                throw new ProjectService.ProjectStatusConflictException(
-                        "Project '" + projectName + "' is CLOSED — cannot suspend");
-            case SUSPENDING ->
-                log.info("Project '{}/{}' was in SUSPENDING (prior crash) — completing suspend", tenantId, projectName);
-            default -> {
-                projectService.transitionStatus(tenantId, projectName, doc.getStatus(), ProjectStatus.SUSPENDING);
-            }
+        if (doc.getStatus() == ProjectStatus.CLOSED) {
+            throw new ProjectService.ProjectStatusConflictException(
+                    "Project '" + projectName + "' is CLOSED — cannot set it " + intent);
         }
+        boolean runningHere = activationRegistry.isActive(tenantId, projectName);
+        if (doc.getStatus() == intent && !runningHere) {
+            log.debug("Project '{}/{}' already {}", tenantId, projectName, intent);
+            return doc;
+        }
+        if (doc.getStatus() != intent) {
+            doc = projectService.transitionStatus(tenantId, projectName, doc.getStatus(), intent);
+        }
+        recordActualState(tenantId, projectName, ProjectActualState.STOPPING);
         eventPublisher.publishEvent(new ProjectEnginesStopRequested(tenantId, projectName));
         // Symmetric to the activate() in bring: this pod no longer has the
         // project up, so the next bring must run the full pass again.
         activationRegistry.deactivate(tenantId, projectName);
-        doc = projectService.transitionStatus(tenantId, projectName, ProjectStatus.SUSPENDING, ProjectStatus.SUSPENDED);
-        log.info("Project '{}/{}' suspended", tenantId, projectName);
-        return doc;
+        recordActualState(tenantId, projectName, ProjectActualState.STOPPED);
+        log.info("Project '{}/{}' is now {}", tenantId, projectName, intent);
+        return projectService.findByTenantAndName(tenantId, projectName).orElse(doc);
     }
 
     /**

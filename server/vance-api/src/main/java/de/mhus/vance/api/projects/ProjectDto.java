@@ -35,11 +35,20 @@ public class ProjectDto {
     private boolean enabled;
 
     /**
-     * Lifecycle status: {@code INIT} / {@code RECOVERING} / {@code RUNNING} /
-     * {@code SUSPENDING} / {@code SUSPENDED} / {@code CLOSED}. {@code CLOSED}
-     * is what the UI calls archived.
+     * Desired state — what somebody wants: {@code INIT} / {@code RUNNING} /
+     * {@code IDLE} / {@code SUSPENDED} / {@code CLOSED}. {@code CLOSED} is what
+     * the UI calls archived; {@code IDLE} is a project the system stopped and
+     * any access wakes again.
      */
     private String status;
+
+    /**
+     * Actual state — what the pod holding the project is doing right now:
+     * {@code STOPPED} / {@code STARTING} / {@code RUNNING} / {@code STOPPING}.
+     * {@code STOPPED} whenever no live lease backs the project, whatever was
+     * last written.
+     */
+    private @Nullable String actualState;
 
     /**
      * Group an archived project returns to on unarchive; {@code null} when

@@ -141,7 +141,13 @@ public class BrainSchemaMigrations implements SchemaMigrationSource {
             new Registered(
                     "2026-10-24_001",
                     Migrator_2026_10_24_001_WorkspaceSnapshotTenantIndex.class,
-                    /*runOnBaseline*/ true));
+                    /*runOnBaseline*/ true),
+            // runOnBaseline: a database restored from before the anchor can still
+            // hold RECOVERING / SUSPENDING, and a row with a value the enum no
+            // longer knows fails to load — the project would vanish from every
+            // query that maps it. Self-emptying filter, a no-op on a new database.
+            new Registered(
+                    "2026-11-01_001", Migrator_2026_11_01_001_ProjectDesiredState.class, /*runOnBaseline*/ true));
 
     @Override
     public List<Registered> migrations() {

@@ -66,6 +66,22 @@ public final class ProjectOwnership {
     }
 
     /**
+     * What the project is doing right now: the stored {@link ProjectActualState}
+     * while a live lease backs it, {@link ProjectActualState#STOPPED} otherwise.
+     *
+     * <p>The stored value is a statement by the lease holder. Once the lease
+     * lapses nobody stands behind it any more — the pod may have died without
+     * writing anything — so it is ignored, which is why a crash needs no
+     * clean-up. The homeless tenant project holds no lease and is never
+     * running.
+     */
+    public static ProjectActualState effectiveActualState(ProjectDocument project, Instant now, Duration leaseTtl) {
+        if (isUnowned(project, now, leaseTtl)) return ProjectActualState.STOPPED;
+        ProjectActualState stored = project.getActualState();
+        return stored == null ? ProjectActualState.STOPPED : stored;
+    }
+
+    /**
      * Whether a renewal timestamp has aged out of the lease window.
      *
      * <p>Two edge cases, both decided towards "do not strand a project":

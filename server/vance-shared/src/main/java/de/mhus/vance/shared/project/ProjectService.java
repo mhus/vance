@@ -75,6 +75,7 @@ public class ProjectService {
 
     private static final String F_NAME = "name";
     private static final String F_STATUS = "status";
+    private static final String F_ACTUAL_STATE = "actualState";
     private static final String F_HOME_POD = "homePodId";
     private static final String F_HOME_NODE = "homeNode";
     private static final String F_CLAIMED_AT = "claimedAt";
@@ -89,13 +90,22 @@ public class ProjectService {
     private static final String F_KIND = "kind";
 
     /**
-     * The statuses that express the intent "should be live somewhere" — the
-     * only ones an owner is claimed for. {@code SUSPENDING} and
-     * {@code SUSPENDED} express the opposite intent and {@code CLOSED} is
-     * terminal; recovery must not overrule any of the three.
+     * The desired states that express "should be live somewhere" — the only
+     * ones an owner is claimed for. {@code IDLE} and {@code SUSPENDED} express
+     * the opposite intent and {@code CLOSED} is terminal; recovery must not
+     * overrule any of the three.
      */
-    private static final List<ProjectStatus> WANTS_TO_RUN =
-            List.of(ProjectStatus.INIT, ProjectStatus.RECOVERING, ProjectStatus.RUNNING);
+    private static final List<ProjectStatus> WANTS_TO_RUN = List.of(ProjectStatus.INIT, ProjectStatus.RUNNING);
+
+    /**
+     * The desired states an implicit access may bring back: everything that
+     * wants to run, plus {@code IDLE}. An idle project was stopped by the
+     * system, not by a person, so the next reader owes it a wake-up;
+     * {@code SUSPENDED} was somebody's decision and stays down until an
+     * explicit start.
+     */
+    private static final List<ProjectStatus> WAKES_ON_ACCESS =
+            List.of(ProjectStatus.INIT, ProjectStatus.RUNNING, ProjectStatus.IDLE);
 
     /**
      * The same "should be live somewhere" question as {@link #WANTS_TO_RUN},
@@ -110,6 +120,15 @@ public class ProjectService {
      */
     public static boolean wantsToRun(@Nullable ProjectStatus status) {
         return status != null && WANTS_TO_RUN.contains(status);
+    }
+
+    /**
+     * Whether an <em>implicit</em> access — a workspace read, say — may bring
+     * the project up. Wider than {@link #wantsToRun} by exactly {@code IDLE}:
+     * an idle project wakes on access, a suspended one does not.
+     */
+    public static boolean wakesOnAccess(@Nullable ProjectStatus status) {
+        return status != null && WAKES_ON_ACCESS.contains(status);
     }
 
     private final ProjectRepository repository;
@@ -396,7 +415,11 @@ public class ProjectService {
                     .is(project.getName())
                     .and(F_HOME_POD)
                     .is(selfPodId));
-            Update update = new Update().unset(F_HOME_POD).unset(F_HOME_NODE).unset(F_CLAIMED_AT);
+            Update update = new Update()
+                    .unset(F_HOME_POD)
+                    .unset(F_HOME_NODE)
+                    .unset(F_CLAIMED_AT)
+                    .set(F_ACTUAL_STATE, ProjectActualState.STOPPED);
             if (mongoTemplate.updateFirst(query, update, ProjectDocument.class).getModifiedCount() == 0) {
                 // Taken over between the read and here — not ours to release,
                 // and not ours to report.
@@ -410,7 +433,29 @@ public class ProjectService {
     }
 
     /**
-     * Atomically transitions a project from one lifecycle status to another.
+     * Records what the lease holder is doing with the project. Guarded on
+     * {@code selfPodId} still being the holder: a pod that lost its lease must
+     * not write a statement the new holder owns.
+     *
+     * @return {@code true} when the write landed, {@code false} when the lease
+     *     is no longer ours
+     */
+    public boolean setActualState(String tenantId, String name, String selfPodId, ProjectActualState target) {
+        if (selfPodId == null || selfPodId.isBlank()) return false;
+        Query query = new Query(Criteria.where(F_TENANT)
+                .is(tenantId)
+                .and(F_NAME)
+                .is(name)
+                .and(F_HOME_POD)
+                .is(selfPodId));
+        return mongoTemplate
+                        .updateFirst(query, new Update().set(F_ACTUAL_STATE, target), ProjectDocument.class)
+                        .getMatchedCount()
+                > 0;
+    }
+
+    /**
+     * Atomically transitions a project from one desired state to another.
      * Returns the updated document if the transition won the race, throws
      * {@link ProjectStatusConflictException} if the document was in a
      * different status. Used by {@code ProjectLifecycleService} (vance-brain)
@@ -437,7 +482,7 @@ public class ProjectService {
             // produced the conflict (e.g. ClusterDistributorTick vs.
             // Boot-Self-Pull both bringing the same orphan) is visible without
             // grepping for the exception text. INFO, not WARN: a conflict is
-            // often benign (bring treats a lost RECOVERING → RUNNING as done),
+            // often benign (bring tolerates a project that is already RUNNING),
             // and the caller that cannot tolerate it logs its own warning.
             // Skip 2 = past the helper and this method, to the caller.
             log.info(
@@ -826,10 +871,9 @@ public class ProjectService {
      * </ul>
      *
      * <p><b>Status is read as intent, and only two intents want an owner.</b>
-     * {@code WANTS_TO_RUN} is {@code INIT}, {@code RECOVERING},
-     * {@code RUNNING} — "should be live somewhere". The selector used to be
-     * {@code status != CLOSED}, which swept {@code SUSPENDED} and
-     * {@code SUSPENDING} in with them, and {@code ProjectLifecycleService.bring}
+     * {@code WANTS_TO_RUN} is {@code INIT} and {@code RUNNING} — "should be
+     * live somewhere". The selector used to be {@code status != CLOSED}, which
+     * swept {@code SUSPENDED} (and the later {@code IDLE}) in with them, and {@code ProjectLifecycleService.bring}
      * transitions <em>any</em> non-RUNNING status straight to RUNNING. Suspend
      * therefore did not survive a restart: an operator suspends a project
      * because its nightly scheduler costs money, the holder's lease expires on
@@ -1010,7 +1054,11 @@ public class ProjectService {
                 .is(name)
                 .and(F_HOME_POD)
                 .is(selfPodId));
-        Update update = new Update().unset(F_HOME_POD).unset(F_HOME_NODE).unset(F_CLAIMED_AT);
+        Update update = new Update()
+                .unset(F_HOME_POD)
+                .unset(F_HOME_NODE)
+                .unset(F_CLAIMED_AT)
+                .set(F_ACTUAL_STATE, ProjectActualState.STOPPED);
         boolean released =
                 mongoTemplate.updateFirst(query, update, ProjectDocument.class).getModifiedCount() > 0;
         if (released) {

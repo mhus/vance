@@ -30,7 +30,7 @@ public class BrainPodProjectInsightsDto {
     /** Project name without the {@code <tenantId>/} prefix. */
     private String name;
 
-    /** {@code ProjectStatus.name()} — {@code INIT}, {@code RUNNING}, …  */
+    /** Desired state, {@code ProjectStatus.name()} — {@code INIT}, {@code RUNNING}, {@code IDLE}, …  */
     private @Nullable String status;
 
     /** {@code LifecycleType.name()} — {@code HOMELESS}, {@code EPHEMERAL}, {@code PERMANENT}. */

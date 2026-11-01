@@ -48,11 +48,10 @@ class ProjectNeedingOwnerSelectorTest {
         verify(mongoTemplate).find(captor.capture(), eq(ProjectDocument.class));
         Document status = statusCriterion(captor.getValue());
         assertThat(status).isNotNull();
-        assertThat(status.get("$in"))
-                .isEqualTo(List.of(ProjectStatus.INIT, ProjectStatus.RECOVERING, ProjectStatus.RUNNING));
-        // Explicitly: the two suspend states and the terminal one are out.
+        assertThat(status.get("$in")).isEqualTo(List.of(ProjectStatus.INIT, ProjectStatus.RUNNING));
+        // Explicitly: both stopped states and the terminal one are out.
         assertThat((List<Object>) status.get("$in"))
-                .doesNotContain(ProjectStatus.SUSPENDED, ProjectStatus.SUSPENDING, ProjectStatus.CLOSED);
+                .doesNotContain(ProjectStatus.IDLE, ProjectStatus.SUSPENDED, ProjectStatus.CLOSED);
     }
 
     @Test

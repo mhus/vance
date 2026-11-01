@@ -217,8 +217,8 @@ public class WorkspaceController {
         ProjectDocument doc =
                 projectService.findByTenantAndName(tenant, project).orElse(null);
         ProjectStatus status = doc == null ? null : doc.getStatus();
-        if (!ProjectService.wantsToRun(status)) {
-            log.debug("Workspace adopt skipped for {}/{}: status={} does not want to run", tenant, project, status);
+        if (!ProjectService.wakesOnAccess(status)) {
+            log.debug("Workspace adopt skipped for {}/{}: status={} does not wake on access", tenant, project, status);
             return false;
         }
         // Eligibility, not capacity: this pod may be the wrong *kind* of pod for

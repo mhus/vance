@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.rag.ProjectRagService;
 import de.mhus.vance.brain.session.SessionChatBootstrapper;
+import de.mhus.vance.shared.project.ProjectActualState;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.project.ProjectStatus;
@@ -48,6 +49,7 @@ class ProjectLifecycleBringTest {
     private SessionService sessionService;
     private ApplicationEventPublisher eventPublisher;
     private ProjectActivationRegistry registry;
+    private de.mhus.vance.brain.cluster.ClusterService clusterService;
     private ProjectLifecycleService service;
 
     @SuppressWarnings("unchecked")
@@ -56,9 +58,12 @@ class ProjectLifecycleBringTest {
         projectService = mock(ProjectService.class);
         projectManager = mock(ProjectManagerService.class);
         workspaceService = mock(WorkspaceService.class);
+        when(workspaceService.mode()).thenReturn(de.mhus.vance.shared.workspace.WorkspaceMode.LOCAL);
         sessionService = mock(SessionService.class);
         eventPublisher = mock(ApplicationEventPublisher.class);
         registry = new ProjectActivationRegistry();
+        clusterService = mock(de.mhus.vance.brain.cluster.ClusterService.class);
+        when(clusterService.selfPodId()).thenReturn("pod-1");
 
         ObjectProvider<ProjectRagService> rag = mock(ObjectProvider.class);
         ObjectProvider<SessionChatBootstrapper> chat = mock(ObjectProvider.class);
@@ -79,7 +84,7 @@ class ProjectLifecycleBringTest {
                 perms,
                 mock(de.mhus.vance.shared.project.ProjectQuotaService.class),
                 mock(de.mhus.vance.shared.projectgroup.ProjectGroupService.class),
-                mock(de.mhus.vance.brain.cluster.ClusterService.class),
+                clusterService,
                 mock(de.mhus.vance.brain.cluster.ClusterBringClient.class),
                 mock(ObjectProvider.class));
     }
@@ -93,7 +98,20 @@ class ProjectLifecycleBringTest {
         when(projectManager.claimForLocalPod(TENANT, PROJECT)).thenReturn(doc);
         when(projectService.transitionStatus(eq(TENANT), eq(PROJECT), any(), any()))
                 .thenReturn(doc);
+        // What finishBring re-reads: the desired state is still RUNNING and the
+        // lease is still ours.
+        givenReread(ProjectStatus.RUNNING, true);
         when(sessionService.unbindAllForProjects(anyString(), anyList())).thenReturn(0L);
+    }
+
+    private void givenReread(ProjectStatus status, boolean ownedHere) {
+        when(projectService.findByTenantAndName(TENANT, PROJECT))
+                .thenReturn(Optional.of(ProjectDocument.builder()
+                        .tenantId(TENANT)
+                        .name(PROJECT)
+                        .status(status)
+                        .build()));
+        when(projectManager.isOwnedByLocalPod(TENANT, PROJECT)).thenReturn(ownedHere);
     }
 
     @Test
@@ -145,91 +163,54 @@ class ProjectLifecycleBringTest {
     }
 
     /**
-     * Convergence with a parallel bring on another pod: a sibling pod won
-     * the RECOVERING → RUNNING CAS first, the project is RUNNING in Mongo,
-     * and this pod's {@code bring} must finish without throwing so the
-     * caller (ClusterDistributorTick / Boot-Self-Pull / REST resume) treats
-     * it as success.
-     *
-     * <p>The full activation pass on this pod still ran — workspace init,
-     * RAG, engine-start event — because the convergence can only happen on
-     * the last CAS of the round trip, after the work above it.
+     * The desired state moves to RUNNING first, as a strict CAS from what the
+     * bring read — so an explicit suspend or close that landed in between wins
+     * over the implicit bring — and the actual state walks STARTING → RUNNING.
      */
     @Test
-    void recoveringToRunningConflictConvergesWithAnotherBring_returnsTheRefreshedDoc() {
-        givenClaimedWithStatus(ProjectStatus.SUSPENDED);
-        ProjectDocument runningDoc = ProjectDocument.builder()
-                .tenantId(TENANT)
-                .name(PROJECT)
-                .status(ProjectStatus.RUNNING)
-                .build();
-        // The second CAS (RECOVERING → RUNNING) loses to a parallel bring.
-        // The first CAS (SUSPENDED → RECOVERING) succeeds, and so do all
-        // transitionStatus calls with non-RUNNING targets.
-        org.mockito.Mockito.when(projectService.transitionStatus(
-                        TENANT, PROJECT, ProjectStatus.RECOVERING, ProjectStatus.RUNNING))
-                .thenThrow(new ProjectService.ProjectStatusConflictException(
-                        "Project 'test1' status was RUNNING, expected RECOVERING for transition to RUNNING"));
-        when(projectService.findByTenantAndName(TENANT, PROJECT)).thenReturn(Optional.of(runningDoc));
-        when(projectManager.isOwnedByLocalPod(TENANT, PROJECT)).thenReturn(true);
+    void bring_movesDesiredStateFirst_thenRecordsStartingAndRunning() {
+        givenClaimedWithStatus(ProjectStatus.IDLE);
 
-        ProjectDocument result = service.bring(TENANT, PROJECT);
+        service.bring(TENANT, PROJECT);
 
-        // Activation work happened on this pod before the conflict surfaced.
-        verify(workspaceService, times(1)).init(TENANT, PROJECT);
-        verify(eventPublisher, times(1)).publishEvent(new ProjectEnginesStartRequested(TENANT, PROJECT));
-        // Returned doc reflects the converged state, not the doc we started
-        // the bring with — important for callers that read the returned
-        // status (e.g. REST `/resume`).
-        org.assertj.core.api.Assertions.assertThat(result.getStatus()).isEqualTo(ProjectStatus.RUNNING);
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(projectService, workspaceService);
+        order.verify(projectService).transitionStatus(TENANT, PROJECT, ProjectStatus.IDLE, ProjectStatus.RUNNING);
+        order.verify(projectService).setActualState(TENANT, PROJECT, "pod-1", ProjectActualState.STARTING);
+        order.verify(workspaceService).init(TENANT, PROJECT);
+        order.verify(projectService).setActualState(TENANT, PROJECT, "pod-1", ProjectActualState.RUNNING);
     }
 
     /**
-     * The convergence guard only swallows the CAS conflict when the
-     * post-conflict status is RUNNING. If an operator raced a SUSPEND in
-     * between (status = SUSPENDING / SUSPENDED), the conflict is real and
-     * must surface — operator intent beats an implicit bring.
+     * An operator suspended the project while it was starting. The conflict
+     * must surface — operator intent beats an implicit bring — and the actual
+     * state must not be reported as RUNNING.
      */
     @Test
-    void recoveringToRunningConflictAgainstSuspendingStatus_stillThrows() {
+    void desiredStateChangedWhileStarting_surfacesTheConflict() {
         givenClaimedWithStatus(ProjectStatus.SUSPENDED);
-        ProjectDocument suspendingDoc = ProjectDocument.builder()
-                .tenantId(TENANT)
-                .name(PROJECT)
-                .status(ProjectStatus.SUSPENDING)
-                .build();
-        org.mockito.Mockito.when(projectService.transitionStatus(
-                        TENANT, PROJECT, ProjectStatus.RECOVERING, ProjectStatus.RUNNING))
-                .thenThrow(new ProjectService.ProjectStatusConflictException(
-                        "Project 'test1' status was SUSPENDING, expected RECOVERING for transition to RUNNING"));
-        when(projectService.findByTenantAndName(TENANT, PROJECT)).thenReturn(Optional.of(suspendingDoc));
+        givenReread(ProjectStatus.SUSPENDED, true);
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.bring(TENANT, PROJECT))
                 .isInstanceOf(ProjectService.ProjectStatusConflictException.class);
+
+        verify(projectService, never()).setActualState(TENANT, PROJECT, "pod-1", ProjectActualState.RUNNING);
     }
 
     /**
-     * RUNNING after a lost second CAS is only "done" while the lease is still
-     * here. If it moved (expired during a slow restore), the other pod runs
-     * the project — this bring must not report success for a local start
-     * that the lease reconcile is about to unload.
+     * Being RUNNING in Mongo is only "done" while the lease is still here. If it
+     * moved (expired during a slow start), the other pod runs the project — this
+     * bring must not report success for a local start that the lease reconcile
+     * is about to unload.
      */
     @Test
-    void recoveringToRunningConflict_leaseMovedToAnotherPod_throws() {
+    void leaseMovedWhileStarting_throws() {
         givenClaimedWithStatus(ProjectStatus.SUSPENDED);
-        ProjectDocument runningDoc = ProjectDocument.builder()
-                .tenantId(TENANT)
-                .name(PROJECT)
-                .status(ProjectStatus.RUNNING)
-                .build();
-        when(projectService.transitionStatus(TENANT, PROJECT, ProjectStatus.RECOVERING, ProjectStatus.RUNNING))
-                .thenThrow(new ProjectService.ProjectStatusConflictException(
-                        "Project 'test1' status was RUNNING, expected RECOVERING for transition to RUNNING"));
-        when(projectService.findByTenantAndName(TENANT, PROJECT)).thenReturn(Optional.of(runningDoc));
-        when(projectManager.isOwnedByLocalPod(TENANT, PROJECT)).thenReturn(false);
+        givenReread(ProjectStatus.RUNNING, false);
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.bring(TENANT, PROJECT))
                 .isInstanceOf(ProjectService.ProjectStatusConflictException.class);
+
+        verify(projectService, never()).setActualState(TENANT, PROJECT, "pod-1", ProjectActualState.RUNNING);
     }
 
     /**
@@ -253,6 +234,7 @@ class ProjectLifecycleBringTest {
         when(projectManager.claimForLocalPod(TENANT, PROJECT)).thenReturn(suspended, running);
         when(projectService.transitionStatus(eq(TENANT), eq(PROJECT), any(), any()))
                 .thenReturn(running);
+        givenReread(ProjectStatus.RUNNING, true);
         when(sessionService.unbindAllForProjects(anyString(), anyList())).thenReturn(0L);
 
         Thread[] second = new Thread[1];

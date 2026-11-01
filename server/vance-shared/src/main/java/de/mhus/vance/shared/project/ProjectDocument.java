@@ -85,14 +85,22 @@ public class ProjectDocument {
     private ProjectKind kind = ProjectKind.NORMAL;
 
     /**
-     * Lifecycle <em>intent</em> — {@link ProjectStatus}. {@code RUNNING}
-     * means "should be live somewhere", not "a pod has it live": which pod
-     * holds it right now is the lease below, and that expires on its own.
-     * Keeping the two apart is what lets a crashed owner be recovered — see
+     * Desired state — {@link ProjectStatus}. {@code RUNNING} means "should be
+     * live somewhere", not "a pod has it live": which pod holds it right now is
+     * the lease below, and that expires on its own. Keeping the two apart is
+     * what lets a crashed owner be recovered — see
      * {@code planning/project-ownership-lease.md} §2.
      */
     @Builder.Default
     private ProjectStatus status = ProjectStatus.INIT;
+
+    /**
+     * Actual state — what the lease holder is doing with the project. Written
+     * only by that pod and meaningful only while its lease lives: read it
+     * through {@code ProjectOwnership.effectiveActualState}, never directly.
+     */
+    @Builder.Default
+    private ProjectActualState actualState = ProjectActualState.STOPPED;
 
     /**
      * Owner lease — {@code BrainPodDocument.podId} of the pod holding the

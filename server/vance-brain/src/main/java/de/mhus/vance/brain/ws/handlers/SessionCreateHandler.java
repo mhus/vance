@@ -141,7 +141,7 @@ public class SessionCreateHandler implements WsHandler {
         ProjectDocument claimed = ((ClaimResult.Local) claim).doc();
 
         // Promote the claimed row from "pinned to me in Mongo" to actually
-        // running on this pod: workspace recovery + RECOVERING → RUNNING +
+        // running on this pod: workspace init + desired RUNNING +
         // engine bootstrap. Without this, the project sits half-claimed
         // and the session attaches to a project whose Prak side-channel,
         // compaction, scheduler etc. never see it.

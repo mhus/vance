@@ -10,6 +10,7 @@ export interface ProjectDto {
   teamIds: string[];
   enabled: boolean;
   status: string;
+  actualState?: string;
   archivedFromGroupId?: string;
   homeNode?: string;
   claimedAt?: Date;

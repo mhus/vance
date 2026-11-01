@@ -7,6 +7,7 @@ import de.mhus.vance.api.projects.ProjectDto;
 import de.mhus.vance.api.projects.ProjectPlacementRequest;
 import de.mhus.vance.api.projects.ProjectQuotaDto;
 import de.mhus.vance.api.projects.ProjectUpdateRequest;
+import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.brain.kit.catalog.ProjectKitInstaller;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.project.ProjectCopyService;
@@ -17,12 +18,14 @@ import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectKind;
+import de.mhus.vance.shared.project.ProjectOwnership;
 import de.mhus.vance.shared.project.ProjectQuotaService;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.projectgroup.ProjectGroupDocument;
 import de.mhus.vance.shared.projectgroup.ProjectGroupService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Stream;
@@ -68,6 +71,7 @@ public class ProjectAdminController {
     private final ProjectCopyService copyService;
     private final RequestAuthority authority;
     private final ProjectQuotaService quotaService;
+    private final ClusterService clusterService;
 
     @GetMapping
     public List<ProjectDto> list(@PathVariable("tenant") String tenant, HttpServletRequest httpRequest) {
@@ -76,7 +80,7 @@ public class ProjectAdminController {
                 .sorted(Comparator.comparing(
                                 (ProjectDocument p) -> p.getProjectGroupId() == null ? "￿" : p.getProjectGroupId())
                         .thenComparing(ProjectDocument::getName))
-                .map(ProjectAdminController::toDto)
+                .map(this::toDto)
                 .toList();
     }
 
@@ -124,8 +128,8 @@ public class ProjectAdminController {
         }
         try {
             // Goes through ProjectLifecycleService.create() so the project is
-            // claimed for this pod, its workspace initialised, and its status
-            // transitions through RECOVERING into RUNNING in one step.
+            // claimed for this pod, its workspace initialised, and its desired
+            // state set to RUNNING in one step.
             ProjectDocument saved = lifecycleService.create(
                     tenant,
                     request.getName(),
@@ -226,9 +230,10 @@ public class ProjectAdminController {
     }
 
     /**
-     * Suspends a RUNNING project: stops engines (event), transitions to
-     * SUSPENDED. The workspace folder stays on disk. Idempotent on already-SUSPENDED projects; rejects
-     * CLOSED with 409.
+     * Suspends a project on purpose: stops engines (event), desired state
+     * SUSPENDED. The workspace folder stays on disk. Idempotent on
+     * already-SUSPENDED projects; rejects CLOSED with 409. Only an explicit
+     * resume (or a session create) brings it back.
      */
     @PostMapping("/{name}/suspend")
     public ProjectDto suspend(
@@ -236,6 +241,24 @@ public class ProjectAdminController {
         authority.enforce(httpRequest, new Resource.Project(tenant, name), Action.ADMIN);
         try {
             return toDto(lifecycleService.suspend(tenant, name));
+        } catch (ProjectService.ProjectNotFoundException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
+        } catch (ProjectService.ProjectStatusConflictException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Stops a project because nobody needs it: stops engines (event), desired
+     * state IDLE. The workspace folder stays on disk. Unlike a suspended
+     * project, an idle one wakes on any access. Rejects CLOSED with 409.
+     */
+    @PostMapping("/{name}/idle")
+    public ProjectDto idle(
+            @PathVariable("tenant") String tenant, @PathVariable("name") String name, HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, name), Action.ADMIN);
+        try {
+            return toDto(lifecycleService.idle(tenant, name));
         } catch (ProjectService.ProjectNotFoundException e) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         } catch (ProjectService.ProjectStatusConflictException e) {
@@ -359,7 +382,7 @@ public class ProjectAdminController {
         }
     }
 
-    private static ProjectDto toDto(ProjectDocument doc) {
+    private ProjectDto toDto(ProjectDocument doc) {
         return ProjectDto.builder()
                 .name(doc.getName())
                 .title(doc.getTitle())
@@ -368,6 +391,8 @@ public class ProjectAdminController {
                 .teamIds(doc.getTeamIds())
                 .enabled(doc.isEnabled())
                 .status(doc.getStatus() == null ? null : doc.getStatus().name())
+                .actualState(ProjectOwnership.effectiveActualState(doc, Instant.now(), clusterService.leaseTtl())
+                        .name())
                 .homeNode(doc.getHomeNode())
                 .claimedAt(doc.getClaimedAt())
                 .lifecycleType(

@@ -125,6 +125,30 @@ public class ProjectLeaseService {
     }
 
     /**
+     * Unloads every project this pod has up before its leases are dropped, so
+     * the projects go down in an orderly way instead of vanishing with the JVM.
+     *
+     * <p>Only the <em>actual</em> state is touched, and that happens in
+     * {@code releaseLeases} (it writes STOPPED together with the lease). The
+     * desired state stays as it is: a restart is not a decision about the
+     * project, and whichever pod takes it over next brings it back.
+     */
+    private void unloadActivatedProjects() {
+        for (String key : activationRegistry.snapshot()) {
+            int slash = key.indexOf('/');
+            if (slash < 0) continue;
+            String tenantId = key.substring(0, slash);
+            String projectName = key.substring(slash + 1);
+            try {
+                eventPublisher.publishEvent(new ProjectEnginesStopRequested(tenantId, projectName));
+                activationRegistry.deactivate(tenantId, projectName);
+            } catch (RuntimeException e) {
+                log.warn("ProjectLeaseService: unloading '{}' on shutdown failed: {}", key, e.toString());
+            }
+        }
+    }
+
+    /**
      * Clean-shutdown courtesy: drop our leases so the next pod can take the
      * projects over immediately instead of waiting out the TTL.
      *
@@ -134,6 +158,7 @@ public class ProjectLeaseService {
      */
     @PreDestroy
     void releaseOnShutdown() {
+        unloadActivatedProjects();
         try {
             long released = projectService.releaseLeases(
                     clusterService.selfPodId(), clusterService.selfNodeName(), clusterService.selfEndpoint());

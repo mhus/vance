@@ -2,9 +2,8 @@ package de.mhus.vance.exec;
 
 /**
  * Ephemeral RootDir — short-lived container for one-shot purposes such
- * as file transfers ({@code specification/file-transfer.md}). Same
- * persistence semantics as {@link TempHandler}: content is not carried
- * across suspend/recover and the folder is removed on close.
+ * as file transfers ({@code specification/file-transfer.md}). The folder
+ * is removed on close, like {@link TempHandler}.
  *
  * <p>Distinct type from {@code temp} so callers can express intent and
  * keep the lazy temp-cache (§7.3) separate from explicit per-purpose
@@ -24,16 +23,6 @@ public class EphemeralHandler implements WorkspaceContentHandler {
     @Override
     public void init(RootDirHandle handle, RootDirSpec spec) {
         // Folder already created by service; nothing else to do.
-    }
-
-    @Override
-    public void suspend(RootDirHandle handle) {
-        // No-op: ephemeral content does not survive suspend.
-    }
-
-    @Override
-    public void recover(RootDirHandle handle, WorkspaceDescriptor descriptor) {
-        // Folder already recreated by service; content is gone, by design.
     }
 
     @Override

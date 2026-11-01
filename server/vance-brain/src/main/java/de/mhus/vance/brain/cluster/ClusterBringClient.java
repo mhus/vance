@@ -26,8 +26,8 @@ public interface ClusterBringClient {
 
     /**
      * POST {@code /internal/cluster/release} to {@code endpoint} — the holding
-     * pod stops the project's engines, snapshots and drops the workspace
-     * folder, and gives up the lease. Used by an archive that lands on a pod
+     * pod stops the project's engines and gives up the lease (a closed
+     * project's workspace folder is disposed as well). Used by an archive that lands on a pod
      * other than the project's home: only the holder can tear down what runs
      * in its process. With {@code suspendSessions} the holder first interrupts
      * and suspends the project's open sessions on its lanes.

@@ -29,7 +29,6 @@ class WorkspaceServiceFileOpsTest {
         WorkspaceService service = spy(new WorkspaceService(
                 mock(WorkspaceProperties.class),
                 List.of(),
-                mock(WorkspaceSnapshotRepository.class),
                 mock(WorkspaceRootService.class),
                 mock(RunnerBindingService.class)));
         doReturn(file).when(service).resolve(TENANT, PROJECT, DIR, relativePath);

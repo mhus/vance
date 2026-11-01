@@ -26,10 +26,9 @@ class RootDirStoreTest {
     private RecordingHandler notes;
     private RootDirStore store;
 
-    /** Handler type {@code notes}: writes a file on init/recover, can be made to fail. */
+    /** Handler type {@code notes}: writes a file on init, can be made to fail. */
     private final class RecordingHandler implements WorkspaceContentHandler {
         boolean failInit;
-        boolean failRecover;
 
         @Override
         public String type() {
@@ -46,20 +45,6 @@ class RootDirStoreTest {
             Map<String, Object> meta = new java.util.HashMap<>();
             meta.put("seen", "init");
             handle.getDescriptor().setMetadata(meta);
-        }
-
-        @Override
-        public void suspend(RootDirHandle handle) {
-            calls.add("suspend:" + handle.getDirName());
-        }
-
-        @Override
-        public void recover(RootDirHandle handle, WorkspaceDescriptor descriptor) {
-            calls.add("recover:" + handle.getDirName());
-            if (failRecover) {
-                throw new IllegalStateException("recover boom");
-            }
-            write(handle.getPath().resolve("back.txt"), "again");
         }
 
         @Override
@@ -365,88 +350,5 @@ class RootDirStoreTest {
     @Test
     void withLabelLock_runsTheActionAndReturnsItsResult() {
         assertThat(store.withLabelLock(TENANT, PROJECT, "ws", () -> "done")).isEqualTo("done");
-    }
-
-    // ───────────────────────── suspend / recover ─────────────────────────
-
-    @Test
-    void suspendAll_persistsBeforeDeleting_thenRecoverRebuildsTheWorkspace() {
-        create("a");
-        create("b");
-        List<RootDirStore.Snapshot> kept = new ArrayList<>();
-        List<Boolean> contentStillThere = new ArrayList<>();
-
-        store.suspendAll(TENANT, PROJECT, handle -> {
-            contentStillThere.add(Files.exists(handle.getPath().resolve("hello.txt")));
-            kept.add(new RootDirStore.Snapshot(handle.getDirName(), handle.getDescriptor()));
-        });
-
-        assertThat(contentStillThere).containsExactly(true, true);
-        assertThat(calls).contains("suspend:a", "suspend:b");
-        assertThat(store.exists(TENANT, PROJECT)).isFalse();
-
-        Workspace ws = store.recover(TENANT, PROJECT, kept);
-
-        assertThat(ws.getProjectId()).isEqualTo(PROJECT);
-        assertThat(calls).contains("recover:a", "recover:b");
-        assertThat(store.listRootDirs(TENANT, PROJECT))
-                .extracting(RootDirHandle::getDirName)
-                .containsExactly("a", "b");
-        assertThat(store.getRootDir(TENANT, PROJECT, "a")
-                        .orElseThrow()
-                        .getPath()
-                        .resolve("back.txt"))
-                .hasContent("again");
-    }
-
-    @Test
-    void suspendAll_withoutFolder_isANoOp_andWithoutAHandlerFails() {
-        store.suspendAll(TENANT, "no-folder", handle -> {
-            throw new AssertionError("nothing to persist");
-        });
-
-        RootDirStore bare =
-                new RootDirStore(() -> new RootDirStore.Settings(tmp.resolve("ws"), 0, 0), List.of(new TempHandler()));
-        create("a");
-        assertThatThrownBy(() -> bare.suspendAll(TENANT, PROJECT, h -> {}))
-                .isInstanceOf(RootDirException.class)
-                .hasMessageContaining("No handler registered for type 'notes' on suspend of a");
-    }
-
-    @Test
-    void recover_handlerFailure_rollsBackThatRootDir_andAbortsKeepingTheSnapshotsToTheCaller() {
-        create("a");
-        List<RootDirStore.Snapshot> kept = new ArrayList<>();
-        store.suspendAll(
-                TENANT,
-                PROJECT,
-                handle -> kept.add(new RootDirStore.Snapshot(handle.getDirName(), handle.getDescriptor())));
-        notes.failRecover = true;
-
-        assertThatThrownBy(() -> store.recover(TENANT, PROJECT, kept))
-                .isInstanceOf(RootDirException.class)
-                .hasMessage("Handler 'notes' failed to recover a: recover boom");
-
-        Path workspace = tmp.resolve("ws").resolve(TENANT).resolve(PROJECT);
-        assertThat(workspace.resolve("a")).doesNotExist();
-        assertThat(workspace.resolve("a.json")).doesNotExist();
-    }
-
-    @Test
-    void recover_skipsSnapshotsOfUnknownTypes_andClearsAPartialFolderFirst() throws Exception {
-        Path stale = Files.createDirectories(
-                tmp.resolve("ws").resolve(TENANT).resolve(PROJECT).resolve("stale"));
-        WorkspaceDescriptor alien = WorkspaceDescriptor.builder()
-                .tenant(TENANT)
-                .projectId(PROJECT)
-                .dirName("alien")
-                .type("unknown-type")
-                .creatorProcessId("p")
-                .build();
-
-        store.recover(TENANT, PROJECT, List.of(new RootDirStore.Snapshot("alien", alien)));
-
-        assertThat(stale).doesNotExist();
-        assertThat(store.listRootDirs(TENANT, PROJECT)).isEmpty();
     }
 }

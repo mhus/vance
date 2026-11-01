@@ -123,7 +123,7 @@ public class ProjectManagerService {
      * a release that arrives late cannot strip whoever took over.
      *
      * <p>Ownership only. The teardown that has to accompany it — stopping
-     * engines, snapshotting the workspace — belongs to
+     * engines — belongs to
      * {@link ProjectLifecycleService#release}, and calling this directly leaves
      * a project running on a pod that no longer owns it.
      */

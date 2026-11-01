@@ -35,7 +35,6 @@ class WorkspaceServiceWriteStreamTest {
         WorkspaceService service = spy(new WorkspaceService(
                 mock(WorkspaceProperties.class),
                 List.of(),
-                mock(WorkspaceSnapshotRepository.class),
                 mock(WorkspaceRootService.class),
                 mock(RunnerBindingService.class)));
         doReturn(file)
@@ -61,7 +60,6 @@ class WorkspaceServiceWriteStreamTest {
         WorkspaceService service = spy(new WorkspaceService(
                 mock(WorkspaceProperties.class),
                 List.of(),
-                mock(WorkspaceSnapshotRepository.class),
                 mock(WorkspaceRootService.class),
                 mock(RunnerBindingService.class)));
         doReturn(file).when(service).resolve(TENANT, PROJECT, DIR, "nested/deep/data.bin");

@@ -24,16 +24,16 @@ public enum ProjectStatus {
     /** Newly created, never recovered, no on-disk workspace yet. */
     INIT,
 
-    /** A pod is recovering the workspace. Transient. */
+    /** A pod is bringing the project up. Transient. */
     RECOVERING,
 
-    /** Workspace is on disk, the pod actively serves the project. */
+    /** The pod actively serves the project. */
     RUNNING,
 
-    /** Suspend in progress: engines stopping, workspace going off-disk. Transient. */
+    /** Suspend in progress: engines stopping. Transient. */
     SUSPENDING,
 
-    /** Workspace is off-disk, snapshots in Mongo. Resumable via {@code init}. */
+    /** Stopped on purpose; engines are down, the workspace folder is untouched. Resumable via {@code init}. */
     SUSPENDED,
 
     /** Terminal — assets retained per policy, no further serving. */

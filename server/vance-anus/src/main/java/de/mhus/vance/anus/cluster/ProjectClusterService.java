@@ -198,8 +198,8 @@ public class ProjectClusterService {
     public record DrainOutcome(Placement placement, boolean released, String message) {}
 
     /**
-     * Hands the project off its pod: stop engines, snapshot the workspace, drop
-     * the lease.
+     * Hands the project off its pod: stop engines, drop the
+     * lease.
      *
      * <p>Two steps, and the first one is not ours: the release has to reach the
      * holding pod, because it tears down in-memory state that exists only
@@ -299,12 +299,12 @@ public class ProjectClusterService {
      *   <li>The lease is gone afterwards, so the maintenance service's own guard
      *       passes without forcing. Forcing becomes what it should be: the
      *       exception, for a holder that cannot be reached.</li>
-     *   <li>The workspace is snapshotted into Mongo <em>by the pod that has
-     *       it</em>. That is the only way a rename can carry a work area that
-     *       lives on another machine's disk — the snapshot rows travel with the
-     *       project, and the next placement recovers the folder under the new
-     *       name.</li>
      * </ul>
+     *
+     * <p>The workspace does not move with the project: it lives on the disk of
+     * the pod that ran it. A rename from a shell on another machine therefore
+     * leaves that folder under the old name (and the project starts with an
+     * empty one under the new name).
      *
      * <p>A failed drain blocks unless {@code force}: not knowing whether a pod
      * is still working on the project is exactly the situation where proceeding

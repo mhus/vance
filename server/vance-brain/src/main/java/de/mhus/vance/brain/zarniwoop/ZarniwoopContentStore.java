@@ -15,7 +15,7 @@ import org.springframework.stereotype.Service;
 /**
  * Writes payloads loaded by {@link de.mhus.vance.toolpack.research.SearchProviderInstance#loadContent}
  * into the project's workspace temp-root. Lifecycle of the stashed
- * files is owned by {@code WorkspaceService.suspendAll(...)}; this
+ * files is owned by the workspace (gone when it is disposed); this
  * store does not implement its own cleanup.
  *
  * <p>All paths returned by {@link #stash} are absolute and live under

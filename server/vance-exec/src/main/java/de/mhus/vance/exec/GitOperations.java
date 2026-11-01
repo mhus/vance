@@ -5,7 +5,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The few git operations the RootDir handlers need — the seam between the handlers'
- * logic (metadata keys, suspend branch, what a recover does) and the machinery that
+ * logic (metadata keys, depth and commit rules) and the machinery that
  * runs git. The brain implements it with JGit; the runner with the {@code git}
  * program, which builds as a native image where JGit does not
  * ({@code planning/runner.md}).

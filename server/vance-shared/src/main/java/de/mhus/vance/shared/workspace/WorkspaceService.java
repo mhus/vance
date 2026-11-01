@@ -13,13 +13,11 @@ import de.mhus.vance.exec.RootDirStore;
 import de.mhus.vance.exec.TreeNode;
 import de.mhus.vance.exec.Workspace;
 import de.mhus.vance.exec.WorkspaceContentHandler;
-import de.mhus.vance.exec.WorkspaceDescriptor;
 import de.mhus.vance.shared.runner.RunnerBindingService;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -38,9 +36,9 @@ import org.springframework.stereotype.Service;
  * with sibling descriptors, handler dispatch, label locks, working and temp
  * RootDirs — are managed by {@link RootDirStore} in {@code vance-exec}, which the
  * runner shares. This service is the Spring side around it: configuration from
- * {@link WorkspaceProperties}, the workspace mode, the brain's exception types,
- * and the one thing the store deliberately does not know — where a suspended
- * workspace is kept ({@link WorkspaceSnapshotRepository}, MongoDB).
+ * {@link WorkspaceProperties}, the workspace mode and the brain's exception types. A workspace lives on the disk of the pod that
+ * runs the project and is never moved between pods: it survives a suspend or a
+ * restart where it is, and only dispose / delete / archive remove it.
  */
 @Service
 @Slf4j
@@ -48,19 +46,16 @@ public class WorkspaceService {
 
     private final WorkspaceProperties properties;
     private final RootDirStore store;
-    private final WorkspaceSnapshotRepository snapshotRepository;
     private final WorkspaceRootService rootService;
     private final RunnerBindingService runnerBindings;
 
     public WorkspaceService(
             WorkspaceProperties properties,
             List<WorkspaceContentHandler> handlers,
-            WorkspaceSnapshotRepository snapshotRepository,
             WorkspaceRootService rootService,
             RunnerBindingService runnerBindings) {
         this.properties = properties;
         this.runnerBindings = runnerBindings;
-        this.snapshotRepository = snapshotRepository;
         this.rootService = rootService;
         // Settings are read per operation: the properties stay mutable configuration.
         this.store = new RootDirStore(
@@ -117,17 +112,11 @@ public class WorkspaceService {
     /**
      * Initialize (or load) the workspace for a project. Creates the
      * folder lazily and writes {@code workspace.json} on first call.
-     * If snapshots exist (project was suspended or crashed mid-suspend),
-     * recovers them as part of init — the recovered workspace is
-     * indistinguishable from one that never suspended. Idempotent.
+     * Idempotent: an existing workspace is loaded as it is.
      */
     public Workspace init(String tenantId, String projectId) {
         requireTenant(tenantId);
         requireProject(projectId);
-        List<WorkspaceSnapshotDocument> snapshots = snapshotRepository.findByTenantAndProjectId(tenantId, projectId);
-        if (!snapshots.isEmpty()) {
-            return recoverFromSnapshots(tenantId, projectId, snapshots);
-        }
         return translated(() -> store.init(tenantId, projectId));
     }
 
@@ -144,10 +133,6 @@ public class WorkspaceService {
     public void dispose(String tenantId, String projectId) {
         requireTenant(tenantId);
         requireProject(projectId);
-        // Snapshots first and unconditionally: they live in Mongo, not in the
-        // folder, so a dispose on a pod that never held the folder (archive
-        // landing off the home pod) must still end them — dispose is terminal.
-        snapshotRepository.deleteByTenantAndProjectId(tenantId, projectId);
         translated(() -> store.dispose(tenantId, projectId));
     }
 
@@ -164,41 +149,32 @@ public class WorkspaceService {
         return translated(() -> store.exists(tenantId, projectId));
     }
 
-    /** Suspended-workspace snapshots belonging to the project, tenant-scoped. */
-    public List<WorkspaceSnapshotDocument> snapshotsForProject(String tenantId, String projectId) {
-        requireTenant(tenantId);
-        requireProject(projectId);
-        return snapshotRepository.findByTenantAndProjectId(tenantId, projectId);
-    }
-
     /**
-     * Removes the project's workspace for good: the folder on this machine and
-     * its snapshots.
+     * Removes the project's workspace for good.
      *
      * <p><b>Local folder only.</b> A workspace lives on the disk of whichever
      * pod ran the project, so an admin shell on another machine finds nothing
-     * to delete and says so rather than pretending. The snapshots do go — they
-     * are in Mongo, and they are what a folder would be recovered from.
+     * to delete and says so rather than pretending.
      *
-     * @return how many snapshot rows were removed
+     * @return {@code true} when a folder was removed
      */
-    public long deleteForProject(String tenantId, String projectId) {
+    public boolean deleteForProject(String tenantId, String projectId) {
         requireTenant(tenantId);
         requireProject(projectId);
+        boolean existed = translated(() -> store.exists(tenantId, projectId));
         translated(() -> store.dispose(tenantId, projectId));
-        long snapshots = snapshotRepository.deleteByTenantAndProjectId(tenantId, projectId);
-        log.info("Workspace removed for project {}/{}: snapshots={}", tenantId, projectId, snapshots);
-        return snapshots;
+        log.info("Workspace removed for project {}/{}: folder={}", tenantId, projectId, existed);
+        return existed;
     }
 
     /**
      * Moves the project's workspace to a new project name: the folder, the
-     * {@code workspace.json}, every RootDir descriptor and the snapshot rows —
+     * {@code workspace.json} and every RootDir descriptor —
      * see {@link RootDirStore#rename} for what the move cannot fix (absolute paths
      * inside moved files, e.g. a Python virtualenv; {@link #rebuildPythonVenv} is
      * the repair).
      *
-     * @return how many rows and files were rewritten (descriptors + snapshots)
+     * @return how many files were rewritten (descriptors)
      * @throws WorkspaceException if a folder already sits under the new name —
      *     merging two workspaces is not a rename
      */
@@ -207,89 +183,13 @@ public class WorkspaceService {
         requireProject(projectId);
         requireProject(newProjectId);
         long rewritten = translated(() -> store.rename(tenantId, projectId, newProjectId));
-        for (WorkspaceSnapshotDocument snapshot : snapshotRepository.findByTenantAndProjectId(tenantId, projectId)) {
-            snapshot.setProjectId(newProjectId);
-            WorkspaceDescriptor descriptor = snapshot.getDescriptor();
-            if (descriptor != null) {
-                descriptor.setProjectId(newProjectId);
-            }
-            snapshotRepository.save(snapshot);
-            rewritten++;
-        }
         log.info(
-                "Workspace moved for project {}: '{}' → '{}' ({} metadata rewrites)",
+                "Workspace moved for project {}: '{}' → '{}' ({} descriptor rewrites)",
                 tenantId,
                 projectId,
                 newProjectId,
                 rewritten);
         return rewritten;
-    }
-
-    // ---------------------------------------------------------------------
-    // Suspend / Recover
-    // ---------------------------------------------------------------------
-
-    /**
-     * Suspend every RootDir in a project: handler.suspend → snapshot to
-     * Mongo → folder + descriptor removed. After this returns, the
-     * workspace folder is gone; the next {@link #init} call recovers
-     * it from the snapshots. Caller is expected to have stopped all
-     * engines first (Project-Lifecycle §11.3).
-     */
-    public void suspendAll(String tenantId, String projectId) {
-        requireTenant(tenantId);
-        requireProject(projectId);
-        Workspace ws = get(tenantId, projectId).orElse(null);
-        String tenant = ws == null ? tenantId : ws.getTenant();
-        Instant now = Instant.now();
-        // The snapshot is persisted before the RootDir's content is deleted — if we
-        // crash in between, init's recover path rebuilds from the snapshot.
-        translated(
-                () -> store.suspendAll(tenantId, projectId, handle -> persistSnapshot(tenant, projectId, handle, now)));
-    }
-
-    /**
-     * Recover all snapshots for a project. Convenience for ProjectService;
-     * {@link #init} also auto-recovers when called on a project with
-     * snapshots, so this is mostly an alias with explicit semantics.
-     * Idempotent — no-op when no snapshots exist.
-     */
-    public void recoverAll(String tenantId, String projectId) {
-        requireTenant(tenantId);
-        requireProject(projectId);
-        List<WorkspaceSnapshotDocument> snapshots = snapshotRepository.findByTenantAndProjectId(tenantId, projectId);
-        if (snapshots.isEmpty()) {
-            return;
-        }
-        recoverFromSnapshots(tenantId, projectId, snapshots);
-    }
-
-    private Workspace recoverFromSnapshots(
-            String tenantId, String projectId, List<WorkspaceSnapshotDocument> snapshots) {
-        List<RootDirStore.Snapshot> restorable = new ArrayList<>();
-        for (WorkspaceSnapshotDocument snapshot : snapshots) {
-            WorkspaceDescriptor descriptor = snapshot.getDescriptor();
-            if (descriptor == null) {
-                log.warn("Snapshot {}/{} has no descriptor — skipping", snapshot.getProjectId(), snapshot.getDirName());
-                continue;
-            }
-            restorable.add(new RootDirStore.Snapshot(snapshot.getDirName(), descriptor));
-        }
-        Workspace ws = translated(() -> store.recover(tenantId, projectId, restorable));
-        snapshotRepository.deleteByTenantAndProjectId(tenantId, projectId);
-        return ws;
-    }
-
-    private void persistSnapshot(String tenant, String projectId, RootDirHandle handle, Instant now) {
-        WorkspaceSnapshotDocument existing = snapshotRepository
-                .findByTenantAndProjectIdAndDirName(tenant, projectId, handle.getDirName())
-                .orElseGet(WorkspaceSnapshotDocument::new);
-        existing.setTenant(tenant);
-        existing.setProjectId(projectId);
-        existing.setDirName(handle.getDirName());
-        existing.setDescriptor(handle.getDescriptor());
-        existing.setSuspendedAt(now);
-        snapshotRepository.save(existing);
     }
 
     // ---------------------------------------------------------------------

@@ -83,7 +83,7 @@ For **persisted multi-file Python projects**: explicit
 `python_create(label=…)` followed by `work_file_write` of the
 files and `python_run(file=…, dirName=…)` to execute. Use when
 your Python work spans multiple files or you want the project
-checked into git (RootDir suspend/resume cycles). For
+checked into git. For
 single-snippet calculations stay with `execute_python`.
 
 ## Decision rule

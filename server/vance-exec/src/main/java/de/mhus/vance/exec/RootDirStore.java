@@ -17,7 +17,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -41,9 +40,7 @@ import tools.jackson.databind.json.JsonMapper;
  * The descriptor files are the source of truth for handler dispatch, recovery and
  * cleanup.
  *
- * <p>No persistence beyond the disk: where a suspended workspace is kept (the
- * brain parks it in Mongo) is the caller's concern, handed in through
- * {@link #suspendAll} and {@link #recover}. Failures are {@link RootDirException}s.
+ * <p>No persistence beyond the disk. Failures are {@link RootDirException}s.
  *
  * <p>The settings are read per operation, so a caller can keep them in mutable
  * configuration.
@@ -66,9 +63,6 @@ public final class RootDirStore {
      * @param hardLimitPercent volume fill above which creating is refused ({@code <= 0} = off)
      */
     public record Settings(Path root, int softLimitPercent, int hardLimitPercent) {}
-
-    /** A suspended RootDir, to bring back by {@link #recover}. */
-    public record Snapshot(String dirName, WorkspaceDescriptor descriptor) {}
 
     private final Supplier<Settings> settings;
     private final Map<String, WorkspaceContentHandler> handlersByType;
@@ -273,146 +267,6 @@ public final class RootDirStore {
             rewritten++;
         }
         return rewritten;
-    }
-
-    // ---------------------------------------------------------------------
-    // Suspend / recover — the disk side; the caller keeps the snapshots
-    // ---------------------------------------------------------------------
-
-    /**
-     * Suspends every RootDir of the project: {@code handler.suspend} →
-     * {@code persist} → folder and descriptor removed. When this returns, the
-     * workspace folder is gone; {@link #recover} brings it back from whatever
-     * {@code persist} kept. The caller is expected to have stopped all engines
-     * first.
-     *
-     * <p>{@code persist} runs <em>before</em> the RootDir's content is deleted — if
-     * the process dies in between, the next recover finds both and rebuilds from
-     * the persisted snapshot.
-     */
-    public void suspendAll(String tenantId, String projectId, Consumer<RootDirHandle> persist) {
-        requireTenant(tenantId);
-        requireProject(projectId);
-        Path root = projectFolder(tenantId, projectId);
-        if (!Files.exists(root)) {
-            log.debug("suspendAll: workspace folder missing for {}/{}, nothing to suspend", tenantId, projectId);
-            return;
-        }
-        for (RootDirHandle handle : listRootDirs(tenantId, projectId)) {
-            WorkspaceContentHandler handler = handlersByType.get(handle.getType());
-            if (handler == null) {
-                throw new RootDirException("No handler registered for type '" + handle.getType() + "' on suspend of "
-                        + handle.getDirName());
-            }
-            try {
-                handler.suspend(handle);
-            } catch (RuntimeException e) {
-                throw new RootDirException(
-                        "Handler '" + handle.getType() + "' failed to suspend " + handle.getDirName() + ": "
-                                + e.getMessage(),
-                        e);
-            }
-            persist.accept(handle);
-            deleteRecursively(handle.getPath());
-            try {
-                Files.deleteIfExists(handle.getPath().getParent().resolve(handle.getDirName() + DESCRIPTOR_SUFFIX));
-            } catch (IOException e) {
-                log.warn("Failed to delete descriptor for {}: {}", handle.getDirName(), e.toString());
-            }
-        }
-        forgetCreatorCaches(tenantId, projectId);
-        // Strip workspace.json + folder so a later init rehydrates from the snapshots.
-        try {
-            Files.deleteIfExists(root.resolve(WORKSPACE_FILE));
-        } catch (IOException e) {
-            log.warn("Failed to delete workspace meta on suspend: {}", e.toString());
-        }
-        deleteRecursively(root);
-        log.info("Workspace suspended: tenant={} projectId={}", tenantId, projectId);
-    }
-
-    /**
-     * Rebuilds the project's workspace from {@code snapshots}: a fresh folder and
-     * {@code workspace.json}, then per snapshot descriptor + folder +
-     * {@code handler.recover}. A snapshot whose type has no handler is skipped with
-     * a warning; a handler that fails rolls back its RootDir and aborts, so the
-     * caller can retry with the snapshots still in place.
-     */
-    public Workspace recover(String tenantId, String projectId, List<Snapshot> snapshots) {
-        requireTenant(tenantId);
-        requireProject(projectId);
-        Path root = projectFolder(tenantId, projectId);
-        // Blow away any partial folder state from a crashed previous attempt.
-        if (Files.exists(root)) {
-            log.info(
-                    "recover: clearing existing workspace folder for {}/{} before re-applying snapshots",
-                    tenantId,
-                    projectId);
-            deleteRecursively(root);
-        }
-        try {
-            Files.createDirectories(root);
-        } catch (IOException e) {
-            throw new RootDirException("Cannot create workspace folder for recover: " + e.getMessage(), e);
-        }
-        Workspace ws = Workspace.builder()
-                .tenant(tenantId)
-                .projectId(projectId)
-                .createdAt(Instant.now().toString())
-                .root(root)
-                .build();
-        writeWorkspaceMeta(root.resolve(WORKSPACE_FILE), ws);
-
-        for (Snapshot snapshot : snapshots) {
-            WorkspaceDescriptor descriptor = snapshot.descriptor();
-            String dirName = snapshot.dirName();
-            WorkspaceContentHandler handler = handlersByType.get(descriptor.getType());
-            if (handler == null) {
-                log.warn(
-                        "No handler for type '{}' on recover of {}/{} — skipping",
-                        descriptor.getType(),
-                        projectId,
-                        dirName);
-                continue;
-            }
-            Path rootDirPath = root.resolve(dirName);
-            Path descriptorFile = root.resolve(dirName + DESCRIPTOR_SUFFIX);
-            try {
-                writeDescriptor(descriptorFile, descriptor);
-                Files.createDirectory(rootDirPath);
-            } catch (IOException e) {
-                throw new RootDirException("Cannot stage RootDir on recover: " + e.getMessage(), e);
-            }
-            RootDirHandle handle = RootDirHandle.builder()
-                    .tenantId(tenantId)
-                    .projectId(projectId)
-                    .dirName(dirName)
-                    .type(descriptor.getType())
-                    .path(rootDirPath)
-                    .descriptor(descriptor)
-                    .build();
-            try {
-                handler.recover(handle, descriptor);
-            } catch (RuntimeException e) {
-                // Roll back this RootDir; the caller keeps its snapshot so a retry can pick up.
-                deleteRecursively(rootDirPath);
-                try {
-                    Files.deleteIfExists(descriptorFile);
-                } catch (IOException ignored) {
-                    // ignore; we already failed
-                }
-                throw new RootDirException(
-                        "Handler '" + descriptor.getType() + "' failed to recover " + dirName + ": " + e.getMessage(),
-                        e);
-            }
-            rewriteDescriptor(descriptorFile, handle.getDescriptor());
-        }
-        log.info(
-                "Workspace recovered from {} snapshot(s): tenant={} projectId={}",
-                snapshots.size(),
-                tenantId,
-                projectId);
-        return ws;
     }
 
     // ---------------------------------------------------------------------

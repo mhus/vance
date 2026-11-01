@@ -15,16 +15,8 @@ import org.jspecify.annotations.Nullable;
  * On init the handler runs {@code python -m venv .venv} inside the
  * RootDir; sources are either cloned from {@code repoUrl} (delegated to
  * {@link GitHandler}) or initialized as an empty local repo. The
- * descriptor stores the {@code pythonPath} actually used; recover on
- * another pod uses that pod's local {@code python3} instead, since
- * binaries don't survive a migration.
- *
- * <p>Suspend persists sources via {@link GitHandler} (commit + push on
- * a {@code vance/suspend/<dirName>} branch); the {@code .venv}
- * directory is excluded by a default {@code .gitignore} written at
- * init. Recover re-clones, rebuilds the venv with the local
- * interpreter, and runs {@code pip install -r requirements.txt} if a
- * lockfile is present.
+ * descriptor stores the {@code pythonPath} actually used. The {@code .venv}
+ * directory is excluded by a default {@code .gitignore} written at init.
  *
  * <p>Metadata schema:
  * <ul>
@@ -34,8 +26,8 @@ import org.jspecify.annotations.Nullable;
  *       alternative to shipping a {@code requirements.txt} — the file arrives
  *       via a later import, so it is not present at provision time. Installed
  *       once on create/clear; a reused workspace keeps them.</li>
- *   <li>{@code repoUrl}, {@code branch}, {@code commit}, {@code public},
- *       {@code suspendBranch}, {@code suspendCommit} — same keys as {@link GitHandler}</li>
+ *   <li>{@code repoUrl}, {@code branch}, {@code commit}, {@code public}
+ *       — same keys as {@link GitHandler}</li>
  * </ul>
  */
 @Slf4j
@@ -98,7 +90,7 @@ public class PythonHandler implements WorkspaceContentHandler {
             meta = HandlerSupport.mutableMetadata(handle.getDescriptor());
         } else {
             // No remote yet — initialise an empty local repo so the worker
-            // can later set origin and call suspend.
+            // can later set origin.
             try {
                 git.init(handle.getPath());
             } catch (GitOperationException e) {
@@ -111,8 +103,8 @@ public class PythonHandler implements WorkspaceContentHandler {
         buildVenv(handle, pythonPath);
 
         // Auto-install dependencies if the clone shipped a
-        // requirements.txt. Mirrors the recover-path: "set up Python
-        // for this project" means "make the dependencies available".
+        // requirements.txt: "set up Python for this project" means
+        // "make the dependencies available".
         // Skipped for non-repo inits (the file simply isn't there).
         Path requirements = handle.getPath().resolve(REQUIREMENTS_FILE);
         if (Files.isRegularFile(requirements)) {
@@ -135,59 +127,6 @@ public class PythonHandler implements WorkspaceContentHandler {
                 repoUrl == null ? "none" : repoUrl,
                 Files.isRegularFile(requirements) ? "installed" : "absent",
                 packages.size());
-    }
-
-    @Override
-    public void suspend(RootDirHandle handle) {
-        Map<String, Object> meta = HandlerSupport.mutableMetadata(handle.getDescriptor());
-        String repoUrl = HandlerSupport.stringOr(meta, GitHandler.META_REPO_URL, null);
-        if (repoUrl.isBlank()) {
-            // No remote: like a temp RootDir, the content does not survive —
-            // only the descriptor does, and recover rebuilds a fresh venv
-            // from it. Must not block suspend/release (W5/E7).
-            log.info("python suspend: {} has no git remote — its content is not kept", handle.getDirName());
-            return;
-        }
-        gitHandler.suspend(handle);
-    }
-
-    @Override
-    public void recover(RootDirHandle handle, WorkspaceDescriptor descriptor) {
-        Map<String, Object> meta = HandlerSupport.mutableMetadata(descriptor);
-        boolean fromRemote =
-                !HandlerSupport.stringOr(meta, GitHandler.META_REPO_URL, null).isBlank();
-        if (fromRemote) {
-            gitHandler.recover(handle, descriptor);
-        } else {
-            // E7: nothing was kept — start empty, re-declare the git repo so a
-            // remote can be added later, then rebuild the environment below.
-            try {
-                git.init(handle.getPath());
-            } catch (GitOperationException e) {
-                throw new RootDirException(
-                        "git init failed for python RootDir " + handle.getDirName() + ": " + e.getMessage(), e);
-            }
-            HandlerSupport.writeDefaultGitignore(handle.getPath(), DEFAULT_GITIGNORE);
-        }
-        // Use the recover pod's local interpreter, not the one from the descriptor —
-        // the binary on disk is what counts, the descriptor field is informational.
-        String pythonPath = DEFAULT_PYTHON_PATH;
-        buildVenv(handle, pythonPath);
-        meta.put(META_PYTHON_PATH, pythonPath);
-        descriptor.setMetadata(meta);
-        handle.getDescriptor().setMetadata(meta);
-
-        Path requirements = handle.getPath().resolve(REQUIREMENTS_FILE);
-        if (Files.isRegularFile(requirements)) {
-            pipInstallRequirements(handle, pythonPath);
-        }
-        if (!fromRemote) {
-            List<String> packages = packageList(meta, META_PACKAGES);
-            if (!packages.isEmpty()) {
-                pipInstallPackages(handle, pythonPath, packages);
-            }
-        }
-        log.info("python recover: {} (pythonPath={}, fromRemote={})", handle.getDirName(), pythonPath, fromRemote);
     }
 
     @Override

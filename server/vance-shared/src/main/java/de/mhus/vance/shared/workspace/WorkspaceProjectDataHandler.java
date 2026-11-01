@@ -4,27 +4,22 @@ import de.mhus.vance.shared.project.maintenance.ProjectDataHandler;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
-import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.stereotype.Component;
 
 /**
- * The project's work area: the folder on this machine and the snapshots a
- * suspend left in Mongo.
+ * The project's work area: the folder on this machine.
  *
- * <p>The one handler whose subject is not only rows. That has a consequence
+ * <p>The one handler whose subject is not a Mongo row. That has a consequence
  * worth knowing before running a delete from an admin shell: a workspace lives
  * on the disk of the pod that ran the project, so a shell on another machine
- * removes the snapshots and reports that it saw no folder. The folder is not
- * lost data in the way a document is — it is derived, and a running brain
- * disposes it as part of closing the project — but a report that stayed silent
- * would read as "there was nothing", which is a different statement.
+ * sees no folder and reports exactly that — a report that stayed silent would
+ * read as "there was nothing", which is a different statement.
  */
 @Component
 @RequiredArgsConstructor
 public class WorkspaceProjectDataHandler implements ProjectDataHandler {
 
     private final WorkspaceService workspaceService;
-    private final MongoTemplate mongoTemplate;
 
     @Override
     public String id() {
@@ -33,7 +28,7 @@ public class WorkspaceProjectDataHandler implements ProjectDataHandler {
 
     @Override
     public Set<String> collections() {
-        return Set.of(mongoTemplate.getCollectionName(WorkspaceSnapshotDocument.class));
+        return Set.of();
     }
 
     @Override
@@ -43,15 +38,12 @@ public class WorkspaceProjectDataHandler implements ProjectDataHandler {
 
     @Override
     public long count(String tenantId, String projectId) {
-        long snapshots = workspaceService.snapshotsForProject(tenantId, projectId).size();
-        return workspaceService.existsForProject(tenantId, projectId) ? snapshots + 1 : snapshots;
+        return workspaceService.existsForProject(tenantId, projectId) ? 1 : 0;
     }
 
     @Override
     public long delete(String tenantId, String projectId) {
-        boolean hadFolder = workspaceService.existsForProject(tenantId, projectId);
-        long snapshots = workspaceService.deleteForProject(tenantId, projectId);
-        return hadFolder ? snapshots + 1 : snapshots;
+        return workspaceService.deleteForProject(tenantId, projectId) ? 1 : 0;
     }
 
     @Override
@@ -67,8 +59,7 @@ public class WorkspaceProjectDataHandler implements ProjectDataHandler {
      * documents under the new name and its work area under the old one.
      */
     @Override
-    public @Nullable String renameBlocker(
-            String tenantId, String projectId, String newProjectId) {
+    public @Nullable String renameBlocker(String tenantId, String projectId, String newProjectId) {
         if (workspaceService.existsForProject(tenantId, projectId)
                 && workspaceService.existsForProject(tenantId, newProjectId)) {
             return "a workspace folder for '" + newProjectId

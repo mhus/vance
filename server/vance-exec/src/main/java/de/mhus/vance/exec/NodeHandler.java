@@ -55,8 +55,8 @@ import org.jspecify.annotations.Nullable;
  *       Declarative alternative to shipping a {@code package.json} +
  *       lockfile, which for a compose arrive via a later import. Installed
  *       once on create/clear; a reused workspace keeps them.</li>
- *   <li>{@code repoUrl}, {@code branch}, {@code commit}, {@code public},
- *       {@code suspendBranch}, {@code suspendCommit} — same keys as {@link GitHandler}</li>
+ *   <li>{@code repoUrl}, {@code branch}, {@code commit}, {@code public}
+ *       — same keys as {@link GitHandler}</li>
  * </ul>
  */
 @Slf4j
@@ -199,62 +199,6 @@ public class NodeHandler implements WorkspaceContentHandler {
                 handle.getDirName(),
                 repoUrl == null ? "none" : repoUrl,
                 Files.isRegularFile(lockfile) ? "ci'd" : "absent",
-                packages.size());
-    }
-
-    @Override
-    public void suspend(RootDirHandle handle) {
-        Map<String, Object> meta = HandlerSupport.mutableMetadata(handle.getDescriptor());
-        String repoUrl = HandlerSupport.stringOr(meta, GitHandler.META_REPO_URL, null);
-        if (repoUrl.isBlank()) {
-            // No remote: like a temp RootDir, the content does not survive —
-            // only the descriptor does, and recover rebuilds a fresh
-            // environment from it. Must not block suspend/release
-            // (planning/multi-tenant-isolation.md W5/E7).
-            log.info("node suspend: {} has no git remote — its content is not kept", handle.getDirName());
-            return;
-        }
-        gitHandler.suspend(handle);
-    }
-
-    @Override
-    public void recover(RootDirHandle handle, WorkspaceDescriptor descriptor) {
-        Map<String, Object> meta = HandlerSupport.mutableMetadata(descriptor);
-        if (HandlerSupport.stringOr(meta, GitHandler.META_REPO_URL, null).isBlank()) {
-            recoverFresh(handle, meta);
-            return;
-        }
-        gitHandler.recover(handle, descriptor);
-        Path lockfile = handle.getPath().resolve(PACKAGE_LOCK_JSON);
-        if (Files.isRegularFile(lockfile)) {
-            npmCi(handle);
-        } else {
-            // Pre-suspend dir might not have had a lockfile committed —
-            // re-init package.json so install commands work.
-            if (!Files.isRegularFile(handle.getPath().resolve(PACKAGE_JSON))) {
-                npmInit(handle);
-            }
-        }
-        log.info("node recover: {}", handle.getDirName());
-    }
-
-    /**
-     * Recover without a git remote (E7): nothing was kept, so the RootDir comes
-     * back empty with a fresh {@code package.json} and the declared
-     * {@code packages} from the descriptor installed again.
-     */
-    private void recoverFresh(RootDirHandle handle, Map<String, Object> meta) {
-        initGitRepository(handle);
-        HandlerSupport.writeDefaultGitignore(handle.getPath(), DEFAULT_GITIGNORE);
-        npmInit(handle);
-        List<String> packages = packageList(meta, META_PACKAGES);
-        if (!packages.isEmpty()) {
-            npmInstallPackages(handle, packages);
-            enforceSizeLimit(handle);
-        }
-        log.info(
-                "node recover: {} rebuilt empty (no git remote), {} declared package(s) reinstalled",
-                handle.getDirName(),
                 packages.size());
     }
 

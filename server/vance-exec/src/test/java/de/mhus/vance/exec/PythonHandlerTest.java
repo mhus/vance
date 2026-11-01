@@ -117,36 +117,6 @@ class PythonHandlerTest {
     }
 
     @Test
-    void suspend_withRemote_delegatesToGitHandler() {
-        Path rootDir = createRootDirFolder("withRemote");
-        Map<String, Object> meta = new LinkedHashMap<>();
-        meta.put(GitHandler.META_REPO_URL, "https://example.invalid/repo.git");
-        WorkspaceDescriptor descriptor = descriptor("withRemote", meta);
-        RootDirHandle handle = handle(rootDir, descriptor);
-
-        handler.suspend(handle);
-
-        verify(gitHandler, times(1)).suspend(handle);
-    }
-
-    @Test
-    void recover_delegatesToGitHandlerThenRebuildsVenv() {
-        assumePython3Available();
-        Path rootDir = createRootDirFolder("recovered");
-        Map<String, Object> meta = new LinkedHashMap<>();
-        meta.put(GitHandler.META_REPO_URL, "https://example.invalid/repo.git");
-        meta.put(PythonHandler.META_PYTHON_PATH, "python3");
-        WorkspaceDescriptor descriptor = descriptor("recovered", meta);
-        RootDirHandle handle = handle(rootDir, descriptor);
-
-        handler.recover(handle, descriptor);
-
-        verify(gitHandler, times(1)).recover(handle, descriptor);
-        assertThat(rootDir.resolve(".venv/bin/python")).exists();
-        assertThat(handle.getDescriptor().getMetadata()).containsEntry(PythonHandler.META_PYTHON_PATH, "python3");
-    }
-
-    @Test
     void rebuildVenv_recreatesVenvAndUpdatesDescriptor() throws IOException {
         assumePython3Available();
         Path rootDir = createRootDirFolder("rebuild");
@@ -293,22 +263,5 @@ class PythonHandlerTest {
                 .labelHint(labelHint)
                 .deleteOnCreatorClose(false)
                 .build();
-    }
-
-    @Test
-    void suspend_withoutGitRemote_keepsNothingAndDoesNotBlock() throws IOException {
-        Path rootDir = createRootDirFolder("pyenv-suspend");
-        RootDirHandle handle = RootDirHandle.builder()
-                .tenantId("acme")
-                .projectId("proj-1")
-                .dirName("pyenv-suspend")
-                .type(PythonHandler.TYPE)
-                .path(rootDir)
-                .descriptor(new WorkspaceDescriptor())
-                .build();
-
-        handler.suspend(handle);
-
-        verifyNoInteractions(gitHandler);
     }
 }

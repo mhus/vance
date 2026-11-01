@@ -178,7 +178,7 @@ public class SearchAppController {
      *
      * <p>Returns the <b>bytes</b> and never the stash path. The path lives in the
      * project workspace temp-root, whose lifecycle belongs to
-     * {@code WorkspaceService.suspendAll} — putting it in a client response would
+     * the workspace — putting it in a client response would
      * make a transient file part of this app's contract.
      *
      * <p>Note what this cannot do today: of the built-in protocols, <b>none</b>

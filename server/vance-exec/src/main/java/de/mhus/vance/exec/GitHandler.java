@@ -5,12 +5,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Git-backed RootDir — clones a repository on init, commits and pushes
- * a suspend-branch on suspend, re-clones on recover. The git calls themselves go
+ * Git-backed RootDir — clones a repository on init. The git calls themselves go
  * through {@link GitOperations} (JGit in the brain, the {@code git} program in the
- * runner); this class owns what is the same for both: the metadata keys, the
- * suspend branch, the depth and commit rules. The descriptor stores
- * {@code public} flag (never a token) so suspended descriptors carry no secrets.
+ * runner); this class owns what is the same for both: the metadata keys and the
+ * depth and commit rules. The descriptor stores a {@code public} flag (never a
+ * token) so descriptors carry no secrets.
  *
  * <p>Metadata schema:
  * <ul>
@@ -23,8 +22,6 @@ import org.jspecify.annotations.Nullable;
  *   <li>{@code commit} — populated by the handler with HEAD after init</li>
  *   <li>{@code public} — {@code true}: access the repository anonymously; otherwise the credentials
  *       {@link GitAuthProvider} holds for the repository's host are used</li>
- *   <li>{@code suspendBranch} — set during suspend; recover prefers it over {@code branch}</li>
- *   <li>{@code suspendCommit} — set during suspend</li>
  * </ul>
  */
 @Slf4j
@@ -38,11 +35,8 @@ public class GitHandler implements WorkspaceContentHandler {
     public static final String META_DEPTH = "depth";
     public static final String META_COMMIT = "commit";
     public static final String META_PUBLIC = "public";
-    public static final String META_SUSPEND_BRANCH = "suspendBranch";
-    public static final String META_SUSPEND_COMMIT = "suspendCommit";
 
     private static final String DEFAULT_BRANCH = "main";
-    private static final String SUSPEND_BRANCH_PREFIX = "vance/suspend/";
 
     private final GitOperations git;
 
@@ -122,54 +116,8 @@ public class GitHandler implements WorkspaceContentHandler {
     }
 
     @Override
-    public void suspend(RootDirHandle handle) {
-        Map<String, Object> meta = HandlerSupport.mutableMetadata(handle.getDescriptor());
-        GitOperations.Scope scope =
-                scope(handle.getDescriptor().getTenant(), handle.getDescriptor().getProjectId(), meta);
-        String suspendBranch = SUSPEND_BRANCH_PREFIX + handle.getDirName();
-        java.nio.file.Path repo = handle.getPath();
-        try {
-            boolean dirty = !git.isClean(repo);
-            git.checkoutNewBranch(repo, suspendBranch);
-            if (dirty) {
-                git.commitAll(repo, "vance suspend");
-            }
-            git.push(repo, "origin", suspendBranch, scope);
-            String head = git.head(repo);
-            meta.put(META_SUSPEND_BRANCH, suspendBranch);
-            meta.put(META_SUSPEND_COMMIT, head == null ? "unknown" : head);
-            handle.getDescriptor().setMetadata(meta);
-            log.info(
-                    "git suspend: {} → {} (commit={})",
-                    handle.getDirName(),
-                    suspendBranch,
-                    meta.get(META_SUSPEND_COMMIT));
-        } catch (GitOperationException e) {
-            throw new RootDirException("git suspend failed for " + handle.getDirName() + ": " + e.getMessage(), e);
-        }
-    }
-
-    @Override
-    public void recover(RootDirHandle handle, WorkspaceDescriptor descriptor) {
-        Map<String, Object> meta = HandlerSupport.mutableMetadata(descriptor);
-        String repoUrl = HandlerSupport.stringOrThrow(meta, META_REPO_URL);
-        String suspendBranch = HandlerSupport.stringOr(meta, META_SUSPEND_BRANCH, null);
-        String branch =
-                !suspendBranch.isBlank() ? suspendBranch : HandlerSupport.stringOr(meta, META_BRANCH, DEFAULT_BRANCH);
-        GitOperations.Scope scope = scope(descriptor.getTenant(), descriptor.getProjectId(), meta);
-        try {
-            git.clone(repoUrl, handle.getPath(), branch, shallowDepth(meta), scope);
-            checkoutCommitIfRequested(handle.getPath(), meta);
-            log.info("git recover: {} → {} (branch={})", repoUrl, handle.getDirName(), branch);
-        } catch (GitOperationException e) {
-            throw new RootDirException("git recover failed for " + repoUrl + ": " + e.getMessage(), e);
-        }
-    }
-
-    @Override
     public void close(RootDirHandle handle) {
-        // Folder removal is the store's job. No commit-on-close in V1 —
-        // workers explicitly call suspend if they need persistence.
+        // Folder removal is the store's job. No commit-on-close.
     }
 
     /** Credential context for remote calls — whether to go anonymous, never a token. */

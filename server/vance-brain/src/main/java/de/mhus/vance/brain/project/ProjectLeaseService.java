@@ -38,9 +38,8 @@ import org.springframework.stereotype.Service;
  * for a query to find out which.
  *
  * <p><b>Deactivation writes nothing.</b> We lost the lease, so the new owner
- * has already initialised the workspace from Mongo; our local folder is a
- * stale copy and snapshotting it back would overwrite their state. So the
- * teardown is {@link ProjectEnginesStopRequested} only — every listener on
+ * has already initialised the project; our local folder is a stale copy
+ * that must not be treated as theirs. So the teardown is {@link ProjectEnginesStopRequested} only — every listener on
  * that event is a pure in-memory unload — and the folder is left for the next
  * init or the orphan-storage sweep.
  *
@@ -111,7 +110,7 @@ public class ProjectLeaseService {
             if (activationRegistry.deactivate(tenantId, projectName)) {
                 log.warn(
                         "Project '{}/{}' lease lost while active here — unloading local state "
-                                + "(no workspace snapshot: the new owner is authoritative)",
+                                + "(the new owner is authoritative)",
                         tenantId,
                         projectName);
                 // The one involuntary departure that has a witness. A pod

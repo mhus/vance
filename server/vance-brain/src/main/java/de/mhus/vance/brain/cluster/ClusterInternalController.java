@@ -169,8 +169,7 @@ public class ClusterInternalController {
             String message) {}
 
     /**
-     * Hand a project over: stop it here, snapshot its workspace, drop the
-     * lease. The inverse of {@link #bring} and the second half of a drain.
+     * Hand a project over: stop it here, drop the lease. The inverse of {@link #bring} and the second half of a drain.
      *
      * <p><b>Two steps, and the order is the contract.</b> After a release this
      * pod is still eligible and often the least loaded, so it wins the project

@@ -125,31 +125,6 @@ class NodeHandlerTest {
                 .hasMessageContaining("no ProcessLauncher");
     }
 
-    @Test
-    void suspend_withoutGitRemote_keepsNothingAndDoesNotBlock() {
-        GitHandler git = mock(GitHandler.class);
-        NodeHandler withGit = handlerWith(git, TestProcessLaunchers.provider(TestProcessLaunchers.direct()));
-
-        withGit.suspend(handle);
-
-        org.mockito.Mockito.verifyNoInteractions(git);
-    }
-
-    @Test
-    void recover_withoutGitRemote_rebuildsAndReinstallsDeclaredPackages() throws IOException {
-        WorkspaceDescriptor descriptor = new WorkspaceDescriptor();
-        descriptor.setMetadata(Map.of(NodeHandler.META_PACKAGES, List.of("lodash@^4")));
-
-        handler.recover(handle, descriptor);
-
-        assertThat(calls())
-                .containsExactly(
-                        "init -y",
-                        "install --save --ignore-scripts --no-audit --no-fund"
-                                + " --registry=https://registry.example.test/ -- lodash@^4");
-        assertThat(rootDir.resolve(".git")).isDirectory();
-    }
-
     private List<String> calls() throws IOException {
         return Files.readAllLines(argLog);
     }

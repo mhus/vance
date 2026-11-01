@@ -64,8 +64,9 @@ on it; if you got `status="exists"`, the env is already there.
   tool runs `pip freeze > requirements.txt`. Existing lockfile
   content is overwritten with the fresh frozen view. That's the
   intended behaviour: the lockfile mirrors the venv state.
-- **On `recover`** (pod migration) — the new pod re-creates the venv
-  and runs `pip install -r requirements.txt`. No worker action needed.
+- **After a rebuild** (`python_set_interpreter`) — the venv is
+  re-created and `pip install -r requirements.txt` runs again. No worker
+  action needed.
 
 Don't hand-edit `requirements.txt` and expect `python_install` to
 respect your edit — the next install pip-freezes over it. To pin a
@@ -138,27 +139,20 @@ wipes `.venv`, rebuilds it with the new interpreter, and reinstalls
 from `requirements.txt`. Source files untouched. Synchronous — the
 call blocks until the rebuild finishes.
 
-The descriptor's stored `pythonPath` is informational only. On pod
-migration, `recover` uses the new pod's local `python3` regardless
-of what the descriptor says — so don't pin a path that's only on
-your machine and expect it to survive.
+The descriptor's stored `pythonPath` is informational only — it records
+the interpreter the venv was last built with and is never enforced.
 
-## Suspend semantics
+## Persistence
 
-Suspend persists Python work via the same Git mechanism the
-`GitHandler` uses:
+The environment lives in the project's workspace on the disk of the pod
+that runs the project. Suspending or restarting the project leaves it
+where it is; it is removed when the project is closed or archived. It
+never moves to another pod — a pod that takes the project over starts
+with an empty workspace.
 
-- **With `repoUrl`** — sources commit + push on `vance/suspend/<dirName>`.
-  `requirements.txt` rides along, since it's a normal source file.
-  `.venv/` stays out (gitignored by default).
-- **Without `repoUrl`** — `python_create` initialised an empty local
-  repo. Suspend would fail with `WorkspaceSuspendNotConfiguredException`
-  because there's no remote to push to. Either set a remote first
-  (`work_exec_run command="cd python && git remote add origin …"`) or
-  accept that the env is local-only.
-
-Recovery on the target pod re-clones, rebuilds the venv, reinstalls
-from the lockfile.
+Anything that has to outlive the workspace belongs in git (commit and
+push yourself) or in a document. `.venv/` is gitignored by default and
+is rebuilt from `requirements.txt`.
 
 ## What NOT to do
 
@@ -166,9 +160,8 @@ from the lockfile.
   filesystem layout is `pip`-managed; pip will not notice your edits
   and the next `python_install` may overwrite them anyway. If you
   need behaviour changes, install a package instead.
-- **Don't trust `python_set_interpreter` for version-pinning** across
-  pods. The descriptor stores the path you asked for; recover
-  intentionally ignores it and uses the local interpreter.
+- **Don't read the descriptor's `pythonPath` as a version pin.** It only
+  records the interpreter the venv was last built with.
 - **Don't loop on `python_create`**. It's idempotent on `label` —
   if you got `status="exists"`, move on to install/run.
 - **Don't expect Windows paths**. The tools call `.venv/bin/python`

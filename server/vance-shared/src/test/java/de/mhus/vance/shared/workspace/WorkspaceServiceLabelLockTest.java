@@ -21,7 +21,6 @@ class WorkspaceServiceLabelLockTest {
     private final WorkspaceService service = new WorkspaceService(
             mock(WorkspaceProperties.class),
             List.of(),
-            mock(WorkspaceSnapshotRepository.class),
             mock(WorkspaceRootService.class),
             mock(RunnerBindingService.class));
 

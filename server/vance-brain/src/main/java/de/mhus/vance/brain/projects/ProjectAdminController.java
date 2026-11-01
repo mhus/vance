@@ -226,9 +226,8 @@ public class ProjectAdminController {
     }
 
     /**
-     * Suspends a RUNNING project: stops engines (event), suspends the
-     * workspace (snapshots → Mongo, folder removed), transitions to
-     * SUSPENDED. Idempotent on already-SUSPENDED projects; rejects
+     * Suspends a RUNNING project: stops engines (event), transitions to
+     * SUSPENDED. The workspace folder stays on disk. Idempotent on already-SUSPENDED projects; rejects
      * CLOSED with 409.
      */
     @PostMapping("/{name}/suspend")
@@ -246,7 +245,7 @@ public class ProjectAdminController {
 
     /**
      * Resumes a SUSPENDED (or otherwise non-RUNNING) project: claims it
-     * for this pod, recovers the workspace from snapshots if any, starts
+     * for this pod, initialises the workspace (an existing folder is kept), starts
      * engines, transitions to RUNNING. Idempotent on already-RUNNING
      * projects (just refreshes the pod claim).
      */
@@ -351,7 +350,7 @@ public class ProjectAdminController {
         try {
             ProjectGroupDocument archivedGroup = projectGroupService.ensureArchivedGroup(tenant);
             // Goes through ProjectLifecycleService.close() so the workspace
-            // is disposed (folder + snapshots gone) before the project is
+            // is disposed (folder gone) before the project is
             // moved to the archived group.
             ProjectDocument saved = lifecycleService.close(tenant, name, archivedGroup.getName());
             return toDto(saved);

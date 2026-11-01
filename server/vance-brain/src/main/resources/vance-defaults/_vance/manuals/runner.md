@@ -70,8 +70,8 @@ that — it can take minutes for a long video.
 
 ## What it does not have (yet)
 
-- RootDirs live on the runner's volume, not in the server's workspace snapshots: nothing of them is
-  suspended with your session. A git RootDir keeps what you commit and push.
+- RootDirs live on the runner's volume, not in the server's workspace: nothing of them is touched when
+  your session is suspended. A git RootDir keeps what you commit and push.
 
 ## Errors you may see
 

@@ -39,10 +39,10 @@ import org.springframework.stereotype.Service;
  * specification/workspace-management.md} §11). Wraps three steps:
  *
  * <ul>
- *   <li>{@link #bring} — claim pod, recover workspace, mark RUNNING
- *       (and request engines start).</li>
- *   <li>{@link #suspend} — request engines stop, suspend workspace,
- *       mark SUSPENDED.</li>
+ *   <li>{@link #bring} — claim pod, initialise the workspace folder, mark
+ *       RUNNING (and request engines start).</li>
+ *   <li>{@link #suspend} — request engines stop, mark SUSPENDED. The
+ *       workspace folder stays where it is.</li>
  *   <li>{@link #close} — mark CLOSED, move to the archived group, stop
  *       engines on the home pod, dispose workspace.</li>
  *   <li>{@link #reopen} — CLOSED back to INIT in the group it was archived
@@ -287,7 +287,7 @@ public class ProjectLifecycleService {
 
     /**
      * Move a project onto this pod: take the lease, transition to RECOVERING,
-     * restore the workspace (auto-recovers from snapshots if any), publish
+     * initialise the workspace (an existing folder is kept as it is), publish
      * {@link ProjectEnginesStartRequested}, transition to RUNNING.
      *
      * <p><b>Idempotence keys on this pod's activation registry, not on
@@ -338,7 +338,7 @@ public class ProjectLifecycleService {
         // Bring = the project is coming online on *this* pod. No client can be
         // legitimately bound right now — either the previous holder died (and
         // its WS connections died with it), or the project was suspended and
-        // the workspace was off-disk. Stale boundConnectionId values would
+        // it was stopped. Stale boundConnectionId values would
         // otherwise reject the first reconnect with 409 Already-Bound. This
         // covers every path: self-pull, distributor, locator, direct-spawn.
         long unbound = sessionService.unbindAllForProjects(tenantId, List.of(projectName));
@@ -440,16 +440,16 @@ public class ProjectLifecycleService {
      *       <em>nothing</em>: the lease is already gone, so the new owner has
      *       initialised from Mongo and our folder is a stale copy that would
      *       overwrite their state.</li>
-     *   <li>This one still holds the lease while it runs, so the workspace
-     *       <em>does</em> travel: snapshot first, release after. Skipping the
-     *       snapshot would hand the next owner whatever the last snapshot
-     *       happened to be, silently losing work in progress — the whole point
-     *       of a drain is that the project continues elsewhere.</li>
+     *   <li>This one still holds the lease while it runs, so engines stop
+     *       cleanly before the lease goes. The workspace does <em>not</em>
+     *       travel: a workspace lives on the disk of the pod that ran the
+     *       project and is never moved between pods. A pod that takes the
+     *       project over starts with an empty one — persistence beyond that
+     *       is the runner's and the platform's concern.</li>
      * </ul>
      *
-     * <p>Order is load-bearing: deactivate, stop engines, snapshot, <em>then</em>
-     * release. Releasing first would let another pod claim and initialise from
-     * the old snapshot while this one is still writing the new one.
+     * <p>Order is load-bearing: stop engines, deactivate, <em>then</em> release,
+     * so no engine still runs here when another pod can claim the project.
      *
      * <p>The homeless tenant project holds no lease and is refused — there is
      * nothing to hand over.
@@ -486,9 +486,8 @@ public class ProjectLifecycleService {
         if (isClosed(tenantId, projectName)) {
             // An archive is releasing: the archiving pod disposes the workspace,
             // possibly before this release finishes (a timed-out request counts
-            // as "unreachable" there). A snapshot written now would outlive that
-            // dispose and come back on unarchive — so a CLOSED project's
-            // workspace ends here instead of being preserved.
+            // as "unreachable" there). A CLOSED project's workspace ends here
+            // too, so nothing is left behind on this pod.
             workspaceService.dispose(tenantId, projectName);
             boolean released = projectManager.releaseLocalLease(tenantId, projectName);
             log.info(
@@ -497,18 +496,6 @@ public class ProjectLifecycleService {
                     projectName,
                     released);
             return released;
-        }
-        try {
-            workspaceService.suspendAll(tenantId, projectName);
-        } catch (RuntimeException e) {
-            // Keep the lease: a project whose workspace we could not snapshot
-            // must not be handed to a pod that would then restore an older one.
-            log.error(
-                    "Project '{}/{}' release aborted — workspace snapshot failed, " + "keeping the lease: {}",
-                    tenantId,
-                    projectName,
-                    e.toString());
-            throw e;
         }
         boolean released = projectManager.releaseLocalLease(tenantId, projectName);
         log.info(
@@ -528,9 +515,9 @@ public class ProjectLifecycleService {
 
     /**
      * Move a RUNNING project to SUSPENDED: transition to SUSPENDING,
-     * publish {@link ProjectEnginesStopRequested}, suspend the workspace
-     * (snapshots → Mongo, folder gone), transition to SUSPENDED. Picks
-     * up from SUSPENDING if a previous attempt crashed mid-flow.
+     * publish {@link ProjectEnginesStopRequested}, transition to SUSPENDED.
+     * The workspace folder is left untouched. Picks up from SUSPENDING if a
+     * previous attempt crashed mid-flow.
      * Idempotent on already-SUSPENDED projects.
      */
     public ProjectDocument suspend(String tenantId, String projectName) {
@@ -539,7 +526,7 @@ public class ProjectLifecycleService {
                 .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
                         "Project '" + projectName + "' not found in tenant '" + tenantId + "'"));
         if (ProjectService.isHomeless(projectName)) {
-            // Never brought, so there is nothing to stop or snapshot.
+            // Never brought, so there is nothing to stop.
             log.debug("Homeless project '{}/{}' — suspend is a no-op", tenantId, projectName);
             return doc;
         }
@@ -561,16 +548,6 @@ public class ProjectLifecycleService {
         // Symmetric to the activate() in bring: this pod no longer has the
         // project up, so the next bring must run the full pass again.
         activationRegistry.deactivate(tenantId, projectName);
-        try {
-            workspaceService.suspendAll(tenantId, projectName);
-        } catch (RuntimeException e) {
-            log.error(
-                    "Workspace suspendAll failed for '{}/{}' (status remains SUSPENDING): {}",
-                    tenantId,
-                    projectName,
-                    e.toString());
-            throw e;
-        }
         doc = projectService.transitionStatus(tenantId, projectName, ProjectStatus.SUSPENDING, ProjectStatus.SUSPENDED);
         log.info("Project '{}/{}' suspended", tenantId, projectName);
         return doc;
@@ -623,8 +600,7 @@ public class ProjectLifecycleService {
 
     /**
      * Terminate a project: mark CLOSED and move to {@code closedGroupId}, stop
-     * its engines wherever it runs, then dispose the workspace (folder +
-     * snapshots gone) and the project RAG.
+     * its engines wherever it runs, then dispose the workspace folder and the project RAG.
      *
      * <p>Order is load-bearing. CLOSED comes first because a claim on a CLOSED
      * project is refused: from that write on, no pod can bring the project up
@@ -632,8 +608,8 @@ public class ProjectLifecycleService {
      * through {@link ProjectEnginesStopRequested}, on another pod through that
      * pod's release ({@link #stopWhereRunning}). The workspace goes last; a remote
      * release still running when this dispose happens (its request timed out
-     * here) sees the CLOSED status and disposes instead of snapshotting, so
-     * nothing it writes on its way out survives the archive.
+     * here) sees the CLOSED status and disposes as well, so
+     * nothing it leaves behind survives the archive.
      *
      * <p>Refuses SYSTEM-kind projects before anything is touched.
      */

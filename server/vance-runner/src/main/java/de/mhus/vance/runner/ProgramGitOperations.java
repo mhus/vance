@@ -113,40 +113,6 @@ final class ProgramGitOperations implements GitOperations {
         }
     }
 
-    @Override
-    public boolean isClean(Path repo) {
-        return run(repo, List.of("status", "--porcelain"), null, LOCAL_TIMEOUT_SECONDS, false)
-                .isBlank();
-    }
-
-    @Override
-    public void checkoutNewBranch(Path repo, String branch) {
-        run(repo, List.of("checkout", "-b", branch), null, LOCAL_TIMEOUT_SECONDS, false);
-    }
-
-    @Override
-    public void commitAll(Path repo, String message) {
-        run(repo, List.of("add", "-A"), null, LOCAL_TIMEOUT_SECONDS, false);
-        run(
-                repo,
-                List.of("-c", "user.name=Vance", "-c", "user.email=vance@localhost", "commit", "-m", message),
-                null,
-                LOCAL_TIMEOUT_SECONDS,
-                false);
-    }
-
-    @Override
-    public void push(Path repo, String remote, String branch, Scope scope) {
-        String url = run(
-                        repo,
-                        List.of("config", "--get", "remote." + remote + ".url"),
-                        null,
-                        LOCAL_TIMEOUT_SECONDS,
-                        false)
-                .strip();
-        run(repo, List.of("push", remote, branch), url, CLONE_TIMEOUT_SECONDS, true);
-    }
-
     /**
      * Runs {@code git <args>} in {@code dir} and returns its output.
      *

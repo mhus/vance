@@ -30,12 +30,12 @@ class ProgramGitOperationsTest {
     }
 
     /** A repository with one commit on main, as a clone source. */
-    private Path remote() throws IOException {
+    private Path remote() throws Exception {
         Path remote = Files.createDirectories(tmp.resolve("remote"));
         ProgramGitOperations git = realGit();
         git.init(remote);
         Files.writeString(remote.resolve("README.md"), "hello\n");
-        git.commitAll(remote, "first");
+        commit(remote, "first");
         return remote;
     }
 
@@ -49,7 +49,6 @@ class ProgramGitOperationsTest {
 
         assertThat(Files.readString(target.resolve("README.md"))).isEqualTo("hello\n");
         assertThat(git.head(target)).isEqualTo(git.head(remote)).hasSize(40);
-        assertThat(git.isClean(target)).isTrue();
     }
 
     @Test
@@ -57,7 +56,7 @@ class ProgramGitOperationsTest {
         Path remote = remote();
         ProgramGitOperations git = realGit();
         Files.writeString(remote.resolve("two.txt"), "2");
-        git.commitAll(remote, "second");
+        commit(remote, "second");
         Path target = Files.createDirectories(tmp.resolve("shallow"));
 
         // A local path ignores --depth with a warning; a file:// URL honours it.
@@ -68,27 +67,6 @@ class ProgramGitOperationsTest {
     }
 
     @Test
-    void branchesCommitsAndPushWork() throws Exception {
-        Path remote = remote();
-        // A push needs a non-checked-out branch on the other side: use a bare mirror.
-        Path bare = tmp.resolve("bare.git");
-        ProgramGitOperations git = realGit();
-        runGit(tmp, "clone", "--bare", remote.toString(), bare.toString());
-        Path target = Files.createDirectories(tmp.resolve("work"));
-        git.clone(bare.toString(), target, "main", null, SCOPE);
-
-        git.checkoutNewBranch(target, "vance/suspend/x");
-        Files.writeString(target.resolve("note.txt"), "dirty");
-        assertThat(git.isClean(target)).isFalse();
-        git.commitAll(target, "vance suspend");
-        git.push(target, "origin", "vance/suspend/x", SCOPE);
-
-        assertThat(runGit(bare, "branch", "--list", "vance/suspend/x")).contains("vance/suspend/x");
-        git.checkout(target, "main");
-        assertThat(Files.exists(target.resolve("note.txt"))).isFalse();
-    }
-
-    @Test
     void failuresCarryGitsOwnMessage() throws Exception {
         ProgramGitOperations git = realGit();
         Path target = Files.createDirectories(tmp.resolve("nowhere"));
@@ -96,9 +74,6 @@ class ProgramGitOperationsTest {
         assertThatThrownBy(() -> git.clone(tmp.resolve("does-not-exist").toString(), target, "main", null, SCOPE))
                 .isInstanceOf(GitOperationException.class)
                 .hasMessageContaining("git clone failed");
-        assertThatThrownBy(() -> git.commitAll(remote(), "nothing to commit"))
-                .isInstanceOf(GitOperationException.class)
-                .hasMessageContaining("git commit failed");
         assertThat(git.head(Files.createDirectories(tmp.resolve("empty")))).isNull();
     }
 
@@ -144,7 +119,7 @@ class ProgramGitOperationsTest {
         Path target = Files.createDirectories(tmp.resolve("t0"));
 
         git.clone("https://git.example.com/org/repo.git", target, "main", null, SCOPE);
-        git.isClean(target);
+        git.head(target);
 
         for (ProcessSpec spec : launcher.specs) {
             assertThat(spec.command())
@@ -188,6 +163,12 @@ class ProgramGitOperationsTest {
     @Test
     void theCredentialsRecordNeverPrintsItsToken() {
         assertThat(new GitCredentials("bot", "s3cret-token").toString()).doesNotContain("s3cret-token");
+    }
+
+    /** Stages everything and commits it — test setup for a clone source. */
+    private static void commit(Path repo, String message) throws Exception {
+        runGit(repo, "add", "-A");
+        runGit(repo, "-c", "user.name=Vance", "-c", "user.email=vance@localhost", "commit", "-m", message);
     }
 
     private static String runGit(Path dir, String... args) throws Exception {

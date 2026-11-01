@@ -40,16 +40,4 @@ public interface GitOperations {
     /** The commit {@code HEAD} points at, or {@code null} when it cannot be resolved. */
     @Nullable
     String head(Path repo);
-
-    /** {@code true} when the working tree has no uncommitted changes. */
-    boolean isClean(Path repo);
-
-    /** Creates {@code branch} and checks it out. */
-    void checkoutNewBranch(Path repo, String branch);
-
-    /** Stages everything and commits it; fails when there is nothing to commit. */
-    void commitAll(Path repo, String message);
-
-    /** Pushes {@code branch} to {@code remote}. */
-    void push(Path repo, String remote, String branch, Scope scope);
 }

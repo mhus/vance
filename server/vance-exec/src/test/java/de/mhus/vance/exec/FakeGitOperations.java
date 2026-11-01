@@ -34,24 +34,4 @@ final class FakeGitOperations implements GitOperations {
     public @Nullable String head(Path repo) {
         throw new UnsupportedOperationException("head");
     }
-
-    @Override
-    public boolean isClean(Path repo) {
-        throw new UnsupportedOperationException("isClean");
-    }
-
-    @Override
-    public void checkoutNewBranch(Path repo, String branch) {
-        throw new UnsupportedOperationException("checkoutNewBranch");
-    }
-
-    @Override
-    public void commitAll(Path repo, String message) {
-        throw new UnsupportedOperationException("commitAll");
-    }
-
-    @Override
-    public void push(Path repo, String remote, String branch, Scope scope) {
-        throw new UnsupportedOperationException("push");
-    }
 }

@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The handler's own logic — metadata keys, depth rule, suspend branch, messages —
+ * The handler's own logic — metadata keys, depth rule, messages —
  * against a recording {@link GitOperations}. The real-repository behaviour is
  * covered where the JGit implementation lives (vance-shared).
  */
@@ -24,7 +24,6 @@ class GitHandlerTest {
     Path tmp;
 
     private final List<String> calls = new ArrayList<>();
-    private boolean dirty;
     private @Nullable String failOn;
     private GitHandler handler;
 
@@ -52,27 +51,6 @@ class GitHandlerTest {
             @Override
             public @Nullable String head(Path repo) {
                 return "abc123";
-            }
-
-            @Override
-            public boolean isClean(Path repo) {
-                return !dirty;
-            }
-
-            @Override
-            public void checkoutNewBranch(Path repo, String branch) {
-                calls.add("branch " + branch);
-            }
-
-            @Override
-            public void commitAll(Path repo, String message) {
-                calls.add("commit " + message);
-            }
-
-            @Override
-            public void push(Path repo, String remote, String branch, Scope scope) {
-                calls.add("push " + remote + " " + branch + " public=" + scope.publicAccess());
-                maybeFail("push");
             }
         });
     }

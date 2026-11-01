@@ -70,53 +70,6 @@ public class JGitOperations implements GitOperations {
         }
     }
 
-    @Override
-    public boolean isClean(Path repo) {
-        try (Git git = Git.open(repo.toFile())) {
-            return git.status().call().isClean();
-        } catch (GitAPIException | IOException e) {
-            throw new GitOperationException(e.getMessage(), e);
-        }
-    }
-
-    @Override
-    public void checkoutNewBranch(Path repo, String branch) {
-        try (Git git = Git.open(repo.toFile())) {
-            git.checkout().setCreateBranch(true).setName(branch).call();
-        } catch (GitAPIException | IOException e) {
-            throw new GitOperationException(e.getMessage(), e);
-        }
-    }
-
-    @Override
-    public void commitAll(Path repo, String message) {
-        try (Git git = Git.open(repo.toFile())) {
-            git.add().addFilepattern(".").call();
-            git.commit().setAllowEmpty(false).setMessage(message).call();
-        } catch (GitAPIException | IOException e) {
-            throw new GitOperationException(e.getMessage(), e);
-        }
-    }
-
-    @Override
-    public void push(Path repo, String remote, String branch, Scope scope) {
-        try (Git git = Git.open(repo.toFile())) {
-            git.push()
-                    .setRemote(remote)
-                    .add(branch)
-                    .setCredentialsProvider(credentials(scope, remoteUrl(git, remote)))
-                    .call();
-        } catch (GitAPIException | IOException e) {
-            throw new GitOperationException(e.getMessage(), e);
-        }
-    }
-
-    /** The URL {@code remote} points at — a remote name, or already a URL. */
-    private static String remoteUrl(Git git, String remote) {
-        String configured = git.getRepository().getConfig().getString("remote", remote, "url");
-        return configured != null ? configured : remote;
-    }
-
     /**
      * The credentials for {@code repoUrl}: none for an anonymous scope or a local source, otherwise
      * what the store holds for the URL's host (and account, when the URL names one).

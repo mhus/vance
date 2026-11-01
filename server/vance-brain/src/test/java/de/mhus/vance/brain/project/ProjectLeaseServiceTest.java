@@ -45,7 +45,8 @@ class ProjectLeaseServiceTest {
         eventPublisher = mock(ApplicationEventPublisher.class);
         megadodo = mock(MegadodoService.class);
         when(clusterService.selfPodId()).thenReturn(SELF_POD);
-        service = new ProjectLeaseService(projectService, clusterService, registry, eventPublisher, megadodo);
+        service = new ProjectLeaseService(
+                projectService, clusterService, mock(ProjectLiveService.class), registry, eventPublisher, megadodo);
     }
 
     private static ProjectDocument project(String name) {

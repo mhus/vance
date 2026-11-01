@@ -35,8 +35,13 @@ class ProjectLeaseShutdownTest {
         registry.activate("acme", "alpha");
         registry.activate("acme", "beta");
 
-        ProjectLeaseService service =
-                new ProjectLeaseService(projectService, clusterService, registry, events, mock(MegadodoService.class));
+        ProjectLeaseService service = new ProjectLeaseService(
+                projectService,
+                clusterService,
+                mock(ProjectLiveService.class),
+                registry,
+                events,
+                mock(MegadodoService.class));
 
         service.releaseOnShutdown();
 
@@ -59,8 +64,13 @@ class ProjectLeaseShutdownTest {
         ProjectActivationRegistry registry = new ProjectActivationRegistry();
         registry.activate("acme", "alpha");
 
-        ProjectLeaseService service =
-                new ProjectLeaseService(projectService, clusterService, registry, events, mock(MegadodoService.class));
+        ProjectLeaseService service = new ProjectLeaseService(
+                projectService,
+                clusterService,
+                mock(ProjectLiveService.class),
+                registry,
+                events,
+                mock(MegadodoService.class));
 
         service.releaseOnShutdown();
 

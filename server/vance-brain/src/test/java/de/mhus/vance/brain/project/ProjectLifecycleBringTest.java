@@ -85,6 +85,7 @@ class ProjectLifecycleBringTest {
                 mock(de.mhus.vance.shared.project.ProjectQuotaService.class),
                 mock(de.mhus.vance.shared.projectgroup.ProjectGroupService.class),
                 clusterService,
+                mock(ProjectLiveService.class),
                 mock(de.mhus.vance.brain.cluster.ClusterBringClient.class),
                 mock(ObjectProvider.class));
     }

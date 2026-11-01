@@ -10,7 +10,7 @@ import {
   VSegment,
   VSelect,
 } from '@vance/components';
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type {
   ProjectGroupSummary,
@@ -20,6 +20,8 @@ import type {
 import { brainFetch, RestError } from '@vance/shared';
 import { useProjectKitsCatalog } from '@/composables/useProjectKitsCatalog';
 import { useKitSourceProjects } from '@/composables/useKitSourceProjects';
+import { useProjectStatus } from '@/composables/useProjectStatus';
+import ProjectStatusDot from './ProjectStatusDot.vue';
 
 /**
  * Reusable project picker for editor sidebars. Renders the tenant's
@@ -314,7 +316,12 @@ async function saveCollapsedNow(): Promise<void> {
   }
 }
 
+// Live state of the projects: the list carries the start state, the signals channel the changes.
+const projectStatus = useProjectStatus();
+watch(() => props.projects, (list) => projectStatus.seed(list), { immediate: true });
+
 onMounted(async () => {
+  projectStatus.start();
   try {
     const state = await brainFetch<SidebarUiStateDto>('GET', 'me/ui-state/sidebar');
     collapsedGroups.value = new Set(state.collapsedProjectGroups ?? []);
@@ -335,6 +342,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  projectStatus.stop();
   if (saveTimer !== null) {
     // Flush any pending debounced write so the user's last toggle
     // doesn't get lost when they navigate away immediately after.
@@ -956,6 +964,10 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
           @dragstart="onProjectDragStart(p, $event)"
           @dragend="onProjectDragEnd"
         >
+          <ProjectStatusDot
+            :state="projectStatus.liveStateOf(p.name)"
+            :runner="projectStatus.runnerOf(p.name)"
+          />
           <span class="flex-1 truncate">{{ p.title || p.name }}</span>
           <slot name="row-suffix" :kind="'project'" :item="p" />
         </button>

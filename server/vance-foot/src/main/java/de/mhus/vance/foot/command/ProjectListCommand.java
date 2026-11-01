@@ -1,5 +1,6 @@
 package de.mhus.vance.foot.command;
 
+import de.mhus.vance.api.projects.RunnerStatusDto;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.ProjectListRequest;
 import de.mhus.vance.api.ws.ProjectListResponse;
@@ -13,7 +14,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * {@code /project-list [projectGroupId]} — lists projects in the current
- * tenant, optionally filtered by project group.
+ * tenant, optionally filtered by project group, with the desired state, the
+ * live state and the state of the bound runner.
  */
 @Component
 public class ProjectListCommand implements SlashCommand {
@@ -22,10 +24,7 @@ public class ProjectListCommand implements SlashCommand {
     private final ChatTerminal terminal;
     private final SuggestionCache suggestionCache;
 
-    public ProjectListCommand(
-            ConnectionService connection,
-            ChatTerminal terminal,
-            SuggestionCache suggestionCache) {
+    public ProjectListCommand(ConnectionService connection, ChatTerminal terminal, SuggestionCache suggestionCache) {
         this.connection = connection;
         this.terminal = terminal;
         this.suggestionCache = suggestionCache;
@@ -69,15 +68,41 @@ public class ProjectListCommand implements SlashCommand {
             terminal.info("No projects.");
             return;
         }
-        terminal.info(String.format("%-24s %-24s %-10s %s",
-                "NAME", "GROUP", "ENABLED", "TITLE"));
+        terminal.info(String.format(
+                "%-24s %-24s %-8s %-10s %-10s %-10s %s",
+                "NAME", "GROUP", "ENABLED", "DESIRED", "STATE", "RUNNER", "TITLE"));
         for (ProjectSummary p : response.getProjects()) {
-            terminal.info(String.format("%-24s %-24s %-10s %s",
+            terminal.info(String.format(
+                    "%-24s %-24s %-8s %-10s %-10s %-10s %s",
                     truncate(p.getName(), 24),
                     truncate(Objects.toString(p.getProjectGroupId(), ""), 24),
                     p.isEnabled() ? "yes" : "no",
+                    Objects.toString(p.getDesiredState(), ""),
+                    liveState(p),
+                    runner(p),
                     Objects.toString(p.getTitle(), "")));
         }
+    }
+
+    /** What the project is doing now; unknown once the entry ran out, as the web UI shows it. */
+    static String liveState(ProjectSummary p) {
+        if (p.getLiveState() == null
+                || p.getLiveExpiresAtMs() != null && p.getLiveExpiresAtMs() <= System.currentTimeMillis()) {
+            return "UNKNOWN";
+        }
+        return p.getLiveState().name();
+    }
+
+    /** The bound runner's phase, or {@code -} when the project has none. */
+    static String runner(ProjectSummary p) {
+        RunnerStatusDto runner = p.getRunner();
+        if (runner == null) {
+            return "-";
+        }
+        boolean ranOut = runner.getExpiresAtMs() != null && runner.getExpiresAtMs() <= System.currentTimeMillis();
+        return ranOut || runner.getPhase() == null
+                ? "UNKNOWN"
+                : runner.getPhase().name();
     }
 
     private static String truncate(String s, int max) {

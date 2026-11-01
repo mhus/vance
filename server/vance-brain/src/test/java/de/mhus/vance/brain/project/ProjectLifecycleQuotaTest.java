@@ -69,6 +69,7 @@ class ProjectLifecycleQuotaTest {
                 quotaService,
                 groupService,
                 mock(de.mhus.vance.brain.cluster.ClusterService.class),
+                mock(ProjectLiveService.class),
                 mock(de.mhus.vance.brain.cluster.ClusterBringClient.class),
                 mock(ObjectProvider.class));
     }

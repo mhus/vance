@@ -73,6 +73,24 @@ export default {
     action: 'Reload',
     dismiss: 'Later',
   },
+  projectStatus: {
+    liveLabel: 'Live state',
+    runnerLabel: 'Runner',
+    state: {
+      UNKNOWN: 'Status unknown',
+      STOPPED: 'Stopped',
+      STARTING: 'Starting',
+      RUNNING: 'Running',
+      STOPPING: 'Stopping',
+    },
+    runner: {
+      UNKNOWN: 'unknown',
+      PENDING: 'starting',
+      READY: 'ready',
+      FAILED: 'failed',
+      DISABLED: 'off',
+    },
+  },
   common: {
     expand: 'Expand',
     collapse: 'Collapse',

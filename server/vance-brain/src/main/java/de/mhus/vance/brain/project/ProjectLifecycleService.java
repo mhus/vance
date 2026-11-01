@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.project;
 
+import de.mhus.vance.api.projects.ProjectLiveState;
 import de.mhus.vance.brain.cluster.ClusterBringClient;
 import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.brain.cluster.placement.ClusterFullException;
@@ -123,6 +124,7 @@ public class ProjectLifecycleService {
     private final ProjectQuotaService quotaService;
     private final ProjectGroupService projectGroupService;
     private final ClusterService clusterService;
+    private final ProjectLiveService projectLive;
     /** Reaches the home pod when an archive lands elsewhere — see {@link #stopWhereRunning}. */
     private final ClusterBringClient bringClient;
     /**
@@ -446,7 +448,9 @@ public class ProjectLifecycleService {
 
     /** Records what this pod is doing with the project; ignored if the lease is no longer ours. */
     private void recordActualState(String tenantId, String projectName, ProjectActualState state) {
-        projectService.setActualState(tenantId, projectName, clusterService.selfPodId(), state);
+        if (projectService.setActualState(tenantId, projectName, clusterService.selfPodId(), state)) {
+            projectLive.recordActual(tenantId, projectName, state);
+        }
     }
 
     /**
@@ -790,6 +794,7 @@ public class ProjectLifecycleService {
                 ownerPodId,
                 doc.getHomeNode() == null ? ownerPodId : doc.getHomeNode(),
                 endpoint.orElse(""));
+        projectLive.record(tenantId, projectName, ProjectLiveState.STOPPED);
     }
 
     /**

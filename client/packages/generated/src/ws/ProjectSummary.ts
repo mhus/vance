@@ -3,10 +3,17 @@
  Source: de.mhus.vance.api.ws.ProjectSummary
 */
 
+import { RunnerStatusDto } from '../projects/RunnerStatusDto';
+import { ProjectLiveState } from '../projects/ProjectLiveState';
+
 export interface ProjectSummary {
   name: string;
   title?: string;
   projectGroupId?: string;
   enabled: boolean;
   createdAtMs?: number;
+  desiredState?: string;
+  liveState?: ProjectLiveState;
+  liveExpiresAtMs?: number;
+  runner?: RunnerStatusDto;
 }

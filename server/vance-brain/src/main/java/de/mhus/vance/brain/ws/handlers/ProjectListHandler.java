@@ -1,20 +1,24 @@
 package de.mhus.vance.brain.ws.handlers;
 
+import de.mhus.vance.api.projects.ProjectLiveState;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.ProjectListRequest;
 import de.mhus.vance.api.ws.ProjectListResponse;
 import de.mhus.vance.api.ws.ProjectSummary;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.project.ProjectLiveService;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
+import de.mhus.vance.shared.livestate.LiveStateStore.ProjectEntry;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import java.io.IOException;
 import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
@@ -34,6 +38,7 @@ public class ProjectListHandler implements WsHandler {
     private final WebSocketSender sender;
     private final ProjectService projectService;
     private final RequestAuthority authority;
+    private final ProjectLiveService projectLive;
 
     @Override
     public String type() {
@@ -51,14 +56,12 @@ public class ProjectListHandler implements WsHandler {
         String projectGroupId = null;
         if (envelope.getData() != null) {
             try {
-                ProjectListRequest request =
-                        objectMapper.convertValue(envelope.getData(), ProjectListRequest.class);
+                ProjectListRequest request = objectMapper.convertValue(envelope.getData(), ProjectListRequest.class);
                 if (request != null) {
                     projectGroupId = request.getProjectGroupId();
                 }
             } catch (IllegalArgumentException e) {
-                sender.sendError(wsSession, envelope, 400,
-                        "Invalid project.list payload: " + e.getMessage());
+                sender.sendError(wsSession, envelope, 400, "Invalid project.list payload: " + e.getMessage());
                 return;
             }
         }
@@ -70,16 +73,23 @@ public class ProjectListHandler implements WsHandler {
                 : projectService.byGroup(ctx.getTenantId(), projectGroupId);
         // Authorization is a hard check owned by the source — filter the
         // base list through ProjectService, don't decide visibility here.
-        List<ProjectDocument> documents = projectService.filterReadable(
-                ctx.getTenantId(), authority.contextOf(ctx), base);
+        List<ProjectDocument> documents =
+                projectService.filterReadable(ctx.getTenantId(), authority.contextOf(ctx), base);
 
-        List<ProjectSummary> summaries = documents.stream().map(ProjectListHandler::toSummary).toList();
-        ProjectListResponse response = ProjectListResponse.builder().projects(summaries).build();
+        List<ProjectSummary> summaries =
+                documents.stream().map(doc -> toSummary(ctx.getTenantId(), doc)).toList();
+        ProjectListResponse response =
+                ProjectListResponse.builder().projects(summaries).build();
         sender.sendReply(wsSession, envelope, MessageType.PROJECT_LIST, response);
     }
 
-    private static ProjectSummary toSummary(ProjectDocument doc) {
+    private ProjectSummary toSummary(String tenantId, ProjectDocument doc) {
+        Optional<ProjectEntry> live = projectLive.entryOf(tenantId, doc.getName());
         return ProjectSummary.builder()
+                .desiredState(doc.getStatus() == null ? null : doc.getStatus().name())
+                .liveState(live.map(ProjectEntry::state).orElse(ProjectLiveState.UNKNOWN))
+                .liveExpiresAtMs(live.map(ProjectEntry::expiresAtMs).orElse(null))
+                .runner(projectLive.runnerOf(tenantId, doc.getName()).orElse(null))
                 .name(doc.getName())
                 .title(doc.getTitle())
                 .projectGroupId(doc.getProjectGroupId())

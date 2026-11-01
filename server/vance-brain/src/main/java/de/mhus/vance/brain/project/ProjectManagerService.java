@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.project;
 
+import de.mhus.vance.api.projects.ProjectLiveState;
 import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectOwnership;
@@ -52,6 +53,7 @@ public class ProjectManagerService {
 
     private final ProjectService projectService;
     private final ClusterService clusterService;
+    private final ProjectLiveService projectLive;
 
     /**
      * Ensures this pod holds the project's lease. Refreshes
@@ -124,7 +126,10 @@ public class ProjectManagerService {
         }
         Optional<ProjectDocument> taken = projectService.claimFromGoneHolder(
                 current, clusterService.selfPodId(), clusterService.selfNodeName(), clusterService.selfEndpoint());
-        taken.ifPresent(doc -> clusterService.reserveScore(clusterService.selfPodId(), doc.getHomeResourceScore()));
+        taken.ifPresent(doc -> {
+            clusterService.reserveScore(clusterService.selfPodId(), doc.getHomeResourceScore());
+            projectLive.recordActual(tenantId, projectName, doc.getActualState());
+        });
         return taken;
     }
 
@@ -149,6 +154,7 @@ public class ProjectManagerService {
                 clusterService.leaseTtl());
         if (claimed.isPresent() && !alreadyOurs) {
             clusterService.reserveScore(self, claimed.get().getHomeResourceScore());
+            projectLive.recordActual(tenantId, projectName, claimed.get().getActualState());
         }
         return claimed;
     }
@@ -191,6 +197,7 @@ public class ProjectManagerService {
             // number honest in the meantime, so a placement right after a release does not pass this
             // pod over for load it no longer carries.
             clusterService.reserveScore(clusterService.selfPodId(), -score);
+            projectLive.record(tenantId, projectName, ProjectLiveState.STOPPED);
         }
         return released;
     }

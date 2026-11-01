@@ -2,6 +2,8 @@ package de.mhus.vance.api.ws;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
+import de.mhus.vance.api.projects.ProjectLiveState;
+import de.mhus.vance.api.projects.RunnerStatusDto;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -35,4 +37,16 @@ public class ProjectSummary {
      * imported before this field was tracked.
      */
     private @Nullable Long createdAtMs;
+
+    /** Desired state ({@code ProjectStatus}), e.g. {@code RUNNING}, {@code IDLE}, {@code SUSPENDED}. */
+    private @Nullable String desiredState;
+
+    /** What the project is doing now, from the live state; {@code UNKNOWN} when nobody vouches. */
+    private @Nullable ProjectLiveState liveState;
+
+    /** After this instant {@link #liveState} no longer counts, ms since epoch. */
+    private @Nullable Long liveExpiresAtMs;
+
+    /** The runner serving the project (own binding, else the tenant's); absent when none is bound. */
+    private @Nullable RunnerStatusDto runner;
 }

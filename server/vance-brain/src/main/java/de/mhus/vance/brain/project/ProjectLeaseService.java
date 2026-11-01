@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.project;
 
+import de.mhus.vance.api.projects.ProjectLiveState;
 import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.shared.megadodo.MegadodoService;
 import de.mhus.vance.shared.project.ProjectDocument;
@@ -52,6 +53,7 @@ public class ProjectLeaseService {
 
     private final ProjectService projectService;
     private final ClusterService clusterService;
+    private final ProjectLiveService projectLive;
     private final ProjectActivationRegistry activationRegistry;
     private final ApplicationEventPublisher eventPublisher;
     private final MegadodoService megadodoService;
@@ -74,6 +76,7 @@ public class ProjectLeaseService {
     void renewAndReconcile() {
         String selfPodId = clusterService.selfPodId();
         long held = projectService.renewLeases(selfPodId, Instant.now());
+        renewLiveState();
         int expected = activationRegistry.size();
         if (held >= expected) {
             log.trace(
@@ -88,6 +91,19 @@ public class ProjectLeaseService {
                 held,
                 expected);
         deactivateLostProjects(selfPodId);
+    }
+
+    /** Keeps the live entries of the projects running here as long-lived as their leases. */
+    private void renewLiveState() {
+        forEachActivated(projectLive::renew);
+    }
+
+    private void forEachActivated(java.util.function.BiConsumer<String, String> action) {
+        for (String key : activationRegistry.snapshot()) {
+            int slash = key.indexOf('/');
+            if (slash <= 0) continue;
+            action.accept(key.substring(0, slash), key.substring(slash + 1));
+        }
     }
 
     /**
@@ -158,12 +174,19 @@ public class ProjectLeaseService {
      */
     @PreDestroy
     void releaseOnShutdown() {
+        java.util.Set<String> activated = activationRegistry.snapshot();
         unloadActivatedProjects();
         try {
             long released = projectService.releaseLeases(
                     clusterService.selfPodId(), clusterService.selfNodeName(), clusterService.selfEndpoint());
             if (released > 0) {
                 log.info("ProjectLeaseService: released {} project lease(s) on shutdown", released);
+            }
+            for (String key : activated) {
+                int slash = key.indexOf('/');
+                if (slash > 0) {
+                    projectLive.record(key.substring(0, slash), key.substring(slash + 1), ProjectLiveState.STOPPED);
+                }
             }
         } catch (RuntimeException e) {
             log.warn(

@@ -16,6 +16,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiPredicate;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
@@ -50,6 +51,9 @@ public class SignalBroadcaster {
 
     /** ws-session-id → push target + identity. */
     private final Map<String, LocalSubscriber> bySessionInfo = new ConcurrentHashMap<>();
+
+    /** path → who may receive frames on it; a path without an entry is open to every subscriber. */
+    private final Map<String, BiPredicate<ConnectionContext, SignalFrame>> audiences = new ConcurrentHashMap<>();
 
     private final WebSocketSender sender;
     private final VanceRedisMessagingService redis;
@@ -140,7 +144,7 @@ public class SignalBroadcaster {
      * pods. No-op locally when nobody subscribes the path.
      */
     public void broadcast(String tenantId, SignalFrame frame) {
-        broadcastLocal(tenantId, frame);
+        deliverLocal(tenantId, frame);
         try {
             redis.publish(tenantId, CHANNEL, encode(tenantId, frame));
         } catch (RuntimeException ex) {
@@ -148,7 +152,24 @@ public class SignalBroadcaster {
         }
     }
 
-    private void broadcastLocal(String tenantId, SignalFrame frame) {
+    /**
+     * Narrows who receives frames on {@code path}: the predicate runs for every local subscriber
+     * and every frame, on the pod that delivers it. For paths whose frames reveal something a
+     * subscriber must be entitled to, such as the state of a project.
+     */
+    public void restrictAudience(String path, BiPredicate<ConnectionContext, SignalFrame> audience) {
+        audiences.put(path, audience);
+    }
+
+    /**
+     * Delivers to the subscribers on this pod only, without a Redis publish. For frames that every
+     * pod already receives from somewhere else.
+     */
+    public void broadcastLocal(String tenantId, SignalFrame frame) {
+        deliverLocal(tenantId, frame);
+    }
+
+    private void deliverLocal(String tenantId, SignalFrame frame) {
         Set<String> wsIds = localSubsByPath.get(frame.getPath());
         if (wsIds == null || wsIds.isEmpty()) return;
         WebSocketEnvelope envelope = WebSocketEnvelope.notification(MessageType.SIGNAL, frame);
@@ -159,6 +180,8 @@ public class SignalBroadcaster {
             // matching tenant (pointers accepts the collision; signals carry
             // run ids, so we scope it).
             if (!Objects.equals(recipient.context().getTenantId(), tenantId)) continue;
+            BiPredicate<ConnectionContext, SignalFrame> audience = audiences.get(frame.getPath());
+            if (audience != null && !audience.test(recipient.context(), frame)) continue;
             trySend(recipient.wsSession(), envelope, frame.getPath());
         }
     }
@@ -182,7 +205,7 @@ public class SignalBroadcaster {
         SignalFrame frame = decode(parts[2]);
         if (frame == null || frame.getPath() == null) return;
         if (localSubsByPath.get(frame.getPath()) == null) return; // nobody local cares
-        broadcastLocal(tenantId, frame);
+        deliverLocal(tenantId, frame);
     }
 
     // ─── wire helpers ───────────────────────────────────────────────────

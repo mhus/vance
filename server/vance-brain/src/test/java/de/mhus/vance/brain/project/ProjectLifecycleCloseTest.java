@@ -85,6 +85,7 @@ class ProjectLifecycleCloseTest {
                 mock(ProjectQuotaService.class),
                 mock(ProjectGroupService.class),
                 clusterService,
+                mock(ProjectLiveService.class),
                 bringClient,
                 sessionLifecycleProvider);
     }

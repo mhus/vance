@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   VAlert,
@@ -15,7 +15,9 @@ import {
 import KitAdminSection from './KitAdminSection.vue';
 import ProjectMembersSection from './ProjectMembersSection.vue';
 import ToolTemplatesSection from './ToolTemplatesSection.vue';
+import ProjectStatusDot from '@/components/ProjectStatusDot.vue';
 import { useAdminProjects } from '@/composables/useAdminProjects';
+import { useProjectStatus } from '@/composables/useProjectStatus';
 import { useScopeSettings } from '@/composables/useScopeSettings';
 import { useSessionGroups } from '@/composables/useSessionGroups';
 import { SettingType } from '@vance/generated';
@@ -66,6 +68,11 @@ const project = computed<ProjectDto | null>(() =>
 
 // The server's status for an archived project is CLOSED — "archived" is the
 // UI's word for it, and the reserved group it moves into.
+// Live state of the project and its runner; the sidebar seeds it, the signals channel updates it.
+const projectStatus = useProjectStatus();
+onMounted(() => projectStatus.start());
+onBeforeUnmount(() => projectStatus.stop());
+
 const isArchivedProject = computed(() => project.value?.status === 'CLOSED');
 
 const lifecycleNote = computed(() => {
@@ -380,6 +387,18 @@ function onProjectContentLanguageChanged(value: string | null): void {
         <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
           <dt class="text-(--v-label-secondary)">{{ t('scopes.project.statusLabel') }}</dt>
           <dd>{{ project.status }}</dd>
+          <dt class="text-(--v-label-secondary)">{{ t('projectStatus.liveLabel') }}</dt>
+          <dd class="flex items-center gap-2">
+            <ProjectStatusDot
+              :state="projectStatus.liveStateOf(project.name)"
+              :runner="projectStatus.runnerOf(project.name)"
+            />
+            <span>{{ t(`projectStatus.state.${projectStatus.liveStateOf(project.name)}`) }}</span>
+            <span v-if="projectStatus.runnerOf(project.name)" class="text-(--v-label-secondary)">
+              {{ t('projectStatus.runnerLabel') }}:
+              {{ t(`projectStatus.runner.${projectStatus.runnerOf(project.name)?.phase}`) }}
+            </span>
+          </dd>
           <dt class="text-(--v-label-secondary)">{{ t('scopes.project.podLabel') }}</dt>
           <dd>{{ project.homeNode ?? t('scopes.common.none') }}</dd>
           <dt class="text-(--v-label-secondary)">{{ t('scopes.project.claimedLabel') }}</dt>

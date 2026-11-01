@@ -25,7 +25,8 @@ class ProjectManagerServiceHomelessTest {
     void findProjectEndpoint_tenantProject_isEmptyWithoutLookingAnythingUp() {
         ProjectService projectService = mock(ProjectService.class);
         ClusterService clusterService = mock(ClusterService.class);
-        ProjectManagerService manager = new ProjectManagerService(projectService, clusterService);
+        ProjectManagerService manager =
+                new ProjectManagerService(projectService, clusterService, mock(ProjectLiveService.class));
 
         assertThat(manager.findProjectEndpoint("acme", ProjectService.TENANT_PROJECT_NAME))
                 .isEmpty();
@@ -37,7 +38,8 @@ class ProjectManagerServiceHomelessTest {
     void claimForLocalPod_tenantProject_isRefused() {
         ProjectService projectService = mock(ProjectService.class);
         ClusterService clusterService = mock(ClusterService.class);
-        ProjectManagerService manager = new ProjectManagerService(projectService, clusterService);
+        ProjectManagerService manager =
+                new ProjectManagerService(projectService, clusterService, mock(ProjectLiveService.class));
 
         assertThatThrownBy(() -> manager.claimForLocalPod("acme", ProjectService.TENANT_PROJECT_NAME))
                 .isInstanceOf(ProjectManagerService.ClaimRejectedException.class);
@@ -60,7 +62,8 @@ class ProjectManagerServiceHomelessTest {
         when(clusterService.leaseTtl()).thenReturn(Duration.ofMinutes(5));
         when(clusterService.resolveEndpointByPodId("pod-maya")).thenReturn(Optional.of("10.0.0.5:9990"));
 
-        ProjectManagerService manager = new ProjectManagerService(projectService, clusterService);
+        ProjectManagerService manager =
+                new ProjectManagerService(projectService, clusterService, mock(ProjectLiveService.class));
 
         assertThat(manager.findProjectEndpoint("acme", "_user_wile.coyote")).contains("10.0.0.5:9990");
     }
@@ -84,7 +87,8 @@ class ProjectManagerServiceHomelessTest {
         when(clusterService.leaseTtl()).thenReturn(Duration.ofMinutes(5));
         when(clusterService.resolveEndpointByPodId("pod-maya")).thenReturn(Optional.of("10.0.0.5:9990"));
 
-        ProjectManagerService manager = new ProjectManagerService(projectService, clusterService);
+        ProjectManagerService manager =
+                new ProjectManagerService(projectService, clusterService, mock(ProjectLiveService.class));
 
         assertThat(manager.findProjectEndpoint("acme", "ferienhaus-versicherung"))
                 .contains("10.0.0.5:9990");

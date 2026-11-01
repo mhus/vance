@@ -9,7 +9,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.api.projects.ProjectLiveState;
 import de.mhus.vance.brain.cluster.ClusterService;
+import de.mhus.vance.shared.project.ProjectActualState;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import java.time.Duration;
@@ -36,7 +38,9 @@ class ProjectManagerServiceTest {
 
     private final ProjectService projectService = mock(ProjectService.class);
     private final ClusterService clusterService = mock(ClusterService.class);
-    private final ProjectManagerService manager = new ProjectManagerService(projectService, clusterService);
+    private final ProjectLiveService projectLive = mock(ProjectLiveService.class);
+    private final ProjectManagerService manager =
+            new ProjectManagerService(projectService, clusterService, projectLive);
 
     @BeforeEach
     void stubCluster() {
@@ -182,6 +186,65 @@ class ProjectManagerServiceTest {
     }
 
     // ─── the pod's score follows the leases right away ───────────────────────
+
+    // ─── the live state follows the lease ───────────────────────────────────
+
+    @Test
+    void aClaim_recordsTheLiveStateOfTheProject() {
+        ProjectDocument claimed = ProjectDocument.builder()
+                .tenantId("acme")
+                .name("test1")
+                .homePodId(SELF_POD)
+                .actualState(ProjectActualState.STOPPED)
+                .build();
+        when(projectService.claim(anyString(), anyString(), anyString(), anyString(), anyString(), any(Duration.class)))
+                .thenReturn(Optional.of(claimed));
+
+        manager.claimForLocalPod("acme", "test1");
+
+        verify(projectLive).recordActual("acme", "test1", ProjectActualState.STOPPED);
+    }
+
+    @Test
+    void aTakeover_recordsTheLiveStateOfTheProject() {
+        givenClaimRejectedBecauseOf("pod-dead", Instant.now().minusSeconds(150));
+        when(clusterService.isHolderGone("pod-dead")).thenReturn(true);
+        ProjectDocument taken = ProjectDocument.builder()
+                .tenantId("acme")
+                .name("test1")
+                .homePodId(SELF_POD)
+                .actualState(ProjectActualState.STOPPED)
+                .build();
+        when(projectService.claimFromGoneHolder(any(ProjectDocument.class), anyString(), any(), any()))
+                .thenReturn(Optional.of(taken));
+
+        manager.claimForLocalPod("acme", "test1");
+
+        verify(projectLive).recordActual("acme", "test1", ProjectActualState.STOPPED);
+    }
+
+    @Test
+    void aRelease_recordsTheProjectAsStopped() {
+        when(projectService.findByTenantAndName("acme", "test1"))
+                .thenReturn(Optional.of(
+                        ProjectDocument.builder().tenantId("acme").name("test1").build()));
+        when(projectService.releaseLease(anyString(), anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(true);
+
+        manager.releaseLocalLease("acme", "test1");
+
+        verify(projectLive).record("acme", "test1", ProjectLiveState.STOPPED);
+    }
+
+    @Test
+    void aReleaseThatDidNotHappen_recordsNothing() {
+        when(projectService.releaseLease(anyString(), anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(false);
+
+        manager.releaseLocalLease("acme", "test1");
+
+        verify(projectLive, never()).record(anyString(), anyString(), any(ProjectLiveState.class));
+    }
 
     @Test
     void aClaim_addsTheProjectsScoreToThisPod_beforeTheNextHeartbeat() {

@@ -209,6 +209,41 @@ public class ClusterInternalController {
     }
 
     /**
+     * Stops a project because its users stayed away: desired state {@code IDLE},
+     * engines down wherever the project runs, lease dropped. The write side of the
+     * idle policy ({@code project-lifecycle.md} §5.2) for a caller that is not a
+     * brain pod — Anus, today.
+     *
+     * <p>Served by <b>any</b> pod: unlike {@link #release} this does not need the
+     * holder, because {@code idle} reaches the holder itself and, when it cannot,
+     * takes the lease away so the holder unloads the project on its next renewal.
+     * Idempotent. {@code 404} for an unknown project, {@code 409} when it is
+     * archived, {@code 400} for the homeless tenant project.
+     */
+    @PostMapping("/idle")
+    public ResponseEntity<?> idle(@RequestBody IdleRequest req) {
+        if (req == null || req.tenantId() == null || req.projectName() == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        try {
+            ProjectDocument doc = lifecycleService.idle(req.tenantId(), req.projectName());
+            return ResponseEntity.ok(
+                    new IdleResponse(doc.getTenantId(), doc.getName(), String.valueOf(doc.getStatus())));
+        } catch (ProjectService.ProjectNotFoundException e) {
+            return ResponseEntity.status(404).body(e.getMessage());
+        } catch (ProjectService.ProjectStatusConflictException e) {
+            return ResponseEntity.status(409).body(e.getMessage());
+        } catch (ProjectService.SystemProjectProtectedException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    public record IdleRequest(String tenantId, String projectName) {}
+
+    /** Echoes the desired state the project ended up in. */
+    public record IdleResponse(String tenantId, String projectName, String status) {}
+
+    /**
      * Set a pod's placement attributes from outside the process — the write
      * side of {@code planning/project-placement-labels.md} §4.
      *

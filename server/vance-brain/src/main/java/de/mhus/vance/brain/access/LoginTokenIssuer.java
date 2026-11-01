@@ -3,6 +3,7 @@ package de.mhus.vance.brain.access;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.jwt.JwtService;
 import de.mhus.vance.shared.jwt.TokenType;
+import de.mhus.vance.shared.user.UserService;
 import java.time.Duration;
 import java.time.Instant;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +37,7 @@ public class LoginTokenIssuer {
 
     private final JwtService jwtService;
     private final HomeBootstrapService homeBootstrapService;
+    private final UserService userService;
 
     /** What a login hands out. Expiries are already capped by the session end. */
     public record Issued(
@@ -61,6 +63,10 @@ public class LoginTokenIssuer {
         // for tenant-level documents/prompts/memory. Idempotent and cheap.
         homeBootstrapService.ensureTenantProject(tenant);
 
+        // The one place every login ends — password, e-mail code, SSO — so the
+        // moment of the last sign-in is recorded here and nowhere else.
+        userService.recordLogin(tenant, username);
+
         Instant now = Instant.now();
         Instant expiresAt = cap(now.plus(TOKEN_LIFETIME), sessionExpiresAt);
         String token = jwtService.createToken(tenant, username, expiresAt, TokenType.ACCESS, sessionExpiresAt);
@@ -83,6 +89,8 @@ public class LoginTokenIssuer {
 
     /** Re-mints an ACCESS token for a still-valid session ({@code POST /refresh}). */
     public Issued reissueAccess(String tenant, String username, @Nullable Instant sessionExpiresAt) {
+        // A session that is still being refreshed belongs to a user who is still there.
+        userService.recordLogin(tenant, username);
         Instant expiresAt = cap(Instant.now().plus(TOKEN_LIFETIME), sessionExpiresAt);
         String token = jwtService.createToken(tenant, username, expiresAt, TokenType.ACCESS, sessionExpiresAt);
         return new Issued(token, expiresAt, null, null);

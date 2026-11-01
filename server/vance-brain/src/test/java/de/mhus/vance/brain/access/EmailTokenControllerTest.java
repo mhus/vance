@@ -189,7 +189,7 @@ class EmailTokenControllerTest {
 
     private EmailTokenController controllerWith(LoginModes modes, int starts, int verifies) {
         WebUiCookieService cookies = new WebUiCookieService(true);
-        LoginTokenIssuer issuer = new LoginTokenIssuer(jwtService, mock(HomeBootstrapService.class));
+        LoginTokenIssuer issuer = new LoginTokenIssuer(jwtService, mock(HomeBootstrapService.class), userService);
         return new EmailTokenController(
                 emailLoginService,
                 userService,

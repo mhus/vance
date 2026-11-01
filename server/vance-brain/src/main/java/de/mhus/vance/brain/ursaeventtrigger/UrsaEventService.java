@@ -82,6 +82,7 @@ public class UrsaEventService {
 
     private final ObjectProvider<de.mhus.vance.brain.project.ProjectManagerService> projectManagerProvider;
     private final UrsaEventForwarder forwarder;
+    private final ProjectService projectService;
 
     /**
      * Runs {@code async: true} script events off the request thread.
@@ -127,6 +128,7 @@ public class UrsaEventService {
             ObjectProvider<de.mhus.vance.brain.project.ProjectLocator> projectLocatorProvider,
             ObjectProvider<de.mhus.vance.brain.project.ProjectManagerService> projectManagerProvider,
             UrsaEventForwarder forwarder,
+            ProjectService projectService,
             @org.springframework.beans.factory.annotation.Value(
                             "${vance.events.async.max-concurrent:" + DEFAULT_ASYNC_MAX_CONCURRENT + "}")
                     int asyncMaxConcurrent) {
@@ -142,6 +144,7 @@ public class UrsaEventService {
         this.projectLocatorProvider = projectLocatorProvider;
         this.projectManagerProvider = projectManagerProvider;
         this.forwarder = forwarder;
+        this.projectService = projectService;
         this.asyncMaxConcurrent = asyncMaxConcurrent;
         this.asyncScriptSlots = asyncMaxConcurrent > 0 ? new Semaphore(asyncMaxConcurrent) : null;
         if (this.asyncScriptSlots == null) {
@@ -295,6 +298,18 @@ public class UrsaEventService {
                 }
             }
 
+            if (!alreadyForwarded && !projectWantsToRun(tenantId, projectId)) {
+                // An event is a machine trigger: it never starts a project. An idle
+                // project is idle because its users stayed away, a suspended one
+                // because somebody stopped it, and only a person opening it ends
+                // that. Answered after the authentication above, so a stranger
+                // learns nothing about the project's state.
+                countOutcome(eventName, "project_stopped");
+                outcome = "project_stopped";
+                errorMessage = "project is not running";
+                throw new ResponseStatusException(
+                        HttpStatus.SERVICE_UNAVAILABLE, "Project '" + projectId + "' is not running");
+            }
             if (!alreadyForwarded) {
                 String owner = bringUpAndFindOwner(tenantId, projectId, eventName);
                 if (owner != null) {
@@ -870,6 +885,19 @@ public class UrsaEventService {
      * Length-independent constant-time comparison. Protects against
      * timing attacks on the bearer-token check.
      */
+    /**
+     * Whether the project's desired state is one an event may run in: it wants to
+     * run. The homeless tenant project and an unknown project answer {@code true}
+     * — they have no state to respect, and the existing paths report them.
+     */
+    private boolean projectWantsToRun(String tenantId, String projectId) {
+        if (ProjectService.isHomeless(projectId)) return true;
+        return projectService
+                .findByTenantAndName(tenantId, projectId)
+                .map(project -> ProjectService.wantsToRun(project.getStatus()))
+                .orElse(true);
+    }
+
     /**
      * Brings the project online before running the event's action.
      *

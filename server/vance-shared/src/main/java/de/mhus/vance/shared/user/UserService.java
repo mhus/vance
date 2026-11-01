@@ -70,6 +70,14 @@ public class UserService {
      */
     public static final Duration LOCKOUT_DURATION = Duration.ofMinutes(15);
 
+    /**
+     * The shortest gap between two writes of {@code lastLoginAt}. The field answers
+     * "how many days ago", so an hour is far finer than it needs to be, and a
+     * client that refreshes its session every few minutes must not turn into a
+     * write per refresh.
+     */
+    public static final Duration LOGIN_RECORD_INTERVAL = Duration.ofHours(1);
+
     private static final String F_TENANT_ID = "tenantId";
     private static final String F_NAME = "name";
     private static final String F_STATUS = "status";
@@ -79,6 +87,7 @@ public class UserService {
     private static final String F_FAILED_ATTEMPTS = "failedLoginAttempts";
     private static final String F_LOCKED_UNTIL = "lockedUntil";
     private static final String F_LAST_FAILED = "lastFailedLoginAt";
+    private static final String F_LAST_LOGIN = "lastLoginAt";
     private static final String F_EXT_ISSUER = "externalIdentity.issuer";
     private static final String F_EXT_SUBJECT = "externalIdentity.subject";
     private static final String F_EXT_EXPECTED_EMAIL = "externalIdentity.expectedEmail";
@@ -857,6 +866,25 @@ public class UserService {
                     name,
                     lockedUntil);
         }
+    }
+
+    /**
+     * Remembers that the user signed in, throttled to one write per
+     * {@link #LOGIN_RECORD_INTERVAL}. The guard is in the query, so concurrent logins
+     * race to a single write without reading first. Best-effort; a no-op if the user
+     * does not exist.
+     */
+    public void recordLogin(String tenantId, String name) {
+        Instant now = Instant.now();
+        Query query = new Query(Criteria.where(F_TENANT_ID)
+                .is(tenantId)
+                .and(F_NAME)
+                .is(name)
+                .orOperator(
+                        Criteria.where(F_LAST_LOGIN).exists(false),
+                        Criteria.where(F_LAST_LOGIN).is(null),
+                        Criteria.where(F_LAST_LOGIN).lt(now.minus(LOGIN_RECORD_INTERVAL))));
+        mongoTemplate.updateFirst(query, new Update().set(F_LAST_LOGIN, now), UserDocument.class);
     }
 
     /**

@@ -120,6 +120,15 @@ public class UserDocument {
     private @Nullable Instant lastFailedLoginAt;
 
     /**
+     * When the user last signed in — any login path, and a refresh of a session
+     * counts, because a session that is still being used is a user who is still
+     * there. Written at most once per {@link UserService#LOGIN_RECORD_INTERVAL}.
+     * {@code null} on an account that predates the field; read it through
+     * {@code ProjectIdleDetector}, which does not mistake that for "never".
+     */
+    private @Nullable Instant lastLoginAt;
+
+    /**
      * When the password hash was last set / changed. Carried for future use
      * (password age display, optional expiry); not enforced today.
      */

@@ -747,4 +747,18 @@ class UserServiceTest {
 
         verify(quota, never()).checkStatusChange(any(), any(), any());
     }
+
+    @Test
+    void recordLogin_writesTheTimestamp_guardedInTheQueryByTheThrottleWindow() {
+        service.recordLogin(TENANT, "bob");
+
+        ArgumentCaptor<Query> query = ArgumentCaptor.forClass(Query.class);
+        ArgumentCaptor<Update> update = ArgumentCaptor.forClass(Update.class);
+        verify(mongoTemplate).updateFirst(query.capture(), update.capture(), eq(UserDocument.class));
+        assertThat(update.getValue().getUpdateObject().get("$set").toString()).contains("lastLoginAt");
+        // The throttle is part of the query: an account that signed in a minute ago does not match.
+        String criteria = query.getValue().getQueryObject().toString();
+        assertThat(criteria).contains("lastLoginAt").contains("$or").contains("$lt");
+        assertThat(criteria).contains("name=bob");
+    }
 }

@@ -12,10 +12,10 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.ursaevents.EventSource;
 import de.mhus.vance.brain.magrathea.MagratheaWorkflowService;
-import de.mhus.vance.shared.ursaevents.UrsaEventLoader;
-import de.mhus.vance.shared.ursaevents.ResolvedUrsaEvent;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.settings.SettingService;
+import de.mhus.vance.shared.ursaevents.ResolvedUrsaEvent;
+import de.mhus.vance.shared.ursaevents.UrsaEventLoader;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -42,11 +42,14 @@ class UrsaEventServiceTest {
     private static final String EVENT = "deploy";
 
     private UrsaEventLoader eventLoader;
+    private de.mhus.vance.shared.project.ProjectService projectService;
     private SettingService settingService;
     private MetricService metricService;
     private MagratheaWorkflowService workflowService;
+
     @SuppressWarnings("unchecked")
     private final ObjectProvider<MagratheaWorkflowService> workflowProvider = mock(ObjectProvider.class);
+
     private de.mhus.vance.brain.action.ActionExecutorRegistry actionExecutorRegistry;
     private de.mhus.vance.brain.ursascheduler.SystemSessionResolver systemSessionResolver;
     private UrsaEventLogService eventLogService;
@@ -57,6 +60,7 @@ class UrsaEventServiceTest {
     @BeforeEach
     void setUp() {
         eventLoader = mock(UrsaEventLoader.class);
+        projectService = mock(de.mhus.vance.shared.project.ProjectService.class);
         settingService = mock(SettingService.class);
         metricService = new MetricService(new SimpleMeterRegistry());
         workflowService = mock(MagratheaWorkflowService.class);
@@ -88,11 +92,9 @@ class UrsaEventServiceTest {
         // semantics, and an absent locator means "run here", which is what the
         // podless and single-pod paths do anyway.
         @SuppressWarnings("unchecked")
-        ObjectProvider<de.mhus.vance.brain.project.ProjectLocator> locators =
-                mock(ObjectProvider.class);
+        ObjectProvider<de.mhus.vance.brain.project.ProjectLocator> locators = mock(ObjectProvider.class);
         @SuppressWarnings("unchecked")
-        ObjectProvider<de.mhus.vance.brain.project.ProjectManagerService> managers =
-                mock(ObjectProvider.class);
+        ObjectProvider<de.mhus.vance.brain.project.ProjectManagerService> managers = mock(ObjectProvider.class);
         locatorProvider = locators;
         managerProvider = managers;
         service = newService(/*asyncMaxConcurrent*/ 32);
@@ -101,9 +103,17 @@ class UrsaEventServiceTest {
     /** Same wiring as {@link #setUp()}, with the async ceiling as a knob. */
     private UrsaEventService newService(int asyncMaxConcurrent) {
         return new UrsaEventService(
-                eventLoader, settingService, metricService, workflowProvider,
-                actionExecutorRegistry, systemSessionResolver, eventLogService,
-                locatorProvider, managerProvider, mock(UrsaEventForwarder.class),
+                eventLoader,
+                settingService,
+                metricService,
+                workflowProvider,
+                actionExecutorRegistry,
+                systemSessionResolver,
+                eventLogService,
+                locatorProvider,
+                managerProvider,
+                mock(UrsaEventForwarder.class),
+                projectService,
                 asyncMaxConcurrent);
     }
 
@@ -126,11 +136,11 @@ class UrsaEventServiceTest {
         // — it just never left the service. No runAs: the script runs under
         // the event's own identity, so there is nothing to withhold.
         when(eventLoader.load(TENANT, PROJECT, EVENT))
-                .thenReturn(Optional.of(event(b -> b.script("_vance/scripts/x.js").runAs(null))));
+                .thenReturn(
+                        Optional.of(event(b -> b.script("_vance/scripts/x.js").runAs(null))));
         scriptReturns("Der Rat hat zugestimmt.");
 
-        UrsaEventService.UrsaEventTriggerResult r = service.trigger(
-                TENANT, PROJECT, EVENT, "POST", null, null);
+        UrsaEventService.UrsaEventTriggerResult r = service.trigger(TENANT, PROJECT, EVENT, "POST", null, null);
 
         assertThat(r.output()).containsEntry("value", "Der Rat hat zugestimmt.");
         assertThat(r.workflowRunId()).isNull();
@@ -142,8 +152,7 @@ class UrsaEventServiceTest {
         when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(event(b -> {})));
         when(workflowService.start(any(), any(), any(), any(), any())).thenReturn("run-123");
 
-        UrsaEventService.UrsaEventTriggerResult r = service.trigger(
-                TENANT, PROJECT, EVENT, "POST", null, null);
+        UrsaEventService.UrsaEventTriggerResult r = service.trigger(TENANT, PROJECT, EVENT, "POST", null, null);
 
         assertThat(r.workflowRunId()).isEqualTo("run-123");
         assertThat(r.output()).isNull();
@@ -151,18 +160,64 @@ class UrsaEventServiceTest {
 
     @Test
     void async_script_event_returns_immediately_without_output() {
-        when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(
-                event(b -> b.script("_vance/scripts/slow.js").async(true))));
+        when(eventLoader.load(TENANT, PROJECT, EVENT))
+                .thenReturn(Optional.of(
+                        event(b -> b.script("_vance/scripts/slow.js").async(true))));
         scriptReturns("done");
 
-        UrsaEventService.UrsaEventTriggerResult r = service.trigger(
-                TENANT, PROJECT, EVENT, "POST", null, null);
+        UrsaEventService.UrsaEventTriggerResult r = service.trigger(TENANT, PROJECT, EVENT, "POST", null, null);
 
         assertThat(r.output()).isNull();
         // The async task owns the single log write — same correlationId,
         // so the logPath the caller was handed still resolves.
-        verify(eventLogService, org.mockito.Mockito.timeout(5000))
-                .record(eq(r.correlationId()), any());
+        verify(eventLogService, org.mockito.Mockito.timeout(5000)).record(eq(r.correlationId()), any());
+    }
+
+    // ─── stopped projects ───────────────────────────────────────────────
+
+    private void givenProjectIn(de.mhus.vance.shared.project.ProjectStatus status) {
+        when(projectService.findByTenantAndName(TENANT, PROJECT))
+                .thenReturn(Optional.of(de.mhus.vance.shared.project.ProjectDocument.builder()
+                        .tenantId(TENANT)
+                        .name(PROJECT)
+                        .status(status)
+                        .build()));
+    }
+
+    @Test
+    void an_event_does_not_start_an_idle_project() {
+        // An idle project is idle because its users stayed away; a webhook must
+        // not undo that. Only a person opening the project wakes it.
+        when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(event(b -> {})));
+        givenProjectIn(de.mhus.vance.shared.project.ProjectStatus.IDLE);
+
+        assertThatThrownBy(() -> service.trigger(TENANT, PROJECT, EVENT, "POST", null, null))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE);
+
+        verify(workflowService, org.mockito.Mockito.never()).start(any(), any(), any(), any(), any());
+        verify(locatorProvider, org.mockito.Mockito.never()).getIfAvailable();
+    }
+
+    @Test
+    void an_event_does_not_start_a_suspended_project_either() {
+        when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(event(b -> {})));
+        givenProjectIn(de.mhus.vance.shared.project.ProjectStatus.SUSPENDED);
+
+        assertThatThrownBy(() -> service.trigger(TENANT, PROJECT, EVENT, "POST", null, null))
+                .isInstanceOf(ResponseStatusException.class);
+    }
+
+    @Test
+    void an_event_still_runs_in_a_project_that_wants_to_run() {
+        when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(event(b -> {})));
+        when(workflowService.start(any(), any(), any(), any(), any())).thenReturn("run-9");
+        givenProjectIn(de.mhus.vance.shared.project.ProjectStatus.RUNNING);
+
+        UrsaEventService.UrsaEventTriggerResult r = service.trigger(TENANT, PROJECT, EVENT, "POST", null, null);
+
+        assertThat(r.workflowRunId()).isEqualTo("run-9");
     }
 
     // ─── async admission control ────────────────────────────────────────
@@ -173,8 +228,9 @@ class UrsaEventServiceTest {
         // ran on the request thread the servlet pool was an implicit ceiling;
         // answering immediately removed it, so the ceiling has to be explicit.
         UrsaEventService bounded = newService(/*asyncMaxConcurrent*/ 1);
-        when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(
-                event(b -> b.script("_vance/scripts/slow.js").async(true))));
+        when(eventLoader.load(TENANT, PROJECT, EVENT))
+                .thenReturn(Optional.of(
+                        event(b -> b.script("_vance/scripts/slow.js").async(true))));
         java.util.concurrent.CountDownLatch started = new java.util.concurrent.CountDownLatch(1);
         java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
         when(actionExecutorRegistry.execute(any(), any(), any())).thenAnswer(inv -> {
@@ -199,8 +255,9 @@ class UrsaEventServiceTest {
     @Test
     void an_async_slot_comes_back_when_the_script_finishes() throws Exception {
         UrsaEventService bounded = newService(/*asyncMaxConcurrent*/ 1);
-        when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(
-                event(b -> b.script("_vance/scripts/quick.js").async(true))));
+        when(eventLoader.load(TENANT, PROJECT, EVENT))
+                .thenReturn(Optional.of(
+                        event(b -> b.script("_vance/scripts/quick.js").async(true))));
         scriptReturns("done");
 
         bounded.trigger(TENANT, PROJECT, EVENT, "POST", null, null);
@@ -227,24 +284,24 @@ class UrsaEventServiceTest {
     void agent_trigger_withholds_output_when_the_event_crosses_identity() {
         // runAs set, outputToAgents unstated: event_fire skipped the bearer
         // check, so it does not get the result of privileged work.
-        when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(
-                event(b -> b.script("_vance/scripts/x.js").runAs("ci-bot"))));
+        when(eventLoader.load(TENANT, PROJECT, EVENT))
+                .thenReturn(
+                        Optional.of(event(b -> b.script("_vance/scripts/x.js").runAs("ci-bot"))));
         scriptReturns("secret");
 
-        UrsaEventService.UrsaEventTriggerResult r =
-                service.triggerAdmin(TENANT, PROJECT, EVENT, null, "agent:marvin");
+        UrsaEventService.UrsaEventTriggerResult r = service.triggerAdmin(TENANT, PROJECT, EVENT, null, "agent:marvin");
 
         assertThat(r.output()).isNull();
     }
 
     @Test
     void agent_trigger_gets_output_when_the_event_opts_in() {
-        when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(
-                event(b -> b.script("_vance/scripts/x.js").runAs("ci-bot").outputToAgents(true))));
+        when(eventLoader.load(TENANT, PROJECT, EVENT))
+                .thenReturn(Optional.of(event(
+                        b -> b.script("_vance/scripts/x.js").runAs("ci-bot").outputToAgents(true))));
         scriptReturns("shared");
 
-        UrsaEventService.UrsaEventTriggerResult r =
-                service.triggerAdmin(TENANT, PROJECT, EVENT, null, "agent:marvin");
+        UrsaEventService.UrsaEventTriggerResult r = service.triggerAdmin(TENANT, PROJECT, EVENT, null, "agent:marvin");
 
         assertThat(r.output()).containsEntry("value", "shared");
     }
@@ -254,12 +311,12 @@ class UrsaEventServiceTest {
         // auth.public + runAs is the inverted case: the log document was
         // already redacted while the anonymous HTTP caller got the full
         // return value of the privileged script.
-        when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(
-                event(b -> b.script("_vance/scripts/x.js").runAs("ci-bot"))));
+        when(eventLoader.load(TENANT, PROJECT, EVENT))
+                .thenReturn(
+                        Optional.of(event(b -> b.script("_vance/scripts/x.js").runAs("ci-bot"))));
         scriptReturns("secret");
 
-        UrsaEventService.UrsaEventTriggerResult r = service.trigger(
-                TENANT, PROJECT, EVENT, "POST", null, null);
+        UrsaEventService.UrsaEventTriggerResult r = service.trigger(TENANT, PROJECT, EVENT, "POST", null, null);
 
         assertThat(r.output()).isNull();
         assertThat(r.workflowName()).isEqualTo("script:_vance/scripts/x.js");
@@ -267,12 +324,12 @@ class UrsaEventServiceTest {
 
     @Test
     void public_webhook_gets_output_when_the_event_opts_in() {
-        when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(
-                event(b -> b.script("_vance/scripts/x.js").runAs("ci-bot").outputToAgents(true))));
+        when(eventLoader.load(TENANT, PROJECT, EVENT))
+                .thenReturn(Optional.of(event(
+                        b -> b.script("_vance/scripts/x.js").runAs("ci-bot").outputToAgents(true))));
         scriptReturns("shared");
 
-        UrsaEventService.UrsaEventTriggerResult r = service.trigger(
-                TENANT, PROJECT, EVENT, "POST", null, null);
+        UrsaEventService.UrsaEventTriggerResult r = service.trigger(TENANT, PROJECT, EVENT, "POST", null, null);
 
         assertThat(r.output()).containsEntry("value", "shared");
     }
@@ -281,13 +338,12 @@ class UrsaEventServiceTest {
     void authenticated_webhook_gets_output_even_when_agents_may_not() {
         // The token holder proved authorisation; the restriction is about
         // the surface that skips that check, not about runAs as such.
-        when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(
-                event(b -> b.script("_vance/scripts/x.js").runAs("ci-bot")
-                        .tokenLiteral("s3cret"))));
+        when(eventLoader.load(TENANT, PROJECT, EVENT))
+                .thenReturn(Optional.of(event(
+                        b -> b.script("_vance/scripts/x.js").runAs("ci-bot").tokenLiteral("s3cret"))));
         scriptReturns("payload");
 
-        UrsaEventService.UrsaEventTriggerResult r = service.trigger(
-                TENANT, PROJECT, EVENT, "POST", "s3cret", null);
+        UrsaEventService.UrsaEventTriggerResult r = service.trigger(TENANT, PROJECT, EVENT, "POST", "s3cret", null);
 
         assertThat(r.output()).containsEntry("value", "payload");
     }
@@ -320,8 +376,7 @@ class UrsaEventServiceTest {
         when(workflowService.start(eq(TENANT), eq(PROJECT), eq("w-deploy"), any(), any()))
                 .thenReturn("run-123");
 
-        UrsaEventService.UrsaEventTriggerResult r = service.trigger(
-                TENANT, PROJECT, EVENT, "POST", null, null);
+        UrsaEventService.UrsaEventTriggerResult r = service.trigger(TENANT, PROJECT, EVENT, "POST", null, null);
 
         assertThat(r.workflowName()).isEqualTo("w-deploy");
         assertThat(r.workflowRunId()).isEqualTo("run-123");
@@ -338,8 +393,7 @@ class UrsaEventServiceTest {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> paramsCap = ArgumentCaptor.forClass(Map.class);
         verify(workflowService).start(any(), any(), any(), paramsCap.capture(), any());
-        assertThat(paramsCap.getValue())
-                .containsEntry(UrsaEventService.PAYLOAD_PARAM_KEY, payload);
+        assertThat(paramsCap.getValue()).containsEntry(UrsaEventService.PAYLOAD_PARAM_KEY, payload);
     }
 
     @Test
@@ -383,8 +437,7 @@ class UrsaEventServiceTest {
 
     @Test
     void trigger_disabled_event_returns_404() {
-        when(eventLoader.load(TENANT, PROJECT, EVENT))
-                .thenReturn(Optional.of(event(b -> b.enabled(false))));
+        when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(event(b -> b.enabled(false))));
 
         assertThatThrownBy(() -> service.trigger(TENANT, PROJECT, EVENT, "GET", null, null))
                 .isInstanceOf(ResponseStatusException.class)
@@ -397,8 +450,7 @@ class UrsaEventServiceTest {
 
     @Test
     void trigger_wrong_method_returns_405() {
-        when(eventLoader.load(TENANT, PROJECT, EVENT))
-                .thenReturn(Optional.of(event(b -> b.methods(Set.of("POST")))));
+        when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(event(b -> b.methods(Set.of("POST")))));
 
         assertThatThrownBy(() -> service.trigger(TENANT, PROJECT, EVENT, "GET", null, null))
                 .isInstanceOf(ResponseStatusException.class)
@@ -410,8 +462,7 @@ class UrsaEventServiceTest {
 
     @Test
     void trigger_with_literal_token_match_succeeds() {
-        when(eventLoader.load(TENANT, PROJECT, EVENT))
-                .thenReturn(Optional.of(event(b -> b.tokenLiteral("hunter2"))));
+        when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(event(b -> b.tokenLiteral("hunter2"))));
         when(workflowService.start(any(), any(), any(), any(), any())).thenReturn("run-x");
 
         service.trigger(TENANT, PROJECT, EVENT, "GET", "hunter2", null);
@@ -421,8 +472,7 @@ class UrsaEventServiceTest {
 
     @Test
     void trigger_with_literal_token_mismatch_returns_401() {
-        when(eventLoader.load(TENANT, PROJECT, EVENT))
-                .thenReturn(Optional.of(event(b -> b.tokenLiteral("hunter2"))));
+        when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(event(b -> b.tokenLiteral("hunter2"))));
 
         assertThatThrownBy(() -> service.trigger(TENANT, PROJECT, EVENT, "GET", "wrong", null))
                 .isInstanceOf(ResponseStatusException.class)
@@ -433,8 +483,7 @@ class UrsaEventServiceTest {
 
     @Test
     void trigger_missing_bearer_when_required_returns_401() {
-        when(eventLoader.load(TENANT, PROJECT, EVENT))
-                .thenReturn(Optional.of(event(b -> b.tokenLiteral("hunter2"))));
+        when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(event(b -> b.tokenLiteral("hunter2"))));
 
         assertThatThrownBy(() -> service.trigger(TENANT, PROJECT, EVENT, "GET", null, null))
                 .isInstanceOf(ResponseStatusException.class)
@@ -524,24 +573,75 @@ class UrsaEventServiceTest {
             return this;
         }
 
-        EventBuilder async(Boolean v) { this.async = v; return this; }
+        EventBuilder async(Boolean v) {
+            this.async = v;
+            return this;
+        }
 
-        EventBuilder enabled(boolean v) { this.enabled = v; return this; }
-        EventBuilder methods(Set<String> v) { this.methods = v; return this; }
-        EventBuilder tokenLiteral(String v) { this.tokenLiteral = v; this.authPublic = false; return this; }
-        EventBuilder tokenSettingKey(String v) { this.tokenSettingKey = v; this.authPublic = false; return this; }
-        EventBuilder params(Map<String, Object> v) { this.params = new LinkedHashMap<>(v); return this; }
-        EventBuilder runAs(String v) { this.runAs = v; return this; }
-        EventBuilder createdBy(String v) { this.createdBy = v; return this; }
-        EventBuilder outputToAgents(Boolean v) { this.outputToAgents = v; return this; }
+        EventBuilder enabled(boolean v) {
+            this.enabled = v;
+            return this;
+        }
+
+        EventBuilder methods(Set<String> v) {
+            this.methods = v;
+            return this;
+        }
+
+        EventBuilder tokenLiteral(String v) {
+            this.tokenLiteral = v;
+            this.authPublic = false;
+            return this;
+        }
+
+        EventBuilder tokenSettingKey(String v) {
+            this.tokenSettingKey = v;
+            this.authPublic = false;
+            return this;
+        }
+
+        EventBuilder params(Map<String, Object> v) {
+            this.params = new LinkedHashMap<>(v);
+            return this;
+        }
+
+        EventBuilder runAs(String v) {
+            this.runAs = v;
+            return this;
+        }
+
+        EventBuilder createdBy(String v) {
+            this.createdBy = v;
+            return this;
+        }
+
+        EventBuilder outputToAgents(Boolean v) {
+            this.outputToAgents = v;
+            return this;
+        }
 
         ResolvedUrsaEvent build() {
-            return new ResolvedUrsaEvent(name, yaml, source, documentId, createdBy,
+            return new ResolvedUrsaEvent(
+                    name,
+                    yaml,
+                    source,
+                    documentId,
+                    createdBy,
                     description,
-                    /*recipe*/ null, workflow, script, /*initialMessage*/ null,
-                    enabled, methods,
-                    tokenLiteral, tokenSettingKey, authPublic,
-                    params, runAs, async, outputToAgents, tags);
+                    /*recipe*/ null,
+                    workflow,
+                    script, /*initialMessage*/
+                    null,
+                    enabled,
+                    methods,
+                    tokenLiteral,
+                    tokenSettingKey,
+                    authPublic,
+                    params,
+                    runAs,
+                    async,
+                    outputToAgents,
+                    tags);
         }
     }
 }

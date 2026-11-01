@@ -230,6 +230,9 @@ public class OAuthTokenService {
 
     private Map<String, Object> tokenResponse(String tenant, OAuthServerGrantDocument grant, String refreshToken) {
         Instant expiresAt = Instant.now().plus(settings.accessTokenTtl());
+        // An MCP client that keeps refreshing is a user who still uses the account,
+        // even if they never type a password.
+        userService.recordLogin(tenant, grant.getUserId());
         String accessToken = jwtService.createOAuthAccessToken(
                 tenant,
                 grant.getUserId(),

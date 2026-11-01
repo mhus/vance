@@ -176,6 +176,41 @@ public class ProjectClusterService {
         return new PlacementAttempt(outcome, response.statusCode(), response.body());
     }
 
+    // ─── idle ───────────────────────────────────────────────────────────────
+
+    /** What stopping a project because nobody uses it came to. */
+    public enum IdleOutcome {
+        /** The desired state is IDLE and the project is stopped. */
+        IDLED,
+        /** The project is archived or a system project — nothing to stop. */
+        REFUSED,
+        NOT_FOUND,
+        /** The brain answered something unexpected. */
+        ERROR
+    }
+
+    /** Result of {@link #idle}; {@code detail} is the brain's answer, for the operator. */
+    public record IdleAttempt(IdleOutcome outcome, int statusCode, String detail) {}
+
+    /**
+     * Stops a project because its users stayed away: the brain sets the desired
+     * state IDLE and stops the engines wherever the project runs. One call,
+     * because the brain already knows how to reach the holder — and what to do
+     * when it cannot — which a desired-state write from here followed by a
+     * {@link #drain} would have to repeat.
+     */
+    public IdleAttempt idle(String tenant, String name) {
+        Response response = brainClient.internal("/internal/cluster/idle", "POST", json(tenant, name));
+        IdleOutcome outcome =
+                switch (response.statusCode()) {
+                    case 200 -> IdleOutcome.IDLED;
+                    case 400, 409 -> IdleOutcome.REFUSED;
+                    case 404 -> IdleOutcome.NOT_FOUND;
+                    default -> IdleOutcome.ERROR;
+                };
+        return new IdleAttempt(outcome, response.statusCode(), response.body());
+    }
+
     // ─── drain ──────────────────────────────────────────────────────────────
 
     /** Whether the project was on a pod when we looked. */

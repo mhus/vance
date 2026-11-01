@@ -537,34 +537,45 @@ public class ProjectLifecycleService {
     }
 
     /**
-     * Stops a project on purpose: desired state SUSPENDED, engines down. The
-     * workspace folder is left untouched. Only an explicit start
+     * Stops a project on purpose: desired state SUSPENDED, engines down, lease
+     * dropped. The workspace folder is left untouched. Only an explicit start
      * ({@link #bring} from a session create or an admin resume) brings it
      * back — implicit access does not.
      *
-     * <p>Idempotent on an already-SUSPENDED project that is not running here.
+     * <p>Idempotent on an already-SUSPENDED project that runs nowhere.
      */
     public ProjectDocument suspend(String tenantId, String projectName) {
-        return stopWithIntent(tenantId, projectName, ProjectStatus.SUSPENDED);
+        return stopWithIntent(tenantId, projectName, ProjectStatus.SUSPENDED, /*suspendSessions*/ false);
     }
 
     /**
-     * Stops a project because nobody needs it right now: desired state IDLE,
-     * the same teardown as {@link #suspend}. The difference is who may undo it
-     * — any access wakes an idle project, see {@link ProjectService#wakesOnAccess}.
+     * Stops a project because its users stayed away: desired state IDLE, engines
+     * down, lease dropped, open sessions suspended. The same teardown as
+     * {@link #suspend}; the difference is who may undo it — a user opening the
+     * project wakes an idle one ({@link ProjectLocator#locateForUser}), events and
+     * schedulers do not.
+     *
+     * <p>Works from any pod: the engines are stopped wherever the project runs,
+     * see {@link #stopWhereRunning}. Idempotent on an already-IDLE project that
+     * runs nowhere.
      */
     public ProjectDocument idle(String tenantId, String projectName) {
-        return stopWithIntent(tenantId, projectName, ProjectStatus.IDLE);
+        return stopWithIntent(tenantId, projectName, ProjectStatus.IDLE, /*suspendSessions*/ true);
     }
 
     /**
      * Shared teardown of {@link #suspend} and {@link #idle}. The desired state
      * is written first — it is the part that must survive a crash — and the
-     * actual state follows: STOPPING while the engines unload, STOPPED after.
-     * A crash in between leaves a stored STOPPING that no live lease backs,
-     * which reads as STOPPED, so nothing needs repairing.
+     * engines are stopped wherever the project runs; releasing the lease
+     * records the actual state as STOPPED. A crash in between leaves a stored
+     * STOPPING that no live lease backs, which reads as STOPPED, so nothing
+     * needs repairing.
+     *
+     * <p>Without the teardown the holder would keep renewing the lease of a
+     * project that is meant to be down, and keep its engines loaded.
      */
-    private ProjectDocument stopWithIntent(String tenantId, String projectName, ProjectStatus intent) {
+    private ProjectDocument stopWithIntent(
+            String tenantId, String projectName, ProjectStatus intent, boolean suspendSessions) {
         ProjectDocument doc = projectService
                 .findByTenantAndName(tenantId, projectName)
                 .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
@@ -578,20 +589,18 @@ public class ProjectLifecycleService {
             throw new ProjectService.ProjectStatusConflictException(
                     "Project '" + projectName + "' is CLOSED — cannot set it " + intent);
         }
-        boolean runningHere = activationRegistry.isActive(tenantId, projectName);
-        if (doc.getStatus() == intent && !runningHere) {
+        boolean changed = doc.getStatus() != intent;
+        if (changed) {
+            doc = projectService.transitionStatus(tenantId, projectName, doc.getStatus(), intent);
+        }
+        boolean runsSomewhere = activationRegistry.isActive(tenantId, projectName)
+                || ProjectOwnership.liveOwnerPodId(doc, Instant.now(), clusterService.leaseTtl())
+                        .isPresent();
+        if (!changed && !runsSomewhere) {
             log.debug("Project '{}/{}' already {}", tenantId, projectName, intent);
             return doc;
         }
-        if (doc.getStatus() != intent) {
-            doc = projectService.transitionStatus(tenantId, projectName, doc.getStatus(), intent);
-        }
-        recordActualState(tenantId, projectName, ProjectActualState.STOPPING);
-        eventPublisher.publishEvent(new ProjectEnginesStopRequested(tenantId, projectName));
-        // Symmetric to the activate() in bring: this pod no longer has the
-        // project up, so the next bring must run the full pass again.
-        activationRegistry.deactivate(tenantId, projectName);
-        recordActualState(tenantId, projectName, ProjectActualState.STOPPED);
+        stopWhereRunning(doc, suspendSessions);
         log.info("Project '{}/{}' is now {}", tenantId, projectName, intent);
         return projectService.findByTenantAndName(tenantId, projectName).orElse(doc);
     }
@@ -662,7 +671,7 @@ public class ProjectLifecycleService {
                     "Project '" + projectName + "' is a system project — cannot close");
         }
         ProjectDocument doc = projectService.close(tenantId, projectName, closedGroupId);
-        stopWhereRunning(doc);
+        stopWhereRunning(doc, /*suspendSessions*/ true);
         workspaceService.dispose(tenantId, projectName);
         disposeProjectRag(tenantId, projectName);
         log.info("Project '{}/{}' closed → group '{}'", tenantId, projectName, closedGroupId);
@@ -670,8 +679,8 @@ public class ProjectLifecycleService {
     }
 
     /**
-     * Stops a just-closed project's engines on the pod that runs it. Only the
-     * holder can do that — engines, scheduler entries and hooks live in its
+     * Stops a project's engines on the pod that runs it — after a close, an idle
+     * or a suspend. Only the holder can do that — engines, scheduler entries and hooks live in its
      * process memory — so a close that lands elsewhere has to reach it.
      *
      * <ul>
@@ -690,17 +699,24 @@ public class ProjectLifecycleService {
      *       sweep's.</li>
      * </ul>
      *
-     * <p>Never throws: the project is already CLOSED, and a failed teardown
-     * must not stop the workspace from being disposed.
+     * <p>Never throws: the desired state is already written (CLOSED, IDLE or
+     * SUSPENDED), and a failed teardown must not undo or block what follows it.
+     *
+     * @param suspendSessions whether the project's open sessions are interrupted
+     *     and suspended on the way — an archive and an idle project do, a plain
+     *     suspend leaves them
      */
-    private void stopWhereRunning(ProjectDocument doc) {
+    private void stopWhereRunning(ProjectDocument doc, boolean suspendSessions) {
         String tenantId = doc.getTenantId();
         String projectName = doc.getName();
         String selfPodId = clusterService.selfPodId();
         Optional<String> owner = ProjectOwnership.liveOwnerPodId(doc, Instant.now(), clusterService.leaseTtl());
         if (activationRegistry.isActive(tenantId, projectName)
                 || owner.filter(selfPodId::equals).isPresent()) {
-            suspendSessionsHere(tenantId, projectName);
+            if (suspendSessions) {
+                suspendSessionsHere(tenantId, projectName);
+            }
+            recordActualState(tenantId, projectName, ProjectActualState.STOPPING);
             eventPublisher.publishEvent(new ProjectEnginesStopRequested(tenantId, projectName));
             activationRegistry.deactivate(tenantId, projectName);
             projectManager.releaseLocalLease(tenantId, projectName);
@@ -713,9 +729,9 @@ public class ProjectLifecycleService {
         Optional<String> endpoint = clusterService.resolveEndpointByPodId(ownerPodId);
         if (endpoint.isPresent()) {
             try {
-                if (bringClient.requestRelease(endpoint.get(), tenantId, projectName, true)) {
+                if (bringClient.requestRelease(endpoint.get(), tenantId, projectName, suspendSessions)) {
                     log.info(
-                            "Project '{}/{}' close: engines stopped on home pod '{}'",
+                            "Project '{}/{}' stop: engines stopped on home pod '{}'",
                             tenantId,
                             projectName,
                             doc.getHomeNode());
@@ -725,23 +741,29 @@ public class ProjectLifecycleService {
                 // lease we read names it. Taking the lease below is guarded on
                 // that pod, so it is harmless if the answer was right.
                 log.info(
-                        "Project '{}/{}' close: home pod '{}' does not hold it — taking the lease",
+                        "Project '{}/{}' stop: home pod '{}' does not hold it — taking the lease",
                         tenantId,
                         projectName,
                         doc.getHomeNode());
             } catch (ClusterBringClient.ClusterBringException e) {
                 log.warn(
-                        "Project '{}/{}' close: home pod '{}' not reachable ({}) — taking its lease instead",
+                        "Project '{}/{}' stop: home pod '{}' not reachable ({}) — taking its lease instead",
                         tenantId,
                         projectName,
                         doc.getHomeNode(),
                         e.getMessage());
             }
         }
-        try {
-            sessionLifecycleProvider.getObject().suspendProjectSessionsOffLane(tenantId, projectName);
-        } catch (RuntimeException e) {
-            log.warn("Project '{}/{}' close: off-lane session suspend failed: {}", tenantId, projectName, e.toString());
+        if (suspendSessions) {
+            try {
+                sessionLifecycleProvider.getObject().suspendProjectSessionsOffLane(tenantId, projectName);
+            } catch (RuntimeException e) {
+                log.warn(
+                        "Project '{}/{}' stop: off-lane session suspend failed: {}",
+                        tenantId,
+                        projectName,
+                        e.toString());
+            }
         }
         projectService.releaseLease(
                 tenantId,

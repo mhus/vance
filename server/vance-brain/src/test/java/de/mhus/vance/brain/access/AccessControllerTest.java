@@ -776,7 +776,7 @@ class AccessControllerTest {
 
     private AccessController controllerWith(boolean cookieSecure, LoginModes modes) {
         WebUiCookieService cookies = new WebUiCookieService(cookieSecure);
-        LoginTokenIssuer issuer = new LoginTokenIssuer(jwtService, homeBootstrapService);
+        LoginTokenIssuer issuer = new LoginTokenIssuer(jwtService, homeBootstrapService, userService);
         return new AccessController(
                 jwtService,
                 userService,

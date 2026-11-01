@@ -27,6 +27,13 @@ public enum PlacementTrigger {
     LOCATE(true),
 
     /**
+     * A user opened a project that nothing runs ({@code ProjectLocator#locateForUser}) —
+     * a login waking an idle or suspended project, or opening one that lost
+     * its pod. Prefers local for the reason {@link #CREATE} does: the user is on
+     * this pod, and a redirect only pays when this pod has no room.
+     */
+    WAKE(true),
+    /**
      * The Cluster-Master distributor is placing projects nobody owns.
      * Deliberately <em>not</em> local: distributing means spreading, and
      * a master that preferred itself would collect the whole cluster.

@@ -52,6 +52,7 @@ public class SessionCreateHandler implements WsHandler {
     private final ProjectManagerService projectManager;
     private final ProjectPlacementService placementService;
     private final ProjectLifecycleService lifecycleService;
+    private final de.mhus.vance.brain.project.ProjectLocator projectLocator;
     private final SessionConnectionRegistry connectionRegistry;
     private final de.mhus.vance.brain.events.SessionRosterBroadcaster rosterBroadcaster;
     private final SessionChatBootstrapper chatBootstrapper;
@@ -108,6 +109,7 @@ public class SessionCreateHandler implements WsHandler {
                     SessionBootstrapHandler.homelessRefusal(project.get().getName()));
             return;
         }
+        wakeThroughPlacement(ctx.getTenantId(), project.get().getName());
         // Eligibility before claiming — a claim we would then refuse would leave
         // a lease behind that nothing uses. Capacity is deliberately not asked:
         // there is a user waiting, and the score cap is soft
@@ -238,5 +240,42 @@ public class SessionCreateHandler implements WsHandler {
 
     private static boolean isBlank(@org.jspecify.annotations.Nullable String s) {
         return s == null || s.isBlank();
+    }
+
+    /**
+     * A project that runs nowhere is placed by the cluster instead of being claimed
+     * by whichever pod the login happened to land on. The placement honours the
+     * labels and the load, and prefers this pod when it has room — so the common
+     * case costs nothing, and a full pod hands the user to one that is not.
+     *
+     * <p>This is also the wake-up of an idle or suspended project: a user opening
+     * it is the one thing allowed to end that state
+     * ({@link de.mhus.vance.brain.project.ProjectLocator#locateForUser}). The claim
+     * that follows finds the lease where the placement put it — here, or on another
+     * pod, which the existing redirect then names.
+     *
+     * <p>Fail-soft: when nothing can take the project right now the placement has
+     * marked it as waiting for a pod and the user is served by the local claim
+     * below, because the pod cap is soft and an overrun beats a refused login.
+     */
+    private void wakeThroughPlacement(String tenantId, String projectName) {
+        if (projectManager.findProjectEndpoint(tenantId, projectName).isPresent()) {
+            return;
+        }
+        try {
+            projectLocator.locateForUser(tenantId, projectName);
+        } catch (de.mhus.vance.brain.cluster.placement.ClusterFullException e) {
+            log.info(
+                    "Project '{}/{}' could not be placed ({}) — claiming it locally",
+                    tenantId,
+                    projectName,
+                    e.getGap());
+        } catch (de.mhus.vance.brain.cluster.ClusterBringClient.ClusterBringException e) {
+            log.warn(
+                    "Project '{}/{}' placement failed ({}) — claiming it locally",
+                    tenantId,
+                    projectName,
+                    e.getMessage());
+        }
     }
 }

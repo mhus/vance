@@ -5,7 +5,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>4.1.1</version>
+        <version>4.1.2</version>
         <relativePath/>
     </parent>
 
@@ -60,9 +60,9 @@
     <properties>
         <java.version>25</java.version>
         <lombok.version>1.18.48</lombok.version>
-        <spring.boot.version>4.1.1</spring.boot.version>
-        <langchain4j.version>1.22.0</langchain4j.version>
-        <langgraph4j.version>1.9.4</langgraph4j.version>
+        <spring.boot.version>4.1.2</spring.boot.version>
+        <langchain4j.version>1.23.0</langchain4j.version>
+        <langgraph4j.version>1.9.7</langgraph4j.version>
         <picocli.version>4.7.7</picocli.version>
         <jspecify.version>1.0.1</jspecify.version>
         <jjwt.version>0.13.0</jjwt.version>
@@ -90,7 +90,7 @@
              planning/prompt-template-migration.md. -->
         <pebble.version>4.1.2</pebble.version>
         <angus.mail.version>2.0.5</angus.mail.version>
-        <greenmail.version>2.1.14</greenmail.version>
+        <greenmail.version>2.1.15</greenmail.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <!-- Build stamp injected into application.yml via the resource filtering

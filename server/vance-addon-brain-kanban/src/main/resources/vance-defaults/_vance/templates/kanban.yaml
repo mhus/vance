@@ -2,7 +2,7 @@ title:       { de: "Kanban-Board",  en: "Kanban board" }
 description: { de: "Ein neues Kanban-Board mit Standard-Spalten (Backlog → Done)",
                en: "A new kanban board with default columns (Backlog → Done)" }
 icon: view-columns
-tags: [app, kanban, planning]
+tags: [app]
 
 app: kanban
 

@@ -2,7 +2,7 @@ title:       { de: "Kalender-App",  en: "Calendar app" }
 description: { de: "Eine neue Calendar-App — Zeitplan aus mehreren Kalender-Dateien (Lanes)",
                en: "A new calendar app — a schedule from multiple calendar files (lanes)" }
 icon: calendar-days
-tags: [app, calendar, planning]
+tags: [app]
 
 app: calendar
 

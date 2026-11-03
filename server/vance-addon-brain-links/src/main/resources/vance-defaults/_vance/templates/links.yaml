@@ -2,7 +2,7 @@ title:       { de: "Links",  en: "Links" }
 description: { de: "Eine Link-Sammlung — externe URLs als gruppierte Vorschau-Karten. Titel, Teaser und Bild holt das System von der verlinkten Seite; eigene Texte überschreiben sie.",
                en: "A link collection — external URLs as grouped preview cards. Title, teaser and picture come from the linked page; your own text overrides them." }
 icon: link
-tags: [app, links]
+tags: [app]
 
 # `app:` routes this template through LinksApplication.create — the same entry
 # point links_app_create uses — so the manifest is serialised by the codec

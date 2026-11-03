@@ -2,7 +2,7 @@ title:       { de: "GTD",  en: "GTD" }
 description: { de: "Getting Things Done à la Things — Inbox/Today/Upcoming/Anytime/Someday, abgeleitet aus dem when-Attribut",
                en: "Getting Things Done, Things-style — Inbox/Today/Upcoming/Anytime/Someday, derived from the when attribute" }
 icon: check-circle
-tags: [app, gtd, tasks, productivity]
+tags: [app]
 
 app: gtd
 

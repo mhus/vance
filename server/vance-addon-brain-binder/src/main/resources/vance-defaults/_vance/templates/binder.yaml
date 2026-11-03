@@ -2,7 +2,7 @@ title:       { de: "Binder",  en: "Binder" }
 description: { de: "Ein neuer Binder — verankert Verweise auf beliebige Projekt-Dokumente in einer geordneten Liste. Dokumente heftest du danach im Editor an.",
                en: "A new binder — anchors references to arbitrary project documents in an ordered list. Add documents afterwards in the editor." }
 icon: rectangle-stack
-tags: [app, binder]
+tags: [app]
 
 # Application templates write only the _app.yaml manifest; the folder is
 # chosen by the user. Entries are added afterwards in the binder editor

@@ -2,7 +2,7 @@ title:       { de: "Feeds",  en: "Feeds" }
 description: { de: "Ein neuer Feed — Endlos-Scroll über fremde Ströme. Welche Ströme es liest, stellst du danach im Feed selbst ein.",
                en: "A new feed — an endless scroll over foreign streams. Which streams it reads is set afterwards in the feed itself." }
 icon: newspaper
-tags: [app, feeds]
+tags: [app]
 
 # `app:` routes this template through FeedsApplication.create — the same entry
 # point the create tool uses. The folder is chosen by the user. Streams are

@@ -2,7 +2,7 @@ title:       { de: "Designer", en: "Designer" }
 description: { de: "Eine Sammlung von Web-Designs — jedes Design ein Ordner mit index.html, CSS und Assets, live in einer Sandbox-Vorschau. Kommt mit einem laufenden Starter-Design.",
                en: "A collection of web designs — each design a folder with an index.html, CSS and assets, live in a sandboxed preview. Comes with a running starter design." }
 icon: swatch
-tags: [app, designer]
+tags: [app]
 
 # `app:` routes this template through DesignerApplication.create — the same
 # entry point `designer_app_create` uses — so the manifest is serialised by

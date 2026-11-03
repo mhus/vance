@@ -2,7 +2,7 @@ title:       { de: "Suche",  en: "Search" }
 description: { de: "Eine Such-Oberfläche über die konfigurierten Research-Provider. Welche Modalitäten sie anbietet, ergibt sich aus den Providern des Projekts — nicht aus dieser Vorlage.",
                en: "A search surface over the configured research providers. Which modalities it offers follows from the project's providers, not from this template." }
 icon: magnifying-glass
-tags: [app, search]
+tags: [app]
 
 # `app:` routes this template through SearchApplication.create — the same entry
 # point the create tool uses. The folder is chosen by the user. Everything else

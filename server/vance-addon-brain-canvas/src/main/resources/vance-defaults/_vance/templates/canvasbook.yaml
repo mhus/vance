@@ -2,7 +2,7 @@ title:       { de: "Canvas-App",  en: "Canvas app" }
 description: { de: "Eine neue Canvasbook-App — Sammlung räumlicher Canvas-Boards. Seiten fügst du danach im Editor hinzu.",
                en: "A new canvasbook app — a collection of spatial canvas boards. Add boards afterwards in the editor." }
 icon: squares-2x2
-tags: [app, canvas]
+tags: [app]
 
 # `app:` routes this template through CanvasbookApplication.create — the same
 # entry point canvasbook_app_create uses — so the surface way and the tool way

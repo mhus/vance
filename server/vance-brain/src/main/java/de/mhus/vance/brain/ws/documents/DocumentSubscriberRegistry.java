@@ -45,7 +45,7 @@ import tools.jackson.databind.ObjectMapper;
  * cluster-liveness prune logic — a crashed pod simply stops refreshing
  * its fields and they expire on their own.
  *
- * <p>When {@code vance.redis.enabled=false}, Redis-backed operations are
+ * <p>On a single node (no Redis), Redis-backed operations are
  * no-ops: documents-channel still loads, but the presence-roster stays
  * empty (brain works, live features don't).
  */
@@ -66,24 +66,19 @@ public class DocumentSubscriberRegistry {
      * Local WS-side state — never sent over the wire, used to push
      * presence frames to this pod's own subscribers.
      */
-    private record LocalSubscriber(
-            WebSocketSession wsSession, ConnectionContext context) {
+    private record LocalSubscriber(WebSocketSession wsSession, ConnectionContext context) {
         DocumentViewer asViewer() {
             return DocumentViewer.builder()
                     .editorId(context.getEditorId())
                     .userId(context.getUserId())
-                    .displayName(context.getDisplayName() != null
-                            ? context.getDisplayName() : context.getUserId())
+                    .displayName(context.getDisplayName() != null ? context.getDisplayName() : context.getUserId())
                     .build();
         }
     }
 
     /** Persisted in Redis as JSON. */
     private record StoredViewer(
-            String editorId,
-            String userId,
-            @Nullable String displayName,
-            String podId) {
+            String editorId, String userId, @Nullable String displayName, String podId) {
         DocumentViewer toApi() {
             return DocumentViewer.builder()
                     .editorId(editorId)
@@ -125,9 +120,7 @@ public class DocumentSubscriberRegistry {
     private final String podId = UUID.randomUUID().toString();
 
     public DocumentSubscriberRegistry(
-            WebSocketSender sender,
-            VanceRedisMessagingService redis,
-            ObjectMapper objectMapper) {
+            WebSocketSender sender, VanceRedisMessagingService redis, ObjectMapper objectMapper) {
         this.sender = sender;
         this.redis = redis;
         this.objectMapper = objectMapper;
@@ -136,8 +129,7 @@ public class DocumentSubscriberRegistry {
     @PostConstruct
     public void start() {
         redis.subscribeAcrossTenants(CHANNEL, this::onRemoteChanged);
-        log.debug("DocumentSubscriberRegistry: podId={} redis.enabled={}",
-                podId, redis.isEnabled());
+        log.debug("DocumentSubscriberRegistry: podId={} crossPod={}", podId, redis.isEnabled());
     }
 
     @PreDestroy
@@ -154,8 +146,7 @@ public class DocumentSubscriberRegistry {
                     redis.hashDelete(tenantId, hashSubKey(path), sub.context().getEditorId());
                     redis.publish(tenantId, CHANNEL, encodeChangedPayload(path));
                 } catch (RuntimeException ex) {
-                    log.debug("documents shutdown cleanup failed for ws={} path={}: {}",
-                            wsId, path, ex.toString());
+                    log.debug("documents shutdown cleanup failed for ws={} path={}: {}", wsId, path, ex.toString());
                 }
             }
         }
@@ -168,12 +159,13 @@ public class DocumentSubscriberRegistry {
         String wsId = wsSession.getId();
         bySession.computeIfAbsent(wsId, k -> ConcurrentHashMap.newKeySet()).add(path);
         bySessionInfo.putIfAbsent(wsId, new LocalSubscriber(wsSession, ctx));
-        localSubsByPath.computeIfAbsent(path, k -> ConcurrentHashMap.newKeySet()).add(wsId);
+        localSubsByPath
+                .computeIfAbsent(path, k -> ConcurrentHashMap.newKeySet())
+                .add(wsId);
 
         writeToRedis(ctx.getTenantId(), path, ctx);
         broadcastPresence(path, ctx.getTenantId());
-        log.debug("documents.subscribe: ws='{}' user='{}' path='{}'",
-                wsId, ctx.getUserId(), path);
+        log.debug("documents.subscribe: ws='{}' user='{}' path='{}'", wsId, ctx.getUserId(), path);
     }
 
     public void unsubscribe(WebSocketSession wsSession, String path) {
@@ -202,8 +194,7 @@ public class DocumentSubscriberRegistry {
         String wsId = wsSession.getId();
         Set<String> paths = bySession.remove(wsId);
         Set<String> prefixes = bySessionPrefixes.remove(wsId);
-        boolean nothingToDo = (paths == null || paths.isEmpty())
-                && (prefixes == null || prefixes.isEmpty());
+        boolean nothingToDo = (paths == null || paths.isEmpty()) && (prefixes == null || prefixes.isEmpty());
         if (nothingToDo) {
             bySessionInfo.remove(wsId);
             return;
@@ -233,8 +224,10 @@ public class DocumentSubscriberRegistry {
                 }
             }
         }
-        log.debug("documents.unsubscribeAll: ws='{}' paths={} prefixes={}",
-                wsId, paths == null ? 0 : paths.size(),
+        log.debug(
+                "documents.unsubscribeAll: ws='{}' paths={} prefixes={}",
+                wsId,
+                paths == null ? 0 : paths.size(),
                 prefixes == null ? 0 : prefixes.size());
     }
 
@@ -256,8 +249,7 @@ public class DocumentSubscriberRegistry {
     public int subscriptionCountOf(WebSocketSession wsSession) {
         Set<String> paths = bySession.get(wsSession.getId());
         Set<String> prefixes = bySessionPrefixes.get(wsSession.getId());
-        return (paths == null ? 0 : paths.size())
-                + (prefixes == null ? 0 : prefixes.size());
+        return (paths == null ? 0 : paths.size()) + (prefixes == null ? 0 : prefixes.size());
     }
 
     /**
@@ -268,14 +260,17 @@ public class DocumentSubscriberRegistry {
      */
     public void subscribePrefix(WebSocketSession wsSession, ConnectionContext ctx, String prefix) {
         String wsId = wsSession.getId();
-        bySessionPrefixes.computeIfAbsent(wsId, k -> ConcurrentHashMap.newKeySet()).add(prefix);
+        bySessionPrefixes
+                .computeIfAbsent(wsId, k -> ConcurrentHashMap.newKeySet())
+                .add(prefix);
         // bySessionInfo doubles as the recipient-context lookup for the
         // broadcaster. We seed it here too so a session with only
         // prefix-subs (no path-subs) still resolves to a LocalSubscriber.
         bySessionInfo.putIfAbsent(wsId, new LocalSubscriber(wsSession, ctx));
-        localPrefixSubs.computeIfAbsent(prefix, k -> ConcurrentHashMap.newKeySet()).add(wsId);
-        log.debug("documents.subscribePrefix: ws='{}' user='{}' prefix='{}'",
-                wsId, ctx.getUserId(), prefix);
+        localPrefixSubs
+                .computeIfAbsent(prefix, k -> ConcurrentHashMap.newKeySet())
+                .add(wsId);
+        log.debug("documents.subscribePrefix: ws='{}' user='{}' prefix='{}'", wsId, ctx.getUserId(), prefix);
     }
 
     public void unsubscribePrefix(WebSocketSession wsSession, String prefix) {
@@ -300,8 +295,8 @@ public class DocumentSubscriberRegistry {
      * the same audience as the presence broadcasts. Returns immediately
      * when nobody on this pod listens to the path.
      */
-    public void forEachLocalSubscriber(String tenantId, String path,
-            java.util.function.BiConsumer<WebSocketSession, ConnectionContext> action) {
+    public void forEachLocalSubscriber(
+            String tenantId, String path, java.util.function.BiConsumer<WebSocketSession, ConnectionContext> action) {
         Set<String> wsIds = localSubsByPath.get(path);
         if (wsIds == null || wsIds.isEmpty()) return;
         for (String wsId : wsIds) {
@@ -337,8 +332,8 @@ public class DocumentSubscriberRegistry {
      * {@link DocumentChangedBroadcaster} so a single doc-change fan-out
      * reaches both path-subs and prefix-subs without double-pushing.
      */
-    public void forEachLocalPrefixSubscriber(String tenantId, String path,
-            java.util.function.BiConsumer<WebSocketSession, ConnectionContext> action) {
+    public void forEachLocalPrefixSubscriber(
+            String tenantId, String path, java.util.function.BiConsumer<WebSocketSession, ConnectionContext> action) {
         if (localPrefixSubs.isEmpty()) return;
         for (Map.Entry<String, Set<String>> entry : localPrefixSubs.entrySet()) {
             if (!path.startsWith(entry.getKey())) continue;
@@ -414,7 +409,7 @@ public class DocumentSubscriberRegistry {
         String[] parts = body.split("\\|", 2);
         if (parts.length != 2) return;
         String senderPodId = parts[0];
-        if (Objects.equals(senderPodId, podId)) return;  // own echo
+        if (Objects.equals(senderPodId, podId)) return; // own echo
         String path = decodeChangedPath(parts[1]);
         if (path == null) return;
         broadcastPresence(path, tenantId);
@@ -445,13 +440,15 @@ public class DocumentSubscriberRegistry {
                     .path(path)
                     .viewers(filtered)
                     .build();
-            WebSocketEnvelope envelope = WebSocketEnvelope.notification(
-                    MessageType.DOCUMENT_PRESENCE, payload);
+            WebSocketEnvelope envelope = WebSocketEnvelope.notification(MessageType.DOCUMENT_PRESENCE, payload);
             try {
                 sender.sendOnChannel(recipient.wsSession(), "documents", envelope);
             } catch (IOException e) {
-                log.debug("documents.presence push failed ws='{}' path='{}': {}",
-                        recipient.wsSession().getId(), path, e.toString());
+                log.debug(
+                        "documents.presence push failed ws='{}' path='{}': {}",
+                        recipient.wsSession().getId(),
+                        path,
+                        e.toString());
             }
         }
     }
@@ -459,11 +456,7 @@ public class DocumentSubscriberRegistry {
     // ─── helpers ───────────────────────────────────────────────────────
 
     private void writeToRedis(String tenantId, String path, ConnectionContext ctx) {
-        StoredViewer sv = new StoredViewer(
-                ctx.getEditorId(),
-                ctx.getUserId(),
-                ctx.getDisplayName(),
-                podId);
+        StoredViewer sv = new StoredViewer(ctx.getEditorId(), ctx.getUserId(), ctx.getDisplayName(), podId);
         try {
             String json = objectMapper.writeValueAsString(sv);
             redis.hashPut(tenantId, hashSubKey(path), ctx.getEditorId(), json, VIEWER_KEY_TTL);
@@ -500,13 +493,13 @@ public class DocumentSubscriberRegistry {
     }
 
     static String hashSubKey(String path) {
-        return HASH_SUBKEY_PREFIX + Base64.getUrlEncoder().withoutPadding()
-                .encodeToString(path.getBytes(StandardCharsets.UTF_8));
+        return HASH_SUBKEY_PREFIX
+                + Base64.getUrlEncoder().withoutPadding().encodeToString(path.getBytes(StandardCharsets.UTF_8));
     }
 
     private String encodeChangedPayload(String path) {
-        return podId + "|" + Base64.getUrlEncoder().withoutPadding()
-                .encodeToString(path.getBytes(StandardCharsets.UTF_8));
+        return podId + "|"
+                + Base64.getUrlEncoder().withoutPadding().encodeToString(path.getBytes(StandardCharsets.UTF_8));
     }
 
     private static @Nullable String decodeChangedPath(String encoded) {

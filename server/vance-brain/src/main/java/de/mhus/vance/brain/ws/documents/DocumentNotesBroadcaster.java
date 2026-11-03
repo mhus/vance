@@ -67,8 +67,7 @@ public class DocumentNotesBroadcaster {
     @PostConstruct
     public void start() {
         redis.subscribeAcrossTenants(CHANNEL, this::onRemoteChanged);
-        log.debug("DocumentNotesBroadcaster: podId={} redis.enabled={}",
-                podId, redis.isEnabled());
+        log.debug("DocumentNotesBroadcaster: podId={} crossPod={}", podId, redis.isEnabled());
     }
 
     @PreDestroy
@@ -81,14 +80,18 @@ public class DocumentNotesBroadcaster {
         String tenant = event.tenantId();
         String path = event.path();
         String kind = wireKind(event.kind());
-        log.trace("documents.notes[local] podId={} tenant={} path={} kind={} noteId={} editorId={}",
-                podId, tenant, path, kind, event.noteId(), event.editorId());
+        log.trace(
+                "documents.notes[local] podId={} tenant={} path={} kind={} noteId={} editorId={}",
+                podId,
+                tenant,
+                path,
+                kind,
+                event.noteId(),
+                event.editorId());
         try {
-            redis.publish(tenant, CHANNEL,
-                    encodePayload(path, kind, event.noteId(), event.note(), event.editorId()));
+            redis.publish(tenant, CHANNEL, encodePayload(path, kind, event.noteId(), event.note(), event.editorId()));
         } catch (RuntimeException ex) {
-            log.warn("documents.notes[local] redis publish failed for '{}/{}': {}",
-                    tenant, path, ex.toString());
+            log.warn("documents.notes[local] redis publish failed for '{}/{}': {}", tenant, path, ex.toString());
         }
         broadcastLocal(tenant, path, kind, event.noteId(), event.note(), event.editorId(), "local");
     }
@@ -120,15 +123,19 @@ public class DocumentNotesBroadcaster {
                 try {
                     note = objectMapper.readValue(noteJson, DocumentNote.class);
                 } catch (JacksonException e) {
-                    log.debug("documents.notes[remote] malformed note JSON on {}: {}",
-                            topic, e.toString());
+                    log.debug("documents.notes[remote] malformed note JSON on {}: {}", topic, e.toString());
                     return;
                 }
             }
         }
         String editorId = parts.length >= 6 && !parts[5].isEmpty() ? parts[5] : null;
-        log.trace("documents.notes[remote] from pod={} path={} kind={} noteId={} editorId={}",
-                senderPodId, path, kind, noteId, editorId);
+        log.trace(
+                "documents.notes[remote] from pod={} path={} kind={} noteId={} editorId={}",
+                senderPodId,
+                path,
+                kind,
+                noteId,
+                editorId);
         broadcastLocal(VanceRedisMessagingService.tenantFromTopic(topic), path, kind, noteId, note, editorId, "remote");
     }
 
@@ -150,14 +157,12 @@ public class DocumentNotesBroadcaster {
                 .noteId(noteId)
                 .note(note == null ? null : toDto(note))
                 .build();
-        WebSocketEnvelope envelope = WebSocketEnvelope.notification(
-                MessageType.DOCUMENT_NOTE_CHANGED, payload);
+        WebSocketEnvelope envelope = WebSocketEnvelope.notification(MessageType.DOCUMENT_NOTE_CHANGED, payload);
 
         int[] sent = {0};
         int[] skipped = {0};
         registry.forEachLocalSubscriber(tenantId, path, (wsSession, ctx) -> {
-            if (writerEditorId != null
-                    && Objects.equals(ctx.getEditorId(), writerEditorId)) {
+            if (writerEditorId != null && Objects.equals(ctx.getEditorId(), writerEditorId)) {
                 skipped[0]++;
                 return;
             }
@@ -165,28 +170,34 @@ public class DocumentNotesBroadcaster {
                 sender.sendOnChannel(wsSession, "documents", envelope);
                 sent[0]++;
             } catch (IOException e) {
-                log.debug("documents.notes[{}] push failed ws='{}' path='{}': {}",
-                        source, wsSession.getId(), path, e.toString());
+                log.debug(
+                        "documents.notes[{}] push failed ws='{}' path='{}': {}",
+                        source,
+                        wsSession.getId(),
+                        path,
+                        e.toString());
             }
         });
-        log.trace("documents.notes[{}] fanOut path={} kind={} noteId={} recipients={} skippedWriter={}",
-                source, path, kind, noteId, sent[0], skipped[0]);
+        log.trace(
+                "documents.notes[{}] fanOut path={} kind={} noteId={} recipients={} skippedWriter={}",
+                source,
+                path,
+                kind,
+                noteId,
+                sent[0],
+                skipped[0]);
     }
 
     // ─── helpers ──────────────────────────────────────────────────────
 
     private String encodePayload(
-            String path,
-            String kind,
-            String noteId,
-            @Nullable DocumentNote note,
-            @Nullable String editorId) {
+            String path, String kind, String noteId, @Nullable DocumentNote note, @Nullable String editorId) {
         String encodedNote = "";
         if (note != null) {
             try {
                 String json = objectMapper.writeValueAsString(note);
-                encodedNote = Base64.getUrlEncoder().withoutPadding()
-                        .encodeToString(json.getBytes(StandardCharsets.UTF_8));
+                encodedNote =
+                        Base64.getUrlEncoder().withoutPadding().encodeToString(json.getBytes(StandardCharsets.UTF_8));
             } catch (JacksonException e) {
                 log.warn("documents.notes encode failed: {}", e.toString());
             }
@@ -199,8 +210,7 @@ public class DocumentNotesBroadcaster {
     }
 
     private static String encodeUrl(String s) {
-        return Base64.getUrlEncoder().withoutPadding()
-                .encodeToString(s.getBytes(StandardCharsets.UTF_8));
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(s.getBytes(StandardCharsets.UTF_8));
     }
 
     private static @Nullable String decodeUrl(String encoded) {

@@ -49,7 +49,6 @@ import org.springframework.context.ApplicationContext;
             "spring.data.mongodb.auto-index-creation=false",
             "vance.bootstrap.acme=false",
             "vance.encryption.password=smoke-test",
-            "vance.redis.enabled=false",
         })
 class VanceBrainContextSmokeTest {
 

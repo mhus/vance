@@ -44,7 +44,7 @@ import tools.jackson.databind.ObjectMapper;
  * </ol>
  *
  * <p>Pure Pub/Sub — no Redis HASH, no TTL roster. When
- * {@code vance.redis.enabled=false} the channel works pod-locally only.
+ * a single node (no Redis) the channel works pod-locally only.
  */
 @Service
 @Slf4j
@@ -69,10 +69,7 @@ public class PointerBroadcaster {
     /** Per-process identity used to ignore our own Redis pub/sub echoes. */
     private final String podId = UUID.randomUUID().toString();
 
-    public PointerBroadcaster(
-            WebSocketSender sender,
-            VanceRedisMessagingService redis,
-            ObjectMapper objectMapper) {
+    public PointerBroadcaster(WebSocketSender sender, VanceRedisMessagingService redis, ObjectMapper objectMapper) {
         this.sender = sender;
         this.redis = redis;
         this.objectMapper = objectMapper;
@@ -84,7 +81,7 @@ public class PointerBroadcaster {
     public void start() {
         redis.subscribeAcrossTenants(CHANNEL_MOVE, this::onRemoteMove);
         redis.subscribeAcrossTenants(CHANNEL_LEAVE, this::onRemoteLeave);
-        log.debug("PointerBroadcaster: podId={} redis.enabled={}", podId, redis.isEnabled());
+        log.debug("PointerBroadcaster: podId={} crossPod={}", podId, redis.isEnabled());
     }
 
     @PreDestroy
@@ -99,7 +96,9 @@ public class PointerBroadcaster {
         String wsId = wsSession.getId();
         bySession.computeIfAbsent(wsId, k -> ConcurrentHashMap.newKeySet()).add(path);
         bySessionInfo.putIfAbsent(wsId, new LocalSubscriber(wsSession, ctx));
-        localSubsByPath.computeIfAbsent(path, k -> ConcurrentHashMap.newKeySet()).add(wsId);
+        localSubsByPath
+                .computeIfAbsent(path, k -> ConcurrentHashMap.newKeySet())
+                .add(wsId);
         log.trace("pointers.subscribe: ws='{}' user='{}' path='{}'", wsId, ctx.getUserId(), path);
     }
 
@@ -149,8 +148,7 @@ public class PointerBroadcaster {
      * Fan out a pointer move originating from a local connection: local
      * subscribers first, then a Redis publish for peer pods.
      */
-    public void move(ConnectionContext ctx, String path, double x, double y,
-            @Nullable Map<String, Object> data) {
+    public void move(ConnectionContext ctx, String path, double x, double y, @Nullable Map<String, Object> data) {
         String displayName = ctx.getDisplayName() != null ? ctx.getDisplayName() : ctx.getUserId();
         PointerNotification payload = PointerNotification.builder()
                 .path(path)
@@ -163,11 +161,12 @@ public class PointerBroadcaster {
                 .build();
         broadcastMoveLocal(ctx.getTenantId(), path, ctx.getEditorId(), payload);
         try {
-            redis.publish(ctx.getTenantId(), CHANNEL_MOVE,
+            redis.publish(
+                    ctx.getTenantId(),
+                    CHANNEL_MOVE,
                     encodeMove(path, ctx.getEditorId(), ctx.getUserId(), displayName, x, y, data));
         } catch (RuntimeException ex) {
-            log.debug("pointers move redis publish failed for '{}/{}': {}",
-                    ctx.getTenantId(), path, ex.toString());
+            log.debug("pointers move redis publish failed for '{}/{}': {}", ctx.getTenantId(), path, ex.toString());
         }
     }
 
@@ -177,14 +176,13 @@ public class PointerBroadcaster {
             try {
                 redis.publish(tenantId, CHANNEL_LEAVE, encodeLeave(path, editorId));
             } catch (RuntimeException ex) {
-                log.debug("pointers leave redis publish failed for '{}/{}': {}",
-                        tenantId, path, ex.toString());
+                log.debug("pointers leave redis publish failed for '{}/{}': {}", tenantId, path, ex.toString());
             }
         }
     }
 
-    private void broadcastMoveLocal(String tenantId, String path,
-            @Nullable String senderEditorId, PointerNotification payload) {
+    private void broadcastMoveLocal(
+            String tenantId, String path, @Nullable String senderEditorId, PointerNotification payload) {
         Set<String> wsIds = localSubsByPath.get(path);
         if (wsIds == null || wsIds.isEmpty()) return;
         WebSocketEnvelope envelope = WebSocketEnvelope.notification(MessageType.POINTER, payload);
@@ -195,8 +193,7 @@ public class PointerBroadcaster {
             // matching tenant (code-review B2).
             if (!Objects.equals(recipient.context().getTenantId(), tenantId)) continue;
             // Skip the sender's own connection — never echo a pointer back.
-            if (senderEditorId != null
-                    && Objects.equals(recipient.context().getEditorId(), senderEditorId)) {
+            if (senderEditorId != null && Objects.equals(recipient.context().getEditorId(), senderEditorId)) {
                 continue;
             }
             trySend(recipient.wsSession(), envelope, path);
@@ -206,10 +203,8 @@ public class PointerBroadcaster {
     private void broadcastLeaveLocal(@Nullable String tenantId, String path, String editorId) {
         Set<String> wsIds = localSubsByPath.get(path);
         if (wsIds == null || wsIds.isEmpty()) return;
-        PointerLeaveNotification payload = PointerLeaveNotification.builder()
-                .path(path)
-                .editorId(editorId)
-                .build();
+        PointerLeaveNotification payload =
+                PointerLeaveNotification.builder().path(path).editorId(editorId).build();
         WebSocketEnvelope envelope = WebSocketEnvelope.notification(MessageType.POINTER_LEAVE, payload);
         for (String wsId : wsIds) {
             LocalSubscriber recipient = bySessionInfo.get(wsId);
@@ -226,8 +221,7 @@ public class PointerBroadcaster {
         try {
             sender.sendOnChannel(wsSession, "pointers", envelope);
         } catch (IOException e) {
-            log.debug("pointers push failed ws='{}' path='{}': {}",
-                    wsSession.getId(), path, e.toString());
+            log.debug("pointers push failed ws='{}' path='{}': {}", wsSession.getId(), path, e.toString());
         }
     }
 
@@ -237,10 +231,10 @@ public class PointerBroadcaster {
         // {podId}|{base64(path)}|{editorId}|{x}|{y}|{userId}|{base64(displayName)}|{base64(dataJson)}
         String[] parts = body.split("\\|", -1);
         if (parts.length < 5) return;
-        if (Objects.equals(parts[0], podId)) return;  // own echo
+        if (Objects.equals(parts[0], podId)) return; // own echo
         String path = decode(parts[1]);
         if (path == null) return;
-        if (localSubsByPath.get(path) == null) return;  // nobody local cares
+        if (localSubsByPath.get(path) == null) return; // nobody local cares
         String editorId = parts[2];
         double x;
         double y;
@@ -252,8 +246,7 @@ public class PointerBroadcaster {
         }
         String userId = parts.length >= 6 && !parts[5].isEmpty() ? parts[5] : "";
         String displayName = parts.length >= 7 && !parts[6].isEmpty() ? decode(parts[6]) : userId;
-        Map<String, Object> data = parts.length >= 8 && !parts[7].isEmpty()
-                ? decodeData(parts[7]) : null;
+        Map<String, Object> data = parts.length >= 8 && !parts[7].isEmpty() ? decodeData(parts[7]) : null;
         PointerNotification payload = PointerNotification.builder()
                 .path(path)
                 .editorId(editorId)
@@ -270,7 +263,7 @@ public class PointerBroadcaster {
         // {podId}|{base64(path)}|{editorId}
         String[] parts = body.split("\\|", -1);
         if (parts.length < 3) return;
-        if (Objects.equals(parts[0], podId)) return;  // own echo
+        if (Objects.equals(parts[0], podId)) return; // own echo
         String path = decode(parts[1]);
         if (path == null) return;
         if (localSubsByPath.get(path) == null) return;
@@ -279,8 +272,13 @@ public class PointerBroadcaster {
 
     // ─── wire helpers ───────────────────────────────────────────────────
 
-    private String encodeMove(String path, String editorId, String userId,
-            @Nullable String displayName, double x, double y,
+    private String encodeMove(
+            String path,
+            String editorId,
+            String userId,
+            @Nullable String displayName,
+            double x,
+            double y,
             @Nullable Map<String, Object> data) {
         return podId
                 + "|" + b64(path)

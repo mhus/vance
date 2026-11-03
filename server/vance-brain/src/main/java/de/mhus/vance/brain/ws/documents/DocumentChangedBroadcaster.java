@@ -62,9 +62,7 @@ public class DocumentChangedBroadcaster {
     private final String podId = UUID.randomUUID().toString();
 
     public DocumentChangedBroadcaster(
-            DocumentSubscriberRegistry registry,
-            VanceRedisMessagingService redis,
-            WebSocketSender sender) {
+            DocumentSubscriberRegistry registry, VanceRedisMessagingService redis, WebSocketSender sender) {
         this.registry = registry;
         this.redis = redis;
         this.sender = sender;
@@ -73,8 +71,7 @@ public class DocumentChangedBroadcaster {
     @PostConstruct
     public void start() {
         redis.subscribeAcrossTenants(CHANNEL, this::onRemoteChanged);
-        log.debug("DocumentChangedBroadcaster: podId={} redis.enabled={}",
-                podId, redis.isEnabled());
+        log.debug("DocumentChangedBroadcaster: podId={} crossPod={}", podId, redis.isEnabled());
     }
 
     @PreDestroy
@@ -92,15 +89,18 @@ public class DocumentChangedBroadcaster {
         String tenant = event.tenantId();
         String path = event.path();
         String kind = wireKind(event.kind());
-        WriterMeta writer = new WriterMeta(
-                event.editorId(), event.editorUserId(), event.editorDisplayName());
-        log.trace("documents.changed[local] podId={} tenant={} path={} kind={} writer={} → publish + broadcast",
-                podId, tenant, path, kind, writer);
+        WriterMeta writer = new WriterMeta(event.editorId(), event.editorUserId(), event.editorDisplayName());
+        log.trace(
+                "documents.changed[local] podId={} tenant={} path={} kind={} writer={} → publish + broadcast",
+                podId,
+                tenant,
+                path,
+                kind,
+                writer);
         try {
             redis.publish(tenant, CHANNEL, encodePayload(path, kind, writer));
         } catch (RuntimeException ex) {
-            log.warn("documents.changed[local] redis publish failed for '{}/{}': {}",
-                    tenant, path, ex.toString());
+            log.warn("documents.changed[local] redis publish failed for '{}/{}': {}", tenant, path, ex.toString());
         }
         broadcastLocal(tenant, path, kind, writer, "local");
     }
@@ -127,17 +127,20 @@ public class DocumentChangedBroadcaster {
         }
         String kind = parts[2];
         String editorId = parts.length >= 4 && !parts[3].isEmpty() ? parts[3] : null;
-        String displayName = parts.length >= 5 && !parts[4].isEmpty()
-                ? decodePath(parts[4]) : null;
+        String displayName = parts.length >= 5 && !parts[4].isEmpty() ? decodePath(parts[4]) : null;
         String userId = parts.length >= 6 && !parts[5].isEmpty() ? parts[5] : null;
         WriterMeta writer = new WriterMeta(editorId, userId, displayName);
-        log.trace("documents.changed[remote] from pod={} on topic={} path={} kind={} writer={}",
-                senderPodId, topic, path, kind, writer);
+        log.trace(
+                "documents.changed[remote] from pod={} on topic={} path={} kind={} writer={}",
+                senderPodId,
+                topic,
+                path,
+                kind,
+                writer);
         broadcastLocal(VanceRedisMessagingService.tenantFromTopic(topic), path, kind, writer, "remote");
     }
 
-    private void broadcastLocal(String tenantId, String path, String kind, WriterMeta writer,
-            String source) {
+    private void broadcastLocal(String tenantId, String path, String kind, WriterMeta writer, String source) {
         if (!registry.hasLocalSubscribers(path)) {
             log.debug("documents.changed[{}] no local subscribers for path={} → drop", source, path);
             return;
@@ -149,8 +152,7 @@ public class DocumentChangedBroadcaster {
                 .editorUserId(writer.userId())
                 .editorDisplayName(writer.displayName())
                 .build();
-        WebSocketEnvelope envelope = WebSocketEnvelope.notification(
-                MessageType.DOCUMENT_CHANGED, payload);
+        WebSocketEnvelope envelope = WebSocketEnvelope.notification(MessageType.DOCUMENT_CHANGED, payload);
 
         // Dedupe across the two recipient lanes: a session subscribed
         // both by exact-path AND by a matching prefix would otherwise
@@ -158,32 +160,50 @@ public class DocumentChangedBroadcaster {
         Set<String> deliveredTo = new HashSet<>();
         int[] sent = {0};
         int[] skipped = {0};
-        java.util.function.BiConsumer<org.springframework.web.socket.WebSocketSession,
-                de.mhus.vance.brain.ws.ConnectionContext> deliver = (wsSession, ctx) -> {
-            // Skip the writer's own connection — they just performed the
-            // save themselves, they already have the freshest content.
-            if (writer.editorId() != null
-                    && Objects.equals(ctx.getEditorId(), writer.editorId())) {
-                skipped[0]++;
-                log.trace("documents.changed[{}] skip writer ws='{}' editorId='{}' path={}",
-                        source, wsSession.getId(), ctx.getEditorId(), path);
-                return;
-            }
-            if (!deliveredTo.add(wsSession.getId())) return;
-            try {
-                sender.sendOnChannel(wsSession, "documents", envelope);
-                sent[0]++;
-                log.trace("documents.changed[{}] → ws='{}' user='{}' editorId='{}' path={}",
-                        source, wsSession.getId(), ctx.getUserId(), ctx.getEditorId(), path);
-            } catch (IOException e) {
-                log.debug("documents.changed[{}] push failed ws='{}' path='{}': {}",
-                        source, wsSession.getId(), path, e.toString());
-            }
-        };
+        java.util.function.BiConsumer<
+                        org.springframework.web.socket.WebSocketSession, de.mhus.vance.brain.ws.ConnectionContext>
+                deliver = (wsSession, ctx) -> {
+                    // Skip the writer's own connection — they just performed the
+                    // save themselves, they already have the freshest content.
+                    if (writer.editorId() != null && Objects.equals(ctx.getEditorId(), writer.editorId())) {
+                        skipped[0]++;
+                        log.trace(
+                                "documents.changed[{}] skip writer ws='{}' editorId='{}' path={}",
+                                source,
+                                wsSession.getId(),
+                                ctx.getEditorId(),
+                                path);
+                        return;
+                    }
+                    if (!deliveredTo.add(wsSession.getId())) return;
+                    try {
+                        sender.sendOnChannel(wsSession, "documents", envelope);
+                        sent[0]++;
+                        log.trace(
+                                "documents.changed[{}] → ws='{}' user='{}' editorId='{}' path={}",
+                                source,
+                                wsSession.getId(),
+                                ctx.getUserId(),
+                                ctx.getEditorId(),
+                                path);
+                    } catch (IOException e) {
+                        log.debug(
+                                "documents.changed[{}] push failed ws='{}' path='{}': {}",
+                                source,
+                                wsSession.getId(),
+                                path,
+                                e.toString());
+                    }
+                };
         registry.forEachLocalSubscriber(tenantId, path, deliver);
         registry.forEachLocalPrefixSubscriber(tenantId, path, deliver);
-        log.trace("documents.changed[{}] fanOut path={} kind={} recipients={} skippedWriter={}",
-                source, path, kind, sent[0], skipped[0]);
+        log.trace(
+                "documents.changed[{}] fanOut path={} kind={} recipients={} skippedWriter={}",
+                source,
+                path,
+                kind,
+                sent[0],
+                skipped[0]);
     }
 
     // ─── wire helpers ──────────────────────────────────────────────────
@@ -195,11 +215,11 @@ public class DocumentChangedBroadcaster {
 
     private String encodePayload(String path, String kind, WriterMeta writer) {
         String displayName = writer.displayName();
-        String encodedDisplay = displayName == null ? "" :
-                Base64.getUrlEncoder().withoutPadding()
-                        .encodeToString(displayName.getBytes(StandardCharsets.UTF_8));
-        return podId + "|" + Base64.getUrlEncoder().withoutPadding()
-                .encodeToString(path.getBytes(StandardCharsets.UTF_8))
+        String encodedDisplay = displayName == null
+                ? ""
+                : Base64.getUrlEncoder().withoutPadding().encodeToString(displayName.getBytes(StandardCharsets.UTF_8));
+        return podId + "|"
+                + Base64.getUrlEncoder().withoutPadding().encodeToString(path.getBytes(StandardCharsets.UTF_8))
                 + "|" + kind
                 + "|" + (writer.editorId() == null ? "" : writer.editorId())
                 + "|" + encodedDisplay

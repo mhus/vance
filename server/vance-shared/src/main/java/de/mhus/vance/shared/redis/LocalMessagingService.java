@@ -72,7 +72,7 @@ public final class LocalMessagingService implements VanceRedisMessagingService {
         this.clock = clock;
         this.dispatcher =
                 Thread.ofPlatform().name("vance-local-messaging").daemon().start(this::dispatchLoop);
-        log.info("LocalMessagingService: Redis is off (vance.redis.enabled=false) — live features run "
+        log.info("LocalMessagingService: no Redis module — live features run "
                 + "inside this process; there is no fan-out to other pods.");
     }
 

@@ -82,7 +82,7 @@ public class RemoteControlRelay {
     @PostConstruct
     public void start() {
         redis.subscribeAcrossTenants(CHANNEL, (topic, body) -> onRemote(body));
-        log.debug("RemoteControlRelay: podId={} redis.enabled={}", podId, redis.isEnabled());
+        log.debug("RemoteControlRelay: podId={} crossPod={}", podId, redis.isEnabled());
     }
 
     @PreDestroy

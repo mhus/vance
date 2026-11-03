@@ -11,9 +11,9 @@ import org.jspecify.annotations.Nullable;
  * {@link #hashPut}/{@link #hashGetAll} (ephemeral HASH state with TTL) and {@link #valuePut}/
  * {@link #valueGet} (ephemeral single values with TTL).
  *
- * <p>Two implementations, picked by {@code vance.redis.enabled}:
- * {@link RedisMessagingService} spans pods through Redis,
- * {@link LocalMessagingService} serves the same contract inside this process. Callers do not tell
+ * <p>Two implementations, picked by what is on the classpath:
+ * {@code RedisMessagingService} (cloud edition, module {@code vance-ee-redis}) spans pods through
+ * Redis, {@link LocalMessagingService} serves the same contract inside this process. Callers do not tell
  * them apart, except through {@link #isEnabled()} where they have extra cross-pod work to do.
  *
  * <p>Topic convention:

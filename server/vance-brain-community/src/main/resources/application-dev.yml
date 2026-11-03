@@ -5,9 +5,8 @@ server:
 # `wb dev brain` (--spring.profiles.active=dev). It lives in this bundle, not in
 # vance-brain, so no production artifact carries these throwaway defaults.
 #
-# Redis stays off (the `vance.redis.enabled` default): with one node every
-# live feature is pod-local anyway. The cloud edition's dev profile
-# (vance-ee-brain-cloud-app) turns it on.
+# No Redis here: the community edition is a single node and runs its live
+# features in-process. The cloud edition (vance-ee-redis) always has Redis.
 vance:
   language:
     # Dev default: German. Assistant + content default to 'de' when no

@@ -34,7 +34,7 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p>Signals are fire-and-forget and <b>never touch the database</b>: this is
  * the deliberate alternative to persisting transient run state into the
- * document. Delivery is best-effort; with {@code vance.redis.enabled=false} it
+ * document. Delivery is best-effort; without Redis (single node) it
  * works pod-locally only.
  */
 @Service
@@ -73,7 +73,7 @@ public class SignalBroadcaster {
     @PostConstruct
     public void start() {
         redis.subscribeAcrossTenants(CHANNEL, (topic, body) -> onRemote(body));
-        log.debug("SignalBroadcaster: podId={} redis.enabled={}", podId, redis.isEnabled());
+        log.debug("SignalBroadcaster: podId={} crossPod={}", podId, redis.isEnabled());
     }
 
     @PreDestroy

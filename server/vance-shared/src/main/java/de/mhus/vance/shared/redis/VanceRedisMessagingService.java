@@ -1,262 +1,119 @@
 package de.mhus.vance.shared.redis;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.Collections;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
-import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.data.redis.connection.MessageListener;
-import org.springframework.data.redis.core.HashOperations;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.listener.ChannelTopic;
-import org.springframework.data.redis.listener.PatternTopic;
-import org.springframework.data.redis.listener.RedisMessageListenerContainer;
-import org.springframework.stereotype.Service;
 
 /**
- * Cross-pod live-feature primitives on top of Spring's Redis client —
- * the only place that talks to Redis directly. Two concerns under one
- * roof: {@link #publish}/{@link #subscribe} (Pub/Sub) and
+ * Live-feature primitives: {@link #publish}/{@link #subscribe} (Pub/Sub) and
  * {@link #hashPut}/{@link #hashGetAll} (ephemeral HASH state with TTL).
  *
- * <p>Topic-Konvention:
+ * <p>Two implementations, picked by {@code vance.redis.enabled}:
+ * {@link RedisMessagingService} spans pods through Redis,
+ * {@link LocalMessagingService} serves the same contract inside this process. Callers do not tell
+ * them apart, except through {@link #isEnabled()} where they have extra cross-pod work to do.
+ *
+ * <p>Topic convention:
  * <ul>
- *   <li><b>Tenant-scoped:</b> {@code vance:{tenant}:{channel}} —
- *       Membership-Deltas, Document-Change-Events, NOTIFY etc.</li>
- *   <li><b>Global:</b> {@code vance:global:{channel}} — Cluster-Lifecycle
- *       Events, Cross-Tenant-Broadcasts</li>
+ *   <li><b>Tenant-scoped:</b> {@code vance:{tenant}:{channel}} — membership deltas,
+ *       document-change events, NOTIFY etc.</li>
+ *   <li><b>Global:</b> {@code vance:global:{channel}} — cluster lifecycle events, cross-tenant
+ *       broadcasts</li>
  * </ul>
  *
- * <p>Subscribe ist Listener-deduplizierend pro Topic — wiederholtes
- * Subscribe ist Idempotent (no-op). Unsubscribe entfernt nur den vorher
- * dieselbe Methode registrierten Listener — andere Subscriber bleiben
- * intakt.
+ * <p>Subscribing is idempotent per topic: a repeated subscribe is a no-op. Unsubscribe removes
+ * only the listener registered by the matching subscribe. A pattern subscribe
+ * ({@code vance:*:documents:presence}) hands the handler the topic that actually matched, so the
+ * consumer can parse the tenant out of it.
  *
- * <p>Pattern-Subscribe (z.B. {@code vance:*:documents:presence}) gibt
- * dem Handler das tatsächlich getroffene Topic als ersten Parameter,
- * sodass der Consumer den Tenant aus dem Topic-Pfad rausparsen kann.
- *
- * <p>Ported from nimbus-wb's {@code WorldRedisMessagingService}, gleiche
- * API-Form, anderer Topic-Prefix.
+ * <p>Delivery is asynchronous in both implementations: a handler never runs on the publisher's
+ * thread.
  */
-@Service
-@Slf4j
-public class VanceRedisMessagingService {
+public interface VanceRedisMessagingService {
 
-    public static final String GLOBAL = "global";
+    String GLOBAL = "global";
 
     /**
-     * {@code null} when {@code vance.redis.enabled=false} — the Beans are
-     * conditional in {@link VanceRedisConfig}, so a disabled deployment
-     * gives us {@code null} here and {@link #enabled} stays {@code false}.
-     * All public methods become no-ops in that state.
+     * {@code true} when messages reach other pods. {@code false} means this process is the only
+     * node: events still arrive at local subscribers, but there is no peer to fan out to.
      */
-    private final @Nullable StringRedisTemplate redis;
-
-    private final @Nullable RedisMessageListenerContainer container;
-    private final boolean enabled;
-    private final Map<String, MessageListener> listeners = new ConcurrentHashMap<>();
-
-    public VanceRedisMessagingService(
-            ObjectProvider<StringRedisTemplate> redisProvider,
-            ObjectProvider<RedisMessageListenerContainer> containerProvider) {
-        this.redis = redisProvider.getIfAvailable();
-        this.container = containerProvider.getIfAvailable();
-        this.enabled = redis != null && container != null;
-        if (!enabled) {
-            log.info("VanceRedisMessagingService: disabled "
-                    + "(vance.redis.enabled=false) — cross-pod pub/sub is a no-op. "
-                    + "Live features work pod-local; multi-pod fan-out is not available.");
-        }
-    }
-
-    /** {@code true} when Redis is configured and the Beans are wired. */
-    public boolean isEnabled() {
-        return enabled;
-    }
+    boolean isEnabled();
 
     // ─── tenant-scoped pub/sub ────────────────────────────────────────
 
     /** Publish a string-encoded message to {@code vance:{tenant}:{channel}}. */
-    public void publish(String tenantId, String channel, String message) {
-        if (!enabled) return;
-        String topic = topicOf(tenantId, channel);
-        redis.convertAndSend(topic, message);
-    }
+    void publish(String tenantId, String channel, String message);
 
     /**
-     * Subscribe to {@code vance:{tenant}:{channel}}. Idempotent —
-     * subsequent calls with the same {@code (tenantId, channel)} are
-     * no-ops (the existing listener remains active).
+     * Subscribe to {@code vance:{tenant}:{channel}}.
      *
-     * @param handler invoked with {@code (topic, payload)} on every
-     *     incoming message.
+     * @param handler invoked with {@code (topic, payload)} on every incoming message
      */
-    public void subscribe(String tenantId, String channel, BiConsumer<String, String> handler) {
-        if (!enabled) return;
-        String topic = topicOf(tenantId, channel);
-        if (listeners.containsKey(topic)) return;
-        MessageListener listener = (msg, pattern) -> {
-            try {
-                handler.accept(topic, new String(msg.getBody(), StandardCharsets.UTF_8));
-            } catch (RuntimeException e) {
-                log.warn("redis-msg processing failed on {}: {}", topic, e.toString());
-            }
-        };
-        container.addMessageListener(listener, ChannelTopic.of(topic));
-        listeners.put(topic, listener);
-    }
+    void subscribe(String tenantId, String channel, BiConsumer<String, String> handler);
 
     /** Remove the listener registered for {@code vance:{tenant}:{channel}}. */
-    public void unsubscribe(String tenantId, String channel) {
-        if (!enabled) return;
-        String topic = topicOf(tenantId, channel);
-        MessageListener listener = listeners.remove(topic);
-        if (listener != null) {
-            container.removeMessageListener(listener, ChannelTopic.of(topic));
-        }
-    }
+    void unsubscribe(String tenantId, String channel);
 
     // ─── cross-tenant pattern pub/sub ─────────────────────────────────
 
     /**
-     * Subscribe to a {@code channel} across all tenants via the
-     * {@code vance:*:{channel}} pattern. Handler receives the actual
-     * matched topic so the caller can extract the tenant if needed.
+     * Subscribe to a {@code channel} across all tenants via the {@code vance:*:{channel}} pattern.
+     * The handler receives the matched topic so the caller can extract the tenant.
      */
-    public void subscribeAcrossTenants(String channel, BiConsumer<String, String> handler) {
-        if (!enabled) return;
-        String pattern = "vance:*:" + channel;
-        if (listeners.containsKey(pattern)) return;
-        MessageListener listener = (msg, p) -> {
-            try {
-                String topic = new String(msg.getChannel(), StandardCharsets.UTF_8);
-                handler.accept(topic, new String(msg.getBody(), StandardCharsets.UTF_8));
-            } catch (RuntimeException e) {
-                log.warn("redis-msg processing failed on pattern {}: {}", pattern, e.toString());
-            }
-        };
-        container.addMessageListener(listener, new PatternTopic(pattern));
-        listeners.put(pattern, listener);
-    }
+    void subscribeAcrossTenants(String channel, BiConsumer<String, String> handler);
 
-    public void unsubscribeAcrossTenants(String channel) {
-        if (!enabled) return;
-        String pattern = "vance:*:" + channel;
-        MessageListener listener = listeners.remove(pattern);
-        if (listener != null) {
-            container.removeMessageListener(listener, new PatternTopic(pattern));
-        }
-    }
+    void unsubscribeAcrossTenants(String channel);
 
     // ─── global pub/sub ───────────────────────────────────────────────
 
     /** Publish to a non-tenant-scoped channel ({@code vance:global:{channel}}). */
-    public void publishGlobal(String channel, String message) {
-        if (!enabled) return;
-        redis.convertAndSend(globalTopicOf(channel), message);
-    }
+    void publishGlobal(String channel, String message);
 
-    /** Subscribe to a non-tenant-scoped channel. Idempotent. */
-    public void subscribeGlobal(String channel, BiConsumer<String, String> handler) {
-        if (!enabled) return;
-        String topic = globalTopicOf(channel);
-        if (listeners.containsKey(topic)) return;
-        MessageListener listener = (msg, pattern) -> {
-            try {
-                handler.accept(topic, new String(msg.getBody(), StandardCharsets.UTF_8));
-            } catch (RuntimeException e) {
-                log.warn("redis-msg processing failed on {}: {}", topic, e.toString());
-            }
-        };
-        container.addMessageListener(listener, ChannelTopic.of(topic));
-        listeners.put(topic, listener);
-    }
+    /** Subscribe to a non-tenant-scoped channel. */
+    void subscribeGlobal(String channel, BiConsumer<String, String> handler);
 
-    public void unsubscribeGlobal(String channel) {
-        if (!enabled) return;
-        String topic = globalTopicOf(channel);
-        MessageListener listener = listeners.remove(topic);
-        if (listener != null) {
-            container.removeMessageListener(listener, ChannelTopic.of(topic));
-        }
-    }
+    void unsubscribeGlobal(String channel);
 
     // ─── tenant-scoped HASH state with TTL ────────────────────────────
     //
-    // Hash keys are tenant-prefixed exactly like pub/sub topics
-    // (`vance:{tenant}:{subKey}`) so a tenant-wide Redis FLUSH or scoped
-    // ACL works across both surfaces. The TTL is on the *key* — every
-    // hashPut refreshes it, so heartbeating any field keeps the whole
-    // path's roster alive. When a pod crashes its fields stop being
-    // refreshed and the key expires on its own — that's how we replace
-    // the old cluster-liveness prune logic.
+    // Hash keys are tenant-prefixed exactly like pub/sub topics (`vance:{tenant}:{subKey}`). The
+    // TTL is on the whole key and every hashPut refreshes it, so heartbeating any field keeps the
+    // roster alive. When a writer stops, the key expires on its own.
 
-    /**
-     * Set {@code field → value} on the tenant-scoped hash at {@code subKey}
-     * and (re)set the key TTL. Idempotent. No-op when Redis is disabled.
-     */
-    public void hashPut(String tenantId, String subKey, String field, String value, Duration ttl) {
-        if (!enabled) return;
-        String key = topicOf(tenantId, subKey);
-        HashOperations<String, String, String> ops = redis.opsForHash();
-        ops.put(key, field, value);
-        redis.expire(key, ttl);
-    }
+    /** Set {@code field → value} on the hash at {@code subKey} and (re)set the key TTL. */
+    void hashPut(String tenantId, String subKey, String field, String value, Duration ttl);
 
-    /**
-     * Read all fields of the tenant-scoped hash at {@code subKey}.
-     * Returns an empty map when Redis is disabled or the key is missing.
-     */
-    public Map<String, String> hashGetAll(String tenantId, String subKey) {
-        if (!enabled) return Collections.emptyMap();
-        String key = topicOf(tenantId, subKey);
-        return redis.<String, String>opsForHash().entries(key);
-    }
+    /** All fields of the hash at {@code subKey}; empty when the key is missing or expired. */
+    Map<String, String> hashGetAll(String tenantId, String subKey);
 
-    /**
-     * Drop one field from the tenant-scoped hash. If that empties the
-     * hash, Redis removes the key automatically. No-op when disabled.
-     */
-    public void hashDelete(String tenantId, String subKey, String field) {
-        if (!enabled) return;
-        String key = topicOf(tenantId, subKey);
-        redis.<String, String>opsForHash().delete(key, field);
-    }
+    /** Drop one field; an emptied hash disappears. */
+    void hashDelete(String tenantId, String subKey, String field);
 
-    /** Refresh the TTL of an existing hash key. No-op when disabled. */
-    public void hashRefreshTtl(String tenantId, String subKey, Duration ttl) {
-        if (!enabled) return;
-        String key = topicOf(tenantId, subKey);
-        redis.expire(key, ttl);
-    }
+    /** Refresh the TTL of an existing hash key. */
+    void hashRefreshTtl(String tenantId, String subKey, Duration ttl);
 
     // ─── topic naming ─────────────────────────────────────────────────
 
-    public static String topicOf(String tenantId, String channel) {
+    static String topicOf(String tenantId, String channel) {
         return "vance:" + tenantId + ":" + channel;
     }
 
-    public static String globalTopicOf(String channel) {
+    static String globalTopicOf(String channel) {
         return "vance:" + GLOBAL + ":" + channel;
     }
 
     /**
-     * Extracts the tenant segment from a {@code vance:{tenant}:{channel}}
-     * topic — the form delivered to {@link #subscribeAcrossTenants}
-     * handlers. The channel itself may contain colons (e.g.
-     * {@code documents:presence}), so only the segment between the first
-     * two colons is the tenant. Returns {@code ""} for a malformed topic.
+     * Extracts the tenant segment from a {@code vance:{tenant}:{channel}} topic — the form
+     * delivered to {@link #subscribeAcrossTenants} handlers. The channel itself may contain colons
+     * (e.g. {@code documents:presence}), so only the segment between the first two colons is the
+     * tenant. Returns {@code ""} for a malformed topic.
      *
-     * <p>Cross-pod fan-out handlers MUST scope delivery to this tenant:
-     * path strings collide across tenants, so an unscoped local fan-out
-     * leaks presence/content across tenant boundaries (code-review B2).
+     * <p>Cross-pod fan-out handlers MUST scope delivery to this tenant: path strings collide
+     * across tenants, so an unscoped local fan-out leaks presence/content across tenant
+     * boundaries.
      */
-    public static String tenantFromTopic(@org.jspecify.annotations.Nullable String topic) {
+    static String tenantFromTopic(@Nullable String topic) {
         if (topic == null) return "";
         int first = topic.indexOf(':');
         if (first < 0) return "";

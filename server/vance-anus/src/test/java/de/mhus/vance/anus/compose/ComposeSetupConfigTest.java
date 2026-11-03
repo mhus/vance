@@ -57,12 +57,12 @@ class ComposeSetupConfigTest {
         ComposeSetupState s = new ComposeSetupState();
         Map<String, Object> yaml = new LinkedHashMap<>();
         yaml.put("face-port", "not-a-number");
-        yaml.put("redis-enabled", "yes");
+        yaml.put("fook-enabled", "yes");
 
         assertThatThrownBy(() -> ComposeSetupConfig.applyTo(yaml, s, secrets))
                 .isInstanceOf(ComposeSetupConfig.ConfigValidationException.class)
                 .hasMessageContaining("face-port")
-                .hasMessageContaining("redis-enabled");
+                .hasMessageContaining("fook-enabled");
     }
 
     @Test

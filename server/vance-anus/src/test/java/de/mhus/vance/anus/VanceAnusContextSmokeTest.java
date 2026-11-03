@@ -45,7 +45,6 @@ import org.springframework.context.ApplicationContext;
             "spring.data.mongodb.auto-index-creation=false",
             "spring.shell.interactive.enabled=false",
             "vance.encryption.password=smoke-test",
-            "vance.redis.enabled=false",
         })
 class VanceAnusContextSmokeTest {
 

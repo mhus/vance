@@ -22,7 +22,7 @@ import org.jspecify.annotations.Nullable;
  * filesystem demo, where every resource defers to the security manager).
  *
  * <p>All resources are {@link LockableResource}: locking is delegated to the
- * Redis-backed lock manager. This is also what makes milton's {@code OPTIONS}
+ * shared lock manager. This is also what makes milton's {@code OPTIONS}
  * advertise {@code DAV: 1,2} and enforce locks on writes. LOCK/UNLOCK request
  * dispatch itself is handled in {@code WebDavLockService} (invoked from the
  * filter), so no level-2 protocol needs registering. See

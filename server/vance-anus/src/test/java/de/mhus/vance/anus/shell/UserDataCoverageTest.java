@@ -46,7 +46,6 @@ import org.springframework.data.mongodb.core.mapping.Document;
             "spring.data.mongodb.auto-index-creation=false",
             "spring.shell.interactive.enabled=false",
             "vance.encryption.password=coverage-test",
-            "vance.redis.enabled=false",
         })
 class UserDataCoverageTest {
 

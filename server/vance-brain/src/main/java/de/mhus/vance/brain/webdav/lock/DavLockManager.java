@@ -2,6 +2,7 @@ package de.mhus.vance.brain.webdav.lock;
 
 import de.mhus.vance.brain.webdav.AbstractDavResource;
 import de.mhus.vance.brain.webdav.WebDavProperties;
+import de.mhus.vance.shared.redis.VanceRedisMessagingService;
 import io.milton.http.LockInfo;
 import io.milton.http.LockManager;
 import io.milton.http.LockResult;
@@ -14,41 +15,40 @@ import java.util.Base64;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
-import org.springframework.data.redis.core.StringRedisTemplate;
 
 /**
- * WebDAV lock manager backed by Redis so lock state is visible across all pods
- * (a client's LOCK, PUT and UNLOCK may each land on a different pod). Redis is a
- * hard requirement for WebDAV — see {@code planning/webdav-support.md} §5.
+ * WebDAV lock manager on the messaging service's TTL values, so lock state is visible to every
+ * node the service spans (a client's LOCK, PUT and UNLOCK may each land on a different pod): the
+ * Redis-backed service in the cloud edition, the in-process one on a single node.
  *
- * <p>Locks are advisory and transient: exclusivity is enforced with {@code SET
- * NX EX} (native TTL auto-reaps crashed clients), while real data integrity
+ * <p>Locks are advisory and transient: exclusivity is enforced by a put-if-absent with a TTL
+ * (which also reaps crashed clients), while real data integrity
  * comes from the document store's {@code @Version} optimistic lock, not from
  * this. Keyed on the resource's {@code (tenant, project, path)} — stable across
  * content writes (unlike {@code storageId}).
  */
 @Slf4j
-public class RedisLockManager implements LockManager {
+public class DavLockManager implements LockManager {
 
     private static final char SEP = '\n';
 
-    private final StringRedisTemplate redis;
+    private final VanceRedisMessagingService messaging;
     private final WebDavProperties properties;
 
-    public RedisLockManager(StringRedisTemplate redis, WebDavProperties properties) {
-        this.redis = redis;
+    public DavLockManager(VanceRedisMessagingService messaging, WebDavProperties properties) {
+        this.messaging = messaging;
         this.properties = properties;
     }
 
     @Override
     public LockResult lock(LockTimeout timeout, LockInfo lockInfo, LockableResource resource) {
-        String key = key(resource);
+        Slot slot = slot(resource);
         long seconds = resolveSeconds(timeout);
         String tokenId = UUID.randomUUID().toString();
         String user = lockInfo != null && lockInfo.lockedByUser != null ? lockInfo.lockedByUser : "";
-        Boolean ok = redis.opsForValue().setIfAbsent(
-                key, encode(tokenId, user, seconds), Duration.ofSeconds(seconds));
-        if (!Boolean.TRUE.equals(ok)) {
+        boolean ok = messaging.valuePutIfAbsent(
+                slot.tenant(), slot.subKey(), encode(tokenId, user, seconds), Duration.ofSeconds(seconds));
+        if (!ok) {
             return LockResult.failed(LockResult.FailureReason.ALREADY_LOCKED);
         }
         return LockResult.success(new LockToken(tokenId, ensureInfo(lockInfo, user), timeout));
@@ -56,9 +56,9 @@ public class RedisLockManager implements LockManager {
 
     @Override
     public LockResult refresh(String tokenId, LockTimeout timeout, LockableResource resource) {
-        String key = key(resource);
+        Slot slot = slot(resource);
         long seconds = resolveSeconds(timeout);
-        String current = redis.opsForValue().get(key);
+        String current = messaging.valueGet(slot.tenant(), slot.subKey()).orElse(null);
         if (current == null) {
             // Lenient: some clients send etags instead of tokens, or the lock
             // TTL lapsed mid-session. Re-establish rather than fail the write.
@@ -72,20 +72,24 @@ public class RedisLockManager implements LockManager {
         if (!parsed.tokenId().equals(tokenId)) {
             return LockResult.failed(LockResult.FailureReason.ALREADY_LOCKED);
         }
-        redis.opsForValue().set(key, encode(parsed.tokenId(), parsed.user(), seconds), Duration.ofSeconds(seconds));
+        messaging.valuePut(
+                slot.tenant(),
+                slot.subKey(),
+                encode(parsed.tokenId(), parsed.user(), seconds),
+                Duration.ofSeconds(seconds));
         return LockResult.success(new LockToken(parsed.tokenId(), ensureInfo(null, parsed.user()), timeout));
     }
 
     @Override
     public void unlock(String tokenId, LockableResource resource) {
-        String key = key(resource);
-        String current = redis.opsForValue().get(key);
+        Slot slot = slot(resource);
+        String current = messaging.valueGet(slot.tenant(), slot.subKey()).orElse(null);
         if (current == null) {
             return;
         }
         Parsed parsed = decode(current);
         if (parsed.tokenId().equals(tokenId)) {
-            redis.delete(key);
+            messaging.valueDelete(slot.tenant(), slot.subKey());
         }
         // Non-matching token: lenient no-op (a stale token after a pod restart
         // must not wedge the client). Integrity is guarded by @Version anyway.
@@ -93,7 +97,8 @@ public class RedisLockManager implements LockManager {
 
     @Override
     public @Nullable LockToken getCurrentToken(LockableResource resource) {
-        String current = redis.opsForValue().get(key(resource));
+        Slot slot = slot(resource);
+        String current = messaging.valueGet(slot.tenant(), slot.subKey()).orElse(null);
         if (current == null) {
             return null;
         }
@@ -128,8 +133,7 @@ public class RedisLockManager implements LockManager {
             }
             return info;
         }
-        return new LockInfo(LockInfo.LockScope.EXCLUSIVE, LockInfo.LockType.WRITE,
-                user, LockInfo.LockDepth.ZERO);
+        return new LockInfo(LockInfo.LockScope.EXCLUSIVE, LockInfo.LockType.WRITE, user, LockInfo.LockDepth.ZERO);
     }
 
     private static String encode(String tokenId, String user, long seconds) {
@@ -151,16 +155,19 @@ public class RedisLockManager implements LockManager {
         return new Parsed(tokenId, user, seconds);
     }
 
-    private String key(LockableResource resource) {
+    /** Where the lock of {@code resource} lives: its tenant and a sub-key stable across content writes. */
+    private Slot slot(LockableResource resource) {
         if (resource instanceof AbstractDavResource dav) {
-            String composite = dav.coords().tenantId() + " "
-                    + dav.coords().project() + " " + dav.coords().path();
-            String encoded = Base64.getUrlEncoder().withoutPadding()
-                    .encodeToString(composite.getBytes(StandardCharsets.UTF_8));
-            return "vance:" + dav.coords().tenantId() + ":webdav:lock:" + encoded;
+            String composite = dav.coords().tenantId() + " " + dav.coords().project() + " "
+                    + dav.coords().path();
+            String encoded =
+                    Base64.getUrlEncoder().withoutPadding().encodeToString(composite.getBytes(StandardCharsets.UTF_8));
+            return new Slot(dav.coords().tenantId(), "webdav:lock:" + encoded);
         }
-        return "vance:webdav:lock:" + resource.getUniqueId();
+        return new Slot(VanceRedisMessagingService.GLOBAL, "webdav:lock:" + resource.getUniqueId());
     }
+
+    private record Slot(String tenant, String subKey) {}
 
     private record Parsed(String tokenId, String user, long seconds) {}
 }

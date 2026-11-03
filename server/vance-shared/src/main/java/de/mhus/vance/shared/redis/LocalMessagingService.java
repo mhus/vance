@@ -6,19 +6,19 @@ import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.function.BiConsumer;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.stereotype.Service;
 
 /**
  * In-process {@link VanceRedisMessagingService} for a single node: the live features — document
- * changes, presence, project and runner status — work without a Redis. Active when
- * {@code vance.redis.enabled} is {@code false} (the default).
+ * changes, presence, project and runner status — work without a Redis. Registered by
+ * {@link LocalMessagingAutoConfiguration} whenever no other implementation (the Redis one of the
+ * cloud edition) is on the classpath and enabled.
  *
  * <p><b>Delivery is decoupled from the publisher.</b> {@link #publish} only appends to a queue and
  * returns; one dispatcher thread takes messages off it and calls the handlers. That keeps a
@@ -31,10 +31,8 @@ import org.springframework.stereotype.Service;
  * sweep. {@link #isEnabled()} is {@code false}: there is no second pod to reach, so callers skip
  * their cross-pod extras.
  */
-@Service
-@ConditionalOnProperty(prefix = "vance.redis", name = "enabled", havingValue = "false", matchIfMissing = true)
 @Slf4j
-public class LocalMessagingService implements VanceRedisMessagingService {
+public final class LocalMessagingService implements VanceRedisMessagingService {
 
     /** Marks the end of the queue; taken by the dispatcher on shutdown. */
     private static final Message STOP = new Message("", "");
@@ -57,10 +55,13 @@ public class LocalMessagingService implements VanceRedisMessagingService {
         long expiresAtMs;
     }
 
+    private record ValueEntry(String value, long expiresAtMs) {}
+
     private final Clock clock;
     private final BlockingQueue<Message> queue = new LinkedBlockingQueue<>();
     private final Map<String, Subscription> subscriptions = new ConcurrentHashMap<>();
     private final Map<String, HashEntry> hashes = new HashMap<>();
+    private final Map<String, ValueEntry> values = new HashMap<>();
     private final Thread dispatcher;
 
     public LocalMessagingService() {
@@ -201,6 +202,59 @@ public class LocalMessagingService implements VanceRedisMessagingService {
             HashEntry entry = liveEntry(VanceRedisMessagingService.topicOf(tenantId, subKey));
             if (entry != null) entry.expiresAtMs = clock.millis() + ttl.toMillis();
         }
+    }
+
+    // ─── single values with TTL ───────────────────────────────────────
+
+    @Override
+    public void valuePut(String tenantId, String subKey, String value, Duration ttl) {
+        String key = VanceRedisMessagingService.topicOf(tenantId, subKey);
+        synchronized (values) {
+            values.put(key, new ValueEntry(value, clock.millis() + ttl.toMillis()));
+        }
+    }
+
+    @Override
+    public boolean valuePutIfAbsent(String tenantId, String subKey, String value, Duration ttl) {
+        String key = VanceRedisMessagingService.topicOf(tenantId, subKey);
+        synchronized (values) {
+            if (liveValue(key) != null) return false;
+            values.put(key, new ValueEntry(value, clock.millis() + ttl.toMillis()));
+            return true;
+        }
+    }
+
+    @Override
+    public Optional<String> valueGet(String tenantId, String subKey) {
+        synchronized (values) {
+            ValueEntry entry = liveValue(VanceRedisMessagingService.topicOf(tenantId, subKey));
+            return entry == null ? Optional.empty() : Optional.of(entry.value());
+        }
+    }
+
+    @Override
+    public boolean valueExists(String tenantId, String subKey) {
+        synchronized (values) {
+            return liveValue(VanceRedisMessagingService.topicOf(tenantId, subKey)) != null;
+        }
+    }
+
+    @Override
+    public void valueDelete(String tenantId, String subKey) {
+        synchronized (values) {
+            values.remove(VanceRedisMessagingService.topicOf(tenantId, subKey));
+        }
+    }
+
+    /** The value for {@code key} if it has not expired; an expired one is dropped. Hold the lock. */
+    private @Nullable ValueEntry liveValue(String key) {
+        ValueEntry entry = values.get(key);
+        if (entry == null) return null;
+        if (entry.expiresAtMs() <= clock.millis()) {
+            values.remove(key);
+            return null;
+        }
+        return entry;
     }
 
     /** The entry for {@code key} if it has not expired; an expired one is dropped. Hold the lock. */

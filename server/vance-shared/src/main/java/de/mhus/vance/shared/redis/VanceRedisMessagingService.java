@@ -2,12 +2,14 @@ package de.mhus.vance.shared.redis;
 
 import java.time.Duration;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.BiConsumer;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Live-feature primitives: {@link #publish}/{@link #subscribe} (Pub/Sub) and
- * {@link #hashPut}/{@link #hashGetAll} (ephemeral HASH state with TTL).
+ * {@link #hashPut}/{@link #hashGetAll} (ephemeral HASH state with TTL) and {@link #valuePut}/
+ * {@link #valueGet} (ephemeral single values with TTL).
  *
  * <p>Two implementations, picked by {@code vance.redis.enabled}:
  * {@link RedisMessagingService} spans pods through Redis,
@@ -92,6 +94,31 @@ public interface VanceRedisMessagingService {
 
     /** Refresh the TTL of an existing hash key. */
     void hashRefreshTtl(String tenantId, String subKey, Duration ttl);
+
+    // ─── tenant-scoped single values with TTL ─────────────────────────
+    //
+    // One string per key, expiring on its own: advisory locks, small caches. Same key naming as
+    // the hashes (`vance:{tenant}:{subKey}`).
+
+    /** Store {@code value} at {@code subKey}, replacing any current value, expiring after {@code ttl}. */
+    void valuePut(String tenantId, String subKey, String value, Duration ttl);
+
+    /**
+     * Store {@code value} only if nothing live is at {@code subKey}. The check and the write are one
+     * atomic step.
+     *
+     * @return {@code true} when this call stored the value
+     */
+    boolean valuePutIfAbsent(String tenantId, String subKey, String value, Duration ttl);
+
+    /** The live value at {@code subKey}; empty when missing or expired. */
+    Optional<String> valueGet(String tenantId, String subKey);
+
+    /** Whether a live value is at {@code subKey}. */
+    boolean valueExists(String tenantId, String subKey);
+
+    /** Remove the value at {@code subKey}. */
+    void valueDelete(String tenantId, String subKey);
 
     // ─── topic naming ─────────────────────────────────────────────────
 

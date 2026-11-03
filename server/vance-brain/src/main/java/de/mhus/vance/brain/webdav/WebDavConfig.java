@@ -1,42 +1,37 @@
 package de.mhus.vance.brain.webdav;
 
-import de.mhus.vance.brain.webdav.lock.RedisLockManager;
+import de.mhus.vance.brain.webdav.lock.DavLockManager;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.password.PasswordService;
 import de.mhus.vance.shared.permission.PermissionService;
+import de.mhus.vance.shared.redis.VanceRedisMessagingService;
 import de.mhus.vance.shared.team.TeamService;
 import de.mhus.vance.shared.user.UserService;
 import io.milton.config.HttpManagerBuilder;
 import io.milton.http.HttpManager;
 import io.milton.http.LockManager;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
-import org.springframework.data.redis.core.StringRedisTemplate;
 
 /**
- * Wires the WebDAV surface. Gated on {@code vance.redis.enabled=true}: WebDAV
- * lock state lives in Redis (cross-pod), so without Redis the feature is simply
- * not registered — Brain still boots, WebDAV is unavailable (a deliberate hard
- * requirement, see {@code planning/webdav-support.md} §5). The lock protocol
- * itself (DAV level 2) is added in a follow-up step; this config is DAV level 1
- * (read/write), which already serves Obsidian and read-only Finder mounts.
+ * Wires the WebDAV surface (DAV level 2). Lock state and the macOS sidecar cache live on the
+ * messaging service's TTL values, so they span pods in the cloud edition (Redis) and stay in the
+ * process on a single node. Switched off with {@code vance.webdav.enabled=false}.
  */
 @Configuration
-@ConditionalOnProperty(prefix = "vance.redis", name = "enabled", havingValue = "true")
+@ConditionalOnProperty(prefix = "vance.webdav", name = "enabled", havingValue = "true", matchIfMissing = true)
 @EnableConfigurationProperties(WebDavProperties.class)
 @Slf4j
 public class WebDavConfig {
 
     @Bean
-    public SidecarStore webdavSidecarStore(
-            @Qualifier("vanceRedisTemplate") StringRedisTemplate redis, WebDavProperties properties) {
-        return new SidecarStore(redis, properties);
+    public SidecarStore webdavSidecarStore(VanceRedisMessagingService messaging, WebDavProperties properties) {
+        return new SidecarStore(messaging, properties);
     }
 
     @Bean
@@ -46,14 +41,12 @@ public class WebDavConfig {
             TeamService teamService,
             PermissionService permissionService,
             WebDavProperties properties) {
-        return new VanceWebDavSecurityManager(
-                passwordService, userService, teamService, permissionService, properties);
+        return new VanceWebDavSecurityManager(passwordService, userService, teamService, permissionService, properties);
     }
 
     @Bean
-    public LockManager webdavLockManager(
-            @Qualifier("vanceRedisTemplate") StringRedisTemplate redis, WebDavProperties properties) {
-        return new RedisLockManager(redis, properties);
+    public LockManager webdavLockManager(VanceRedisMessagingService messaging, WebDavProperties properties) {
+        return new DavLockManager(messaging, properties);
     }
 
     @Bean
@@ -82,7 +75,7 @@ public class WebDavConfig {
         builder.setEnableBasicAuth(true);
         builder.setEnableFormAuth(false);
         HttpManager manager = builder.buildHttpManager();
-        log.info("WebDAV surface enabled at /brain/{{tenant}}/webdav/ (DAV level 2, Redis locks)");
+        log.info("WebDAV surface enabled at /brain/{{tenant}}/webdav/ (DAV level 2)");
         return manager;
     }
 

@@ -243,4 +243,31 @@ class LocalMessagingServiceTest {
         service.hashPut("acme", "roster", "a", "1", Duration.ofSeconds(60));
         assertThat(service.hashGetAll("beta", "roster")).isEmpty();
     }
+
+    @Test
+    void valuesExpireAndPutIfAbsentIsExclusive() {
+        assertThat(service.valuePutIfAbsent("acme", "lock", "a", Duration.ofSeconds(60)))
+                .isTrue();
+        assertThat(service.valuePutIfAbsent("acme", "lock", "b", Duration.ofSeconds(60)))
+                .isFalse();
+        assertThat(service.valueGet("acme", "lock")).contains("a");
+        assertThat(service.valueExists("acme", "lock")).isTrue();
+
+        clock.now = clock.now.plusSeconds(61);
+        assertThat(service.valueGet("acme", "lock")).isEmpty();
+        assertThat(service.valueExists("acme", "lock")).isFalse();
+        assertThat(service.valuePutIfAbsent("acme", "lock", "b", Duration.ofSeconds(60)))
+                .isTrue();
+    }
+
+    @Test
+    void valuePutReplacesAndDeleteRemoves() {
+        service.valuePut("acme", "v", "1", Duration.ofSeconds(60));
+        service.valuePut("acme", "v", "2", Duration.ofSeconds(60));
+        assertThat(service.valueGet("acme", "v")).contains("2");
+        assertThat(service.valueGet("beta", "v")).isEmpty();
+
+        service.valueDelete("acme", "v");
+        assertThat(service.valueGet("acme", "v")).isEmpty();
+    }
 }

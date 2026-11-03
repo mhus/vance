@@ -24,7 +24,7 @@ import org.jspecify.annotations.Nullable;
  * method handlers (they live in the AGPL enterprise jar), and registering a
  * custom protocol means reaching into {@code HttpManagerBuilder} internals — so
  * we dispatch these two verbs here, reusing the resources' {@link LockableResource}
- * implementation (→ Redis lock manager) and doing Basic-Auth + authorisation via
+ * implementation (→ lock manager) and doing Basic-Auth + authorisation via
  * {@link VanceWebDavSecurityManager}. milton still advertises {@code DAV: 1,2}
  * (resources are lockable) and enforces locks on writes. See
  * {@code planning/webdav-support.md} §1, §5.
@@ -92,8 +92,7 @@ public class WebDavLockService {
                 result = lockable.refreshLock(parseToken(ifHeader), timeout);
             } else {
                 LockInfo info = new LockInfo(
-                        LockInfo.LockScope.EXCLUSIVE, LockInfo.LockType.WRITE,
-                        principal.username(), depth(request));
+                        LockInfo.LockScope.EXCLUSIVE, LockInfo.LockType.WRITE, principal.username(), depth(request));
                 result = lockable.lock(timeout, info);
             }
         } catch (Exception e) {
@@ -142,11 +141,17 @@ public class WebDavLockService {
             if (factory.properties().isSidecar(leaf)) {
                 factory.sidecarStore().put(coords.tenantId(), coords.project(), coords.path(), new byte[0]);
             } else {
-                factory.documentService().create(
-                        coords.tenantId(), coords.project(), coords.path(),
-                        null, null, DocumentService.mimeFromPath(coords.path()),
-                        new ByteArrayInputStream(new byte[0]), principal.username(),
-                        DocumentResourceFactory.actorOf(principal));
+                factory.documentService()
+                        .create(
+                                coords.tenantId(),
+                                coords.project(),
+                                coords.path(),
+                                null,
+                                null,
+                                DocumentService.mimeFromPath(coords.path()),
+                                new ByteArrayInputStream(new byte[0]),
+                                principal.username(),
+                                DocumentResourceFactory.actorOf(principal));
             }
             return true;
         } catch (DocumentService.DocumentAlreadyExistsException e) {
@@ -173,12 +178,13 @@ public class WebDavLockService {
         if (colon < 0) {
             return null;
         }
-        return factory.securityManager().authenticate(
-                tenantId, decoded.substring(0, colon), decoded.substring(colon + 1));
+        return factory.securityManager()
+                .authenticate(tenantId, decoded.substring(0, colon), decoded.substring(colon + 1));
     }
 
     private void challenge(HttpServletResponse response) {
-        response.setHeader("WWW-Authenticate", "Basic realm=\"" + factory.properties().getRealm() + "\"");
+        response.setHeader(
+                "WWW-Authenticate", "Basic realm=\"" + factory.properties().getRealm() + "\"");
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
     }
 

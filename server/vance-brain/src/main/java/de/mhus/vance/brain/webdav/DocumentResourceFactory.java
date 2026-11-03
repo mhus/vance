@@ -13,7 +13,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Maps {@code /brain/{tenant}/webdav/{project}/{path…}} URLs onto document-store
- * resources. Decides file vs. virtual-folder vs. Redis sidecar and returns the
+ * resources. Decides file vs. virtual-folder vs. sidecar and returns the
  * matching {@link AbstractDavResource}, or {@code null} for a 404. All data
  * access goes through {@link DocumentService} (data ownership) and
  * {@link SidecarStore}. See {@code planning/webdav-support.md}.
@@ -45,7 +45,8 @@ public class DocumentResourceFactory implements ResourceFactory {
     }
 
     /** Resolve a parsed coordinate to a resource, or {@code null} (→ 404). */
-    @Nullable Resource resolve(WebDavPaths.Coords coords) {
+    @Nullable
+    Resource resolve(WebDavPaths.Coords coords) {
         if (coords.project() == null) {
             // Bare /brain/{tenant}/webdav — enumerating projects is not offered.
             return null;
@@ -56,7 +57,8 @@ public class DocumentResourceFactory implements ResourceFactory {
         }
         String leaf = leafOf(path);
         if (properties.isSidecar(leaf)) {
-            return sidecarStore.get(coords.tenantId(), coords.project(), path)
+            return sidecarStore
+                    .get(coords.tenantId(), coords.project(), path)
                     .map(data -> (Resource) new DavSidecarResource(this, coords, data))
                     .orElse(null);
         }
@@ -96,7 +98,8 @@ public class DocumentResourceFactory implements ResourceFactory {
     }
 
     /** Username of the currently-authenticated WebDAV principal, or {@code null}. */
-    @Nullable String currentUser() {
+    @Nullable
+    String currentUser() {
         DavPrincipal principal = currentPrincipal();
         return principal == null ? null : principal.username();
     }
@@ -127,9 +130,8 @@ public class DocumentResourceFactory implements ResourceFactory {
         if (principal == null) {
             throw new IllegalStateException("WebDAV write without an authenticated principal");
         }
-        return de.mhus.vance.shared.permission.WriteActor.user(
-                de.mhus.vance.shared.permission.SecurityContext.user(
-                        principal.username(), principal.tenantId(), principal.teams()));
+        return de.mhus.vance.shared.permission.WriteActor.user(de.mhus.vance.shared.permission.SecurityContext.user(
+                principal.username(), principal.tenantId(), principal.teams()));
     }
 
     private static @Nullable DavPrincipal currentPrincipal() {

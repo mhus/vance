@@ -67,7 +67,6 @@ final class ComposeSetupConfig {
                 case "language-name" -> str(key, value, s::setLanguageName, problems);
                 case "language-code" -> str(key, value, s::setLanguageCode, problems);
                 case "fook-enabled" -> bool(key, value, s::setFookEnabled, problems);
-                case "redis-enabled" -> bool(key, value, s::setRedisEnabled, problems);
                 case "tools-enabled" -> bool(key, value, s::setToolsEnabled, problems);
                 case "anus-service-enabled" -> bool(key, value, s::setAnusServiceEnabled, problems);
                 case "external-access" -> bool(key, value, s::setExternalAccess, problems);
@@ -75,12 +74,9 @@ final class ComposeSetupConfig {
                 case "caddy-tls" -> bool(key, value, s::setCaddyTls, problems);
                 case "expose-brain-port" -> bool(key, value, s::setExposeBrainPort, problems);
                 case "expose-mongo-port" -> bool(key, value, s::setExposeMongoPort, problems);
-                case "expose-redis-port" -> bool(key, value, s::setExposeRedisPort, problems);
                 case "brain-port" -> intVal(key, value, s::setBrainPort, problems);
                 case "face-port" -> intVal(key, value, s::setFacePort, problems);
-                case "redis-port" -> intVal(key, value, s::setRedisPort, problems);
                 case "mongo-express-port" -> intVal(key, value, s::setMongoExpressPort, problems);
-                case "redis-ui-port" -> intVal(key, value, s::setRedisUiPort, problems);
                 case "mongo-express-user" -> str(key, value, s::setMongoExpressUser, problems);
                 case "mongo-express-password" -> str(key, value, s::setMongoExpressPassword, problems);
                 default ->

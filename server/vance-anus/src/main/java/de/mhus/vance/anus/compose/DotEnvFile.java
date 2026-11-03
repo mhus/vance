@@ -94,10 +94,6 @@ final class DotEnvFile {
         put(sb, managed, "VANCE_DEFAULT_LANGUAGE");
         put(sb, managed, "VANCE_DEFAULT_LANGUAGE_CODE");
 
-        section(sb, "Redis (live features)");
-        put(sb, managed, "VANCE_REDIS_ENABLED");
-        put(sb, managed, "REDIS_PORT");
-
         section(sb, "Front door (Caddy) + access");
         put(sb, managed, "VANCE_PORT");
         put(sb, managed, "VANCE_SITE_ADDRESS");
@@ -110,7 +106,6 @@ final class DotEnvFile {
         section(sb, "Host-port exposure (expert; default: internal only)");
         put(sb, managed, "VANCE_EXPOSE_BRAIN");
         put(sb, managed, "VANCE_EXPOSE_MONGO");
-        put(sb, managed, "VANCE_EXPOSE_REDIS");
 
         section(sb, "Anus admin shell");
         put(sb, managed, "VANCE_ANUS_SERVICE");
@@ -121,7 +116,6 @@ final class DotEnvFile {
             put(sb, managed, "MONGO_EXPRESS_USERNAME");
             put(sb, managed, "MONGO_EXPRESS_PASSWORD");
             put(sb, managed, "MONGO_EXPRESS_PORT");
-            put(sb, managed, "REDIS_UI_PORT");
         }
 
         // Carry over anything the old file had that we don't manage.

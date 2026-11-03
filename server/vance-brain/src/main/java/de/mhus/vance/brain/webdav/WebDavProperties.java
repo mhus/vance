@@ -8,14 +8,16 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * Configuration for the WebDAV surface ({@code /brain/{tenant}/webdav/…}).
  *
- * <p>The WebDAV feature itself is gated on {@code vance.redis.enabled=true} —
- * cross-pod lock state lives in Redis, so without Redis the surface is not
- * registered at all (Brain still boots; WebDAV is simply unavailable). See
- * {@code planning/webdav-support.md} §5.
+ * <p>The surface is on by default; {@code vance.webdav.enabled=false} switches it off. Lock and
+ * sidecar state live on the messaging service, so they span pods exactly when the messaging
+ * service does. See {@code planning/webdav-support.md} §5.
  */
 @Data
 @ConfigurationProperties(prefix = "vance.webdav")
 public class WebDavProperties {
+
+    /** Whether the WebDAV surface is registered at all. */
+    private boolean enabled = true;
 
     /** Basic-Auth realm presented in the {@code WWW-Authenticate} challenge. */
     private String realm = "Vance";
@@ -32,7 +34,7 @@ public class WebDavProperties {
 
     /**
      * Retention for the opaque macOS sidecar blobs ({@code .DS_Store},
-     * {@code ._*}, …) cached in Redis so Finder folder-view state survives
+     * {@code ._*}, …) cached on the messaging service so Finder folder-view state survives
      * across requests and pods. Best-effort / cosmetic — expiry just resets
      * the folder view. See {@code planning/webdav-support.md} §6.
      */
@@ -46,7 +48,7 @@ public class WebDavProperties {
 
     /**
      * Filename glob patterns treated as client-noise sidecars: hidden from
-     * listings, served on direct GET from the Redis cache, accepted-and-cached
+     * listings, served on direct GET from the sidecar cache, accepted-and-cached
      * on PUT (never persisted as real documents). Matched against the leaf
      * name only. Covers the paths Finder probes on mount plus Windows junk.
      */
@@ -69,7 +71,7 @@ public class WebDavProperties {
 
     /**
      * {@code true} when {@code leafName} matches one of the {@link #sidecarPatterns}
-     * — i.e. it is a client-noise file routed to the Redis {@link SidecarStore}
+     * — i.e. it is a client-noise file routed to the {@link SidecarStore}
      * rather than the document store. Only {@code *} wildcards are supported
      * (prefix/suffix/contains); that is all the real patterns need.
      */

@@ -12,13 +12,8 @@ class ComposeFileRendererTest {
         String yaml = ComposeFileRenderer.renderCompose(new ComposeSetupState());
 
         assertThat(yaml).contains("mongodb:").contains("brain:").contains("face:");
-        assertThat(yaml).contains("redis:");
-        assertThat(yaml).contains("VANCE_REDIS_ENABLED: \"true\"");
-        // Brain must reach Redis by its compose service name, not localhost —
-        // the property is vance.redis.host/port (VANCE_REDIS_HOST/PORT), NOT a URI.
-        assertThat(yaml).contains("VANCE_REDIS_HOST: redis");
-        assertThat(yaml).contains("VANCE_REDIS_PORT: \"6379\"");
-        assertThat(yaml).doesNotContain("VANCE_REDIS_URI");
+        // Single node: no Redis service, no Redis wiring in the brain.
+        assertThat(yaml).doesNotContainIgnoringCase("redis");
         // Caddy is the single published front door on the Vance port; face is internal.
         assertThat(yaml).contains("caddy:");
         assertThat(yaml).contains("./Caddyfile:/etc/caddy/Caddyfile:ro");
@@ -27,16 +22,13 @@ class ComposeFileRendererTest {
         // Persistent data is host-bind-mounted under ./data — no named volumes.
         assertThat(yaml).contains("- ./data/mongo:/data/db");
         assertThat(yaml).contains("- ./data/brain:/app/data");
-        assertThat(yaml).contains("- ./data/redis:/data");
         assertThat(yaml).doesNotContain("\nvolumes:\n");
-        // brain/mongo/redis host ports stay internal by default.
+        // brain/mongo host ports stay internal by default.
         assertThat(yaml).doesNotContain("${BRAIN_PORT");
         assertThat(yaml).doesNotContain("${MONGO_PORT");
-        assertThat(yaml).doesNotContain("${REDIS_PORT");
         // anus service and debug UIs are opt-in.
         assertThat(yaml).doesNotContain("anus:");
         assertThat(yaml).doesNotContain("mongo-express:");
-        assertThat(yaml).doesNotContain("redis-commander:");
     }
 
     @Test
@@ -44,26 +36,11 @@ class ComposeFileRendererTest {
         ComposeSetupState s = new ComposeSetupState();
         s.setExposeBrainPort(true);
         s.setExposeMongoPort(true);
-        s.setExposeRedisPort(true);
 
         String yaml = ComposeFileRenderer.renderCompose(s);
 
         assertThat(yaml).contains("${BRAIN_PORT:-9990}:9990");
         assertThat(yaml).contains("${MONGO_PORT:-27017}:27017");
-        assertThat(yaml).contains("${REDIS_PORT:-6379}:6379");
-    }
-
-    @Test
-    void compose_redisDisabled_dropsRedisServiceAndBrainEnv() {
-        ComposeSetupState s = new ComposeSetupState();
-        s.setRedisEnabled(false);
-
-        String yaml = ComposeFileRenderer.renderCompose(s);
-
-        assertThat(yaml).doesNotContain("redis:");
-        assertThat(yaml).doesNotContain("VANCE_REDIS_ENABLED");
-        assertThat(yaml).doesNotContain("./data/redis");
-        assertThat(yaml).contains("brain:");
     }
 
     @Test
@@ -115,33 +92,18 @@ class ComposeFileRendererTest {
         String yaml = ComposeFileRenderer.renderCompose(s);
 
         assertThat(yaml).contains("mongo-express:");
-        assertThat(yaml).contains("redis-commander:");
-    }
-
-    @Test
-    void compose_toolsEnabledButRedisOff_dropsRedisCommanderOnly() {
-        ComposeSetupState s = new ComposeSetupState();
-        s.setToolsEnabled(true);
-        s.setRedisEnabled(false);
-
-        String yaml = ComposeFileRenderer.renderCompose(s);
-
-        assertThat(yaml).contains("mongo-express:");
-        assertThat(yaml).doesNotContain("redis-commander:");
     }
 
     @Test
     void env_reflectsToggles() {
         ComposeSetupState s = new ComposeSetupState();
         s.setFookEnabled(true);
-        s.setRedisEnabled(false);
         s.setLanguageName("German");
         s.setLanguageCode("de");
 
         Map<String, String> env = ComposeFileRenderer.renderEnv(s);
 
         assertThat(env).containsEntry("VANCE_FOOK_ENABLED", "true");
-        assertThat(env).containsEntry("VANCE_REDIS_ENABLED", "false");
         assertThat(env).containsEntry("VANCE_DEFAULT_LANGUAGE", "German");
         assertThat(env).containsEntry("VANCE_DEFAULT_LANGUAGE_CODE", "de");
         assertThat(env).doesNotContainKey("MONGO_EXPRESS_USERNAME");
@@ -219,7 +181,6 @@ class ComposeFileRendererTest {
 
         assertThat(env).containsEntry("VANCE_EXPOSE_BRAIN", "true");
         assertThat(env).containsEntry("VANCE_EXPOSE_MONGO", "false");
-        assertThat(env).containsEntry("VANCE_EXPOSE_REDIS", "false");
         assertThat(env).containsEntry("VANCE_ANUS_SERVICE", "true");
     }
 
@@ -230,9 +191,7 @@ class ComposeFileRendererTest {
 
         Map<String, String> env = ComposeFileRenderer.renderEnv(s);
 
-        assertThat(env)
-                .containsKeys(
-                        "MONGO_EXPRESS_USERNAME", "MONGO_EXPRESS_PASSWORD", "MONGO_EXPRESS_PORT", "REDIS_UI_PORT");
+        assertThat(env).containsKeys("MONGO_EXPRESS_USERNAME", "MONGO_EXPRESS_PASSWORD", "MONGO_EXPRESS_PORT");
     }
 
     @Test

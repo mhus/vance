@@ -18,9 +18,9 @@ import java.util.Map;
  *       Mini deployment, but local and, by default, without TLS.</li>
  *   <li>{@code mongodb}/{@code brain}/{@code face} are internal to the compose
  *       network; their host ports are published only on an expert opt-in.</li>
- *   <li>{@code redis} joins when live features are on; the debug UIs
- *       (mongo-express + redis-commander) and the optional {@code anus} admin
- *       service ride along under Compose {@code profiles}.</li>
+ *   <li>There is no Redis: the community edition is a single node, which runs its
+ *       live features in-process. The debug UI (mongo-express) and the optional
+ *       {@code anus} admin service ride along under Compose {@code profiles}.</li>
  * </ul>
  *
  * <p>Caddy's listen address rides through {@code .env} as {@code VANCE_SITE_ADDRESS}:
@@ -97,9 +97,6 @@ final class ComposeFileRenderer {
         env.put("VANCE_DEFAULT_LANGUAGE", s.getLanguageName());
         env.put("VANCE_DEFAULT_LANGUAGE_CODE", s.getLanguageCode());
 
-        env.put("VANCE_REDIS_ENABLED", Boolean.toString(s.isRedisEnabled()));
-        env.put("REDIS_PORT", Integer.toString(s.getRedisPort()));
-
         // The single published front-door port + Caddy's listen address.
         env.put("VANCE_PORT", Integer.toString(s.getFacePort()));
         env.put("VANCE_SITE_ADDRESS", siteAddress(s));
@@ -118,7 +115,6 @@ final class ComposeFileRenderer {
         // compose file).
         env.put("VANCE_EXPOSE_BRAIN", Boolean.toString(s.isExposeBrainPort()));
         env.put("VANCE_EXPOSE_MONGO", Boolean.toString(s.isExposeMongoPort()));
-        env.put("VANCE_EXPOSE_REDIS", Boolean.toString(s.isExposeRedisPort()));
         env.put("VANCE_ANUS_SERVICE", Boolean.toString(s.isAnusServiceEnabled()));
 
         env.put("VANCE_ANUS_PASSWORD_HASH", s.getAnusPasswordHash());
@@ -127,7 +123,6 @@ final class ComposeFileRenderer {
             env.put("MONGO_EXPRESS_USERNAME", s.getMongoExpressUser());
             env.put("MONGO_EXPRESS_PASSWORD", s.getMongoExpressPassword());
             env.put("MONGO_EXPRESS_PORT", Integer.toString(s.getMongoExpressPort()));
-            env.put("REDIS_UI_PORT", Integer.toString(s.getRedisUiPort()));
         }
         return env;
     }
@@ -144,15 +139,7 @@ final class ComposeFileRenderer {
         }
         sb.append(MONGO_HEALTHCHECK);
 
-        if (s.isRedisEnabled()) {
-            sb.append(REDIS);
-            if (s.isExposeRedisPort()) {
-                sb.append(REDIS_PORTS);
-            }
-            sb.append(REDIS_HEALTHCHECK);
-        }
-
-        sb.append(s.isRedisEnabled() ? BRAIN_WITH_REDIS : BRAIN_NO_REDIS);
+        sb.append(BRAIN);
         if (s.isExposeBrainPort()) {
             sb.append(BRAIN_PORTS);
         }
@@ -165,9 +152,6 @@ final class ComposeFileRenderer {
 
         if (s.isToolsEnabled()) {
             sb.append(MONGO_EXPRESS);
-            if (s.isRedisEnabled()) {
-                sb.append(REDIS_COMMANDER);
-            }
         }
         if (s.isAnusServiceEnabled()) {
             sb.append(ANUS);
@@ -186,9 +170,9 @@ final class ComposeFileRenderer {
             #   open %s
             #
             # Everything is served through Caddy on the single Vance port above;
-            # brain/mongo/redis stay internal to the compose network.
+            # brain/mongo stay internal to the compose network.
             # Config lives in the sibling .env — edit it or re-run the wizard.
-            # Persistent data (Mongo, Brain, Redis, …) is bind-mounted under ./data
+            # Persistent data (Mongo, Brain, …) is bind-mounted under ./data
             # next to this file — back that folder up, it survives `docker compose down`.
 
             name: vance
@@ -215,13 +199,13 @@ final class ComposeFileRenderer {
                 `%s`
 
                 Everything is served through Caddy on a single port; the brain,
-                MongoDB and Redis stay internal to the compose network.
+                MongoDB stays internal to the compose network.
 
                 - **Open:** %s
                 - `docker-compose.yml` — the stack
                 - `.env` — configuration + secrets (never commit)
                 - `Caddyfile` — front-door routing (`/brain/*` → brain, rest → face)
-                - `./data/` — persistent data (Mongo, Brain, Redis); survives `docker compose down`
+                - `./data/` — persistent data (Mongo, Brain); survives `docker compose down`
 
                 ## First run
 
@@ -303,11 +287,6 @@ final class ComposeFileRenderer {
             sb.append("- mongo-express: http://localhost:")
                     .append(s.getMongoExpressPort())
                     .append('\n');
-            if (s.isRedisEnabled()) {
-                sb.append("- redis-commander: http://localhost:")
-                        .append(s.getRedisUiPort())
-                        .append('\n');
-            }
         }
         if (s.isAnusServiceEnabled()) {
             sb.append("""
@@ -375,30 +354,6 @@ final class ComposeFileRenderer {
                   start_period: 20s
             """;
 
-    private static final String REDIS = """
-
-              redis:
-                image: redis:7-alpine
-                restart: unless-stopped
-                volumes:
-                  - ./data/redis:/data
-                command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
-            """;
-
-    private static final String REDIS_PORTS = """
-                ports:
-                  - "${REDIS_PORT:-6379}:6379"
-            """;
-
-    private static final String REDIS_HEALTHCHECK = """
-                healthcheck:
-                  test: ["CMD", "redis-cli", "ping"]
-                  interval: 10s
-                  timeout: 3s
-                  retries: 5
-                  start_period: 5s
-            """;
-
     private static final String BRAIN_ENV_COMMON = """
                   SPRING_PROFILES_ACTIVE: prod
                   VANCE_MONGODB_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME:-root}:${MONGO_INITDB_ROOT_PASSWORD:-example}@mongodb:27017/${VANCE_MONGODB_DATABASE:-vance}?authSource=admin
@@ -423,7 +378,7 @@ final class ComposeFileRenderer {
                   - "${BRAIN_PORT:-9990}:9990"
             """;
 
-    private static final String BRAIN_NO_REDIS = """
+    private static final String BRAIN = """
 
               brain:
                 image: ${VANCE_IMAGE_NAMESPACE:-mhus}/vancetope-brain:${IMAGE_TAG:-latest}
@@ -433,23 +388,6 @@ final class ComposeFileRenderer {
                     condition: service_healthy
                 environment:
             """ + BRAIN_ENV_COMMON + BRAIN_TAIL;
-
-    private static final String BRAIN_WITH_REDIS = """
-
-              brain:
-                image: ${VANCE_IMAGE_NAMESPACE:-mhus}/vancetope-brain:${IMAGE_TAG:-latest}
-                restart: unless-stopped
-                depends_on:
-                  mongodb:
-                    condition: service_healthy
-                  redis:
-                    condition: service_healthy
-                environment:
-            """ + BRAIN_ENV_COMMON + """
-                  VANCE_REDIS_ENABLED: "true"
-                  VANCE_REDIS_HOST: redis
-                  VANCE_REDIS_PORT: "6379"
-            """ + BRAIN_TAIL;
 
     // The face image serves the SPA and reverse-proxies /brain/* (REST + WS) to
     // the brain internally. It has no published host port — Caddy fronts it.
@@ -548,21 +486,6 @@ final class ComposeFileRenderer {
                   ME_CONFIG_BASICAUTH_PASSWORD: ${MONGO_EXPRESS_PASSWORD:-admin}
                 ports:
                   - "${MONGO_EXPRESS_PORT:-9081}:8081"
-            """;
-
-    private static final String REDIS_COMMANDER = """
-
-              redis-commander:
-                image: rediscommander/redis-commander:latest
-                restart: unless-stopped
-                profiles: ["tools"]
-                depends_on:
-                  redis:
-                    condition: service_healthy
-                environment:
-                  REDIS_HOSTS: local:redis:6379
-                ports:
-                  - "${REDIS_UI_PORT:-8082}:8081"
             """;
 
     private static final String ANUS = """

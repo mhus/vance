@@ -1,1 +1,2 @@
 de.mhus.vance.shared.role.LocalPermissionProviderConfiguration
+de.mhus.vance.shared.redis.LocalMessagingAutoConfiguration

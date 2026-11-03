@@ -278,14 +278,12 @@ public final class DockerComposeSetupWizard {
             out.printf("   8) Vance port:           http://localhost:%d%n", s.getFacePort());
             out.printf("   9) Expert mode:          %s%n", s.isExpertMode() ? "on" : "off");
             if (s.isExpertMode()) {
-                out.printf("  10) Redis (live):         %s%n", s.isRedisEnabled() ? "enabled" : "disabled");
-                out.printf("  11) Debug tools (UIs):    %s%n", s.isToolsEnabled() ? "enabled" : "disabled");
-                out.printf("  12) Anus admin service:   %s%n", s.isAnusServiceEnabled() ? "enabled" : "disabled");
-                out.printf("  13) Expose Brain port:    %s%n", exposeLabel(s.isExposeBrainPort(), s.getBrainPort()));
-                out.printf("  14) Expose Mongo port:    %s%n", exposeLabel(s.isExposeMongoPort(), s.getMongoPort()));
-                out.printf("  15) Expose Redis port:    %s%n", exposeLabel(s.isExposeRedisPort(), s.getRedisPort()));
-                out.printf("  16) Image tag:            %s%n", s.getImageTag());
-                out.printf("  17) MongoDB password:     %s%n", mask(s.getMongoPassword()));
+                out.printf("  10) Debug tools (UIs):    %s%n", s.isToolsEnabled() ? "enabled" : "disabled");
+                out.printf("  11) Anus admin service:   %s%n", s.isAnusServiceEnabled() ? "enabled" : "disabled");
+                out.printf("  12) Expose Brain port:    %s%n", exposeLabel(s.isExposeBrainPort(), s.getBrainPort()));
+                out.printf("  13) Expose Mongo port:    %s%n", exposeLabel(s.isExposeMongoPort(), s.getMongoPort()));
+                out.printf("  14) Image tag:            %s%n", s.getImageTag());
+                out.printf("  15) MongoDB password:     %s%n", mask(s.getMongoPassword()));
             }
             out.println();
             out.flush();
@@ -315,27 +313,21 @@ public final class DockerComposeSetupWizard {
                 case "8" -> editVancePort(out, reader, s);
                 case "9" -> s.setExpertMode(!s.isExpertMode());
                 case "10" -> {
-                    if (s.isExpertMode()) s.setRedisEnabled(!s.isRedisEnabled());
-                }
-                case "11" -> {
                     if (s.isExpertMode()) s.setToolsEnabled(!s.isToolsEnabled());
                 }
-                case "12" -> {
+                case "11" -> {
                     if (s.isExpertMode()) s.setAnusServiceEnabled(!s.isAnusServiceEnabled());
                 }
-                case "13" -> {
+                case "12" -> {
                     if (s.isExpertMode()) s.setExposeBrainPort(!s.isExposeBrainPort());
                 }
-                case "14" -> {
+                case "13" -> {
                     if (s.isExpertMode()) s.setExposeMongoPort(!s.isExposeMongoPort());
                 }
-                case "15" -> {
-                    if (s.isExpertMode()) s.setExposeRedisPort(!s.isExposeRedisPort());
-                }
-                case "16" -> {
+                case "14" -> {
                     if (s.isExpertMode()) editImageTag(reader, s);
                 }
-                case "17" -> {
+                case "15" -> {
                     if (s.isExpertMode()) editMongoPassword(out, reader, s);
                 }
                 default -> out.println("Unknown choice.");
@@ -495,15 +487,12 @@ public final class DockerComposeSetupWizard {
                 case "BRAIN_PORT" -> s.setBrainPort(intOr(v, s.getBrainPort()));
                 case "VANCE_DEFAULT_LANGUAGE" -> s.setLanguageName(v);
                 case "VANCE_DEFAULT_LANGUAGE_CODE" -> s.setLanguageCode(v);
-                case "VANCE_REDIS_ENABLED" -> s.setRedisEnabled(Boolean.parseBoolean(v));
-                case "REDIS_PORT" -> s.setRedisPort(intOr(v, s.getRedisPort()));
                 case "VANCE_PORT", "FACE_PORT" -> s.setFacePort(intOr(v, s.getFacePort()));
                 case "VANCE_ACCESS_MODE" -> s.setExternalAccess("external".equalsIgnoreCase(v));
                 case "VANCE_EXTERNAL_URL" -> s.setExternalUrl(v);
                 case "VANCE_CADDY_TLS" -> s.setCaddyTls(!"off".equalsIgnoreCase(v));
                 case "VANCE_EXPOSE_BRAIN" -> s.setExposeBrainPort(Boolean.parseBoolean(v));
                 case "VANCE_EXPOSE_MONGO" -> s.setExposeMongoPort(Boolean.parseBoolean(v));
-                case "VANCE_EXPOSE_REDIS" -> s.setExposeRedisPort(Boolean.parseBoolean(v));
                 case "VANCE_ANUS_SERVICE" -> s.setAnusServiceEnabled(Boolean.parseBoolean(v));
                 case "VANCE_ANUS_PASSWORD_HASH" -> s.setAnusPasswordHash(v);
                 case "MONGO_EXPRESS_USERNAME" -> {
@@ -512,7 +501,6 @@ public final class DockerComposeSetupWizard {
                 }
                 case "MONGO_EXPRESS_PASSWORD" -> s.setMongoExpressPassword(v);
                 case "MONGO_EXPRESS_PORT" -> s.setMongoExpressPort(intOr(v, s.getMongoExpressPort()));
-                case "REDIS_UI_PORT" -> s.setRedisUiPort(intOr(v, s.getRedisUiPort()));
                 default -> {
                     /* unmanaged — carried over verbatim on write */
                 }
@@ -568,9 +556,6 @@ public final class DockerComposeSetupWizard {
             out.println();
             out.println("Debug tools (start with):  docker compose --profile tools up -d");
             out.printf("  mongo-express:   http://localhost:%d%n", s.getMongoExpressPort());
-            if (s.isRedisEnabled()) {
-                out.printf("  redis-commander: http://localhost:%d%n", s.getRedisUiPort());
-            }
         }
         out.println();
         out.flush();

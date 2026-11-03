@@ -16,7 +16,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * A macOS/Windows client-noise sidecar ({@code .DS_Store}, {@code ._*}, …)
- * served from the opaque Redis {@link SidecarStore} — never persisted as a
+ * served from the opaque {@link SidecarStore} — never persisted as a
  * document. Hidden from directory listings; only reachable by direct name.
  * See {@code planning/webdav-support.md} §6.
  */

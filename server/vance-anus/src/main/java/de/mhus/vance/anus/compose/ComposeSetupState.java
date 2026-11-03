@@ -63,9 +63,7 @@ class ComposeSetupState {
      * {@code never}), so enabling this alone sends nothing out.
      */
     private boolean fookEnabled = true;
-    /** Redis live-features. Expert-only to disable. */
-    private boolean redisEnabled = true;
-    /** Debug/admin UIs (mongo-express + redis-commander) under a compose profile. Expert-only. */
+    /** Debug/admin UIs (mongo-express) under a compose profile. Expert-only. */
     private boolean toolsEnabled = false;
     /**
      * Persistent {@code anus} admin-shell service in the compose file. Expert-only,
@@ -92,7 +90,6 @@ class ComposeSetupState {
     // ── expert: host-port exposure (default: internal to the compose network) ──
     private boolean exposeBrainPort = false;
     private boolean exposeMongoPort = false;
-    private boolean exposeRedisPort = false;
 
     // ── language (seeded later by the runtime --setup wizard) ──────
     /** Human-readable language name, e.g. {@code English}. */
@@ -106,9 +103,7 @@ class ComposeSetupState {
      * clear of a dev stack on 8080. */
     private int facePort = 9999;
 
-    private int redisPort = 6379;
     private int mongoExpressPort = 9081;
-    private int redisUiPort = 8082;
 
     // ── tools credentials (only written when toolsEnabled) ─────────
     private String mongoExpressUser = "admin";

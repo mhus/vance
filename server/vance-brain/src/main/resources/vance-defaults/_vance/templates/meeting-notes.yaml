@@ -2,7 +2,7 @@ title:       { de: "Meeting-Notiz",  en: "Meeting note" }
 description: { de: "Strukturierte Notiz für ein Meeting mit Teilnehmern und Action Items",
                en: "Structured note for a meeting with attendees and action items" }
 icon: clipboard-document-list
-tags: [note, meeting]
+tags: [note]
 
 name:
   mode: free

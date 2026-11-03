@@ -1,0 +1,15 @@
+title:       { de: "Tabelle", en: "Sheet" }
+description: { de: "Eine Tabelle mit A1-Zelladressen und Formeln — kleine Datentabellen, einfache Berechnungen",
+               en: "A table with A1 cell addresses and formulas — small data tables, simple calculations" }
+icon: table
+tags: [note]
+
+name:
+  mode: free
+  default: "tabelle-{{ date }}"
+
+fields:
+  - name: title
+    type: string
+    required: true
+    label: { de: "Titel", en: "Title" }

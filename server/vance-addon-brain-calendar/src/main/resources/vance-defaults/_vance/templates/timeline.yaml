@@ -2,7 +2,7 @@ title:       { de: "Zeitleiste",  en: "Timeline" }
 description: { de: "Perioden und Ereignisse auf einer eigenen Zeitachse — Erdzeitalter, Chronologie, Tathergang, Projektphasen",
                en: "Periods and events on a declared axis — geological eras, a chronology, a reconstruction, project phases" }
 icon: hourglass
-tags: [timeline, chronology, note]
+tags: [note]
 
 name:
   mode: free

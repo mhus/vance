@@ -2,7 +2,7 @@ title:       { de: "Termin",  en: "Appointment" }
 description: { de: "Ein einzelner Kalender-Termin (kind: calendar mit einem Event)",
                en: "A single calendar entry (kind: calendar with one event)" }
 icon: calendar
-tags: [calendar, note]
+tags: [note]
 
 name:
   mode: free

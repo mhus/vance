@@ -1,0 +1,18 @@
+$meta:
+  kind: sheet
+title: "{{ title }}"
+schema: [A, B, C]
+rows: 5
+cells:
+  - field: A1
+    data: Item
+    bold: true
+  - field: B1
+    data: Qty
+    bold: true
+  - field: C1
+    data: Total
+    bold: true
+  # Formulas start with "=" and are evaluated server-side.
+  - field: C2
+    data: "=B2*1.5"

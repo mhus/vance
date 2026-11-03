@@ -2,7 +2,7 @@ title:       { de: "Scheduler",  en: "Scheduler" }
 description: { de: "Zeitgesteuertes Feuern eines Recipes: Zeitplan, Zeitzone und Prompt",
                en: "Time-driven recipe firing: schedule, timezone and prompt" }
 icon: clock
-tags: [automation, scheduler]
+tags: [automation]
 
 # The loader reads exactly this folder, so the template pins it — a
 # scheduler definition anywhere else is inert (kind and location are

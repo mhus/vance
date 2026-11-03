@@ -11,7 +11,7 @@ import de.mhus.vance.api.annotations.GenerateTypeScript;
 @GenerateTypeScript("projects")
 public enum ProjectLiveState {
 
-    /** Nothing vouches for the project: no live entry, the entry expired, or Redis is off. */
+    /** Nothing vouches for the project. The server derives a state from the project document when no live entry exists, so this is reserved for a client that has no information at all (list not loaded yet, signal feed expired). */
     UNKNOWN,
 
     /** Not running anywhere. */

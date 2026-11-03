@@ -1,12 +1,10 @@
 package de.mhus.vance.brain.projects;
 
-import de.mhus.vance.api.projects.ProjectLiveState;
 import de.mhus.vance.api.projects.TenantProjectsResponse;
 import de.mhus.vance.api.ws.ProjectGroupSummary;
 import de.mhus.vance.api.ws.ProjectSummary;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.project.ProjectLiveService;
-import de.mhus.vance.shared.livestate.LiveStateStore.ProjectEntry;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.project.ProjectDocument;
@@ -16,7 +14,6 @@ import de.mhus.vance.shared.projectgroup.ProjectGroupService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -76,11 +73,11 @@ public class ProjectController {
     }
 
     private ProjectSummary toSummary(String tenant, ProjectDocument doc) {
-        Optional<ProjectEntry> live = projectLive.entryOf(tenant, doc.getName());
+        ProjectLiveService.ProjectLiveView live = projectLive.liveViewOf(tenant, doc);
         return ProjectSummary.builder()
                 .desiredState(doc.getStatus() == null ? null : doc.getStatus().name())
-                .liveState(live.map(ProjectEntry::state).orElse(ProjectLiveState.UNKNOWN))
-                .liveExpiresAtMs(live.map(ProjectEntry::expiresAtMs).orElse(null))
+                .liveState(live.state())
+                .liveExpiresAtMs(live.expiresAtMs())
                 .runner(projectLive.runnerOf(tenant, doc.getName()).orElse(null))
                 .name(doc.getName())
                 .title(doc.getTitle())

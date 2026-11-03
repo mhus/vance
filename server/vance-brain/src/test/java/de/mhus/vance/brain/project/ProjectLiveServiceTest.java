@@ -23,12 +23,14 @@ import de.mhus.vance.shared.permission.PermissionService;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.permission.SecurityContext;
 import de.mhus.vance.shared.project.ProjectActualState;
+import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.redis.VanceRedisMessagingService;
 import de.mhus.vance.shared.runner.RunnerBinding;
 import de.mhus.vance.shared.runner.RunnerBindingService;
 import de.mhus.vance.shared.runner.RunnerBindingService.Effective;
 import de.mhus.vance.shared.runner.RunnerBindingService.Source;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.function.BiConsumer;
 import java.util.function.BiPredicate;
@@ -85,6 +87,77 @@ class ProjectLiveServiceTest {
         service.record("acme", "p1", ProjectLiveState.STOPPED);
 
         verify(store).putProject("acme", "p1", ProjectLiveState.STOPPED, Duration.ofHours(1));
+    }
+
+    private static ProjectDocument project(String holder, Instant claimedAt, ProjectActualState actual) {
+        ProjectDocument doc = new ProjectDocument();
+        doc.setName("p1");
+        doc.setHomePodId(holder);
+        doc.setClaimedAt(claimedAt);
+        doc.setActualState(actual);
+        return doc;
+    }
+
+    @Test
+    void theLiveEntryWinsOverTheDocument() {
+        when(store.getProject("acme", "p1"))
+                .thenReturn(Optional.of(new ProjectEntry(ProjectLiveState.STARTING, 1L, 77L)));
+
+        var view = service.liveViewOf("acme", project(null, null, null));
+
+        assertThat(view.state()).isEqualTo(ProjectLiveState.STARTING);
+        assertThat(view.expiresAtMs()).isEqualTo(77L);
+    }
+
+    @Test
+    void aProjectWithoutEntryAndWithoutLeaseReadsAsStoppedNotUnknown() {
+        when(store.getProject("acme", "p1")).thenReturn(Optional.empty());
+
+        var view = service.liveViewOf("acme", project(null, null, null));
+
+        assertThat(view.state()).isEqualTo(ProjectLiveState.STOPPED);
+        assertThat(view.expiresAtMs()).isNull();
+    }
+
+    @Test
+    void aProjectWithoutEntryButWithALiveLeaseReadsFromTheDocument() {
+        when(store.getProject("acme", "p1")).thenReturn(Optional.empty());
+        when(cluster.isHolderGone("pod-a")).thenReturn(false);
+
+        var view = service.liveViewOf("acme", project("pod-a", Instant.now(), ProjectActualState.RUNNING));
+
+        assertThat(view.state()).isEqualTo(ProjectLiveState.RUNNING);
+    }
+
+    @Test
+    void aLeaseOfAGonePodDoesNotMakeTheProjectRun() {
+        when(store.getProject("acme", "p1")).thenReturn(Optional.empty());
+        when(cluster.isHolderGone("pod-a")).thenReturn(true);
+
+        var view = service.liveViewOf("acme", project("pod-a", Instant.now(), ProjectActualState.RUNNING));
+
+        assertThat(view.state()).isEqualTo(ProjectLiveState.STOPPED);
+    }
+
+    @Test
+    void aStoppedEntryNeverRunsOutOnTheClient() {
+        when(store.getProject("acme", "p1"))
+                .thenReturn(Optional.of(new ProjectEntry(ProjectLiveState.STOPPED, 1L, 2L)));
+
+        assertThat(service.liveViewOf("acme", project(null, null, null)).expiresAtMs())
+                .isNull();
+    }
+
+    @Test
+    void aStoppedFrameCarriesNoExpiry() {
+        when(store.putProject(eq("acme"), eq("p1"), eq(ProjectLiveState.STOPPED), any()))
+                .thenReturn(new ProjectEntry(ProjectLiveState.STOPPED, 1L, 2L));
+
+        service.record("acme", "p1", ProjectLiveState.STOPPED);
+
+        ArgumentCaptor<SignalFrame> frame = ArgumentCaptor.forClass(SignalFrame.class);
+        verify(signals).broadcast(eq("acme"), frame.capture());
+        assertThat(frame.getValue().getData()).containsEntry("expiresAtMs", null);
     }
 
     @Test

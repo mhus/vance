@@ -13,11 +13,14 @@ import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.PermissionService;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.project.ProjectActualState;
+import de.mhus.vance.shared.project.ProjectDocument;
+import de.mhus.vance.shared.project.ProjectOwnership;
 import de.mhus.vance.shared.redis.VanceRedisMessagingService;
 import de.mhus.vance.shared.runner.RunnerBindingService;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -115,7 +118,7 @@ public class ProjectLiveService {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("project", project);
         data.put("liveState", entry.state().name());
-        data.put("expiresAtMs", entry.expiresAtMs());
+        data.put("expiresAtMs", expiryShown(entry));
         signals.broadcast(
                 tenantId,
                 SignalFrame.builder()
@@ -141,6 +144,40 @@ public class ProjectLiveService {
     /** The project's entry; empty when nothing vouches for it. */
     public Optional<ProjectEntry> entryOf(String tenantId, String project) {
         return store.getProject(tenantId, project);
+    }
+
+    /** What a list shows for a project: its state and until when that statement holds ({@code null} = until it changes). */
+    public record ProjectLiveView(
+            ProjectLiveState state, @Nullable Long expiresAtMs) {}
+
+    /**
+     * The live state of {@code project} for display. The live entry wins while it exists; without
+     * one — never written, run out, or Redis not part of this deployment — the state is derived
+     * from the project document, which is the truth anyway: the stored actual state while a live
+     * lease backs it and its holder is alive, {@code STOPPED} otherwise. So a project that is not
+     * running reads as stopped, not as unknown, however long ago anyone last wrote an entry.
+     */
+    public ProjectLiveView liveViewOf(String tenantId, ProjectDocument project) {
+        Optional<ProjectEntry> entry = entryOf(tenantId, project.getName());
+        if (entry.isPresent()) {
+            return new ProjectLiveView(entry.get().state(), expiryShown(entry.get()));
+        }
+        ProjectActualState actual =
+                ProjectOwnership.effectiveActualState(project, Instant.now(), clusterService.leaseTtl());
+        String holder = project.getHomePodId();
+        if (actual != ProjectActualState.STOPPED && holder != null && clusterService.isHolderGone(holder)) {
+            actual = ProjectActualState.STOPPED;
+        }
+        return new ProjectLiveView(liveOf(actual), null);
+    }
+
+    /**
+     * A stopped project stays stopped until somebody starts it, which comes with a new entry and a
+     * frame — so a stopped state never runs out on the client. The TTL on the entry only bounds how
+     * long the store keeps it.
+     */
+    private static @Nullable Long expiryShown(ProjectEntry entry) {
+        return entry.state() == ProjectLiveState.STOPPED ? null : entry.expiresAtMs();
     }
 
     /** The runner serving the project (its own, else the tenant's), when one is bound. */

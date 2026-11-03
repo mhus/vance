@@ -105,6 +105,8 @@ Use it, run it in production, change it, share it. If you modify Vancetope and l
 
 This applies from release **0.6.0** on; releases up to and including 0.5.0 were published under the Business Source License 1.1.
 
-Copyright (c) 2024–2026 Mike Hummel. Contributions are accepted under the [`CLA`](CLA.md).
+**Dual licensing:** a commercial licence is also available for those who cannot or do not want to comply with the AGPL terms. Contact: info@vancetope.com.
+
+Copyright (c) 2024–2026 Mike Hummel. Contributions are accepted under the [`CLA`](CLA.md); a bot asks you to sign it by comment on your first pull request.
 
 Enterprise-oriented features (SSO, audit, team management) live separately in [`vance-ee`](https://github.com/mhus/vance-ee) under their own license.

@@ -12,7 +12,7 @@ import {
   AppWindow, Archive, ArchiveRestore, ArrowDown, ArrowLeft, ArrowLeftRight, ArrowRight, ArrowUp,
   ArrowUpDown, Bell, Bot, Bug, Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
   CircleCheck, CircleHelp, CircleX, Code, Copy, Crop, Download, FileDiff, Ellipsis, ExternalLink, Eye, EyeOff,
-  File, FileText, Folder, FolderInput, FolderOpen, FolderPlus, Globe, GripVertical, History, House, Image, Inbox,
+  File, FilePlus, FileText, Folder, FolderInput, FolderOpen, FolderPlus, Globe, GripVertical, History, House, Image, Inbox,
   Info, KeyRound, LayoutGrid, Link, List, ListFilter, Loader, Lock, LockOpen, LogIn, LogOut, MapPin,
   Maximize2, Menu, MessageSquare, Mic, Minimize2, Minus, Moon, Package, PanelLeft, PanelRight,
   Paperclip, Palette, Pause, Pencil, Pin, Play, Plus, Power, Redo2, RotateCw, Save, Search, Send, Settings,
@@ -40,6 +40,7 @@ export const ICONS = {
   // actions
   'add': Plus,
   'add-folder': FolderPlus,
+  'add-file': FilePlus,
   'delete': Trash2,
   'edit': Pencil,
   'close': X,

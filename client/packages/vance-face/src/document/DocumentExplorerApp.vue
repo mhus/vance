@@ -1080,9 +1080,7 @@ function confirmNewFolder(): void {
             />
           </div>
           <VIconButton icon="add-folder" :label="$t('documents.newFolder')" @click="openNewFolder" />
-          <VButton variant="primary" size="sm" icon="add" @click="openCreateInNotepad">
-            {{ $t('documents.addNew') }}
-          </VButton>
+          <VIconButton icon="add-file" tooltip="left" :label="$t('documents.addNew')" @click="openCreateInNotepad" />
         </template>
       </VToolbar>
 

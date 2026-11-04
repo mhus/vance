@@ -1117,8 +1117,13 @@ function fmtDuration(ms: number | null): string {
         </div>
       </div>
       <div v-else data-print-root class="flex-1 min-h-0 min-w-0 overflow-auto">
+        <!-- Keyed by document: two documents of the same kind (kanban1 →
+             kanban2) share this component type, so without the key Vue
+             reuses the instance and views that load on mount keep showing
+             the previous document's data under the new title. -->
         <component
           :is="activeView"
+          :key="document.id"
           mode="editor"
           v-bind="viewBindings"
           @update:doc="onModelUpdate"

@@ -1004,6 +1004,17 @@ function confirmNewFolder(): void {
     focus-model="auto"
     :show-sidebar="true"
   >
+    <!-- The way over to the Cortex lives in the topbar, mirroring the Cortex's
+         own "back to documents" button there: the two editors point at each
+         other from the same place. -->
+    <template #topbar-extra>
+      <VIconButton
+        v-if="selectedProjectId"
+        icon="open-in-app"
+        :label="$t('documents.openCortexTitle')"
+        @click="openInCortex"
+      />
+    </template>
     <template #sidebar>
       <div class="flex flex-col gap-2">
         <ProjectListSidebar
@@ -1069,7 +1080,6 @@ function confirmNewFolder(): void {
             />
           </div>
           <VIconButton icon="add-folder" :label="$t('documents.newFolder')" @click="openNewFolder" />
-          <VIconButton icon="open-in-app" :label="$t('documents.openCortexTitle')" @click="openInCortex" />
           <VButton variant="primary" size="sm" icon="add" @click="openCreateInNotepad">
             {{ $t('documents.addNew') }}
           </VButton>

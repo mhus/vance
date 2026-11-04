@@ -1179,12 +1179,6 @@ export default {
     projectFilterNoMatch: 'No projects match "{filter}".',
     searchPlaceholder: 'Search documents…',
     pathBack: 'Up one level',
-    kits: {
-      installed: '{count} kits installed',
-      update: 'Update kits',
-      updated: '{count} kits updated.',
-      updateFailed: 'Kit update failed.',
-    },
     title: 'Documents',
     loading: 'Loading documents…',
     totalItems: 'items',

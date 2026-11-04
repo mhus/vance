@@ -33,7 +33,6 @@ import {
 import { useI18n } from 'vue-i18n';
 import { useTenantProjects } from '@composables/useTenantProjects';
 import { useDocuments } from '@composables/useDocuments';
-import { useKitAdmin } from '@composables/useKitAdmin';
 import { brainFetch } from '@vance/shared';
 import type { DocumentFoldersResponse, DocumentSummary, MountDto } from '@vance/generated';
 import { MountSearchOutcome } from '@vance/generated';
@@ -92,7 +91,6 @@ onMounted(async () => {
     // Loaded alongside the listing so an empty mounted folder can explain
     // itself; failure is silent and only costs the explanation.
     void docsState.loadMounts(selectedProjectId.value);
-    void loadKits();
   }
   window.addEventListener('popstate', onPopstate);
 });
@@ -150,8 +148,6 @@ watch(selectedProjectId, async (next, prev) => {
   // previous project now, so drop it and let the next dialog fetch it.
   docsState.folders.value = [];
   void docsState.loadMounts(next);
-  kitState.clear();
-  void loadKits();
   syncUrl();
 });
 
@@ -548,39 +544,6 @@ async function confirmTrash(): Promise<void> {
 // action is "unpack", offered when the row is a ZIP; future single-file
 // actions (rename, duplicate, download, …) slot into rowMenuItems.
 const notice = ref('');
-
-// ── Installed kits (project root only) ────────────────────────────────
-//
-// The kit endpoints require project ADMIN. A reader browsing documents
-// gets an error rather than a list, and for them the row simply does not
-// exist — hence `kitsVisible` gates on a *successful* load, not on the
-// mere attempt.
-const kitState = useKitAdmin();
-const kitsVisible = computed(() =>
-  !docsState.pathPrefix.value
-  && !kitState.error.value
-  && kitState.installed.value.length > 0);
-
-const kitNames = computed(() =>
-  kitState.installed.value.map((record) => record.kit.name).join(', '));
-
-async function loadKits(): Promise<void> {
-  if (!selectedProjectId.value) return;
-  await kitState.load(selectedProjectId.value);
-}
-
-async function updateAllKits(): Promise<void> {
-  if (!selectedProjectId.value) return;
-  notice.value = '';
-  try {
-    const results = await kitState.updateAll(selectedProjectId.value, false);
-    notice.value = t('documents.kits.updated', { count: results.length });
-    // Kits write documents — the listing on screen is stale now.
-    await docsState.loadPage(selectedProjectId.value, 0, docsState.pathPrefix.value);
-  } catch {
-    notice.value = t('documents.kits.updateFailed');
-  }
-}
 
 function isZip(doc: DocumentSummary): boolean {
   const mime = (doc.mimeType ?? '').toLowerCase();
@@ -1084,27 +1047,6 @@ function confirmNewFolder(): void {
         </template>
       </VToolbar>
 
-      <!-- Installed kits — only at the project root, where "this project"
-           is what the user is looking at. No "update available" badge:
-           knowing that would mean fetching every kit's remote on load. -->
-      <div
-        v-if="kitsVisible"
-        class="doc-infobar"
-      >
-        <VIcon name="kit" class="doc-infobar-icon" />
-        <span>
-          {{ $t('documents.kits.installed', { count: kitState.installed.value.length }) }}
-        </span>
-        <span class="truncate">— {{ kitNames }}</span>
-        <div class="flex-1"></div>
-        <VButton
-          variant="plain"
-          size="sm"
-          :loading="kitState.busy.value"
-          @click="updateAllKits"
-        >{{ $t('documents.kits.update') }}</VButton>
-      </div>
-
       <!-- Bulk-action bar — appears once at least one document is selected -->
       <div
         v-if="selectedCount > 0"
@@ -1537,12 +1479,11 @@ function confirmNewFolder(): void {
 </template>
 
 <style scoped>
-/* corporate-design §6.2/§7.3 — path crumbs, info and selection bars, rows. */
+/* corporate-design §6.2/§7.3 — path crumbs, selection bar, rows. */
 .doc-crumbs { display: flex; align-items: center; gap: 2px; min-width: 0; overflow: hidden; font-family: var(--v-font-mono); font-size: 12.5px; }
 .doc-crumb { padding: 2px 4px; border: 0; border-radius: 4px; background: transparent; color: var(--v-label-secondary); cursor: pointer; white-space: nowrap; }
 .doc-crumb:hover { background: var(--v-fill); color: var(--v-label); }
 .doc-crumb-sep { color: var(--v-label-tertiary); }
-.doc-infobar,
 .doc-selectionbar {
   display: flex;
   align-items: center;
@@ -1554,7 +1495,6 @@ function confirmNewFolder(): void {
   color: var(--v-label-secondary);
 }
 .doc-selectionbar { background: var(--v-selection); color: var(--v-label); font-size: 13px; }
-.doc-infobar-icon { color: var(--v-label-tertiary); }
 .doc-thead { background: var(--v-surface); font-size: 12px; font-weight: 500; color: var(--v-label-secondary); }
 .doc-thead :deep(th) { border-bottom: 1px solid var(--v-separator); }
 .doc-row { border-bottom: 1px solid var(--v-separator); cursor: pointer; }

@@ -144,7 +144,7 @@ function onFolderDrop(ev: DragEvent): void {
         'tree-row w-full py-1 pr-2 rounded flex items-center gap-1.5',
         node.package.manifestId && node.package.manifestId === activeFileId ? 'tree-row-active' : '',
       ]"
-      :style="{ paddingLeft: `${depth * 12 + 4}px` }"
+      :style="indentStyle(0)"
       :data-folder-path="node.path"
       :data-package="node.package.app ?? 'app'"
     >
@@ -154,6 +154,7 @@ function onFolderDrop(ev: DragEvent): void {
         :title="$t('cortex.tree.openApp')"
         @click="onPackageClick"
       >
+        <span class="tree-chevron-spacer" aria-hidden="true" />
         <VIcon :name="packageIcon(node.package.app)" class="tree-icon" />
         <span class="truncate">{{ node.name }}</span>
         <VIcon v-if="node.loading" name="loading" class="tree-icon animate-spin" :aria-label="$t('cortex.tree.loading')" />
@@ -219,15 +220,18 @@ function onFolderDrop(ev: DragEvent): void {
           'tree-row group flex items-center gap-1 px-2 py-1 rounded cursor-pointer',
           activeFileId === file.id ? 'tree-row-active' : '',
         ]"
-        :style="{ paddingLeft: `${(depth + 1) * 12 + 4}px` }"
+        :style="{ paddingLeft: `${(depth + 1) * 12}px` }"
         @dragstart="(ev: DragEvent) => onFileDragStart(ev, file.id)"
       >
         <button
           type="button"
-          class="flex-1 text-left flex items-center gap-1 min-w-0"
+          class="flex-1 text-left flex items-center gap-1.5 min-w-0"
           @click="emit('open-file', file.id)"
         >
-          <DocumentIcon :path="file.name" />
+          <!-- Where a folder row has its chevron: keeps the icons of files and
+               folders in one column. -->
+          <span class="tree-chevron-spacer" aria-hidden="true" />
+          <DocumentIcon :path="file.name" class="tree-doc-icon" />
           <span
             v-if="file.color"
             class="size-2 rounded-full flex-shrink-0"
@@ -289,6 +293,10 @@ function onFolderDrop(ev: DragEvent): void {
 .tree-row:hover { background: var(--v-fill); }
 .tree-row-active { background: var(--v-selection); color: var(--v-accent-text); font-weight: 500; }
 .tree-chevron, .tree-icon { color: var(--v-label-tertiary); }
+/* DocumentIcon's own box is 20px (the explorer wants that); here the glyph has to sit in the same 16px column as a folder's. */
+.tree-row .tree-doc-icon { width: 1rem; }
+/* Same width as the chevron icon, so a row without one lines up with a row that has it. */
+.tree-chevron-spacer { display: inline-block; flex-shrink: 0; width: 1rem; height: 1rem; }
 .tree-error { color: var(--v-danger); display: inline-flex; }
 .tree-dirty { display: inline-block; width: 6px; height: 6px; border-radius: 3px; background: var(--v-label-tertiary); }
 </style>

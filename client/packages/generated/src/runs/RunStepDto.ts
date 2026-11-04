@@ -9,4 +9,7 @@ export interface RunStepDto {
   at?: Date;
   kind?: string;
   detail?: string;
+  durationMs?: number;
+  output?: string;
+  outputTruncated: boolean;
 }

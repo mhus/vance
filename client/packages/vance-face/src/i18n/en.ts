@@ -1148,6 +1148,8 @@ export default {
     },
     detail: {
       steps: 'Steps',
+      stepOutput: 'Output',
+      outputTruncated: 'Shortened — the journal holds the complete output.',
       variables: 'Variables',
       children: 'Runs it started',
       result: 'Result',

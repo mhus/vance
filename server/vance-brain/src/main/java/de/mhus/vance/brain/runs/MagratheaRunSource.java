@@ -11,15 +11,19 @@ import de.mhus.vance.api.runs.RunStepDto;
 import de.mhus.vance.api.runs.RunSummaryDto;
 import de.mhus.vance.brain.magrathea.MagratheaGateChatAnswerService;
 import de.mhus.vance.brain.magrathea.MagratheaWorkflowService;
+import de.mhus.vance.shared.magrathea.MagratheaJournalEntry;
 import de.mhus.vance.shared.magrathea.MagratheaJournalService;
 import de.mhus.vance.shared.magrathea.MagratheaStateProjector;
 import de.mhus.vance.shared.magrathea.MagratheaWorkflowLoader;
+import de.mhus.vance.shared.magrathea.journal.JournalRecord;
 import de.mhus.vance.shared.magrathea.journal.StartRecord;
 import de.mhus.vance.shared.magrathea.journal.StateEnteredRecord;
 import de.mhus.vance.shared.magrathea.journal.TaskResultRecord;
+import de.mhus.vance.shared.magrathea.journal.TaskStartedRecord;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -28,6 +32,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
 
 /**
  * Magrathea workflow runs as {@link RunSource}.
@@ -42,15 +47,19 @@ import org.springframework.stereotype.Component;
  * has one source fewer otherwise.
  */
 @Component
-@ConditionalOnProperty(
-        value = "vance.services.magrathea",
-        havingValue = "true",
-        matchIfMissing = false)
+@ConditionalOnProperty(value = "vance.services.magrathea", havingValue = "true", matchIfMissing = false)
 @RequiredArgsConstructor
 @Slf4j
 public class MagratheaRunSource implements RunSource {
 
     public static final String SOURCE_ID = "workflow";
+
+    /**
+     * Longest step output sent to the view. The journal keeps the whole
+     * result; the view needs enough to read what happened, not an agent's
+     * full transcript on every refresh.
+     */
+    private static final int OUTPUT_MAX_CHARS = 20_000;
 
     /** How far back {@link #readChildren} looks for sub-runs of one run. */
     private static final int CHILD_SCAN_LIMIT = 200;
@@ -61,6 +70,7 @@ public class MagratheaRunSource implements RunSource {
     private final MagratheaWorkflowService workflowService;
     /** Whose session a bound run belongs to — see visibleTo. */
     private final de.mhus.vance.shared.session.SessionService sessionService;
+
     private final de.mhus.vance.shared.permission.PermissionService permissionService;
     /** Finds the gate a waiting run sits at — see {@link #waitingOnInboxItem}. */
     private final MagratheaGateChatAnswerService gateAnswers;
@@ -74,9 +84,7 @@ public class MagratheaRunSource implements RunSource {
     public List<RunSummaryDto> list(String tenantId, String projectId, int limit) {
         List<RunSummaryDto> out = new ArrayList<>();
         for (String runId : journalService.listRunIds(tenantId, projectId, limit)) {
-            projector.project(tenantId, projectId, runId)
-                    .map(this::toSummary)
-                    .ifPresent(out::add);
+            projector.project(tenantId, projectId, runId).map(this::toSummary).ifPresent(out::add);
         }
         return out;
     }
@@ -109,7 +117,8 @@ public class MagratheaRunSource implements RunSource {
 
     @Override
     public Set<RunAction> allowedActions(String tenantId, String projectId, String nativeId) {
-        return projector.project(tenantId, projectId, nativeId)
+        return projector
+                .project(tenantId, projectId, nativeId)
                 .filter(r -> tenantId.equals(r.getTenantId()) && projectId.equals(r.getProjectId()))
                 .map(r -> actionsFor(r.getStatus()))
                 .orElseGet(Set::of);
@@ -125,9 +134,9 @@ public class MagratheaRunSource implements RunSource {
     }
 
     @Override
-    public void perform(String tenantId, String projectId, String nativeId,
-                        RunAction action, String reason) {
-        MagratheaProcessDto run = projector.project(tenantId, projectId, nativeId)
+    public void perform(String tenantId, String projectId, String nativeId, RunAction action, String reason) {
+        MagratheaProcessDto run = projector
+                .project(tenantId, projectId, nativeId)
                 .filter(r -> tenantId.equals(r.getTenantId()) && projectId.equals(r.getProjectId()))
                 .orElseThrow(() -> new IllegalArgumentException("No such run: " + nativeId));
         // Not-applicable is a no-op: the button came from a snapshot and
@@ -191,8 +200,8 @@ public class MagratheaRunSource implements RunSource {
         if (status != MagratheaRunStatus.FAILED && status != MagratheaRunStatus.TERMINATED) {
             return null;
         }
-        return journalService.readLast(tenantId, projectId, runId,
-                        de.mhus.vance.shared.magrathea.journal.StatusRecord.class)
+        return journalService
+                .readLast(tenantId, projectId, runId, de.mhus.vance.shared.magrathea.journal.StatusRecord.class)
                 .map(de.mhus.vance.shared.magrathea.journal.StatusRecord::getReason)
                 .orElse(null);
     }
@@ -212,47 +221,69 @@ public class MagratheaRunSource implements RunSource {
      * and the rest of the detail renders, which is the same shape the field
      * has when there is simply no gate.
      */
-    private @Nullable String waitingOnInboxItem(
-            String tenantId, String runId, @Nullable MagratheaRunStatus status) {
+    private @Nullable String waitingOnInboxItem(String tenantId, String runId, @Nullable MagratheaRunStatus status) {
         if (status != MagratheaRunStatus.RUNNING && status != MagratheaRunStatus.PAUSED) {
             return null;
         }
         try {
-            return gateAnswers.findOpenGateItem(tenantId, runId)
+            return gateAnswers
+                    .findOpenGateItem(tenantId, runId)
                     .map(de.mhus.vance.shared.inbox.MaximegalonDocument::getId)
                     .orElse(null);
         } catch (RuntimeException e) {
-            log.debug("Magrathea run {} — could not look up its open gate: {}",
-                    runId, e.toString());
+            log.debug("Magrathea run {} — could not look up its open gate: {}", runId, e.toString());
             return null;
         }
     }
 
     /**
-     * Steps in journal order: every entered state, closed off by the task
-     * result that ended it. The journal is a flat event log, so the pairing
-     * happens here rather than in storage.
+     * Steps in journal order: every entered state, with the task that ran in it.
+     *
+     * <p>The journal is a flat event log, so the list is rebuilt by walking it
+     * once: an entered state opens a step, and the task records that follow for
+     * the same state fill it in — task type, duration, outcome and output. A
+     * state entered twice (a loop) therefore gets two steps with their own
+     * results, where pairing by state name alone would hand the last result to
+     * both. When a state has several results (a retry) the last one wins.
      */
     private List<RunStepDto> readSteps(String tenantId, String projectId, String runId) {
-        List<StateEnteredRecord> entered =
-                journalService.readAll(tenantId, projectId, runId, StateEnteredRecord.class);
-        List<TaskResultRecord> results =
-                journalService.readAll(tenantId, projectId, runId, TaskResultRecord.class);
-        Map<String, TaskResultRecord> lastResultByState = new LinkedHashMap<>();
-        for (TaskResultRecord r : results) {
-            if (r.getState() != null) lastResultByState.put(r.getState(), r);
-        }
-        List<RunStepDto> steps = new ArrayList<>(entered.size());
-        for (StateEnteredRecord e : entered) {
-            TaskResultRecord result = lastResultByState.get(e.getState());
-            steps.add(RunStepDto.builder()
-                    .name(e.getState())
-                    .kind("state")
-                    .outcome(result == null ? null : result.getOutcome())
-                    .detail(result == null ? null : result.getErrorMessage())
-                    .build());
+        List<RunStepDto> steps = new ArrayList<>();
+        Map<String, RunStepDto> latestByState = new LinkedHashMap<>();
+        for (MagratheaJournalEntry entry : journalService.read(tenantId, projectId, runId)) {
+            Optional<JournalRecord> record = journalService.toRecord(entry);
+            if (record.isEmpty()) continue;
+            if (record.get() instanceof StateEnteredRecord entered) {
+                RunStepDto step = RunStepDto.builder()
+                        .name(entered.getState())
+                        .kind("state")
+                        .at(entry.getCreatedAt())
+                        .build();
+                steps.add(step);
+                latestByState.put(entered.getState(), step);
+            } else if (record.get() instanceof TaskStartedRecord started) {
+                RunStepDto step = latestByState.get(started.getState());
+                if (step != null && started.getTaskType() != null) {
+                    step.setKind(started.getTaskType().name().toLowerCase(Locale.ROOT));
+                }
+            } else if (record.get() instanceof TaskResultRecord result) {
+                RunStepDto step = latestByState.get(result.getState());
+                if (step != null) fill(step, result);
+            }
         }
         return steps;
+    }
+
+    private static void fill(RunStepDto step, TaskResultRecord result) {
+        step.setOutcome(result.getOutcome());
+        step.setDetail(result.getErrorMessage());
+        step.setDurationMs(result.getDurationMs());
+        JsonNode output = result.getOutput();
+        if (output != null && !output.isNull()) {
+            String text = output.isString() ? output.asString() : output.toPrettyString();
+            boolean cut = text.length() > OUTPUT_MAX_CHARS;
+            step.setOutput(cut ? text.substring(0, OUTPUT_MAX_CHARS) : text);
+            step.setOutputTruncated(cut);
+        }
     }
 
     /**
@@ -269,8 +300,8 @@ public class MagratheaRunSource implements RunSource {
      */
     private List<RunChildDto> readChildren(String tenantId, String projectId, String runId) {
         List<RunChildDto> children = new ArrayList<>();
-        for (MagratheaJournalService.RunStart candidate
-                : journalService.listRunStarts(tenantId, projectId, CHILD_SCAN_LIMIT)) {
+        for (MagratheaJournalService.RunStart candidate :
+                journalService.listRunStarts(tenantId, projectId, CHILD_SCAN_LIMIT)) {
             if (candidate.workflowRunId().equals(runId)) continue;
             StartRecord start = candidate.start();
             if (!runId.equals(start.getParentMagratheaProcessId())) continue;
@@ -292,25 +323,30 @@ public class MagratheaRunSource implements RunSource {
      * started in a conversation would sit in the list with no way back to
      * the conversation that asked for it.
      */
-    private List<RunLinkDto> readLinks(
-            String tenantId, String projectId, String runId, MagratheaProcessDto run) {
-        Optional<StartRecord> start = journalService.readLast(
-                tenantId, projectId, runId, StartRecord.class);
+    private List<RunLinkDto> readLinks(String tenantId, String projectId, String runId, MagratheaProcessDto run) {
+        Optional<StartRecord> start = journalService.readLast(tenantId, projectId, runId, StartRecord.class);
 
         List<RunLinkDto> links = new ArrayList<>(2);
         String path = start.map(StartRecord::getSourcePath).orElse(null);
         if (path == null && run.getWorkflowName() != null) {
             path = MagratheaWorkflowLoader.WORKFLOW_PATH_PREFIX
-                    + run.getWorkflowName() + MagratheaWorkflowLoader.WORKFLOW_PATH_SUFFIX;
+                    + run.getWorkflowName()
+                    + MagratheaWorkflowLoader.WORKFLOW_PATH_SUFFIX;
         }
         if (path != null) {
             links.add(RunLinkDto.builder()
-                    .rel("definition").label(path).target(path).build());
+                    .rel("definition")
+                    .label(path)
+                    .target(path)
+                    .build());
         }
         String sessionId = start.map(StartRecord::getSessionId).orElse(null);
         if (sessionId != null && !sessionId.isBlank()) {
             links.add(RunLinkDto.builder()
-                    .rel("session").label(sessionId).target(sessionId).build());
+                    .rel("session")
+                    .label(sessionId)
+                    .target(sessionId)
+                    .build());
         }
         return List.copyOf(links);
     }
@@ -331,20 +367,22 @@ public class MagratheaRunSource implements RunSource {
     @Override
     public boolean visibleTo(
             de.mhus.vance.shared.permission.SecurityContext subject,
-            String tenantId, String projectId, String nativeId) {
+            String tenantId,
+            String projectId,
+            String nativeId) {
         String sessionId = journalService
                 .readLast(tenantId, projectId, nativeId, StartRecord.class)
                 .map(StartRecord::getSessionId)
                 .orElse(null);
         if (sessionId == null || sessionId.isBlank()) return true;
 
-        return sessionService.findBySessionId(sessionId)
+        return sessionService
+                .findBySessionId(sessionId)
                 .map(session -> session.isSystem()
-                        || (subject != null
-                            && subject.subjectId().equals(session.getUserId()))
-                        || permissionService.check(subject,
-                                new de.mhus.vance.shared.permission.Resource.Project(
-                                        tenantId, projectId),
+                        || (subject != null && subject.subjectId().equals(session.getUserId()))
+                        || permissionService.check(
+                                subject,
+                                new de.mhus.vance.shared.permission.Resource.Project(tenantId, projectId),
                                 de.mhus.vance.shared.permission.Action.ADMIN))
                 .orElse(true);
     }

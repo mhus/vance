@@ -11,17 +11,24 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.magrathea.MagratheaProcessDto;
 import de.mhus.vance.api.magrathea.MagratheaRunStatus;
+import de.mhus.vance.api.magrathea.MagratheaTaskType;
 import de.mhus.vance.api.runs.RunAction;
 import de.mhus.vance.api.runs.RunStatus;
+import de.mhus.vance.shared.magrathea.MagratheaJournalEntry;
 import de.mhus.vance.shared.magrathea.MagratheaJournalService;
 import de.mhus.vance.shared.magrathea.MagratheaStateProjector;
+import de.mhus.vance.shared.magrathea.journal.JournalRecord;
 import de.mhus.vance.shared.magrathea.journal.StartRecord;
 import de.mhus.vance.shared.magrathea.journal.StateEnteredRecord;
 import de.mhus.vance.shared.magrathea.journal.TaskResultRecord;
+import de.mhus.vance.shared.magrathea.journal.TaskStartedRecord;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.ObjectMapper;
 
 class MagratheaRunSourceTest {
 
@@ -32,7 +39,9 @@ class MagratheaRunSourceTest {
     private final de.mhus.vance.brain.magrathea.MagratheaGateChatAnswerService gateAnswers =
             mock(de.mhus.vance.brain.magrathea.MagratheaGateChatAnswerService.class);
     private final MagratheaRunSource source = new MagratheaRunSource(
-            journal, projector, workflows,
+            journal,
+            projector,
+            workflows,
             mock(de.mhus.vance.shared.session.SessionService.class),
             mock(de.mhus.vance.shared.permission.PermissionService.class),
             gateAnswers);
@@ -42,13 +51,11 @@ class MagratheaRunSourceTest {
         when(journal.listRunIds(eq("acme"), eq("proj"), anyInt())).thenReturn(List.of("r1"));
         when(projector.project("acme", "proj", "r1")).thenReturn(Optional.of(run("r1", MagratheaRunStatus.RUNNING)));
 
-        assertThat(source.list("acme", "proj", 10))
-                .singleElement()
-                .satisfies(r -> {
-                    assertThat(r.getRunId()).isEqualTo("workflow:r1");
-                    assertThat(r.getSource()).isEqualTo("workflow");
-                    assertThat(r.getStatus()).isEqualTo(RunStatus.RUNNING);
-                });
+        assertThat(source.list("acme", "proj", 10)).singleElement().satisfies(r -> {
+            assertThat(r.getRunId()).isEqualTo("workflow:r1");
+            assertThat(r.getSource()).isEqualTo("workflow");
+            assertThat(r.getStatus()).isEqualTo(RunStatus.RUNNING);
+        });
     }
 
     @Test
@@ -67,11 +74,11 @@ class MagratheaRunSourceTest {
         // The journal is a flat event log — the step list is reconstructed
         // by matching each entered state to the result that ended it.
         stubDetail("r1");
-        when(journal.readAll("acme", "proj", "r1", StateEnteredRecord.class)).thenReturn(List.of(
+        stubJournal(
+                "r1",
                 StateEnteredRecord.builder().state("work").build(),
-                StateEnteredRecord.builder().state("review").build()));
-        when(journal.readAll("acme", "proj", "r1", TaskResultRecord.class)).thenReturn(List.of(
-                TaskResultRecord.builder().state("work").outcome("success").build()));
+                TaskResultRecord.builder().state("work").outcome("success").build(),
+                StateEnteredRecord.builder().state("review").build());
 
         var steps = source.get("acme", "proj", "r1").orElseThrow().getSteps();
 
@@ -82,11 +89,113 @@ class MagratheaRunSourceTest {
     }
 
     @Test
+    void aStepCarriesItsTypeDurationTimeAndOutput() {
+        stubDetail("r1");
+        stubJournal(
+                "r1",
+                StateEnteredRecord.builder().state("work").build(),
+                TaskStartedRecord.builder()
+                        .state("work")
+                        .taskType(MagratheaTaskType.AGENT_TASK)
+                        .build(),
+                TaskResultRecord.builder()
+                        .state("work")
+                        .outcome("success")
+                        .durationMs(1234)
+                        .output(new ObjectMapper().readTree("{\"summary\":\"done\"}"))
+                        .build());
+
+        var step = source.get("acme", "proj", "r1").orElseThrow().getSteps().get(0);
+
+        assertThat(step.getKind()).isEqualTo("agent_task");
+        assertThat(step.getDurationMs()).isEqualTo(1234L);
+        assertThat(step.getAt()).isEqualTo(JOURNAL_START);
+        assertThat(step.getOutput()).contains("\"summary\"").contains("done");
+        assertThat(step.isOutputTruncated()).isFalse();
+    }
+
+    @Test
+    void aTextOutputIsShownAsTextNotAsQuotedJson() {
+        stubDetail("r1");
+        stubJournal(
+                "r1",
+                StateEnteredRecord.builder().state("work").build(),
+                TaskResultRecord.builder()
+                        .state("work")
+                        .outcome("success")
+                        .output(new ObjectMapper().valueToTree("a plain answer"))
+                        .build());
+
+        assertThat(source.get("acme", "proj", "r1")
+                        .orElseThrow()
+                        .getSteps()
+                        .get(0)
+                        .getOutput())
+                .isEqualTo("a plain answer");
+    }
+
+    @Test
+    void aLongOutputIsCutAndSaysSo() {
+        stubDetail("r1");
+        stubJournal(
+                "r1",
+                StateEnteredRecord.builder().state("work").build(),
+                TaskResultRecord.builder()
+                        .state("work")
+                        .outcome("success")
+                        .output(new ObjectMapper().valueToTree("x".repeat(25_000)))
+                        .build());
+
+        var step = source.get("acme", "proj", "r1").orElseThrow().getSteps().get(0);
+
+        assertThat(step.getOutput()).hasSize(20_000);
+        assertThat(step.isOutputTruncated()).isTrue();
+    }
+
+    @Test
+    void aStateEnteredTwiceGetsAStepWithItsOwnResultEachTime() {
+        // A loop re-enters the same state. Pairing by name alone would give
+        // the last result to both rounds.
+        stubDetail("r1");
+        stubJournal(
+                "r1",
+                StateEnteredRecord.builder().state("write").build(),
+                TaskResultRecord.builder().state("write").outcome("revise").build(),
+                StateEnteredRecord.builder().state("write").build(),
+                TaskResultRecord.builder().state("write").outcome("success").build());
+
+        var steps = source.get("acme", "proj", "r1").orElseThrow().getSteps();
+
+        assertThat(steps).extracting("outcome").containsExactly("revise", "success");
+    }
+
+    @Test
+    void aFailedStepKeepsItsErrorMessageAsDetail() {
+        stubDetail("r1");
+        stubJournal(
+                "r1",
+                StateEnteredRecord.builder().state("act").build(),
+                TaskResultRecord.builder()
+                        .state("act")
+                        .outcome("technical_error")
+                        .errorMessage("HTTP 429")
+                        .build());
+
+        var step = source.get("acme", "proj", "r1").orElseThrow().getSteps().get(0);
+
+        assertThat(step.getOutcome()).isEqualTo("technical_error");
+        assertThat(step.getDetail()).isEqualTo("HTTP 429");
+        assertThat(step.getOutput()).isNull();
+    }
+
+    @Test
     void linksToTheDocumentTheRunCameFrom() {
         stubDetail("r1");
-        when(journal.readLast("acme", "proj", "r1", StartRecord.class)).thenReturn(
-                Optional.of(StartRecord.builder()
-                        .workflowName("helloworld").sourcePath("drafts/my-flow.yaml").build()));
+        when(journal.readLast("acme", "proj", "r1", StartRecord.class))
+                .thenReturn(Optional.of(StartRecord.builder()
+                        .workflowName("helloworld")
+                        .sourcePath("drafts/my-flow.yaml")
+                        .build()));
 
         assertThat(source.get("acme", "proj", "r1").orElseThrow().getLinks())
                 .singleElement()
@@ -98,13 +207,13 @@ class MagratheaRunSourceTest {
         // Name-started runs carry no path; the cascade location is where
         // that definition lives by definition.
         stubDetail("r1");
-        when(journal.readLast("acme", "proj", "r1", StartRecord.class)).thenReturn(
-                Optional.of(StartRecord.builder().workflowName("helloworld").build()));
+        when(journal.readLast("acme", "proj", "r1", StartRecord.class))
+                .thenReturn(Optional.of(
+                        StartRecord.builder().workflowName("helloworld").build()));
 
         assertThat(source.get("acme", "proj", "r1").orElseThrow().getLinks())
                 .singleElement()
-                .satisfies(l -> assertThat(l.getTarget())
-                        .isEqualTo("_vance/workflows/helloworld.yaml"));
+                .satisfies(l -> assertThat(l.getTarget()).isEqualTo("_vance/workflows/helloworld.yaml"));
     }
 
     // ──────────── what a waiting run is waiting on ────────────
@@ -117,8 +226,10 @@ class MagratheaRunSourceTest {
     @Test
     void detailNamesTheOpenGateItem() {
         stubDetail("r1");
-        when(gateAnswers.findOpenGateItem("acme", "r1")).thenReturn(Optional.of(
-                de.mhus.vance.shared.inbox.MaximegalonDocument.builder().id("item-7").build()));
+        when(gateAnswers.findOpenGateItem("acme", "r1"))
+                .thenReturn(Optional.of(de.mhus.vance.shared.inbox.MaximegalonDocument.builder()
+                        .id("item-7")
+                        .build()));
 
         assertThat(source.get("acme", "proj", "r1").orElseThrow().getWaitingOnInboxItemId())
                 .isEqualTo("item-7");
@@ -136,8 +247,7 @@ class MagratheaRunSourceTest {
     @Test
     void aFinishedRunIsNotAskedAboutGatesAtAll() {
         // Its gates are closed by definition, and the lookup costs two reads.
-        when(projector.project("acme", "proj", "r1"))
-                .thenReturn(Optional.of(run("r1", MagratheaRunStatus.DONE)));
+        when(projector.project("acme", "proj", "r1")).thenReturn(Optional.of(run("r1", MagratheaRunStatus.DONE)));
 
         assertThat(source.get("acme", "proj", "r1").orElseThrow().getWaitingOnInboxItemId())
                 .isNull();
@@ -155,18 +265,15 @@ class MagratheaRunSourceTest {
 
     @Test
     void offersVerbsThatFitTheRunStatus() {
-        assertThat(actionsOf(MagratheaRunStatus.RUNNING))
-                .containsExactlyInAnyOrder(RunAction.PAUSE, RunAction.STOP);
-        assertThat(actionsOf(MagratheaRunStatus.PAUSED))
-                .containsExactlyInAnyOrder(RunAction.RESUME, RunAction.STOP);
+        assertThat(actionsOf(MagratheaRunStatus.RUNNING)).containsExactlyInAnyOrder(RunAction.PAUSE, RunAction.STOP);
+        assertThat(actionsOf(MagratheaRunStatus.PAUSED)).containsExactlyInAnyOrder(RunAction.RESUME, RunAction.STOP);
         assertThat(actionsOf(MagratheaRunStatus.DONE)).isEmpty();
         assertThat(actionsOf(MagratheaRunStatus.TERMINATED)).isEmpty();
     }
 
     @Test
     void performDelegatesToTheWorkflowService() {
-        when(projector.project("acme", "proj", "r1"))
-                .thenReturn(Optional.of(run("r1", MagratheaRunStatus.RUNNING)));
+        when(projector.project("acme", "proj", "r1")).thenReturn(Optional.of(run("r1", MagratheaRunStatus.RUNNING)));
 
         source.perform("acme", "proj", "r1", RunAction.STOP, "because");
 
@@ -175,8 +282,7 @@ class MagratheaRunSourceTest {
 
     @Test
     void aVerbTheStatusDoesNotOfferIsANoOp() {
-        when(projector.project("acme", "proj", "r1"))
-                .thenReturn(Optional.of(run("r1", MagratheaRunStatus.DONE)));
+        when(projector.project("acme", "proj", "r1")).thenReturn(Optional.of(run("r1", MagratheaRunStatus.DONE)));
 
         source.perform("acme", "proj", "r1", RunAction.PAUSE, "because");
 
@@ -194,9 +300,27 @@ class MagratheaRunSourceTest {
         return source.list("acme", "proj", 10).get(0).getStatus();
     }
 
+    private static final Instant JOURNAL_START = Instant.parse("2026-11-04T10:00:00Z");
+
+    /** Feeds the given records to the source as the journal of {@code runId}, oldest first. */
+    private void stubJournal(String runId, JournalRecord... records) {
+        List<MagratheaJournalEntry> entries = new ArrayList<>();
+        for (JournalRecord record : records) {
+            // Distinct ids: the entry is a value class, and two equal ones would
+            // share one stub.
+            MagratheaJournalEntry entry = MagratheaJournalEntry.builder()
+                    .id("e" + entries.size())
+                    .workflowRunId(runId)
+                    .createdAt(JOURNAL_START)
+                    .build();
+            when(journal.toRecord(entry)).thenReturn(Optional.of(record));
+            entries.add(entry);
+        }
+        when(journal.read("acme", "proj", runId)).thenReturn(entries);
+    }
+
     private void stubDetail(String runId) {
-        when(projector.project("acme", "proj", runId))
-                .thenReturn(Optional.of(run(runId, MagratheaRunStatus.RUNNING)));
+        when(projector.project("acme", "proj", runId)).thenReturn(Optional.of(run(runId, MagratheaRunStatus.RUNNING)));
         when(journal.listRunIds(eq("acme"), eq("proj"), anyInt())).thenReturn(List.of(runId));
     }
 

@@ -12,13 +12,14 @@ import { VAlert, VButton, VCard, VIcon } from '@/components';
 import type { RunDetailDto } from '@vance/generated';
 import RunStatusBadge from './RunStatusBadge.vue';
 import RunExtraBlock from './RunExtraBlock.vue';
+import { formatDuration, formatStepTime } from './stepFormat';
 
 const props = defineProps<{ detail: RunDetailDto; projectId: string; acting?: boolean }>();
 const emit = defineEmits<{
   (e: 'open-run', runId: string): void;
   (e: 'action', action: string): void;
 }>();
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 const variables = computed(() => Object.entries(props.detail.variables ?? {}));
 
@@ -96,7 +97,14 @@ function render(value: unknown): string {
           <span class="step-name">{{ step.name }}</span>
           <span v-if="step.kind" class="step-kind">{{ step.kind }}</span>
           <span v-if="step.outcome" class="step-outcome">{{ step.outcome }}</span>
+          <span v-if="step.at" class="step-time">{{ formatStepTime(step.at, locale) }}</span>
+          <span v-if="step.durationMs != null" class="step-time">{{ formatDuration(step.durationMs) }}</span>
           <span v-if="step.detail" class="step-detail">{{ step.detail }}</span>
+          <details v-if="step.output" class="step-output">
+            <summary>{{ t('runs.detail.stepOutput') }}</summary>
+            <pre>{{ step.output }}</pre>
+            <p v-if="step.outputTruncated" class="step-truncated">{{ t('runs.detail.outputTruncated') }}</p>
+          </details>
         </li>
       </ol>
     </VCard>
@@ -151,6 +159,14 @@ h2 { margin: 0; font-size: 1.05rem; }
 .step--other .step-outcome { color: var(--color-warning); }
 .step--current .step-name::after { content: ' …'; opacity: 0.6; }
 .step-detail { font-size: 0.75rem; opacity: 0.7; flex-basis: 100%; }
+.step-time { font-size: 0.72rem; opacity: 0.55; font-variant-numeric: tabular-nums; }
+.step-output { flex-basis: 100%; font-size: 0.75rem; }
+.step-output summary { cursor: pointer; opacity: 0.7; }
+.step-output pre {
+  margin: 0.25rem 0 0; max-height: 18rem; overflow: auto; white-space: pre-wrap;
+  word-break: break-word; font-family: ui-monospace, monospace;
+}
+.step-truncated { margin: 0.2rem 0 0; opacity: 0.55; }
 .vars { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 0.2rem 0.75rem; }
 .vars dt { font-size: 0.72rem; font-family: ui-monospace, monospace; opacity: 0.7; }
 .vars dd { margin: 0; min-width: 0; }

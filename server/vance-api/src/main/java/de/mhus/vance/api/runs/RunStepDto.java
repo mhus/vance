@@ -33,4 +33,21 @@ public class RunStepDto {
 
     /** Free-text detail: error message, recipe, command. */
     private @Nullable String detail;
+
+    /**
+     * How long the step's work took, in milliseconds. {@code null} while the
+     * step is still running, and for sources that do not measure it.
+     */
+    private @Nullable Long durationMs;
+
+    /**
+     * What the step produced, as readable text (pretty-printed JSON for a
+     * structured result). {@code null} when the step has produced nothing yet
+     * or nothing worth showing. Cut at a fixed length — see
+     * {@link #outputTruncated}.
+     */
+    private @Nullable String output;
+
+    /** {@code true} when {@link #output} is only the beginning of what the step produced. */
+    private boolean outputTruncated;
 }

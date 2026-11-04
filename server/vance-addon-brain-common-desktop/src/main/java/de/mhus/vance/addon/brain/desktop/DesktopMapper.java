@@ -15,16 +15,16 @@ import org.jspecify.annotations.Nullable;
  */
 final class DesktopMapper {
 
-    private DesktopMapper() { }
+    private DesktopMapper() {}
 
     static DesktopStatusView toView(AppStatus status) {
         List<DesktopMetric> metrics = new ArrayList<>();
-        for (StatusMetric m : status.metrics()) {
-            metrics.add(DesktopMetric.builder()
-                    .label(m.label()).value(m.value()).build());
+        for (StatusMetric m : orEmpty(status.metrics())) {
+            metrics.add(
+                    DesktopMetric.builder().label(m.label()).value(m.value()).build());
         }
         List<DesktopItem> items = new ArrayList<>();
-        for (StatusItem it : status.items()) {
+        for (StatusItem it : orEmpty(status.items())) {
             items.add(DesktopItem.builder()
                     .title(it.title())
                     .subtitle(it.subtitle())
@@ -34,7 +34,8 @@ final class DesktopMapper {
         }
         return DesktopStatusView.builder()
                 .headline(status.headline())
-                .severity(status.severity().wireName())
+                // An app that reports no severity has nothing to flag: that reads as OK.
+                .severity(status.severity() != null ? status.severity().wireName() : StatusSeverity.OK.wireName())
                 .metrics(metrics)
                 .items(items)
                 .updatedAt(status.updatedAt() != null ? status.updatedAt().toString() : null)
@@ -49,6 +50,10 @@ final class DesktopMapper {
                 .metrics(new ArrayList<>())
                 .items(new ArrayList<>())
                 .build();
+    }
+
+    private static <T> List<T> orEmpty(@Nullable List<T> list) {
+        return list != null ? list : List.of();
     }
 
     private static @Nullable String wire(@Nullable StatusSeverity s) {

@@ -1,6 +1,7 @@
 package de.mhus.vance.shared.storage;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -17,6 +18,8 @@ import org.bson.types.ObjectId;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.data.mongodb.core.MongoTemplate;
 
 /**
@@ -46,15 +49,20 @@ class MongoStorageServiceQuotaTest {
         // the hook's contract with MongoStorageService.
         quotaService = mock(StorageQuotaService.class);
 
-        service = new MongoStorageService(storageDataRepository, storageDeleteRepository, mongoTemplate, quotaService);
+        service = new MongoStorageService(
+                storageDataRepository, storageDeleteRepository, mongoTemplate, providerOf(quotaService));
         // chunkSize is @Value-injected in production (default 512 KB).
         // Without Spring the field stays at its int default of 0, which
         // makes ChunkedOutputStream loop forever. Set it via reflection
         // to a small value that comfortably fits every test payload.
+        setChunkSize(service);
+    }
+
+    private static void setChunkSize(MongoStorageService target) {
         try {
             java.lang.reflect.Field f = MongoStorageService.class.getDeclaredField("chunkSize");
             f.setAccessible(true);
-            f.setInt(service, 1024);
+            f.setInt(target, 1024);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -205,5 +213,24 @@ class MongoStorageServiceQuotaTest {
         verify(quotaService).check(eq("acme"), eq(-1L), eq(50_000L));
         verify(storageDataRepository).delete(oldFinal);
         verify(quotaService).invalidateUsage("acme");
+    }
+
+    private static ObjectProvider<StorageQuotaService> providerOf(
+            @org.jspecify.annotations.Nullable StorageQuotaService quota) {
+        DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
+        if (quota != null) {
+            beanFactory.registerSingleton("quota", quota);
+        }
+        return beanFactory.getBeanProvider(StorageQuotaService.class);
+    }
+
+    @Test
+    void withoutQuotaService_writesAreNotLimited() {
+        MongoStorageService unlimited = new MongoStorageService(
+                storageDataRepository, storageDeleteRepository, mongoTemplate, providerOf(null));
+        setChunkSize(unlimited);
+
+        assertThatCode(() -> unlimited.store("t", "p", new java.io.ByteArrayInputStream(new byte[16]), 16L))
+                .doesNotThrowAnyException();
     }
 }

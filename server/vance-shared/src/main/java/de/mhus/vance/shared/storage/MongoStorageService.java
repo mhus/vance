@@ -13,6 +13,7 @@ import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.IncorrectResultSizeDataAccessException;
 import org.springframework.data.mongodb.core.MongoTemplate;
@@ -40,7 +41,12 @@ public class MongoStorageService extends StorageService {
     private final StorageDataRepository storageDataRepository;
     private final StorageDeleteRepository storageDeleteRepository;
     private final MongoTemplate mongoTemplate;
-    private final StorageQuotaService storageQuotaService;
+    /**
+     * Optional: only apps that carry tenants and the settings stack register a
+     * {@link StorageQuotaService}. Without one — the kit store — writes are not
+     * limited.
+     */
+    private final ObjectProvider<StorageQuotaService> quotaProvider;
 
     @Value("${vance.storage.chunk-size:524288}")
     private int chunkSize;
@@ -89,12 +95,23 @@ public class MongoStorageService extends StorageService {
         }
         log.debug("Stored blob: storageId={} tenant={} path={} size={}", storageId, tenantId, path, totalSize);
         // The next pre-check on this pod must see the new size.
-        storageQuotaService.invalidateUsage(tenantId);
+        invalidateQuotaUsage(tenantId);
         return new StorageInfo(storageId, totalSize, createdAt, tenantId, path);
     }
 
+    private void invalidateQuotaUsage(String tenantId) {
+        StorageQuotaService quota = quotaProvider.getIfAvailable();
+        if (quota != null) {
+            quota.invalidateUsage(tenantId);
+        }
+    }
+
     private StorageQuotaService.Check requireQuota(String tenantId, long expectedBytes, long oldSizeBytes) {
-        StorageQuotaService.Check check = storageQuotaService.check(tenantId, expectedBytes, oldSizeBytes);
+        StorageQuotaService quota = quotaProvider.getIfAvailable();
+        if (quota == null) {
+            return StorageQuotaService.Check.allowed(0L, 0L, "no-quota-service");
+        }
+        StorageQuotaService.Check check = quota.check(tenantId, expectedBytes, oldSizeBytes);
         if (!check.allowed()) {
             throw new StorageQuotaExceededException(
                     tenantId, check.currentUsageBytes(), expectedBytes > 0 ? expectedBytes : 0L, check.limitBytes());
@@ -210,7 +227,7 @@ public class MongoStorageService extends StorageService {
         toDrop.forEach(storageDataRepository::delete);
 
         StorageInfo info = store(uuid, tenant, path == null ? "" : path, stream);
-        storageQuotaService.invalidateUsage(tenant);
+        invalidateQuotaUsage(tenant);
         return info;
     }
 

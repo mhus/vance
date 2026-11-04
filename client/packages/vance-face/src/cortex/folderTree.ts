@@ -29,6 +29,9 @@ export interface TreeInput {
   virtualFolders: ReadonlySet<string>;
 }
 
+/** File name of an application manifest — what makes a folder a package. */
+const APP_MANIFEST = '_app.yaml';
+
 /** The folder a path lives in — `''` for a document at the project root. */
 export function parentFolderOf(path: string): string {
   const slash = path.lastIndexOf('/');
@@ -102,12 +105,18 @@ export function buildFolderTree(input: TreeInput): FolderNode {
     const children = [...(childPaths.get(path) ?? [])]
       .sort((a, b) => leafNameOf(a).localeCompare(leafNameOf(b)))
       .map(build);
-    const nodeFiles = [...(byFolder.get(path) ?? [])]
+    const declared = folderStates.get(parentFolderOf(path))?.packages[leafNameOf(path)] ?? null;
+    const rows = [...(byFolder.get(path) ?? [])]
       .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
+    // A package's manifest is the package: the row above opens it, and the app
+    // has its own raw-YAML mode. Listing it again as a file would show the
+    // same thing twice.
+    const manifest = declared ? rows.find((f) => f.name === APP_MANIFEST) : undefined;
+    const nodeFiles = manifest ? rows.filter((f) => f !== manifest) : rows;
     return {
       path,
       name: leafNameOf(path),
-      package: folderStates.get(parentFolderOf(path))?.packages[leafNameOf(path)] ?? null,
+      package: declared ? { ...declared, manifestId: manifest?.id ?? null } : null,
       children,
       files: nodeFiles,
       loaded: state?.loaded ?? false,

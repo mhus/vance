@@ -133,7 +133,10 @@ function onFolderDrop(ev: DragEvent): void {
     -->
     <div
       v-if="node.path !== '' && node.package"
-      class="tree-row w-full px-2 py-1 rounded flex items-center gap-1.5"
+      :class="[
+        'tree-row w-full px-2 py-1 rounded flex items-center gap-1.5',
+        node.package.manifestId && node.package.manifestId === activeFileId ? 'tree-row-active' : '',
+      ]"
       :style="indentStyle(0)"
       :data-folder-path="node.path"
       :data-package="node.package.app ?? 'app'"

@@ -94,10 +94,29 @@ describe('buildFolderTree', () => {
     const apps = build(states).children.find((c) => c.path === 'apps')!;
 
     const byName = Object.fromEntries(apps.children.map((c) => [c.name, c.package]));
-    expect(byName).toEqual({ kanban1: { app: 'kanban' }, misc: null });
+    expect(byName).toEqual({ kanban1: { app: 'kanban', manifestId: null }, misc: null });
     expect(apps.children.find((c) => c.name === 'kanban1')!.loaded).toBe(false);
     // A plain folder next to it, and a folder of the root, stay plain.
     expect(build(states).children.find((c) => c.path === 'notes')!.package).toBeNull();
+  });
+
+  it('does not list a package\'s manifest as a file, but keeps its id on the package', () => {
+    const states = new Map([
+      ['', state({ folders: ['kanban1', 'plain'], packages: { kanban1: { app: 'kanban' } } })],
+      ['kanban1', state({ totalFiles: 2, loadedFiles: 2 })],
+      ['plain', state({ totalFiles: 1, loadedFiles: 1 })],
+    ]);
+
+    const root = build(states, [
+      doc('kanban1/_app.yaml'), doc('kanban1/notes.md'), doc('plain/_app.yaml'),
+    ]);
+
+    const kanban = root.children.find((c) => c.name === 'kanban1')!;
+    expect(kanban.files.map((f) => f.name)).toEqual(['notes.md']);
+    expect(kanban.package).toEqual({ app: 'kanban', manifestId: 'id:kanban1/_app.yaml' });
+    // Not declared a package → an _app.yaml there stays an ordinary file.
+    expect(root.children.find((c) => c.name === 'plain')!.files.map((f) => f.name))
+      .toEqual(['_app.yaml']);
   });
 
   it('places files in the folder they belong to, by their own path', () => {

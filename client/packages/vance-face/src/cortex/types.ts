@@ -139,6 +139,12 @@ export interface AgeTabState {
 export interface FolderPackage {
   /** The application type ({@code kanban}, {@code wiki}, …) or {@code null}. */
   app: string | null;
+  /**
+   * The manifest document's id, once the folder's rows are loaded. The
+   * manifest is the package itself, so the tree does not list it as a file;
+   * this is how the package row knows when its own app is the active tab.
+   */
+  manifestId?: string | null;
 }
 
 export interface FolderNode {

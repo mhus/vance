@@ -39,6 +39,8 @@ import type { DocumentFoldersResponse, DocumentSummary, MountDto } from '@vance/
 import { MountSearchOutcome } from '@vance/generated';
 import DocumentIcon from './DocumentIcon.vue';
 import { navigateTo, pushUrl } from '@/platform/navigate';
+import { packageIcon } from '@/util/packageIcon';
+import { resolveDocumentIdByPath } from '@/cortex/resolveDocumentPath';
 import { getActiveUiLevel } from '@/platform';
 import { recallProject, rememberProject } from '@/platform/lastProject';
 import { isHiddenFolder } from '@/util/hiddenFolders';
@@ -190,6 +192,34 @@ function navigateIntoFolder(folder: string): void {
   const next = base ? `${base}/${folder}/` : `${folder}/`;
   void docsState.loadPage(selectedProjectId.value, 0, next);
   syncUrl();
+}
+
+/**
+ * A subfolder that is a package (it holds an app manifest). Opened like a
+ * document, not browsed — the way a bundle behaves in a file manager.
+ */
+function packageOf(folder: string): { kind: string | null; app: string | null } | null {
+  return docsState.subFolderPackages.value[folder] ?? null;
+}
+
+/**
+ * A click on a subfolder row. A plain click on a package opens its app in the
+ * Cortex; Cmd/Alt (or any plain folder) steps into the folder instead.
+ */
+async function onFolderClick(folder: string, ev: MouseEvent): Promise<void> {
+  const pid = selectedProjectId.value;
+  if (!pid || !packageOf(folder) || ev.metaKey || ev.altKey) {
+    navigateIntoFolder(folder);
+    return;
+  }
+  try {
+    const id = await resolveDocumentIdByPath(pid, `${folderPrefixOf(folder)}_app.yaml`);
+    if (id) openInNotepad(id);
+    else navigateIntoFolder(folder);
+  } catch {
+    // Not answerable right now — browsing the folder is the safe fallback.
+    navigateIntoFolder(folder);
+  }
 }
 
 function openInNotepad(docId: string): void {
@@ -1184,7 +1214,8 @@ function confirmNewFolder(): void {
               :key="`f:${folder}`"
               class="doc-row"
               :class="{ 'doc-row-selected': isFolderSelected(folder) }"
-              @click="navigateIntoFolder(folder)"
+              :title="packageOf(folder) ? $t('documents.openAppTitle') : undefined"
+              @click="onFolderClick(folder, $event)"
             >
               <td class="pl-4 pr-1 py-1.5" @click.stop>
                 <VCheckbox
@@ -1192,9 +1223,11 @@ function confirmNewFolder(): void {
                   @update:model-value="toggleFolder(folder)"
                 />
               </td>
-              <td class="px-2 py-1.5"><VIcon name="folder" class="doc-row-icon" /></td>
+              <td class="px-2 py-1.5">
+                <VIcon :name="packageOf(folder) ? packageIcon(packageOf(folder)?.app) : 'folder'" class="doc-row-icon" />
+              </td>
               <td class="px-2 py-1.5 font-medium">{{ folder }}</td>
-              <td class="px-2 py-1.5 doc-meta">{{ $t('explorer.folder') }}</td>
+              <td class="px-2 py-1.5 doc-meta">{{ packageOf(folder) ? (packageOf(folder)?.kind ?? 'application') : $t('explorer.folder') }}</td>
               <td class="px-2 py-1.5"></td>
               <td class="px-2 py-1.5"></td>
               <td class="px-2 py-1.5"></td>

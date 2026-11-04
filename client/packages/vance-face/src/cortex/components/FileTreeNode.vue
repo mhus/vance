@@ -3,7 +3,7 @@ import { computed, inject, type Ref } from 'vue';
 import { VIcon, VIconButton, accentColorDotClass } from '@/components';
 import DocumentIcon from '@/document/DocumentIcon.vue';
 import type { FolderNode } from '../types';
-import { packageIcon } from '../packageIcon';
+import { packageIcon } from '@/util/packageIcon';
 
 interface Props {
   node: FolderNode;

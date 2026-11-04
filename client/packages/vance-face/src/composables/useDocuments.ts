@@ -64,6 +64,12 @@ export interface UploadOptions {
   mimeType?: string;
 }
 
+/** What the listing says about a package subfolder. */
+export interface FolderPackageInfo {
+  kind: string | null;
+  app: string | null;
+}
+
 /**
  * Reactive wrapper around the document REST endpoints. One instance per
  * editor — keeps current page state and exposes `loadPage` / `loadOne` /
@@ -79,6 +85,8 @@ export function useDocuments(pageSize = 20): {
   error: Ref<string | null>;
   folders: Ref<string[]>;
   subFolders: Ref<string[]>;
+  /** Which of {@link subFolders} are packages (hold an app manifest), by folder name. */
+  subFolderPackages: Ref<Record<string, FolderPackageInfo>>;
   mountSearch: Ref<MountSearchOutcome | null>;
   /**
    * Why this mounted folder's contents are not what the source holds — a
@@ -140,6 +148,7 @@ export function useDocuments(pageSize = 20): {
    *  by every {@link loadPage} call so the UI can render the folder
    *  tree alongside the file list. Alphabetically sorted server-side. */
   const subFolders = ref<string[]>([]);
+  const subFolderPackages = ref<Record<string, FolderPackageInfo>>({});
   /** Outcome of a search inside a mounted folder — see {@link loadPage}.
    *  `null` on every ordinary listing. */
   const mountSearch = ref<MountSearchOutcome | null>(null);
@@ -200,6 +209,9 @@ export function useDocuments(pageSize = 20): {
       );
       items.value = data.files ?? [];
       subFolders.value = data.folders ?? [];
+      subFolderPackages.value = Object.fromEntries(
+        (data.packages ?? []).map((pkg) => [pkg.name, { kind: pkg.kind ?? null, app: pkg.app ?? null }]),
+      );
       page.value = data.page;
       pageSizeRef.value = data.pageSize;
       totalCount.value = data.totalCount;
@@ -679,6 +691,7 @@ export function useDocuments(pageSize = 20): {
     error,
     folders,
     subFolders,
+    subFolderPackages,
     mountSearch,
     mountFailure,
     foldersTruncated,

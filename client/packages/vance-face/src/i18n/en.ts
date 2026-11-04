@@ -1222,6 +1222,7 @@ export default {
     addNew: 'New document',
     openCortex: 'Cortex',
     openCortexTitle: 'Open this project in the Cortex editor',
+    openAppTitle: 'Open app — Cmd/Alt-click shows its contents',
     dropHint: 'Drop files here to upload',
     newFolder: 'New folder',
     newFolderDialog: {

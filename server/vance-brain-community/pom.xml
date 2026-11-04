@@ -139,12 +139,14 @@
             <version>${project.version}</version>
             <scope>runtime</scope>
         </dependency>
+        <!-- Store addon is off by default until the store switch-over is done.
         <dependency>
             <groupId>de.mhus.vance</groupId>
             <artifactId>vance-addon-brain-store</artifactId>
             <version>${project.version}</version>
             <scope>runtime</scope>
         </dependency>
+        -->
         <dependency>
             <groupId>de.mhus.vance</groupId>
             <artifactId>vance-addon-brain-bistromath</artifactId>

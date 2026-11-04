@@ -322,7 +322,7 @@ function openFook(): void {
         </div>
         <ul
           tabindex="0"
-          class="dropdown-content menu v-menu z-[1] mt-2 w-56 p-1"
+          class="dropdown-content menu v-menu z-30 mt-2 w-56 p-1"
         >
           <!-- Collapsed by default: the full locale list is too long to
                sit open above every other entry. -->

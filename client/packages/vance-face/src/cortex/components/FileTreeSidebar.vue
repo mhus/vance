@@ -134,16 +134,19 @@ watch(
 
 <template>
   <div ref="sidebarEl" class="p-2 text-sm">
+    <!-- Tooltips open to the left: these buttons sit at the right edge of a
+         narrow, clipping sidebar, so a centred or right-hand tooltip is cut off. -->
     <div class="mb-2 px-1 flex items-center gap-1">
       <span class="font-semibold opacity-80 flex-1">{{ $t('cortex.tree.documents') }}</span>
       <VIconButton
         icon="location"
         size="sm"
+        tooltip="left"
         :label="$t('cortex.tree.reveal')"
         :disabled="!activeFileId"
         @click="revealActiveFile"
       />
-      <VIconButton icon="refresh" size="sm" :label="$t('cortex.tree.reload')" @click="emit('reload')" />
+      <VIconButton icon="refresh" size="sm" tooltip="left" :label="$t('cortex.tree.reload')" @click="emit('reload')" />
     </div>
     <FileTreeNode
       :node="root"

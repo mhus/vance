@@ -33,6 +33,17 @@ withDefaults(defineProps<Props>(), {
 });
 
 defineEmits<{ (e: 'click', event: MouseEvent): void }>();
+
+// Spelled out on purpose: Tailwind finds a class only as literal text in the
+// source. `tooltip-${direction}` never appears in it, so the direction class was
+// never generated and every tooltip fell back to DaisyUI's default (above the
+// button) — where a bar at the top of the page hides it.
+const TOOLTIP_CLASS = {
+  bottom: 'tooltip-bottom',
+  top: 'tooltip-top',
+  left: 'tooltip-left',
+  right: 'tooltip-right',
+} as const;
 </script>
 
 <template>
@@ -44,7 +55,7 @@ defineEmits<{ (e: 'click', event: MouseEvent): void }>();
     :disabled="disabled || loading"
     :class="[
       'v-icon-btn tooltip',
-      `tooltip-${tooltip}`,
+      TOOLTIP_CLASS[tooltip],
       size === 'sm' ? 'v-icon-btn-sm' : '',
       { 'v-icon-btn-active': active, 'v-icon-btn-danger': danger },
     ]"

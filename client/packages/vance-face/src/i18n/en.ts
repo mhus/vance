@@ -487,6 +487,7 @@ export default {
       delete: 'Delete',
       empty: 'empty',
       openApp: 'Open app — Alt-click shows its contents',
+      closePackage: 'Hide contents',
     },
     renameDocument: {
       failed: 'Rename failed',

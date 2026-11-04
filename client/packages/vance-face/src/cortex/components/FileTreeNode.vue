@@ -138,29 +138,44 @@ function onFolderDrop(ev: DragEvent): void {
       the way a bundle in a file manager shows its contents on request. No
       chevron while it is closed, so it does not look like something to browse.
     -->
-    <button
+    <div
       v-if="node.path !== '' && node.package"
-      type="button"
       :class="[
-        'tree-row w-full text-left py-1 pr-2 rounded flex items-center gap-1.5',
+        'tree-row w-full py-1 pr-2 rounded flex items-center gap-1.5',
         node.package.manifestId && node.package.manifestId === activeFileId ? 'tree-row-active' : '',
       ]"
       :style="{ paddingLeft: `${depth * 12 + 4}px` }"
       :data-folder-path="node.path"
       :data-package="node.package.app ?? 'app'"
-      :title="$t('cortex.tree.openApp')"
-      @click="onPackageClick"
     >
-      <VIcon :name="packageIcon(node.package.app)" class="tree-icon" />
-      <span class="truncate">{{ node.name }}</span>
-      <VIcon v-if="node.loading" name="loading" class="tree-icon animate-spin" :aria-label="$t('cortex.tree.loading')" />
-      <span
-        v-else-if="node.error"
-        class="tree-error"
-        :title="node.error"
-      ><VIcon name="warning" /></span>
-      <VIcon v-else-if="isOpen(node.path)" name="expand" class="tree-chevron ml-auto" />
-    </button>
+      <button
+        type="button"
+        class="flex-1 min-w-0 text-left flex items-center gap-1.5"
+        :title="$t('cortex.tree.openApp')"
+        @click="onPackageClick"
+      >
+        <VIcon :name="packageIcon(node.package.app)" class="tree-icon" />
+        <span class="truncate">{{ node.name }}</span>
+        <VIcon v-if="node.loading" name="loading" class="tree-icon animate-spin" :aria-label="$t('cortex.tree.loading')" />
+        <span
+          v-else-if="node.error"
+          class="tree-error"
+          :title="node.error"
+        ><VIcon name="warning" /></span>
+      </button>
+      <!-- Its own button, not a child of the one above: a click here closes
+           the package and must not reach the open-the-app handler. -->
+      <button
+        v-if="isOpen(node.path)"
+        type="button"
+        class="tree-chevron-button flex items-center"
+        :aria-label="$t('cortex.tree.closePackage')"
+        :title="$t('cortex.tree.closePackage')"
+        @click.stop="emit('toggle', node.path)"
+      >
+        <VIcon name="expand" class="tree-chevron" />
+      </button>
+    </div>
     <button
       v-else-if="node.path !== ''"
       type="button"

@@ -29,6 +29,13 @@ let router: Router | null = null;
 /** Paths the shell serves as routes. Anything else is a real page load. */
 const CLUSTER_PREFIXES = ['/cortex', '/chat', '/inbox', '/documents'];
 
+/**
+ * Fired on `window` after {@link navigateTo} moved to a new query on the route
+ * that is already showing. Editors that keep their state in the URL listen for
+ * it; their own URL writes ({@link pushUrl}/{@link replaceUrl}) never fire it.
+ */
+export const IN_PLACE_NAVIGATION_EVENT = 'vance:navigated-in-place';
+
 /** Called once by the shell's boot. Never called by a standalone entry. */
 export function bindRouter(r: Router): void {
   router = r;
@@ -54,7 +61,14 @@ function isClusterHref(href: string): boolean {
  */
 export function navigateTo(href: string, options?: { replace?: boolean }): void {
   if (router && isClusterHref(href)) {
-    void (options?.replace ? router.replace(href) : router.push(href));
+    const samePath = router.currentRoute.value.path === href.split(/[?#]/)[0];
+    const navigation = options?.replace ? router.replace(href) : router.push(href);
+    // Same path means the route component stays mounted, so nothing re-reads
+    // the new query on its own. Tell it — the editor decides what the query
+    // means (Cortex opens `?doc=` as a tab).
+    void navigation.then(() => {
+      if (samePath) window.dispatchEvent(new CustomEvent(IN_PLACE_NAVIGATION_EVENT));
+    });
     return;
   }
   if (options?.replace) window.location.replace(href);

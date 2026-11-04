@@ -94,7 +94,12 @@ import {
   type CortexMenuItem,
 } from '@/platform/cortexMenu';
 import { registerTranslateMenuItems } from './translateMenu';
-import { navigateTo, pushUrl, replaceUrl } from '@/platform/navigate';
+import {
+  IN_PLACE_NAVIGATION_EVENT,
+  navigateTo,
+  pushUrl,
+  replaceUrl,
+} from '@/platform/navigate';
 import { recallProject, rememberProject } from '@/platform/lastProject';
 
 // How the chat binds to a Cortex document for per-turn LLM context.
@@ -422,7 +427,13 @@ const showOpenDocument = ref(false);
 // rebuild would echo the restored state straight back to the server.
 const restoring = ref(false);
 
-onMounted(async () => {
+// True from setup until the boot sequence (project resolve, tree load,
+// restoreView) has finished, but only when the URL declares tabs to open.
+// Closes the gap before `restoring` flips on, where the editor would
+// otherwise flash "No document open" for a document that is on its way.
+const booting = ref(readCortexView().open.length > 0);
+
+async function bootCortex(): Promise<void> {
   // One request for the whole session: the star state of every tab is a local
   // lookup afterwards. `all` because a hidden entry is still starred.
   void starred.load(true);
@@ -457,6 +468,14 @@ onMounted(async () => {
     } else {
       navigateTo('/documents', { replace: true });
     }
+  }
+}
+
+onMounted(async () => {
+  try {
+    await bootCortex();
+  } finally {
+    booting.value = false;
   }
 });
 
@@ -1824,7 +1843,45 @@ function onKeyDown(e: KeyboardEvent): void {
   }
 }
 
+/**
+ * A deep link (`/cortex?project=…&doc=…`, e.g. the "Open" button of an app
+ * overview) arrived while Cortex is already showing. Unlike back/forward this
+ * is additive: the linked documents open as tabs next to the ones already
+ * open, and the URL is then rewritten to the full state again.
+ */
+async function onInPlaceNavigation(): Promise<void> {
+  const params = new URLSearchParams(window.location.search);
+  const pid = params.get('project') ?? params.get('projectId');
+  if (pid && pid !== projectId.value) {
+    // Another project: every store and binding belongs to the old one.
+    window.location.reload();
+    return;
+  }
+  const view = readCortexView();
+  if (view.open.length === 0) return;
+  restoring.value = true;
+  try {
+    focusZone.value = 'main';
+    appEntries.value = { ...appEntries.value, ...view.entries };
+    for (const id of view.open) {
+      try {
+        await store.openFile(id, view.queries[id]);
+      } catch {
+        // Document gone or unreadable — skip silently.
+      }
+    }
+    if (view.doc && store.openTabs.some((t) => t.id === view.doc)) {
+      store.setActiveTab(view.doc);
+    }
+    lastActiveDoc = store.activeTabId ?? null;
+    syncUrl('replace');
+  } finally {
+    restoring.value = false;
+  }
+}
+
 onMounted(() => {
+  window.addEventListener(IN_PLACE_NAVIGATION_EVENT, onInPlaceNavigation);
   window.addEventListener('beforeunload', onBeforeUnload);
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('popstate', onPopState);
@@ -1834,6 +1891,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  window.removeEventListener(IN_PLACE_NAVIGATION_EVENT, onInPlaceNavigation);
   window.removeEventListener('beforeunload', onBeforeUnload);
   window.removeEventListener('keydown', onKeyDown);
   window.removeEventListener('popstate', onPopState);
@@ -2387,7 +2445,7 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
         v-if="!isAppTab"
         :tabs="store.openTabs"
         :active-tab-id="store.activeTabId"
-        :opening="store.opening || restoring"
+        :opening="store.opening || restoring || booting"
         @select="store.setActiveTab"
         @close="requestCloseTab"
       />
@@ -2397,7 +2455,7 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
 
       <div v-if="!activeTab" class="flex-1 flex items-center justify-center">
         <VEmptyState
-          v-if="store.opening || restoring"
+          v-if="store.opening || restoring || booting"
           :headline="$t('cortex.menu.openingDocumentHeadline')"
         >
           <template #icon>

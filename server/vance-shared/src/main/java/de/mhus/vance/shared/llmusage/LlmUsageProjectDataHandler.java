@@ -15,13 +15,19 @@ import org.springframework.stereotype.Component;
 /**
  * Token spend — the per-call records and the daily rollups built from them.
  *
- * <p><b>A deliberate trade on delete.</b> These rows are accounting, and
- * deleting them lowers what the tenant's spend history reports for months that
- * are already closed. They go anyway, because the alternative is worse in the
- * direction that matters: a project quota is keyed on the project name, so
- * records left behind are inherited by the next project created under that name
- * and count against a budget that never spent them. History that is missing is
- * visible; a quota silently consumed by a predecessor is not.
+ * <p><b>Delete re-attributes, it does not remove.</b> These rows are
+ * accounting, and the tenant budget is measured against the sum of every row of
+ * the tenant. Deleting a project's rows would hand its spend back to the tenant
+ * ceiling — create, spend, delete, repeat. Yet the rows must not stay under the
+ * project name either: a project quota is keyed on that name, so a project
+ * created later under the same name would inherit a predecessor's spend. The
+ * rows therefore move to the tenant level ({@link LlmUsageDailyDocument#NONE}
+ * for the rollup, {@code null} for the per-call rows): the tenant keeps what it
+ * spent, the name is free.
+ *
+ * <p>The rollup's {@code _id} hashes the project, so moving means adding the
+ * counters onto the tenant-level row of the same key (created if absent) and
+ * then removing the old one — see {@link #mergeIntoTenantLevel}.
  *
  * <p><b>Why rename cannot be an {@code updateMulti}.</b> The daily rollup's
  * {@code _id} <em>is</em> its key: a hash over tenant, day, project, caller,
@@ -62,18 +68,71 @@ public class LlmUsageProjectDataHandler implements ProjectDataHandler {
 
     @Override
     public long delete(String tenantId, String projectId) {
-        return mongoTemplate.remove(scope(tenantId, projectId), LlmUsageDocument.class)
-                        .getDeletedCount()
-                + mongoTemplate.remove(scope(tenantId, projectId), LlmUsageDailyDocument.class)
-                        .getDeletedCount();
+        long moved = mongoTemplate
+                .updateMulti(scope(tenantId, projectId), new Update().set("projectId", null), LlmUsageDocument.class)
+                .getModifiedCount();
+        for (LlmUsageDailyDocument row : dailyRows(tenantId, projectId)) {
+            mergeIntoTenantLevel(row);
+            moved++;
+        }
+        return moved;
+    }
+
+    /**
+     * Adds {@code row} onto the tenant-level rollup of the same key, then
+     * removes it. Target first: a crash in between double-counts one row, which
+     * errs towards the budget holding; the other order would lose it.
+     */
+    private void mergeIntoTenantLevel(LlmUsageDailyDocument row) {
+        String targetId = targetBucketId(row, LlmUsageDailyDocument.NONE);
+        Update update = new Update()
+                .setOnInsert("tenantId", row.getTenantId())
+                .setOnInsert("day", row.getDay())
+                .setOnInsert("projectId", LlmUsageDailyDocument.NONE)
+                .setOnInsert("caller", row.getCaller())
+                .setOnInsert("recipeName", row.getRecipeName())
+                .setOnInsert("providerModel", row.getProviderModel())
+                .setOnInsert("currency", row.getCurrency())
+                .setOnInsert("kind", row.getKind())
+                .inc("calls", row.getCalls())
+                .inc("tokensIn", row.getTokensIn())
+                .inc("tokensOut", row.getTokensOut())
+                .inc("cacheReadTokens", row.getCacheReadTokens())
+                .inc("implicitCacheReadTokens", row.getImplicitCacheReadTokens())
+                .inc("cacheWriteTokens", row.getCacheWriteTokens())
+                .inc("cacheWrite1hTokens", row.getCacheWrite1hTokens())
+                .inc("images", row.getImages())
+                .inc("costInputMicros", row.getCostInputMicros())
+                .inc("costOutputMicros", row.getCostOutputMicros())
+                .inc("costCacheReadMicros", row.getCostCacheReadMicros())
+                .inc("costCacheWriteMicros", row.getCostCacheWriteMicros())
+                .inc("costTotalMicros", row.getCostTotalMicros())
+                .inc("callsFailed", row.getCallsFailed())
+                .inc("tokensInFailed", row.getTokensInFailed())
+                .inc("tokensOutFailed", row.getTokensOutFailed())
+                .inc("costFailedMicros", row.getCostFailedMicros())
+                .inc("unpricedCalls", row.getUnpricedCalls())
+                .inc("unpricedTokensIn", row.getUnpricedTokensIn())
+                .inc("unpricedTokensOut", row.getUnpricedTokensOut())
+                .inc("unmeasuredCalls", row.getUnmeasuredCalls());
+        if (row.getFirstAt() != null) {
+            update.min("firstAt", row.getFirstAt());
+        }
+        if (row.getLastAt() != null) {
+            update.max("lastAt", row.getLastAt());
+        }
+        if (row.getExpiresAt() != null) {
+            update.setOnInsert("expiresAt", row.getExpiresAt());
+        }
+        mongoTemplate.upsert(new Query(Criteria.where("_id").is(targetId)), update, LlmUsageDailyDocument.class);
+        mongoTemplate.remove(new Query(Criteria.where("_id").is(row.getBucketId())), LlmUsageDailyDocument.class);
     }
 
     @Override
     public long rename(String tenantId, String projectId, String newProjectId) {
-        long changed = mongoTemplate.updateMulti(
-                        scope(tenantId, projectId),
-                        new Update().set("projectId", newProjectId),
-                        LlmUsageDocument.class)
+        long changed = mongoTemplate
+                .updateMulti(
+                        scope(tenantId, projectId), new Update().set("projectId", newProjectId), LlmUsageDocument.class)
                 .getModifiedCount();
         for (LlmUsageDailyDocument row : dailyRows(tenantId, projectId)) {
             String oldBucketId = row.getBucketId();
@@ -82,9 +141,7 @@ public class LlmUsageProjectDataHandler implements ProjectDataHandler {
             // New row first: a crash in between leaves a duplicate of one day,
             // which is visible and fixable. The other order loses the day.
             mongoTemplate.save(row);
-            mongoTemplate.remove(
-                    new Query(Criteria.where("_id").is(oldBucketId)),
-                    LlmUsageDailyDocument.class);
+            mongoTemplate.remove(new Query(Criteria.where("_id").is(oldBucketId)), LlmUsageDailyDocument.class);
             changed++;
         }
         return changed;
@@ -100,8 +157,7 @@ public class LlmUsageProjectDataHandler implements ProjectDataHandler {
      * Deleting the leftovers first is the answer, and it is the operator's.
      */
     @Override
-    public @Nullable String renameBlocker(
-            String tenantId, String projectId, String newProjectId) {
+    public @Nullable String renameBlocker(String tenantId, String projectId, String newProjectId) {
         for (LlmUsageDailyDocument row : dailyRows(tenantId, projectId)) {
             if (mongoTemplate.exists(
                     new Query(Criteria.where("_id").is(targetBucketId(row, newProjectId))),
@@ -115,8 +171,7 @@ public class LlmUsageProjectDataHandler implements ProjectDataHandler {
     }
 
     private List<LlmUsageDailyDocument> dailyRows(String tenantId, String projectId) {
-        return new ArrayList<>(
-                mongoTemplate.find(scope(tenantId, projectId), LlmUsageDailyDocument.class));
+        return new ArrayList<>(mongoTemplate.find(scope(tenantId, projectId), LlmUsageDailyDocument.class));
     }
 
     /**
@@ -137,7 +192,7 @@ public class LlmUsageProjectDataHandler implements ProjectDataHandler {
     }
 
     private Query scope(String tenantId, String projectId) {
-        return new Query(Criteria.where("tenantId").is(tenantId)
-                .and("projectId").is(projectId));
+        return new Query(
+                Criteria.where("tenantId").is(tenantId).and("projectId").is(projectId));
     }
 }

@@ -692,14 +692,13 @@ async function addNode(type: 'text' | 'doc' | 'link' | 'group' | 'stack'): Promi
     if (!pick) return;
     node = { id, type, x: p.x, y: p.y, w: 240, h: 72, href: pick.href, newTab: pick.newTab };
   } else if (type === 'stack') {
-    const v = await dialog.value?.open(t('canvas.board.stackDialogTitle'), [
-      { key: 'title', label: t('canvas.board.stackTitleHint'), value: me ?? '' },
-    ]);
-    if (!v) return;
-    // A fresh colour per stack, so several piles on one board stay apart.
+    // No dialog: the stack opens its title for typing, pre-filled with the
+    // creator's name and selected, so Enter keeps it and typing replaces it.
+    // A fresh colour per stack keeps several piles on one board apart.
     const used = new Set(nodes.value.filter((n) => n.type === 'stack').map((n) => n.color));
     const color = STACK_COLORS.find((c) => !used.has(c)) ?? STACK_COLORS[0];
-    node = { id, type, x: p.x, y: p.y, w: 220, h: 170, color, title: v.title.trim() || undefined };
+    node = { id, type, x: p.x, y: p.y, w: 200, h: 230, color, title: me };
+    autoEditId.value = id;
   } else {
     const fallback = t('canvas.board.newGroupLabel');
     const v = await dialog.value?.open(t('canvas.board.groupDialogTitle'), [

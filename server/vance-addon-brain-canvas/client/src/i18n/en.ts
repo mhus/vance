@@ -37,8 +37,6 @@ export default {
       newNote: 'New note',
       groupDialogTitle: 'Group',
       newGroupLabel: 'Group',
-      stackDialogTitle: 'Note stack',
-      stackTitleHint: 'Who or what is this stack for?',
     },
     node: {
       noColour: 'No colour',

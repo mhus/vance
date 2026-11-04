@@ -119,7 +119,7 @@ const groupBorder = computed(() =>
 // A sticky without a colour is yellow, so its ink is yellow's: softer than the
 // plain label colour, which read as black-on-yellow.
 const defaultText = computed(() => {
-  const c = node.value.color ?? (kind.value === 'text' || kind.value === 'stack' ? '3' : undefined);
+  const c = node.value.color ?? (kind.value === 'text' ? '3' : undefined);
   return c && PALETTE_FG[c] ? PALETTE_FG[c] : 'var(--v-label)';
 });
 
@@ -380,8 +380,18 @@ function cancel(): void {
 /** MIME type of a note taken off a stack; the editor's drop handler reads it. */
 const STACK_DRAG_TYPE = 'application/x-vance-canvas-stack';
 
+const stackColor = computed(() =>
+  node.value.color ? (PALETTE[node.value.color] ?? node.value.color) : 'var(--v-content-yellow-bg)',
+);
+
 function onTakeDragStart(ev: DragEvent): void {
   if (!ev.dataTransfer) return;
+  // The browser would drag a picture of the tiny fold; show a blank note instead.
+  const ghost = document.createElement('div');
+  ghost.style.cssText = `position:fixed;left:-1000px;top:0;width:110px;height:80px;border-radius:2px;background:${stackColor.value};box-shadow:0 6px 12px rgba(0,0,0,.25)`;
+  document.body.appendChild(ghost);
+  ev.dataTransfer.setDragImage(ghost, 55, 40);
+  setTimeout(() => ghost.remove(), 0);
   ev.dataTransfer.setData(STACK_DRAG_TYPE, node.value.id);
   ev.dataTransfer.effectAllowed = 'copy';
 }
@@ -426,7 +436,7 @@ function copyLink(): void {
         ? { background: groupBg, borderColor: groupBorder }
         : { background: bg },
       kind === 'text' ? { minHeight: (node.h || 80) + 'px' } : { height: '100%' },
-      kind === 'stack' && node.color ? { background: PALETTE[node.color] ?? node.color } : {},
+      kind === 'stack' ? { background: 'transparent', '--stack': stackColor } : {},
     ]"
     @dblclick.stop="onCardDoubleClick"
   >
@@ -631,26 +641,30 @@ function copyLink(): void {
         v-model="draft"
         rows="1"
         class="canvas-note-edit canvas-stack-title nodrag nowheel"
-        :style="{ color: defaultText }"
         @blur="commit"
         @keydown.enter.prevent="commit"
         @keydown.esc.prevent="cancel"
       ></textarea>
-      <div v-else class="canvas-stack-title" :style="{ color: defaultText }">
-        {{ node.title || t('canvas.node.stackUntitled') }}
+      <div v-else class="canvas-stack-title">{{ node.title || t('canvas.node.stackUntitled') }}</div>
+      <!-- A pad of notes: the lower sheets show as edges, the top sheet has its
+           bottom-right corner folded over. That corner is where a note is taken:
+           drag it onto the board (or click). nodrag/nopan keep VueFlow from
+           moving the stack instead. -->
+      <div class="canvas-stack-pad">
+        <div class="canvas-stack-sheet canvas-stack-sheet--2"></div>
+        <div class="canvas-stack-sheet canvas-stack-sheet--1"></div>
+        <div class="canvas-stack-sheet canvas-stack-sheet--top"></div>
+        <div
+          v-if="editable"
+          class="canvas-stack-fold nodrag nopan"
+          :title="t('canvas.node.stackTake')"
+          draggable="true"
+          @dragstart="onTakeDragStart"
+          @click.stop="props.data.onTake?.(node.id)"
+          @dblclick.stop
+        ></div>
+        <div v-else class="canvas-stack-fold canvas-stack-fold--static"></div>
       </div>
-      <!-- The top note of the pile: drag it onto the board (or click) to take a
-           fresh one. nodrag/nopan keep VueFlow from moving the stack instead. -->
-      <div
-        v-if="editable"
-        class="canvas-stack-pad nodrag nopan"
-        :style="{ background: node.color ? (PALETTE[node.color] ?? node.color) : 'var(--v-content-yellow-bg)' }"
-        :title="t('canvas.node.stackTake')"
-        draggable="true"
-        @dragstart="onTakeDragStart"
-        @click.stop="props.data.onTake?.(node.id)"
-        @dblclick.stop
-      ><VIcon name="add" /></div>
     </template>
   </div>
 </template>
@@ -686,8 +700,7 @@ function copyLink(): void {
 }
 /* Soft light-to-dark sweep over the colour; an overlay because the card's own
    background is set inline from the palette. */
-.canvas-node--text::before,
-.canvas-node--stack::before {
+.canvas-node--text::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -734,39 +747,74 @@ function copyLink(): void {
 }
 
 .canvas-node--stack {
-  border-radius: 2px;
-  padding: 14px 16px;
-  /* A pile: two offset sheets under the top one. */
-  box-shadow:
-    3px 3px 0 rgba(0, 0, 0, 0.1),
-    6px 6px 0 rgba(0, 0, 0, 0.06),
-    0 8px 14px -8px rgba(0, 0, 0, 0.22);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 .canvas-stack-title {
+  flex: none;
   width: calc(100% - 4px);
   font-weight: 700;
   font-size: 14px;
+  line-height: 1.3;
+  color: var(--v-label);
   word-break: break-word;
 }
+/* The pad: sheets are the same size, offset downward so the lower ones show as
+   edges. One drop-shadow on the whole pad follows its cut-corner outline. */
 .canvas-stack-pad {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  filter: drop-shadow(0 6px 7px rgba(0, 0, 0, 0.16));
+}
+.canvas-stack-sheet {
   position: absolute;
-  right: 10px;
-  bottom: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 56px;
-  height: 48px;
-  border-radius: 3px;
-  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.08), 0 5px 8px -4px rgba(0, 0, 0, 0.3);
-  color: var(--v-label-secondary);
+  background: var(--stack);
+}
+.canvas-stack-sheet--2 {
+  inset: 8px 4px 0 4px;
+  background: color-mix(in srgb, var(--stack) 82%, #000);
+}
+.canvas-stack-sheet--1 {
+  inset: 4px 2px 4px 2px;
+  background: color-mix(in srgb, var(--stack) 91%, #000);
+}
+.canvas-stack-sheet--top {
+  inset: 0 0 8px 0;
+  /* Bottom-right corner cut away; the fold below covers the gap. */
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 30px), calc(100% - 30px) 100%, 0 100%);
+  background: linear-gradient(165deg, color-mix(in srgb, var(--stack) 82%, #fff), var(--stack) 60%);
+}
+/* The folded flap and its grab area: the top sheet's corner, turned over. */
+.canvas-stack-fold {
+  position: absolute;
+  right: 0;
+  bottom: 8px;
+  width: 44px;
+  height: 44px;
   cursor: grab;
 }
-.canvas-stack-pad:hover {
-  transform: translateY(-1px) rotate(-2deg);
+.canvas-stack-fold::before {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 30px;
+  height: 30px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--stack) 70%, #fff) 50%, transparent 50%);
+  filter: drop-shadow(-2px -2px 2px rgba(0, 0, 0, 0.22));
+  transition: width 0.12s, height 0.12s;
 }
-.canvas-stack-pad:active {
+.canvas-stack-fold:hover::before {
+  width: 36px;
+  height: 36px;
+}
+.canvas-stack-fold:active {
   cursor: grabbing;
+}
+.canvas-stack-fold--static {
+  pointer-events: none;
 }
 
 .canvas-node--doc,

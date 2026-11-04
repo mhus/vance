@@ -35,6 +35,12 @@ function isOpen(path: string): boolean {
   return path === '' || props.expanded.has(path);
 }
 
+/** Plain click opens the app; Alt/Option or Cmd opens the folder instead. */
+function onPackageClick(ev: MouseEvent): void {
+  if (ev.altKey || ev.metaKey) emit('toggle', props.node.path);
+  else emit('open-package', props.node.path);
+}
+
 function indentStyle(extra: number): Record<string, string> {
   return { paddingLeft: `${(props.depth + extra) * 12}px` };
 }
@@ -127,45 +133,34 @@ function onFolderDrop(ev: DragEvent): void {
     @drop="onFolderDrop"
   >
     <!--
-      A package (a folder holding an app manifest) opens as a unit: the name
-      starts the app, the chevron alone shows what is inside — the way a bundle
-      behaves in a file manager. Everything else is an ordinary folder row.
+      A package (a folder holding an app manifest) behaves like a file: a click
+      opens the app. Holding Alt/Option or Cmd opens it as a folder instead —
+      the way a bundle in a file manager shows its contents on request. No
+      chevron while it is closed, so it does not look like something to browse.
     -->
-    <div
+    <button
       v-if="node.path !== '' && node.package"
+      type="button"
       :class="[
-        'tree-row w-full px-2 py-1 rounded flex items-center gap-1.5',
+        'tree-row w-full text-left py-1 pr-2 rounded flex items-center gap-1.5',
         node.package.manifestId && node.package.manifestId === activeFileId ? 'tree-row-active' : '',
       ]"
-      :style="indentStyle(0)"
+      :style="{ paddingLeft: `${depth * 12 + 4}px` }"
       :data-folder-path="node.path"
       :data-package="node.package.app ?? 'app'"
+      :title="$t('cortex.tree.openApp')"
+      @click="onPackageClick"
     >
-      <button
-        type="button"
-        class="tree-chevron-button flex items-center"
-        :aria-label="$t('cortex.tree.showContents')"
-        :title="$t('cortex.tree.showContents')"
-        @click="emit('toggle', node.path)"
-      >
-        <VIcon :name="isOpen(node.path) ? 'expand' : 'forward'" class="tree-chevron" />
-      </button>
-      <button
-        type="button"
-        class="flex-1 min-w-0 text-left flex items-center gap-1.5"
-        :title="$t('cortex.tree.openApp')"
-        @click="emit('open-package', node.path)"
-      >
-        <VIcon :name="packageIcon(node.package.app)" class="tree-icon" />
-        <span class="truncate">{{ node.name }}</span>
-        <VIcon v-if="node.loading" name="loading" class="tree-icon animate-spin" :aria-label="$t('cortex.tree.loading')" />
-        <span
-          v-else-if="node.error"
-          class="tree-error"
-          :title="node.error"
-        ><VIcon name="warning" /></span>
-      </button>
-    </div>
+      <VIcon :name="packageIcon(node.package.app)" class="tree-icon" />
+      <span class="truncate">{{ node.name }}</span>
+      <VIcon v-if="node.loading" name="loading" class="tree-icon animate-spin" :aria-label="$t('cortex.tree.loading')" />
+      <span
+        v-else-if="node.error"
+        class="tree-error"
+        :title="node.error"
+      ><VIcon name="warning" /></span>
+      <VIcon v-else-if="isOpen(node.path)" name="expand" class="tree-chevron ml-auto" />
+    </button>
     <button
       v-else-if="node.path !== ''"
       type="button"

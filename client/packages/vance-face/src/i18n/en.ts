@@ -486,8 +486,7 @@ export default {
       loadingText: 'loading…',
       delete: 'Delete',
       empty: 'empty',
-      openApp: 'Open app',
-      showContents: 'Show contents',
+      openApp: 'Open app — Alt-click shows its contents',
     },
     renameDocument: {
       failed: 'Rename failed',

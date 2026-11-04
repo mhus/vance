@@ -5,6 +5,7 @@ import type { CortexDocument } from './types';
 function state(partial: Partial<FolderState> = {}): FolderState {
   return {
     folders: [],
+    packages: {},
     loaded: true,
     loading: false,
     error: null,
@@ -80,6 +81,23 @@ describe('buildFolderTree', () => {
     const apps = root.children[0];
     expect(apps.loaded).toBe(true);
     expect(apps.children.map((c) => c.path)).toEqual(['apps/kanban']);
+  });
+
+  it('marks a package from its parent listing, before the folder is loaded', () => {
+    // The tree has to show an app as an app without opening it: the only
+    // thing it knows then is what the parent's listing said.
+    const states = new Map([
+      ['', state({ folders: ['apps', 'notes'] })],
+      ['apps', state({ folders: ['kanban1', 'misc'], packages: { kanban1: { app: 'kanban' } } })],
+    ]);
+
+    const apps = build(states).children.find((c) => c.path === 'apps')!;
+
+    const byName = Object.fromEntries(apps.children.map((c) => [c.name, c.package]));
+    expect(byName).toEqual({ kanban1: { app: 'kanban' }, misc: null });
+    expect(apps.children.find((c) => c.name === 'kanban1')!.loaded).toBe(false);
+    // A plain folder next to it, and a folder of the root, stay plain.
+    expect(build(states).children.find((c) => c.path === 'notes')!.package).toBeNull();
   });
 
   it('places files in the folder they belong to, by their own path', () => {

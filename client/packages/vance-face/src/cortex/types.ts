@@ -135,11 +135,23 @@ export interface AgeTabState {
  * (see {@code folderTree.ts}). One node per folder the session has heard
  * of — which is not the same as one per folder that has been read.
  */
+/** What the server says about a package folder. */
+export interface FolderPackage {
+  /** The application type ({@code kanban}, {@code wiki}, …) or {@code null}. */
+  app: string | null;
+}
+
 export interface FolderNode {
   /** Full path prefix, e.g. {@code "utils/math"} */
   path: string;
   /** Last path segment, e.g. {@code "math"} */
   name: string;
+  /**
+   * Set when this folder is a package — it holds an application manifest and
+   * is opened as a unit instead of browsed. Known from the parent's listing,
+   * so it is there before the folder itself has been loaded.
+   */
+  package: FolderPackage | null;
   /** Direct sub-folders — empty until this folder has been loaded. */
   children: FolderNode[];
   /** Files directly inside this folder — likewise. */

@@ -3,11 +3,13 @@
  Source: de.mhus.vance.api.documents.DocumentFolderListResponse
 */
 
+import { DocumentFolderPackageDto } from './DocumentFolderPackageDto';
 import { MountSearchOutcome } from './MountSearchOutcome';
 import { DocumentSummary } from './DocumentSummary';
 
 export interface DocumentFolderListResponse {
   folders: string[];
+  packages: DocumentFolderPackageDto[];
   files: DocumentSummary[];
   page: number;
   pageSize: number;

@@ -77,6 +77,8 @@ export const ICONS = {
   'external': ExternalLink,
   'link': Link,
   'open-in-app': AppWindow,
+  // A folder that is an application (holds an _app.yaml) — opened as a unit.
+  'app': AppWindow,
   'maximize': Maximize2,
   'minimize': Minimize2,
   'sign-in': LogIn,

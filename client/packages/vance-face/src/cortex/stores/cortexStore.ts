@@ -213,6 +213,7 @@ export const useCortexStore = defineStore('cortex', () => {
     const next = new Map(folderStates.value);
     const before = next.get(path) ?? {
       folders: [],
+      packages: {},
       loaded: false,
       loading: false,
       error: null,
@@ -414,6 +415,9 @@ export const useCortexStore = defineStore('cortex', () => {
       files.value = [...others, ...rows];
       patchFolderState(path, {
         folders: [...(data.folders ?? [])],
+        packages: Object.fromEntries(
+          (data.packages ?? []).map((pkg) => [pkg.name, { app: pkg.app ?? null }]),
+        ),
         loaded: true,
         loading: false,
         // A mounted folder can answer 200 and still not hold what the source

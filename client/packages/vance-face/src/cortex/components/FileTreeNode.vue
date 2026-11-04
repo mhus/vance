@@ -3,6 +3,7 @@ import { computed, inject, type Ref } from 'vue';
 import { VIcon, VIconButton, accentColorDotClass } from '@/components';
 import DocumentIcon from '@/document/DocumentIcon.vue';
 import type { FolderNode } from '../types';
+import { packageIcon } from '../packageIcon';
 
 interface Props {
   node: FolderNode;
@@ -16,6 +17,8 @@ const props = defineProps<Props>();
 const emit = defineEmits<{
   (e: 'toggle', path: string): void;
   (e: 'open-file', id: string): void;
+  /** Open a package folder (an app) as a unit, by the folder's path. */
+  (e: 'open-package', path: string): void;
   (e: 'delete-file', id: string): void;
   /** Move an already-tracked document into a folder (internal D&D). */
   (e: 'move-file', payload: { id: string; targetFolder: string }): void;
@@ -123,8 +126,45 @@ function onFolderDrop(ev: DragEvent): void {
     @dragover="onFolderDragOver"
     @drop="onFolderDrop"
   >
+    <!--
+      A package (a folder holding an app manifest) opens as a unit: the name
+      starts the app, the chevron alone shows what is inside — the way a bundle
+      behaves in a file manager. Everything else is an ordinary folder row.
+    -->
+    <div
+      v-if="node.path !== '' && node.package"
+      class="tree-row w-full px-2 py-1 rounded flex items-center gap-1.5"
+      :style="indentStyle(0)"
+      :data-folder-path="node.path"
+      :data-package="node.package.app ?? 'app'"
+    >
+      <button
+        type="button"
+        class="tree-chevron-button flex items-center"
+        :aria-label="$t('cortex.tree.showContents')"
+        :title="$t('cortex.tree.showContents')"
+        @click="emit('toggle', node.path)"
+      >
+        <VIcon :name="isOpen(node.path) ? 'expand' : 'forward'" class="tree-chevron" />
+      </button>
+      <button
+        type="button"
+        class="flex-1 min-w-0 text-left flex items-center gap-1.5"
+        :title="$t('cortex.tree.openApp')"
+        @click="emit('open-package', node.path)"
+      >
+        <VIcon :name="packageIcon(node.package.app)" class="tree-icon" />
+        <span class="truncate">{{ node.name }}</span>
+        <VIcon v-if="node.loading" name="loading" class="tree-icon animate-spin" :aria-label="$t('cortex.tree.loading')" />
+        <span
+          v-else-if="node.error"
+          class="tree-error"
+          :title="node.error"
+        ><VIcon name="warning" /></span>
+      </button>
+    </div>
     <button
-      v-if="node.path !== ''"
+      v-else-if="node.path !== ''"
       type="button"
       class="tree-row w-full text-left px-2 py-1 rounded flex items-center gap-1.5"
       :style="indentStyle(0)"
@@ -152,6 +192,7 @@ function onFolderDrop(ev: DragEvent): void {
         :expanded="expanded"
         @toggle="(p: string) => emit('toggle', p)"
         @open-file="(id: string) => emit('open-file', id)"
+        @open-package="(p: string) => emit('open-package', p)"
         @delete-file="(id: string) => emit('delete-file', id)"
         @move-file="onChildMove"
         @upload-files="onChildUpload"

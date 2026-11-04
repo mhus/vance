@@ -1401,6 +1401,27 @@ const clientToolService = computed<CortexClientToolService | null>(() => {
   });
 });
 
+/**
+ * A package folder in the tree was clicked: open the app behind it. The
+ * manifest row is resolved against the server — the folder may never have
+ * been opened, so it is not in the loaded rows.
+ */
+async function onOpenPackage(folderPath: string): Promise<void> {
+  const pid = projectId.value;
+  if (!pid) return;
+  try {
+    const id = await resolveDocumentIdByPath(pid, `${folderPath}/_app.yaml`, store.files);
+    if (!id) return;
+    focusZone.value = 'main';
+    await store.openFile(id);
+  } catch (e) {
+    menuNotice.value = {
+      text: e instanceof Error ? e.message : String(e),
+      variant: 'error',
+    };
+  }
+}
+
 async function onSave(): Promise<void> {
   if (!activeTab.value) return;
   saving.value = true;
@@ -2127,6 +2148,7 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
             :active-file-path="store.activeTab?.path ?? null"
             :auto-reveal="autoTarget"
             @open-file="(id: string) => { focusZone = 'main'; store.openFile(id); }"
+            @open-package="onOpenPackage"
             @delete-file="onDelete"
             @move-file="onMoveFile"
             @upload-files="onUploadFiles"

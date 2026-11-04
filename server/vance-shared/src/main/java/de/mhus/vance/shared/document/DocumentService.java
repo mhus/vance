@@ -28,10 +28,12 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -892,7 +894,49 @@ public class DocumentService {
         folders.sort(Comparator.naturalOrder());
 
         return new FolderListing(
-                folders, files, safePage, safeSize, totalFiles, null, mountFailureFor(tenantId, projectId, prefix));
+                folders,
+                files,
+                safePage,
+                safeSize,
+                totalFiles,
+                null,
+                mountFailureFor(tenantId, projectId, prefix),
+                packageFolders(tenantId, projectId, prefix, folders));
+    }
+
+    /** File name of an application manifest — a folder holding one is shown as a package. */
+    public static final String APP_MANIFEST_NAME = "_app.yaml";
+
+    /**
+     * Which of {@code folders} (the subfolders of {@code prefix}) are packages:
+     * folders that hold an application manifest and are meant to be opened as
+     * a unit rather than browsed.
+     *
+     * <p>One query for the whole level — a manifest row per candidate, matched
+     * on the indexed {@code path} — never one lookup per folder. The type comes
+     * off the row ({@code kind} and the {@code app} header the manifest's
+     * front matter was copied into), so no document body is read.
+     */
+    List<FolderPackage> packageFolders(String tenantId, String projectId, String prefix, List<String> folders) {
+        if (folders.isEmpty()) return List.of();
+        Set<String> candidates = new HashSet<>(folders);
+        String manifestRegex = "^" + java.util.regex.Pattern.quote(prefix) + "[^/]+/"
+                + java.util.regex.Pattern.quote(APP_MANIFEST_NAME) + "$";
+        Query query = baseProjectQuery(tenantId, projectId)
+                .addCriteria(Criteria.where("path").regex(manifestRegex));
+        query.fields().include("path").include("kind").include("headers");
+        List<FolderPackage> packages = new ArrayList<>();
+        for (DocumentDocument manifest : mongoTemplate.find(query, DocumentDocument.class)) {
+            String rest = manifest.getPath().substring(prefix.length());
+            String folder = rest.substring(0, rest.indexOf('/'));
+            if (!candidates.contains(folder)) continue;
+            String app =
+                    manifest.getHeaders() == null ? null : manifest.getHeaders().get("app");
+            packages.add(
+                    new FolderPackage(folder, manifest.getKind(), app == null || app.isBlank() ? null : app.trim()));
+        }
+        packages.sort(Comparator.comparing(FolderPackage::name));
+        return packages;
     }
 
     /**
@@ -1038,7 +1082,24 @@ public class DocumentService {
              * holds — a failed refresh, or a folder too large to materialise.
              * {@code null} for an ordinary folder and a clean mounted one.
              */
-            @Nullable String mountFailure) {
+            @Nullable String mountFailure,
+            /**
+             * The subfolders of this listing that are packages (they hold an
+             * application manifest). Empty where nothing qualifies.
+             */
+            List<FolderPackage> packages) {
+
+        /** Listing without package information (mounted, delegated, or not asked). */
+        public FolderListing(
+                List<String> folders,
+                List<DocumentDocument> files,
+                int page,
+                int pageSize,
+                long totalFiles,
+                @Nullable MountSearchOutcome mountSearch,
+                @Nullable String mountFailure) {
+            this(folders, files, page, pageSize, totalFiles, mountSearch, mountFailure, List.of());
+        }
 
         /** Ordinary (non-mounted) listing — nothing to explain. */
         public FolderListing(
@@ -1051,6 +1112,17 @@ public class DocumentService {
             this(folders, files, page, pageSize, totalFiles, mountSearch, null);
         }
     }
+
+    /**
+     * A subfolder that is a package — see {@link #packageFolders}.
+     *
+     * @param name folder name (one segment)
+     * @param kind {@code kind} of the manifest row, typically {@code application}
+     * @param app  the application type ({@code kanban}, {@code wiki}, …) when the
+     *             manifest declares one
+     */
+    public record FolderPackage(
+            String name, @Nullable String kind, @Nullable String app) {}
 
     /**
      * Project-scoped image listing — every active document whose

@@ -82,6 +82,7 @@ export * from './documents/DocumentCreateRequest';
 export * from './documents/DocumentDto';
 export * from './documents/DocumentExportRequest';
 export * from './documents/DocumentFolderListResponse';
+export * from './documents/DocumentFolderPackageDto';
 export * from './documents/DocumentCopyChunkRequest';
 export * from './documents/DocumentCopyChunkResponse';
 export * from './documents/DocumentFoldersResponse';

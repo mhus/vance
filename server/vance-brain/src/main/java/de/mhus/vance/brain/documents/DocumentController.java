@@ -11,6 +11,7 @@ import de.mhus.vance.api.documents.DocumentCreateRequest;
 import de.mhus.vance.api.documents.DocumentDto;
 import de.mhus.vance.api.documents.DocumentExportRequest;
 import de.mhus.vance.api.documents.DocumentFolderListResponse;
+import de.mhus.vance.api.documents.DocumentFolderPackageDto;
 import de.mhus.vance.api.documents.DocumentFoldersResponse;
 import de.mhus.vance.api.documents.DocumentKindsResponse;
 import de.mhus.vance.api.documents.DocumentListResponse;
@@ -149,6 +150,13 @@ public class DocumentController {
                 documentService.listByFolder(tenant, projectId, path, search, page, size);
         return DocumentFolderListResponse.builder()
                 .folders(listing.folders())
+                .packages(listing.packages().stream()
+                        .map(pkg -> DocumentFolderPackageDto.builder()
+                                .name(pkg.name())
+                                .kind(pkg.kind())
+                                .app(pkg.app())
+                                .build())
+                        .toList())
                 .files(listing.files().stream()
                         .map(DocumentController::toSummary)
                         .toList())

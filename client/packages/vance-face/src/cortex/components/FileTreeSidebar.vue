@@ -26,6 +26,7 @@ const props = defineProps<Props>();
 
 const emit = defineEmits<{
   (e: 'open-file', id: string): void;
+  (e: 'open-package', path: string): void;
   (e: 'delete-file', id: string): void;
   (e: 'move-file', payload: { id: string; targetFolder: string }): void;
   (e: 'upload-files', payload: { files: File[]; targetFolder: string }): void;
@@ -151,6 +152,7 @@ watch(
       :expanded="expanded"
       @toggle="toggle"
       @open-file="(id: string) => emit('open-file', id)"
+      @open-package="(path: string) => emit('open-package', path)"
       @delete-file="(id: string) => emit('delete-file', id)"
       @move-file="onMoveFile"
       @upload-files="onUploadFiles"

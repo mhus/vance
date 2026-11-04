@@ -1,4 +1,4 @@
-import type { CortexDocument, FolderNode } from './types';
+import type { CortexDocument, FolderNode, FolderPackage } from './types';
 
 /**
  * What is known about one folder after asking the server for it.
@@ -9,6 +9,8 @@ import type { CortexDocument, FolderNode } from './types';
  */
 export interface FolderState {
   folders: string[];
+  /** Which of `folders` are packages, by folder name. */
+  packages: Record<string, FolderPackage>;
   loaded: boolean;
   loading: boolean;
   error: string | null;
@@ -105,6 +107,7 @@ export function buildFolderTree(input: TreeInput): FolderNode {
     return {
       path,
       name: leafNameOf(path),
+      package: folderStates.get(parentFolderOf(path))?.packages[leafNameOf(path)] ?? null,
       children,
       files: nodeFiles,
       loaded: state?.loaded ?? false,

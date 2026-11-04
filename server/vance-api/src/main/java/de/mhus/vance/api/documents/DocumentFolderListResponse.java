@@ -38,6 +38,14 @@ public class DocumentFolderListResponse {
     @Builder.Default
     private List<String> folders = new ArrayList<>();
 
+    /**
+     * Which of {@link #folders} are packages — folders holding an application
+     * manifest, to be opened as a unit rather than browsed. Only the packages
+     * are listed; every other folder is simply absent here.
+     */
+    @Builder.Default
+    private List<DocumentFolderPackageDto> packages = new ArrayList<>();
+
     @Builder.Default
     private List<DocumentSummary> files = new ArrayList<>();
 

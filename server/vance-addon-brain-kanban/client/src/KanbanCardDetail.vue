@@ -288,10 +288,12 @@ function onContentModal(open: boolean): void {
   if (!open) {
     // Persist only if the user actually edited the body; otherwise closing
     // the untouched dialog must not trigger a (round-trip-noise) save.
-    if (bodyDirty.value) {
-      void flushSave();
-      body.value = latestBody;
-    }
+    if (bodyDirty.value) void flushSave();
+    // Re-seed the editor source from what the editor last produced — also
+    // when the autosave already saved it (bodyDirty is false by then).
+    // Otherwise `body` still holds the text from before this dialog session
+    // and the next open starts from that: the content looks lost.
+    body.value = latestBody;
   }
   contentOpen.value = open;
 }

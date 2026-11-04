@@ -31,7 +31,7 @@ public class CanvasQueryTool implements Tool {
                                     "type",
                                     "string",
                                     "enum",
-                                    List.of("text", "doc", "link", "group"),
+                                    List.of("text", "doc", "link", "group", "stack"),
                                     "description",
                                     "Optional node-type filter."));
                     put(

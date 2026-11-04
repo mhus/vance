@@ -14,6 +14,8 @@ public record CanvasEdge(
         String to,
         @Nullable Side fromSide,
         @Nullable Side toSide,
+        @Nullable Integer fromSlot,
+        @Nullable Integer toSlot,
         End fromEnd,
         End toEnd,
         @Nullable String label,
@@ -21,11 +23,22 @@ public record CanvasEdge(
         @Nullable Boolean dashed,
         @Nullable Double width) {
 
+    /** Attachment points per node side; slots are indexed {@code 0..SLOTS-1} along the side. */
+    public static final int SLOTS = 3;
+
+    /** Slot used when an edge carries none — the middle of the side. */
+    public static final int DEFAULT_SLOT = 1;
+
     /** Which side of a node an edge attaches to. */
     public enum Side {
-        TOP, RIGHT, BOTTOM, LEFT;
+        TOP,
+        RIGHT,
+        BOTTOM,
+        LEFT;
 
-        public String wire() { return name().toLowerCase(Locale.ROOT); }
+        public String wire() {
+            return name().toLowerCase(Locale.ROOT);
+        }
 
         public static @Nullable Side parse(@Nullable String s) {
             if (s == null || s.isBlank()) return null;
@@ -41,9 +54,12 @@ public record CanvasEdge(
 
     /** Arrow-head presence at an edge end. */
     public enum End {
-        NONE, ARROW;
+        NONE,
+        ARROW;
 
-        public String wire() { return name().toLowerCase(Locale.ROOT); }
+        public String wire() {
+            return name().toLowerCase(Locale.ROOT);
+        }
 
         public static End parse(@Nullable String s, End fallback) {
             if (s == null || s.isBlank()) return fallback;

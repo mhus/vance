@@ -3,7 +3,7 @@ package de.mhus.vance.addon.brain.canvas.model;
 import org.jspecify.annotations.Nullable;
 
 /**
- * A node on a canvas. Sealed over the four v1 node types
+ * A node on a canvas. Sealed over the five node types
  * (see {@code planning/canvas.md} §4.2).
  *
  * <p>Every node carries the common geometry ({@code id}, {@code x},
@@ -15,7 +15,7 @@ import org.jspecify.annotations.Nullable;
  * The {@code id} is persistent — edges reference it.
  */
 public sealed interface CanvasNode
-        permits CanvasNode.Text, CanvasNode.Doc, CanvasNode.Link, CanvasNode.Group {
+        permits CanvasNode.Text, CanvasNode.Doc, CanvasNode.Link, CanvasNode.Group, CanvasNode.Stack {
 
     String id();
 
@@ -27,31 +27,58 @@ public sealed interface CanvasNode
 
     double h();
 
-    @Nullable String color();
+    @Nullable
+    String color();
 
-    @Nullable Integer z();
+    @Nullable
+    Integer z();
 
     /** Id of the containing group, or {@code null} when at canvas root. */
-    @Nullable String parent();
+    @Nullable
+    String parent();
 
     /** Discriminator string as written to disk ({@code type:}). */
     String type();
 
     /** Inline text node — content lives in the graph document. */
-    record Text(String id, double x, double y, double w, double h,
-                @Nullable String color, @Nullable Integer z, @Nullable String parent,
-                String text,
-                @Nullable Boolean bold, @Nullable Boolean italic,
-                @Nullable String fontSize, @Nullable String textColor,
-                @Nullable String author) implements CanvasNode {
-        @Override public String type() { return "text"; }
+    record Text(
+            String id,
+            double x,
+            double y,
+            double w,
+            double h,
+            @Nullable String color,
+            @Nullable Integer z,
+            @Nullable String parent,
+            String text,
+            @Nullable Boolean bold,
+            @Nullable Boolean italic,
+            @Nullable String fontSize,
+            @Nullable String textColor,
+            @Nullable String author)
+            implements CanvasNode {
+        @Override
+        public String type() {
+            return "text";
+        }
     }
 
     /** Reference node — {@code ref} is a {@code vance:}-URI to a document. */
-    record Doc(String id, double x, double y, double w, double h,
-               @Nullable String color, @Nullable Integer z, @Nullable String parent,
-               String ref) implements CanvasNode {
-        @Override public String type() { return "doc"; }
+    record Doc(
+            String id,
+            double x,
+            double y,
+            double w,
+            double h,
+            @Nullable String color,
+            @Nullable Integer z,
+            @Nullable String parent,
+            String ref)
+            implements CanvasNode {
+        @Override
+        public String type() {
+            return "doc";
+        }
     }
 
     /** External link card. */
@@ -64,20 +91,67 @@ public sealed interface CanvasNode
      *               targets open away from the board, internal ones do too, see
      *               the card).
      */
-    record Link(String id, double x, double y, double w, double h,
-                @Nullable String color, @Nullable Integer z, @Nullable String parent,
-                String href, @Nullable String title,
-                @Nullable Boolean newTab) implements CanvasNode {
-        @Override public String type() { return "link"; }
+    record Link(
+            String id,
+            double x,
+            double y,
+            double w,
+            double h,
+            @Nullable String color,
+            @Nullable Integer z,
+            @Nullable String parent,
+            String href,
+            @Nullable String title,
+            @Nullable Boolean newTab)
+            implements CanvasNode {
+        @Override
+        public String type() {
+            return "link";
+        }
     }
 
     /**
      * Labelled background rectangle. Membership of other nodes is
      * expressed by their {@code parent} pointing at this group's id.
      */
-    record Group(String id, double x, double y, double w, double h,
-                 @Nullable String color, @Nullable Integer z, @Nullable String parent,
-                 @Nullable String label) implements CanvasNode {
-        @Override public String type() { return "group"; }
+    record Group(
+            String id,
+            double x,
+            double y,
+            double w,
+            double h,
+            @Nullable String color,
+            @Nullable Integer z,
+            @Nullable String parent,
+            @Nullable String label)
+            implements CanvasNode {
+        @Override
+        public String type() {
+            return "group";
+        }
+    }
+
+    /**
+     * A pile of blank notes of one {@code color}, owned by whoever {@code title}
+     * names (a person, a topic). Users take a note off the pile and place it on
+     * the board; the new note is an ordinary {@link Text} node carrying the
+     * pile's colour. The pile itself never changes, so a retro board can hand
+     * out one colour per participant.
+     */
+    record Stack(
+            String id,
+            double x,
+            double y,
+            double w,
+            double h,
+            @Nullable String color,
+            @Nullable Integer z,
+            @Nullable String parent,
+            @Nullable String title)
+            implements CanvasNode {
+        @Override
+        public String type() {
+            return "stack";
+        }
     }
 }

@@ -26,8 +26,7 @@ class CanvasKindHandlerTest {
     private final CanvasKindHandler handler = new CanvasKindHandler();
 
     private static CanvasNode.Text text(String id, String parent, String txt) {
-        return new CanvasNode.Text(id, 0, 0, 10, 10, null, null, parent, txt,
-                null, null, null, null, null);
+        return new CanvasNode.Text(id, 0, 0, 10, 10, null, null, parent, txt, null, null, null, null, null);
     }
 
     private static CanvasNode.Group group(String id, String parent) {
@@ -35,13 +34,24 @@ class CanvasKindHandlerTest {
     }
 
     private static CanvasEdge edge(String id, String from, String to) {
-        return new CanvasEdge(id, from, to, null, null,
-                CanvasEdge.End.NONE, CanvasEdge.End.ARROW, null, null, null, null);
+        return new CanvasEdge(
+                id,
+                from,
+                to,
+                null,
+                null,
+                null,
+                null,
+                CanvasEdge.End.NONE,
+                CanvasEdge.End.ARROW,
+                null,
+                null,
+                null,
+                null);
     }
 
     private static String yaml(List<CanvasNode> nodes, List<CanvasEdge> edges) {
-        return CanvasCodec.serialize(
-                new CanvasDocument(null, null, new CanvasGraph(nodes, edges)), YAML);
+        return CanvasCodec.serialize(new CanvasDocument(null, null, new CanvasGraph(nodes, edges)), YAML);
     }
 
     private static KindValidationContext ctx() {
@@ -49,9 +59,20 @@ class CanvasKindHandlerTest {
     }
 
     private static final DocRefs NO_REFS = new DocRefs() {
-        @Override public boolean exists(String path) { return false; }
-        @Override public @Nullable String kindOf(String path) { return null; }
-        @Override public @Nullable Map<String, Object> readYaml(String path) { return null; }
+        @Override
+        public boolean exists(String path) {
+            return false;
+        }
+
+        @Override
+        public @Nullable String kindOf(String path) {
+            return null;
+        }
+
+        @Override
+        public @Nullable Map<String, Object> readYaml(String path) {
+            return null;
+        }
     };
 
     @Test
@@ -66,8 +87,8 @@ class CanvasKindHandlerTest {
     void danglingEdge_mapsToSharedError() {
         String body = yaml(List.of(text("n1", null, "a")), List.of(edge("e1", "n1", "n2")));
         List<Finding> findings = handler.validate(body, ctx());
-        assertThat(findings).anyMatch(f ->
-                f.level() == Finding.Level.ERROR
+        assertThat(findings)
+                .anyMatch(f -> f.level() == Finding.Level.ERROR
                         && f.code().equals("canvas-graph")
                         && f.message().contains("unknown target node 'n2'"));
     }

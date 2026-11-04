@@ -30,8 +30,8 @@ import {
   Brain, CornerDownRight, Ear, Flag, FlaskConical, Hourglass, Phone, Pilcrow, VolumeX,
   Building2,
   // addon surfaces
-  ChartLine, Expand, Group, Monitor, Pointer, RotateCwSquare, ScanText, Smartphone, Smile, Tablet,
-  ZoomIn, ZoomOut,
+  ChartLine, Expand, Group, Monitor, Pointer, RotateCwSquare, ScanText, Smartphone, Smile,
+  Layers, SquareDashedMousePointer, Tablet, ZoomIn, ZoomOut,
   // contacts
   CircleUserRound, Mail,
 } from 'lucide-vue-next';
@@ -205,6 +205,8 @@ export const ICONS = {
   'eraser': Eraser,
   'backspace': Delete,
   'touch': Pointer,
+  'select': SquareDashedMousePointer,
+  'stack': Layers,
   'fit': Expand,
   'ocr': ScanText,
   'emoji': Smile,

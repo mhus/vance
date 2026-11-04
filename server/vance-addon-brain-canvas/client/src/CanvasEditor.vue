@@ -16,7 +16,7 @@ import '@vue-flow/core/dist/style.css';
 import '@vue-flow/core/dist/theme-default.css';
 import { getUsername } from '@vance/shared/auth';
 import { brainFetch } from '@vance/shared';
-import { VButton, VLinkPicker, usePointers, vanceRef } from '@vance/components';
+import { VIconButton, VLinkPicker, usePointers, vanceRef } from '@vance/components';
 import { useT } from './i18n';
 import CanvasNodeCard from './CanvasNodeCard.vue';
 import InputDialog from './InputDialog.vue';
@@ -53,6 +53,9 @@ const emit = defineEmits<{
   (e: 'change', graph: CanvasGraphDto): void;
   (e: 'selection', nodeIds: string[]): void;
 }>();
+
+/** Middle slot of a side; used when an edge carries no slot (mirrors `CanvasEdge.DEFAULT_SLOT`). */
+const DEFAULT_SLOT = 1;
 
 const t = useT();
 
@@ -213,6 +216,9 @@ const vfNodes = computed<Node[]>(() => {
       onBack: sendToBack,
       onEditLink: editLinkNode,
       onFlush: props.flush ?? undefined,
+      onTake: takeFromStack,
+      autoEdit: n.id === autoEditId.value,
+      onAutoEditDone: clearAutoEdit,
     },
     draggable: isEditable.value,
     selectable: isEditable.value,
@@ -225,6 +231,12 @@ const vfNodes = computed<Node[]>(() => {
   }));
 });
 
+/** Node just taken off a stack: its card opens for typing once, then clears this. */
+const autoEditId = ref<string | null>(null);
+function clearAutoEdit(id: string): void {
+  if (autoEditId.value === id) autoEditId.value = null;
+}
+
 const knownIds = computed(() => new Set(nodes.value.map((n) => n.id)));
 
 const vfEdges = computed<Edge[]>(() => {
@@ -235,8 +247,8 @@ const vfEdges = computed<Edge[]>(() => {
       id: e.id,
       source: e.from,
       target: e.to,
-      sourceHandle: `s-${e.fromSide ?? 'right'}`,
-      targetHandle: `t-${e.toSide ?? 'left'}`,
+      sourceHandle: `s-${e.fromSide ?? 'right'}-${e.fromSlot ?? DEFAULT_SLOT}`,
+      targetHandle: `t-${e.toSide ?? 'left'}-${e.toSlot ?? DEFAULT_SLOT}`,
       label: e.label ?? undefined,
       type: 'default',
       markerEnd: e.toEnd === 'arrow' ? 'arrowclosed' : undefined,
@@ -454,6 +466,8 @@ function onConnect(conn: Connection): void {
       to: conn.target,
       fromSide: handleSide(conn.sourceHandle) ?? 'right',
       toSide: handleSide(conn.targetHandle) ?? 'left',
+      fromSlot: handleSlot(conn.sourceHandle),
+      toSlot: handleSlot(conn.targetHandle),
       fromEnd: 'none',
       toEnd: 'arrow',
     },
@@ -463,6 +477,14 @@ function onConnect(conn: Connection): void {
 
 function handleSide(h: string | null | undefined): string | undefined {
   return h ? h.split('-')[1] : undefined;
+}
+
+/** Slot index from a handle id (`s-right-2` → 2); undefined for the legacy slotless form. */
+function handleSlot(h: string | null | undefined): number | undefined {
+  const raw = h?.split('-')[2];
+  if (raw === undefined) return undefined;
+  const n = Number(raw);
+  return Number.isInteger(n) ? n : undefined;
 }
 
 function edgeStyle(e: CanvasEdgeDto): Record<string, string> | undefined {
@@ -528,6 +550,11 @@ async function uploadFile(file: File): Promise<string | null> {
 
 function onDragOver(ev: DragEvent): void {
   if (!isEditable.value) return;
+  if (ev.dataTransfer?.types?.includes(STACK_DRAG_TYPE)) {
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = 'copy';
+    return;
+  }
   if (ev.dataTransfer?.types?.includes('Files')) {
     ev.preventDefault();
     ev.dataTransfer.dropEffect = 'copy';
@@ -536,6 +563,21 @@ function onDragOver(ev: DragEvent): void {
 
 async function onDrop(ev: DragEvent): Promise<void> {
   if (!isEditable.value) return;
+  const stackId = ev.dataTransfer?.getData(STACK_DRAG_TYPE);
+  if (stackId) {
+    ev.preventDefault();
+    const el = wrapper.value;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const vp = viewport.value;
+    // The note lands centred under the pointer.
+    takeFromStack(
+      stackId,
+      (ev.clientX - rect.left - vp.x) / vp.zoom - NOTE_W / 2,
+      (ev.clientY - rect.top - vp.y) / vp.zoom - NOTE_H / 2,
+    );
+    return;
+  }
   const files = ev.dataTransfer?.files;
   if (!files || !files.length) return;
   ev.preventDefault();
@@ -581,7 +623,56 @@ function refFor(picked: {
   return vanceRef(picked);
 }
 
-async function addNode(type: 'text' | 'doc' | 'link' | 'group'): Promise<void> {
+const NOTE_W = 200;
+const NOTE_H = 120;
+/** MIME type a stack card puts on a drag; mirrors `STACK_DRAG_TYPE` in the card. */
+const STACK_DRAG_TYPE = 'application/x-vance-canvas-stack';
+/** Palette indexes a stack can take (the card's swatches). */
+const STACK_COLORS = ['3', '1', '2', '4', '5', '6'];
+
+/** Canvas-absolute top-left of a node (a child's x/y are relative to its group). */
+function absolutePosition(n: CanvasNodeDto): { x: number; y: number } {
+  const g = n.parent ? nodes.value.find((p) => p.id === n.parent) : undefined;
+  return g ? { x: g.x + n.x, y: g.y + n.y } : { x: n.x, y: n.y };
+}
+
+/**
+ * Take a note off a stack: a new text node in the stack's colour, authored by
+ * the taker, opened for typing. With no position (click, touch) it lands beside
+ * the stack; a drop passes the spot. The stack itself never changes.
+ */
+function takeFromStack(stackId: string, x?: number, y?: number): void {
+  if (!isEditable.value) return;
+  const stack = nodes.value.find((n) => n.id === stackId && n.type === 'stack');
+  if (!stack) return;
+  const origin = absolutePosition(stack);
+  const ax = Math.round(x ?? origin.x + (stack.w || 200) + 24);
+  const ay = Math.round(y ?? origin.y);
+  // Same rule as a dragged node: the group under the note's centre adopts it.
+  const cx = ax + NOTE_W / 2;
+  const cy = ay + NOTE_H / 2;
+  const g = nodes.value.find(
+    (gr) => gr.type === 'group' && cx >= gr.x && cx <= gr.x + gr.w && cy >= gr.y && cy <= gr.y + gr.h,
+  );
+  const id = nextId('n', nodes.value.map((n) => n.id));
+  const note: CanvasNodeDto = {
+    id,
+    type: 'text',
+    x: g ? ax - g.x : ax,
+    y: g ? ay - g.y : ay,
+    w: NOTE_W,
+    h: NOTE_H,
+    color: stack.color ?? undefined,
+    text: '',
+    author: getUsername() ?? undefined,
+    parent: g?.id,
+  };
+  autoEditId.value = id;
+  nodes.value = [...nodes.value, note];
+  emitChange();
+}
+
+async function addNode(type: 'text' | 'doc' | 'link' | 'group' | 'stack'): Promise<void> {
   if (!isEditable.value) return;
   const id = nextId('n', nodes.value.map((n) => n.id));
   const p = placement();
@@ -600,6 +691,15 @@ async function addNode(type: 'text' | 'doc' | 'link' | 'group'): Promise<void> {
     const pick = await openLinkPicker(null);
     if (!pick) return;
     node = { id, type, x: p.x, y: p.y, w: 240, h: 72, href: pick.href, newTab: pick.newTab };
+  } else if (type === 'stack') {
+    const v = await dialog.value?.open(t('canvas.board.stackDialogTitle'), [
+      { key: 'title', label: t('canvas.board.stackTitleHint'), value: me ?? '' },
+    ]);
+    if (!v) return;
+    // A fresh colour per stack, so several piles on one board stay apart.
+    const used = new Set(nodes.value.filter((n) => n.type === 'stack').map((n) => n.color));
+    const color = STACK_COLORS.find((c) => !used.has(c)) ?? STACK_COLORS[0];
+    node = { id, type, x: p.x, y: p.y, w: 220, h: 170, color, title: v.title.trim() || undefined };
   } else {
     const fallback = t('canvas.board.newGroupLabel');
     const v = await dialog.value?.open(t('canvas.board.groupDialogTitle'), [
@@ -642,19 +742,21 @@ async function addNode(type: 'text' | 'doc' | 'link' | 'group'): Promise<void> {
       @edge-double-click="onEdgeDoubleClick"
       @connect="onConnect"
     >
-      <Panel v-if="isEditable" position="top-left">
+      <Panel v-if="isEditable" position="top-left" class="cv-panel-wrap">
         <div class="cv-panel">
-          <VButton icon="note" size="sm" variant="secondary" @click="addNode('text')">{{ t('canvas.board.note') }}</VButton>
-          <VButton icon="document" size="sm" variant="secondary" @click="addNode('doc')">{{ t('canvas.board.doc') }}</VButton>
-          <VButton icon="link" size="sm" variant="secondary" @click="addNode('link')">{{ t('canvas.board.link') }}</VButton>
-          <VButton icon="group" size="sm" variant="secondary" @click="addNode('group')">{{ t('canvas.board.group') }}</VButton>
+          <VIconButton icon="note" tooltip="right" :label="t('canvas.board.note')" @click="addNode('text')" />
+          <VIconButton icon="document" tooltip="right" :label="t('canvas.board.doc')" @click="addNode('doc')" />
+          <VIconButton icon="link" tooltip="right" :label="t('canvas.board.link')" @click="addNode('link')" />
+          <VIconButton icon="group" tooltip="right" :label="t('canvas.board.group')" @click="addNode('group')" />
+          <VIconButton icon="stack" tooltip="right" :label="t('canvas.board.stack')" @click="addNode('stack')" />
           <span class="cv-panel-sep"></span>
-          <VButton
-            size="sm"
-            :variant="selectMode ? 'primary' : 'secondary'"
-            :title="t('canvas.board.selectHint')"
+          <VIconButton
+            icon="select"
+            tooltip="right"
+            :active="selectMode"
+            :label="t('canvas.board.selectHint')"
             @click="selectMode = !selectMode"
-          >{{ t('canvas.board.select') }}</VButton>
+          />
         </div>
       </Panel>
 
@@ -662,6 +764,7 @@ async function addNode(type: 'text' | 'doc' | 'link' | 'group'): Promise<void> {
       <template #node-doc="p"><CanvasNodeCard v-bind="p" :selected="selectedIds.has(p.id)" /></template>
       <template #node-link="p"><CanvasNodeCard v-bind="p" :selected="selectedIds.has(p.id)" /></template>
       <template #node-group="p"><CanvasNodeCard v-bind="p" :selected="selectedIds.has(p.id)" /></template>
+      <template #node-stack="p"><CanvasNodeCard v-bind="p" :selected="selectedIds.has(p.id)" /></template>
     </VueFlow>
 
     <!-- Remote live cursors — positioned in screen space from the flow
@@ -704,8 +807,14 @@ async function addNode(type: 'text' | 'doc' | 'link' | 'group'): Promise<void> {
    so they read in dark mode too (corporate-design §3). */
 :deep(.vue-flow__edge-textbg) { fill: var(--v-surface-raised); }
 :deep(.vue-flow__edge-text) { fill: var(--v-label); }
+/* Vue Flow has no centre-left panel slot: pin to the left edge, centre vertically. */
+.cv-panel-wrap {
+  top: 50%;
+  transform: translateY(-50%);
+}
 .cv-panel {
   display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 4px;
   padding: 5px 7px;
@@ -715,10 +824,10 @@ async function addNode(type: 'text' | 'doc' | 'link' | 'group'): Promise<void> {
   box-shadow: var(--v-shadow-float);
 }
 .cv-panel-sep {
-  width: 1px;
-  height: 20px;
+  width: 20px;
+  height: 1px;
   background: var(--v-separator);
-  margin: 0 2px;
+  margin: 2px 0;
 }
 
 /* Live-cursor overlay — sits above the flow pane, never eats input. */

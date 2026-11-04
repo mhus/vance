@@ -32,6 +32,30 @@ public class CanvasEdgeAddTool implements Tool {
                     put("fromSide", Map.of("type", "string", "enum", List.of("top", "right", "bottom", "left")));
                     put("toSide", Map.of("type", "string", "enum", List.of("top", "right", "bottom", "left")));
                     put(
+                            "fromSlot",
+                            Map.of(
+                                    "type",
+                                    "integer",
+                                    "minimum",
+                                    0,
+                                    "maximum",
+                                    2,
+                                    "description",
+                                    "Attachment point on fromSide: 0..2 along the side (top/bottom: left to right, "
+                                            + "left/right: top to bottom). Default 1 (middle). Use different slots "
+                                            + "to keep several edges on one side apart."));
+                    put(
+                            "toSlot",
+                            Map.of(
+                                    "type",
+                                    "integer",
+                                    "minimum",
+                                    0,
+                                    "maximum",
+                                    2,
+                                    "description",
+                                    "Attachment point on toSide, same meaning as fromSlot."));
+                    put(
                             "fromEnd",
                             Map.of(
                                     "type",
@@ -58,8 +82,19 @@ public class CanvasEdgeAddTool implements Tool {
             "required",
             List.of("path", "from", "to"));
 
-    private static final List<String> EDGE_KEYS =
-            List.of("from", "to", "label", "fromSide", "toSide", "fromEnd", "toEnd", "color", "dashed", "width");
+    private static final List<String> EDGE_KEYS = List.of(
+            "from",
+            "to",
+            "label",
+            "fromSide",
+            "toSide",
+            "fromSlot",
+            "toSlot",
+            "fromEnd",
+            "toEnd",
+            "color",
+            "dashed",
+            "width");
 
     private final EddieContext eddieContext;
     private final DocumentService documentService;

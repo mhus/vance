@@ -261,6 +261,7 @@ public class CanvasService {
             case CanvasNode.Doc d -> d.ref();
             case CanvasNode.Link l -> l.href() + (l.title() == null ? "" : " " + l.title());
             case CanvasNode.Group g -> g.label() == null ? "" : g.label();
+            case CanvasNode.Stack s -> s.title() == null ? "" : s.title();
         };
     }
 

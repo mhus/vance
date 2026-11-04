@@ -48,17 +48,15 @@ class CanvasServiceTest {
         when(doc.getTitle()).thenReturn("T");
         when(documentService.loadContent(doc))
                 .thenReturn(new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8)));
-        when(documentService.update(
-                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+        when(documentService.update(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(doc);
         return doc;
     }
 
     private String capturedBody() {
         ArgumentCaptor<String> cap = ArgumentCaptor.forClass(String.class);
-        verify(documentService).update(
-                eq("id1"), any(), any(), cap.capture(), any(), any(), any(), any(), any(),
-                any(), any());
+        verify(documentService)
+                .update(eq("id1"), any(), any(), cap.capture(), any(), any(), any(), any(), any(), any(), any());
         return cap.getValue();
     }
 
@@ -88,13 +86,13 @@ class CanvasServiceTest {
 
     @Test
     void addNode_duplicateExplicitId_throws() {
-        CanvasNode existing = new CanvasNode.Text("n1", 0, 0, 10, 10, null, null, null, "a", null, null, null, null, null);
+        CanvasNode existing =
+                new CanvasNode.Text("n1", 0, 0, 10, 10, null, null, null, "a", null, null, null, null, null);
         String body = CanvasCodec.serialize(
                 new CanvasDocument("T", null, new CanvasGraph(List.of(existing), List.of())), YAML);
         DocumentDocument doc = docWithBody(body);
 
-        assertThatThrownBy(() ->
-                service.addNode(doc, Map.of("id", "n1", "type", "text", "text", "b"), USER))
+        assertThatThrownBy(() -> service.addNode(doc, Map.of("id", "n1", "type", "text", "text", "b"), USER))
                 .isInstanceOf(ToolException.class);
     }
 
@@ -103,8 +101,7 @@ class CanvasServiceTest {
         String body = CanvasCodec.serialize(CanvasDocument.empty("T", null), YAML);
         DocumentDocument doc = docWithBody(body);
 
-        assertThatThrownBy(() ->
-                service.addEdge(doc, Map.of("from", "n1", "to", "n2"), USER))
+        assertThatThrownBy(() -> service.addEdge(doc, Map.of("from", "n1", "to", "n2"), USER))
                 .isInstanceOf(ToolException.class);
     }
 
@@ -112,8 +109,20 @@ class CanvasServiceTest {
     void deleteNode_dropsIncidentEdges() {
         CanvasNode n1 = new CanvasNode.Text("n1", 0, 0, 10, 10, null, null, null, "a", null, null, null, null, null);
         CanvasNode n2 = new CanvasNode.Text("n2", 20, 0, 10, 10, null, null, null, "b", null, null, null, null, null);
-        CanvasEdge e1 = new CanvasEdge("e1", "n1", "n2", null, null,
-                CanvasEdge.End.NONE, CanvasEdge.End.ARROW, null, null, null, null);
+        CanvasEdge e1 = new CanvasEdge(
+                "e1",
+                "n1",
+                "n2",
+                null,
+                null,
+                null,
+                null,
+                CanvasEdge.End.NONE,
+                CanvasEdge.End.ARROW,
+                null,
+                null,
+                null,
+                null);
         String body = CanvasCodec.serialize(
                 new CanvasDocument("T", null, new CanvasGraph(List.of(n1, n2), List.of(e1))), YAML);
         DocumentDocument doc = docWithBody(body);
@@ -142,8 +151,8 @@ class CanvasServiceTest {
     @Test
     void updateNode_patchesPositionKeepsId() {
         CanvasNode n1 = new CanvasNode.Text("n1", 0, 0, 10, 10, null, null, null, "a", null, null, null, null, null);
-        String body = CanvasCodec.serialize(
-                new CanvasDocument("T", null, new CanvasGraph(List.of(n1), List.of())), YAML);
+        String body =
+                CanvasCodec.serialize(new CanvasDocument("T", null, new CanvasGraph(List.of(n1), List.of())), YAML);
         DocumentDocument doc = docWithBody(body);
 
         service.updateNode(doc, "n1", Map.of("x", 99, "id", "hacked"), USER);

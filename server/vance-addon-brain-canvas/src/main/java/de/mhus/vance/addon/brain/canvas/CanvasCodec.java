@@ -31,8 +31,7 @@ public final class CanvasCodec {
     public static final String KIND = "canvas";
 
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final TypeReference<LinkedHashMap<String, Object>> JSON_MAP =
-            new TypeReference<>() {};
+    private static final TypeReference<LinkedHashMap<String, Object>> JSON_MAP = new TypeReference<>() {};
 
     private CanvasCodec() {
         // utility class
@@ -139,10 +138,22 @@ public final class CanvasCodec {
         Integer z = intOrNull(raw.get("z"));
         String parent = str(raw, "parent");
         return switch (type.toLowerCase(Locale.ROOT)) {
-            case "text" -> new CanvasNode.Text(id, x, y, w, h, color, z, parent,
-                    strOrEmpty(raw, "text"),
-                    boolOrNull(raw.get("bold")), boolOrNull(raw.get("italic")),
-                    str(raw, "fontSize"), str(raw, "textColor"), str(raw, "author"));
+            case "text" ->
+                new CanvasNode.Text(
+                        id,
+                        x,
+                        y,
+                        w,
+                        h,
+                        color,
+                        z,
+                        parent,
+                        strOrEmpty(raw, "text"),
+                        boolOrNull(raw.get("bold")),
+                        boolOrNull(raw.get("italic")),
+                        str(raw, "fontSize"),
+                        str(raw, "textColor"),
+                        str(raw, "author"));
             case "doc" -> {
                 String ref = str(raw, "ref");
                 if (ref == null) throw new KindCodecException("canvas doc-node requires `ref`");
@@ -151,10 +162,11 @@ public final class CanvasCodec {
             case "link" -> {
                 String href = str(raw, "href");
                 if (href == null) throw new KindCodecException("canvas link-node requires `href`");
-                yield new CanvasNode.Link(id, x, y, w, h, color, z, parent, href,
-                        str(raw, "title"), boolOrNull(raw.get("newTab")));
+                yield new CanvasNode.Link(
+                        id, x, y, w, h, color, z, parent, href, str(raw, "title"), boolOrNull(raw.get("newTab")));
             }
             case "group" -> new CanvasNode.Group(id, x, y, w, h, color, z, parent, str(raw, "label"));
+            case "stack" -> new CanvasNode.Stack(id, x, y, w, h, color, z, parent, str(raw, "title"));
             default -> throw new KindCodecException("Unknown canvas node.type='" + type + "'");
         };
     }
@@ -188,6 +200,9 @@ public final class CanvasCodec {
             case CanvasNode.Group g -> {
                 if (g.label() != null) m.put("label", g.label());
             }
+            case CanvasNode.Stack s -> {
+                if (s.title() != null) m.put("title", s.title());
+            }
         }
         return m;
     }
@@ -202,9 +217,13 @@ public final class CanvasCodec {
             throw new KindCodecException("canvas edge requires `from` and `to`");
         }
         return new CanvasEdge(
-                id, from, to,
+                id,
+                from,
+                to,
                 CanvasEdge.Side.parse(str(raw, "fromSide")),
                 CanvasEdge.Side.parse(str(raw, "toSide")),
+                intOrNull(raw.get("fromSlot")),
+                intOrNull(raw.get("toSlot")),
                 CanvasEdge.End.parse(str(raw, "fromEnd"), CanvasEdge.End.NONE),
                 CanvasEdge.End.parse(str(raw, "toEnd"), CanvasEdge.End.ARROW),
                 str(raw, "label"),
@@ -220,6 +239,8 @@ public final class CanvasCodec {
         m.put("to", e.to());
         if (e.fromSide() != null) m.put("fromSide", e.fromSide().wire());
         if (e.toSide() != null) m.put("toSide", e.toSide().wire());
+        if (e.fromSlot() != null) m.put("fromSlot", e.fromSlot());
+        if (e.toSlot() != null) m.put("toSlot", e.toSlot());
         // Only emit ends that deviate from the default (fromEnd=none, toEnd=arrow)
         // to keep the on-disk graph compact.
         if (e.fromEnd() != CanvasEdge.End.NONE) m.put("fromEnd", e.fromEnd().wire());

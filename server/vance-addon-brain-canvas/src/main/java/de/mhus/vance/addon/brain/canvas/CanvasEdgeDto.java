@@ -3,7 +3,7 @@ package de.mhus.vance.addon.brain.canvas;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
 import org.jspecify.annotations.Nullable;
 
-/** Wire DTO for a directed canvas edge. Ends are {@code "none"|"arrow"}. */
+/** Wire DTO for a directed canvas edge. Ends are {@code "none"|"arrow"}; slots index the attachment point on a side (0..2, absent = middle). */
 @GenerateTypeScript("canvas")
 public record CanvasEdgeDto(
         String id,
@@ -11,6 +11,8 @@ public record CanvasEdgeDto(
         String to,
         @Nullable String fromSide,
         @Nullable String toSide,
+        @Nullable Integer fromSlot,
+        @Nullable Integer toSlot,
         String fromEnd,
         String toEnd,
         @Nullable String label,

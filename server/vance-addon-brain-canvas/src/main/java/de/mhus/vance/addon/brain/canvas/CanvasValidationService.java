@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 
 /**
@@ -119,6 +120,8 @@ public class CanvasValidationService {
                 out.add(new Finding(
                         Level.ERROR, "Edge '" + e.id() + "' references unknown target node '" + e.to() + "'."));
             }
+            checkSlot(out, e.id(), "fromSlot", e.fromSlot());
+            checkSlot(out, e.id(), "toSlot", e.toSlot());
         }
 
         for (CanvasNode n : nodes) {
@@ -142,5 +145,14 @@ public class CanvasValidationService {
             }
         }
         return out;
+    }
+
+    private static void checkSlot(List<Finding> out, String edgeId, String field, @Nullable Integer slot) {
+        if (slot != null && (slot < 0 || slot >= CanvasEdge.SLOTS)) {
+            out.add(new Finding(
+                    Level.WARNING,
+                    "Edge '" + edgeId + "' has " + field + " " + slot + " outside 0.." + (CanvasEdge.SLOTS - 1)
+                            + "; the middle slot is used."));
+        }
     }
 }

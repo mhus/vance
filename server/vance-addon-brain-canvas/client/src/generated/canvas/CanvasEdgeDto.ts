@@ -9,6 +9,8 @@ export interface CanvasEdgeDto {
   to: string;
   fromSide?: string;
   toSide?: string;
+  fromSlot?: number;
+  toSlot?: number;
   fromEnd: string;
   toEnd: string;
   label?: string;

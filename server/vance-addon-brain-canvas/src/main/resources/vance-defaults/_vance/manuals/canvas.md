@@ -47,6 +47,13 @@ You never hand-write this — use the tools below. Read the whole document with
 | `doc`   | `ref` (a `vance:`-URI) | references another document/image, rendered as a card / image |
 | `link`  | `href`, `title?` | external link card |
 | `group` | `label?` | a labelled frame that contains other nodes |
+| `stack` | `title?` (+ `color`) | a pile of blank notes of one colour, titled for its owner or topic (e.g. a person's name in a retro) |
+
+**A `stack` is a dispenser, not content.** Users take notes off it in the UI; each
+taken note is an ordinary `text` node with the stack's `color` and the taker as
+`author`. To collect input from several people, place one stack per person with
+a distinct `color` and a `title` that names them, then read the `text` nodes
+back by `color`/`author`. The stack node itself never changes.
 
 **Grouping is explicit.** A node that belongs to a group carries
 `parent: <group-id>`, and its `x`/`y` are then **relative to that group's

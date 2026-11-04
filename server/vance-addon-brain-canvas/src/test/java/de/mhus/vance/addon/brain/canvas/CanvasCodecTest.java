@@ -19,17 +19,26 @@ class CanvasCodecTest {
 
     private static CanvasDocument sample() {
         CanvasNode g = new CanvasNode.Group("g1", 0, 0, 600, 200, "2", null, null, "Cluster");
-        CanvasNode t = new CanvasNode.Text("n1", 120, 80, 240, 120, "1", null, "g1", "Kernidee",
-                true, null, "l", "#dc2626", "alice");
-        CanvasNode d = new CanvasNode.Doc("n2", 420, 80, 320, 160, null, null, null,
-                "vance:/assets/x.png?kind=image");
-        CanvasNode l = new CanvasNode.Link("n3", 120, 300, 260, 90, null, 5, null,
-                "https://example.com", "Example", false);
-        CanvasEdge e = new CanvasEdge("e1", "n1", "n2",
-                CanvasEdge.Side.RIGHT, CanvasEdge.Side.LEFT,
-                CanvasEdge.End.NONE, CanvasEdge.End.ARROW, "belegt durch", null, null, null);
-        return new CanvasDocument("Skizze", "desc",
-                new CanvasGraph(List.of(g, t, d, l), List.of(e)));
+        CanvasNode t = new CanvasNode.Text(
+                "n1", 120, 80, 240, 120, "1", null, "g1", "Kernidee", true, null, "l", "#dc2626", "alice");
+        CanvasNode d = new CanvasNode.Doc("n2", 420, 80, 320, 160, null, null, null, "vance:/assets/x.png?kind=image");
+        CanvasNode l =
+                new CanvasNode.Link("n3", 120, 300, 260, 90, null, 5, null, "https://example.com", "Example", false);
+        CanvasEdge e = new CanvasEdge(
+                "e1",
+                "n1",
+                "n2",
+                CanvasEdge.Side.RIGHT,
+                CanvasEdge.Side.LEFT,
+                0,
+                2,
+                CanvasEdge.End.NONE,
+                CanvasEdge.End.ARROW,
+                "belegt durch",
+                null,
+                null,
+                null);
+        return new CanvasDocument("Skizze", "desc", new CanvasGraph(List.of(g, t, d, l), List.of(e)));
     }
 
     @Test
@@ -40,10 +49,11 @@ class CanvasCodecTest {
 
         assertThat(back.title()).isEqualTo("Skizze");
         assertThat(back.graph().nodes()).hasSize(4);
-        assertThat(back.graph().nodes()).extracting(CanvasNode::type)
-                .containsExactly("group", "text", "doc", "link");
+        assertThat(back.graph().nodes()).extracting(CanvasNode::type).containsExactly("group", "text", "doc", "link");
         assertThat(back.graph().edges()).hasSize(1);
         assertThat(back.graph().edges().get(0).toEnd()).isEqualTo(CanvasEdge.End.ARROW);
+        assertThat(back.graph().edges().get(0).fromSlot()).isEqualTo(0);
+        assertThat(back.graph().edges().get(0).toSlot()).isEqualTo(2);
 
         CanvasNode.Text text = (CanvasNode.Text) back.graph().nodes().get(1);
         assertThat(text.textColor()).isEqualTo("#dc2626");
@@ -69,13 +79,12 @@ class CanvasCodecTest {
     void link_newTabUnset_staysUnset() {
         // Null is a third state, not a false — a node written before the field
         // existed has not decided, and the reader applies the convention.
-        CanvasNode l = new CanvasNode.Link("n1", 0, 0, 10, 10, null, null, null,
-                "https://example.com", null, null);
-        CanvasDocument doc = new CanvasDocument("t", null,
-                new CanvasGraph(List.of(l), List.of()));
+        CanvasNode l = new CanvasNode.Link("n1", 0, 0, 10, 10, null, null, null, "https://example.com", null, null);
+        CanvasDocument doc = new CanvasDocument("t", null, new CanvasGraph(List.of(l), List.of()));
 
         String yaml = CanvasCodec.serialize(doc, YAML);
-        CanvasNode.Link back = (CanvasNode.Link) CanvasCodec.parse(yaml, YAML).graph().nodes().getFirst();
+        CanvasNode.Link back =
+                (CanvasNode.Link) CanvasCodec.parse(yaml, YAML).graph().nodes().getFirst();
 
         assertThat(yaml).doesNotContain("newTab");
         assertThat(back.newTab()).isNull();
@@ -83,10 +92,64 @@ class CanvasCodecTest {
 
     @Test
     void serialize_omitsDefaultArrowEnds() {
-        CanvasEdge dflt = new CanvasEdge("e1", "n1", "n2", null, null,
-                CanvasEdge.End.NONE, CanvasEdge.End.ARROW, null, null, null, null);
+        CanvasEdge dflt = new CanvasEdge(
+                "e1",
+                "n1",
+                "n2",
+                null,
+                null,
+                null,
+                null,
+                CanvasEdge.End.NONE,
+                CanvasEdge.End.ARROW,
+                null,
+                null,
+                null,
+                null);
         Map<String, Object> m = CanvasCodec.edgeToMap(dflt);
         assertThat(m).doesNotContainKeys("fromEnd", "toEnd");
+    }
+
+    @Test
+    void stackNode_roundTripsTitleAndColor() {
+        CanvasNode stack = new CanvasNode.Stack("n9", 10, 20, 180, 150, "3", null, null, "Mike");
+        CanvasDocument doc = new CanvasDocument("Retro", null, new CanvasGraph(List.of(stack), List.of()));
+        CanvasDocument back = CanvasCodec.parse(CanvasCodec.serialize(doc, YAML), YAML);
+        CanvasNode.Stack s = (CanvasNode.Stack) back.graph().nodes().get(0);
+        assertThat(s.type()).isEqualTo("stack");
+        assertThat(s.title()).isEqualTo("Mike");
+        assertThat(s.color()).isEqualTo("3");
+        assertThat(CanvasService.nodeText(s)).isEqualTo("Mike");
+    }
+
+    @Test
+    void serialize_omitsAbsentSlots() {
+        CanvasEdge dflt = new CanvasEdge(
+                "e1",
+                "n1",
+                "n2",
+                null,
+                null,
+                null,
+                null,
+                CanvasEdge.End.NONE,
+                CanvasEdge.End.ARROW,
+                null,
+                null,
+                null,
+                null);
+        assertThat(CanvasCodec.edgeToMap(dflt)).doesNotContainKeys("fromSlot", "toSlot");
+        assertThat(CanvasCodec.edgeFromMap(Map.of("id", "e1", "from", "n1", "to", "n2"))
+                        .fromSlot())
+                .isNull();
+    }
+
+    @Test
+    void edgeFromMap_readsSlots() {
+        CanvasEdge e =
+                CanvasCodec.edgeFromMap(Map.of("id", "e1", "from", "n1", "to", "n2", "fromSlot", 2, "toSlot", 0));
+        assertThat(e.fromSlot()).isEqualTo(2);
+        assertThat(e.toSlot()).isEqualTo(0);
     }
 
     @Test
@@ -124,9 +187,9 @@ class CanvasCodecTest {
 
     @Test
     void dtoRoundTrip_preservesTextColorAndAuthor() {
-        CanvasNodeDto dto = new CanvasNodeDto("n1", "text", 10, 20, 200, 120,
-                null, null, null, "Hi", null, null, null, null, null, null, null,
-                "m", "#2563eb", "bob");
+        CanvasNodeDto dto = new CanvasNodeDto(
+                "n1", "text", 10, 20, 200, 120, null, null, null, "Hi", null, null, null, null, null, null, null, "m",
+                "#2563eb", "bob");
         CanvasGraphDto in = new CanvasGraphDto(null, null, List.of(dto), List.of());
         CanvasGraphDto out = CanvasDtoMapper.toDto(CanvasDtoMapper.fromDto(in));
         assertThat(out.nodes()).hasSize(1);
@@ -136,7 +199,6 @@ class CanvasCodecTest {
 
     @Test
     void markdownMime_isUnsupported() {
-        assertThatThrownBy(() -> CanvasCodec.parse("# hi", "text/markdown"))
-                .isInstanceOf(KindCodecException.class);
+        assertThatThrownBy(() -> CanvasCodec.parse("# hi", "text/markdown")).isInstanceOf(KindCodecException.class);
     }
 }

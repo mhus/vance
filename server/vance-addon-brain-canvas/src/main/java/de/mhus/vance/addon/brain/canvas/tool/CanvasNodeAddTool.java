@@ -32,9 +32,9 @@ public class CanvasNodeAddTool implements Tool {
                                     "type",
                                     "object",
                                     "description",
-                                    "Node spec: { type: text|doc|link|group, x, y, w, h, "
+                                    "Node spec: { type: text|doc|link|group|stack, x, y, w, h, "
                                             + "color?, z?, … }. text→`text`, doc→`ref` (vance:-URI), "
-                                            + "link→`href`+`title?`, group→`label?`. `id` is minted "
+                                            + "link→`href`+`title?`, group→`label?`, stack→`title?` (+`color`). `id` is minted "
                                             + "server-side if omitted."));
                     put("projectId", Map.of("type", "string"));
                 }
@@ -59,7 +59,7 @@ public class CanvasNodeAddTool implements Tool {
 
     @Override
     public String description() {
-        return "Add a node (text | doc | link | group) to a canvas at a given "
+        return "Add a node (text | doc | link | group | stack) to a canvas at a given "
                 + "x/y position. Returns the minted node id.";
     }
 

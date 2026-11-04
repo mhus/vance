@@ -20,8 +20,9 @@ import { useT } from './i18n';
  * never scrolls). All nodes are resizable and carry a floating
  * {@link NodeToolbar} (colour / font / style / delete) when selected.
  *
- * Exactly one target handle (left) + one source handle (right) — a single
- * handle of each type is unambiguous, so connections land where dropped.
+ * Each side carries {@link SLOT_COUNT} source + target handles (ids
+ * `s-<side>-<slot>` / `t-<side>-<slot>`), so several edges can attach to one
+ * side without overlapping.
  */
 const props = defineProps<{
   data: {
@@ -39,6 +40,12 @@ const props = defineProps<{
     onEditLink?: (id: string) => void;
     /** Persist pending edits now — before a same-tab navigation leaves the board. */
     onFlush?: () => void;
+    /** Take a note off a stack and place it beside the stack (click, touch). */
+    onTake?: (stackId: string) => void;
+    /** True once, right after this node was created from a stack: open it for typing. */
+    autoEdit?: boolean;
+    /** The card has consumed {@link autoEdit}. */
+    onAutoEditDone?: (id: string) => void;
   };
   selected?: boolean;
 }>();
@@ -76,6 +83,14 @@ const kind = computed(() => node.value.type);
 const editable = computed(() => props.data.editable === true);
 
 const SIDES = ['top', 'right', 'bottom', 'left'] as const;
+/** Attachment points per side; mirrors `CanvasEdge.SLOTS` on the server. */
+const SLOT_COUNT = 3;
+const SLOT_INDEXES = Array.from({ length: SLOT_COUNT }, (_, i) => i);
+/** Place a handle along its side: 25 % / 50 % / 75 % for three slots. */
+function slotStyle(side: string, slot: number): Record<string, string> {
+  const pct = `${((slot + 1) / (SLOT_COUNT + 1)) * 100}%`;
+  return side === 'top' || side === 'bottom' ? { left: pct } : { top: pct };
+}
 const POS: Record<string, Position> = {
   top: Position.Top,
   right: Position.Right,
@@ -86,7 +101,7 @@ const POS: Record<string, Position> = {
 const bg = computed(() => {
   const c = node.value.color;
   if (c) return PALETTE[c] ?? c;
-  return kind.value === 'text' ? 'var(--v-content-yellow-bg)' : 'var(--v-surface)';
+  return kind.value === 'text' || kind.value === 'stack' ? 'var(--v-content-yellow-bg)' : 'var(--v-surface)';
 });
 
 const groupColor = computed(() =>
@@ -101,9 +116,12 @@ const groupBorder = computed(() =>
 );
 
 /** Default text colour: the content colour's ink on a coloured card, else the label. */
-const defaultText = computed(() =>
-  node.value.color && PALETTE_FG[node.value.color] ? PALETTE_FG[node.value.color] : 'var(--v-label)',
-);
+// A sticky without a colour is yellow, so its ink is yellow's: softer than the
+// plain label colour, which read as black-on-yellow.
+const defaultText = computed(() => {
+  const c = node.value.color ?? (kind.value === 'text' || kind.value === 'stack' ? '3' : undefined);
+  return c && PALETTE_FG[c] ? PALETTE_FG[c] : 'var(--v-label)';
+});
 
 const textStyle = computed(() => ({
   fontSize: FONT_PX[node.value.fontSize ?? 'm'] ?? '13px',
@@ -318,7 +336,7 @@ function autogrow(): void {
  * target twice before any editor appeared.
  */
 function onCardDoubleClick(): void {
-  if (kind.value !== 'text') return;
+  if (kind.value !== 'text' && kind.value !== 'stack') return;
   void beginEdit();
 }
 
@@ -330,7 +348,7 @@ function onCardDoubleClick(): void {
 async function beginEdit(): Promise<void> {
   if (!editable.value) return;
   if (kind.value === 'text') draft.value = node.value.text ?? '';
-  else if (kind.value === 'link') draft.value = node.value.title ?? '';
+  else if (kind.value === 'link' || kind.value === 'stack') draft.value = node.value.title ?? '';
   else return;
   editing.value = true;
   await nextTick();
@@ -342,7 +360,7 @@ async function beginEdit(): Promise<void> {
 function commit(): void {
   if (!editing.value) return;
   editing.value = false;
-  if (kind.value === 'link') {
+  if (kind.value === 'link' || kind.value === 'stack') {
     // Empty means "no title" — the card then shows the target, which is a
     // better fallback than an empty headline.
     const title = draft.value.trim();
@@ -357,6 +375,25 @@ function commit(): void {
 function cancel(): void {
   editing.value = false;
 }
+
+// ── Note stacks ───────────────────────────────────────────────
+/** MIME type of a note taken off a stack; the editor's drop handler reads it. */
+const STACK_DRAG_TYPE = 'application/x-vance-canvas-stack';
+
+function onTakeDragStart(ev: DragEvent): void {
+  if (!ev.dataTransfer) return;
+  ev.dataTransfer.setData(STACK_DRAG_TYPE, node.value.id);
+  ev.dataTransfer.effectAllowed = 'copy';
+}
+
+/** A node created from a stack opens for typing at once — that is the point of taking one. */
+function consumeAutoEdit(): void {
+  if (props.data.autoEdit !== true) return;
+  props.data.onAutoEditDone?.(node.value.id);
+  void beginEdit();
+}
+onMounted(consumeAutoEdit);
+watch(() => props.data.autoEdit, consumeAutoEdit);
 
 function onResizeEnd(e: { params: { x: number; y: number; width: number; height: number } }): void {
   props.data.onResize?.(
@@ -389,6 +426,7 @@ function copyLink(): void {
         ? { background: groupBg, borderColor: groupBorder }
         : { background: bg },
       kind === 'text' ? { minHeight: (node.h || 80) + 'px' } : { height: '100%' },
+      kind === 'stack' && node.color ? { background: PALETTE[node.color] ?? node.color } : {},
     ]"
     @dblclick.stop="onCardDoubleClick"
   >
@@ -430,6 +468,11 @@ function copyLink(): void {
           >A</button>
         </template>
 
+        <template v-if="kind === 'stack'">
+          <span class="cv-sep"></span>
+          <VIconButton icon="edit" size="sm" :label="t('canvas.node.stackRename')" @click="beginEdit" />
+        </template>
+
         <template v-if="kind === 'link'">
           <span class="cv-sep"></span>
           <VIconButton icon="edit" size="sm" :label="t('canvas.node.rename')" @click="beginEdit" />
@@ -463,25 +506,29 @@ function copyLink(): void {
       @resize-end="onResizeEnd"
     />
 
-    <!-- One source + one target connector per side. Unique ids let the
-         edge remember exactly which side it attaches to (fromSide/toSide). -->
+    <!-- SLOTS source + target connectors per side. Unique ids let the edge
+         remember exactly where it attaches (fromSide/fromSlot, toSide/toSlot). -->
     <template v-for="s in SIDES" :key="s">
-      <Handle
-        :id="`t-${s}`"
-        type="target"
-        :position="POS[s]"
-        :connectable="editable"
-        class="cv-handle"
-        :class="{ 'cv-handle--hidden': !editable }"
-      />
-      <Handle
-        :id="`s-${s}`"
-        type="source"
-        :position="POS[s]"
-        :connectable="editable"
-        class="cv-handle"
-        :class="{ 'cv-handle--hidden': !editable }"
-      />
+      <template v-for="i in SLOT_INDEXES" :key="`${s}-${i}`">
+        <Handle
+          :id="`t-${s}-${i}`"
+          type="target"
+          :position="POS[s]"
+          :style="slotStyle(s, i)"
+          :connectable="editable"
+          class="cv-handle"
+          :class="{ 'cv-handle--hidden': !editable }"
+        />
+        <Handle
+          :id="`s-${s}-${i}`"
+          type="source"
+          :position="POS[s]"
+          :style="slotStyle(s, i)"
+          :connectable="editable"
+          class="cv-handle"
+          :class="{ 'cv-handle--hidden': !editable }"
+        />
+      </template>
     </template>
 
     <template v-if="kind === 'text'">
@@ -498,7 +545,7 @@ function copyLink(): void {
       <div v-else class="canvas-note-body" :style="textStyle">
         {{ node.text || t('canvas.node.emptyNote') }}
       </div>
-      <div v-if="node.author && !editing" class="canvas-note-author flex items-center gap-1"><VIcon name="edit" />{{ node.author }}</div>
+      <div v-if="node.author && !editing" class="canvas-note-author">{{ node.author }}</div>
     </template>
 
     <template v-else-if="kind === 'doc'">
@@ -576,6 +623,35 @@ function copyLink(): void {
     <template v-else-if="kind === 'group'">
       <div class="canvas-group-label">{{ node.label || t('canvas.node.group') }}</div>
     </template>
+
+    <template v-else-if="kind === 'stack'">
+      <textarea
+        v-if="editing"
+        ref="area"
+        v-model="draft"
+        rows="1"
+        class="canvas-note-edit canvas-stack-title nodrag nowheel"
+        :style="{ color: defaultText }"
+        @blur="commit"
+        @keydown.enter.prevent="commit"
+        @keydown.esc.prevent="cancel"
+      ></textarea>
+      <div v-else class="canvas-stack-title" :style="{ color: defaultText }">
+        {{ node.title || t('canvas.node.stackUntitled') }}
+      </div>
+      <!-- The top note of the pile: drag it onto the board (or click) to take a
+           fresh one. nodrag/nopan keep VueFlow from moving the stack instead. -->
+      <div
+        v-if="editable"
+        class="canvas-stack-pad nodrag nopan"
+        :style="{ background: node.color ? (PALETTE[node.color] ?? node.color) : 'var(--v-content-yellow-bg)' }"
+        :title="t('canvas.node.stackTake')"
+        draggable="true"
+        @dragstart="onTakeDragStart"
+        @click.stop="props.data.onTake?.(node.id)"
+        @dblclick.stop
+      ><VIcon name="add" /></div>
+    </template>
   </div>
 </template>
 
@@ -587,29 +663,50 @@ function copyLink(): void {
   line-height: 1.35;
   color: var(--v-label);
 }
-.canvas-node--selected {
-  /* Theme-aware neutral (matches the workpage active-block ring): dark-grey in
-     light mode, light-grey in dark mode. */
-  outline: 2px solid color-mix(in oklab, var(--color-base-content) 50%, transparent);
-  outline-offset: 2px;
-  /* box-shadow ring renders reliably regardless of node overflow/clipping,
-     so the active node is always clearly visible. */
-  box-shadow: 0 0 0 4px color-mix(in oklab, var(--color-base-content) 14%, transparent);
-}
-/* Recolour VueFlow's default (blue) resize border/handles to black. */
+/* Selection is shown by the resizer frame alone — an extra outline/ring on top
+   of it read as three stacked borders. */
+/* Selection frame: a hairline in the accent colour, small white corner squares. */
 :deep(.vue-flow__resize-control.line) {
-  border-color: var(--v-label);
+  border-color: var(--v-accent);
+  border-width: 1.5px;
 }
 :deep(.vue-flow__resize-control.handle) {
-  background: var(--v-label);
-  border-color: var(--v-label);
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--v-surface);
+  border: 1.5px solid var(--v-accent);
 }
 
 .canvas-node--text {
-  border-radius: 4px;
-  padding: 10px 12px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 2px;
+  padding: 14px 16px 22px;
+  /* Paper, not a card: no outline, a light lift, and below a curl shadow. */
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.06), 0 8px 14px -8px rgba(0, 0, 0, 0.22);
+}
+/* Soft light-to-dark sweep over the colour; an overlay because the card's own
+   background is set inline from the palette. */
+.canvas-node--text::before,
+.canvas-node--stack::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0) 55%, rgba(0, 0, 0, 0.035));
+}
+/* The lifted bottom-right corner of a real sticky. */
+.canvas-node--text::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  right: 6px;
+  bottom: 8px;
+  width: 55%;
+  height: 16px;
+  box-shadow: 4px 10px 12px rgba(0, 0, 0, 0.2);
+  transform: rotate(3deg);
+  pointer-events: none;
 }
 .canvas-note-body {
   white-space: pre-wrap;
@@ -617,14 +714,12 @@ function copyLink(): void {
 }
 .canvas-note-author {
   position: absolute;
-  right: 4px;
-  bottom: 3px;
+  right: 10px;
+  bottom: 6px;
   z-index: 5;
-  padding: 0 4px;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--v-surface) 80%, transparent);
-  font-size: 9px;
-  color: var(--v-label-secondary);
+  font-size: 10px;
+  color: inherit;
+  opacity: 0.55;
   pointer-events: none;
 }
 .canvas-note-edit {
@@ -636,6 +731,42 @@ function copyLink(): void {
   background: transparent;
   font-family: inherit;
   color: inherit;
+}
+
+.canvas-node--stack {
+  border-radius: 2px;
+  padding: 14px 16px;
+  /* A pile: two offset sheets under the top one. */
+  box-shadow:
+    3px 3px 0 rgba(0, 0, 0, 0.1),
+    6px 6px 0 rgba(0, 0, 0, 0.06),
+    0 8px 14px -8px rgba(0, 0, 0, 0.22);
+}
+.canvas-stack-title {
+  width: calc(100% - 4px);
+  font-weight: 700;
+  font-size: 14px;
+  word-break: break-word;
+}
+.canvas-stack-pad {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 48px;
+  border-radius: 3px;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.08), 0 5px 8px -4px rgba(0, 0, 0, 0.3);
+  color: var(--v-label-secondary);
+  cursor: grab;
+}
+.canvas-stack-pad:hover {
+  transform: translateY(-1px) rotate(-2deg);
+}
+.canvas-stack-pad:active {
+  cursor: grabbing;
 }
 
 .canvas-node--doc,
@@ -778,12 +909,20 @@ function copyLink(): void {
 
 /* Connectors */
 .cv-handle {
-  width: 5px;
-  height: 5px;
-  min-width: 5px;
-  min-height: 5px;
-  background: var(--v-label-tertiary);
-  border: 1px solid var(--v-surface);
+  width: 6px;
+  height: 6px;
+  min-width: 6px;
+  min-height: 6px;
+  background: var(--v-surface);
+  border: 1.5px solid var(--v-accent);
+  /* Connection points only show when the node is hovered or selected. They stay
+     hit-testable while invisible, so a drag can still end on one. */
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.canvas-node:hover .cv-handle:not(.cv-handle--hidden),
+.canvas-node--selected .cv-handle:not(.cv-handle--hidden) {
+  opacity: 1;
 }
 .cv-handle--hidden {
   opacity: 0;

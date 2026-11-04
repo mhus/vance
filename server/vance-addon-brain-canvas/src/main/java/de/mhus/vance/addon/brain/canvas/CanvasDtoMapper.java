@@ -35,27 +35,60 @@ public final class CanvasDtoMapper {
         Boolean bold = null, italic = null, newTab = null;
         switch (n) {
             case CanvasNode.Text t -> {
-                text = t.text(); bold = t.bold(); italic = t.italic(); fontSize = t.fontSize();
-                textColor = t.textColor(); author = t.author();
+                text = t.text();
+                bold = t.bold();
+                italic = t.italic();
+                fontSize = t.fontSize();
+                textColor = t.textColor();
+                author = t.author();
             }
             case CanvasNode.Doc d -> ref = d.ref();
             case CanvasNode.Link l -> {
-                href = l.href(); title = l.title(); newTab = l.newTab();
+                href = l.href();
+                title = l.title();
+                newTab = l.newTab();
             }
             case CanvasNode.Group g -> label = g.label();
+            case CanvasNode.Stack s -> title = s.title();
         }
-        return new CanvasNodeDto(n.id(), n.type(), n.x(), n.y(), n.w(), n.h(),
-                n.color(), n.z(), n.parent(), text, ref, href, title, newTab, label,
-                bold, italic, fontSize, textColor, author);
+        return new CanvasNodeDto(
+                n.id(),
+                n.type(),
+                n.x(),
+                n.y(),
+                n.w(),
+                n.h(),
+                n.color(),
+                n.z(),
+                n.parent(),
+                text,
+                ref,
+                href,
+                title,
+                newTab,
+                label,
+                bold,
+                italic,
+                fontSize,
+                textColor,
+                author);
     }
 
     private static CanvasEdgeDto edgeToDto(CanvasEdge e) {
         return new CanvasEdgeDto(
-                e.id(), e.from(), e.to(),
+                e.id(),
+                e.from(),
+                e.to(),
                 e.fromSide() != null ? e.fromSide().wire() : null,
                 e.toSide() != null ? e.toSide().wire() : null,
-                e.fromEnd().wire(), e.toEnd().wire(),
-                e.label(), e.color(), e.dashed(), e.width());
+                e.fromSlot(),
+                e.toSlot(),
+                e.fromEnd().wire(),
+                e.toEnd().wire(),
+                e.label(),
+                e.color(),
+                e.dashed(),
+                e.width());
     }
 
     // ── dto → model ───────────────────────────────────────────────
@@ -104,6 +137,8 @@ public final class CanvasDtoMapper {
         m.put("to", e.to());
         putIf(m, "fromSide", e.fromSide());
         putIf(m, "toSide", e.toSide());
+        putIf(m, "fromSlot", e.fromSlot());
+        putIf(m, "toSlot", e.toSlot());
         putIf(m, "fromEnd", e.fromEnd());
         putIf(m, "toEnd", e.toEnd());
         putIf(m, "label", e.label());

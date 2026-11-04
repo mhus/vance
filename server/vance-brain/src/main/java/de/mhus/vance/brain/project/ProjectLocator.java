@@ -167,18 +167,34 @@ public class ProjectLocator {
 
     /**
      * Moves an idle or suspended project to the desired state RUNNING before it is
-     * placed. A strict compare-and-set from what was read: a racing close wins.
+     * placed. A compare-and-set from what was read: a racing close wins. Any other
+     * race — the idle detector stopping the project, another login waking it — is
+     * not the user's problem: the state is read again and the write retried once.
      */
     private ProjectDocument wantToRun(ProjectDocument project) {
-        ProjectStatus status = project.getStatus();
-        if (status == ProjectStatus.CLOSED) {
-            throw new ProjectService.ProjectClosedException(
-                    "Project '" + project.getName() + "' is archived — cannot start it");
+        ProjectDocument current = project;
+        for (int attempt = 1; ; attempt++) {
+            ProjectStatus status = current.getStatus();
+            if (status == ProjectStatus.CLOSED) {
+                throw new ProjectService.ProjectClosedException(
+                        "Project '" + current.getName() + "' is archived — cannot start it");
+            }
+            if (status == ProjectStatus.RUNNING || status == ProjectStatus.INIT) {
+                return current;
+            }
+            try {
+                return projectService.transitionStatus(
+                        current.getTenantId(), current.getName(), status, ProjectStatus.RUNNING);
+            } catch (ProjectService.ProjectStatusConflictException e) {
+                if (attempt >= 2) {
+                    throw e;
+                }
+                current = projectService
+                        .findByTenantAndName(current.getTenantId(), current.getName())
+                        .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
+                                "Project '" + project.getName() + "' vanished while waking"));
+            }
         }
-        if (status == ProjectStatus.RUNNING || status == ProjectStatus.INIT) {
-            return project;
-        }
-        return projectService.transitionStatus(project.getTenantId(), project.getName(), status, ProjectStatus.RUNNING);
     }
 
     private Optional<String> liveEndpointOf(ProjectDocument project) {

@@ -1,19 +1,24 @@
-import { computed, reactive, ref, type ComputedRef } from 'vue';
+import { computed, reactive, ref, watch, type ComputedRef, type WatchStopHandle } from 'vue';
 import {
   ProjectLiveState,
   RunnerPhase,
   type ProjectSummary,
   type RunnerStatusDto,
   type SignalFrame,
+  type TenantProjectsResponse,
 } from '@vance/generated';
-import { onSignal, subscribeSignals, unsubscribeSignals } from '@/ws/wsConnectionStore';
+import { brainFetch } from '@vance/shared';
+import { onSignal, subscribeSignals, unsubscribeSignals, useWsConnection } from '@/ws/wsConnectionStore';
 
 /**
  * Live state of projects and their runners, for display only.
  *
  * <p>The start state comes with the project list ({@link seed}); changes arrive on the
  * {@code _status} path of the signals channel. An entry whose {@code expiresAtMs} has passed
- * reads as unknown, so a writer that went silent never leaves an old value on screen.
+ * reads as unknown, so a writer that went silent never leaves an old value on screen. A stopped
+ * project has no expiry — its state holds until a frame says otherwise — so frames missed while the
+ * socket was down would leave it wrong for good; after a reconnect the list is therefore read again
+ * and seeded anew.
  */
 
 const STATUS_PATH = '_status';
@@ -33,6 +38,7 @@ const nowMs = ref(Date.now());
 let users = 0;
 let off: (() => void) | null = null;
 let timer: ReturnType<typeof setInterval> | null = null;
+let stopReconnectWatch: WatchStopHandle | null = null;
 
 function expired(expiresAtMs: number | null | undefined): boolean {
   return expiresAtMs != null && expiresAtMs <= nowMs.value;
@@ -52,12 +58,28 @@ function onFrame(frame: SignalFrame): void {
   }
 }
 
+/** Reads the project list again and takes its live state as the new start state. */
+async function resync(): Promise<void> {
+  try {
+    const data = await brainFetch<TenantProjectsResponse>('GET', 'projects');
+    seed(data.projects ?? []);
+  } catch (e) {
+    // Display only: the entries keep their expiry and fall back to unknown by themselves.
+    console.warn('[projectStatus] resync after reconnect failed:', e);
+  }
+}
+
 function start(): void {
   nowMs.value = Date.now();
   users += 1;
   if (users > 1) return;
   off = onSignal(STATUS_PATH, onFrame);
   void subscribeSignals(STATUS_PATH);
+  stopReconnectWatch = watch(useWsConnection().status, (now, before) => {
+    if (now === 'connected' && before !== 'connected' && before !== 'connecting' && before !== 'idle') {
+      void resync();
+    }
+  });
   timer = setInterval(() => {
     nowMs.value = Date.now();
   }, TICK_MS);
@@ -73,6 +95,10 @@ function stop(): void {
   if (timer) {
     clearInterval(timer);
     timer = null;
+  }
+  if (stopReconnectWatch) {
+    stopReconnectWatch();
+    stopReconnectWatch = null;
   }
   void unsubscribeSignals(STATUS_PATH);
 }

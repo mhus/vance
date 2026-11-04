@@ -146,8 +146,11 @@ public class BrainSchemaMigrations implements SchemaMigrationSource {
             // hold RECOVERING / SUSPENDING, and a row with a value the enum no
             // longer knows fails to load — the project would vanish from every
             // query that maps it. Self-emptying filter, a no-op on a new database.
+            new Registered("2026-11-01_001", Migrator_2026_11_01_001_ProjectDesiredState.class, /*runOnBaseline*/ true),
+            // runOnBaseline: report-only, and a restored database is exactly where suspended
+            // workspaces with a snapshot are likely to be found.
             new Registered(
-                    "2026-11-01_001", Migrator_2026_11_01_001_ProjectDesiredState.class, /*runOnBaseline*/ true));
+                    "2026-11-02_001", Migrator_2026_11_02_001_WorkspaceSnapshotsRetired.class, /*runOnBaseline*/ true));
 
     @Override
     public List<Registered> migrations() {

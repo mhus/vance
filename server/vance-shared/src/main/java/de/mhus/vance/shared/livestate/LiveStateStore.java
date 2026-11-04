@@ -21,7 +21,12 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * <p>Brain writes the project entries (claim, takeover, release, lease renewal);
  * the cloud controller in Anus writes the runner entries. Readers never
- * write. Without Redis every read is empty and every write a no-op.
+ * write.
+ *
+ * <p>Information only: a failed write is logged at debug level and not reported to the caller.
+ * The entry that is returned is what <em>would</em> have been stored, so a caller that announces
+ * it (the signals feed) shows a state the store may not hold — readers fall back to the project
+ * document in that case.
  */
 @Service
 @Slf4j

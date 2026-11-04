@@ -104,13 +104,20 @@ public class ProjectLiveService {
         record(tenantId, project, liveOf(actual));
     }
 
-    /** Extends the life of the project's entry along with its lease. */
-    public void renew(String tenantId, String project) {
+    /**
+     * Extends the life of the project's entry along with its lease.
+     *
+     * @return {@code false} when there was no entry to extend — run out after a missed tick, or
+     *     lost with the store — so the caller can write it again from the project document
+     */
+    public boolean renew(String tenantId, String project) {
         try {
-            store.renewProject(tenantId, project, clusterService.leaseTtl())
-                    .ifPresent(entry -> publish(tenantId, project, entry));
+            Optional<ProjectEntry> renewed = store.renewProject(tenantId, project, clusterService.leaseTtl());
+            renewed.ifPresent(entry -> publish(tenantId, project, entry));
+            return renewed.isPresent();
         } catch (RuntimeException e) {
             log.debug("live state of '{}/{}' not renewed: {}", tenantId, project, e.toString());
+            return true;
         }
     }
 

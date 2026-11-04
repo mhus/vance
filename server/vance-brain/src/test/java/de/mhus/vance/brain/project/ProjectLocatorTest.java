@@ -134,6 +134,58 @@ class ProjectLocatorTest {
         verify(placementService).place(any(ProjectDocument.class), eq(PlacementTrigger.WAKE));
     }
 
+    private ProjectDocument doc(ProjectStatus status) {
+        return ProjectDocument.builder()
+                .tenantId(TENANT)
+                .name(PROJECT)
+                .status(status)
+                .lifecycleType(LifecycleType.AUTO)
+                .build();
+    }
+
+    @Test
+    void aWakeThatLosesARaceToAnotherWake_readsAgainAndSucceeds() {
+        given(ProjectStatus.IDLE);
+        // First read: IDLE. The write loses; the re-read finds the project already woken.
+        when(projectService.findByTenantAndName(TENANT, PROJECT))
+                .thenReturn(Optional.of(doc(ProjectStatus.IDLE)))
+                .thenReturn(Optional.of(doc(ProjectStatus.RUNNING)));
+        when(projectService.transitionStatus(TENANT, PROJECT, ProjectStatus.IDLE, ProjectStatus.RUNNING))
+                .thenThrow(new ProjectService.ProjectStatusConflictException("raced"));
+
+        locator.locateForUser(TENANT, PROJECT);
+
+        verify(placementService).place(any(ProjectDocument.class), eq(PlacementTrigger.WAKE));
+    }
+
+    @Test
+    void aWakeThatLosesToAClose_isRefused() {
+        given(ProjectStatus.IDLE);
+        when(projectService.findByTenantAndName(TENANT, PROJECT))
+                .thenReturn(Optional.of(doc(ProjectStatus.IDLE)))
+                .thenReturn(Optional.of(doc(ProjectStatus.CLOSED)));
+        when(projectService.transitionStatus(TENANT, PROJECT, ProjectStatus.IDLE, ProjectStatus.RUNNING))
+                .thenThrow(new ProjectService.ProjectStatusConflictException("raced"));
+
+        assertThatThrownBy(() -> locator.locateForUser(TENANT, PROJECT))
+                .isInstanceOf(ProjectService.ProjectClosedException.class);
+
+        verify(placementService, never()).place(any(), any());
+    }
+
+    @Test
+    void aWakeThatKeepsLosing_givesUpAfterOneRetry() {
+        given(ProjectStatus.IDLE);
+        when(projectService.transitionStatus(TENANT, PROJECT, ProjectStatus.IDLE, ProjectStatus.RUNNING))
+                .thenThrow(new ProjectService.ProjectStatusConflictException("raced"));
+
+        assertThatThrownBy(() -> locator.locateForUser(TENANT, PROJECT))
+                .isInstanceOf(ProjectService.ProjectStatusConflictException.class);
+
+        verify(projectService, org.mockito.Mockito.times(2))
+                .transitionStatus(TENANT, PROJECT, ProjectStatus.IDLE, ProjectStatus.RUNNING);
+    }
+
     @Test
     void anArchivedProject_cannotBeOpened() {
         given(ProjectStatus.CLOSED);

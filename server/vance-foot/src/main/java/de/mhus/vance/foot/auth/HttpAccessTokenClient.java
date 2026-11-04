@@ -86,8 +86,10 @@ public class HttpAccessTokenClient implements AccessTokenClient {
                 .build();
         HttpResponse<String> response = http.send(httpRequest, HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() != 200) {
-            throw new IllegalStateException(failure + ": HTTP " + response.statusCode()
-                    + (response.body().isEmpty() ? "" : " — " + response.body()));
+            throw new AccessTokenHttpException(
+                    failure + ": HTTP " + response.statusCode()
+                            + (response.body().isEmpty() ? "" : " — " + response.body()),
+                    response.statusCode());
         }
         return response.body();
     }

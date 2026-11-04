@@ -27,8 +27,13 @@ import org.jspecify.annotations.Nullable;
  * a recursion. One thread means messages arrive in the order they were published, like on a Redis
  * connection.
  *
- * <p>Hash state lives in memory with a per-key expiry that is checked on read; nothing needs to
- * sweep. {@link #isEnabled()} is {@code false}: there is no second pod to reach, so callers skip
+ * <p>The queue is not bounded — dropping a document change would be worse than waiting — but a
+ * handler that blocks stalls every live feature behind it, so a backlog is reported once it passes
+ * {@value #BACKLOG_WARN} messages. Handlers must hand work off, not wait on a client.
+ *
+ * <p>Hash and value state live in memory with a per-key expiry that is checked on read, so an
+ * expired entry is never served. Entries nobody reads again are dropped by a sweep that runs with
+ * the writes, at most once a {@value #SWEEP_INTERVAL_MS} ms. {@link #isEnabled()} is {@code false}: there is no second pod to reach, so callers skip
  * their cross-pod extras.
  */
 @Slf4j
@@ -36,6 +41,12 @@ public final class LocalMessagingService implements VanceRedisMessagingService {
 
     /** Marks the end of the queue; taken by the dispatcher on shutdown. */
     private static final Message STOP = new Message("", "");
+
+    /** Queue depth at which a backlog is reported. */
+    static final int BACKLOG_WARN = 10_000;
+
+    /** Shortest time between two sweeps of expired state. */
+    static final long SWEEP_INTERVAL_MS = 60_000L;
 
     private record Message(String topic, String payload) {}
 
@@ -63,6 +74,9 @@ public final class LocalMessagingService implements VanceRedisMessagingService {
     private final Map<String, HashEntry> hashes = new HashMap<>();
     private final Map<String, ValueEntry> values = new HashMap<>();
     private final Thread dispatcher;
+    private volatile boolean backlogReported;
+    private final Object sweepLock = new Object();
+    private long lastSweepMs;
 
     public LocalMessagingService() {
         this(Clock.systemUTC());
@@ -111,6 +125,15 @@ public final class LocalMessagingService implements VanceRedisMessagingService {
 
     private void enqueue(String topic, String message) {
         queue.add(new Message(topic, message));
+        int depth = queue.size();
+        if (depth >= BACKLOG_WARN) {
+            if (!backlogReported) {
+                backlogReported = true;
+                log.warn("local-msg backlog of {} messages — a subscriber handler is blocking the dispatcher", depth);
+            }
+        } else if (depth < BACKLOG_WARN / 2) {
+            backlogReported = false;
+        }
     }
 
     private void register(String key, @Nullable String pattern, BiConsumer<String, String> handler) {
@@ -166,6 +189,7 @@ public final class LocalMessagingService implements VanceRedisMessagingService {
     @Override
     public void hashPut(String tenantId, String subKey, String field, String value, Duration ttl) {
         String key = VanceRedisMessagingService.topicOf(tenantId, subKey);
+        sweepIfDue();
         synchronized (hashes) {
             HashEntry entry = liveEntry(key);
             if (entry == null) {
@@ -209,6 +233,7 @@ public final class LocalMessagingService implements VanceRedisMessagingService {
     @Override
     public void valuePut(String tenantId, String subKey, String value, Duration ttl) {
         String key = VanceRedisMessagingService.topicOf(tenantId, subKey);
+        sweepIfDue();
         synchronized (values) {
             values.put(key, new ValueEntry(value, clock.millis() + ttl.toMillis()));
         }
@@ -243,6 +268,32 @@ public final class LocalMessagingService implements VanceRedisMessagingService {
     public void valueDelete(String tenantId, String subKey) {
         synchronized (values) {
             values.remove(VanceRedisMessagingService.topicOf(tenantId, subKey));
+        }
+    }
+
+    /** Drops every expired entry, at most once per {@link #SWEEP_INTERVAL_MS}. */
+    private void sweepIfDue() {
+        long now = clock.millis();
+        synchronized (sweepLock) {
+            if (now - lastSweepMs < SWEEP_INTERVAL_MS) return;
+            lastSweepMs = now;
+        }
+        synchronized (hashes) {
+            hashes.values().removeIf(entry -> entry.expiresAtMs <= now);
+        }
+        synchronized (values) {
+            values.values().removeIf(entry -> entry.expiresAtMs() <= now);
+        }
+    }
+
+    /** Number of hash and value keys held, expired ones included until swept. */
+    int storedKeys() {
+        int count;
+        synchronized (hashes) {
+            count = hashes.size();
+        }
+        synchronized (values) {
+            return count + values.size();
         }
     }
 

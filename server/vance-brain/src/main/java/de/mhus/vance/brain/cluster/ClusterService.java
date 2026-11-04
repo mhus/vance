@@ -273,7 +273,8 @@ public class ClusterService {
 
     /**
      * Whether the pod that holds a lease is provably gone: its registry row is missing, stopped or
-     * stale ({@link #resolveEndpointByPodId} finds no live endpoint for it).
+     * stale. A live row without an advertised endpoint is <em>not</em> gone — it cannot be routed
+     * to, but it still beats, and taking a lease from it would put a second owner on the project.
      *
      * <p>Never {@code true} while this pod has not registered itself. A pod that cannot yet see its
      * own row must not judge the others — an empty registry read on a booting pod would otherwise
@@ -283,7 +284,15 @@ public class ClusterService {
         if (!registered) {
             return false;
         }
-        return resolveEndpointByPodId(podId).isEmpty();
+        if (isIgnoredPeer(podId)) {
+            return true;
+        }
+        Instant now = Instant.now();
+        return brainPodService
+                .findByPodId(podId)
+                .filter(pod -> pod.getStatus() != PodStatus.STOPPED)
+                .filter(pod -> !brainPodService.isStale(pod, now, timeWindows.podLiveness()))
+                .isEmpty();
     }
 
     /**

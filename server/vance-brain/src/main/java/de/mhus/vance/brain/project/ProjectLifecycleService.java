@@ -698,7 +698,8 @@ public class ProjectLifecycleService {
         workspaceService.dispose(tenantId, projectName);
         disposeProjectRag(tenantId, projectName);
         log.info("Project '{}/{}' closed → group '{}'", tenantId, projectName, closedGroupId);
-        return doc;
+        // Re-read: the teardown above dropped the lease and moved the actual state.
+        return projectService.findByTenantAndName(tenantId, projectName).orElse(doc);
     }
 
     /**

@@ -261,4 +261,60 @@ class LoginSlashCommandTest {
                         any(), org.mockito.ArgumentMatchers.eq("tx-1"), org.mockito.ArgumentMatchers.eq("123456"));
         verify(auth, org.mockito.Mockito.never()).login(any());
     }
+
+    private void runEmailLoginRefusedWith(int status, ChatTerminal terminal) throws Exception {
+        ProjectBinding binding = binding("https://b.example.com", "wss://b.example.com", "mhus", "hank", "proj-1");
+        ProjectBindingStore bindingStore = mock(ProjectBindingStore.class);
+        VancePaths paths = mock(VancePaths.class);
+        PendingLinePrompt prompt = mock(PendingLinePrompt.class);
+        FootAuthService auth = mock(FootAuthService.class);
+        GitignoreGuard gitignore = mock(GitignoreGuard.class);
+        Path vanceDir = Path.of("/tmp/.vancetope");
+        when(paths.loginTargetDir()).thenReturn(vanceDir);
+        when(bindingStore.load(vanceDir)).thenReturn(Optional.of(binding));
+        when(auth.loginMethods("https://b.example.com", "mhus"))
+                .thenReturn(de.mhus.vance.api.access.LoginMethodsResponse.builder()
+                        .emailToken(true)
+                        .build());
+        when(auth.startEmailCode(any()))
+                .thenReturn(de.mhus.vance.api.access.EmailTokenStartResponse.builder()
+                        .transactionId("tx-1")
+                        .expiresAtTimestamp(System.currentTimeMillis() + 600_000L)
+                        .build());
+        when(auth.loginWithEmailCode(any(), anyString(), anyString()))
+                .thenThrow(new de.mhus.vance.foot.auth.AccessTokenHttpException("refused", status));
+        when(prompt.ask(anyString(), anyBoolean(), anyLong())).thenReturn("", "", "", "", "123456");
+
+        new LoginSlashCommand(
+                        auth, bindingStore, paths, prompt, gitignore, mock(ConnectionService.class), terminal, config())
+                .runLogin(List.of());
+    }
+
+    @Test
+    void emailCodeLogin_wrongCode_saysSo() throws Exception {
+        ChatTerminal terminal = mock(ChatTerminal.class);
+
+        runEmailLoginRefusedWith(401, terminal);
+
+        verify(terminal).error(org.mockito.ArgumentMatchers.contains("wrong or has expired"));
+    }
+
+    @Test
+    void emailCodeLogin_rateLimited_doesNotBlameTheCode() throws Exception {
+        ChatTerminal terminal = mock(ChatTerminal.class);
+
+        runEmailLoginRefusedWith(429, terminal);
+
+        verify(terminal).error(org.mockito.ArgumentMatchers.contains("Too many attempts"));
+    }
+
+    @Test
+    void emailCodeLogin_serverFault_isNotReportedAsAWrongCode() {
+        ChatTerminal terminal = mock(ChatTerminal.class);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> runEmailLoginRefusedWith(503, terminal))
+                .isInstanceOf(de.mhus.vance.foot.auth.AccessTokenHttpException.class);
+
+        verify(terminal, org.mockito.Mockito.never()).error(anyString());
+    }
 }

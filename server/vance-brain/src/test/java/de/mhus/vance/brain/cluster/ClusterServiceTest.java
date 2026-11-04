@@ -303,6 +303,22 @@ class ClusterServiceTest {
     }
 
     @Test
+    void aLiveHolderWithoutAnEndpoint_isNotGone() {
+        service.onApplicationReady();
+        BrainPodDocument row = BrainPodDocument.builder()
+                .podId("pod-no-endpoint")
+                .status(PodStatus.RUNNING)
+                .endpoint("")
+                .lastHeartbeatAt(Instant.now())
+                .build();
+        when(brainPodService.findByPodId("pod-no-endpoint")).thenReturn(java.util.Optional.of(row));
+        when(brainPodService.isStale(any(BrainPodDocument.class), any(Instant.class), any(Duration.class)))
+                .thenReturn(false);
+
+        assertThat(service.isHolderGone("pod-no-endpoint")).isFalse();
+    }
+
+    @Test
     void aPodThatHasNotRegisteredItself_doesNotJudgeTheOthers() {
         // Not onApplicationReady(): an empty registry read on a booting pod must not read as "everybody is gone".
         when(brainPodService.findByPodId("pod-other")).thenReturn(java.util.Optional.empty());

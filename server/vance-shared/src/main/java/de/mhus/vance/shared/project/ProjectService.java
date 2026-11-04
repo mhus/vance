@@ -358,7 +358,8 @@ public class ProjectService {
      * a refused claim and not a second owner. A closed project is never taken.
      *
      * <p>The previous holder's stored actual state is void with its lease and is reset to STOPPED;
-     * the bring that follows writes the new one.
+     * the bring that follows writes the new one. {@code homeResourceScore} belongs to the project,
+     * not to the holder, and is kept: the new holder books exactly the load the old one carried.
      *
      * @return the claimed project, or empty when the lease changed in the meantime
      */

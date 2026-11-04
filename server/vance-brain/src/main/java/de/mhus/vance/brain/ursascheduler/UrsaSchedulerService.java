@@ -22,6 +22,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.ursascheduler.ResolvedUrsaScheduler;
 import de.mhus.vance.shared.ursascheduler.UrsaSchedulerLoader;
+import jakarta.annotation.PostConstruct;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -110,6 +111,12 @@ public class UrsaSchedulerService {
      */
     @Value("${vance.scheduler.granularity:minutes}")
     private String granularityRaw;
+
+    /** A typo in the property stops the start instead of failing every single registration later. */
+    @PostConstruct
+    void validateGranularity() {
+        granularity();
+    }
 
     /** Counter for scheduler fires. Tags: {@code scheduler}, {@code outcome}. */
     private static final String METRIC_FIRES = "vance.ursascheduler.fires";

@@ -1,9 +1,16 @@
+import { nextTick, ref } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProjectLiveState, RunnerPhase, type ProjectSummary, type SignalFrame } from '@vance/generated';
 
 let handler: ((frame: SignalFrame) => void) | null = null;
 const subscribeSignals = vi.fn(async () => {});
 const unsubscribeSignals = vi.fn(async () => {});
+const wsStatus = ref<string>('connected');
+const brainFetch = vi.fn();
+
+vi.mock('@vance/shared', () => ({
+  brainFetch: (method: string, path: string) => brainFetch(method, path),
+}));
 
 vi.mock('@/ws/wsConnectionStore', () => ({
   onSignal: (_path: string, h: (frame: SignalFrame) => void) => {
@@ -14,6 +21,7 @@ vi.mock('@/ws/wsConnectionStore', () => ({
   },
   subscribeSignals: (path: string) => subscribeSignals(path),
   unsubscribeSignals: (path: string) => unsubscribeSignals(path),
+  useWsConnection: () => ({ status: wsStatus }),
 }));
 
 import { useProjectStatus } from './useProjectStatus';
@@ -28,6 +36,8 @@ describe('useProjectStatus', () => {
     vi.setSystemTime(new Date('2026-11-01T10:00:00Z'));
     subscribeSignals.mockClear();
     unsubscribeSignals.mockClear();
+    brainFetch.mockReset();
+    wsStatus.value = 'connected';
   });
 
   afterEach(() => {
@@ -128,5 +138,38 @@ describe('useProjectStatus', () => {
     expect(unsubscribeSignals).not.toHaveBeenCalled();
     status.stop();
     expect(unsubscribeSignals).toHaveBeenCalledWith('_status');
+  });
+
+  it('reads the list again after a reconnect, so a stopped project is not left wrong', async () => {
+    const status = useProjectStatus();
+    status.start();
+    status.seed([summary('alpha', { liveState: ProjectLiveState.STOPPED })]);
+    brainFetch.mockResolvedValue({
+      groups: [],
+      projects: [summary('alpha', { liveState: ProjectLiveState.RUNNING, liveExpiresAtMs: Date.now() + 60_000 })],
+    });
+
+    wsStatus.value = 'reconnecting';
+    await nextTick();
+    wsStatus.value = 'connected';
+    await nextTick();
+    await vi.waitFor(() => expect(status.liveStateOf('alpha')).toBe(ProjectLiveState.RUNNING));
+
+    expect(brainFetch).toHaveBeenCalledWith('GET', 'projects');
+    status.stop();
+  });
+
+  it('does not read the list on the first connect', async () => {
+    wsStatus.value = 'idle';
+    const status = useProjectStatus();
+    status.start();
+
+    wsStatus.value = 'connecting';
+    await nextTick();
+    wsStatus.value = 'connected';
+    await nextTick();
+
+    expect(brainFetch).not.toHaveBeenCalled();
+    status.stop();
   });
 });

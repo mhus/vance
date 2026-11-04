@@ -175,8 +175,8 @@ class ProjectLiveServiceTest {
                 .thenReturn(Optional.of(new ProjectEntry(ProjectLiveState.RUNNING, 1L, 9L)));
         when(store.renewProject("acme", "gone", Duration.ofMinutes(5))).thenReturn(Optional.empty());
 
-        service.renew("acme", "p1");
-        service.renew("acme", "gone");
+        assertThat(service.renew("acme", "p1")).isTrue();
+        assertThat(service.renew("acme", "gone")).isFalse();
 
         verify(signals).broadcast(eq("acme"), any());
     }

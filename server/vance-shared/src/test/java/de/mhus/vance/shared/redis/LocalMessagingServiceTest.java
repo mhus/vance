@@ -206,6 +206,18 @@ class LocalMessagingServiceTest {
     }
 
     @Test
+    void expiredEntriesNobodyReadsAreSweptWithTheNextWrite() {
+        service.hashPut("acme", "gone", "a", "1", Duration.ofSeconds(10));
+        service.valuePut("acme", "gone-too", "x", Duration.ofSeconds(10));
+        assertThat(service.storedKeys()).isEqualTo(2);
+
+        clock.now = clock.now.plusSeconds(LocalMessagingService.SWEEP_INTERVAL_MS / 1000 + 1);
+        service.hashPut("acme", "fresh", "a", "1", Duration.ofSeconds(60));
+
+        assertThat(service.storedKeys()).isEqualTo(1);
+    }
+
+    @Test
     void hashPutRefreshesTheKeyTtl() {
         service.hashPut("acme", "roster", "a", "1", Duration.ofSeconds(60));
         clock.now = clock.now.plusSeconds(50);

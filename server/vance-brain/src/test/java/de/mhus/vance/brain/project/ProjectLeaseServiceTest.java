@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.shared.megadodo.MegadodoService;
+import de.mhus.vance.shared.project.ProjectActualState;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import java.time.Instant;
@@ -36,6 +37,7 @@ class ProjectLeaseServiceTest {
     private ApplicationEventPublisher eventPublisher;
     private MegadodoService megadodo;
     private ProjectLeaseService service;
+    private ProjectLiveService projectLive;
 
     @BeforeEach
     void setUp() {
@@ -45,12 +47,42 @@ class ProjectLeaseServiceTest {
         eventPublisher = mock(ApplicationEventPublisher.class);
         megadodo = mock(MegadodoService.class);
         when(clusterService.selfPodId()).thenReturn(SELF_POD);
+        projectLive = mock(ProjectLiveService.class);
         service = new ProjectLeaseService(
-                projectService, clusterService, mock(ProjectLiveService.class), registry, eventPublisher, megadodo);
+                projectService, clusterService, projectLive, registry, eventPublisher, megadodo);
     }
 
     private static ProjectDocument project(String name) {
         return ProjectDocument.builder().tenantId("acme").name(name).build();
+    }
+
+    @Test
+    void aLiveEntryThatRanOut_isWrittenAgainFromTheProjectDocument() {
+        registry.activate("acme", "test1");
+        when(projectService.renewLeases(eq(SELF_POD), any(Instant.class))).thenReturn(1L);
+        when(projectLive.renew("acme", "test1")).thenReturn(false);
+        ProjectDocument doc = ProjectDocument.builder()
+                .tenantId("acme")
+                .name("test1")
+                .actualState(ProjectActualState.RUNNING)
+                .build();
+        when(projectService.findByTenantAndName("acme", "test1")).thenReturn(java.util.Optional.of(doc));
+
+        service.renewAndReconcile();
+
+        verify(projectLive).recordActual("acme", "test1", ProjectActualState.RUNNING);
+    }
+
+    @Test
+    void aRenewedLiveEntry_isNotWrittenAgain() {
+        registry.activate("acme", "test1");
+        when(projectService.renewLeases(eq(SELF_POD), any(Instant.class))).thenReturn(1L);
+        when(projectLive.renew("acme", "test1")).thenReturn(true);
+
+        service.renewAndReconcile();
+
+        verify(projectLive, never()).recordActual(any(), any(), any());
+        verify(projectService, never()).findByTenantAndName(any(), any());
     }
 
     @Test

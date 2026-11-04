@@ -3,6 +3,7 @@ package de.mhus.vance.foot.command;
 import de.mhus.vance.api.access.AccessTokenResponse;
 import de.mhus.vance.api.access.EmailTokenStartResponse;
 import de.mhus.vance.api.access.LoginMethodsResponse;
+import de.mhus.vance.foot.auth.AccessTokenHttpException;
 import de.mhus.vance.foot.auth.FootAuthService;
 import de.mhus.vance.foot.auth.GitignoreGuard;
 import de.mhus.vance.foot.auth.LoginRequest;
@@ -169,11 +170,17 @@ public class LoginSlashCommand implements SlashCommand {
         LoginResult result;
         if (methods != null && methods.isEmailToken()) {
             // The tenant signs in with a code sent by e-mail; the password does not work there.
+            if (args.size() >= 3 && args.get(2) != null && !args.get(2).isEmpty()) {
+                terminal.warn("This tenant signs in with an e-mail code — the password argument is ignored.");
+            }
             result = runEmailCodeLogin(new LoginRequest(httpBase, wsBase, tenant, username, project, ""));
             if (result == null) {
                 return;
             }
         } else {
+            if (methods == null) {
+                terminal.warn("Could not read the sign-in methods of this tenant — trying the password login.");
+            }
             String password;
             if (args.size() >= 3 && args.get(2) != null && !args.get(2).isEmpty()) {
                 password = args.get(2);
@@ -220,10 +227,17 @@ public class LoginSlashCommand implements SlashCommand {
             terminal.info("Logging in as " + request.username() + " @ " + request.httpBase() + " …");
             try {
                 return auth.loginWithEmailCode(request, started.getTransactionId(), code);
-            } catch (IllegalStateException e) {
-                terminal.error("The code is wrong or has expired — run /login again to get a new one.");
+            } catch (AccessTokenHttpException e) {
                 log.debug("e-mail code login refused", e);
-                return null;
+                if (e.statusCode() == 401) {
+                    terminal.error("The code is wrong or has expired — run /login again to get a new one.");
+                    return null;
+                }
+                if (e.statusCode() == 429) {
+                    terminal.error("Too many attempts — wait a little and run /login again.");
+                    return null;
+                }
+                throw e;
             }
         }
     }

@@ -95,7 +95,15 @@ public class ProjectLeaseService {
 
     /** Keeps the live entries of the projects running here as long-lived as their leases. */
     private void renewLiveState() {
-        forEachActivated(projectLive::renew);
+        forEachActivated((tenantId, projectName) -> {
+            if (!projectLive.renew(tenantId, projectName)) {
+                // The entry ran out or was lost: write it again from the document, so the
+                // feed does not stay silent until the next state change.
+                projectService
+                        .findByTenantAndName(tenantId, projectName)
+                        .ifPresent(doc -> projectLive.recordActual(tenantId, projectName, doc.getActualState()));
+            }
+        });
     }
 
     private void forEachActivated(java.util.function.BiConsumer<String, String> action) {

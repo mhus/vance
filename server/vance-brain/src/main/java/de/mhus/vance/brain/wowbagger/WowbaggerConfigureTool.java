@@ -43,9 +43,11 @@ public class WowbaggerConfigureTool extends WowbaggerBaseTool {
                                 "type",
                                 "string",
                                 "description",
-                                "Source file path relative to the WORK-target workspace "
-                                        + "root. Import documents into the workspace first (doc_* export or "
-                                        + "file tools) — records are read as text lines.")),
+                                "Path of the prepared source file, addressed the way the "
+                                        + "file_* tools address it on the current work target. "
+                                        + "wowbagger_start copies it once into the run's source "
+                                        + "document; afterwards the run never touches the file. "
+                                        + "Records are read as text lines.")),
                 Map.entry(
                         "inputFormat",
                         Map.of(
@@ -116,17 +118,6 @@ public class WowbaggerConfigureTool extends WowbaggerBaseTool {
                                 "description",
                                 "Acknowledge the accumulated failures: reset the failure counter "
                                         + "to zero (a re-run does this implicitly).")),
-                Map.entry(
-                        "sourceBackupMb",
-                        Map.of(
-                                "type",
-                                "integer",
-                                "description",
-                                "Opt-in source durability for pod switches: when > 0, start() "
-                                        + "copies the source file into a document if it is <= N MB — "
-                                        + "a pod switch then loses nothing and resume restores it. "
-                                        + "0 = off (default, fine for single-pod). Propose it to "
-                                        + "the user once when the run is long-lived; the user decides.")),
                 Map.entry(
                         "maxTokens",
                         Map.of(
@@ -292,14 +283,6 @@ public class WowbaggerConfigureTool extends WowbaggerBaseTool {
                 s.setFailureCount(0);
                 applied.put("failureCount", 0L);
             }
-            if (params != null && params.containsKey("sourceBackupMb")) {
-                int v = intParam(params, "sourceBackupMb", s.getSourceBackupMb());
-                if (v < 0) {
-                    throw new ToolException("sourceBackupMb must be >= 0");
-                }
-                s.setSourceBackupMb(v);
-                applied.put("sourceBackupMb", v);
-            }
             if (params != null && params.containsKey("maxTokens")) {
                 int v = intParam(params, "maxTokens", 0);
                 s.setMaxTokens(v > 0 ? v : null);
@@ -330,8 +313,9 @@ public class WowbaggerConfigureTool extends WowbaggerBaseTool {
             // Cost gate: refuse a structure whose worker model is not approved
             // (setting wowbagger.allowed-models) — before the agent can start it.
             try {
+                pool.importWorkerScript(process, s, ctx);
                 pool.checkWorker(process, s);
-            } catch (RuntimeException e) {
+            } catch (java.io.IOException | RuntimeException e) {
                 throw new ToolException(e.getMessage(), e);
             }
         } catch (ToolException e) {
@@ -340,9 +324,8 @@ public class WowbaggerConfigureTool extends WowbaggerBaseTool {
             persistReflection(process, s);
             throw e;
         }
-        String workRoot = pool.ensureWorkRoot(process, s);
         persistReflection(process, s);
-        List<String> warnings = new java.util.ArrayList<>(pool.sourceRootWarnings(process, s));
+        List<String> warnings = new java.util.ArrayList<>();
         if (de.mhus.vance.brain.wowbagger.worker.ZemWorker.KIND.equals(s.getWorkerKind())) {
             if (s.getTask() != null && !s.getTask().isBlank()) {
                 warnings.add("the Zem worker ignores 'task' — the profile's questions are the task");
@@ -354,7 +337,6 @@ public class WowbaggerConfigureTool extends WowbaggerBaseTool {
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("applied", applied);
-        out.put("workTarget", workRoot);
         out.put("warnings", warnings);
         return out;
     }

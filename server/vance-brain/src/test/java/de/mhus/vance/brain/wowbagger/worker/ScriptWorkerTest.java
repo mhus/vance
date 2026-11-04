@@ -23,9 +23,6 @@ import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
-import de.mhus.vance.shared.workspace.WorkspaceService;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
@@ -45,7 +42,6 @@ class ScriptWorkerTest {
 
     private ScriptExecutor executor;
     private DocumentService documents;
-    private WorkspaceService workspace;
     private RecipeResolver recipes;
     private AiModelResolver models;
     private ScriptWorker worker;
@@ -57,7 +53,6 @@ class ScriptWorkerTest {
     void setUp() {
         executor = mock(ScriptExecutor.class);
         documents = mock(DocumentService.class);
-        workspace = mock(WorkspaceService.class);
         recipes = mock(RecipeResolver.class);
         models = mock(AiModelResolver.class);
         ThinkEngineService engines = mock(ThinkEngineService.class);
@@ -69,7 +64,6 @@ class ScriptWorkerTest {
         worker = new ScriptWorker(
                 executor,
                 documents,
-                workspace,
                 provider,
                 recipes,
                 models,
@@ -89,10 +83,13 @@ class ScriptWorkerTest {
                 "wowbagger-script-worker", "triage", null, jsonl, false, workerScript, "wowbagger-abc", 2, "ollama:*");
     }
 
+    /** The pool imports the structure's worker script into a document; the worker reads that. */
     private PreparedWorker prepareWorkspaceScript(boolean jsonl, String code) throws Exception {
-        Path file = tempDir.resolve("triage.js");
-        Files.writeString(file, code, StandardCharsets.UTF_8);
-        when(workspace.readablePath("acme", "p1", "wowbagger-abc", "triage.js")).thenReturn(file);
+        var doc = new de.mhus.vance.shared.document.DocumentDocument();
+        doc.setId("script-doc");
+        when(documents.findByPath("acme", "p1", ScriptWorker.scriptDocPath(process.getId())))
+                .thenReturn(java.util.Optional.of(doc));
+        when(documents.readContent(doc)).thenReturn(code);
         return worker.prepare(new WorkerSetup(process, spec(jsonl, "triage.js"), recipe));
     }
 
@@ -201,11 +198,10 @@ class ScriptWorkerTest {
     }
 
     @Test
-    void unreadable_workspace_script_names_the_root() {
-        when(workspace.readablePath(anyString(), anyString(), anyString(), anyString()))
-                .thenReturn(tempDir.resolve("missing.js"));
+    void a_script_that_was_not_imported_says_so() {
+        when(documents.findByPath(anyString(), anyString(), anyString())).thenReturn(java.util.Optional.empty());
 
         assertThatThrownBy(() -> worker.prepare(new WorkerSetup(process, spec(false, "missing.js"), recipe)))
-                .hasMessageContaining("unreadable in RootDir 'wowbagger-abc'");
+                .hasMessageContaining("has not been imported yet");
     }
 }

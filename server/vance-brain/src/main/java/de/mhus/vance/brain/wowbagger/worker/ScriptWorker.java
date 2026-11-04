@@ -13,10 +13,6 @@ import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
-import de.mhus.vance.shared.workspace.WorkspaceService;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -70,7 +66,6 @@ public class ScriptWorker implements WowbaggerWorker {
 
     private final ScriptExecutor scriptExecutor;
     private final DocumentService documentService;
-    private final WorkspaceService workspaceService;
     private final ObjectProvider<ThinkEngineService> thinkEngineService;
     private final RecipeResolver recipeResolver;
     private final AiModelResolver aiModelResolver;
@@ -79,14 +74,12 @@ public class ScriptWorker implements WowbaggerWorker {
     public ScriptWorker(
             ScriptExecutor scriptExecutor,
             DocumentService documentService,
-            WorkspaceService workspaceService,
             ObjectProvider<ThinkEngineService> thinkEngineService,
             RecipeResolver recipeResolver,
             AiModelResolver aiModelResolver,
             ObjectMapper objectMapper) {
         this.scriptExecutor = scriptExecutor;
         this.documentService = documentService;
-        this.workspaceService = workspaceService;
         this.thinkEngineService = thinkEngineService;
         this.recipeResolver = recipeResolver;
         this.aiModelResolver = aiModelResolver;
@@ -124,8 +117,8 @@ public class ScriptWorker implements WowbaggerWorker {
                             () -> new IllegalStateException("worker script document '" + documentPath + "' not found"));
             sourceName = documentPath;
         } else if (spec.workerScript() != null && !spec.workerScript().isBlank()) {
-            code = readWorkspaceScript(process, spec);
-            sourceName = spec.workRoot() + "/" + spec.workerScript();
+            code = readImportedScript(process, spec);
+            sourceName = spec.workerScript();
         } else {
             throw new IllegalStateException("script worker '" + spec.recipeName()
                     + "' has no script — set params.script in the profile or workerScript in the structure");
@@ -139,21 +132,25 @@ public class ScriptWorker implements WowbaggerWorker {
         return new Prepared(this, process, spec, code, sourceName, Duration.ofSeconds(timeout));
     }
 
-    private String readWorkspaceScript(ThinkProcessDocument process, WorkerSpec spec) {
-        if (spec.workRoot() == null) {
-            throw new IllegalStateException("workerScript needs the run's RootDir — configure the run first");
-        }
-        try {
-            return Files.readString(
-                    workspaceService.readablePath(
-                            process.getTenantId(), process.getProjectId(), spec.workRoot(), spec.workerScript()),
-                    StandardCharsets.UTF_8);
-        } catch (IOException | RuntimeException e) {
-            throw new IllegalStateException(
-                    "worker script '" + spec.workerScript() + "' unreadable in RootDir '" + spec.workRoot() + "': "
-                            + e.getMessage(),
-                    e);
-        }
+    /**
+     * The worker script as the pool imported it from the work target at start
+     * ({@code _wowbagger/<run>/worker-script}). The pool owns the import — a
+     * script worker, like the source, never reads the target during a run.
+     */
+    private String readImportedScript(ThinkProcessDocument process, WorkerSpec spec) {
+        String docPath = scriptDocPath(process.getId());
+        return documentService
+                .findByPath(process.getTenantId(), process.getProjectId(), docPath)
+                .map(documentService::readContent)
+                .orElseThrow(
+                        () -> new IllegalStateException(
+                                "worker script '" + spec.workerScript()
+                                        + "' has not been imported yet — wowbagger_configure / wowbagger_start import it from the work target"));
+    }
+
+    /** Document the pool imports the structure's {@code workerScript} into. */
+    public static String scriptDocPath(String processId) {
+        return "_wowbagger/" + processId + "/worker-script";
     }
 
     /** {@code instance:model} a LightLlm recipe resolves to — what the call will hit. */

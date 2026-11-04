@@ -74,7 +74,8 @@ public class WowbaggerStartTool extends WowbaggerBaseTool {
             problems.append("- no task — configure the per-record instruction first (wowbagger_configure)\n");
         }
         if (s.getSourcePath() == null || s.getSourcePath().isBlank()) {
-            problems.append("- no source — configure the workspace file (import documents into the workspace first)\n");
+            problems.append(
+                    "- no source — configure the path of the prepared source file (wowbagger_configure source=...)\n");
         }
         if (problems.length() > 0) {
             throw new ToolException("cannot start — the structure is incomplete:\n" + problems);
@@ -90,7 +91,7 @@ public class WowbaggerStartTool extends WowbaggerBaseTool {
             if (reRunFailed) {
                 view = pool.reRunFailed(process);
             } else {
-                view = pool.start(process, force);
+                view = pool.start(process, force, ctx);
             }
         } catch (java.io.IOException e) {
             throw new ToolException("cannot start: " + e.getMessage(), e);

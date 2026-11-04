@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.wowbagger;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.Data;
@@ -20,6 +21,7 @@ import org.jspecify.annotations.Nullable;
  * committed, re-fire missing).
  */
 @Data
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class WowbaggerState {
 
     // ── Run configuration (agent-written via wowbagger_configure) ──
@@ -27,7 +29,11 @@ public class WowbaggerState {
     /** The per-record task instruction handed to every worker call. */
     private @Nullable String task;
 
-    /** Source file path, relative to the process's WORK-target root dir. */
+    /**
+     * Path of the prepared source file as the {@code file_*} tools address it on
+     * the process's work target. {@code wowbagger_start} imports it once into the
+     * run's source document; the run reads that document, never the target.
+     */
     private @Nullable String sourcePath;
 
     /** Record format: {@code lines} or {@code jsonl} — how a record is read. */
@@ -53,15 +59,6 @@ public class WowbaggerState {
 
     /** Per-chunk retry budget — a fresh worker call per retry. */
     private int chunkRetries = 3;
-
-    /**
-     * Source auto-backup threshold in MB: when > 0, {@code start()} copies the
-     * source file into a document ({@code _wowbagger/<run>/source.*}) if its
-     * size fits — pod switches then lose nothing, resume restores from the
-     * document. {@code 0} = off (default — single-pod installations do not
-     * need it). The agent proposes; the user decides.
-     */
-    private int sourceBackupMb;
 
     /**
      * Output-token cap per worker call; {@code null}/0 = the worker recipe's
@@ -98,7 +95,7 @@ public class WowbaggerState {
     private boolean mergeIntoRecord;
 
     /**
-     * Script worker: a script file in the run's RootDir the agent wrote —
+     * Script worker: a script file on the work target the agent wrote (imported into the run on start) —
      * runs with the bundled {@code wowbagger-script-worker} profile when no
      * {@link #workerRecipe} is set. {@code null} = no script worker.
      */
@@ -109,14 +106,6 @@ public class WowbaggerState {
      * calls per record (counted per chunk). Default 3 — route-first needs 2.
      */
     private int maxCallsPerRecord = 3;
-
-    /**
-     * The run's persistent RootDir ({@code wowbagger-<processId-prefix>} by
-     * default) — source and results live here, decoupled from the process-wide
-     * workTarget. Auto-assigned on first configure/start, adopted on resume.
-     * {@code null} only before the first run setup.
-     */
-    private @Nullable String workTargetName;
 
     /**
      * Heartbeat wakeup while the run is grinding: an agent check-in when

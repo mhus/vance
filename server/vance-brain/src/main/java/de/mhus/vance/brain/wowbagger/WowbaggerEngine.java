@@ -769,7 +769,7 @@ public class WowbaggerEngine implements ThinkEngine {
         sb.append("source: ")
                 .append(
                         s.getSourcePath() == null
-                                ? "(not set yet — ask the user / import into the workspace)"
+                                ? "(not set yet — ask the user / prepare the file on the work target)"
                                 : s.getSourcePath())
                 .append(" (input format: ")
                 .append(s.getInputFormat() == null ? "?" : s.getInputFormat())
@@ -840,12 +840,6 @@ public class WowbaggerEngine implements ThinkEngine {
                 .append(", approved: ")
                 .append(pool.isWorkerModelApproved(process, s))
                 .append(")\n");
-        sb.append("source backup: ")
-                .append(s.getSourceBackupMb() > 0 ? "on (≤" + s.getSourceBackupMb() + " MB)" : "off")
-                .append('\n');
-        if (s.getWorkTargetName() != null) {
-            sb.append("run root: ").append(s.getWorkTargetName()).append('\n');
-        }
         if (s.getFailureCount() > 0) {
             sb.append("unacknowledged failure count: ")
                     .append(s.getFailureCount())

@@ -60,7 +60,6 @@ public class WowbaggerStatusTool extends WowbaggerBaseTool {
         out.put("threadsDesired", s.getThreadsDesired());
         out.put("task", s.getTask());
         out.put("source", s.getSourcePath());
-        out.put("workTarget", s.getWorkTargetName());
         out.put("inputFormat", s.getInputFormat());
         out.put("outputFormat", s.getOutputFormat());
         out.put("outputDoc", s.getOutputDocPath());
@@ -80,7 +79,6 @@ public class WowbaggerStatusTool extends WowbaggerBaseTool {
         out.put("failureCount", s.getFailureCount());
         out.put("workerRecipe", s.getWorkerRecipe() == null ? "wowbagger-worker" : s.getWorkerRecipe());
         out.put("maxTokens", s.getMaxTokens());
-        out.put("sourceBackupMb", s.getSourceBackupMb());
         out.put("workerKind", s.getWorkerKind());
         out.put("workerScript", s.getWorkerScript());
         out.put("maxCallsPerRecord", s.getMaxCallsPerRecord());

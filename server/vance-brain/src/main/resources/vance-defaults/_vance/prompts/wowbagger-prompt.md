@@ -12,17 +12,15 @@ in parallel — you never process records yourself.
    JSON keys, line discipline. Canonical input is JSONL — if the source
    is anything else (CSV, an export, a document), write a conversion
    script (`execute_python`) that produces exactly one JSON object per
-   line into the run root, then declare `inputFormat: jsonl`: the pool
+   line into a file, then declare `inputFormat: jsonl`: the pool
    validates every record mechanically before the worker call, so a bug
    in your script fails the chunk with the exact record named instead
    of burning provider calls on garbage. Use that to write a precise worker task.
-   The run has its own persistent RootDir (`wowbagger-<process
-   prefix>`, shown by `wowbagger_configure`/`wowbagger_status` as
-   `workTarget`) — the source lives there, so import it into that root
-   (workspace write or the file tools with `dirName`) before setting
-   `source`. With a Foot CLI session your process target stays CLIENT
-   (direct client file access) — read the client file, then copy it
-   into the run root via the `dirName` param.
+   Prepare the file with the normal `file_*` tools, wherever your work
+   target points (Foot CLI, runner, server workspace) — you set `source`
+   to that path as the `file_*` tools address it. No special directory is
+   needed, and `wowbagger_start` copies the file once into the run's own
+   source document, so the file may be removed afterwards.
 3. Call `wowbagger_configure` with the full structure: task, source
    path, input format (lines/jsonl), output format, chunk size, thread
    count, wakeup interval, retry budget. `maxTokens` (output cap per
@@ -30,10 +28,7 @@ in parallel — you never process records yourself.
    default unless replies truncate; NEVER set it near the model's
    context window (gateways clamp max_tokens to it and then reject
    input + output > context). If the response carries
-   `warnings`, act on them before starting — especially the temp-RootDir
-   warning: a source inside a temp RootDir dies with its creator
-   process, and a long run then grinds into "source lost". Move the
-   source into a named RootDir first.
+   `warnings`, act on them before starting.
 4. Call `wowbagger_check` — the zero-cost preflight: every record against
    the input contract, record/chunk counts, structure completeness, worker
    model + approval. Fix everything it reports before starting; it is the
@@ -59,7 +54,7 @@ record. Pick it before configuring — `workerRecipe` / `workerScript` in
 - **Zem worker** (a profile with `engine: zem`) — one decision per record
   by a decision model: classify, filter, route, rate. Far cheaper and
   faster; the profile's questions replace `task`.
-- **Script worker** (`workerScript` = a JS file in the run root) — several
+- **Script worker** (`workerScript` = a JS file on the work target, imported into the run like the source) — several
   steps per record: mechanical prep, `vance.zem` as a cheap gate,
   `vance.llm` only for the hard cases, tools if needed.
 
@@ -86,22 +81,21 @@ worker — it holds the profile shape, the script contract and the call budget.
 - `wowbagger_status` — the full structure as JSON, when the injected
   status block is not enough.
 
-## Source durability (pod switches)
+## Source handling (snapshot)
 
-Workspace files are pod-local — a pod switch loses them. Chunk docs,
-the merged result and the run structure are DOCUMENTS and survive. The
-source file does not, unless a backup exists: when `sourceBackupMb` > 0,
-`wowbagger_start` copies the source into a document (if it fits the
-threshold) and resume restores it automatically. Your status block shows
-`source backup: off` when unset.
+`wowbagger_start` imports the source file into a document once (first
+start, or `force`). The run reads that document as a stream, so it does
+not depend on the file, the work target, a connected client or the pod
+afterwards. Chunk docs, the merged result and the run structure are
+documents too — a pod switch loses nothing.
 
-- Propose the backup to the user ONCE when the run is long-lived or the
-  source is not re-creatable — a pod switch mid-run otherwise loses the
-  resume. Single-pod installations may not need it; the user decides.
-- After the user decides, set it via `wowbagger_configure` (suggest a
-  threshold fitting the measured source size) or leave it off.
-- Huge sources beyond any sensible threshold: keep the conversion script
-  and the original safe — reconstruction is the fallback.
+- The import is a SNAPSHOT: edits to the file after the first start do
+  not reach a running or resumed run. To process a changed file, restart
+  with `force` (full re-run from record 0).
+- Sources up to roughly 100-200 MB import comfortably; split larger ones
+  before the import.
+- `wowbagger_check` reads the file directly before the first start, so you
+  can validate it without importing it yet.
 
 ## Model approval (cost safety)
 

@@ -1,7 +1,7 @@
 # Internal profile for Wowbagger script workers — never spawned
 # (internal: true; Hactar is the script engine, the pool runs the script
 # itself, one run per chunk). Used when the run's structure names a
-# `workerScript` (a file in the run's RootDir) and no workerRecipe.
+# `workerScript` (a file on the work target, imported into the run) and no workerRecipe.
 #
 # Contract: vance.params.records / .task / .chunk in, a list with one
 # result per record out. Every vance.llm / vance.zem call inside is gated

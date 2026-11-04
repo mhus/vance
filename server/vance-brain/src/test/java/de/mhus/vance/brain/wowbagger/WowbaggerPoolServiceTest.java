@@ -15,21 +15,18 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.ai.light.LightLlmRequest;
 import de.mhus.vance.brain.ai.light.LightLlmService;
-import de.mhus.vance.brain.tools.worktarget.WorkTargetService;
+import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
-import de.mhus.vance.shared.workspace.WorkspaceService;
-import de.mhus.vance.shared.worktarget.WorkTarget;
-import de.mhus.vance.shared.worktarget.WorkTargetKind;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -38,7 +35,6 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -53,12 +49,8 @@ class WowbaggerPoolServiceTest {
     private static final String TENANT = "t1";
     private static final String PROJECT = "p1";
 
-    @TempDir
-    Path tempDir;
-
     private ThinkProcessService thinkProcessService;
-    private WorkspaceService workspaceService;
-    private WorkTargetService workTargetService;
+    private ToolDispatcher toolDispatcher;
     private LightLlmService lightLlmService;
     private DocumentService documentService;
     private ThinkProcessDocument process;
@@ -74,8 +66,7 @@ class WowbaggerPoolServiceTest {
         thinkProcessService = mock(ThinkProcessService.class);
         lightLlmService = mock(LightLlmService.class);
         documentService = mock(DocumentService.class);
-        workspaceService = mock(WorkspaceService.class);
-        workTargetService = mock(WorkTargetService.class);
+        toolDispatcher = mock(ToolDispatcher.class);
         ChatMessageService chatLog = mock(ChatMessageService.class);
         MetricService metricService = new MetricService(new SimpleMeterRegistry());
         ObjectMapper om = JsonMapper.builder().build();
@@ -92,8 +83,7 @@ class WowbaggerPoolServiceTest {
                 thinkProcessService,
                 workers,
                 documentService,
-                workspaceService,
-                workTargetService,
+                toolDispatcher,
                 metricService,
                 om,
                 chatLog,
@@ -112,15 +102,6 @@ class WowbaggerPoolServiceTest {
                 .when(aiModelResolver.resolveOrDefault(eq("default:spec-fast"), eq(TENANT), eq(PROJECT), eq(PROC_ID)))
                 .thenReturn(new de.mhus.vance.brain.ai.AiModelResolver.Resolved(
                         "openai", "cortecs", "deepseek-v4-flash-0731", false));
-        lenient()
-                .when(workspaceService.createRootDir(
-                        org.mockito.ArgumentMatchers.any(de.mhus.vance.exec.RootDirSpec.class)))
-                .thenAnswer(inv -> {
-                    de.mhus.vance.exec.RootDirSpec spec = inv.getArgument(0);
-                    var handle = mock(de.mhus.vance.exec.RootDirHandle.class);
-                    lenient().when(handle.getDirName()).thenReturn(spec.getLabelHint());
-                    return handle;
-                });
         // Operator allowlist: the cheap fast tier is approved.
         lenient()
                 .when(settingService.getStringValue(
@@ -152,12 +133,8 @@ class WowbaggerPoolServiceTest {
         params.put(WowbaggerPoolService.ENGINE_STATE_KEY, om.convertValue(state, Map.class));
         process.setEngineParams(params);
 
-        Files.write(tempDir.resolve("input.txt"), List.of("r1", "r2", "r3", "r4", "r5"), StandardCharsets.UTF_8);
+        writeSource(List.of("r1", "r2", "r3", "r4", "r5"));
 
-        lenient().when(workTargetService.current(process)).thenReturn(new WorkTarget(WorkTargetKind.WORK, "data"));
-        lenient()
-                .when(workspaceService.resolve(eq(TENANT), eq(PROJECT), anyString(), anyString()))
-                .thenAnswer(inv -> tempDir.resolve(inv.getArgument(3, String.class)));
         lenient().when(thinkProcessService.findById(PROC_ID)).thenReturn(Optional.of(process));
         lenient()
                 .when(thinkProcessService.replaceEngineParams(eq(PROC_ID), any()))
@@ -186,9 +163,41 @@ class WowbaggerPoolServiceTest {
                     return doc;
                 });
         lenient()
+                .when(documentService.loadContent(any(DocumentDocument.class)))
+                .thenAnswer(inv -> new java.io.ByteArrayInputStream(docContents
+                        .get(inv.getArgument(0, DocumentDocument.class).getId())
+                        .getBytes(StandardCharsets.UTF_8)));
+        lenient()
                 .when(documentService.readContent(any()))
                 .thenAnswer(inv -> docContents.get(
                         inv.getArgument(0, DocumentDocument.class).getId()));
+    }
+
+    /**
+     * Registers the run's imported source document, as {@code wowbagger_start}
+     * would have left it — under both format suffixes, so a test may switch the
+     * input format without re-registering.
+     */
+    private void writeSource(List<String> records) {
+        String content = String.join("\n", records) + "\n";
+        for (String suffix : List.of("txt", "jsonl")) {
+            String path = "_wowbagger/" + PROC_ID + "/source." + suffix;
+            DocumentDocument doc = new DocumentDocument();
+            doc.setId("doc-" + path);
+            doc.setPath(path);
+            docsByPath.put(path, doc);
+            docContents.put(doc.getId(), content);
+        }
+    }
+
+    private void removeSource() {
+        for (String suffix : List.of("txt", "jsonl")) {
+            docsByPath.remove("_wowbagger/" + PROC_ID + "/source." + suffix);
+        }
+    }
+
+    private ToolInvocationContext ctx() {
+        return new ToolInvocationContext(TENANT, PROJECT, "sess-1", PROC_ID, "user-1");
     }
 
     /** Echo answer matching the record count of the request — the worker contract. */
@@ -309,8 +318,7 @@ class WowbaggerPoolServiceTest {
                 thinkProcessService,
                 new de.mhus.vance.brain.wowbagger.worker.WowbaggerWorkerRegistry(List.of(stub), recipeResolver),
                 documentService,
-                workspaceService,
-                workTargetService,
+                toolDispatcher,
                 new MetricService(new SimpleMeterRegistry()),
                 JsonMapper.builder().build(),
                 mock(ChatMessageService.class),
@@ -531,8 +539,13 @@ class WowbaggerPoolServiceTest {
         assertThat(persistedState().getRecordsDone()).isEqualTo(5);
         assertThat(persistedState().getCounters().getTokensIn()).isEqualTo(300);
 
-        // Force: pointer/done/counters reset, published chunk docs overwritten.
-        pool.start(process, true);
+        // Force: re-imports the source, pointer/done/counters reset, published
+        // chunk docs overwritten.
+        stubFileRead("r1\nr2\nr3\nr4\nr5");
+        lenient()
+                .when(documentService.replaceContent(anyString(), any(InputStream.class), any(), any(), any()))
+                .thenReturn(null);
+        pool.start(process, true, ctx());
         waitFor(20_000, () -> !pool.isRunning(PROC_ID));
 
         WowbaggerState s = persistedState();
@@ -552,7 +565,7 @@ class WowbaggerPoolServiceTest {
     void jsonlInputWithBrokenRecordsFailsTheChunkWithoutWorkerCalls() throws IOException {
         // Canonical-JSONL contract: a broken conversion script must surface at
         // claim time — the chunk fails with a named record, no provider call.
-        Files.write(tempDir.resolve("input.txt"), List.of("not json at all", "also not json"), StandardCharsets.UTF_8);
+        writeSource(List.of("not json at all", "also not json"));
         WowbaggerState s0 = persistedState();
         s0.setInputFormat("jsonl");
         Map<String, Object> params = new LinkedHashMap<>();
@@ -591,7 +604,7 @@ class WowbaggerPoolServiceTest {
 
     @Test
     void preflightReportsReadyWithCountsAndSamples() {
-        Map<String, Object> report = pool.preflight(process, persistedState());
+        Map<String, Object> report = pool.preflight(process, persistedState(), ctx());
         assertThat(report.get("ready")).isEqualTo(true);
         assertThat(report.get("problems")).isEqualTo(List.of());
         assertThat(report.get("recordsTotal")).isEqualTo(5L);
@@ -600,16 +613,16 @@ class WowbaggerPoolServiceTest {
         assertThat((java.util.List<?>) report.get("sampleRecords")).hasSize(2);
         assertThat(report.get("workerModel")).isEqualTo("cortecs:deepseek-v4-flash-0731");
         assertThat(report.get("modelApproved")).isEqualTo(true);
+        assertThat(String.valueOf(report.get("sourceImported"))).startsWith("document");
     }
 
     @Test
-    void preflightNamesBrokenJsonlRecordsAndMissingSource() throws IOException {
+    void preflightNamesBrokenJsonlRecordsAndMissingSource() {
         // Broken conversion script: the preflight names the bad records.
-        Files.write(
-                tempDir.resolve("input.txt"), List.of("{\"id\":1}", "broken", "also broken"), StandardCharsets.UTF_8);
+        writeSource(List.of("{\"id\":1}", "broken", "also broken"));
         WowbaggerState s = persistedState();
         s.setInputFormat("jsonl");
-        Map<String, Object> report = pool.preflight(process, s);
+        Map<String, Object> report = pool.preflight(process, s, ctx());
         assertThat(report.get("ready")).isEqualTo(false);
         assertThat((java.util.List<?>) report.get("problems"))
                 .anyMatch(p -> p.toString().contains("2 of 3 records are not JSON objects"));
@@ -617,149 +630,139 @@ class WowbaggerPoolServiceTest {
                 .hasSize(2)
                 .allSatisfy(sample -> assertThat(sample.toString()).contains("broken"));
 
-        // Missing source is a named problem, not an exception.
-        s.setSourcePath("does-not-exist.jsonl");
-        report = pool.preflight(process, s);
+        // Not imported yet and the file is unreadable: a named problem, not an exception.
+        removeSource();
+        when(toolDispatcher.invoke(eq("file_read"), any(), any()))
+                .thenThrow(new de.mhus.vance.toolpack.ToolException("file not found: input.txt"));
+        s.setInputFormat("lines");
+        report = pool.preflight(process, s, ctx());
         assertThat(report.get("ready")).isEqualTo(false);
         assertThat((java.util.List<?>) report.get("problems"))
-                .anyMatch(p -> p.toString().contains("source not found"));
+                .anyMatch(p -> p.toString().contains("source unreadable"));
     }
 
     @Test
-    void sourceBackupCopiesIntoADocumentWhenEnabled() throws IOException {
-        // Opt-in: threshold set -> start() writes the source backup doc.
-        WowbaggerState s = persistedState();
-        s.setSourceBackupMb(10);
-        Map<String, Object> params = new LinkedHashMap<>();
-        params.put(
-                WowbaggerPoolService.ENGINE_STATE_KEY,
-                JsonMapper.builder().build().convertValue(s, Map.class));
-        process.setEngineParams(params);
+    void preflightBeforeTheFirstStartStreamsTheFileFromTheWorkTarget() {
+        // Nothing imported yet: the preflight reads through file_read, the same
+        // bytes the import would copy — without creating the source document.
+        removeSource();
+        stubFileRead("r1\nr2\nr3\nr4\nr5");
+
+        Map<String, Object> report = pool.preflight(process, persistedState(), ctx());
+
+        assertThat(report.get("ready")).isEqualTo(true);
+        assertThat(report.get("recordsTotal")).isEqualTo(5L);
+        assertThat(String.valueOf(report.get("sourceImported"))).startsWith("not yet");
+        verify(documentService, org.mockito.Mockito.never())
+                .create(
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        any(),
+                        any(),
+                        any(),
+                        any(InputStream.class),
+                        any(),
+                        any());
+    }
+
+    /** {@code file_read} over a fixed text: serves {@code startLine}/{@code maxLines} windows like the real tool. */
+    private void stubFileRead(String text) {
+        List<String> all = text.isEmpty() ? List.of() : List.of(text.split("\n", -1));
+        when(toolDispatcher.invoke(eq("file_read"), any(), any())).thenAnswer(inv -> {
+            Map<String, Object> params = inv.getArgument(1);
+            int start = ((Number) params.get("startLine")).intValue();
+            int max = ((Number) params.get("maxLines")).intValue();
+            List<String> window = all.stream().skip(start - 1L).limit(max).toList();
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("content", String.join("\n", window));
+            out.put("truncated", false);
+            return out;
+        });
+    }
+
+    @Test
+    void firstStartImportsTheSourceFromTheWorkTargetIntoADocument() throws IOException {
+        // CLOUD case: no workspace, the file lives on a runner/client. The first
+        // start copies it into the run's source document and works on that.
+        removeSource();
+        stubFileRead("r1\nr2\nr3\nr4\nr5");
+        lenient()
+                .when(documentService.create(
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        any(),
+                        any(),
+                        any(),
+                        any(InputStream.class),
+                        any(),
+                        any()))
+                .thenAnswer(inv -> {
+                    String path = inv.getArgument(2, String.class);
+                    DocumentDocument doc = new DocumentDocument();
+                    doc.setId("doc-" + path);
+                    doc.setPath(path);
+                    docsByPath.put(path, doc);
+                    docContents.put(
+                            doc.getId(),
+                            new String(inv.getArgument(6, InputStream.class).readAllBytes(), StandardCharsets.UTF_8));
+                    return doc;
+                });
+        stubEchoWorker();
+
+        pool.start(process, false, ctx());
+        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
+
+        assertThat(docContents.get("doc-_wowbagger/proc0001/source.txt")).isEqualTo("r1\nr2\nr3\nr4\nr5\n");
+        assertThat(persistedState().getRecordsDone()).isEqualTo(5);
+        assertThat(pendingNotes("source imported")).isNotEmpty();
+        pool.stop(PROC_ID);
+    }
+
+    @Test
+    void resumeReadsTheImportedDocumentAndNeverTouchesTheTarget() throws IOException {
+        // Pod switch / client gone: the source document exists, so a start
+        // without a caller context must run entirely off it.
         stubEchoWorker();
 
         pool.start(process);
         waitFor(20_000, () -> !pool.isRunning(PROC_ID));
 
-        verify(documentService, org.mockito.Mockito.atLeastOnce())
-                .createText(
-                        eq(TENANT),
-                        eq(PROJECT),
-                        eq("_wowbagger/proc0001/source.txt"),
-                        any(),
-                        any(),
-                        anyString(),
-                        any(),
-                        any());
-        // The start wakeup carries no unsecured nag when the backup ran.
-        assertThat(pendingNotes("NOT backed up")).isEmpty();
+        assertThat(persistedState().getRecordsDone()).isEqualTo(5);
+        org.mockito.Mockito.verifyNoInteractions(toolDispatcher);
         pool.stop(PROC_ID);
     }
 
     @Test
-    void missingSourceIsRestoredFromTheBackupDocument() throws IOException {
-        // Pod switch: the workspace file is gone, the backup document exists —
-        // start() restores the source into the run root and resumes.
-        WowbaggerState s = persistedState();
-        s.setSourceBackupMb(10);
-        Map<String, Object> params = new LinkedHashMap<>();
-        params.put(
-                WowbaggerPoolService.ENGINE_STATE_KEY,
-                JsonMapper.builder().build().convertValue(s, Map.class));
-        process.setEngineParams(params);
+    void startWithoutImportedSourceAndWithoutContextFailsClearly() {
+        removeSource();
 
-        var backupDoc = new DocumentDocument();
-        backupDoc.setId("doc-source-backup");
-        when(documentService.findByPath(TENANT, PROJECT, "_wowbagger/proc0001/source.txt"))
-                .thenReturn(Optional.of(backupDoc));
-        when(documentService.readContent(backupDoc)).thenReturn("r1\nr2\nr3\nr4\nr5\n");
-        java.nio.file.Files.delete(tempDir.resolve("input.txt"));
-        // The restore writes the source back into the run root — the mock
-        // must materialize the file like the real service does.
+        assertThatThrownBy(() -> pool.start(process))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("not been imported");
+    }
+
+    @Test
+    void forceReimportsTheSourceFromTheTarget() throws IOException {
+        // force = the source may have changed: the document is overwritten.
+        stubFileRead("n1\nn2\nn3");
         lenient()
-                .when(workspaceService.write(eq(TENANT), eq(PROJECT), anyString(), anyString(), anyString()))
+                .when(documentService.replaceContent(anyString(), any(InputStream.class), any(), any(), any()))
                 .thenAnswer(inv -> {
-                    java.nio.file.Files.write(
-                            tempDir.resolve(inv.getArgument(3, String.class)),
-                            List.of(inv.getArgument(4, String.class).split("\\n")),
-                            StandardCharsets.UTF_8);
+                    docContents.put(
+                            inv.getArgument(0, String.class),
+                            new String(inv.getArgument(1, InputStream.class).readAllBytes(), StandardCharsets.UTF_8));
                     return null;
                 });
         stubEchoWorker();
 
-        pool.start(process);
+        pool.start(process, true, ctx());
         waitFor(20_000, () -> !pool.isRunning(PROC_ID));
 
-        // The source was written back into the run root and the run completed.
-        org.mockito.Mockito.verify(workspaceService)
-                .write(eq(TENANT), eq(PROJECT), eq("data"), eq("input.txt"), eq("r1\nr2\nr3\nr4\nr5\n"));
-        assertThat(persistedState().getRecordsDone()).isEqualTo(5);
-        assertThat(pendingNotes("restored from the backup document")).isNotEmpty();
+        assertThat(docContents.get("doc-_wowbagger/proc0001/source.txt")).isEqualTo("n1\nn2\nn3\n");
+        assertThat(persistedState().getRecordsDone()).isEqualTo(3);
         pool.stop(PROC_ID);
-    }
-
-    @Test
-    void tempRootDirSourceProducesAWarning() {
-        // Live-run lesson: a source in a temp RootDir dies with its creator
-        // process — configure must surface that BEFORE the run burns hours.
-        when(workTargetService.current(process)).thenReturn(new WorkTarget(WorkTargetKind.WORK, null));
-        when(workspaceService.getWorkingDir(TENANT, PROJECT, PROC_ID)).thenReturn(Optional.empty());
-        // A legacy structure without workTargetName still resolves into the
-        // process-temp path — the warning is the safety net for that.
-        WowbaggerState legacy = persistedState();
-        legacy.setWorkTargetName(null);
-
-        assertThat(pool.sourceRootWarnings(process, legacy))
-                .singleElement()
-                .asString()
-                .contains("process-temp RootDir");
-
-        // A named, persistent RootDir produces no warning.
-        when(workTargetService.current(process)).thenReturn(new WorkTarget(WorkTargetKind.WORK, "data"));
-        assertThat(pool.sourceRootWarnings(process, persistedState())).isEmpty();
-    }
-
-    @Test
-    void ensureWorkRootCreatesAdoptsAndPinsTheRunRoot() throws IOException {
-        // No explicit target -> a persistent run root wowbagger-<id prefix> is
-        // created, stored in the structure AND pinned as the process-wide
-        // WORK target (the blank-targetName case is the tmp-RootDir trap).
-        when(workTargetService.current(process)).thenReturn(new WorkTarget(WorkTargetKind.WORK, null));
-        when(workspaceService.getRootDir(eq(TENANT), eq(PROJECT), anyString())).thenReturn(Optional.empty());
-
-        WowbaggerState s = persistedState();
-        String runRoot = pool.ensureWorkRoot(process, s);
-
-        assertThat(runRoot).isEqualTo("wowbagger-" + PROC_ID.substring(0, 8));
-        // the structure field is set by the call; the caller persists it
-        assertThat(s.getWorkTargetName()).isEqualTo(runRoot);
-
-        // start() pins the run root as the process-wide target and resolves
-        // the source through it.
-        stubEchoWorker();
-        pool.start(process);
-        assertThat(process.getEngineParams().get(de.mhus.vance.shared.worktarget.WorkTarget.KEY))
-                .isEqualTo(new de.mhus.vance.shared.worktarget.WorkTarget(
-                                de.mhus.vance.shared.worktarget.WorkTargetKind.WORK, runRoot)
-                        .toMap());
-        assertThat(persistedState().getWorkTargetName()).isEqualTo(runRoot);
-    }
-
-    @Test
-    void clientTargetStaysUntouchedButTheRunRootIsUsedForTheSource() throws IOException {
-        // Foot exception: the process-wide target is CLIENT — it must NOT be
-        // re-pinned, but the pool still reads the source from the run root.
-        when(workTargetService.current(process)).thenReturn(new WorkTarget(WorkTargetKind.CLIENT, null));
-        when(workspaceService.getRootDir(eq(TENANT), eq(PROJECT), anyString())).thenReturn(Optional.empty());
-
-        stubEchoWorker();
-        pool.start(process);
-        waitFor(20_000, () -> !pool.isRunning(PROC_ID));
-
-        assertThat(process.getEngineParams().get(de.mhus.vance.shared.worktarget.WorkTarget.KEY))
-                .isNull(); // untouched — the agent keeps direct client access
-        assertThat(persistedState().getWorkTargetName()).isEqualTo("wowbagger-" + PROC_ID.substring(0, 8));
-        // The source window was read through the run root (rotation completed).
-        assertThat(persistedState().getRecordsDone()).isEqualTo(5);
     }
 
     @Test
@@ -818,7 +821,7 @@ class WowbaggerPoolServiceTest {
         for (int i = 1; i <= 20; i++) {
             records.add("r" + i);
         }
-        Files.write(tempDir.resolve("input.txt"), records, StandardCharsets.UTF_8);
+        writeSource(records);
         WowbaggerState s = persistedState();
         s.setChunkSize(2);
         s.setThreadsDesired(2);
@@ -860,7 +863,7 @@ class WowbaggerPoolServiceTest {
         for (int i = 1; i <= 6; i++) {
             records.add("r" + i);
         }
-        Files.write(tempDir.resolve("input.txt"), records, StandardCharsets.UTF_8);
+        writeSource(records);
         WowbaggerState s = persistedState();
         s.setChunkSize(2);
         s.setThreadsDesired(1); // one worker → the crash leaves nobody behind
@@ -902,7 +905,7 @@ class WowbaggerPoolServiceTest {
         for (int i = 1; i <= 6; i++) {
             records.add("r" + i);
         }
-        Files.write(tempDir.resolve("input.txt"), records, StandardCharsets.UTF_8);
+        writeSource(records);
         WowbaggerState s = persistedState();
         s.setChunkSize(2);
         s.setThreadsDesired(1);

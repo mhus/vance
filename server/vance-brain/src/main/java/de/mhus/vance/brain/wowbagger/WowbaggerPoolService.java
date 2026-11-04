@@ -2,7 +2,7 @@ package de.mhus.vance.brain.wowbagger;
 
 import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
-import de.mhus.vance.brain.tools.worktarget.WorkTargetService;
+import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.brain.wowbagger.worker.ChunkContext;
 import de.mhus.vance.brain.wowbagger.worker.PreparedWorker;
 import de.mhus.vance.brain.wowbagger.worker.WorkerReply;
@@ -17,14 +17,9 @@ import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
-import de.mhus.vance.shared.workspace.WorkspaceService;
-import de.mhus.vance.shared.worktarget.WorkTarget;
-import de.mhus.vance.shared.worktarget.WorkTargetKind;
-import java.io.BufferedReader;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -92,10 +87,6 @@ public class WowbaggerPoolService {
      * (see {@link #wakeup}), so the drained copy must not double it.
      */
     public static final String WAKEUP_SENDER = "wowbagger-pool";
-    /** Prefix of the run's auto-assigned persistent RootDir (§ run root). */
-    private static final String RUN_DIR_PREFIX = "wowbagger-";
-
-    private static final int RUN_DIR_ID_CHARS = 8;
 
     private static final String OUTCOME_FAILED = "failed";
     private static final long TICK_MS = 500;
@@ -114,6 +105,9 @@ public class WowbaggerPoolService {
 
         final String processId;
         final Object lock = new Object();
+        /** Long-lived reader over the source document; used under {@link #lock} only. */
+        @Nullable
+        DocLineReader sourceReader;
         /** The live state instance while running; mutated only under {@link #lock}. */
         @Nullable
         ThinkProcessDocument process;
@@ -167,8 +161,7 @@ public class WowbaggerPoolService {
     private final ThinkProcessService thinkProcessService;
     private final WowbaggerWorkerRegistry workerRegistry;
     private final DocumentService documentService;
-    private final WorkspaceService workspaceService;
-    private final WorkTargetService workTargetService;
+    private final ToolDispatcher toolDispatcher;
     private final MetricService metricService;
     private final ObjectMapper objectMapper;
     private final ChatMessageService chatMessageService;
@@ -178,8 +171,7 @@ public class WowbaggerPoolService {
             ThinkProcessService thinkProcessService,
             WowbaggerWorkerRegistry workerRegistry,
             DocumentService documentService,
-            WorkspaceService workspaceService,
-            WorkTargetService workTargetService,
+            ToolDispatcher toolDispatcher,
             MetricService metricService,
             ObjectMapper objectMapper,
             ChatMessageService chatMessageService,
@@ -187,8 +179,7 @@ public class WowbaggerPoolService {
         this.thinkProcessService = thinkProcessService;
         this.workerRegistry = workerRegistry;
         this.documentService = documentService;
-        this.workspaceService = workspaceService;
-        this.workTargetService = workTargetService;
+        this.toolDispatcher = toolDispatcher;
         this.metricService = metricService;
         this.objectMapper = objectMapper;
         this.chatMessageService = chatMessageService;
@@ -214,6 +205,17 @@ public class WowbaggerPoolService {
      * {@code wowbagger_start reRunFailed}.
      */
     public RunView start(ThinkProcessDocument process, boolean force) throws IOException {
+        return start(process, force, null);
+    }
+
+    /**
+     * Start with the invoking tool's context. A first start (and every
+     * {@code force}) imports the source from the process's work target into the
+     * run's source document — that read goes through {@code file_read} and so
+     * needs the caller's identity. A resume finds the document and needs none.
+     */
+    public RunView start(ThinkProcessDocument process, boolean force, @Nullable ToolInvocationContext ctx)
+            throws IOException {
         Handle handle = handle(process.getId());
         String sourceNote;
         synchronized (handle.lock) {
@@ -221,8 +223,8 @@ public class WowbaggerPoolService {
                 return view(handle);
             }
             WowbaggerState state = loadState(process);
-            ensureWorkRoot(process, state);
             if (force) {
+                closeSourceReader(handle);
                 state.setPointer(0);
                 state.setRecordsDone(0);
                 state.setRecordsTotal(-1); // re-measure — the source may have changed
@@ -240,12 +242,13 @@ public class WowbaggerPoolService {
             } else {
                 reconcileWave(process, state);
             }
-            // Source durability (opt-in): backup when enabled, RESTORE when the
-            // file vanished with a pod — before measuring, so the count is right.
-            sourceNote = secureSource(process, state);
+            // Import the source from the work target into the run's source
+            // document (first start / force) — before measuring, so the count
+            // is right. From here on the run never touches the target again.
+            importWorkerScript(process, state, ctx);
+            sourceNote = importSource(process, state, force, ctx);
             if (state.getRecordsTotal() < 0 && !isBlank(state.getSourcePath())) {
-                Path source = resolveSource(process, state);
-                state.setRecordsTotal(countLines(source));
+                state.setRecordsTotal(sourceReader(handle, process, state).count());
                 state.setChunksTotal(
                         (int) ((state.getRecordsTotal() + state.getChunkSize() - 1) / state.getChunkSize()));
             }
@@ -294,6 +297,7 @@ public class WowbaggerPoolService {
         synchronized (handle.lock) {
             handle.stopRequested = true;
             handle.running = false;
+            closeSourceReader(handle);
         }
         return view(handle);
     }
@@ -435,6 +439,10 @@ public class WowbaggerPoolService {
                 handle.runError = e.toString();
             }
             wakeup(process, "pool crashed: " + e.getMessage());
+        } finally {
+            synchronized (handle.lock) {
+                closeSourceReader(handle);
+            }
         }
     }
 
@@ -606,10 +614,10 @@ public class WowbaggerPoolService {
         return new Claim(chunk, records);
     }
 
-    /** Reads a window with the pool's own source resolution; EOF-authoritative. */
+    /** Reads a window off the run's source document; EOF-authoritative. */
     private List<String> readWindow(ThinkProcessDocument process, WowbaggerState state, long startRecord, int count) {
         try {
-            return readWindowAt(resolveSource(process, state), startRecord, count);
+            return sourceReader(handle(process.getId()), process, state).read(startRecord, count);
         } catch (IOException e) {
             throw new IllegalStateException("source lost: " + e.getMessage(), e);
         }
@@ -709,7 +717,7 @@ public class WowbaggerPoolService {
                 FORMAT_JSONL.equals(inputFormatOf(state)),
                 state.isMergeIntoRecord(),
                 isBlank(state.getWorkerScript()) ? null : state.getWorkerScript(),
-                state.getWorkTargetName(),
+                null,
                 state.getMaxCallsPerRecord(),
                 allowedModels(process));
     }
@@ -871,159 +879,167 @@ public class WowbaggerPoolService {
         return de.mhus.vance.brain.ai.ModelAllowlist.approved(resolvedModel, allowlistCsv);
     }
 
-    /**
-     * The run's persistent RootDir — source and results live here (§ run
-     * root). Resolution order:
-     * <ol>
-     *   <li>{@code state.workTargetName} set and still present → use it
-     *       (restart/resume keeps the same dir);</li>
-     *   <li>process-wide WORK target already names a RootDir → adopt it
-     *       (an explicit pin wins over auto-creation);</li>
-     *   <li>else create {@code wowbagger-<processId prefix>} (adopted when a
-     *       previous run created it). Persistent — {@code deleteOnCreatorClose}
-     *       stays {@code false}, a long run survives agent turns, restarts
-     *       and process closes.</li>
-     * </ol>
-     * Idempotent; safe to call from configure and start alike.
-     */
-    public String ensureWorkRoot(ThinkProcessDocument process, WowbaggerState state) {
-        // Wowbagger reads its source straight off the brain's filesystem, not
-        // through the file_* layer — so without workspace access it cannot run
-        // (planning/multi-tenant-isolation.md O11, §5.2).
-        workspaceService.requireAccess("A Wowbagger run");
-        String tenantId = process.getTenantId();
-        String projectId = process.getProjectId();
-        String named = state.getWorkTargetName();
-        if (named != null
-                && !named.isBlank()
-                && workspaceService.getRootDir(tenantId, projectId, named).isPresent()) {
-            return named;
-        }
-        String wanted = named != null && !named.isBlank()
-                ? named
-                : workTargetService.current(process).kind() == WorkTargetKind.WORK
-                        ? nullIfBlank(workTargetService.current(process).targetName())
-                        : null;
-        if (wanted == null) {
-            wanted = RUN_DIR_PREFIX + safeIdPart(process.getId(), RUN_DIR_ID_CHARS);
-        }
-        if (workspaceService.getRootDir(tenantId, projectId, wanted).isPresent()) {
-            state.setWorkTargetName(wanted);
-            return wanted; // adopt: previous run with this id or the pinned root
-        }
-        de.mhus.vance.exec.RootDirHandle handle =
-                workspaceService.createRootDir(de.mhus.vance.exec.RootDirSpec.builder()
-                        .tenantId(tenantId)
-                        .projectId(projectId)
-                        .type(de.mhus.vance.exec.EphemeralHandler.TYPE)
-                        .creatorProcessId(process.getId())
-                        .creatorEngine("wowbagger")
-                        .labelHint(wanted)
-                        .deleteOnCreatorClose(false)
-                        .build());
-        state.setWorkTargetName(handle.getDirName());
-        log.info("Wowbagger pool id='{}' created run RootDir '{}'", process.getId(), handle.getDirName());
-        return handle.getDirName();
-    }
-
-    private static @Nullable String nullIfBlank(@Nullable String s) {
-        return s == null || s.isBlank() ? null : s;
-    }
-
-    /** Process ids are hex; keep it label-safe regardless. */
-    private static String safeIdPart(String id, int maxChars) {
-        StringBuilder sb = new StringBuilder(maxChars);
-        for (char c : id.toCharArray()) {
-            if (sb.length() >= maxChars) {
-                break;
-            }
-            if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) {
-                sb.append(c);
-            }
-        }
-        return sb.length() > 0 ? sb.toString() : "run";
-    }
-
-    /** Convention path of the source backup document (mirrors the chunk docs). */
+    /** Convention path of the run's source document (mirrors the chunk docs). */
     static String sourceDocPath(String processId, @Nullable String format) {
         String suffix = FORMAT_JSONL.equals(firstNonBlank(format, FORMAT_JSONL)) ? ".jsonl" : ".txt";
         return RUN_FOLDER_PREFIX + "/" + processId + "/source" + suffix;
     }
 
     /**
-     * Source durability for pod switches (opt-in, § source backup):
-     * <ul>
-     *   <li>{@code sourceBackupMb > 0} and the file fits → copy it into the
-     *       document {@code _wowbagger/<run>/source.*} (overwritten every start,
-     *       never stale). One write per start, not per chunk.</li>
-     *   <li>File missing but the backup document exists → RESTORE from the
-     *       document into the run root (always — playing back an existing
-     *       backup is right regardless of the flag) and resume seamlessly.</li>
-     *   <li>Neither → the unsecured note for the start wakeup: the agent
-     *       proposes once, the user decides (single-pod = off is fine).</li>
-     * </ul>
-     * Returns the note for the start wakeup, or {@code null} when secure.
+     * The run's source lives as a document, not as a file on the work target:
+     * documents are the one medium every deployment shares (no workspace, no
+     * pod-local files), they survive pod switches and a client disconnect, and
+     * the pool reads them as a stream.
+     *
+     * <p>A first start — or {@code force}, which re-measures a possibly changed
+     * source — copies the file at {@code sourcePath} from the process's work
+     * target ({@code file_read} dispatches on CLIENT/DAEMON/RUNNER/WORK itself)
+     * into {@code _wowbagger/<run>/source.*}. A resume finds the document and
+     * leaves the target alone. The copy is streamed page by page, never held
+     * whole in memory.
+     *
+     * @return a note for the start wakeup, or {@code null}
      */
-    private @org.jspecify.annotations.Nullable String secureSource(ThinkProcessDocument process, WowbaggerState state)
+    private @Nullable String importSource(
+            ThinkProcessDocument process, WowbaggerState state, boolean force, @Nullable ToolInvocationContext ctx)
             throws IOException {
-        if (state.getSourcePath() == null || state.getSourcePath().isBlank()) {
+        if (isBlank(state.getSourcePath())) {
             return null;
         }
-        Path source = resolveSource(process, state);
         String docPath = sourceDocPath(process.getId(), inputFormatOf(state));
-        if (java.nio.file.Files.exists(source)) {
-            long bytes = java.nio.file.Files.size(source);
-            long threshold = Math.max(0, state.getSourceBackupMb()) * 1024L * 1024L;
-            if (threshold > 0 && bytes <= threshold) {
-                String content = java.nio.file.Files.readString(source);
-                var actor = de.mhus.vance.shared.permission.WriteActor.SYSTEM;
-                try {
-                    documentService.createText(
-                            process.getTenantId(),
-                            process.getProjectId(),
-                            docPath,
-                            "Wowbagger source backup",
-                            List.of("wowbagger", "source-backup"),
-                            content,
-                            "wowbagger:" + process.getId(),
-                            actor);
-                } catch (DocumentAlreadyExistsException e) {
-                    documentService
-                            .findByPath(process.getTenantId(), process.getProjectId(), docPath)
-                            .ifPresent(doc -> documentService.update(
-                                    doc.getId(), "Wowbagger source backup", null, content, null, actor));
-                }
-                log.info("Wowbagger pool id='{}' source backed up as document ({} bytes)", process.getId(), bytes);
-                return null;
-            }
-            if (threshold > 0) {
-                return "NOTE: the source is NOT backed up — " + (bytes / 1024 / 1024) + " MB exceeds the "
-                        + state.getSourceBackupMb() + " MB threshold. A pod switch loses it; keep it "
-                        + "re-creatable or secure it manually (work_file_to_doc).";
-            }
-            // Opt-out (single pod): no nagging on every start — the agent sees the
-            // state in its status block and proposes once.
+        Optional<DocumentDocument> existing =
+                documentService.findByPath(process.getTenantId(), process.getProjectId(), docPath);
+        if (existing.isPresent() && !force) {
             return null;
         }
-        // File gone (pod switch): restore from the backup document if present.
-        var backup = documentService.findByPath(process.getTenantId(), process.getProjectId(), docPath);
-        if (backup.isPresent()) {
-            String content = documentService.readContent(backup.get());
-            if (content != null && !content.isBlank()) {
-                workspaceService.write(
+        if (ctx == null) {
+            throw new IOException("the source has not been imported yet — start the run with wowbagger_start");
+        }
+        var actor = de.mhus.vance.shared.permission.WriteActor.SYSTEM;
+        long bytes;
+        try (CountingInputStream counting =
+                new CountingInputStream(new TargetFileStream(state.getSourcePath(), params -> fileRead(ctx, params)))) {
+            if (existing.isPresent()) {
+                documentService.replaceContent(
+                        existing.get().getId(), counting, null, DocumentService.TOOL_IDENTITY, actor);
+            } else {
+                documentService.create(
                         process.getTenantId(),
                         process.getProjectId(),
-                        state.getWorkTargetName(),
-                        state.getSourcePath(),
-                        content);
-                log.info("Wowbagger pool id='{}' source RESTORED from backup document", process.getId());
-                return "source was pod-local and vanished — restored from the backup document, "
-                        + "the run continues seamlessly";
+                        docPath,
+                        "Wowbagger source",
+                        List.of("wowbagger", "source"),
+                        null,
+                        counting,
+                        "wowbagger:" + process.getId(),
+                        actor);
+            }
+            bytes = counting.total();
+        }
+        log.info(
+                "Wowbagger pool id='{}' imported source '{}' ({} bytes)",
+                process.getId(),
+                state.getSourcePath(),
+                bytes);
+        return "source imported from '" + state.getSourcePath() + "' (" + (bytes / 1024) + " KB) — the run now reads "
+                + "the document " + docPath + ", the file is no longer needed";
+    }
+
+    /**
+     * Imports the structure's {@code workerScript} from the work target into
+     * {@code _wowbagger/<run>/worker-script}, so a script worker — like the
+     * source — never reads the target during a run. Scripts are small, so this
+     * runs on every configure/check/start (the agent edits it between runs).
+     * A no-op without a script or without a caller context (resume).
+     */
+    public void importWorkerScript(
+            ThinkProcessDocument process, WowbaggerState state, @Nullable ToolInvocationContext ctx)
+            throws IOException {
+        if (isBlank(state.getWorkerScript()) || ctx == null) {
+            return;
+        }
+        String docPath = de.mhus.vance.brain.wowbagger.worker.ScriptWorker.scriptDocPath(process.getId());
+        var actor = de.mhus.vance.shared.permission.WriteActor.SYSTEM;
+        try (InputStream in = new TargetFileStream(state.getWorkerScript(), params -> fileRead(ctx, params))) {
+            Optional<DocumentDocument> existing =
+                    documentService.findByPath(process.getTenantId(), process.getProjectId(), docPath);
+            if (existing.isPresent()) {
+                documentService.replaceContent(existing.get().getId(), in, null, DocumentService.TOOL_IDENTITY, actor);
+            } else {
+                documentService.create(
+                        process.getTenantId(),
+                        process.getProjectId(),
+                        docPath,
+                        "Wowbagger worker script",
+                        List.of("wowbagger", "worker-script"),
+                        null,
+                        in,
+                        "wowbagger:" + process.getId(),
+                        actor);
             }
         }
-        return "NOTE: the source is NOT backed up and the file is missing — a pod switch has "
-                + "likely lost it. Re-create it (conversion script) or ask the user; without it the "
-                + "run cannot resume.";
+    }
+
+    /** {@code file_read} as the active work target serves it. */
+    private Map<String, Object> fileRead(ToolInvocationContext ctx, Map<String, Object> params) {
+        return toolDispatcher.invoke("file_read", params, ctx);
+    }
+
+    /** The run's long-lived source reader, created on first use; call under the handle lock. */
+    private DocLineReader sourceReader(Handle handle, ThinkProcessDocument process, WowbaggerState state) {
+        DocLineReader reader = handle.sourceReader;
+        if (reader == null) {
+            String docPath = sourceDocPath(process.getId(), inputFormatOf(state));
+            reader = new DocLineReader(() -> {
+                DocumentDocument doc = documentService
+                        .findByPath(process.getTenantId(), process.getProjectId(), docPath)
+                        .orElseThrow(() -> new IOException("source document '" + docPath
+                                + "' is missing — start the run again so the source is imported"));
+                return documentService.loadContent(doc);
+            });
+            handle.sourceReader = reader;
+        }
+        return reader;
+    }
+
+    /** Counts the bytes that pass through, for the import note. */
+    private static final class CountingInputStream extends java.io.FilterInputStream {
+        private long total;
+
+        CountingInputStream(InputStream in) {
+            super(in);
+        }
+
+        long total() {
+            return total;
+        }
+
+        @Override
+        public int read() throws IOException {
+            int b = super.read();
+            if (b >= 0) {
+                total++;
+            }
+            return b;
+        }
+
+        @Override
+        public int read(byte[] buf, int off, int len) throws IOException {
+            int n = super.read(buf, off, len);
+            if (n > 0) {
+                total += n;
+            }
+            return n;
+        }
+    }
+
+    @SuppressWarnings("PMD.CloseResource") // local view of the field, closed right below
+    private static void closeSourceReader(Handle handle) {
+        DocLineReader reader = handle.sourceReader;
+        handle.sourceReader = null;
+        if (reader != null) {
+            reader.close();
+        }
     }
 
     private static String inputFormatOf(WowbaggerState state) {
@@ -1037,25 +1053,42 @@ public class WowbaggerPoolService {
      * count, structure completeness, worker model + approval. Read-only:
      * no persist, no worker call; the source is streamed, not loaded.
      */
-    public Map<String, Object> preflight(ThinkProcessDocument process, WowbaggerState state) {
+    public Map<String, Object> preflight(
+            ThinkProcessDocument process, WowbaggerState state, @Nullable ToolInvocationContext ctx) {
         Map<String, Object> report = new LinkedHashMap<>();
         List<String> problems = new ArrayList<>();
         long records = -1;
         long invalid = 0;
         List<String> invalidSamples = new ArrayList<>();
         List<String> sampleRecords = new ArrayList<>();
+        try {
+            importWorkerScript(process, state, ctx);
+        } catch (IOException | RuntimeException e) {
+            problems.add("worker script unreadable: " + describeError(e));
+        }
         if (state.getSourcePath() == null || state.getSourcePath().isBlank()) {
             problems.add("source is not set");
         } else {
             try {
-                Path source = resolveSource(process, state);
-                if (!java.nio.file.Files.exists(source)) {
-                    problems.add("source not found in the run root: " + state.getSourcePath() + " (resolved: " + source
-                            + ")");
+                // The run reads its imported document; before the first start
+                // there is none, so the preflight streams the file at the work
+                // target instead — the same bytes the import would copy.
+                String docPath = sourceDocPath(process.getId(), inputFormatOf(state));
+                Optional<DocumentDocument> imported =
+                        documentService.findByPath(process.getTenantId(), process.getProjectId(), docPath);
+                InputStream in;
+                if (imported.isPresent()) {
+                    in = documentService.loadContent(imported.get());
+                } else if (ctx == null) {
+                    throw new IOException("the source has not been imported yet");
                 } else {
+                    in = new TargetFileStream(state.getSourcePath(), params -> fileRead(ctx, params));
+                }
+                {
                     boolean jsonl = FORMAT_JSONL.equals(firstNonBlank(state.getInputFormat(), FORMAT_LINES));
                     records = 0;
-                    try (java.io.BufferedReader reader = java.nio.file.Files.newBufferedReader(source)) {
+                    try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                            new java.io.InputStreamReader(in, java.nio.charset.StandardCharsets.UTF_8))) {
                         String line;
                         while ((line = reader.readLine()) != null) {
                             records++;
@@ -1118,18 +1151,13 @@ public class WowbaggerPoolService {
         report.put("invalidSamples", invalidSamples);
         report.put("sampleRecords", sampleRecords);
         report.put("inputFormat", inputFormatOf(state));
-        // Source durability: backed up, enabled-but-too-large, or off.
-        String backupDoc = sourceDocPath(process.getId(), inputFormatOf(state));
-        boolean backedUp = documentService
-                .findByPath(process.getTenantId(), process.getProjectId(), backupDoc)
+        // Where the run reads its source from: the imported document, or not yet.
+        String sourceDoc = sourceDocPath(process.getId(), inputFormatOf(state));
+        boolean imported = documentService
+                .findByPath(process.getTenantId(), process.getProjectId(), sourceDoc)
                 .isPresent();
         report.put(
-                "sourceBackup",
-                backedUp
-                        ? "document (" + backupDoc + ")"
-                        : state.getSourceBackupMb() > 0
-                                ? "enabled but no backup yet (threshold " + state.getSourceBackupMb() + " MB)"
-                                : "off (sourceBackupMb=0 — pod-local only)");
+                "sourceImported", imported ? "document (" + sourceDoc + ")" : "not yet — wowbagger_start imports it");
         report.put("workerKind", kind);
         report.put("workerModel", model);
         report.put("modelApproved", approved);
@@ -1139,42 +1167,6 @@ public class WowbaggerPoolService {
                         ? (int) ((records + state.getChunkSize() - 1) / state.getChunkSize())
                         : null);
         return report;
-    }
-
-    /**
-     * Ephemeral-source warnings for {@code wowbagger_configure} (live-run
-     * lesson: a source inside a temp RootDir dies with its creator — a
-     * multi-hour run then grinds into "source lost"). Read-only: unlike
-     * {@link #resolveWorkDirName} this never CREATES a temp RootDir.
-     */
-    public List<String> sourceRootWarnings(ThinkProcessDocument process, WowbaggerState state) {
-        if (state.getSourcePath() == null || state.getSourcePath().isBlank()) {
-            return List.of();
-        }
-        WorkTarget target = workTargetService.current(process);
-        if (target.kind() != WorkTargetKind.WORK) {
-            return List.of();
-        }
-        String dirName = target.targetName();
-        if (dirName == null) {
-            dirName = workspaceService
-                    .getWorkingDir(process.getTenantId(), process.getProjectId(), process.getId())
-                    .orElse(null);
-            if (dirName == null) {
-                return List.of("the source resolves into a process-temp RootDir — it dies with"
-                        + " the process (no resume after close, and a brain restart may dispose it)."
-                        + " For long runs use a named RootDir (workTarget targetName) and put the"
-                        + " source there.");
-            }
-        }
-        final String resolvedDir = dirName;
-        return workspaceService
-                .getRootDir(process.getTenantId(), process.getProjectId(), resolvedDir)
-                .filter(h -> h.deleteOnCreatorClose() || h.creatorProcessId() != null)
-                .map(h -> List.of("the source lives in the temp RootDir '" + resolvedDir + "' (creator '"
-                        + h.creatorProcessId() + "', deleteOnCreatorClose) — it dies when its creator"
-                        + " closes. For long runs move the source into a named RootDir."))
-                .orElse(List.of());
     }
 
     /**
@@ -1565,52 +1557,6 @@ public class WowbaggerPoolService {
         }
     }
 
-    private Path resolveSource(ThinkProcessDocument process, WowbaggerState state) throws IOException {
-        String dirName = nullIfBlank(state.getWorkTargetName());
-        if (dirName == null) {
-            dirName = resolveWorkDirName(process);
-        }
-        if (dirName == null) {
-            throw new IOException("work target is not WORK");
-        }
-        return workspaceService.resolve(process.getTenantId(), process.getProjectId(), dirName, state.getSourcePath());
-    }
-
-    private @Nullable String resolveWorkDirName(ThinkProcessDocument process) {
-        WorkTarget target = workTargetService.current(process);
-        if (target.kind() != WorkTargetKind.WORK) {
-            return null;
-        }
-        if (target.targetName() != null) {
-            return target.targetName();
-        }
-        return workspaceService
-                .getWorkingDir(process.getTenantId(), process.getProjectId(), process.getId())
-                .orElseGet(() -> workspaceService
-                        .getOrCreateTempRootDir(process.getTenantId(), process.getProjectId(), process.getId())
-                        .getDirName());
-    }
-
-    private static long countLines(Path source) throws IOException {
-        try (var lines = Files.lines(source, StandardCharsets.UTF_8)) {
-            return lines.count();
-        }
-    }
-
-    static List<String> readWindowAt(Path source, long startRecord, int count) throws IOException {
-        List<String> out = new ArrayList<>(count);
-        try (BufferedReader reader = Files.newBufferedReader(source, StandardCharsets.UTF_8)) {
-            for (long i = 0; i < startRecord && reader.readLine() != null; i++) {
-                // skip
-            }
-            String line;
-            while (out.size() < count && (line = reader.readLine()) != null) {
-                out.add(line);
-            }
-        }
-        return out;
-    }
-
     // ──────────────────── State persistence ────────────────────
 
     private void persist(ThinkProcessDocument process, WowbaggerState state) {
@@ -1620,17 +1566,6 @@ public class WowbaggerPoolService {
                 .orElse(null);
         Map<String, Object> p =
                 params == null ? new java.util.LinkedHashMap<>() : new java.util.LinkedHashMap<>(params);
-        // Hard-pin the process-wide WORK target to the run root while its
-        // name is still blank: the agent's file_* tools then default into
-        // the same root the pool reads. An explicit named pin and a CLIENT
-        // target (foot session — direct client file access, the run root is
-        // addressed via the tools' dirName param) stay untouched.
-        if (nullIfBlank(state.getWorkTargetName()) != null) {
-            WorkTarget current = workTargetService.current(process);
-            if (current.kind() == WorkTargetKind.WORK && nullIfBlank(current.targetName()) == null) {
-                p.put(WorkTarget.KEY, new WorkTarget(WorkTargetKind.WORK, state.getWorkTargetName()).toMap());
-            }
-        }
         p.put(ENGINE_STATE_KEY, objectMapper.convertValue(state, Map.class));
         thinkProcessService.replaceEngineParams(process.getId(), p);
     }

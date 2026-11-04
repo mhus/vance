@@ -13,7 +13,6 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -69,13 +68,10 @@ class WowbaggerConfigureToolTest {
         when(thinkProcessService.findById(PROC_ID)).thenReturn(Optional.of(process));
         when(pool.isRunning(PROC_ID)).thenReturn(false);
         when(pool.structure(PROC_ID)).thenReturn(state);
-        when(pool.ensureWorkRoot(process, state)).thenReturn("wowbagger-run");
-        when(pool.sourceRootWarnings(process, state)).thenReturn(List.of());
 
         Map<String, Object> out = tool.invoke(Map.of("task", "classify each record"), ctx());
 
         assertThat(out.get("applied")).isEqualTo(Map.of("task", "classify each record"));
-        assertThat(out.get("workTarget")).isEqualTo("wowbagger-run");
         // One serialization path: the tool writes through the pool, and the
         // model gate ran before the persist.
         verify(pool).checkWorker(process, state);

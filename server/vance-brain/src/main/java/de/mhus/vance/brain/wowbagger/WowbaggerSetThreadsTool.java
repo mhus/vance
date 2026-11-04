@@ -73,7 +73,7 @@ public class WowbaggerSetThreadsTool extends WowbaggerBaseTool {
         pool.setThreadsDesired(process, s, threads);
         WowbaggerPoolService.RunView view;
         try {
-            view = pool.start(process);
+            view = pool.start(process, false, ctx);
         } catch (java.io.IOException e) {
             // Requeue path: start() may fail on a lost source after park.
             throw new ToolException("cannot start the pool: " + e.getMessage(), e);

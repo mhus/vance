@@ -13,7 +13,7 @@ recipe for a chat or strategy engine is refused.
 |---|---|---|---|---|
 | LightLlm | `workerRecipe` = profile with `internal: true` (default `wowbagger-worker`) | one LLM call per chunk | yes | profile model, checked before the run |
 | Zem | `workerRecipe` = profile with `engine: zem` | one decision per record | no — the profile's questions are the task | decision model, checked before the run |
-| Script | `workerScript` = JS file in the run root (or a profile `engine: hactar`, `internal: true`, `params.script`) | one script run per chunk | available as `vance.params.task` | **every** `vance.llm`/`vance.zem` call, at runtime |
+| Script | `workerScript` = JS file on the work target, imported on configure/start (or a profile `engine: hactar`, `internal: true`, `params.script`) | one script run per chunk | available as `vance.params.task` | **every** `vance.llm`/`vance.zem` call, at runtime |
 
 **Rule of thumb:** only decisions → Zem; one free-form LLM step → LightLlm;
 several steps or a mix → script.
@@ -30,7 +30,7 @@ e.g. `{"intent":{"type":"choice","choice":"refund","confidence":0.93}}`.
 
 ## Script worker
 
-Write the script into the run root, then `wowbagger_configure workerScript:
+Write the script as a file with the `file_*` tools (any work target), then `wowbagger_configure workerScript:
 "triage.js"`. Contract:
 
 ```js

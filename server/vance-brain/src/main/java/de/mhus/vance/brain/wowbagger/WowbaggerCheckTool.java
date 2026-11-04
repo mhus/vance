@@ -56,6 +56,6 @@ public class WowbaggerCheckTool extends WowbaggerBaseTool {
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) throws ToolException {
         ThinkProcessDocument process = process(thinkProcessService, ctx);
         WowbaggerState structure = pool.structure(process.getId());
-        return pool.preflight(process, structure);
+        return pool.preflight(process, structure, ctx);
     }
 }

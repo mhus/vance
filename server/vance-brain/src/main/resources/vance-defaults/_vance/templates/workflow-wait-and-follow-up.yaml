@@ -1,0 +1,32 @@
+title:       { de: "Workflow: Ergebnis, Warten, Nachfassen",
+               en: "Workflow: result, wait, follow up" }
+description: { de: "Ein Agent liefert ein Ergebnis, der Lauf wartet eine Zeit lang und ein zweiter Schritt greift es wieder auf (Nachfassen, erneut prüfen)",
+               en: "An agent delivers a result, the run waits for a while, and a second step picks it up again (follow up, re-check)" }
+icon: clock
+tags: [workflow, automation, timer]
+folder: _vance/workflows
+name: { mode: free, default: "wait-and-follow-up" }
+
+fields:
+  - name: summary
+    # Single-line on purpose: the value lands inside a YAML block scalar.
+    type: string
+    required: true
+    label: { de: "Was der erste Schritt tut", en: "What the first step does" }
+  - name: followUp
+    type: string
+    required: true
+    label: { de: "Was der zweite Schritt nach dem Warten tut",
+             en: "What the second step does after waiting" }
+    help:  { de: "Das Ergebnis des ersten Schritts steht ihm zur Verfügung",
+             en: "The first step's result is available to it" }
+  - name: wait
+    type: string
+    defaultValue: "7d"
+    label: { de: "Wartezeit", en: "Wait time" }
+    help:  { de: "Zum Beispiel 30m, 4h, 7d oder ISO-8601 (P7D)",
+             en: "For example 30m, 4h, 7d or ISO-8601 (P7D)" }
+  - name: recipe
+    type: string
+    defaultValue: ford
+    label: { de: "Recipe beider Schritte", en: "Recipe for both steps" }

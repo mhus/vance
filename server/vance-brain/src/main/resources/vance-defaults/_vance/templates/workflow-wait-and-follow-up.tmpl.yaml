@@ -1,0 +1,66 @@
+$meta:
+  kind: vance-workflow
+
+description: |
+  {{ summary }}
+version: "1"
+
+parameters:
+  subject: { type: string, required: false }
+
+bounds:
+  maxWallclockSeconds: 2592000
+  maxTaskSpawns: 20
+
+start: first
+
+states:
+
+  first:
+    type: agent_task
+    recipe: {{ recipe | default('ford') }}
+    params:
+      prompt: |
+        {{ summary }}
+        Subject: ${params.subject}
+    storeAs: first_result
+    timeoutSeconds: 900
+    on:
+      success: pause
+    catch:
+      agent_error: failed
+
+  # The run holds no process and no thread while it waits.
+  pause:
+    type: timer_task
+    duration: "{{ wait | default('7d') }}"
+    on:
+      fired: second
+
+  second:
+    type: agent_task
+    recipe: {{ recipe | default('ford') }}
+    params:
+      prompt: |
+        {{ followUp }}
+        Subject: ${params.subject}
+
+        Result of the first step:
+        ${state.first_result}
+    storeAs: second_result
+    timeoutSeconds: 900
+    on:
+      success: done
+    catch:
+      agent_error: failed
+
+  done:
+    type: terminal
+    outcome: success
+    result:
+      first: "${state.first_result}"
+      second: "${state.second_result}"
+
+  failed:
+    type: terminal
+    outcome: failure

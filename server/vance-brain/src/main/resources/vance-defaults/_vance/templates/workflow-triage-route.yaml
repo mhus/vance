@@ -1,0 +1,27 @@
+title:       { de: "Workflow: Eingang sichten und verteilen",
+               en: "Workflow: triage and route an incoming item" }
+description: { de: "Ein Agent ordnet einen Eingang ein (dringend, normal, ignorieren). Dringendes geht an einen Menschen, Normales bearbeitet ein Agent. Gedacht für Events und Webhooks.",
+               en: "An agent classifies an incoming item (urgent, normal, ignore). Urgent goes to a person, normal is handled by an agent. Meant for events and webhooks." }
+icon: funnel
+tags: [workflow, automation, event]
+folder: _vance/workflows
+name: { mode: free, default: "triage-route" }
+
+fields:
+  - name: summary
+    # Single-line on purpose: the value lands inside a YAML block scalar.
+    type: string
+    required: true
+    label: { de: "Was eingeht und was dringend heißt",
+             en: "What comes in and what counts as urgent" }
+    help:  { de: "Ein Satz, z. B. „Kundenmails; dringend sind Ausfälle und Zahlungsprobleme“",
+             en: "One sentence, e.g. “customer mails; urgent means outages and payment problems”" }
+  - name: handleTask
+    type: string
+    required: true
+    label: { de: "Was bei „normal“ geschehen soll",
+             en: "What to do for “normal”" }
+  - name: recipe
+    type: string
+    defaultValue: ford
+    label: { de: "Recipe der Schritte", en: "Recipe for the steps" }

@@ -1,0 +1,37 @@
+title:       { de: "Workflow: Entwurf, Freigabe, Aktion",
+               en: "Workflow: draft, approval, action" }
+description: { de: "Ein Agent erstellt einen Entwurf, ein Mensch gibt ihn frei, danach ruft ein Tool die Aktion aus (z. B. Nachricht senden, Ticket anlegen)",
+               en: "An agent writes a draft, a person approves it, then a tool performs the action (e.g. send a message, create a ticket)" }
+icon: paper-airplane
+tags: [workflow, automation, approval]
+folder: _vance/workflows
+name: { mode: free, default: "draft-approve-act" }
+
+fields:
+  - name: summary
+    # Single-line on purpose: the value lands inside a YAML block scalar,
+    # where a pasted newline would break the indentation of the document
+    # the template writes.
+    type: string
+    required: true
+    label: { de: "Was der Entwurf enthalten soll",
+             en: "What the draft should contain" }
+    help:  { de: "Ein Satz — wird Beschreibung und Prompt des Entwurfs-Schritts",
+             en: "One sentence — becomes the description and the draft step's prompt" }
+  - name: tool
+    type: string
+    required: true
+    label: { de: "Tool für die Aktion", en: "Tool for the action" }
+    help:  { de: "Name eines Tools, z. B. eines Slack- oder Jira-Tools. Es läuft erst nach der Freigabe.",
+             en: "Name of a tool, e.g. a Slack or Jira tool. It runs only after approval." }
+  - name: toolParams
+    type: string
+    defaultValue: '{"text": "${state.draft}"}'
+    label: { de: "Parameter des Tools (JSON-Objekt, eine Zeile)",
+             en: "Tool parameters (JSON object, one line)" }
+    help:  { de: "${state.draft} ist der freigegebene Entwurf. Die Feldnamen stehen im Schema des Tools.",
+             en: "${state.draft} is the approved draft. The field names are in the tool's schema." }
+  - name: recipe
+    type: string
+    defaultValue: ford
+    label: { de: "Recipe des Entwurfs-Schritts", en: "Recipe for the draft step" }

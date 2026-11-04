@@ -1,0 +1,102 @@
+$meta:
+  kind: vance-workflow
+
+description: |
+  {{ summary }}
+version: "1"
+
+parameters:
+  subject: { type: string, required: false }
+
+bounds:
+  maxWallclockSeconds: 86400
+  maxTaskSpawns: 60
+
+start: setup
+
+states:
+
+  # Zero the round counter at the state that BEGINS the section, so a
+  # catch: that routes back here counts from one again.
+  setup:
+    type: condition_task
+    resetCounters: [rounds]
+    transitions:
+      - else: write
+
+  write:
+    type: agent_task
+    recipe: {{ recipe | default('ford') }}
+    enterCounter: rounds
+    params:
+      prompt: |
+        {{ summary }}
+        Subject: ${params.subject}
+
+        Reviewer feedback from the previous round (empty in the first round):
+        ${state.review.feedback}
+    storeAs: draft
+    timeoutSeconds: 900
+    on:
+      success: review
+      needs_input: escalate
+    catch:
+      agent_error: failed
+
+  review:
+    type: agent_task
+    recipe: {{ recipe | default('ford') }}
+    params:
+      prompt: |
+        Review the draft against this brief: {{ summary }}
+        Answer with a JSON object with a "score" from 0.0 to 1.0 and a
+        "feedback" string telling the writer what to fix.
+
+        Draft:
+        ${state.draft}
+    # Bands are matched top to bottom, so they are written in descending order.
+    score:
+      bands:
+        - { atLeast: {{ passScore | default('0.8') }}, outcome: approved }
+        - { atLeast: 0.2, outcome: revise }
+        - { default: true, outcome: rejected }
+    storeAs: review
+    timeoutSeconds: 600
+    on:
+      approved: done
+      revise: check_rounds
+      rejected: escalate
+    catch:
+      agent_error: failed
+
+  check_rounds:
+    type: condition_task
+    transitions:
+      - if: "#state['rounds'] >= {{ maxRounds | default('3') }}"
+        to: escalate
+      - else: write
+
+  # Out of rounds, or the reviewer gave up: a person decides.
+  escalate:
+    type: gate_task
+    inbox:
+      kind: APPROVAL
+      title: "{{ name }}: accept the latest draft?"
+      body: "${state.draft}"
+      criticality: NORMAL
+    timeoutSeconds: 604800
+    on:
+      approved: done
+      rejected: failed
+    catch:
+      timeout: failed
+
+  done:
+    type: terminal
+    outcome: success
+    result:
+      draft: "${state.draft}"
+
+  failed:
+    type: terminal
+    outcome: failure

@@ -2,7 +2,7 @@ title:       { de: "Workflow",  en: "Workflow" }
 description: { de: "Magrathea-Workflow: Agent-Schritt, Freigabe-Gate und Terminal-States",
                en: "Magrathea workflow: agent step, approval gate and terminal states" }
 icon: arrow-path-rounded-square
-tags: [automation]
+tags: [workflow, automation]
 
 name:
   mode: free

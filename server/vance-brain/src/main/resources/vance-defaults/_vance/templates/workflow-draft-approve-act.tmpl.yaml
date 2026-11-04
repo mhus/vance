@@ -1,0 +1,91 @@
+$meta:
+  kind: vance-workflow
+
+description: |
+  {{ summary }}
+version: "1"
+
+# Caller parameters, validated at start(). Read anywhere below as
+# ${params.<key>}.
+parameters:
+  subject: { type: string, required: false }
+
+bounds:
+  maxWallclockSeconds: 604800
+  maxTaskSpawns: 30
+
+start: draft
+
+states:
+
+  draft:
+    type: agent_task
+    recipe: {{ recipe | default('ford') }}
+    params:
+      prompt: |
+        {{ summary }}
+        Subject: ${params.subject}
+
+        Answer to your earlier question (empty on the first run):
+        ${state.draft_answer.text}
+    storeAs: draft
+    timeoutSeconds: 900
+    on:
+      success: review
+      needs_input: ask_draft
+    catch:
+      agent_error: failed
+
+  # The agent asked back instead of finishing: put the question to the
+  # person and draft again with the answer.
+  ask_draft:
+    type: gate_task
+    inbox:
+      kind: FEEDBACK
+      title: "{{ name }}: the agent needs input"
+      body: "${state.draft}"
+    storeAs: draft_answer
+    on:
+      success: draft
+
+  # Nothing below this gate runs without a person's approval.
+  review:
+    type: gate_task
+    inbox:
+      kind: APPROVAL
+      title: "{{ name }}: approve the draft and run the action?"
+      body: "${state.draft}"
+      criticality: NORMAL
+    timeoutSeconds: 604800
+    storeAs: review_decision
+    on:
+      approved: act
+      rejected: rejected
+    catch:
+      timeout: failed
+
+  act:
+    type: tool_task
+    tool: {{ tool }}
+    params: {{ toolParams | default('{}') }}
+    storeAs: action_result
+    on:
+      success: done
+    catch:
+      permission_error: failed
+      technical_error: failed
+
+  done:
+    type: terminal
+    outcome: success
+    result:
+      draft: "${state.draft}"
+      action: "${state.action_result}"
+
+  rejected:
+    type: terminal
+    outcome: failure
+
+  failed:
+    type: terminal
+    outcome: failure

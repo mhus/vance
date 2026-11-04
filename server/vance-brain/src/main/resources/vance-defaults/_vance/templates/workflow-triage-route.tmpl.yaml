@@ -1,0 +1,84 @@
+$meta:
+  kind: vance-workflow
+
+description: |
+  {{ summary }}
+version: "1"
+
+# An event trigger hands the request body over as params.payload; a
+# scheduler or a manual start can pass it as an ordinary parameter.
+parameters:
+  payload: { type: object, required: false }
+
+bounds:
+  maxWallclockSeconds: 604800
+  maxTaskSpawns: 20
+
+start: classify
+
+states:
+
+  classify:
+    type: agent_task
+    recipe: {{ recipe | default('ford') }}
+    params:
+      prompt: |
+        Classify the incoming item. Context: {{ summary }}
+
+        Item:
+        ${params.payload}
+    decide:
+      options: [urgent, normal, ignore]
+      maxCorrections: 2
+    storeAs: classification
+    timeoutSeconds: 300
+    on:
+      urgent: escalate
+      normal: handle
+      ignore: done
+    catch:
+      agent_error: escalate
+
+  # A person decides what to do with an urgent item (or an item the
+  # classifier could not read).
+  escalate:
+    type: gate_task
+    inbox:
+      kind: DECISION
+      title: "{{ name }}: urgent item"
+      body: "${params.payload}"
+      options: [handle, ignore]
+      criticality: CRITICAL
+    timeoutSeconds: 86400
+    on:
+      handle: handle
+      ignore: done
+    catch:
+      timeout: failed
+
+  handle:
+    type: agent_task
+    recipe: {{ recipe | default('ford') }}
+    params:
+      prompt: |
+        {{ handleTask }}
+
+        Item:
+        ${params.payload}
+    storeAs: handled
+    timeoutSeconds: 900
+    on:
+      success: done
+    catch:
+      agent_error: failed
+
+  done:
+    type: terminal
+    outcome: success
+    result:
+      classification: "${state.classification}"
+      handled: "${state.handled}"
+
+  failed:
+    type: terminal
+    outcome: failure

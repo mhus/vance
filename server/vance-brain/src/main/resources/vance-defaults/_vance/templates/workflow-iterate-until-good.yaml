@@ -1,0 +1,36 @@
+title:       { de: "Workflow: Schreiben und Prüfen in Runden",
+               en: "Workflow: write and review in rounds" }
+description: { de: "Ein Agent schreibt, ein zweiter bewertet mit Punktzahl und Rückmeldung; bei Mängeln schreibt der erste neu, höchstens N Runden, danach entscheidet ein Mensch",
+               en: "One agent writes, a second scores it and gives feedback; on a miss the first rewrites, at most N rounds, then a person decides" }
+icon: arrow-path
+tags: [workflow, automation, loop]
+folder: _vance/workflows
+name: { mode: free, default: "iterate-until-good" }
+
+fields:
+  - name: summary
+    # Single-line on purpose: the value lands inside a YAML block scalar.
+    type: string
+    required: true
+    label: { de: "Was entstehen soll", en: "What should be produced" }
+    help:  { de: "Ein Satz — Beschreibung und Auftrag an den Schreiber und den Prüfer",
+             en: "One sentence — the description and the brief for the writer and the reviewer" }
+  - name: maxRounds
+    type: integer
+    integerMin: 1
+    integerMax: 10
+    defaultValue: 3
+    label: { de: "Höchstens so viele Runden", en: "At most this many rounds" }
+  - name: passScore
+    type: select
+    defaultValue: "0.8"
+    label: { de: "Ab dieser Punktzahl gilt es als gut", en: "Good enough from this score" }
+    choices:
+      - value: "0.6"
+      - value: "0.7"
+      - value: "0.8"
+      - value: "0.9"
+  - name: recipe
+    type: string
+    defaultValue: ford
+    label: { de: "Recipe von Schreiber und Prüfer", en: "Recipe for writer and reviewer" }

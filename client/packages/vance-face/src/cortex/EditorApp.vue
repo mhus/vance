@@ -2387,6 +2387,7 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
         v-if="!isAppTab"
         :tabs="store.openTabs"
         :active-tab-id="store.activeTabId"
+        :opening="store.opening || restoring"
         @select="store.setActiveTab"
         @close="requestCloseTab"
       />
@@ -2396,6 +2397,15 @@ async function switchToSessionInPlace(sid: string): Promise<void> {
 
       <div v-if="!activeTab" class="flex-1 flex items-center justify-center">
         <VEmptyState
+          v-if="store.opening || restoring"
+          :headline="$t('cortex.menu.openingDocumentHeadline')"
+        >
+          <template #icon>
+            <span class="loading loading-spinner loading-md" />
+          </template>
+        </VEmptyState>
+        <VEmptyState
+          v-else
           :headline="$t('cortex.menu.noDocumentHeadline')"
           :body="$t('cortex.menu.noDocumentBody')"
         />

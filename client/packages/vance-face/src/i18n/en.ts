@@ -290,6 +290,7 @@ export default {
       unbindChat: 'Unbind chat',
       agentEditing: 'agent editing…',
       agentEditingTitle: 'An agent tool is currently editing the chat-bound document',
+      openingDocumentHeadline: 'Opening document…',
       noDocumentHeadline: 'No document open',
       noDocumentBody: 'Pick one from the tree on the left, or create a new file.',
     },

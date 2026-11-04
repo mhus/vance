@@ -5,6 +5,8 @@ import { VIconButton } from '@/components';
 interface Props {
   tabs: CortexDocument[];
   activeTabId?: string | null;
+  /** A document is being fetched — the empty hint would contradict that. */
+  opening?: boolean;
 }
 
 defineProps<Props>();
@@ -43,7 +45,7 @@ function basename(path: string): string {
         @click.stop="emit('close', tab.id)"
       />
     </div>
-    <div v-if="tabs.length === 0" class="px-3 py-1.5 text-sm opacity-50">
+    <div v-if="tabs.length === 0 && !opening" class="px-3 py-1.5 text-sm opacity-50">
       {{ $t('cortex.tabs.empty') }}
     </div>
   </div>

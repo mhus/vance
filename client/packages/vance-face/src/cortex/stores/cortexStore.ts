@@ -155,6 +155,9 @@ export const useCortexStore = defineStore('cortex', () => {
   const openTabs = ref<CortexDocument[]>([]);
   const activeTabId = ref<string | null>(null);
   const loading = ref(false);
+  /** Documents currently being fetched by {@link openFile}; drives the "opening" placeholder. */
+  const openingCount = ref(0);
+  const opening = computed(() => openingCount.value > 0);
   const error = ref<string | null>(null);
   const currentSelection = ref<CortexSelection | null>(null);
   // Session-held age keys — the unlock/encrypt counterpart of the age
@@ -488,6 +491,15 @@ export const useCortexStore = defineStore('cortex', () => {
    * again is just an activation.
    */
   async function openFile(id: string, viewQuery?: string): Promise<void> {
+    openingCount.value++;
+    try {
+      await openFileInner(id, viewQuery);
+    } finally {
+      openingCount.value--;
+    }
+  }
+
+  async function openFileInner(id: string, viewQuery?: string): Promise<void> {
     const existing = openTabs.value.find((t) => t.id === id);
     if (existing) {
       activeTabId.value = id;
@@ -929,6 +941,7 @@ export const useCortexStore = defineStore('cortex', () => {
     activeTabId,
     activeTab,
     loading,
+    opening,
     error,
     fileTree,
     expanded,

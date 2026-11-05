@@ -22,6 +22,7 @@ import de.mhus.vance.shared.magrathea.MagratheaWorkflowLoader;
 import de.mhus.vance.shared.magrathea.ResolvedMagratheaWorkflow;
 import de.mhus.vance.shared.magrathea.journal.BreakpointsRecord;
 import de.mhus.vance.shared.magrathea.journal.DebugRecord;
+import de.mhus.vance.shared.magrathea.journal.JournalRecord;
 import de.mhus.vance.shared.magrathea.journal.ResultRecord;
 import de.mhus.vance.shared.magrathea.journal.StartRecord;
 import de.mhus.vance.shared.magrathea.journal.StateEnteredRecord;
@@ -407,6 +408,35 @@ public class MagratheaWorkflowService {
             @Nullable String parentState,
             MagratheaRunBinding binding,
             MagratheaDebugSetup debug) {
+        return startResolved(
+                tenantId,
+                projectId,
+                workflow,
+                sourcePath,
+                callerParams,
+                startedBy,
+                parentMagratheaProcessId,
+                parentState,
+                binding,
+                debug,
+                null);
+    }
+
+    /** What a restart carries over from the run it repeats. */
+    private record Restart(String of, @Nullable String from, List<VarRecord> vars) {}
+
+    private String startResolved(
+            String tenantId,
+            String projectId,
+            ResolvedMagratheaWorkflow workflow,
+            @Nullable String sourcePath,
+            @Nullable Map<String, Object> callerParams,
+            @Nullable String startedBy,
+            @Nullable String parentMagratheaProcessId,
+            @Nullable String parentState,
+            MagratheaRunBinding binding,
+            MagratheaDebugSetup debug,
+            @Nullable Restart restart) {
         Map<String, Object> resolvedParams = applyDefaultsAndValidate(workflow, callerParams);
         requireCapabilities(workflow, binding);
         requireKnownStates(workflow, debug.breakpoints());
@@ -431,7 +461,8 @@ public class MagratheaWorkflowService {
                                     parentMagratheaProcessId,
                                     parentState,
                                     binding,
-                                    debug))
+                                    debug,
+                                    restart))
                     .get(START_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
         } catch (java.util.concurrent.ExecutionException e) {
             Throwable cause = e.getCause() == null ? e : e.getCause();
@@ -708,6 +739,110 @@ public class MagratheaWorkflowService {
         });
     }
 
+    // ──────────── restart ────────────
+
+    /**
+     * The states a new run could begin in: those this run entered, except
+     * terminals, in the order it first entered them. Empty (not present) while the
+     * run still goes — a run that is going is not restarted, stop it first.
+     */
+    public Optional<List<String>> restartableStates(String tenantId, String projectId, String workflowRunId) {
+        MagratheaRunStatus status = currentStatus(tenantId, projectId, workflowRunId);
+        if (status != MagratheaRunStatus.DONE
+                && status != MagratheaRunStatus.FAILED
+                && status != MagratheaRunStatus.TERMINATED) {
+            return Optional.empty();
+        }
+        Optional<StartRecord> start = journalService.readLast(tenantId, projectId, workflowRunId, StartRecord.class);
+        if (start.isEmpty()) return Optional.empty();
+        ResolvedMagratheaWorkflow workflow = workflowLoader.validateYaml(
+                start.get().getWorkflowName(), start.get().getDefinitionYaml());
+        Set<String> entered = new java.util.LinkedHashSet<>();
+        for (MagratheaJournalEntry entry : journalService.read(tenantId, projectId, workflowRunId)) {
+            journalService.toRecord(entry).ifPresent(r -> {
+                if (r instanceof StateEnteredRecord e) {
+                    MagratheaStateSpec spec = workflow.states().get(e.getState());
+                    if (spec != null && spec.type() != MagratheaTaskType.TERMINAL) entered.add(e.getState());
+                }
+            });
+        }
+        return Optional.of(List.copyOf(entered));
+    }
+
+    /**
+     * Start a new run from an ended one — a rerun, or a retry from a state. The old
+     * run is not reopened: its journal stays as it was, and the new run points back
+     * at it ({@code restartOf}). It is a run of its own, belonging to whoever
+     * restarts it, not a child that anybody waits for.
+     *
+     * <p>Always against the definition the old run froze. A rerun takes the
+     * parameters of the old start. A retry from {@code fromState} begins in that
+     * state with the variables the old run had when it last entered it — the journal
+     * replayed up to there, not the end state, which holds values of steps that ran
+     * afterwards.
+     *
+     * @param fromState the state to begin in; {@code null} for a rerun from the start
+     * @return the id of the new run
+     * @throws IllegalArgumentException when the run is unknown, or {@code fromState}
+     *         is not one the run entered (or is a terminal)
+     * @throws IllegalStateException when the run still goes
+     */
+    public String restartRun(
+            String tenantId,
+            String projectId,
+            String workflowRunId,
+            @Nullable String fromState,
+            @Nullable String startedBy,
+            MagratheaDebugSetup debug) {
+        StartRecord old = journalService
+                .readLast(tenantId, projectId, workflowRunId, StartRecord.class)
+                .orElseThrow(() -> new IllegalArgumentException("No such run: " + workflowRunId));
+        List<String> restartable = restartableStates(tenantId, projectId, workflowRunId)
+                .orElseThrow(() -> new IllegalStateException("Run " + workflowRunId + " still goes — stop it first"));
+        String from = fromState == null || fromState.isBlank() ? null : fromState.trim();
+        if (from != null && !restartable.contains(from)) {
+            throw new IllegalArgumentException("Cannot restart from '" + from + "': the run entered " + restartable);
+        }
+        ResolvedMagratheaWorkflow workflow =
+                workflowLoader.validateYaml(old.getWorkflowName(), old.getDefinitionYaml());
+        List<VarRecord> vars = from == null ? List.of() : variablesOnEntering(tenantId, projectId, workflowRunId, from);
+        String newRunId = startResolved(
+                tenantId,
+                projectId,
+                workflow,
+                old.getSourcePath(),
+                old.getParams(),
+                startedBy,
+                null,
+                null,
+                MagratheaRunBinding.headless(),
+                debug,
+                new Restart(workflowRunId, from, vars));
+        log.info(
+                "Magrathea run {} restarted as {} (from state {})",
+                workflowRunId,
+                newRunId,
+                from == null ? "start" : from);
+        return newRunId;
+    }
+
+    /** The variables a run had the last time it entered {@code state}: its journal replayed up to there. */
+    private List<VarRecord> variablesOnEntering(String tenantId, String projectId, String workflowRunId, String state) {
+        List<JournalRecord> records = new ArrayList<>();
+        for (MagratheaJournalEntry entry : journalService.read(tenantId, projectId, workflowRunId)) {
+            journalService.toRecord(entry).ifPresent(records::add);
+        }
+        int entry = -1;
+        for (int i = 0; i < records.size(); i++) {
+            if (records.get(i) instanceof StateEnteredRecord e && state.equals(e.getState())) entry = i;
+        }
+        List<VarRecord> vars = new ArrayList<>();
+        for (int i = 0; i < entry; i++) {
+            if (records.get(i) instanceof VarRecord v) vars.add(v);
+        }
+        return vars;
+    }
+
     /**
      * Visit the runs above {@code sub}, nearest first, that are still going and
      * debuggable. An ancestor that is not debuggable or has ended is skipped, the
@@ -766,7 +901,7 @@ public class MagratheaWorkflowService {
     public Optional<Simulation> simulationFor(String tenantId, String projectId, String workflowRunId) {
         if (currentStatus(tenantId, projectId, workflowRunId) != MagratheaRunStatus.PAUSED) return Optional.empty();
         Optional<StartRecord> start = journalService.readLast(tenantId, projectId, workflowRunId, StartRecord.class);
-        if (start.isEmpty() || !MagratheaDebugSetup.isDebuggable(start.get())) return Optional.empty();
+        if (start.isEmpty()) return Optional.empty();
         Optional<MagratheaTaskDocument> held = heldTask(workflowRunId);
         if (held.isEmpty() || !SIMULABLE.contains(held.get().getTaskType())) return Optional.empty();
         MagratheaStateSpec state = workflowLoader
@@ -832,11 +967,20 @@ public class MagratheaWorkflowService {
                     .filter(t -> t.getStateName().equals(offered.get().state()));
             if (held.isEmpty()) return;
             MagratheaTaskDocument task = held.get();
-            journalService.append(
-                    tenantId,
-                    projectId,
-                    workflowRunId,
-                    DebugRecord.builder().stepping(true).build());
+            // A debug run behaves as after a step: stepping on, running, halted again before
+            // the next state. A run that was merely paused (skip task) stays paused — the next
+            // task is held by the status, and the reader resumes when ready.
+            boolean debuggable = journalService
+                    .readLast(tenantId, projectId, workflowRunId, StartRecord.class)
+                    .map(MagratheaDebugSetup::isDebuggable)
+                    .orElse(false);
+            if (debuggable) {
+                journalService.append(
+                        tenantId,
+                        projectId,
+                        workflowRunId,
+                        DebugRecord.builder().stepping(true).build());
+            }
             journalService.append(
                     tenantId,
                     projectId,
@@ -846,14 +990,16 @@ public class MagratheaWorkflowService {
                             .taskType(task.getTaskType())
                             .taskId(task.getId())
                             .build());
-            journalService.append(
-                    tenantId,
-                    projectId,
-                    workflowRunId,
-                    StatusRecord.builder()
-                            .status(MagratheaRunStatus.RUNNING)
-                            .reason("debug: simulate '" + task.getStateName() + "'")
-                            .build());
+            if (debuggable) {
+                journalService.append(
+                        tenantId,
+                        projectId,
+                        workflowRunId,
+                        StatusRecord.builder()
+                                .status(MagratheaRunStatus.RUNNING)
+                                .reason("debug: simulate '" + task.getStateName() + "'")
+                                .build());
+            }
             handleCompletion(new TaskCompletedEvent(
                     tenantId,
                     projectId,
@@ -1093,6 +1239,23 @@ public class MagratheaWorkflowService {
      *         wait for it
      */
     private boolean unwind(String tenantId, MagratheaTaskDocument task, String reason) {
+        if (releaseHandles(tenantId, task, reason)) {
+            taskService.markFailed(task.getId());
+            return true;
+        }
+        // Nothing to pull the plug on — a shell or script task mid-flight.
+        return false;
+    }
+
+    /**
+     * Let go of everything this task waits on: withdraw the gate item, close the
+     * agent, stop the sub-run, consume the timer. Leaves the task row alone — the
+     * caller decides how the task ends.
+     *
+     * @return {@code false} when the task has no handle at all (a shell or script
+     *         mid-flight), so nothing was done
+     */
+    private boolean releaseHandles(String tenantId, MagratheaTaskDocument task, String reason) {
         boolean ended = false;
         if (task.getInboxItemId() != null) {
             try {
@@ -1123,16 +1286,74 @@ public class MagratheaWorkflowService {
             ended = true;
         }
         if (task.getTaskType() == MagratheaTaskType.TIMER_TASK) {
-            // The pending timer row is the whole of this task's work; endRun
-            // deletes every timer of the run right after the unwind loop.
+            // Consume the pending timer so the scanner cannot fire it later; endRun
+            // deletes the timers of a whole run, an abort has to do this one itself.
+            try {
+                timerService
+                        .findByLinkedTaskId(task.getId())
+                        .ifPresent(timer -> timerService.claimFire(timer.getId(), Instant.now()));
+            } catch (RuntimeException ex) {
+                log.warn("Magrathea stop: could not consume timer of task '{}': {}", task.getId(), ex.toString());
+            }
             ended = true;
         }
-        if (ended) {
-            taskService.markFailed(task.getId());
-            return true;
-        }
-        // Nothing to pull the plug on — a shell or script task mid-flight.
-        return false;
+        return ended;
+    }
+
+    /**
+     * The task of a going run that can be aborted: claimed and holding a handle
+     * that one call can let go of — a gate, an agent, a sub-run, a timer. A shell
+     * or script task mid-flight has none, and offering an abort that only changes
+     * the status while the process runs on would be worse than offering none.
+     */
+    public Optional<MagratheaTaskDocument> abortableTask(String tenantId, String projectId, String workflowRunId) {
+        MagratheaRunStatus status = currentStatus(tenantId, projectId, workflowRunId);
+        if (status != MagratheaRunStatus.RUNNING && status != MagratheaRunStatus.PAUSED) return Optional.empty();
+        return taskService.findByRun(workflowRunId).stream()
+                .filter(t -> t.getStatus() == MagratheaTaskStatus.CLAIMED)
+                .filter(t -> t.getInboxItemId() != null
+                        || t.getSubProcessId() != null
+                        || t.getSubWorkflowRunId() != null
+                        || t.getTaskType() == MagratheaTaskType.TIMER_TASK)
+                .findFirst();
+    }
+
+    /**
+     * End the task a run is waiting on, as {@code cancelled}: the handles are
+     * let go of and the task completes with that error kind, so the run goes its
+     * own {@code catch:} way — or fails, when there is none. A {@code retry:} does
+     * not apply: aborted means "not again".
+     *
+     * <p>For a for-each state this ends the running element and starts no further
+     * one; aborting the task <em>inside</em> an element fails that element, and
+     * {@code onItemError} decides what follows.
+     *
+     * @return {@code true} if a task was aborted; {@code false} when the run has
+     *         none to abort (see {@link #abortableTask}) or moved on in the meantime
+     */
+    public boolean abortTask(String tenantId, String projectId, String workflowRunId, String reason) {
+        boolean[] aborted = {false};
+        onLane(projectId, () -> {
+            Optional<MagratheaTaskDocument> abortable = abortableTask(tenantId, projectId, workflowRunId);
+            if (abortable.isEmpty()) return;
+            MagratheaTaskDocument task = abortable.get();
+            if (!releaseHandles(tenantId, task, reason)) return;
+            handleCompletion(new TaskCompletedEvent(
+                    tenantId,
+                    projectId,
+                    workflowRunId,
+                    task.getId(),
+                    task.getStateName(),
+                    task.getTaskType(),
+                    TaskCompletedEvent.OUTCOME_CANCELLED,
+                    null,
+                    reason,
+                    0L,
+                    null));
+            aborted[0] = true;
+        });
+        if (aborted[0]) log.info("Magrathea run {} task aborted ({})", workflowRunId, reason);
+        return aborted[0];
     }
 
     private String workflowNameOf(String tenantId, String projectId, String workflowRunId) {
@@ -1176,8 +1397,10 @@ public class MagratheaWorkflowService {
             @Nullable String parentMagratheaProcessId,
             @Nullable String parentState,
             MagratheaRunBinding binding,
-            MagratheaDebugSetup debug) {
+            MagratheaDebugSetup debug,
+            @Nullable Restart restart) {
 
+        String entryState = restart != null && restart.from() != null ? restart.from() : workflow.startState();
         journalService.append(
                 tenantId,
                 projectId,
@@ -1206,31 +1429,40 @@ public class MagratheaWorkflowService {
                                         ? null
                                         : new java.util.LinkedHashSet<>(debug.breakpoints()))
                         .subBreakpoints(debug.workflowBreakpoints().isEmpty() ? null : debug.workflowBreakpoints())
+                        .restartOf(restart == null ? null : restart.of())
+                        .restartFrom(restart == null ? null : restart.from())
                         .build());
+
+        // A restart begins with the variables the old run had on entering its state.
+        if (restart != null) {
+            for (VarRecord var : restart.vars()) {
+                journalService.append(tenantId, projectId, runId, var);
+            }
+        }
 
         journalService.append(
                 tenantId,
                 projectId,
                 runId,
-                StateEnteredRecord.builder().state(workflow.startState()).build());
+                StateEnteredRecord.builder().state(entryState).build());
 
-        MagratheaStateSpec startState = workflow.states().get(workflow.startState());
+        MagratheaStateSpec startState = workflow.states().get(entryState);
         applyCounters(tenantId, projectId, runId, startState);
         // A debug run stands before its first state when it steps or has a
         // breakpoint there: say so first, then park the task — the order
         // enqueueNextTask uses for every later one.
         HaltCause firstHalt = debug.stepping()
                 ? HaltCause.STEPPING
-                : debug.breakpoints().contains(workflow.startState()) ? HaltCause.BREAKPOINT : null;
+                : debug.breakpoints().contains(entryState) ? HaltCause.BREAKPOINT : null;
         if (firstHalt != null) {
-            haltBeforeState(tenantId, projectId, runId, workflow.startState(), firstHalt);
+            haltBeforeState(tenantId, projectId, runId, entryState, firstHalt);
         }
         MagratheaTaskDocument task = MagratheaTaskDocument.builder()
                 .tenantId(tenantId)
                 .projectId(projectId)
                 .workflowRunId(runId)
                 .workflowName(workflow.name())
-                .stateName(workflow.startState())
+                .stateName(entryState)
                 .taskType(startState.type())
                 .status(firstHalt != null ? MagratheaTaskStatus.HELD : MagratheaTaskStatus.PENDING)
                 .createdAt(Instant.now())
@@ -1244,7 +1476,7 @@ public class MagratheaWorkflowService {
                 workflow.name(),
                 tenantId,
                 projectId,
-                workflow.startState(),
+                entryState,
                 debug.stepping(),
                 debug.breakpoints());
     }
@@ -1449,6 +1681,8 @@ public class MagratheaWorkflowService {
     private static boolean canRetry(MagratheaStateSpec state, MagratheaTaskDocument task, TaskCompletedEvent event) {
         // A retry would run the task for real — the opposite of what a simulated result is for.
         if (event.simulated()) return false;
+        // Aborted means "not again": a retry would start the task the reader just ended.
+        if (TaskCompletedEvent.OUTCOME_CANCELLED.equals(event.outcome())) return false;
         if (state.retry() == null) return false;
         MagratheaErrorKind kind = parseErrorKind(event.outcome());
         if (kind == null) return false;

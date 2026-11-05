@@ -73,6 +73,9 @@ public record TaskCompletedEvent(
     public static final String OUTCOME_SUCCESS = "success";
     public static final String OUTCOME_FAILURE = "failure";
 
+    /** Lower-case name of {@code MagratheaErrorKind.CANCELLED}: somebody aborted the task from outside. */
+    public static final String OUTCOME_CANCELLED = "cancelled";
+
     /**
      * Lower-case name of {@code MagratheaErrorKind.CAPABILITY_MISSING} — the
      * one error kind produced by the dispatcher rather than by a task, for a

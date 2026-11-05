@@ -94,11 +94,35 @@ class MagratheaDebugModeTest {
                 outcome: failure
             """;
 
+    /** A timer that can be aborted: its {@code catch:} for the aborted kind, and a retry that must not apply. */
+    private static final String ABORT_YAML = """
+            description: abort demo
+            start: wait
+            states:
+              wait:
+                type: timer_task
+                duration: "60s"
+                retry: { maxAttempts: 3, on: [cancelled] }
+                on:
+                  fired: done
+                catch:
+                  cancelled: aborted
+              done:
+                type: terminal
+                outcome: success
+              aborted:
+                type: terminal
+                outcome: failure
+            """;
+
     private final MagratheaJournalService journal = mock(MagratheaJournalService.class);
     private final MagratheaWorkflowLoader loader = mock(MagratheaWorkflowLoader.class);
     private final MagratheaTaskService tasks = mock(MagratheaTaskService.class);
     private final MagratheaProjectLaneManager lanes = mock(MagratheaProjectLaneManager.class);
     private final MagratheaLocalDispatch dispatch = mock(MagratheaLocalDispatch.class);
+
+    private final de.mhus.vance.shared.magrathea.MagratheaTimerService timers =
+            mock(de.mhus.vance.shared.magrathea.MagratheaTimerService.class);
 
     private final MagratheaWorkflowService service = new MagratheaWorkflowService(
             loader,
@@ -115,7 +139,7 @@ class MagratheaDebugModeTest {
                     new io.micrometer.core.instrument.simple.SimpleMeterRegistry()),
             mock(de.mhus.vance.shared.thinkprocess.ThinkProcessService.class),
             mock(de.mhus.vance.shared.inbox.MaximegalonService.class),
-            mock(de.mhus.vance.shared.magrathea.MagratheaTimerService.class));
+            timers);
 
     private final List<JournalRecord> appended = new ArrayList<>();
     private final List<MagratheaTaskDocument> inserted = new ArrayList<>();
@@ -192,6 +216,9 @@ class MagratheaDebugModeTest {
         MagratheaWorkflowLoader real = new MagratheaWorkflowLoader(null);
         when(loader.load(any(), any(), eq("demo"))).thenAnswer(inv -> Optional.of(real.validateYaml("demo", YAML)));
         when(loader.validateYaml(eq("demo"), any())).thenAnswer(inv -> real.validateYaml("demo", YAML));
+        when(loader.load(any(), any(), eq("abort")))
+                .thenAnswer(inv -> Optional.of(real.validateYaml("abort", ABORT_YAML)));
+        when(loader.validateYaml(eq("abort"), any())).thenAnswer(inv -> real.validateYaml("abort", ABORT_YAML));
         when(loader.load(any(), any(), eq("sim"))).thenAnswer(inv -> Optional.of(real.validateYaml("sim", SIM_YAML)));
         when(loader.validateYaml(eq("sim"), any())).thenAnswer(inv -> real.validateYaml("sim", SIM_YAML));
     }
@@ -586,6 +613,56 @@ class MagratheaDebugModeTest {
                 null,
                 MagratheaRunBinding.headless(),
                 new MagratheaDebugSetup(true, java.util.Set.of()));
+    }
+
+    @Test
+    void abortingATimerConsumesItAndTheRunTakesItsCancelledCatchWithoutRetrying() {
+        String runId = service.start("acme", "proj", "abort", Map.of(), "alice");
+        inserted.get(0).setStatus(MagratheaTaskStatus.CLAIMED);
+        when(timers.findByLinkedTaskId("t1"))
+                .thenReturn(Optional.of(de.mhus.vance.shared.magrathea.MagratheaTimerDocument.builder()
+                        .id("tm1")
+                        .build()));
+
+        assertThat(service.abortTask("acme", "proj", runId, "aborted from the run view"))
+                .isTrue();
+
+        verify(timers).claimFire(eq("tm1"), any());
+        // The retry block lists the kind, and still the run goes to the catch.
+        assertThat(inserted).hasSize(2);
+        assertThat(inserted.get(1).getStateName()).isEqualTo("aborted");
+        assertThat(appended)
+                .anySatisfy(r -> assertThat(r)
+                        .isInstanceOfSatisfying(
+                                de.mhus.vance.shared.magrathea.journal.TaskResultRecord.class,
+                                t -> assertThat(t.getOutcome()).isEqualTo("cancelled")));
+    }
+
+    @Test
+    void aRunWithoutAnEndableTaskHasNothingToAbort() {
+        String runId = service.start("acme", "proj", "demo", Map.of(), "alice");
+        inserted.get(0).setStatus(MagratheaTaskStatus.CLAIMED);
+
+        assertThat(service.abortableTask("acme", "proj", runId)).isEmpty();
+        assertThat(service.abortTask("acme", "proj", runId, "why")).isFalse();
+        assertThat(inserted).hasSize(1);
+    }
+
+    @Test
+    void aPlainPausedRunCanSkipItsHeldTaskAndStaysPaused() {
+        String runId = service.start("acme", "proj", "sim", Map.of(), "alice");
+        service.pauseRun("acme", "proj", runId);
+        // The fake does not hold the queue; stand in for the real holdRun.
+        inserted.get(0).setStatus(MagratheaTaskStatus.HELD);
+
+        assertThat(service.simulationFor("acme", "proj", runId)).isPresent();
+        assertThat(service.simulateRun("acme", "proj", runId, "success", null, null))
+                .isTrue();
+
+        // Not a debug run: nothing resumes it, the next task is held by the status.
+        assertThat(service.currentStatus("acme", "proj", runId)).isEqualTo(MagratheaRunStatus.PAUSED);
+        assertThat(inserted.get(1).getStateName()).isEqualTo("done");
+        assertThat(inserted.get(1).getStatus()).isEqualTo(MagratheaTaskStatus.HELD);
     }
 
     private String startSim() {

@@ -5,6 +5,7 @@ import de.mhus.vance.api.runs.RunDetailDto;
 import de.mhus.vance.api.runs.RunSummaryDto;
 import jakarta.annotation.PostConstruct;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -182,6 +183,36 @@ public class RunSourceRegistry {
             throw new IllegalArgumentException("No such run: " + composite);
         }
         source.setBreakpoints(tenantId, projectId, id.nativeId(), states);
+    }
+
+    /**
+     * Start a new run from an ended one. Like {@link #perform}, it applies only to a
+     * run the subject may see.
+     *
+     * @return the composite id of the new run
+     * @throws IllegalArgumentException when the id names no known source, the source
+     *         does not know the run, the subject may not see it, or {@code fromState}
+     *         is not one the run entered
+     * @throws IllegalStateException when the run still goes
+     */
+    public String restart(
+            de.mhus.vance.shared.permission.SecurityContext subject,
+            String tenantId,
+            String projectId,
+            @Nullable String composite,
+            @Nullable String fromState,
+            @Nullable String startedBy,
+            boolean debug,
+            @Nullable Collection<String> breakpoints) {
+        RunId id = RunId.parse(composite);
+        if (id == null) throw new IllegalArgumentException("Malformed run id: " + composite);
+        RunSource source = byId.get(id.source());
+        if (source == null) throw new IllegalArgumentException("Unknown run source in: " + composite);
+        if (!source.visibleTo(subject, tenantId, projectId, id.nativeId())) {
+            throw new IllegalArgumentException("No such run: " + composite);
+        }
+        String created = source.restart(tenantId, projectId, id.nativeId(), fromState, startedBy, debug, breakpoints);
+        return RunId.of(id.source(), created).composite();
     }
 
     /**

@@ -12,6 +12,7 @@ import de.mhus.vance.api.runs.RunStepDto;
 import de.mhus.vance.api.runs.RunSummaryDto;
 import de.mhus.vance.brain.magrathea.MagratheaGateChatAnswerService;
 import de.mhus.vance.brain.magrathea.MagratheaWorkflowService;
+import de.mhus.vance.shared.magrathea.MagratheaDebugSetup;
 import de.mhus.vance.shared.magrathea.MagratheaJournalEntry;
 import de.mhus.vance.shared.magrathea.MagratheaJournalService;
 import de.mhus.vance.shared.magrathea.MagratheaStateProjector;
@@ -22,6 +23,7 @@ import de.mhus.vance.shared.magrathea.journal.StateEnteredRecord;
 import de.mhus.vance.shared.magrathea.journal.TaskResultRecord;
 import de.mhus.vance.shared.magrathea.journal.TaskStartedRecord;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -115,10 +117,13 @@ public class MagratheaRunSource implements RunSource {
                 .links(readLinks(start, run))
                 .definition(start.map(StartRecord::getDefinitionYaml).orElse(null))
                 .waitingOnInboxItemId(waitingOnInboxItem(tenantId, nativeId, run.getStatus()))
-                .allowedActions(actionsFor(run.getStatus(), run.isDebug()))
+                .allowedActions(actionsOf(tenantId, projectId, nativeId, run))
                 .debug(run.isDebug())
                 .breakpoints(run.getBreakpoints())
                 .simulation(simulationOf(tenantId, projectId, nativeId, run))
+                .restartableStates(workflowService
+                        .restartableStates(tenantId, projectId, nativeId)
+                        .orElse(null))
                 .errorMessage(terminalReason(tenantId, projectId, nativeId, run.getStatus()))
                 .result(run.getResult())
                 .extra(Map.of("params", run.getParams() == null ? Map.of() : run.getParams()))
@@ -130,8 +135,20 @@ public class MagratheaRunSource implements RunSource {
         return projector
                 .project(tenantId, projectId, nativeId)
                 .filter(r -> tenantId.equals(r.getTenantId()) && projectId.equals(r.getProjectId()))
-                .map(r -> actionsFor(r.getStatus(), r.isDebug()))
+                .map(r -> actionsOf(tenantId, projectId, nativeId, r))
                 .orElseGet(Set::of);
+    }
+
+    /** What the state allows, plus an abort while the run waits on something that one call can end. */
+    private Set<RunAction> actionsOf(String tenantId, String projectId, String nativeId, MagratheaProcessDto run) {
+        Set<RunAction> actions = actionsFor(run.getStatus(), run.isDebug());
+        if (actions.isEmpty()
+                || workflowService.abortableTask(tenantId, projectId, nativeId).isEmpty()) {
+            return actions;
+        }
+        Set<RunAction> withAbort = java.util.EnumSet.copyOf(actions);
+        withAbort.add(RunAction.ABORT);
+        return withAbort;
     }
 
     private static Set<RunAction> actionsFor(@Nullable MagratheaRunStatus status, boolean debug) {
@@ -150,8 +167,8 @@ public class MagratheaRunSource implements RunSource {
     /** What the halted run could be given instead of executing, if anything. */
     private @Nullable RunSimulationDto simulationOf(
             String tenantId, String projectId, String runId, MagratheaProcessDto run) {
-        // Only a halted debuggable run can have one, so a run that is going is not even asked.
-        if (!run.isDebug() || run.getStatus() != MagratheaRunStatus.PAUSED) return null;
+        // Only a halted run can have one, so a run that is going is not even asked.
+        if (run.getStatus() != MagratheaRunStatus.PAUSED) return null;
         return workflowService
                 .simulationFor(tenantId, projectId, runId)
                 .map(sim -> RunSimulationDto.builder()
@@ -170,14 +187,29 @@ public class MagratheaRunSource implements RunSource {
             String outcome,
             @Nullable Object output,
             @Nullable String errorMessage) {
-        MagratheaProcessDto run = projector
+        projector
                 .project(tenantId, projectId, nativeId)
                 .filter(r -> tenantId.equals(r.getTenantId()) && projectId.equals(r.getProjectId()))
                 .orElseThrow(() -> new IllegalArgumentException("No such run: " + nativeId));
-        // Not debuggable is a no-op, like a button drawn from an older snapshot.
-        if (!run.isDebug()) return;
         workflowService.simulateRun(
                 tenantId, projectId, nativeId, outcome, output == null ? null : JSON.valueToTree(output), errorMessage);
+    }
+
+    @Override
+    public String restart(
+            String tenantId,
+            String projectId,
+            String nativeId,
+            @Nullable String fromState,
+            @Nullable String startedBy,
+            boolean debug,
+            @Nullable Collection<String> breakpoints) {
+        projector
+                .project(tenantId, projectId, nativeId)
+                .filter(r -> tenantId.equals(r.getTenantId()) && projectId.equals(r.getProjectId()))
+                .orElseThrow(() -> new IllegalArgumentException("No such run: " + nativeId));
+        return workflowService.restartRun(
+                tenantId, projectId, nativeId, fromState, startedBy, MagratheaDebugSetup.of(debug, breakpoints));
     }
 
     @Override
@@ -201,12 +233,13 @@ public class MagratheaRunSource implements RunSource {
                 .orElseThrow(() -> new IllegalArgumentException("No such run: " + nativeId));
         // Not-applicable is a no-op: the button came from a snapshot and
         // the run may have moved on in the meantime.
-        if (!actionsFor(run.getStatus(), run.isDebug()).contains(action)) return;
+        if (!actionsOf(tenantId, projectId, nativeId, run).contains(action)) return;
         switch (action) {
             case PAUSE -> workflowService.pauseRun(tenantId, projectId, nativeId);
             case RESUME -> workflowService.resumeRun(tenantId, projectId, nativeId);
             case STEP -> workflowService.stepRun(tenantId, projectId, nativeId);
             case STOP -> workflowService.stopRun(tenantId, projectId, nativeId, reason);
+            case ABORT -> workflowService.abortTask(tenantId, projectId, nativeId, reason);
         }
     }
 
@@ -400,6 +433,14 @@ public class MagratheaRunSource implements RunSource {
                     .rel("definition")
                     .label(path)
                     .target(path)
+                    .build());
+        }
+        String restartOf = start.map(StartRecord::getRestartOf).orElse(null);
+        if (restartOf != null && !restartOf.isBlank()) {
+            links.add(RunLinkDto.builder()
+                    .rel("restartOf")
+                    .label(restartOf)
+                    .target(RunId.of(SOURCE_ID, restartOf).composite())
                     .build());
         }
         String sessionId = start.map(StartRecord::getSessionId).orElse(null);

@@ -32,5 +32,12 @@ public enum RunAction {
      * while a debug run is halted, next to {@link #RESUME}, which runs on
      * without halting.
      */
-    STEP
+    STEP,
+    /**
+     * End the task the run is waiting on (a gate, an agent, a sub-run, a timer) as
+     * {@code cancelled}: the run goes its own {@code catch:} way and the run itself
+     * stays alive. Offered only while such a task exists — a shell or script
+     * mid-flight cannot be aborted.
+     */
+    ABORT
 }

@@ -82,6 +82,13 @@ public class RunDetailDto {
     private @Nullable RunSimulationDto simulation;
 
     /**
+     * The states a new run could begin in, once this run has ended: those it
+     * entered, except terminals. {@code null} while it still goes — a run that is
+     * going is not restarted, stop it first. An empty list still offers a rerun.
+     */
+    private @Nullable List<String> restartableStates;
+
+    /**
      * The definition this run froze at its start, as text, so the view can
      * draw the plan the run actually follows — not whatever the source
      * document says by now. {@code null} for sources without a drawable plan.

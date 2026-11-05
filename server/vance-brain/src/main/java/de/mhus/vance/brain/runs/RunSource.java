@@ -3,6 +3,7 @@ package de.mhus.vance.brain.runs;
 import de.mhus.vance.api.runs.RunAction;
 import de.mhus.vance.api.runs.RunDetailDto;
 import de.mhus.vance.api.runs.RunSummaryDto;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -102,6 +103,28 @@ public interface RunSource {
             @org.jspecify.annotations.Nullable Object output,
             @org.jspecify.annotations.Nullable String errorMessage) {
         throw new UnsupportedOperationException(sourceId() + " runs cannot be simulated");
+    }
+
+    /**
+     * Start a new run from an ended one: a rerun, or a retry from a state. Default:
+     * unsupported — only a source whose runs are journalled and can be replayed
+     * can be restarted.
+     *
+     * @param fromState the state to begin in; {@code null} for a rerun from the start
+     * @param startedBy who restarts; the new run belongs to them, not to the old owner
+     * @return the native id of the new run
+     * @throws IllegalArgumentException when the run is unknown or {@code fromState} is not one it entered
+     * @throws IllegalStateException when the run still goes
+     */
+    default String restart(
+            String tenantId,
+            String projectId,
+            String nativeId,
+            @org.jspecify.annotations.Nullable String fromState,
+            @org.jspecify.annotations.Nullable String startedBy,
+            boolean debug,
+            @org.jspecify.annotations.Nullable Collection<String> breakpoints) {
+        throw new UnsupportedOperationException(sourceId() + " runs cannot be restarted");
     }
 
     /**

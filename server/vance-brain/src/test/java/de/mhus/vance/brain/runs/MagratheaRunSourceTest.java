@@ -322,12 +322,56 @@ class MagratheaRunSourceTest {
     }
 
     @Test
-    void simulatingARunThatIsNotDebuggableIsANoOp() {
+    void aPausedRunThatIsNotDebuggableCanBeSkippedThroughSimulate() {
         when(projector.project("acme", "proj", "r1")).thenReturn(Optional.of(run("r1", MagratheaRunStatus.PAUSED)));
 
         source.simulate("acme", "proj", "r1", "success", null, null);
 
-        verify(workflows, never()).simulateRun(any(), any(), any(), any(), any(), any());
+        // Skip task: the service decides whether something is held, not the debug flag.
+        verify(workflows).simulateRun(eq("acme"), eq("proj"), eq("r1"), eq("success"), eq(null), eq(null));
+    }
+
+    @Test
+    void aRunWaitingOnAnEndableTaskOffersAbort() {
+        when(projector.project("acme", "proj", "r1")).thenReturn(Optional.of(run("r1", MagratheaRunStatus.RUNNING)));
+        when(workflows.abortableTask("acme", "proj", "r1"))
+                .thenReturn(Optional.of(de.mhus.vance.shared.magrathea.MagratheaTaskDocument.builder()
+                        .id("t1")
+                        .stateName("wait")
+                        .build()));
+
+        assertThat(source.allowedActions("acme", "proj", "r1"))
+                .containsExactlyInAnyOrder(RunAction.PAUSE, RunAction.STOP, RunAction.ABORT);
+    }
+
+    @Test
+    void aRunWithNothingToAbortOffersNoAbort() {
+        when(projector.project("acme", "proj", "r1")).thenReturn(Optional.of(run("r1", MagratheaRunStatus.RUNNING)));
+
+        assertThat(source.allowedActions("acme", "proj", "r1"))
+                .containsExactlyInAnyOrder(RunAction.PAUSE, RunAction.STOP);
+    }
+
+    @Test
+    void performingAbortAbortsTheTask() {
+        when(projector.project("acme", "proj", "r1")).thenReturn(Optional.of(run("r1", MagratheaRunStatus.RUNNING)));
+        when(workflows.abortableTask("acme", "proj", "r1"))
+                .thenReturn(Optional.of(de.mhus.vance.shared.magrathea.MagratheaTaskDocument.builder()
+                        .id("t1")
+                        .build()));
+
+        source.perform("acme", "proj", "r1", RunAction.ABORT, "why");
+
+        verify(workflows).abortTask("acme", "proj", "r1", "why");
+    }
+
+    @Test
+    void abortingARunThatOffersNoAbortIsANoOp() {
+        when(projector.project("acme", "proj", "r1")).thenReturn(Optional.of(run("r1", MagratheaRunStatus.RUNNING)));
+
+        source.perform("acme", "proj", "r1", RunAction.ABORT, "why");
+
+        verify(workflows, never()).abortTask(any(), any(), any(), any());
     }
 
     @Test

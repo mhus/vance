@@ -118,4 +118,14 @@ public class StartRecord implements JournalRecord {
      * the latest {@link BreakpointsRecord}, if there is one.
      */
     private @Nullable Map<String, Set<String>> subBreakpoints;
+
+    /**
+     * The run this one repeats, when it was started from an ended run
+     * ({@code rerun} / {@code retry from}). Not a parent: nobody waits for this
+     * run, and a stop does not cascade to the one it repeats.
+     */
+    private @Nullable String restartOf;
+
+    /** The state a restart began in; absent for a rerun from the start state. */
+    private @Nullable String restartFrom;
 }

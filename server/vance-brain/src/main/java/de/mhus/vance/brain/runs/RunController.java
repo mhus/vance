@@ -3,6 +3,8 @@ package de.mhus.vance.brain.runs;
 import de.mhus.vance.api.runs.RunAction;
 import de.mhus.vance.api.runs.RunBreakpointsRequest;
 import de.mhus.vance.api.runs.RunDetailDto;
+import de.mhus.vance.api.runs.RunRestartRequest;
+import de.mhus.vance.api.runs.RunRestartResponse;
 import de.mhus.vance.api.runs.RunSimulateRequest;
 import de.mhus.vance.api.runs.RunSummaryDto;
 import de.mhus.vance.brain.permission.RequestAuthority;
@@ -186,6 +188,45 @@ public class RunController {
         }
         return registry.get(authority.contextOf(request), tenant, projectId, runId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Run not found: " + runId));
+    }
+
+    /**
+     * Start a new run from an ended one: a rerun, or — with {@code fromState} — a
+     * retry from a state. {@code Project WRITE}. The old run stays as it was; the new
+     * one points back at it and belongs to the caller. A run that still goes is a
+     * 409, an unknown state a 400.
+     */
+    @PostMapping("/{runId}/restart")
+    public RunRestartResponse restart(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("runId") String runId,
+            @RequestParam("projectId") String projectId,
+            @RequestBody RunRestartRequest body,
+            HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
+        Object user = request.getAttribute(de.mhus.vance.shared.access.AccessFilterBase.ATTR_USERNAME);
+        try {
+            String created = registry.restart(
+                    authority.contextOf(request),
+                    tenant,
+                    projectId,
+                    runId,
+                    body.getFromState(),
+                    user instanceof String s && !s.isBlank() ? s : null,
+                    Boolean.TRUE.equals(body.getDebug()),
+                    body.getBreakpoints());
+            return RunRestartResponse.builder().runId(created).build();
+        } catch (IllegalStateException ex) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, ex.getMessage(), ex);
+        } catch (IllegalArgumentException ex) {
+            boolean badRequest = ex.getMessage() != null
+                    && (ex.getMessage().startsWith("Cannot restart")
+                            || ex.getMessage().startsWith("Unknown state"));
+            throw new ResponseStatusException(
+                    badRequest ? HttpStatus.BAD_REQUEST : HttpStatus.NOT_FOUND, ex.getMessage(), ex);
+        } catch (UnsupportedOperationException ex) {
+            throw new ResponseStatusException(HttpStatus.NOT_IMPLEMENTED, ex.getMessage(), ex);
+        }
     }
 
     /** Which sources are active — lets the UI build its filter from data. */

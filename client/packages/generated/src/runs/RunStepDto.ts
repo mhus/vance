@@ -12,4 +12,5 @@ export interface RunStepDto {
   durationMs?: number;
   output?: string;
   outputTruncated: boolean;
+  simulated: boolean;
 }

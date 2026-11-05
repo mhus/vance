@@ -1,11 +1,11 @@
 package de.mhus.vance.shared.magrathea.journal;
 
-import tools.jackson.databind.JsonNode;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.jspecify.annotations.Nullable;
+import tools.jackson.databind.JsonNode;
 
 /**
  * Terminal record for a task. Triggers the
@@ -41,4 +41,10 @@ public class TaskResultRecord implements JournalRecord {
 
     /** Wall-clock duration between {@link TaskStartedRecord} and this record. */
     private long durationMs;
+
+    /**
+     * The task did not run: a debug reader gave the run this result instead of
+     * executing the state. Absent in older records, which reads as {@code false}.
+     */
+    private boolean simulated;
 }

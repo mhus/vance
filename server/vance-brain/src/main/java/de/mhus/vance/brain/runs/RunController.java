@@ -3,6 +3,7 @@ package de.mhus.vance.brain.runs;
 import de.mhus.vance.api.runs.RunAction;
 import de.mhus.vance.api.runs.RunBreakpointsRequest;
 import de.mhus.vance.api.runs.RunDetailDto;
+import de.mhus.vance.api.runs.RunSimulateRequest;
 import de.mhus.vance.api.runs.RunSummaryDto;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.permission.Action;
@@ -144,6 +145,42 @@ public class RunController {
             boolean unknownState = ex.getMessage() != null && ex.getMessage().startsWith("Unknown state");
             throw new ResponseStatusException(
                     unknownState ? HttpStatus.BAD_REQUEST : HttpStatus.NOT_FOUND, ex.getMessage(), ex);
+        } catch (UnsupportedOperationException ex) {
+            throw new ResponseStatusException(HttpStatus.NOT_IMPLEMENTED, ex.getMessage(), ex);
+        }
+        return registry.get(authority.contextOf(request), tenant, projectId, runId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Run not found: " + runId));
+    }
+
+    /**
+     * Give a halted run a simulated result instead of executing its next state.
+     *
+     * <p>{@code Project WRITE}, like an action. A run that offers no simulation (not
+     * halted, not debuggable, nothing to replace in front of it) ignores the call —
+     * the button was drawn from a snapshot — and the answer shows what is true now.
+     * An outcome the state has no way on for is a 400: it would fail the run.
+     */
+    @PostMapping("/{runId}/simulate")
+    public RunDetailDto simulate(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("runId") String runId,
+            @RequestParam("projectId") String projectId,
+            @RequestBody RunSimulateRequest body,
+            HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
+        try {
+            registry.simulate(
+                    authority.contextOf(request),
+                    tenant,
+                    projectId,
+                    runId,
+                    body.getOutcome(),
+                    body.getOutput(),
+                    body.getErrorMessage());
+        } catch (IllegalArgumentException ex) {
+            boolean badOutcome = ex.getMessage() != null && ex.getMessage().startsWith("Outcome ");
+            throw new ResponseStatusException(
+                    badOutcome ? HttpStatus.BAD_REQUEST : HttpStatus.NOT_FOUND, ex.getMessage(), ex);
         } catch (UnsupportedOperationException ex) {
             throw new ResponseStatusException(HttpStatus.NOT_IMPLEMENTED, ex.getMessage(), ex);
         }

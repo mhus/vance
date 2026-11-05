@@ -3,6 +3,7 @@
  Source: de.mhus.vance.api.runs.RunDetailDto
 */
 
+import { RunSimulationDto } from './RunSimulationDto';
 import { RunChildDto } from './RunChildDto';
 import { RunStepDto } from './RunStepDto';
 import { RunSummaryDto } from './RunSummaryDto';
@@ -21,6 +22,7 @@ export interface RunDetailDto {
   allowedActions: RunAction[];
   debug: boolean;
   breakpoints?: string[];
+  simulation?: RunSimulationDto;
   definition?: string;
   extra?: Record<string, any>;
 }

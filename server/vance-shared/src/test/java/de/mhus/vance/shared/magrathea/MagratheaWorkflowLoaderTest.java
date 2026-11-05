@@ -51,6 +51,39 @@ class MagratheaWorkflowLoaderTest {
     }
 
     @Test
+    void outcomes_and_error_kinds_of_a_state_keep_the_order_they_are_declared_in() {
+        // The simulate form lists them as written; a hash order would put "success" anywhere.
+        String yaml = """
+                start: call
+                states:
+                  call:
+                    type: tool_task
+                    tool: some_tool
+                    on:
+                      zulu: done
+                      success: done
+                      alpha: done
+                    catch:
+                      timeout: failed
+                      technical_error: failed
+                      permission_error: failed
+                  done:
+                    type: terminal
+                    outcome: success
+                  failed:
+                    type: terminal
+                    outcome: failure
+                """;
+
+        MagratheaStateSpec call = loader.validateYaml("demo", yaml).states().get("call");
+
+        assertThat(call.onOutcomes().keySet()).containsExactly("zulu", "success", "alpha");
+        assertThat(call.catchKinds().keySet())
+                .extracting(kind -> kind.name().toLowerCase())
+                .containsExactly("timeout", "technical_error", "permission_error");
+    }
+
+    @Test
     void parses_full_workflow_with_all_task_types() {
         String yaml = """
                 description: PR review workflow

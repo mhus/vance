@@ -374,8 +374,8 @@ public class MagratheaWorkflowLoader {
                 storeAs,
                 enterCounter,
                 resetCounters,
-                Map.copyOf(onOutcomes),
-                Map.copyOf(catchKinds),
+                orderedCopy(onOutcomes),
+                orderedCopy(catchKinds),
                 List.copyOf(transitions),
                 retry,
                 Map.copyOf(spec));

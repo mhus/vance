@@ -27,6 +27,9 @@ import de.mhus.vance.shared.magrathea.journal.DebugRecord;
 import de.mhus.vance.shared.magrathea.journal.JournalRecord;
 import de.mhus.vance.shared.magrathea.journal.StartRecord;
 import de.mhus.vance.shared.magrathea.journal.StatusRecord;
+import de.mhus.vance.shared.magrathea.journal.TaskResultRecord;
+import de.mhus.vance.shared.magrathea.journal.TaskStartedRecord;
+import de.mhus.vance.shared.magrathea.journal.VarRecord;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -59,6 +62,36 @@ class MagratheaDebugModeTest {
               done:
                 type: terminal
                 outcome: success
+            """;
+
+    /** A workflow with something to simulate: a tool (with a retry block), a gate, two ends. */
+    private static final String SIM_YAML = """
+            description: simulate demo
+            start: call
+            states:
+              call:
+                type: tool_task
+                tool: some_tool
+                params: {}
+                storeAs: res
+                retry: { maxAttempts: 3, on: [technical_error] }
+                on:
+                  success: done
+                  partial: ask
+                catch:
+                  technical_error: failed
+              ask:
+                type: gate_task
+                inbox: { kind: APPROVAL, title: "ok?" }
+                on:
+                  approved: done
+                  rejected: failed
+              done:
+                type: terminal
+                outcome: success
+              failed:
+                type: terminal
+                outcome: failure
             """;
 
     private final MagratheaJournalService journal = mock(MagratheaJournalService.class);
@@ -131,6 +164,20 @@ class MagratheaDebugModeTest {
                         .filter(t -> inv.getArgument(0).equals(t.getId()))
                         .findFirst());
         when(tasks.findByRun(any())).thenAnswer(inv -> List.copyOf(inserted));
+        // In the database a finished task is no longer held; the fake has to say so too,
+        // or a second look for "the held task" finds the one that is long done.
+        doAnswer(inv -> {
+                    setStatus(inv.getArgument(0), MagratheaTaskStatus.DONE);
+                    return null;
+                })
+                .when(tasks)
+                .markDone(any());
+        doAnswer(inv -> {
+                    setStatus(inv.getArgument(0), MagratheaTaskStatus.FAILED);
+                    return null;
+                })
+                .when(tasks)
+                .markFailed(any());
         when(tasks.releaseRun(any())).thenAnswer(inv -> {
             long n = 0;
             for (MagratheaTaskDocument t : inserted) {
@@ -145,6 +192,8 @@ class MagratheaDebugModeTest {
         MagratheaWorkflowLoader real = new MagratheaWorkflowLoader(null);
         when(loader.load(any(), any(), eq("demo"))).thenAnswer(inv -> Optional.of(real.validateYaml("demo", YAML)));
         when(loader.validateYaml(eq("demo"), any())).thenAnswer(inv -> real.validateYaml("demo", YAML));
+        when(loader.load(any(), any(), eq("sim"))).thenAnswer(inv -> Optional.of(real.validateYaml("sim", SIM_YAML)));
+        when(loader.validateYaml(eq("sim"), any())).thenAnswer(inv -> real.validateYaml("sim", SIM_YAML));
     }
 
     @Test
@@ -387,7 +436,144 @@ class MagratheaDebugModeTest {
         verify(journal, never()).readLast(any(), any(), any(), eq(BreakpointsRecord.class));
     }
 
+    // ──────────────────── simulate ────────────────────
+
+    @Test
+    void aHaltedRunOffersTheOutcomesTheStateHasAWayOnFor() {
+        String runId = startSim();
+
+        var offered = service.simulationFor("acme", "proj", runId).orElseThrow();
+
+        assertThat(offered.state()).isEqualTo("call");
+        assertThat(offered.taskType()).isEqualTo(MagratheaTaskType.TOOL_TASK);
+        // The on: keys first, then the error kinds of catch:.
+        assertThat(offered.outcomes()).containsExactly("success", "partial", "technical_error");
+    }
+
+    @Test
+    void aConditionStateHasNothingToSimulate() {
+        // A condition is pure: evaluating it is the whole point, there is no effect to replace.
+        String runId = startDebug();
+
+        assertThat(service.simulationFor("acme", "proj", runId)).isEmpty();
+        assertThat(service.simulateRun("acme", "proj", runId, "success", null, null))
+                .isFalse();
+    }
+
+    @Test
+    void aRunThatIsNotHaltedOffersNothing() {
+        String runId = startSim();
+        service.stepRun("acme", "proj", runId);
+
+        assertThat(service.simulationFor("acme", "proj", runId)).isEmpty();
+    }
+
+    @Test
+    void anOrdinaryRunOffersNothing() {
+        String runId = service.start("acme", "proj", "sim", Map.of(), "alice");
+
+        assertThat(service.simulationFor("acme", "proj", runId)).isEmpty();
+        assertThat(service.simulateRun("acme", "proj", runId, "success", null, null))
+                .isFalse();
+    }
+
+    @Test
+    void simulatingGivesTheResultInsteadOfRunningTheTask() {
+        String runId = startSim();
+        var output = new tools.jackson.databind.ObjectMapper().valueToTree(Map.of("ticket", "ABC-1"));
+
+        assertThat(service.simulateRun("acme", "proj", runId, "success", output, null))
+                .isTrue();
+
+        // The task was never released: it did not run.
+        verify(tasks, never()).releaseRun(any());
+        // Its result is journalled as that of the task, marked simulated, with the given output …
+        assertThat(appended)
+                .anySatisfy(r -> assertThat(r).isInstanceOfSatisfying(TaskResultRecord.class, t -> {
+                    assertThat(t.getState()).isEqualTo("call");
+                    assertThat(t.getOutcome()).isEqualTo("success");
+                    assertThat(t.isSimulated()).isTrue();
+                    assertThat(t.getOutput().get("ticket").asString()).isEqualTo("ABC-1");
+                }));
+        // … and the task has a start record, so the step shows its type.
+        assertThat(appended)
+                .anySatisfy(r -> assertThat(r)
+                        .isInstanceOfSatisfying(
+                                TaskStartedRecord.class,
+                                t -> assertThat(t.getTaskType()).isEqualTo(MagratheaTaskType.TOOL_TASK)));
+        // storeAs: reads the simulated output like any other.
+        assertThat(appended)
+                .anySatisfy(r -> assertThat(r)
+                        .isInstanceOfSatisfying(
+                                VarRecord.class, v -> assertThat(v.getKey()).isEqualTo("res")));
+        verify(tasks).markDone("t1");
+    }
+
+    @Test
+    void afterSimulatingTheRunHaltsBeforeTheNextStateLikeAfterAStep() {
+        String runId = startSim();
+
+        service.simulateRun("acme", "proj", runId, "success", null, null);
+
+        assertThat(inserted.get(1).getStateName()).isEqualTo("done");
+        assertThat(inserted.get(1).getStatus()).isEqualTo(MagratheaTaskStatus.HELD);
+        assertThat(service.currentStatus("acme", "proj", runId)).isEqualTo(MagratheaRunStatus.PAUSED);
+        assertThat(lastStatus().getReason()).contains("debug: before state 'done'");
+    }
+
+    @Test
+    void theSimulatedOutcomeChoosesTheWayThroughThePlan() {
+        String runId = startSim();
+
+        service.simulateRun("acme", "proj", runId, "partial", null, null);
+
+        assertThat(inserted.get(1).getStateName()).isEqualTo("ask");
+    }
+
+    @Test
+    void anOutcomeThePlanHasNoWayOnForIsRefusedAndNothingIsWritten() {
+        String runId = startSim();
+        int before = appended.size();
+
+        assertThatThrownBy(() -> service.simulateRun("acme", "proj", runId, "banana", null, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Outcome 'banana' leads nowhere")
+                .hasMessageContaining("success");
+        assertThat(appended).hasSize(before);
+        assertThat(inserted).hasSize(1);
+    }
+
+    @Test
+    void aSimulatedFailureIsNotRetried() {
+        // call has a retry block for technical_error. A retry would run the task for real.
+        String runId = startSim();
+
+        service.simulateRun("acme", "proj", runId, "technical_error", null, "HTTP 429");
+
+        assertThat(inserted).extracting(MagratheaTaskDocument::getStateName).containsExactly("call", "failed");
+        assertThat(appended)
+                .anySatisfy(r -> assertThat(r).isInstanceOfSatisfying(TaskResultRecord.class, t -> {
+                    assertThat(t.getErrorMessage()).isEqualTo("HTTP 429");
+                    assertThat(t.isSimulated()).isTrue();
+                }));
+    }
+
+    @Test
+    void simulatingTwiceInARowDoesNotGiveASecondResult() {
+        String runId = startSim();
+        assertThat(service.simulateRun("acme", "proj", runId, "success", null, null))
+                .isTrue();
+
+        // The run now stands in front of "done" (a terminal): nothing to simulate there.
+        assertThat(service.simulateRun("acme", "proj", runId, "success", null, null))
+                .isFalse();
+    }
+
     // ──────────────────── helpers ────────────────────
+
+    private void setStatus(String taskId, MagratheaTaskStatus status) {
+        inserted.stream().filter(t -> taskId.equals(t.getId())).forEach(t -> t.setStatus(status));
+    }
 
     private String startDebug() {
         return service.start(
@@ -397,6 +583,19 @@ class MagratheaDebugModeTest {
                 Map.of(),
                 "alice",
                 /* parent */ null, /* parentState */
+                null,
+                MagratheaRunBinding.headless(),
+                new MagratheaDebugSetup(true, java.util.Set.of()));
+    }
+
+    private String startSim() {
+        return service.start(
+                "acme",
+                "proj",
+                "sim",
+                Map.of(),
+                "alice",
+                null,
                 null,
                 MagratheaRunBinding.headless(),
                 new MagratheaDebugSetup(true, java.util.Set.of()));

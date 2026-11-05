@@ -22,6 +22,8 @@ import tools.jackson.databind.JsonNode;
  * @param nextStateOverride Set by {@code CONDITION_TASK} (which decides
  *        the next state inline) to bypass the {@code on:}-block resolver.
  *        {@code null} for every other task type.
+ * @param simulated The task did not run; a debug reader supplied this result.
+ *        Journalled as such, and never retried — a retry would execute it.
  */
 public record TaskCompletedEvent(
         String tenantId,
@@ -34,7 +36,39 @@ public record TaskCompletedEvent(
         @Nullable JsonNode output,
         @Nullable String errorMessage,
         long durationMs,
-        @Nullable String nextStateOverride) {
+        @Nullable String nextStateOverride,
+        boolean simulated) {
+
+    /**
+     * An event for a task that really ran. The simulated variant is only made by
+     * the debug path, which gives a halted run a result instead of executing.
+     */
+    public TaskCompletedEvent(
+            String tenantId,
+            String projectId,
+            String workflowRunId,
+            String taskId,
+            String stateName,
+            MagratheaTaskType taskType,
+            String outcome,
+            @Nullable JsonNode output,
+            @Nullable String errorMessage,
+            long durationMs,
+            @Nullable String nextStateOverride) {
+        this(
+                tenantId,
+                projectId,
+                workflowRunId,
+                taskId,
+                stateName,
+                taskType,
+                outcome,
+                output,
+                errorMessage,
+                durationMs,
+                nextStateOverride,
+                false);
+    }
 
     public static final String OUTCOME_SUCCESS = "success";
     public static final String OUTCOME_FAILURE = "failure";

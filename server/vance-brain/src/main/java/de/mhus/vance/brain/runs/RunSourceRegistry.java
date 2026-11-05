@@ -184,6 +184,32 @@ public class RunSourceRegistry {
         source.setBreakpoints(tenantId, projectId, id.nativeId(), states);
     }
 
+    /**
+     * Give a halted run a simulated result. Like {@link #perform}, it applies only to
+     * a run the subject may see.
+     *
+     * @throws IllegalArgumentException when the id names no known source, the source
+     *         does not know the run, the subject may not see it, or the outcome leads
+     *         nowhere in the state
+     */
+    public void simulate(
+            de.mhus.vance.shared.permission.SecurityContext subject,
+            String tenantId,
+            String projectId,
+            @Nullable String composite,
+            String outcome,
+            @Nullable Object output,
+            @Nullable String errorMessage) {
+        RunId id = RunId.parse(composite);
+        if (id == null) throw new IllegalArgumentException("Malformed run id: " + composite);
+        RunSource source = byId.get(id.source());
+        if (source == null) throw new IllegalArgumentException("Unknown run source in: " + composite);
+        if (!source.visibleTo(subject, tenantId, projectId, id.nativeId())) {
+            throw new IllegalArgumentException("No such run: " + composite);
+        }
+        source.simulate(tenantId, projectId, id.nativeId(), outcome, output, errorMessage);
+    }
+
     /** Registered source ids, in registration order. */
     public List<String> sourceIds() {
         return List.copyOf(byId.keySet());

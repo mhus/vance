@@ -6,6 +6,7 @@ import de.mhus.vance.api.runs.RunAction;
 import de.mhus.vance.api.runs.RunChildDto;
 import de.mhus.vance.api.runs.RunDetailDto;
 import de.mhus.vance.api.runs.RunLinkDto;
+import de.mhus.vance.api.runs.RunSimulationDto;
 import de.mhus.vance.api.runs.RunStatus;
 import de.mhus.vance.api.runs.RunStepDto;
 import de.mhus.vance.api.runs.RunSummaryDto;
@@ -61,6 +62,10 @@ public class MagratheaRunSource implements RunSource {
      */
     private static final int OUTPUT_MAX_CHARS = 20_000;
 
+    /** Turns a simulated output (parsed JSON or plain text) into the tree a result carries. */
+    private static final tools.jackson.databind.ObjectMapper JSON =
+            tools.jackson.databind.json.JsonMapper.builder().build();
+
     /** How far back {@link #readChildren} looks for sub-runs of one run. */
     private static final int CHILD_SCAN_LIMIT = 200;
 
@@ -113,6 +118,7 @@ public class MagratheaRunSource implements RunSource {
                 .allowedActions(actionsFor(run.getStatus(), run.isDebug()))
                 .debug(run.isDebug())
                 .breakpoints(run.getBreakpoints())
+                .simulation(simulationOf(tenantId, projectId, nativeId, run))
                 .errorMessage(terminalReason(tenantId, projectId, nativeId, run.getStatus()))
                 .result(run.getResult())
                 .extra(Map.of("params", run.getParams() == null ? Map.of() : run.getParams()))
@@ -139,6 +145,39 @@ public class MagratheaRunSource implements RunSource {
                         : Set.of(RunAction.RESUME, RunAction.STOP);
             case DONE, FAILED, TERMINATED -> Set.of();
         };
+    }
+
+    /** What the halted run could be given instead of executing, if anything. */
+    private @Nullable RunSimulationDto simulationOf(
+            String tenantId, String projectId, String runId, MagratheaProcessDto run) {
+        // Only a halted debuggable run can have one, so a run that is going is not even asked.
+        if (!run.isDebug() || run.getStatus() != MagratheaRunStatus.PAUSED) return null;
+        return workflowService
+                .simulationFor(tenantId, projectId, runId)
+                .map(sim -> RunSimulationDto.builder()
+                        .state(sim.state())
+                        .kind(sim.taskType().name().toLowerCase(Locale.ROOT))
+                        .outcomes(sim.outcomes())
+                        .build())
+                .orElse(null);
+    }
+
+    @Override
+    public void simulate(
+            String tenantId,
+            String projectId,
+            String nativeId,
+            String outcome,
+            @Nullable Object output,
+            @Nullable String errorMessage) {
+        MagratheaProcessDto run = projector
+                .project(tenantId, projectId, nativeId)
+                .filter(r -> tenantId.equals(r.getTenantId()) && projectId.equals(r.getProjectId()))
+                .orElseThrow(() -> new IllegalArgumentException("No such run: " + nativeId));
+        // Not debuggable is a no-op, like a button drawn from an older snapshot.
+        if (!run.isDebug()) return;
+        workflowService.simulateRun(
+                tenantId, projectId, nativeId, outcome, output == null ? null : JSON.valueToTree(output), errorMessage);
     }
 
     @Override
@@ -298,7 +337,9 @@ public class MagratheaRunSource implements RunSource {
     private static void fill(RunStepDto step, TaskResultRecord result) {
         step.setOutcome(result.getOutcome());
         step.setDetail(result.getErrorMessage());
-        step.setDurationMs(result.getDurationMs());
+        step.setSimulated(result.isSimulated());
+        // A simulated step took no time; a "0 ms" would look like a measurement.
+        step.setDurationMs(result.isSimulated() ? null : result.getDurationMs());
         JsonNode output = result.getOutput();
         if (output != null && !output.isNull()) {
             String text = output.isString() ? output.asString() : output.toPrettyString();

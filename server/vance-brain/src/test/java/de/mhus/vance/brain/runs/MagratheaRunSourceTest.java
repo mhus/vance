@@ -280,6 +280,76 @@ class MagratheaRunSourceTest {
     }
 
     @Test
+    void aHaltedDebugRunOffersItsSimulationInTheDetail() {
+        var dto = run("r1", MagratheaRunStatus.PAUSED);
+        dto.setDebug(true);
+        when(projector.project("acme", "proj", "r1")).thenReturn(Optional.of(dto));
+        when(workflows.simulationFor("acme", "proj", "r1"))
+                .thenReturn(Optional.of(new de.mhus.vance.brain.magrathea.MagratheaWorkflowService.Simulation(
+                        "call",
+                        de.mhus.vance.api.magrathea.MagratheaTaskType.TOOL_TASK,
+                        List.of("success", "technical_error"))));
+
+        var simulation = source.get("acme", "proj", "r1").orElseThrow().getSimulation();
+
+        assertThat(simulation.getState()).isEqualTo("call");
+        assertThat(simulation.getKind()).isEqualTo("tool_task");
+        assertThat(simulation.getOutcomes()).containsExactly("success", "technical_error");
+    }
+
+    @Test
+    void aRunThatIsGoingIsNotAskedForASimulation() {
+        var dto = run("r1", MagratheaRunStatus.RUNNING);
+        dto.setDebug(true);
+        when(projector.project("acme", "proj", "r1")).thenReturn(Optional.of(dto));
+
+        assertThat(source.get("acme", "proj", "r1").orElseThrow().getSimulation())
+                .isNull();
+        verify(workflows, never()).simulationFor(any(), any(), any());
+    }
+
+    @Test
+    void simulatingIsHandedToTheServiceAsATree() {
+        var dto = run("r1", MagratheaRunStatus.PAUSED);
+        dto.setDebug(true);
+        when(projector.project("acme", "proj", "r1")).thenReturn(Optional.of(dto));
+
+        source.simulate("acme", "proj", "r1", "success", Map.of("ticket", "ABC-1"), null);
+
+        var captor = org.mockito.ArgumentCaptor.forClass(tools.jackson.databind.JsonNode.class);
+        verify(workflows).simulateRun(eq("acme"), eq("proj"), eq("r1"), eq("success"), captor.capture(), eq(null));
+        assertThat(captor.getValue().get("ticket").asString()).isEqualTo("ABC-1");
+    }
+
+    @Test
+    void simulatingARunThatIsNotDebuggableIsANoOp() {
+        when(projector.project("acme", "proj", "r1")).thenReturn(Optional.of(run("r1", MagratheaRunStatus.PAUSED)));
+
+        source.simulate("acme", "proj", "r1", "success", null, null);
+
+        verify(workflows, never()).simulateRun(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void aSimulatedStepIsMarkedAndHasNoDuration() {
+        stubDetail("r1");
+        stubJournal(
+                "r1",
+                StateEnteredRecord.builder().state("call").build(),
+                TaskResultRecord.builder()
+                        .state("call")
+                        .outcome("success")
+                        .durationMs(0)
+                        .simulated(true)
+                        .build());
+
+        var step = source.get("acme", "proj", "r1").orElseThrow().getSteps().get(0);
+
+        assertThat(step.isSimulated()).isTrue();
+        assertThat(step.getDurationMs()).isNull();
+    }
+
+    @Test
     void linksToTheDocumentTheRunCameFrom() {
         stubDetail("r1");
         when(journal.readLast("acme", "proj", "r1", StartRecord.class))

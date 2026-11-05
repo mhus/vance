@@ -88,6 +88,23 @@ public interface RunSource {
     }
 
     /**
+     * Give a halted run a result instead of executing its next state. Default:
+     * unsupported — only a source whose runs can be debugged has anything to simulate.
+     *
+     * @param output what the state produced; JSON or plain text, may be {@code null}
+     * @throws IllegalArgumentException when the outcome leads nowhere in the state
+     */
+    default void simulate(
+            String tenantId,
+            String projectId,
+            String nativeId,
+            String outcome,
+            @org.jspecify.annotations.Nullable Object output,
+            @org.jspecify.annotations.Nullable String errorMessage) {
+        throw new UnsupportedOperationException(sourceId() + " runs cannot be simulated");
+    }
+
+    /**
      * May {@code subject} see this run at all?
      *
      * <p>Default true, which is the honest answer for a source whose runs

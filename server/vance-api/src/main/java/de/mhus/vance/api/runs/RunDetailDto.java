@@ -76,6 +76,12 @@ public class RunDetailDto {
     private @Nullable List<String> breakpoints;
 
     /**
+     * Set while the run is halted in front of a state that can be given a
+     * simulated result instead of being executed; absent otherwise.
+     */
+    private @Nullable RunSimulationDto simulation;
+
+    /**
      * The definition this run froze at its start, as text, so the view can
      * draw the plan the run actually follows — not whatever the source
      * document says by now. {@code null} for sources without a drawable plan.

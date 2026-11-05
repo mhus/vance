@@ -27,6 +27,7 @@ import de.mhus.vance.shared.magrathea.journal.StartRecord;
 import de.mhus.vance.shared.magrathea.journal.StateEnteredRecord;
 import de.mhus.vance.shared.magrathea.journal.StatusRecord;
 import de.mhus.vance.shared.magrathea.journal.TaskResultRecord;
+import de.mhus.vance.shared.magrathea.journal.TaskStartedRecord;
 import de.mhus.vance.shared.magrathea.journal.VarRecord;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
@@ -47,6 +48,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
+import tools.jackson.databind.JsonNode;
 
 /**
  * Public Magrathea API for starting workflow runs and the single
@@ -616,6 +618,150 @@ public class MagratheaWorkflowService {
         return true;
     }
 
+    /** Task types a debug reader can give a result instead of running them. */
+    private static final Set<MagratheaTaskType> SIMULABLE = java.util.EnumSet.of(
+            MagratheaTaskType.TOOL_TASK,
+            MagratheaTaskType.SHELL_TASK,
+            MagratheaTaskType.SCRIPT_TASK,
+            MagratheaTaskType.AGENT_TASK,
+            MagratheaTaskType.GATE_TASK,
+            MagratheaTaskType.TIMER_TASK,
+            MagratheaTaskType.WORKFLOW_TASK);
+
+    /**
+     * What a halted debug run could be given instead of executing its next state.
+     *
+     * @param state    the state the run stands in front of
+     * @param taskType its task type
+     * @param outcomes the outcomes the plan has a way on for
+     */
+    public record Simulation(String state, MagratheaTaskType taskType, java.util.List<String> outcomes) {}
+
+    /**
+     * The simulation a run offers right now, or empty when it offers none: the run
+     * is not halted, not debuggable, stands in front of a state that has nothing to
+     * replace (a condition is pure, a terminal ends the run), or the state has no
+     * way on for any outcome.
+     *
+     * <p>Only a halted debuggable run is asked at all, so listing a run that is
+     * going costs nothing.
+     */
+    public Optional<Simulation> simulationFor(String tenantId, String projectId, String workflowRunId) {
+        if (currentStatus(tenantId, projectId, workflowRunId) != MagratheaRunStatus.PAUSED) return Optional.empty();
+        Optional<StartRecord> start = journalService.readLast(tenantId, projectId, workflowRunId, StartRecord.class);
+        if (start.isEmpty() || !MagratheaDebugSetup.isDebuggable(start.get())) return Optional.empty();
+        Optional<MagratheaTaskDocument> held = heldTask(workflowRunId);
+        if (held.isEmpty() || !SIMULABLE.contains(held.get().getTaskType())) return Optional.empty();
+        MagratheaStateSpec state = workflowLoader
+                .validateYaml(start.get().getWorkflowName(), start.get().getDefinitionYaml())
+                .states()
+                .get(held.get().getStateName());
+        if (state == null) return Optional.empty();
+        java.util.List<String> outcomes = outcomesOf(state);
+        return outcomes.isEmpty()
+                ? Optional.empty()
+                : Optional.of(
+                        new Simulation(held.get().getStateName(), held.get().getTaskType(), outcomes));
+    }
+
+    /** The outcomes a state has a way on for: its {@code on:} keys, then its {@code catch:} error kinds. */
+    private static java.util.List<String> outcomesOf(MagratheaStateSpec state) {
+        Set<String> out = new java.util.LinkedHashSet<>(state.onOutcomes().keySet());
+        state.catchKinds().keySet().forEach(kind -> out.add(kind.name().toLowerCase(Locale.ROOT)));
+        return java.util.List.copyOf(out);
+    }
+
+    /** The task the halt is holding back, if there is exactly that one. */
+    private Optional<MagratheaTaskDocument> heldTask(String workflowRunId) {
+        return taskService.findByRun(workflowRunId).stream()
+                .filter(t -> t.getStatus() == MagratheaTaskStatus.HELD)
+                .findFirst();
+    }
+
+    /**
+     * Give a halted debug run a result instead of executing the state it stands in
+     * front of. The task never runs: the result is journalled as that of the task
+     * (marked simulated), {@code storeAs:}, counters and transitions follow as for any
+     * result, and — like after a step — the run halts again before the next state.
+     *
+     * <p>The order mirrors {@link #stepRun}: stepping is switched on, the run is set
+     * running, and only then is the result handed in, because a run that still says
+     * PAUSED would park the next task no matter what.
+     *
+     * @return {@code true} if the result was given; {@code false} when the run offers
+     *         no simulation (see {@link #simulationFor}) or moved on in the meantime
+     * @throws IllegalArgumentException when {@code outcome} is not one of the outcomes
+     *         the state has a way on for — it would fail the run with "no transition"
+     */
+    public boolean simulateRun(
+            String tenantId,
+            String projectId,
+            String workflowRunId,
+            String outcome,
+            @Nullable JsonNode output,
+            @Nullable String errorMessage) {
+        Optional<Simulation> offered = simulationFor(tenantId, projectId, workflowRunId);
+        if (offered.isEmpty()) return false;
+        String wanted = outcome == null ? "" : outcome.trim();
+        if (!offered.get().outcomes().contains(wanted)) {
+            throw new IllegalArgumentException("Outcome '" + wanted + "' leads nowhere in state '"
+                    + offered.get().state() + "'; choose one of "
+                    + offered.get().outcomes());
+        }
+        boolean[] given = {false};
+        onLane(projectId, () -> {
+            // The reader may have pressed Step in the meantime: only a still-held task can be simulated.
+            Optional<MagratheaTaskDocument> held = heldTask(workflowRunId)
+                    .filter(t -> t.getStateName().equals(offered.get().state()));
+            if (held.isEmpty()) return;
+            MagratheaTaskDocument task = held.get();
+            journalService.append(
+                    tenantId,
+                    projectId,
+                    workflowRunId,
+                    DebugRecord.builder().stepping(true).build());
+            journalService.append(
+                    tenantId,
+                    projectId,
+                    workflowRunId,
+                    TaskStartedRecord.builder()
+                            .state(task.getStateName())
+                            .taskType(task.getTaskType())
+                            .taskId(task.getId())
+                            .build());
+            journalService.append(
+                    tenantId,
+                    projectId,
+                    workflowRunId,
+                    StatusRecord.builder()
+                            .status(MagratheaRunStatus.RUNNING)
+                            .reason("debug: simulate '" + task.getStateName() + "'")
+                            .build());
+            handleCompletion(new TaskCompletedEvent(
+                    tenantId,
+                    projectId,
+                    workflowRunId,
+                    task.getId(),
+                    task.getStateName(),
+                    task.getTaskType(),
+                    wanted,
+                    output,
+                    errorMessage,
+                    0L,
+                    null,
+                    true));
+            given[0] = true;
+        });
+        if (given[0]) {
+            log.info(
+                    "Magrathea run {} state '{}' simulated as '{}'",
+                    workflowRunId,
+                    offered.get().state(),
+                    wanted);
+        }
+        return given[0];
+    }
+
     /** Refuse a breakpoint on something that is not a state of the workflow. */
     private static void requireKnownStates(ResolvedMagratheaWorkflow workflow, Set<String> names) {
         for (String name : names) {
@@ -1027,6 +1173,7 @@ public class MagratheaWorkflowService {
                         .output(event.output())
                         .errorMessage(event.errorMessage())
                         .durationMs(event.durationMs())
+                        .simulated(event.simulated())
                         .build());
         if (appended.isEmpty()) {
             log.debug("Magrathea duplicate TaskCompletedEvent for taskId={} dropped", event.taskId());
@@ -1163,6 +1310,8 @@ public class MagratheaWorkflowService {
     }
 
     private static boolean canRetry(MagratheaStateSpec state, MagratheaTaskDocument task, TaskCompletedEvent event) {
+        // A retry would run the task for real — the opposite of what a simulated result is for.
+        if (event.simulated()) return false;
         if (state.retry() == null) return false;
         MagratheaErrorKind kind = parseErrorKind(event.outcome());
         if (kind == null) return false;

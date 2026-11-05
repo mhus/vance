@@ -50,4 +50,7 @@ public class RunStepDto {
 
     /** {@code true} when {@link #output} is only the beginning of what the step produced. */
     private boolean outputTruncated;
+
+    /** The step did not run: its result was given to the run by a debug reader. */
+    private boolean simulated;
 }

@@ -42,13 +42,15 @@ public class RunSourceRegistry {
             String id = source.sourceId();
             if (id == null || id.isBlank() || id.contains(":")) {
                 throw new IllegalStateException(
-                        "RunSource " + source.getClass().getName()
-                                + " has an unusable sourceId '" + id + "'");
+                        "RunSource " + source.getClass().getName() + " has an unusable sourceId '" + id + "'");
             }
             RunSource previous = map.putIfAbsent(id, source);
             if (previous != null) {
-                log.warn("Duplicate RunSource '{}' — keeping {}, ignoring {}",
-                        id, previous.getClass().getName(), source.getClass().getName());
+                log.warn(
+                        "Duplicate RunSource '{}' — keeping {}, ignoring {}",
+                        id,
+                        previous.getClass().getName(),
+                        source.getClass().getName());
             }
         }
         this.byId = Map.copyOf(map);
@@ -68,34 +70,35 @@ public class RunSourceRegistry {
      * must not blank the whole list.
      */
     public List<RunSummaryDto> list(
-            de.mhus.vance.shared.permission.SecurityContext subject,
-            String tenantId, String projectId, int limit) {
+            de.mhus.vance.shared.permission.SecurityContext subject, String tenantId, String projectId, int limit) {
         List<RunSummaryDto> all = new ArrayList<>();
         for (RunSource source : byId.values()) {
             try {
                 for (RunSummaryDto run : source.list(tenantId, projectId, limit)) {
                     RunId runId = RunId.parse(run.getRunId());
-                    if (runId != null && !source.visibleTo(
-                            subject, tenantId, projectId, runId.nativeId())) {
+                    if (runId != null && !source.visibleTo(subject, tenantId, projectId, runId.nativeId())) {
                         continue;
                     }
                     all.add(run);
                 }
             } catch (RuntimeException ex) {
-                log.warn("RunSource '{}' failed to list runs for project '{}': {}",
-                        source.sourceId(), projectId, ex.toString());
+                log.warn(
+                        "RunSource '{}' failed to list runs for project '{}': {}",
+                        source.sourceId(),
+                        projectId,
+                        ex.toString());
             }
         }
-        all.sort(Comparator.comparing(
-                RunSummaryDto::getStartedAt,
-                Comparator.nullsLast(Comparator.reverseOrder())));
+        all.sort(Comparator.comparing(RunSummaryDto::getStartedAt, Comparator.nullsLast(Comparator.reverseOrder())));
         return all.size() <= limit ? all : List.copyOf(all.subList(0, limit));
     }
 
     /** One run by composite id; empty when the source or the run is unknown. */
     public Optional<RunDetailDto> get(
             de.mhus.vance.shared.permission.SecurityContext subject,
-            String tenantId, String projectId, @Nullable String composite) {
+            String tenantId,
+            String projectId,
+            @Nullable String composite) {
         RunId id = RunId.parse(composite);
         if (id == null) return Optional.empty();
         RunSource source = byId.get(id.source());
@@ -117,7 +120,9 @@ public class RunSourceRegistry {
      */
     public Set<RunAction> allowedActions(
             de.mhus.vance.shared.permission.SecurityContext subject,
-            String tenantId, String projectId, @Nullable String composite) {
+            String tenantId,
+            String projectId,
+            @Nullable String composite) {
         RunId id = RunId.parse(composite);
         if (id == null) return Set.of();
         RunSource source = byId.get(id.source());
@@ -138,9 +143,13 @@ public class RunSourceRegistry {
      * @throws IllegalArgumentException when the id names no known source,
      *         the source does not know the run, or the subject may not see it
      */
-    public void perform(de.mhus.vance.shared.permission.SecurityContext subject,
-                        String tenantId, String projectId, @Nullable String composite,
-                        RunAction action, String reason) {
+    public void perform(
+            de.mhus.vance.shared.permission.SecurityContext subject,
+            String tenantId,
+            String projectId,
+            @Nullable String composite,
+            RunAction action,
+            String reason) {
         RunId id = RunId.parse(composite);
         if (id == null) throw new IllegalArgumentException("Malformed run id: " + composite);
         RunSource source = byId.get(id.source());
@@ -149,6 +158,30 @@ public class RunSourceRegistry {
             throw new IllegalArgumentException("No such run: " + composite);
         }
         source.perform(tenantId, projectId, id.nativeId(), action, reason);
+    }
+
+    /**
+     * Replace the breakpoints of a debuggable run. Like {@link #perform}, it
+     * applies only to a run the subject may see.
+     *
+     * @throws IllegalArgumentException when the id names no known source, the
+     *         source does not know the run, the subject may not see it, or a
+     *         name is not a state of the run
+     */
+    public void setBreakpoints(
+            de.mhus.vance.shared.permission.SecurityContext subject,
+            String tenantId,
+            String projectId,
+            @Nullable String composite,
+            java.util.Collection<String> states) {
+        RunId id = RunId.parse(composite);
+        if (id == null) throw new IllegalArgumentException("Malformed run id: " + composite);
+        RunSource source = byId.get(id.source());
+        if (source == null) throw new IllegalArgumentException("Unknown run source in: " + composite);
+        if (!source.visibleTo(subject, tenantId, projectId, id.nativeId())) {
+            throw new IllegalArgumentException("No such run: " + composite);
+        }
+        source.setBreakpoints(tenantId, projectId, id.nativeId(), states);
     }
 
     /** Registered source ids, in registration order. */

@@ -2,6 +2,7 @@ package de.mhus.vance.api.magrathea;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
+import java.util.List;
 import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -38,4 +39,11 @@ public class MagratheaStartRequest {
      * Absent means a normal run.
      */
     private @Nullable Boolean debug;
+
+    /**
+     * States to halt before. The run then goes freely between them and stands in
+     * front of each one; independent of {@link #debug}, which halts before every
+     * state. Names must exist in the workflow.
+     */
+    private @Nullable List<String> breakpoints;
 }

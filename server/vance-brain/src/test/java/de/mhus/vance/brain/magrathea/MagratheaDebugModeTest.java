@@ -1,24 +1,28 @@
 package de.mhus.vance.brain.magrathea;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.magrathea.MagratheaRunStatus;
 import de.mhus.vance.api.magrathea.MagratheaTaskStatus;
 import de.mhus.vance.api.magrathea.MagratheaTaskType;
+import de.mhus.vance.shared.magrathea.MagratheaDebugSetup;
 import de.mhus.vance.shared.magrathea.MagratheaJournalEntry;
 import de.mhus.vance.shared.magrathea.MagratheaJournalService;
 import de.mhus.vance.shared.magrathea.MagratheaRunBinding;
 import de.mhus.vance.shared.magrathea.MagratheaTaskDocument;
 import de.mhus.vance.shared.magrathea.MagratheaTaskService;
 import de.mhus.vance.shared.magrathea.MagratheaWorkflowLoader;
+import de.mhus.vance.shared.magrathea.journal.BreakpointsRecord;
 import de.mhus.vance.shared.magrathea.journal.DebugRecord;
 import de.mhus.vance.shared.magrathea.journal.JournalRecord;
 import de.mhus.vance.shared.magrathea.journal.StartRecord;
@@ -243,6 +247,146 @@ class MagratheaDebugModeTest {
         assertThat(appended).noneMatch(r -> r instanceof DebugRecord);
     }
 
+    // ──────────────────── breakpoints ────────────────────
+
+    @Test
+    void aRunWithABreakpointRunsFreelyUntilThere() {
+        String runId = startWithBreakpoints("second");
+
+        // Not halted at the start: nothing says so for the first state.
+        assertThat(inserted.get(0).getStatus()).isEqualTo(MagratheaTaskStatus.PENDING);
+        assertThat(service.currentStatus("acme", "proj", runId)).isEqualTo(MagratheaRunStatus.RUNNING);
+
+        service.handleCompletion(completed(runId, "t1", "first", "second"));
+
+        assertThat(inserted.get(1).getStateName()).isEqualTo("second");
+        assertThat(inserted.get(1).getStatus()).isEqualTo(MagratheaTaskStatus.HELD);
+        assertThat(service.currentStatus("acme", "proj", runId)).isEqualTo(MagratheaRunStatus.PAUSED);
+        assertThat(lastStatus().getReason()).contains("breakpoint: before state 'second'");
+    }
+
+    @Test
+    void aBreakpointOnTheFirstStateHaltsAtTheStart() {
+        String runId = startWithBreakpoints("first");
+
+        assertThat(inserted.get(0).getStatus()).isEqualTo(MagratheaTaskStatus.HELD);
+        assertThat(service.currentStatus("acme", "proj", runId)).isEqualTo(MagratheaRunStatus.PAUSED);
+        assertThat(lastStatus().getReason()).contains("breakpoint: before state 'first'");
+    }
+
+    @Test
+    void resumingAtABreakpointRunsOnUntilTheNextOne() {
+        String runId = startWithBreakpoints("second", "done");
+        service.handleCompletion(completed(runId, "t1", "first", "second"));
+        assertThat(service.resumeRun("acme", "proj", runId)).isTrue();
+        assertThat(inserted.get(1).getStatus()).isEqualTo(MagratheaTaskStatus.PENDING);
+
+        service.handleCompletion(completed(runId, "t2", "second", "done"));
+
+        // The resume ended any stepping, but the breakpoints stay.
+        assertThat(inserted.get(2).getStateName()).isEqualTo("done");
+        assertThat(inserted.get(2).getStatus()).isEqualTo(MagratheaTaskStatus.HELD);
+        assertThat(lastStatus().getReason()).contains("breakpoint: before state 'done'");
+    }
+
+    @Test
+    void steppingFromABreakpointHaltsBeforeTheNextStateWhateverItIs() {
+        String runId = startWithBreakpoints("second");
+        service.handleCompletion(completed(runId, "t1", "first", "second"));
+        assertThat(service.stepRun("acme", "proj", runId)).isTrue();
+
+        service.handleCompletion(completed(runId, "t2", "second", "done"));
+
+        assertThat(inserted.get(2).getStatus()).isEqualTo(MagratheaTaskStatus.HELD);
+        assertThat(lastStatus().getReason()).contains("debug: before state 'done'");
+    }
+
+    @Test
+    void changingTheBreakpointsMovesWhereTheRunHalts() {
+        String runId = startWithBreakpoints("done");
+
+        assertThat(service.setBreakpoints("acme", "proj", runId, java.util.List.of("second")))
+                .isTrue();
+        service.handleCompletion(completed(runId, "t1", "first", "second"));
+
+        assertThat(inserted.get(1).getStatus()).isEqualTo(MagratheaTaskStatus.HELD);
+        assertThat(appended)
+                .anySatisfy(r -> assertThat(r)
+                        .isInstanceOfSatisfying(
+                                BreakpointsRecord.class,
+                                b -> assertThat(b.getBreakpoints()).containsExactly("second")));
+    }
+
+    @Test
+    void clearingTheBreakpointsLetsTheRunGoThrough() {
+        String runId = startWithBreakpoints("second");
+
+        assertThat(service.setBreakpoints("acme", "proj", runId, java.util.List.of()))
+                .isTrue();
+        service.handleCompletion(completed(runId, "t1", "first", "second"));
+
+        assertThat(inserted.get(1).getStatus()).isEqualTo(MagratheaTaskStatus.PENDING);
+    }
+
+    @Test
+    void aBreakpointOnAStateTheWorkflowDoesNotHaveIsRefused() {
+        String runId = startWithBreakpoints("second");
+        int before = appended.size();
+
+        assertThatThrownBy(() -> service.setBreakpoints("acme", "proj", runId, java.util.List.of("nope")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unknown state 'nope'");
+        assertThat(appended).hasSize(before);
+    }
+
+    @Test
+    void startingWithAnUnknownBreakpointStartsNothing() {
+        assertThatThrownBy(() -> service.start(
+                        "acme",
+                        "proj",
+                        "demo",
+                        Map.of(),
+                        "alice",
+                        null,
+                        null,
+                        MagratheaRunBinding.headless(),
+                        new MagratheaDebugSetup(false, java.util.Set.of("nope"))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unknown state 'nope'");
+        assertThat(appended).isEmpty();
+        assertThat(inserted).isEmpty();
+    }
+
+    @Test
+    void anOrdinaryRunHasNoBreakpointsToSet() {
+        String runId = service.start("acme", "proj", "demo", Map.of(), "alice");
+
+        assertThat(service.setBreakpoints("acme", "proj", runId, java.util.List.of("second")))
+                .isFalse();
+        assertThat(appended).noneMatch(r -> r instanceof BreakpointsRecord);
+    }
+
+    @Test
+    void breakpointsCannotBeSetOnARunThatHasEnded() {
+        String runId = startWithBreakpoints("done");
+        service.stopRun("acme", "proj", runId, "why");
+
+        assertThat(service.setBreakpoints("acme", "proj", runId, java.util.List.of("second")))
+                .isFalse();
+    }
+
+    @Test
+    void anOrdinaryRunPaysNothingOnItsTransitions() {
+        // Looking for halts is for debuggable runs only; an ordinary transition
+        // must not read the debug records at all.
+        String runId = service.start("acme", "proj", "demo", Map.of(), "alice");
+
+        service.handleCompletion(completed(runId, "t1", "first", "second"));
+
+        verify(journal, never()).readLast(any(), any(), any(), eq(DebugRecord.class));
+        verify(journal, never()).readLast(any(), any(), any(), eq(BreakpointsRecord.class));
+    }
+
     // ──────────────────── helpers ────────────────────
 
     private String startDebug() {
@@ -254,8 +398,21 @@ class MagratheaDebugModeTest {
                 "alice",
                 /* parent */ null, /* parentState */
                 null,
-                MagratheaRunBinding.headless(), /* debug */
-                true);
+                MagratheaRunBinding.headless(),
+                new MagratheaDebugSetup(true, java.util.Set.of()));
+    }
+
+    private String startWithBreakpoints(String... states) {
+        return service.start(
+                "acme",
+                "proj",
+                "demo",
+                Map.of(),
+                "alice",
+                null,
+                null,
+                MagratheaRunBinding.headless(),
+                new MagratheaDebugSetup(false, new java.util.LinkedHashSet<>(java.util.List.of(states))));
     }
 
     private StatusRecord lastStatus() {

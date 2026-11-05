@@ -10,6 +10,7 @@ import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.magrathea.MagratheaBoundsSpec;
+import de.mhus.vance.shared.magrathea.MagratheaDebugSetup;
 import de.mhus.vance.shared.magrathea.MagratheaJournalEntry;
 import de.mhus.vance.shared.magrathea.MagratheaJournalService;
 import de.mhus.vance.shared.magrathea.MagratheaParameterSpec;
@@ -19,6 +20,7 @@ import de.mhus.vance.shared.magrathea.MagratheaTaskDocument;
 import de.mhus.vance.shared.magrathea.MagratheaTaskService;
 import de.mhus.vance.shared.magrathea.MagratheaWorkflowLoader;
 import de.mhus.vance.shared.magrathea.ResolvedMagratheaWorkflow;
+import de.mhus.vance.shared.magrathea.journal.BreakpointsRecord;
 import de.mhus.vance.shared.magrathea.journal.DebugRecord;
 import de.mhus.vance.shared.magrathea.journal.ResultRecord;
 import de.mhus.vance.shared.magrathea.journal.StartRecord;
@@ -36,6 +38,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -206,14 +209,15 @@ public class MagratheaWorkflowService {
                 startedBy,
                 parentMagratheaProcessId,
                 parentState,
-                binding, /* debug */
-                false);
+                binding,
+                MagratheaDebugSetup.OFF);
     }
 
     /**
-     * Start with the debug flag: the run halts before each state and waits to
-     * be stepped from the run view (see {@link #stepRun}). The calls are real —
-     * debug is not a dry run.
+     * Start with a debug setup: the run halts before every state ({@code
+     * stepping}), before named states ({@code breakpoints}), or both, and waits
+     * to be stepped from the run view (see {@link #stepRun}). The calls are real
+     * — debug is not a dry run.
      */
     public String start(
             String tenantId,
@@ -224,7 +228,7 @@ public class MagratheaWorkflowService {
             @Nullable String parentMagratheaProcessId,
             @Nullable String parentState,
             MagratheaRunBinding binding,
-            boolean debug) {
+            MagratheaDebugSetup debug) {
         ResolvedMagratheaWorkflow workflow = workflowLoader
                 .load(tenantId, projectId, workflowName)
                 .orElseThrow(() -> new MagratheaWorkflowException("Workflow '" + workflowName
@@ -286,10 +290,10 @@ public class MagratheaWorkflowService {
             @Nullable Map<String, Object> callerParams,
             @Nullable String startedBy,
             MagratheaRunBinding binding) {
-        return startFromDocument(tenantId, projectId, path, callerParams, startedBy, binding, /* debug */ false);
+        return startFromDocument(tenantId, projectId, path, callerParams, startedBy, binding, MagratheaDebugSetup.OFF);
     }
 
-    /** {@link #startFromDocument} with the debug flag — see {@link #start}. */
+    /** {@link #startFromDocument} with a debug setup — see {@link #start}. */
     public String startFromDocument(
             String tenantId,
             String projectId,
@@ -297,7 +301,7 @@ public class MagratheaWorkflowService {
             @Nullable Map<String, Object> callerParams,
             @Nullable String startedBy,
             MagratheaRunBinding binding,
-            boolean debug) {
+            MagratheaDebugSetup debug) {
         String norm = path == null ? "" : path.trim();
         if (norm.isEmpty()) {
             throw new MagratheaWorkflowException("Document path is required");
@@ -354,9 +358,10 @@ public class MagratheaWorkflowService {
             @Nullable String parentMagratheaProcessId,
             @Nullable String parentState,
             MagratheaRunBinding binding,
-            boolean debug) {
+            MagratheaDebugSetup debug) {
         Map<String, Object> resolvedParams = applyDefaultsAndValidate(workflow, callerParams);
         requireCapabilities(workflow, binding);
+        requireKnownStates(workflow, debug.breakpoints());
         String runId = MagratheaRunIdGenerator.fresh();
 
         // Enqueue start on the lane and ACTUALLY await it, so the caller
@@ -560,38 +565,124 @@ public class MagratheaWorkflowService {
         return true;
     }
 
-    /** Whether the run was started in debug mode (the flag on its start record). */
+    /**
+     * Whether the run was started debuggable — with the debug flag or with
+     * breakpoints — so that it can be stepped and its breakpoints changed.
+     */
     public boolean isDebugRun(String tenantId, String projectId, String workflowRunId) {
         return journalService
                 .readLast(tenantId, projectId, workflowRunId, StartRecord.class)
-                .map(StartRecord::isDebug)
+                .map(MagratheaDebugSetup::isDebuggable)
                 .orElse(false);
     }
 
     /**
-     * A debug run halts before each state until a resume ends the stepping;
-     * a step puts it back. Without a {@link DebugRecord} a debug run is
-     * stepping.
+     * Replace the states a debuggable run halts before. Takes effect for every
+     * state the run enters from now on; a run already standing in front of a
+     * state stays there until it is stepped or resumed.
+     *
+     * <p>Only runs started debuggable have breakpoints — an ordinary run pays
+     * for none of this on its transitions — and only while the run is still
+     * going.
+     *
+     * @return {@code true} if the set was replaced; {@code false} when the run
+     *         is not debuggable or has ended
+     * @throws IllegalArgumentException when a name is not a state of the run's
+     *         frozen workflow
      */
-    private boolean isStepping(String tenantId, String projectId, String workflowRunId, StartRecord start) {
-        if (!start.isDebug()) return false;
-        return journalService
+    public boolean setBreakpoints(
+            String tenantId, String projectId, String workflowRunId, java.util.Collection<String> names) {
+        Optional<StartRecord> start = journalService.readLast(tenantId, projectId, workflowRunId, StartRecord.class);
+        if (start.isEmpty() || !MagratheaDebugSetup.isDebuggable(start.get())) return false;
+        MagratheaRunStatus status = currentStatus(tenantId, projectId, workflowRunId);
+        if (status == MagratheaRunStatus.DONE
+                || status == MagratheaRunStatus.FAILED
+                || status == MagratheaRunStatus.TERMINATED) {
+            return false;
+        }
+        Set<String> wanted = MagratheaDebugSetup.ordered(names);
+        requireKnownStates(
+                workflowLoader.validateYaml(
+                        start.get().getWorkflowName(), start.get().getDefinitionYaml()),
+                wanted);
+        onLane(
+                projectId,
+                () -> journalService.append(
+                        tenantId,
+                        projectId,
+                        workflowRunId,
+                        BreakpointsRecord.builder().breakpoints(wanted).build()));
+        log.info("Magrathea run {} breakpoints set to {}", workflowRunId, wanted);
+        return true;
+    }
+
+    /** Refuse a breakpoint on something that is not a state of the workflow. */
+    private static void requireKnownStates(ResolvedMagratheaWorkflow workflow, Set<String> names) {
+        for (String name : names) {
+            if (!workflow.states().containsKey(name)) {
+                throw new IllegalArgumentException(
+                        "Unknown state '" + name + "' in breakpoints of workflow '" + workflow.name() + "'");
+            }
+        }
+    }
+
+    /** Why a debuggable run stands in front of a state. */
+    private enum HaltCause {
+        /** The run steps: it halts before every state. */
+        STEPPING("debug"),
+        /** The state is one of the run's breakpoints. */
+        BREAKPOINT("breakpoint");
+
+        final String label;
+
+        HaltCause(String label) {
+            this.label = label;
+        }
+    }
+
+    /**
+     * Whether, and why, a debuggable run halts before {@code stateName}. A run
+     * that is not debuggable is not looked at, so an ordinary transition costs
+     * no extra read.
+     *
+     * <p>Stepping wins over breakpoints: it halts everywhere, and a breakpoint
+     * adds nothing there. A run started debuggable steps until a resume ends the
+     * stepping; a step puts it back. A run started with breakpoints only does not
+     * step until it is stepped.
+     */
+    private @Nullable HaltCause haltCauseFor(
+            String tenantId, String projectId, String workflowRunId, StartRecord start, String stateName) {
+        if (!MagratheaDebugSetup.isDebuggable(start)) return null;
+        boolean stepping = journalService
                 .readLast(tenantId, projectId, workflowRunId, DebugRecord.class)
                 .map(DebugRecord::isStepping)
-                .orElse(true);
+                .orElse(start.isDebug());
+        if (stepping) return HaltCause.STEPPING;
+        return currentBreakpoints(tenantId, projectId, workflowRunId, start).contains(stateName)
+                ? HaltCause.BREAKPOINT
+                : null;
+    }
+
+    /** The latest breakpoint set of the run; before the first change, the one it started with. */
+    private Set<String> currentBreakpoints(String tenantId, String projectId, String workflowRunId, StartRecord start) {
+        return journalService
+                .readLast(tenantId, projectId, workflowRunId, BreakpointsRecord.class)
+                .map(r -> MagratheaDebugSetup.ordered(r.getBreakpoints()))
+                .orElseGet(() -> MagratheaDebugSetup.ordered(start.getBreakpoints()));
     }
 
     /** Say, in the journal, that the run now stands before {@code stateName}. */
-    private void haltBeforeState(String tenantId, String projectId, String workflowRunId, String stateName) {
+    private void haltBeforeState(
+            String tenantId, String projectId, String workflowRunId, String stateName, HaltCause cause) {
         journalService.append(
                 tenantId,
                 projectId,
                 workflowRunId,
                 StatusRecord.builder()
                         .status(MagratheaRunStatus.PAUSED)
-                        .reason("debug: before state '" + stateName + "'")
+                        .reason(cause.label + ": before state '" + stateName + "'")
                         .build());
-        log.info("Magrathea run {} halted before state '{}' (debug)", workflowRunId, stateName);
+        log.info("Magrathea run {} halted before state '{}' ({})", workflowRunId, stateName, cause.label);
     }
 
     /**
@@ -803,7 +894,7 @@ public class MagratheaWorkflowService {
             @Nullable String parentMagratheaProcessId,
             @Nullable String parentState,
             MagratheaRunBinding binding,
-            boolean debug) {
+            MagratheaDebugSetup debug) {
 
         journalService.append(
                 tenantId,
@@ -827,7 +918,11 @@ public class MagratheaWorkflowService {
                                 binding.derivedParamKeys().isEmpty()
                                         ? null
                                         : new java.util.LinkedHashSet<>(binding.derivedParamKeys()))
-                        .debug(debug)
+                        .debug(debug.stepping())
+                        .breakpoints(
+                                debug.breakpoints().isEmpty()
+                                        ? null
+                                        : new java.util.LinkedHashSet<>(debug.breakpoints()))
                         .build());
 
         journalService.append(
@@ -838,10 +933,14 @@ public class MagratheaWorkflowService {
 
         MagratheaStateSpec startState = workflow.states().get(workflow.startState());
         applyCounters(tenantId, projectId, runId, startState);
-        // A debug run stands before its first state: say so first, then
-        // park the task — the order enqueueNextTask uses for every later one.
-        if (debug) {
-            haltBeforeState(tenantId, projectId, runId, workflow.startState());
+        // A debug run stands before its first state when it steps or has a
+        // breakpoint there: say so first, then park the task — the order
+        // enqueueNextTask uses for every later one.
+        HaltCause firstHalt = debug.stepping()
+                ? HaltCause.STEPPING
+                : debug.breakpoints().contains(workflow.startState()) ? HaltCause.BREAKPOINT : null;
+        if (firstHalt != null) {
+            haltBeforeState(tenantId, projectId, runId, workflow.startState(), firstHalt);
         }
         MagratheaTaskDocument task = MagratheaTaskDocument.builder()
                 .tenantId(tenantId)
@@ -850,20 +949,21 @@ public class MagratheaWorkflowService {
                 .workflowName(workflow.name())
                 .stateName(workflow.startState())
                 .taskType(startState.type())
-                .status(debug ? MagratheaTaskStatus.HELD : MagratheaTaskStatus.PENDING)
+                .status(firstHalt != null ? MagratheaTaskStatus.HELD : MagratheaTaskStatus.PENDING)
                 .createdAt(Instant.now())
                 .nextAttemptAt(Instant.now())
                 .attemptCount(0)
                 .build();
         localDispatch.dispatch(taskService.insert(task));
         log.info(
-                "Magrathea run {} started workflow='{}' tenant={} project={} startState={} debug={}",
+                "Magrathea run {} started workflow='{}' tenant={} project={} startState={} debug={} breakpoints={}",
                 runId,
                 workflow.name(),
                 tenantId,
                 projectId,
                 workflow.startState(),
-                debug);
+                debug.stepping(),
+                debug.breakpoints());
     }
 
     private Map<String, Object> applyDefaultsAndValidate(
@@ -1170,12 +1270,15 @@ public class MagratheaWorkflowService {
                 prev.workflowRunId(),
                 StateEnteredRecord.builder().state(nextStateName).build());
         applyCounters(prev.tenantId(), prev.projectId(), prev.workflowRunId(), next);
-        // A debug run that is stepping halts here, before the new state runs.
-        boolean halted = isStepping(prev.tenantId(), prev.projectId(), prev.workflowRunId(), start);
+        // A debuggable run halts here, before the new state runs, when it is
+        // stepping or the state is one of its breakpoints.
+        HaltCause haltCause =
+                haltCauseFor(prev.tenantId(), prev.projectId(), prev.workflowRunId(), start, nextStateName);
+        boolean halted = haltCause != null;
         if (halted
                 && currentStatus(prev.tenantId(), prev.projectId(), prev.workflowRunId())
                         != MagratheaRunStatus.PAUSED) {
-            haltBeforeState(prev.tenantId(), prev.projectId(), prev.workflowRunId(), nextStateName);
+            haltBeforeState(prev.tenantId(), prev.projectId(), prev.workflowRunId(), nextStateName, haltCause);
         }
         // A task created while the run is paused must not slip past the
         // hold: pausing moved the queue to HELD, but this row is new.

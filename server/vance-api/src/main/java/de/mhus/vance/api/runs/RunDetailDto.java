@@ -72,6 +72,9 @@ public class RunDetailDto {
      */
     private boolean debug;
 
+    /** The states a debuggable run halts before right now; absent when there are none. */
+    private @Nullable List<String> breakpoints;
+
     /**
      * The definition this run froze at its start, as text, so the view can
      * draw the plan the run actually follows — not whatever the source

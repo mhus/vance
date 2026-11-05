@@ -3,6 +3,7 @@ package de.mhus.vance.api.magrathea;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
 import jakarta.validation.constraints.NotBlank;
+import java.util.List;
 import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -46,4 +47,7 @@ public class MagratheaStartDocumentRequest {
 
     /** Start in debug mode — see {@link MagratheaStartRequest#getDebug()}. */
     private @Nullable Boolean debug;
+
+    /** States to halt before — see {@link MagratheaStartRequest#getBreakpoints()}. */
+    private @Nullable List<String> breakpoints;
 }

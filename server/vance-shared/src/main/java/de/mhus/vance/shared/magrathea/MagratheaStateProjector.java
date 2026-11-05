@@ -2,6 +2,7 @@ package de.mhus.vance.shared.magrathea;
 
 import de.mhus.vance.api.magrathea.MagratheaProcessDto;
 import de.mhus.vance.api.magrathea.MagratheaRunStatus;
+import de.mhus.vance.shared.magrathea.journal.BreakpointsRecord;
 import de.mhus.vance.shared.magrathea.journal.JournalRecord;
 import de.mhus.vance.shared.magrathea.journal.ResultRecord;
 import de.mhus.vance.shared.magrathea.journal.StartRecord;
@@ -55,6 +56,7 @@ public class MagratheaStateProjector {
         @Nullable String workflowVersion = null;
         @Nullable String startedBy = null;
         boolean debug = false;
+        java.util.Set<String> breakpoints = new java.util.LinkedHashSet<>();
         @Nullable Map<String, Object> params = null;
         Map<String, Object> vars = new LinkedHashMap<>();
         @Nullable String currentState = null;
@@ -85,7 +87,8 @@ public class MagratheaStateProjector {
                 workflowName = r.getWorkflowName();
                 workflowVersion = r.getWorkflowVersion();
                 startedBy = r.getStartedBy();
-                debug = r.isDebug();
+                debug = MagratheaDebugSetup.isDebuggable(r);
+                breakpoints = new java.util.LinkedHashSet<>(MagratheaDebugSetup.ordered(r.getBreakpoints()));
                 if (r.getParams() != null) {
                     params = Map.copyOf(r.getParams());
                 }
@@ -94,6 +97,8 @@ public class MagratheaStateProjector {
                 if (!isTerminalStatus(status)) {
                     latestStateBeforeTerminal = r.getState();
                 }
+            } else if (record instanceof BreakpointsRecord r) {
+                breakpoints = new java.util.LinkedHashSet<>(MagratheaDebugSetup.ordered(r.getBreakpoints()));
             } else if (record instanceof VarRecord r) {
                 vars.put(r.getKey(), unwrap(r.getValue()));
             } else if (record instanceof StatusRecord r) {
@@ -126,6 +131,7 @@ public class MagratheaStateProjector {
                 .vars(vars.isEmpty() ? null : Map.copyOf(vars))
                 .startedBy(startedBy)
                 .debug(debug)
+                .breakpoints(breakpoints.isEmpty() ? null : java.util.List.copyOf(breakpoints))
                 .createdAt(createdAt)
                 .updatedAt(updatedAt)
                 .terminatedAt(terminatedAt)

@@ -17,6 +17,7 @@ export interface MagratheaProcessDto {
   vars?: Record<string, any>;
   startedBy?: string;
   debug: boolean;
+  breakpoints?: string[];
   createdAt?: Date;
   updatedAt?: Date;
   terminatedAt?: Date;

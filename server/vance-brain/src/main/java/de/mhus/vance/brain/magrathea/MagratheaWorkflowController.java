@@ -8,6 +8,7 @@ import de.mhus.vance.api.magrathea.MagratheaWorkflowDto;
 import de.mhus.vance.api.magrathea.MagratheaWorkflowSummary;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.access.AccessFilterBase;
+import de.mhus.vance.shared.magrathea.MagratheaDebugSetup;
 import de.mhus.vance.shared.magrathea.MagratheaJournalService;
 import de.mhus.vance.shared.magrathea.MagratheaParameterSpec;
 import de.mhus.vance.shared.magrathea.MagratheaRunBinding;
@@ -136,11 +137,16 @@ public class MagratheaWorkflowController {
                     /* parent */ null, /* parentState */
                     null,
                     MagratheaRunBinding.headless(),
-                    body != null && Boolean.TRUE.equals(body.getDebug()));
+                    body == null
+                            ? MagratheaDebugSetup.OFF
+                            : MagratheaDebugSetup.of(body.getDebug(), body.getBreakpoints()));
         } catch (MagratheaWorkflowService.MagratheaWorkflowException ex) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, ex.getMessage(), ex);
         } catch (MagratheaWorkflowParseException ex) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Workflow YAML invalid: " + ex.getMessage(), ex);
+        } catch (IllegalArgumentException ex) {
+            // A breakpoint on something that is not a state of the workflow.
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
         }
 
         Map<String, Object> result = new LinkedHashMap<>();
@@ -182,11 +188,14 @@ public class MagratheaWorkflowController {
                     body.getParams(),
                     startedBy,
                     MagratheaRunBinding.headless(),
-                    Boolean.TRUE.equals(body.getDebug()));
+                    MagratheaDebugSetup.of(body.getDebug(), body.getBreakpoints()));
         } catch (MagratheaWorkflowService.MagratheaWorkflowException ex) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, ex.getMessage(), ex);
         } catch (MagratheaWorkflowParseException ex) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Workflow YAML invalid: " + ex.getMessage(), ex);
+        } catch (IllegalArgumentException ex) {
+            // A breakpoint on something that is not a state of the workflow.
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
         }
 
         Map<String, Object> result = new LinkedHashMap<>();

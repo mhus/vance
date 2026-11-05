@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.runs;
 
 import de.mhus.vance.api.runs.RunAction;
+import de.mhus.vance.api.runs.RunBreakpointsRequest;
 import de.mhus.vance.api.runs.RunDetailDto;
 import de.mhus.vance.api.runs.RunSummaryDto;
 import de.mhus.vance.brain.permission.RequestAuthority;
@@ -13,6 +14,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -108,6 +111,42 @@ public class RunController {
         }
         // Hand back the fresh state so the caller renders from truth
         // rather than from what it assumed the action would do.
+        return registry.get(authority.contextOf(request), tenant, projectId, runId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Run not found: " + runId));
+    }
+
+    /**
+     * Replace the states a debuggable run halts before — the whole set, so a
+     * toggle in the view is "send the set as it should be now".
+     *
+     * <p>{@code Project WRITE}, like an action. A run that cannot have
+     * breakpoints (not debuggable, ended, or a source without any) is a no-op or
+     * a 501 rather than an error the view has to special-case; an unknown state
+     * name is a 400.
+     */
+    @PutMapping("/{runId}/breakpoints")
+    public RunDetailDto setBreakpoints(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("runId") String runId,
+            @RequestParam("projectId") String projectId,
+            @RequestBody RunBreakpointsRequest body,
+            HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.WRITE);
+        try {
+            registry.setBreakpoints(
+                    authority.contextOf(request),
+                    tenant,
+                    projectId,
+                    runId,
+                    body.getBreakpoints() == null ? List.of() : body.getBreakpoints());
+        } catch (IllegalArgumentException ex) {
+            // Unknown run and unknown state are told apart by the message the source gives.
+            boolean unknownState = ex.getMessage() != null && ex.getMessage().startsWith("Unknown state");
+            throw new ResponseStatusException(
+                    unknownState ? HttpStatus.BAD_REQUEST : HttpStatus.NOT_FOUND, ex.getMessage(), ex);
+        } catch (UnsupportedOperationException ex) {
+            throw new ResponseStatusException(HttpStatus.NOT_IMPLEMENTED, ex.getMessage(), ex);
+        }
         return registry.get(authority.contextOf(request), tenant, projectId, runId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Run not found: " + runId));
     }

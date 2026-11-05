@@ -380,6 +380,7 @@ export * from './events/EventSummary';
 export * from './events/EventTriggerResponse';
 
 export * from './runs/RunAction';
+export * from './runs/RunBreakpointsRequest';
 export * from './runs/RunChildDto';
 export * from './runs/RunDetailDto';
 export * from './runs/RunLinkDto';

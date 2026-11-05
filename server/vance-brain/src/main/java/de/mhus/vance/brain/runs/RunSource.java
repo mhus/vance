@@ -72,10 +72,19 @@ public interface RunSource {
      * {@link #allowedActions}. A source that overrides this must keep it
      * idempotent (stopping a stopped run is a no-op, not an error).
      */
-    default void perform(String tenantId, String projectId, String nativeId,
-                         RunAction action, String reason) {
-        throw new UnsupportedOperationException(
-                sourceId() + " runs cannot be controlled yet: " + action);
+    default void perform(String tenantId, String projectId, String nativeId, RunAction action, String reason) {
+        throw new UnsupportedOperationException(sourceId() + " runs cannot be controlled yet: " + action);
+    }
+
+    /**
+     * Replace the states a debuggable run halts before. Default: unsupported —
+     * only a source whose runs can be debugged has breakpoints.
+     *
+     * @throws IllegalArgumentException when a name is not a state of the run
+     */
+    default void setBreakpoints(
+            String tenantId, String projectId, String nativeId, java.util.Collection<String> states) {
+        throw new UnsupportedOperationException(sourceId() + " runs have no breakpoints");
     }
 
     /**
@@ -94,7 +103,9 @@ public interface RunSource {
      */
     default boolean visibleTo(
             de.mhus.vance.shared.permission.SecurityContext subject,
-            String tenantId, String projectId, String nativeId) {
+            String tenantId,
+            String projectId,
+            String nativeId) {
         return true;
     }
 }

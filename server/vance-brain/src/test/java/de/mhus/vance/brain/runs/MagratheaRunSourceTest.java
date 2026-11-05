@@ -240,6 +240,46 @@ class MagratheaRunSourceTest {
     }
 
     @Test
+    void aDebuggableRunCarriesItsBreakpointsInTheDetail() {
+        var dto = run("r1", MagratheaRunStatus.RUNNING);
+        dto.setDebug(true);
+        dto.setBreakpoints(List.of("review", "merge"));
+        when(projector.project("acme", "proj", "r1")).thenReturn(Optional.of(dto));
+
+        assertThat(source.get("acme", "proj", "r1").orElseThrow().getBreakpoints())
+                .containsExactly("review", "merge");
+    }
+
+    @Test
+    void breakpointsAreHandedToTheServiceForADebuggableRun() {
+        var dto = run("r1", MagratheaRunStatus.RUNNING);
+        dto.setDebug(true);
+        when(projector.project("acme", "proj", "r1")).thenReturn(Optional.of(dto));
+
+        source.setBreakpoints("acme", "proj", "r1", List.of("review"));
+
+        verify(workflows).setBreakpoints("acme", "proj", "r1", List.of("review"));
+    }
+
+    @Test
+    void breakpointsOnARunThatIsNotDebuggableAreANoOp() {
+        when(projector.project("acme", "proj", "r1")).thenReturn(Optional.of(run("r1", MagratheaRunStatus.RUNNING)));
+
+        source.setBreakpoints("acme", "proj", "r1", List.of("review"));
+
+        verify(workflows, never()).setBreakpoints(any(), any(), any(), any());
+    }
+
+    @Test
+    void breakpointsOnAnUnknownRunAreRefused() {
+        when(projector.project("acme", "proj", "r1")).thenReturn(Optional.empty());
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> source.setBreakpoints("acme", "proj", "r1", List.of("review")))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void linksToTheDocumentTheRunCameFrom() {
         stubDetail("r1");
         when(journal.readLast("acme", "proj", "r1", StartRecord.class))

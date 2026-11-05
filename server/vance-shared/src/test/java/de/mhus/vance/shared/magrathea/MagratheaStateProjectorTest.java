@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.magrathea.MagratheaProcessDto;
 import de.mhus.vance.api.magrathea.MagratheaRunStatus;
+import de.mhus.vance.shared.magrathea.journal.BreakpointsRecord;
 import de.mhus.vance.shared.magrathea.journal.JournalRecord;
 import de.mhus.vance.shared.magrathea.journal.NoteRecord;
 import de.mhus.vance.shared.magrathea.journal.ResultRecord;
@@ -50,24 +51,23 @@ class MagratheaStateProjectorTest {
             entries.add(e);
             return e;
         });
-        when(repo.findByTenantIdAndProjectIdAndWorkflowRunIdOrderByCreatedAtAsc(
-                eq("acme"), eq("proj"), eq("r1")))
+        when(repo.findByTenantIdAndProjectIdAndWorkflowRunIdOrderByCreatedAtAsc(eq("acme"), eq("proj"), eq("r1")))
                 .thenAnswer(inv -> entries.stream()
                         .filter(e -> "r1".equals(e.getWorkflowRunId()))
                         .toList());
         // Targeted type-filtered reads (readAll / readLast use these now).
         when(repo.findByTenantIdAndProjectIdAndWorkflowRunIdAndTypeOrderByCreatedAtAsc(
-                eq("acme"), eq("proj"), eq("r1"), anyString()))
+                        eq("acme"), eq("proj"), eq("r1"), anyString()))
                 .thenAnswer(inv -> entries.stream()
                         .filter(e -> "r1".equals(e.getWorkflowRunId()))
                         .filter(e -> inv.getArgument(3).equals(e.getType()))
                         .toList());
         when(repo.findFirstByTenantIdAndProjectIdAndWorkflowRunIdAndTypeOrderByCreatedAtDesc(
-                eq("acme"), eq("proj"), eq("r1"), anyString()))
+                        eq("acme"), eq("proj"), eq("r1"), anyString()))
                 .thenAnswer(inv -> entries.stream()
                         .filter(e -> "r1".equals(e.getWorkflowRunId()))
                         .filter(e -> inv.getArgument(3).equals(e.getType()))
-                        .reduce((a, b) -> b));  // last = newest (entries are appended in order)
+                        .reduce((a, b) -> b)); // last = newest (entries are appended in order)
 
         journal = new MagratheaJournalService(repo, objectMapper);
         projector = new MagratheaStateProjector(journal, objectMapper);
@@ -75,8 +75,8 @@ class MagratheaStateProjectorTest {
 
     @Test
     void project_returns_empty_when_run_has_no_journal() {
-        when(repo.findByTenantIdAndProjectIdAndWorkflowRunIdOrderByCreatedAtAsc(
-                eq("acme"), eq("proj"), eq("missing"))).thenReturn(List.of());
+        when(repo.findByTenantIdAndProjectIdAndWorkflowRunIdOrderByCreatedAtAsc(eq("acme"), eq("proj"), eq("missing")))
+                .thenReturn(List.of());
 
         assertThat(projector.project("acme", "proj", "missing")).isEmpty();
     }
@@ -114,13 +114,81 @@ class MagratheaStateProjectorTest {
     @Test
     void project_replays_vars_in_journal_order_with_later_writes_winning() {
         append(StartRecord.builder().workflowName("x").definitionYaml("y").build());
-        append(VarRecord.builder().key("risk").value(objectMapper.valueToTree("high")).build());
-        append(VarRecord.builder().key("count").value(objectMapper.valueToTree(3)).build());
-        append(VarRecord.builder().key("risk").value(objectMapper.valueToTree("low")).build());
+        append(VarRecord.builder()
+                .key("risk")
+                .value(objectMapper.valueToTree("high"))
+                .build());
+        append(VarRecord.builder()
+                .key("count")
+                .value(objectMapper.valueToTree(3))
+                .build());
+        append(VarRecord.builder()
+                .key("risk")
+                .value(objectMapper.valueToTree("low"))
+                .build());
 
         MagratheaProcessDto dto = projector.project("acme", "proj", "r1").orElseThrow();
 
         assertThat(dto.getVars()).containsEntry("risk", "low").containsEntry("count", 3);
+    }
+
+    @Test
+    void project_an_ordinary_run_is_not_debuggable_and_has_no_breakpoints() {
+        append(StartRecord.builder().workflowName("w").definitionYaml("...").build());
+
+        MagratheaProcessDto dto = projector.project("acme", "proj", "r1").orElseThrow();
+
+        assertThat(dto.isDebug()).isFalse();
+        assertThat(dto.getBreakpoints()).isNull();
+    }
+
+    @Test
+    void project_a_run_started_with_breakpoints_is_debuggable_and_lists_them() {
+        append(StartRecord.builder()
+                .workflowName("w")
+                .definitionYaml("...")
+                .breakpoints(new java.util.LinkedHashSet<>(List.of("review", "merge")))
+                .build());
+
+        MagratheaProcessDto dto = projector.project("acme", "proj", "r1").orElseThrow();
+
+        assertThat(dto.isDebug()).isTrue();
+        assertThat(dto.getBreakpoints()).containsExactly("review", "merge");
+    }
+
+    @Test
+    void project_the_latest_breakpoint_record_replaces_the_start_set_and_keeps_the_run_debuggable() {
+        append(StartRecord.builder()
+                .workflowName("w")
+                .definitionYaml("...")
+                .breakpoints(new java.util.LinkedHashSet<>(List.of("review")))
+                .build());
+        append(BreakpointsRecord.builder()
+                .breakpoints(new java.util.LinkedHashSet<>(List.of("merge")))
+                .build());
+
+        assertThat(projector.project("acme", "proj", "r1").orElseThrow().getBreakpoints())
+                .containsExactly("merge");
+
+        // Clearing them leaves an empty set — and the run debuggable, so they can come back.
+        append(BreakpointsRecord.builder()
+                .breakpoints(new java.util.LinkedHashSet<>())
+                .build());
+        MagratheaProcessDto cleared = projector.project("acme", "proj", "r1").orElseThrow();
+        assertThat(cleared.getBreakpoints()).isNull();
+        assertThat(cleared.isDebug()).isTrue();
+    }
+
+    @Test
+    void project_a_run_started_stepping_is_debuggable() {
+        append(StartRecord.builder()
+                .workflowName("w")
+                .definitionYaml("...")
+                .debug(true)
+                .build());
+
+        assertThat(projector.project("acme", "proj", "r1").orElseThrow().isDebug())
+                .isTrue();
     }
 
     @Test
@@ -145,7 +213,10 @@ class MagratheaStateProjectorTest {
     void project_marks_terminal_FAILED_status() {
         append(StartRecord.builder().workflowName("x").definitionYaml("y").build());
         append(StateEnteredRecord.builder().state("escalate").build());
-        append(StatusRecord.builder().status(MagratheaRunStatus.FAILED).reason("checks failed").build());
+        append(StatusRecord.builder()
+                .status(MagratheaRunStatus.FAILED)
+                .reason("checks failed")
+                .build());
 
         MagratheaProcessDto dto = projector.project("acme", "proj", "r1").orElseThrow();
 
@@ -197,7 +268,10 @@ class MagratheaStateProjectorTest {
         append(StartRecord.builder().workflowName("x").definitionYaml("y").build());
         append(StateEnteredRecord.builder().state("plan").build());
         append(TaskResultRecord.builder()
-                .state("plan").taskId("t1").outcome("success").build());
+                .state("plan")
+                .taskId("t1")
+                .outcome("success")
+                .build());
         append(StateEnteredRecord.builder().state("done").build());
         append(StatusRecord.builder().status(MagratheaRunStatus.DONE).build());
 

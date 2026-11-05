@@ -8,4 +8,5 @@ export interface MagratheaStartDocumentRequest {
   params?: Record<string, any>;
   startedBy?: string;
   debug?: boolean;
+  breakpoints?: string[];
 }

@@ -51,8 +51,14 @@ public class MagratheaProcessDto {
     /** Caller of {@code start} — user id, scheduler key, or hook origin. */
     private @Nullable String startedBy;
 
-    /** Started in debug mode: the run halts before each state until it is stepped. */
+    /**
+     * Debuggable: started with the debug flag or with breakpoints. Such a run can be
+     * stepped and resumed, and its breakpoints can be changed while it runs.
+     */
     private boolean debug;
+
+    /** States the run halts before right now; absent when there are none. */
+    private @Nullable List<String> breakpoints;
 
     private @Nullable Instant createdAt;
     private @Nullable Instant updatedAt;

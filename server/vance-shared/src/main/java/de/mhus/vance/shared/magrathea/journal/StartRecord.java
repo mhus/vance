@@ -102,4 +102,11 @@ public class StartRecord implements JournalRecord {
      * stepping, the run stays a debug run.
      */
     private boolean debug;
+
+    /**
+     * States the run halts before, set at its start. Absent or empty for a run
+     * without breakpoints. The current set is the latest
+     * {@link BreakpointsRecord}, if there is one; this is where it starts.
+     */
+    private @Nullable Set<String> breakpoints;
 }

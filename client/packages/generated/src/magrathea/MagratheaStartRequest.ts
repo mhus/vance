@@ -7,4 +7,5 @@ export interface MagratheaStartRequest {
   params?: Record<string, any>;
   startedBy?: string;
   debug?: boolean;
+  breakpoints?: string[];
 }

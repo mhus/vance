@@ -112,6 +112,7 @@ public class MagratheaRunSource implements RunSource {
                 .waitingOnInboxItemId(waitingOnInboxItem(tenantId, nativeId, run.getStatus()))
                 .allowedActions(actionsFor(run.getStatus(), run.isDebug()))
                 .debug(run.isDebug())
+                .breakpoints(run.getBreakpoints())
                 .errorMessage(terminalReason(tenantId, projectId, nativeId, run.getStatus()))
                 .result(run.getResult())
                 .extra(Map.of("params", run.getParams() == null ? Map.of() : run.getParams()))
@@ -138,6 +139,19 @@ public class MagratheaRunSource implements RunSource {
                         : Set.of(RunAction.RESUME, RunAction.STOP);
             case DONE, FAILED, TERMINATED -> Set.of();
         };
+    }
+
+    @Override
+    public void setBreakpoints(
+            String tenantId, String projectId, String nativeId, java.util.Collection<String> states) {
+        MagratheaProcessDto run = projector
+                .project(tenantId, projectId, nativeId)
+                .filter(r -> tenantId.equals(r.getTenantId()) && projectId.equals(r.getProjectId()))
+                .orElseThrow(() -> new IllegalArgumentException("No such run: " + nativeId));
+        // Not debuggable or already ended is a no-op: the view was drawn from a
+        // snapshot the run may have moved on from.
+        if (!run.isDebug()) return;
+        workflowService.setBreakpoints(tenantId, projectId, nativeId, states);
     }
 
     @Override

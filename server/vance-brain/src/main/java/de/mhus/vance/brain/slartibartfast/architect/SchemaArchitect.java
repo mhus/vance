@@ -66,6 +66,16 @@ public interface SchemaArchitect {
      *  project has recipes to list. */
     void appendProposingContext(StringBuilder sb, ArchitectState state, List<ResolvedRecipe> availableRecipes);
 
+    /** Same, with the process the run belongs to — for an architect whose context depends on the
+     *  project it authors for (the tools it can name). Defaults to the form without the process. */
+    default void appendProposingContext(
+            StringBuilder sb,
+            ArchitectState state,
+            List<ResolvedRecipe> availableRecipes,
+            de.mhus.vance.shared.thinkprocess.ThinkProcessDocument process) {
+        appendProposingContext(sb, state, availableRecipes);
+    }
+
     // ──────────────────── VALIDATING-side ────────────────────
 
     /** The string the {@code engine:} top-level field must carry

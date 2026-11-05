@@ -147,7 +147,8 @@ public class ProposingPhase {
         List<ChatMessage> messages = new ArrayList<>();
         String langBlock = languageContextResolver.formatBlock(process);
         messages.add(SystemMessage.from(langBlock.isEmpty() ? systemPrompt : systemPrompt + "\n\n" + langBlock));
-        messages.add(UserMessage.from(buildInitialUserPrompt(state, recoveryHint, architect, availableRecipes)));
+        messages.add(
+                UserMessage.from(buildInitialUserPrompt(state, recoveryHint, architect, availableRecipes, process)));
 
         ProposeResult parsed = null;
         String validationError = null;
@@ -225,7 +226,8 @@ public class ProposingPhase {
             ArchitectState state,
             @Nullable String recoveryHint,
             SchemaArchitect architect,
-            List<ResolvedRecipe> availableRecipes) {
+            List<ResolvedRecipe> availableRecipes,
+            ThinkProcessDocument process) {
         StringBuilder sb = new StringBuilder();
 
         // Recovery hint goes FIRST and loud — easy to miss when
@@ -316,7 +318,7 @@ public class ProposingPhase {
         // hints) is owned by the architect bean. Vogon contributes
         // nothing here; Marvin lists allowedSubTaskRecipes candidates;
         // Zaphod lists head-recipe candidates.
-        architect.appendProposingContext(sb, state, availableRecipes);
+        architect.appendProposingContext(sb, state, availableRecipes, process);
 
         sb.append("Now emit a single JSON object matching the schema. "
                 + "The `yaml` field contains the full recipe YAML; "

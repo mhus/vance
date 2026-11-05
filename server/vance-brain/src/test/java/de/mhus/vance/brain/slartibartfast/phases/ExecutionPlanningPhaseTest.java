@@ -35,8 +35,10 @@ import tools.jackson.databind.ObjectMapper;
 class ExecutionPlanningPhaseTest {
 
     private final EngineChatFactory chatFactory = mock(EngineChatFactory.class);
-    private final VogonArchitect vogonArchitect =
-            new VogonArchitect(mock(MagratheaWorkflowLoader.class), mock(RecipeLoader.class));
+    private final VogonArchitect vogonArchitect = new VogonArchitect(
+            mock(MagratheaWorkflowLoader.class),
+            mock(RecipeLoader.class),
+            mock(de.mhus.vance.brain.tools.ToolDispatcher.class));
 
     private ExecutionPlanningPhase phaseFor(VogonArchitect architect) {
         return new ExecutionPlanningPhase(

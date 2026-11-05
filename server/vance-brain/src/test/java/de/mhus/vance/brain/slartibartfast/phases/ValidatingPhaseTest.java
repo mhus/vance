@@ -2,6 +2,7 @@ package de.mhus.vance.brain.slartibartfast.phases;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.slartibartfast.ArchitectState;
 import de.mhus.vance.api.slartibartfast.ArchitectStatus;
@@ -18,7 +19,6 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import static org.mockito.Mockito.when;
 
 /**
  * Unit tests for {@link ValidatingPhase}. Pure-logic gate —
@@ -40,8 +40,7 @@ class ValidatingPhaseTest {
         // strategy worker-name validation passes without per-test
         // setup. Individual tests override the stub when they need
         // a missing-recipe scenario.
-        when(recipeLoader.listAll(org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString()))
+        when(recipeLoader.listAll(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString()))
                 .thenReturn(java.util.List.of(
                         stubRecipe("ford"),
                         stubRecipe("marvin-worker"),
@@ -56,7 +55,9 @@ class ValidatingPhaseTest {
                 new de.mhus.vance.brain.thinkengine.SystemPromptComposer(promptRenderer, addonRegistry);
         phase = new ValidatingPhase(java.util.List.of(
                 new de.mhus.vance.brain.slartibartfast.architect.VogonArchitect(
-                        new de.mhus.vance.shared.magrathea.MagratheaWorkflowLoader(null), recipeLoader),
+                        new de.mhus.vance.shared.magrathea.MagratheaWorkflowLoader(null),
+                        recipeLoader,
+                        org.mockito.Mockito.mock(de.mhus.vance.brain.tools.ToolDispatcher.class)),
                 new de.mhus.vance.brain.slartibartfast.architect.MarvinArchitect(recipeLoader, composer),
                 new de.mhus.vance.brain.slartibartfast.architect.ZaphodArchitect()));
         process = new ThinkProcessDocument();
@@ -70,9 +71,11 @@ class ValidatingPhaseTest {
     @Test
     void wellFormedRecipe_passes() {
         ArchitectState state = stateWith(
-                draft(VALID_RECIPE_YAML, Map.of(
-                        "name", "sg1",
-                        "phases.0.worker", "sg1")),
+                draft(
+                        VALID_RECIPE_YAML,
+                        Map.of(
+                                "name", "sg1",
+                                "phases.0.worker", "sg1")),
                 List.of(subgoal("sg1")));
 
         phase.execute(state, process, ctx);
@@ -93,8 +96,7 @@ class ValidatingPhaseTest {
 
         phase.execute(state, process, ctx);
 
-        assertThat(state.getFailureReason())
-                .contains("VALIDATING entered without a proposedRecipe");
+        assertThat(state.getFailureReason()).contains("VALIDATING entered without a proposedRecipe");
     }
 
     @Test
@@ -125,7 +127,9 @@ class ValidatingPhaseTest {
 
         assertThat(state.getPendingRecovery()).isNull();
         assertThat(state.getValidationReport())
-                .filteredOn(v -> de.mhus.vance.brain.slartibartfast.architect.MarvinArchitect.RULE_MARVIN_PROMPT_PREFIX.equals(v.getRule()))
+                .filteredOn(v ->
+                        de.mhus.vance.brain.slartibartfast.architect.MarvinArchitect.RULE_MARVIN_PROMPT_PREFIX.equals(
+                                v.getRule()))
                 .extracting(ValidationCheck::isPassed)
                 .containsExactly(true);
     }
@@ -180,44 +184,40 @@ class ValidatingPhaseTest {
         phase.execute(state, process, ctx);
 
         assertThat(state.getPendingRecovery()).isNotNull();
-        assertThat(state.getPendingRecovery().getReason())
-                .isEqualTo(ValidatingPhase.RULE_RECIPE_SHAPE);
+        assertThat(state.getPendingRecovery().getReason()).isEqualTo(ValidatingPhase.RULE_RECIPE_SHAPE);
         assertThat(state.getValidationReport())
                 .filteredOn(v -> !v.isPassed())
                 .extracting(ValidationCheck::getMessage)
-                .first().asString()
+                .first()
+                .asString()
                 .contains("requires engine='marvin'");
     }
 
     @Test
     void malformedYaml_triggersRecovery() {
-        ArchitectState state = stateWith(
-                draft("not: valid:\n  yaml: : :", Map.of("name", "sg1")),
-                List.of(subgoal("sg1")));
+        ArchitectState state =
+                stateWith(draft("not: valid:\n  yaml: : :", Map.of("name", "sg1")), List.of(subgoal("sg1")));
 
         phase.execute(state, process, ctx);
 
         assertThat(state.getPendingRecovery()).isNotNull();
-        assertThat(state.getPendingRecovery().getReason())
-                .isEqualTo(ValidatingPhase.RULE_YAML_PARSES);
+        assertThat(state.getPendingRecovery().getReason()).isEqualTo(ValidatingPhase.RULE_YAML_PARSES);
     }
 
     @Test
     void yamlNotMapping_triggersRecovery() {
-        ArchitectState state = stateWith(
-                draft("- just\n- a list\n", Map.of("name", "sg1")),
-                List.of(subgoal("sg1")));
+        ArchitectState state = stateWith(draft("- just\n- a list\n", Map.of("name", "sg1")), List.of(subgoal("sg1")));
 
         phase.execute(state, process, ctx);
 
         assertThat(state.getPendingRecovery()).isNotNull();
-        assertThat(state.getPendingRecovery().getReason())
-                .isEqualTo(ValidatingPhase.RULE_YAML_PARSES);
+        assertThat(state.getPendingRecovery().getReason()).isEqualTo(ValidatingPhase.RULE_YAML_PARSES);
         assertThat(state.getValidationReport())
-                .filteredOn(v -> ValidatingPhase.RULE_YAML_PARSES.equals(v.getRule())
-                        && !v.isPassed())
+                .filteredOn(v -> ValidatingPhase.RULE_YAML_PARSES.equals(v.getRule()) && !v.isPassed())
                 .extracting(ValidationCheck::getMessage)
-                .first().asString().contains("not a mapping");
+                .first()
+                .asString()
+                .contains("not a mapping");
     }
 
     @Test
@@ -234,15 +234,12 @@ class ValidatingPhaseTest {
                         worker: ford
                         gate: { requires: [only_completed] }
                 """;
-        ArchitectState state = stateWith(
-                draft(yaml, Map.of("name", "sg1")),
-                List.of(subgoal("sg1")));
+        ArchitectState state = stateWith(draft(yaml, Map.of("name", "sg1")), List.of(subgoal("sg1")));
 
         phase.execute(state, process, ctx);
 
         assertThat(state.getPendingRecovery()).isNotNull();
-        assertThat(state.getPendingRecovery().getReason())
-                .isEqualTo(ValidatingPhase.RULE_RECIPE_SHAPE);
+        assertThat(state.getPendingRecovery().getReason()).isEqualTo(ValidatingPhase.RULE_RECIPE_SHAPE);
     }
 
     @Test
@@ -260,19 +257,18 @@ class ValidatingPhaseTest {
                         worker: ford
                         gate: { requires: [only_completed] }
                 """;
-        ArchitectState state = stateWith(
-                draft(yaml, Map.of("name", "sg1")),
-                List.of(subgoal("sg1")));
+        ArchitectState state = stateWith(draft(yaml, Map.of("name", "sg1")), List.of(subgoal("sg1")));
 
         phase.execute(state, process, ctx);
 
         assertThat(state.getPendingRecovery()).isNotNull();
-        assertThat(state.getPendingRecovery().getReason())
-                .isEqualTo(ValidatingPhase.RULE_RECIPE_SHAPE);
+        assertThat(state.getPendingRecovery().getReason()).isEqualTo(ValidatingPhase.RULE_RECIPE_SHAPE);
         assertThat(state.getValidationReport())
                 .filteredOn(v -> !v.isPassed())
                 .extracting(ValidationCheck::getMessage)
-                .first().asString().contains("ford");
+                .first()
+                .asString()
+                .contains("ford");
     }
 
     @Test
@@ -282,16 +278,13 @@ class ValidatingPhaseTest {
         String yaml = """
                 start: nowhere
                 """;
-        ArchitectState state = planStateWith(
-                planDraft(yaml, Map.of("name", "sg1")),
-                List.of(subgoal("sg1")));
+        ArchitectState state = planStateWith(planDraft(yaml, Map.of("name", "sg1")), List.of(subgoal("sg1")));
 
         phase.execute(state, process, ctx);
 
         assertThat(state.getPendingRecovery()).isNotNull();
         assertThat(state.getPendingRecovery().getReason())
-                .isEqualTo(de.mhus.vance.brain.slartibartfast.architect
-                        .MagratheaArchitect.RULE_WORKFLOW_PARSES);
+                .isEqualTo(de.mhus.vance.brain.slartibartfast.architect.MagratheaArchitect.RULE_WORKFLOW_PARSES);
     }
 
     @Test
@@ -304,33 +297,30 @@ class ValidatingPhaseTest {
                     transitions:
                       - else: ghost
                 """;
-        ArchitectState state = planStateWith(
-                planDraft(yaml, Map.of("name", "sg1")),
-                List.of(subgoal("sg1")));
+        ArchitectState state = planStateWith(planDraft(yaml, Map.of("name", "sg1")), List.of(subgoal("sg1")));
 
         phase.execute(state, process, ctx);
 
         assertThat(state.getPendingRecovery()).isNotNull();
         assertThat(state.getPendingRecovery().getReason())
-                .isEqualTo(de.mhus.vance.brain.slartibartfast.architect
-                        .MagratheaArchitect.RULE_WORKFLOW_PARSES);
+                .isEqualTo(de.mhus.vance.brain.slartibartfast.architect.MagratheaArchitect.RULE_WORKFLOW_PARSES);
     }
 
     @Test
     void danglingJustificationRef_triggersRecovery() {
         ArchitectState state = stateWith(
-                draft(VALID_RECIPE_YAML, Map.of(
-                        "name", "sg-ghost",            // not in subgoals
-                        "phases.0.worker", "sg1")),
+                draft(
+                        VALID_RECIPE_YAML,
+                        Map.of(
+                                "name", "sg-ghost", // not in subgoals
+                                "phases.0.worker", "sg1")),
                 List.of(subgoal("sg1")));
 
         phase.execute(state, process, ctx);
 
         assertThat(state.getPendingRecovery()).isNotNull();
-        assertThat(state.getPendingRecovery().getReason())
-                .isEqualTo(ValidatingPhase.RULE_JUSTIFICATION_RESOLVES);
-        assertThat(state.getPendingRecovery().getOffendingId())
-                .isEqualTo("name");
+        assertThat(state.getPendingRecovery().getReason()).isEqualTo(ValidatingPhase.RULE_JUSTIFICATION_RESOLVES);
+        assertThat(state.getPendingRecovery().getOffendingId()).isEqualTo("name");
     }
 
     @Test
@@ -339,9 +329,11 @@ class ValidatingPhaseTest {
         // value when one constraint covers several subgoals. We
         // accept that shape as long as every part is a real sg-id.
         ArchitectState state = stateWith(
-                draft(VALID_RECIPE_YAML, Map.of(
-                        "name", "sg1",
-                        "phases.0.worker", "sg1, sg2 ,sg3")),
+                draft(
+                        VALID_RECIPE_YAML,
+                        Map.of(
+                                "name", "sg1",
+                                "phases.0.worker", "sg1, sg2 ,sg3")),
                 List.of(subgoal("sg1"), subgoal("sg2"), subgoal("sg3")));
 
         phase.execute(state, process, ctx);
@@ -356,26 +348,26 @@ class ValidatingPhaseTest {
     @Test
     void commaSeparatedJustificationValue_oneInvalid_rejected() {
         ArchitectState state = stateWith(
-                draft(VALID_RECIPE_YAML, Map.of(
-                        "name", "sg1",
-                        "phases.0.worker", "sg1, sg-ghost, sg3")),
+                draft(
+                        VALID_RECIPE_YAML,
+                        Map.of(
+                                "name", "sg1",
+                                "phases.0.worker", "sg1, sg-ghost, sg3")),
                 List.of(subgoal("sg1"), subgoal("sg3")));
 
         phase.execute(state, process, ctx);
 
         assertThat(state.getValidationReport())
-                .filteredOn(c -> ValidatingPhase.RULE_JUSTIFICATION_RESOLVES.equals(c.getRule())
-                        && !c.isPassed())
+                .filteredOn(c -> ValidatingPhase.RULE_JUSTIFICATION_RESOLVES.equals(c.getRule()) && !c.isPassed())
                 .extracting(ValidationCheck::getMessage)
-                .singleElement().asString()
+                .singleElement()
+                .asString()
                 .contains("sg-ghost");
     }
 
     @Test
     void hintMentionsAllFailingRules() {
-        ArchitectState state = stateWith(
-                draft("not a mapping\n", Map.of("name", "sg-ghost")),
-                List.of(subgoal("sg1")));
+        ArchitectState state = stateWith(draft("not a mapping\n", Map.of("name", "sg-ghost")), List.of(subgoal("sg1")));
 
         phase.execute(state, process, ctx);
 
@@ -387,20 +379,22 @@ class ValidatingPhaseTest {
 
     @Test
     void marvinRecipe_unknownRecipeName_rejected() {
-        ArchitectState state = marvinState(MARVIN_YAML_WITH_RECIPES_TEMPLATE.formatted(
-                        "    - web-research\n    - real-recipe"),
+        ArchitectState state = marvinState(
+                MARVIN_YAML_WITH_RECIPES_TEMPLATE.formatted("    - web-research\n    - real-recipe"),
                 Map.of("name", "sg1", "promptPrefix", "sg1"),
                 List.of(subgoal("sg1")));
-        when(recipeLoader.listAll("acme", "test-project"))
-                .thenReturn(java.util.List.of(stubRecipe("real-recipe")));
+        when(recipeLoader.listAll("acme", "test-project")).thenReturn(java.util.List.of(stubRecipe("real-recipe")));
 
         phase.execute(state, process, ctx);
 
         assertThat(state.getValidationReport())
-                .filteredOn(c -> de.mhus.vance.brain.slartibartfast.architect.MarvinArchitect.RULE_MARVIN_RECIPES_EXIST.equals(c.getRule())
-                        && !c.isPassed())
+                .filteredOn(c ->
+                        de.mhus.vance.brain.slartibartfast.architect.MarvinArchitect.RULE_MARVIN_RECIPES_EXIST.equals(
+                                        c.getRule())
+                                && !c.isPassed())
                 .extracting(ValidationCheck::getMessage)
-                .singleElement().asString()
+                .singleElement()
+                .asString()
                 .contains("web-research");
     }
 
@@ -409,40 +403,44 @@ class ValidatingPhaseTest {
         // 'marvin-worker' is Marvin's engine label, not a recipe.
         // The existence check must reject it just like any other
         // hallucinated name — no special-case engine list.
-        ArchitectState state = marvinState(MARVIN_YAML_WITH_RECIPES_TEMPLATE.formatted(
-                        "    - marvin-worker\n    - real-recipe"),
+        ArchitectState state = marvinState(
+                MARVIN_YAML_WITH_RECIPES_TEMPLATE.formatted("    - marvin-worker\n    - real-recipe"),
                 Map.of("name", "sg1", "promptPrefix", "sg1"),
                 List.of(subgoal("sg1")));
-        when(recipeLoader.listAll("acme", "test-project"))
-                .thenReturn(java.util.List.of(stubRecipe("real-recipe")));
+        when(recipeLoader.listAll("acme", "test-project")).thenReturn(java.util.List.of(stubRecipe("real-recipe")));
 
         phase.execute(state, process, ctx);
 
         assertThat(state.getValidationReport())
-                .filteredOn(c -> de.mhus.vance.brain.slartibartfast.architect.MarvinArchitect.RULE_MARVIN_RECIPES_EXIST.equals(c.getRule())
-                        && !c.isPassed())
+                .filteredOn(c ->
+                        de.mhus.vance.brain.slartibartfast.architect.MarvinArchitect.RULE_MARVIN_RECIPES_EXIST.equals(
+                                        c.getRule())
+                                && !c.isPassed())
                 .extracting(ValidationCheck::getMessage)
-                .singleElement().asString()
+                .singleElement()
+                .asString()
                 .contains("not found in project")
                 .contains("marvin-worker");
     }
 
     @Test
     void marvinRecipe_duplicateRecipeName_rejected() {
-        ArchitectState state = marvinState(MARVIN_YAML_WITH_RECIPES_TEMPLATE.formatted(
-                        "    - real-recipe\n    - real-recipe"),
+        ArchitectState state = marvinState(
+                MARVIN_YAML_WITH_RECIPES_TEMPLATE.formatted("    - real-recipe\n    - real-recipe"),
                 Map.of("name", "sg1", "promptPrefix", "sg1"),
                 List.of(subgoal("sg1")));
-        when(recipeLoader.listAll("acme", "test-project"))
-                .thenReturn(java.util.List.of(stubRecipe("real-recipe")));
+        when(recipeLoader.listAll("acme", "test-project")).thenReturn(java.util.List.of(stubRecipe("real-recipe")));
 
         phase.execute(state, process, ctx);
 
         assertThat(state.getValidationReport())
-                .filteredOn(c -> de.mhus.vance.brain.slartibartfast.architect.MarvinArchitect.RULE_MARVIN_RECIPES_EXIST.equals(c.getRule())
-                        && !c.isPassed())
+                .filteredOn(c ->
+                        de.mhus.vance.brain.slartibartfast.architect.MarvinArchitect.RULE_MARVIN_RECIPES_EXIST.equals(
+                                        c.getRule())
+                                && !c.isPassed())
                 .extracting(ValidationCheck::getMessage)
-                .singleElement().asString()
+                .singleElement()
+                .asString()
                 .contains("duplicate")
                 .contains("real-recipe");
     }
@@ -450,52 +448,50 @@ class ValidatingPhaseTest {
     @Test
     void marvinRecipe_emptyAllowedList_passes() {
         // No allowedSubTaskRecipes — fully open-ended Marvin run.
-        ArchitectState state = marvinState(MARVIN_YAML_NO_RECIPE_LIST,
-                Map.of("name", "sg1", "promptPrefix", "sg1"),
-                List.of(subgoal("sg1")));
+        ArchitectState state = marvinState(
+                MARVIN_YAML_NO_RECIPE_LIST, Map.of("name", "sg1", "promptPrefix", "sg1"), List.of(subgoal("sg1")));
 
         phase.execute(state, process, ctx);
 
         assertThat(state.getValidationReport())
-                .filteredOn(c -> de.mhus.vance.brain.slartibartfast.architect.MarvinArchitect.RULE_MARVIN_RECIPES_EXIST.equals(c.getRule()))
+                .filteredOn(c ->
+                        de.mhus.vance.brain.slartibartfast.architect.MarvinArchitect.RULE_MARVIN_RECIPES_EXIST.equals(
+                                c.getRule()))
                 .extracting(ValidationCheck::isPassed)
                 .containsExactly(true);
     }
 
     @Test
     void marvinRecipe_allRecipesPresent_passes() {
-        ArchitectState state = marvinState(MARVIN_YAML_WITH_RECIPES_TEMPLATE.formatted(
-                        "    - real-recipe\n    - other-recipe"),
+        ArchitectState state = marvinState(
+                MARVIN_YAML_WITH_RECIPES_TEMPLATE.formatted("    - real-recipe\n    - other-recipe"),
                 Map.of("name", "sg1", "promptPrefix", "sg1"),
                 List.of(subgoal("sg1")));
         when(recipeLoader.listAll("acme", "test-project"))
-                .thenReturn(java.util.List.of(
-                        stubRecipe("real-recipe"),
-                        stubRecipe("other-recipe")));
+                .thenReturn(java.util.List.of(stubRecipe("real-recipe"), stubRecipe("other-recipe")));
 
         phase.execute(state, process, ctx);
 
         assertThat(state.getValidationReport())
-                .filteredOn(c -> de.mhus.vance.brain.slartibartfast.architect.MarvinArchitect.RULE_MARVIN_RECIPES_EXIST.equals(c.getRule()))
+                .filteredOn(c ->
+                        de.mhus.vance.brain.slartibartfast.architect.MarvinArchitect.RULE_MARVIN_RECIPES_EXIST.equals(
+                                c.getRule()))
                 .extracting(ValidationCheck::isPassed)
                 .containsExactly(true);
     }
 
     @Test
     void marvinRecipe_recoveryHintListsAvailableRecipes() {
-        ArchitectState state = marvinState(MARVIN_YAML_WITH_RECIPES_TEMPLATE.formatted(
-                        "    - bogus-recipe"),
+        ArchitectState state = marvinState(
+                MARVIN_YAML_WITH_RECIPES_TEMPLATE.formatted("    - bogus-recipe"),
                 Map.of("name", "sg1", "promptPrefix", "sg1"),
                 List.of(subgoal("sg1")));
-        when(recipeLoader.listAll("acme", "test-project"))
-                .thenReturn(java.util.List.of(stubRecipe("real-recipe")));
+        when(recipeLoader.listAll("acme", "test-project")).thenReturn(java.util.List.of(stubRecipe("real-recipe")));
 
         phase.execute(state, process, ctx);
 
         String hint = state.getPendingRecovery().getHint();
-        assertThat(hint)
-                .contains("real-recipe")
-                .contains("Valid recipe names");
+        assertThat(hint).contains("real-recipe").contains("Valid recipe names");
     }
 
     // ──────────────────── helpers ────────────────────
@@ -540,8 +536,7 @@ class ValidatingPhaseTest {
               Drive the plan.
             """;
 
-    private static ArchitectState marvinState(
-            String yaml, Map<String, String> just, List<Subgoal> subgoals) {
+    private static ArchitectState marvinState(String yaml, Map<String, String> just, List<Subgoal> subgoals) {
         return ArchitectState.builder()
                 .runId("run1")
                 .outputSchemaType(OutputSchemaType.MARVIN_RECIPE)
@@ -556,8 +551,7 @@ class ValidatingPhaseTest {
                 .build();
     }
 
-    private static ArchitectState stateWith(
-            RecipeDraft draft, List<Subgoal> subgoals) {
+    private static ArchitectState stateWith(RecipeDraft draft, List<Subgoal> subgoals) {
         // MARVIN_RECIPE, not VOGON_PLAN: these exercise recipe-shape
         // validation (engine field, mapping, justification refs), and a
         // Vogon plan is a plan document — it has no engine field to check.
@@ -569,8 +563,7 @@ class ValidatingPhaseTest {
                 .build();
     }
 
-    private static ArchitectState planStateWith(
-            RecipeDraft draft, List<Subgoal> subgoals) {
+    private static ArchitectState planStateWith(RecipeDraft draft, List<Subgoal> subgoals) {
         return ArchitectState.builder()
                 .runId("run1")
                 .outputSchemaType(OutputSchemaType.VOGON_PLAN)
@@ -601,10 +594,12 @@ class ValidatingPhaseTest {
 
     private static Subgoal subgoal(String id) {
         return Subgoal.builder()
-                .id(id).goal("g " + id)
+                .id(id)
+                .goal("g " + id)
                 .evidenceRefs(List.of("cl1"))
                 .criterionRefs(List.of("cr1"))
-                .speculative(false).build();
+                .speculative(false)
+                .build();
     }
 
     private static de.mhus.vance.brain.recipe.ResolvedRecipe stubRecipe(String name) {

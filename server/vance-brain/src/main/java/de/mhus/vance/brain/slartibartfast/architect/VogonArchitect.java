@@ -32,15 +32,15 @@ import org.springframework.stereotype.Component;
  * guidance, not validation.
  */
 @Component
-@ConditionalOnProperty(
-        value = "vance.services.magrathea",
-        havingValue = "true",
-        matchIfMissing = false)
+@ConditionalOnProperty(value = "vance.services.magrathea", havingValue = "true", matchIfMissing = false)
 @Slf4j
 public class VogonArchitect extends MagratheaArchitect {
 
-    public VogonArchitect(MagratheaWorkflowLoader workflowLoader, RecipeLoader recipeLoader) {
-        super(workflowLoader, recipeLoader);
+    public VogonArchitect(
+            MagratheaWorkflowLoader workflowLoader,
+            RecipeLoader recipeLoader,
+            de.mhus.vance.brain.tools.ToolDispatcher toolDispatcher) {
+        super(workflowLoader, recipeLoader, toolDispatcher);
     }
 
     @Override

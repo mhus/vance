@@ -5,13 +5,16 @@ import de.mhus.vance.api.slartibartfast.ArchitectState;
 import de.mhus.vance.api.slartibartfast.OutputSchemaType;
 import de.mhus.vance.api.slartibartfast.RecipeDraft;
 import de.mhus.vance.api.slartibartfast.ValidationCheck;
+import de.mhus.vance.api.tools.ToolSpec;
 import de.mhus.vance.brain.recipe.RecipeLoader;
 import de.mhus.vance.brain.recipe.ResolvedRecipe;
+import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.shared.magrathea.MagratheaStateSpec;
 import de.mhus.vance.shared.magrathea.MagratheaWorkflowLoader;
 import de.mhus.vance.shared.magrathea.MagratheaWorkflowParseException;
 import de.mhus.vance.shared.magrathea.ResolvedMagratheaWorkflow;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -67,6 +70,12 @@ public class MagratheaArchitect implements SchemaArchitect {
 
     public static final String RULE_WORKFLOW_PARSES = "magrathea-workflow-parses";
     public static final String RULE_AGENT_TASK_RECIPES_EXIST = "magrathea-agent-task-recipes-exist";
+    public static final String RULE_TOOL_TASK_TOOLS_EXIST = "magrathea-tool-task-tools-exist";
+
+    /** How many tools of the catalogue are listed to the model, and how many key names of a result. */
+    private static final int MAX_CATALOGUE_TOOLS = 120;
+
+    private static final int MAX_RESULT_KEYS = 8;
 
     private static final String SYSTEM_PROMPT = """
             You are the PROPOSING node of the Slartibartfast engine.
@@ -243,6 +252,7 @@ public class MagratheaArchitect implements SchemaArchitect {
 
     private final MagratheaWorkflowLoader workflowLoader;
     private final RecipeLoader recipeLoader;
+    private final ToolDispatcher toolDispatcher;
 
     @Override
     public OutputSchemaType type() {
@@ -325,6 +335,42 @@ public class MagratheaArchitect implements SchemaArchitect {
     }
 
     @Override
+    public void appendProposingContext(
+            StringBuilder sb,
+            ArchitectState state,
+            List<ResolvedRecipe> availableRecipes,
+            ThinkProcessDocument process) {
+        appendProposingContext(sb, state, availableRecipes);
+        List<ToolSpec> integrations = integrationTools(process);
+        if (integrations.isEmpty()) return;
+        sb.append("\nAvailable integration tools for tool_task.tool references ")
+                .append("(`name(params)` — `*` marks a required parameter; `-> json{…}` lists the keys of the ")
+                .append("result's `json` that a later state can read as ${state.<storeAs>.json.<key>}):\n");
+        String service = null;
+        int listed = 0;
+        for (ToolSpec t : integrations) {
+            if (listed++ >= MAX_CATALOGUE_TOOLS) {
+                sb.append("  … (more tools exist; ask for them by exact name only if you know it)\n");
+                break;
+            }
+            if (!t.getService().equals(service)) {
+                service = t.getService();
+                sb.append(" ").append(service).append(":\n");
+            }
+            sb.append("  - ")
+                    .append(t.getName())
+                    .append("(")
+                    .append(paramNames(t))
+                    .append(")");
+            String keys = resultKeys(t);
+            if (!keys.isEmpty()) sb.append(" -> json{").append(keys).append("}");
+            sb.append("\n");
+        }
+        sb.append("Use ONLY tool names from this list, or built-in tool names you know exactly, in ")
+                .append("tool_task.tool; the validator rejects an unknown name. Do not invent parameters.\n");
+    }
+
+    @Override
     public String expectedEngineName() {
         // Non-recipe output — ValidatingPhase skips the engine-field
         // check based on isRecipeOutput() returning false. Never
@@ -360,7 +406,10 @@ public class MagratheaArchitect implements SchemaArchitect {
 
         ValidationCheck recipeCheck = validateAgentTaskRecipes(workflow, process);
         report.add(recipeCheck);
-        return recipeCheck.isPassed() ? null : recipeCheck;
+        if (!recipeCheck.isPassed()) return recipeCheck;
+        ValidationCheck toolCheck = validateToolTaskTools(workflow, process);
+        report.add(toolCheck);
+        return toolCheck.isPassed() ? null : toolCheck;
     }
 
     @Override
@@ -447,6 +496,138 @@ public class MagratheaArchitect implements SchemaArchitect {
                 .passed(false)
                 .message(msg.toString())
                 .build();
+    }
+
+    /**
+     * Every {@code tool_task}'s {@code tool:} must name a tool the project can call — the common
+     * failure is a plausible name that does not exist ({@code jira.create_issue} where the tool is
+     * {@code jira_rest__createIssue}). Checked against the same dispatcher the task calls through.
+     */
+    private ValidationCheck validateToolTaskTools(ResolvedMagratheaWorkflow workflow, ThinkProcessDocument process) {
+        Set<String> used = new LinkedHashSet<>();
+        for (MagratheaStateSpec s : workflow.states().values()) {
+            if (s.type() != MagratheaTaskType.TOOL_TASK) continue;
+            String tool = s.specString("tool");
+            if (tool != null && !tool.contains("${")) used.add(tool.trim());
+        }
+        if (used.isEmpty()) {
+            return ValidationCheck.builder()
+                    .rule(RULE_TOOL_TASK_TOOLS_EXIST)
+                    .passed(true)
+                    .message("no tool_task tool references to validate")
+                    .build();
+        }
+        Set<String> available = new LinkedHashSet<>();
+        try {
+            for (ToolDispatcher.Resolved r : toolDispatcher.resolveAll(contextOf(process))) {
+                available.add(r.tool().name());
+            }
+        } catch (RuntimeException e) {
+            // Cannot tell what exists: do not fail an author's workflow over it.
+            log.warn(
+                    "Slartibartfast id='{}' VALIDATING could not list tools for the tool_task check: {}",
+                    process.getId(),
+                    e.toString());
+            return ValidationCheck.builder()
+                    .rule(RULE_TOOL_TASK_TOOLS_EXIST)
+                    .passed(true)
+                    .message("tool inventory unavailable — tool_task references not checked")
+                    .build();
+        }
+        List<String> unknown = new ArrayList<>();
+        for (String t : used) {
+            if (!available.contains(t)) unknown.add(t);
+        }
+        if (unknown.isEmpty()) {
+            return ValidationCheck.builder()
+                    .rule(RULE_TOOL_TASK_TOOLS_EXIST)
+                    .passed(true)
+                    .message(used.size() + " tool_task tool reference(s) resolve to known tools")
+                    .build();
+        }
+        StringBuilder msg = new StringBuilder();
+        msg.append("Workflow tool_task references unknown tool(s): ")
+                .append(unknown)
+                .append(".\n\n");
+        msg.append("Use a tool name exactly as it is listed — integration tools are named "
+                + "`<service>__<operation>`. Closest names:\n");
+        for (String u : unknown) {
+            for (String candidate : closest(u, available)) {
+                msg.append("- '").append(candidate).append("'\n");
+            }
+        }
+        msg.append("\nIf nothing fits, the capability is not available in this project: say so in the "
+                + "workflow's description instead of inventing a tool.");
+        return ValidationCheck.builder()
+                .rule(RULE_TOOL_TASK_TOOLS_EXIST)
+                .passed(false)
+                .message(msg.toString())
+                .build();
+    }
+
+    /** Up to a handful of known names that share a word with the unknown one, else the first few. */
+    static List<String> closest(String unknown, Set<String> available) {
+        List<String> words = new ArrayList<>();
+        for (String w : unknown.toLowerCase().split("[^a-z0-9]+")) {
+            if (w.length() >= 3) words.add(w);
+        }
+        List<String> hits = new ArrayList<>();
+        for (String name : available) {
+            String lower = name.toLowerCase();
+            if (words.stream().anyMatch(lower::contains)) hits.add(name);
+            if (hits.size() >= 8) break;
+        }
+        if (!hits.isEmpty()) return hits;
+        return available.stream().limit(8).toList();
+    }
+
+    /** Tools that belong to a service (the REST and MCP packs), by service then name; built-ins are not listed. */
+    private List<ToolSpec> integrationTools(ThinkProcessDocument process) {
+        try {
+            return toolDispatcher.resolveAll(contextOf(process)).stream()
+                    .filter(r -> r.tool().requiresEngineRoles().isEmpty())
+                    .map(r -> r.tool().toSpec(r.source().sourceId()))
+                    .filter(t -> t.getService() != null && !t.getService().isBlank())
+                    .sorted(java.util.Comparator.comparing(ToolSpec::getService).thenComparing(ToolSpec::getName))
+                    .toList();
+        } catch (RuntimeException e) {
+            log.warn("Slartibartfast id='{}' PROPOSING could not list tools: {}", process.getId(), e.toString());
+            return List.of();
+        }
+    }
+
+    private static ToolInvocationContext contextOf(ThinkProcessDocument process) {
+        return new ToolInvocationContext(
+                process.getTenantId(), process.getProjectId(), /* sessionId */ null, /* processId */ null, null);
+    }
+
+    private static String paramNames(ToolSpec tool) {
+        Object props = tool.getParamsSchema().get("properties");
+        Object required = tool.getParamsSchema().get("required");
+        Set<?> requiredNames = required instanceof java.util.Collection<?> c ? new java.util.HashSet<>(c) : Set.of();
+        if (!(props instanceof Map<?, ?> map)) return "";
+        List<String> names = new ArrayList<>();
+        for (Object key : map.keySet()) {
+            names.add(requiredNames.contains(key) ? key + "*" : String.valueOf(key));
+        }
+        return String.join(", ", names);
+    }
+
+    /** The top-level keys of the result's {@code json}, when the tool declares that shape. */
+    private static String resultKeys(ToolSpec tool) {
+        if (tool.getOutputSchema() == null) return "";
+        if (!(tool.getOutputSchema().get("properties") instanceof Map<?, ?> envelope)) return "";
+        if (!(envelope.get("json") instanceof Map<?, ?> json)) return "";
+        if (!(json.get("properties") instanceof Map<?, ?> props)) return "";
+        List<String> keys = new ArrayList<>();
+        for (Object key : props.keySet()) {
+            if (keys.size() >= MAX_RESULT_KEYS) {
+                keys.add("…");
+                break;
+            }
+            keys.add(String.valueOf(key));
+        }
+        return String.join(", ", keys);
     }
 
     private static String abbrev(@Nullable String s, int max) {

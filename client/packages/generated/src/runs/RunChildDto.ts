@@ -3,8 +3,11 @@
  Source: de.mhus.vance.api.runs.RunChildDto
 */
 
+import { RunStatus } from './RunStatus';
+
 export interface RunChildDto {
   runId: string;
   name?: string;
   fromStep?: string;
+  status?: RunStatus;
 }

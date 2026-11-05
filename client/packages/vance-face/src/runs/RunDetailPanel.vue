@@ -50,6 +50,13 @@ function onSimulate(body: RunSimulateRequest): void {
   emit('simulate', body);
 }
 
+// A running run whose sub-run stands in the debugger is waiting for it; say so,
+// or the parent looks stuck.
+const waitingChild = computed(() =>
+  props.detail.summary.status === 'RUNNING'
+    ? props.detail.children?.find((child) => child.status === 'PAUSED')
+    : undefined,
+);
 const variables = computed(() => Object.entries(props.detail.variables ?? {}));
 
 /** Where a link points, per rel. The run view never renders those itself. */
@@ -184,11 +191,18 @@ function render(value: unknown): string {
     </VCard>
 
     <VCard v-if="detail.children?.length" :title="t('runs.detail.children')">
+      <p v-if="waitingChild" class="child-waiting">
+        {{ t('runs.detail.childWaiting') }}
+        <VButton size="sm" variant="plain" @click="emit('open-run', waitingChild.runId)">
+          {{ waitingChild.name || waitingChild.runId }}
+        </VButton>
+      </p>
       <ul class="children">
         <li v-for="child in detail.children" :key="child.runId">
           <VButton size="sm" variant="plain" @click="emit('open-run', child.runId)">
             {{ child.name || child.runId }}
           </VButton>
+          <RunStatusBadge v-if="child.status" :status="child.status" />
           <span v-if="child.fromStep" class="from-step">{{ child.fromStep }}</span>
         </li>
       </ul>
@@ -247,5 +261,6 @@ h2 { margin: 0; font-size: 1.05rem; }
 }
 .children { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0.2rem; }
 .children li { display: flex; align-items: center; gap: 0.5rem; }
+.child-waiting { margin: 0 0 0.5rem; font-size: 0.85rem; }
 .from-step { font-size: 0.72rem; opacity: 0.55; font-family: ui-monospace, monospace; }
 </style>

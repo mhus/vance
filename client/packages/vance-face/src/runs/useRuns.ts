@@ -1,7 +1,8 @@
 import { ref, type Ref } from 'vue';
 import { brainFetch } from '@vance/shared';
 import type {
-  RunBreakpointsRequest, RunDetailDto, RunSimulateRequest, RunSummaryDto,
+  RunBreakpointsRequest, RunDetailDto, RunRestartRequest, RunRestartResponse, RunSimulateRequest,
+  RunSummaryDto,
 } from '@vance/generated';
 
 /**
@@ -28,6 +29,7 @@ export function useRuns(): {
   perform: (projectId: string, runId: string, action: string) => Promise<void>;
   setBreakpoints: (projectId: string, runId: string, states: string[]) => Promise<void>;
   simulate: (projectId: string, runId: string, body: RunSimulateRequest) => Promise<void>;
+  restart: (projectId: string, runId: string, body: RunRestartRequest) => Promise<string | null>;
   acting: Ref<boolean>;
   clearDetail: () => void;
 } {
@@ -135,11 +137,32 @@ export function useRuns(): {
     }
   }
 
+  /**
+   * Start a new run from an ended one. Answers the id of the new run, or `null`
+   * when it could not be started (the reason is in `error`).
+   */
+  async function restart(projectId: string, runId: string, body: RunRestartRequest): Promise<string | null> {
+    acting.value = true;
+    error.value = null;
+    try {
+      const started = await brainFetch<RunRestartResponse>(
+        'POST',
+        `runs/${encodeURIComponent(runId)}/restart?projectId=${encodeURIComponent(projectId)}`,
+        { body });
+      return started.runId;
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Could not start the run again.';
+      return null;
+    } finally {
+      acting.value = false;
+    }
+  }
+
   function clearDetail(): void {
     requestedRunId = '';
     detail.value = null;
   }
 
   return { runs, detail, loading, detailLoading, error, acting,
-    loadRuns, loadDetail, perform, setBreakpoints, simulate, clearDetail };
+    loadRuns, loadDetail, perform, setBreakpoints, simulate, restart, clearDetail };
 }

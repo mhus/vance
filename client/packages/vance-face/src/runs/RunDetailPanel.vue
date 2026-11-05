@@ -6,10 +6,10 @@
  * <p>The blocks below are the ones every source can fill. What only one
  * source has goes through {@link RunExtraBlock}.
  */
-import { computed, defineAsyncComponent, ref } from 'vue';
+import { computed, defineAsyncComponent, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { VAlert, VBadge, VButton, VCard, VIcon } from '@/components';
-import type { RunDetailDto, RunSimulateRequest } from '@vance/generated';
+import { VAlert, VBadge, VButton, VCard, VCheckbox, VIcon, VSelect } from '@/components';
+import type { RunDetailDto, RunRestartRequest, RunSimulateRequest } from '@vance/generated';
 import RunStatusBadge from './RunStatusBadge.vue';
 import RunExtraBlock from './RunExtraBlock.vue';
 import SimulateDialog from './SimulateDialog.vue';
@@ -24,6 +24,7 @@ const emit = defineEmits<{
   (e: 'action', action: string): void;
   (e: 'set-breakpoints', states: string[]): void;
   (e: 'simulate', body: RunSimulateRequest): void;
+  (e: 'restart', body: RunRestartRequest): void;
 }>();
 const { t, locale } = useI18n();
 
@@ -50,6 +51,34 @@ function onSimulate(body: RunSimulateRequest): void {
   emit('simulate', body);
 }
 
+// An ended run can be run again — from the start, or from a state it entered.
+const restartFrom = ref('');
+const restartDebug = ref(false);
+const restartOptions = computed(() => [
+  { value: '', label: t('runs.restart.fromStart') },
+  ...(props.detail.restartableStates ?? []).map((state) => ({ value: state, label: state })),
+]);
+
+/** Where a retry most likely wants to begin: the step that did not succeed, else the start. */
+function suggestedRestartState(): string {
+  const entered = new Set(props.detail.restartableStates ?? []);
+  const failed = [...(props.detail.steps ?? [])].reverse().find(
+    (step) => entered.has(step.name) && step.outcome && step.outcome !== 'success');
+  return failed?.name ?? '';
+}
+
+watch(() => props.detail.summary.runId, () => {
+  restartFrom.value = suggestedRestartState();
+  restartDebug.value = false;
+}, { immediate: true });
+
+function onRestart(): void {
+  emit('restart', {
+    fromState: restartFrom.value || undefined,
+    debug: restartDebug.value || undefined,
+  });
+}
+
 // A running run whose sub-run stands in the debugger is waiting for it; say so,
 // or the parent looks stuck.
 const waitingChild = computed(() =>
@@ -62,6 +91,7 @@ const variables = computed(() => Object.entries(props.detail.variables ?? {}));
 /** Where a link points, per rel. The run view never renders those itself. */
 function href(rel: string, target: string): string {
   const project = encodeURIComponent(props.projectId);
+  if (rel === 'restartOf') return `/runs.html?project=${project}&run=${encodeURIComponent(target)}`;
   if (rel === 'session') return `/chat?project=${project}&sessionId=${encodeURIComponent(target)}`;
   // definition / document both open in Cortex by path.
   return `/cortex?project=${project}&path=${encodeURIComponent(target)}`;
@@ -208,6 +238,15 @@ function render(value: unknown): string {
       </ul>
     </VCard>
 
+    <VCard v-if="detail.restartableStates" :title="t('runs.restart.title')">
+      <div class="restart">
+        <VSelect v-model="restartFrom" :label="t('runs.restart.from')" :options="restartOptions" />
+        <VCheckbox v-model="restartDebug" :label="t('runs.restart.debug')" />
+        <p class="restart-hint">{{ t('runs.restart.hint') }}</p>
+        <VButton size="sm" :disabled="acting" @click="onRestart">{{ t('runs.restart.submit') }}</VButton>
+      </div>
+    </VCard>
+
     <VCard v-if="detail.result" :title="t('runs.detail.result')">
       <pre class="result">{{ render(detail.result) }}</pre>
     </VCard>
@@ -261,6 +300,8 @@ h2 { margin: 0; font-size: 1.05rem; }
 }
 .children { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0.2rem; }
 .children li { display: flex; align-items: center; gap: 0.5rem; }
+.restart { display: flex; flex-direction: column; gap: 0.6rem; align-items: flex-start; }
+.restart-hint { margin: 0; font-size: 0.8rem; opacity: 0.7; }
 .child-waiting { margin: 0 0 0.5rem; font-size: 0.85rem; }
 .from-step { font-size: 0.72rem; opacity: 0.55; font-family: ui-monospace, monospace; }
 </style>

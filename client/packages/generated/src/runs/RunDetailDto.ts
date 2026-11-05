@@ -23,6 +23,7 @@ export interface RunDetailDto {
   debug: boolean;
   breakpoints?: string[];
   simulation?: RunSimulationDto;
+  restartableStates?: string[];
   definition?: string;
   extra?: Record<string, any>;
 }

@@ -19,7 +19,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { EditorShell, ProjectListSidebar, VAlert, VButton, VEmptyState, VSelect } from '@/components';
-import type { RunSimulateRequest } from '@vance/generated';
+import type { RunRestartRequest, RunSimulateRequest } from '@vance/generated';
 import { useTenantProjects } from '@/composables/useTenantProjects';
 import { recallProject, rememberProject } from '@/platform';
 import { useRuns } from './useRuns';
@@ -31,7 +31,7 @@ import { pollPlan, type PollPlan } from './polling';
 const { t } = useI18n();
 const tenantProjects = useTenantProjects();
 const { runs, detail, loading, detailLoading, error, acting,
-  loadRuns, loadDetail, perform, setBreakpoints, simulate, clearDetail } = useRuns();
+  loadRuns, loadDetail, perform, setBreakpoints, simulate, restart, clearDetail } = useRuns();
 
 const params = new URLSearchParams(window.location.search);
 const projectId = ref<string | null>(params.get('project'));
@@ -109,6 +109,15 @@ async function onSimulate(body: RunSimulateRequest): Promise<void> {
   if (!projectId.value || !selectedRunId.value) return;
   await simulate(projectId.value, selectedRunId.value, body);
   await loadRuns(projectId.value);
+}
+
+/** The reader asked for the run again: start it, then go to the new run. */
+async function onRestart(body: RunRestartRequest): Promise<void> {
+  if (!projectId.value || !selectedRunId.value) return;
+  const started = await restart(projectId.value, selectedRunId.value, body);
+  if (!started) return;
+  await loadRuns(projectId.value);
+  await selectRun(started);
 }
 
 async function refresh(): Promise<void> {
@@ -285,6 +294,7 @@ onMounted(async () => {
           @action="runAction"
           @set-breakpoints="onSetBreakpoints"
           @simulate="onSimulate"
+          @restart="onRestart"
         />
         <VEmptyState
           v-else

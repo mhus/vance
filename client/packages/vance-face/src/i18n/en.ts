@@ -1147,8 +1147,22 @@ export default {
       STOPPED: 'Stopped',
     },
     sidebar: { projectsHeading: 'Projects', filterPlaceholder: 'Filter projects…' },
-    action: { PAUSE: 'Pause', RESUME: 'Resume', STOP: 'Stop', STEP: 'Step' },
-    link: { definition: 'Open definition', session: 'Open session', document: 'Open document' },
+    action: { PAUSE: 'Pause', RESUME: 'Resume', STOP: 'Stop', STEP: 'Step', ABORT: 'Abort step' },
+    link: {
+      definition: 'Open definition',
+      session: 'Open session',
+      document: 'Open document',
+      restartOf: 'Repeats an earlier run',
+    },
+    restart: {
+      title: 'Run again',
+      from: 'Begin at',
+      fromStart: 'The start',
+      debug: 'In the debugger',
+      hint:
+        'Starts a new run; this one stays as it is. From a state on, the steps run for real again — including tools that write, send or change something. It uses the definition this run froze.',
+      submit: 'Run again',
+    },
     empty: {
       headline: 'No runs',
       body: 'Nothing is running in this project, and nothing that ran is still being kept.',

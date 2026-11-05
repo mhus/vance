@@ -7,5 +7,6 @@ export enum RunAction {
   PAUSE = 'PAUSE',
   RESUME = 'RESUME',
   STOP = 'STOP',
-  STEP = 'STEP'
+  STEP = 'STEP',
+  ABORT = 'ABORT'
 }

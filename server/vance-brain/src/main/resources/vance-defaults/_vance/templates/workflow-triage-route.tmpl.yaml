@@ -7,8 +7,10 @@ version: "1"
 
 # An event trigger hands the request body over as params.payload; a
 # scheduler or a manual start can pass it as an ordinary parameter.
+# A sample payload, when the template was given one, is only the default for
+# starts by hand — remove it before an event or schedule runs this unattended.
 parameters:
-  payload: { type: object, required: false }
+  payload: { type: object, required: false{% if samplePayload %}, default: {{ samplePayload }}{% endif %} }
 
 bounds:
   maxWallclockSeconds: 604800

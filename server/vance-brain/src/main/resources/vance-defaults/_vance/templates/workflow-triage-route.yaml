@@ -21,6 +21,13 @@ fields:
     required: true
     label: { de: "Was bei „normal“ geschehen soll",
              en: "What to do for “normal”" }
+  - name: samplePayload
+    type: string
+    defaultValue: '{"subject": "Example item", "body": "A sample item for trying the workflow by hand."}'
+    label: { de: "Beispiel-Payload für manuelle Tests (JSON, eine Zeile)",
+             en: "Sample payload for manual tests (JSON, one line)" }
+    help:  { de: "Wird der Standardwert des Parameters payload. Für den Produktivbetrieb leeren — ein Event ohne Body würde sonst diesen Beispieleintrag einordnen.",
+             en: "Becomes the default of the payload parameter. Clear it for production — an event without a body would otherwise classify this sample item." }
   - name: recipe
     type: string
     defaultValue: ford

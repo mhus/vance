@@ -10,14 +10,19 @@ import type { RunDetailDto, RunSummaryDto } from '@vance/generated';
  * question it answers ("what happened to the thing I started") tolerates
  * a manual refresh.
  */
+/** {@code silent}: read again without blanking the screen — for a refresh the user did not ask for. */
+export interface LoadOptions {
+  silent?: boolean;
+}
+
 export function useRuns(): {
   runs: Ref<RunSummaryDto[]>;
   detail: Ref<RunDetailDto | null>;
   loading: Ref<boolean>;
   detailLoading: Ref<boolean>;
   error: Ref<string | null>;
-  loadRuns: (projectId: string) => Promise<void>;
-  loadDetail: (projectId: string, runId: string) => Promise<void>;
+  loadRuns: (projectId: string, options?: LoadOptions) => Promise<void>;
+  loadDetail: (projectId: string, runId: string, options?: LoadOptions) => Promise<void>;
   perform: (projectId: string, runId: string, action: string) => Promise<void>;
   acting: Ref<boolean>;
   clearDetail: () => void;
@@ -29,32 +34,44 @@ export function useRuns(): {
   const error = ref<string | null>(null);
   const acting = ref(false);
 
-  async function loadRuns(projectId: string): Promise<void> {
-    loading.value = true;
+  async function loadRuns(projectId: string, options: LoadOptions = {}): Promise<void> {
+    if (!options.silent) loading.value = true;
     error.value = null;
     try {
       runs.value = await brainFetch<RunSummaryDto[]>(
         'GET', `runs?projectId=${encodeURIComponent(projectId)}`);
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to load runs.';
-      runs.value = [];
+      if (!options.silent) {
+        error.value = e instanceof Error ? e.message : 'Failed to load runs.';
+        runs.value = [];
+      }
     } finally {
-      loading.value = false;
+      if (!options.silent) loading.value = false;
     }
   }
 
-  async function loadDetail(projectId: string, runId: string): Promise<void> {
-    detailLoading.value = true;
+  /** The run the user asked for last; an older answer arriving later must not replace it. */
+  let requestedRunId = '';
+
+  async function loadDetail(
+    projectId: string, runId: string, options: LoadOptions = {},
+  ): Promise<void> {
+    requestedRunId = runId;
+    if (!options.silent) detailLoading.value = true;
     error.value = null;
     try {
-      detail.value = await brainFetch<RunDetailDto>(
+      const fresh = await brainFetch<RunDetailDto>(
         'GET',
         `runs/${encodeURIComponent(runId)}?projectId=${encodeURIComponent(projectId)}`);
+      if (requestedRunId === runId) detail.value = fresh;
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to load run.';
-      detail.value = null;
+      // A refresh nobody asked for keeps what is on screen; the next one tries again.
+      if (!options.silent && requestedRunId === runId) {
+        error.value = e instanceof Error ? e.message : 'Failed to load run.';
+        detail.value = null;
+      }
     } finally {
-      detailLoading.value = false;
+      if (!options.silent) detailLoading.value = false;
     }
   }
 
@@ -79,6 +96,7 @@ export function useRuns(): {
   }
 
   function clearDetail(): void {
+    requestedRunId = '';
     detail.value = null;
   }
 

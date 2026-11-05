@@ -16,7 +16,7 @@
  *
  * <p>Design: {@code planning/runs-view.md}.
  */
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { EditorShell, ProjectListSidebar, VAlert, VButton, VEmptyState, VSelect } from '@/components';
 import { useTenantProjects } from '@/composables/useTenantProjects';
@@ -25,6 +25,7 @@ import { useRuns } from './useRuns';
 import RunStatusBadge from './RunStatusBadge.vue';
 import RunDetailPanel from './RunDetailPanel.vue';
 import NewRunPanel from './NewRunPanel.vue';
+import { isMoving, RUN_FIRST_POLL_MS, RUN_POLL_INTERVAL_MS } from './polling';
 
 const { t } = useI18n();
 const tenantProjects = useTenantProjects();
@@ -116,6 +117,45 @@ async function onProjectListDataChanged(): Promise<void> {
   await tenantProjects.reload();
 }
 
+// An open run that is still moving is read again every few seconds: a debug
+// step runs a state and halts again a moment after the click, and the answer
+// to the click only shows the instant it was given.
+let pollTimer: number | undefined;
+let firstPollTimer: number | undefined;
+
+function stopPolling(): void {
+  if (pollTimer !== undefined) {
+    window.clearInterval(pollTimer);
+    pollTimer = undefined;
+  }
+  if (firstPollTimer !== undefined) {
+    window.clearTimeout(firstPollTimer);
+    firstPollTimer = undefined;
+  }
+}
+
+async function pollOnce(): Promise<void> {
+  if (document.hidden || !projectId.value || !selectedRunId.value) return;
+  await loadDetail(projectId.value, selectedRunId.value, { silent: true });
+  await loadRuns(projectId.value, { silent: true });
+}
+
+function startPolling(): void {
+  stopPolling();
+  firstPollTimer = window.setTimeout(pollOnce, RUN_FIRST_POLL_MS);
+  pollTimer = window.setInterval(pollOnce, RUN_POLL_INTERVAL_MS);
+}
+
+watch(
+  () => detail.value?.summary.status,
+  (status) => {
+    if (isMoving(status)) startPolling();
+    else stopPolling();
+  },
+  { immediate: true },
+);
+onBeforeUnmount(stopPolling);
+
 onMounted(async () => {
   await tenantProjects.reload();
   if (!projectId.value && tenantProjects.projects.value.length > 0) {
@@ -139,7 +179,14 @@ onMounted(async () => {
     focus-model="auto"
   >
     <template #topbar-extra>
-      <VButton icon="add" size="sm" variant="primary" :disabled="!projectId" @click="openNewRun">
+      <!-- At most one primary button per view: while the form is open, its Start is it. -->
+      <VButton
+        icon="add"
+        size="sm"
+        :variant="newRunOpen ? 'secondary' : 'primary'"
+        :disabled="!projectId"
+        @click="openNewRun"
+      >
         {{ t('runs.newRun') }}
       </VButton>
       <VButton icon="refresh" size="sm" variant="plain" :disabled="loading" @click="refresh">

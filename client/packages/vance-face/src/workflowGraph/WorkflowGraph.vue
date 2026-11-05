@@ -33,6 +33,7 @@ import {
   type WorkflowStateNode,
 } from './workflowGraphCodec';
 import type { GraphOverlay, GraphStateTone } from './overlay';
+import { nodeClasses } from './nodeClasses';
 import { formatDuration } from '@/util/formatDuration';
 
 defineOptions({ name: 'WorkflowGraph' });
@@ -150,7 +151,9 @@ function typeColor(state: WorkflowStateNode): string {
     case 'agent_task': return 'var(--color-primary)';
     case 'gate_task': return 'var(--color-warning)';
     case 'timer_task': return 'var(--color-info)';
-    case 'condition_task': return 'var(--color-secondary)';
+    // A neutral, readable grey: --color-secondary is so pale on a white node that
+    // the type label and the node's left edge all but vanish.
+    case 'condition_task': return 'color-mix(in oklab, var(--color-base-content) 62%, transparent)';
     case 'workflow_task': return 'var(--color-accent)';
     case 'terminal':
       return state.terminalOutcome === 'failure'
@@ -225,11 +228,7 @@ function runLine(run: { tone: GraphStateTone; entries: number; outcome?: string;
       >
         <template #node-state="{ data }">
           <div
-            :class="['wf-node', {
-              'wf-node--start': data.state.isStart,
-              'wf-node--missing': data.state.missing,
-              [`wf-node--run-${data.run.tone}`]: !!data.run,
-            }]"
+            :class="nodeClasses(data.state, data.run)"
             :style="{ borderLeftColor: typeColor(data.state) }"
           >
             <Handle type="target" :position="direction === 'TB' ? Position.Top : Position.Left" />

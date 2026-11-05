@@ -1137,6 +1137,16 @@ export default {
     loadingDetail: 'Loading run…',
     count: '{n} runs',
     filter: { allSources: 'All sources' },
+    status: {
+      RUNNING: 'Running',
+      WAITING: 'Waiting',
+      PAUSED: 'Paused',
+      STOPPING: 'Stopping',
+      DONE: 'Done',
+      FAILED: 'Failed',
+      STOPPED: 'Stopped',
+    },
+    sidebar: { projectsHeading: 'Projects', filterPlaceholder: 'Filter projects…' },
     action: { PAUSE: 'Pause', RESUME: 'Resume', STOP: 'Stop', STEP: 'Step' },
     link: { definition: 'Open definition', session: 'Open session', document: 'Open document' },
     empty: {
@@ -1153,6 +1163,7 @@ export default {
       debug: 'Debug',
       debugHint:
         'Halts before each step so you can go through the run one step at a time. The calls are real — debug is not a dry run.',
+      start: 'Start',
       cancel: 'Cancel',
       startFailed: 'The run could not be started.',
       paramRequired: 'Parameter "{key}" is required.',
@@ -1494,7 +1505,6 @@ export default {
       directionHint: 'Switch layout direction',
       undeclared: 'undeclared',
       noType: 'no type',
-      start: 'Start',
       run: 'Run',
       runHint: 'Open the run view for this workflow — parameters, debug and stepping are there',
       runBlocked: 'Fix the problems listed above first.',

@@ -50,6 +50,25 @@ describe('parseWorkflowGraph', () => {
     expect(kinds).toEqual(['on', 'catch', 'condition', 'else']);
   });
 
+  it('marks a workflow task with items as a for-each', () => {
+    const graph = parseWorkflowGraph([
+      'start: one',
+      'states:',
+      '  one:',
+      '    type: workflow_task',
+      '    workflow: handle-one',
+      '  each:',
+      '    type: workflow_task',
+      '    workflow: handle-one',
+      '    items: "${params.tickets}"',
+      '',
+    ].join('\n'));
+    const byName = new Map(graph.states.map((s) => [s.name, s]));
+
+    expect(byName.get('one')?.detail).toBe('handle-one');
+    expect(byName.get('each')?.detail).toBe('handle-one · for each');
+  });
+
   it('carries the start flag and per-type detail', () => {
     const byName = new Map(parseWorkflowGraph(FULL).states.map((s) => [s.name, s]));
     expect(byName.get('plan')?.isStart).toBe(true);

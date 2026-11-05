@@ -315,8 +315,11 @@ function detailFor(type: string, raw: Record<string, unknown>): string | undefin
       return truncate(optionalString(raw.run) ?? '');
     case 'script_task':
       return optionalString(raw.path);
-    case 'workflow_task':
-      return optionalString(raw.workflow);
+    case 'workflow_task': {
+      const workflow = optionalString(raw.workflow);
+      // `items:` makes it a for-each: one sub-run per element.
+      return raw.items === undefined || raw.items === null ? workflow : `${workflow ?? '?'} · for each`;
+    }
     case 'timer_task':
       return optionalString(raw.duration);
     case 'gate_task':

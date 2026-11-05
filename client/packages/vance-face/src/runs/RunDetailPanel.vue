@@ -13,6 +13,7 @@ import type { RunDetailDto } from '@vance/generated';
 import RunStatusBadge from './RunStatusBadge.vue';
 import RunExtraBlock from './RunExtraBlock.vue';
 import { buildOverlay } from './stepOverlay';
+import { canChangeBreakpoints, toggleBreakpoint } from './breakpoints';
 import { formatDuration } from '@/util/formatDuration';
 import { formatStepTime } from './stepFormat';
 
@@ -20,6 +21,7 @@ const props = defineProps<{ detail: RunDetailDto; projectId: string; acting?: bo
 const emit = defineEmits<{
   (e: 'open-run', runId: string): void;
   (e: 'action', action: string): void;
+  (e: 'set-breakpoints', states: string[]): void;
 }>();
 const { t, locale } = useI18n();
 
@@ -28,6 +30,15 @@ const { t, locale } = useI18n();
 const WorkflowGraph = defineAsyncComponent(() => import('@/workflowGraph/WorkflowGraph.vue'));
 
 const overlay = computed(() => buildOverlay(props.detail.steps, props.detail.summary.status));
+
+// A debuggable run that is not over lets the reader click states to halt before them.
+const breakpoints = computed(() => props.detail.breakpoints ?? []);
+const canMarkBreakpoints = computed(
+  () => props.detail.debug && canChangeBreakpoints(props.detail.summary.status));
+
+function onGraphNodeClick(state: string): void {
+  emit('set-breakpoints', toggleBreakpoint(breakpoints.value, state));
+}
 
 const variables = computed(() => Object.entries(props.detail.variables ?? {}));
 
@@ -112,7 +123,11 @@ function render(value: unknown): string {
         :overlay="overlay"
         height="45vh"
         :show-problems="false"
+        :breakpoints="breakpoints"
+        :interactive="canMarkBreakpoints"
+        @node-click="onGraphNodeClick"
       />
+      <p v-if="canMarkBreakpoints" class="plan-hint">{{ t('runs.detail.breakpointHint') }}</p>
     </VCard>
 
     <VCard v-if="detail.steps?.length" :title="t('runs.detail.steps')">
@@ -175,6 +190,7 @@ h2 { margin: 0; font-size: 1.05rem; }
 .link { font-size: 0.8rem; text-decoration: underline; }
 .waiting { font-size: 0.85rem; }
 .waiting a { text-decoration: underline; margin-left: 0.4rem; }
+.plan-hint { margin: 0.4rem 0 0; font-size: 0.78rem; opacity: 0.65; }
 .run-steps { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 0.25rem; }
 .run-step { font-size: 0.85rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: baseline; }
 .step-name { font-weight: 600; }

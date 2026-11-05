@@ -9,10 +9,12 @@ import type { GraphStateRun } from './overlay';
 export function nodeClasses(
   state: { isStart: boolean; missing: boolean },
   run?: GraphStateRun,
+  breakpoint = false,
 ): string[] {
   const classes = ['wf-node'];
   if (state.isStart) classes.push('wf-node--start');
   if (state.missing) classes.push('wf-node--missing');
   if (run) classes.push(`wf-node--run-${run.tone}`);
+  if (breakpoint) classes.push('wf-node--breakpoint');
   return classes;
 }

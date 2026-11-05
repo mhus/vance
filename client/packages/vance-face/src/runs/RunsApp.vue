@@ -30,7 +30,7 @@ import { pollPlan, type PollPlan } from './polling';
 const { t } = useI18n();
 const tenantProjects = useTenantProjects();
 const { runs, detail, loading, detailLoading, error, acting,
-  loadRuns, loadDetail, perform, clearDetail } = useRuns();
+  loadRuns, loadDetail, perform, setBreakpoints, clearDetail } = useRuns();
 
 const params = new URLSearchParams(window.location.search);
 const projectId = ref<string | null>(params.get('project'));
@@ -95,6 +95,12 @@ async function runAction(action: string): Promise<void> {
   if (!projectId.value || !selectedRunId.value) return;
   await perform(projectId.value, selectedRunId.value, action);
   await loadRuns(projectId.value);
+}
+
+/** The reader clicked a state of the plan: send the breakpoint set as it should be now. */
+async function onSetBreakpoints(states: string[]): Promise<void> {
+  if (!projectId.value || !selectedRunId.value) return;
+  await setBreakpoints(projectId.value, selectedRunId.value, states);
 }
 
 async function refresh(): Promise<void> {
@@ -269,6 +275,7 @@ onMounted(async () => {
           :acting="acting"
           @open-run="selectRun"
           @action="runAction"
+          @set-breakpoints="onSetBreakpoints"
         />
         <VEmptyState
           v-else

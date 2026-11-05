@@ -19,6 +19,20 @@ export interface WorkflowStartResult {
   workflowRunId: string;
 }
 
+/** How to debug the run being started: halt before every state, and/or before named ones. */
+export interface DebugOptions {
+  stepping?: boolean;
+  breakpoints?: string[];
+}
+
+/** The request fields for a debug setup; absent when there is nothing to debug. */
+function debugFields(debug?: DebugOptions): Record<string, unknown> {
+  const fields: Record<string, unknown> = {};
+  if (debug?.stepping) fields.debug = true;
+  if (debug?.breakpoints && debug.breakpoints.length > 0) fields.breakpoints = debug.breakpoints;
+  return fields;
+}
+
 export function useWorkflows(): {
   workflows: Ref<MagratheaWorkflowSummary[]>;
   current: Ref<MagratheaWorkflowDto | null>;
@@ -34,14 +48,14 @@ export function useWorkflows(): {
     projectId: string,
     name: string,
     params: Record<string, unknown> | null,
-    debug?: boolean,
+    debug?: DebugOptions,
   ) => Promise<WorkflowStartResult>;
   /** Start the workflow document at {@code path}, wherever it lives. */
   startDocument: (
     projectId: string,
     path: string,
     params: Record<string, unknown> | null,
-    debug?: boolean,
+    debug?: DebugOptions,
   ) => Promise<WorkflowStartResult>;
   clearCurrent: () => void;
   clearLastResult: () => void;
@@ -107,11 +121,11 @@ export function useWorkflows(): {
     projectId: string,
     name: string,
     params: Record<string, unknown> | null,
-    debug = false,
+    debug?: DebugOptions,
   ): Promise<WorkflowStartResult> {
     return post(
       `project/${encodeURIComponent(projectId)}/workflows/${encodeURIComponent(name)}/start`,
-      { params: params ?? {}, startedBy: null, ...(debug ? { debug: true } : {}) },
+      { params: params ?? {}, startedBy: null, ...debugFields(debug) },
     );
   }
 
@@ -119,11 +133,11 @@ export function useWorkflows(): {
     projectId: string,
     path: string,
     params: Record<string, unknown> | null,
-    debug = false,
+    debug?: DebugOptions,
   ): Promise<WorkflowStartResult> {
     return post(
       `project/${encodeURIComponent(projectId)}/workflows/start-document`,
-      { path, params: params ?? {}, ...(debug ? { debug: true } : {}) },
+      { path, params: params ?? {}, ...debugFields(debug) },
     );
   }
 

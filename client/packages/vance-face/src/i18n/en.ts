@@ -1162,7 +1162,11 @@ export default {
       noParams: 'This workflow declares no parameters.',
       debug: 'Debug',
       debugHint:
-        'Halts before each step so you can go through the run one step at a time. The calls are real — debug is not a dry run.',
+        'Halts before every step so you can go through the run one step at a time. The calls are real — debug is not a dry run.',
+      breakpoints: 'Breakpoints',
+      breakpointsHint:
+        'Click a state to halt the run in front of it; click it again to remove the mark. The run goes freely until it reaches one.',
+      breakpointsSet: 'Halts before: {list}',
       start: 'Start',
       cancel: 'Cancel',
       startFailed: 'The run could not be started.',
@@ -1179,7 +1183,9 @@ export default {
       steps: 'Steps',
       debug: 'Debug',
       debugHint:
-        'Debug run: it halts before each step. Step runs the next step, Resume runs on without halting.',
+        'Debug run: it halts before a step. Step runs the next step and halts again, Resume runs on until the next breakpoint.',
+      breakpointHint:
+        'Click a state to halt the run in front of it, or click a marked one to remove the breakpoint. Changes apply to the states it enters from now on.',
       stepOutput: 'Output',
       outputTruncated: 'Shortened — the journal holds the complete output.',
       variables: 'Variables',
@@ -1510,6 +1516,7 @@ export default {
       runBlocked: 'Fix the problems listed above first.',
       runHalted: 'halted here',
       runCurrent: 'running…',
+      breakpoint: 'Breakpoint — the run halts here',
       problemsTitle: 'This workflow would not start:',
       empty: 'No states — a workflow needs at least one entry under `states:`.',
     },

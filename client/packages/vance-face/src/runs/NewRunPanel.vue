@@ -11,13 +11,14 @@
  * <p>Debug halts the run before each state, with real calls — it is not a
  * dry run — and is stepped from the run's detail.
  */
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { brainFetch, brainFetchText } from '@vance/shared';
 import type { DocumentDto } from '@vance/generated';
 import { VAlert, VButton, VCard, VCheckbox, VInput, VSelect, VTextarea } from '@/components';
 import { useWorkflows } from '@/composables/useWorkflows';
 import { parseWorkflowGraph } from '@/workflowGraph/workflowGraphCodec';
+import { toggleBreakpoint } from './breakpoints';
 import {
   buildParams, fieldTypeOf, seedInputs,
   type ParamInput, type ParamIssue, type StartParamSpec,
@@ -36,6 +37,9 @@ const emit = defineEmits<{
 }>();
 const { t } = useI18n();
 
+// The plan is drawn only to click breakpoints into; the flow library loads when it is needed.
+const WorkflowGraph = defineAsyncComponent(() => import('@/workflowGraph/WorkflowGraph.vue'));
+
 const workflows = useWorkflows();
 
 const selectedName = ref<string | null>(props.initialWorkflow ?? null);
@@ -45,6 +49,9 @@ const problems = ref<string[]>([]);
 const loadError = ref<string | null>(null);
 const loadingDefinition = ref(false);
 const debug = ref(false);
+/** The workflow as text, to draw it and to offer its states as breakpoints. */
+const definitionText = ref('');
+const breakpoints = ref<string[]>([]);
 const submitError = ref<string | null>(null);
 
 const byPath = computed(() => !!props.startPath);
@@ -66,6 +73,12 @@ function useSpecs(next: StartParamSpec[]): void {
   inputs.value = seedInputs(next);
 }
 
+/** A different definition has different states: breakpoints of the old one do not carry over. */
+function useDefinition(text: string): void {
+  definitionText.value = text;
+  breakpoints.value = [];
+}
+
 /** Reads the document and takes its parameters from the same projection the drawing uses. */
 async function loadByPath(path: string): Promise<void> {
   loadingDefinition.value = true;
@@ -75,6 +88,7 @@ async function loadByPath(path: string): Promise<void> {
     const query = new URLSearchParams({ projectId: props.projectId, path });
     const doc = await brainFetch<DocumentDto>('GET', `documents/by-path?${query}`);
     const text = await brainFetchText(`documents/${encodeURIComponent(doc.id)}/content`);
+    useDefinition(text ?? '');
     const graph = parseWorkflowGraph(text ?? '');
     problems.value = graph.states.length === 0
       ? [t('documents.workflowView.empty'), ...graph.problems]
@@ -82,6 +96,7 @@ async function loadByPath(path: string): Promise<void> {
     useSpecs(graph.parameters);
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : String(e);
+    useDefinition('');
     useSpecs([]);
   } finally {
     loadingDefinition.value = false;
@@ -94,6 +109,7 @@ async function loadByName(name: string): Promise<void> {
   problems.value = [];
   try {
     await workflows.loadOne(props.projectId, name);
+    useDefinition(workflows.current.value?.yaml ?? '');
     const declared = workflows.current.value?.parameters ?? {};
     useSpecs(Object.entries(declared).map(([key, spec]) => ({
       name: key,
@@ -124,9 +140,10 @@ async function start(): Promise<void> {
   }
   const params = Object.keys(built.params).length > 0 ? built.params : null;
   try {
+    const debugOptions = { stepping: debug.value, breakpoints: breakpoints.value };
     const result = props.startPath
-      ? await workflows.startDocument(props.projectId, props.startPath, params, debug.value)
-      : await workflows.start(props.projectId, selectedName.value ?? '', params, debug.value);
+      ? await workflows.startDocument(props.projectId, props.startPath, params, debugOptions)
+      : await workflows.start(props.projectId, selectedName.value ?? '', params, debugOptions);
     emit('started', `workflow:${result.workflowRunId}`);
   } catch (e) {
     submitError.value = e instanceof Error ? e.message : t('runs.new.startFailed');
@@ -201,6 +218,23 @@ onMounted(async () => {
         <p class="hint">{{ t('runs.new.debugHint') }}</p>
       </div>
 
+      <!-- Breakpoints: halt before these states only, and run freely between them. -->
+      <div v-if="definitionText && problems.length === 0" class="breakpoints">
+        <p class="breakpoints-title">{{ t('runs.new.breakpoints') }}</p>
+        <p class="hint">{{ t('runs.new.breakpointsHint') }}</p>
+        <WorkflowGraph
+          :doc="definitionText"
+          height="38vh"
+          :show-problems="false"
+          :breakpoints="breakpoints"
+          interactive
+          @node-click="breakpoints = toggleBreakpoint(breakpoints, $event)"
+        />
+        <p v-if="breakpoints.length > 0" class="hint">
+          {{ t('runs.new.breakpointsSet', { list: breakpoints.join(', ') }) }}
+        </p>
+      </div>
+
       <VAlert v-if="submitError" variant="error">{{ submitError }}</VAlert>
 
       <div class="buttons">
@@ -222,5 +256,7 @@ onMounted(async () => {
 .problems-title { margin: 0 0 0.2rem; font-weight: 600; }
 .problems { margin: 0; padding-left: 1.1rem; font-size: 0.82rem; }
 .mono { font-family: ui-monospace, monospace; }
+.breakpoints { display: flex; flex-direction: column; gap: 0.35rem; }
+.breakpoints-title { margin: 0; font-size: 0.85rem; font-weight: 600; }
 .buttons { display: flex; gap: 0.5rem; }
 </style>

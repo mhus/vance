@@ -47,12 +47,19 @@ interface Props {
   height?: string;
   /** List structural problems above the canvas. */
   showProblems?: boolean;
+  /** States marked with a breakpoint. The drawing only shows them; setting them is the caller's. */
+  breakpoints?: string[];
+  /** Nodes answer a click (event `node-click`) and look clickable. */
+  interactive?: boolean;
 }
 const props = withDefaults(defineProps<Props>(), {
   overlay: undefined,
   height: '65vh',
   showProblems: true,
+  breakpoints: () => [],
+  interactive: false,
 });
+const emit = defineEmits<{ (e: 'node-click', state: string): void }>();
 
 const { t } = useI18n();
 
@@ -105,7 +112,11 @@ const vfNodes = computed<Node[]>(() =>
     type: 'state',
     position: positions.value.get(state.name)
       ?? { x: 40, y: 40 + idx * (NODE_H + 30) },
-    data: { state, run: props.overlay?.[state.name] },
+    data: {
+      state,
+      run: props.overlay?.[state.name],
+      breakpoint: props.breakpoints.includes(state.name),
+    },
     draggable: false,
     selectable: false,
     connectable: false,
@@ -171,6 +182,12 @@ function typeLabel(state: WorkflowStateNode): string {
 const hasStates = computed(() => graph.value.states.length > 0);
 const stateCount = computed(() => graph.value.states.filter((s) => !s.missing).length);
 
+function onNodeClick(event: { node: { id: string } }): void {
+  if (props.interactive && !graph.value.states.find((s) => s.name === event.node.id)?.missing) {
+    emit('node-click', event.node.id);
+  }
+}
+
 function toggleDirection(): void {
   direction.value = direction.value === 'TB' ? 'LR' : 'TB';
 }
@@ -225,14 +242,20 @@ function runLine(run: { tone: GraphStateTone; entries: number; outcome?: string;
         :nodes-connectable="false"
         :elements-selectable="false"
         :zoom-on-double-click="false"
+        @node-click="onNodeClick"
       >
         <template #node-state="{ data }">
           <div
-            :class="nodeClasses(data.state, data.run)"
+            :class="[...nodeClasses(data.state, data.run, data.breakpoint), { 'wf-node--interactive': interactive }]"
             :style="{ borderLeftColor: typeColor(data.state) }"
           >
             <Handle type="target" :position="direction === 'TB' ? Position.Top : Position.Left" />
             <div class="wf-node-head">
+              <span
+                v-if="data.breakpoint"
+                class="wf-breakpoint"
+                :title="t('documents.workflowView.breakpoint')"
+              ></span>
               <span class="wf-node-name">{{ data.state.name }}</span>
               <span v-if="data.state.isStart" class="wf-badge wf-badge--start">
                 {{ t('documents.workflowView.startBadge') }}
@@ -383,6 +406,21 @@ function runLine(run: { tone: GraphStateTone; entries: number; outcome?: string;
   background: color-mix(in oklab, var(--color-primary) 20%, transparent);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+.wf-node--interactive { cursor: pointer; }
+.wf-node--interactive:hover {
+  border-color: color-mix(in oklab, var(--color-base-content) 45%, transparent);
+}
+/* A breakpoint: the run halts in front of this state. */
+.wf-breakpoint {
+  flex: 0 0 auto;
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  background: var(--color-error);
+}
+.wf-node--breakpoint {
+  border-top-color: var(--color-error);
 }
 .wf-node-run {
   margin-top: 0.1rem;

@@ -1,6 +1,6 @@
 import { ref, type Ref } from 'vue';
 import { brainFetch } from '@vance/shared';
-import type { RunDetailDto, RunSummaryDto } from '@vance/generated';
+import type { RunBreakpointsRequest, RunDetailDto, RunSummaryDto } from '@vance/generated';
 
 /**
  * Runs of one project, merged across sources by the server.
@@ -24,6 +24,7 @@ export function useRuns(): {
   loadRuns: (projectId: string, options?: LoadOptions) => Promise<void>;
   loadDetail: (projectId: string, runId: string, options?: LoadOptions) => Promise<void>;
   perform: (projectId: string, runId: string, action: string) => Promise<void>;
+  setBreakpoints: (projectId: string, runId: string, states: string[]) => Promise<void>;
   acting: Ref<boolean>;
   clearDetail: () => void;
 } {
@@ -95,11 +96,28 @@ export function useRuns(): {
     }
   }
 
+  /**
+   * Replace the breakpoints of a debuggable run. Like an action, the answer is
+   * the run as it is now, so the view shows what the server holds.
+   */
+  async function setBreakpoints(projectId: string, runId: string, states: string[]): Promise<void> {
+    error.value = null;
+    try {
+      const body: RunBreakpointsRequest = { breakpoints: states };
+      detail.value = await brainFetch<RunDetailDto>(
+        'PUT',
+        `runs/${encodeURIComponent(runId)}/breakpoints?projectId=${encodeURIComponent(projectId)}`,
+        { body });
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Could not set the breakpoints.';
+    }
+  }
+
   function clearDetail(): void {
     requestedRunId = '';
     detail.value = null;
   }
 
   return { runs, detail, loading, detailLoading, error, acting,
-    loadRuns, loadDetail, perform, clearDetail };
+    loadRuns, loadDetail, perform, setBreakpoints, clearDetail };
 }

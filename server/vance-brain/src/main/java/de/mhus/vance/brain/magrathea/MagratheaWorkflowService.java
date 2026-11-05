@@ -591,6 +591,7 @@ public class MagratheaWorkflowService {
                         .status(MagratheaRunStatus.PAUSED)
                         .reason("debug: before state '" + stateName + "'")
                         .build());
+        log.info("Magrathea run {} halted before state '{}' (debug)", workflowRunId, stateName);
     }
 
     /**
@@ -856,12 +857,13 @@ public class MagratheaWorkflowService {
                 .build();
         localDispatch.dispatch(taskService.insert(task));
         log.info(
-                "Magrathea run {} started workflow='{}' tenant={} project={} startState={}",
+                "Magrathea run {} started workflow='{}' tenant={} project={} startState={} debug={}",
                 runId,
                 workflow.name(),
                 tenantId,
                 projectId,
-                workflow.startState());
+                workflow.startState(),
+                debug);
     }
 
     private Map<String, Object> applyDefaultsAndValidate(

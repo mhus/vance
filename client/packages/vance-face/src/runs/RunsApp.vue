@@ -19,6 +19,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { EditorShell, ProjectListSidebar, VAlert, VButton, VEmptyState, VSelect } from '@/components';
+import type { RunSimulateRequest } from '@vance/generated';
 import { useTenantProjects } from '@/composables/useTenantProjects';
 import { recallProject, rememberProject } from '@/platform';
 import { useRuns } from './useRuns';
@@ -30,7 +31,7 @@ import { pollPlan, type PollPlan } from './polling';
 const { t } = useI18n();
 const tenantProjects = useTenantProjects();
 const { runs, detail, loading, detailLoading, error, acting,
-  loadRuns, loadDetail, perform, setBreakpoints, clearDetail } = useRuns();
+  loadRuns, loadDetail, perform, setBreakpoints, simulate, clearDetail } = useRuns();
 
 const params = new URLSearchParams(window.location.search);
 const projectId = ref<string | null>(params.get('project'));
@@ -101,6 +102,13 @@ async function runAction(action: string): Promise<void> {
 async function onSetBreakpoints(states: string[]): Promise<void> {
   if (!projectId.value || !selectedRunId.value) return;
   await setBreakpoints(projectId.value, selectedRunId.value, states);
+}
+
+/** The reader gave the halted run a result instead of executing its next state. */
+async function onSimulate(body: RunSimulateRequest): Promise<void> {
+  if (!projectId.value || !selectedRunId.value) return;
+  await simulate(projectId.value, selectedRunId.value, body);
+  await loadRuns(projectId.value);
 }
 
 async function refresh(): Promise<void> {
@@ -276,6 +284,7 @@ onMounted(async () => {
           @open-run="selectRun"
           @action="runAction"
           @set-breakpoints="onSetBreakpoints"
+          @simulate="onSimulate"
         />
         <VEmptyState
           v-else

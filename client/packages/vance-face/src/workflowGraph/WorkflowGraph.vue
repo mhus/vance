@@ -193,8 +193,15 @@ function toggleDirection(): void {
 }
 
 /** Line under the type: how the run left this state, and how often it was here. */
-function runLine(run: { tone: GraphStateTone; entries: number; outcome?: string; durationMs?: number }): string {
+function runLine(run: {
+  tone: GraphStateTone;
+  entries: number;
+  outcome?: string;
+  durationMs?: number;
+  simulated?: boolean;
+}): string {
   const parts: string[] = [];
+  if (run.simulated) parts.push(t('documents.workflowView.simulated'));
   if (run.outcome) parts.push(run.outcome);
   if (run.durationMs != null) parts.push(formatDuration(run.durationMs));
   if (run.entries > 1) parts.push(`×${run.entries}`);

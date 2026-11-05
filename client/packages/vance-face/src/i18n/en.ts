@@ -1174,12 +1174,26 @@ export default {
       paramNotInteger: 'Parameter "{key}" must be an integer (got "{raw}").',
       paramNotJson: 'Parameter "{key}" is not valid JSON: {error}',
     },
+    simulate: {
+      button: 'Simulate…',
+      title: 'Simulate “{state}”',
+      description:
+        'Instead of running this {kind}, give the run a result. Nothing is executed — no tool call, no script, no agent, no inbox item, no waiting.',
+      outcome: 'Outcome',
+      errorMessage: 'Error message',
+      output: 'Result (JSON or text)',
+      outputHint:
+        `Later states read it, e.g. a stored field — so JSON like {'{'}"ticket": "ABC-1"{'}'} is the useful form. Leave it empty if nothing reads it.`,
+      submit: 'Simulate',
+      cancel: 'Cancel',
+    },
     select: {
       headline: 'Pick a run',
       body: 'Choose one on the left to see its steps, variables and result.',
     },
     detail: {
       plan: 'Plan',
+      simulated: 'simulated',
       steps: 'Steps',
       debug: 'Debug',
       debugHint:
@@ -1516,6 +1530,7 @@ export default {
       runBlocked: 'Fix the problems listed above first.',
       runHalted: 'halted here',
       runCurrent: 'running…',
+      simulated: 'simulated',
       breakpoint: 'Breakpoint — the run halts here',
       problemsTitle: 'This workflow would not start:',
       empty: 'No states — a workflow needs at least one entry under `states:`.',

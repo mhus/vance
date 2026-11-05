@@ -1,6 +1,8 @@
 import { ref, type Ref } from 'vue';
 import { brainFetch } from '@vance/shared';
-import type { RunBreakpointsRequest, RunDetailDto, RunSummaryDto } from '@vance/generated';
+import type {
+  RunBreakpointsRequest, RunDetailDto, RunSimulateRequest, RunSummaryDto,
+} from '@vance/generated';
 
 /**
  * Runs of one project, merged across sources by the server.
@@ -25,6 +27,7 @@ export function useRuns(): {
   loadDetail: (projectId: string, runId: string, options?: LoadOptions) => Promise<void>;
   perform: (projectId: string, runId: string, action: string) => Promise<void>;
   setBreakpoints: (projectId: string, runId: string, states: string[]) => Promise<void>;
+  simulate: (projectId: string, runId: string, body: RunSimulateRequest) => Promise<void>;
   acting: Ref<boolean>;
   clearDetail: () => void;
 } {
@@ -113,11 +116,30 @@ export function useRuns(): {
     }
   }
 
+  /**
+   * Give a halted run a simulated result instead of executing its next state. The
+   * answer is the run as it is now, like after an action.
+   */
+  async function simulate(projectId: string, runId: string, body: RunSimulateRequest): Promise<void> {
+    acting.value = true;
+    error.value = null;
+    try {
+      detail.value = await brainFetch<RunDetailDto>(
+        'POST',
+        `runs/${encodeURIComponent(runId)}/simulate?projectId=${encodeURIComponent(projectId)}`,
+        { body });
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Could not simulate.';
+    } finally {
+      acting.value = false;
+    }
+  }
+
   function clearDetail(): void {
     requestedRunId = '';
     detail.value = null;
   }
 
   return { runs, detail, loading, detailLoading, error, acting,
-    loadRuns, loadDetail, perform, setBreakpoints, clearDetail };
+    loadRuns, loadDetail, perform, setBreakpoints, simulate, clearDetail };
 }

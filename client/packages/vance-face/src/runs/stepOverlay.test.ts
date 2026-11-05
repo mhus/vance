@@ -3,7 +3,7 @@ import { RunStatus, type RunStepDto } from '@vance/generated';
 import { buildOverlay } from './stepOverlay';
 
 const step = (name: string, outcome?: string, durationMs?: number): RunStepDto =>
-  ({ name, outcome, durationMs, outputTruncated: false });
+  ({ name, outcome, durationMs, outputTruncated: false, simulated: false });
 
 describe('buildOverlay', () => {
   it('marks finished states ok and the standing one current', () => {
@@ -36,6 +36,12 @@ describe('buildOverlay', () => {
   it('does not call the last step current when the run is over', () => {
     const overlay = buildOverlay([step('a', 'success'), step('b')], RunStatus.STOPPED);
     expect(overlay.b.tone).toBe('other');
+  });
+
+  it('carries the simulated mark of the latest entry', () => {
+    const overlay = buildOverlay([{ ...step('call', 'success'), simulated: true }], RunStatus.DONE);
+    expect(overlay.call.simulated).toBe(true);
+    expect(buildOverlay([step('call', 'success')], RunStatus.DONE).call.simulated).toBeUndefined();
   });
 
   it('is empty for a run without steps', () => {

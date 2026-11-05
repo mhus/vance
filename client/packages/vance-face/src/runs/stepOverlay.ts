@@ -16,8 +16,13 @@ const ACTIVE: ReadonlySet<RunStatus> = new Set<RunStatus>([
   RunStatus.RUNNING, RunStatus.WAITING, RunStatus.PAUSED, RunStatus.STOPPING,
 ]);
 
+/** Whether an outcome means the state did not do what it was for. */
+export function isFailureOutcome(outcome: string): boolean {
+  return FAILED_OUTCOMES.has(outcome) || outcome.endsWith('_error');
+}
+
 function toneOfOutcome(outcome: string): GraphStateTone {
-  return FAILED_OUTCOMES.has(outcome) || outcome.endsWith('_error') ? 'other' : 'ok';
+  return isFailureOutcome(outcome) ? 'other' : 'ok';
 }
 
 /**
@@ -49,6 +54,7 @@ export function buildOverlay(steps: RunStepDto[] | undefined, status: RunStatus)
       entries,
       outcome: step.outcome,
       durationMs: step.durationMs ?? undefined,
+      simulated: step.simulated || undefined,
     };
   });
   return overlay;

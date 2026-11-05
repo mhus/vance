@@ -6,12 +6,13 @@
  * <p>The blocks below are the ones every source can fill. What only one
  * source has goes through {@link RunExtraBlock}.
  */
-import { computed, defineAsyncComponent } from 'vue';
+import { computed, defineAsyncComponent, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { VAlert, VBadge, VButton, VCard, VIcon } from '@/components';
-import type { RunDetailDto } from '@vance/generated';
+import type { RunDetailDto, RunSimulateRequest } from '@vance/generated';
 import RunStatusBadge from './RunStatusBadge.vue';
 import RunExtraBlock from './RunExtraBlock.vue';
+import SimulateDialog from './SimulateDialog.vue';
 import { buildOverlay } from './stepOverlay';
 import { canChangeBreakpoints, toggleBreakpoint } from './breakpoints';
 import { formatDuration } from '@/util/formatDuration';
@@ -22,6 +23,7 @@ const emit = defineEmits<{
   (e: 'open-run', runId: string): void;
   (e: 'action', action: string): void;
   (e: 'set-breakpoints', states: string[]): void;
+  (e: 'simulate', body: RunSimulateRequest): void;
 }>();
 const { t, locale } = useI18n();
 
@@ -38,6 +40,14 @@ const canMarkBreakpoints = computed(
 
 function onGraphNodeClick(state: string): void {
   emit('set-breakpoints', toggleBreakpoint(breakpoints.value, state));
+}
+
+// Simulate is offered while the run is halted in front of a state with something to replace.
+const simulateOpen = ref(false);
+
+function onSimulate(body: RunSimulateRequest): void {
+  simulateOpen.value = false;
+  emit('simulate', body);
 }
 
 const variables = computed(() => Object.entries(props.detail.variables ?? {}));
@@ -86,7 +96,21 @@ function render(value: unknown): string {
           :disabled="acting"
           @click="emit('action', action)"
         >{{ t(`runs.action.${action}`) }}</VButton>
+        <VButton
+          v-if="detail.simulation"
+          size="sm"
+          variant="secondary"
+          :disabled="acting"
+          @click="simulateOpen = true"
+        >{{ t('runs.simulate.button') }}</VButton>
       </p>
+      <SimulateDialog
+        v-if="detail.simulation"
+        v-model="simulateOpen"
+        :simulation="detail.simulation"
+        :busy="acting"
+        @submit="onSimulate"
+      />
 
       <p v-if="detail.links?.length" class="links">
         <a v-for="link in detail.links" :key="link.rel + link.target"
@@ -137,6 +161,7 @@ function render(value: unknown): string {
           <span class="step-name">{{ step.name }}</span>
           <span v-if="step.kind" class="step-kind">{{ step.kind }}</span>
           <span v-if="step.outcome" class="step-outcome">{{ step.outcome }}</span>
+          <span v-if="step.simulated" class="step-simulated">{{ t('runs.detail.simulated') }}</span>
           <span v-if="step.at" class="step-time">{{ formatStepTime(step.at, locale) }}</span>
           <span v-if="step.durationMs != null" class="step-time">{{ formatDuration(step.durationMs) }}</span>
           <span v-if="step.detail" class="step-detail">{{ step.detail }}</span>
@@ -199,6 +224,11 @@ h2 { margin: 0; font-size: 1.05rem; }
 .run-step--ok .step-outcome { color: var(--color-success); }
 .run-step--other .step-outcome { color: var(--color-warning); }
 .run-step--current .step-name::after { content: ' …'; opacity: 0.6; }
+.step-simulated {
+  font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em;
+  padding: 0 0.3rem; border-radius: 0.2rem;
+  background: color-mix(in oklab, var(--color-info) 18%, transparent);
+}
 .step-detail { font-size: 0.75rem; opacity: 0.7; flex-basis: 100%; }
 .step-time { font-size: 0.72rem; opacity: 0.55; font-variant-numeric: tabular-nums; }
 .step-output { flex-basis: 100%; font-size: 0.75rem; }

@@ -25,6 +25,8 @@ export interface GraphStateRun {
   outcome?: string;
   /** How long the latest entry took, in milliseconds. */
   durationMs?: number;
+  /** The latest entry did not run: its result was given to the run. */
+  simulated?: boolean;
 }
 
 /** State name → what happened there. States the run never reached are absent. */

@@ -1,13 +1,13 @@
 package de.mhus.vance.brain.magrathea;
 
-import de.mhus.vance.api.magrathea.MagratheaTaskType;
 import de.mhus.vance.api.inbox.AnswerOutcome;
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.MaximegalonType;
-import de.mhus.vance.shared.magrathea.MagratheaTaskDocument;
-import de.mhus.vance.shared.magrathea.MagratheaTaskService;
+import de.mhus.vance.api.magrathea.MagratheaTaskType;
 import de.mhus.vance.shared.inbox.MaximegalonAnsweredEvent;
 import de.mhus.vance.shared.inbox.MaximegalonDocument;
+import de.mhus.vance.shared.magrathea.MagratheaTaskDocument;
+import de.mhus.vance.shared.magrathea.MagratheaTaskService;
 import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -40,10 +40,7 @@ import tools.jackson.databind.ObjectMapper;
  * answer.
  */
 @Component
-@ConditionalOnProperty(
-        value = "vance.services.magrathea",
-        havingValue = "true",
-        matchIfMissing = false)
+@ConditionalOnProperty(value = "vance.services.magrathea", havingValue = "true", matchIfMissing = false)
 @RequiredArgsConstructor
 @Slf4j
 public class MagratheaInboxCompletionListener {
@@ -60,8 +57,7 @@ public class MagratheaInboxCompletionListener {
         }
         Optional<MagratheaTaskDocument> taskOpt = taskService.findByInboxItemId(item.getId());
         if (taskOpt.isEmpty()) {
-            log.warn("Magrathea inbox listener: workflow.gate item '{}' has no linked task",
-                    item.getId());
+            log.warn("Magrathea inbox listener: workflow.gate item '{}' has no linked task", item.getId());
             return;
         }
         MagratheaTaskDocument task = taskOpt.get();
@@ -73,12 +69,9 @@ public class MagratheaInboxCompletionListener {
         }
 
         String outcome = mapOutcome(item.getType(), answer);
-        JsonNode output = answer.getValue() == null
-                ? null
-                : objectMapper.valueToTree(answer.getValue());
-        String errorMessage = outcome.equals("insufficient_info") || outcome.equals("undecidable")
-                ? answer.getReason()
-                : null;
+        JsonNode output = answer.getValue() == null ? null : objectMapper.valueToTree(answer.getValue());
+        String errorMessage =
+                outcome.equals("insufficient_info") || outcome.equals("undecidable") ? answer.getReason() : null;
 
         publish(task, outcome, output, errorMessage);
     }
@@ -120,8 +113,8 @@ public class MagratheaInboxCompletionListener {
         }
     }
 
-    private void publish(MagratheaTaskDocument task, String outcome,
-                         @Nullable JsonNode output, @Nullable String errorMessage) {
+    private void publish(
+            MagratheaTaskDocument task, String outcome, @Nullable JsonNode output, @Nullable String errorMessage) {
         eventBus.publish(new TaskCompletedEvent(
                 task.getTenantId(),
                 task.getProjectId(),
@@ -132,9 +125,8 @@ public class MagratheaInboxCompletionListener {
                 outcome,
                 output,
                 errorMessage,
-                0L,
+                MagratheaTiming.sinceClaimMs(task),
                 null));
-        log.info("Magrathea gate_task completion task='{}' outcome='{}'",
-                task.getId(), outcome);
+        log.info("Magrathea gate_task completion task='{}' outcome='{}'", task.getId(), outcome);
     }
 }

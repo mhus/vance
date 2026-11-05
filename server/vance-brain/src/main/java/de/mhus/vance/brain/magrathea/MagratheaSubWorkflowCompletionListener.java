@@ -32,10 +32,7 @@ import org.springframework.stereotype.Component;
  * fires, but no parent task is linked.
  */
 @Component
-@ConditionalOnProperty(
-        value = "vance.services.magrathea",
-        havingValue = "true",
-        matchIfMissing = false)
+@ConditionalOnProperty(value = "vance.services.magrathea", havingValue = "true", matchIfMissing = false)
 @RequiredArgsConstructor
 @Slf4j
 public class MagratheaSubWorkflowCompletionListener {
@@ -48,11 +45,11 @@ public class MagratheaSubWorkflowCompletionListener {
         if (event.parentMagratheaProcessId() == null) {
             return;
         }
-        Optional<MagratheaTaskDocument> taskOpt = taskService.findBySubWorkflowRunId(
-                event.workflowRunId());
+        Optional<MagratheaTaskDocument> taskOpt = taskService.findBySubWorkflowRunId(event.workflowRunId());
         if (taskOpt.isEmpty()) {
-            log.warn("Magrathea sub-workflow listener: run '{}' has a parent in its start record "
-                    + "but no parent task with this subWorkflowRunId",
+            log.warn(
+                    "Magrathea sub-workflow listener: run '{}' has a parent in its start record "
+                            + "but no parent task with this subWorkflowRunId",
                     event.workflowRunId());
             return;
         }
@@ -66,8 +63,7 @@ public class MagratheaSubWorkflowCompletionListener {
             case FAILED:
             case TERMINATED:
                 outcome = TaskCompletedEvent.OUTCOME_FAILURE;
-                errorMessage = "Sub-workflow '" + event.workflowName()
-                        + "' ended in " + event.status();
+                errorMessage = "Sub-workflow '" + event.workflowName() + "' ended in " + event.status();
                 break;
             default:
                 // PAUSED / RUNNING → not terminal; ignore.
@@ -83,9 +79,12 @@ public class MagratheaSubWorkflowCompletionListener {
                 outcome,
                 event.result(),
                 errorMessage,
-                0L,
+                MagratheaTiming.sinceClaimMs(task),
                 null));
-        log.info("Magrathea workflow_task completion task='{}' sub='{}' outcome={}",
-                task.getId(), event.workflowRunId(), outcome);
+        log.info(
+                "Magrathea workflow_task completion task='{}' sub='{}' outcome={}",
+                task.getId(),
+                event.workflowRunId(),
+                outcome);
     }
 }

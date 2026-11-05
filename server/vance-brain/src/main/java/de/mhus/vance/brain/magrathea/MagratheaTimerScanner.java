@@ -26,10 +26,7 @@ import org.springframework.stereotype.Component;
  * timeout fires).
  */
 @Component
-@ConditionalOnProperty(
-        value = "vance.services.magrathea",
-        havingValue = "true",
-        matchIfMissing = false)
+@ConditionalOnProperty(value = "vance.services.magrathea", havingValue = "true", matchIfMissing = false)
 @RequiredArgsConstructor
 @Slf4j
 public class MagratheaTimerScanner {
@@ -56,8 +53,8 @@ public class MagratheaTimerScanner {
     private void fire(MagratheaTimerDocument timer) {
         Optional<MagratheaTaskDocument> taskOpt = taskService.findById(timer.getLinkedTaskId());
         if (taskOpt.isEmpty()) {
-            log.warn("Magrathea timer {} linked task '{}' is gone — discarding",
-                    timer.getId(), timer.getLinkedTaskId());
+            log.warn(
+                    "Magrathea timer {} linked task '{}' is gone — discarding", timer.getId(), timer.getLinkedTaskId());
             return;
         }
         MagratheaTaskDocument task = taskOpt.get();
@@ -71,9 +68,12 @@ public class MagratheaTimerScanner {
                 timer.getFiredOutcome(),
                 /* output */ null,
                 /* errorMessage */ null,
-                /* durationMs */ 0L,
+                /* durationMs */ MagratheaTiming.sinceClaimMs(task),
                 /* nextStateOverride */ null));
-        log.debug("Magrathea timer fired: timer={} task={} outcome={}",
-                timer.getId(), task.getId(), timer.getFiredOutcome());
+        log.debug(
+                "Magrathea timer fired: timer={} task={} outcome={}",
+                timer.getId(),
+                task.getId(),
+                timer.getFiredOutcome());
     }
 }

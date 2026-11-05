@@ -146,7 +146,7 @@ public class MagratheaThinkProcessCompletionListener {
             return;
         }
         ThinkProcessDocument process = processOpt.get();
-        long durationMs = computeDurationMs(process);
+        long durationMs = MagratheaTiming.sinceClaimMs(task);
         JsonNode output = lastAssistant(
                         chatMessageService.history(process.getTenantId(), process.getSessionId(), process.getId()))
                 .map(ChatMessageDocument::getContent)
@@ -354,7 +354,7 @@ public class MagratheaThinkProcessCompletionListener {
         CloseReason closeReason = process.getCloseReason();
         String engineName = process.getThinkEngine();
 
-        long durationMs = computeDurationMs(process);
+        long durationMs = MagratheaTiming.sinceClaimMs(task);
 
         // Categorise the closure first.
         if (closeReason == null) {
@@ -457,12 +457,6 @@ public class MagratheaThinkProcessCompletionListener {
             }
         }
         return Optional.empty();
-    }
-
-    private static long computeDurationMs(ThinkProcessDocument process) {
-        if (process.getCreatedAt() == null) return 0L;
-        java.time.Instant end = process.getUpdatedAt() != null ? process.getUpdatedAt() : java.time.Instant.now();
-        return java.time.Duration.between(process.getCreatedAt(), end).toMillis();
     }
 
     private static String truncate(String s, int max) {

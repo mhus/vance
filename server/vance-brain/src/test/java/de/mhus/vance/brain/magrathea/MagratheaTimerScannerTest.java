@@ -25,8 +25,7 @@ class MagratheaTimerScannerTest {
     private final MagratheaTimerService timerService = mock(MagratheaTimerService.class);
     private final MagratheaTaskService taskService = mock(MagratheaTaskService.class);
     private final MagratheaCompletionEventBus eventBus = mock(MagratheaCompletionEventBus.class);
-    private final MagratheaTimerScanner scanner = new MagratheaTimerScanner(
-            timerService, taskService, eventBus);
+    private final MagratheaTimerScanner scanner = new MagratheaTimerScanner(timerService, taskService, eventBus);
 
     @Test
     void no_due_timers_publishes_nothing() {
@@ -52,6 +51,24 @@ class MagratheaTimerScannerTest {
         assertThat(ev.taskId()).isEqualTo("task-1");
         assertThat(ev.stateName()).isEqualTo("wait");
         assertThat(ev.outcome()).isEqualTo("fired");
+    }
+
+    @Test
+    void the_published_event_carries_how_long_the_timer_waited() {
+        // A timer fires outside the executor, so the wait is read off the task's
+        // claim. Without it every timer step shows up as "0 ms".
+        MagratheaTimerDocument timer = timer("t-4", "task-4", "fired");
+        MagratheaTaskDocument task = task("task-4", "wait");
+        task.setClaimedAt(java.time.Instant.now().minusSeconds(7));
+        when(timerService.findPending(any(), anyInt())).thenReturn(List.of(timer));
+        when(timerService.claimFire(eq("t-4"), any())).thenReturn(Optional.of(timer));
+        when(taskService.findById("task-4")).thenReturn(Optional.of(task));
+
+        scanner.scan();
+
+        ArgumentCaptor<TaskCompletedEvent> captor = ArgumentCaptor.captor();
+        verify(eventBus).publish(captor.capture());
+        assertThat(captor.getValue().durationMs()).isBetween(7_000L, 60_000L);
     }
 
     @Test
@@ -95,7 +112,9 @@ class MagratheaTimerScannerTest {
     private static MagratheaTimerDocument timer(String id, String linkedTaskId, String outcome) {
         return MagratheaTimerDocument.builder()
                 .id(id)
-                .tenantId("acme").projectId("proj").workflowRunId("r1")
+                .tenantId("acme")
+                .projectId("proj")
+                .workflowRunId("r1")
                 .linkedTaskId(linkedTaskId)
                 .firedOutcome(outcome)
                 .fireAt(Instant.now())
@@ -105,8 +124,11 @@ class MagratheaTimerScannerTest {
     private static MagratheaTaskDocument task(String id, String stateName) {
         return MagratheaTaskDocument.builder()
                 .id(id)
-                .tenantId("acme").projectId("proj").workflowRunId("r1")
-                .workflowName("demo").stateName(stateName)
+                .tenantId("acme")
+                .projectId("proj")
+                .workflowRunId("r1")
+                .workflowName("demo")
+                .stateName(stateName)
                 .taskType(MagratheaTaskType.TIMER_TASK)
                 .build();
     }

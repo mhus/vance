@@ -26,7 +26,9 @@ import java.util.Set;
  */
 public final class McpPackBuilder {
 
-    private McpPackBuilder() { /* static only */ }
+    private McpPackBuilder() {
+        /* static only */
+    }
 
     /** Pack input: same shape as {@link de.mhus.vance.toolpack.rest.RestApiPackBuilder.PackInput}. */
     public record PackInput(
@@ -70,10 +72,11 @@ public final class McpPackBuilder {
             ToolInvocationContext bootstrapCtx) {
         McpConfig cfg = McpConfig.fromParameters(input.parameters());
         McpJsonRpc rpc = new McpJsonRpc();
-        McpTransport transport = switch (cfg.transport()) {
-            case STDIO -> new McpStdioTransport(cfg, rpc);
-            case HTTP -> new McpHttpTransport(cfg, rpc, httpClient, secretResolver);
-        };
+        McpTransport transport =
+                switch (cfg.transport()) {
+                    case STDIO -> new McpStdioTransport(cfg, rpc);
+                    case HTTP -> new McpHttpTransport(cfg, rpc, httpClient, secretResolver);
+                };
         McpConnection connection = new McpConnection(cfg, transport, bootstrapCtx, secretResolver);
 
         List<McpToolMeta> tools = connection.listTools(bootstrapCtx);
@@ -83,13 +86,21 @@ public final class McpPackBuilder {
         for (McpToolMeta meta : tools) {
             String fullName = input.name() + "__" + meta.name();
             Set<String> labels = mergeLabels(packLabels, input.name());
-            String description = meta.description() == null || meta.description().isBlank()
-                    ? "MCP tool " + meta.name() : meta.description();
-            String hint = description.length() <= 80 ? description
-                    : description.substring(0, 77) + "...";
+            String description =
+                    meta.description() == null || meta.description().isBlank()
+                            ? "MCP tool " + meta.name()
+                            : meta.description();
+            String hint = description.length() <= 80 ? description : description.substring(0, 77) + "...";
             out.add(new McpEndpointTool(
-                    fullName, meta, labels, input.defaultDeferred(),
-                    input.primary(), hint, input.promptHint(), connection));
+                    fullName,
+                    meta,
+                    labels,
+                    input.defaultDeferred(),
+                    input.primary(),
+                    hint,
+                    input.promptHint(),
+                    connection,
+                    input.name()));
         }
         return List.copyOf(out);
     }
@@ -100,22 +111,28 @@ public final class McpPackBuilder {
      * reads). Skips connection setup and reuses the supplied pool.
      */
     public static Collection<Tool> buildWithConnection(
-            PackInput input,
-            McpConnection connection,
-            ToolInvocationContext bootstrapCtx) {
+            PackInput input, McpConnection connection, ToolInvocationContext bootstrapCtx) {
         List<McpToolMeta> tools = connection.listTools(bootstrapCtx);
         Set<String> packLabels = input.labels() == null ? Set.of() : input.labels();
         List<Tool> out = new ArrayList<>(tools.size());
         for (McpToolMeta meta : tools) {
             String fullName = input.name() + "__" + meta.name();
             Set<String> labels = mergeLabels(packLabels, input.name());
-            String description = meta.description() == null || meta.description().isBlank()
-                    ? "MCP tool " + meta.name() : meta.description();
-            String hint = description.length() <= 80 ? description
-                    : description.substring(0, 77) + "...";
+            String description =
+                    meta.description() == null || meta.description().isBlank()
+                            ? "MCP tool " + meta.name()
+                            : meta.description();
+            String hint = description.length() <= 80 ? description : description.substring(0, 77) + "...";
             out.add(new McpEndpointTool(
-                    fullName, meta, labels, input.defaultDeferred(),
-                    input.primary(), hint, input.promptHint(), connection));
+                    fullName,
+                    meta,
+                    labels,
+                    input.defaultDeferred(),
+                    input.primary(),
+                    hint,
+                    input.promptHint(),
+                    connection,
+                    input.name()));
         }
         return List.copyOf(out);
     }

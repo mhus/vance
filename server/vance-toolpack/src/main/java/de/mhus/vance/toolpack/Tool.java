@@ -43,6 +43,24 @@ public interface Tool {
      */
     Map<String, Object> paramsSchema();
 
+    /**
+     * JSON-Schema object describing the result of {@link #invoke} — the map a workflow keeps
+     * with {@code storeAs:}. {@code null} (the default) when the tool does not know its
+     * result's shape; a reader then falls back to free input. A tool never has to declare
+     * one: a missing schema costs the editor a suggestion, not the tool its use.
+     */
+    default @org.jspecify.annotations.Nullable Map<String, Object> outputSchema() {
+        return null;
+    }
+
+    /**
+     * The service this tool belongs to (a REST or MCP pack, an integration), for grouping.
+     * {@code null} (the default) for tools that belong to none.
+     */
+    default @org.jspecify.annotations.Nullable String service() {
+        return null;
+    }
+
     /** Executes the tool. Throws {@link ToolException} on failure. */
     Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx);
 
@@ -300,6 +318,8 @@ public interface Tool {
                 .primary(primary())
                 .source(sourceId)
                 .paramsSchema(new LinkedHashMap<>(paramsSchema()))
+                .outputSchema(outputSchema() == null ? null : new LinkedHashMap<>(outputSchema()))
+                .service(service())
                 .labels(new LinkedHashSet<>(labels()))
                 .allowedProfiles(new LinkedHashSet<>(allowedForProfile()))
                 .deferred(deferred())

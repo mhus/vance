@@ -11,6 +11,8 @@ export interface ToolSpec {
   primary: boolean;
   source?: string;
   paramsSchema: Record<string, any>;
+  outputSchema?: Record<string, any>;
+  service?: string;
   labels: string[];
   allowedProfiles: string[];
   deferred: boolean;

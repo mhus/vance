@@ -17,6 +17,8 @@ import org.jspecify.annotations.Nullable;
  * URL builder can substitute them; query/header-params live in
  * {@link #queryParamNames()} and {@link #headerParamNames()}; the body
  * comes through under {@link #bodyParamName} (default {@code "body"}).
+ * {@code responseSchema} is the JSON schema of the operation's success (2xx) response
+ * body, when the spec gives one.
  */
 public record OpenApiOperation(
         String operationId,
@@ -29,7 +31,36 @@ public record OpenApiOperation(
         List<String> queryParamNames,
         List<String> headerParamNames,
         @Nullable String bodyParamName,
-        @Nullable String bodyContentType) {
+        @Nullable String bodyContentType,
+        @Nullable Map<String, Object> responseSchema) {
+
+    /** An operation whose spec declares no usable response schema. */
+    public OpenApiOperation(
+            String operationId,
+            String httpMethod,
+            String pathTemplate,
+            @Nullable String summary,
+            @Nullable String description,
+            Map<String, Object> paramsSchema,
+            List<String> pathParamNames,
+            List<String> queryParamNames,
+            List<String> headerParamNames,
+            @Nullable String bodyParamName,
+            @Nullable String bodyContentType) {
+        this(
+                operationId,
+                httpMethod,
+                pathTemplate,
+                summary,
+                description,
+                paramsSchema,
+                pathParamNames,
+                queryParamNames,
+                headerParamNames,
+                bodyParamName,
+                bodyContentType,
+                null);
+    }
 
     public OpenApiOperation {
         operationId = operationId == null ? "" : operationId;

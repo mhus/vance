@@ -61,6 +61,24 @@ public class ToolSpec {
     private Map<String, Object> paramsSchema = new LinkedHashMap<>();
 
     /**
+     * JSON-Schema object describing the result a caller gets back — the map a workflow's
+     * {@code storeAs:} keeps and {@code ${state.x.…}} reaches into. {@code null} when the tool
+     * does not know its result's shape; a reader then falls back to free input.
+     *
+     * <p>For a REST pack that is the envelope {@code {status, ok, headers, body, json}} with
+     * {@code json} shaped by the operation's 2xx response; for an MCP tool it is
+     * {@code {structuredContent, isError}} with {@code structuredContent} shaped by the
+     * server's {@code outputSchema}.
+     */
+    private @Nullable Map<String, Object> outputSchema;
+
+    /**
+     * The service the tool belongs to — the REST or MCP pack, the integration — so a reader
+     * can group "Slack → its tools". {@code null} for tools that belong to no service.
+     */
+    private @Nullable String service;
+
+    /**
      * Selector tags. Mirror of {@code Tool.labels()} on the server side
      * — lets client-pushed tools join the same selector pool as
      * server-managed tools (recipe {@code @<label>}-references and

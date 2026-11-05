@@ -28,7 +28,9 @@ import java.util.regex.Pattern;
  */
 public final class RestApiPackBuilder {
 
-    private RestApiPackBuilder() { /* static only */ }
+    private RestApiPackBuilder() {
+        /* static only */
+    }
 
     /**
      * Pack input: name + labels + primary/deferred flags + raw
@@ -42,8 +44,7 @@ public final class RestApiPackBuilder {
             Set<String> labels,
             boolean primary,
             boolean defaultDeferred,
-            Map<String, Object> parameters) {
-    }
+            Map<String, Object> parameters) {}
 
     /**
      * Materialises the pack. Network-bound — fetches the OpenAPI spec
@@ -52,10 +53,7 @@ public final class RestApiPackBuilder {
      * (and therefore one {@link PackHttpClient} entry) so they pool
      * connections.
      */
-    public static Collection<Tool> build(
-            PackInput input,
-            PackHttpClient httpClient,
-            SecretResolver secretResolver) {
+    public static Collection<Tool> build(PackInput input, PackHttpClient httpClient, SecretResolver secretResolver) {
 
         RestApiConfig config = RestApiConfig.fromParameters(input.parameters());
 
@@ -87,28 +85,22 @@ public final class RestApiPackBuilder {
             // either dot or underscore form per the user's preference.
             String fullName = input.name() + "__" + toolSafeName(op.operationId());
             Set<String> labels = mergeLabels(packLabels, config, op);
-            boolean deferred = config.deferredOverrides().getOrDefault(
-                    op.operationId(), input.defaultDeferred());
+            boolean deferred = config.deferredOverrides().getOrDefault(op.operationId(), input.defaultDeferred());
             String desc = pickDescription(op);
-            String hint = op.summary() != null && !op.summary().isBlank()
-                    ? op.summary() : desc;
+            String hint = op.summary() != null && !op.summary().isBlank() ? op.summary() : desc;
             out.add(new RestEndpointTool(
-                    fullName, desc, labels, deferred, input.primary(), hint, op, invoker));
+                    fullName, desc, labels, deferred, input.primary(), hint, op, invoker, input.name()));
         }
         return List.copyOf(out);
     }
 
     // ─────── internals ───────
 
-    private static Set<String> mergeLabels(
-            Set<String> packLabels,
-            RestApiConfig config,
-            OpenApiOperation op) {
+    private static Set<String> mergeLabels(Set<String> packLabels, RestApiConfig config, OpenApiOperation op) {
         Set<String> out = new LinkedHashSet<>();
         out.addAll(packLabels);
         out.add("rest");
-        out.addAll(config.labelOverrides().getOrDefault(
-                op.operationId(), config.labelsForMethod(op.httpMethod())));
+        out.addAll(config.labelOverrides().getOrDefault(op.operationId(), config.labelsForMethod(op.httpMethod())));
         return Set.copyOf(out);
     }
 
@@ -122,10 +114,7 @@ public final class RestApiPackBuilder {
         return operationId.replace('.', '_');
     }
 
-    private static boolean matches(
-            String operationId,
-            List<Pattern> includes,
-            List<Pattern> excludes) {
+    private static boolean matches(String operationId, List<Pattern> includes, List<Pattern> excludes) {
         boolean included = includes.isEmpty() || anyMatch(operationId, includes);
         if (!included) return false;
         return !anyMatch(operationId, excludes);
@@ -153,7 +142,8 @@ public final class RestApiPackBuilder {
             switch (c) {
                 case '*' -> rx.append(".*");
                 case '?' -> rx.append('.');
-                case '.', '+', '(', ')', '[', ']', '{', '}', '|', '\\', '^', '$' -> rx.append('\\').append(c);
+                case '.', '+', '(', ')', '[', ']', '{', '}', '|', '\\', '^', '$' ->
+                    rx.append('\\').append(c);
                 default -> rx.append(c);
             }
         }

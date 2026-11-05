@@ -15,18 +15,27 @@ import org.jspecify.annotations.Nullable;
  *   {
  *     "name": "...",
  *     "description": "...",
- *     "inputSchema": { "type":"object", "properties":{...}, "required":[...] }
+ *     "inputSchema": { "type":"object", "properties":{...}, "required":[...] },
+ *     "outputSchema": { ... }            // optional: shape of structuredContent
  *   }
  * </pre>
  */
 public record McpToolMeta(
         String name,
         @Nullable String description,
-        Map<String, Object> inputSchema) {
+        Map<String, Object> inputSchema,
+        @Nullable Map<String, Object> outputSchema) {
 
     public McpToolMeta {
         name = name == null ? "" : name;
         inputSchema = inputSchema == null ? Map.of() : Map.copyOf(inputSchema);
+        outputSchema =
+                outputSchema == null ? null : java.util.Collections.unmodifiableMap(new LinkedHashMap<>(outputSchema));
+    }
+
+    /** A tool whose server declared no {@code outputSchema}. */
+    public McpToolMeta(String name, @Nullable String description, Map<String, Object> inputSchema) {
+        this(name, description, inputSchema, null);
     }
 
     /**
@@ -44,7 +53,9 @@ public record McpToolMeta(
         Map<String, Object> schema = entry.get("inputSchema") instanceof Map<?, ?> m
                 ? new LinkedHashMap<>((Map<String, Object>) m)
                 : new LinkedHashMap<>(Map.of("type", "object"));
-        return new McpToolMeta(name.trim(), description, schema);
+        Map<String, Object> output =
+                entry.get("outputSchema") instanceof Map<?, ?> o ? new LinkedHashMap<>((Map<String, Object>) o) : null;
+        return new McpToolMeta(name.trim(), description, schema, output);
     }
 
     /**

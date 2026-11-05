@@ -1,5 +1,6 @@
 package de.mhus.vance.toolpack.rest;
 
+import io.swagger.parser.OpenAPIParser;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.Operation;
 import io.swagger.v3.oas.models.PathItem;
@@ -9,7 +10,6 @@ import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.parameters.Parameter;
 import io.swagger.v3.oas.models.parameters.RequestBody;
 import io.swagger.v3.oas.models.servers.Server;
-import io.swagger.parser.OpenAPIParser;
 import io.swagger.v3.parser.core.models.ParseOptions;
 import io.swagger.v3.parser.core.models.SwaggerParseResult;
 import java.util.ArrayList;
@@ -46,7 +46,9 @@ public final class OpenApiSpecLoader {
 
     private static final Logger log = LoggerFactory.getLogger(OpenApiSpecLoader.class);
 
-    private OpenApiSpecLoader() { /* static */ }
+    private OpenApiSpecLoader() {
+        /* static */
+    }
 
     /**
      * Result of a URL-driven load: the raw {@link OpenAPI} (for
@@ -71,6 +73,7 @@ public final class OpenApiSpecLoader {
      * rebuilds per chat-session against Google's Gmail Discovery URL.
      */
     private static final ConcurrentMap<String, LoadResult> URL_CACHE = new ConcurrentHashMap<>();
+
     private static final ConcurrentMap<String, LoadResult> INLINE_CACHE = new ConcurrentHashMap<>();
 
     /**
@@ -158,8 +161,7 @@ public final class OpenApiSpecLoader {
             String msg = result == null || result.getMessages() == null
                     ? "no OpenAPI returned"
                     : String.join(", ", result.getMessages());
-            throw new IllegalArgumentException(
-                    "OpenAPI spec failed to parse (" + origin + "): " + msg);
+            throw new IllegalArgumentException("OpenAPI spec failed to parse (" + origin + "): " + msg);
         }
         OpenAPI api = result.getOpenAPI();
         if (api.getPaths() == null || api.getPaths().isEmpty()) {
@@ -235,10 +237,47 @@ public final class OpenApiSpecLoader {
         if (!required.isEmpty()) paramsSchema.put("required", required);
 
         return new OpenApiOperation(
-                operationId, method, pathTemplate,
-                op.getSummary(), op.getDescription(),
-                paramsSchema, pathParamNames, queryParamNames, headerParamNames,
-                bodyParamName, bodyContentType);
+                operationId,
+                method,
+                pathTemplate,
+                op.getSummary(),
+                op.getDescription(),
+                paramsSchema,
+                pathParamNames,
+                queryParamNames,
+                headerParamNames,
+                bodyParamName,
+                bodyContentType,
+                successSchema(op));
+    }
+
+    /**
+     * The JSON schema of the operation's success response: the first 2xx response that carries
+     * a JSON body schema, 200 and 201 ahead of the rest. {@code null} when the spec declares
+     * none — many do not, and the reader then simply gets no suggestion.
+     */
+    private static @Nullable Map<String, Object> successSchema(Operation op) {
+        if (op.getResponses() == null) return null;
+        List<String> codes = new ArrayList<>();
+        for (String code : op.getResponses().keySet()) {
+            if (code != null && code.startsWith("2")) codes.add(code);
+        }
+        codes.sort(java.util.Comparator.comparing((String c) -> "200".equals(c) ? 0 : "201".equals(c) ? 1 : 2)
+                .thenComparing(c -> c));
+        for (String code : codes) {
+            io.swagger.v3.oas.models.responses.ApiResponse response =
+                    op.getResponses().get(code);
+            if (response == null || response.getContent() == null) continue;
+            for (Map.Entry<String, MediaType> media : response.getContent().entrySet()) {
+                String type = media.getKey() == null ? "" : media.getKey().toLowerCase();
+                if (type.contains("json")
+                        && media.getValue() != null
+                        && media.getValue().getSchema() != null) {
+                    return schemaToMap(media.getValue().getSchema(), null);
+                }
+            }
+        }
+        return null;
     }
 
     /**
@@ -253,7 +292,10 @@ public final class OpenApiSpecLoader {
         for (Map.Entry<String, MediaType> e : content.entrySet()) {
             if (first == null) first = e;
             String key = e.getKey() == null ? "" : e.getKey().toLowerCase();
-            if (key.contains("json")) { json = e; break; }
+            if (key.contains("json")) {
+                json = e;
+                break;
+            }
         }
         return json != null ? json : first;
     }

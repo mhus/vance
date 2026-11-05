@@ -1,7 +1,5 @@
 package de.mhus.vance.toolpack.rest;
 
-import de.mhus.vance.toolpack.rest.OpenApiOperation;
-import de.mhus.vance.toolpack.rest.RestHttpInvoker;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.Map;
@@ -28,6 +26,7 @@ public final class RestEndpointTool implements Tool {
     private final String searchHint;
     private final OpenApiOperation operation;
     private final RestHttpInvoker invoker;
+    private final @org.jspecify.annotations.Nullable String service;
 
     public RestEndpointTool(
             String fullName,
@@ -38,6 +37,20 @@ public final class RestEndpointTool implements Tool {
             String searchHint,
             OpenApiOperation operation,
             RestHttpInvoker invoker) {
+        this(fullName, description, labels, deferred, primary, searchHint, operation, invoker, null);
+    }
+
+    public RestEndpointTool(
+            String fullName,
+            String description,
+            Set<String> labels,
+            boolean deferred,
+            boolean primary,
+            String searchHint,
+            OpenApiOperation operation,
+            RestHttpInvoker invoker,
+            @org.jspecify.annotations.Nullable String service) {
+        this.service = service;
         this.fullName = fullName;
         this.description = description;
         this.labels = labels == null ? Set.of() : labels;
@@ -48,12 +61,35 @@ public final class RestEndpointTool implements Tool {
         this.invoker = invoker;
     }
 
-    @Override public String name() { return fullName; }
-    @Override public String description() { return description; }
-    @Override public boolean primary() { return primary; }
-    @Override public boolean deferred() { return deferred; }
-    @Override public String searchHint() { return searchHint; }
-    @Override public Set<String> labels() { return labels; }
+    @Override
+    public String name() {
+        return fullName;
+    }
+
+    @Override
+    public String description() {
+        return description;
+    }
+
+    @Override
+    public boolean primary() {
+        return primary;
+    }
+
+    @Override
+    public boolean deferred() {
+        return deferred;
+    }
+
+    @Override
+    public String searchHint() {
+        return searchHint;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return labels;
+    }
 
     @Override
     public @org.jspecify.annotations.Nullable String troubleshootingHint() {
@@ -65,7 +101,33 @@ public final class RestEndpointTool implements Tool {
         return Set.of("integration", "rest");
     }
 
-    @Override public Map<String, Object> paramsSchema() { return operation.paramsSchema(); }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return operation.paramsSchema();
+    }
+
+    @Override
+    public @org.jspecify.annotations.Nullable String service() {
+        return service;
+    }
+
+    /**
+     * A REST call returns the envelope {@code RestHttpInvoker} builds, whatever the spec says, so
+     * the envelope is always known. {@code json} carries the operation's success response schema
+     * when the spec declares one, and is left out otherwise.
+     */
+    @Override
+    public Map<String, Object> outputSchema() {
+        Map<String, Object> properties = new java.util.LinkedHashMap<>();
+        properties.put("status", Map.of("type", "integer"));
+        properties.put("ok", Map.of("type", "boolean"));
+        properties.put("headers", Map.of("type", "object"));
+        properties.put("body", Map.of("type", "string"));
+        if (operation.responseSchema() != null) {
+            properties.put("json", operation.responseSchema());
+        }
+        return Map.of("type", "object", "properties", properties);
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {

@@ -1,7 +1,5 @@
 package de.mhus.vance.toolpack.mcp;
 
-import de.mhus.vance.toolpack.mcp.McpConnection;
-import de.mhus.vance.toolpack.mcp.McpToolMeta;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.Map;
@@ -22,6 +20,7 @@ public final class McpEndpointTool implements Tool {
     private final String searchHint;
     private final String promptHint;
     private final McpConnection connection;
+    private final @org.jspecify.annotations.Nullable String service;
 
     public McpEndpointTool(
             String fullName,
@@ -43,6 +42,20 @@ public final class McpEndpointTool implements Tool {
             String searchHint,
             String promptHint,
             McpConnection connection) {
+        this(fullName, meta, labels, deferred, primary, searchHint, promptHint, connection, null);
+    }
+
+    public McpEndpointTool(
+            String fullName,
+            McpToolMeta meta,
+            Set<String> labels,
+            boolean deferred,
+            boolean primary,
+            String searchHint,
+            String promptHint,
+            McpConnection connection,
+            @org.jspecify.annotations.Nullable String service) {
+        this.service = service;
         this.fullName = fullName;
         this.meta = meta;
         this.labels = labels == null ? Set.of() : labels;
@@ -53,18 +66,42 @@ public final class McpEndpointTool implements Tool {
         this.connection = connection;
     }
 
-    @Override public String name() { return fullName; }
-
-    @Override public String description() {
-        return meta.description() == null || meta.description().isBlank()
-                ? "MCP tool " + meta.name() : meta.description();
+    @Override
+    public String name() {
+        return fullName;
     }
 
-    @Override public boolean primary() { return primary; }
-    @Override public boolean deferred() { return deferred; }
-    @Override public String searchHint() { return searchHint; }
-    @Override public String promptHint() { return promptHint; }
-    @Override public Set<String> labels() { return labels; }
+    @Override
+    public String description() {
+        return meta.description() == null || meta.description().isBlank()
+                ? "MCP tool " + meta.name()
+                : meta.description();
+    }
+
+    @Override
+    public boolean primary() {
+        return primary;
+    }
+
+    @Override
+    public boolean deferred() {
+        return deferred;
+    }
+
+    @Override
+    public String searchHint() {
+        return searchHint;
+    }
+
+    @Override
+    public String promptHint() {
+        return promptHint;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return labels;
+    }
 
     @Override
     public @org.jspecify.annotations.Nullable String troubleshootingHint() {
@@ -76,7 +113,29 @@ public final class McpEndpointTool implements Tool {
         return Set.of("integration", "mcp");
     }
 
-    @Override public Map<String, Object> paramsSchema() { return meta.inputSchema(); }
+    @Override
+    public Map<String, Object> paramsSchema() {
+        return meta.inputSchema();
+    }
+
+    @Override
+    public @org.jspecify.annotations.Nullable String service() {
+        return service;
+    }
+
+    /**
+     * What the call returns is the raw {@code tools/call} result; the server's
+     * {@code outputSchema} describes only its {@code structuredContent}, so that is where it goes.
+     * A server that declared none leaves this {@code null}.
+     */
+    @Override
+    public @org.jspecify.annotations.Nullable Map<String, Object> outputSchema() {
+        if (meta.outputSchema() == null) return null;
+        Map<String, Object> properties = new java.util.LinkedHashMap<>();
+        properties.put("structuredContent", meta.outputSchema());
+        properties.put("isError", Map.of("type", "boolean"));
+        return Map.of("type", "object", "properties", properties);
+    }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {

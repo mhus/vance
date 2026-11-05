@@ -17,13 +17,33 @@ class McpEndpointToolPromptHintTest {
     @Test
     void tool_interface_default_returns_empty_hint() {
         Tool plain = new Tool() {
-            @Override public String name() { return "plain"; }
-            @Override public String description() { return ""; }
-            @Override public boolean primary() { return true; }
-            @Override public boolean deferred() { return false; }
-            @Override public Map<String, Object> paramsSchema() { return Map.of(); }
-            @Override public Map<String, Object> invoke(
-                    Map<String, Object> p, de.mhus.vance.toolpack.ToolInvocationContext c) {
+            @Override
+            public String name() {
+                return "plain";
+            }
+
+            @Override
+            public String description() {
+                return "";
+            }
+
+            @Override
+            public boolean primary() {
+                return true;
+            }
+
+            @Override
+            public boolean deferred() {
+                return false;
+            }
+
+            @Override
+            public Map<String, Object> paramsSchema() {
+                return Map.of();
+            }
+
+            @Override
+            public Map<String, Object> invoke(Map<String, Object> p, de.mhus.vance.toolpack.ToolInvocationContext c) {
                 return Map.of();
             }
         };
@@ -32,9 +52,8 @@ class McpEndpointToolPromptHintTest {
 
     @Test
     void mcp_endpoint_tool_carries_pack_level_hint() {
-        McpToolMeta meta = new McpToolMeta(
-                "atlassian.search", "search Jira",
-                Map.of("type", "object", "properties", Map.of()));
+        McpToolMeta meta =
+                new McpToolMeta("atlassian.search", "search Jira", Map.of("type", "object", "properties", Map.of()));
         McpEndpointTool tool = new McpEndpointTool(
                 "jira__atlassian.search",
                 meta,
@@ -45,20 +64,52 @@ class McpEndpointToolPromptHintTest {
                 "cloudId is auto-injected — do not set it yourself.",
                 /*connection*/ null);
 
-        assertThat(tool.promptHint())
-                .isEqualTo("cloudId is auto-injected — do not set it yourself.");
+        assertThat(tool.promptHint()).isEqualTo("cloudId is auto-injected — do not set it yourself.");
     }
 
     @Test
     void mcp_endpoint_tool_back_compat_constructor_yields_empty_hint() {
         // Legacy 7-arg constructor (no promptHint) is retained for tests
         // / older call sites. McpPackBuilder uses the 8-arg form.
-        McpToolMeta meta = new McpToolMeta(
-                "x", "y", Map.of("type", "object", "properties", Map.of()));
-        McpEndpointTool tool = new McpEndpointTool(
-                "pack__x", meta, java.util.Set.of(),
-                false, false, "hint", /*connection*/ null);
+        McpToolMeta meta = new McpToolMeta("x", "y", Map.of("type", "object", "properties", Map.of()));
+        McpEndpointTool tool =
+                new McpEndpointTool("pack__x", meta, java.util.Set.of(), false, false, "hint", /*connection*/ null);
 
         assertThat(tool.promptHint()).isEmpty();
+    }
+
+    @Test
+    void the_server_output_schema_is_wrapped_as_structured_content() {
+        Map<String, Object> declared = Map.of("type", "object", "properties", Map.of("key", Map.of("type", "string")));
+        McpToolMeta meta = new McpToolMeta("create", "d", Map.of("type", "object"), declared);
+        McpEndpointTool tool = new McpEndpointTool(
+                "jira__create", meta, java.util.Set.of(), false, false, "h", "", /*connection*/ null, "jira");
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> properties =
+                (Map<String, Object>) tool.outputSchema().get("properties");
+        assertThat(properties).containsEntry("structuredContent", declared).containsKey("isError");
+        assertThat(tool.service()).isEqualTo("jira");
+    }
+
+    @Test
+    void a_server_without_an_output_schema_leaves_it_unknown() {
+        McpToolMeta meta = McpToolMeta.fromMap(Map.of("name", "x", "inputSchema", Map.of("type", "object")));
+        McpEndpointTool tool =
+                new McpEndpointTool("pack__x", meta, java.util.Set.of(), false, false, "h", /*connection*/ null);
+
+        assertThat(meta.outputSchema()).isNull();
+        assertThat(tool.outputSchema()).isNull();
+        assertThat(tool.service()).isNull();
+    }
+
+    @Test
+    void the_tools_list_entry_carries_the_output_schema() {
+        McpToolMeta meta = McpToolMeta.fromMap(Map.of(
+                "name", "x",
+                "inputSchema", Map.of("type", "object"),
+                "outputSchema", Map.of("type", "object", "properties", Map.of("n", Map.of("type", "number")))));
+
+        assertThat(meta.outputSchema()).containsKey("properties");
     }
 }

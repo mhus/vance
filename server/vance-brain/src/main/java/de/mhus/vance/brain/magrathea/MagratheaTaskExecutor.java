@@ -13,7 +13,6 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -30,10 +29,7 @@ import org.springframework.stereotype.Component;
  * from a Spring scheduler or a web thread.
  */
 @Component
-@ConditionalOnProperty(
-        value = "vance.services.magrathea",
-        havingValue = "true",
-        matchIfMissing = false)
+@ConditionalOnProperty(value = "vance.services.magrathea", havingValue = "true", matchIfMissing = false)
 @Slf4j
 public class MagratheaTaskExecutor {
 
@@ -52,10 +48,12 @@ public class MagratheaTaskExecutor {
     private final de.mhus.vance.shared.magrathea.MagratheaTaskService taskService;
     private final Map<MagratheaTaskType, MagratheaTypeExecutor> byType;
     /** Optional: only a run owned by a process has anyone to report progress to. */
+    private final org.springframework.beans.factory.ObjectProvider<de.mhus.vance.brain.progress.ProgressEmitter>
+            progressEmitterProvider;
+
     private final org.springframework.beans.factory.ObjectProvider<
-            de.mhus.vance.brain.progress.ProgressEmitter> progressEmitterProvider;
-    private final org.springframework.beans.factory.ObjectProvider<
-            de.mhus.vance.shared.thinkprocess.ThinkProcessService> thinkProcessServiceProvider;
+                    de.mhus.vance.shared.thinkprocess.ThinkProcessService>
+            thinkProcessServiceProvider;
 
     private final java.util.concurrent.ScheduledExecutorService heartbeatScheduler =
             java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
@@ -71,10 +69,10 @@ public class MagratheaTaskExecutor {
             MagratheaCompletionEventBus eventBus,
             de.mhus.vance.shared.magrathea.MagratheaTaskService taskService,
             List<MagratheaTypeExecutor> executors,
-            org.springframework.beans.factory.ObjectProvider<
-                    de.mhus.vance.brain.progress.ProgressEmitter> progressEmitterProvider,
-            org.springframework.beans.factory.ObjectProvider<
-                    de.mhus.vance.shared.thinkprocess.ThinkProcessService> thinkProcessServiceProvider) {
+            org.springframework.beans.factory.ObjectProvider<de.mhus.vance.brain.progress.ProgressEmitter>
+                    progressEmitterProvider,
+            org.springframework.beans.factory.ObjectProvider<de.mhus.vance.shared.thinkprocess.ThinkProcessService>
+                    thinkProcessServiceProvider) {
         this.journalService = journalService;
         this.projector = projector;
         this.workflowLoader = workflowLoader;
@@ -86,10 +84,9 @@ public class MagratheaTaskExecutor {
         for (MagratheaTypeExecutor executor : executors) {
             MagratheaTypeExecutor previous = byType.put(executor.type(), executor);
             if (previous != null) {
-                throw new IllegalStateException(
-                        "Duplicate MagratheaTypeExecutor for " + executor.type()
-                                + ": " + previous.getClass().getName() + " vs "
-                                + executor.getClass().getName());
+                throw new IllegalStateException("Duplicate MagratheaTypeExecutor for " + executor.type()
+                        + ": " + previous.getClass().getName() + " vs "
+                        + executor.getClass().getName());
             }
         }
     }
@@ -102,8 +99,7 @@ public class MagratheaTaskExecutor {
      * <p>Exposed so the start path can ask each state's executor what the
      * run must be bound to, without duplicating the type→bean index.
      */
-    public @org.jspecify.annotations.Nullable MagratheaTypeExecutor executorFor(
-            MagratheaTaskType type) {
+    public @org.jspecify.annotations.Nullable MagratheaTypeExecutor executorFor(MagratheaTaskType type) {
         return byType.get(type);
     }
 
@@ -115,8 +111,10 @@ public class MagratheaTaskExecutor {
         Optional<StartRecord> maybeStart = journalService.readLast(
                 task.getTenantId(), task.getProjectId(), task.getWorkflowRunId(), StartRecord.class);
         if (maybeStart.isEmpty()) {
-            log.error("Magrathea task {} references run {} without StartRecord — failing",
-                    task.getId(), task.getWorkflowRunId());
+            log.error(
+                    "Magrathea task {} references run {} without StartRecord — failing",
+                    task.getId(),
+                    task.getWorkflowRunId());
             publishFailure(task, "missing StartRecord");
             return;
         }
@@ -126,24 +124,28 @@ public class MagratheaTaskExecutor {
         try {
             workflow = workflowLoader.validateYaml(start.getWorkflowName(), start.getDefinitionYaml());
         } catch (RuntimeException ex) {
-            log.error("Magrathea task {} cannot re-parse frozen YAML for run {}",
-                    task.getId(), task.getWorkflowRunId(), ex);
+            log.error(
+                    "Magrathea task {} cannot re-parse frozen YAML for run {}",
+                    task.getId(),
+                    task.getWorkflowRunId(),
+                    ex);
             publishFailure(task, "frozen YAML invalid: " + ex.getMessage());
             return;
         }
 
         MagratheaStateSpec state = workflow.states().get(task.getStateName());
         if (state == null) {
-            log.error("Magrathea task {} references state '{}' which is not in the frozen workflow",
-                    task.getId(), task.getStateName());
+            log.error(
+                    "Magrathea task {} references state '{}' which is not in the frozen workflow",
+                    task.getId(),
+                    task.getStateName());
             publishFailure(task, "state not in workflow: " + task.getStateName());
             return;
         }
 
         MagratheaTypeExecutor executor = byType.get(state.type());
         if (executor == null) {
-            log.error("Magrathea task {} has type {} but no executor is registered",
-                    task.getId(), state.type());
+            log.error("Magrathea task {} has type {} but no executor is registered", task.getId(), state.type());
             publishFailure(task, "no executor for type " + state.type());
             return;
         }
@@ -159,15 +161,18 @@ public class MagratheaTaskExecutor {
         // could see was dropped.
         String lacking = missingCapability(executor, state, start);
         if (lacking != null) {
-            log.info("Magrathea run {} state '{}' cannot run with this binding: {}",
-                    task.getWorkflowRunId(), task.getStateName(), lacking);
+            log.info(
+                    "Magrathea run {} state '{}' cannot run with this binding: {}",
+                    task.getWorkflowRunId(),
+                    task.getStateName(),
+                    lacking);
             publishOutcome(task, state.type(), TaskOutcome.capabilityMissing(lacking), 0L);
             return;
         }
 
         // Replay vars + params for the executor's view.
-        Map<String, Object> vars = projector.projectVars(
-                task.getTenantId(), task.getProjectId(), task.getWorkflowRunId());
+        Map<String, Object> vars =
+                projector.projectVars(task.getTenantId(), task.getProjectId(), task.getWorkflowRunId());
         Map<String, Object> params = start.getParams() == null ? Map.of() : start.getParams();
 
         // TaskStartedRecord — marks the execution window opened.
@@ -192,8 +197,8 @@ public class MagratheaTaskExecutor {
         // this is the task-to-task dataflow that was documented but never
         // implemented (code-review Phase 2). SpEL fields (no ${}) pass
         // through untouched.
-        MagratheaStateSpec resolvedState = state.withSpec(
-                new MagratheaSubstitutor(params, vars).substituteSpec(state.spec()));
+        MagratheaStateSpec resolvedState =
+                state.withSpec(new MagratheaSubstitutor(params, vars).substituteSpec(state.spec(), typedKeysOf(state)));
 
         MagratheaTaskContext ctx = new MagratheaTaskContext(
                 task.getTenantId(),
@@ -216,23 +221,25 @@ public class MagratheaTaskExecutor {
         // stops the heartbeat, so a genuinely dead task still goes stale
         // and is reclaimed (code-review Phase 2 HIGH #3).
         String taskId = task.getId();
-        java.util.concurrent.ScheduledFuture<?> heartbeat =
-                heartbeatScheduler.scheduleWithFixedDelay(
-                        () -> {
-                            try {
-                                taskService.touchHeartbeat(taskId);
-                            } catch (RuntimeException hbEx) {
-                                log.trace("heartbeat touch failed for task {}: {}",
-                                        taskId, hbEx.toString());
-                            }
-                        },
-                        HEARTBEAT_INTERVAL_SECONDS, HEARTBEAT_INTERVAL_SECONDS,
-                        java.util.concurrent.TimeUnit.SECONDS);
+        java.util.concurrent.ScheduledFuture<?> heartbeat = heartbeatScheduler.scheduleWithFixedDelay(
+                () -> {
+                    try {
+                        taskService.touchHeartbeat(taskId);
+                    } catch (RuntimeException hbEx) {
+                        log.trace("heartbeat touch failed for task {}: {}", taskId, hbEx.toString());
+                    }
+                },
+                HEARTBEAT_INTERVAL_SECONDS,
+                HEARTBEAT_INTERVAL_SECONDS,
+                java.util.concurrent.TimeUnit.SECONDS);
         try {
             outcome = executor.execute(ctx);
         } catch (RuntimeException ex) {
-            log.error("Magrathea type-executor {} threw on task {}",
-                    executor.getClass().getSimpleName(), task.getId(), ex);
+            log.error(
+                    "Magrathea type-executor {} threw on task {}",
+                    executor.getClass().getSimpleName(),
+                    task.getId(),
+                    ex);
             publishFailure(task, ex.getMessage());
             return;
         } finally {
@@ -240,8 +247,7 @@ public class MagratheaTaskExecutor {
         }
 
         if (outcome.isEmpty()) {
-            log.debug("Magrathea task {} ({}) is async — waiting for listener",
-                    task.getId(), state.type());
+            log.debug("Magrathea task {} ({}) is async — waiting for listener", task.getId(), state.type());
             return;
         }
         publishOutcome(task, state.type(), outcome.get(), System.currentTimeMillis() - started);
@@ -259,9 +265,7 @@ public class MagratheaTaskExecutor {
             MagratheaTypeExecutor executor, MagratheaStateSpec state, StartRecord start) {
         java.util.Set<de.mhus.vance.api.magrathea.RunCapability> needed = executor.requires(state);
         if (needed.isEmpty()) return null;
-        java.util.Set<String> have = start.getCapabilities() == null
-                ? java.util.Set.of()
-                : start.getCapabilities();
+        java.util.Set<String> have = start.getCapabilities() == null ? java.util.Set.of() : start.getCapabilities();
         for (de.mhus.vance.api.magrathea.RunCapability capability : needed) {
             if (!have.contains(capability.name())) {
                 return "state '" + state.name() + "' needs " + capability;
@@ -283,24 +287,34 @@ public class MagratheaTaskExecutor {
      *
      * <p>Headless runs emit nothing: there is nobody to tell.
      */
-    private void emitProgress(
-            @org.jspecify.annotations.Nullable String ownerProcessId, MagratheaStateSpec state) {
+    /**
+     * The spec keys whose placeholders keep their type. A tool and a sub-workflow take
+     * structured input (arguments, parameters, the items of a for-each), so a value that is
+     * one placeholder stays a list or an object there; every other state reads text.
+     */
+    private static java.util.Set<String> typedKeysOf(MagratheaStateSpec state) {
+        return switch (state.type()) {
+            case TOOL_TASK -> java.util.Set.of("params");
+            case WORKFLOW_TASK -> java.util.Set.of("params", "items");
+            default -> java.util.Set.of();
+        };
+    }
+
+    private void emitProgress(@org.jspecify.annotations.Nullable String ownerProcessId, MagratheaStateSpec state) {
         if (ownerProcessId == null || ownerProcessId.isBlank()) return;
-        if (state.type() == MagratheaTaskType.CONDITION_TASK
-                || state.type() == MagratheaTaskType.TERMINAL) {
+        if (state.type() == MagratheaTaskType.CONDITION_TASK || state.type() == MagratheaTaskType.TERMINAL) {
             return;
         }
         de.mhus.vance.brain.progress.ProgressEmitter emitter = progressEmitterProvider.getIfAvailable();
         var processService = thinkProcessServiceProvider.getIfAvailable();
         if (emitter == null || processService == null) return;
         try {
-            processService.findById(ownerProcessId).ifPresent(owner ->
-                    emitter.emitStatus(owner,
-                            de.mhus.vance.api.progress.StatusTag.DELEGATING,
-                            state.name()));
+            processService
+                    .findById(ownerProcessId)
+                    .ifPresent(owner ->
+                            emitter.emitStatus(owner, de.mhus.vance.api.progress.StatusTag.DELEGATING, state.name()));
         } catch (RuntimeException ex) {
-            log.trace("Magrathea progress emit failed for owner {}: {}",
-                    ownerProcessId, ex.toString());
+            log.trace("Magrathea progress emit failed for owner {}: {}", ownerProcessId, ex.toString());
         }
     }
 
@@ -320,10 +334,7 @@ public class MagratheaTaskExecutor {
     }
 
     private void publishOutcome(
-            MagratheaTaskDocument task,
-            MagratheaTaskType stateType,
-            TaskOutcome outcome,
-            long durationMs) {
+            MagratheaTaskDocument task, MagratheaTaskType stateType, TaskOutcome outcome, long durationMs) {
         eventBus.publish(new TaskCompletedEvent(
                 task.getTenantId(),
                 task.getProjectId(),
@@ -337,5 +348,4 @@ public class MagratheaTaskExecutor {
                 durationMs,
                 outcome.nextStateOverride()));
     }
-
 }

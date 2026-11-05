@@ -22,10 +22,7 @@ import org.springframework.stereotype.Service;
  * touching the repository directly (CLAUDE.md datahoheit rule).
  */
 @Service
-@ConditionalOnProperty(
-        value = "vance.services.magrathea",
-        havingValue = "true",
-        matchIfMissing = false)
+@ConditionalOnProperty(value = "vance.services.magrathea", havingValue = "true", matchIfMissing = false)
 @RequiredArgsConstructor
 @Slf4j
 public class MagratheaTaskService {
@@ -76,9 +73,7 @@ public class MagratheaTaskService {
     /** Inbox-equivalent of {@link #linkSubProcess} — used by {@code GateTaskExecutor}. */
     public void linkInboxItem(String taskId, String inboxItemId) {
         Query q = new Query(Criteria.where("_id").is(taskId));
-        Update u = new Update()
-                .set("inboxItemId", inboxItemId)
-                .set("runStatus", MagratheaTaskRunStatus.WAITING_INBOX);
+        Update u = new Update().set("inboxItemId", inboxItemId).set("runStatus", MagratheaTaskRunStatus.WAITING_INBOX);
         mongoTemplate.updateFirst(q, u, MagratheaTaskDocument.class);
     }
 
@@ -90,9 +85,7 @@ public class MagratheaTaskService {
     /** Timer-equivalent of {@link #linkSubProcess} — used by {@code TimerTaskExecutor}. */
     public void linkTimer(String taskId, String timerId) {
         Query q = new Query(Criteria.where("_id").is(taskId));
-        Update u = new Update()
-                .set("timerId", timerId)
-                .set("runStatus", MagratheaTaskRunStatus.WAITING_TIMER);
+        Update u = new Update().set("timerId", timerId).set("runStatus", MagratheaTaskRunStatus.WAITING_TIMER);
         mongoTemplate.updateFirst(q, u, MagratheaTaskDocument.class);
     }
 
@@ -103,6 +96,12 @@ public class MagratheaTaskService {
                 .set("subWorkflowRunId", subWorkflowRunId)
                 .set("runStatus", MagratheaTaskRunStatus.WAITING_SUBWORKFLOW);
         mongoTemplate.updateFirst(q, u, MagratheaTaskDocument.class);
+    }
+
+    /** Persist the progress of a for-each task (see {@code MagratheaTaskDocument#foreachState}). */
+    public void setForeachState(String taskId, String json) {
+        Query q = new Query(Criteria.where("_id").is(taskId));
+        mongoTemplate.updateFirst(q, new Update().set("foreachState", json), MagratheaTaskDocument.class);
     }
 
     /** Lookup helper for {@code MagratheaSubWorkflowCompletionListener}. */
@@ -126,9 +125,12 @@ public class MagratheaTaskService {
         if (current == null) return Optional.empty();
         if (current.getStatus() != MagratheaTaskStatus.CLAIMED) return Optional.empty();
 
-        Query q = new Query(Criteria.where("_id").is(taskId)
-                .and("status").is(MagratheaTaskStatus.CLAIMED)
-                .and("version").is(current.getVersion()));
+        Query q = new Query(Criteria.where("_id")
+                .is(taskId)
+                .and("status")
+                .is(MagratheaTaskStatus.CLAIMED)
+                .and("version")
+                .is(current.getVersion()));
         Update u = new Update()
                 .set("status", MagratheaTaskStatus.PENDING)
                 .set("nextAttemptAt", Instant.now())
@@ -137,8 +139,7 @@ public class MagratheaTaskService {
                 .unset("heartbeatAt")
                 .unset("runStatus")
                 .inc("version", 1L);
-        com.mongodb.client.result.UpdateResult result =
-                mongoTemplate.updateFirst(q, u, MagratheaTaskDocument.class);
+        com.mongodb.client.result.UpdateResult result = mongoTemplate.updateFirst(q, u, MagratheaTaskDocument.class);
         if (result.getModifiedCount() == 0) return Optional.empty();
         return repository.findById(taskId);
     }
@@ -166,8 +167,10 @@ public class MagratheaTaskService {
         Query q = new Query(Criteria.where("_id").is(taskId));
         Update u = new Update().inc("correctionCount", 1);
         MagratheaTaskDocument updated = mongoTemplate.findAndModify(
-                q, u,
-                org.springframework.data.mongodb.core.FindAndModifyOptions.options().returnNew(true),
+                q,
+                u,
+                org.springframework.data.mongodb.core.FindAndModifyOptions.options()
+                        .returnNew(true),
                 MagratheaTaskDocument.class);
         return updated == null ? Integer.MAX_VALUE : updated.getCorrectionCount();
     }
@@ -182,9 +185,10 @@ public class MagratheaTaskService {
      * behind the owning service instead of a raw collection query.
      */
     public List<MagratheaTaskDocument> findClaimable(Instant now, int limit) {
-        Query q = new Query(
-                Criteria.where("status").is(MagratheaTaskStatus.PENDING)
-                        .and("nextAttemptAt").lte(now))
+        Query q = new Query(Criteria.where("status")
+                        .is(MagratheaTaskStatus.PENDING)
+                        .and("nextAttemptAt")
+                        .lte(now))
                 .with(org.springframework.data.domain.Sort.by("nextAttemptAt").ascending())
                 .limit(limit);
         return mongoTemplate.find(q, MagratheaTaskDocument.class);
@@ -196,10 +200,12 @@ public class MagratheaTaskService {
      * whose heartbeat is unset or also stale — the orphaned-mid-run set.
      */
     public List<MagratheaTaskDocument> findStaleClaimed(Instant threshold, int limit) {
-        Query q = new Query(
-                Criteria.where("status").is(MagratheaTaskStatus.CLAIMED)
-                        .and("runStatus").is(null)
-                        .and("claimedAt").lt(threshold)
+        Query q = new Query(Criteria.where("status")
+                        .is(MagratheaTaskStatus.CLAIMED)
+                        .and("runStatus")
+                        .is(null)
+                        .and("claimedAt")
+                        .lt(threshold)
                         .orOperator(
                                 Criteria.where("heartbeatAt").is(null),
                                 Criteria.where("heartbeatAt").lt(threshold)))
@@ -226,13 +232,12 @@ public class MagratheaTaskService {
      * not save a row: absent means it never happened.
      */
     public List<MagratheaTaskDocument> findStalledBefore(Instant threshold, int limit) {
-        Query q = new Query(
-                Criteria.where("status")
+        Query q = new Query(Criteria.where("status")
                         .in(MagratheaTaskStatus.PENDING, MagratheaTaskStatus.CLAIMED)
-                        .and("createdAt").lt(threshold)
+                        .and("createdAt")
+                        .lt(threshold)
                         .andOperator(
-                                olderThanOrAbsent("claimedAt", threshold),
-                                olderThanOrAbsent("heartbeatAt", threshold)))
+                                olderThanOrAbsent("claimedAt", threshold), olderThanOrAbsent("heartbeatAt", threshold)))
                 .with(org.springframework.data.domain.Sort.by("createdAt").ascending())
                 .limit(limit);
         return mongoTemplate.find(q, MagratheaTaskDocument.class);
@@ -240,9 +245,9 @@ public class MagratheaTaskService {
 
     /** {@code field} is either unset or older than {@code threshold}. */
     private static Criteria olderThanOrAbsent(String field, Instant threshold) {
-        return new Criteria().orOperator(
-                Criteria.where(field).is(null),
-                Criteria.where(field).lt(threshold));
+        return new Criteria()
+                .orOperator(
+                        Criteria.where(field).is(null), Criteria.where(field).lt(threshold));
     }
 
     /**
@@ -252,12 +257,13 @@ public class MagratheaTaskService {
      * in-memory completion event (pod crash); the recovery scanner
      * reconciles it against the actual ThinkProcess status.
      */
-    public List<MagratheaTaskDocument> findWaitingSubprocessClaimedBefore(
-            Instant threshold, int limit) {
-        Query q = new Query(
-                Criteria.where("status").is(MagratheaTaskStatus.CLAIMED)
-                        .and("runStatus").is(MagratheaTaskRunStatus.WAITING_SUBPROCESS)
-                        .and("claimedAt").lt(threshold))
+    public List<MagratheaTaskDocument> findWaitingSubprocessClaimedBefore(Instant threshold, int limit) {
+        Query q = new Query(Criteria.where("status")
+                        .is(MagratheaTaskStatus.CLAIMED)
+                        .and("runStatus")
+                        .is(MagratheaTaskRunStatus.WAITING_SUBPROCESS)
+                        .and("claimedAt")
+                        .lt(threshold))
                 .limit(limit);
         return mongoTemplate.find(q, MagratheaTaskDocument.class);
     }
@@ -272,9 +278,12 @@ public class MagratheaTaskService {
         if (current == null) return Optional.empty();
         if (current.getStatus() != MagratheaTaskStatus.PENDING) return Optional.empty();
 
-        Query q = new Query(Criteria.where("_id").is(taskId)
-                .and("status").is(MagratheaTaskStatus.PENDING)
-                .and("version").is(current.getVersion()));
+        Query q = new Query(Criteria.where("_id")
+                .is(taskId)
+                .and("status")
+                .is(MagratheaTaskStatus.PENDING)
+                .and("version")
+                .is(current.getVersion()));
         Update u = new Update()
                 .set("status", MagratheaTaskStatus.CLAIMED)
                 .set("claimedBy", podId)
@@ -310,12 +319,12 @@ public class MagratheaTaskService {
         return switchRunStatus(workflowRunId, MagratheaTaskStatus.HELD, MagratheaTaskStatus.PENDING);
     }
 
-    private long switchRunStatus(
-            String workflowRunId, MagratheaTaskStatus from, MagratheaTaskStatus to) {
-        Query q = new Query(Criteria.where("workflowRunId").is(workflowRunId)
-                .and("status").is(from));
-        return mongoTemplate.updateMulti(q, new Update().set("status", to),
-                MagratheaTaskDocument.class).getModifiedCount();
+    private long switchRunStatus(String workflowRunId, MagratheaTaskStatus from, MagratheaTaskStatus to) {
+        Query q = new Query(
+                Criteria.where("workflowRunId").is(workflowRunId).and("status").is(from));
+        return mongoTemplate
+                .updateMulti(q, new Update().set("status", to), MagratheaTaskDocument.class)
+                .getModifiedCount();
     }
 
     public void markDone(String taskId) {
@@ -328,10 +337,7 @@ public class MagratheaTaskService {
 
     private void markTerminal(String taskId, MagratheaTaskStatus status) {
         Query q = new Query(Criteria.where("_id").is(taskId));
-        Update u = new Update()
-                .set("status", status)
-                .unset("runStatus")
-                .unset("heartbeatAt");
+        Update u = new Update().set("status", status).unset("runStatus").unset("heartbeatAt");
         mongoTemplate.updateFirst(q, u, MagratheaTaskDocument.class);
     }
 

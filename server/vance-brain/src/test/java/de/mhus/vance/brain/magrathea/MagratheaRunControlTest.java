@@ -48,23 +48,30 @@ class MagratheaRunControlTest {
     private final MagratheaWorkflowService service = new MagratheaWorkflowService(
             mock(MagratheaWorkflowLoader.class),
             mock(de.mhus.vance.shared.document.DocumentService.class),
-            journal, tasks, lanes, mock(MagratheaTaskExecutor.class),
+            journal,
+            tasks,
+            lanes,
+            mock(MagratheaTaskExecutor.class),
             mock(MagratheaLocalDispatch.class),
             mock(de.mhus.vance.shared.magrathea.MagratheaStateProjector.class),
             ownerNotifier,
             mock(org.springframework.context.ApplicationEventPublisher.class),
             new de.mhus.vance.shared.metric.MetricService(
                     new io.micrometer.core.instrument.simple.SimpleMeterRegistry()),
-            processes, inbox, timers);
+            processes,
+            inbox,
+            timers);
 
     private final List<JournalRecord> appended = new ArrayList<>();
 
     @BeforeEach
     void wire() {
         doAnswer(inv -> {
-            ((Runnable) inv.getArgument(1)).run();
-            return java.util.concurrent.CompletableFuture.completedFuture(null);
-        }).when(lanes).submitTracked(any(), any());
+                    ((Runnable) inv.getArgument(1)).run();
+                    return java.util.concurrent.CompletableFuture.completedFuture(null);
+                })
+                .when(lanes)
+                .submitTracked(any(), any());
         when(journal.append(any(), any(), any(), any(JournalRecord.class))).thenAnswer(inv -> {
             appended.add(inv.getArgument(3));
             return MagratheaJournalEntry.builder().build();
@@ -121,8 +128,8 @@ class MagratheaRunControlTest {
     @Test
     void stopEndsAGateAndTerminatesRightAway() {
         status(MagratheaRunStatus.RUNNING);
-        when(tasks.findByRun("r1")).thenReturn(List.of(
-                claimed("t1", MagratheaTaskType.GATE_TASK, t -> t.setInboxItemId("inbox-1"))));
+        when(tasks.findByRun("r1"))
+                .thenReturn(List.of(claimed("t1", MagratheaTaskType.GATE_TASK, t -> t.setInboxItemId("inbox-1"))));
 
         service.stopRun("acme", "proj", "r1", "why");
 
@@ -130,15 +137,16 @@ class MagratheaRunControlTest {
         // run has nothing left to wait for.
         verify(inbox).dismiss(eq("acme"), eq("inbox-1"), any());
         verify(timers).deleteRun("r1");
-        assertThat(appended).last().satisfies(r ->
-                assertThat(((StatusRecord) r).getStatus()).isEqualTo(MagratheaRunStatus.TERMINATED));
+        assertThat(appended)
+                .last()
+                .satisfies(r -> assertThat(((StatusRecord) r).getStatus()).isEqualTo(MagratheaRunStatus.TERMINATED));
     }
 
     @Test
     void stopClosesASpawnedAgent() {
         status(MagratheaRunStatus.RUNNING);
-        when(tasks.findByRun("r1")).thenReturn(List.of(
-                claimed("t1", MagratheaTaskType.AGENT_TASK, t -> t.setSubProcessId("p-1"))));
+        when(tasks.findByRun("r1"))
+                .thenReturn(List.of(claimed("t1", MagratheaTaskType.AGENT_TASK, t -> t.setSubProcessId("p-1"))));
 
         service.stopRun("acme", "proj", "r1", "why");
 
@@ -147,24 +155,39 @@ class MagratheaRunControlTest {
     }
 
     @Test
+    void stopEndsAWaitingTimerAndTerminatesRightAway() {
+        status(MagratheaRunStatus.RUNNING);
+        when(tasks.findByRun("r1")).thenReturn(List.of(claimed("t1", MagratheaTaskType.TIMER_TASK, t -> {})));
+
+        service.stopRun("acme", "proj", "r1", "why");
+
+        // A timer is only a pending row; deleting it is the whole unwind,
+        // so the run must not be left STOPPING for the length of the wait.
+        verify(timers).deleteRun("r1");
+        verify(tasks).markFailed("t1");
+        assertThat(appended)
+                .last()
+                .satisfies(r -> assertThat(((StatusRecord) r).getStatus()).isEqualTo(MagratheaRunStatus.TERMINATED));
+    }
+
+    @Test
     void stopLeavesTheRunStoppingWhileSomethingOpaqueRuns() {
         status(MagratheaRunStatus.RUNNING);
         // A shell task mid-flight has no handle to pull; the run may not
         // be declared terminal while it is still out there.
-        when(tasks.findByRun("r1")).thenReturn(List.of(
-                claimed("t1", MagratheaTaskType.SHELL_TASK, t -> { })));
+        when(tasks.findByRun("r1")).thenReturn(List.of(claimed("t1", MagratheaTaskType.SHELL_TASK, t -> {})));
 
         service.stopRun("acme", "proj", "r1", "why");
 
-        assertThat(appended).noneSatisfy(r ->
-                assertThat(((StatusRecord) r).getStatus()).isEqualTo(MagratheaRunStatus.TERMINATED));
+        assertThat(appended)
+                .noneSatisfy(r -> assertThat(((StatusRecord) r).getStatus()).isEqualTo(MagratheaRunStatus.TERMINATED));
     }
 
     @Test
     void stopCascadesIntoASubRun() {
         status(MagratheaRunStatus.RUNNING);
-        when(tasks.findByRun("r1")).thenReturn(List.of(
-                claimed("t1", MagratheaTaskType.WORKFLOW_TASK, t -> t.setSubWorkflowRunId("r2"))));
+        when(tasks.findByRun("r1"))
+                .thenReturn(List.of(claimed("t1", MagratheaTaskType.WORKFLOW_TASK, t -> t.setSubWorkflowRunId("r2"))));
         when(tasks.findByRun("r2")).thenReturn(List.of());
 
         service.stopRun("acme", "proj", "r1", "why");
@@ -184,9 +207,10 @@ class MagratheaRunControlTest {
 
         service.stopRun("acme", "proj", "r1", "why");
 
-        verify(ownerNotifier).runTerminated(
-                eq("vogon-1"), eq("r1"),
-                eq(de.mhus.vance.api.thinkprocess.ProcessEventType.STOPPED), any());
+        verify(ownerNotifier)
+                .runTerminated(
+                        eq("vogon-1"), eq("r1"),
+                        eq(de.mhus.vance.api.thinkprocess.ProcessEventType.STOPPED), any());
     }
 
     @Test
@@ -196,9 +220,10 @@ class MagratheaRunControlTest {
 
         service.failStalledRun("acme", "proj", "r1", "stalled");
 
-        verify(ownerNotifier).runTerminated(
-                eq("vogon-1"), eq("r1"),
-                eq(de.mhus.vance.api.thinkprocess.ProcessEventType.FAILED), any());
+        verify(ownerNotifier)
+                .runTerminated(
+                        eq("vogon-1"), eq("r1"),
+                        eq(de.mhus.vance.api.thinkprocess.ProcessEventType.FAILED), any());
     }
 
     @Test
@@ -207,8 +232,7 @@ class MagratheaRunControlTest {
         // and the owner would be told about an end that has not happened.
         status(MagratheaRunStatus.RUNNING);
         owner("vogon-1");
-        when(tasks.findByRun("r1")).thenReturn(List.of(
-                claimed("t1", MagratheaTaskType.SHELL_TASK, t -> { })));
+        when(tasks.findByRun("r1")).thenReturn(List.of(claimed("t1", MagratheaTaskType.SHELL_TASK, t -> {})));
 
         service.stopRun("acme", "proj", "r1", "why");
 
@@ -216,27 +240,33 @@ class MagratheaRunControlTest {
     }
 
     private void owner(String processId) {
-        when(journal.readLast(any(), any(), eq("r1"),
-                eq(de.mhus.vance.shared.magrathea.journal.StartRecord.class)))
-                .thenReturn(Optional.of(
-                        de.mhus.vance.shared.magrathea.journal.StartRecord.builder()
-                                .workflowName("wf").ownerProcessId(processId).build()));
+        when(journal.readLast(any(), any(), eq("r1"), eq(de.mhus.vance.shared.magrathea.journal.StartRecord.class)))
+                .thenReturn(Optional.of(de.mhus.vance.shared.magrathea.journal.StartRecord.builder()
+                        .workflowName("wf")
+                        .ownerProcessId(processId)
+                        .build()));
     }
 
     private void status(MagratheaRunStatus status) {
         when(journal.readLast(any(), any(), eq("r1"), eq(StatusRecord.class)))
-                .thenReturn(status == MagratheaRunStatus.RUNNING
-                        ? Optional.empty()
-                        : Optional.of(StatusRecord.builder().status(status).build()));
-        when(journal.readLast(any(), any(), eq("r2"), eq(StatusRecord.class)))
-                .thenReturn(Optional.empty());
+                .thenReturn(
+                        status == MagratheaRunStatus.RUNNING
+                                ? Optional.empty()
+                                : Optional.of(
+                                        StatusRecord.builder().status(status).build()));
+        when(journal.readLast(any(), any(), eq("r2"), eq(StatusRecord.class))).thenReturn(Optional.empty());
     }
 
     private static MagratheaTaskDocument claimed(
             String id, MagratheaTaskType type, java.util.function.Consumer<MagratheaTaskDocument> tweak) {
         MagratheaTaskDocument t = MagratheaTaskDocument.builder()
-                .id(id).tenantId("acme").projectId("proj").workflowRunId("r1")
-                .taskType(type).status(MagratheaTaskStatus.CLAIMED).build();
+                .id(id)
+                .tenantId("acme")
+                .projectId("proj")
+                .workflowRunId("r1")
+                .taskType(type)
+                .status(MagratheaTaskStatus.CLAIMED)
+                .build();
         tweak.accept(t);
         return t;
     }

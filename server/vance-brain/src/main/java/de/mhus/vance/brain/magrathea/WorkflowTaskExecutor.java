@@ -5,7 +5,6 @@ import de.mhus.vance.shared.magrathea.MagratheaStateSpec;
 import de.mhus.vance.shared.magrathea.MagratheaTaskService;
 import java.util.Map;
 import java.util.Optional;
-
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Lazy;
@@ -37,27 +36,31 @@ import org.springframework.stereotype.Component;
  * them to advance the right parent task.
  */
 @Component
-@ConditionalOnProperty(
-        value = "vance.services.magrathea",
-        havingValue = "true",
-        matchIfMissing = false)
+@ConditionalOnProperty(value = "vance.services.magrathea", havingValue = "true", matchIfMissing = false)
 @Slf4j
 public class WorkflowTaskExecutor implements MagratheaTypeExecutor {
 
     private static final String SPEC_WORKFLOW = "workflow";
-    private static final String SPEC_PARAMS   = "params";
+    private static final String SPEC_PARAMS = "params";
+    private static final String SPEC_ITEMS = "items";
+    private static final String SPEC_AS = "as";
+    private static final String SPEC_ON_ITEM_ERROR = "onItemError";
+    private static final String SPEC_MAX_ITEMS = "maxItems";
 
     private final MagratheaWorkflowService workflowService;
     private final MagratheaTaskService taskService;
     private final MagratheaTimeoutScheduler timeoutScheduler;
+    private final MagratheaForeach foreach;
 
     public WorkflowTaskExecutor(
             @Lazy MagratheaWorkflowService workflowService,
             MagratheaTaskService taskService,
-            MagratheaTimeoutScheduler timeoutScheduler) {
+            MagratheaTimeoutScheduler timeoutScheduler,
+            MagratheaForeach foreach) {
         this.workflowService = workflowService;
         this.taskService = taskService;
         this.timeoutScheduler = timeoutScheduler;
+        this.foreach = foreach;
     }
 
     @Override
@@ -70,10 +73,14 @@ public class WorkflowTaskExecutor implements MagratheaTypeExecutor {
         MagratheaStateSpec state = context.state();
         String subWorkflowName = state.specString(SPEC_WORKFLOW);
         if (subWorkflowName == null) {
-            return Optional.of(TaskOutcome.failure(
-                    "workflow_task '" + state.name() + "' is missing required 'workflow:' field"));
+            return Optional.of(
+                    TaskOutcome.failure("workflow_task '" + state.name() + "' is missing required 'workflow:' field"));
         }
         Map<String, Object> subParams = readParamsMap(state);
+
+        if (state.specField(SPEC_ITEMS) != null) {
+            return executeForeach(context, state, subWorkflowName, subParams);
+        }
 
         String subRunId;
         try {
@@ -86,23 +93,52 @@ public class WorkflowTaskExecutor implements MagratheaTypeExecutor {
                     /* parentMagratheaProcessId */ context.workflowRunId(),
                     /* parentState */ state.name());
         } catch (MagratheaWorkflowService.MagratheaWorkflowException ex) {
-            log.warn("Magrathea workflow_task '{}' sub-spawn failed: {}",
-                    state.name(), ex.getMessage());
-            return Optional.of(TaskOutcome.failure(
-                    "Sub-workflow start failed: " + ex.getMessage()));
+            log.warn("Magrathea workflow_task '{}' sub-spawn failed: {}", state.name(), ex.getMessage());
+            return Optional.of(TaskOutcome.failure("Sub-workflow start failed: " + ex.getMessage()));
         } catch (RuntimeException ex) {
-            log.warn("Magrathea workflow_task '{}' sub-spawn errored: {}",
-                    state.name(), ex.getMessage());
-            return Optional.of(TaskOutcome.failure(
-                    "Sub-workflow start errored: " + ex.getMessage()));
+            log.warn("Magrathea workflow_task '{}' sub-spawn errored: {}", state.name(), ex.getMessage());
+            return Optional.of(TaskOutcome.failure("Sub-workflow start errored: " + ex.getMessage()));
         }
 
         taskService.linkSubWorkflow(context.taskId(), subRunId);
         timeoutScheduler.arm(context, state);
-        log.info("Magrathea workflow_task '{}' spawned sub-workflow '{}' runId={}",
-                state.name(), subWorkflowName, subRunId);
+        log.info(
+                "Magrathea workflow_task '{}' spawned sub-workflow '{}' runId={}",
+                state.name(),
+                subWorkflowName,
+                subRunId);
 
         return Optional.empty();
+    }
+
+    /**
+     * {@code items:} — one sub-run per element, one after the other. The state's own
+     * settings are checked here; the loop itself is {@link MagratheaForeach}.
+     */
+    private Optional<TaskOutcome> executeForeach(
+            MagratheaTaskContext context, MagratheaStateSpec state, String workflow, Map<String, Object> params) {
+        String as = state.specString(SPEC_AS) == null ? "item" : state.specString(SPEC_AS);
+        String onItemError =
+                state.specString(SPEC_ON_ITEM_ERROR) == null ? "fail" : state.specString(SPEC_ON_ITEM_ERROR);
+        if (!"fail".equals(onItemError) && !"continue".equals(onItemError)) {
+            return Optional.of(TaskOutcome.failure("workflow_task '" + state.name()
+                    + "': onItemError must be 'fail' or 'continue', got '" + onItemError + "'"));
+        }
+        int maxItems = MagratheaForeach.DEFAULT_MAX_ITEMS;
+        Object rawMax = state.specField(SPEC_MAX_ITEMS);
+        if (rawMax != null) {
+            if (!(rawMax instanceof Number n) || n.intValue() < 1 || n.intValue() > MagratheaForeach.HARD_MAX_ITEMS) {
+                return Optional.of(TaskOutcome.failure("workflow_task '" + state.name()
+                        + "': maxItems must be a number from 1 to " + MagratheaForeach.HARD_MAX_ITEMS));
+            }
+            maxItems = n.intValue();
+        }
+        Optional<TaskOutcome> ended = foreach.begin(
+                context, workflow, params, state.specField(SPEC_ITEMS), as, "continue".equals(onItemError), maxItems);
+        if (ended.isEmpty()) {
+            timeoutScheduler.arm(context, state);
+        }
+        return ended;
     }
 
     @SuppressWarnings("unchecked")
@@ -112,7 +148,6 @@ public class WorkflowTaskExecutor implements MagratheaTypeExecutor {
         if (raw instanceof Map<?, ?> m) {
             return (Map<String, Object>) m;
         }
-        throw new IllegalArgumentException(
-                "workflow_task '" + state.name() + "' params must be a map");
+        throw new IllegalArgumentException("workflow_task '" + state.name() + "' params must be a map");
     }
 }

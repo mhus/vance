@@ -39,6 +39,7 @@ public class MagratheaSubWorkflowCompletionListener {
 
     private final MagratheaTaskService taskService;
     private final MagratheaCompletionEventBus eventBus;
+    private final MagratheaForeach foreach;
 
     @EventListener
     public void onCompleted(WorkflowCompletedEvent event) {
@@ -68,6 +69,11 @@ public class MagratheaSubWorkflowCompletionListener {
             default:
                 // PAUSED / RUNNING → not terminal; ignore.
                 return;
+        }
+        // A for-each task waits for several sub-runs, one after the other: this one is only
+        // an element, and the loop decides whether the task is over.
+        if (foreach.onElementDone(task, outcome, event.result(), errorMessage)) {
+            return;
         }
         eventBus.publish(new TaskCompletedEvent(
                 task.getTenantId(),

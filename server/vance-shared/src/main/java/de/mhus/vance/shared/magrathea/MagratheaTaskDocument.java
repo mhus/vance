@@ -27,27 +27,12 @@ import org.springframework.data.mongodb.core.mapping.Document;
  */
 @Document(collection = "magrathea_tasks")
 @CompoundIndexes({
-        @CompoundIndex(
-                name = "claim_idx",
-                def = "{ 'projectId': 1, 'status': 1, 'nextAttemptAt': 1 }"),
-        @CompoundIndex(
-                name = "reclaim_idx",
-                def = "{ 'status': 1, 'claimedBy': 1, 'claimedAt': 1 }"),
-        @CompoundIndex(
-                name = "run_state_idx",
-                def = "{ 'workflowRunId': 1, 'stateName': 1 }"),
-        @CompoundIndex(
-                name = "subprocess_idx",
-                def = "{ 'subProcessId': 1 }",
-                sparse = true),
-        @CompoundIndex(
-                name = "subworkflow_idx",
-                def = "{ 'subWorkflowRunId': 1 }",
-                sparse = true),
-        @CompoundIndex(
-                name = "inbox_idx",
-                def = "{ 'inboxItemId': 1 }",
-                sparse = true)
+    @CompoundIndex(name = "claim_idx", def = "{ 'projectId': 1, 'status': 1, 'nextAttemptAt': 1 }"),
+    @CompoundIndex(name = "reclaim_idx", def = "{ 'status': 1, 'claimedBy': 1, 'claimedAt': 1 }"),
+    @CompoundIndex(name = "run_state_idx", def = "{ 'workflowRunId': 1, 'stateName': 1 }"),
+    @CompoundIndex(name = "subprocess_idx", def = "{ 'subProcessId': 1 }", sparse = true),
+    @CompoundIndex(name = "subworkflow_idx", def = "{ 'subWorkflowRunId': 1 }", sparse = true),
+    @CompoundIndex(name = "inbox_idx", def = "{ 'inboxItemId': 1 }", sparse = true)
 })
 @Data
 @Builder
@@ -122,6 +107,15 @@ public class MagratheaTaskDocument {
 
     /** Spawned sub-{@code MagratheaProcess} run id for {@code workflow_task}. */
     private @Nullable String subWorkflowRunId;
+
+    /**
+     * Progress of a for-each {@code workflow_task} ({@code items:}) between its elements,
+     * as JSON: the already-substituted items and parameters, the index of the element that
+     * is running and the results so far. Kept as text because the items are arbitrary
+     * data, and a Mongo map cannot hold every key (dots) an item object may carry.
+     * {@code null} for every other task.
+     */
+    private @Nullable String foreachState;
 
     /** Linked InboxItem for {@code gate_task}. */
     private @Nullable String inboxItemId;

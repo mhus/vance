@@ -991,6 +991,11 @@ public class MagratheaWorkflowService {
             }
             ended = true;
         }
+        if (task.getTaskType() == MagratheaTaskType.TIMER_TASK) {
+            // The pending timer row is the whole of this task's work; endRun
+            // deletes every timer of the run right after the unwind loop.
+            ended = true;
+        }
         if (ended) {
             taskService.markFailed(task.getId());
             return true;

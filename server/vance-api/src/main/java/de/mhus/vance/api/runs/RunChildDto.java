@@ -24,4 +24,10 @@ public class RunChildDto {
 
     /** Which step of the parent started it. */
     private @Nullable String fromStep;
+
+    /**
+     * Where the run stands. A parent that is {@code RUNNING} with a {@code PAUSED}
+     * child is waiting for it — a sub-run halted in the debugger.
+     */
+    private @Nullable RunStatus status;
 }

@@ -1,10 +1,12 @@
 package de.mhus.vance.shared.magrathea.journal;
 
+import java.util.Map;
 import java.util.Set;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Replaces the set of states a debuggable run halts before. The latest record
@@ -22,4 +24,11 @@ public class BreakpointsRecord implements JournalRecord {
 
     /** The complete set after the change, not a delta. */
     private Set<String> breakpoints;
+
+    /**
+     * The complete breakpoints for sub-run workflows after the change, by
+     * workflow name — see {@link StartRecord#getSubBreakpoints()}. Absent in
+     * records written before they existed, which reads as "unchanged".
+     */
+    private @Nullable Map<String, Set<String>> workflows;
 }

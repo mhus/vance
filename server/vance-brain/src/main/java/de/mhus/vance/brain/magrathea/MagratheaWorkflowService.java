@@ -70,6 +70,9 @@ public class MagratheaWorkflowService {
     /** Max wait for the lane to journal the start-records before start() returns. */
     private static final long START_TIMEOUT_SECONDS = 30;
 
+    /** Bound on the walk up through parent runs, against a corrupt cycle. */
+    private static final int MAX_ANCESTOR_HOPS = 16;
+
     private static final String METRIC_STARTS = "vance.magrathea.workflow.starts";
 
     /** Counter for terminal status writes. Tags: {@code workflow}, {@code status}. */
@@ -203,16 +206,59 @@ public class MagratheaWorkflowService {
             @Nullable String parentMagratheaProcessId,
             @Nullable String parentState,
             MagratheaRunBinding binding) {
-        return start(
+        if (parentMagratheaProcessId == null) {
+            return start(
+                    tenantId,
+                    projectId,
+                    workflowName,
+                    callerParams,
+                    startedBy,
+                    null,
+                    parentState,
+                    binding,
+                    MagratheaDebugSetup.OFF);
+        }
+        // A sub-run of a debuggable run is debugged along with it.
+        ResolvedMagratheaWorkflow workflow = workflowLoader
+                .load(tenantId, projectId, workflowName)
+                .orElseThrow(() -> new MagratheaWorkflowException("Workflow '" + workflowName
+                        + "' not found in cascade for tenant=" + tenantId + " project=" + projectId));
+        return startResolved(
                 tenantId,
                 projectId,
-                workflowName,
+                workflow, /* sourcePath */
+                null,
                 callerParams,
                 startedBy,
                 parentMagratheaProcessId,
                 parentState,
                 binding,
-                MagratheaDebugSetup.OFF);
+                inheritedDebug(tenantId, projectId, parentMagratheaProcessId, workflow));
+    }
+
+    /**
+     * The debug setup a sub-run gets from the run that starts it.
+     *
+     * <p>A breakpoint belongs to the workflow, not to one run of it, so each
+     * element of a for-each halts at the same state: the sub-run takes the
+     * parent's entry for its workflow as its breakpoints (names the workflow
+     * has no state for are dropped — the definition may have changed since they
+     * were set), and hands the whole map on for runs deeper down. It steps if
+     * the parent is stepping <em>now</em>, so a resume on the parent ends the
+     * per-element halts and leaves only the breakpoints. A parent that is not
+     * debuggable leaves the sub-run an ordinary run.
+     */
+    private MagratheaDebugSetup inheritedDebug(
+            String tenantId, String projectId, String parentRunId, ResolvedMagratheaWorkflow workflow) {
+        Optional<StartRecord> parent = journalService.readLast(tenantId, projectId, parentRunId, StartRecord.class);
+        if (parent.isEmpty() || !MagratheaDebugSetup.isDebuggable(parent.get())) return MagratheaDebugSetup.OFF;
+        Map<String, Set<String>> byWorkflow = currentSubBreakpoints(tenantId, projectId, parentRunId, parent.get());
+        Set<String> own = new java.util.LinkedHashSet<>();
+        for (String name : byWorkflow.getOrDefault(workflow.name(), Set.of())) {
+            if (workflow.states().containsKey(name)) own.add(name);
+        }
+        boolean stepping = isStepping(tenantId, projectId, parentRunId, parent.get());
+        return new MagratheaDebugSetup(stepping, own, byWorkflow);
     }
 
     /**
@@ -507,7 +553,8 @@ public class MagratheaWorkflowService {
     public boolean resumeRun(String tenantId, String projectId, String workflowRunId) {
         MagratheaRunStatus status = currentStatus(tenantId, projectId, workflowRunId);
         if (status != MagratheaRunStatus.PAUSED) return false;
-        boolean debugRun = isDebugRun(tenantId, projectId, workflowRunId);
+        Optional<StartRecord> start = journalService.readLast(tenantId, projectId, workflowRunId, StartRecord.class);
+        boolean debugRun = start.isPresent() && MagratheaDebugSetup.isDebuggable(start.get());
         onLane(projectId, () -> {
             // A debug run that is resumed runs on: end the stepping before the
             // queue is released, so no completion can halt it again.
@@ -517,6 +564,7 @@ public class MagratheaWorkflowService {
                         projectId,
                         workflowRunId,
                         DebugRecord.builder().stepping(false).build());
+                endSteppingAbove(tenantId, projectId, start.get());
             }
             long released = releaseAndDispatch(workflowRunId);
             journalService.append(
@@ -607,15 +655,84 @@ public class MagratheaWorkflowService {
                 workflowLoader.validateYaml(
                         start.get().getWorkflowName(), start.get().getDefinitionYaml()),
                 wanted);
-        onLane(
-                projectId,
-                () -> journalService.append(
-                        tenantId,
-                        projectId,
-                        workflowRunId,
-                        BreakpointsRecord.builder().breakpoints(wanted).build()));
+        onLane(projectId, () -> {
+            journalService.append(
+                    tenantId,
+                    projectId,
+                    workflowRunId,
+                    BreakpointsRecord.builder()
+                            .breakpoints(wanted)
+                            .workflows(currentSubBreakpoints(tenantId, projectId, workflowRunId, start.get()))
+                            .build());
+            rememberForWorkflow(tenantId, projectId, start.get(), wanted);
+        });
         log.info("Magrathea run {} breakpoints set to {}", workflowRunId, wanted);
         return true;
+    }
+
+    /**
+     * Make a breakpoint set the workflow's: record it with every run above this
+     * one that is still going, so the next sub-run of the same workflow — the
+     * next element of a for-each — halts there too.
+     */
+    private void rememberForWorkflow(String tenantId, String projectId, StartRecord sub, Set<String> wanted) {
+        forEachDebugAncestor(tenantId, projectId, sub, (ancestorId, ancestor) -> {
+            Map<String, Set<String>> byWorkflow =
+                    new java.util.LinkedHashMap<>(currentSubBreakpoints(tenantId, projectId, ancestorId, ancestor));
+            byWorkflow.put(sub.getWorkflowName(), wanted);
+            journalService.append(
+                    tenantId,
+                    projectId,
+                    ancestorId,
+                    BreakpointsRecord.builder()
+                            .breakpoints(currentBreakpoints(tenantId, projectId, ancestorId, ancestor))
+                            .workflows(MagratheaDebugSetup.orderedByWorkflow(byWorkflow))
+                            .build());
+        });
+    }
+
+    /**
+     * A resume on a sub-run means "run on", not "run on until the next element
+     * halts": end the stepping of the runs above it as well, or every further
+     * sub-run would start stepping again, inherited from a parent that still is.
+     */
+    private void endSteppingAbove(String tenantId, String projectId, StartRecord sub) {
+        forEachDebugAncestor(tenantId, projectId, sub, (ancestorId, ancestor) -> {
+            if (isStepping(tenantId, projectId, ancestorId, ancestor)) {
+                journalService.append(
+                        tenantId,
+                        projectId,
+                        ancestorId,
+                        DebugRecord.builder().stepping(false).build());
+            }
+        });
+    }
+
+    /**
+     * Visit the runs above {@code sub}, nearest first, that are still going and
+     * debuggable. An ancestor that is not debuggable or has ended is skipped, the
+     * walk goes on past it.
+     */
+    private void forEachDebugAncestor(
+            String tenantId,
+            String projectId,
+            StartRecord sub,
+            java.util.function.BiConsumer<String, StartRecord> visit) {
+        String ancestorId = sub.getParentMagratheaProcessId();
+        int hops = 0;
+        while (ancestorId != null && hops++ < MAX_ANCESTOR_HOPS) {
+            Optional<StartRecord> ancestor =
+                    journalService.readLast(tenantId, projectId, ancestorId, StartRecord.class);
+            if (ancestor.isEmpty()) return;
+            MagratheaRunStatus status = currentStatus(tenantId, projectId, ancestorId);
+            boolean going = status != MagratheaRunStatus.DONE
+                    && status != MagratheaRunStatus.FAILED
+                    && status != MagratheaRunStatus.TERMINATED;
+            if (going && MagratheaDebugSetup.isDebuggable(ancestor.get())) {
+                visit.accept(ancestorId, ancestor.get());
+            }
+            ancestorId = ancestor.get().getParentMagratheaProcessId();
+        }
     }
 
     /** Task types a debug reader can give a result instead of running them. */
@@ -799,14 +916,28 @@ public class MagratheaWorkflowService {
     private @Nullable HaltCause haltCauseFor(
             String tenantId, String projectId, String workflowRunId, StartRecord start, String stateName) {
         if (!MagratheaDebugSetup.isDebuggable(start)) return null;
-        boolean stepping = journalService
-                .readLast(tenantId, projectId, workflowRunId, DebugRecord.class)
-                .map(DebugRecord::isStepping)
-                .orElse(start.isDebug());
-        if (stepping) return HaltCause.STEPPING;
+        if (isStepping(tenantId, projectId, workflowRunId, start)) return HaltCause.STEPPING;
         return currentBreakpoints(tenantId, projectId, workflowRunId, start).contains(stateName)
                 ? HaltCause.BREAKPOINT
                 : null;
+    }
+
+    /** Whether the run halts before every state right now: the latest step/resume, else how it started. */
+    private boolean isStepping(String tenantId, String projectId, String workflowRunId, StartRecord start) {
+        return journalService
+                .readLast(tenantId, projectId, workflowRunId, DebugRecord.class)
+                .map(DebugRecord::isStepping)
+                .orElse(start.isDebug());
+    }
+
+    /** The latest breakpoints for sub-run workflows of the run; before the first change, the ones it started with. */
+    private Map<String, Set<String>> currentSubBreakpoints(
+            String tenantId, String projectId, String workflowRunId, StartRecord start) {
+        return journalService
+                .readLast(tenantId, projectId, workflowRunId, BreakpointsRecord.class)
+                .filter(r -> r.getWorkflows() != null)
+                .map(r -> MagratheaDebugSetup.orderedByWorkflow(r.getWorkflows()))
+                .orElseGet(() -> MagratheaDebugSetup.orderedByWorkflow(start.getSubBreakpoints()));
     }
 
     /** The latest breakpoint set of the run; before the first change, the one it started with. */
@@ -1074,6 +1205,7 @@ public class MagratheaWorkflowService {
                                 debug.breakpoints().isEmpty()
                                         ? null
                                         : new java.util.LinkedHashSet<>(debug.breakpoints()))
+                        .subBreakpoints(debug.workflowBreakpoints().isEmpty() ? null : debug.workflowBreakpoints())
                         .build());
 
         journalService.append(

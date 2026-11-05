@@ -109,4 +109,13 @@ public class StartRecord implements JournalRecord {
      * {@link BreakpointsRecord}, if there is one; this is where it starts.
      */
     private @Nullable Set<String> breakpoints;
+
+    /**
+     * Breakpoints for the workflows this run starts as sub-runs, by workflow
+     * name. Handed on to every sub-run, which takes its own entry as its
+     * breakpoints — a breakpoint belongs to the workflow, not to one run of it,
+     * so each element of a for-each halts at the same state. The current map is
+     * the latest {@link BreakpointsRecord}, if there is one.
+     */
+    private @Nullable Map<String, Set<String>> subBreakpoints;
 }

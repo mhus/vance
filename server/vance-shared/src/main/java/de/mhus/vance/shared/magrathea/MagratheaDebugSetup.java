@@ -3,7 +3,9 @@ package de.mhus.vance.shared.magrathea;
 import de.mhus.vance.shared.magrathea.journal.StartRecord;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
@@ -16,21 +18,33 @@ import org.jspecify.annotations.Nullable;
  * stepped, resumed and — for breakpoints — re-armed while it runs. A run with
  * neither is an ordinary run and pays nothing for any of this.
  *
- * @param stepping    halt before every state
- * @param breakpoints states to halt before, in the order given
+ * <p>{@code workflowBreakpoints} are not for this run's own states but for the
+ * sub-runs it starts, by workflow name: a sub-run of workflow {@code W} takes the
+ * entry for {@code W} as its breakpoints.
+ *
+ * @param stepping            halt before every state
+ * @param breakpoints         states to halt before, in the order given
+ * @param workflowBreakpoints breakpoints for sub-run workflows, by workflow name
  */
-public record MagratheaDebugSetup(boolean stepping, Set<String> breakpoints) {
+public record MagratheaDebugSetup(
+        boolean stepping, Set<String> breakpoints, Map<String, Set<String>> workflowBreakpoints) {
 
     /** No debugging: an ordinary run. */
     public static final MagratheaDebugSetup OFF = new MagratheaDebugSetup(false, Set.of());
 
     public MagratheaDebugSetup {
         breakpoints = ordered(breakpoints);
+        workflowBreakpoints = orderedByWorkflow(workflowBreakpoints);
+    }
+
+    /** A setup without breakpoints for sub-runs. */
+    public MagratheaDebugSetup(boolean stepping, Set<String> breakpoints) {
+        this(stepping, breakpoints, Map.of());
     }
 
     /** {@code true} when the run can be debugged at all. */
     public boolean active() {
-        return stepping || !breakpoints.isEmpty();
+        return stepping || !breakpoints.isEmpty() || !workflowBreakpoints.isEmpty();
     }
 
     /** The setup from request fields; a missing flag or list means "off". */
@@ -45,7 +59,9 @@ public record MagratheaDebugSetup(boolean stepping, Set<String> breakpoints) {
      */
     public static boolean isDebuggable(StartRecord start) {
         return start.isDebug()
-                || (start.getBreakpoints() != null && !start.getBreakpoints().isEmpty());
+                || (start.getBreakpoints() != null && !start.getBreakpoints().isEmpty())
+                || (start.getSubBreakpoints() != null
+                        && !start.getSubBreakpoints().isEmpty());
     }
 
     /** Unmodifiable, duplicate-free, blank-free, in the order given. */
@@ -57,5 +73,18 @@ public record MagratheaDebugSetup(boolean stepping, Set<String> breakpoints) {
             }
         }
         return Collections.unmodifiableSet(out);
+    }
+
+    /** {@link #ordered} per workflow; workflows without a breakpoint are dropped. */
+    public static Map<String, Set<String>> orderedByWorkflow(
+            @Nullable Map<String, ? extends Collection<String>> byWorkflow) {
+        Map<String, Set<String>> out = new LinkedHashMap<>();
+        if (byWorkflow != null) {
+            byWorkflow.forEach((workflow, names) -> {
+                Set<String> set = ordered(names);
+                if (workflow != null && !workflow.isBlank() && !set.isEmpty()) out.put(workflow.trim(), set);
+            });
+        }
+        return Collections.unmodifiableMap(out);
     }
 }

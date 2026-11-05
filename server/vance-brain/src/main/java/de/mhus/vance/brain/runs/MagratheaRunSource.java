@@ -372,6 +372,7 @@ public class MagratheaRunSource implements RunSource {
                     .runId(RunId.of(SOURCE_ID, candidate.workflowRunId()).composite())
                     .name(start.getWorkflowName())
                     .fromStep(start.getParentState())
+                    .status(mapStatus(workflowService.currentStatus(tenantId, projectId, candidate.workflowRunId())))
                     .build());
         }
         return children;

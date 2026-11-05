@@ -254,6 +254,21 @@ class MagratheaRunSourceTest {
     }
 
     @Test
+    void theDetailCarriesTheDefinitionTheRunFroze() {
+        // The picture of the plan must be the one the run follows, not the
+        // document as it reads by now.
+        stubDetail("r1");
+        when(journal.readLast("acme", "proj", "r1", StartRecord.class))
+                .thenReturn(Optional.of(StartRecord.builder()
+                        .workflowName("helloworld")
+                        .definitionYaml("start: a\nstates: {}\n")
+                        .build()));
+
+        assertThat(source.get("acme", "proj", "r1").orElseThrow().getDefinition())
+                .isEqualTo("start: a\nstates: {}\n");
+    }
+
+    @Test
     void withoutASourcePathTheLinkFallsBackToTheCascadePath() {
         // Name-started runs carry no path; the cascade location is where
         // that definition lives by definition.

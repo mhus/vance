@@ -72,6 +72,13 @@ public class RunDetailDto {
      */
     private boolean debug;
 
+    /**
+     * The definition this run froze at its start, as text, so the view can
+     * draw the plan the run actually follows — not whatever the source
+     * document says by now. {@code null} for sources without a drawable plan.
+     */
+    private @Nullable String definition;
+
     /** Source-specific payload for the detail page's extra block. */
     private @Nullable Map<String, Object> extra;
 }

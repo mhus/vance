@@ -1131,6 +1131,7 @@ export default {
 
   runs: {
     pageTitle: 'Runs',
+    newRun: 'New run',
     refresh: 'Refresh',
     loading: 'Loading runs…',
     loadingDetail: 'Loading run…',
@@ -1142,11 +1143,28 @@ export default {
       headline: 'No runs',
       body: 'Nothing is running in this project, and nothing that ran is still being kept.',
     },
+    new: {
+      title: 'New run',
+      document: 'Document',
+      workflow: 'Workflow',
+      pickWorkflow: 'Pick a workflow',
+      loading: 'Reading the definition…',
+      noParams: 'This workflow declares no parameters.',
+      debug: 'Debug',
+      debugHint:
+        'Halts before each step so you can go through the run one step at a time. The calls are real — debug is not a dry run.',
+      cancel: 'Cancel',
+      startFailed: 'The run could not be started.',
+      paramRequired: 'Parameter "{key}" is required.',
+      paramNotInteger: 'Parameter "{key}" must be an integer (got "{raw}").',
+      paramNotJson: 'Parameter "{key}" is not valid JSON: {error}',
+    },
     select: {
       headline: 'Pick a run',
       body: 'Choose one on the left to see its steps, variables and result.',
     },
     detail: {
+      plan: 'Plan',
       steps: 'Steps',
       debug: 'Debug',
       debugHint:
@@ -1477,11 +1495,11 @@ export default {
       undeclared: 'undeclared',
       noType: 'no type',
       start: 'Start',
-      starting: 'Starting…',
-      startHint: 'Run this workflow now',
-      startBlocked: 'Fix the problems listed above first.',
-      started: 'Started — run',
-      paramRequired: 'Required parameter missing: {keys}',
+      run: 'Run',
+      runHint: 'Open the run view for this workflow — parameters, debug and stepping are there',
+      runBlocked: 'Fix the problems listed above first.',
+      runHalted: 'halted here',
+      runCurrent: 'running…',
       problemsTitle: 'This workflow would not start:',
       empty: 'No states — a workflow needs at least one entry under `states:`.',
     },
@@ -2565,10 +2583,6 @@ export default {
       definitionTab: 'Definition',
       runsTab: 'Runs ({total})',
       runsTabWithRunning: 'Runs ({total}, {running} running)',
-      triggerGenericError: 'Trigger failed.',
-      paramRequired: 'Parameter "{key}" is required.',
-      paramNotInteger: 'Parameter "{key}" must be an integer (got "{raw}").',
-      paramNotJson: 'Parameter "{key}" is not valid JSON: {error}',
       detail: {
         start: 'Start state',
         version: 'Version',
@@ -2578,13 +2592,10 @@ export default {
         rawYaml: 'raw YAML',
       },
       trigger: {
-        title: 'Trigger',
+        title: 'Run',
         help:
-          'Starts a fresh workflow run. Fill in the parameters (required ones marked *), then trigger. The run executes asynchronously on the project lane.',
-        noParams: 'This workflow declares no parameters.',
-        button: 'Trigger workflow',
-        spawnedPrefix: 'Spawned workflow:',
-        runIdLabel: 'workflowRunId:',
+          'Runs are started in the run view: parameters, debug and stepping are there.',
+        button: 'Open in run view',
       },
       runs: {
         openInRunView: 'Open in run view',

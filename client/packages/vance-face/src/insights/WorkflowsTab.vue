@@ -2,7 +2,6 @@
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type {
-  MagratheaParameterDto,
   MagratheaProcessDto,
   MagratheaWorkflowSource,
   MagratheaWorkflowSummary,
@@ -11,11 +10,8 @@ import {
   VAlert,
   VButton,
   VCard,
-  VCheckbox,
   VEmptyState,
   VIcon,
-  VInput,
-  VTextarea,
 } from '@/components';
 import { useWorkflows } from '@/composables/useWorkflows';
 
@@ -28,27 +24,12 @@ const selectedName = ref<string | null>(null);
 type SubTab = 'definition' | 'runs';
 const subTab = ref<SubTab>('definition');
 
-/**
- * Per-parameter input state. Keyed by parameter name; values are
- * always strings in the UI and parsed against the schema on submit
- * (integer/boolean coercion + JSON parse for object/array).
- */
-const paramInputs = ref<Record<string, string>>({});
-const paramBooleans = ref<Record<string, boolean>>({});
-
-/** Trigger result / error displayed in the Definition tab. */
-const triggerError = ref<string | null>(null);
-
 watch(
   () => props.projectId,
   (next) => {
     selectedName.value = null;
     subTab.value = 'definition';
     state.clearCurrent();
-    state.clearLastResult();
-    triggerError.value = null;
-    paramInputs.value = {};
-    paramBooleans.value = {};
     if (next) {
       void state.loadProject(next);
     } else {
@@ -62,28 +43,18 @@ async function selectWorkflow(name: string): Promise<void> {
   if (!props.projectId) return;
   selectedName.value = name;
   subTab.value = 'definition';
-  state.clearLastResult();
-  triggerError.value = null;
-  paramInputs.value = {};
-  paramBooleans.value = {};
   await state.loadOne(props.projectId, name);
   // Eagerly load runs too — counter in the tab label needs them.
   await state.loadRuns(props.projectId, name);
-  // Seed param inputs with defaults so the form is pre-populated.
-  const params = state.current.value?.parameters;
-  if (params) {
-    for (const [key, spec] of Object.entries(params)) {
-      if (spec.type === 'boolean') {
-        paramBooleans.value[key] = Boolean(spec.defaultValue ?? false);
-      } else if (spec.defaultValue != null) {
-        paramInputs.value[key] = typeof spec.defaultValue === 'string'
-          ? spec.defaultValue
-          : JSON.stringify(spec.defaultValue);
-      } else {
-        paramInputs.value[key] = '';
-      }
-    }
-  }
+}
+
+/**
+ * Starting a run is the run view's job — parameters, debug and stepping are
+ * there. This tab only knows the workflow's name, so it hands that over.
+ */
+function runViewHref(name: string): string {
+  return `/runs.html?project=${encodeURIComponent(props.projectId ?? '')}`
+    + `&workflow=${encodeURIComponent(name)}`;
 }
 
 function sourceLabel(source: MagratheaWorkflowSource | string): string {
@@ -143,82 +114,6 @@ const runsTabLabel = computed<string>(() => {
   return t('insights.workflows.runsTab', { total });
 });
 
-const paramEntries = computed<Array<[string, MagratheaParameterDto]>>(() => {
-  const params = detail.value?.parameters;
-  if (!params) return [];
-  return Object.entries(params);
-});
-
-/**
- * Parses a param value from the form input. Throws with a
- * field-context message on coercion failure so the user sees which
- * field is bad. Returns {@code undefined} for an empty optional —
- * lets the caller omit the key entirely.
- */
-function parseParamValue(
-  key: string,
-  spec: MagratheaParameterDto,
-): unknown {
-  if (spec.type === 'boolean') {
-    return paramBooleans.value[key] ?? false;
-  }
-  const raw = (paramInputs.value[key] ?? '').trim();
-  if (raw === '') {
-    if (spec.required) {
-      throw new Error(t('insights.workflows.paramRequired', { key }));
-    }
-    return undefined;
-  }
-  switch (spec.type) {
-    case 'integer': {
-      const n = Number.parseInt(raw, 10);
-      if (Number.isNaN(n)) {
-        throw new Error(t('insights.workflows.paramNotInteger', { key, raw }));
-      }
-      return n;
-    }
-    case 'object':
-    case 'array': {
-      try {
-        return JSON.parse(raw);
-      } catch (e) {
-        throw new Error(t('insights.workflows.paramNotJson', {
-          key,
-          error: e instanceof Error ? e.message : String(e),
-        }), { cause: e });
-      }
-    }
-    default:
-      return raw;
-  }
-}
-
-async function onTrigger(): Promise<void> {
-  if (!props.projectId || !detail.value) return;
-  triggerError.value = null;
-
-  // Walk the parameter schema; an unparseable required field is fatal.
-  const collected: Record<string, unknown> = {};
-  try {
-    for (const [key, spec] of paramEntries.value) {
-      const v = parseParamValue(key, spec);
-      if (v !== undefined) collected[key] = v;
-    }
-  } catch (e) {
-    triggerError.value = e instanceof Error ? e.message : String(e);
-    return;
-  }
-
-  try {
-    await state.start(props.projectId, detail.value.name, collected);
-    // Refresh the runs list so the new run appears under the Runs tab.
-    await state.loadRuns(props.projectId, detail.value.name);
-  } catch (e) {
-    triggerError.value =
-      e instanceof Error ? e.message : t('insights.workflows.triggerGenericError');
-  }
-}
-
 async function refreshRuns(): Promise<void> {
   if (!props.projectId || !detail.value) return;
   await state.loadRuns(props.projectId, detail.value.name);
@@ -228,18 +123,6 @@ function fmt(value: unknown): string {
   if (value == null) return '—';
   if (value instanceof Date) return value.toISOString();
   return String(value);
-}
-
-function paramFieldType(spec: MagratheaParameterDto): 'text' | 'integer' | 'boolean' | 'json' {
-  switch (spec.type) {
-    case 'integer': return 'integer';
-    case 'boolean': return 'boolean';
-    case 'object':
-    case 'array':
-      return 'json';
-    default:
-      return 'text';
-  }
 }
 
 function processSelectHandler(run: MagratheaProcessDto): void {
@@ -376,80 +259,14 @@ function processSelectHandler(run: MagratheaProcessDto): void {
                 </details>
               </VCard>
 
-              <!-- Trigger panel — present for every workflow. -->
+              <!-- Starting happens in the run view; this card is the way over. -->
               <VCard :title="$t('insights.workflows.trigger.title')">
                 <p class="text-xs opacity-70 mb-2">
                   {{ $t('insights.workflows.trigger.help') }}
                 </p>
-
-                <div v-if="paramEntries.length === 0" class="text-xs opacity-60 italic">
-                  {{ $t('insights.workflows.trigger.noParams') }}
-                </div>
-
-                <div v-else class="flex flex-col gap-2">
-                  <template
-                    v-for="[key, spec] in paramEntries"
-                    :key="key"
-                  >
-                    <!-- boolean → checkbox -->
-                    <VCheckbox
-                      v-if="paramFieldType(spec) === 'boolean'"
-                      v-model="paramBooleans[key]"
-                      :label="`${key}${spec.required ? ' *' : ''}`"
-                    />
-                    <!-- json (object / array) → multi-line textarea -->
-                    <VTextarea
-                      v-else-if="paramFieldType(spec) === 'json'"
-                      v-model="paramInputs[key]"
-                      :label="`${key}${spec.required ? ' *' : ''} (${spec.type})`"
-                      :rows="4"
-                      class="font-mono"
-                    />
-                    <!-- string / integer → single-line input -->
-                    <VInput
-                      v-else
-                      v-model="paramInputs[key]"
-                      :label="`${key}${spec.required ? ' *' : ''} (${spec.type})`"
-                      :placeholder="
-                        spec.defaultValue != null
-                          ? String(spec.defaultValue)
-                          : ''
-                      "
-                    />
-                  </template>
-                </div>
-
-                <VAlert v-if="triggerError" variant="error" class="mt-3">
-                  <span>{{ triggerError }}</span>
-                </VAlert>
-
-                <div class="flex items-center gap-2 mt-3">
-                  <VButton
-                    :loading="state.busy.value"
-                    variant="primary"
-                    @click="onTrigger"
-                  >{{ $t('insights.workflows.trigger.button') }}</VButton>
-                </div>
-
-                <VAlert
-                  v-if="state.lastResult.value"
-                  variant="success"
-                  class="mt-3"
-                >
-                  <div class="flex flex-col gap-1 text-sm">
-                    <span>
-                      {{ $t('insights.workflows.trigger.spawnedPrefix') }}
-                      <span class="font-mono">{{ state.lastResult.value.workflowName }}</span>
-                    </span>
-                    <span>
-                      {{ $t('insights.workflows.trigger.runIdLabel') }}
-                      <button
-                        class="link"
-                        @click="subTab = 'runs'"
-                      >{{ state.lastResult.value.workflowRunId }}</button>
-                    </span>
-                  </div>
-                </VAlert>
+                <a :href="runViewHref(detail.name)" class="inline-flex items-center gap-1 underline text-sm">
+                  {{ $t('insights.workflows.trigger.button') }}<VIcon name="forward" />
+                </a>
               </VCard>
             </template>
 

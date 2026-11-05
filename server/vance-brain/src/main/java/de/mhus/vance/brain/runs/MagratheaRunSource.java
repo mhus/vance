@@ -101,12 +101,14 @@ public class MagratheaRunSource implements RunSource {
             return Optional.empty();
         }
 
+        Optional<StartRecord> start = journalService.readLast(tenantId, projectId, nativeId, StartRecord.class);
         return Optional.of(RunDetailDto.builder()
                 .summary(toSummary(run))
                 .steps(readSteps(tenantId, projectId, nativeId))
                 .variables(run.getVars() == null ? new LinkedHashMap<>() : run.getVars())
                 .children(readChildren(tenantId, projectId, nativeId))
-                .links(readLinks(tenantId, projectId, nativeId, run))
+                .links(readLinks(start, run))
+                .definition(start.map(StartRecord::getDefinitionYaml).orElse(null))
                 .waitingOnInboxItemId(waitingOnInboxItem(tenantId, nativeId, run.getStatus()))
                 .allowedActions(actionsFor(run.getStatus(), run.isDebug()))
                 .debug(run.isDebug())
@@ -329,9 +331,7 @@ public class MagratheaRunSource implements RunSource {
      * started in a conversation would sit in the list with no way back to
      * the conversation that asked for it.
      */
-    private List<RunLinkDto> readLinks(String tenantId, String projectId, String runId, MagratheaProcessDto run) {
-        Optional<StartRecord> start = journalService.readLast(tenantId, projectId, runId, StartRecord.class);
-
+    private List<RunLinkDto> readLinks(Optional<StartRecord> start, MagratheaProcessDto run) {
         List<RunLinkDto> links = new ArrayList<>(2);
         String path = start.map(StartRecord::getSourcePath).orElse(null);
         if (path == null && run.getWorkflowName() != null) {

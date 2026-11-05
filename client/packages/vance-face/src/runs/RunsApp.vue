@@ -24,6 +24,7 @@ import { recallProject, rememberProject } from '@/platform';
 import { useRuns } from './useRuns';
 import RunStatusBadge from './RunStatusBadge.vue';
 import RunDetailPanel from './RunDetailPanel.vue';
+import NewRunPanel from './NewRunPanel.vue';
 
 const { t } = useI18n();
 const tenantProjects = useTenantProjects();
@@ -34,6 +35,12 @@ const params = new URLSearchParams(window.location.search);
 const projectId = ref<string | null>(params.get('project'));
 const selectedRunId = ref<string>(params.get('run') ?? '');
 const sourceFilter = ref<string>('');
+
+// A new run can be prepared by link: `start=<document path>` (the Cortex Run
+// button) or `workflow=<name>`. Either opens the form instead of a detail.
+const startPath = ref<string>(params.get('start') ?? '');
+const startWorkflow = ref<string>(params.get('workflow') ?? '');
+const newRunOpen = ref<boolean>(!!startPath.value || !!startWorkflow.value);
 
 const focusZone = ref<'sidebar' | 'main' | 'right' | 'footer'>('main');
 
@@ -56,7 +63,27 @@ function syncUrl(): void {
   window.history.replaceState({}, '', `${window.location.pathname}?${next}`);
 }
 
+function openNewRun(): void {
+  startPath.value = '';
+  startWorkflow.value = '';
+  newRunOpen.value = true;
+}
+
+function closeNewRun(): void {
+  newRunOpen.value = false;
+  startPath.value = '';
+  startWorkflow.value = '';
+}
+
+/** A started run is what the user wants to see next: list it and open it. */
+async function onStarted(runId: string): Promise<void> {
+  closeNewRun();
+  if (projectId.value) await loadRuns(projectId.value);
+  await selectRun(runId);
+}
+
 async function selectRun(runId: string): Promise<void> {
+  newRunOpen.value = false;
   selectedRunId.value = runId;
   syncUrl();
   if (projectId.value) await loadDetail(projectId.value, runId);
@@ -77,6 +104,7 @@ async function refresh(): Promise<void> {
 
 watch(projectId, async (next) => {
   rememberProject(next);
+  newRunOpen.value = false;
   selectedRunId.value = '';
   clearDetail();
   syncUrl();
@@ -111,6 +139,9 @@ onMounted(async () => {
     focus-model="auto"
   >
     <template #topbar-extra>
+      <VButton icon="add" size="sm" variant="primary" :disabled="!projectId" @click="openNewRun">
+        {{ t('runs.newRun') }}
+      </VButton>
       <VButton icon="refresh" size="sm" variant="plain" :disabled="loading" @click="refresh">
         {{ t('runs.refresh') }}
       </VButton>
@@ -172,7 +203,16 @@ onMounted(async () => {
 
       <div class="detail">
         <VAlert v-if="error" variant="error">{{ error }}</VAlert>
-        <p v-if="detailLoading" class="hint">{{ t('runs.loadingDetail') }}</p>
+        <NewRunPanel
+          v-if="newRunOpen && projectId"
+          :key="`${projectId}|${startPath}|${startWorkflow}`"
+          :project-id="projectId"
+          :start-path="startPath || undefined"
+          :initial-workflow="startWorkflow || undefined"
+          @started="onStarted"
+          @cancel="closeNewRun"
+        />
+        <p v-else-if="detailLoading" class="hint">{{ t('runs.loadingDetail') }}</p>
         <RunDetailPanel
           v-else-if="detail"
           :detail="detail"

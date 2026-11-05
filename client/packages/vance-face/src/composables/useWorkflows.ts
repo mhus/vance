@@ -34,6 +34,14 @@ export function useWorkflows(): {
     projectId: string,
     name: string,
     params: Record<string, unknown> | null,
+    debug?: boolean,
+  ) => Promise<WorkflowStartResult>;
+  /** Start the workflow document at {@code path}, wherever it lives. */
+  startDocument: (
+    projectId: string,
+    path: string,
+    params: Record<string, unknown> | null,
+    debug?: boolean,
   ) => Promise<WorkflowStartResult>;
   clearCurrent: () => void;
   clearLastResult: () => void;
@@ -99,16 +107,32 @@ export function useWorkflows(): {
     projectId: string,
     name: string,
     params: Record<string, unknown> | null,
+    debug = false,
   ): Promise<WorkflowStartResult> {
+    return post(
+      `project/${encodeURIComponent(projectId)}/workflows/${encodeURIComponent(name)}/start`,
+      { params: params ?? {}, startedBy: null, ...(debug ? { debug: true } : {}) },
+    );
+  }
+
+  async function startDocument(
+    projectId: string,
+    path: string,
+    params: Record<string, unknown> | null,
+    debug = false,
+  ): Promise<WorkflowStartResult> {
+    return post(
+      `project/${encodeURIComponent(projectId)}/workflows/start-document`,
+      { path, params: params ?? {}, ...(debug ? { debug: true } : {}) },
+    );
+  }
+
+  async function post(url: string, body: Record<string, unknown>): Promise<WorkflowStartResult> {
     busy.value = true;
     error.value = null;
     lastResult.value = null;
     try {
-      const result = await brainFetch<WorkflowStartResult>(
-        'POST',
-        `project/${encodeURIComponent(projectId)}/workflows/${encodeURIComponent(name)}/start`,
-        { body: { params: params ?? {}, startedBy: null } },
-      );
+      const result = await brainFetch<WorkflowStartResult>('POST', url, { body });
       lastResult.value = result;
       return result;
     } catch (e) {
@@ -140,6 +164,7 @@ export function useWorkflows(): {
     loadOne,
     loadRuns,
     start,
+    startDocument,
     clearCurrent,
     clearLastResult,
   };

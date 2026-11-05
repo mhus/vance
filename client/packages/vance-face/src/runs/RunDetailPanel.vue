@@ -6,13 +6,15 @@
  * <p>The blocks below are the ones every source can fill. What only one
  * source has goes through {@link RunExtraBlock}.
  */
-import { computed } from 'vue';
+import { computed, defineAsyncComponent } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { VAlert, VBadge, VButton, VCard, VIcon } from '@/components';
 import type { RunDetailDto } from '@vance/generated';
 import RunStatusBadge from './RunStatusBadge.vue';
 import RunExtraBlock from './RunExtraBlock.vue';
-import { formatDuration, formatStepTime } from './stepFormat';
+import { buildOverlay } from './stepOverlay';
+import { formatDuration } from '@/util/formatDuration';
+import { formatStepTime } from './stepFormat';
 
 const props = defineProps<{ detail: RunDetailDto; projectId: string; acting?: boolean }>();
 const emit = defineEmits<{
@@ -20,6 +22,12 @@ const emit = defineEmits<{
   (e: 'action', action: string): void;
 }>();
 const { t, locale } = useI18n();
+
+// The drawing pulls in the flow library; it loads only for a run that has a
+// plan to draw, so the rest of the page does not wait for it.
+const WorkflowGraph = defineAsyncComponent(() => import('@/workflowGraph/WorkflowGraph.vue'));
+
+const overlay = computed(() => buildOverlay(props.detail.steps, props.detail.summary.status));
 
 const variables = computed(() => Object.entries(props.detail.variables ?? {}));
 
@@ -95,6 +103,17 @@ function render(value: unknown): string {
         {{ t('runs.detail.openInbox') }}<VIcon name="forward" />
       </a>
     </VAlert>
+
+    <!-- The plan this run froze at its start, not the document as it reads
+         now — so the picture stays true after the document is edited. -->
+    <VCard v-if="detail.definition" :title="t('runs.detail.plan')">
+      <WorkflowGraph
+        :doc="detail.definition"
+        :overlay="overlay"
+        height="45vh"
+        :show-problems="false"
+      />
+    </VCard>
 
     <VCard v-if="detail.steps?.length" :title="t('runs.detail.steps')">
       <ol class="steps">

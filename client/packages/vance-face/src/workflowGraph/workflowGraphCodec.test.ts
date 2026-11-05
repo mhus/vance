@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseWorkflowGraph } from './workflowFlowCodec';
+import { parseWorkflowGraph } from './workflowGraphCodec';
 
 const FULL = `
 $meta:

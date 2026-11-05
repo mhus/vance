@@ -122,6 +122,30 @@ export default defineConfigWithVueTs(
         },
     },
     {
+        // The run view and the shared workflow drawing are read-only. Anything
+        // that edits a workflow lives under Cortex (or kindViews) and must
+        // never reach them — an import in this direction would ship the
+        // editor in the run view's bundle.
+        name: 'vance/read-only-workflow-views',
+        files: [
+            'client/packages/vance-face/src/runs/**/*.{ts,vue}',
+            'client/packages/vance-face/src/workflowGraph/**/*.{ts,vue}',
+        ],
+        rules: {
+            'no-restricted-imports': [
+                'error',
+                {
+                    patterns: [
+                        {
+                            group: ['@/cortex/*', '@/kindViews/*'],
+                            message: 'The run view and the workflow drawing stay read-only: editing code lives under Cortex and is never imported from here.',
+                        },
+                    ],
+                },
+            ],
+        },
+    },
+    {
         name: 'vance/rules',
         rules: {
             // Discards in destructuring are written with a `_` prefix.

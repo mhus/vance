@@ -25,7 +25,7 @@ import { useRuns } from './useRuns';
 import RunStatusBadge from './RunStatusBadge.vue';
 import RunDetailPanel from './RunDetailPanel.vue';
 import NewRunPanel from './NewRunPanel.vue';
-import { isMoving, RUN_FIRST_POLL_MS, RUN_POLL_INTERVAL_MS } from './polling';
+import { pollPlan, type PollPlan } from './polling';
 
 const { t } = useI18n();
 const tenantProjects = useTenantProjects();
@@ -117,9 +117,10 @@ async function onProjectListDataChanged(): Promise<void> {
   await tenantProjects.reload();
 }
 
-// An open run that is still moving is read again every few seconds: a debug
-// step runs a state and halts again a moment after the click, and the answer
-// to the click only shows the instant it was given.
+// An open run that can still change is read again: a debug step runs a state
+// and halts again a moment after the click, and the answer to the click only
+// shows the instant it was given. A paused run is read more slowly — in-flight
+// work still finishes under a pause.
 let pollTimer: number | undefined;
 let firstPollTimer: number | undefined;
 
@@ -140,16 +141,17 @@ async function pollOnce(): Promise<void> {
   await loadRuns(projectId.value, { silent: true });
 }
 
-function startPolling(): void {
+function startPolling(plan: PollPlan): void {
   stopPolling();
-  firstPollTimer = window.setTimeout(pollOnce, RUN_FIRST_POLL_MS);
-  pollTimer = window.setInterval(pollOnce, RUN_POLL_INTERVAL_MS);
+  if (plan.firstMs !== null) firstPollTimer = window.setTimeout(pollOnce, plan.firstMs);
+  pollTimer = window.setInterval(pollOnce, plan.everyMs);
 }
 
 watch(
   () => detail.value?.summary.status,
   (status) => {
-    if (isMoving(status)) startPolling();
+    const plan = pollPlan(status);
+    if (plan) startPolling(plan);
     else stopPolling();
   },
   { immediate: true },

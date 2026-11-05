@@ -116,9 +116,9 @@ function render(value: unknown): string {
     </VCard>
 
     <VCard v-if="detail.steps?.length" :title="t('runs.detail.steps')">
-      <ol class="steps">
+      <ol class="run-steps">
         <li v-for="(step, i) in detail.steps" :key="i"
-            :class="['step', `step--${stepTone(step.outcome)}`]">
+            :class="['run-step', `run-step--${stepTone(step.outcome)}`]">
           <span class="step-name">{{ step.name }}</span>
           <span v-if="step.kind" class="step-kind">{{ step.kind }}</span>
           <span v-if="step.outcome" class="step-outcome">{{ step.outcome }}</span>
@@ -175,14 +175,14 @@ h2 { margin: 0; font-size: 1.05rem; }
 .link { font-size: 0.8rem; text-decoration: underline; }
 .waiting { font-size: 0.85rem; }
 .waiting a { text-decoration: underline; margin-left: 0.4rem; }
-.steps { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 0.25rem; }
-.step { font-size: 0.85rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: baseline; }
+.run-steps { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 0.25rem; }
+.run-step { font-size: 0.85rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: baseline; }
 .step-name { font-weight: 600; }
 .step-kind { font-size: 0.68rem; text-transform: uppercase; opacity: 0.5; }
 .step-outcome { font-size: 0.72rem; opacity: 0.8; }
-.step--ok .step-outcome { color: var(--color-success); }
-.step--other .step-outcome { color: var(--color-warning); }
-.step--current .step-name::after { content: ' …'; opacity: 0.6; }
+.run-step--ok .step-outcome { color: var(--color-success); }
+.run-step--other .step-outcome { color: var(--color-warning); }
+.run-step--current .step-name::after { content: ' …'; opacity: 0.6; }
 .step-detail { font-size: 0.75rem; opacity: 0.7; flex-basis: 100%; }
 .step-time { font-size: 0.72rem; opacity: 0.55; font-variant-numeric: tabular-nums; }
 .step-output { flex-basis: 100%; font-size: 0.75rem; }

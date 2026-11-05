@@ -76,7 +76,17 @@ remain. Common lifecycle fields on any state: `description`,
 
 Error kinds (for `catch:` / `retry.on:`): `technical_error`,
 `business_error`, `agent_error`, `timeout`, `permission_error`,
-`human_rejected`, `cancelled`.
+`human_rejected`, `cancelled`, `rate_limited`, `auth_error`,
+`not_found`, `unavailable`.
+
+A `tool_task` sorts an HTTP failure by what to **do**: 429 →
+`rate_limited` (retry; the backoff follows `Retry-After`), 401 →
+`auth_error` (do not retry — route to a `gate_task` that asks a person
+to sign in again), 404 → `not_found`, 408/502/503/504 and connection
+failures → `unavailable` (retry), other 5xx → `technical_error`, other
+4xx → `business_error`. A REST call that returned `{ok: false, status}`
+fails the same way. For calls to external services use
+`retry: { maxAttempts: 5, on: [rate_limited, unavailable] }`.
 
 ## Dataflow — reading params and earlier task output
 

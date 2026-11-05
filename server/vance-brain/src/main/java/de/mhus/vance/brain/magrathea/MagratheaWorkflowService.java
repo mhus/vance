@@ -74,6 +74,9 @@ public class MagratheaWorkflowService {
     /** Bound on the walk up through parent runs, against a corrupt cycle. */
     private static final int MAX_ANCESTOR_HOPS = 16;
 
+    /** The longest a retry waits for a service's {@code Retry-After}; a longer ask is cut to this. */
+    private static final java.time.Duration MAX_RETRY_AFTER = java.time.Duration.ofHours(1);
+
     private static final String METRIC_STARTS = "vance.magrathea.workflow.starts";
 
     /** Counter for terminal status writes. Tags: {@code workflow}, {@code status}. */
@@ -1695,6 +1698,16 @@ public class MagratheaWorkflowService {
     private void enqueueRetry(
             TaskCompletedEvent prev, ResolvedMagratheaWorkflow workflow, MagratheaStateSpec state, int retryCount) {
         int backoff = Math.max(0, state.retry().backoffSeconds());
+        Instant notBefore = Instant.now().plusSeconds(backoff);
+        // A service that said when to come back is not asked earlier, nor — against a hint
+        // of a day — later than the ceiling.
+        MagratheaTaskDocument failed = taskService.findById(prev.taskId()).orElse(null);
+        if (failed != null && failed.getRetryNotBefore() != null) {
+            Instant asked = failed.getRetryNotBefore();
+            Instant ceiling = Instant.now().plus(MAX_RETRY_AFTER);
+            if (asked.isAfter(ceiling)) asked = ceiling;
+            if (asked.isAfter(notBefore)) notBefore = asked;
+        }
         MagratheaTaskDocument retry = MagratheaTaskDocument.builder()
                 .tenantId(prev.tenantId())
                 .projectId(prev.projectId())
@@ -1704,7 +1717,7 @@ public class MagratheaWorkflowService {
                 .taskType(state.type())
                 .status(MagratheaTaskStatus.PENDING)
                 .createdAt(Instant.now())
-                .nextAttemptAt(Instant.now().plusSeconds(backoff))
+                .nextAttemptAt(notBefore)
                 .attemptCount(0)
                 .retryCount(retryCount)
                 .build();

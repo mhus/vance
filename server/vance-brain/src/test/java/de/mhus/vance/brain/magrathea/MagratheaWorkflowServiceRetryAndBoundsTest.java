@@ -92,8 +92,19 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
     private final MagratheaOwnerNotifier ownerNotifier = mock(MagratheaOwnerNotifier.class);
 
     private final MagratheaWorkflowService workflowService = new MagratheaWorkflowService(
-            workflowLoader, documentService, journalService, taskService, laneManager, taskExecutor,
-            localDispatch, stateProjector, ownerNotifier, eventPublisher, metricService, thinkProcessService, inboxItemService,
+            workflowLoader,
+            documentService,
+            journalService,
+            taskService,
+            laneManager,
+            taskExecutor,
+            localDispatch,
+            stateProjector,
+            ownerNotifier,
+            eventPublisher,
+            metricService,
+            thinkProcessService,
+            inboxItemService,
             timerService);
 
     private final List<MagratheaTaskDocument> insertedTasks = new ArrayList<>();
@@ -102,10 +113,12 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
     @BeforeEach
     void setUp() {
         doAnswer(inv -> {
-            Runnable r = inv.getArgument(1);
-            r.run();
-            return null;
-        }).when(laneManager).submit(any(), any());
+                    Runnable r = inv.getArgument(1);
+                    r.run();
+                    return null;
+                })
+                .when(laneManager)
+                .submit(any(), any());
         when(laneManager.submitTracked(any(), any())).thenAnswer(inv -> {
             Runnable r = inv.getArgument(1);
             r.run();
@@ -147,16 +160,27 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
     @Test
     void technical_error_with_retry_room_enqueues_a_retry_in_same_state() {
         StartRecord start = StartRecord.builder()
-                .workflowName("flaky-wf").definitionYaml(YAML_WITH_RETRY).build();
-        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class))).thenReturn(Optional.of(start));
+                .workflowName("flaky-wf")
+                .definitionYaml(YAML_WITH_RETRY)
+                .build();
+        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
+                .thenReturn(Optional.of(start));
         String runId = workflowService.start("acme", "proj", "flaky-wf", Map.of(), null);
         MagratheaTaskDocument firstTask = insertedTasks.get(0);
         appendedRecords.clear();
 
         TaskCompletedEvent event = new TaskCompletedEvent(
-                "acme", "proj", runId, firstTask.getId(), "flaky",
-                MagratheaTaskType.SHELL_TASK, "technical_error",
-                null, "exec failed", 5L, null);
+                "acme",
+                "proj",
+                runId,
+                firstTask.getId(),
+                "flaky",
+                MagratheaTaskType.SHELL_TASK,
+                "technical_error",
+                null,
+                "exec failed",
+                5L,
+                null);
 
         workflowService.handleCompletion(event);
 
@@ -168,20 +192,80 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
     }
 
     @Test
+    void a_retry_waits_for_the_retry_after_the_service_sent_but_not_longer_than_the_ceiling() {
+        StartRecord start = StartRecord.builder()
+                .workflowName("flaky-wf")
+                .definitionYaml(YAML_WITH_RETRY)
+                .build();
+        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
+                .thenReturn(Optional.of(start));
+        String runId = workflowService.start("acme", "proj", "flaky-wf", Map.of(), null);
+        MagratheaTaskDocument firstTask = insertedTasks.get(0);
+        firstTask.setRetryNotBefore(java.time.Instant.now().plusSeconds(600));
+
+        workflowService.handleCompletion(new TaskCompletedEvent(
+                "acme",
+                "proj",
+                runId,
+                firstTask.getId(),
+                "flaky",
+                MagratheaTaskType.SHELL_TASK,
+                "technical_error",
+                null,
+                "rate limited",
+                5L,
+                null));
+
+        // The retry's own backoff is zero; the service asked for ten minutes.
+        assertThat(insertedTasks.get(1).getNextAttemptAt())
+                .isAfter(java.time.Instant.now().plusSeconds(500));
+
+        MagratheaTaskDocument second = insertedTasks.get(1);
+        second.setRetryNotBefore(java.time.Instant.now().plus(java.time.Duration.ofDays(1)));
+        workflowService.handleCompletion(new TaskCompletedEvent(
+                "acme",
+                "proj",
+                runId,
+                second.getId(),
+                "flaky",
+                MagratheaTaskType.SHELL_TASK,
+                "technical_error",
+                null,
+                "rate limited",
+                5L,
+                null));
+        // A day-long ask is cut to the ceiling of an hour.
+        assertThat(insertedTasks).hasSize(3);
+        assertThat(insertedTasks.get(2).getNextAttemptAt())
+                .isBefore(java.time.Instant.now().plus(java.time.Duration.ofMinutes(61)));
+    }
+
+    @Test
     void technical_error_after_max_attempts_falls_through_to_catch_block() {
         StartRecord start = StartRecord.builder()
-                .workflowName("flaky-wf").definitionYaml(YAML_WITH_RETRY).build();
-        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class))).thenReturn(Optional.of(start));
+                .workflowName("flaky-wf")
+                .definitionYaml(YAML_WITH_RETRY)
+                .build();
+        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
+                .thenReturn(Optional.of(start));
         String runId = workflowService.start("acme", "proj", "flaky-wf", Map.of(), null);
         MagratheaTaskDocument firstTask = insertedTasks.get(0);
         // Force the task to look like it's already at the retry limit.
-        firstTask.setRetryCount(2);  // next retry would be 3 == maxAttempts → fall through
+        firstTask.setRetryCount(2); // next retry would be 3 == maxAttempts → fall through
         appendedRecords.clear();
 
         TaskCompletedEvent event = new TaskCompletedEvent(
-                "acme", "proj", runId, firstTask.getId(), "flaky",
-                MagratheaTaskType.SHELL_TASK, "technical_error",
-                null, "exec failed", 5L, null);
+                "acme",
+                "proj",
+                runId,
+                firstTask.getId(),
+                "flaky",
+                MagratheaTaskType.SHELL_TASK,
+                "technical_error",
+                null,
+                "exec failed",
+                5L,
+                null);
 
         workflowService.handleCompletion(event);
 
@@ -195,16 +279,27 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
     @Test
     void business_error_not_in_retry_on_list_skips_retry_path() {
         StartRecord start = StartRecord.builder()
-                .workflowName("flaky-wf").definitionYaml(YAML_WITH_RETRY).build();
-        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class))).thenReturn(Optional.of(start));
+                .workflowName("flaky-wf")
+                .definitionYaml(YAML_WITH_RETRY)
+                .build();
+        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
+                .thenReturn(Optional.of(start));
         String runId = workflowService.start("acme", "proj", "flaky-wf", Map.of(), null);
         MagratheaTaskDocument firstTask = insertedTasks.get(0);
         appendedRecords.clear();
 
         TaskCompletedEvent event = new TaskCompletedEvent(
-                "acme", "proj", runId, firstTask.getId(), "flaky",
-                MagratheaTaskType.SHELL_TASK, "business_error",
-                null, "exit 1", 5L, null);
+                "acme",
+                "proj",
+                runId,
+                firstTask.getId(),
+                "flaky",
+                MagratheaTaskType.SHELL_TASK,
+                "business_error",
+                null,
+                "exit 1",
+                5L,
+                null);
 
         workflowService.handleCompletion(event);
 
@@ -219,16 +314,27 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
     @Test
     void successful_outcome_takes_the_on_block_without_retry() {
         StartRecord start = StartRecord.builder()
-                .workflowName("flaky-wf").definitionYaml(YAML_WITH_RETRY).build();
-        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class))).thenReturn(Optional.of(start));
+                .workflowName("flaky-wf")
+                .definitionYaml(YAML_WITH_RETRY)
+                .build();
+        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
+                .thenReturn(Optional.of(start));
         String runId = workflowService.start("acme", "proj", "flaky-wf", Map.of(), null);
         MagratheaTaskDocument firstTask = insertedTasks.get(0);
         appendedRecords.clear();
 
         TaskCompletedEvent event = new TaskCompletedEvent(
-                "acme", "proj", runId, firstTask.getId(), "flaky",
-                MagratheaTaskType.SHELL_TASK, TaskCompletedEvent.OUTCOME_SUCCESS,
-                null, null, 5L, null);
+                "acme",
+                "proj",
+                runId,
+                firstTask.getId(),
+                "flaky",
+                MagratheaTaskType.SHELL_TASK,
+                TaskCompletedEvent.OUTCOME_SUCCESS,
+                null,
+                null,
+                5L,
+                null);
 
         workflowService.handleCompletion(event);
 
@@ -240,26 +346,40 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
     @Test
     void maxTaskSpawns_exhausted_fails_the_run_with_bounds_reason() {
         StartRecord start = StartRecord.builder()
-                .workflowName("bounded-wf").definitionYaml(YAML_WITH_BOUNDS).build();
-        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class))).thenReturn(Optional.of(start));
+                .workflowName("bounded-wf")
+                .definitionYaml(YAML_WITH_BOUNDS)
+                .build();
+        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
+                .thenReturn(Optional.of(start));
         // 3 TaskStartedRecords already → bounds.maxTaskSpawns=2 exceeded.
-        when(journalService.count(any(), any(), any(), eq(TaskStartedRecord.class))).thenReturn(3L);
+        when(journalService.count(any(), any(), any(), eq(TaskStartedRecord.class)))
+                .thenReturn(3L);
 
         String runId = workflowService.start("acme", "proj", "bounded-wf", Map.of(), null);
         MagratheaTaskDocument firstTask = insertedTasks.get(0);
         appendedRecords.clear();
 
         TaskCompletedEvent event = new TaskCompletedEvent(
-                "acme", "proj", runId, firstTask.getId(), "loop",
-                MagratheaTaskType.CONDITION_TASK, TaskCompletedEvent.OUTCOME_SUCCESS,
-                null, null, 1L, "loop");
+                "acme",
+                "proj",
+                runId,
+                firstTask.getId(),
+                "loop",
+                MagratheaTaskType.CONDITION_TASK,
+                TaskCompletedEvent.OUTCOME_SUCCESS,
+                null,
+                null,
+                1L,
+                "loop");
 
         workflowService.handleCompletion(event);
 
         // No new task: bounds bailed out before transition resolved.
         assertThat(insertedTasks).hasSize(1);
         StatusRecord status = (StatusRecord) appendedRecords.stream()
-                .filter(r -> r instanceof StatusRecord).reduce((a, b) -> b).orElseThrow();
+                .filter(r -> r instanceof StatusRecord)
+                .reduce((a, b) -> b)
+                .orElseThrow();
         assertThat(status.getReason()).contains("bounds exhausted").contains("maxTaskSpawns");
     }
 
@@ -269,30 +389,44 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
         // failure paths goes through it. A Vogon that is not told sits
         // IDLE behind a run that ended, for good.
         StartRecord start = StartRecord.builder()
-                .workflowName("bounded-wf").definitionYaml(YAML_WITH_BOUNDS)
-                .ownerProcessId("vogon-1").build();
+                .workflowName("bounded-wf")
+                .definitionYaml(YAML_WITH_BOUNDS)
+                .ownerProcessId("vogon-1")
+                .build();
         when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
                 .thenReturn(Optional.of(start));
-        when(journalService.count(any(), any(), any(), eq(TaskStartedRecord.class))).thenReturn(3L);
+        when(journalService.count(any(), any(), any(), eq(TaskStartedRecord.class)))
+                .thenReturn(3L);
 
         String runId = workflowService.start("acme", "proj", "bounded-wf", Map.of(), null);
         MagratheaTaskDocument firstTask = insertedTasks.get(0);
 
         workflowService.handleCompletion(new TaskCompletedEvent(
-                "acme", "proj", runId, firstTask.getId(), "loop",
-                MagratheaTaskType.CONDITION_TASK, TaskCompletedEvent.OUTCOME_SUCCESS,
-                null, null, 1L, "loop"));
+                "acme",
+                "proj",
+                runId,
+                firstTask.getId(),
+                "loop",
+                MagratheaTaskType.CONDITION_TASK,
+                TaskCompletedEvent.OUTCOME_SUCCESS,
+                null,
+                null,
+                1L,
+                "loop"));
 
-        org.mockito.Mockito.verify(ownerNotifier).runTerminated(
-                eq("vogon-1"), eq(runId),
-                eq(de.mhus.vance.api.thinkprocess.ProcessEventType.FAILED),
-                org.mockito.ArgumentMatchers.contains("bounds exhausted"));
+        org.mockito.Mockito.verify(ownerNotifier)
+                .runTerminated(
+                        eq("vogon-1"),
+                        eq(runId),
+                        eq(de.mhus.vance.api.thinkprocess.ProcessEventType.FAILED),
+                        org.mockito.ArgumentMatchers.contains("bounds exhausted"));
     }
 
     @Test
     void maxWallclockSeconds_exhausted_fails_the_run() {
         StartRecord start = StartRecord.builder()
-                .workflowName("bounded-wf").definitionYaml(
+                .workflowName("bounded-wf")
+                .definitionYaml(
                         // Override to wallclock-only bounds.
                         """
                         start: loop
@@ -303,29 +437,41 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
                             type: condition_task
                             transitions:
                               - else: loop
-                        """).build();
-        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class))).thenReturn(Optional.of(start));
+                        """)
+                .build();
+        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
+                .thenReturn(Optional.of(start));
         // Force the run to look 60s old.
         when(journalService.firstCreatedAt(any(), any(), any()))
                 .thenReturn(Optional.of(Instant.now().minusSeconds(60)));
         // Hook the loader's validateYaml for the override.
         when(workflowLoader.validateYaml(any(), any()))
-                .thenAnswer(inv -> new MagratheaWorkflowLoader(null)
-                        .validateYaml(inv.getArgument(0), inv.getArgument(1)));
+                .thenAnswer(
+                        inv -> new MagratheaWorkflowLoader(null).validateYaml(inv.getArgument(0), inv.getArgument(1)));
 
         String runId = workflowService.start("acme", "proj", "bounded-wf", Map.of(), null);
         MagratheaTaskDocument firstTask = insertedTasks.get(0);
         appendedRecords.clear();
 
         TaskCompletedEvent event = new TaskCompletedEvent(
-                "acme", "proj", runId, firstTask.getId(), "loop",
-                MagratheaTaskType.CONDITION_TASK, TaskCompletedEvent.OUTCOME_SUCCESS,
-                null, null, 1L, "loop");
+                "acme",
+                "proj",
+                runId,
+                firstTask.getId(),
+                "loop",
+                MagratheaTaskType.CONDITION_TASK,
+                TaskCompletedEvent.OUTCOME_SUCCESS,
+                null,
+                null,
+                1L,
+                "loop");
 
         workflowService.handleCompletion(event);
 
         StatusRecord status = (StatusRecord) appendedRecords.stream()
-                .filter(r -> r instanceof StatusRecord).reduce((a, b) -> b).orElseThrow();
+                .filter(r -> r instanceof StatusRecord)
+                .reduce((a, b) -> b)
+                .orElseThrow();
         assertThat(status.getReason()).contains("maxWallclockSeconds");
     }
 
@@ -337,22 +483,32 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
         // task advances — otherwise it hangs forever (no terminal state, no
         // recovery scan).
         StartRecord start = StartRecord.builder()
-                .workflowName("bounded-wf").definitionYaml(YAML_WITH_BOUNDS)
+                .workflowName("bounded-wf")
+                .definitionYaml(YAML_WITH_BOUNDS)
                 .parentMagratheaProcessId("parent-proc-1")
                 .parentState("await-sub")
                 .build();
         when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
                 .thenReturn(Optional.of(start));
-        when(journalService.count(any(), any(), any(), eq(TaskStartedRecord.class))).thenReturn(3L);
+        when(journalService.count(any(), any(), any(), eq(TaskStartedRecord.class)))
+                .thenReturn(3L);
 
         String runId = workflowService.start("acme", "proj", "bounded-wf", Map.of(), null);
         MagratheaTaskDocument firstTask = insertedTasks.get(0);
         appendedRecords.clear();
 
         TaskCompletedEvent event = new TaskCompletedEvent(
-                "acme", "proj", runId, firstTask.getId(), "loop",
-                MagratheaTaskType.CONDITION_TASK, TaskCompletedEvent.OUTCOME_SUCCESS,
-                null, null, 1L, "loop");
+                "acme",
+                "proj",
+                runId,
+                firstTask.getId(),
+                "loop",
+                MagratheaTaskType.CONDITION_TASK,
+                TaskCompletedEvent.OUTCOME_SUCCESS,
+                null,
+                null,
+                1L,
+                "loop");
 
         workflowService.handleCompletion(event);
 
@@ -360,8 +516,7 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
                 org.mockito.ArgumentCaptor.forClass(WorkflowCompletedEvent.class);
         verify(eventPublisher).publishEvent(cap.capture());
         WorkflowCompletedEvent published = cap.getValue();
-        assertThat(published.status())
-                .isEqualTo(de.mhus.vance.api.magrathea.MagratheaRunStatus.FAILED);
+        assertThat(published.status()).isEqualTo(de.mhus.vance.api.magrathea.MagratheaRunStatus.FAILED);
         assertThat(published.parentMagratheaProcessId()).isEqualTo("parent-proc-1");
         assertThat(published.parentState()).isEqualTo("await-sub");
         assertThat(published.workflowRunId()).isEqualTo(runId);
@@ -370,18 +525,30 @@ class MagratheaWorkflowServiceRetryAndBoundsTest {
     @Test
     void within_bounds_workflow_proceeds_normally() {
         StartRecord start = StartRecord.builder()
-                .workflowName("bounded-wf").definitionYaml(YAML_WITH_BOUNDS).build();
-        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class))).thenReturn(Optional.of(start));
-        when(journalService.count(any(), any(), any(), eq(TaskStartedRecord.class))).thenReturn(1L);
+                .workflowName("bounded-wf")
+                .definitionYaml(YAML_WITH_BOUNDS)
+                .build();
+        when(journalService.readLast(any(), any(), any(), eq(StartRecord.class)))
+                .thenReturn(Optional.of(start));
+        when(journalService.count(any(), any(), any(), eq(TaskStartedRecord.class)))
+                .thenReturn(1L);
 
         String runId = workflowService.start("acme", "proj", "bounded-wf", Map.of(), null);
         MagratheaTaskDocument firstTask = insertedTasks.get(0);
         appendedRecords.clear();
 
         TaskCompletedEvent event = new TaskCompletedEvent(
-                "acme", "proj", runId, firstTask.getId(), "loop",
-                MagratheaTaskType.CONDITION_TASK, TaskCompletedEvent.OUTCOME_SUCCESS,
-                null, null, 1L, "loop");
+                "acme",
+                "proj",
+                runId,
+                firstTask.getId(),
+                "loop",
+                MagratheaTaskType.CONDITION_TASK,
+                TaskCompletedEvent.OUTCOME_SUCCESS,
+                null,
+                null,
+                1L,
+                "loop");
 
         workflowService.handleCompletion(event);
 

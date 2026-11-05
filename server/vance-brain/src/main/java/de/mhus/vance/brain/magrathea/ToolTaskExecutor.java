@@ -12,8 +12,10 @@ import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -39,7 +41,9 @@ import tools.jackson.databind.ObjectMapper;
  * <ul>
  *   <li>Tool returns normally → {@code success}, output = the tool's result Map</li>
  *   <li>{@link PermissionDeniedException} → {@code permission_error}</li>
- *   <li>{@link ToolException} or other → {@code technical_error}</li>
+ *   <li>{@link ToolException} or other → sorted by {@link ToolFailure}: {@code rate_limited},
+ *       {@code auth_error}, {@code not_found}, {@code unavailable}, else {@code technical_error}</li>
+ *   <li>a REST result {@code {ok: false, status}} → the same sorting, the result kept as output</li>
  * </ul>
  *
  * <p>v1 forwards the {@code params:} block verbatim. The plan §7.1
@@ -48,19 +52,17 @@ import tools.jackson.databind.ObjectMapper;
  * doesn't second-guess it.
  */
 @Component
-@ConditionalOnProperty(
-        value = "vance.services.magrathea",
-        havingValue = "true",
-        matchIfMissing = false)
+@ConditionalOnProperty(value = "vance.services.magrathea", havingValue = "true", matchIfMissing = false)
 @RequiredArgsConstructor
 @Slf4j
 public class ToolTaskExecutor implements MagratheaTypeExecutor {
 
-    private static final String SPEC_TOOL   = "tool";
+    private static final String SPEC_TOOL = "tool";
     private static final String SPEC_PARAMS = "params";
 
     private final ToolDispatcher toolDispatcher;
     private final ObjectMapper objectMapper;
+    private final de.mhus.vance.shared.magrathea.MagratheaTaskService taskService;
 
     @Override
     public MagratheaTaskType type() {
@@ -72,8 +74,8 @@ public class ToolTaskExecutor implements MagratheaTypeExecutor {
         MagratheaStateSpec state = context.state();
         String toolName = state.specString(SPEC_TOOL);
         if (toolName == null) {
-            return Optional.of(TaskOutcome.failure(
-                    "tool_task '" + state.name() + "' is missing required 'tool:' field"));
+            return Optional.of(
+                    TaskOutcome.failure("tool_task '" + state.name() + "' is missing required 'tool:' field"));
         }
         Map<String, Object> toolParams = readParamsMap(state);
 
@@ -90,13 +92,14 @@ public class ToolTaskExecutor implements MagratheaTypeExecutor {
         // tool_probe_*) are gated to specific engines; invoking them from a
         // generic workflow step would bypass that role gate (code-review
         // F1). None of them is a legitimate workflow tool, so refuse.
-        Optional<ToolDispatcher.Resolved> resolvedTool =
-                toolDispatcher.resolve(toolName, invocationCtx);
+        Optional<ToolDispatcher.Resolved> resolvedTool = toolDispatcher.resolve(toolName, invocationCtx);
         if (resolvedTool.isPresent()
                 && !resolvedTool.get().tool().requiresEngineRoles().isEmpty()) {
-            log.warn("Magrathea tool_task '{}' refused engine-role-privileged tool "
-                            + "'{}' (requiresEngineRoles={})",
-                    state.name(), toolName, resolvedTool.get().tool().requiresEngineRoles());
+            log.warn(
+                    "Magrathea tool_task '{}' refused engine-role-privileged tool " + "'{}' (requiresEngineRoles={})",
+                    state.name(),
+                    toolName,
+                    resolvedTool.get().tool().requiresEngineRoles());
             return Optional.of(new TaskOutcome(
                     errorKindName(MagratheaErrorKind.PERMISSION_ERROR),
                     null,
@@ -109,33 +112,43 @@ public class ToolTaskExecutor implements MagratheaTypeExecutor {
         try {
             result = toolDispatcher.invoke(toolName, toolParams, invocationCtx);
         } catch (PermissionDeniedException ex) {
-            log.warn("Magrathea tool_task '{}' permission denied for tool '{}': {}",
-                    state.name(), toolName, ex.getMessage());
-            return Optional.of(new TaskOutcome(
-                    errorKindName(MagratheaErrorKind.PERMISSION_ERROR),
-                    null,
-                    ex.getMessage(),
-                    null));
-        } catch (ToolException ex) {
-            log.warn("Magrathea tool_task '{}' tool '{}' threw: {}",
-                    state.name(), toolName, ex.getMessage());
-            return Optional.of(new TaskOutcome(
-                    errorKindName(MagratheaErrorKind.TECHNICAL_ERROR),
-                    null,
-                    ex.getMessage(),
-                    null));
+            log.warn(
+                    "Magrathea tool_task '{}' permission denied for tool '{}': {}",
+                    state.name(),
+                    toolName,
+                    ex.getMessage());
+            return Optional.of(
+                    new TaskOutcome(errorKindName(MagratheaErrorKind.PERMISSION_ERROR), null, ex.getMessage(), null));
         } catch (RuntimeException ex) {
-            log.warn("Magrathea tool_task '{}' tool '{}' threw unexpected: {}",
-                    state.name(), toolName, ex.getMessage());
-            return Optional.of(new TaskOutcome(
-                    errorKindName(MagratheaErrorKind.TECHNICAL_ERROR),
-                    null,
-                    ex.getMessage(),
-                    null));
+            log.warn("Magrathea tool_task '{}' tool '{}' threw: {}", state.name(), toolName, ex.getMessage());
+            return Optional.of(failed(context, ToolFailure.classify(ex), null));
         }
 
-        return Optional.of(TaskOutcome.successWith(
-                result == null ? null : objectMapper.valueToTree(result)));
+        // A REST call that came back as {ok: false, status: …} did not succeed: without
+        // this a 429 would be a success to the workflow. The result stays as output, so
+        // storeAs keeps the body the service sent.
+        Optional<ToolFailure> httpFailure = ToolFailure.classifyResult(result);
+        if (httpFailure.isPresent()) {
+            log.warn(
+                    "Magrathea tool_task '{}' tool '{}' failed: {}",
+                    state.name(),
+                    toolName,
+                    httpFailure.get().message());
+            return Optional.of(failed(context, httpFailure.get(), objectMapper.valueToTree(result)));
+        }
+
+        return Optional.of(TaskOutcome.successWith(result == null ? null : objectMapper.valueToTree(result)));
+    }
+
+    /**
+     * The failed outcome, with the service's {@code Retry-After} remembered on the task so the
+     * retry waits for it.
+     */
+    private TaskOutcome failed(MagratheaTaskContext context, ToolFailure failure, @Nullable JsonNode output) {
+        if (failure.retryAfter() != null) {
+            taskService.setRetryNotBefore(context.taskId(), failure.retryAfter());
+        }
+        return new TaskOutcome(errorKindName(failure.kind()), output, failure.message(), null);
     }
 
     @SuppressWarnings("unchecked")
@@ -145,8 +158,7 @@ public class ToolTaskExecutor implements MagratheaTypeExecutor {
         if (raw instanceof Map<?, ?> m) {
             return (Map<String, Object>) m;
         }
-        throw new IllegalArgumentException(
-                "tool_task '" + state.name() + "' params must be a map");
+        throw new IllegalArgumentException("tool_task '" + state.name() + "' params must be a map");
     }
 
     private static String errorKindName(MagratheaErrorKind kind) {

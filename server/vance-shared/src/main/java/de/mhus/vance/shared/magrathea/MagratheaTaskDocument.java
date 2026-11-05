@@ -125,4 +125,11 @@ public class MagratheaTaskDocument {
 
     @Version
     private @Nullable Long version;
+
+    /**
+     * When a retry of this task may not start before, as the failing service asked
+     * ({@code Retry-After}). {@code null} when it said nothing. The retry waits for
+     * the later of this and its own backoff.
+     */
+    private @Nullable Instant retryNotBefore;
 }

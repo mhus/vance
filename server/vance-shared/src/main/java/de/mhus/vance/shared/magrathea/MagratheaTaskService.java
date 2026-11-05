@@ -104,6 +104,12 @@ public class MagratheaTaskService {
         mongoTemplate.updateFirst(q, new Update().set("foreachState", json), MagratheaTaskDocument.class);
     }
 
+    /** Remember that a retry of this task may not start before {@code notBefore} (see {@code MagratheaTaskDocument#retryNotBefore}). */
+    public void setRetryNotBefore(String taskId, java.time.Instant notBefore) {
+        Query q = new Query(Criteria.where("_id").is(taskId));
+        mongoTemplate.updateFirst(q, new Update().set("retryNotBefore", notBefore), MagratheaTaskDocument.class);
+    }
+
     /** Lookup helper for {@code MagratheaSubWorkflowCompletionListener}. */
     public Optional<MagratheaTaskDocument> findBySubWorkflowRunId(String subWorkflowRunId) {
         return repository.findBySubWorkflowRunId(subWorkflowRunId);

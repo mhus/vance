@@ -137,7 +137,15 @@ public class MagratheaArchitect implements SchemaArchitect {
 
             ERROR KINDS (for `catch:` and `retry.on:`):
               technical_error, business_error, agent_error, timeout,
-              permission_error, human_rejected, cancelled
+              permission_error, human_rejected, cancelled, rate_limited,
+              auth_error, not_found, unavailable
+              A tool_task sorts HTTP failures into these: 429 -> rate_limited
+              (wait and retry; the backoff follows Retry-After), 401 ->
+              auth_error (do NOT retry — ask a person to sign in again, e.g.
+              a gate_task), 404 -> not_found, 502/503/504 and connection
+              failures -> unavailable (retry). Use
+              retry: { maxAttempts: 5, on: [rate_limited, unavailable] }
+              for calls to external services.
 
             TASK TYPES (the `type:` field) and their type-specific keys:
 

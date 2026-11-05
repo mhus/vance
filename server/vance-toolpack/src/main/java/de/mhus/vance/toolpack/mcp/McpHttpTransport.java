@@ -314,7 +314,11 @@ public final class McpHttpTransport implements McpTransport {
         int status = response.statusCode();
         if (status < 200 || status >= 300) {
             String body = readAllText(response.body());
-            throw new IllegalStateException("MCP HTTP " + status + " from " + config.url() + ": " + truncate(body));
+            throw new McpHttpStatusException(
+                    "MCP HTTP " + status + " from " + config.url() + ": " + truncate(body),
+                    status,
+                    de.mhus.vance.toolpack.core.HttpRetryAfter.parse(
+                            response.headers().firstValue("Retry-After").orElse(null)));
         }
         if (contentType.toLowerCase().contains("text/event-stream")) {
             return parseSseStream(response.body(), requestId, requestMethod);
